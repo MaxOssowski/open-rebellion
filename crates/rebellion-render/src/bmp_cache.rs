@@ -325,6 +325,8 @@ pub enum DllSource {
     Strategy,
     /// `COMMON.DLL` — global buttons, sliders, main-menu backgrounds
     Common,
+    /// `REBDLOG.DLL` — original confirmation windows and buttons.
+    Rebdlog,
     /// `TACTICAL.DLL` — combat HUD, ship sprites, squadron controls
     Tactical,
     /// `GOKRES.DLL` — entity status sprites, character portraits, ship icons
@@ -342,6 +344,7 @@ impl DllSource {
         match self {
             DllSource::Strategy => "strategy-dll",
             DllSource::Common => "common-dll",
+            DllSource::Rebdlog => "rebdlog-dll",
             DllSource::Tactical => "tactical-dll",
             DllSource::Gokres => "gokres-dll",
             DllSource::Rebdlog => "rebdlog-dll",
@@ -354,6 +357,7 @@ impl DllSource {
         match self {
             DllSource::Strategy => "strategy",
             DllSource::Common => "common",
+            DllSource::Rebdlog => "rebdlog",
             DllSource::Tactical => "tactical",
             DllSource::Gokres => "gokres",
             DllSource::Rebdlog => "rebdlog",
@@ -1756,6 +1760,7 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                     ..=resources::strategy::SECTOR_PLANET_SPECIAL_LAST
         ),
         DllSource::Gokres => matches!(resource_id, 16_000..=19_999),
+        DllSource::Rebdlog => false,
         DllSource::Common => matches!(
             resource_id,
             10001..=10003
@@ -1765,6 +1770,7 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10011
                 | 10013..=10015
                 | 10017..=10019
+                | 10046..=10051
                 | 10158..=10159
                 | resources::common::MAIN_MENU_ANIMATION_FIRST
                     ..=resources::common::MAIN_MENU_ANIMATION_LAST

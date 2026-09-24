@@ -205,7 +205,7 @@ fn configured_asset_render_profile() -> AssetRenderProfile {
 }
 
 fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
-    rebellion_data::save::list_saves(saves_dir)
+    let mut slots: Vec<_> = rebellion_data::save::list_saves(saves_dir)
         .into_iter()
         .filter_map(std::result::Result::ok)
         .map(|meta| rebellion_render::SaveSlotInfo {
@@ -220,7 +220,21 @@ fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
             },
             game_tick: meta.game_tick,
         })
-        .collect()
+        .collect();
+    for slot in 0..rebellion_data::save::MAX_SAVE_SLOTS {
+        if !slots.iter().any(|save| save.slot == slot)
+            && rebellion_data::save::slot_occupied(saves_dir, slot)
+        {
+            slots.push(rebellion_render::SaveSlotInfo {
+                slot,
+                name: "Unreadable save".into(),
+                timestamp: "Load to inspect error".into(),
+                game_tick: 0,
+            });
+        }
+    }
+    slots.sort_by_key(|save| save.slot);
+    slots
 }
 
 struct LiveCampaign<'a> {
