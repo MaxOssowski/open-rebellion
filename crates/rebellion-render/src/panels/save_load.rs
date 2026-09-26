@@ -1,4 +1,4 @@
-//! Save / load panel — egui modal with up to 10 named save slots.
+//! Save / load panel — egui modal with up to ten named save slots.
 //!
 //! # Usage
 //!
@@ -22,6 +22,9 @@
 use egui_macroquad::egui::{self, Color32, RichText, ScrollArea};
 
 use super::PanelAction;
+
+/// Compatibility capacity; the authentic bitmap surface shows only six rows.
+pub const MAX_SAVE_SLOTS: usize = 10;
 
 // ---------------------------------------------------------------------------
 // SaveSlotInfo — lightweight metadata for rendering
@@ -158,7 +161,7 @@ pub fn draw_save_load(
             ui.add_space(4.0);
 
             ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
-                for slot in 0..10usize {
+                for slot in 0..MAX_SAVE_SLOTS {
                     let existing = saves.iter().find(|s| s.slot == slot);
                     let is_selected = state.selected_slot == Some(slot);
 

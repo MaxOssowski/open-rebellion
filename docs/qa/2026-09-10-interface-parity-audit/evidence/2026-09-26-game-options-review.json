@@ -1,0 +1,268 @@
+{
+  "date": "2026-09-26",
+  "pr": 14,
+  "branch": "feat/game-options",
+  "base": "ec5d6a52408d8e04d3c00809279bd08e4c4e3bef",
+  "status": "implementation_checkpoint_acceptance_pending",
+  "proprietary_bytes_committed": false,
+  "checks": {
+    "workspace": {
+      "command": "cargo test --workspace",
+      "exit_code": 0,
+      "passed": 760,
+      "failed": 0,
+      "ignored": 34,
+      "log_sha256": "1d04d609777e3e62243a86bee7a32cd4da798a9fa63d59be5be299725d8f8865"
+    },
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit_code": 0
+    },
+    "packaging_tests": {
+      "command": "python3 scripts/test_build_runtime_pack.py",
+      "exit_code": 0,
+      "passed": 5
+    },
+    "owned_staging": {
+      "command": "OPEN_REBELLION_TEST_SOURCE=<owned-install> go test ./tools/stage-ui-assets",
+      "exit_code": 0,
+      "rebdlog_numeric_resources": 23
+    },
+    "package": {
+      "command": "bash scripts/package-web.sh options-review-2026-09-26",
+      "exit_code": 0,
+      "log_sha256": "78d6c921c7a8e2dd848f996eb75841ba964ee3e55903364f94027d0ca52cb6d9"
+    },
+    "interface_ledger": {
+      "status": "pass",
+      "surface_families": 44,
+      "required_surface_families": 43,
+      "baseline_cells": 569,
+      "required_baseline_cells": 564,
+      "reverse_engineering_packages": 27,
+      "space_battle_baseline_cells": 106,
+      "required_surfaces_with_retrieval_packages": 43
+    },
+    "lookup_ledger": {
+      "command": "node scripts/validate-tactical-lookup.mjs",
+      "exit_code": 0,
+      "ships": 29,
+      "fighters": 8,
+      "voices": 285
+    },
+    "mutations": {
+      "command": "cargo mutants -f crates/rebellion-render/src/game_options.rs --re 'GameOptionsState::(enabled|request|confirm)|masked_control_at' --timeout 180 -- --lib game_options::tests",
+      "exit_code": 2,
+      "tested": 28,
+      "caught": 24,
+      "unviable": 3,
+      "missed": 1,
+      "survivor": "delete dest_size from unchanged upstream draw_bitmap: headless tests do not render; browser captures cover final scaling",
+      "log_sha256": "3677353a65fcd4ab4466d1f6acf0115ecd6a5e16e64c5958f2b5d92c23ead6bc"
+    },
+    "native_exit": {
+      "exit_code": 0,
+      "route": "Options -> Exit -> Yes",
+      "cleanup_log": "[quit] audio_stopped=true cleanup=complete",
+      "limitation": "audio device fails on this host; audibility not established"
+    },
+    "p24_preservation": {
+      "parsed_json_equal_to_origin_main": true
+    },
+    "code_review": {
+      "critical_or_important_remaining": 0
+    }
+  },
+  "package_sha256": {
+    "SHA256SUMS": "2876b23db71fba4af19d9191c9f9a29850bc4d2ead8226500658c59a923bbfa4",
+    "data/runtime.orpk": "6cceef87ab3d1e84f032fd1b6a7d3b334ff0f95ceba1f0f8e27114dcd7d1d6b5",
+    "gl.js": "16dea6f7f04f9b4a627fb12725ec58cf7044afab796a3f2c63d1c27ba50d5862",
+    "index.html": "6d49198eeb6835033dc80db1422d974a0284ff0ca8bcc754eb4e6581d6739e97",
+    "open-rebellion.wasm": "7c43497752b470d8b5d23b7eaaa2a41c37111353ba53658784860da1ef71963b"
+  },
+  "browser": {
+    "packaged": [
+      {
+        "faction": "alliance",
+        "status": "pass",
+        "fingerprint": "v1:ff4a384e59f88841",
+        "restoredLoads": [
+          "[campaign] restored slot=0 mode=Galaxy tick=0 fingerprint=v1:ff4a384e59f88841 faction=Alliance",
+          "[campaign] restored slot=9 mode=Galaxy tick=0 fingerprint=v1:ff4a384e59f88841 faction=Alliance"
+        ],
+        "assertions": [
+          "save",
+          "overwrite cancel",
+          "load cancel",
+          "verified load and restored Galaxy fingerprint",
+          "slot 10 verified load/delete",
+          "delete cancel",
+          "delete accept",
+          "return/re-entry",
+          "corrupt load/overwrite cancel",
+          "v13 metadata-only overwrite cancel",
+          "browser exit/restart",
+          "no page errors"
+        ]
+      },
+      {
+        "faction": "empire",
+        "status": "pass",
+        "fingerprint": "v1:67700903f595ee5d",
+        "restoredLoads": [
+          "[campaign] restored slot=0 mode=Galaxy tick=0 fingerprint=v1:67700903f595ee5d faction=Empire",
+          "[campaign] restored slot=9 mode=Galaxy tick=0 fingerprint=v1:67700903f595ee5d faction=Empire"
+        ],
+        "assertions": [
+          "save",
+          "overwrite cancel",
+          "load cancel",
+          "verified load and restored Galaxy fingerprint",
+          "slot 10 verified load/delete",
+          "delete cancel",
+          "delete accept",
+          "return/re-entry",
+          "corrupt load/overwrite cancel",
+          "v13 metadata-only overwrite cancel",
+          "browser exit/restart",
+          "no page errors"
+        ]
+      }
+    ],
+    "missing-dialog-retry": [
+      {
+        "faction": "alliance",
+        "status": "pass",
+        "fingerprint": "v1:5767c6a80c7a19f7",
+        "restoredLoads": [
+          "[campaign] restored slot=0 mode=Galaxy tick=0 fingerprint=v1:5767c6a80c7a19f7 faction=Alliance",
+          "[campaign] restored slot=9 mode=Galaxy tick=0 fingerprint=v1:5767c6a80c7a19f7 faction=Alliance"
+        ],
+        "assertions": [
+          "save",
+          "overwrite cancel",
+          "load cancel",
+          "verified load and restored Galaxy fingerprint",
+          "slot 10 verified load/delete",
+          "delete cancel",
+          "delete accept",
+          "return/re-entry",
+          "corrupt load/overwrite cancel",
+          "v13 metadata-only overwrite cancel",
+          "browser exit/restart",
+          "no page errors"
+        ]
+      },
+      {
+        "faction": "empire",
+        "status": "pass",
+        "fingerprint": "v1:c0d9f23a1cc0c05d",
+        "restoredLoads": [
+          "[campaign] restored slot=0 mode=Galaxy tick=0 fingerprint=v1:c0d9f23a1cc0c05d faction=Empire",
+          "[campaign] restored slot=9 mode=Galaxy tick=0 fingerprint=v1:c0d9f23a1cc0c05d faction=Empire"
+        ],
+        "assertions": [
+          "save",
+          "overwrite cancel",
+          "load cancel",
+          "verified load and restored Galaxy fingerprint",
+          "slot 10 verified load/delete",
+          "delete cancel",
+          "delete accept",
+          "return/re-entry",
+          "corrupt load/overwrite cancel",
+          "v13 metadata-only overwrite cancel",
+          "browser exit/restart",
+          "no page errors"
+        ]
+      }
+    ]
+  },
+  "private_artifacts_sha256": {
+    "packaged/alliance-browser-exit.png": "51e86f884d87b326e8f9e74d86674aa41986e13d81838dcbc7a5cafe43186ee8",
+    "packaged/alliance-browser-restarted.png": "8b0eb2fe6ffb8756ecac4d7cf03c84d107571f87bf00ccd1ad87d02620f45d2a",
+    "packaged/alliance-campaign-options.png": "ebcbff62cd9cb34eac80a138181e4c1102402fbaf6b56885c2ffe8fefdfe192c",
+    "packaged/alliance-corrupt-load-error.png": "efe9c2363c49f0e4b73dd06314a54f9cf8930413fe4fc389d2c0bd04a1cb0872",
+    "packaged/alliance-corrupt-overwrite-confirmation.png": "91fc44eb13a538423e6a029f4a81525e3a368fc0dc8a40ae553b3e377615e19b",
+    "packaged/alliance-delete-confirmation.png": "d1bc3cbbad884f939ac988d6555002978b0ac5a7bb3b9491f0a1d3bb42eab782",
+    "packaged/alliance-legacy-load.png": "47891e5fcb569e50d1f02e50983f5be7c29074ae1121d140a83c176c5da46ac5",
+    "packaged/alliance-legacy-save-delete.png": "8469c3a421c73083b55de4de22ea7fd8661e7301c5f2af63e2248d1e11cf9f4e",
+    "packaged/alliance-load-confirmation.png": "76c2bc5708f736e9336745dc5ffdf4cef040526dc64f2cd76937eadbdf75b3e4",
+    "packaged/alliance-logs.json": "209f87b5c96a6c0d7d691c893f46043835d3b0d7bd8dad0653c5babe8726ac43",
+    "packaged/alliance-main-options.png": "8a69976b211412f72ef20f3df3ec51f13fb29d72191e714b8fc48db5ad4aa17f",
+    "packaged/alliance-older-metadata-only-overwrite-confirmation.png": "91fc44eb13a538423e6a029f4a81525e3a368fc0dc8a40ae553b3e377615e19b",
+    "packaged/alliance-overwrite-confirmation.png": "77a74926a5b3deae9606add1d69f5a465d10937b733fe317d9db0019cb5a2df7",
+    "packaged/alliance-reentered-options.png": "ebcbff62cd9cb34eac80a138181e4c1102402fbaf6b56885c2ffe8fefdfe192c",
+    "packaged/alliance-restart-confirmation.png": "4db6be4ec443d9e0f8fc6a32622746a90d9f8a10541b6deda11c88863367802b",
+    "packaged/alliance-returned-campaign.png": "9bb0a2b3e847e3917bdda24c295a5258ef8166a00454ff0443b56f8d162ce75b",
+    "packaged/alliance-slot-ten-delete-panel.png": "995a9924172e037de3b6d6149d5e85da97cb7b540a94d7485d7f50a0a5357418",
+    "packaged/alliance-slot-ten-load-panel.png": "15386c0c6ff3f80fec3a0b79e8e19a7ef23ae4acd1e4b6a5eaa194124778da6e",
+    "packaged/empire-browser-exit.png": "51e86f884d87b326e8f9e74d86674aa41986e13d81838dcbc7a5cafe43186ee8",
+    "packaged/empire-browser-restarted.png": "8b0eb2fe6ffb8756ecac4d7cf03c84d107571f87bf00ccd1ad87d02620f45d2a",
+    "packaged/empire-campaign-options.png": "ebcbff62cd9cb34eac80a138181e4c1102402fbaf6b56885c2ffe8fefdfe192c",
+    "packaged/empire-corrupt-load-error.png": "efe9c2363c49f0e4b73dd06314a54f9cf8930413fe4fc389d2c0bd04a1cb0872",
+    "packaged/empire-corrupt-overwrite-confirmation.png": "91fc44eb13a538423e6a029f4a81525e3a368fc0dc8a40ae553b3e377615e19b",
+    "packaged/empire-delete-confirmation.png": "67740a07358040df57fc082f4a956aed55fa8b404e3c04109e04322a89f50c58",
+    "packaged/empire-legacy-load.png": "47891e5fcb569e50d1f02e50983f5be7c29074ae1121d140a83c176c5da46ac5",
+    "packaged/empire-legacy-save-delete.png": "1a020247e7be8f36aa06c60968946647b2ec776a618e6e5da7734282b6d059e9",
+    "packaged/empire-load-confirmation.png": "3a528ca52f763ac5789954868a0c14cf66aa16fb9496aa02f4c8fe3417f83717",
+    "packaged/empire-logs.json": "7b6252a3cf3ea62bb51c3fdedf8fddca29d24bc598bb6a12e727ddf8f974caf1",
+    "packaged/empire-main-options.png": "8a69976b211412f72ef20f3df3ec51f13fb29d72191e714b8fc48db5ad4aa17f",
+    "packaged/empire-older-metadata-only-overwrite-confirmation.png": "91fc44eb13a538423e6a029f4a81525e3a368fc0dc8a40ae553b3e377615e19b",
+    "packaged/empire-overwrite-confirmation.png": "fc597e3932a1b54e71761ed88136e4e48d3a248ff01971f88832e25b4c087b71",
+    "packaged/empire-reentered-options.png": "ebcbff62cd9cb34eac80a138181e4c1102402fbaf6b56885c2ffe8fefdfe192c",
+    "packaged/empire-restart-confirmation.png": "4db6be4ec443d9e0f8fc6a32622746a90d9f8a10541b6deda11c88863367802b",
+    "packaged/empire-returned-campaign.png": "19ad1898256461c630e27e4b685faf124f51827a2e1b141ad80b0bf2bbf14bca",
+    "packaged/empire-slot-ten-delete-panel.png": "d43e8218c67ec1f69b0255f079453613f7e00ae88222c85661b7bee17a373d6a",
+    "packaged/empire-slot-ten-load-panel.png": "46396cc6f7bdf3b2cf7da49a744fb326942c7b06f149868981ca7e1c9ad6b251",
+    "packaged/results.json": "e7288891acb1c92b5e0fcc7fb04bc852a7deee93663b723fb6f5e0bffd97c33b",
+    "missing-dialog-retry/alliance-browser-exit.png": "51e86f884d87b326e8f9e74d86674aa41986e13d81838dcbc7a5cafe43186ee8",
+    "missing-dialog-retry/alliance-browser-restarted.png": "8b0eb2fe6ffb8756ecac4d7cf03c84d107571f87bf00ccd1ad87d02620f45d2a",
+    "missing-dialog-retry/alliance-campaign-options.png": "ebcbff62cd9cb34eac80a138181e4c1102402fbaf6b56885c2ffe8fefdfe192c",
+    "missing-dialog-retry/alliance-corrupt-load-error.png": "efe9c2363c49f0e4b73dd06314a54f9cf8930413fe4fc389d2c0bd04a1cb0872",
+    "missing-dialog-retry/alliance-corrupt-overwrite-confirmation.png": "f5ab2b1dbf21c65b0970f9bf23e830a6fb972ff676cfcb16e17dad3abf56a7dd",
+    "missing-dialog-retry/alliance-delete-confirmation.png": "3c14a36af624d1a7b0a415d1fa263dceff2953af33013943b238a03408ce1888",
+    "missing-dialog-retry/alliance-exit-confirmation.png": "db9770e3f0a5fb3fd24f5c66137e7d890fcf3c8e01becf614e65b1aeeb1270e0",
+    "missing-dialog-retry/alliance-legacy-load.png": "47891e5fcb569e50d1f02e50983f5be7c29074ae1121d140a83c176c5da46ac5",
+    "missing-dialog-retry/alliance-legacy-save-delete.png": "8469c3a421c73083b55de4de22ea7fd8661e7301c5f2af63e2248d1e11cf9f4e",
+    "missing-dialog-retry/alliance-load-confirmation.png": "2f92a7319b85596d7971d2d4d13b2a18625fe07e194874bfbf2b48cf35e7df6d",
+    "missing-dialog-retry/alliance-logs.json": "3471a62260409716063cec30e42aab25d69750acd7b4cbdf8030d03c1c582fe3",
+    "missing-dialog-retry/alliance-main-options.png": "8a69976b211412f72ef20f3df3ec51f13fb29d72191e714b8fc48db5ad4aa17f",
+    "missing-dialog-retry/alliance-older-metadata-only-overwrite-confirmation.png": "f5ab2b1dbf21c65b0970f9bf23e830a6fb972ff676cfcb16e17dad3abf56a7dd",
+    "missing-dialog-retry/alliance-overwrite-confirmation.png": "912ba3a85b190929adc03a85ea82cdc2e94cdba535c5983896fdc13ac12a27d0",
+    "missing-dialog-retry/alliance-reentered-options.png": "ebcbff62cd9cb34eac80a138181e4c1102402fbaf6b56885c2ffe8fefdfe192c",
+    "missing-dialog-retry/alliance-restart-confirmation.png": "bd7ac0ab5112058be28c45b046ba6d3af2f16c8f091a376d850245c6f6dbc919",
+    "missing-dialog-retry/alliance-returned-campaign.png": "47146fc505614e6a62745c4fd187a0f8df0bb9137af50ddc558126120a5fc9d7",
+    "missing-dialog-retry/alliance-slot-ten-delete-panel.png": "995a9924172e037de3b6d6149d5e85da97cb7b540a94d7485d7f50a0a5357418",
+    "missing-dialog-retry/alliance-slot-ten-load-panel.png": "15386c0c6ff3f80fec3a0b79e8e19a7ef23ae4acd1e4b6a5eaa194124778da6e",
+    "missing-dialog-retry/empire-browser-exit.png": "51e86f884d87b326e8f9e74d86674aa41986e13d81838dcbc7a5cafe43186ee8",
+    "missing-dialog-retry/empire-browser-restarted.png": "8b0eb2fe6ffb8756ecac4d7cf03c84d107571f87bf00ccd1ad87d02620f45d2a",
+    "missing-dialog-retry/empire-campaign-options.png": "ebcbff62cd9cb34eac80a138181e4c1102402fbaf6b56885c2ffe8fefdfe192c",
+    "missing-dialog-retry/empire-corrupt-load-error.png": "efe9c2363c49f0e4b73dd06314a54f9cf8930413fe4fc389d2c0bd04a1cb0872",
+    "missing-dialog-retry/empire-corrupt-overwrite-confirmation.png": "f5ab2b1dbf21c65b0970f9bf23e830a6fb972ff676cfcb16e17dad3abf56a7dd",
+    "missing-dialog-retry/empire-delete-confirmation.png": "adb2894ab0a2051501fb071ed9e7074cc3118dab297e1ec10a2042e89c069073",
+    "missing-dialog-retry/empire-exit-confirmation.png": "db9770e3f0a5fb3fd24f5c66137e7d890fcf3c8e01becf614e65b1aeeb1270e0",
+    "missing-dialog-retry/empire-legacy-load.png": "47891e5fcb569e50d1f02e50983f5be7c29074ae1121d140a83c176c5da46ac5",
+    "missing-dialog-retry/empire-legacy-save-delete.png": "1a020247e7be8f36aa06c60968946647b2ec776a618e6e5da7734282b6d059e9",
+    "missing-dialog-retry/empire-load-confirmation.png": "0bc9bdc71d65154973f64c953328eeb4081f9226d6fce4f4f20ef0511da6947a",
+    "missing-dialog-retry/empire-logs.json": "c175b846e89b39542481f41eea9dea2a29c5030c87372fce201db1d3a9eed438",
+    "missing-dialog-retry/empire-main-options.png": "8a69976b211412f72ef20f3df3ec51f13fb29d72191e714b8fc48db5ad4aa17f",
+    "missing-dialog-retry/empire-older-metadata-only-overwrite-confirmation.png": "f5ab2b1dbf21c65b0970f9bf23e830a6fb972ff676cfcb16e17dad3abf56a7dd",
+    "missing-dialog-retry/empire-overwrite-confirmation.png": "f86bf3adce6f5b1d3f301f176302818ed2cebc194926d96304d24821ca47ceb2",
+    "missing-dialog-retry/empire-reentered-options.png": "ebcbff62cd9cb34eac80a138181e4c1102402fbaf6b56885c2ffe8fefdfe192c",
+    "missing-dialog-retry/empire-restart-confirmation.png": "bd7ac0ab5112058be28c45b046ba6d3af2f16c8f091a376d850245c6f6dbc919",
+    "missing-dialog-retry/empire-returned-campaign.png": "c2b4de52bdefa0ac43c1fb3ffb36237051d212f91e53ae3b514d972bcdf62923",
+    "missing-dialog-retry/empire-slot-ten-delete-panel.png": "d43e8218c67ec1f69b0255f079453613f7e00ae88222c85661b7bee17a373d6a",
+    "missing-dialog-retry/empire-slot-ten-load-panel.png": "46396cc6f7bdf3b2cf7da49a744fb326942c7b06f149868981ca7e1c9ad6b251",
+    "missing-dialog-retry/results.json": "f0d35aa18f993c314cd14545583b76f776471f19713427b8250a65d5671e3646",
+    "native/options-native-confirm.png": "35e414f93449a38ee171b049fa00265f732dfee66f57df2abb34da450f2e79d7",
+    "native/options-native-quit.log": "bdc3fc93325a0635d8840d94de483b27a7b32cb68295ba49c11c070ff4720377",
+    "native/options-native.png": "9f3839ad7040131e83d953ccaa11a2871744352aa1c4c5926a5d3dddafd8970e"
+  },
+  "limitations": [
+        "Original-executable A0 and independent browser acceptance pending",
+    "No strict acceptance cells promoted",
+    "Package has no tactical meshes; tactical visibility checked by upstream code preservation",
+    "Initial concurrent fallback run timed out at Exit; isolated rerun retained separately"
+  ]
+}

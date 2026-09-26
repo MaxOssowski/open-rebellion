@@ -65,6 +65,20 @@
             }
 
             function register(imports) {
+                imports.env.open_rebellion_quit = function () {
+                    document.querySelectorAll("canvas").forEach((canvas) => { canvas.hidden = true; });
+                    const screen = document.createElement("section");
+                    screen.setAttribute("aria-label", "Game closed");
+                    screen.style.cssText = "position:fixed;inset:0;display:grid;place-content:center;gap:1rem;background:#080b12;color:#eee;text-align:center;font:20px sans-serif";
+                    const title = document.createElement("h1");
+                    title.textContent = "Game closed";
+                    const restart = document.createElement("button");
+                    restart.textContent = "Restart game";
+                    restart.onclick = () => window.location.reload();
+                    screen.append(title, restart);
+                    document.body.append(screen);
+                    restart.focus();
+                };
                 imports.env.open_rebellion_a11y_sync = function (
                     isActive,
                     focused,

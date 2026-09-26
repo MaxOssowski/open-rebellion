@@ -20,6 +20,40 @@ SPEC.loader.exec_module(PACKER)
 
 
 class RuntimePackBuilderTests(unittest.TestCase):
+    def test_options_packaging_rejects_each_missing_confirmation_bitmap(self) -> None:
+        import struct
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bmp_dir = root / "rebdlog-dll" / "BMP"
+            bmp_dir.mkdir(parents=True)
+            for resource, width, height in [(10623,412,176), (10624,57,28), (10625,57,28), (10626,57,28), (10627,57,28)]:
+                stride = (width + 3) & ~3
+                data = bytearray(1078 + stride * height)
+                data[:2] = b"BM"
+                struct.pack_into("<I", data, 10, 1078)
+                struct.pack_into("<IiiHH", data, 14, 40, width, height, 1, 8)
+                (bmp_dir / f"{resource}.bmp").write_bytes(data)
+            PACKER.validate_options_resources(root)
+            for bitmap in bmp_dir.glob("*.bmp"):
+                data = bitmap.read_bytes()
+                bitmap.unlink()
+                with self.assertRaisesRegex(ValueError, bitmap.stem):
+                    PACKER.validate_options_resources(root)
+                bitmap.write_bytes(data)
+            bitmap = bmp_dir / "10624.bmp"
+            indexed = bitmap.read_bytes()
+            converted = bytearray(54 + 172 * 28)
+            converted[:54] = indexed[:54]
+            struct.pack_into("<I", converted, 10, 54)
+            struct.pack_into("<H", converted, 28, 24)
+            bitmap.write_bytes(converted)
+            with self.assertRaisesRegex(ValueError, "10624"):
+                PACKER.validate_options_resources(root)
+            bitmap.write_bytes(indexed)
+            (bmp_dir / "10623.bmp").write_bytes(b"BMtruncated")
+            with self.assertRaisesRegex(ValueError, "10623"):
+                PACKER.validate_options_resources(root)
+
     def test_pack_is_independent_of_textstra_key_order(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

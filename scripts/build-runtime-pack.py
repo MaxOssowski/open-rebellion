@@ -30,6 +30,26 @@ class Entry:
     expected_sha256: str | None = None
 
 
+def validate_options_resources(ui_dir: Path) -> None:
+    """Refuse stale UI staging that would omit the original confirmation controls."""
+    for resource, width, height in [(10623, 412, 176), (10624, 57, 28),
+                                    (10625, 57, 28), (10626, 57, 28), (10627, 57, 28)]:
+        path = ui_dir / "rebdlog-dll" / "BMP" / f"{resource}.bmp"
+        try:
+            data = path.read_bytes()
+            if len(data) < 54 or data[:2] != b"BM":
+                raise ValueError("invalid BMP header")
+            offset = struct.unpack_from("<I", data, 10)[0]
+            dib_size, actual_width, actual_height, planes, bits, compression = struct.unpack_from("<IiiHHI", data, 14)
+            stride = ((width * bits + 31) // 32) * 4
+            if (dib_size < 40 or actual_width != width or abs(actual_height) != height
+                    or planes != 1 or bits != 8 or compression != 0
+                    or offset < 54 or len(data) < offset + stride * height):
+                raise ValueError("invalid dimensions or truncated bitmap")
+        except (OSError, ValueError, struct.error) as error:
+            raise ValueError(f"required options resource REBDLOG {resource}: {error}; restage UI assets") from error
+
+
 def collect_entries(
     base_dir: Path,
     ui_dir: Path,
@@ -250,12 +270,21 @@ def verify_pack(path: Path, expected: list[Entry]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", type=Path, required=True)
+    parser.add_argument("--base", type=Path)
     parser.add_argument("--ui", type=Path, required=True)
     parser.add_argument("--audio", type=Path)
     parser.add_argument("--tactical-runtime", type=Path)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--validate-ui-only", action="store_true")
     args = parser.parse_args()
+    try:
+        validate_options_resources(args.ui)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.validate_ui_only:
+        return
+    if args.base is None or args.output is None:
+        parser.error("--base and --output are required when building a runtime pack")
 
     if not args.base.is_dir():
         parser.error(f"game-data directory does not exist: {args.base}")

@@ -205,7 +205,7 @@ fn configured_asset_render_profile() -> AssetRenderProfile {
 }
 
 fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
-    rebellion_data::save::list_saves(saves_dir)
+    let mut slots: Vec<_> = rebellion_data::save::list_saves(saves_dir)
         .into_iter()
         .filter_map(std::result::Result::ok)
         .map(|meta| rebellion_render::SaveSlotInfo {
@@ -220,7 +220,21 @@ fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
             },
             game_tick: meta.game_tick,
         })
-        .collect()
+        .collect();
+    for slot in 0..rebellion_data::save::MAX_SAVE_SLOTS {
+        if !slots.iter().any(|save| save.slot == slot)
+            && rebellion_data::save::slot_occupied(saves_dir, slot)
+        {
+            slots.push(rebellion_render::SaveSlotInfo {
+                slot,
+                name: "Unreadable save".into(),
+                timestamp: "Load to inspect error".into(),
+                game_tick: 0,
+            });
+        }
+    }
+    slots.sort_by_key(|save| save.slot);
+    slots
 }
 
 struct LiveCampaign<'a> {
@@ -282,7 +296,7 @@ impl LiveCampaign<'_> {
         }
     }
 
-    fn restore(self, state: rebellion_data::save::SaveState) {
+    fn restore(&mut self, state: rebellion_data::save::SaveState) {
         *self.world = state.world;
         *self.clock = state.clock;
         *self.manufacturing = state.manufacturing;
@@ -927,6 +941,7 @@ async fn main() {
     // ── Audio state ─────────────────────────────────────────────────────────
     let mut audio_vol = AudioVolumeState::default();
     let mut game_options_state = GameOptionsState::default();
+    let mut quit_requested = false;
     let sounds_dir = PathBuf::from("data/sounds");
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1130,11 +1145,16 @@ async fn main() {
             }
         } else if is_key_pressed(KeyCode::Escape) && !event_screen_state.is_active() {
             if let GameMode::GameOptions { origin } = game_mode.clone() {
-                game_mode = match origin {
-                    GameOptionsOrigin::ShuttleCockpit => GameMode::MainMenu,
-                    GameOptionsOrigin::CommandCenter => GameMode::Galaxy,
-                    GameOptionsOrigin::TacticalBattle => GameMode::TacticalCombat,
-                };
+                if game_options_state.suspended {
+                    save_load_panel_state.close();
+                    game_options_state.suspended = false;
+                } else if game_options_state.escape() == GameOptionsAction::Return {
+                    game_mode = match origin {
+                        GameOptionsOrigin::ShuttleCockpit => GameMode::MainMenu,
+                        GameOptionsOrigin::CommandCenter => GameMode::Galaxy,
+                        GameOptionsOrigin::TacticalBattle => GameMode::TacticalCombat,
+                    };
+                }
             } else if game_mode == GameMode::LoadGame {
                 save_load_panel_state.close();
                 game_mode = GameMode::MainMenu;
@@ -1166,9 +1186,7 @@ async fn main() {
                     );
                 }
             } else {
-                #[cfg(target_arch = "wasm32")]
-                web_accessibility::sync_menu(false, &main_menu_state, audio_vol.music_enabled());
-                break;
+                quit_requested = true;
             }
         }
         // ── Galaxy-mode keyboard shortcuts (blocked during event screen) ────
@@ -2604,6 +2622,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         MainMenuAction::LoadGame => {
                             save_slots = read_save_slots(&saves_dir);
                             game_options_state.set_origin(GameOptionsOrigin::ShuttleCockpit);
+                            game_options_state.refresh_saves(&save_slots);
                             game_mode = GameMode::GameOptions {
                                 origin: GameOptionsOrigin::ShuttleCockpit,
                             };
@@ -2628,21 +2647,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 audio_vol.music_enabled()
                             );
                         }
-                        MainMenuAction::Quit => {
-                            #[cfg(not(target_arch = "wasm32"))]
-                            audio_engine.stop_music();
-                            #[cfg(target_arch = "wasm32")]
-                            if let Some(engine) = browser_menu_audio.as_mut() {
-                                engine.stop_music();
-                            }
-                            #[cfg(target_arch = "wasm32")]
-                            web_accessibility::sync_menu(
-                                false,
-                                &main_menu_state,
-                                audio_vol.music_enabled(),
-                            );
-                            break;
-                        }
+                        MainMenuAction::Quit => quit_requested = true,
                     }
                 }
             }
@@ -2705,12 +2710,47 @@ Some(RailAudience::side(*faction_is_alliance)),
             }
 
             GameMode::GameOptions { origin } => {
-                let action = draw_game_options(
+                let control =
+                    is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
+                let legacy_load =
+                    is_key_pressed(KeyCode::F8) || (control && is_key_pressed(KeyCode::L));
+                let legacy_save =
+                    is_key_pressed(KeyCode::F9) || (control && is_key_pressed(KeyCode::S));
+                if game_options_state.pending.is_none()
+                    && origin != GameOptionsOrigin::TacticalBattle
+                    && (legacy_load || (legacy_save && origin == GameOptionsOrigin::CommandCenter))
+                {
+                    if legacy_save {
+                        save_load_panel_state.open_save();
+                    } else {
+                        save_load_panel_state.open_load();
+                    }
+                    game_options_state.suspended = true;
+                }
+                let mut action = draw_game_options(
                     &mut game_options_state,
                     &mut bmp_cache,
                     &save_slots,
                     &mut audio_vol,
                 );
+                egui_macroquad::ui(|ctx| {
+                    let overlay = rebellion_render::game_options::draw_game_options_overlay(
+                        ctx,
+                        &mut bmp_cache,
+                        &mut game_options_state,
+                    );
+                    if overlay != GameOptionsAction::None {
+                        action = overlay;
+                    }
+                    if game_options_state.suspended {
+                        if let Some(action) =
+                            draw_save_load(ctx, &save_slots, &mut save_load_panel_state)
+                        {
+                            panel_actions.push(action);
+                        }
+                    }
+                });
+                egui_macroquad::draw();
                 match action {
                     GameOptionsAction::None => {}
                     GameOptionsAction::Return => {
@@ -2728,14 +2768,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                         game_mode = GameMode::MainMenu;
                         macroquad::logging::info!("[game_options] command=restart");
                     }
-                    GameOptionsAction::Exit => {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        audio_engine.stop_music();
-                        #[cfg(target_arch = "wasm32")]
-                        if let Some(engine) = browser_menu_audio.as_mut() {
-                            engine.stop_music();
-                        }
-                        break;
+                    GameOptionsAction::Exit => quit_requested = true,
+                    GameOptionsAction::Delete { slot } => {
+                        panel_actions.push(PanelAction::DeleteSave { slot })
                     }
                     GameOptionsAction::Save { slot, name } => {
                         panel_actions.push(PanelAction::SaveGame { slot, name });
@@ -3232,10 +3267,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         .discovered
                         .iter()
                         .map(|m| {
-                            let err = mod_runtime
-                                .errors
-                                .iter()
-                                .find(|e| e.mod_name() == m.name);
+                            let err = mod_runtime.errors.iter().find(|e| e.mod_name() == m.name);
                             rebellion_render::ModInfo {
                                 name: m.name.clone(),
                                 version: m.version.clone(),
@@ -3367,6 +3399,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         if btn == CockpitButton::GameOptions {
                             save_slots = read_save_slots(&saves_dir);
                             game_options_state.set_origin(GameOptionsOrigin::CommandCenter);
+                            game_options_state.refresh_saves(&save_slots);
                             game_mode = GameMode::GameOptions {
                                 origin: GameOptionsOrigin::CommandCenter,
                             };
@@ -3770,6 +3803,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     TacticalAction::OpenGameOptions => {
                         save_slots = read_save_slots(&saves_dir);
                         game_options_state.set_origin(GameOptionsOrigin::TacticalBattle);
+                        game_options_state.refresh_saves(&save_slots);
                         game_mode = GameMode::GameOptions {
                             origin: GameOptionsOrigin::TacticalBattle,
                         };
@@ -3919,6 +3953,25 @@ Some(RailAudience::side(*faction_is_alliance)),
 
         // 5. Apply panel actions
         for action in panel_actions {
+            if matches!(game_mode, GameMode::GameOptions { .. }) && game_options_state.suspended {
+                let intent = match &action {
+                    PanelAction::SaveGame { slot, name } => Some(GameOptionsAction::Save {
+                        slot: *slot,
+                        name: name.clone(),
+                    }),
+                    PanelAction::LoadGame { slot } => Some(GameOptionsAction::Load { slot: *slot }),
+                    PanelAction::DeleteSave { slot } => {
+                        Some(GameOptionsAction::Delete { slot: *slot })
+                    }
+                    _ => None,
+                };
+                if let Some(intent) = intent {
+                    game_options_state.suspended = false;
+                    if game_options_state.request(intent) == GameOptionsAction::None {
+                        continue;
+                    }
+                }
+            }
             match action {
                 PanelAction::SaveGame { slot, name } => {
                     let state = LiveCampaign {
@@ -3966,6 +4019,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                             );
                             save_load_panel_state.error_message = None;
                             save_slots = read_save_slots(&saves_dir);
+                            game_options_state.refresh_saves(&save_slots);
+                            game_options_state.error = None;
                             msg_log.push(GameMessage::new(
                                 clock.tick,
                                 format!("Saved game to slot {}", slot + 1),
@@ -3974,6 +4029,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                         Err(error) => {
                             save_load_panel_state.error_message = Some(error.to_string());
+                            game_options_state.error = Some(error.to_string());
                         }
                     }
                 }
@@ -3987,7 +4043,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 meta.state_fingerprint,
                                 meta.fingerprint_verified
                             );
-                            LiveCampaign {
+                            let mut campaign = LiveCampaign {
                                 world: &mut world,
                                 clock: &mut clock,
                                 manufacturing: &mut mfg_state,
@@ -4013,8 +4069,12 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 combat_cooldowns: &mut combat_cooldowns,
                                 game_config: &mut game_config,
                                 campaign_config: &mut campaign_config,
-                            }
-                            .restore(state);
+                            };
+                            campaign.restore(state);
+                            let restored_fingerprint =
+                                rebellion_data::save::compute_state_fingerprint(
+                                    &campaign.snapshot(),
+                                );
                             game_speed_ui = GameSpeedUiState::default();
                             macroquad::logging::info!(
                                 "[campaign] loaded configuration={}",
@@ -4070,9 +4130,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 MessageCategory::Event,
                             ));
                             game_mode = GameMode::Galaxy;
+                            if let Ok(fingerprint) = restored_fingerprint {
+                                macroquad::logging::info!(
+                                    "[campaign] restored slot={} mode=Galaxy tick={} fingerprint={} faction={:?}",
+                                    slot, clock.tick, fingerprint, player_faction
+                                );
+                            }
                         }
                         Err(error) => {
                             save_load_panel_state.error_message = Some(error.to_string());
+                            game_options_state.error = Some(error.to_string());
                         }
                     }
                 }
@@ -4082,6 +4149,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                             save_load_panel_state.selected_slot = None;
                             save_load_panel_state.error_message = None;
                             save_slots = read_save_slots(&saves_dir);
+                            game_options_state.refresh_saves(&save_slots);
+                            game_options_state.error = None;
                             msg_log.push(GameMessage::new(
                                 clock.tick,
                                 format!("Deleted save in slot {}", slot + 1),
@@ -4090,11 +4159,13 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                         Err(error) => {
                             save_load_panel_state.error_message = Some(error.to_string());
+                            game_options_state.error = Some(error.to_string());
                         }
                     }
                 }
                 PanelAction::SetGameSpeed(speed) => choose_game_speed(&mut clock, speed),
                 PanelAction::CloseSaveLoadPanel => {
+                    game_options_state.suspended = false;
                     save_load_panel_state.close();
                     show_save_load = false;
                     if game_mode == GameMode::LoadGame {
@@ -4155,6 +4226,21 @@ Some(RailAudience::side(*faction_is_alliance)),
                     );
                 }
             }
+        }
+
+        if quit_requested {
+            #[cfg(not(target_arch = "wasm32"))]
+            audio_engine.stop_music();
+            #[cfg(target_arch = "wasm32")]
+            {
+                if let Some(engine) = browser_menu_audio.as_mut() {
+                    engine.stop_music();
+                }
+                web_accessibility::sync_menu(false, &main_menu_state, false);
+                web_accessibility::show_quit();
+            }
+            macroquad::logging::info!("[quit] audio_stopped=true cleanup=complete");
+            break;
         }
 
         // 6. Route the recovered tactical score and event cue. Battle Alert
@@ -6326,5 +6412,23 @@ mod tactical_ground_tests {
             retreat_progress: 0.0,
             retreated: false,
         }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod options_save_tests {
+    #[test]
+    fn unreadable_native_saves_remain_occupied_and_unchanged() {
+        let root =
+            std::env::temp_dir().join(format!("options-corrupt-save-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = rebellion_data::save::slot_path(&root, 9);
+        std::fs::write(&path, b"corrupt save fixture").unwrap();
+        let slots = super::read_save_slots(&root);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].slot, 9);
+        assert_eq!(slots[0].name, "Unreadable save");
+        assert_eq!(std::fs::read(&path).unwrap(), b"corrupt save fixture");
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -1765,6 +1765,7 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10011
                 | 10013..=10015
                 | 10017..=10019
+                | 10046..=10051
                 | 10158..=10159
                 | resources::common::MAIN_MENU_ANIMATION_FIRST
                     ..=resources::common::MAIN_MENU_ANIMATION_LAST
