@@ -260,7 +260,7 @@
     "native/options-native.png": "9f3839ad7040131e83d953ccaa11a2871744352aa1c4c5926a5d3dddafd8970e"
   },
   "limitations": [
-    "Original-executable A0 and independent browser acceptance pending; prescribed orchestrator unavailable",
+        "Original-executable A0 and independent browser acceptance pending",
     "No strict acceptance cells promoted",
     "Package has no tactical meshes; tactical visibility checked by upstream code preservation",
     "Initial concurrent fallback run timed out at Exit; isolated rerun retained separately"

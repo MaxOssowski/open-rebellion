@@ -21,6 +21,10 @@ impl GameOptionsOrigin {
         !matches!(self, Self::ShuttleCockpit)
     }
 
+    const fn can_restart(self) -> bool {
+        matches!(self, Self::CommandCenter)
+    }
+
     const fn tactical_toggles_enabled(self) -> bool {
         !matches!(self, Self::TacticalBattle)
     }
@@ -180,7 +184,7 @@ impl GameOptionsState {
                 self.origin != GameOptionsOrigin::TacticalBattle
                     && self.occupied.get(*slot).copied().unwrap_or(false)
             }
-            GameOptionsAction::Restart => self.origin == GameOptionsOrigin::CommandCenter,
+            GameOptionsAction::Restart => self.origin.can_restart(),
             GameOptionsAction::Return | GameOptionsAction::Exit => true,
             GameOptionsAction::None => false,
         }
@@ -286,7 +290,7 @@ fn control_at(origin: GameOptionsOrigin, x: f32, y: f32) -> Option<GameOptionsCo
             return Some(GameOptionsControl::Tactical(index));
         }
     }
-    if origin == GameOptionsOrigin::CommandCenter && RESTART_RECT.contains(x, y) {
+    if origin.can_restart() && RESTART_RECT.contains(x, y) {
         return Some(GameOptionsControl::Restart);
     }
     if origin.has_live_campaign() && RETURN_RECT.contains(x, y) {
@@ -565,7 +569,7 @@ pub fn draw_game_options(
     draw_bitmap(
         cache,
         canvas,
-        if !state.origin.has_live_campaign() {
+        if !state.origin.can_restart() {
             resources::common::BTN_RESTART_GAME_DISABLED
         } else if held == Some(GameOptionsControl::Restart) {
             resources::common::BTN_RESTART_GAME_PRESSED
@@ -794,6 +798,9 @@ mod tests {
             assert_eq!(state.request(action), GameOptionsAction::None);
             assert!(state.pending.is_none());
         }
+        assert!(!GameOptionsOrigin::TacticalBattle.can_restart());
+        assert!(!GameOptionsOrigin::ShuttleCockpit.can_restart());
+        assert!(GameOptionsOrigin::CommandCenter.can_restart());
     }
 
     #[test]
