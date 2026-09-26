@@ -1641,6 +1641,8 @@ pub mod wasm_impl {
         [
             slot_key(slot),
             meta_key(slot),
+            v13_slot_key(slot),
+            v13_meta_key(slot),
             v12_slot_key(slot),
             v12_meta_key(slot),
             v11_slot_key(slot),

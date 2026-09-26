@@ -13,6 +13,7 @@ static PENDING_ACTIVATION: AtomicI32 = AtomicI32::new(NO_ACTIVATION);
 static USER_INTERACTION: AtomicBool = AtomicBool::new(false);
 
 extern "C" {
+    fn open_rebellion_quit();
     fn open_rebellion_a11y_sync(
         active: u32,
         focused: i32,
@@ -88,5 +89,12 @@ pub fn sync_menu(active: bool, state: &MainMenuState, music_enabled: bool) {
             state.headquarters_only as u32,
             music_enabled as u32,
         );
+    }
+}
+
+/// Replace the stopped canvas with an accessible restart action.
+pub fn show_quit() {
+    unsafe {
+        open_rebellion_quit();
     }
 }

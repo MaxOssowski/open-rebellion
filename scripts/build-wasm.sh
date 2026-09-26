@@ -10,6 +10,9 @@ WEB_AUDIO="$ROOT/web/data/sounds"
 MDATA_DIR="${REBELLION_MDATA_DIR:-$ROOT/../star-wars-rebellion/MDATA}"
 ORIGINAL_GAME_DIR="${REBELLION_GAME_DIR:-$(dirname "$MDATA_DIR")}"
 
+# Refuse stale UI staging before compilation; the runtime pack builder repeats this gate.
+python3 "$ROOT/scripts/build-runtime-pack.py" --ui "$GDATA/ui" --validate-ui-only
+
 echo "Building rebellion-app for wasm32…"
 PATH="/usr/bin:$PATH" cargo build --manifest-path "$ROOT/Cargo.toml" \
     --target wasm32-unknown-unknown \

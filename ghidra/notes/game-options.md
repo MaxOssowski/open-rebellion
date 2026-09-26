@@ -18,25 +18,26 @@ through `FUN_00401040`. Cockpit/F1 uses command 0x133.
 
 ## Controls
 
-Coordinates below are logical source pixels. Bitmap triples mean normal,
+Coordinates below follow upstream P58-B12 placement in logical source pixels.
+The recovered IDs/commands are retained. Bitmap triples mean normal,
 pressed/selected, disabled. The six save rows start at y=81 and increment 42.
 
 | Control | Rectangle | Command | COMMON bitmaps |
 |---|---|---|---|
-| Save row 1–6 | (34,y,42,20) | 0x6f–0x74 | 10046/10047/10048 |
-| Save name 1–6 | (119,y,160,20) | 0x83–0x88 | native edit control |
-| Load row 1–6 | (287,y,41,20) | 0x79–0x7e | 10049/10050/10051 |
-| Effects volume | origin (392,190) | 0x8e | 10053, thumb 10054 |
-| Music volume | origin (392,130) | 0x8d | 10052, thumb 10054 |
-| Restart | (76,381,42,42) | 0x91 | 10035/10036 |
-| Return | (162,382,42,42) | 0x90 | context-specific 10020–10031 |
-| Exit | (248,381,42,42) | 0x8f | 10038/10039 |
-| Play music | (352,76,19,35) | 0x99 | 10040/10041/10042 |
-| Starfield | (357,311,35,22) | 0xa1 | 10043/10044/10045 |
-| Planet | (357,337,35,22) | 0xa2 | same |
-| Pyrotechnics | (357,365,35,22) | 0xa3 | same |
-| High detail | (357,392,35,22) | 0xa4 | same |
-| Holocube | (357,419,35,22) | 0xa6 | same |
+| Save row 1–6 | (35,y,42,20) | 0x6f–0x74 | 10046/10047/10048 |
+| Save name 1–6 | (116,y,162,20) | 0x83–0x88 | native edit control |
+| Load row 1–6 | (285,y,41,20) | 0x79–0x7e | 10049/10050/10051 |
+| Effects volume | origin (391,192) | 0x8e | 10053, thumb 10054 |
+| Music volume | origin (391,130) | 0x8d | 10052, thumb 10054 |
+| Restart | (77,383,42,42) | 0x91 | 10035/10036 |
+| Return | (164,383,42,42) | 0x90 | context-specific 10020–10031 |
+| Exit | (251,383,42,42) | 0x8f | 10038/10039 |
+| Play music | (351,76,19,35) | 0x99 | 10040/10041/10042 |
+| Starfield | (359,310,35,22) | 0xa1 | 10043/10044/10045 |
+| Planet | (359,337,35,22) | 0xa2 | same |
+| Pyrotechnics | (359,364,35,22) | 0xa3 | same |
+| High detail | (359,391,35,22) | 0xa4 | same |
+| Holocube | (359,418,35,22) | 0xa6 | same |
 
 `FUN_004084b0` maps labels to TEXTCOMM 0x1025 (music), 0x101f–0x1022
 (first four display switches), 0x1024 (Holocube), and 0x1031/0x1032 (On/Off).
@@ -60,18 +61,18 @@ battle roster, apply results, advance simulation, or reset a paused state.
 Native confirmation construction is `FUN_00416c50` / `FUN_00416b90`:
 REBDLOG bitmap 10623, 412 by 176. `00416e90` constructs yes/no at (138,135)
 and (229,135), with bitmap pairs 10624/10625 and 10626/10627; both are 57 by
-28. This contribution adds REBDLOG to the staging catalog and cache enum.
+28. Upstream stages all 23 numeric REBDLOG bitmaps; the unused named corner is excluded. This contribution requires 10623–10627 at packaging time and provides a visible fallback for older packs.
 
 ## Compatibility and evidence gaps
 
-- This contribution offers six slots in both save interfaces, as requested.
-  The backend retains its existing ten-slot storage capacity; do not truncate or migrate those saves.
-  The six-row window retains F8 / Ctrl+L for the six load slots and campaign F9 / Ctrl+S for the six save/delete slots, sharing confirmation guards.
+- The authentic window has six rows. The compatibility panel retains all ten
+  existing slots through F8 / Ctrl+L (load) and campaign F9 / Ctrl+S
+  (save/delete), sharing confirmation guards. No storage migration is needed.
 - No native delete button is present in this constructor or the inspected
   manual pages. Do not invent one; existing legacy deletion remains separate
   until its native gesture is recovered.
-- No Holocube renderer was found in current upstream. A stored boolean alone
-  would not implement the switch.
+- Upstream display flags, including Holocube, are preserved. Their full original
+  visual behavior remains outside this save/confirmation checkpoint.
 - Exact text metrics, slider transfer function, complete context identities,
   settings persistence and lossless A0 interaction captures remain to verify.
 - The Rust confirmation guard tests are implementation evidence only; they

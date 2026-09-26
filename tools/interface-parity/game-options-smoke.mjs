@@ -1,4 +1,4 @@
-// Implementation smoke only; this does not replace original-executable/Astra acceptance.
+// Implementation smoke only; this does not replace original-executable/independent browser acceptance.
 // Serve a production WASM build with contributor-owned runtime assets first.
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
@@ -19,19 +19,39 @@ try {
   for (const faction of ['alliance', 'empire']) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 960 } });
     const page = await context.newPage();
-    await page.addInitScript(() => localStorage.setItem('rebellion_save_v13_9', 'preserve hidden slot'));
+    page.setDefaultTimeout(30000);
+    if (process.env.OPTIONS_TEST_MISSING_DIALOG === '1') {
+      await page.route('**/data/runtime.orpk', async route => {
+        const response = await route.fetch();
+        const pack = await response.body();
+        assert.equal(pack.subarray(0, 4).toString(), 'ORPK');
+        const entries = [];
+        let cursor = 12, removed = 0;
+        for (let i = 0; i < pack.readUInt32LE(8); i++) {
+          const start = cursor, kind = pack[cursor], keyLength = pack.readUInt16LE(cursor + 1), size = pack.readUInt32LE(cursor + 3);
+          const key = pack.subarray(cursor + 7, cursor + 7 + keyLength).toString();
+          cursor += 7 + keyLength + size;
+          if (kind === 1 && key === 'rebdlog-dll/10623') removed++;
+          else entries.push(pack.subarray(start, cursor));
+        }
+        assert.equal(removed, 1, 'fallback fixture removes precisely the confirmation background');
+        const header = Buffer.from(pack.subarray(0, 12));
+        header.writeUInt32LE(entries.length, 8);
+        await route.fulfill({ response, body: Buffer.concat([header, ...entries]) });
+      });
+    }
 
     const consoleLog = [], errors = [], network = [];
     page.on('console', message => consoleLog.push(message.text()));
     page.on('pageerror', error => errors.push(String(error)));
     page.on('response', response => network.push({ url: response.url(), status: response.status() }));
     const screenshot = name => page.screenshot({ path: path.join(output, `${faction}-${name}.png`) });
-    const click = async (x, y) => { await page.mouse.click(x, y, { delay: 150 }); await page.waitForTimeout(350); };
+    const click = async (x, y) => { await page.mouse.click(x, y, { delay: 300 }); await page.waitForTimeout(350); };
     const deleteButton = async () => {
-      // Locate the existing red Delete label; six-row panel height depends on occupancy.
+      // Locate the existing red Delete label; panel height depends on occupancy.
       const png = PNG.sync.read(await page.screenshot());
       let xSum = 0, ySum = 0, count = 0;
-      for (let y = 340; y < 490; y++) for (let x = 450; x < 600; x++) {
+      for (let y = 340; y < 615; y++) for (let x = 450; x < 600; x++) {
         const index = (y * png.width + x) * 4;
         const [r, g, b] = png.data.subarray(index, index + 3);
         if (r > 130 && g < 130 && b < 140 && r > 1.8 * g) { xSum += x; ySum += y; count++; }
@@ -53,11 +73,12 @@ try {
       await key('F1');
       await screenshot('campaign-options');
       await click(350, 180);
+      await key('Control+a');
       await page.keyboard.type(`${faction} options smoke`);
       await click(110, 181);
       const saved = await storage();
-      assert.ok(saved.rebellion_save_v13_0, 'save writes the existing browser payload');
-      assert.match(saved.rebellion_meta_v13_0, /options smoke/);
+      assert.ok(saved.rebellion_save_v14_0, 'save writes the existing browser payload');
+      assert.match(saved.rebellion_meta_v14_0, /options smoke/);
       await click(110, 181);
       await screenshot('overwrite-confirmation');
       await click(742, 602); // native No button
@@ -68,8 +89,39 @@ try {
       assert.deepEqual(await storage(), saved, 'cancelled load preserves storage');
       await click(610, 181);
       await click(560, 602); // native Yes button; restore campaign
+      const saveLine = consoleLog.find(line => line.includes('save_state_fingerprint slot=0'));
+      const fingerprint = saveLine?.match(/fingerprint=(\S+)/)?.[1];
+      assert.ok(fingerprint, 'save reports a state fingerprint');
+      assert.ok(consoleLog.some(line => line.includes(`load_state_fingerprint slot=0`) && line.includes(`fingerprint=${fingerprint}`) && line.includes('verified=true')), 'accepted load verifies saved fingerprint');
+      assert.ok(consoleLog.some(line => line.includes('[campaign] restored slot=0 mode=Galaxy') && line.includes(`fingerprint=${fingerprint}`) && line.includes(`faction=${faction === 'alliance' ? 'Alliance' : 'Empire'}`)), 'live restored campaign matches saved fingerprint and faction');
+      await page.evaluate(saved => {
+        localStorage.setItem('rebellion_save_v14_9', saved.rebellion_save_v14_0);
+        localStorage.setItem('rebellion_meta_v14_9', saved.rebellion_meta_v14_0);
+      }, saved);
+      await key('F1');
+      await key('F8');
+      await page.mouse.move(530, 500);
+      await page.mouse.wheel(0, 800);
+      await page.waitForTimeout(500);
+      await screenshot('slot-ten-load-panel');
+      await click(510, 601); // last visible row after scrolling to the bottom
+      await click(475, 651);
+      await click(560, 602);
+      assert.ok(consoleLog.some(line => line.includes('load_state_fingerprint slot=9') && line.includes(`fingerprint=${fingerprint}`) && line.includes('verified=true')), 'slot 10 verifies the existing save');
+      assert.ok(consoleLog.some(line => line.includes('[campaign] restored slot=9 mode=Galaxy') && line.includes(`fingerprint=${fingerprint}`)), 'slot 10 restores the live campaign');
       await key('F1');
       await key('F9');
+      await page.mouse.move(530, 500);
+      await page.mouse.wheel(0, 800);
+      await page.waitForTimeout(500);
+      await screenshot('slot-ten-delete-panel');
+      await deleteButton();
+      await click(560, 602);
+      assert.deepEqual(await storage(), saved, 'deleting slot 10 preserves slot 1 and removes only its own payload and metadata');
+      await key('F9');
+      await page.mouse.move(530, 500);
+      await page.mouse.wheel(0, -800);
+      await page.waitForTimeout(500);
       await screenshot('legacy-save-delete');
       await deleteButton();
       await screenshot('delete-confirmation');
@@ -78,8 +130,8 @@ try {
       await key('F9');
       await deleteButton();
       await click(560, 602);
-      assert.equal((await storage()).rebellion_save_v13_0, undefined, 'confirmed deletion removes payload');
-      assert.equal((await storage()).rebellion_meta_v13_0, undefined, 'confirmed deletion removes metadata');
+      assert.equal((await storage()).rebellion_save_v14_0, undefined, 'confirmed deletion removes payload');
+      assert.equal((await storage()).rebellion_meta_v14_0, undefined, 'confirmed deletion removes metadata');
       await key('F8');
       await screenshot('legacy-load');
       await key('Escape');
@@ -94,8 +146,8 @@ try {
       assert.equal(consoleLog.filter(line => line.includes('destination=game_options status=opened_original')).length, priorEntries + 1);
       await screenshot('reentered-options');
       await page.evaluate(() => {
-        localStorage.setItem('rebellion_save_v13_1', 'corrupt fixture');
-        localStorage.setItem('rebellion_meta_v13_1', '{');
+        localStorage.setItem('rebellion_save_v14_1', 'corrupt fixture');
+        localStorage.setItem('rebellion_meta_v14_1', '{');
       });
       await key('Escape');
       await key('F1');
@@ -109,10 +161,28 @@ try {
       await click(742, 602);
       assert.deepEqual(await storage(), corrupt, 'corrupt-slot overwrite cancellation preserves bytes');
       assert.ok(consoleLog.some(line => line.includes('destination=game_options status=opened_original')));
-      assert.equal((await storage()).rebellion_save_v13_9, 'preserve hidden slot', 'hidden older save data remains untouched');
+      await page.evaluate(() => localStorage.setItem('rebellion_meta_v13_2', '{'));
+      await key('Escape');
+      await key('F1');
+      const olderCorrupt = await storage();
+      await click(110, 349);
+      await screenshot('older-metadata-only-overwrite-confirmation');
+      await click(742, 602);
+      assert.deepEqual(await storage(), olderCorrupt, 'version 13 metadata-only slot still requires overwrite confirmation');
+      await click(544, 805); // Exit from the original window
+      await screenshot('exit-confirmation');
+      await click(560, 602);
+      await page.getByRole('heading', { name: 'Game closed' }).waitFor();
+      assert.ok(consoleLog.some(line => line.includes('[quit] audio_stopped=true cleanup=complete')));
+      await screenshot('browser-exit');
+      await page.getByRole('button', { name: 'Restart game' }).click();
+      await page.waitForTimeout(15000);
+      assert.equal(await page.getByRole('heading', { name: 'Game closed' }).count(), 0);
+      await screenshot('browser-restarted');
       assert.equal(errors.length, 0, errors.join('\n'));
-      results.push({ faction, status: 'pass', assertions: ['save', 'overwrite cancel', 'load cancel', 'load accept', 'delete cancel', 'delete accept', 'return/re-entry', 'corrupt load/overwrite cancel', 'no page errors'] });
+      results.push({ faction, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 verified load/delete', 'delete cancel', 'delete accept', 'return/re-entry', 'corrupt load/overwrite cancel', 'v13 metadata-only overwrite cancel', 'browser exit/restart', 'no page errors'] });
     } catch (error) {
+      await screenshot('failure').catch(() => {});
       results.push({ faction, status: 'fail', error: String(error) });
       throw error;
     } finally {
