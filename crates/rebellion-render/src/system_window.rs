@@ -1623,7 +1623,7 @@ mod tests {
     }
 
     #[test]
-    fn tab_overflow_scrolls_by_original_three_column_rows() {
+    fn tab_overflow_scrolls_by_three_column_rows() {
         // No recovered source: three-column row scroll layout, kept as a regression pin.
         assert_eq!(max_tab_scroll_row(0), 0);
         assert_eq!(max_tab_scroll_row(9), 0);
@@ -1770,7 +1770,7 @@ mod tests {
     }
 
     #[test]
-    fn reference_rail_rectangles_match_both_original_factions() {
+    fn reference_rail_rectangles_differ_by_faction() {
         // No recovered source: rail slot Y coordinates per faction, kept as a regression pin.
         assert_eq!(
             rail_slot_rect(CockpitFaction::Alliance, 0),

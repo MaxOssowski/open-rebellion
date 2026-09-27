@@ -888,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn original_hit_regions_reject_exact_outer_edges() {
+    fn hit_regions_reject_exact_outer_edges() {
         // No recovered source: hit-region pixel coordinates, kept as a regression pin.
         assert_eq!(
             control_at(GameOptionsOrigin::CommandCenter, 351.0, 76.0),
@@ -925,7 +925,7 @@ mod tests {
     }
 
     #[test]
-    fn tactical_flags_default_to_original_on_state() {
+    fn tactical_flags_default_to_on() {
         // No recovered source: default tactical-option on state, kept as a regression pin.
         assert_eq!(GameOptionsState::default().tactical_flags(), [true; 5]);
     }

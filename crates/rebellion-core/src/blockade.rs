@@ -565,13 +565,21 @@ mod tests {
         // Save v14 stored only the blockaded set; embarked tracking is new in v15.
         let mut sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
         let system = sm.insert(());
+        let mut troops: slotmap::SlotMap<TroopKey, ()> = slotmap::SlotMap::with_key();
         let current = BlockadeState {
             blockaded: HashSet::from([system]),
-            embarked: HashMap::new(),
+            embarked: HashMap::from([(
+                troops.insert(()),
+                EmbarkedRegiment {
+                    orbit: Some(system),
+                    withdraw_percent: 50,
+                },
+            )]),
         };
         let restored = BlockadeState::from(BlockadeStateV14::from(&current));
         assert!(restored.is_blockaded(system));
         assert_eq!(restored.blockaded_systems().len(), 1);
+        assert!(restored.embarked.is_empty());
     }
 
     #[test]

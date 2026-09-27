@@ -121,8 +121,11 @@ timer, F-026), and changes every fingerprint because the save version is
 hashed. It now starts at `v1:23ae1f5f03056543`. From tick 10 the AI builds
 only classes its research has reached (F-018), a dispatched character is
 marked on a mission until it returns (F-019), and revolts, incidents,
-disasters, and the garrison requirement follow the recovered rules (F-026), so
-the campaign ends at `v1:5298612896b6f434`. Before v14, the committed v13 goldens no longer
+disasters, and the garrison requirement follow the recovered rules (F-026).
+From tick 15 the troop surplus counts every regiment at a held system
+(`FUN_0050b500`), a Subdue success draws its gain from its own roll, and the
+uprising slice is sized by `UprisingSystem::roll_budget`, so the campaign ends
+at `v1:301752058a3627d8`. Before v14, the committed v13 goldens no longer
 reproduced locally even at their own commit `e8d4945`: that commit, with
 unchanged DATs, now computes initial `v1:14ef55dafe6595ee`. The cause is
 outside the committed code and remains open. The unit tests use

@@ -950,8 +950,8 @@ mod tests {
     }
 
     #[test]
-    fn sector_relative_coordinates_match_recovered_divisors() {
-        // No recovered source: divisor constants 13 and 37, kept as a regression pin.
+    fn sector_relative_coordinates_scale_x_by_37_over_13_and_y_by_37_over_10() {
+        // No recovered source: the 13, 10 and 37 scale constants, kept as a regression pin.
         assert_eq!(sector_planet_position(317, 248, 322, 260), (14.0, 44.0));
         assert_eq!(sector_planet_position(317, 248, 373, 272), (159.0, 89.0));
         assert_eq!(sector_planet_position(317, 248, 322, 333), (14.0, 315.0));

@@ -3,7 +3,7 @@ title: "Uprising System"
 description: "Recovered revolt lifecycle, uprising incident, Subdue support gain, and natural disaster"
 category: "agent-docs"
 created: 2026-03-14
-updated: 2026-09-26
+updated: 2026-09-27
 tags: [uprising, incite, subdue, disaster, simulation]
 ---
 
@@ -25,6 +25,7 @@ the natural disaster (F-026). Ghidra evidence: `ghidra/notes/uprising-incident.m
 
 ```rust
 // Each tick, after the economy summary:
+let rolls = take_rolls(UprisingSystem::roll_budget(&state, &world, tick));
 let events = UprisingSystem::advance(
     &mut state, &world, &economy, &missions, &tick_events, &rolls);
 apply_uprising_event(&mut world, &event); // integrator and app
@@ -37,8 +38,9 @@ let ended = end_if_garrisoned(&mut state, &world, system, tick);
 
 ## Lifecycle
 
-1. A revolt starts when a held, populated system has fewer regiments than its
-   garrison requirement (`FUN_0050b800`). Control never changes hands.
+1. A revolt starts when a held, populated system has fewer regiments, of
+   either side, than its garrison requirement (`FUN_0050b800`, surplus from
+   `FUN_0050b500`). Control never changes hands.
 2. It continues while the system stays held and populated, even after the
    garrison is restored, and ends when the system is lost or emptied.
 3. A Subdue Uprising success raises support (`FUN_0055cb10`: 1..20 on its own
@@ -49,8 +51,8 @@ let ended = end_if_garrisoned(&mut state, &world, system, tick);
    Empire's Stormtroopers, and the Incite and Subdue agents' leadership, then
    applies the UPRIS1TB and UPRIS2TB step-lookup codes: a lost facility or
    regiment, an injured character, or freed prisoners. An active Incite
-   mission then costs the holder 2 support points (halved when support is
-   strong).
+   mission then costs the holder 2 support points (halved for a strongly
+   supported Empire holder).
 
 ## Disaster
 
@@ -66,4 +68,8 @@ for a strongly supported Empire system and doubles it only during a revolt.
 ## Open
 
 - Injury has no character field in the port; it is reported only.
+- The injury pick skips characters in fleets and killed characters; that is
+  the port's reading of `FUN_004f2640`'s untraced mode flag.
+- A Subdue success draws its gain from the second half of the mission rolls
+  (`ROLLS_PER_MISSION`), so it never takes another mission's roll.
 - The informant and resource incidents still fire on invented triggers (F-029).

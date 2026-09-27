@@ -784,8 +784,8 @@ cross-runtime proof remain open
   bit 16, slot `+0x248` `FUN_00511840`, `FUN_0050d030`), turning one score
   into two outcome codes that `FUN_0050d150` applies as facility or regiment
   losses and character effects (F-026). `try_subdue`'s premise is
-  contradicted, so it stays unwired; the Subdue Uprising mission table is
-  SUBDMSTB (`FUN_0055c780`).
+  contradicted, so it was removed (see the F-026 follow-up below); the Subdue
+  Uprising mission table is SUBDMSTB (`FUN_0055c780`).
 - Decoy recovery (2026-09-26, `ghidra/notes/decoy-roll.md`): `FUN_0055e410`
   rolls TDECOYTB, or FDECOYTB when the checked object is in a fleet, on
   `decoy espionage - b - counterpart espionage * GNPRTB[3588] / 100`
@@ -799,6 +799,8 @@ cross-runtime proof remain open
   the checked object, its pool, and slots `+0x1bc`/`+0x1c4` are
   unidentified. The port's `check_decoy` feeds the defender's espionage
   straight into FDECOYTB, which is the wrong input, so it stays unwired.
+  The `is_decoy` mission branch is invented too: it cuts FDECOYTB by a flat
+  GNPRTB 3588 percent, and only tests set `is_decoy`.
 - F-026 follow-up: `try_subdue` and the invented UPRIS1TB start roll are
   removed. A Subdue Uprising success now raises support by `FUN_0055cb10`
   (1..20 on its own side's system, 1..10 when contested) and ends the revolt
@@ -806,6 +808,11 @@ cross-runtime proof remain open
   divergences remain: the port's Subdue success check uses diplomacy, while
   `FUN_00569b90` rolls SUBDMSTB on leadership, support, and the Stormtrooper
   count; and `BetrayalSystem` still reads UPRIS1TB as a loyalty table.
+- Review fix (2026-09-27): the Subdue gain draw took the next completing
+  mission's outcome roll, and the budget of one roll per mission left the
+  last mission on the 0.5 fallback. Callers now reserve `ROLLS_PER_MISSION`
+  (2) rolls per mission; outcomes read the first half and gains the second.
+  A test fails without the change.
 
 ### F-020: A mod with a missing dependency fails silently
 
@@ -850,6 +857,10 @@ cross-runtime proof remain open
   tracking, so a regiment keeps its orbit and withdraw percent across a load;
   a v14 save migrates with empty tracking. Tests cover the round trip and the
   migration.
+- Review fix (2026-09-27): the browser's `slot_occupied` skipped the v14
+  keys, so a slot holding only a v14 save was overwritten without
+  confirmation. Occupancy and deletion now derive their keys from
+  `STORED_VERSIONS`.
 - Open: the model has no system-based fighters outside fleets, and the app
   path needs a browser pass.
 - Acceptance: a regiment carried into a blockaded system without a KDY-150
@@ -941,14 +952,30 @@ cross-runtime proof remain open
   losses. The Uprisings filter, loyalty panel, and sector window read the
   revolt from `UprisingState`. Twenty-eight uprising tests and
   four economy tests fail without the change; scoped `cargo mutants`
-  scoped `cargo mutants` over the bundle's diff catches 307 of 331 viable
+  over the bundle's diff catches 307 of 331 viable
   mutants. The 24 survivors: the two `UprisingState` migrations, caught by the
   `rebellion-data` save tests; boundary swaps equivalent at a zero change or a
   shipped injury of at least 1; the informant and resource triggers (F-029);
   the unrecovered strong-support boundary; WASM-only save paths; and egui
   draw paths awaiting the browser pass. The seed-42 golden changes for this named cause.
+- Review fixes (2026-09-27): the troop surplus that starts a revolt counted
+  only the holder's regiments; `FUN_0050b500` counts every regiment at a
+  held system (`FUN_00504c40`, no side filter) and leaves 0 elsewhere, as the
+  end check already did. The uprising roll slice was one roll per system,
+  so a busy tick ran dry and later draws returned their maximum;
+  `UprisingSystem::roll_budget` now reserves each due incident's and the
+  disaster's worst case. New tests pin the Empire regiment weight, the
+  Empire-only halving of the Incite loss, code 5 freeing every prisoner, the
+  gain-before-check order, and the step-lookup clamp. Scoped `cargo mutants`
+  over the fixes catches 28 of 34 viable mutants; the seed-42 golden catches
+  the two mission-budget multiplier swaps, and the four WASM-only save
+  mutants need the browser pass. The seed-42 golden changes from tick 15 for
+  these causes and now ends at `v1:301752058a3627d8`. The port has no en-route facility state, so every
+  listed facility is a disaster candidate.
 - Open: the injury at character `+0x94` has no port field, so an injured
-  character is reported but unchanged. The app path needs a browser pass.
+  character is reported but unchanged. The injury pick's in-fleet and killed
+  exclusions are the port's reading of `FUN_004f2640`'s untraced mode flag.
+  The app path needs a browser pass.
 - Acceptance: both incidents trigger and apply their recovered effects with
   failing-without tests, and a browser pass shows a revolt, an incident, and
   a disaster.
@@ -972,6 +999,11 @@ cross-runtime proof remain open
   uncited for lack of a recovered source: capital-selection wrap-around,
   one-shot trench-run recording, and the command-panel hit regions. The
   auto-resolve projection and canvas letterbox tests cover our own code.
+- Review follow-up (2026-09-27): the order-code and target-control tests now
+  cite `FUN_005ca6d0` and resources 1058/1059; the mesh Z reflection is our
+  own conversion. Five render tests named "original" or "recovered" with no
+  recovered source are renamed, and the light-rig test notes that its
+  intensities are the port's reading.
 - Acceptance: met for citations.
 
 ### F-028: Probability tables interpolate where the original steps

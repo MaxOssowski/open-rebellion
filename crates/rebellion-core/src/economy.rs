@@ -927,13 +927,20 @@ fn compute_system_summary(
     gnprtb: &GnprtbParams,
     difficulty: u8,
 ) -> SystemSummary {
-    // FUN_0050b500: troop surplus = controlling troops - garrison requirement
     let controlling_troops = match sys.control {
         ControlKind::Controlled(crate::dat::Faction::Alliance) => presence.alliance_troops,
         ControlKind::Controlled(crate::dat::Faction::Empire) => presence.empire_troops,
         _ => presence.alliance_troops.max(presence.empire_troops),
     };
-    let troop_surplus = controlling_troops.cast_signed() - garrison_requirement.cast_signed();
+    // FUN_0050b500: a held system's surplus is every regiment at it
+    // (FUN_00504c40, no side filter) minus the requirement; otherwise 0.
+    let troop_surplus = match sys.control {
+        ControlKind::Controlled(crate::dat::Faction::Alliance | crate::dat::Faction::Empire) => {
+            (presence.alliance_troops + presence.empire_troops).cast_signed()
+                - garrison_requirement.cast_signed()
+        }
+        _ => 0,
+    };
 
     // FUN_0050ba90: total controlling troops
     let total_controlling_troops = controlling_troops;
@@ -2202,6 +2209,67 @@ mod tests {
             eco.summary.troop_surplus
         );
         assert_eq!(eco.summary.total_controlling_troops, 2);
+    }
+
+    #[test]
+    fn the_troop_surplus_counts_every_regiment_and_is_zero_for_an_unheld_system() {
+        // FUN_0050b500: for a system held by side 1 or 2, FUN_00504c40 (no side
+        // filter) counts all regiments; any other system keeps surplus 0.
+        let mut world = GameWorld {
+            gnprtb: stock_gnprtb(),
+            ..Default::default()
+        };
+        let sector = world.sectors.insert(crate::world::Sector {
+            dat_id: DatId(0),
+            name: "S".into(),
+            group: crate::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let ground_units = [true, true, false]
+            .map(|is_alliance| {
+                world.troops.insert(crate::world::TroopUnit {
+                    class_dat_id: DatId(0x1400_0100),
+                    is_alliance,
+                    regiment_strength: 100,
+                })
+            })
+            .to_vec();
+        let sys_key = world.systems.insert(crate::world::System {
+            dat_id: DatId(0),
+            name: "Test".into(),
+            sector,
+            x: 0,
+            y: 0,
+            exploration_status: crate::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.3,
+            popularity_empire: 0.7,
+            is_populated: true,
+            total_energy: 10,
+            raw_materials: 10,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units,
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+        });
+        let surplus = |world: &GameWorld| {
+            let mut state = EconomyState::default();
+            EconomySystem::advance(&mut state, world, &[TickEvent { tick: 1 }], 2);
+            state.per_system[&sys_key].summary.troop_surplus
+        };
+        // Garrison ceil(30 / 10) = 3, three regiments of either side: 0.
+        assert_eq!(surplus(&world), 0);
+        world.systems[sys_key].control = ControlKind::Uncontrolled;
+        assert_eq!(surplus(&world), 0);
+        world.systems[sys_key].ground_units.clear();
+        assert_eq!(surplus(&world), 0);
     }
 
     #[test]

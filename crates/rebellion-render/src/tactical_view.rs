@@ -15245,6 +15245,9 @@ mod tests {
         assert!(session.take_pending_voice_cues().is_empty());
     }
 
+    // Source: FUN_005ca6d0 dispatches order codes 0-11 (tactical order
+    // execution evidence, 2026-09-17); the tactic toggle at +0x38 uses Surround
+    // 1 and Stand Off 2 (tactical command assignment evidence, 2026-09-17).
     #[test]
     fn tactical_order_and_tactic_codes_match_the_recovered_source_domain() {
         let orders = [
@@ -15861,6 +15864,9 @@ mod tests {
         );
     }
 
+    // Source: TACTICAL.DLL resources 1058/1059 paint the 23 by 23 target control
+    // at (538,379) after the D-pad (tactical target control evidence,
+    // 2026-09-13). Centering on the 1200 by 800 arena is the port's 2D fallback.
     #[test]
     #[ignore = "requires extracted original bitmaps in data/base/ui"]
     fn target_control_owns_its_topmost_mask_and_centers_the_selected_position() {

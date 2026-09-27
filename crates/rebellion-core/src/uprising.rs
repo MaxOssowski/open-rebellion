@@ -313,14 +313,47 @@ impl<'a> Rolls<'a> {
 /// Stateless uprising and disaster evaluator.
 pub struct UprisingSystem;
 
+/// The most draws one incident takes: two score draws, up to four per outcome
+/// code (the code 3 pick, chance and two injury draws), and the next delay.
+const INCIDENT_ROLLS: usize = 11;
+
 impl UprisingSystem {
+    /// The most rolls [`Self::advance`] can draw at `tick`, for the caller to
+    /// reserve: one first-timer draw per system that may enter revolt, each
+    /// due incident's draws, and the disaster's pick, erosion checks, facility
+    /// checks and delays at the richest system.
+    #[must_use]
+    pub fn roll_budget(state: &UprisingState, world: &GameWorld, tick: u64) -> usize {
+        let due = |next: Option<u64>| next.is_some_and(|due| due <= tick);
+        let incidents = state
+            .active_uprisings
+            .values()
+            .filter(|uprising| due(uprising.next_incident_tick))
+            .count();
+        let disaster = if state.next_disaster_tick.is_none() {
+            1
+        } else if due(state.next_disaster_tick) {
+            let richest = world.systems.values().map(|sys| {
+                usize::from(sys.raw_materials)
+                    + usize::from(sys.total_energy)
+                    + sys.defense_facilities.len()
+                    + sys.manufacturing_facilities.len()
+                    + sys.production_facilities.len()
+            });
+            2 + richest.max().unwrap_or(0)
+        } else {
+            0
+        };
+        world.systems.len() + incidents * INCIDENT_ROLLS + disaster
+    }
+
     /// Start and end uprisings, then fire the uprising and disaster timers
     /// that are due by the last tick in `tick_events`. Each timer fires at
     /// most once per call; one that is still overdue fires on the next call.
     ///
     /// `economy` supplies each system's troop surplus from this tick.
-    /// `rolls` are consumed in system order; the slice needs one roll per
-    /// scheduled timer plus each incident's draws.
+    /// `rolls` are consumed in system order; [`Self::roll_budget`] sizes the
+    /// slice so that no draw runs past it.
     pub fn advance(
         state: &mut UprisingState,
         world: &GameWorld,
@@ -743,7 +776,8 @@ fn resolve_disaster(world: &GameWorld, tick: u64, rolls: &mut Rolls<'_>) -> Opti
 
     // Every facility not en route (+0x50 bit 4, GameObjEnrouteNotif), both
     // sides: manufacturing and production (0x28..0x2f) first, then defense
-    // (0x22..0x27), each lost with GNPRTB 7716 percent (reason 0xb).
+    // (0x22..0x27), each lost with GNPRTB 7716 percent (reason 0xb). The port
+    // has no en-route facility: a facility joins a system list on completion.
     let chance = param(GNPRTB_DISASTER_FACILITY_CHANCE);
     let all = facilities(world, sys, None);
     let (defense, others): (Vec<FacilityRef>, Vec<FacilityRef>) = all
@@ -931,7 +965,7 @@ mod tests {
     use super::*;
     use crate::dat::{ExplorationStatus, SectorGroup};
     use crate::ids::DatId;
-    use crate::missions::MissionFaction;
+    use crate::missions::{MissionEffect, MissionFaction, MissionOutcome};
     use crate::world::{
         Character, ControlKind, DefenseFacilityInstance, GnprtbEntry, GnprtbParams,
         ManufacturingFacilityInstance, MstbEntry, ProductionFacilityInstance, Sector, SkillPair,
@@ -985,7 +1019,6 @@ mod tests {
                 (GNPRTB_SUBDUE_OWN_SPREAD, 19),
                 (GNPRTB_SUBDUE_CONTESTED_BASE, 1),
                 (GNPRTB_SUBDUE_CONTESTED_SPREAD, 9),
-                (7680, 2),
                 (7682, 2),
                 (7732, 40),
                 (7761, 60),
@@ -1146,6 +1179,10 @@ mod tests {
             vec![UprisingEvent::UprisingBegan { system, tick: 2 }]
         );
         assert!(state.is_uprising(system));
+        let mut world = world;
+        for event in &events {
+            apply_uprising_event(&mut world, event);
+        }
         assert_eq!(
             world.systems[system].control,
             ControlKind::Controlled(Faction::Alliance)
@@ -1266,8 +1303,8 @@ mod tests {
     fn stormtroopers_and_regiments_lower_the_incident_score() {
         // FUN_00559ce0 subtracts the holder's regiments (FUN_00509020) and
         // Empire Stormtrooper regiments (FUN_005091f0, class 0x10000006):
-        // 2 + 6 - 1 - 1 = 6 is still code 1, and a second regiment makes it 4,
-        // below every UPRIS1TB row that acts.
+        // 2 + 6 - 1 - 1 = 6 is still code 1, and a second regiment makes it
+        // 2 + 6 - 2 - 1 = 5, below every UPRIS1TB row that acts.
         let (mut world, system) = world_with(Faction::Empire, 0.0);
         add_regiment(&mut world, system, STORMTROOPER_REGIMENT, false);
         let mut state = in_revolt(system, 5);
@@ -1307,6 +1344,7 @@ mod tests {
             })
         };
         let held = prisoner(&mut world, Faction::Alliance);
+        let also_held = prisoner(&mut world, Faction::Alliance);
         let other = prisoner(&mut world, Faction::Empire);
         let mut state = in_revolt(system, 5);
         let events = UprisingSystem::advance(
@@ -1323,7 +1361,8 @@ mod tests {
             losses,
             &[
                 IncidentLoss::Regiment(regiment),
-                IncidentLoss::PrisonerFreed(held)
+                IncidentLoss::PrisonerFreed(held),
+                IncidentLoss::PrisonerFreed(also_held)
             ]
         );
 
@@ -1333,6 +1372,7 @@ mod tests {
         assert!(!world.troops.contains_key(regiment));
         assert!(world.systems[system].ground_units.is_empty());
         assert!(!world.characters[held].is_captive);
+        assert!(!world.characters[also_held].is_captive);
         assert!(world.characters[other].is_captive);
     }
 
@@ -1420,7 +1460,7 @@ mod tests {
     }
 
     #[test]
-    fn a_subdue_success_on_its_own_system_wins_one_to_twenty_points() {
+    fn a_subdue_success_wins_one_to_twenty_at_home_one_to_ten_when_contested_else_nothing() {
         // FUN_0055cb10: same side -> GNPRTB 6187 + rand(0..=6188); contested
         // -> 6189 + rand(0..=6190); otherwise 0.
         let (mut world, system) = world_with(Faction::Alliance, 0.3);
@@ -1519,9 +1559,9 @@ mod tests {
     }
 
     #[test]
-    fn a_disaster_always_costs_at_least_one_raw_material_and_caps_it_at_energy() {
+    fn a_disaster_that_erodes_nothing_still_costs_one_raw_material() {
         // FUN_00559e10: with no unit lost, one raw material goes (energy only
-        // when there is none), then raw material is capped at energy.
+        // when there is none). The cap at energy is pinned by `eroded(5, 2, ..)`.
         let (world, _system) = world_with(Faction::Alliance, 0.5);
         let mut rolls = Rolls::new(&[0.0]);
         let event = resolve_disaster(&world, 1, &mut rolls);
@@ -1773,6 +1813,161 @@ mod tests {
     }
 
     #[test]
+    fn a_strongly_supported_empire_counts_each_regiment_twice() {
+        // FUN_00559ce0 weights side 2's regiments by GNPRTB 7680 (2) when
+        // strong. Support 50: draws 5 + 5, threshold 1, one regiment weighs 2:
+        // 9 gives UPRIS1TB code 1 (10 would give code 2), UPRIS2TB 3.
+        let (mut world, system) = world_with(Faction::Empire, 0.5);
+        add_regiment(&mut world, system, 0x1000_0008, false);
+        let mut state = in_revolt(system, 5);
+        let events = UprisingSystem::advance(
+            &mut state,
+            &world,
+            &short_of_troops(system, -1),
+            &MissionState::new(),
+            &at(5),
+            &[0.45, 0.45, 0.0],
+        );
+        assert_eq!(incident(&events).0, &[1, 3]);
+    }
+
+    #[test]
+    fn the_incite_support_loss_is_halved_only_for_a_strongly_supported_empire() {
+        // FUN_00559be0 divides GNPRTB 6145 (-2) by 7681 (2) when the holder is
+        // strong and the change hurts side 2; a strong Alliance loses all 2.
+        for (side, expected) in [(Faction::Empire, -1), (Faction::Alliance, -2)] {
+            let (mut world, system) = world_with(side, 0.5);
+            let agent = world.characters.insert(Character::default());
+            let mut missions = MissionState::new();
+            missions.dispatch(
+                MissionKind::InciteUprising,
+                MissionFaction::Empire,
+                agent,
+                system,
+                None,
+                0.0,
+            );
+            let mut state = in_revolt(system, 5);
+            let events = UprisingSystem::advance(
+                &mut state,
+                &world,
+                &short_of_troops(system, -1),
+                &missions,
+                &at(5),
+                &[0.0, 0.0, 0.0],
+            );
+            assert_eq!(incident(&events).2, expected, "{side:?}");
+        }
+    }
+
+    #[test]
+    fn a_subdue_success_draws_its_gain_without_taking_the_next_missions_roll() {
+        // FUN_0055cb10 draws the gain after the outcome roll. Two missions
+        // complete on outcomes 0.0 and 0.0; the gain draw 0.5 gives 1 + 10.
+        let (mut world, system) = world_with(Faction::Alliance, 0.3);
+        let agent = world.characters.insert(Character {
+            is_alliance: true,
+            ..Character::default()
+        });
+        let envoy = world.characters.insert(Character {
+            is_alliance: true,
+            ..Character::default()
+        });
+        let mut missions = MissionState::new();
+        for (kind, character) in [
+            (MissionKind::SubdueUprising, agent),
+            (MissionKind::Diplomacy, envoy),
+        ] {
+            missions.dispatch(kind, MissionFaction::Alliance, character, system, None, 0.0);
+        }
+        let ticks: Vec<TickEvent> = (1..=200).map(|tick| TickEvent { tick }).collect();
+        // ROLLS_PER_MISSION: two outcome rolls, then the two gain draws.
+        let rolls = [0.0, 0.0, 0.5, 0.0];
+        let results =
+            crate::missions::MissionSystem::advance(&mut missions, &world, &ticks, &rolls);
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.outcome == MissionOutcome::Success));
+        let gain = results[0].effects.iter().find_map(|e| match e {
+            MissionEffect::UprisingSubdued { support_gain, .. } => Some(*support_gain),
+            _ => None,
+        });
+        assert_eq!(gain, Some(11));
+    }
+
+    #[test]
+    fn the_roll_budget_reserves_the_worst_case_of_a_tick_with_an_incident_and_a_disaster_due() {
+        // A draw past the slice yields its maximum, so a slice with spare rolls
+        // changes the outcome whenever the budget falls short.
+        let (mut world, system) = world_with(Faction::Alliance, 0.0);
+        world.systems[system].raw_materials = 12;
+        world.systems[system].total_energy = 9;
+        add_mine(&mut world, system, true);
+        add_mine(&mut world, system, false);
+        let defense = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2200_0001),
+            is_alliance: true,
+        });
+        world.systems[system].defense_facilities.push(defense);
+        let yard = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2800_0001),
+                is_alliance: false,
+                is_shipyard: true,
+            });
+        world.systems[system].manufacturing_facilities.push(yard);
+        add_regiment(&mut world, system, 0x1000_0002, true);
+        let mut state = in_revolt(system, 5);
+        state.next_disaster_tick = Some(5);
+        let budget = UprisingSystem::roll_budget(&state, &world, 5);
+        // One system, one due incident (11), and the disaster: pick and delay
+        // (2), 12 raw, 9 energy and four facilities.
+        assert_eq!(budget, 1 + 11 + 2 + 12 + 9 + 4);
+        let mut quiet = in_revolt(system, 6);
+        quiet.next_disaster_tick = None;
+        assert_eq!(UprisingSystem::roll_budget(&quiet, &world, 5), 1 + 1);
+        quiet.next_disaster_tick = Some(6);
+        assert_eq!(UprisingSystem::roll_budget(&quiet, &world, 5), 1);
+        let run = |extra: usize| {
+            let mut state = state.clone();
+            let events = UprisingSystem::advance(
+                &mut state,
+                &world,
+                &short_of_troops(system, -1),
+                &MissionState::new(),
+                &at(5),
+                &vec![0.0; budget + extra],
+            );
+            (events, state.next_disaster_tick)
+        };
+        assert_eq!(run(0), run(100));
+    }
+
+    #[test]
+    fn an_advance_without_ticks_changes_nothing() {
+        let (world, system) = world_with(Faction::Alliance, 0.3);
+        let mut state = in_revolt(system, 0);
+        let events = UprisingSystem::advance(
+            &mut state,
+            &world,
+            &short_of_troops(system, -1),
+            &MissionState::new(),
+            &[],
+            &[0.0],
+        );
+        assert!(events.is_empty());
+        assert_eq!(state.active_uprisings[&system].next_incident_tick, Some(0));
+        assert_eq!(state.next_disaster_tick, Some(u64::MAX));
+    }
+
+    #[test]
+    fn the_end_check_ignores_a_system_that_is_not_in_revolt() {
+        let (world, system) = world_with(Faction::Alliance, 0.3);
+        let mut state = UprisingState::default();
+        assert_eq!(end_if_garrisoned(&mut state, &world, system, 1), None);
+    }
+
+    #[test]
     fn only_empire_stormtrooper_regiments_count_as_stormtroopers() {
         // FUN_005091f0 counts side-2 regiments of class 0x10000006. At an
         // Alliance system with support 0: 2 + 6 - 2 regiments = 6, code 1;
@@ -1797,8 +1992,10 @@ mod tests {
     #[test]
     fn an_injury_falls_only_on_a_free_character_of_the_holder_at_the_system() {
         // FUN_0050d150 code 3 picks among the holder's characters at the
-        // system that are not captive (+0xac bit 0) or killed; the injury uses
-        // the effective combat (60): chance 40, injury 40 + 29 + 1.
+        // system (FUN_004f2640, families 0x30..0x3c) that are not captive
+        // (+0xac bit 0); the injury uses the effective combat (60): chance 40,
+        // injury 40 + 29 + 1. The in-fleet and killed exclusions are the port's
+        // reading of that iterator's untraced mode flag, not recovered.
         let (mut world, system) = world_with(Faction::Alliance, 0.0);
         let at_system = |alliance: bool| Character {
             is_alliance: alliance,

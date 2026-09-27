@@ -3171,6 +3171,7 @@ mod tests {
         assert!(truncated.u32().is_err());
     }
 
+    // Our own conversion from the authored left-handed frame; no source claim.
     #[test]
     fn authored_mesh_positions_keep_source_scale_and_reflect_only_z() {
         assert_eq!(
@@ -3231,7 +3232,8 @@ mod tests {
     }
 
     // Source: FUN_005d4d10 creates the directional light frame at (5,5,-1)
-    // and the ambient light. Intensity values sit behind COM calls.
+    // and the ambient light. Intensity values sit behind COM calls, so the
+    // intensity assertions pin the port's reading, not a recovered value.
     #[test]
     fn source_light_rig_preserves_retained_mode_direction_and_intensity() {
         let direction = original_surface_to_light_direction();
@@ -3583,7 +3585,8 @@ mod tests {
         assert!(named.contains("MONCAL52.BMP"));
     }
 
-    // Source: resource IDs 5010/5020 from the tactical Death Star path.
+    // Source: FUN_005ab0e0 and FUN_005ab650 select the Death Star's 5010 or
+    // 5020 sprite outside the capital mesh table.
     #[test]
     fn death_star_manager_sprites_are_valid_original_effect_resources() {
         assert!(is_original_effect_resource(5010));

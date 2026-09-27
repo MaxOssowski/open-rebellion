@@ -388,9 +388,9 @@ pub struct ActiveMission {
     pub target_system: SystemKey,
     /// The target character (for assassination, abduction, rescue). None for area missions.
     pub target_character: Option<CharacterKey>,
-    /// True if this mission is a decoy — draws enemy counter-intelligence
-    /// away from the real mission at the same system. From community disassembly:
-    /// TDECOYTB/FDECOYTB tables with GNPRTB[3588] = 35% penalty.
+    /// True if this mission is a decoy. Only tests set it. Its flat GNPRTB 3588
+    /// penalty is invented: the recovered roll (`ghidra/notes/decoy-roll.md`)
+    /// scales the counterpart's espionage by 3588 instead (F-019).
     #[serde(default)]
     pub is_decoy: bool,
     /// Game-days remaining until execution.
@@ -805,20 +805,26 @@ pub fn is_own_system(world: &GameWorld, target_system: SystemKey, faction: Missi
 ///
 /// # RNG contract
 ///
-/// The caller provides `rolls`: one `f64` roll per mission that completes this
-/// frame, in the order they resolve. Each roll is uniform [0, 1). If more
-/// missions complete than rolls provided, remaining missions use `0.5`
-/// (deterministic fallback — only happens if caller under-provides).
+/// The caller provides `rolls`: [`ROLLS_PER_MISSION`] per active mission.
+/// The first half resolves the missions that complete this frame, one each in
+/// the order they resolve. The second half holds the Subdue Uprising support
+/// draws, so a Subdue success never takes the next mission's roll. Each roll is
+/// uniform [0, 1). A missing roll falls back to `0.5` (deterministic fallback,
+/// only when the caller under-provides).
 ///
 /// For production use, generate rolls with `rand::random::<f64>()` per mission.
 /// For tests, pass explicit values to exercise specific outcomes.
 pub struct MissionSystem;
 
+/// Rolls a caller reserves per active mission: the outcome roll and the
+/// Subdue Uprising support draw (`FUN_0055cb10`).
+pub const ROLLS_PER_MISSION: usize = 2;
+
 impl MissionSystem {
     /// Advance all active missions by the ticks in `tick_events`.
     ///
-    /// Missions that complete are resolved using the provided `rolls` (one per
-    /// completing mission). Returns `Vec<MissionResult>` — one per completed
+    /// Missions that complete are resolved using the provided `rolls` (see the
+    /// RNG contract above). Returns `Vec<MissionResult>` — one per completed
     /// mission, empty if none resolved this frame.
     ///
     /// **Important**: The caller is responsible for applying `MissionResult::effects`
@@ -839,7 +845,9 @@ impl MissionSystem {
 
         let tick_count = tick_events.len() as u32;
         let final_tick = last_tick_event.tick;
-        let mut roll_iter = rolls.iter().copied();
+        let (outcome_rolls, gain_rolls) = rolls.split_at(state.missions.len().min(rolls.len()));
+        let mut roll_iter = outcome_rolls.iter().copied();
+        let mut gain_iter = gain_rolls.iter().copied();
         let mut results = Vec::new();
 
         for mission in &mut state.missions {
@@ -860,7 +868,7 @@ impl MissionSystem {
                         support_gain,
                     } = effect
                     {
-                        let gain_roll = roll_iter.next().unwrap_or(0.5);
+                        let gain_roll = gain_iter.next().unwrap_or(0.5);
                         *support_gain =
                             crate::uprising::subdue_support_gain(world, *system, *side, gain_roll);
                     }
@@ -911,7 +919,7 @@ impl MissionSystem {
             // Use FDECOYTB if available, otherwise fall back to 65% flat threshold.
             let decoy_prob = if let Some(table) = world.mission_tables.get("FDECOYTB") {
                 let raw = f64::from(table.lookup(character_skill));
-                // Apply GNPRTB[3588] = 35% penalty: reduce probability by 35%.
+                // Invented flat GNPRTB 3588 penalty (F-019); see `is_decoy`.
                 let penalty = f64::from(world.gnprtb.value(3588, world.difficulty_index)) / 100.0;
                 let penalized = raw * (1.0 - penalty.clamp(0.0, 1.0));
                 clamp_prob(penalized, 1.0, 100.0) / 100.0

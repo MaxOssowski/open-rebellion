@@ -430,7 +430,8 @@ pub fn run_simulation_tick(
     integrator.emit_fog_reveals(&reveals, world);
 
     // ── 5. Missions ──────────────────────────────────────────────────────
-    let mission_rolls = take_rolls(states.missions.len());
+    let mission_rolls =
+        take_rolls(states.missions.len() * rebellion_core::missions::ROLLS_PER_MISSION);
     let mission_results =
         MissionSystem::advance(&mut states.missions, world, tick_events, &mission_rolls);
     for result in &mission_results {
@@ -636,8 +637,11 @@ pub fn run_simulation_tick(
     integrator.apply_blockade_events(world, &mut states.troop_transport, &blockade_events);
 
     // ── 9. Uprising ──────────────────────────────────────────────────────
-    // One roll per system, as the replay budget has always reserved here.
-    let uprising_rolls = take_rolls(world.systems.len());
+    let uprising_rolls = take_rolls(UprisingSystem::roll_budget(
+        &states.uprising,
+        world,
+        tick_events.last().map_or(0, |event| event.tick),
+    ));
     let empty_table = MstbTable::new(vec![]);
     let uprising_events = UprisingSystem::advance(
         &mut states.uprising,

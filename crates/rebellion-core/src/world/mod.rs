@@ -1301,6 +1301,18 @@ mod tests {
         assert_eq!(table.step_lookup(11), 4);
         assert_eq!(table.step_lookup(40), 5);
         assert_eq!(MstbTable::new(vec![]).step_lookup(3), 0);
+        // A first row with a non-zero value tells the clamp from the empty 0.
+        let raised = MstbTable::new(vec![
+            MstbEntry {
+                threshold: 1,
+                value: 7,
+            },
+            MstbEntry {
+                threshold: 5,
+                value: 9,
+            },
+        ]);
+        assert_eq!(raised.step_lookup(0), 7);
     }
 
     #[test]

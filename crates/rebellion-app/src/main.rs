@@ -1729,7 +1729,8 @@ Some(RailAudience::side(*faction_is_alliance)),
             }
 
             // ── Missions ────────────────────────────────────────────────────
-            let mission_rolls: Vec<f64> = (0..mission_state.len())
+            let mission_rolls: Vec<f64> = (0..mission_state.len()
+                * rebellion_core::missions::ROLLS_PER_MISSION)
                 .map(|_| sim_rng.gen::<f64>())
                 .collect();
             let mission_results =
@@ -2131,7 +2132,10 @@ Some(RailAudience::side(*faction_is_alliance)),
             }
 
             // ── Uprising and disaster (FUN_0050b800, events 0x38d and 0x38f) ──
-            let uprising_rolls: Vec<f64> = (0..world.systems.len())
+            let uprising_tick = tick_events.last().map_or(0, |event| event.tick);
+            let uprising_budget =
+                UprisingSystem::roll_budget(&uprising_state, &world, uprising_tick);
+            let uprising_rolls: Vec<f64> = (0..uprising_budget)
                 .map(|_| sim_rng.gen::<f64>())
                 .collect();
             let uprising_events = UprisingSystem::advance(

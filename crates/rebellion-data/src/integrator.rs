@@ -2119,8 +2119,8 @@ mod tests {
     #[test]
     fn a_subdue_success_at_a_garrisoned_system_ends_the_uprising_and_sabotage_delays_the_death_star(
     ) {
-        // FUN_00569c20 runs FUN_0050c910 after a Subdue Uprising success; at
-        // full Empire support the garrison requirement is 0, so it ends.
+        // FUN_00569c20 runs FUN_0050c910 after a Subdue Uprising success; with
+        // no GNPRTB rows the garrison requirement is 0, so it ends.
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Naboo");
         let mut uprisings = UprisingState::new();
@@ -2163,6 +2163,75 @@ mod tests {
             death_star.under_construction.unwrap().ticks_remaining,
             before + 50
         );
+    }
+
+    #[test]
+    fn a_subdue_gain_counts_toward_the_garrison_check_that_follows_it() {
+        // FUN_00569c20 adds the FUN_0055cb10 gain before FUN_0050c910. At
+        // Alliance support 40 the requirement is ceil((60 - 40) / 10) = 2, so
+        // one regiment falls short; a gain of 10 makes it ceil(10 / 10) = 1.
+        for (support_gain, ends) in [(10, true), (0, false)] {
+            let mut world = GameWorld::default();
+            world.gnprtb = rebellion_core::world::GnprtbParams::new(
+                [(7761, 60), (7762, -10)]
+                    .into_iter()
+                    .map(|(id, value)| rebellion_core::world::GnprtbEntry {
+                        parameter_id: id,
+                        development: value,
+                        alliance_sp_easy: value,
+                        alliance_sp_medium: value,
+                        alliance_sp_hard: value,
+                        empire_sp_easy: value,
+                        empire_sp_medium: value,
+                        empire_sp_hard: value,
+                        multiplayer: value,
+                    })
+                    .collect(),
+            );
+            let system = add_system(&mut world, "Naboo");
+            world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+            world.systems[system].popularity_alliance = 0.4;
+            world.systems[system].popularity_empire = 0.6;
+            let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
+                class_dat_id: DatId(0x1000_0002),
+                is_alliance: true,
+                regiment_strength: 1,
+            });
+            world.systems[system].ground_units.push(regiment);
+            let agent = world
+                .characters
+                .insert(rebellion_core::world::Character::default());
+            let mut uprisings = UprisingState::new();
+            uprisings.active_uprisings.insert(
+                system,
+                rebellion_core::uprising::ActiveUprising {
+                    started_tick: 0,
+                    next_incident_tick: None,
+                },
+            );
+            let result = MissionResult {
+                mission_id: 1,
+                tick: 9,
+                kind: MissionKind::SubdueUprising,
+                faction: MissionFaction::Alliance,
+                character: agent,
+                target_system: system,
+                outcome: MissionOutcome::Success,
+                effects: vec![MissionEffect::UprisingSubdued {
+                    system,
+                    side: Faction::Alliance,
+                    support_gain,
+                }],
+            };
+            let mut integrator = PerceptionIntegrator::new(9, 0);
+            integrator.apply_mission_result(
+                &mut world,
+                &result,
+                &mut uprisings,
+                &mut DeathStarState::default(),
+            );
+            assert_eq!(uprisings.is_uprising(system), !ends, "gain {support_gain}");
+        }
     }
 
     #[test]

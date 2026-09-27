@@ -1775,22 +1775,10 @@ pub mod wasm_impl {
     /// Metadata and payload keys both count as occupied, including legacy and
     /// partially written saves. Storage access errors fail closed.
     pub fn slot_occupied(_saves_dir: &Path, slot: usize) -> bool {
-        [
-            slot_key(slot),
-            meta_key(slot),
-            v13_slot_key(slot),
-            v13_meta_key(slot),
-            v12_slot_key(slot),
-            v12_meta_key(slot),
-            v11_slot_key(slot),
-            v11_meta_key(slot),
-            v10_slot_key(slot),
-            v10_meta_key(slot),
-            v9_slot_key(slot),
-            v9_meta_key(slot),
-        ]
-        .iter()
-        .any(|key| !matches!(storage_get(key), Ok(None)))
+        STORED_VERSIONS
+            .iter()
+            .flat_map(|(_, body, meta)| [body(slot), meta(slot)])
+            .any(|key| !matches!(storage_get(&key), Ok(None)))
     }
 
     pub fn list_saves(_saves_dir: &Path) -> Vec<anyhow::Result<SaveMeta>> {
@@ -1820,20 +1808,10 @@ pub mod wasm_impl {
     }
 
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
-        storage_remove(&slot_key(slot))?;
-        storage_remove(&meta_key(slot))?;
-        storage_remove(&v14_slot_key(slot))?;
-        storage_remove(&v14_meta_key(slot))?;
-        storage_remove(&v13_slot_key(slot))?;
-        storage_remove(&v13_meta_key(slot))?;
-        storage_remove(&v12_slot_key(slot))?;
-        storage_remove(&v12_meta_key(slot))?;
-        storage_remove(&v11_slot_key(slot))?;
-        storage_remove(&v11_meta_key(slot))?;
-        storage_remove(&v10_slot_key(slot))?;
-        storage_remove(&v10_meta_key(slot))?;
-        storage_remove(&v9_slot_key(slot))?;
-        storage_remove(&v9_meta_key(slot))?;
+        for (_, body, meta) in STORED_VERSIONS {
+            storage_remove(&body(slot))?;
+            storage_remove(&meta(slot))?;
+        }
         Ok(())
     }
 }
