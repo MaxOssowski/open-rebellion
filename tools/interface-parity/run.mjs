@@ -3074,6 +3074,12 @@ async function probeTacticalBattleResultsPresentation(
   const persistence = consoleLines.find(({ text }) =>
     text.includes("[tactical_results] strategic_persistence applied=true"));
   assert.ok(persistence, `${faction}: strategic result was not persisted before routing`);
+  const postBattle = consoleLines.find(({ text }) =>
+    text.includes("[post_battle] mode=interactive"));
+  assert.ok(postBattle, `${faction}: shared post-battle campaign path did not run`);
+  assert.match(postBattle.text,
+    /landed=0 bombardment_damage=1 headquarters_destroyed=false/,
+    `${faction}: shared post-battle fixture did not apply its expected bombardment`);
   assert.match(persistence.text, /attacker_capitals=3->2/,
     `${faction}: destroyed attacker capital was not removed from strategic state`);
   assert.match(persistence.text, /defender_capitals=3->2/,
@@ -3085,6 +3091,7 @@ async function probeTacticalBattleResultsPresentation(
   probes.push({ type: "battle-results-route", destination: route,
     screenshot_sha256: sha256(routed) });
   probes.push({ type: "strategic-result-persistence", log: persistence.text });
+  probes.push({ type: "shared-post-battle-campaign-path", log: postBattle.text });
 
   for (const category of ["Capital Ships", "Fighters", "Troops", "Personnel"]) {
     assert.ok(consoleLines.some(({ text }) => text.includes(`category=${category}`)),
