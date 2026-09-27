@@ -43,7 +43,7 @@ use crate::ids::{
 };
 use crate::missions::{MissionKind, MissionState};
 use crate::tick::TickEvent;
-use crate::world::{GameWorld, MstbTable, System};
+use crate::world::{Character, GameWorld, MstbTable, System};
 
 // ---------------------------------------------------------------------------
 // GNPRTB parameters (FUN_0053e390 id -> DAT global)
@@ -679,10 +679,8 @@ fn apply_code(
                 .characters
                 .iter()
                 .filter(|(_, c)| {
-                    c.current_system == Some(system)
-                        && c.current_fleet.is_none()
+                    usable_at(c, system)
                         && !c.is_captive
-                        && !c.is_killed
                         && sides_match(c.is_alliance, c.is_empire, side)
                 })
                 .map(|(k, c)| (k, (c.combat.base + c.combat.variance / 2).cast_signed()))
@@ -706,9 +704,8 @@ fn apply_code(
                 .characters
                 .iter()
                 .filter(|(k, c)| {
-                    c.current_system == Some(system)
+                    usable_at(c, system)
                         && c.is_captive
-                        && !c.is_killed
                         && c.captured_by == Some(side)
                         && !losses.contains(&IncidentLoss::PrisonerFreed(*k))
                 })
@@ -724,6 +721,21 @@ fn apply_code(
         }
         _ => {}
     }
+}
+
+/// `FUN_004f2640(system, 1, side)`: a character the system holds directly and
+/// that is usable. The walk covers only the system's own child list
+/// (`FUN_00539f70` first child at `+0x28`, `FUN_005c7530` next sibling at
+/// `+0x10`), so a fleet's crew and a mission's agents (`FUN_00525bb0` under the
+/// mission) are excluded. Mode 1 keeps `+0x50` bit 0, Usable, which
+/// `0x004f7b80` sets only for an object that exists (created, not destroyed)
+/// and is complete and not en route.
+fn usable_at(c: &Character, system: SystemKey) -> bool {
+    c.current_system == Some(system)
+        && c.current_fleet.is_none()
+        && !c.on_mission
+        && !c.on_mandatory_mission
+        && !c.is_killed
 }
 
 fn sides_match(is_alliance: bool, is_empire: bool, side: Faction) -> bool {
@@ -1346,6 +1358,9 @@ mod tests {
         let held = prisoner(&mut world, Faction::Alliance);
         let also_held = prisoner(&mut world, Faction::Alliance);
         let other = prisoner(&mut world, Faction::Empire);
+        // A captive aboard a fleet belongs to the fleet, not the system.
+        let aboard = prisoner(&mut world, Faction::Alliance);
+        world.characters[aboard].current_fleet = Some(crate::ids::FleetKey::default());
         let mut state = in_revolt(system, 5);
         let events = UprisingSystem::advance(
             &mut state,
@@ -1374,6 +1389,7 @@ mod tests {
         assert!(!world.characters[held].is_captive);
         assert!(!world.characters[also_held].is_captive);
         assert!(world.characters[other].is_captive);
+        assert!(world.characters[aboard].is_captive);
     }
 
     #[test]
@@ -1991,11 +2007,11 @@ mod tests {
 
     #[test]
     fn an_injury_falls_only_on_a_free_character_of_the_holder_at_the_system() {
-        // FUN_0050d150 code 3 picks among the holder's characters at the
-        // system (FUN_004f2640, families 0x30..0x3c) that are not captive
-        // (+0xac bit 0); the injury uses the effective combat (60): chance 40,
-        // injury 40 + 29 + 1. The in-fleet and killed exclusions are the port's
-        // reading of that iterator's untraced mode flag, not recovered.
+        // FUN_0050d150 code 3 picks among the holder's characters that the
+        // system holds directly and that are usable (FUN_004f2640 mode 1,
+        // +0x50 bit 0) and not captive (+0xac bit 0): not in a fleet, not on a
+        // mission, not killed. The injury uses the effective combat (60):
+        // chance 40, injury 40 + 29 + 1.
         let (mut world, system) = world_with(Faction::Alliance, 0.0);
         let at_system = |alliance: bool| Character {
             is_alliance: alliance,
@@ -2018,6 +2034,14 @@ mod tests {
         });
         world.characters.insert(Character {
             is_killed: true,
+            ..at_system(true)
+        });
+        world.characters.insert(Character {
+            on_mission: true,
+            ..at_system(true)
+        });
+        world.characters.insert(Character {
+            on_mandatory_mission: true,
             ..at_system(true)
         });
         world.characters.insert(at_system(false));

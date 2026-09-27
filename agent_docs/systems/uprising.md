@@ -54,11 +54,18 @@ let ended = end_if_garrisoned(&mut state, &world, system, tick);
    mission then costs the holder 2 support points (halved for a strongly
    supported Empire holder).
 
+## Character picks
+
+Codes 3 to 5 pick from the characters the system holds directly and that are
+usable (`FUN_004f2640` mode 1): not in a fleet, not on a mission, not killed.
+See `ghidra/notes/object-state-flags.md`.
+
 ## Disaster
 
 A galaxy timer fires every 1 to 400 ticks and picks a random system with
 energy or raw materials. It erodes both and destroys each facility not en
-route, of either side, at 10 percent.
+route, of either side, at 10 percent. The port has no en-route facilities
+yet (F-030).
 
 ## Garrison
 
@@ -68,8 +75,6 @@ for a strongly supported Empire system and doubles it only during a revolt.
 ## Open
 
 - Injury has no character field in the port; it is reported only.
-- The injury pick skips characters in fleets and killed characters; that is
-  the port's reading of `FUN_004f2640`'s untraced mode flag.
 - A Subdue success draws its gain from the second half of the mission rolls
   (`ROLLS_PER_MISSION`), so it never takes another mission's roll.
 - The informant and resource incidents still fire on invented triggers (F-029).

@@ -142,6 +142,12 @@ applies each code to the holder at the system:
 | 4 | one prisoner the holder keeps (`+0xac` bit 0 set) is freed: slot `+0x214` `FUN_004ef570` -> `FUN_004ee3e0(1)` sets `+0x98` to 1; `FUN_004f18e0` clears the captor, sets autorouting and raises event 0x30a |
 | 5 | every such prisoner is freed |
 
+Codes 3 to 5 pick characters through `FUN_004f2640(system, 1, side)`: the
+system's direct children of types `0x30..0x3c` that are usable (`+0x50`
+bit 0). The walk skips characters in a fleet or on a mission, which are
+children of that fleet or mission, and a destroyed or en-route character is
+not usable (`object-state-flags.md`).
+
 Finally `FUN_0050c9f0` changes support by `+0x54 -> +0x7c`: GNPRTB 6145
 (-2) while an Incite Uprising mission is active, else 0. `FUN_00559be0`
 divides the change by GNPRTB 7681 (2) when support is strong and the change

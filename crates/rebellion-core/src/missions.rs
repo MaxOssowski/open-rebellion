@@ -388,9 +388,9 @@ pub struct ActiveMission {
     pub target_system: SystemKey,
     /// The target character (for assassination, abduction, rescue). None for area missions.
     pub target_character: Option<CharacterKey>,
-    /// True if this mission is a decoy. Only tests set it. Its flat GNPRTB 3588
-    /// penalty is invented: the recovered roll (`ghidra/notes/decoy-roll.md`)
-    /// scales the counterpart's espionage by 3588 instead (F-019).
+    /// Unused, kept for the save layout. The original attaches decoy
+    /// characters to a mission rather than flagging a whole mission
+    /// (`ghidra/notes/decoy-roll.md`, F-019).
     #[serde(default)]
     pub is_decoy: bool,
     /// Game-days remaining until execution.
@@ -639,7 +639,8 @@ pub enum MissionEffect {
     CharacterAvailable { character: CharacterKey },
 
     // ── Decoy / Escape ──────────────────────────────────────────────────────
-    /// A decoy intercepted the mission — no real effect.
+    /// A decoy drew a defender away from the mission. Nothing raises it until
+    /// the recovered decoy phase (`FUN_0058a020`) is ported (F-019).
     DecoyTriggered {
         system: SystemKey,
         decoy_character: CharacterKey,
@@ -907,42 +908,6 @@ impl MissionSystem {
                 .compute_table_input(c, target_system, mission.faction, target_char)
         });
 
-        // Decoy missions draw enemy counter-intelligence but produce no game effects.
-        // Decoy roll: FUN_0055e410 rolls table (fdecoy != 0) + 10
-        // (TDECOYTB=10, FDECOYTB=11) via FUN_0053e340 against
-        // (a - b) - FUN_0053e190(c, DAT_006bb710).
-        // Community FUN_005871d0 (labeled decoy_mission) is a destructor;
-        // our FUN_00588b90 is the actual handler.
-        if mission.is_decoy {
-            let character_skill =
-                character.map_or(0, |c| mission.kind.skill_score(c).cast_signed());
-            // Use FDECOYTB if available, otherwise fall back to 65% flat threshold.
-            let decoy_prob = if let Some(table) = world.mission_tables.get("FDECOYTB") {
-                let raw = f64::from(table.lookup(character_skill));
-                // Invented flat GNPRTB 3588 penalty (F-019); see `is_decoy`.
-                let penalty = f64::from(world.gnprtb.value(3588, world.difficulty_index)) / 100.0;
-                let penalized = raw * (1.0 - penalty.clamp(0.0, 1.0));
-                clamp_prob(penalized, 1.0, 100.0) / 100.0
-            } else {
-                0.65 // Fallback when table not loaded
-            };
-
-            return MissionResult {
-                mission_id: mission.id,
-                tick,
-                kind: mission.kind,
-                faction: mission.faction,
-                character: mission.character,
-                target_system: mission.target_system,
-                outcome: if roll < decoy_prob {
-                    MissionOutcome::Success
-                } else {
-                    MissionOutcome::Foiled
-                },
-                effects: Vec::new(),
-            };
-        }
-
         // Compute counter-intelligence inputs for covert missions.
         let defense_score = compute_defense_score(world, mission.target_system, mission.faction);
         let own_system = is_own_system(world, mission.target_system, mission.faction);
@@ -1149,40 +1114,6 @@ impl MissionSystem {
                 // is handled outside the mission system.
                 Vec::new()
             }
-        }
-    }
-
-    /// Check if a decoy intercepts a mission at the target system.
-    ///
-    /// If a defending-faction character with espionage skill is present at the
-    /// target system, look up FDECOYTB to determine decoy probability.
-    /// Returns `Some(DecoyTriggered)` if the decoy succeeds, consuming one roll.
-    #[must_use]
-    pub fn check_decoy(
-        mission: &ActiveMission,
-        world: &GameWorld,
-        roll: f64,
-    ) -> Option<MissionEffect> {
-        let table = world.mission_tables.get("FDECOYTB")?;
-
-        // Find a defending character at the target system with espionage skill.
-        let defending_alliance = mission.faction == MissionFaction::Empire;
-        let defender = world.characters.iter().find(|(_, c)| {
-            c.is_alliance == defending_alliance
-                && c.current_system == Some(mission.target_system)
-                && c.espionage.base > 0
-        });
-
-        let (decoy_key, decoy_char) = defender?;
-        let prob = f64::from(table.lookup(decoy_char.espionage.base.cast_signed())) / 100.0;
-
-        if roll < prob {
-            Some(MissionEffect::DecoyTriggered {
-                system: mission.target_system,
-                decoy_character: decoy_key,
-            })
-        } else {
-            None
         }
     }
 
@@ -2234,103 +2165,5 @@ mod tests {
             input, 15,
             "recruitment should use target loyalty as resistance"
         );
-    }
-
-    // --- Decoy mission tests ---
-
-    #[test]
-    fn decoy_mission_can_be_foiled() {
-        let mut world = GameWorld::default();
-        let char_key = character_with_skills(&mut world, 50, 50, 50, 50, 50);
-        let sys_key = world.systems.insert(crate::world::System {
-            dat_id: crate::ids::DatId(0),
-            name: "Target".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.5,
-            popularity_empire: 0.5,
-            is_populated: true,
-            total_energy: 5,
-            raw_materials: 5,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
-            control: crate::world::ControlKind::Uncontrolled,
-        });
-        let mut mission = ActiveMission::new(
-            1,
-            MissionKind::Espionage,
-            MissionFaction::Alliance,
-            char_key,
-            sys_key,
-            10,
-        );
-        mission.is_decoy = true;
-        mission.ticks_remaining = 0;
-
-        // High roll (>0.65) → foiled per GNPRTB[3588] 35% penalty
-        let result = MissionSystem::resolve_mission(&mission, &world, 100, 0.9);
-        assert_eq!(
-            result.outcome,
-            MissionOutcome::Foiled,
-            "high roll should foil decoy"
-        );
-    }
-
-    #[test]
-    fn decoy_success_at_low_roll() {
-        let mut world = GameWorld::default();
-        let char_key = character_with_skills(&mut world, 50, 50, 50, 50, 50);
-        let sys_key = world.systems.insert(crate::world::System {
-            dat_id: crate::ids::DatId(0),
-            name: "Target".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.5,
-            popularity_empire: 0.5,
-            is_populated: true,
-            total_energy: 5,
-            raw_materials: 5,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
-            control: crate::world::ControlKind::Uncontrolled,
-        });
-        let mut mission = ActiveMission::new(
-            1,
-            MissionKind::Espionage,
-            MissionFaction::Alliance,
-            char_key,
-            sys_key,
-            10,
-        );
-        mission.is_decoy = true;
-        mission.ticks_remaining = 0;
-
-        // Low roll (<0.65) → decoy succeeds as distraction
-        let result = MissionSystem::resolve_mission(&mission, &world, 100, 0.3);
-        assert_eq!(
-            result.outcome,
-            MissionOutcome::Success,
-            "low roll should succeed decoy"
-        );
-        // A decoy changes nothing in the world, whatever its outcome.
-        assert!(result.effects.is_empty(), "decoy should produce no effects");
     }
 }

@@ -47,12 +47,47 @@ FUN_0053e340((in_fleet != 0) + 10, x, &ok, &hit);
   also requires `FUN_00534720(candidate, 1, ctx)` and `FUN_00558070(object, 1,
   ctx)`, then decrements `+0x34`; otherwise `FUN_005888f0` runs.
 
+## Call chain (recovered 2026-09-27)
+
+`FUN_00589620` has no code reference because it is a virtual slot: the pointer
+at `.rdata` `0x0066a87c` is slot `+4` of the functor vtable `0x0066a878`, set
+by `FUN_005895d0` (base `FUN_00587250`, which stores the manager at `+4`).
+
+1. `FUN_00547f60(mission, ctx)` runs a mission. It checks the mission
+   (`FUN_00520e40`, `FUN_00520ad0`), finds the target system (`FUN_00521070`,
+   types `0x90..0x98`), builds a phase manager on the stack
+   (`FUN_005897c0`), and calls `FUN_005898f0`.
+2. `FUN_005898f0` calls `FUN_00589970`, which runs the phases
+   `FUN_00589a40`, `FUN_00589e40`, `FUN_00589f10`, `FUN_0058a020`,
+   `FUN_0058a130`, and `FUN_0058a1c0`.
+3. `FUN_0058a020` builds the decoy functor when manager `+0x4c` is clear and
+   walks the target system's defenders through `FUN_005875e0`,
+   `FUN_00587600`, and `FUN_00587620`, which are `FUN_00587640` with
+   different category flags.
+4. `FUN_00587640` visits, at the system in manager `+8`: its special forces
+   (`FUN_005039d0`), its regiments (`FUN_00504c40`), and in each fleet
+   (`FUN_004ffe70`) the ships (`FUN_00502db0`) and special forces. It calls
+   the functor with (defender, fleet or 0, &stop, ctx) and skips a defender
+   with `+0x58` bit 0 when asked.
+5. `FUN_00589620` draws a random decoy from the manager's pool
+   (`FUN_00588700`, list at `+0x30`) and, if one exists, calls
+   `FUN_00588b90(manager, decoy, defender, fleet, ctx)`. There `a` is the
+   decoy's effective espionage, `key` and `b` are the defender's slots
+   `+0x1bc` and `+0x1c4`, and FDECOYTB applies when the defender is in a
+   fleet.
+
+So a decoy is a character attached to a mission. Each enemy defender at the
+target is drawn off by a random decoy on a TDECOYTB/FDECOYTB roll, and a
+successful decoy decrements the manager's `+0x34` count.
+
 ## Open
 
-- `FUN_00589620`, the only caller of `FUN_00588b90`, has no code or data
-  references in the analysed program, so the object class, the pool at
-  `+0x30`, and slots `+0x1bc` / `+0x1c4` of the checked object are
-  unidentified. The kind-3 walk and the `+0x96` match are unidentified too.
-- Until those are known the port's `MissionSystem::check_decoy` (defender
-  espionage straight into FDECOYTB) stays unwired: it reads the wrong table
-  input and has no recovered call site.
+- The defender's slot `+0x1bc` is the shared stub `FUN_00526f00` (return 3)
+  in the regiment vtable and in dozens of others, and the character short at
+  `+0x96` it is matched against is unidentified, so the counterpart and `b`
+  (slot `+0x1c4`) are not yet named per defender type.
+- The remaining phases, the pool's source, and the effects of
+  `FUN_00534720`, `FUN_00558070`, and `FUN_005888f0` are not traced.
+- The port has no decoy characters on missions. Its invented `is_decoy` roll
+  and `MissionSystem::check_decoy` are removed (2026-09-27); the `is_decoy`
+  field stays only for the save layout.

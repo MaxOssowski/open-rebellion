@@ -466,6 +466,8 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
 - [ ] Move the remaining probability-table consumers to the recovered step
   lookup (F-028) and the informant and resource incidents to their recovered
   timers (F-029).
+- [ ] Recover and port the en-route delivery of manufactured objects (F-030)
+  and the mission decoy phase (F-019); both change the save format.
 - [ ] Pass five reproducibly configured 5,000-tick seeds: transit ≤10%, orders
   ≤1.5× arrivals, and fleet arena ≤3× initial. Record 50–400 engagements, eight
   systems, busiest-system ≤40%, and 10% minority-faction attack share as

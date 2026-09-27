@@ -51,7 +51,8 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | [bombardment.md](bombardment.md) | Orbital bombardment — Euclidean distance formula | FUN_00556430, FUN_0055d8c0, FUN_0055d860 |
 | [blockade-troop-withdrawal.md](blockade-troop-withdrawal.md) | Regiments lost running a blockade: withdraw percent, per-regiment copy, departure roll, event 0x340 | FUN_0050b310, FUN_0055a020, FUN_00504990, FUN_00504a00, FUN_00508660 |
 | [uprising-incident.md](uprising-incident.md) | Table ids to DAT files; system incident bits; uprising lifecycle, incident score and outcome codes; Subdue support gain; disaster erosion; mission, decoy, foil, escape table consumers | FUN_0058b420, FUN_0050b800, FUN_0050c910, FUN_00559ce0, FUN_0050d030, FUN_0050d150, FUN_0055cb10, FUN_00511930, FUN_00559e10 |
-| [decoy-roll.md](decoy-roll.md) | TDECOYTB/FDECOYTB roll: effective espionage inputs, GNPRTB 3588 counterpart penalty, open caller | FUN_0055e410, FUN_00588b90, FUN_004eecf0, FUN_00509330 |
+| [decoy-roll.md](decoy-roll.md) | TDECOYTB/FDECOYTB roll: effective espionage inputs, GNPRTB 3588 counterpart penalty, mission decoy phase over the target's defenders | FUN_0055e410, FUN_00588b90, FUN_00589620, FUN_0058a020, FUN_00587640, FUN_00547f60 |
+| [object-state-flags.md](object-state-flags.md) | `+0x50` state bits (usable, created, completed, destroyed, en route, existing) and the direct-child iterator modes | FUN_004f7410, FUN_004f6b90, FUN_005131d0, FUN_00513120, FUN_004fe540 |
 | [community-address-remap.md](community-address-remap.md) | The community disassembly is a different REBEXE build; region shifts and 43 remapped functions | FUN_00508250, FUN_0050b310, FUN_00559fe0, FUN_0055e410 |
 
 ## Decompiled Functions (5,408 files)

@@ -795,12 +795,23 @@ cross-runtime proof remain open
   The decoy is a random pool member (`FUN_00588700`); the counterpart is the
   first system-holder object whose `+0x96` matches slot `+0x1bc` of the
   checked object (`FUN_00509330`), and `b` is its slot `+0x1c4`.
-  `FUN_00589620`, the only caller of `FUN_00588b90`, has no references, so
-  the checked object, its pool, and slots `+0x1bc`/`+0x1c4` are
-  unidentified. The port's `check_decoy` feeds the defender's espionage
-  straight into FDECOYTB, which is the wrong input, so it stays unwired.
+  `FUN_00589620`, the only caller of `FUN_00588b90`, then had no known
+  reference (resolved below). The port's `check_decoy` fed the defender's
+  espionage straight into FDECOYTB, which is the wrong input, and was never
+  wired.
   The `is_decoy` mission branch is invented too: it cuts FDECOYTB by a flat
   GNPRTB 3588 percent, and only tests set `is_decoy`.
+- Decoy call chain (2026-09-27, `ghidra/notes/decoy-roll.md`): `FUN_00589620`
+  is slot `+4` of the functor vtable `0x0066a878`, a pointer Ghidra did not
+  turn into a reference. Mission execution `FUN_00547f60` runs phase
+  `FUN_0058a020`, which walks every defender at the target system
+  (`FUN_00587640`: special forces, regiments, and each fleet's ships and
+  special forces) and lets a random decoy character from the mission's pool
+  roll TDECOYTB or FDECOYTB against each. The original decoy is a character
+  attached to a mission. The port has none, so the invented `is_decoy` roll
+  and `check_decoy` are removed with their two tests; the field stays for the
+  save layout. Porting mission decoys needs decoy characters on
+  `ActiveMission`, a save-format change.
 - F-026 follow-up: `try_subdue` and the invented UPRIS1TB start roll are
   removed. A Subdue Uprising success now raises support by `FUN_0055cb10`
   (1..20 on its own side's system, 1..10 when contested) and ends the revolt
@@ -973,9 +984,16 @@ cross-runtime proof remain open
   these causes and now ends at `v1:301752058a3627d8`. The port has no en-route facility state, so every
   listed facility is a disaster candidate.
 - Open: the injury at character `+0x94` has no port field, so an injured
-  character is reported but unchanged. The injury pick's in-fleet and killed
-  exclusions are the port's reading of `FUN_004f2640`'s untraced mode flag.
-  The app path needs a browser pass.
+  character is reported but unchanged. The app path needs a browser pass.
+- Character pick (2026-09-27, `ghidra/notes/object-state-flags.md`): codes 3
+  to 5 walk only the system's direct children (`FUN_00513120`,
+  `FUN_005130d0`) in mode 1, `+0x50` bit 0, usable: existing, complete, and
+  not en route (`0x004f7b80`). Characters in a fleet or on a mission belong to
+  that fleet or mission, so the pick now also skips mission agents, and the
+  prisoner codes skip captives aboard fleets. Two tests fail without it.
+- En route: `FUN_00511930` spares a facility with `+0x50` bit 4. The port
+  places a finished facility at once, so it never has one en route; the
+  missing delivery phase is F-030.
 - Acceptance: both incidents trigger and apply their recovered effects with
   failing-without tests, and a browser pass shows a revolt, an incident, and
   a disaster.
@@ -1035,6 +1053,23 @@ cross-runtime proof remain open
   `FUN_0050cbe0` before INFORMTB (`FUN_0050d510`).
 - Acceptance: both incidents follow their recovered timers and tables with
   failing-without tests.
+
+### F-030: Manufactured objects arrive without an en-route phase
+
+- Severity: P3
+- Status: open
+- Evidence: the integrator's manufacturing completion inserts a finished
+  facility, regiment, or ship straight into its system or fleet. The original
+  keeps an en-route state (`+0x50` bit 4, `GameObjEnrouteNotif` `FUN_004fc240`;
+  bit 5, `GameObjEnrouteActiveNotif`; `GameObjDestroyedOnArrivalNotif` for an
+  object lost on arrival), and an en-route object is not usable
+  (`0x004f7b80`), so the disaster (`FUN_00511930`) and the incident pick skip
+  it. See `ghidra/notes/object-state-flags.md`.
+- Open: the delivery rule (who sets bit 4, the travel time, and the arrival
+  handler) is not yet recovered. Storing en-route objects changes the save
+  format.
+- Acceptance: completed objects travel en route under recovered rules, the
+  disaster and incident skip them, and a test fails without the phase.
 
 ## Fable 5.1 audit synthesis
 
