@@ -1461,6 +1461,7 @@ mod tests {
 
     #[test]
     fn tab_resources_match_recovered_pressed_normal_and_disabled_sets() {
+        // Source: STRATEGY.DLL bitmap resources 10311-10334.
         assert_eq!((SCROLL_UP_NORMAL, SCROLL_UP_PRESSED), (10367, 10368));
         assert_eq!((SCROLL_DOWN_NORMAL, SCROLL_DOWN_PRESSED), (10365, 10366));
         assert_eq!(SCROLL_TRACK, 10369);
@@ -1512,6 +1513,7 @@ mod tests {
 
     #[test]
     fn maps_original_system_item_resource_families_without_fallbacks() {
+        // Source: GOKRES.DLL mini-icon resource blocks and DAT record families.
         assert_eq!(
             character_mini_resource_id(DatId::new(576), true),
             Some(18_496)
@@ -1622,6 +1624,7 @@ mod tests {
 
     #[test]
     fn tab_overflow_scrolls_by_original_three_column_rows() {
+        // No recovered source: three-column row scroll layout, kept as a regression pin.
         assert_eq!(max_tab_scroll_row(0), 0);
         assert_eq!(max_tab_scroll_row(9), 0);
         assert_eq!(max_tab_scroll_row(10), 1);
@@ -1768,6 +1771,7 @@ mod tests {
 
     #[test]
     fn reference_rail_rectangles_match_both_original_factions() {
+        // No recovered source: rail slot Y coordinates per faction, kept as a regression pin.
         assert_eq!(
             rail_slot_rect(CockpitFaction::Alliance, 0),
             (544.0, 61.0, 62.0, 18.0)

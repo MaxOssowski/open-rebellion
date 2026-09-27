@@ -693,6 +693,17 @@ cross-runtime proof remain open
   tactical constructor `FUN_005a7500`), so every `fire()` precondition lacks
   a source. Family `0x34` is the Empire major characters, not the Death Star;
   see F-025.
+- Search (2026-09-26): the binary has no Death Star construction or planet
+  destruction notifier. Its only Death Star strings are the tactical
+  `DEATHSTAR_FIRE`, `DEATHSTAR_UPDATE`, and `DEATHSTAR_WITHDRAW` and the
+  system flag `SystemDeathStarNearbyNotif` (`FUN_00512480`). The destroyed
+  reasons are `DestroyedSabotage`, `DestroyedAssassination`,
+  `DestroyedAutoscrap`, and `DestroyedOnArrival`, raised through
+  `GameObjDestroyedNotif` (`FUN_004fc080`, event `0x302`). A sabotage success
+  therefore destroys an object; nothing in the binary delays a build, so the
+  port's `add_sabotage_delay` has no source either. The superlaser, the
+  1,825-tick timer, and sabotage stay open until the tactical fire path
+  (`FUN_005a7500`) and the sabotage mission handler are decompiled.
 
 ### F-018: Research never limits which ships can be built
 
@@ -721,7 +732,7 @@ cross-runtime proof remain open
 ### F-019: Subdue, guarded dispatch, and initial Force awakening are never called
 
 - Severity: P1
-- Status: partially remediated; UPRIS2TB and decoy rules remain
+- Status: partially remediated; the decoy rule and the Subdue success check remain
 - Evidence (before the 2026-09-25 fix): `UprisingSystem::try_subdue`
   (`uprising.rs`), `MissionSystem::dispatch_guarded` and `check_decoy`
   (`missions.rs`), and `JediSystem::apply_initial_awakening` (`jedi.rs`) had
@@ -756,15 +767,31 @@ cross-runtime proof remain open
   ESCAPETB `0x2c`. See `ghidra/notes/uprising-incident.md`.
 - Correction: UPRIS1TB and UPRIS2TB are not subdue probabilities.
   `FUN_00559ce0` reads both during the uprising incident (system `+0x88`
-  bit 18, slot `+0x250` `FUN_00511840`, `FUN_0050d030`), turning one score
+  bit 16, slot `+0x248` `FUN_00511840`, `FUN_0050d030`), turning one score
   into two outcome codes that `FUN_0050d150` applies as facility or regiment
   losses and character effects (F-026). `try_subdue`'s premise is
   contradicted, so it stays unwired; the Subdue Uprising mission table is
   SUBDMSTB (`FUN_0055c780`).
-- Open: the decoy roll is `FUN_0055e410` (table `(fleet != 0) + 10`, argument
-  `(p2 - p4) - FUN_0053e190(p3, DAT_006bb710)`), called by `FUN_00588b90`.
-  Which character fields feed it is not yet traced, so `check_decoy` stays
-  unwired.
+- Decoy recovery (2026-09-26, `ghidra/notes/decoy-roll.md`): `FUN_0055e410`
+  rolls TDECOYTB, or FDECOYTB when the checked object is in a fleet, on
+  `decoy espionage - b - counterpart espionage * GNPRTB[3588] / 100`
+  (GNPRTB 3588 is 35), and succeeds on `random(0..=99) < value`. Both
+  espionage values are character slot `+0x1e0`, `FUN_004edc00`: the short at
+  `+0x7e`, which `FUN_004eecf0` sets to `base(+0x5a) * (100 + +0x8c) / 100`.
+  The decoy is a random pool member (`FUN_00588700`); the counterpart is the
+  first system-holder object whose `+0x96` matches slot `+0x1bc` of the
+  checked object (`FUN_00509330`), and `b` is its slot `+0x1c4`.
+  `FUN_00589620`, the only caller of `FUN_00588b90`, has no references, so
+  the checked object, its pool, and slots `+0x1bc`/`+0x1c4` are
+  unidentified. The port's `check_decoy` feeds the defender's espionage
+  straight into FDECOYTB, which is the wrong input, so it stays unwired.
+- F-026 follow-up: `try_subdue` and the invented UPRIS1TB start roll are
+  removed. A Subdue Uprising success now raises support by `FUN_0055cb10`
+  (1..20 on its own side's system, 1..10 when contested) and ends the revolt
+  through `FUN_0050c910` once regiments cover the undoubled garrison. Two
+  divergences remain: the port's Subdue success check uses diplomacy, while
+  `FUN_00569b90` rolls SUBDMSTB on leadership, support, and the Stormtrooper
+  count; and `BetrayalSystem` still reads UPRIS1TB as a loyalty table.
 
 ### F-020: A mod with a missing dependency fails silently
 
@@ -805,9 +832,12 @@ cross-runtime proof remain open
   Destroyed regiments leave their fleet's cargo and emit
   `blockade_troop_destroyed` telemetry. Nine tests, all 37 viable mutants
   caught, seed-42 golden unchanged.
-- Open: the tracking is not saved (a save-version bump needs approval), the
-  model has no system-based fighters outside fleets, and the app path needs a
-  browser pass.
+- Fix (2026-09-26): save v15 persists `BlockadeState`'s embarked-regiment
+  tracking, so a regiment keeps its orbit and withdraw percent across a load;
+  a v14 save migrates with empty tracking. Tests cover the round trip and the
+  migration.
+- Open: the model has no system-based fighters outside fleets, and the app
+  path needs a browser pass.
 - Acceptance: a regiment carried into a blockaded system without a KDY-150
   rolls against the recovered percent when it leaves, garrisons and
   surface-loaded regiments are never rolled, and a browser pass shows the
@@ -862,19 +892,52 @@ cross-runtime proof remain open
 ### F-026: The disaster and uprising incidents have no effect
 
 - Severity: P2
-- Status: open
-- Evidence: system `+0x88` bit 20 is the disaster incident (`FUN_0050ac10`,
-  `SystemDisasterIncidentNotif`). Slot `+0x258`, `FUN_00511930`, erodes system
-  `+0x5c` and `+0x64` with GNPRTB 7715 and destroys each unprotected
-  manufacturing and defense facility at GNPRTB 7716 (10 percent), reason
-  `0xb`. Bit 18 is the uprising incident (`FUN_0050ab30`,
-  `SystemUprisingIncidentNotif`); `FUN_0050d030` turns UPRIS1TB/UPRIS2TB
-  outcome codes into facility and regiment losses, character effects, and a
-  support change. `economy.rs` placed its flags at bits 16-19 without a source
-  and only emits messages.
+- Status: remediated; browser pass pending
+- Evidence: `economy.rs` raised uprising and disaster flags from invented
+  thresholds and only emitted messages; `UprisingSystem` started revolts on an
+  invented UPRIS1TB roll and handed the system to the rebels.
+- Correction: the earlier ledger text used system vtable base `0x0065e638`;
+  the base is `0x0065e640` (constructor `FUN_00507130`), so bit 16 is the
+  uprising incident (`FUN_0050aa50`, slot `+0x248`) and bit 18 the disaster
+  (`FUN_0050ab30`, slot `+0x250` `FUN_00511930`).
+- Recovery (`ghidra/notes/uprising-incident.md`): a revolt (`+0x88` bit 2)
+  starts when a held, populated system is short of troops (`FUN_0050b800`)
+  and never changes control (`FUN_0050a130`). It ends only on a Subdue
+  Uprising success once all regiments cover the undoubled requirement
+  (`FUN_0050c910`), or when the system is lost or emptied. Its incident timer
+  fires every 30 to 100 ticks (GNPRTB 7701/7702, `FUN_00586130`).
+  `FUN_00559ce0` scores two draws of `1..10`, the support shortfall below 60,
+  regiments (doubled for a strongly held Empire system), Stormtroopers, and
+  the Incite and Subdue agents' leadership; UPRIS1TB and UPRIS2TB step
+  lookups give two codes, which `FUN_0050d150` applies as a lost facility or
+  regiment, an injured character, or freed prisoners, before a -2 support
+  change while an Incite mission is active (`FUN_0050c9f0`, halved per
+  `FUN_00559be0`). A disaster (event `0x38f`, every 1 to 400 ticks) picks a
+  random system with energy or raw materials, erodes both (`FUN_00559e10`),
+  and destroys each facility not en route, of either side, at 10 percent.
+  The garrison requirement is halved only for a strongly supported Empire
+  system and doubled only in a revolt (`FUN_00559fe0`).
+- Fix (2026-09-26): `UprisingSystem::advance` implements the lifecycle, the
+  incident, and the disaster timer; `apply_uprising_event` applies the losses,
+  freed prisoners, support, and resources in the headless integrator and the
+  app. Save v15 stores each revolt's incident timer and the disaster timer.
+  The invented economy uprising and disaster triggers and
+  `EconomyEvent::NaturalDisaster` are removed. Each timer fires at most once
+  per advance, so a second fire never reads the world before the first one's
+  losses. The Uprisings filter, loyalty panel, and sector window read the
+  revolt from `UprisingState`. Twenty-eight uprising tests and
+  four economy tests fail without the change; scoped `cargo mutants`
+  scoped `cargo mutants` over the bundle's diff catches 307 of 331 viable
+  mutants. The 24 survivors: the two `UprisingState` migrations, caught by the
+  `rebellion-data` save tests; boundary swaps equivalent at a zero change or a
+  shipped injury of at least 1; the informant and resource triggers (F-029);
+  the unrecovered strong-support boundary; WASM-only save paths; and egui
+  draw paths awaiting the browser pass. The seed-42 golden changes for this named cause.
+- Open: the injury at character `+0x94` has no port field, so an injured
+  character is reported but unchanged. The app path needs a browser pass.
 - Acceptance: both incidents trigger and apply their recovered effects with
-  failing-without tests, after the open character slots (`+0x2e4`, `+0x214`)
-  and system `+0x54` fields are recovered.
+  failing-without tests, and a browser pass shows a revolt, an incident, and
+  a disaster.
 
 ### F-027: Community-dump citations named the wrong functions
 
@@ -888,7 +951,44 @@ cross-runtime proof remain open
   716 citation sites: 505 confirmed, 131 vague, 23 unsupported, and 57
   contradicted. Review overturned 2 (the `FUN_005c81d0` formation order is
   correct); the other 55 are corrected or ledgered above.
+- Follow-up (2026-09-27): render tests of original behaviour gained comment-only
+  source citations, about 90 in the three tactical files and 40 across ten
+  other render files, each naming a function, resource, or manual page already
+  recorded by the runtime code or the parity evidence. Three tactical tests stay
+  uncited for lack of a recovered source: capital-selection wrap-around,
+  one-shot trench-run recording, and the command-panel hit regions. The
+  auto-resolve projection and canvas letterbox tests cover our own code.
 - Acceptance: met for citations.
+
+### F-028: Probability tables interpolate where the original steps
+
+- Severity: P2
+- Status: partially remediated
+- Evidence: `MstbTable::lookup` interpolates between thresholds. The original
+  lookup, `FUN_00595090`, returns the value of the largest threshold at or
+  below the argument and clamps below the first row.
+- Fix (2026-09-26): `MstbTable::step_lookup` implements the step lookup, and
+  the uprising incident uses it for UPRIS1TB and UPRIS2TB, with a test that
+  fails under interpolation.
+- Open: every other table consumer (missions, betrayal, escape) still calls
+  the interpolating `lookup`; switching them changes their outcomes and the
+  seed-42 golden, so it is a separate change.
+- Acceptance: every table lookup follows `FUN_00595090`, with any golden
+  change named.
+
+### F-029: The informant and resource incidents fire on invented triggers
+
+- Severity: P3
+- Status: open
+- Evidence: `economy.rs` `evaluate_incident_flags` raises the informant and
+  resource flags from a troop deficit and from overcapped energy or raw
+  materials. The original runs them
+  on timers: resource (bit 19) on event `0x390` every 1 to 500 ticks
+  (GNPRTB 7719/7720) through `FUN_00556be0` and RESRCTB; informant (bit 17) on
+  a per-system timer (`+0x40`, GNPRTB 7703/7704) that rolls support in
+  `FUN_0050cbe0` before INFORMTB (`FUN_0050d510`).
+- Acceptance: both incidents follow their recovered timers and tables with
+  failing-without tests.
 
 ## Fable 5.1 audit synthesis
 

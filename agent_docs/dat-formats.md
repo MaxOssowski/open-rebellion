@@ -132,8 +132,8 @@ Implemented by file-level structs (e.g. `CapitalShipsFile`). Entry-level structs
 | FOILTB.DAT | `int_table` | 14 | 16B | IntTableEntry — mission foil probability |
 | INFORMTB.DAT | `int_table` | 8 | 16B | IntTableEntry — informant probability |
 | CSCRHTTB.DAT | `int_table` | 5 | 16B | IntTableEntry — covert search probability |
-| UPRIS1TB.DAT | `int_table` | 3 | 16B | IntTableEntry — uprising start |
-| UPRIS2TB.DAT | `int_table` | 4 | 16B | IntTableEntry — uprising end |
+| UPRIS1TB.DAT | `int_table` | 3 | 16B | IntTableEntry — uprising incident first outcome code (step lookup, `FUN_00559ce0`) |
+| UPRIS2TB.DAT | `int_table` | 4 | 16B | IntTableEntry — uprising incident second outcome code (step lookup, `FUN_00559ce0`) |
 | RLEVADTB.DAT | `int_table` | 14 | 16B | IntTableEntry — rebel evasion probability |
 | RESRCTB.DAT | `int_table` | 4 | 16B | IntTableEntry — resource threshold |
 | TDECOYTB.DAT | `int_table` | 14 | 16B | IntTableEntry — troop decoy success |

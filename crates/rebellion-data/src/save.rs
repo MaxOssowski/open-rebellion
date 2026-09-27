@@ -1,6 +1,6 @@
 //! Save / load for the full game state.
 //!
-//! # Format (v14)
+//! # Format (v15)
 //!
 //! Binary `bincode` encoding. A save file is:
 //!
@@ -46,7 +46,7 @@ use serde::{Deserialize, Serialize};
 
 use rebellion_core::ai::AIState;
 use rebellion_core::betrayal::BetrayalState;
-use rebellion_core::blockade::BlockadeState;
+use rebellion_core::blockade::{BlockadeState, BlockadeStateV14};
 use rebellion_core::death_star::DeathStarState;
 use rebellion_core::economy::EconomyState;
 use rebellion_core::events::EventState;
@@ -61,7 +61,7 @@ use rebellion_core::research::ResearchState;
 use rebellion_core::tick::{GameClock, GameClockV13};
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::tuning::GameConfig;
-use rebellion_core::uprising::UprisingState;
+use rebellion_core::uprising::{UprisingState, UprisingStateV14};
 use rebellion_core::victory::VictoryState;
 use rebellion_core::world::{CampaignConfig, GameWorld};
 
@@ -81,7 +81,9 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 /// v12: Repair state gained persisted, per-fleet repair-episode tracking.
 /// v13: Body gained regiment-to-fleet cargo state.
 /// v14: The clock stores the original five-choice Game Speed and a day fraction.
-pub const SAVE_VERSION: u32 = 14;
+/// v15: Body persists embarked-regiment tracking in BlockadeState and the
+/// recovered UprisingState (each revolt's incident timer, the disaster timer).
+pub const SAVE_VERSION: u32 = 15;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -300,6 +302,104 @@ pub struct SaveState {
     pub troop_transport: TroopTransportState,
 }
 
+/// Exact v14 body. Blockade state omitted the embarked-regiment map.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SaveStateV14 {
+    world: GameWorld,
+    clock: GameClock,
+    manufacturing: ManufacturingState,
+    missions: MissionState,
+    events: EventState,
+    ai: AIState,
+    movement: MovementState,
+    fog_alliance: FogState,
+    fog_empire: FogState,
+    player_is_alliance: bool,
+    blockade: BlockadeStateV14,
+    uprising: UprisingStateV14,
+    death_star: DeathStarState,
+    research: ResearchState,
+    jedi: JediState,
+    victory: VictoryState,
+    betrayal: BetrayalState,
+    economy: EconomyState,
+    sim_rng: Xoshiro256PlusPlus,
+    ai2: Option<AIState>,
+    repair: RepairState,
+    #[serde(
+        serialize_with = "rebellion_core::serde_ordered::serialize_hash_map",
+        deserialize_with = "rebellion_core::serde_ordered::deserialize_hash_map"
+    )]
+    combat_cooldowns: std::collections::HashMap<SystemKey, u64>,
+    game_config: GameConfig,
+    campaign_config: CampaignConfig,
+    troop_transport: TroopTransportState,
+}
+
+impl From<SaveStateV14> for SaveState {
+    fn from(legacy: SaveStateV14) -> Self {
+        Self {
+            world: legacy.world,
+            clock: legacy.clock,
+            manufacturing: legacy.manufacturing,
+            missions: legacy.missions,
+            events: legacy.events,
+            ai: legacy.ai,
+            movement: legacy.movement,
+            fog_alliance: legacy.fog_alliance,
+            fog_empire: legacy.fog_empire,
+            player_is_alliance: legacy.player_is_alliance,
+            blockade: legacy.blockade.into(),
+            uprising: legacy.uprising.into(),
+            death_star: legacy.death_star,
+            research: legacy.research,
+            jedi: legacy.jedi,
+            victory: legacy.victory,
+            betrayal: legacy.betrayal,
+            economy: legacy.economy,
+            sim_rng: legacy.sim_rng,
+            ai2: legacy.ai2,
+            repair: legacy.repair,
+            combat_cooldowns: legacy.combat_cooldowns,
+            game_config: legacy.game_config,
+            campaign_config: legacy.campaign_config,
+            troop_transport: legacy.troop_transport,
+        }
+    }
+}
+
+impl From<&SaveState> for SaveStateV14 {
+    fn from(current: &SaveState) -> Self {
+        Self {
+            world: current.world.clone(),
+            clock: current.clock.clone(),
+            manufacturing: current.manufacturing.clone(),
+            missions: current.missions.clone(),
+            events: current.events.clone(),
+            ai: current.ai.clone(),
+            movement: current.movement.clone(),
+            fog_alliance: current.fog_alliance.clone(),
+            fog_empire: current.fog_empire.clone(),
+            player_is_alliance: current.player_is_alliance,
+            blockade: (&current.blockade).into(),
+            uprising: (&current.uprising).into(),
+            death_star: current.death_star.clone(),
+            research: current.research.clone(),
+            jedi: current.jedi.clone(),
+            victory: current.victory.clone(),
+            betrayal: current.betrayal.clone(),
+            economy: current.economy.clone(),
+            sim_rng: current.sim_rng.clone(),
+            ai2: current.ai2.clone(),
+            repair: current.repair.clone(),
+            combat_cooldowns: current.combat_cooldowns.clone(),
+            game_config: current.game_config.clone(),
+            campaign_config: current.campaign_config,
+            troop_transport: current.troop_transport.clone(),
+        }
+    }
+}
+
 /// Exact v13 body. The clock used the pre-recovery speed enum.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SaveStateV13 {
@@ -313,8 +413,8 @@ struct SaveStateV13 {
     fog_alliance: FogState,
     fog_empire: FogState,
     player_is_alliance: bool,
-    blockade: BlockadeState,
-    uprising: UprisingState,
+    blockade: BlockadeStateV14,
+    uprising: UprisingStateV14,
     death_star: DeathStarState,
     research: ResearchState,
     jedi: JediState,
@@ -347,8 +447,8 @@ impl From<SaveStateV13> for SaveState {
             fog_alliance: legacy.fog_alliance,
             fog_empire: legacy.fog_empire,
             player_is_alliance: legacy.player_is_alliance,
-            blockade: legacy.blockade,
-            uprising: legacy.uprising,
+            blockade: legacy.blockade.into(),
+            uprising: legacy.uprising.into(),
             death_star: legacy.death_star,
             research: legacy.research,
             jedi: legacy.jedi,
@@ -379,8 +479,8 @@ impl From<&SaveState> for SaveStateV13 {
             fog_alliance: current.fog_alliance.clone(),
             fog_empire: current.fog_empire.clone(),
             player_is_alliance: current.player_is_alliance,
-            blockade: current.blockade.clone(),
-            uprising: current.uprising.clone(),
+            blockade: (&current.blockade).into(),
+            uprising: (&current.uprising).into(),
             death_star: current.death_star.clone(),
             research: current.research.clone(),
             jedi: current.jedi.clone(),
@@ -411,8 +511,8 @@ struct SaveStateV12 {
     fog_alliance: FogState,
     fog_empire: FogState,
     player_is_alliance: bool,
-    blockade: BlockadeState,
-    uprising: UprisingState,
+    blockade: BlockadeStateV14,
+    uprising: UprisingStateV14,
     death_star: DeathStarState,
     research: ResearchState,
     jedi: JediState,
@@ -444,8 +544,8 @@ impl From<SaveStateV12> for SaveState {
             fog_alliance: legacy.fog_alliance,
             fog_empire: legacy.fog_empire,
             player_is_alliance: legacy.player_is_alliance,
-            blockade: legacy.blockade,
-            uprising: legacy.uprising,
+            blockade: legacy.blockade.into(),
+            uprising: legacy.uprising.into(),
             death_star: legacy.death_star,
             research: legacy.research,
             jedi: legacy.jedi,
@@ -476,8 +576,8 @@ impl From<&SaveState> for SaveStateV12 {
             fog_alliance: current.fog_alliance.clone(),
             fog_empire: current.fog_empire.clone(),
             player_is_alliance: current.player_is_alliance,
-            blockade: current.blockade.clone(),
-            uprising: current.uprising.clone(),
+            blockade: (&current.blockade).into(),
+            uprising: (&current.uprising).into(),
             death_star: current.death_star.clone(),
             research: current.research.clone(),
             jedi: current.jedi.clone(),
@@ -508,8 +608,8 @@ struct SaveStateV10 {
     fog_alliance: FogState,
     fog_empire: FogState,
     player_is_alliance: bool,
-    blockade: BlockadeState,
-    uprising: UprisingState,
+    blockade: BlockadeStateV14,
+    uprising: UprisingStateV14,
     death_star: DeathStarState,
     research: ResearchState,
     jedi: JediState,
@@ -543,8 +643,8 @@ impl From<SaveStateV10> for SaveState {
             fog_alliance: legacy.fog_alliance,
             fog_empire: legacy.fog_empire,
             player_is_alliance: legacy.player_is_alliance,
-            blockade: legacy.blockade,
-            uprising: legacy.uprising,
+            blockade: legacy.blockade.into(),
+            uprising: legacy.uprising.into(),
             death_star: legacy.death_star,
             research: legacy.research,
             jedi: legacy.jedi,
@@ -575,8 +675,8 @@ impl From<&SaveState> for SaveStateV10 {
             fog_alliance: current.fog_alliance.clone(),
             fog_empire: current.fog_empire.clone(),
             player_is_alliance: current.player_is_alliance,
-            blockade: current.blockade.clone(),
-            uprising: current.uprising.clone(),
+            blockade: (&current.blockade).into(),
+            uprising: (&current.uprising).into(),
             death_star: current.death_star.clone(),
             research: current.research.clone(),
             jedi: current.jedi.clone(),
@@ -606,8 +706,8 @@ struct SaveStateV11 {
     fog_alliance: FogState,
     fog_empire: FogState,
     player_is_alliance: bool,
-    blockade: BlockadeState,
-    uprising: UprisingState,
+    blockade: BlockadeStateV14,
+    uprising: UprisingStateV14,
     death_star: DeathStarState,
     research: ResearchState,
     jedi: JediState,
@@ -639,8 +739,8 @@ impl From<SaveStateV11> for SaveState {
             fog_alliance: legacy.fog_alliance,
             fog_empire: legacy.fog_empire,
             player_is_alliance: legacy.player_is_alliance,
-            blockade: legacy.blockade,
-            uprising: legacy.uprising,
+            blockade: legacy.blockade.into(),
+            uprising: legacy.uprising.into(),
             death_star: legacy.death_star,
             research: legacy.research,
             jedi: legacy.jedi,
@@ -671,8 +771,8 @@ impl From<&SaveState> for SaveStateV11 {
             fog_alliance: current.fog_alliance.clone(),
             fog_empire: current.fog_empire.clone(),
             player_is_alliance: current.player_is_alliance,
-            blockade: current.blockade.clone(),
-            uprising: current.uprising.clone(),
+            blockade: (&current.blockade).into(),
+            uprising: (&current.uprising).into(),
             death_star: current.death_star.clone(),
             research: current.research.clone(),
             jedi: current.jedi.clone(),
@@ -703,8 +803,8 @@ struct SaveStateV9 {
     fog_alliance: FogState,
     fog_empire: FogState,
     player_is_alliance: bool,
-    blockade: BlockadeState,
-    uprising: UprisingState,
+    blockade: BlockadeStateV14,
+    uprising: UprisingStateV14,
     death_star: DeathStarState,
     research: ResearchState,
     jedi: JediState,
@@ -728,8 +828,8 @@ impl From<SaveStateV9> for SaveState {
             fog_alliance: legacy.fog_alliance,
             fog_empire: legacy.fog_empire,
             player_is_alliance: legacy.player_is_alliance,
-            blockade: legacy.blockade,
-            uprising: legacy.uprising,
+            blockade: legacy.blockade.into(),
+            uprising: legacy.uprising.into(),
             death_star: legacy.death_star,
             research: legacy.research,
             jedi: legacy.jedi,
@@ -760,8 +860,8 @@ impl From<&SaveState> for SaveStateV9 {
             fog_alliance: current.fog_alliance.clone(),
             fog_empire: current.fog_empire.clone(),
             player_is_alliance: current.player_is_alliance,
-            blockade: current.blockade.clone(),
-            uprising: current.uprising.clone(),
+            blockade: (&current.blockade).into(),
+            uprising: (&current.uprising).into(),
             death_star: current.death_star.clone(),
             research: current.research.clone(),
             jedi: current.jedi.clone(),
@@ -808,9 +908,9 @@ pub struct SaveMeta {
 mod native {
     use super::{
         compute_mod_hash, compute_serializable_fingerprint_for_version, compute_state_fingerprint,
-        SaveMeta, SaveState, SaveStateV10, SaveStateV11, SaveStateV12, SaveStateV13, SaveStateV9,
-        StateFingerprint, MAX_SAVE_SLOTS, MIN_MIGRATABLE_VERSION, SAVE_MAGIC, SAVE_VERSION,
-        STATE_FINGERPRINT_VERSION,
+        SaveMeta, SaveState, SaveStateV10, SaveStateV11, SaveStateV12, SaveStateV13, SaveStateV14,
+        SaveStateV9, StateFingerprint, MAX_SAVE_SLOTS, MIN_MIGRATABLE_VERSION, SAVE_MAGIC,
+        SAVE_VERSION, STATE_FINGERPRINT_VERSION,
     };
     use std::io::{Read, Write};
     use std::path::{Path, PathBuf};
@@ -1061,6 +1161,21 @@ mod native {
                     );
                 }
                 (state, fingerprint, expected_fingerprint.is_some())
+            }
+            14 => {
+                let legacy: SaveStateV14 =
+                    bincode::deserialize(&body).context("deserializing v14 save state")?;
+                if let Some(expected) = expected_fingerprint {
+                    let legacy_fingerprint =
+                        compute_serializable_fingerprint_for_version(version, &legacy)?;
+                    anyhow::ensure!(
+                        expected == legacy_fingerprint,
+                        "save state fingerprint mismatch: expected {expected}, computed {legacy_fingerprint}"
+                    );
+                }
+                let state = SaveState::from(legacy);
+                let fingerprint = compute_state_fingerprint(&state)?;
+                (state, fingerprint, false)
             }
             13 => {
                 let legacy: SaveStateV13 =
@@ -1408,6 +1523,10 @@ pub mod wasm_impl {
     /// from older builds get rejected cleanly instead of attempting an
     /// inoperable bincode deserialize.
     fn slot_key(slot: usize) -> String {
+        format!("rebellion_save_v15_{}", slot)
+    }
+
+    fn v14_slot_key(slot: usize) -> String {
         format!("rebellion_save_v14_{}", slot)
     }
 
@@ -1435,6 +1554,10 @@ pub mod wasm_impl {
     ///
     /// Prefix is bumped per save format version (see [`slot_key`]).
     fn meta_key(slot: usize) -> String {
+        format!("rebellion_meta_v15_{}", slot)
+    }
+
+    fn v14_meta_key(slot: usize) -> String {
         format!("rebellion_meta_v14_{}", slot)
     }
 
@@ -1459,8 +1582,9 @@ pub mod wasm_impl {
     }
 
     /// Body and metadata keys for each readable version, newest first.
-    const STORED_VERSIONS: [(u32, fn(usize) -> String, fn(usize) -> String); 6] = [
+    const STORED_VERSIONS: [(u32, fn(usize) -> String, fn(usize) -> String); 7] = [
         (SAVE_VERSION, slot_key, meta_key),
+        (14, v14_slot_key, v14_meta_key),
         (13, v13_slot_key, v13_meta_key),
         (12, v12_slot_key, v12_meta_key),
         (11, v11_slot_key, v11_meta_key),
@@ -1554,6 +1678,19 @@ pub mod wasm_impl {
                 fingerprint
             );
             (state, fingerprint, true)
+        } else if save_version == 14 {
+            let legacy: SaveStateV14 = bincode::deserialize(&bytes)?;
+            let legacy_fingerprint =
+                compute_serializable_fingerprint_for_version(save_version, &legacy)?;
+            anyhow::ensure!(
+                expected_fingerprint == legacy_fingerprint,
+                "save state fingerprint mismatch: expected {}, computed {}",
+                expected_fingerprint,
+                legacy_fingerprint
+            );
+            let state = SaveState::from(legacy);
+            let fingerprint = compute_state_fingerprint(&state)?;
+            (state, fingerprint, false)
         } else if save_version == 13 {
             let legacy: SaveStateV13 = bincode::deserialize(&bytes)?;
             let legacy_fingerprint =
@@ -1685,6 +1822,8 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         storage_remove(&slot_key(slot))?;
         storage_remove(&meta_key(slot))?;
+        storage_remove(&v14_slot_key(slot))?;
+        storage_remove(&v14_meta_key(slot))?;
         storage_remove(&v13_slot_key(slot))?;
         storage_remove(&v13_meta_key(slot))?;
         storage_remove(&v12_slot_key(slot))?;
@@ -1809,6 +1948,9 @@ mod tests {
         let dir = std::env::temp_dir()
             .join("open_rebellion_save_tests")
             .join(name);
+        // Start empty: a file left by an earlier run must not stand in for
+        // a fixture this run failed to write.
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create tmp dir");
         dir
     }
@@ -1858,6 +2000,16 @@ mod tests {
             file.write_all(&0u32.to_le_bytes()).unwrap(); // empty mod list
             file.write_all(&compute_mod_hash(&[]).to_le_bytes())
                 .unwrap();
+        }
+        if version == 14 {
+            let legacy = SaveStateV14::from(state);
+            let fingerprint = compute_serializable_fingerprint_for_version(version, &legacy)
+                .expect("fingerprint v14 body");
+            file.write_all(&fingerprint.version.to_le_bytes()).unwrap();
+            file.write_all(&fingerprint.value.to_le_bytes()).unwrap();
+            let encoded = bincode::serialize(&legacy).expect("serialize v14 body");
+            file.write_all(&encoded).unwrap();
+            return;
         }
         if version == 13 {
             let legacy = SaveStateV13::from(state);
@@ -2364,6 +2516,139 @@ mod tests {
             msg.contains("newer build"),
             "error should mention 'newer build', got: {msg}"
         );
+    }
+
+    /// A save state with one regiment embarked on a fleet in orbit, already
+    /// tracked by `BlockadeSystem::running_regiments` (F-021).
+    fn state_with_tracked_regiment() -> (SaveState, rebellion_core::ids::TroopKey, SystemKey) {
+        use rebellion_core::blockade::BlockadeSystem;
+        use rebellion_core::movement::MovementState;
+
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let class =
+            state
+                .world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass {
+                    troop_capacity: 1,
+                    ..Default::default()
+                });
+        let fleet = state.world.fleets.insert(rebellion_core::world::Fleet {
+            location: system,
+            capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        state.world.systems[system].fleets.push(fleet);
+        let troop = state.world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: rebellion_core::ids::DatId::new(0x1000_0008),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        state.world.systems[system].ground_units.push(troop);
+        state
+            .troop_transport
+            .embark(&mut state.world, fleet, &[troop])
+            .unwrap();
+        BlockadeSystem::running_regiments(
+            &mut state.blockade,
+            &state.world,
+            &MovementState::new(),
+            &state.troop_transport,
+        );
+        assert!(
+            state.blockade.embarked_regiment(troop).is_some(),
+            "the regiment is tracked before saving"
+        );
+        (state, troop, system)
+    }
+
+    /// A regiment's withdraw percent (`+0x60`, set by `FUN_0050b310` and rolled
+    /// by `FUN_00504990` when it leaves) must survive a save, or a reload
+    /// would let a regiment run a blockade without its roll (F-021).
+    #[test]
+    fn v15_round_trip_preserves_an_embarked_regiments_orbit_and_withdraw_percent() {
+        use rebellion_core::blockade::EmbarkedRegiment;
+
+        let saves_dir = tmp_dir("v15_embarked_roundtrip");
+        let (state, troop, system) = state_with_tracked_regiment();
+        let tracked = state.blockade.embarked_regiment(troop).unwrap();
+
+        save_slot(&saves_dir, 0, "Embarked", &state, &[]).unwrap();
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+
+        assert!(meta.fingerprint_verified);
+        assert_eq!(
+            loaded.blockade.embarked_regiment(troop),
+            Some(EmbarkedRegiment {
+                orbit: Some(system),
+                withdraw_percent: tracked.withdraw_percent,
+            })
+        );
+    }
+
+    /// v14 never stored the tracking, so a migrated save starts the regiment
+    /// untracked; it is picked up again at full withdraw percent, as
+    /// `FUN_00504960` resets a regiment on activation (F-021).
+    #[test]
+    fn v14_save_migrates_an_embarked_regiment_as_untracked() {
+        let saves_dir = tmp_dir("v14_embarked_compatibility");
+        let (state, troop, _) = state_with_tracked_regiment();
+        write_versioned_fixture(&slot_path(&saves_dir, 0), 14, "V14 Save", &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("v14 save should migrate");
+
+        assert!(!meta.fingerprint_verified);
+        assert!(loaded.world.troops.contains_key(troop));
+        assert_eq!(loaded.blockade.embarked_regiment(troop), None);
+    }
+
+    #[test]
+    fn v15_round_trip_preserves_revolt_and_disaster_timers() {
+        let saves_dir = tmp_dir("v15_uprising_round_trip");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        state.uprising.active_uprisings.insert(
+            system,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 3,
+                next_incident_tick: Some(45),
+            },
+        );
+        state.uprising.next_disaster_tick = Some(250);
+        save_slot(&saves_dir, 0, "V15 Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("v15 save should load");
+
+        let revolt = &loaded.uprising.active_uprisings[&system];
+        assert_eq!(revolt.started_tick, 3);
+        assert_eq!(revolt.next_incident_tick, Some(45));
+        assert_eq!(loaded.uprising.next_disaster_tick, Some(250));
+    }
+
+    #[test]
+    fn v14_save_keeps_a_revolt_and_redraws_its_incident_timer() {
+        let saves_dir = tmp_dir("v14_uprising_compatibility");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        state.uprising.active_uprisings.insert(
+            system,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 3,
+                next_incident_tick: Some(45),
+            },
+        );
+        write_versioned_fixture(&slot_path(&saves_dir, 0), 14, "V14 Save", &state);
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("v14 save should migrate");
+
+        let revolt = &loaded.uprising.active_uprisings[&system];
+        assert_eq!(revolt.started_tick, 3);
+        assert_eq!(revolt.next_incident_tick, None);
+        assert_eq!(loaded.uprising.next_disaster_tick, None);
     }
 
     #[test]

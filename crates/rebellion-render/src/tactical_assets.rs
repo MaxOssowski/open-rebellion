@@ -3179,6 +3179,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005ab0e0 installs the two radii from authored mesh bounds.
     #[test]
     fn collision_envelope_uses_source_y_radius_xz_diagonal_and_half_unit_floor() {
         let envelope = tactical_collision_envelope([-3.0, -2.0, -4.0, 5.0, 6.0, 2.0]);
@@ -3190,6 +3191,7 @@ mod tests {
         assert_near(floored.planar_diameter, 0.5);
     }
 
+    // Source: FUN_005ee590 constructs the retained projectile mesh and variants.
     #[test]
     fn retained_projectile_mesh_preserves_source_vertices_faces_and_longitudinal_scale() {
         let object = TacticalProjectileRenderObject {
@@ -3228,6 +3230,8 @@ mod tests {
         assert_near(third.vertices[9].position.x, -0.1);
     }
 
+    // Source: FUN_005d4d10 creates the directional light frame at (5,5,-1)
+    // and the ambient light. Intensity values sit behind COM calls.
     #[test]
     fn source_light_rig_preserves_retained_mode_direction_and_intensity() {
         let direction = original_surface_to_light_direction();
@@ -3246,6 +3250,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005c1c10 initializes the retained-mode device state.
     #[test]
     fn source_device_state_uses_nearest_gouraud_backface_depth_contract() {
         assert!(!ORIGINAL_DEVICE_DITHER);
@@ -3260,6 +3265,7 @@ mod tests {
         assert!(pipeline.alpha_blend.is_none());
     }
 
+    // Source: TACTICAL.DLL palette resources 5531-5557.
     #[test]
     fn tactical_palette_object_preserves_rgb_and_uses_opaque_texture_alpha() {
         let resource_id = 5537_u32;
@@ -3276,6 +3282,7 @@ mod tests {
         assert!(decode_palette_object(&bytes, resource_id + 1).is_err());
     }
 
+    // Source: TACTICAL.DLL type-303 indexed texture format.
     #[test]
     fn tactical_effect_decoder_keys_the_uniform_border_index_only() {
         let mut bytes = Vec::from(TEXTURE_MAGIC.as_slice());
@@ -3295,6 +3302,8 @@ mod tests {
         );
     }
 
+    // Source: FUN_0059a850, FUN_00596ad0, FUN_005c2e60 planet resource
+    // and palette identity.
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn tactical_planet_object_requires_its_exact_paired_palette() {
@@ -3329,6 +3338,8 @@ mod tests {
         assert!(validate_indexed_texture_object(&bytes, &record).is_err());
     }
 
+    // Source: FUN_005d9490, FUN_005d9620, FUN_005d9640, FUN_00595be0,
+    // FUN_005c1080 camera pose, clip planes, and field of view.
     #[test]
     fn original_camera_preserves_faction_pose_clip_and_field_contract() {
         let alliance = OriginalTacticalCamera::new(false, 100.0).pose();
@@ -3346,6 +3357,7 @@ mod tests {
         assert_near(alliance.up.length(), 1.0);
     }
 
+    // Source: FUN_005ab650 tactical layout and lane derivation.
     #[test]
     fn original_layout_expands_extent_and_derives_four_source_lanes() {
         let balanced = OriginalTacticalLayout::from_active_counts(2, 2);
@@ -3363,6 +3375,7 @@ mod tests {
         assert_near(uneven.inner_positive_z, 40.5);
     }
 
+    // Source: command switch at 0x005d97c0 for zoom and orbit steps.
     #[test]
     fn original_camera_commands_use_field_zoom_and_adaptive_orbit_steps() {
         let mut camera = OriginalTacticalCamera::new(false, 100.0);
@@ -3399,6 +3412,7 @@ mod tests {
         assert_eq!(camera.orbit_step, 5);
     }
 
+    // Source: FUN_005d3770 LOD state selection and threshold edges.
     #[test]
     fn original_lod_rule_preserves_threshold_edges_and_reduced_detail_mode() {
         let close = TacticalLodView::CLOSE_FIXTURE;
@@ -3519,6 +3533,7 @@ mod tests {
         }
     }
 
+    // Source: 0x005d4af0 fighter sprite selection thresholds.
     #[test]
     fn original_fighter_detail_uses_exact_source_thresholds() {
         for (view_span, expected) in [
@@ -3548,6 +3563,8 @@ mod tests {
         );
     }
 
+    // Source: TACTICAL.DLL resource identity sets (mesh 2010-2642,
+    // textures 3020-5557, named BMP textures).
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn complete_tactical_corpus_identity_sets_are_exact() {
@@ -3566,6 +3583,7 @@ mod tests {
         assert!(named.contains("MONCAL52.BMP"));
     }
 
+    // Source: resource IDs 5010/5020 from the tactical Death Star path.
     #[test]
     fn death_star_manager_sprites_are_valid_original_effect_resources() {
         assert!(is_original_effect_resource(5010));
@@ -3573,6 +3591,7 @@ mod tests {
         assert!(!is_original_effect_resource(5030));
     }
 
+    // Source: TACTICAL.DLL native manifest — 87 meshes, 397 textures.
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     #[ignore = "requires the ignored runtime store generated from an owned TACTICAL.DLL"]
@@ -3614,6 +3633,7 @@ mod tests {
         }
     }
 
+    // Source: TACTICAL.DLL native LOD family proof keys.
     #[cfg(all(feature = "interface-test-fixtures", not(target_arch = "wasm32")))]
     #[test]
     #[ignore = "requires the ignored runtime store generated from an owned TACTICAL.DLL"]

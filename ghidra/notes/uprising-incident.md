@@ -62,68 +62,126 @@ Direct consumers:
 | `FUN_00559db0` | INFORMTB | random draw plus a GNPRTB offset |
 | `FUN_00559ee0` | RESRCTB | random draw |
 
-## Uprising incident
+## System vtable and incident bits
 
-System `+0x88` bit 18 (`0x40000`) is the uprising incident. `FUN_0050ab30`
-sets it, notifies both side views (`FUN_00510620` → view slot `+0x2dc`,
-`FUN_00512580`, `SystemUprisingIncidentNotif`), and calls the master's slot
-`+0x250`, `FUN_00511840`, which runs `FUN_0050d030` when the bit turns on.
-System vtable `0x0065e638`: `+0x24c` no-op, `+0x250` `FUN_00511840`,
-`+0x254` `FUN_00511860`, `+0x258` `FUN_00511930` (disaster), `+0x2d8`
-`FUN_00512540`, `+0x2dc` `FUN_00512580`, `+0x2e0` `FUN_005125d0`
-(informant), `+0x2e4` `FUN_00512620` (disaster).
+The system vtable base is `0x0065e640` (constructor `FUN_00507130`;
+`0x0065e63c` is the second base at `+0x30`). An earlier revision of this note
+used `0x0065e638`, which shifted every slot by 8 and swapped the uprising and
+disaster bits. With the correct base:
 
-Trigger: `FUN_00556b50` (called by `FUN_00566760`) picks one system at
-random among those with `+0x50` bit 6, and `FUN_0050cdc0` pulses bit 18 on
-it when its `+0x5c` or `+0x64` is non-zero.
+| `+0x88` bit | Incident | Setter | Master slot |
+|-------------|----------|--------|-------------|
+| 2 (mask 4) | uprising in progress | `FUN_0050a4a0` | `+0x214` `FUN_00510f20` (timers) |
+| 9 | uprising visible | `FUN_0050bb00` | |
+| 11 | strong support | | |
+| 16 | uprising incident | `FUN_0050aa50` | `+0x248` `FUN_00511840` -> `FUN_0050d030` |
+| 17 | informant incident | `FUN_0050aac0` | `+0x24c` `FUN_00511860` -> `FUN_0050d510` |
+| 18 | disaster incident | `FUN_0050ab30` | `+0x250` `FUN_00511930` |
+| 19 | resource incident | | |
+| 20 | blockade and battle pending | | |
 
-`FUN_0050d030` resolves the incident for the controlling side
-(`+0x24 >> 6 & 3`, 1 Alliance or 2 Empire; neutral returns). It pulses
-`+0x88` bit 17 (`FUN_0050aac0`), then calls `FUN_00559ce0` with:
+## Uprising lifecycle (bit 2)
 
-| Argument | Source |
-|----------|--------|
-| side | `+0x24 >> 6 & 3` |
-| support | `FUN_00507270`: `+0x58` for side 1, `100 - +0x58` for side 2 |
-| strong flag | `+0x88 >> 11 & 1` |
-| troops | `FUN_00509020(system, side, 1)`: the side's regiments |
-| p5 | `FUN_005091f0`: Empire regiments of class `0x10000006` |
-| p6, p7 | `+0x54 → +0x74`, `+0x54 → +0x78` |
+- Start and keep, `FUN_0050b800` (per-system update `FUN_00508250`): on when
+  the system is populated (`+0x88` bit 0), held by side 1 or 2, and either
+  already in revolt or short of troops (surplus `+0x7c` < 0, `FUN_0050b500` =
+  regiments - requirement `+0x80`). It clears when the system is no longer
+  held or populated. Control never changes: `FUN_0050a130` only writes the
+  uprising side into `+0x78` bits 4-5.
+- The stored requirement (`FUN_0050b5a0`) is `FUN_00559fe0(side, support,
+  strong, in_uprising, 1)`: halved by GNPRTB 7680 only when strong and Empire,
+  doubled by GNPRTB 7682 only in an uprising, 0 unless side 1 or 2.
+  `FUN_0050bb00` sets bit 9 when the system is held, populated, in revolt and
+  the surplus is >= 0.
+- End, `FUN_0050c910`, runs only from a Subdue Uprising success
+  (`FUN_00569c20`): it ends the revolt when every regiment at the system
+  (`FUN_00504c40`, no side filter) covers the requirement computed without the
+  uprising doubling (`FUN_00559fb0`).
+- `FUN_0050a4a0` enables two timers through slot `+0x214`, `FUN_00510f20`:
+  event 900 and event 0x38d, the uprising incident. A timer delay
+  (`FUN_00586130`) is `min + rand[0..=spread]` and reschedules after each fire
+  (`FUN_005862a0`); the incident uses GNPRTB 7701 (30) and 7702 (70), so it
+  fires every 30 to 100 ticks. Event 0x38d (`FUN_005660c0` -> `FUN_0050cb80`)
+  pulses bit 16 only while bit 2 is on.
 
-`FUN_00559ce0` computes
+## Uprising incident (`FUN_0050d030`)
+
+The incident acts for the holder (`+0x24 >> 6 & 3`, 1 Alliance or 2 Empire;
+anything else returns). It first pulses bit 17 on and off (`FUN_0050aac0`,
+the informant incident's setter) and then calls `FUN_00559ce0`:
 
 ```
-score = 2 * GNPRTB[7707] + rand(GNPRTB[7708]) + rand(GNPRTB[7708])
-      + FUN_0055a050(support)            ; uprising threshold
-      - k * troops                       ; k = GNPRTB[7680] if strong && side == 2, else 1
-      + p6 + p7 - p5
+d      = rand[0..=G7708] + G7707                 ; 9 and 1, drawn twice
+score  = d1 + d2
+       + ceil((G7761 - support) / -G7762)       ; 60 and -10, only when support < 60 (FUN_0055a050)
+       - k * regiments(side)                    ; k = G7680 (2) if strong && side == 2, else 1
+       + p6 + p7 - p5
 ```
 
-and looks `score` up in UPRIS1TB and UPRIS2TB, yielding two outcome codes.
-Shipped tables: UPRIS1TB `(1→0, 6→1, 10→2)`, UPRIS2TB `(1→0, 9→3, 11→4,
-12→5)`. `FUN_0050d150` applies each code to the controlling side at the
-system:
+- `support` is `FUN_00507270`: `+0x58` for side 1, `100 - +0x58` for side 2.
+- `p5` (`FUN_005091f0`) counts Empire regiments of class `0x10000006`
+  (Stormtroopers, TEXTSTRA 9344).
+- `p6` and `p7` live at `+0x54 -> +0x74` and `+0x78`, written by
+  `FUN_005484d0` (from the mission state change `FUN_00546ea0`): the sum over
+  active Incite Uprising missions (family 0x56, MISSNSD 64) of the average
+  agent leadership (slot `+0x1f4`, the short at `+0x88`) divided by GNPRTB
+  6144 (10), and minus the same sum over Subdue Uprising missions (0x57,
+  MISSNSD 128).
+
+Both codes come from step lookups: `FUN_00595090` returns the value of the
+largest threshold `<= x`, clamped to the first row. Shipped tables: UPRIS1TB
+`(1→0, 6→1, 10→2)`, UPRIS2TB `(1→0, 9→3, 11→4, 12→5)`. `FUN_0050d150`
+applies each code to the holder at the system:
 
 | Code | Effect |
 |------|--------|
 | 0 | none |
-| 1 | a random facility (families `0x20..0x2f`) is destroyed, reason 8 |
-| 2 | a random regiment is destroyed, reason 8 |
-| 3 | a random character (`0x30..0x3b`) with `+0xac` bit 0 clear gets slot `+0x2e4` |
-| 4 | a random character with `+0xac` bit 0 set gets slot `+0x214` |
-| 5 | every character with `+0xac` bit 0 set gets slot `+0x214` |
+| 1 | a random facility of the holder (families `0x20..0x2f`) is destroyed, reason 8 |
+| 2 | a random regiment of the holder is destroyed, reason 8 |
+| 3 | a random free character (`+0xac` bit 0 clear) is injured: slot `+0x2e4` `FUN_004ef5f0`, chance `max(G2565, 100 - combat)`, injury `rand(chance) + rand(G2567) + G2566` (1, 29, 1) through `FUN_0053e990` into `+0x94`, `CharacterInjuryNotif` |
+| 4 | one prisoner the holder keeps (`+0xac` bit 0 set) is freed: slot `+0x214` `FUN_004ef570` -> `FUN_004ee3e0(1)` sets `+0x98` to 1; `FUN_004f18e0` clears the captor, sets autorouting and raises event 0x30a |
+| 5 | every such prisoner is freed |
 
-Finally `FUN_0050c9f0` adds `FUN_00559be0(+0x54 → +0x7c, side, strong)` to
-the side's support (divided by GNPRTB 7681, `DAT_006bb400`, when the
-system's strong flag is set and the change favours side 1 or hurts side 2) and
-stores it
-through `FUN_00509c30`.
+Finally `FUN_0050c9f0` changes support by `+0x54 -> +0x7c`: GNPRTB 6145
+(-2) while an Incite Uprising mission is active, else 0. `FUN_00559be0`
+divides the change by GNPRTB 7681 (2) when support is strong and the change
+favours side 1 or hurts side 2, and `FUN_0053e0d0` clamps the result to
+0..100.
+
+## Subdue Uprising success (`FUN_00569c20`)
+
+Support rises by `FUN_0055cb10(mission side, system side)`: on its own side's
+system `G6187 + rand[0..=G6188]` (1..20); at a contested system (side 3)
+`G6189 + rand[0..=G6190]` (1..10); otherwise 0. Then `FUN_0050c910` runs the
+end check. The success check itself (`FUN_00569b90`) is SUBDMSTB through
+`FUN_0055c780(leadership, support, p5)`.
+
+## Disaster incident (bit 18)
+
+A galaxy timer (`FUN_00556fa0`, event 0x38f) fires every `G7717 +
+rand[0..=G7718]` (1..400) ticks. `FUN_00566760` -> `FUN_00556b50` picks a
+random system with `+0x50` bit 6 (GameObjExisting), and `FUN_0050cdc0`
+pulses bit 18 only when its energy (`+0x5c`) or raw materials (`+0x64`) is
+non-zero. `FUN_00511930` then:
+
+1. Erodes resources with `FUN_00559e10(&raw, &energy)`: for each unit, lose it
+   with chance `(remaining total) * G7715` (5) percent; if nothing was lost,
+   lose one raw material (else one energy); finally `raw = min(raw, energy)`.
+2. Destroys each facility not en route (`+0x50` bit 4 clear), of either side,
+   with chance G7716 (10) percent, reason 0xb: manufacturing and production
+   (`0x28..0x2f`) first, then defense (`0x22..0x27`).
+
+## Other incidents
+
+- Resource (bit 19): event 0x390 every `G7719 + rand[0..=G7720]` (1..500)
+  ticks, `FUN_00556be0` -> `FUN_0050cc70` (RESRCTB, `FUN_00559ee0`).
+- Informant (bit 17): event 0x38e on a per-system timer (`+0x40`, GNPRTB
+  7703/7704), `FUN_0050cbe0` rolls support, then `FUN_00511860` ->
+  `FUN_0050d510` (INFORMTB).
 
 ## Still open
 
-- The meaning of the character slots `+0x2e4` and `+0x214` and of
-  `+0xac` bit 0 on characters: the eleven character-like vtables that hold
-  the role notifiers disagree on these slots.
-- The object at system `+0x54` (fields `+0x74`, `+0x78`, `+0x7c`) and the
-  system fields `+0x5c` / `+0x64` tested by the trigger.
-- The cadence of `FUN_00566760`.
+- Slot `+0x1bc` / `+0x1c4` of the object the decoy roll checks
+  (see `decoy-roll.md`).
+- The character injury at `+0x94` has no port field; the port reports it
+  but does not store it.

@@ -1594,6 +1594,7 @@ mod tests {
 
     #[test]
     fn alliance_uses_recovered_640_by_480_aperture() {
+        // Source: FUN_00421c70 command-center client rectangles (ghidra/notes/FUN_00421c70.c).
         let layout = CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
 
         assert_close(layout.scale, 1.0);
@@ -1603,6 +1604,7 @@ mod tests {
 
     #[test]
     fn empire_uses_recovered_640_by_480_aperture() {
+        // Source: FUN_00421c70 command-center client rectangles (ghidra/notes/FUN_00421c70.c).
         let layout = CockpitState::new(CockpitFaction::Empire).layout_for(640.0, 480.0);
 
         assert_close(layout.scale, 1.0);
@@ -1659,6 +1661,7 @@ mod tests {
 
     #[test]
     fn encyclopedia_command_routes_for_both_factions() {
+        // Source: FUN_00427270 command IDs 0x131 (ghidra/notes/FUN_00427270.c).
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let control = strategic_primary_controls(faction)
                 .iter()
@@ -1670,6 +1673,7 @@ mod tests {
 
     #[test]
     fn alliance_primary_controls_match_recovered_constructor_records() {
+        // Source: FUN_00427270 primary-control constructor (ghidra/notes/FUN_00427270.c).
         let controls = strategic_primary_controls(CockpitFaction::Alliance);
         let records: Vec<_> = controls
             .iter()
@@ -1765,6 +1769,7 @@ mod tests {
 
     #[test]
     fn empire_primary_controls_match_recovered_constructor_records() {
+        // Source: FUN_00427270 primary-control constructor (ghidra/notes/FUN_00427270.c).
         let controls = strategic_primary_controls(CockpitFaction::Empire);
         assert_eq!(
             controls
@@ -1792,6 +1797,7 @@ mod tests {
 
     #[test]
     fn gid_controls_match_recovered_constructor_records() {
+        // Source: FUN_00427270 primary-control constructor (ghidra/notes/FUN_00427270.c).
         let alliance = strategic_gid_control(CockpitFaction::Alliance);
         assert_eq!(alliance.button, CockpitButton::GalacticInformationDisplay);
         assert_eq!(alliance.command_id, 0x132);
@@ -1825,6 +1831,7 @@ mod tests {
 
     #[test]
     fn empire_globe_opens_game_options_without_moving_its_artwork() {
+        // Source: FUN_00427270 side-control constructor (ghidra/notes/FUN_00427270.c).
         let globe = strategic_side_control(CockpitFaction::Empire);
         assert_eq!(globe.button, CockpitButton::GameOptions);
         assert_eq!(globe.command_id, 0x133);
@@ -1847,6 +1854,7 @@ mod tests {
 
     #[test]
     fn alliance_globe_opens_game_options_without_moving_its_artwork() {
+        // Source: FUN_00427270 side-control constructor (ghidra/notes/FUN_00427270.c).
         let globe = strategic_side_control(CockpitFaction::Alliance);
         assert_eq!(globe.button, CockpitButton::GameOptions);
         assert_eq!(globe.command_id, 0x133);
@@ -1870,6 +1878,7 @@ mod tests {
 
     #[test]
     fn message_index_rails_match_recovered_constructor_records() {
+        // Source: FUN_00427270 message-index rail constructor (ghidra/notes/FUN_00427270.c).
         for (faction, x, first_y, resting_first, illuminated_first) in [
             (CockpitFaction::Alliance, 3.0, 109.0, 10050, 10060),
             (CockpitFaction::Empire, 611.0, 110.0, 10030, 10040),
@@ -2045,6 +2054,7 @@ mod tests {
 
     #[test]
     fn recovered_gid_menu_covers_distinct_native_commands_for_both_factions() {
+        // Source: FUN_004511e0 GID menu builder (ghidra/notes/FUN_004511e0.c).
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let mut commands = std::collections::HashSet::new();
             for category in GidCategory::ALL {

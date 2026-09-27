@@ -49,7 +49,7 @@ crates/rebellion-core/src/
 ├── combat.rs         — Space combat 7-phase pipeline, ground combat, CombatPhaseFlags
 ├── bombardment.rs    — Orbital bombardment: Euclidean distance / GNPRTB[0x1400]
 ├── blockade.rs       — Fleet-presence blockade, manufacturing halt, troop destruction
-├── uprising.rs       — Incite/subdue with UPRIS1TB/UPRIS2TB, 10-tick incident cooldown
+├── uprising.rs       — Recovered revolt lifecycle, uprising incident (UPRIS1TB/UPRIS2TB codes), Subdue gain, disaster
 ├── death_star.rs     — Construction countdown, planet destruction, nearby-warning scan. `cleanup_destroyed_system()` removes all entities (fleets, troops, facilities) and cancels in-transit orders to the destroyed system.
 ├── research.rs       — 3 tech trees (Ship/Troop/Facility), MSTB difficulty lookup
 ├── jedi.rs           — 4-tier Force progression (None→Aware→Training→Experienced), detection

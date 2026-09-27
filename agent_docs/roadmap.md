@@ -450,16 +450,22 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   follow-up, uprisings, bombardment, HQ relocation, and principal missions.
   Do not require symmetric attack counts from an asymmetric game.
 - [ ] Enable AI Death Star construction/fire/cleanup and repair parity oracles.
-  The Death Star currently can never fire (F-017).
+  The superlaser path, the construction timer, and sabotage are unrecovered;
+  the binary has no build-delay rule for sabotage (F-017).
 - [ ] Wire the recovered rules the 2026-09-25 test-pruning pass found uncalled:
-  research gating of buildable ships (F-018), Subdue Uprising, guarded
-  dispatch, and initial Force awakening (F-019), mod dependency errors (F-020),
-  and blockade troop destruction (F-021).
+  research gating of buildable ships (F-018), the decoy roll and the SUBDMSTB
+  Subdue success check (F-019; guarded dispatch and the Subdue support gain and
+  revolt end are wired), mod dependency errors (F-020), and blockade troop
+  destruction (F-021; tracking now persists in save v15, browser pass
+  pending).
 - [ ] Correct or re-source the code behaviors the 2026-09-26 citation audit
   found without a binary source: the economy's KDY production modifier
-  (F-023), the Emperor's 1.5x battle bonus (F-024), family-`0x34` Death Star
-  detection (F-025), and the missing disaster and uprising incident effects
-  (F-026).
+  (F-023), the Emperor's 1.5x battle bonus (F-024), and family-`0x34` Death
+  Star detection (F-025). The revolt lifecycle, uprising incident, and
+  disaster now follow recovered code (F-026, browser pass pending).
+- [ ] Move the remaining probability-table consumers to the recovered step
+  lookup (F-028) and the informant and resource incidents to their recovered
+  timers (F-029).
 - [ ] Pass five reproducibly configured 5,000-tick seeds: transit ≤10%, orders
   ≤1.5× arrivals, and fleet arena ≤3× initial. Record 50–400 engagements, eight
   systems, busiest-system ≤40%, and 10% minority-faction attack share as

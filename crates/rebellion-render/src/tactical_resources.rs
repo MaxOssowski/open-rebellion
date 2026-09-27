@@ -197,6 +197,8 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
+    // Source: FUN_00597610 ship registry ordinals and mesh bases;
+    // FUN_005ab650 battle-setup side choice.
     #[test]
     fn capital_ship_join_preserves_source_registry_permutations() {
         assert_eq!(
@@ -245,6 +247,8 @@ mod tests {
         );
     }
 
+    // Source: FUN_00597610 registry ordinals; FUN_005ab650 side choice;
+    // FUN_005c63f0 initial color state; FUN_005c7150 group colour.
     #[test]
     fn fighter_join_preserves_source_registry_permutations() {
         let x_wing = TacticalFighterResource {
@@ -280,6 +284,7 @@ mod tests {
         assert_eq!(tie.hud_resource(), 2034);
     }
 
+    // Source: FUN_00597610 29 capital ordinals 0-28, 8 fighter ordinals 29-36.
     #[test]
     fn complete_original_dat_domain_maps_once() {
         let capital_dat_ids: HashSet<_> = CAPITAL_SHIP_JOIN

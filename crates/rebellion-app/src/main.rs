@@ -1281,11 +1281,12 @@ async fn main() {
             reconcile_fleet_orbits(&movement_state, &mut world);
 
             // ── Economy (runs BEFORE manufacturing — affects production) ──────
-            let economy_events = EconomySystem::advance(
+            let economy_events = EconomySystem::advance_with_uprisings(
                 &mut economy_state,
                 &world,
                 &tick_events,
                 world.difficulty_index,
+                &uprising_state,
             );
             for ev in &economy_events {
                 match ev {
@@ -1311,18 +1312,6 @@ async fn main() {
                     }
                     // Knesset Shamash-Bet Dabora 2 notification events —
                     // surface them in the interactive message log.
-                    EconomyEvent::NaturalDisaster { system } => {
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        msg_log.push(GameMessage::at_system(
-                            economy_tick,
-                            format!("Natural disaster strikes {name}"),
-                            MessageCategory::Event,
-                            *system,
-                        ));
-                    }
                     EconomyEvent::ResourceDiscovered { system, new_output } => {
                         let name = world
                             .systems
@@ -1756,11 +1745,33 @@ Some(RailAudience::side(*faction_is_alliance)),
                     #[cfg(not(target_arch = "wasm32"))]
                     &audio_vol,
                 );
-                rebellion_data::integrator::apply_mission_state_effects(
+                for ended in rebellion_data::integrator::apply_mission_state_effects(
                     &result.effects,
+                    &world,
+                    result.tick,
                     &mut uprising_state,
                     &mut death_star_state,
-                );
+                ) {
+                    if let rebellion_core::uprising::UprisingEvent::UprisingEnded { system, tick } =
+                        ended
+                    {
+                        let name = world
+                            .systems
+                            .get(system)
+                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                        // Notification 3, Uprising Message.
+                        msg_log.push(filed(
+                            GameMessage::at_system(
+                                tick,
+                                format!("Uprising subdued at {name}"),
+                                MessageCategory::Diplomacy,
+                                system,
+                            ),
+                            MessageRail::PopularSupport,
+                            system_audience(&world, system),
+                        ));
+                    }
+                }
                 ai_state.mark_available(result.character);
 
                 // Advisor trigger for player faction missions.
@@ -2119,105 +2130,64 @@ Some(RailAudience::side(*faction_is_alliance)),
                 }
             }
 
-            // ── Uprising ─────────────────────────────────────────────────────
+            // ── Uprising and disaster (FUN_0050b800, events 0x38d and 0x38f) ──
             let uprising_rolls: Vec<f64> = (0..world.systems.len())
                 .map(|_| sim_rng.gen::<f64>())
                 .collect();
-            let empty_upris1tb = MstbTable::new(vec![]);
-            let upris1tb = world
-                .mission_tables
-                .get("UPRIS1TB")
-                .unwrap_or(&empty_upris1tb);
             let uprising_events = UprisingSystem::advance(
                 &mut uprising_state,
                 &world,
+                &economy_state,
+                &mission_state,
                 &tick_events,
                 &uprising_rolls,
-                upris1tb,
             );
             for evt in &uprising_events {
-                match evt {
-                    rebellion_core::uprising::UprisingEvent::UprisingIncident { system, tick } => {
-                        let name = world
+                use rebellion_core::uprising::UprisingEvent;
+                let (system, tick) = match evt {
+                    UprisingEvent::UprisingBegan { system, tick }
+                    | UprisingEvent::UprisingEnded { system, tick }
+                    | UprisingEvent::UprisingIncident { system, tick, .. }
+                    | UprisingEvent::Disaster { system, tick, .. } => (*system, *tick),
+                };
+                let name = world
+                    .systems
+                    .get(system)
+                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                let (text, category) = match evt {
+                    UprisingEvent::UprisingBegan { .. } => {
+                        // A revolt helps the player when the enemy holds the system.
+                        let player_gains = world
                             .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 3, Uprising Message.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                *tick,
-                                format!("Uprising incident at {name}"),
-                                MessageCategory::Diplomacy,
-                                *system,
-                            ),
-                            MessageRail::PopularSupport,
-                            system_audience(&world, *system),
-                        ));
-                    }
-                    rebellion_core::uprising::UprisingEvent::UprisingBegan { system, tick } => {
-                        // Determine if the player gains or loses this system.
-                        let player_gains = if let Some(sys) = world.systems.get(*system) {
-                            // Before flip: if the system is currently enemy-controlled, the uprising helps the player.
-                            match sys.control {
-                                ControlKind::Controlled(Faction::Alliance) => {
-                                    player_faction != MissionFaction::Alliance
-                                }
-                                ControlKind::Controlled(Faction::Empire) => {
-                                    player_faction == MissionFaction::Alliance
-                                }
-                                _ => false,
-                            }
-                        } else {
-                            false
-                        };
-
-                        // Flip controlling faction
-                        if let Some(sys) = world.systems.get_mut(*system) {
-                            sys.control = match sys.control {
-                                ControlKind::Controlled(Faction::Alliance) => {
-                                    ControlKind::Controlled(Faction::Empire)
-                                }
-                                ControlKind::Controlled(Faction::Empire) => {
-                                    ControlKind::Controlled(Faction::Alliance)
-                                }
-                                other => other,
-                            };
-                        }
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 3, Uprising Message.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                *tick,
-                                format!("Uprising! {name} has changed hands"),
-                                MessageCategory::Diplomacy,
-                                *system,
-                            ),
-                            MessageRail::PopularSupport,
-                            Some(RailAudience::Both),
-                        ));
+                            .get(system)
+                            .and_then(|s| s.control.faction())
+                            .is_some_and(|holder| {
+                                (holder == Faction::Alliance)
+                                    != (player_faction == MissionFaction::Alliance)
+                            });
                         advisor_uprising(&mut advisor_state, &name, player_gains);
+                        (format!("Uprising at {name}!"), MessageCategory::Diplomacy)
                     }
-                    rebellion_core::uprising::UprisingEvent::UprisingSubdued { system, tick } => {
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 3, Uprising Message.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                *tick,
-                                format!("Uprising subdued at {name}"),
-                                MessageCategory::Diplomacy,
-                                *system,
-                            ),
-                            MessageRail::PopularSupport,
-                            system_audience(&world, *system),
-                        ));
-                    }
-                }
+                    UprisingEvent::UprisingEnded { .. } => (
+                        format!("The uprising at {name} has ended"),
+                        MessageCategory::Diplomacy,
+                    ),
+                    UprisingEvent::UprisingIncident { .. } => (
+                        format!("Uprising incident at {name}"),
+                        MessageCategory::Diplomacy,
+                    ),
+                    UprisingEvent::Disaster { .. } => (
+                        format!("Natural disaster strikes {name}"),
+                        MessageCategory::Event,
+                    ),
+                };
+                // Notification 3, Uprising Message.
+                msg_log.push(filed(
+                    GameMessage::at_system(tick, text, category, system),
+                    MessageRail::PopularSupport,
+                    system_audience(&world, system),
+                ));
+                rebellion_core::uprising::apply_uprising_event(&mut world, evt);
             }
 
             // ── Betrayal ─────────────────────────────────────────────────────
@@ -3074,6 +3044,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         manufacturing: &mfg_state,
                         economy: &economy_state,
                         missions: &mission_state,
+                        uprisings: &uprising_state,
                     },
                 );
                 #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
@@ -3233,7 +3204,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                     }
                     if show_loyalty {
-                        if let Some(action) = draw_loyalty(ctx, &world, player_faction) {
+                        if let Some(action) =
+                            draw_loyalty(ctx, &world, &uprising_state, player_faction)
+                        {
                             panel_actions.push(action);
                         }
                     }
@@ -3310,6 +3283,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         cockpit_state.faction,
                         cockpit_layout,
                         &mut bmp_cache,
+                        &uprising_state,
                     ) {
                         match action {
                             SectorWindowAction::SelectSystem(system) => {
@@ -5400,18 +5374,19 @@ fn apply_mission_result(
                     MessageCategory::Event,
                 ));
             }
-            MissionEffect::UprisingSubdued { system } => {
-                // Shift popularity toward controlling faction
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    if let ControlKind::Controlled(Faction::Alliance) = sys.control {
-                        sys.popularity_alliance = (sys.popularity_alliance + 0.05).clamp(0.0, 1.0);
-                        sys.popularity_empire = (sys.popularity_empire - 0.05).clamp(0.0, 1.0);
-                    } else {
-                        sys.popularity_empire = (sys.popularity_empire + 0.05).clamp(0.0, 1.0);
-                        sys.popularity_alliance = (sys.popularity_alliance - 0.05).clamp(0.0, 1.0);
-                    }
-                }
-                // The caller ends the uprising via apply_mission_state_effects.
+            MissionEffect::UprisingSubdued {
+                system,
+                side,
+                support_gain,
+            } => {
+                // FUN_00569c20 -> FUN_0050c9f0. The caller then runs the
+                // FUN_0050c910 end check via apply_mission_state_effects.
+                rebellion_core::uprising::apply_support_change(
+                    world,
+                    *system,
+                    *side,
+                    *support_gain,
+                );
             }
             MissionEffect::DeathStarSabotaged { ticks_delayed } => {
                 // The caller applies the delay via apply_mission_state_effects.

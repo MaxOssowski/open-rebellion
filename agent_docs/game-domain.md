@@ -100,7 +100,7 @@ See `agent_docs/simulation.md` for full API reference on all 15 systems.
 - **Ground combat** (`combat.rs`): Troop-by-troop resolution with regiment_strength comparison
 - **Orbital bombardment** (`bombardment.rs`): `damage = sqrt(delta²) / GNPRTB[0x1400]`, minimum 1
 - **Blockade** (`blockade.rs`): Hostile fleet without defender halts manufacturing, destroys in-transit troops
-- **Uprising** (`uprising.rs`): UPRIS1TB (3 thresholds) start / UPRIS2TB (4 thresholds) subdue, 10-tick cooldown
+- **Uprising** (`uprising.rs`): revolts start on a troop shortfall and never change control; an incident every 30-100 ticks maps its score through UPRIS1TB/UPRIS2TB step lookups to losses; natural disasters erode resources and facilities
 - **Death Star** (`death_star.rs`): Construction countdown, superlaser fire (precondition checks from RE), nearby-warning scan
 - **Research** (`research.rs`): 3 tech trees (Ship/Troop/Facility) per faction, `research_order` + `research_difficulty`
 - **Jedi training** (`jedi.rs`): 4-tier Force progression (None→Aware→Training→Experienced), XP accumulation, detection checks

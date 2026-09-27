@@ -21,6 +21,7 @@ use crate::theme;
 pub fn draw_loyalty(
     ctx: &egui::Context,
     world: &GameWorld,
+    uprisings: &rebellion_core::uprising::UprisingState,
     player_faction: MissionFaction,
 ) -> Option<PanelAction> {
     let is_alliance = player_faction == MissionFaction::Alliance;
@@ -35,7 +36,7 @@ pub fn draw_loyalty(
             // ── Collect systems with their loyalty scores ─────────────
             let mut systems: Vec<(&str, f32, f32, bool, bool)> = Vec::new();
 
-            for (_, system) in &world.systems {
+            for (key, system) in &world.systems {
                 if system.is_destroyed {
                     continue;
                 }
@@ -55,7 +56,7 @@ pub fn draw_loyalty(
                     ControlKind::Controlled(rebellion_core::dat::Faction::Empire) => !is_alliance,
                     _ => false,
                 };
-                let is_uprising = matches!(system.control, ControlKind::Uprising(_));
+                let is_uprising = crate::system_in_revolt(key, system, uprisings);
 
                 systems.push((&system.name, our_pop, enemy_pop, is_ours, is_uprising));
             }

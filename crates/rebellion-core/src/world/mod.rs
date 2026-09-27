@@ -1070,7 +1070,9 @@ impl SdprtbParams {
 /// Each table is a sorted list of `(threshold, value)` pairs where `threshold`
 /// is a signed skill delta (negative = below average, 0 = average, positive =
 /// above average). `lookup()` performs linear interpolation between the two
-/// bracketing entries, matching the C++ table-lookup function.
+/// bracketing entries. The original lookup (`FUN_00595090`) is a step
+/// function, which `step_lookup()` reproduces; moving the mission tables onto
+/// it is audit finding F-028.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MstbTable {
     /// Entries sorted ascending by threshold.
@@ -1090,6 +1092,19 @@ impl MstbTable {
     pub fn new(mut entries: Vec<MstbEntry>) -> Self {
         entries.sort_by_key(|e| e.threshold);
         Self { entries }
+    }
+
+    /// Look up the value for `x` as the original does (`FUN_00595090`): the
+    /// entry with the largest threshold not above `x`, or the first entry when
+    /// `x` is below every threshold. Returns 0 for an empty table.
+    #[must_use]
+    pub fn step_lookup(&self, x: i32) -> u32 {
+        self.entries
+            .iter()
+            .take_while(|e| e.threshold <= x)
+            .last()
+            .or_else(|| self.entries.first())
+            .map_or(0, |e| e.value)
     }
 
     /// Look up the value for `skill_score` using linear interpolation.
@@ -1266,6 +1281,26 @@ mod tests {
             name: "Test".into(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn step_lookup_takes_the_last_threshold_reached_and_clamps_below_the_first() {
+        // FUN_00595090 walks the sorted rows to the first threshold above x and
+        // returns the row before it, the first row when none precedes it, or the
+        // last row when none is above x. Rows are the shipped UPRIS2TB.
+        let table = MstbTable::new(
+            [(1, 0), (9, 3), (11, 4), (12, 5)]
+                .into_iter()
+                .map(|(threshold, value)| MstbEntry { threshold, value })
+                .collect(),
+        );
+        assert_eq!(table.step_lookup(-5), 0);
+        assert_eq!(table.step_lookup(8), 0);
+        assert_eq!(table.step_lookup(9), 3);
+        assert_eq!(table.step_lookup(10), 3);
+        assert_eq!(table.step_lookup(11), 4);
+        assert_eq!(table.step_lookup(40), 5);
+        assert_eq!(MstbTable::new(vec![]).step_lookup(3), 0);
     }
 
     #[test]

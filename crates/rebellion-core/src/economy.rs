@@ -59,26 +59,32 @@ const GNPRTB_MAINTENANCE_RATE_CONTROLLED: u16 = 7694; // =30: ticks between main
 // Economy state
 // ---------------------------------------------------------------------------
 
-/// Incident state flags (original `field_0x88` bits 18-20).
-/// When these change between ticks, the corresponding incident notification fires.
-/// `FUN_0050b800` evaluates these each tick; `FUN_0050e5b0` dispatches on transitions.
+/// Incident state flags (original system `+0x88` bits 16-19).
+/// When a flag turns on between ticks, the corresponding incident message fires.
+///
+/// In the original each incident is a one-tick pulse raised by a timer event,
+/// and the system vtable (`0x0065e640`) holds each incident's effect.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "These independent flags preserve the existing state and serialization model."
 )]
 pub struct IncidentFlags {
-    /// Original bit 18 (0x40000), set by `FUN_0050ab30`; views get
-    /// `SystemUprisingIncidentNotif` (`FUN_00512580`). Event ids here are unverified.
+    /// Bit 16 (0x10000), `FUN_0050aa50`; views get
+    /// `SystemUprisingIncidentNotif` (`FUN_00512580`). Raised by
+    /// `UprisingSystem`; always clear here, kept for the save layout.
     pub uprising: bool,
-    /// Original bit 19 (0x80000), set by `FUN_0050aba0`; views get
-    /// `SystemInformantIncidentNotif` (`FUN_005125d0`).
+    /// Bit 17 (0x20000), `FUN_0050aac0`; views get
+    /// `SystemInformantIncidentNotif` (`FUN_005125d0`). Our trigger has no
+    /// source (F-029).
     pub informant: bool,
-    /// Original bit 20 (0x100000), set by `FUN_0050ac10`; views get
-    /// `SystemDisasterIncidentNotif` (`FUN_00512620`). The effect
-    /// (`FUN_00511930`) is not ported (audit finding F-026).
+    /// Bit 18 (0x40000), `FUN_0050ab30`; views get
+    /// `SystemDisasterIncidentNotif` (`FUN_00512620`). Raised by
+    /// `UprisingSystem`; always clear here, kept for the save layout.
     pub disaster: bool,
-    /// No recovered bit or notifier.
+    /// Bit 19 (0x80000), `FUN_0050aba0`; views get
+    /// `SystemResourceIncidentNotif` (`FUN_00512670`). Our overcap trigger
+    /// has no source (F-029).
     pub resource: bool,
 }
 
@@ -190,10 +196,11 @@ pub struct SystemEconomy {
     pub raw_material_overcapped: bool,
     /// Derived troop/fleet/shipyard summary (functions 9-15).
     pub summary: SystemSummary,
-    /// Incident state flags (original `field_0x88` bits 18-20). `FUN_0050b800`.
-    /// When these change from the previous tick, corresponding incidents fire.
+    /// Incident state flags (original system `+0x88` bits 16-19).
+    /// When one turns on from the previous tick, its incident message fires.
     pub incident_flags: IncidentFlags,
-    /// System is visibly under uprising. `FUN_0050bb00`.
+    /// System `+0x88` bit 9 (`FUN_0050bb00`): held, populated, in revolt, and
+    /// not short of troops.
     pub uprising_visible: bool,
     /// Previous-tick support band for the controlling faction. Drives
     /// `EVT_SUPPORT_CHANGE` (0x100) transition detection. Persists across
@@ -299,10 +306,6 @@ pub enum EconomyEvent {
         from: SupportTier,
         to: SupportTier,
     },
-    /// K2: `EVT_NATURAL_DISASTER` (0x154) — disaster incident bit flipped
-    /// `false → true`. Emitted once per transition (clear-before-emit —
-    /// `eco.incident_flags` is updated after the transition check).
-    NaturalDisaster { system: SystemKey },
     /// K3: `EVT_RESOURCE_DISCOVERY` (0x155) — a new mine came online at
     /// a previously-seeded system. Detected as a positive delta on
     /// `eco.raw_material_allocated` (after the `resource_discovery_armed`
@@ -324,8 +327,28 @@ pub enum EconomyEvent {
 pub struct EconomySystem;
 
 impl EconomySystem {
+    /// Run the per-system economy tick with no system in revolt. See
+    /// [`EconomySystem::advance_with_uprisings`].
+    pub fn advance(
+        state: &mut EconomyState,
+        world: &GameWorld,
+        tick_events: &[TickEvent],
+        difficulty: u8,
+    ) -> Vec<EconomyEvent> {
+        Self::advance_with_uprisings(
+            state,
+            world,
+            tick_events,
+            difficulty,
+            &crate::uprising::UprisingState::default(),
+        )
+    }
+
     /// Run the per-system economy tick. Mutates `EconomyState` in-place,
     /// returns events for the integrator.
+    ///
+    /// `uprisings` supplies system `+0x88` bit 2, which doubles the garrison
+    /// requirement (`FUN_0050b5a0`).
     ///
     /// Runs BEFORE manufacturing in the tick order (economy affects production).
     #[expect(
@@ -337,11 +360,12 @@ impl EconomySystem {
         clippy::cast_sign_loss,
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
     )]
-    pub fn advance(
+    pub fn advance_with_uprisings(
         state: &mut EconomyState,
         world: &GameWorld,
         tick_events: &[TickEvent],
         difficulty: u8,
+        uprisings: &crate::uprising::UprisingState,
     ) -> Vec<EconomyEvent> {
         if tick_events.is_empty() {
             return Vec::new();
@@ -443,6 +467,8 @@ impl EconomySystem {
             let new_garrison = calculate_garrison_requirement(
                 controlling_support,
                 sys.control,
+                eco.summary.strong_support,
+                uprisings.is_uprising(sys_key),
                 gnprtb,
                 difficulty,
             );
@@ -490,33 +516,17 @@ impl EconomySystem {
                 difficulty,
             );
 
-            // 7. Incident state + uprising visibility (FUN_0050b800 + FUN_0050bb00).
-            // Evaluate incident flags based on system state. Fire events on transitions.
-            //
-            // K2 (EVT_NATURAL_DISASTER 0x154): clear-before-emit ordering —
-            // transition is detected against the PREVIOUS tick's flag, then
-            // the flag is updated. This prevents panic-reemission if the
-            // downstream handler flips state back (SF-#8).
-            let new_flags = evaluate_incident_flags(sys, &eco.summary, eco);
+            // 7. Incident state + uprising visibility (FUN_0050bb00).
+            // The uprising and disaster incidents are timer events that
+            // `UprisingSystem` raises (F-026). The informant and resource
+            // triggers below have no recovered source (F-029).
+            let new_flags = evaluate_incident_flags(&eco.summary, eco);
             let old_flags = &eco.incident_flags;
-            if new_flags.uprising && !old_flags.uprising {
-                events.push(EconomyEvent::IncidentTriggered {
-                    system: sys_key,
-                    incident_type: "uprising",
-                });
-            }
             if new_flags.informant && !old_flags.informant {
                 events.push(EconomyEvent::IncidentTriggered {
                     system: sys_key,
                     incident_type: "informant",
                 });
-            }
-            // K2: direct EVT_NATURAL_DISASTER emission (replaces the umbrella
-            // IncidentTriggered "disaster" branch — the umbrella is kept for
-            // the "resource" overcap case because that telemetry label already
-            // meant "too many facilities for the grid", not "new resources found").
-            if new_flags.disaster && !old_flags.disaster {
-                events.push(EconomyEvent::NaturalDisaster { system: sys_key });
             }
             if new_flags.resource && !old_flags.resource {
                 // NOTE: this is the legacy "grid overcap" incident, not K3.
@@ -529,8 +539,11 @@ impl EconomySystem {
             }
             eco.incident_flags = new_flags;
 
-            // Uprising visibility flag
-            eco.uprising_visible = matches!(sys.control, ControlKind::Uprising(_));
+            // FUN_0050bb00 sets system +0x88 bit 9 for a populated, held
+            // system in revolt whose troop surplus is not negative.
+            eco.uprising_visible = sys.control.faction().is_some()
+                && uprisings.is_uprising(sys_key)
+                && eco.summary.troop_surplus >= 0;
 
             // K4 pre-tally: track per-faction controlled systems with a
             // garrison deficit. The actual emission happens after the loop
@@ -947,20 +960,7 @@ fn compute_system_summary(
         empire_fighters: presence.empire_fighters,
     };
 
-    // Bit 11 of field_0x88: "strong support" — set when controlling faction's
-    // support exceeds the drift threshold. Controls Empire troop doubling in
-    // FUN_00559b60 (the community dump calls it adjust_value_for_strong_support).
-    let drift_threshold = gnprtb.value(GNPRTB_DRIFT_THRESHOLD, difficulty);
-    let controlling_support = match sys.control {
-        ControlKind::Controlled(crate::dat::Faction::Alliance) => {
-            (sys.popularity_alliance * 100.0).round() as i32
-        }
-        ControlKind::Controlled(crate::dat::Faction::Empire) => {
-            (sys.popularity_empire * 100.0).round() as i32
-        }
-        _ => 0,
-    };
-    let strong_support = controlling_support > drift_threshold;
+    let strong_support = is_strong_support(sys, gnprtb, difficulty);
 
     SystemSummary {
         troop_surplus,
@@ -972,43 +972,47 @@ fn compute_system_summary(
     }
 }
 
+/// Bit 11 of field_0x88: "strong support" — set when controlling faction's
+/// support exceeds the drift threshold. Controls Empire troop doubling in
+/// FUN_00559b60 (the community dump calls it adjust_value_for_strong_support).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
+)]
+pub(crate) fn is_strong_support(
+    sys: &crate::world::System,
+    gnprtb: &GnprtbParams,
+    difficulty: u8,
+) -> bool {
+    let drift_threshold = gnprtb.value(GNPRTB_DRIFT_THRESHOLD, difficulty);
+    let controlling_support = match sys.control {
+        ControlKind::Controlled(crate::dat::Faction::Alliance) => {
+            (sys.popularity_alliance * 100.0).round() as i32
+        }
+        ControlKind::Controlled(crate::dat::Faction::Empire) => {
+            (sys.popularity_empire * 100.0).round() as i32
+        }
+        _ => 0,
+    };
+    controlling_support > drift_threshold
+}
+
 // ---------------------------------------------------------------------------
-// Incident evaluation (FUN_0050b800 + FUN_0050bb00)
+// Incident evaluation
 // ---------------------------------------------------------------------------
 
-/// Evaluate incident flags for a system based on its current state.
+/// Evaluate the informant and resource incident flags for a system.
 ///
-/// In the original, `FUN_0050b800` evaluates `field_0x88` bits and the galaxy
-/// notification hub (`FUN_0050e5b0`) fires incidents on state transitions.
-/// We compute flags each tick and let the advance loop detect transitions.
-///
-/// Flags:
-/// - uprising: system under uprising (`ControlKind::Uprising` only)
-/// - informant: system has negative troop surplus (garrison shortfall)
-/// - disaster: system has very low support (below 20%)
-/// - resource: facilities exceed system capacity (energy or raw material overcap)
-fn evaluate_incident_flags(
-    sys: &crate::world::System,
-    summary: &SystemSummary,
-    eco: &SystemEconomy,
-) -> IncidentFlags {
+/// Neither trigger has a recovered source (audit finding F-029): the original
+/// raises the informant incident from a per-system timer (event `0x38e`,
+/// `FUN_0050cbe0`) and the resource incident from a galaxy timer (event
+/// `0x390`, `FUN_00556be0`). The uprising and disaster incidents are raised by
+/// `UprisingSystem`, so their flags stay clear.
+fn evaluate_incident_flags(summary: &SystemSummary, eco: &SystemEconomy) -> IncidentFlags {
     IncidentFlags {
-        // Uprising incident: system is under uprising (field_0x88 bit 2).
-        // Original checks only the uprising control state, not troop deficit.
-        uprising: matches!(sys.control, ControlKind::Uprising(_)),
-        // Informant incident: garrison shortfall (mild deficit)
+        uprising: false,
         informant: summary.troop_surplus < 0,
-        // Disaster incident: very low popular support (below 20%)
-        disaster: {
-            let controlling_support = match sys.control {
-                ControlKind::Controlled(crate::dat::Faction::Alliance) => sys.popularity_alliance,
-                ControlKind::Controlled(crate::dat::Faction::Empire) => sys.popularity_empire,
-                _ => 0.5,
-            };
-            controlling_support < 0.20
-        },
-        // Resource incident: facilities exceed system capacity (overcap).
-        // Original checks field_0x88 bit 19 which maps to resource overcap state.
+        disaster: false,
         resource: eco.energy_overcapped || eco.raw_material_overcapped,
     }
 }
@@ -1051,50 +1055,60 @@ fn calculate_collection_rate(support: f32, gnprtb: &GnprtbParams, difficulty: u8
 fn calculate_garrison_requirement(
     support: f32,
     control: ControlKind,
+    strong_support: bool,
+    in_uprising: bool,
     gnprtb: &GnprtbParams,
     difficulty: u8,
 ) -> u32 {
-    // Integer arithmetic matching FUN_0055a050 (uprising threshold) + FUN_00559fe0 (garrison requirement).
+    // FUN_0050b5a0 stores FUN_00559fe0(side, support, +0x88 bit 11,
+    // +0x88 bit 2, 1) for an Alliance- or Empire-held system and 0 otherwise.
+    let Some(side) = control.faction() else {
+        return 0;
+    };
     // Our support is f32 0.0-1.0; convert to integer 0-100.
     let support_int = (support * 100.0).round() as i32;
-    let threshold = gnprtb.value(GNPRTB_GARRISON_THRESHOLD, difficulty); // 60
-    let divisor = gnprtb
-        .value(GNPRTB_GARRISON_DIVISOR, difficulty)
-        .abs()
-        .max(1); // 10
+    garrison_requirement(
+        side,
+        support_int,
+        strong_support,
+        in_uprising,
+        gnprtb,
+        difficulty,
+    )
+    .max(0) as u32
+}
 
-    if support_int >= threshold {
+/// Troops a side must hold at a system (`FUN_00559fe0`): the uprising
+/// threshold, divided by GNPRTB 7680 for the Empire when support is strong
+/// (+0x88 bit 11), and multiplied by GNPRTB 7682 during an uprising.
+pub(crate) fn garrison_requirement(
+    side: crate::dat::Faction,
+    support: i32,
+    strong_support: bool,
+    in_uprising: bool,
+    gnprtb: &GnprtbParams,
+    difficulty: u8,
+) -> i32 {
+    let mut requirement = uprising_threshold(support, gnprtb, difficulty);
+    if strong_support && side == crate::dat::Faction::Empire {
+        requirement /= gnprtb.value(GNPRTB_EMPIRE_TROOP_MULT, difficulty).max(1);
+    }
+    if in_uprising {
+        requirement *= gnprtb.value(GNPRTB_UPRISING_GARRISON_MULT, difficulty);
+    }
+    requirement
+}
+
+/// `FUN_0055a050`: `ceil((GNPRTB 7761 - support) / -GNPRTB 7762)` below the
+/// GNPRTB 7761 threshold (60 and -10 shipped), else 0. `FUN_0053e160(a, b)`
+/// is `(b - 1 + a) / b`.
+pub(crate) fn uprising_threshold(support: i32, gnprtb: &GnprtbParams, difficulty: u8) -> i32 {
+    let threshold = gnprtb.value(GNPRTB_GARRISON_THRESHOLD, difficulty);
+    if support >= threshold {
         return 0;
     }
-
-    // Integer ceil division: ceil(dividend / divisor) = (divisor - 1 + dividend) / divisor
-    let dividend = threshold - support_int;
-    let raw = (divisor - 1 + dividend) / divisor;
-
-    // Empire halving via GNPRTB[7680] (=2, used as divisor).
-    // Original: if Empire + param_3: garrison /= GNPRTB[7680]
-    let after_faction = match control {
-        ControlKind::Controlled(crate::dat::Faction::Empire) => {
-            let empire_divisor = gnprtb.value(GNPRTB_EMPIRE_TROOP_MULT, difficulty).max(1);
-            raw / empire_divisor
-        }
-        _ => raw,
-    };
-
-    // Uprising doubler via GNPRTB[7682] (=2).
-    // Original: if system under uprising (field_0x88 bit 2): garrison *= GNPRTB[7682]
-    // Our ControlKind::Uprising(faction) maps directly to this bit.
-    let after_uprising = match control {
-        ControlKind::Uprising(_) => {
-            let uprising_mult = gnprtb
-                .value(GNPRTB_UPRISING_GARRISON_MULT, difficulty)
-                .max(1);
-            after_faction * uprising_mult
-        }
-        _ => after_faction,
-    };
-
-    after_uprising.max(0) as u32
+    let divisor = (-gnprtb.value(GNPRTB_GARRISON_DIVISOR, difficulty)).max(1);
+    (divisor - 1 + threshold - support) / divisor
 }
 
 // ---------------------------------------------------------------------------
@@ -1539,26 +1553,86 @@ mod tests {
     fn garrison_requirement_above_threshold_is_zero() {
         let gnprtb = stock_gnprtb();
         let control = ControlKind::Controlled(crate::dat::Faction::Alliance);
-        let req = calculate_garrison_requirement(0.7, control, &gnprtb, 2);
+        let req = calculate_garrison_requirement(0.7, control, false, false, &gnprtb, 2);
         assert_eq!(req, 0, "above threshold should need 0 garrison");
     }
 
     #[test]
-    fn garrison_requirement_empire_halved() {
+    fn empire_garrison_is_halved_only_when_support_is_strong() {
+        // FUN_00559fe0 divides by GNPRTB 7680 only when param_3 (system
+        // +0x88 bit 11) is set and the side is 2.
         let gnprtb = stock_gnprtb();
         let alliance = ControlKind::Controlled(crate::dat::Faction::Alliance);
         let empire = ControlKind::Controlled(crate::dat::Faction::Empire);
-        let req_alliance = calculate_garrison_requirement(0.3, alliance, &gnprtb, 2);
-        let req_empire = calculate_garrison_requirement(0.3, empire, &gnprtb, 2);
-        assert!(
-            req_empire < req_alliance,
-            "empire garrison should be less: empire={req_empire} vs alliance={req_alliance}"
+        let req = |control, strong| {
+            calculate_garrison_requirement(0.3, control, strong, false, &gnprtb, 2)
+        };
+        assert_eq!(req(alliance, false), 3);
+        assert_eq!(req(alliance, true), 3);
+        assert_eq!(req(empire, false), 3);
+        assert_eq!(req(empire, true), 1);
+        // Support 0: ceil(60 / 10) = 6, halved to 3.
+        assert_eq!(
+            calculate_garrison_requirement(0.0, empire, true, false, &gnprtb, 2),
+            3
         );
     }
 
     #[test]
+    fn a_revolt_is_visible_only_while_a_populated_held_system_keeps_its_garrison() {
+        // FUN_0050bb00 sets system +0x88 bit 9 when the system is populated,
+        // held by side 1 or 2, in revolt (bit 2), and its troop surplus
+        // (+0x7c) is not negative.
+        let alliance = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let visible = |support: f32, control, populated: bool, in_revolt: bool| {
+            let (world, sys) = make_singleton_world(support, 1.0 - support, control, populated);
+            let mut uprisings = crate::uprising::UprisingState::default();
+            if in_revolt {
+                uprisings.active_uprisings.insert(
+                    sys,
+                    crate::uprising::ActiveUprising {
+                        started_tick: 0,
+                        next_incident_tick: None,
+                    },
+                );
+            }
+            let mut state = EconomyState::default();
+            EconomySystem::advance_with_uprisings(
+                &mut state,
+                &world,
+                &[TickEvent { tick: 1 }],
+                2,
+                &uprisings,
+            );
+            state
+                .per_system
+                .get(&sys)
+                .is_some_and(|e| e.uprising_visible)
+        };
+        // Support 90 needs no garrison, so the surplus is 0.
+        assert!(visible(0.9, alliance, true, true));
+        assert!(!visible(0.9, alliance, true, false));
+        assert!(!visible(0.9, alliance, false, true));
+        assert!(!visible(0.9, ControlKind::Uncontrolled, true, true));
+        // Support 30 in revolt needs 3 * 2 regiments and has none.
+        assert!(!visible(0.3, alliance, true, true));
+    }
+
+    #[test]
+    fn a_system_no_side_holds_needs_no_garrison() {
+        // FUN_0050b5a0 stores 0 unless the side is 1 or 2.
+        let gnprtb = stock_gnprtb();
+        for control in [ControlKind::Uncontrolled, ControlKind::Contested] {
+            assert_eq!(
+                calculate_garrison_requirement(0.1, control, false, true, &gnprtb, 2),
+                0
+            );
+        }
+    }
+
+    #[test]
     fn economy_advance_no_ticks_no_events() {
-        // The same world emits a NaturalDisaster on its first tick.
+        // The same world emits a SupportChanged on its first tick.
         let (world, _sys) = make_singleton_world(
             0.10,
             0.90,
@@ -2517,20 +2591,14 @@ mod tests {
     #[test]
     fn garrison_uprising_doubling() {
         let gnprtb = stock_gnprtb();
-        // Controlled system: garrison = ceil((60 - 30) / 10) = 3
-        let garrison_controlled = calculate_garrison_requirement(
-            0.30,
-            ControlKind::Controlled(crate::dat::Faction::Alliance),
-            &gnprtb,
-            2,
-        );
-        // Uprising system: garrison = 3 * GNPRTB[7682](2) = 6
-        let garrison_uprising = calculate_garrison_requirement(
-            0.30,
-            ControlKind::Uprising(crate::dat::Faction::Alliance),
-            &gnprtb,
-            2,
-        );
+        // FUN_0050b5a0 passes system +0x88 bit 2 to FUN_00559fe0, which
+        // multiplies by GNPRTB 7682. Controlled: ceil((60 - 30) / 10) = 3.
+        let alliance = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let garrison_controlled =
+            calculate_garrison_requirement(0.30, alliance, false, false, &gnprtb, 2);
+        // In revolt: 3 * GNPRTB[7682](2) = 6
+        let garrison_uprising =
+            calculate_garrison_requirement(0.30, alliance, false, true, &gnprtb, 2);
         assert_eq!(garrison_controlled, 3, "controlled garrison");
         assert_eq!(
             garrison_uprising,
@@ -2671,10 +2739,11 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // Knesset Shamash-Bet Dabora 2 #K7: parameterized notification
-    // idempotency test. Single test covers all 4 state-transition events
-    // (K1 SupportChanged, K2 NaturalDisaster, K3 ResourceDiscovered,
-    // K4 MaintenanceShortfall) — each must fire exactly ONCE per
-    // transition, not once per tick.
+    // idempotency tests for the state-transition events (K1
+    // SupportChanged, K3 ResourceDiscovered, K4 MaintenanceShortfall) —
+    // each must fire exactly ONCE per transition, not once per tick. K2's
+    // support-based disaster was removed: the disaster is a galaxy timer
+    // event (FUN_00556b50) that UprisingSystem raises.
     //
     // Per SIMP-L1 the plan explicitly merges six would-be idempotency
     // tests into this one parameterized fixture.
@@ -2754,38 +2823,6 @@ mod tests {
             .filter(|e| matches!(e, EconomyEvent::SupportChanged { .. }))
             .count();
         assert_eq!(count2, 0, "K1: unchanged-tier second tick must not re-fire");
-    }
-
-    #[test]
-    fn k2_natural_disaster_fires_only_on_flag_transition() {
-        // Support at 0.10 → disaster flag true. First tick: transition
-        // from false (default) → emit once. Second tick: no re-fire.
-        let (world, _sys) = make_singleton_world(
-            0.10,
-            0.90,
-            ControlKind::Controlled(crate::dat::Faction::Alliance),
-            true,
-        );
-        let mut state = EconomyState::default();
-        let events1 = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
-        let count1 = events1
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::NaturalDisaster { .. }))
-            .count();
-        assert_eq!(
-            count1, 1,
-            "K2: first tick should emit exactly one NaturalDisaster"
-        );
-
-        let events2 = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 2 }], 2);
-        let count2 = events2
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::NaturalDisaster { .. }))
-            .count();
-        assert_eq!(
-            count2, 0,
-            "K2: clear-before-emit ordering must prevent re-fire"
-        );
     }
 
     #[test]

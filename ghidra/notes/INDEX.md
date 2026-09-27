@@ -50,7 +50,8 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | [ground-combat.md](ground-combat.md) | Ground combat — troop iteration + per-unit resolution | FUN_00560d50, FUN_004ee350, FUN_005617b0 |
 | [bombardment.md](bombardment.md) | Orbital bombardment — Euclidean distance formula | FUN_00556430, FUN_0055d8c0, FUN_0055d860 |
 | [blockade-troop-withdrawal.md](blockade-troop-withdrawal.md) | Regiments lost running a blockade: withdraw percent, per-regiment copy, departure roll, event 0x340 | FUN_0050b310, FUN_0055a020, FUN_00504990, FUN_00504a00, FUN_00508660 |
-| [uprising-incident.md](uprising-incident.md) | Table ids to DAT files; uprising incident outcome codes from UPRIS1TB/UPRIS2TB; mission, decoy, foil, escape table consumers | FUN_0058b420, FUN_0053e240, FUN_00559ce0, FUN_0050d030, FUN_0050d150 |
+| [uprising-incident.md](uprising-incident.md) | Table ids to DAT files; system incident bits; uprising lifecycle, incident score and outcome codes; Subdue support gain; disaster erosion; mission, decoy, foil, escape table consumers | FUN_0058b420, FUN_0050b800, FUN_0050c910, FUN_00559ce0, FUN_0050d030, FUN_0050d150, FUN_0055cb10, FUN_00511930, FUN_00559e10 |
+| [decoy-roll.md](decoy-roll.md) | TDECOYTB/FDECOYTB roll: effective espionage inputs, GNPRTB 3588 counterpart penalty, open caller | FUN_0055e410, FUN_00588b90, FUN_004eecf0, FUN_00509330 |
 | [community-address-remap.md](community-address-remap.md) | The community disassembly is a different REBEXE build; region shifts and 43 remapped functions | FUN_00508250, FUN_0050b310, FUN_00559fe0, FUN_0055e410 |
 
 ## Decompiled Functions (5,408 files)

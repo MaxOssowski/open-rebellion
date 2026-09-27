@@ -2105,6 +2105,7 @@ mod tests {
 
     #[test]
     fn cockpit_background_blue_screen_becomes_transparent() {
+        // Source: STRATEGY.DLL command-center shell palette-blue matte.
         let mut image = image::RgbaImage::new(2, 1);
         image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
         image.put_pixel(1, 0, image::Rgba([80, 90, 100, 255]));
@@ -2129,6 +2130,7 @@ mod tests {
 
     #[test]
     fn tactical_control_matte_is_transparent_but_panel_blue_is_opaque() {
+        // Source: TACTICAL.DLL control overlays 1026-1061 vs. panel bitmaps.
         let mut image = image::RgbaImage::new(1, 1);
         image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
         let mut encoded = Vec::new();
@@ -2147,6 +2149,7 @@ mod tests {
 
     #[test]
     fn tactical_selected_ship_lime_matte_is_transparent() {
+        // Source: TACTICAL.DLL selected-ship portraits 2001-2029 lime compositing matte.
         let mut image = image::RgbaImage::new(2, 1);
         image.put_pixel(0, 0, image::Rgba([0, 255, 0, 255]));
         image.put_pixel(1, 0, image::Rgba([90, 100, 110, 255]));
@@ -2167,6 +2170,7 @@ mod tests {
 
     #[test]
     fn galaxy_starfield_preserves_deep_blue_pixels() {
+        // Source: STRATEGY.DLL galaxy starfield resources exempt from blue-screen keying.
         let mut image = image::RgbaImage::new(1, 1);
         image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
 
@@ -2189,6 +2193,7 @@ mod tests {
 
     #[test]
     fn gid_marker_blue_screen_becomes_transparent() {
+        // Source: STRATEGY.DLL GID marker resources with palette-blue matte.
         let mut image = image::RgbaImage::new(2, 1);
         image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
         image.put_pixel(1, 0, image::Rgba([225, 20, 20, 255]));
@@ -2213,6 +2218,7 @@ mod tests {
 
     #[test]
     fn gokres_miniature_blue_screen_becomes_transparent() {
+        // Source: GOKRES.DLL mini-icon resources 16000-19999 with palette-blue matte.
         let mut image = image::RgbaImage::new(3, 1);
         image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
         image.put_pixel(1, 0, image::Rgba([20, 20, 220, 255]));
@@ -2244,6 +2250,7 @@ mod tests {
 
     #[test]
     fn sector_planet_blue_screen_becomes_transparent() {
+        // Source: STRATEGY.DLL sector planet resources 10212-10239 with palette-blue matte.
         let mut image = image::RgbaImage::new(2, 1);
         image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
         image.put_pixel(1, 0, image::Rgba([120, 140, 180, 255]));

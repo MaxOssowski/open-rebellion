@@ -12341,6 +12341,7 @@ mod tests {
         assert!(!result_session.fighters[1].alive);
     }
 
+    // Source: FUN_005d3e90 effect dispatcher; FUN_005a7500 hit ordering.
     #[test]
     fn original_effect_dispatch_preserves_resources_sizes_and_priority_groups() {
         let cases = [
@@ -12438,6 +12439,7 @@ mod tests {
         );
     }
 
+    // Source: _DAT_0066d154 / FUN_005d3cc0 effect frame timing 0.1s.
     #[test]
     fn original_effect_frames_advance_at_ten_hertz_and_expire_exactly() {
         let mut session = test_session(Vec::new(), Vec::new(), true);
@@ -12455,6 +12457,7 @@ mod tests {
         assert!(session.impact_effects.is_empty());
     }
 
+    // Source: FUN_005d3de0 / FUN_005b1ea0 / FUN_005b1f60 projectile profiles.
     #[test]
     fn original_projectile_profiles_preserve_thresholds_shapes_scales_colors_and_durations() {
         let cases = [
@@ -12522,6 +12525,7 @@ mod tests {
         }
     }
 
+    // Source: FUN_005ee590 / LAB_005eeb90 projectile interpolation.
     #[test]
     fn retained_projectile_interpolates_and_expires_by_source_duration() {
         let ships = vec![test_ship(64, 0, true, true), test_ship(128, 0, false, true)];
@@ -12543,6 +12547,7 @@ mod tests {
         assert!(session.weapon_effects.is_empty());
     }
 
+    // Source: FUN_005b24d0 through FUN_005b2550 field effects.
     #[test]
     fn gravity_field_preempts_tractor_then_restores_it_at_ten_hertz() {
         let mut session = test_session(Vec::new(), Vec::new(), true);
@@ -12597,6 +12602,7 @@ mod tests {
         assert!(session.field_effects.is_empty());
     }
 
+    // Source: FUN_005b24d0 through FUN_005b2550 field source limits.
     #[test]
     fn exact_field_sources_enforce_one_tractor_and_four_gravity_targets() {
         let ships = (0..6)
@@ -12629,6 +12635,7 @@ mod tests {
         assert_eq!(target_two.resource_id(), Some(3520));
     }
 
+    // Source: FUN_005e45f0 / FUN_005e7540 subsystem condition indicators.
     #[test]
     fn subsystem_condition_uses_exact_five_source_bands() {
         let condition = TacticalSubsystemCondition {
@@ -12645,6 +12652,7 @@ mod tests {
         assert_eq!(original_tactical_condition_band(100), 4);
     }
 
+    // Source: FUN_005b0e50 / FUN_005b3f10 subsystem condition from damage.
     #[test]
     fn subsystem_condition_follows_hull_hits_and_hyperdrive_capacity() {
         let condition = TacticalSubsystemCondition::from_source_state(
@@ -12683,6 +12691,7 @@ mod tests {
         assert_eq!(unavailable.percentages(), [0; 5]);
     }
 
+    // Source: FUN_005b1490 repair kind selection in hit order.
     #[test]
     fn subsystem_repair_selection_preserves_source_hit_order() {
         let damage = TacticalSubsystemDamage {
@@ -12712,6 +12721,7 @@ mod tests {
         assert_eq!(original_subsystem_repair_kind(damage, 8), None);
     }
 
+    // Source: FUN_005b1490 repair chance; FUN_005b0330 repair interval.
     #[test]
     fn subsystem_repair_uses_inclusive_damage_control_chance() {
         let mut ship = test_ship(64, 0, true, true);
@@ -12730,6 +12740,7 @@ mod tests {
         assert_eq!(ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TICKS, 50 * 4);
     }
 
+    // Source: FUN_005b05c0 sublight conversion; FUN_005ad750 engine mode.
     #[test]
     fn engine_condition_uses_damage_mode_and_active_tractor_power_not_hull() {
         let mut target = test_ship(64, 0, true, true);
@@ -12765,6 +12776,7 @@ mod tests {
         assert_eq!(session.ships[0].subsystem_condition.engines, 78);
     }
 
+    // Source: FUN_005ad750 / FUN_005afb70 engine mode bonus clamp.
     #[test]
     fn maneuver_state_produces_the_source_clamped_one_through_nine_bonus() {
         assert_eq!(original_engine_mode_bonus(None), 1.0);
@@ -12775,6 +12787,7 @@ mod tests {
         assert_eq!(original_engine_mode_bonus(Some(-1.0)), 9.0);
     }
 
+    // Source: FUN_005cd460 turn; FUN_005b2f30 movement and collision.
     #[test]
     fn movement_uses_effective_power_alignment_and_millisecond_integration() {
         let mut alliance = test_ship(64, 0, true, true);
@@ -12818,6 +12831,7 @@ mod tests {
         assert_eq!(session.ships[0].source_position.y, 19.6875);
     }
 
+    // Source: FUN_005b2e60 collision volume overlap test.
     #[test]
     fn collision_predicate_preserves_strict_source_boundaries() {
         let envelope = OriginalTacticalCollisionEnvelope {
@@ -12840,6 +12854,7 @@ mod tests {
         assert!(!original_tactical_objects_overlap(&first, &second));
     }
 
+    // Source: FUN_005b2f30 / FUN_005b2e60 collision position restore.
     #[test]
     fn movement_restores_previous_position_when_mesh_envelopes_overlap() {
         let envelope = OriginalTacticalCollisionEnvelope {
@@ -12862,6 +12877,7 @@ mod tests {
         assert_eq!(session.ships[0].source_velocity.z, 5.0);
     }
 
+    // Source: FUN_005ba270 maneuverability; FUN_005cd460 turn rate.
     #[test]
     fn current_to_desired_turn_uses_source_rates_and_normalization() {
         let close = |left: f32, right: f32| assert!((left - right).abs() < 0.000_01);
@@ -12896,6 +12912,7 @@ mod tests {
         assert_eq!(ship.source_forward, ship.source_desired_forward);
     }
 
+    // Source: FUN_005a8f70 waypoint arrival; FUN_005cf980 recovery states.
     #[test]
     fn waypoint_arrival_and_fighter_docking_complete_source_executors() {
         let mut carrier = test_ship(64, 0, true, true);
@@ -12954,6 +12971,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005cf980 / FUN_005cf940 fighter recovery state.
     #[test]
     fn fighter_recovery_warns_each_player_group_once_when_carriers_are_full() {
         let mut carrier = test_ship(64, 0, true, true);
@@ -12985,6 +13003,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005cf980 fighter recovery completion.
     #[test]
     fn fighter_recovery_completion_waits_for_the_last_live_group_member() {
         let carrier = test_ship(64, 0, true, true);
@@ -13017,6 +13036,7 @@ mod tests {
         );
     }
 
+    // Source: _DAT_0066d07c / _DAT_0066d094 / _DAT_0066d098 maneuver params.
     #[test]
     fn maneuver_waypoints_preserve_source_rotations_and_scale() {
         let current = TacticalWorldPosition {
@@ -13053,6 +13073,7 @@ mod tests {
         close(anvil.z, 3.0 + (cos * 12.0 - sin * 4.0) * 0.75);
     }
 
+    // Source: FUN_005a8f70 waypoint; FUN_005cf980 recovery executor.
     #[test]
     fn committed_maneuver_hold_and_recover_enter_original_executors() {
         let mut player = test_ship(64, 0, true, true);
@@ -13112,6 +13133,7 @@ mod tests {
         assert_eq!(session.fighters[0].recovery_target, Some(0));
     }
 
+    // Source: FUN_005d0bb0 / FUN_005a8fc0 attack target acquisition.
     #[test]
     fn attack_orders_acquire_first_eligible_typed_target_for_both_unit_classes() {
         let mut player_ship = test_ship(64, 0, true, true);
@@ -13163,6 +13185,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005d0bb0 attack target replacement.
     #[test]
     fn attack_executor_preserves_live_engagement_and_replaces_invalid_target() {
         let mut player = test_ship(64, 0, true, true);
@@ -13187,6 +13210,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005d0bb0 / FUN_005a8fc0 target lifecycle.
     #[test]
     fn attack_target_lifecycle_reacquires_same_class_and_clears_exhausted_lists() {
         let mut player_ship = test_ship(64, 0, true, true);
@@ -13232,6 +13256,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005cf980 recovery state reset.
     #[test]
     fn recovered_fighter_clears_attack_fighters_without_capital_fire_or_audio() {
         fn session_with_source_order(order: TacticalOrder) -> BattleSession {
@@ -13296,6 +13321,7 @@ mod tests {
         assert!(!autonomous.pending_audio_cues.is_empty());
     }
 
+    // Source: FUN_005d0bb0 / FUN_005a8fc0 explicit attack targeting.
     #[test]
     fn explicit_attack_order_never_redirects_an_invalid_target() {
         let mut source = test_ship(64, 0, true, true);
@@ -13329,6 +13355,7 @@ mod tests {
         assert!(audio_cues.is_empty());
     }
 
+    // Source: FUN_005b5100 / FUN_005b5b60 / FUN_005b5f50 hull damage selection.
     #[test]
     fn hull_subsystem_selection_preserves_every_source_boundary() {
         assert_eq!(original_hull_subsystem_kind(50.0), None);
@@ -13359,6 +13386,7 @@ mod tests {
         assert_eq!(original_hull_subsystem_kind(100.001), None);
     }
 
+    // Source: FUN_005b54d0 shield damage probability.
     #[test]
     fn shield_damage_uses_inclusive_source_probability() {
         let mut ship = test_ship(64, 0, true, true);
@@ -13398,6 +13426,7 @@ mod tests {
         assert_eq!(ships[0].subsystem_condition.shields, 100);
     }
 
+    // Source: FUN_005b5100 / FUN_005b5b60 / FUN_005b5f50 hull damage subsystems.
     #[test]
     fn hull_damage_mutates_each_source_subsystem_category() {
         let cases = [
@@ -13466,6 +13495,7 @@ mod tests {
         }
     }
 
+    // Source: FUN_005b5100 hull damage subsystem destruction path.
     #[test]
     fn destroyed_tractor_subsystem_clears_its_live_field_source() {
         let mut source = test_ship(64, 0, true, true);
@@ -13500,6 +13530,7 @@ mod tests {
         assert!(fields.is_empty());
     }
 
+    // Source: FUN_005b6530 weapon arc classifier.
     #[test]
     fn weapon_arc_classifier_preserves_source_order_and_boundaries() {
         let source = test_ship(64, 0, true, true);
@@ -13542,6 +13573,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005b3a40 / FUN_005b3f10 / FUN_005b6530 weapon fire.
     #[test]
     fn direct_weapon_callback_fires_every_family_and_queues_the_arc_once() {
         let mut source = test_ship(64, 0, true, true);
@@ -13610,6 +13642,7 @@ mod tests {
         }));
     }
 
+    // Source: FUN_005b3a40 / FUN_005b3f10 automatic weapon fire.
     #[test]
     fn automatic_weapon_callback_keeps_first_arc_on_ties_and_fires_each_ready_arc() {
         let mut source = test_ship(64, 0, true, true);
@@ -13657,6 +13690,7 @@ mod tests {
         assert_eq!(audio_cues.len(), 4);
     }
 
+    // Source: FUN_005d2360 weapon strength coefficient.
     #[test]
     fn weapon_candidates_enforce_range_and_apply_hull_scaling_only_to_auto_fire() {
         let mut source = test_ship(64, 0, true, true);
@@ -13683,6 +13717,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005b64e0 / FUN_005b6320 weapon recharge FIFO.
     #[test]
     fn weapon_recharge_is_fifo_and_preserves_leftover_energy() {
         let mut ship = test_ship(64, 0, true, true);
@@ -13709,6 +13744,7 @@ mod tests {
         assert_eq!(ship.weapon_recharge_queue, vec![1]);
     }
 
+    // Source: FUN_005b05c0 weapon recharge scale 3.75.
     #[test]
     fn shield_recharge_retains_fractional_source_energy_and_damage_penalties() {
         let mut ship = test_ship(64, 0, true, true);
@@ -13730,6 +13766,7 @@ mod tests {
         assert!((ship.shield_recharge_carry - 0.25).abs() < f32::EPSILON);
     }
 
+    // Source: FUN_005b3f10 subsystem condition affecting weapon arcs.
     #[test]
     fn destroyed_weapon_subsystem_disables_and_repair_recharges_live_arcs() {
         let mut ship = test_ship(64, 0, true, true);
@@ -13752,6 +13789,7 @@ mod tests {
         assert!(ship.weapon_recharge_queue.is_empty());
     }
 
+    // Source: FUN_005b3a40 / FUN_005b3f10 / FUN_005b54d0 fire and damage.
     #[test]
     fn live_ship_fire_uses_the_shared_subsystem_damage_path() {
         let mut source = test_ship(64, 0, true, true);
@@ -13791,6 +13829,7 @@ mod tests {
         assert_eq!(audio_cues.len(), 2);
     }
 
+    // Source: FUN_005a7500 / FUN_005bae60 audio event bank.
     #[test]
     fn tactical_audio_event_bank_covers_every_recovered_wave_once() {
         let events = [
@@ -14082,6 +14121,7 @@ mod tests {
         assert_eq!(voice_resources.len(), 285);
     }
 
+    // Source: FUN_005d3ac0 field slot sequence.
     #[test]
     fn original_slot_sequence_matches_executable_branch_order() {
         let actual: Vec<_> = OriginalTacticalSlots::default().take(9).collect();
@@ -14092,6 +14132,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005ab650 / FUN_005a9030 world positions from layout.
     #[test]
     fn production_participants_retain_dat_identity_and_source_world_positions() {
         let mut ships = vec![
@@ -14169,6 +14210,7 @@ mod tests {
         assert_eq!(ships[1].identity.fleet_roster_index, 2);
     }
 
+    // Source: FUN_005ae460 fighter group assignment.
     #[test]
     fn fighter_groups_follow_source_ordinals_for_both_factions() {
         let mut fighters = [
@@ -14192,6 +14234,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005c81d0 task force leader selection and slots.
     #[test]
     fn task_force_leaders_follow_weapon_categories_square_root_counts_and_source_slots() {
         let mut ships = (0..9)
@@ -14217,6 +14260,7 @@ mod tests {
         assert_eq!(ships[8].source_position.y, -16.0);
     }
 
+    // Source: FUN_005c81d0 sorts by -(sublight + 10000 * range).
     #[test]
     fn task_force_capability_order_prioritizes_range_then_available_sublight() {
         let mut ships = (0..4)
@@ -14244,6 +14288,7 @@ mod tests {
         assert_eq!(ships[0].source_position.x, 0.0);
     }
 
+    // Source: FUN_005ea250 / FUN_005ec400 formation footprint and slots.
     #[test]
     fn task_force_followers_use_largest_footprint_and_alternating_slots() {
         let mut ships = (0..3)
@@ -14273,6 +14318,7 @@ mod tests {
         assert!(ships.iter().all(|ship| ship.source_position.y == 0.0));
     }
 
+    // Source: FUN_005ea250 / FUN_005ec400 / FUN_005cbbc0 formation geometry.
     #[test]
     fn task_force_followers_rotate_and_move_with_the_retained_anchor() {
         let mut ships = (0..2)
@@ -14308,6 +14354,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005ae460 fighter group split threshold.
     #[test]
     fn empty_fighter_group_splits_first_half_only_above_seven_members() {
         let mut ten = (0..10)
@@ -14333,6 +14380,7 @@ mod tests {
         assert!(seven.iter().all(|fighter| fighter.fighter_group == 0));
     }
 
+    // Source: FUN_005b05c0 / FUN_005b9c60 sublight conversion for fighters.
     #[test]
     fn fighter_roster_expands_each_strategic_squadron_with_exact_dat_stats() {
         let mut world = GameWorld::default();
@@ -14379,6 +14427,7 @@ mod tests {
         assert_eq!(fighters[0].torpedo_range, 7.0);
     }
 
+    // Source: FUN_005b9c00 / FUN_005b9c30 fighter hull scaling.
     #[test]
     fn fighter_hull_drives_weapon_shield_recharge_and_live_craft_count() {
         let mut fighter = test_fighter(1, true);
@@ -14405,6 +14454,7 @@ mod tests {
         assert!(!fighter.alive);
     }
 
+    // Source: FUN_005d2490 / FUN_005d24e0 fighter damage modifiers.
     #[test]
     fn fighter_damage_uses_float_shields_hull_and_maneuver_ratio() {
         let mut target = test_fighter(5, false);
@@ -14429,6 +14479,7 @@ mod tests {
         assert_eq!(fighters[0].squad_count, 12);
     }
 
+    // Source: FUN_005b23e0 through FUN_005b25d0 fighter battery sources.
     #[test]
     fn fighter_fore_battery_fires_source_families_and_torpedoes_at_capitals() {
         let mut fighter = test_fighter(2, true);
@@ -14481,6 +14532,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005d2490 / FUN_005d24e0 fighter-vs-fighter modifiers.
     #[test]
     fn dogfight_ignores_ion_and_applies_target_maneuverability() {
         let mut source = test_fighter(2, true);
@@ -14510,6 +14562,7 @@ mod tests {
         assert_eq!(session.weapon_effects[0].target, usize::MAX);
     }
 
+    // Source: FUN_005d0bb0 / FUN_005a8fc0 typed attack target.
     #[test]
     fn capital_attack_fighters_uses_typed_target_without_capital_fallback() {
         let mut source = test_ship(64, 0, true, true);
@@ -14558,6 +14611,7 @@ mod tests {
         assert!((logical_y - 317.0).abs() < 0.001);
     }
 
+    // Source: FUN_005f0f40 control rect boundaries.
     #[test]
     fn original_tactical_control_rects_stop_at_bitmap_edges() {
         assert_eq!(
@@ -14607,6 +14661,7 @@ mod tests {
         assert_eq!(tactical_hud_rect_control_at(628.0, 442.0), None);
     }
 
+    // Source: FUN_005f0f40 / FUN_005f1050 bitmap hit masks.
     #[test]
     #[ignore = "requires extracted original bitmaps in data/base/ui"]
     fn original_tactical_controls_use_source_bitmap_hit_masks() {
@@ -14726,6 +14781,8 @@ mod tests {
         );
     }
 
+    // Source: FUN_005f0c20 builds TACTICAL 1310, FUN_005f0f40 places confirm and
+    // cancel, and FUN_005f1170 dispatches the withdrawal on confirm (P58-B13).
     #[test]
     fn withdrawal_requires_native_confirmation_before_dispatch() {
         let mut state = TacticalState {
@@ -14810,6 +14867,7 @@ mod tests {
         );
     }
 
+    // Source: REBDLG.DLL resource IDs 10710-10973 battle alert frames.
     #[test]
     fn battle_alert_skins_match_recovered_faction_resources_and_geometry() {
         let alliance = battle_alert_skin(true);
@@ -14849,6 +14907,7 @@ mod tests {
         );
     }
 
+    // Source: manual pages 143 and 148, task-force and fighter-group selection (P58E).
     #[test]
     fn task_force_and_fighter_group_selection_are_mutually_exclusive() {
         let mut ships = (0..8)
@@ -14890,6 +14949,7 @@ mod tests {
         assert!(session.fighters.iter().all(|fighter| !fighter.selected));
     }
 
+    // Source: manual pages 143 and 148, the Ctrl task-force assignment rule (P58E).
     #[test]
     fn task_force_assignment_accepts_only_an_existing_or_next_blank_slot() {
         let mut ships = vec![
@@ -14940,6 +15000,8 @@ mod tests {
         assert!(session.fighters.iter().all(|fighter| !fighter.selected));
     }
 
+    // Source: FUN_005cf190 / FUN_005cf8f0 complete a reached waypoint and clear its
+    // movement intent (P58F11).
     #[test]
     fn ordered_navigation_route_advances_without_losing_the_next_waypoint() {
         let first = TacticalWorldPosition {
@@ -14969,6 +15031,7 @@ mod tests {
         assert!(session.ships[0].navigation_route.is_empty());
     }
 
+    // Source: FUN_005d0b10 / FUN_005d0bb0 manual target list.
     #[test]
     fn ordered_manual_targets_advance_and_clear_as_hostiles_are_destroyed() {
         let mut player = test_ship(64, 0, true, true);
@@ -15109,6 +15172,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005a24d0 focus target constraint.
     #[test]
     fn one_task_force_assigns_focus_target_without_rejection_voice() {
         let mut first = test_ship(64, 0, true, true);
@@ -15136,6 +15200,7 @@ mod tests {
         assert!(session.take_pending_voice_cues().is_empty());
     }
 
+    // Source: FUN_005a24d0 focus target toggle.
     #[test]
     fn appending_an_existing_focus_target_toggles_it_off() {
         let mut friendly = test_ship(64, 0, true, true);
@@ -15202,6 +15267,8 @@ mod tests {
         assert_eq!(TacticalTactic::StandOff.source_code(), 2);
     }
 
+    // Source: FUN_005ca6d0 dispatches Escort as order code 1; FUN_005d0af0,
+    // FUN_005cf910 and FUN_005cf920 install, retain and clear its target (P58-B14).
     #[test]
     fn direct_escort_retains_friendly_target_and_clears_when_it_is_destroyed() {
         let mut escort = test_ship(64, 0, true, true);
@@ -15224,6 +15291,7 @@ mod tests {
         assert_eq!(session.ships[0].source_waypoint, None);
     }
 
+    // Source: FUN_005ba7f0 Death Star laser charge rate to 100.
     #[test]
     fn death_star_operational_predicate_resources_and_laser_charge_match_source_fields() {
         let mut death_star = TacticalDeathStar {
@@ -15369,6 +15437,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005ba7f0 Death Star superlaser predicates.
     #[test]
     fn death_star_superlaser_requires_player_ownership_full_charge_and_enemy_target() {
         let target = test_ship(64, 0, true, true);
@@ -15392,6 +15461,7 @@ mod tests {
         assert!(!session.commit_death_star_shot(0));
     }
 
+    // Source: FUN_005ba7f0 Death Star superlaser resolution timing.
     #[test]
     fn death_star_superlaser_resolves_after_the_source_long_projectile_duration() {
         let mut target = test_ship(64, 0, true, true);
@@ -15430,6 +15500,7 @@ mod tests {
         assert_eq!(session.impact_effects.len(), 1);
     }
 
+    // Source: FUN_005d0bb0 attack Death Star target routing.
     #[test]
     fn attack_death_star_order_routes_selected_fighter_fire_to_manager_object() {
         let mut fighter = test_fighter(3, true);
@@ -15481,6 +15552,7 @@ mod tests {
         );
     }
 
+    // Source: FUN_005bae60 Death Star attack failure voice event.
     #[test]
     fn losing_the_committed_death_star_attackers_routes_failure_once() {
         let mut fighter = test_fighter(3, true);
@@ -15707,6 +15779,8 @@ mod tests {
         );
     }
 
+    // Source: FUN_005dcc70's maneuver panel commits order +0x68 and tactic +0x38 on
+    // check and returns unchanged on cancel (P58F9).
     #[test]
     fn maneuver_confirm_commits_and_cancel_preserves_selected_capital_orders() {
         let mut ship = test_ship(64, 0, true, true);
@@ -15751,6 +15825,8 @@ mod tests {
         );
     }
 
+    // Source: FUN_005def00's mission panel enables Recover (order code 2) for a
+    // selected fighter group and commits it to every member (P58F9).
     #[test]
     fn mission_confirm_assigns_recover_to_the_whole_selected_fighter_group() {
         let mut fighters = vec![test_fighter(1, true), test_fighter(1, true)];

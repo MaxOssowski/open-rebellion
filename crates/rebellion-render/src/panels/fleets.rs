@@ -754,6 +754,7 @@ mod tests {
         reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
     )]
     fn maps_every_capital_ship_dat_record_to_its_gokres_miniature() {
+        // Source: GOKRES.DLL mini-icon blocks following CAPSHPSD.DAT record order.
         for (offset, &resource_id) in ALLIANCE_CAPITAL_SHIP_MINIS.iter().enumerate() {
             assert_eq!(
                 capital_ship_mini_id(DatId::new(0x1400_0040 + offset as u32)),
@@ -774,6 +775,7 @@ mod tests {
         reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
     )]
     fn maps_every_fighter_dat_record_to_its_gokres_miniature() {
+        // Source: GOKRES.DLL mini-icon blocks following FIGHTSD.DAT record order.
         for (offset, &resource_id) in ALLIANCE_FIGHTER_MINIS.iter().enumerate() {
             assert_eq!(
                 fighter_mini_id(DatId::new(0x1c00_0001 + offset as u32)),

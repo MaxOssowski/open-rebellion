@@ -1,9 +1,9 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v14, canonical fingerprints, campaign setup, continuation state, troop cargo, and historical migration"
+description: "Native and browser save v15, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, and historical migration"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-09-10
+updated: 2026-09-26
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 
@@ -11,13 +11,13 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v14.
+serializable snapshot. The current format is v15.
 
-## Native format (v14)
+## Native format (v15)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 13
+[version: u32 LE]             — SAVE_VERSION = 15
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
 [mod_count: u32 LE]           — v4+
@@ -74,7 +74,12 @@ under repair so `RepairCheckPerformed` remains a true episode-start event
 across save/load. Save v13 persists regiment cargo keyed by its carrying fleet.
 Save v14 stores the clock's original Game Speed (Paused, Very Slow, Slow,
 Medium, Fast), its partial day as a fraction of a day, and the pause stop day,
-so a game saved while paused reloads paused at its kept speed.
+so a game saved while paused reloads paused at its kept speed. Save v15
+persists blockade embarked-regiment tracking (F-021), so a regiment's orbit
+and withdraw percent survive save/load instead of resetting to 100. It also
+stores the recovered `UprisingState` (F-026): each revolt's start tick and next
+incident tick, and the galaxy disaster timer. The v14 shape (a loyalty
+snapshot per revolt plus incident cooldowns) lives on as `UprisingStateV14`.
 
 ## Deterministic fingerprints
 
@@ -90,7 +95,11 @@ interactive app/playtest and combat-path convergence remain open.
 
 ## Migration rules
 
-- v14 is read directly and its stored fingerprint must match.
+- v15 is read directly and its stored fingerprint must match.
+- v14 is decoded through the exact historical `SaveStateV14` body. Its stored
+  fingerprint is checked before migration, embarked-regiment tracking begins
+  empty, each revolt keeps its start tick and redraws its incident timer, the
+  disaster timer is redrawn, and the migrated fingerprint is unverified.
 - v13 is decoded through the exact historical `SaveStateV13` body, whose clock
   is `GameClockV13`. Its stored fingerprint is checked before migration. Normal
   becomes Medium, and Fast and Faster become Fast. The accumulator carries over
@@ -115,7 +124,7 @@ interactive app/playtest and combat-path convergence remain open.
 - v8 uses the same historical body without a stored fingerprint. It migrates
   with explicit defaults and is reported as unverified.
 - v3–v7 are recognized but rejected with an incompatibility explanation.
-- Versions newer than v14 and versions older than v3 fail closed.
+- Versions newer than v15 and versions older than v3 fail closed.
 
 Do not rely on `#[serde(default)]` to migrate bincode. Bincode is positional.
 Changing `SaveState` requires a version bump and an exact legacy body struct.
@@ -127,15 +136,15 @@ the real migration boundary.
 WASM stores base64 bincode and versioned JSON metadata in `localStorage`:
 
 ```text
-rebellion_save_v14_<slot>
-rebellion_meta_v14_<slot>
+rebellion_save_v15_<slot>
+rebellion_meta_v15_<slot>
 ```
 
 Metadata includes the full save name, game tick, and fingerprint with its
 `u64` value encoded as a decimal string so JavaScript cannot truncate it. The
-reader falls back through v13, v12, v11, v10, and v9 keys, validates any stored
-fingerprint, migrates the body, and writes new saves only under v14 keys.
-Delete removes all five generations.
+reader falls back through v14, v13, v12, v11, v10, and v9 keys, validates any stored
+fingerprint, migrates the body, and writes new saves only under v15 keys.
+Delete removes all seven generations.
 
 This path is functional but not the production persistence target: base64 and
 synchronous `localStorage` can block the main thread or hit quota limits. M3

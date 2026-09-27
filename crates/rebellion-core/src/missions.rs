@@ -360,6 +360,15 @@ pub enum MissionFaction {
     Empire,
 }
 
+impl From<MissionFaction> for crate::dat::Faction {
+    fn from(faction: MissionFaction) -> Self {
+        match faction {
+            MissionFaction::Alliance => Self::Alliance,
+            MissionFaction::Empire => Self::Empire,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ActiveMission
 // ---------------------------------------------------------------------------
@@ -641,8 +650,14 @@ pub enum MissionEffect {
         escaped_to_alliance: bool,
     },
 
-    /// An uprising was subdued — restore controlling faction's stability.
-    UprisingSubdued { system: SystemKey },
+    /// A Subdue Uprising succeeded (`FUN_00569c20`): `side` wins
+    /// `support_gain` points (`FUN_0055cb10`), then the revolt ends if the
+    /// system is garrisoned (`FUN_0050c910`).
+    UprisingSubdued {
+        system: SystemKey,
+        side: crate::dat::Faction,
+        support_gain: i32,
+    },
 
     /// Death Star construction was sabotaged — delay by `ticks_delayed`.
     DeathStarSabotaged {
@@ -838,6 +853,18 @@ impl MissionSystem {
             if mission.ticks_remaining == 0 {
                 let roll = roll_iter.next().unwrap_or(0.5);
                 let mut result = Self::resolve_mission(&mission, world, final_tick, roll);
+                for effect in &mut result.effects {
+                    if let MissionEffect::UprisingSubdued {
+                        system,
+                        side,
+                        support_gain,
+                    } = effect
+                    {
+                        let gain_roll = roll_iter.next().unwrap_or(0.5);
+                        *support_gain =
+                            crate::uprising::subdue_support_gain(world, *system, *side, gain_roll);
+                    }
+                }
                 // Emit CharacterAvailable: the character is freed from this mission.
                 result.effects.push(MissionEffect::CharacterAvailable {
                     character: mission.character,
@@ -1098,6 +1125,9 @@ impl MissionSystem {
             MissionKind::SubdueUprising => {
                 vec![MissionEffect::UprisingSubdued {
                     system: mission.target_system,
+                    side: mission.faction.into(),
+                    // MissionSystem::advance draws the gain.
+                    support_gain: 0,
                 }]
             }
             MissionKind::DeathStarSabotage => {

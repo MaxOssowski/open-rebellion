@@ -213,6 +213,8 @@ pub struct GidOverlayContext<'a> {
     pub manufacturing: &'a ManufacturingState,
     pub economy: &'a EconomyState,
     pub missions: &'a MissionState,
+    /// Systems in revolt (system `+0x88` bit 2).
+    pub uprisings: &'a rebellion_core::uprising::UprisingState,
 }
 
 impl Default for GalaxyMapState {
@@ -275,6 +277,17 @@ pub fn draw_galaxy_backdrop(
         },
     );
     true
+}
+
+/// True for a system in revolt. `UprisingState` records a real revolt
+/// (system `+0x88` bit 2); `ControlKind::Uprising` is kept for fixtures.
+#[must_use]
+pub fn system_in_revolt(
+    key: SystemKey,
+    system: &System,
+    uprisings: &rebellion_core::uprising::UprisingState,
+) -> bool {
+    matches!(system.control, ControlKind::Uprising(_)) || uprisings.is_uprising(key)
 }
 
 fn gid_backdrop_resource(gid_mode: GidMode) -> u32 {
@@ -542,7 +555,7 @@ fn gid_metric(
         .is_none_or(rebellion_core::manufacturing::ProductionQueue::is_empty);
     match mode {
         GidMode::PopularSupport | GidMode::DisplayOff => 0,
-        GidMode::Uprisings => u32::from(matches!(system.control, ControlKind::Uprising(_))),
+        GidMode::Uprisings => u32::from(system_in_revolt(system_key, system, gid.uprisings)),
         GidMode::IdleFleets => system
             .fleets
             .iter()
@@ -1747,6 +1760,7 @@ mod interaction_tests {
         reason = "These regression checks require exact copied values, endpoints, and pixel coordinates."
     )]
     fn galaxy_backdrop_uses_canvas_origin_and_native_resource_size() {
+        // Source: FUN_00421c70 canvas origin, STRATEGY.DLL 607x437 galaxy backdrop.
         let alliance = CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
         let destination = galaxy_backdrop_destination(alliance, 607.0, 437.0);
         assert_eq!(destination.x, 0.0);
@@ -1768,6 +1782,7 @@ mod interaction_tests {
 
     #[test]
     fn active_gid_uses_dim_backdrop_and_display_off_uses_bright() {
+        // Source: STRATEGY.DLL starfield resources 901 (dim) and 902 (bright).
         assert_eq!(
             gid_backdrop_resource(GidMode::PopularSupport),
             bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM
@@ -1780,6 +1795,7 @@ mod interaction_tests {
 
     #[test]
     fn popular_support_thresholds_select_native_marker_sizes() {
+        // Source: STRATEGY.DLL GID marker resources (smallest/medium/large/largest per faction).
         use bmp_cache::resources::strategy;
         use rebellion_core::dat::Faction;
 
@@ -1901,6 +1917,7 @@ mod interaction_tests {
 
     #[test]
     fn gid_mode_marker_bands_cover_zero_threshold_and_high_values() {
+        // No recovered source: GID metric count-to-size bands, kept as a regression pin.
         assert_eq!(gid_metric_size(GidMode::Uprisings, 0), 0);
         assert_eq!(gid_metric_size(GidMode::Uprisings, 1), 3);
         assert_eq!(gid_metric_size(GidMode::IdleFleets, 2), 2);
@@ -1909,5 +1926,78 @@ mod interaction_tests {
         assert_eq!(gid_metric_size(GidMode::Shipyards, 5), 3);
         assert_eq!(gid_metric_size(GidMode::AvailableEnergy, 5), 2);
         assert_eq!(gid_metric_size(GidMode::AvailableEnergy, 6), 3);
+    }
+
+    #[test]
+    fn the_uprisings_filter_marks_a_system_in_revolt() {
+        // F-026: UprisingState, not ControlKind, records a real revolt.
+        let mut world = GameWorld::default();
+        let sector = world.sectors.insert(rebellion_core::world::Sector {
+            dat_id: rebellion_core::ids::DatId::new(0x9200_0000),
+            name: "Sector".into(),
+            group: rebellion_core::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let key = world.systems.insert(System {
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Naboo".into(),
+            sector,
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.2,
+            popularity_empire: 0.8,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(rebellion_core::dat::Faction::Empire),
+        });
+        let movement = rebellion_core::movement::MovementState::new();
+        let manufacturing = rebellion_core::manufacturing::ManufacturingState::new();
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let mut uprisings = rebellion_core::uprising::UprisingState::default();
+        let metric = |uprisings: &rebellion_core::uprising::UprisingState, world: &GameWorld| {
+            let gid = GidOverlayContext {
+                movement: &movement,
+                manufacturing: &manufacturing,
+                economy: &economy,
+                missions: &missions,
+                uprisings,
+            };
+            gid_metric(
+                world,
+                key,
+                &world.systems[key],
+                true,
+                GidMode::Uprisings,
+                &gid,
+            )
+        };
+        assert_eq!(metric(&uprisings, &world), 0);
+        uprisings.active_uprisings.insert(
+            key,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+            },
+        );
+        assert_eq!(metric(&uprisings, &world), 1);
+
+        let quiet = rebellion_core::uprising::UprisingState::default();
+        world.systems[key].control = ControlKind::Uprising(rebellion_core::dat::Faction::Empire);
+        assert!(system_in_revolt(key, &world.systems[key], &quiet));
+        assert_eq!(metric(&quiet, &world), 1);
     }
 }

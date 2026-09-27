@@ -1615,22 +1615,24 @@ pub fn advisor_combat_result(state: &mut AdvisorState, system_name: &str, player
     state.push_message(AdvisorMessage::new(text, AdvisorPriority::High));
 }
 
-/// Notify the advisor of an uprising.
+/// Notify the advisor that `system_name` has risen in revolt. `gained` is
+/// true when the enemy holds it. A revolt does not change who holds the
+/// system.
 pub fn advisor_uprising(state: &mut AdvisorState, system_name: &str, gained: bool) {
     let text = if gained {
         match state.faction {
             AdvisorFaction::Alliance => {
-                format!("Excellent! The people of {system_name} have risen up to join us!")
+                format!("Excellent! The people of {system_name} have risen against the Empire!")
             }
             AdvisorFaction::Empire => {
-                format!("The population of {system_name} has been brought to heel, my Lord.")
+                format!("{system_name} has risen against the Rebels, my Lord.")
             }
         }
     } else {
         match state.faction {
-            AdvisorFaction::Alliance => format!("Oh no! We've lost control of {system_name}!"),
+            AdvisorFaction::Alliance => format!("Oh no! {system_name} has risen against us!"),
             AdvisorFaction::Empire => {
-                format!("Unacceptable. {system_name} has slipped from Imperial control.")
+                format!("Unacceptable. {system_name} is in open revolt against the Empire.")
             }
         }
     };
@@ -1873,6 +1875,7 @@ mod tests {
 
     #[test]
     fn advisor_apertures_match_recovered_original_geometry() {
+        // Source: FUN_0042adb0 advisor apertures (ghidra/notes/FUN_0042adb0.c).
         assert_eq!(
             advisor_apertures(AdvisorFaction::Alliance),
             [(541.0, 337.0, 67.0, 116.0), (316.0, 411.0, 47.0, 69.0)]

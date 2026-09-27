@@ -123,11 +123,12 @@ pub fn run_simulation_tick(
     };
 
     // ── 0. Economy (runs BEFORE manufacturing — affects production) ──────
-    let economy_events = EconomySystem::advance(
+    let economy_events = EconomySystem::advance_with_uprisings(
         &mut states.economy,
         world,
         tick_events,
         world.difficulty_index,
+        &states.uprising,
     );
     integrator.apply_economy_events(world, &economy_events);
 
@@ -635,15 +636,16 @@ pub fn run_simulation_tick(
     integrator.apply_blockade_events(world, &mut states.troop_transport, &blockade_events);
 
     // ── 9. Uprising ──────────────────────────────────────────────────────
+    // One roll per system, as the replay budget has always reserved here.
     let uprising_rolls = take_rolls(world.systems.len());
     let empty_table = MstbTable::new(vec![]);
-    let upris1tb = world.mission_tables.get("UPRIS1TB").unwrap_or(&empty_table);
     let uprising_events = UprisingSystem::advance(
         &mut states.uprising,
         world,
+        &states.economy,
+        &states.missions,
         tick_events,
         &uprising_rolls,
-        upris1tb,
     );
     integrator.apply_uprising_events(world, &uprising_events);
 

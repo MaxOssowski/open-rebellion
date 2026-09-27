@@ -31,10 +31,10 @@ use rebellion_core::game_events::{
     EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
     EVT_SUPPORT_CHANGE, EVT_SUPPORT_DRIFT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
-    EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_INCIDENT, EVT_VICTORY,
-    EVT_VICTORY_CHECK, SYS_AI, SYS_BETRAYAL, SYS_BLOCKADE, SYS_COMBAT, SYS_DEATH_STAR, SYS_ECONOMY,
-    SYS_EVENTS, SYS_FOG, SYS_JEDI, SYS_MANUFACTURING, SYS_MISSIONS, SYS_MOVEMENT, SYS_REPAIR,
-    SYS_RESEARCH, SYS_STORY, SYS_UPRISING, SYS_VICTORY,
+    EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
+    EVT_UPRISING_INCIDENT, EVT_VICTORY, EVT_VICTORY_CHECK, SYS_AI, SYS_BETRAYAL, SYS_BLOCKADE,
+    SYS_COMBAT, SYS_DEATH_STAR, SYS_ECONOMY, SYS_EVENTS, SYS_FOG, SYS_JEDI, SYS_MANUFACTURING,
+    SYS_MISSIONS, SYS_MOVEMENT, SYS_REPAIR, SYS_RESEARCH, SYS_STORY, SYS_UPRISING, SYS_VICTORY,
 };
 use rebellion_core::ids::DatId;
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
@@ -485,16 +485,6 @@ impl PerceptionIntegrator {
                         }),
                     );
                 }
-                EconomyEvent::NaturalDisaster { system } => {
-                    // K2: EVT_NATURAL_DISASTER (0x154).
-                    self.emit(
-                        SYS_ECONOMY,
-                        EVT_NATURAL_DISASTER,
-                        serde_json::json!({
-                            "system": sys_name(world, *system),
-                        }),
-                    );
-                }
                 EconomyEvent::ResourceDiscovered { system, new_output } => {
                     // K3: EVT_RESOURCE_DISCOVERY (0x155).
                     self.emit(
@@ -856,7 +846,24 @@ impl PerceptionIntegrator {
         uprising_state: &mut UprisingState,
         death_star_state: &mut DeathStarState,
     ) {
-        apply_mission_effects_inner(&result.effects, world, uprising_state, death_star_state);
+        let ended = apply_mission_effects_inner(
+            &result.effects,
+            world,
+            result.tick,
+            uprising_state,
+            death_star_state,
+        );
+        for event in &ended {
+            if let UprisingEvent::UprisingEnded { system, tick } = event {
+                self.events.push(GameEventRecord::new(
+                    *tick,
+                    self.wall_ms,
+                    SYS_UPRISING,
+                    EVT_UPRISING_ENDED,
+                    serde_json::json!({ "system": sys_name(world, *system), "cause": "subdued" }),
+                ));
+            }
+        }
         self.emit(
             SYS_MISSIONS,
             EVT_MISSION_RESOLVED,
@@ -1144,7 +1151,8 @@ impl PerceptionIntegrator {
 
     // ── Step 9: Uprising ──────────────────────────────────────────────────
 
-    /// Apply uprising events: control flip + telemetry.
+    /// Apply uprising and disaster events to the world, with telemetry.
+    /// Revolts never change who holds a system (`FUN_0050a130`).
     pub fn apply_uprising_events(&mut self, world: &mut GameWorld, events: &[UprisingEvent]) {
         // Heartbeat: emit a check event so the "uprising" system tag always appears.
         self.events.push(GameEventRecord::new(
@@ -1152,54 +1160,56 @@ impl PerceptionIntegrator {
             serde_json::json!({ "systems_checked": world.systems.len(), "incidents": events.len() }),
         ));
         for evt in events {
-            match evt {
-                UprisingEvent::UprisingIncident { system, tick } => {
-                    self.events.push(GameEventRecord::new(
-                        *tick,
-                        self.wall_ms,
-                        SYS_UPRISING,
-                        EVT_UPRISING_INCIDENT,
-                        serde_json::json!({ "system": sys_name(world, *system) }),
-                    ));
-                }
-                UprisingEvent::UprisingBegan { system, tick } => {
-                    let before = world.systems.get(*system).map(|s| s.control);
-                    if let Some(sys) = world.systems.get_mut(*system) {
-                        sys.control = match sys.control {
-                            ControlKind::Controlled(rebellion_core::dat::Faction::Alliance) => {
-                                ControlKind::Controlled(rebellion_core::dat::Faction::Empire)
-                            }
-                            ControlKind::Controlled(rebellion_core::dat::Faction::Empire) => {
-                                ControlKind::Controlled(rebellion_core::dat::Faction::Alliance)
-                            }
-                            other => other,
-                        };
-                    }
-                    let after = world.systems.get(*system).map(|s| s.control);
-                    if before != after {
-                        self.events.push(GameEventRecord::new(
-                            *tick,
-                            self.wall_ms,
-                            SYS_UPRISING,
-                            EVT_CONTROL_CHANGED,
-                            serde_json::json!({
-                                "system": sys_name(world, *system),
-                                "from": format!("{:?}", before),
-                                "to": format!("{:?}", after),
-                                "cause": "uprising",
-                            }),
-                        ));
-                    }
-                    self.events.push(GameEventRecord::new(
-                        *tick,
-                        self.wall_ms,
-                        SYS_UPRISING,
-                        EVT_UPRISING_BEGAN,
-                        serde_json::json!({ "system": sys_name(world, *system) }),
-                    ));
-                }
-                UprisingEvent::UprisingSubdued { .. } => {}
-            }
+            let (tick, event_type, payload) = match evt {
+                UprisingEvent::UprisingIncident {
+                    system,
+                    tick,
+                    codes,
+                    losses,
+                    support_delta,
+                    ..
+                } => (
+                    *tick,
+                    EVT_UPRISING_INCIDENT,
+                    serde_json::json!({
+                        "system": sys_name(world, *system),
+                        "codes": codes,
+                        "losses": losses.len(),
+                        "support_delta": support_delta,
+                    }),
+                ),
+                UprisingEvent::UprisingBegan { system, tick } => (
+                    *tick,
+                    EVT_UPRISING_BEGAN,
+                    serde_json::json!({ "system": sys_name(world, *system) }),
+                ),
+                UprisingEvent::UprisingEnded { system, tick } => (
+                    *tick,
+                    EVT_UPRISING_ENDED,
+                    serde_json::json!({ "system": sys_name(world, *system) }),
+                ),
+                UprisingEvent::Disaster {
+                    system,
+                    tick,
+                    destroyed,
+                    ..
+                } => (
+                    *tick,
+                    EVT_NATURAL_DISASTER,
+                    serde_json::json!({
+                        "system": sys_name(world, *system),
+                        "facilities_destroyed": destroyed.len(),
+                    }),
+                ),
+            };
+            self.events.push(GameEventRecord::new(
+                tick,
+                self.wall_ms,
+                SYS_UPRISING,
+                event_type,
+                payload,
+            ));
+            rebellion_core::uprising::apply_uprising_event(world, evt);
         }
     }
 
@@ -1462,9 +1472,10 @@ impl PerceptionIntegrator {
 fn apply_mission_effects_inner(
     effects: &[MissionEffect],
     world: &mut GameWorld,
+    tick: u64,
     uprising_state: &mut UprisingState,
     death_star_state: &mut DeathStarState,
-) {
+) -> Vec<UprisingEvent> {
     const CONTROL_THRESHOLD: f32 = 0.6;
 
     for effect in effects {
@@ -1622,42 +1633,49 @@ fn apply_mission_effects_inner(
                     c.capture_tick = None;
                 }
             }
-            MissionEffect::UprisingSubdued { system } => {
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    if let ControlKind::Controlled(rebellion_core::dat::Faction::Alliance) =
-                        sys.control
-                    {
-                        sys.popularity_alliance = (sys.popularity_alliance + 0.05).clamp(0.0, 1.0);
-                        sys.popularity_empire = (sys.popularity_empire - 0.05).clamp(0.0, 1.0);
-                    } else {
-                        sys.popularity_empire = (sys.popularity_empire + 0.05).clamp(0.0, 1.0);
-                        sys.popularity_alliance = (sys.popularity_alliance - 0.05).clamp(0.0, 1.0);
-                    }
-                }
+            MissionEffect::UprisingSubdued {
+                system,
+                side,
+                support_gain,
+            } => {
+                rebellion_core::uprising::apply_support_change(
+                    world,
+                    *system,
+                    *side,
+                    *support_gain,
+                );
             }
             MissionEffect::DeathStarSabotaged { .. } => {}
         }
     }
-    apply_mission_state_effects(effects, uprising_state, death_star_state);
+    apply_mission_state_effects(effects, world, tick, uprising_state, death_star_state)
 }
 
-/// Apply the mission effects that live outside `GameWorld`: a subdued
-/// uprising ends and Death Star sabotage delays construction. The native and
-/// browser app shares this with the headless integrator.
+/// Apply the mission effects that live outside `GameWorld`, after the world
+/// effects: a Subdue Uprising success ends the revolt when the system is
+/// garrisoned (`FUN_0050c910`), and Death Star sabotage delays construction.
+/// Returns the revolts that ended. The native and browser app shares this
+/// with the headless integrator.
 pub fn apply_mission_state_effects(
     effects: &[MissionEffect],
+    world: &GameWorld,
+    tick: u64,
     uprising_state: &mut UprisingState,
     death_star_state: &mut DeathStarState,
-) {
+) -> Vec<UprisingEvent> {
+    let mut ended = Vec::new();
     for effect in effects {
         match effect {
-            MissionEffect::UprisingSubdued { system } => uprising_state.clear_uprising(*system),
+            MissionEffect::UprisingSubdued { system, .. } => ended.extend(
+                rebellion_core::uprising::end_if_garrisoned(uprising_state, world, *system, tick),
+            ),
             MissionEffect::DeathStarSabotaged { ticks_delayed } => {
                 death_star_state.add_sabotage_delay(*ticks_delayed);
             }
             _ => {}
         }
     }
+    ended
 }
 
 // ---------------------------------------------------------------------------
@@ -2060,6 +2078,7 @@ mod tests {
     use super::*;
     use rebellion_core::ai::{AiFaction, FleetMoveReason};
     use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
+    use rebellion_core::missions::MissionOutcome;
     use rebellion_core::tuning::GameConfig;
     use rebellion_core::world::{CapitalShipClass, Sector, System};
 
@@ -2098,15 +2117,18 @@ mod tests {
     }
 
     #[test]
-    fn a_subdue_success_ends_the_uprising_and_sabotage_delays_the_death_star() {
-        let mut systems: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let system = systems.insert(());
+    fn a_subdue_success_at_a_garrisoned_system_ends_the_uprising_and_sabotage_delays_the_death_star(
+    ) {
+        // FUN_00569c20 runs FUN_0050c910 after a Subdue Uprising success; at
+        // full Empire support the garrison requirement is 0, so it ends.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Naboo");
         let mut uprisings = UprisingState::new();
         uprisings.active_uprisings.insert(
             system,
             rebellion_core::uprising::ActiveUprising {
                 started_tick: 0,
-                loyalty_at_start: 0,
+                next_incident_tick: None,
             },
         );
         let mut death_star = DeathStarState::default();
@@ -2117,20 +2139,121 @@ mod tests {
             .unwrap()
             .ticks_remaining;
 
-        apply_mission_state_effects(
+        let ended = apply_mission_state_effects(
             &[
-                MissionEffect::UprisingSubdued { system },
+                MissionEffect::UprisingSubdued {
+                    system,
+                    side: Faction::Empire,
+                    support_gain: 5,
+                },
                 MissionEffect::DeathStarSabotaged { ticks_delayed: 50 },
             ],
+            &world,
+            9,
             &mut uprisings,
             &mut death_star,
         );
 
+        assert_eq!(
+            ended,
+            vec![UprisingEvent::UprisingEnded { system, tick: 9 }]
+        );
         assert!(!uprisings.is_uprising(system));
         assert_eq!(
             death_star.under_construction.unwrap().ticks_remaining,
             before + 50
         );
+    }
+
+    #[test]
+    fn a_subdue_mission_result_raises_support_and_reports_the_revolt_it_ends() {
+        // FUN_00569c20: support += FUN_0055cb10, then FUN_0050c910 ends the
+        // revolt; with no GNPRTB rows the garrison requirement is 0.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Naboo");
+        world.systems[system].popularity_alliance = 0.4;
+        world.systems[system].popularity_empire = 0.6;
+        let agent = world
+            .characters
+            .insert(rebellion_core::world::Character::default());
+        let mut uprisings = UprisingState::new();
+        uprisings.active_uprisings.insert(
+            system,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+            },
+        );
+        let result = MissionResult {
+            mission_id: 1,
+            tick: 9,
+            kind: MissionKind::SubdueUprising,
+            faction: MissionFaction::Empire,
+            character: agent,
+            target_system: system,
+            outcome: MissionOutcome::Success,
+            effects: vec![MissionEffect::UprisingSubdued {
+                system,
+                side: Faction::Empire,
+                support_gain: 5,
+            }],
+        };
+        let mut integrator = PerceptionIntegrator::new(9, 0);
+        integrator.apply_mission_result(
+            &mut world,
+            &result,
+            &mut uprisings,
+            &mut DeathStarState::default(),
+        );
+
+        assert!((world.systems[system].popularity_empire - 0.65).abs() < 1e-6);
+        assert!(!uprisings.is_uprising(system));
+        assert!(integrator
+            .events
+            .iter()
+            .any(|e| e.event_type == EVT_UPRISING_ENDED && e.tick == 9));
+    }
+
+    #[test]
+    fn applying_a_disaster_sets_the_eroded_resources_and_records_it() {
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Naboo");
+        world.systems[system].total_energy = 5;
+        world.systems[system].raw_materials = 5;
+        let mut integrator = PerceptionIntegrator::new(4, 0);
+        integrator.apply_uprising_events(
+            &mut world,
+            &[UprisingEvent::Disaster {
+                system,
+                tick: 4,
+                total_energy: 2,
+                raw_materials: 1,
+                destroyed: vec![],
+            }],
+        );
+        assert_eq!(world.systems[system].total_energy, 2);
+        assert_eq!(world.systems[system].raw_materials, 1);
+        assert!(integrator
+            .events
+            .iter()
+            .any(|e| e.event_type == EVT_NATURAL_DISASTER));
+    }
+
+    #[test]
+    fn support_drift_moves_both_sides_popularity() {
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Naboo");
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.apply_economy_events(
+            &mut world,
+            &[EconomyEvent::SupportDrifted {
+                system,
+                alliance_delta: 0.25,
+                empire_delta: -0.25,
+            }],
+        );
+        assert!((world.systems[system].popularity_alliance - 0.25).abs() < 1e-6);
+        assert!((world.systems[system].popularity_empire - 0.75).abs() < 1e-6);
     }
 
     #[test]

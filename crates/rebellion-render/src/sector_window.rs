@@ -193,6 +193,7 @@ pub fn draw_sector_windows(
     faction: CockpitFaction,
     layout: CockpitLayout,
     cache: &mut BmpCache,
+    uprisings: &rebellion_core::uprising::UprisingState,
 ) -> Vec<SectorWindowAction> {
     state.prepare_faction(faction);
     let windows = state.windows.clone();
@@ -211,6 +212,7 @@ pub fn draw_sector_windows(
             faction,
             layout,
             cache,
+            uprisings,
         );
         if result.focus {
             focused = Some(window.sector);
@@ -254,6 +256,7 @@ fn draw_sector_window(
     faction: CockpitFaction,
     layout: CockpitLayout,
     cache: &mut BmpCache,
+    uprisings: &rebellion_core::uprising::UprisingState,
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(sector) = world.sectors.get(window.sector) else {
@@ -379,7 +382,7 @@ fn draw_sector_window(
                     egui::Align2::CENTER_TOP,
                     &system.name,
                     egui::FontId::proportional((10.0 * layout.scale).max(7.0)),
-                    system_name_color(system.control, player),
+                    system_name_color(system.control, uprisings.is_uprising(*system_key), player),
                 );
 
                 if planet_hovered || planet_clicked {
@@ -517,7 +520,11 @@ fn cockpit_faction(faction: CockpitFaction) -> Faction {
     }
 }
 
-fn system_name_color(control: ControlKind, player: Faction) -> egui::Color32 {
+fn system_name_color(control: ControlKind, in_revolt: bool, player: Faction) -> egui::Color32 {
+    let control = match control {
+        ControlKind::Controlled(owner) if in_revolt => ControlKind::Uprising(owner),
+        other => other,
+    };
     match control {
         ControlKind::Controlled(owner) if owner == player => egui::Color32::from_rgb(0, 255, 64),
         ControlKind::Uprising(owner) if owner == player => egui::Color32::from_rgb(255, 230, 0),
@@ -819,6 +826,29 @@ mod tests {
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
     use rebellion_core::world::{Sector, System};
 
+    #[test]
+    fn a_system_in_revolt_takes_the_uprising_name_colour() {
+        // UprisingState, not ControlKind, records a revolt (F-026), so a held
+        // system in revolt must colour like ControlKind::Uprising.
+        let held = ControlKind::Controlled(Faction::Alliance);
+        assert_eq!(
+            system_name_color(held, true, Faction::Alliance),
+            system_name_color(
+                ControlKind::Uprising(Faction::Alliance),
+                false,
+                Faction::Alliance
+            )
+        );
+        assert_ne!(
+            system_name_color(held, true, Faction::Alliance),
+            system_name_color(held, false, Faction::Alliance)
+        );
+        assert_eq!(
+            system_name_color(ControlKind::Contested, true, Faction::Alliance),
+            system_name_color(ControlKind::Contested, false, Faction::Alliance)
+        );
+    }
+
     fn fixture_world() -> (GameWorld, SystemKey, SystemKey) {
         let mut world = GameWorld::default();
         let sector_a = world.sectors.insert(Sector {
@@ -909,6 +939,7 @@ mod tests {
 
     #[test]
     fn original_planet_mapping_covers_all_special_ids() {
+        // Source: SYSTEMSD.DAT picture_id values and STRATEGY.DLL bitmap resources 10212-10239.
         assert_eq!(planet_resource_id(DatId::new(100)), 10212);
         assert_eq!(planet_resource_id(DatId::new(263)), 10224);
         assert_eq!(planet_resource_id(DatId::new(269)), 10215);
@@ -920,6 +951,7 @@ mod tests {
 
     #[test]
     fn sector_relative_coordinates_match_recovered_divisors() {
+        // No recovered source: divisor constants 13 and 37, kept as a regression pin.
         assert_eq!(sector_planet_position(317, 248, 322, 260), (14.0, 44.0));
         assert_eq!(sector_planet_position(317, 248, 373, 272), (159.0, 89.0));
         assert_eq!(sector_planet_position(317, 248, 322, 333), (14.0, 315.0));

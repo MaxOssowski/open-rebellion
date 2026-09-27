@@ -154,10 +154,13 @@ pub struct BlockadeState {
     blockaded: HashSet<SystemKey>,
     /// Last observed position and withdraw percent of each embarked regiment.
     ///
-    /// Not saved: saves are positional bincode, so persisting this needs a
-    /// save-version bump. After a load every embarked regiment restarts at
-    /// 100 at its current position, which never destroys one wrongly.
-    #[serde(skip)]
+    /// Persisted since save v15. Loading a v14 or older save starts every
+    /// embarked regiment at full withdraw percent, which never destroys one
+    /// wrongly (FUN_00504960 resets to 100 on activation).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
     embarked: HashMap<TroopKey, EmbarkedRegiment>,
 }
 
@@ -448,6 +451,42 @@ impl BlockadeSystem {
 }
 
 // ---------------------------------------------------------------------------
+// BlockadeStateV14 — legacy layout through save v14
+// ---------------------------------------------------------------------------
+
+/// Blockade state as persisted through save format v14.
+///
+/// Only the set of blockaded systems was saved. The embarked-regiment map
+/// was `#[serde(skip)]` before v15, so loading a v14 or older save starts
+/// every regiment at full withdraw percent — which never destroys one
+/// wrongly (FUN_00504960 resets to 100 on activation).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockadeStateV14 {
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_set",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_set"
+    )]
+    blockaded: HashSet<SystemKey>,
+}
+
+impl From<BlockadeStateV14> for BlockadeState {
+    fn from(legacy: BlockadeStateV14) -> Self {
+        Self {
+            blockaded: legacy.blockaded,
+            embarked: HashMap::new(),
+        }
+    }
+}
+
+impl From<&BlockadeState> for BlockadeStateV14 {
+    fn from(current: &BlockadeState) -> Self {
+        Self {
+            blockaded: current.blockaded.clone(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -519,6 +558,20 @@ mod tests {
         });
         world.systems.get_mut(system).unwrap().ground_units.push(tk);
         tk
+    }
+
+    #[test]
+    fn a_v14_blockade_keeps_its_blockaded_systems_and_drops_regiment_tracking() {
+        // Save v14 stored only the blockaded set; embarked tracking is new in v15.
+        let mut sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
+        let system = sm.insert(());
+        let current = BlockadeState {
+            blockaded: HashSet::from([system]),
+            embarked: HashMap::new(),
+        };
+        let restored = BlockadeState::from(BlockadeStateV14::from(&current));
+        assert!(restored.is_blockaded(system));
+        assert_eq!(restored.blockaded_systems().len(), 1);
     }
 
     #[test]

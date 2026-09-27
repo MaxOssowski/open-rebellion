@@ -814,6 +814,7 @@ mod tests {
 
     #[test]
     fn transformed_hit_testing_matches_original_regions() {
+        // Source: COMMON.DLL control geometry (agent_docs/main-menu-parity.md).
         let canvas = main_menu_canvas_rect(viewport(1280.0, 960.0));
         assert_eq!(
             hit_test(canvas, Pos2::new(122.0, 82.0)),
@@ -828,6 +829,7 @@ mod tests {
 
     #[test]
     fn cockpit_destination_hotspots_match_their_artwork() {
+        // Source: COMMON.DLL control geometry and resource mapping (agent_docs/main-menu-parity.md).
         for scale in [1.0, 2.0] {
             let canvas = main_menu_canvas_rect(viewport(640.0 * scale, 480.0 * scale));
             for (point, control, action, bitmap) in [
@@ -867,6 +869,7 @@ mod tests {
 
     #[test]
     fn expert_hit_region_does_not_leak_into_adjacent_pixels() {
+        // Source: COMMON.DLL Expert control geometry (agent_docs/main-menu-parity.md).
         let canvas = Rect::from_min_size(Pos2::ZERO, Vec2::new(640.0, 480.0));
 
         assert_eq!(hit_test(canvas, Pos2::new(186.9, 59.0)), None);
@@ -883,6 +886,7 @@ mod tests {
 
     #[test]
     fn original_defaults_and_control_transitions_are_stable() {
+        // Source: COMMON.DLL default difficulty/galaxy/HQ settings (agent_docs/main-menu-parity.md).
         let mut state = MainMenuState::default();
         assert_eq!(state.difficulty, Difficulty::Easy);
         assert_eq!(state.galaxy_size, GalaxySize::Standard);
@@ -908,6 +912,7 @@ mod tests {
 
     #[test]
     fn resource_families_match_binary_mapping() {
+        // Source: COMMON.DLL bitmap resource mapping (agent_docs/main-menu-parity.md).
         let state = MainMenuState::default();
         assert_eq!(
             texture_for(MainMenuControl::Easy, &state, false, 0.0),
@@ -963,6 +968,7 @@ mod tests {
         reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
     )]
     fn semantic_indices_cover_original_controls_and_music_extension() {
+        // Source: COMMON.DLL 14 original bitmap controls (agent_docs/main-menu-parity.md).
         assert_eq!(ORIGINAL_CONTROL_COUNT, 14);
         assert_eq!(CONTROL_RECTS.len(), ORIGINAL_CONTROL_COUNT + 1);
         for (index, (control, _)) in CONTROL_RECTS.iter().enumerate() {
@@ -1044,6 +1050,7 @@ mod tests {
 
     #[test]
     fn sound_assignments_match_common_dll_constructor() {
+        // Source: COMMON.DLL control constructor (agent_docs/main-menu-parity.md).
         assert_eq!(
             sfx_for(MainMenuControl::GalaxyLever),
             SfxKind::MenuGalaxySize

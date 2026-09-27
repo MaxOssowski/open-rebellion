@@ -551,6 +551,7 @@ mod tests {
 
     #[test]
     fn menu_records_match_strategy_rcdata() {
+        // Source: STRATEGY.DLL RCDATA records via FUN_0042d190 (ghidra/notes/FUN_0042d190.c).
         let alliance = game_speed_menu_items(CockpitFaction::Alliance);
         let empire = game_speed_menu_items(CockpitFaction::Empire);
         assert_eq!(
@@ -584,6 +585,7 @@ mod tests {
 
     #[test]
     fn day_readout_uses_recovered_rectangles_and_anchors() {
+        // Source: FUN_00422ce0 day readout rects and FUN_00601b30 text anchor (ghidra/notes/).
         let alliance = day_readout_rect(CockpitFaction::Alliance);
         assert_eq!(
             (alliance.x, alliance.y, alliance.right(), alliance.bottom()),
@@ -735,6 +737,7 @@ mod tests {
 
     #[test]
     fn pause_alert_is_centered_in_the_owner() {
+        // Source: FUN_005ffeb0 centering, FUN_00417020 alert 412x176, rect at 0x00658920.
         assert_eq!(pause_alert_origin(), (114.0, 152.0));
         assert_eq!(
             (ALERT_TEXT_RECT.right(), ALERT_TEXT_RECT.bottom()),

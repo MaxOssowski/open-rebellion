@@ -81,6 +81,8 @@ pub const EVT_BLOCKADE_ENDED: &str = "blockade_ended";
 pub const EVT_BLOCKADE_TROOP_DESTROYED: &str = "blockade_troop_destroyed";
 pub const EVT_UPRISING_INCIDENT: &str = "uprising_incident";
 pub const EVT_UPRISING_BEGAN: &str = "uprising_began";
+/// A revolt ended (`FUN_0050b800` or `FUN_0050c910`).
+pub const EVT_UPRISING_ENDED: &str = "uprising_ended";
 pub const EVT_DS_CONSTRUCTION: &str = "death_star_construction";
 pub const EVT_DS_FIRED: &str = "death_star_fired";
 pub const EVT_RESEARCH_UNLOCKED: &str = "research_unlocked";
@@ -186,6 +188,7 @@ mod tests {
             EVT_BLOCKADE_TROOP_DESTROYED,
             EVT_UPRISING_INCIDENT,
             EVT_UPRISING_BEGAN,
+            EVT_UPRISING_ENDED,
             EVT_DS_CONSTRUCTION,
             EVT_DS_FIRED,
             EVT_RESEARCH_UNLOCKED,

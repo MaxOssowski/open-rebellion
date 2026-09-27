@@ -39,7 +39,7 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | 7 | **Fog** | `fog.rs` | `advance(state, world, movement)` | Fleet presence + sensor radius (detection * 15.0); monotonic |
 | 8 | **Combat** | `combat.rs` | `resolve_space()` / `resolve_ground()` | Phase gate: `ACTIVE && !PHASES_ENABLED` (inverted) |
 | 9 | **Blockade** | `blockade.rs` | `advance(state, world, ticks)` | Hostile fleet + no defender = blockade |
-| 10 | **Uprising** | `uprising.rs` | `advance(state, world, ticks, rolls, upris1tb)` | First incident always fires (no cooldown entry) |
+| 10 | **Uprising** | `uprising.rs` | `advance(state, world, economy, missions, ticks, rolls)` | Needs the economy summary; incidents and disasters run on recovered timers |
 | 11 | **Death Star** | `death_star.rs` | `advance(state, world, ticks)` | Self-clears construction on completion |
 | 12 | **Research** | `research.rs` | `advance(state, world, ticks)` | Pure return — caller applies level-ups (fixed v0.6.0) |
 | 13 | **Jedi** | `jedi.rs` | `advance(state, world, ticks, rolls)` | XP stored in `JediTrainingRecord`, not world |
@@ -142,7 +142,7 @@ All simulation states are created in `main.rs` and included in `SaveState` (`reb
 | `MovementState` | `MovementSystem::advance`, AI fleet orders |
 | `FogState` | `FogSystem::advance` |
 | `BlockadeState` | `BlockadeSystem::advance` |
-| `UprisingState` | `UprisingSystem::advance`, `try_subdue()` |
+| `UprisingState` | `UprisingSystem::advance`, `end_if_garrisoned()` |
 | `DeathStarState` | `DeathStarSystem::advance`, `fire()`, `start_construction()` |
 | `ResearchState` | `ResearchSystem::advance` (auto-applies level-ups) |
 | `JediState` | `JediSystem::advance`, `start_training()`, `stop_training()` |

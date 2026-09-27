@@ -114,15 +114,15 @@ python3 scripts/check-replay-equivalence.py --skip-build --json
 The ignored fixture test requires the locally supplied original `.DAT` files.
 It records a nine-command, 25-tick, 200-system campaign, reloads its initial
 state through the current save format, and checks every command-prefix
-fingerprint against a cross-process golden. Save v14 changes every fingerprint,
-because the save version is hashed, the clock carries the pause stop day, and
-the fixture's `set_speed` command now names the original `Fast` speed. Seeding
-then placed Leia Organa at Yavin; the placement table had looked for "Princess
-Leia", a name TEXTSTRA does not use, so she had started nowhere. It now starts
-at `v1:39350fd64a68ecb8`. From tick 10 the AI builds only classes its
-research has reached (F-018), and a dispatched character is marked on a
-mission until it returns (F-019), so the campaign ends at `v1:0e114a59d20b10b0`.
-Before v14, the committed v13 goldens no longer
+fingerprint against a cross-process golden. Save v15 persists embarked-regiment
+tracking in `BlockadeState` (F-021) and the recovered uprising state
+(`UprisingState` keeps each revolt's incident timer and the galaxy disaster
+timer, F-026), and changes every fingerprint because the save version is
+hashed. It now starts at `v1:23ae1f5f03056543`. From tick 10 the AI builds
+only classes its research has reached (F-018), a dispatched character is
+marked on a mission until it returns (F-019), and revolts, incidents,
+disasters, and the garrison requirement follow the recovered rules (F-026), so
+the campaign ends at `v1:5298612896b6f434`. Before v14, the committed v13 goldens no longer
 reproduced locally even at their own commit `e8d4945`: that commit, with
 unchanged DATs, now computes initial `v1:14ef55dafe6595ee`. The cause is
 outside the committed code and remains open. The unit tests use

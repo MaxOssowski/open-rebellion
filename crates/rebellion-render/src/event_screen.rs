@@ -360,6 +360,7 @@ mod tests {
 
     #[test]
     fn final_battle_heritage_unknown_returns_vader_vs_student() {
+        // Source: STRATEGY.DLL event resources 6208-6268 character dialogue block.
         // heritage_known = false → offset 24 → resource 6232
         let res = event_id_to_resource(0x220, false);
         assert_eq!(res, Some(STRATEGY_EVENT_BASE + 24));
@@ -367,6 +368,7 @@ mod tests {
 
     #[test]
     fn final_battle_heritage_known_returns_emperor_vs_knight() {
+        // Source: STRATEGY.DLL event resources 6208-6268 character dialogue block.
         // heritage_known = true → offset 32 → resource 6240
         let res = event_id_to_resource(0x220, true);
         assert_eq!(res, Some(STRATEGY_EVENT_BASE + 32));
@@ -374,6 +376,7 @@ mod tests {
 
     #[test]
     fn non_final_battle_ignores_heritage() {
+        // Source: STRATEGY.DLL event resources 6208-6268 character dialogue block.
         // Other events should return the same resource regardless of heritage_known
         let bounty = Some(STRATEGY_EVENT_BASE + 16);
         assert_eq!(event_id_to_resource(0x212, false), bounty);
