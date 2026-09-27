@@ -445,10 +445,16 @@ Adapted from WWW's `scripts/model-compare.html` — Three.js side-by-side viewer
 
 ## Pipeline 3: Encyclopedia Content
 
-Original TEXTSTRA.DLL strings extracted via pelite (already implemented). Encyclopedia text entries written from canonical Star Wars sources:
+The original encyclopedia text lives in `ENCYTEXT.DLL`; `TEXTSTRA.DLL`
+supplies entity names. The former `data/encyclopedia.json` sketch with newly
+written descriptions is superseded by the draft
+[Encyclopedia Data Extraction, Modding, and Display design](../docs/plans/2026-09-27-design-encyclopedia-data-pipeline.md).
 
-- Store as: `data/encyclopedia.json` mapping `dat_id → { name, description, faction, category }`
-- Render in existing encyclopedia viewer text panel
+The proposal extends the existing Go staging tool to extract original text,
+image mappings and EData artwork into ignored `data/base/encyclopedia/`, adds a
+versioned catalog and native mod overrides, and uses the existing runtime pack
+for browser display. This is a design under review, not an implemented schema
+or a completed encyclopedia feature.
 
 ---
 
