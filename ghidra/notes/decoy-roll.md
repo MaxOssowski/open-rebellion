@@ -64,30 +64,193 @@ by `FUN_005895d0` (base `FUN_00587250`, which stores the manager at `+4`).
    walks the target system's defenders through `FUN_005875e0`,
    `FUN_00587600`, and `FUN_00587620`, which are `FUN_00587640` with
    different category flags.
-4. `FUN_00587640` visits, at the system in manager `+8`: its special forces
-   (`FUN_005039d0`), its regiments (`FUN_00504c40`), and in each fleet
-   (`FUN_004ffe70`) the ships (`FUN_00502db0`) and special forces. It calls
-   the functor with (defender, fleet or 0, &stop, ctx) and skips a defender
-   with `+0x58` bit 0 when asked.
-5. `FUN_00589620` draws a random decoy from the manager's pool
-   (`FUN_00588700`, list at `+0x30`) and, if one exists, calls
+4. `FUN_00587640` visits, at the system held by the pool (manager `+0x10`):
+   its fighters (`FUN_005039d0`, types `0x1c..0x20`), its regiments
+   (`FUN_00504c40`, `0x10..0x14`), and in each fleet (`FUN_004ffe70`,
+   `0x08..0x10`) the capital ships (`FUN_00502db0`, `0x14..0x1c`), fighters,
+   and regiments. It calls the functor with (defender, fleet or 0, &stop,
+   ctx) and skips a defender with `+0x58` bit 0 (`IsDecoyed`) when asked.
+5. `FUN_00589620` draws a random decoy from the pool (`FUN_00588700`, decoy
+   count at pool `+0x30`) and, if one exists, calls
    `FUN_00588b90(manager, decoy, defender, fleet, ctx)`. There `a` is the
    decoy's effective espionage, `key` and `b` are the defender's slots
    `+0x1bc` and `+0x1c4`, and FDECOYTB applies when the defender is in a
    fleet.
 
-So a decoy is a character attached to a mission. Each enemy defender at the
-target is drawn off by a random decoy on a TDECOYTB/FDECOYTB roll, and a
-successful decoy decrements the manager's `+0x34` count.
+So a decoy is a character or special force on the mission's decoy list.
+Each enemy defender at the target is drawn off by a random decoy on a
+TDECOYTB/FDECOYTB roll, and a success decrements the pool's defender count
+(`+0x34`). The full rule follows below.
+
+## Mission members (recovered 2026-09-27)
+
+A mission object keeps its members in three lists, named by their
+select-list notifiers: `+0x84` team (`MissionTeamSelectListNotif`), `+0x8c`
+decoys (`MissionDecoySelectListNotif`), `+0x94` captured
+(`MissionCapturedSelectListNotif`); a fourth notifier covers members that
+finished (`MissionMissionMemberFinishedMissionSelectListNotif`).
+`FUN_00525870(mission, types, team, decoys, captured)` builds an iterator
+over the chosen lists (`FUN_00525a50` steps `+0x84`, `+0x8c`, `+0x94` in
+turn). The member types are characters `0x30..0x3c` and special forces
+`0x3c..0x40`:
+
+| Constructor | Types | Lists |
+|-------------|-------|-------|
+| `FUN_00525e70` | special forces | team |
+| `FUN_00526090` | characters | team |
+| `FUN_00525f30` | special forces | decoys |
+| `FUN_00526140` | characters | decoys |
+| `FUN_00525bb0` | `0x30..0x40` | team, decoys, captured |
+
+`FUN_00587bb0(pool, functor, chars, sforces, team, decoys, not_decoying,
+ctx)` walks those iterators and applies `FUN_005883b0` to each member: a
+member counts only if its role flags `+0x78` have bits 2 and 3 clear, it has
+a location (`+0x1c`), and, when `not_decoying` is set, bit 5 is clear.
+
+The path by which the player or the AI fills the decoy list is not traced.
+
+## Role and detector flags
+
+Role flags live at character/special-force `+0x78`. Setters
+`FUN_005344f0`..`FUN_005348e0` set one bit each (`FUN_0053a640(1 << n)`) and
+call view slots `+0x2a4 + 4 * n`; the character vtable `0x0065ca70` holds the
+notifiers there (`+0x2a4` `FUN_00536940`, `+0x2b8` `FUN_00536a80`):
+
+| Bit | Setter | Notifier | Name |
+|-----|--------|----------|------|
+| 0 | `FUN_005344f0` | `FUN_00536940` | `RoleDecoyNotif` |
+| 1 | `FUN_00534560` | `FUN_00536980` | `RoleMovingBetweenMissionsNotif` |
+| 2 | `FUN_005345d0` | `FUN_005369c0` | `RoleMissionRemoveRequestNotif` |
+| 3 | `FUN_00534640` | `FUN_00536a00` | `RoleMissionResignRequestNotif` |
+| 4 | `FUN_005346b0` | `FUN_00536a40` | `RoleCanResignFromMissionNotif` |
+| 5 | `FUN_00534720` | `FUN_00536a80` | `RoleIsDecoyingNotif` |
+| 6 | `FUN_00534790` | `FUN_00536ac0` | `RoleAdriftNotif` |
+| 7 | `FUN_00534800` | `FUN_00536b00` | `RoleOnMissionNotif` |
+| 8 | `FUN_00534870` | `FUN_00536b40` | `RoleOnHiddenMissionNotif` |
+| 9 | `FUN_005348e0` | `FUN_00536b80` | `RoleOnMandatoryMissionNotif` |
+
+A defender ("detector") keeps `IsDecoyed` at `+0x58` bit 0, set by
+`FUN_00558070` and announced by `FUN_00558310` (`DetectorIsDecoyedNotif`).
+
+## Officer rank and detector slots
+
+Character short `+0x96` is the officer rank: `FUN_004f17f0` adds `0x6800`,
+`0x6c00`, or `0x7000` to the name string for ranks 1, 2, and 3 (TEXTSTRA
+10816 "Ackbar", 37440 "Commander Ackbar", 38464 "Admiral Ackbar", 39488
+"General Ackbar"). The detector interface is slots `+0x1bc` (the rank of the
+officer that backs it), `+0x1c0` (class record `+0x58`, `FUN_00520b60`),
+`+0x1c4` (class record `+0x5c`, `FUN_00520b70`), and `+0x1d4`
+(`IsDecoyed`):
+
+| Detector | Type | Vtable | `+0x1bc` rank | `+0x1c4` `b` |
+|----------|------|--------|---------------|--------------|
+| Capital ship | `0x14`, `0x18` | `0x0065d650`, `0x0065d930` | 2 Admiral (`0x0043c1f0`) | class `+0x5c` |
+| Fighter squadron | `0x1c` | `0x0065def0` | 1 Commander (`FUN_0040f340`) | class `+0x5c` |
+| Regiment | `0x10` | `0x0065e438` | 3 General (`FUN_00526f00`) | class `+0x5c` |
+
+In the troop, fighter, and capital-ship DATs the fields after
+`research_difficulty` are `uprising_defense`, `detection`, so class `+0x58`
+and `+0x5c` read as those two, with `b` the class `detection`. The in-memory
+record shift is inferred from that shared order, not traced.
+
+`FUN_00509330(system, rank, &out)` returns the first existing character
+(mode 3) of the system holder's side (`+0x24 >> 6 & 3`) held directly by the
+system with that rank; `FUN_004fd790(fleet, rank, &out)` searches a fleet.
+The counterpart is therefore the defending side's officer of the matching
+rank: the fleet's Admiral for a ship, a Commander for fighters, a General
+for regiments, looked up in the defender's fleet when it has one.
+
+## Decoy phase (recovered 2026-09-27)
+
+`FUN_00546ea0` (called from `FUN_0054e010`) runs on a mission state change
+and calls `FUN_00547f60(mission, ctx)`. That builds the phase manager
+(`FUN_005897c0`, vtable `0x0066a888`) with `+0x10` the target system and
+`+0x14` the mission; the member pool is the sub-object at `+8`
+(`FUN_00587550`, vtable `0x0066a830`), whose own `+8` and `+0xc` are the
+system and the mission. `FUN_005898f0` runs `FUN_00589970` twice, with
+`+0x44` set and then clear, unless the mission's side is 3.
+
+Manager flags (manager offsets): `+0x18`/`+0x1c` select which members count
+by location (`FUN_005883b0`); `+0x20` system defenders, `+0x24` fleet
+defenders, `+0x28` capital ships, `+0x2c` fighters, `+0x30` regiments;
+`+0x34` team count, `+0x38` decoy count, `+0x3c` defender count; `+0x48`
+skip; `+0x4c` detected.
+
+1. `FUN_00589a40` sets up. It skips (`+0x48`) a finished mission (`+0x64`),
+   one without its record `+0x2c -> +0x60`, or mode 0. The mode is
+   `FUN_00520e50`: a nibble of the mission-kind record (`+0x54 -> +0x34`)
+   chosen by the mission state `+0x68` (2, 3, 7, 9). Mode 2 enables the
+   system's regiments when the system is held by the enemy of the mission's
+   side; mode 3 also enables enemy fleets' ships and fighters when the
+   mission's side has nothing there; modes 1 and 4 act on the first pass.
+   It then clears every defender's `IsDecoyed` and every decoy's
+   `IsDecoying`, and counts defenders, team members not decoying, and decoys
+   (`FUN_005885f0`).
+2. `FUN_00589e40` and `FUN_00589f10` run the team's own actions; not traced.
+3. `FUN_0058a020`, the decoy phase, when not yet detected:
+
+```
+for each enabled defender d not IsDecoyed (FUN_00587640):
+    decoy = random member of the decoy list (FUN_00588700: draw(0..count-1)
+            over FUN_00587b30 = characters and special forces, decoys list;
+            a decoy already decoying may be drawn again)
+    if no decoy: stop the walk
+    officer = holder's officer with rank d.+0x1bc (in d's fleet if any)
+    x = decoy.espionage - d.detection - officer.espionage * GNPRTB[3588] / 100
+    table = FDECOYTB if d is in a fleet else TDECOYTB
+    if draw(0..99) < table(x):        // FUN_0053e340; a missing row hits
+        decoy.IsDecoying = 1          // FUN_00534720
+        d.IsDecoyed = 1               // FUN_00558070
+        defender count -= 1
+    else:
+        FUN_005888f0(d, fleet, decoy) // the decoy is exposed, see below
+```
+
+4. `FUN_0058a130`, detection: each enabled defender that is not `IsDecoyed`
+   rolls FOILTB (id 12) through `FUN_00588a90` and `FUN_0055e470`:
+
+```
+x = avg(team espionage)                  // FUN_005887a0, slot +0x1e0 over
+                                         // team members not decoying
+    - d.detection
+    - count(team special forces not decoying)   // FUN_00587b70
+    - officer.espionage * GNPRTB[3589] / 100
+    - GNPRTB[3584]
+detected = draw(0..99) < FOILTB(x)       // sets manager +0x4c, ends the walk
+```
+
+5. `FUN_0058a1c0`, when detected: the mission's slot `+0x1dc` receives 3, or
+   4 when the mission kind (`+0x54 -> +0x1c`) is above 4, and each team
+   member faces a random defender through `FUN_005888f0`.
+
+`FUN_005888f0(d, fleet, member)` finds the defender's officer, then calls
+`FUN_005349e0(member, officer id, officer slot +0x1f0, ctx)`. When the
+member has `CanResignFromMission` and no remove request, `FUN_00534640` sets
+its resign request, and a member with either request leaves the team or
+decoy count. So a decoy that fails is treated like a detected team member,
+and one that succeeds keeps its defender out of detection.
+
+GNPRTB (`FUN_0055e340`, shipped values): 3584 = -1, 3585 = 1, 3586 = 60,
+3587 = -100, 3588 = 35 (decoy counterpart percent), 3589 = 35 (detection
+counterpart percent).
+
+Shipped tables (step rows, `threshold -> value`): TDECOYTB and FDECOYTB are
+identical, `-20:10, -19:20, -9:40, 0:50, 10:60, 20:70, 30:80, 40:90, 50:92,
+60:94, 70:95, 80:96, 90:98, 100:99`. FOILTB is `-20:99, -19:98, -9:96, 1:94,
+11:90, 21:80, 31:70, 41:60, 51:50, 61:45, 71:40, 81:35, 91:30, 101:25`.
 
 ## Open
 
-- The defender's slot `+0x1bc` is the shared stub `FUN_00526f00` (return 3)
-  in the regiment vtable and in dozens of others, and the character short at
-  `+0x96` it is matched against is unidentified, so the counterpart and `b`
-  (slot `+0x1c4`) are not yet named per defender type.
-- The remaining phases, the pool's source, and the effects of
-  `FUN_00534720`, `FUN_00558070`, and `FUN_005888f0` are not traced.
+- `FUN_005349e0` (what the officer does to an exposed member), the phases
+  `FUN_00589e40` and `FUN_00589f10`, and the mission's slot `+0x1dc` are not
+  traced.
+- The mission-kind record `+0x34` nibbles are not matched to a MISSNSD
+  column, so each mission's mode per state is unknown.
+- The player's and the AI's decoy assignment paths are not traced.
+- The in-memory shift that puts `detection` at class `+0x5c` is inferred.
+- `FUN_00520cd0` (Incite and Subdue leadership in the uprising incident)
+  averages over `FUN_00525bb0`, all team, decoy, and captured members; the
+  port reads only the mission's one agent.
 - The port has no decoy characters on missions. Its invented `is_decoy` roll
   and `MissionSystem::check_decoy` are removed (2026-09-27); the `is_decoy`
   field stays only for the save layout.

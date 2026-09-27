@@ -6,6 +6,7 @@ members = [
     "crates/rebellion-app",
     "crates/rebellion-playtest",
     "tools/dat-dumper",
+    "tools/provenance-scan",
 ]
 resolver = "2"
 

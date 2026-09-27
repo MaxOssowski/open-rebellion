@@ -468,6 +468,12 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   timers (F-029).
 - [ ] Recover and port the en-route delivery of manufactured objects (F-030)
   and the mission decoy phase (F-019); both change the save format.
+- [x] Gate uncited simulation rules with `tools/provenance-scan`; its baseline
+  of 135 items may only shrink (F-031).
+- [ ] Replace the invented rules found by the invention review, one system at
+  a time: transit and bombardment (F-032), strategic combat (F-033), missions
+  (F-034), manufacturing and repair (F-035), AI (F-036), economy and research
+  (F-037), character timers and story events (F-038), and false notes (F-039).
 - [ ] Pass five reproducibly configured 5,000-tick seeds: transit ≤10%, orders
   ≤1.5× arrivals, and fleet arena ≤3× initial. Record 50–400 engagements, eight
   systems, busiest-system ≤40%, and 10% minority-faction attack share as

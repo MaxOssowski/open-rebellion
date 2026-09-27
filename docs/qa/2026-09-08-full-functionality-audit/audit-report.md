@@ -1071,6 +1071,184 @@ cross-runtime proof remain open
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 
+### F-031: Simulation rules carry numbers with no source in the original
+
+- Severity: P2
+- Status: open
+- Evidence: `tools/provenance-scan` finds 135 uncited items carrying 289
+  literals or roll draws (baseline `scripts/provenance-baseline.json`).
+  - `missions.rs` `foil_prob` decides every covert mission with a quadratic
+    from rebellion2 `Mission.cs`; the original rolls FOILTB (table id 12) in
+    `FUN_0058a130` (`ghidra/notes/decoy-roll.md`).
+  - `MissionKind::coefficients` are rebellion2 or placeholder curves. They run
+    only when an MSTB table is missing, so they should fail closed instead.
+  - `ai.rs` has 18 uncited items, among them the production queue cap
+    (`queue_len >= 3`), the troop-deployment radius (`150 * 150`), and
+    `ESPIONAGE_SKILL_THRESHOLD` 50.
+  - `economy.rs` `SupportTier::from_support_int` splits support at
+    20/30/40/60 with no source.
+- Acceptance: each item is recovered and cited, or tagged `port:`/`hyp:` with a
+  reason; `provenance-scan check` passes and the baseline shrinks to the
+  port-owned remainder.
+
+### F-032: Fleet transit time and bombardment rest on an invented formula and a misread
+
+- Severity: P1
+- Status: open
+- Evidence:
+  - movement.rs computes ceil(distance * DISTANCE_SCALE 2 / slowest
+    hyperdrive) with MIN_TRANSIT_TICKS 10 and DEFAULT_FIGHTER_HYPERDRIVE 60,
+    none sourced
+  - The original moves each object on its own: FUN_00514a60 -> FUN_00556430 ->
+    FUN_0055d8c0, ticks = max(1, isqrt(dx^2+dy^2) / GNPRTB 5120 * speed(+0x34)
+    / 100), arrival event 0x387 (ghidra/notes/build-delivery.md)
+  - bombardment.rs and ghidra/notes/bombardment.md read that transit chain as
+    a bombardment formula: the short pair from FUN_00509620 is the system
+    position, not combat strength; the real bombardment function is
+    unrecovered
+  - blockade.rs matches its decompiles; fog.rs has no source and is port-owned
+    until tagged
+  - evidence/invention-review-r1/movement.md
+- Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
+  test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
+  is tagged port:.
+
+### F-033: Strategic combat formulas are port-authored
+
+- Severity: P1
+- Status: open
+- Evidence:
+  - combat.rs reads GNPRTB 5120 (0x1400) as a combat difficulty modifier in
+    space and ground combat; 5120 is the transit distance divisor
+  - Weapon variance, fighter dogfight (atk_str + maneuver / 2, 0.4 attrition),
+    anti-fighter screening, and the ground hit formula have no source; the
+    original math sits in unrecovered ship-class slots +0x1c4, +0x1c8, +0x1d0,
+    +0x1d4
+  - The Emperor 1.5x bonus cites FUN_00542050, a one-line runtime thunk;
+    FUN_004ee350 is a strength setter, not the ground calculator
+  - death_star.rs construction (1825 ticks) and warning radius (300) are
+    estimates
+  - evidence/invention-review-r1/combat.md
+- Acceptance: The four slot handlers and the ground caller are decompiled and
+  ported with citations, the 5120 misuse is removed, and each formula has a
+  failing-without test.
+
+### F-034: Mission resolution departs from the recovered phases
+
+- Severity: P1
+- Status: open
+- Evidence:
+  - Detection collapses into one defense score fed to a rebellion2 quadratic;
+    the original rolls FOILTB per defender with a composite input
+    (FUN_0058a130)
+  - Escape uses loyalty alone as its ESCAPETB input; the original input is a
+    four-operand composite (community address, needs remap to our build)
+  - Sabotage destroys a facility where the effect carries ticks_lost; effect
+    sizes (ticks_lost 10, popularity 0.05, Death Star delay 50, diplomacy
+    0.01) and MISSNSD tick ranges are unverified
+  - Uprising leadership reads one agent; FUN_00520cd0 averages every team,
+    decoy, and captured member; the incite effect skips the support machine
+    FUN_0050c9f0
+  - evidence/invention-review-r1/missions.md
+- Acceptance: Detection, escape, and effects follow their decompiles with
+  failing-without tests; mission members become a roster (with F-019).
+
+### F-035: Manufacturing and repair use invented structure and rates
+
+- Severity: P2
+- Status: open
+- Evidence:
+  - One ProductionQueue per system; the original keeps a manager per facility,
+    so two yards build in parallel
+  - No queue acceptance filter (FUN_00528890: created, not completed, not
+    destroyed, same side); build progress rate per tick is unverified against
+    FUN_0052b960 (now decompiled)
+  - Repair uses the ship class damage_control; the original runs timer 0x386
+    with GNPRTB 7693/7695 and a facility-derived rate (FUN_00509890.c:26),
+    gates on the shipyard bit (+0x88 bit 5) rather than any facility, and
+    repair runs per frame, not per tick
+  - ai.rs:1325 treats refined_material_cost as build ticks
+  - evidence/invention-review-r1/manufacturing.md
+- Acceptance: Queues, progress, and repair follow FUN_0052b960 and timer 0x386
+  with failing-without tests.
+
+### F-036: The AI polls on an invented cadence with invented weights
+
+- Severity: P2
+- Status: open
+- Evidence:
+  - The original AI is driven by notifications and timers; there is no daily
+    AI tick and 0x1f0 is a mission UI message (ghidra/notes/timer-
+    scheduler.md)
+  - AI_TICK_INTERVAL 5 and AiConfig tick_interval 7 are invented; 15 further
+    constants (deploy budgets, force ratios, scoring weights, 11 duration_roll
+    0.5 placeholders) have no source, and DIPLOMACY_SKILL_THRESHOLD comes from
+    rebellion2
+  - The aggression curve cites FUN_0053e190 but is linear; system_strength
+    weights facilities by 10 where FUN_00502020 does not
+  - evidence/invention-review-r1/ai.md
+- Acceptance: Every AI constant is recovered, or tagged port: where the polled
+  architecture has no counterpart, and the two wrong formulas follow their
+  decompiles.
+
+### F-037: Economy and research run on an invented cadence and miss recovered terms
+
+- Severity: P2
+- Status: open
+- Evidence:
+  - The port recomputes support every tick; the original runs FUN_00508250
+    once at setup (stage 0x17) and then updates through field hooks
+    (FUN_00510820, FUN_005109f0, FUN_00511740) and timers 0x381, 0x383-0x386
+  - FUN_00559be0 divides positive Alliance and negative Empire support shifts
+    by GNPRTB 7681; the port omits it, and FUN_0050c9f0 adds the current
+    support before clamping
+  - resolve_system_control's GNPRTB 7760 energy threshold has no source;
+    FUN_0050b610 resolves control from loyalty (FUN_0055a080)
+  - FUN_0050b310 is the blockade withdraw percent, not a production modifier;
+    the maintenance 0x304 cadence is invented; timer 0x381 (resource tally)
+    has no port counterpart
+  - research.rs is taken from rebellion2 and cites nothing in REBEXE.EXE
+  - evidence/invention-review-r1/economy.md (row 9 on Empire doubling is
+    excluded; see the README)
+- Acceptance: Support follows the hook and timer chain with failing-without
+  tests, and research is recovered or tagged.
+
+### F-038: Character timers are missing and story events are port-authored
+
+- Severity: P2
+- Status: open
+- Evidence:
+  - Injury recovery (timer 0x388, character +0x94, GNPRTB 2563/2564) has no
+    port field or timer; timers 0x389 and 0x38a are unported
+  - Jedi detection uses flat per-tier probabilities in place of FUN_0055e4d0,
+    FUN_0055ff60, and FUN_0058a530; betrayal (interval 50, loyalty - 50), XP
+    thresholds, and detection intervals have no source
+  - The Jabba chain, carbonite countdown, Dagobah, Emperor arrival, and Final
+    Battle sequences use invented tick thresholds and probability gates
+  - events.rs reuses real timer ids for story events: 0x384, 0x386, 0x387, and
+    the unarmed 0x396
+  - Nine notification ids match their decompiles
+  - evidence/invention-review-r1/characters.md
+- Acceptance: Character timers are ported, story events are recovered from the
+  original or tagged port:, and event ids no longer collide with timer ids.
+
+### F-039: Ghidra notes and agent docs repeat unverified claims
+
+- Severity: P2
+- Status: open
+- Evidence:
+  - FUN_004927c0 is called the master tick and 0x1f0 the daily AI trigger
+    (agent_docs/ghidra-re.md:155, ai-parity-tracker.md:52,92,123);
+    FUN_004927c0 formats notification text and only the mission code sends
+    0x1f0
+  - FUN_00508250 is described as per tick; it runs once at setup
+  - Reviews and notes cite community-disassembly addresses, which name
+    different functions in our build (ghidra/notes/community-address-remap.md)
+  - entity-system.md:383 conflicts with two iterator recoveries on the fleet
+    type range
+- Acceptance: Each false claim is corrected at its source and every note
+  citation resolves to a .c line in our build.
+
 ## Fable 5.1 audit synthesis
 
 The Fable review confirmed the original blockers and sharpened several

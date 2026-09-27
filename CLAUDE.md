@@ -83,6 +83,9 @@ green until their dedicated findings close.
   the change before calling it done.
 - Before committing, run `cargo mutants` on the touched files and close or
   explain each surviving mutant. See `agent_docs/agent-tooling.md`.
+- Before committing simulation code, run `cargo run -q -p provenance-scan --
+  check`. New rules carry a source (`FUN_`, GNPRTB, DAT) or a `port:`/`hyp:`
+  tag; the baseline of uncited items may only shrink.
 
 ## Git and Dependencies
 

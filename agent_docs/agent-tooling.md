@@ -74,6 +74,33 @@ Mutants in rendering code often survive because the unit tests draw nothing.
 Browser acceptance covers that code, so record those survivors instead of
 writing tests that only mirror the drawing calls.
 
+### Provenance Gate
+
+`tools/provenance-scan` parses the simulation code (`rebellion-core` minus
+DAT layout and wire format, plus `integrator.rs` and `simulation.rs`) and
+flags every function, method, `const`, and `static` that carries a number
+other than 0 or 1, or a roll draw, without a recorded source. Tag each item in
+the comment block directly above it or inside it:
+
+- a source: a `FUN_`/`DAT_` address, a GNPRTB parameter, a DAT file or table
+  name, or `// src: <reference>`;
+- `// port: <reason> (F-0xx)` for design the original does not own, such as
+  layout or tooling;
+- `// hyp: <reason>; recovered by <function or capture>` for a guess that still
+  awaits recovery. A hypothesis is counted but never counts as cited.
+
+```bash
+env PATH=/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/Users/tomdimino/.cargo/bin \
+  cargo run -q -p provenance-scan -- check
+```
+
+`check` fails on an uncited item missing from `scripts/provenance-baseline.json`
+or grown past its count. After citing or tagging items, run `baseline` to
+record the smaller set; it refuses to let the baseline grow. `report --json
+PATH` writes every item with its hits for review. The scan is item-level: a
+cited item still needs a line-by-line check against its decompile, and a
+Ghidra note is never a sufficient source alone; cite the `.c` it rests on.
+
 `proptest` is deferred until economy or combat math has edge cases the replay
 goldens do not pin. Adding it needs approval as a dev dependency. Formal
 verification (`kani`) is out of scope for now.
