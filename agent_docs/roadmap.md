@@ -761,8 +761,7 @@ would tune around known simulation feedback defects.
   trench-run outcome proof remain bounded follow-ups. See the
   [P58-B06 checkpoint](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-22-tactical-completion-bundle.md).
   Exact beam dimensions and timing, the original trench-run result producer,
-  native playback comparison, persistent trench-run outcome, shared
-  post-battle bombardment, landing, and navigation orchestration, the strict
+  native playback comparison, persistent trench-run outcome, the strict
   106-cell A0 evidence matrix, and release gates remain pending, so this parent
   item is not checked off. Execute the remaining work as the local commit set
   in the [Tactical 106-Cell Acceptance Train](../docs/plans/2026-09-22-tooling-tactical-106-cell-acceptance.md),
@@ -840,6 +839,12 @@ would tune around known simulation feedback defects.
   muted browser cases pass across both factions and viewports. Remaining
   completion, destruction, warning, and ordered trench callers, audible native
   comparison, and every strict A0 comparison stay open.
+  P58-B21 routes interactive and automatic space-battle outcomes through one
+  production post-battle entry. Shared bombardment, troop landing, contested
+  ground continuation, unopposed occupation, and Battle Results destination
+  routing pass seven focused tests, the full workspace, and four muted browser
+  cases. Exact global sequencing, native playback, remaining special-state and
+  audio routes, and every strict A0 comparison stay open.
 - [ ] After original parity, use a separate Fable and `/ce:plan` design pass for
   an optional X-Wing Alliance-style skirmish setup menu. It may select ship
   distribution, planet, and space background, but it must reuse the production

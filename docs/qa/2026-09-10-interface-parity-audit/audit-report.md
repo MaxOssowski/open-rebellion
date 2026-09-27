@@ -15,7 +15,7 @@ tags: [qa, interface, parity, bitmap, strategy, tactical, multiplayer]
 |---|---:|
 | Practical interface scope materially tackled | approximately 20 to 25% |
 | Practical interface scope remaining | approximately 75 to 80% |
-| Practical space-battle launcher implementation | approximately 96% |
+| Practical space-battle launcher implementation | approximately 97% |
 | Required surface families | 43 |
 | Family status | 0 complete, 9 partial, 34 fail |
 | Strictly accepted required cells | 0 of 564 |
@@ -101,7 +101,7 @@ The local source inspection establishes the implementation causes:
 | Blank browser encyclopedia art | `crates/rebellion-render/src/encyclopedia.rs:486` | Manual pp. 71–72 and 192 original EDATA entries |
 | Incomplete browser asset pack | `scripts/build-runtime-pack.py:29` | Original ALSPRITE, EMSPRITE, ALBRIEF, EMBRIEF, REBDLOG, and EDATA families |
 | Invented live ground-combat screen | `crates/rebellion-render/src/ground_combat.rs:202` | Manual pp. 119–121 assault summaries and reports |
-| First original tactical shell and control states; all original 3D assets decoded and transported; exact DAT resource joins; live capital and fighter behavior; commands; combat; collision; automatic groups; capability-sorted task forces with forward-relative retained geometry; original results/options panels; resource 5030 stars; the provisional Death Star superlaser journey; exact result-to-film trench-run routing; and exact strategic roster, capture, and Death Star-state application use recovered source contracts. Native beam semantics, shared post-battle orchestration, native playback, and A0 acceptance remain open | `crates/rebellion-render/src/tactical_view.rs`, `crates/rebellion-render/src/tactical_resources.rs`, `crates/rebellion-render/src/tactical_assets.rs`, `crates/rebellion-render/src/bmp_cache.rs`, `tools/stage-ui-assets` | Manual pp. 139–150, original TACTICAL resources, [P52 through P58F13 evidence](evidence/README.md), and the [P58-B06 tactical completion checkpoint](evidence/2026-09-22-tactical-completion-bundle.md) |
+| First original tactical shell and control states; all original 3D assets decoded and transported; exact DAT resource joins; live capital and fighter behavior; commands; combat; collision; automatic groups; capability-sorted task forces with forward-relative retained geometry; original results/options panels; resource 5030 stars; the provisional Death Star superlaser journey; exact result-to-film trench-run routing; exact strategic roster, capture, and Death Star-state application; and shared post-battle bombardment, landing, ground continuation, occupation, and destination routing use recovered source contracts. Native beam semantics, native playback, remaining special-state and audio paths, and A0 acceptance remain open | `crates/rebellion-render/src/tactical_view.rs`, `crates/rebellion-render/src/tactical_resources.rs`, `crates/rebellion-render/src/tactical_assets.rs`, `crates/rebellion-render/src/bmp_cache.rs`, `tools/stage-ui-assets` | Manual pp. 139–150, original TACTICAL resources, [P52 through P58-B21 evidence](evidence/README.md), and the [P58-B21 shared post-battle checkpoint](evidence/2026-09-27-tactical-post-battle-orchestration.md) |
 
 The original identity baseline comes from the locally preserved
 [official manual](../../reference/campaign-history/archive/star-wars-rebellion-manual.pdf),
@@ -173,8 +173,11 @@ fallback. P58-B06 adds capital and fighter weapon behavior, collision,
 automatic groups, retained formations, the separate Death Star, original
 result/options panels, the superlaser journey, both trench-run routes, and
 exact strategic roster, capture, and Death Star-state application. Power
-allocation, native beam behavior, shared post-battle orchestration, native
-playback, and A0 acceptance remain open.
+allocation, native beam behavior, native playback, and A0 acceptance remain
+open. P58-B21 closes the shared post-battle
+orchestration item with one production bombardment, landing, ground follow-up,
+occupation, and destination route. Exact sequencing and original callbacks
+remain open.
 P46A corroborates the shell and aperture portion at runtime, including one
 shared transform for overlays, hit tests, and advisors. P46B implements the six
 primary faction controls from their exact resources, geometry, state, input,
@@ -209,7 +212,7 @@ acceptance.
 | UIP-F-006 | P1 | WASM encyclopedia image loading always returns no texture. | fail |
 | UIP-F-007 | P1 | Finders, production, missions, messages, options, and object status use replacement layouts or are absent. | fail |
 | UIP-F-008 | P1 | Battle Alert, assault/bombardment reports, and battle-result routing are absent or bypassed. | fail |
-| UIP-F-009 | P1 | The original 640×480 tactical shell, complete asset transport, exact participant joins, production rendering, controls, effects, subsystem behavior, commands, capital and fighter combat, collision, automatic groups, retained formations, the separate Death Star, original result/options panels, superlaser journey, both trench-run routes, and exact strategic roster, capture, and Death Star-state application pass implementation gates. Original view acceptance, exact planet placement, global RNG sequencing, original arrival callbacks, power allocation, native beam behavior, native playback, shared post-battle orchestration, and remaining special-state and audio paths stay open. | fail |
+| UIP-F-009 | P1 | The original 640×480 tactical shell, complete asset transport, exact participant joins, production rendering, controls, effects, subsystem behavior, commands, capital and fighter combat, collision, automatic groups, retained formations, the separate Death Star, original result/options panels, superlaser journey, both trench-run routes, exact strategic roster, capture, and Death Star-state application, plus shared post-battle bombardment, landing, ground follow-up, occupation, and result routing pass implementation gates. Original view acceptance, exact planet placement, global RNG sequencing, original arrival callbacks, power allocation, native beam behavior, native playback, and remaining special-state and audio paths stay open. | fail |
 | UIP-F-010 | P1 | The custom live ground-combat screen has no original counterpart. | fail |
 | UIP-F-011 | P1 | Modeless focus, close, minimize, restore, and 12-slot rail routing work; exact active/inactive rail thumbnails and the complete multiwindow matrix remain open. | partial |
 | UIP-F-012 | P1 | Authoritative original captures are still missing for rare and transient states. | partial |
@@ -357,6 +360,14 @@ journeys prove both factions and both viewports, exact event/WAVE routes, and
 clean startup and cleanup. Remaining completion, destruction, warning, and
 ordered trench callers, exact shared-RNG sequencing, mixing, native audible
 comparison, and strict A0 acceptance stay open.
+
+P58-B21 moves played tactical and automatic space-battle outcomes through one
+production post-battle entry. Focused tests prove contested landings enter the
+real ground-combat state and unopposed landings occupy the system. The four-case
+muted browser journey proves the shared campaign-path probe, both faction
+result surfaces, both viewports, and strategic destination routing. Exact
+global sequencing, native playback, remaining special-state and audio paths,
+and strict A0 acceptance stay open.
 
 Asset-swap families may use exhaustive resource-identity checks only after the
 shared layout and rendering rule pass. Every unique composite topology and every
@@ -533,6 +544,8 @@ implemented combat, collision, formation, Death Star, result/options, and
 trench-run paths and passes the complete 120-case implementation matrix; see
 the [checkpoint evidence](evidence/2026-09-22-tactical-completion-bundle.md).
 Independent visual review is a qualified A1 pass with no P0 or P1 findings.
+P58-B21 also shares bombardment, landing, ground follow-up, occupation, and
+result destination routing between automatic and interactive outcomes.
 The authentic Game Options window, Alliance Death Star framing baseline, and
 persistent trench-run outcome proof remain bounded follow-ups. Original A0
 comparison and all strict tactical acceptance cells remain open.

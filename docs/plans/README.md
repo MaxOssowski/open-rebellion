@@ -23,11 +23,11 @@ damage with tractor cancellation, repair, mobility, maneuver-state production,
 velocity, physical integration, authentic tactical command assignment,
 recovered maneuver waypoints, Hold execution, source-rate turning, waypoint completion,
 full fighter recovery states, typed attack target acquisition, and stable
-same-class target replacement when a target becomes invalid. The next
-space-battle checkpoint now passes its 120-case implementation gate, and the
-deterministic A1 crosswalk maps all 106 cells through 87 journeys and 19
-snapshots. The final acceptance train captures and compares all 106 strict
-cells. Missing
+same-class target replacement when a target becomes invalid. P58-B06 passes
+the 120-case implementation gate, P58-B21 shares the post-battle campaign path,
+and the deterministic A1 crosswalk maps all 106 cells through 87 journeys and
+19 snapshots. The practical launcher estimate is approximately 97%. The final
+acceptance train captures and compares all 106 strict cells. Missing
 lossless original baselines remain explicit A0 blockers and cannot be accepted
 by browser evidence alone.
 
@@ -38,8 +38,9 @@ visual comparisons, generated status summaries, and one independent browser
 gate per family.
 
 The [Standalone Space-Battle Test Launcher](2026-09-12-tooling-standalone-space-battle-launcher.md)
-is the active `UIP-B06` companion. Tactical hull and fighter result identity now
-has a native regression; shared entry, test-only fixtures, and visual parity follow. Its
+is the active `UIP-B06` companion. It uses the production tactical scene,
+test-only fixtures, and the P58-B21 shared bombardment, landing, ground
+follow-up, occupation, and result destination route. Its
 [asset reference library](../reference/asset-library/README.md) records the current
 resource inventory and the original-mapping proof queue. Its
 [operational reference](../reference/space-battle-launcher/README.md) records the
@@ -63,9 +64,11 @@ repair, mobility, maneuver-state production, velocity, physical integration,
 and tactical command assignment plus maneuver, Hold, turn, arrival, docking,
 recovered execution states, typed attack target acquisition, and stable
 same-class target replacement with exhausted-list clearing. Exact weapon arcs,
-ranges, availability, projectile events, recharge, fighter combat, collision
-and formation, special objects, power allocation, outcomes, and A0 acceptance
-remain open inside the consolidated completion bundle.
+ranges, availability, projectile events, recharge, fighter combat, collision,
+formations, the Death Star, and outcome transport are implemented within their
+recorded A1 bounds. Exact sequencing, power allocation, native beam and media
+playback, remaining special-state and audio paths, and A0 acceptance remain
+open inside the consolidated completion bundle.
 Modern replacement models remain in a separate experimental profile.
 
 See the [plans index](INDEX.md) for active, planned, and completed work. The

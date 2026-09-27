@@ -84,6 +84,7 @@ acceptance plan required before the project can claim 100% functionality.
 | [Complete tactical voice-bank proof](../2026-09-10-interface-parity-audit/evidence/2026-09-25-tactical-complete-voice-bank.md) | All 285 source-addressed faction voices are transported; selected withdrawal, result, Death Star, and trench-run transitions dispatch while remaining production callers and strict A0 acceptance stay open. |
 | [Mixed-task-force target proof](../2026-09-10-interface-parity-audit/evidence/2026-09-25-tactical-mixed-task-force-target.md) | `FUN_005a24d0` rejection preserves existing orders and routes the exact Alliance or Imperial feedback when selected capitals span task forces. |
 | [Tactical recovery/withdrawal feedback proof](../2026-09-10-interface-parity-audit/evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md) | Exact faction/group feedback now covers final fighter recovery, no available carrier slot, and disabled-hyperdrive withdrawal while strict A0 acceptance remains open. |
+| [Shared tactical post-battle proof](../2026-09-10-interface-parity-audit/evidence/2026-09-27-tactical-post-battle-orchestration.md) | Played and automatic space-battle outcomes now share bombardment, landing, ground follow-up, occupation, and Battle Results destination routing while strict A0 acceptance remains open. |
 | [GitHub Pages proof](evidence/2026-09-08-github-pages.md) | Successful deployment run and public HTTP smoke tests for P40. |
 | [Project archive](../../../archive/INDEX.md) | Superseded progress and playtest artifacts retained for provenance. |
 

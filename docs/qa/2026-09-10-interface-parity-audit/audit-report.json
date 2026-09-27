@@ -343,9 +343,10 @@
     "p58_b18_complete_tactical_voice_bank": "evidence/2026-09-25-tactical-complete-voice-bank.md",
     "p58_b19_mixed_task_force_target": "evidence/2026-09-25-tactical-mixed-task-force-target.md",
     "p58_b20_recovery_withdrawal_feedback": "evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md",
+    "p58_b21_shared_post_battle_orchestration": "evidence/2026-09-27-tactical-post-battle-orchestration.md",
     "ledger_validator": "../../../scripts/validate-interface-parity-ledgers.mjs",
     "screenshot_ledger": "screenshot-ledger.md",
     "capture_manifest": "reference-captures/SHA256SUMS"
   },
-  "next_action": "Preserve the complete 106-cell deterministic A1 crosswalk while finishing remaining tactical production semantics, audio variants, and shared post-battle orchestration. Bring the owned Windows host online for A0 capture and comparison. Keep all 106 strict cells open until their complete evidence passes."
+  "next_action": "Preserve the complete 106-cell deterministic A1 crosswalk and shared post-battle path while finishing remaining tactical production semantics, audio variants, native playback, and exact sequencing. Bring the owned Windows host online for A0 capture and comparison. Keep all 106 strict cells open until their complete evidence passes."
 }

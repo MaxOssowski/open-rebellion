@@ -198,6 +198,10 @@ and closes every process. Raw runs live under ignored
   focused muted browser cases cover both factions and both viewports. Remaining
   completion, destruction, warning, and ordered trench callers, mixing,
   audible native comparison, and strict A0 acceptance remain open.
+- P58-B21 routes played and automatic space-battle results through one
+  production post-battle entry. Shared bombardment, troop landing, contested
+  ground continuation, unopposed occupation, and result destination routing
+  pass focused tests and a four-case muted browser journey.
 - The current completion checkpoint adds recovered capital weapon
   resolution, fighter combat, collision envelopes, source group assignment,
   a separate Death Star manager, original Battle Results and Battle Options
@@ -217,9 +221,8 @@ A0 comparison, exact global RNG sequencing,
 exact original arrival callbacks and recovery trajectories, exact planet
 placement, power allocation,
 beam dimensions and timing, native trench-run playback comparison,
-post-battle bombardment, landing, and navigation orchestration, remaining
-completion, destruction, recovery, warning, and ordered trench voice callers,
-exact shared-RNG sequencing, audio mixing and native comparison, and
+remaining completion, destruction, recovery, warning, and ordered trench voice
+callers, exact shared-RNG sequencing, audio mixing and native comparison, and
 remaining result semantics remain open. The source 3D
 window uses the standard arrow cursor, so no invented targeting cursor is
 required. All
@@ -234,6 +237,7 @@ required. All
 - [P58-B14 tactical detail and Escort evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-23-tactical-detail-escort.md)
 - [P58-B15 tactical Battle Alert and audio evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-tactical-battle-alert-audio.md)
 - [P58-B16 tactical weapon-audio evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-tactical-weapon-audio.md)
+- [P58-B21 shared post-battle evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-27-tactical-post-battle-orchestration.md)
 - [P58F13 tactical attack-target lifecycle evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-19-tactical-attack-target-lifecycle.md)
 - [P58F12 tactical attack-targeting evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-18-tactical-attack-targeting.md)
 - [P58F11 tactical command-progression evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-18-tactical-command-progression.md)

@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "checkpoint": "P58-B21",
+  "status": "pass_shared_post_battle_strict_a0_pending",
+  "implemented_behavior": [
+    "route_interactive_and_automatic_space_results_through_one_post_battle_entry",
+    "apply_shared_bombardment_and_headquarters_survival",
+    "land_surviving_faction_cargo",
+    "enter_production_ground_combat_for_contested_landings",
+    "occupy_unopposed_systems",
+    "preserve_battle_results_destination_routing"
+  ],
+  "browser_run": {
+    "run_id": "2026-09-27T10-30-56-889Z-17718",
+    "scenario": "production-battle-results-presentation",
+    "passed": 4,
+    "failed": 0,
+    "muted_launches": 4,
+    "four_request_startups": 4,
+    "browser_processes_closed": 4,
+    "retained_pngs_inspected": 40,
+    "recorded_hash_comparisons": 28
+  },
+  "verification": {
+    "workspace_tests": "794_passed_0_failed_34_ignored",
+    "focused_tactical_flow_tests": "7_passed_0_failed",
+    "harness_tests": "26_passed_0_failed",
+    "fixture_build_validation": "38_scenarios_152_executions_production_fixture_exclusion_pass",
+    "matrix_coverage": "106_of_106_deterministic_A1",
+    "browser_probe": "4_of_4_pass_both_factions_both_viewports",
+    "shared_post_battle_probe": "4_of_4_present",
+    "independent_code_review": "pass_after_zero_summary_false_positive_closed",
+    "independent_browser_review": "pass_no_visible_blocker",
+    "strict_gate_run": false,
+    "tracked_proprietary_a0_paths": 0
+  },
+  "hashes": {
+    "production_wasm_sha256": "fb317072c64b7488784dea71d5f568d96a6c5e517736db7677bc8573ba9962d5",
+    "fixture_wasm_sha256": "976345768bbc88b62bcb6cce0f21cc798b4c11e16360f9ddeb3ddbbac2dc7c1a",
+    "runtime_pack_sha256": "400de11d5812754d4d3711995891a0e88a075350c0e73585b8c127c09eda68fc",
+    "alliance_640_actual_sha256": "b4259300d57d2b8eff9ba1e87d26b6f3470c3204f6a88436478c2f67a0bcc57a",
+    "empire_640_actual_sha256": "5ac2fcfc2598cde4fc21dc2b1638812059da2d6daac2be894d5a9d71da158471"
+  },
+  "limits": [
+    "exact_global_campaign_rng_sequence_open",
+    "original_arrival_callbacks_and_recovery_trajectories_open",
+    "power_allocation_and_exact_planet_placement_open",
+    "native_death_star_beam_dimensions_and_timing_open",
+    "native_trench_run_playback_comparison_open",
+    "remaining_completion_destruction_warning_and_ordered_trench_voice_callers_open",
+    "audio_mixing_and_audible_native_comparison_open",
+    "strict_A0_gate_not_run"
+  ],
+  "proprietary_artifacts_committed": false
+}

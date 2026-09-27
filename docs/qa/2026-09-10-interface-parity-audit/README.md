@@ -5,7 +5,7 @@ This folder is the source of truth for restoring every visible surface from
 bitmap-driven interface. Replacement panels, invented controls, approximate
 geometry, and unverified asset mappings do not count as parity.
 
-The current P58-B20 space-battle checkpoint maps all 106 canonical cells to
+The current P58-B21 space-battle checkpoint maps all 106 canonical cells to
 deterministic A1 evidence through 87 journeys and 19 snapshots. Capital and
 fighter combat, tactical commands,
 original results and options panels, resource 5030 stars, empty-space
@@ -17,7 +17,9 @@ transitions, source-exact mixed-task-force target rejection, exact fighter
 recovery completion and capacity feedback, disabled-hyperdrive withdrawal
 warning, production
 trench-run launch, and exact strategic loss
-persistence now work within their recorded bounds. The strict result remains
+persistence now work within their recorded bounds. Played and automatic space
+battles also share bombardment, landing, ground follow-up, occupation, and
+Battle Results destination routing. The strict result remains
 0 of 106 accepted tactical cells until every row has authoritative A0 evidence
 and passes the complete comparison contract.
 
@@ -218,6 +220,9 @@ and passes the complete comparison contract.
   and [P58-B20 recovery/withdrawal feedback evidence](evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md)
   for preserved focus orders, final-group recovery acknowledgement,
   no-carrier-capacity feedback, and disabled-hyperdrive withdrawal warning.
+- Review the [P58-B21 shared post-battle evidence](evidence/2026-09-27-tactical-post-battle-orchestration.md)
+  for the common bombardment, landing, ground-continuation, occupation, and
+  Battle Results destination path.
 - Use the [evidence index](evidence/README.md) to find each durable report and
   artifact bundle. Every new bundle must include its own `README.md` inventory.
 
@@ -255,10 +260,10 @@ The practical implementation estimate is approximately 20 to 25% tackled and
 complete evidence and execution matrices pass. The practical estimate guides
 bundle planning; it does not replace strict acceptance.
 
-Within that total, the standalone space-battle launcher is approximately 96%
-implemented at the P58-B06 checkpoint. Its formal acceptance remains 0 of 106
+Within that total, the standalone space-battle launcher is approximately 97%
+implemented at the P58-B21 checkpoint. Its formal acceptance remains 0 of 106
 tactical cells because exact original-view evidence and the remaining native
-beam, playback, and post-battle orchestration contracts are open.
+beam, playback, sequencing, and special-state contracts are open.
 
 The first recovered implementation tranche now packages and renders the four
 original faction-advisor idle runs. See the
@@ -357,9 +362,11 @@ group distribution, forward-relative retained formations, the separate Death
 Star, original result/options panels, both trench-run routes, and exact
 strategic roster, officer-capture, and Death Star-state application. Exact
 planet placement, global RNG sequencing, original arrival callbacks and
-recovery trajectories, power allocation, native beam behavior, shared
-post-battle bombardment, landing, and navigation orchestration, native
-playback, and A0 comparisons remain open.
+recovery trajectories, power allocation, native beam behavior, native
+playback, remaining special-state and audio routes, and A0 comparisons remain
+open. P58-B21 routes interactive and automatic outcomes through the same
+bombardment, troop-landing, ground-follow-up, occupation, and result-destination
+path.
 `CMD-01`, `CMD-03`, `CMD-04`, `CMD-10`, and `UIP-T01` remain open because the
 full control matrix, remaining GID modes and map art, nested object
 compositions and commands, exact rail thumbnails, original destination

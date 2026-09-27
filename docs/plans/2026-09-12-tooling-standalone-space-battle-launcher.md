@@ -84,8 +84,8 @@ authored type-303 resource 5030 star field, and the 1021-through-1024
 superlaser control journey through target destruction.
 Exact global RNG sequencing, exact original arrival callbacks and recovery
 trajectories, power allocation, exact planet placement, the native Death Star
-beam contract, native trench-run playback, shared post-battle bombardment,
-landing, and navigation orchestration, original view acceptance, and all 106
+beam contract, native trench-run playback, remaining special-state and audio
+routes, original view acceptance, and all 106
 visual cells remain open. The deterministic A1 matrix now maps all 106
 canonical tactical cells through 87 browser journeys and 19 snapshots. The
 complete 120-case implementation matrix passes both factions and both
@@ -94,12 +94,12 @@ does not replace the strict 0 of 106 tactical-cell acceptance result.
 
 ## Current contract and limits
 
-- Campaign combat and the direct fixture enter `GameMode::TacticalCombat` through the validated `begin_player_battle` function in `crates/rebellion-app/src/tactical_flow.rs`. P58-B06 also moved hull, fighter-roster, Death Star, empty-fleet, and cargo-loss transport into the shared `apply_results` function. Bombardment, landing, result presentation, and final navigation orchestration remain inline and must be shared before the direct-launch fixture can claim complete campaign-path equivalence.
+- Campaign combat and the direct fixture enter `GameMode::TacticalCombat` through the validated `begin_player_battle` function in `crates/rebellion-app/src/tactical_flow.rs`. P58-B06 moved hull, fighter-roster, Death Star, empty-fleet, and cargo-loss transport into the shared `apply_results` function. P58-B21 adds one `resolve_post_battle` route for played and automatic bombardment, landing, contested ground continuation, unopposed occupation, and result destination routing.
 - `crates/rebellion-render/src/tactical_view.rs` already models placement, combat, results, ships, fighters, selection, retreat, pause, speed, and auto-resolution. The selected-capital path now uses original panel 1302, but power allocation and results composition remain incomplete or replacement UI.
-- The interactive `BattleSession` simulation and `CombatSystem::resolve_space` auto-resolution are different paths. Interactive result application now preserves surviving hull damage and exact fighter roster identity, but the paths still need a shared production entry/return contract and broader outcome coverage.
+- The interactive `BattleSession` simulation and `CombatSystem::resolve_space` auto-resolution remain different combat solvers. Their outcomes now enter one post-battle campaign route, while exact solver equivalence and the full rare-outcome cross-product remain open.
 - The separate `interface-test-fixtures` WASM build already provides a deterministic, audio-muted GID fixture bridge and browser harness. Its production-exclusion check must remain a release gate.
 - The [surface ledger](../qa/2026-09-10-interface-parity-audit/surface-ledger.json) has 106 pending space-battle cells in `TAC-01` through `TAC-07`. `EVT-02` covers Battle Alert. `TAC-08` is the separate ground-assault report flow, not a live space-battle scene.
-- The [native tactical lookup](../reference/asset-library/tactical-lookup.json) proves all 29 ship, eight fighter, and Death Star DAT-to-ordinal resource joins. P54 through the current completion bundle prove staging, decoding, camera, placement, render state, exact identity joins, live capital and fighter rendering, interactions, commands, weapon behavior, collision, automatic group assignment, capability-sorted task forces, forward-relative retained follower geometry, the separate Death Star object, original result/options panels, resource 5030 stars, the superlaser control journey, exact 201/202 trench-run routing, and exact strategic roster, capture, and Death Star-state application. The [P58-B06 evidence](../qa/2026-09-10-interface-parity-audit/evidence/2026-09-22-tactical-completion-bundle.md) records the clean 120-case gate. Exact planet placement, exact global RNG sequencing, exact original arrival callbacks and recovery trajectories, power allocation, the native Death Star beam contract, shared post-battle bombardment, landing, and navigation orchestration, native playback, and original view acceptance remain open. The source tactical 3D window uses the standard arrow cursor.
+- The [native tactical lookup](../reference/asset-library/tactical-lookup.json) proves all 29 ship, eight fighter, and Death Star DAT-to-ordinal resource joins. P54 through P58-B21 prove staging, decoding, camera, placement, render state, exact identity joins, live capital and fighter rendering, interactions, commands, weapon behavior, collision, automatic group assignment, capability-sorted task forces, forward-relative retained follower geometry, the separate Death Star object, original result/options panels, resource 5030 stars, the superlaser control journey, exact 201/202 trench-run routing, exact strategic roster, capture, and Death Star-state application, plus shared post-battle campaign routing. The [P58-B21 evidence](../qa/2026-09-10-interface-parity-audit/evidence/2026-09-27-tactical-post-battle-orchestration.md) records the latest gate. Exact planet placement, exact global RNG sequencing, exact original arrival callbacks and recovery trajectories, power allocation, the native Death Star beam contract, native playback, remaining special-state and audio paths, and original view acceptance remain open. The source tactical 3D window uses the standard arrow cursor.
 - The [screenshot ledger](../qa/2026-09-10-interface-parity-audit/screenshot-ledger.md) has useful tactical HUD, selection, damage, and results references. Most are compressed, localized, or from an altered campaign. They support reconstruction and provisional comparison, not strict pixel acceptance. Lossless original-executable captures remain open.
 
 ## Design
@@ -128,7 +128,7 @@ Catalog rows must reference exact ledger cell IDs and an original source for eve
 
 ### T0. Shared production tactical flow and outcomes
 
-Battle entry and core tactical-result transport now live in one production module. Continue moving bombardment, landing, result presentation, and navigation out of the inline app loop. Reconcile interactive and auto-resolve results with the canonical game-data integrator, preserving exact ship and fighter identities, the separate Death Star, and surviving damage. Add native tests for both factions, each outcome, retreat, partial losses, and strategic return.
+Battle entry, core tactical-result transport, bombardment, troop landing, ground follow-up, occupation, and result destination routing now live in one production module. Continue reconciling interactive and auto-resolve calculations with the canonical game-data integrator while preserving exact ship and fighter identities, the separate Death Star, and surviving damage. Expand native tests across both factions, every outcome, retreat, partial losses, and exceptional strategic returns.
 
 Gate: campaign battle behavior is unchanged except for demonstrated result-correctness fixes; tests prove the same entry and result code is used by campaign and fixture transports. This is a functional prerequisite, not a visual-parity claim.
 
@@ -208,8 +208,10 @@ deterministic A1 crosswalk without running or satisfying the strict A0 gate.
 P58-B19 restores `FUN_005a24d0`'s exact hostile-target rejection for capital
 selections spanning multiple task forces and routes the matching Alliance or
 Imperial voice without mutating existing orders.
+P58-B21 shares played and automatic bombardment, landing, ground follow-up,
+occupation, and Battle Results destination routing through one production
+entry, with focused tests for contested and unopposed landings.
 Power allocation, exact planet placement, native Death Star beam behavior,
-shared post-battle bombardment, landing, and navigation orchestration,
 remaining completion, destruction, recovery, warning, and ordered trench voice
 callers, exact shared-RNG sequencing, mixing,
 native playback, and A0
@@ -218,8 +220,8 @@ No `TAC-*` acceptance cell is closed.
 
 ### Consolidated completion boundary
 
-The next implementation commit carries the remaining T3, T4, and production
-entry/return behavior as one coherent space-battle bundle. Focused tests may
+The next implementation commit carries the remaining T3, T4, sequencing, and
+rare-state behavior as one coherent space-battle bundle. Focused tests may
 run during construction, but the complete workspace, packaged WASM, 106-cell
 muted browser harness, and independent review run once at the bundle gate. This
 makes space battles available through the campaign and direct test launcher
@@ -232,7 +234,7 @@ interface parity and awaits a dedicated Fable and `/ce:plan` design pass.
 
 ### T4. Battle outcome and rare-state closure
 
-Exercise survival, damage, destruction, retreat, fighter losses, both winners, and draw through the same result path as a campaign battle. The Death Star gauge, fire control, target assignment, beam, destruction journey, and both source result-to-film branches now exist provisionally. Reconcile tactical results, bombardment/landing follow-up, reports, messages, saves, native playback, and the exact beam contract with the campaign state.
+Exercise survival, damage, destruction, retreat, fighter losses, both winners, and draw through the same result path as a campaign battle. The Death Star gauge, fire control, target assignment, beam, destruction journey, both source result-to-film branches, and shared bombardment/landing follow-up now exist provisionally. Reconcile exact reports, messages, saves, native playback, sequencing, and the beam contract with campaign state.
 
 Gate: native unit/integration tests and browser journeys agree on state fingerprints and result routing. No fixture-only state change is credited as a working command.
 

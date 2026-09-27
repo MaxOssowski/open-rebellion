@@ -26,6 +26,9 @@ a later modernization track and is not part of this denominator.
   factions and two browser viewports.
 - Independent A1 review found no P0 or P1 defect and left three bounded review
   findings.
+- P58-B21 shares played and automatic post-battle bombardment, landing,
+  contested ground continuation, unopposed occupation, and result destination
+  routing. Focused tests and four muted browser cases pass.
 - The strict matrix contains exactly 106 pending cells: 13 in `TAC-01`, 13 in
   `TAC-02`, 20 in `TAC-03`, 14 in `TAC-04`, 23 in `TAC-05`, nine in `TAC-06`,
   and 14 in `TAC-07`.
@@ -147,8 +150,9 @@ no fixture-only mutation is credited as functioning behavior.
 - Restore the authentic Game Options destination used from Battle Options.
 - Complete withdraw, simulate, observe/take-command, close, and confirmation
   paths with their native disabled and repeat-rejection behavior.
-- Share bombardment, landing, reports, final navigation, and save-state updates
-  between campaign and direct-launch return paths.
+- Preserve the P58-B21 shared bombardment, landing, ground follow-up,
+  occupation, and destination route while completing exact reports,
+  exceptional navigation, and save-state fingerprints for every outcome.
 - Prove successful and failed trench-run playback, skip/natural completion,
   return routing, persistent Death Star outcome, and victory separation.
 - Complete Battle Results overview, both force tabs, damaged/destroyed rows,
@@ -180,6 +184,11 @@ journeys without changing the denominator. It verifies exact faction/group
 capacity and completion feedback, final-group completion gating, and the
 disabled-hyperdrive withdrawal warning in twelve fresh muted browser cases.
 Strict A0 acceptance remains 0/106.
+
+P58-B21 establishes the common production return route without changing the
+denominator. Played and automatic battles now share bombardment, troop landing,
+contested ground continuation, unopposed occupation, and Battle Results
+destination routing. Strict A0 acceptance remains 0/106.
 
 - Give every catalog scenario one or more exact `audit_cells` values.
 - Distinguish journeys from snapshots in the schema and report.
