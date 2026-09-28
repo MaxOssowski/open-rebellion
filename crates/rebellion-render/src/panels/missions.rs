@@ -145,12 +145,19 @@ fn draw_active_tab(
                 let (kind_label, kind_color) = mission_kind_display(mission.kind);
                 ui.colored_label(kind_color, kind_label);
 
-                // Commander name.
-                let commander_name = world
-                    .characters
-                    .get(mission.character)
+                // Team lead, plus how many more members and decoys go along.
+                let commander_name = mission
+                    .lead_character()
+                    .and_then(|key| world.characters.get(key))
                     .map_or("Unknown", |c| c.name.as_str());
-                ui.label(RichText::new(commander_name).small());
+                let others = mission.team.len().saturating_sub(1);
+                let label = match (others, mission.decoys.len()) {
+                    (0, 0) => commander_name.to_string(),
+                    (0, d) => format!("{commander_name} (+{d} decoys)"),
+                    (t, 0) => format!("{commander_name} +{t}"),
+                    (t, d) => format!("{commander_name} +{t} (+{d} decoys)"),
+                };
+                ui.label(RichText::new(label).small());
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui

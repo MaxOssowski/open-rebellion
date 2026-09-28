@@ -95,9 +95,32 @@ Incite (`0x56`) or Subdue (`0x57`) mission enters or leaves phases 8..10.
 | `+0x64` | `flag_col9` | members can resign | `FUN_00520b90` |
 
 The dat-dumper's `max_officers`/`base_duration` names are wrong for this
-layout. The shipped values read as (min, spread), e.g. `(60, 30)` for record
-`0x42`, which matches Jedi Training. The shift is inferred from this fit; the
-MISSNSD loader was not traced.
+layout; they are now `timer_min_days`/`timer_spread_days` (2026-09-28). The
+shipped values read as (min, spread), e.g. `(60, 30)` for record `0x42`,
+which matches Jedi Training. The MISSNSD loader was not traced. The same
+`+0x28` shift holds for SPECFCSD: `FUN_00503b40` reads the class record's
+`+0x98`, which is `mission_id` at file offset `0x70`, and `FUN_00535e40`
+reads the skill pairs at `+0x58..+0x94`, file `0x30..0x6c`.
+
+## Member skills
+
+Characters and special forces share the person base (`FUN_005336b0`,
+vtable `0x00660d60`), which zeroes eight skill shorts at `+0x58..+0x66`.
+At init, `FUN_00535e40` sets each skill to the class record's base plus
+`rand(0..=variance)` (`FUN_0053e290`), in the order diplomacy, espionage, ship
+design, troop training, facility design, combat, leadership, and loyalty.
+The setters are `FUN_00533e20`, `FUN_00533ea0`, `FUN_00533f20`,
+`FUN_00533fa0`, `FUN_00534020`, `FUN_005340a0`, `FUN_00534120`, and
+`FUN_005341a0`.
+
+The special-force class is vtable `0x0065e160` (constructor `FUN_00503ae0`).
+Its slot `+4` returns `0x3c`, and its slots `+0x1dc..+0x1f8` (`0x0065e33c`,
+`FUN_00503c30`..`FUN_00503ca0`) return the base shorts directly. A character
+returns its effective copies `+0x7c..+0x8a` instead (`decoy-roll.md`). The
+shipped SPECFCSD variances are all 0.
+
+`FUN_00520cd0`, the Incite and Subdue leadership term, averages slot
+`+0x1f4` over every team, decoy, and captured member (`FUN_00525bb0`).
 
 ## Phase 10: the per-member roll and outcome
 

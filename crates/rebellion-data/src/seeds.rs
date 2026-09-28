@@ -456,6 +456,9 @@ pub fn apply_seeds_with_rng<R: Rng + ?Sized>(
     seed_maintenance_budget_units(world, seed_options, cmunem.as_ref(), cmunal.as_ref(), rng);
     seed_low_support_garrisons(world, seed_options, rng);
 
+    // Every seeded special force now exists; roll their skills.
+    roll_special_force_skills(world, rng);
+
     Ok(())
 }
 
@@ -758,6 +761,9 @@ pub fn apply_seeds_from_files_with_rng<R: Rng + ?Sized>(
     seed_maintenance_budget_units(world, seed_options, cmunem.as_ref(), cmunal.as_ref(), rng);
     seed_low_support_garrisons(world, seed_options, rng);
 
+    // Every seeded special force now exists; roll their skills.
+    roll_special_force_skills(world, rng);
+
     Ok(())
 }
 
@@ -1020,6 +1026,8 @@ fn dispatch_ground_item(
             let unit = SpecialForceUnit {
                 class_dat_id,
                 is_alliance,
+                skills: [0; 8],
+                on_mission: false,
             };
             let key = world.special_forces.insert(unit);
             world.systems[system_key].special_forces.push(key);
@@ -2052,6 +2060,22 @@ fn roll_character_stats<R: Rng + ?Sized>(world: &mut GameWorld, rng: &mut R) {
     }
 }
 
+/// Roll each special-forces unit's skills from its class:
+/// base + rand(0..=variance) per skill (`FUN_00535e40`). The shipped SPECFCSD
+/// variances are all 0, so the shipped data draws nothing.
+fn roll_special_force_skills<R: Rng + ?Sized>(world: &mut GameWorld, rng: &mut R) {
+    for (_, unit) in &mut world.special_forces {
+        let Some(class) = world.special_force_classes.get(&unit.class_dat_id) else {
+            continue;
+        };
+        for (value, template) in unit.skills.iter_mut().zip(class.skills) {
+            let mut pair = template;
+            roll_skill_pair(&mut pair, rng);
+            *value = pair.base;
+        }
+    }
+}
+
 /// Roll a single `SkillPair` into a concrete value: base + random(0..=variance).
 /// After rolling, variance is set to 0 so the value is fixed.
 fn roll_skill_pair<R: Rng + ?Sized>(pair: &mut SkillPair, rng: &mut R) {
@@ -2105,6 +2129,49 @@ mod tests {
     use rand::SeedableRng;
     use rand_xoshiro::Xoshiro256PlusPlus;
     use std::path::PathBuf;
+
+    #[test]
+    fn special_forces_roll_each_skill_from_their_class_and_skip_unknown_classes() {
+        // FUN_00535e40: skill = class base + rand(0..=variance). A unit whose
+        // class is not in SPECFCSD keeps the zeroed skills of FUN_005336b0.
+        let mut world = GameWorld::default();
+        let class = DatId::new(0x3c00_0001);
+        let mut skills = [SkillPair {
+            base: 0,
+            variance: 0,
+        }; 8];
+        skills[1] = SkillPair {
+            base: 55,
+            variance: 0,
+        };
+        skills[5] = SkillPair {
+            base: 20,
+            variance: 10,
+        };
+        world.special_force_classes.insert(
+            class,
+            rebellion_core::world::SpecialForceClassDef {
+                skills,
+                mission_mask: 1,
+            },
+        );
+        let unit = |class_dat_id| SpecialForceUnit {
+            class_dat_id,
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        };
+        let known = world.special_forces.insert(unit(class));
+        let unknown = world.special_forces.insert(unit(DatId::new(0)));
+
+        roll_special_force_skills(&mut world, &mut Xoshiro256PlusPlus::seed_from_u64(7));
+
+        let rolled = world.special_forces[known].skills;
+        assert_eq!(rolled[1], 55);
+        assert!((20..=30).contains(&rolled[5]), "combat {}", rolled[5]);
+        assert_eq!(rolled[0], 0);
+        assert_eq!(world.special_forces[unknown].skills, [0; 8]);
+    }
 
     #[test]
     fn game_start_makes_characters_force_aware_by_their_jedi_probability() {

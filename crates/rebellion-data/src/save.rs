@@ -1,6 +1,6 @@
 //! Save / load for the full game state.
 //!
-//! # Format (v16)
+//! # Format (v17)
 //!
 //! Binary `bincode` encoding. A save file is:
 //!
@@ -79,9 +79,10 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
 ///
-/// v16: queue items carry a destination and built objects travel there
-/// (F-030).
-pub const SAVE_VERSION: u32 = 16;
+/// v17: missions carry team, decoy, and captured member lists; special
+/// forces carry skills and an on-mission flag; the world holds MISSNSD
+/// records and SPECFCSD classes (F-019).
+pub const SAVE_VERSION: u32 = 17;
 
 /// Current state-fingerprint algorithm version.
 ///

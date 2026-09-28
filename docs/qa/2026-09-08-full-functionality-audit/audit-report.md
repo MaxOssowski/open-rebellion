@@ -863,6 +863,17 @@ cross-runtime proof remain open
   - Phases chain within one tick except phase 4 (transit) and phase 8
     (timer `0x38b`, MISSNSD min + rand(spread)).
   - The port lands per phase and covers the port's 10 agent kinds.
+- Phase 1 (2026-09-28, save v17): missions hold team, decoy, and captured
+  lists of characters or special forces.
+  - Guarded dispatch applies `FUN_0054bb90`: prisoners go to the captured
+    list and an empty team is refused.
+  - It also applies `FUN_00522b30`: members must be on one side, have no
+    current mission, share one location, and appear only once.
+  - MISSNSD records load with their timer and flags. SPECFCSD classes load,
+    and seeded special forces roll their skills (`FUN_00535e40`).
+  - The uprising leadership term averages every member (`FUN_00520cd0`).
+  - The resolver still rolls one lead character until phase 4. A 1500-tick
+    dual-AI playtest produces identical telemetry before and after.
 
 ### F-020: A mod with a missing dependency fails silently
 

@@ -1094,6 +1094,26 @@ impl SdprtbParams {
     }
 }
 
+/// One MISSNSD.DAT record: the rules a mission class reads from its record
+/// (`ghidra/notes/mission-lifecycle.md`, "The mission record").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MissionRecord {
+    /// Record id, `family << 24 | index` (e.g. `0x51000010` for Diplomacy).
+    pub dat_id: crate::ids::DatId,
+    /// Mission timer minimum in days (record `+0x50`, `FUN_005236e0`).
+    pub timer_min_days: u32,
+    /// Mission timer spread in days (record `+0x54`, `FUN_005236e0`).
+    pub timer_spread_days: u32,
+    /// Phase 10 loops back to phase 8 (record `+0x58`, `FUN_005227d0`).
+    pub repeats: bool,
+    /// Members are on a hidden mission (record `+0x5c`, `FUN_00520b70`).
+    pub hidden: bool,
+    /// The decoy and detection phases run (record `+0x60`, `FUN_00520b80`).
+    pub detection_phases: bool,
+    /// Members may resign (record `+0x64`, `FUN_00520b90`).
+    pub can_resign: bool,
+}
+
 /// A lookup table loaded from one of the `*MSTB.DAT` / `*TB.DAT` files.
 ///
 /// Each table is a sorted list of `(threshold, value)` pairs where `threshold`
@@ -1194,6 +1214,13 @@ pub struct SpecialForceUnit {
     /// The class definition (from SPECFCSD.DAT).
     pub class_dat_id: DatId,
     pub is_alliance: bool,
+    /// Skills in [`Skill`] order, rolled at creation from the class:
+    /// base + rand(0..=variance) (`FUN_00535e40`). Read through slots
+    /// `+0x1dc..+0x1f8` of vtable `0x0065e160` as the shorts `+0x58..+0x66`.
+    pub skills: [u32; 8],
+    /// Currently a mission member (role flag bit 7, `RoleOnMissionNotif`
+    /// `FUN_00536b00`; special forces share the role flags with characters).
+    pub on_mission: bool,
 }
 
 /// A defense facility instance on a system surface.
@@ -1240,6 +1267,60 @@ pub struct TroopClassDef {
     pub defense_strength: u32,
 }
 
+/// Class definition for a special-forces unit, from SPECFCSD.DAT.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecialForceClassDef {
+    /// Skill templates in [`Skill`] order (class record `+0x58..+0x94`).
+    pub skills: [SkillPair; 8],
+    /// Missions the unit may join (class record `+0x98`, `FUN_00503b40`).
+    pub mission_mask: u32,
+}
+
+/// The eight person skills, in the order of the character and special-force
+/// slots `+0x1dc..+0x1f8` (`ghidra/notes/decoy-roll.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Skill {
+    Diplomacy,
+    Espionage,
+    ShipDesign,
+    TroopTraining,
+    FacilityDesign,
+    Combat,
+    Leadership,
+    Loyalty,
+}
+
+impl Skill {
+    /// Every skill in slot order.
+    pub const ALL: [Skill; 8] = [
+        Skill::Diplomacy,
+        Skill::Espionage,
+        Skill::ShipDesign,
+        Skill::TroopTraining,
+        Skill::FacilityDesign,
+        Skill::Combat,
+        Skill::Leadership,
+        Skill::Loyalty,
+    ];
+}
+
+impl Character {
+    /// The skill template for `skill`.
+    #[must_use]
+    pub fn skill(&self, skill: Skill) -> SkillPair {
+        match skill {
+            Skill::Diplomacy => self.diplomacy,
+            Skill::Espionage => self.espionage,
+            Skill::ShipDesign => self.ship_design,
+            Skill::TroopTraining => self.troop_training,
+            Skill::FacilityDesign => self.facility_design,
+            Skill::Combat => self.combat,
+            Skill::Leadership => self.leadership,
+            Skill::Loyalty => self.loyalty,
+        }
+    }
+}
+
 /// Class definition for a defense facility — a template loaded from DEFFACSD.DAT.
 ///
 /// Instances (`DefenseFacilityInstance`) reference this by `class_dat_id`.
@@ -1284,12 +1365,19 @@ pub struct GameWorld {
     /// Repopulated from DAT on load; default to empty for save compatibility.
     #[serde(default)]
     pub defense_facility_classes: HashMap<crate::ids::DatId, DefenseFacilityClassDef>,
+    /// Special-forces class definitions keyed by `DatId` (from SPECFCSD.DAT).
+    /// Repopulated from DAT on load.
+    #[serde(default)]
+    pub special_force_classes: HashMap<crate::ids::DatId, SpecialForceClassDef>,
     /// Game-balance parameters from GNPRTB.DAT (combat formulas, bombardment divisors, etc.).
     pub gnprtb: GnprtbParams,
     /// Side-aware startup parameters from SDPRTB.DAT.
     pub sdprtb: SdprtbParams,
     /// Mission probability tables keyed by DAT file stem (e.g. "DIPLMSTB", "ESPIMSTB").
     pub mission_tables: HashMap<String, MstbTable>,
+    /// MISSNSD.DAT records in file order. Repopulated from DAT on load.
+    #[serde(default)]
+    pub mission_records: Vec<MissionRecord>,
     /// GNPRTB difficulty column index (0-7) for this game session.
     /// Set from `SeedOptions::gnprtb_index()` at game start. Default 2 (Alliance Medium).
     #[serde(default = "default_difficulty_index")]
@@ -1300,8 +1388,49 @@ fn default_difficulty_index() -> u8 {
     2
 }
 
+impl GameWorld {
+    /// The first MISSNSD record of a mission family (e.g. `0x51` Diplomacy).
+    /// A mission class reads its record through `+0x2c`
+    /// (`ghidra/notes/mission-lifecycle.md`).
+    #[must_use]
+    pub fn mission_record(&self, family: u8) -> Option<&MissionRecord> {
+        self.mission_records
+            .iter()
+            .find(|record| record.dat_id.family() == family)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_mission_record_is_found_by_its_family_byte() {
+        // A mission class reads its MISSNSD record by family (the record's
+        // DatId high byte), e.g. 0x51 Diplomacy (ghidra/notes/mission-lifecycle.md).
+        let record = |raw, min| MissionRecord {
+            dat_id: crate::ids::DatId::new(raw),
+            timer_min_days: min,
+            timer_spread_days: 0,
+            repeats: false,
+            hidden: false,
+            detection_phases: true,
+            can_resign: true,
+        };
+        let world = GameWorld {
+            mission_records: vec![
+                record(0x4100_0001, 0),
+                record(0x5300_0020, 10),
+                record(0x5300_0021, 11),
+            ],
+            ..GameWorld::default()
+        };
+
+        assert_eq!(
+            world.mission_record(0x53).map(|r| r.timer_min_days),
+            Some(10)
+        );
+        assert!(world.mission_record(0x51).is_none());
+    }
     use super::*;
 
     /// Helper: create a minimal Character for tests.

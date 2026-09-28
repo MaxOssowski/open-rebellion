@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v16, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v17, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-09-28
@@ -11,14 +11,14 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v16, and it is the only one
+serializable snapshot. The current format is v17, and it is the only one
 that loads.
 
-## Native format (v16)
+## Native format (v17)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 16
+[version: u32 LE]             — SAVE_VERSION = 17
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
 [mod_count: u32 LE]
@@ -73,7 +73,10 @@ difficulty, galaxy-size label, player faction, and victory mode. The clock
 keeps its original Game Speed and partial day, so a game saved while paused
 reloads paused. Blockade embarked-regiment tracking (F-021) and the recovered
 `UprisingState` (F-026) persist. v16 added each queue item's destination and
-the objects travelling to theirs (`DeliveryState`, F-030).
+the objects travelling to theirs (`DeliveryState`, F-030). v17 gives each
+mission team, decoy, and captured member lists, gives special forces their
+SPECFCSD skills and an on-mission flag, and stores the MISSNSD records and
+SPECFCSD classes in the world (F-019).
 
 ## Deterministic fingerprints
 
@@ -104,8 +107,8 @@ released, restore versioned migration before the next layout change.
 WASM stores base64 bincode and versioned JSON metadata in `localStorage`:
 
 ```text
-rebellion_save_v16_<slot>
-rebellion_meta_v16_<slot>
+rebellion_save_v17_<slot>
+rebellion_meta_v17_<slot>
 ```
 
 Metadata includes the full save name, game tick, and fingerprint with its

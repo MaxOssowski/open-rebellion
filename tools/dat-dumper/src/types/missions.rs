@@ -33,15 +33,20 @@ pub struct Mission {
     pub special_force_eligibility: u32,
     // 0x10000 when mission can target enemy systems, 0 otherwise
     pub target_flags: u32,
-    // Maximum number of officers that can be assigned
-    pub max_officers: u32,
-    // Base duration in game turns
-    pub base_duration: u32,
-    // Boolean flags for mission properties (16 flags)
-    pub flag_col6: u32,
-    pub flag_col7: u32,
-    pub flag_col8: u32,
-    pub flag_col9: u32,
+    // Mission timer minimum in days (record +0x50 in memory, FUN_005236e0);
+    // the timer fires after min + rand(0..=spread) (ghidra/notes/mission-lifecycle.md)
+    pub timer_min_days: u32,
+    // Mission timer spread in days (record +0x54, FUN_005236e0)
+    pub timer_spread_days: u32,
+    // Phase 10 loops back to 8 (record +0x58, FUN_00520b60)
+    pub repeats: u32,
+    // Members go on a hidden mission (record +0x5c, FUN_00520b70)
+    pub hidden: u32,
+    // Decoy and detection phases run (record +0x60, FUN_00520b80)
+    pub detection_phases: u32,
+    // Members may resign (record +0x64, FUN_00520b90)
+    pub can_resign: u32,
+    // Remaining boolean flags, not yet mapped
     pub flag_col10: u32,
     pub flag_col11: u32,
     pub flag_col12: u32,
@@ -100,12 +105,12 @@ impl Mission {
             is_empire: r.read_u32()?,
             special_force_eligibility: r.read_u32()?,
             target_flags: r.read_u32()?,
-            max_officers: r.read_u32()?,
-            base_duration: r.read_u32()?,
-            flag_col6: r.read_u32()?,
-            flag_col7: r.read_u32()?,
-            flag_col8: r.read_u32()?,
-            flag_col9: r.read_u32()?,
+            timer_min_days: r.read_u32()?,
+            timer_spread_days: r.read_u32()?,
+            repeats: r.read_u32()?,
+            hidden: r.read_u32()?,
+            detection_phases: r.read_u32()?,
+            can_resign: r.read_u32()?,
             flag_col10: r.read_u32()?,
             flag_col11: r.read_u32()?,
             flag_col12: r.read_u32()?,
@@ -133,12 +138,12 @@ impl Mission {
         w.write_u32(self.is_empire);
         w.write_u32(self.special_force_eligibility);
         w.write_u32(self.target_flags);
-        w.write_u32(self.max_officers);
-        w.write_u32(self.base_duration);
-        w.write_u32(self.flag_col6);
-        w.write_u32(self.flag_col7);
-        w.write_u32(self.flag_col8);
-        w.write_u32(self.flag_col9);
+        w.write_u32(self.timer_min_days);
+        w.write_u32(self.timer_spread_days);
+        w.write_u32(self.repeats);
+        w.write_u32(self.hidden);
+        w.write_u32(self.detection_phases);
+        w.write_u32(self.can_resign);
         w.write_u32(self.flag_col10);
         w.write_u32(self.flag_col11);
         w.write_u32(self.flag_col12);

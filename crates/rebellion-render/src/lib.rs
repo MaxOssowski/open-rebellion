@@ -594,11 +594,14 @@ fn gid_metric(
                         })
                     });
                 let active = character.on_mission
-                    || gid
-                        .missions
-                        .missions()
-                        .iter()
-                        .any(|mission| mission.character == *character_key);
+                    || gid.missions.missions().iter().any(|mission| {
+                        mission.members().any(|member| {
+                            member
+                                == rebellion_core::missions::MissionMember::Character(
+                                    *character_key,
+                                )
+                        })
+                    });
                 belongs
                     && at_system
                     && if mode == GidMode::ActivePersonnel {

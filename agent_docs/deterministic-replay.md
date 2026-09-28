@@ -117,7 +117,7 @@ state through the current save format, and checks every command-prefix
 fingerprint against a cross-process golden. Save v16 adds build destinations
 and en-route deliveries (F-030), fighter classes now load their FIGHTSD
 hyperdrive ratings, and `GameConfig` drops its unused movement section. Each
-changes every fingerprint, and so does the save version, which is hashed. It now starts at `v1:e95a54f773f45b6a`. From tick 10 the AI builds
+changes every fingerprint, and so does the save version, which is hashed. Save v17 gives missions team, decoy, and captured member lists and special forces their SPECFCSD skills (F-019); the campaign plays the same, but every fingerprint moves. It now starts at `v1:96d01ac42fbade76`. From tick 10 the AI builds
 only classes its research has reached (F-018), a dispatched character is
 marked on a mission until it returns (F-019), and revolts, incidents,
 disasters, and the garrison requirement follow the recovered rules (F-026).
@@ -125,7 +125,7 @@ From tick 15 the troop surplus counts every regiment at a held system
 (`FUN_0050b500`), a Subdue success draws its gain from its own roll, and the
 uprising slice is sized by `UprisingSystem::roll_budget`. Fleets travel for
 the recovered per-object transit time (`FUN_0055d8c0`, F-032), so the campaign
-ends at `v1:487d95e98357487b`. Before v14, the committed v13 goldens no longer
+ends at `v1:6e43534d24f38473`. Before v14, the committed v13 goldens no longer
 reproduced locally even at their own commit `e8d4945`: that commit, with
 unchanged DATs, now computes initial `v1:14ef55dafe6595ee`. The cause is
 outside the committed code and remains open. The unit tests use

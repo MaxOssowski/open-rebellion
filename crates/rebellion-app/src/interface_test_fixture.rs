@@ -285,14 +285,14 @@ pub fn apply(
             } else {
                 MissionFaction::Empire
             };
-            missions.dispatch(
+            missions.dispatch(rebellion_core::missions::MissionRequest::single(
                 MissionKind::Espionage,
                 faction,
                 character_key,
                 primary,
                 None,
                 0.0,
-            );
+            ));
         }
     }
 

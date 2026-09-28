@@ -43,7 +43,8 @@ use rebellion_core::manufacturing::{
     BuildableKind, CompletionEvent, ManufacturingState, QueueItem,
 };
 use rebellion_core::missions::{
-    MissionEffect, MissionFaction, MissionKind, MissionResult, MissionState,
+    MissionEffect, MissionFaction, MissionKind, MissionMember, MissionRequest, MissionResult,
+    MissionState,
 };
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_fleet_transit, ArrivalEvent, MovementState,
@@ -1628,16 +1629,8 @@ fn apply_mission_effects_inner(
                     c.capture_tick = None;
                 }
             }
-            MissionEffect::CharacterBusy { character } => {
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.on_mission = true;
-                }
-            }
-            MissionEffect::CharacterAvailable { character } => {
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.on_mission = false;
-                    c.on_hidden_mission = false;
-                }
+            MissionEffect::MemberAvailable { member } => {
+                rebellion_core::missions::set_on_mission(world, *member, false);
             }
             MissionEffect::CharacterEscaped {
                 character,
@@ -1913,6 +1906,8 @@ pub fn apply_event_action_to_world(
                         let sf_key = world.special_forces.insert(SpecialForceUnit {
                             class_dat_id: DatId::new(0),
                             is_alliance: spawn_alliance,
+                            skills: [0; 8],
+                            on_mission: false,
                         });
                         if let Some(sys) = world.systems.get_mut(at_system) {
                             sys.special_forces.push(sf_key);
@@ -2007,15 +2002,18 @@ fn apply_ai_actions_inner(
                 roll_idx += 1;
                 let dispatched = mission_state
                     .dispatch_guarded(
-                        *kind,
-                        mission_faction,
-                        *character,
-                        *target_system,
-                        *target_character,
-                        roll,
+                        MissionRequest {
+                            kind: *kind,
+                            faction: mission_faction,
+                            team: vec![MissionMember::Character(*character)],
+                            decoys: Vec::new(),
+                            target_system: *target_system,
+                            target_character: *target_character,
+                            duration_roll: roll,
+                        },
                         world,
                     )
-                    .is_some();
+                    .is_ok();
                 if dispatched {
                     ai_state.mark_busy(*character);
                 }
@@ -2222,7 +2220,7 @@ mod tests {
                 tick: 9,
                 kind: MissionKind::SubdueUprising,
                 faction: MissionFaction::Alliance,
-                character: agent,
+                character: Some(agent),
                 target_system: system,
                 outcome: MissionOutcome::Success,
                 effects: vec![MissionEffect::UprisingSubdued {
@@ -2266,7 +2264,7 @@ mod tests {
             tick: 9,
             kind: MissionKind::SubdueUprising,
             faction: MissionFaction::Empire,
-            character: agent,
+            character: Some(agent),
             target_system: system,
             outcome: MissionOutcome::Success,
             effects: vec![MissionEffect::UprisingSubdued {

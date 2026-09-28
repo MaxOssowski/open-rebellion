@@ -452,9 +452,16 @@ pub fn run_simulation_tick(
             &mut states.uprising,
             &mut states.death_star,
         );
-        states.ai.mark_available(result.character);
-        if let Some(ref mut ai2) = states.ai2 {
-            ai2.mark_available(result.character);
+        for character in result.effects.iter().filter_map(|effect| match effect {
+            rebellion_core::missions::MissionEffect::MemberAvailable { member } => {
+                member.character()
+            }
+            _ => None,
+        }) {
+            states.ai.mark_available(character);
+            if let Some(ref mut ai2) = states.ai2 {
+                ai2.mark_available(character);
+            }
         }
         // Knesset Shamash-Bet #R11: emit `EVT_CHARACTER_KILLED` telemetry for
         // mission-side assassinations. The integrator's `MissionEffect::CharacterKilled`
@@ -499,9 +506,9 @@ pub fn run_simulation_tick(
                     result.kind,
                     rebellion_core::missions::MissionKind::Espionage
                 ) {
-                    let char_name = world
-                        .characters
-                        .get(result.character)
+                    let char_name = result
+                        .character
+                        .and_then(|key| world.characters.get(key))
                         .map_or_else(|| String::from("<unknown>"), |c| c.name.clone());
                     let sys_name = world
                         .systems
@@ -519,9 +526,9 @@ pub fn run_simulation_tick(
             }
             rebellion_core::missions::MissionOutcome::Foiled => {
                 // #R7: Counter-intelligence foiled a covert mission → saboteur detected.
-                let char_name = world
-                    .characters
-                    .get(result.character)
+                let char_name = result
+                    .character
+                    .and_then(|key| world.characters.get(key))
                     .map_or_else(|| String::from("<unknown>"), |c| c.name.clone());
                 integrator.emit(
                     rebellion_core::game_events::SYS_MISSIONS,
@@ -540,9 +547,9 @@ pub fn run_simulation_tick(
                         | rebellion_core::missions::MissionKind::Abduction
                         | rebellion_core::missions::MissionKind::Rescue
                 ) {
-                    let char_name = world
-                        .characters
-                        .get(result.character)
+                    let char_name = result
+                        .character
+                        .and_then(|key| world.characters.get(key))
                         .map_or_else(|| String::from("<unknown>"), |c| c.name.clone());
                     integrator.emit(
                         rebellion_core::game_events::SYS_MISSIONS,

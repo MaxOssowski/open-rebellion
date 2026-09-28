@@ -379,6 +379,8 @@ const OPTIONAL_WASM_DATA: &[&str] = &[
     "RLEVADTB.DAT",
     "RESRCTB.DAT",
     "TDECOYTB.DAT",
+    "MISSNSD.DAT",
+    "SPECFCSD.DAT",
 ];
 
 #[cfg(target_arch = "wasm32")]
@@ -1832,7 +1834,13 @@ Some(RailAudience::side(*faction_is_alliance)),
                         ));
                     }
                 }
-                ai_state.mark_available(result.character);
+                for effect in &result.effects {
+                    if let MissionEffect::MemberAvailable { member } = effect {
+                        if let Some(character) = member.character() {
+                            ai_state.mark_available(character);
+                        }
+                    }
+                }
 
                 // Advisor trigger for player faction missions.
                 if result.faction == player_faction {
@@ -4625,27 +4633,31 @@ fn apply_panel_action(
             target_character,
             duration_roll,
         } => {
-            if mission_state
-                .dispatch_guarded(
-                    kind,
-                    faction,
+            let request = rebellion_core::missions::MissionRequest {
+                kind,
+                faction,
+                team: vec![rebellion_core::missions::MissionMember::Character(
                     character,
-                    target,
-                    target_character,
-                    duration_roll,
-                    world,
-                )
-                .is_none()
-            {
+                )],
+                decoys: Vec::new(),
+                target_system: target,
+                target_character,
+                duration_roll,
+            };
+            if let Err(refusal) = mission_state.dispatch_guarded(request, world) {
                 let char_name = world
                     .characters
                     .get(character)
                     .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("{char_name} is already on a mission"),
-                    MessageCategory::Mission,
-                ));
+                let text = match refusal {
+                    rebellion_core::missions::MissionRefusal::EmptyTeam => {
+                        format!("{char_name} is a prisoner and cannot lead a mission")
+                    }
+                    rebellion_core::missions::MissionRefusal::MemberUnavailable(_) => {
+                        format!("{char_name} is already on a mission")
+                    }
+                };
+                msg_log.push(GameMessage::new(clock.tick, text, MessageCategory::Mission));
                 return;
             }
             let char_name = world
@@ -4981,9 +4993,9 @@ fn apply_panel_action(
                     MessageCategory::Mission,
                 ));
                 for m in missions {
-                    let char_name = world
-                        .characters
-                        .get(m.character)
+                    let char_name = m
+                        .lead_character()
+                        .and_then(|key| world.characters.get(key))
                         .map_or_else(|| "Unknown".into(), |c| c.name.clone());
                     let sys_name = world
                         .systems
@@ -5319,16 +5331,8 @@ fn apply_mission_result(
                     c.capture_tick = None;
                 }
             }
-            MissionEffect::CharacterBusy { character } => {
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.on_mission = true;
-                }
-            }
-            MissionEffect::CharacterAvailable { character } => {
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.on_mission = false;
-                    c.on_hidden_mission = false;
-                }
+            MissionEffect::MemberAvailable { member } => {
+                rebellion_core::missions::set_on_mission(world, *member, false);
             }
             MissionEffect::DecoyTriggered {
                 system,
@@ -5469,18 +5473,18 @@ fn apply_ai_actions(
                 let roll = rolls.get(roll_idx).copied().unwrap_or(*duration_roll);
                 roll_idx += 1;
                 let ai_faction = ai_state.faction.unwrap_or(AiFaction::Empire);
-                if mission_state
-                    .dispatch_guarded(
-                        *kind,
-                        ai_faction.as_mission_faction(),
+                let request = rebellion_core::missions::MissionRequest {
+                    kind: *kind,
+                    faction: ai_faction.as_mission_faction(),
+                    team: vec![rebellion_core::missions::MissionMember::Character(
                         *character,
-                        *target_system,
-                        *target_character,
-                        roll,
-                        world,
-                    )
-                    .is_none()
-                {
+                    )],
+                    decoys: Vec::new(),
+                    target_system: *target_system,
+                    target_character: *target_character,
+                    duration_roll: roll,
+                };
+                if mission_state.dispatch_guarded(request, world).is_err() {
                     continue;
                 }
                 ai_state.mark_busy(*character);

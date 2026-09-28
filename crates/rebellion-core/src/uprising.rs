@@ -41,9 +41,9 @@ use crate::ids::{
     CharacterKey, DefenseFacilityKey, ManufacturingFacilityKey, ProductionFacilityKey, SystemKey,
     TroopKey,
 };
-use crate::missions::{MissionKind, MissionState};
+use crate::missions::{member_skill, MissionKind, MissionState};
 use crate::tick::TickEvent;
-use crate::world::{Character, GameWorld, MstbTable, System};
+use crate::world::{Character, GameWorld, MstbTable, Skill, System};
 
 // ---------------------------------------------------------------------------
 // GNPRTB parameters (FUN_0053e390 id -> DAT global)
@@ -454,9 +454,10 @@ fn facilities(world: &GameWorld, sys: &System, side: Option<Faction>) -> Vec<Fac
         .collect()
 }
 
-/// `FUN_00520cd0` over each uprising mission at `system`: the agent's
-/// leadership (slot `+0x1f4`, enhanced leadership `+0x88`) divided by GNPRTB
-/// 6144, summed per kind (`FUN_005484d0` writes `+0x54 → +0x74` for Incite
+/// `FUN_00520cd0` over each uprising mission at `system`: the average
+/// leadership (slot `+0x1f4`, enhanced leadership `+0x88`) of every team,
+/// decoy, and captured member (`FUN_00525bb0`), divided by GNPRTB 6144,
+/// summed per kind (`FUN_005484d0` writes `+0x54 → +0x74` for Incite
 /// Uprising, family 0x56, and `+0x78` for Subdue Uprising, family 0x57).
 fn uprising_mission_terms(
     world: &GameWorld,
@@ -472,9 +473,13 @@ fn uprising_mission_terms(
         if mission.target_system != system {
             continue;
         }
-        let leadership = world.characters.get(mission.character).map_or(0, |c| {
-            (c.leadership.base + c.leadership.variance / 2).cast_signed()
-        });
+        let (total, count) = mission
+            .members()
+            .filter_map(|member| member_skill(world, member, Skill::Leadership))
+            .fold((0_i32, 0_i32), |(total, count), value| {
+                (total + value.cast_signed(), count + 1)
+            });
+        let leadership = if count == 0 { 0 } else { total / count };
         match mission.kind {
             MissionKind::InciteUprising => {
                 any_incite = true;
@@ -912,6 +917,7 @@ mod tests {
     use super::*;
     use crate::dat::{ExplorationStatus, SectorGroup};
     use crate::ids::DatId;
+    use crate::missions::MissionRequest;
     use crate::missions::{MissionEffect, MissionFaction, MissionOutcome};
     use crate::world::{
         Character, ControlKind, DefenseFacilityInstance, GnprtbEntry, GnprtbParams,
@@ -1381,14 +1387,14 @@ mod tests {
             ..Character::default()
         });
         let mut missions = MissionState::new();
-        missions.dispatch(
+        missions.dispatch(MissionRequest::single(
             MissionKind::InciteUprising,
             MissionFaction::Empire,
             agent,
             system,
             None,
             0.0,
-        );
+        ));
         let mut state = in_revolt(system, 5);
         let events = UprisingSystem::advance(
             &mut state,
@@ -1698,37 +1704,73 @@ mod tests {
         let subduer = agent(&mut world, 30, 22);
         let elsewhere = agent(&mut world, 90, 0);
         let mut missions = MissionState::new();
-        missions.dispatch(
+        missions.dispatch(MissionRequest::single(
             MissionKind::SubdueUprising,
             MissionFaction::Alliance,
             subduer,
             system,
             None,
             0.0,
-        );
+        ));
         assert_eq!(
             uprising_mission_terms(&world, &missions, system),
             (0, -4, false)
         );
-        missions.dispatch(
+        missions.dispatch(MissionRequest::single(
             MissionKind::InciteUprising,
             MissionFaction::Empire,
             inciter,
             system,
             None,
             0.0,
-        );
-        missions.dispatch(
+        ));
+        missions.dispatch(MissionRequest::single(
             MissionKind::InciteUprising,
             MissionFaction::Empire,
             elsewhere,
             SystemKey::default(),
             None,
             0.0,
-        );
+        ));
         assert_eq!(
             uprising_mission_terms(&world, &missions, system),
             (2, -4, true)
+        );
+    }
+
+    #[test]
+    fn an_uprising_mission_counts_the_average_leadership_of_all_its_members() {
+        // FUN_00520cd0 averages slot +0x1f4 (leadership) over FUN_00525bb0,
+        // every team, decoy, and captured member, before FUN_005484d0
+        // divides by GNPRTB 6144 (10). Leadership 20 and 40 average to 30.
+        let (mut world, system) = world_with(Faction::Alliance, 0.3);
+        let agent = |world: &mut GameWorld, base| {
+            world.characters.insert(Character {
+                leadership: SkillPair { base, variance: 0 },
+                ..Character::default()
+            })
+        };
+        let lead = agent(&mut world, 20);
+        let second = agent(&mut world, 40);
+        let mut missions = MissionState::new();
+        missions.dispatch(MissionRequest {
+            team: vec![
+                crate::missions::MissionMember::Character(lead),
+                crate::missions::MissionMember::Character(second),
+            ],
+            ..MissionRequest::single(
+                MissionKind::SubdueUprising,
+                MissionFaction::Alliance,
+                lead,
+                system,
+                None,
+                0.0,
+            )
+        });
+
+        assert_eq!(
+            uprising_mission_terms(&world, &missions, system),
+            (0, -3, false)
         );
     }
 
@@ -1790,14 +1832,14 @@ mod tests {
             let (mut world, system) = world_with(side, 0.5);
             let agent = world.characters.insert(Character::default());
             let mut missions = MissionState::new();
-            missions.dispatch(
+            missions.dispatch(MissionRequest::single(
                 MissionKind::InciteUprising,
                 MissionFaction::Empire,
                 agent,
                 system,
                 None,
                 0.0,
-            );
+            ));
             let mut state = in_revolt(system, 5);
             let events = UprisingSystem::advance(
                 &mut state,
@@ -1829,7 +1871,14 @@ mod tests {
             (MissionKind::SubdueUprising, agent),
             (MissionKind::Diplomacy, envoy),
         ] {
-            missions.dispatch(kind, MissionFaction::Alliance, character, system, None, 0.0);
+            missions.dispatch(MissionRequest::single(
+                kind,
+                MissionFaction::Alliance,
+                character,
+                system,
+                None,
+                0.0,
+            ));
         }
         let ticks: Vec<TickEvent> = (1..=200).map(|tick| TickEvent { tick }).collect();
         // ROLLS_PER_MISSION: two outcome rolls, then the two gain draws.
@@ -2051,14 +2100,14 @@ mod tests {
             ..Character::default()
         });
         let mut missions = MissionState::new();
-        missions.dispatch(
+        missions.dispatch(MissionRequest::single(
             MissionKind::SubdueUprising,
             MissionFaction::Alliance,
             agent,
             system,
             None,
             0.0,
-        );
+        ));
         let mut state = in_revolt(system, 5);
         let events = UprisingSystem::advance(
             &mut state,

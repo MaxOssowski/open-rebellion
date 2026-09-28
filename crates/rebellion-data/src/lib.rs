@@ -13,8 +13,10 @@ use dat_dumper::types::general_params::GeneralParamsFile;
 use dat_dumper::types::int_table::IntTableFile;
 use dat_dumper::types::major_characters::{CharacterEntry, MajorCharactersFile};
 use dat_dumper::types::minor_characters::MinorCharactersFile;
+use dat_dumper::types::missions::MissionsFile;
 use dat_dumper::types::sectors::SectorsFile;
 use dat_dumper::types::side_params::SideParamsFile;
+use dat_dumper::types::special_forces::SpecialForcesFile;
 use dat_dumper::types::systems::SystemsFile;
 #[cfg(not(target_arch = "wasm32"))]
 use dat_dumper::types::textstra;
@@ -23,8 +25,8 @@ use rebellion_core::dat::{ExplorationStatus, SectorGroup};
 use rebellion_core::ids::{DatId, SectorKey, SystemKey};
 use rebellion_core::world::{
     CapitalShipClass, Character, ControlKind, DefenseFacilityClassDef, FighterClass, GameWorld,
-    GnprtbEntry, GnprtbParams, MstbEntry, MstbTable, SdprtbEntry, SdprtbParams, Sector,
-    SeedOptions, SkillPair, System, TroopClassDef,
+    GnprtbEntry, GnprtbParams, MissionRecord, MstbEntry, MstbTable, SdprtbEntry, SdprtbParams,
+    Sector, SeedOptions, SkillPair, SpecialForceClassDef, System, TroopClassDef,
 };
 
 pub mod integrator;
@@ -141,8 +143,10 @@ pub fn load_game_data_with_options(
         gnprtb: GnprtbParams::default(),
         sdprtb: SdprtbParams::default(),
         mission_tables: std::collections::HashMap::new(),
+        mission_records: Vec::new(),
         troop_classes: std::collections::HashMap::new(),
         defense_facility_classes: std::collections::HashMap::new(),
+        special_force_classes: std::collections::HashMap::new(),
         difficulty_index: seed_options.gnprtb_index(),
     };
 
@@ -391,6 +395,38 @@ pub fn load_game_data_with_options(
         world.sdprtb = SdprtbParams::new(entries);
     }
 
+    // ── 7b. Special-forces classes (SPECFCSD.DAT) ─────────────────────────
+    // Before the seeds: a seeded unit rolls its skills from its class.
+    let specfc_path = gdata_path.join("SPECFCSD.DAT");
+    if file_available(&specfc_path) {
+        let specfc_file: SpecialForcesFile = read_dat_file(&specfc_path)?;
+        for dat in &specfc_file.units {
+            // Like TROOPSD, a sequential record id takes the header's family.
+            let class_dat_id = if dat.id >> 24 == 0 {
+                DatId::new((specfc_file.family_id << 24) | dat.id)
+            } else {
+                DatId::new(dat.id)
+            };
+            let pair = |base, variance| SkillPair { base, variance };
+            world.special_force_classes.insert(
+                class_dat_id,
+                SpecialForceClassDef {
+                    skills: [
+                        pair(dat.diplomacy_base, dat.diplomacy_variance),
+                        pair(dat.espionage_base, dat.espionage_variance),
+                        pair(dat.ship_design_base, dat.ship_design_variance),
+                        pair(dat.troop_training_base, dat.troop_training_variance),
+                        pair(dat.facility_design_base, dat.facility_design_variance),
+                        pair(dat.combat_base, dat.combat_variance),
+                        pair(dat.leadership_base, dat.leadership_variance),
+                        pair(dat.loyalty_base, dat.loyalty_variance),
+                    ],
+                    mission_mask: dat.mission_id,
+                },
+            );
+        }
+    }
+
     // ── 8. Seed tables ──────────────────────────────────────────────────────
     // Populate starting fleets, ground units, and facilities from the DAT
     // tables after seeding parameters are available.
@@ -541,6 +577,27 @@ pub fn load_game_data_with_options(
             let stem = filename.trim_end_matches(".DAT").to_string();
             world.mission_tables.insert(stem, MstbTable::new(entries));
         }
+    }
+
+    // ── 10b. Mission records (MISSNSD.DAT) ─────────────────────────────────
+    // A record's DatId is `family << 24 | id`; the timer and flag fields are
+    // the in-memory record `+0x50..+0x64` (ghidra/notes/mission-lifecycle.md).
+    let missions_path = gdata_path.join("MISSNSD.DAT");
+    if file_available(&missions_path) {
+        let missions_file: MissionsFile = read_dat_file(&missions_path)?;
+        world.mission_records = missions_file
+            .missions
+            .iter()
+            .map(|m| MissionRecord {
+                dat_id: DatId::new(m.family_id << 24 | m.id),
+                timer_min_days: m.timer_min_days,
+                timer_spread_days: m.timer_spread_days,
+                repeats: m.repeats != 0,
+                hidden: m.hidden != 0,
+                detection_phases: m.detection_phases != 0,
+                can_resign: m.can_resign != 0,
+            })
+            .collect();
     }
 
     // ── 11. Apply enabled mods ──────────────────────────────────────────────
