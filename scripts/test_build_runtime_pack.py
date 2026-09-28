@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import struct
 import sys
 import tempfile
 import unittest
@@ -20,8 +21,18 @@ SPEC.loader.exec_module(PACKER)
 
 
 class RuntimePackBuilderTests(unittest.TestCase):
+    @staticmethod
+    def _indexed_bmp(width: int = 400, height: int = 200) -> bytes:
+        stride = (width + 3) & ~3
+        data = bytearray(1078 + stride * height)
+        data[:2] = b"BM"
+        struct.pack_into("<I", data, 2, len(data))
+        struct.pack_into("<I", data, 10, 1078)
+        struct.pack_into("<IiiHHI", data, 14, 40, width, height, 1, 8, 0)
+        struct.pack_into("<I", data, 34, stride * height)
+        return bytes(data)
+
     def test_options_packaging_rejects_each_missing_confirmation_bitmap(self) -> None:
-        import struct
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             bmp_dir = root / "rebdlog-dll" / "BMP"
@@ -140,6 +151,48 @@ class RuntimePackBuilderTests(unittest.TestCase):
                 (PACKER.KIND_ADVISOR_FRAME, "alsprite-dll/2002"),
                 [(entry.kind, entry.key) for entry in entries],
             )
+
+    def test_edata_artwork_is_validated_and_namespaced(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base"
+            ui = root / "ui"
+            edata = root / "EData"
+            base.mkdir()
+            ui.mkdir()
+            edata.mkdir()
+            (base / "SYSTEMSD.DAT").write_bytes(b"systems")
+            (edata / "EDATA.042").write_bytes(self._indexed_bmp())
+            (edata / "EDATA.001").write_bytes(self._indexed_bmp())
+
+            entries = PACKER.collect_entries(base, ui, edata_dir=edata)
+            edata_entries = [
+                (entry.kind, entry.key) for entry in entries
+                if entry.key.startswith(PACKER.ENCYCLOPEDIA_PREFIX)
+            ]
+            self.assertEqual(
+                edata_entries,
+                [
+                    (PACKER.KIND_GAME_DATA, "encyclopedia/assets/EDATA.001"),
+                    (PACKER.KIND_GAME_DATA, "encyclopedia/assets/EDATA.042"),
+                ],
+            )
+
+            (edata / "EDATA.042").write_bytes(self._indexed_bmp(width=399))
+            with self.assertRaisesRegex(ValueError, "EDATA.042"):
+                PACKER.collect_entries(base, ui, edata_dir=edata)
+
+            (edata / "EDATA.042").write_bytes(self._indexed_bmp())
+            (edata / "EDATA.bad").write_bytes(self._indexed_bmp())
+            with self.assertRaisesRegex(ValueError, "invalid EData filename"):
+                PACKER.collect_entries(base, ui, edata_dir=edata)
+
+            (edata / "EDATA.bad").unlink()
+            missing_palette = bytearray(self._indexed_bmp())
+            struct.pack_into("<I", missing_palette, 10, 54)
+            (edata / "EDATA.042").write_bytes(missing_palette)
+            with self.assertRaisesRegex(ValueError, "EDATA.042"):
+                PACKER.collect_entries(base, ui, edata_dir=edata)
 
     def test_complete_tactical_runtime_is_packed_and_hash_verified(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

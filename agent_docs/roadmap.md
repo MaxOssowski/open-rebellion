@@ -3,7 +3,7 @@ title: "Roadmap"
 description: "Development milestones from Galaxy Viewer through Release packaging"
 category: "agent-docs"
 created: 2026-03-11
-updated: 2026-09-15
+updated: 2026-09-28
 tags: [roadmap, planning, milestones, parity]
 ---
 
@@ -19,6 +19,12 @@ records. They do not establish current parity or release acceptance; the active
 audit-driven milestones are the source of truth.
 
 PR #11 checkpoint (2026-09-14): [cockpit routing is corrected](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-14-cockpit-routing-correction.md) for commands `0x131` through `0x133`, both factions, and F1/F7. GID uses its authentic bottom control and can open and close its original menu. Encyclopedia remains fail-closed. The [2026-09-26 Game Options review checkpoint](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md) restores the shared bitmap surface and save/audio/display wiring; PRE-03 strict acceptance remains open.
+
+P62 transports all 187 validated original EDATA images through native and
+browser builds and proves one native-size browser display pixel-for-pixel.
+Command `0x131` still fails closed because the authentic encyclopedia catalog,
+index and topic windows, text bindings, navigation, and full `OBJ-01` matrix
+remain open. See the [bounded evidence](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md).
 
 ## Galaxy Viewer: historical implementation tranche delivered
 *Interactive galaxy data viewer -- native + WASM*
@@ -196,7 +202,7 @@ python3 scripts/model-shootout.py --html-only    # Regenerate comparison at data
 | Historical model shootout (8 models × 20 BMPs) | COMPLETE; preference evidence only |
 | Explicit profiles and manifest foundation | COMPLETE under P45A; [evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-faithful-hd-foundation.md) |
 | Complete-family learned-model comparison | PENDING under P45B |
-| EData encyclopedia images (~330) | NOT STARTED |
+| EData encyclopedia images (187 owned originals) | TRANSPORT AND EXACT DISPLAY COMPLETE; AUTHENTIC WINDOWS OPEN |
 
 ### Knesset Kothar wa Khasis. Historical implementation (2026-04-07)
 *U2 plus the first C1 attempt from Knesset Resheph. P44 supersedes the advisor result.*
@@ -569,6 +575,13 @@ would tune around known simulation feedback defects.
   window, categories, rail resting path, and Advice slowdown. `CMD-05` stays
   open for A0 comparison, the wall-clock rate unit, and font and tooltip
   details; `CMD-08` for rail illumination and the window itself.
+- [x] Complete P62, the bounded encyclopedia-artwork transport checkpoint:
+  validate all 187 owned `EDATA.NNN` images, package them under a dedicated
+  namespace, route them to a lazy native/WASM cache, preserve nearest sampling
+  and exact missing-asset diagnostics, and prove `EDATA.042` at 80,000 of
+  80,000 source pixels in a fresh muted four-request browser session. The
+  authentic catalog, index and topic windows, text and entity bindings,
+  navigation, and every `OBJ-01` acceptance cell remain open.
 - [x] Restore the P50 GID root and submenu frame from STRATEGY 10100 through
   10107. Paint repeated edges in four batched meshes, remove the invented menu
   fade, and check native-size root pixels against the source BMPs in both

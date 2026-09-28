@@ -27,6 +27,30 @@ pub struct RuntimePack {
     pub tactical_textures: HashMap<String, Vec<u8>>,
 }
 
+/// Remove one slash-delimited namespace from a runtime-pack map.
+///
+/// Returned keys have the namespace removed. This keeps presentation assets
+/// out of the basename-oriented game-data cache while preserving their
+/// original filenames for the renderer.
+pub(crate) fn take_namespace(
+    entries: &mut HashMap<String, Vec<u8>>,
+    namespace: &str,
+) -> HashMap<String, Vec<u8>> {
+    let keys: Vec<String> = entries
+        .keys()
+        .filter(|key| key.starts_with(namespace))
+        .cloned()
+        .collect();
+    let mut selected = HashMap::with_capacity(keys.len());
+    for key in keys {
+        let Some(value) = entries.remove(&key) else {
+            continue;
+        };
+        selected.insert(key[namespace.len()..].to_owned(), value);
+    }
+    selected
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackError {
     Truncated(&'static str),
@@ -245,5 +269,26 @@ mod tests {
             parse_runtime_pack(&truncated),
             Err(PackError::Truncated("entry data"))
         );
+    }
+
+    #[test]
+    fn namespaced_assets_are_partitioned_without_losing_identity() {
+        let mut entries = HashMap::from([
+            ("SYSTEMSD.DAT".to_string(), b"systems".to_vec()),
+            ("encyclopedia/assets/EDATA.042".to_string(), b"art".to_vec()),
+            (
+                "encyclopedia/assets/EDATA.001".to_string(),
+                b"other".to_vec(),
+            ),
+        ]);
+
+        let artwork = take_namespace(&mut entries, "encyclopedia/assets/");
+
+        assert_eq!(
+            entries,
+            HashMap::from([("SYSTEMSD.DAT".to_string(), b"systems".to_vec())])
+        );
+        assert_eq!(artwork.get("EDATA.042"), Some(&b"art".to_vec()));
+        assert_eq!(artwork.get("EDATA.001"), Some(&b"other".to_vec()));
     }
 }

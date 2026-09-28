@@ -21,6 +21,8 @@ KIND_AUDIO = 2
 KIND_ADVISOR_FRAME = 3
 KIND_TACTICAL_MESH = 4
 KIND_TACTICAL_TEXTURE = 5
+ENCYCLOPEDIA_PREFIX = "encyclopedia/assets/"
+
 
 @dataclass(frozen=True)
 class Entry:
@@ -55,6 +57,7 @@ def collect_entries(
     ui_dir: Path,
     audio_dir: Path | None = None,
     tactical_runtime_dir: Path | None = None,
+    edata_dir: Path | None = None,
 ) -> list[Entry]:
     entries = [
         Entry(KIND_GAME_DATA, path.name, path)
@@ -92,11 +95,69 @@ def collect_entries(
     if runtime_dir.is_dir():
         entries.extend(collect_tactical_runtime_entries(runtime_dir))
 
+    if edata_dir is not None:
+        entries.extend(collect_edata_entries(edata_dir))
+
     entries.sort(key=lambda entry: (entry.kind, entry.key))
     keys = [(entry.kind, entry.key) for entry in entries]
     if len(keys) != len(set(keys)):
         raise ValueError("runtime pack contains duplicate keys")
     return entries
+
+
+def collect_edata_entries(edata_dir: Path) -> list[Entry]:
+    """Collect validated original encyclopedia bitmaps under a namespaced key."""
+    if not edata_dir.is_dir():
+        raise ValueError(f"EData directory does not exist: {edata_dir}")
+
+    numbered: list[tuple[int, Path]] = []
+    for path in edata_dir.iterdir():
+        if not path.is_file() or not path.name.startswith("EDATA."):
+            continue
+        suffix = path.name.removeprefix("EDATA.")
+        if len(suffix) != 3 or not suffix.isascii() or not suffix.isdigit():
+            raise ValueError(f"invalid EData filename: {path.name}")
+        numbered.append((int(suffix), path))
+
+    if not numbered:
+        raise ValueError(f"EData directory contains no EDATA.NNN artwork: {edata_dir}")
+
+    entries: list[Entry] = []
+    seen: set[int] = set()
+    for number, path in sorted(numbered):
+        if number in seen:
+            raise ValueError(f"duplicate EData identity: {number:03}")
+        seen.add(number)
+        validate_edata_bitmap(path)
+        entries.append(Entry(KIND_GAME_DATA, f"{ENCYCLOPEDIA_PREFIX}{path.name}", path))
+    return entries
+
+
+def validate_edata_bitmap(path: Path) -> None:
+    """Validate the fixed 400x200 indexed BMP contract before packaging."""
+    try:
+        data = path.read_bytes()
+        if len(data) < 54 or data[:2] != b"BM":
+            raise ValueError("invalid BMP header")
+        offset = struct.unpack_from("<I", data, 10)[0]
+        dib_size, width, height, planes, bits, compression = struct.unpack_from(
+            "<IiiHHI", data, 14
+        )
+        stride = ((400 * bits + 31) // 32) * 4
+        palette_end = 14 + dib_size + 256 * 4
+        if (
+            dib_size < 40
+            or width != 400
+            or abs(height) != 200
+            or planes != 1
+            or bits != 8
+            or compression != 0
+            or offset < palette_end
+            or len(data) < offset + stride * 200
+        ):
+            raise ValueError("expected an uncompressed 400x200x8 bitmap")
+    except (OSError, ValueError, struct.error) as error:
+        raise ValueError(f"invalid encyclopedia artwork {path.name}: {error}") from error
 
 
 def collect_tactical_runtime_entries(runtime_dir: Path) -> list[Entry]:
@@ -274,6 +335,7 @@ def main() -> None:
     parser.add_argument("--ui", type=Path, required=True)
     parser.add_argument("--audio", type=Path)
     parser.add_argument("--tactical-runtime", type=Path)
+    parser.add_argument("--edata", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--validate-ui-only", action="store_true")
     args = parser.parse_args()
@@ -291,20 +353,27 @@ def main() -> None:
     if not args.ui.is_dir():
         parser.error(f"UI directory does not exist: {args.ui}")
 
-    entries = collect_entries(args.base, args.ui, args.audio, args.tactical_runtime)
+    entries = collect_entries(
+        args.base, args.ui, args.audio, args.tactical_runtime, args.edata
+    )
     if not entries:
         parser.error("refusing to create an empty runtime pack")
     written = write_pack(entries, args.output)
     verify_pack(args.output, entries)
 
-    game_files = sum(entry.kind == KIND_GAME_DATA for entry in entries)
+    encyclopedia_assets = sum(
+        entry.kind == KIND_GAME_DATA and entry.key.startswith(ENCYCLOPEDIA_PREFIX)
+        for entry in entries
+    )
+    game_files = sum(entry.kind == KIND_GAME_DATA for entry in entries) - encyclopedia_assets
     bitmaps = sum(entry.kind == KIND_BITMAP for entry in entries)
     audio_files = sum(entry.kind == KIND_AUDIO for entry in entries)
     advisor_frames = sum(entry.kind == KIND_ADVISOR_FRAME for entry in entries)
     tactical_meshes = sum(entry.kind == KIND_TACTICAL_MESH for entry in entries)
     tactical_textures = sum(entry.kind == KIND_TACTICAL_TEXTURE for entry in entries)
     print(
-        f"Runtime pack: {game_files} game files + {bitmaps} bitmaps + "
+        f"Runtime pack: {game_files} game files + "
+        f"{encyclopedia_assets} encyclopedia assets + {bitmaps} bitmaps + "
         f"{advisor_frames} advisor frames + {audio_files} audio files + "
         f"{tactical_meshes} tactical meshes + {tactical_textures} tactical textures, "
         f"{written} bytes ({args.output})"

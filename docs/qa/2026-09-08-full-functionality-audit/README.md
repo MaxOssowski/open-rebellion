@@ -3,7 +3,7 @@ title: "Full Functionality Audit Index"
 description: "Entry point for the September 2026 Open Rebellion functionality, parity, and bitmap audit"
 category: qa
 created: 2026-09-08
-updated: 2026-09-14
+updated: 2026-09-28
 tags: [qa, audit, functionality, parity, bitmap, astra, fable]
 ---
 
@@ -86,6 +86,7 @@ acceptance plan required before the project can claim 100% functionality.
 | [Tactical recovery/withdrawal feedback proof](../2026-09-10-interface-parity-audit/evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md) | Exact faction/group feedback now covers final fighter recovery, no available carrier slot, and disabled-hyperdrive withdrawal while strict A0 acceptance remains open. |
 | [Shared tactical post-battle proof](../2026-09-10-interface-parity-audit/evidence/2026-09-27-tactical-post-battle-orchestration.md) | Played and automatic space-battle outcomes now share bombardment, landing, ground follow-up, occupation, and Battle Results destination routing while strict A0 acceptance remains open. |
 | [Tactical source-completion proof](../2026-09-10-interface-parity-audit/evidence/2026-09-28-tactical-source-completion.md) | Bounded practical launcher implementation complete with source tactical RNG, power allocation, completion/destruction callbacks, and timed trench-run semantics; strict A0 remains 0/106. |
+| [Encyclopedia artwork transport proof](../2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md) | All 187 owned original EDATA images validate and travel through native/WASM caches; one native-size browser image matches all 80,000 source pixels while authentic `OBJ-01` windows remain open. |
 | [GitHub Pages proof](evidence/2026-09-08-github-pages.md) | Successful deployment run and public HTTP smoke tests for P40. |
 | [Project archive](../../../archive/INDEX.md) | Superseded progress and playtest artifacts retained for provenance. |
 
@@ -101,6 +102,9 @@ work alongside first-pass sector and system shells for both factions. The four
 authentic advisor idle runs
 now render in native and WASM;
 their complete actions, voice, chrome, and shell integration remain open.
+Original encyclopedia artwork now reaches native and browser renderers through
+the bounded P62 transport checkpoint, but the authentic catalog and windows
+remain absent and command `0x131` continues to fail closed.
 Fleet-miniature acceptance, deterministic four-request browser
 startup, F-001 browser Save/Load/Delete, the F-011A fingerprint primitive,
 F-011B1 save continuation, the F-011B2 replay/data contract, F-011B3 native

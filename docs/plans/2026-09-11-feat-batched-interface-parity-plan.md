@@ -87,7 +87,21 @@ matrix passes.
 | UIP-B06 | Space-battle interface | Both tactical HUDs, units, assignments, selection, targeting, navigation, maneuvers, tactics, missions, damage, recovery, retreat, Death Star, trench run, results, and strategic return. Use the [standalone test-launcher plan](2026-09-12-tooling-standalone-space-battle-launcher.md), [tactical 3D asset plan](2026-09-12-feat-tactical-3d-asset-pipeline.md), and [asset library](../reference/asset-library/README.md). | All 106 TAC-01 through TAC-07 baseline cells are implemented and accepted |
 | UIP-B07 | Multiplayer and release acceptance | Original provider, host, join, ready, wait, sync, chat, pause, save/load, resign, disconnect, reconnect, errors, cross-browser, and A0 closure | Two real peers and every required interface cell pass the release matrix |
 
-## Current execution focus: P58F tactical simulation; UIP-B06 continues
+## Current execution focus: P62 complete; UIP-B05 continues
+
+P62 closes the bounded native/browser artwork-availability slice of UIP-B05.
+All 187 owned `EDATA.NNN` images pass strict format validation and deterministic
+ORPK v3 packaging. The browser runtime partitions them from simulation data,
+decodes requested images lazily, retains their original identity, and logs an
+exact missing filename once. A fresh muted four-request Chromium fixture proves
+`EDATA.042` at its native 400×200 size with 80,000 of 80,000 source pixels
+matching. The fixture is transport evidence only and is absent from production.
+
+UIP-B05 now returns to the authentic encyclopedia workflow: recover the
+catalog and stable entity bindings, original index and topic windows,
+description text, previous and next navigation, contextual entry, missing
+entry behavior, and the complete faction and viewport matrix. Command `0x131`
+continues to fail closed, and no `OBJ-01` cell passes from P62 alone.
 
 P46C established the first UIP-B01 checkpoint. Selecting a galaxy system opens
 the recovered 235x360 modeless sector window instead of the invented right

@@ -300,11 +300,12 @@ persisted power allocation, completion/destruction callbacks, and the timed
 trench-run producer. Whole-process RNG continuity, strategic commander
 binding, exact planet framing, native beam and playback comparison, A0
 comparison, and every tactical cell remain open.
-Runtime pack v3 now
-includes all 3,988 ALSPRITE and EMSPRITE type-302 frames, while briefing,
-tactical, dialog, encyclopedia, advisor-control, and voice resources remain
-open. Its 27 packages give every required surface a named recovery or removal
-path.
+Runtime pack v3 now includes all 3,988 ALSPRITE and EMSPRITE type-302 frames
+and all 187 validated original EDATA images. P62 proves the dedicated EDATA
+namespace, lazy cache and decode path, and one native-size browser image
+pixel-for-pixel. Briefing, dialog, advisor-control, remaining voice resources,
+and the authentic encyclopedia catalog and windows remain open. Its 27
+packages give every required surface a named recovery or removal path.
 
 ## What 100% means
 

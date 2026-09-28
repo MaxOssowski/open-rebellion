@@ -4,11 +4,27 @@ description: "Proposed source-derived encyclopedia catalog, asset staging, mod o
 type: design
 status: draft
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 tags: [encyclopedia, assets, modding, native, wasm, P35, RE-ENC-01]
 ---
 
 # Encyclopedia Data Extraction, Modding, and Display
+
+## Implementation checkpoint
+
+P62 implements the first bounded transport slice: strict `EDATA.NNN`
+validation, a namespaced ORPK v3 payload, dedicated browser artwork cache,
+lazy nearest-neighbor decoding, native original-install path resolution, and
+exact missing-asset diagnostics. See the
+[P62 evidence record](../qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md).
+The dedicated muted browser gate also proves `EDATA.042` at native 400x200
+size with all 80,000 source pixels matching. Its test-only renderer is absent
+from production and does not stand in for an encyclopedia window.
+
+The canonical text catalog, manifest, stable entity bindings, mod overlays,
+and recovered original index/topic windows below remain planned. Command
+`0x131` therefore remains fail-closed, and no `OBJ-01` acceptance cell passes
+from the transport slice alone.
 
 ## 1. Purpose and scope
 

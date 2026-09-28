@@ -9,6 +9,7 @@ WEB_DATA="$ROOT/web/data/base"
 WEB_AUDIO="$ROOT/web/data/sounds"
 MDATA_DIR="${REBELLION_MDATA_DIR:-$ROOT/../star-wars-rebellion/MDATA}"
 ORIGINAL_GAME_DIR="${REBELLION_GAME_DIR:-$(dirname "$MDATA_DIR")}"
+EDATA_DIR="${REBELLION_EDATA_DIR:-$ORIGINAL_GAME_DIR/EData}"
 
 # Refuse stale UI staging before compilation; the runtime pack builder repeats this gate.
 python3 "$ROOT/scripts/build-runtime-pack.py" --ui "$GDATA/ui" --validate-ui-only
@@ -207,11 +208,19 @@ fi
 # loader only as a development fallback. This removes thousands of serial HTTP
 # requests without changing the resource keys consumed by BmpCache.
 echo "Building browser runtime asset pack…"
-python3 "$ROOT/scripts/build-runtime-pack.py" \
-    --base "$WEB_DATA" \
-    --ui "$WEB_UI" \
-    --audio "$WEB_AUDIO" \
+RUNTIME_PACK_ARGS=(
+    --base "$WEB_DATA"
+    --ui "$WEB_UI"
+    --audio "$WEB_AUDIO"
     --output "$ROOT/web/data/runtime.orpk"
+)
+if [ -d "$EDATA_DIR" ]; then
+    RUNTIME_PACK_ARGS+=(--edata "$EDATA_DIR")
+    echo "Including original encyclopedia artwork from $EDATA_DIR."
+else
+    echo "WARNING: EData not found at $EDATA_DIR; encyclopedia artwork will remain unavailable."
+fi
+python3 "$ROOT/scripts/build-runtime-pack.py" "${RUNTIME_PACK_ARGS[@]}"
 
 WASM_SIZE=$(du -h "$ROOT/web/open-rebellion.wasm" | cut -f1)
 echo "Done. WASM size: $WASM_SIZE"

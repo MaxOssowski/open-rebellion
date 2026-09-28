@@ -81,6 +81,9 @@ and passes the complete comparison contract.
   for exact faction resting bitmaps and the still-open index behavior.
 - Review the [P60 Game Speed evidence](evidence/p60-game-speed/README.md)
   for the original speed menu, stop-day pause, alert, and remaining gaps.
+- Review the [P62 encyclopedia-artwork evidence](evidence/2026-09-28-encyclopedia-artwork-transport.md)
+  for all 187 validated EDATA assets, native and WASM cache routing, exact
+  native-size browser display, and the authentic `OBJ-01` work kept open.
 - Review the [P50 GID menu-frame evidence](evidence/2026-09-12-gid-menu-frame.md)
   for original frame tiles, source-pixel checks, and the remaining menu gaps.
 - Review the [P51 GID hover and occlusion evidence](evidence/2026-09-12-gid-hover-and-occlusion.md)

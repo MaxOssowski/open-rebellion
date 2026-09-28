@@ -14,10 +14,21 @@ node run.mjs --smoke        # build both WASM variants; four quick cases
 node run.mjs --all          # rebuild; all 152 faction/viewport cases
 node run.mjs --all --no-build  # reuse a verified fixture build
 node run.mjs --all --scenario=pan --no-build  # four focused faction/viewport cases
+node encyclopedia-art.mjs  # build and verify original EDATA browser transport
+node encyclopedia-art.mjs --no-build  # reuse a verified fixture build
 ```
 
 Harness unit regressions can be run from the repository root with
 `make test-interface-harness`, or here with `npm run test:unit`.
+
+The encyclopedia-artwork gate is deliberately narrower than `OBJ-01`. Its
+test-only fixture paints one owned `EDATA.042` source image at native 400×200
+size, then checks every displayed pixel, the four-request startup, muted fresh
+process, resource hashes, and browser diagnostics. It neither opens nor
+accepts the replacement encyclopedia window. Set `REBELLION_EDATA_DIR` or
+`REBELLION_GAME_DIR` when the owned installation is not adjacent to the
+repository. Captures and decoded comparisons remain under ignored
+`.artifacts/interface-parity/` storage.
 
 The tactical acceptance denominator is generated directly from the surface
 ledger rather than maintained as a second hand-written list:

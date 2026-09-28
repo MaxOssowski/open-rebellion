@@ -1,5 +1,9 @@
 # Interface parity evidence
 
+- [P62 encyclopedia artwork transport](2026-09-28-encyclopedia-artwork-transport.md)
+  tracks validated native/WASM EDATA transport. It does not accept the current
+  replacement encyclopedia or any `OBJ-01` cell.
+
 This directory contains the durable reports and review artifacts for each
 verified interface checkpoint. The parent [audit index](../README.md) remains
 the source of truth for scope, acceptance, and current work.

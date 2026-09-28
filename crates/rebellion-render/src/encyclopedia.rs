@@ -37,7 +37,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-#[cfg(not(target_arch = "wasm32"))]
 use egui_macroquad::egui::TextureOptions;
 use egui_macroquad::egui::{self, Color32, RichText, ScrollArea, TextureHandle, Vec2};
 use rebellion_core::ids::{CapitalShipKey, CharacterKey, FighterKey, SystemKey};
@@ -46,6 +45,33 @@ use rebellion_core::world::GameWorld;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::bmp_cache::{load_approved_hd_assets, validated_hd_bytes};
 use crate::bmp_cache::{ApprovedHdAsset, AssetRenderProfile, BmpCache, DllSource};
+
+#[cfg(target_arch = "wasm32")]
+static WASM_EDATA_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<String, Vec<u8>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+/// Install original encyclopedia artwork unpacked from the browser runtime pack.
+///
+/// Keys are original filenames such as `EDATA.042`. GPU textures remain lazy:
+/// opening a topic decodes only that topic's source bitmap, then retains the
+/// resulting egui texture in [`EncyclopediaState`].
+#[cfg(target_arch = "wasm32")]
+pub fn set_encyclopedia_asset_cache(cache: HashMap<String, Vec<u8>>) {
+    *WASM_EDATA_CACHE.lock().unwrap() = cache;
+}
+
+fn edata_filename(edata_n: u16) -> String {
+    format!("EDATA.{edata_n:03}")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn wasm_edata_bytes(edata_n: u16) -> Option<Vec<u8>> {
+    WASM_EDATA_CACHE
+        .lock()
+        .unwrap()
+        .get(&edata_filename(edata_n))
+        .cloned()
+}
 
 // ---------------------------------------------------------------------------
 // Tab selection
@@ -556,6 +582,12 @@ fn show_edata_image(
                 .approved_hd_assets
                 .get(&format!("edata/EDATA_{edata_n:03}")),
         );
+        if handle.is_none() {
+            eprintln!(
+                "[encyclopedia] original artwork unavailable asset={}",
+                edata_filename(edata_n)
+            );
+        }
         state.textures.insert(edata_n, handle);
     }
 
@@ -565,6 +597,23 @@ fn show_edata_image(
     } else {
         show_placeholder_image(ui);
     }
+}
+
+/// Paint one original EDATA image at a fixed native-size location for the
+/// test-only browser transport gate.
+///
+/// This is not an encyclopedia UI and is absent from production builds. It
+/// isolates the runtime-pack/cache/decode/render path so exact source pixels
+/// can be compared without promoting the current replacement window.
+#[cfg(feature = "interface-test-fixtures")]
+pub fn draw_encyclopedia_artwork_fixture(
+    ctx: &egui::Context,
+    edata_n: u16,
+    state: &mut EncyclopediaState,
+) {
+    egui::Area::new(egui::Id::new("encyclopedia_artwork_transport_fixture"))
+        .fixed_pos(egui::pos2(120.0, 120.0))
+        .show(ctx, |ui| show_edata_image(ui, ctx, edata_n, state));
 }
 
 /// Draw a gray placeholder rectangle when no image is available.
@@ -597,7 +646,7 @@ fn load_edata_texture(
     approved_hd: Option<&ApprovedHdAsset>,
 ) -> Option<TextureHandle> {
     let dir = edata_path?;
-    let bmp_file = dir.join(format!("EDATA.{edata_n:03}"));
+    let bmp_file = dir.join(edata_filename(edata_n));
 
     if profile == AssetRenderProfile::FaithfulHd {
         if let Some(hd_dir) = hd_path {
@@ -638,7 +687,6 @@ fn load_image_file(
     load_image_bytes(ctx, edata_n, &bytes, texture_options)
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn load_image_bytes(
     ctx: &egui::Context,
     edata_n: u16,
@@ -660,14 +708,15 @@ fn load_image_bytes(
 
 #[cfg(target_arch = "wasm32")]
 fn load_edata_texture(
-    _ctx: &egui::Context,
-    _edata_n: u16,
+    ctx: &egui::Context,
+    edata_n: u16,
     _hd_path: Option<&Path>,
     _edata_path: Option<&Path>,
     _profile: AssetRenderProfile,
     _approved_hd: Option<&ApprovedHdAsset>,
 ) -> Option<TextureHandle> {
-    None
+    let bytes = wasm_edata_bytes(edata_n)?;
+    load_image_bytes(ctx, edata_n, &bytes, TextureOptions::NEAREST)
 }
 
 // ---------------------------------------------------------------------------
@@ -700,6 +749,27 @@ fn stat_row_pair(ui: &mut egui::Ui, label: &str, base: u32, variance: u32) {
 mod tests {
     use super::*;
 
+    fn synthetic_indexed_edata() -> Vec<u8> {
+        const WIDTH: usize = 400;
+        const HEIGHT: usize = 200;
+        const PIXEL_OFFSET: usize = 1_078;
+        let mut bytes = vec![0_u8; PIXEL_OFFSET + WIDTH * HEIGHT];
+        let file_size = bytes.len() as u32;
+        bytes[0..2].copy_from_slice(b"BM");
+        bytes[2..6].copy_from_slice(&file_size.to_le_bytes());
+        bytes[10..14].copy_from_slice(&(PIXEL_OFFSET as u32).to_le_bytes());
+        bytes[14..18].copy_from_slice(&40_u32.to_le_bytes());
+        bytes[18..22].copy_from_slice(&(WIDTH as i32).to_le_bytes());
+        bytes[22..26].copy_from_slice(&(HEIGHT as i32).to_le_bytes());
+        bytes[26..28].copy_from_slice(&1_u16.to_le_bytes());
+        bytes[28..30].copy_from_slice(&8_u16.to_le_bytes());
+        bytes[34..38].copy_from_slice(&((WIDTH * HEIGHT) as u32).to_le_bytes());
+        bytes[46..50].copy_from_slice(&256_u32.to_le_bytes());
+        bytes[54 + 4..54 + 8].copy_from_slice(&[0x20, 0x80, 0xe0, 0]);
+        bytes[PIXEL_OFFSET..].fill(1);
+        bytes
+    }
+
     #[test]
     fn encyclopedia_defaults_to_original_parity() {
         let state = EncyclopediaState::new();
@@ -715,5 +785,26 @@ mod tests {
 
         assert!(state.textures.is_empty());
         assert_eq!(state.asset_profile, AssetRenderProfile::FaithfulHd);
+    }
+
+    #[test]
+    fn edata_filenames_preserve_the_original_three_digit_identity() {
+        assert_eq!(edata_filename(1), "EDATA.001");
+        assert_eq!(edata_filename(42), "EDATA.042");
+        assert_eq!(edata_filename(192), "EDATA.192");
+    }
+
+    #[test]
+    fn original_edata_bytes_decode_at_source_size() {
+        let ctx = egui::Context::default();
+        let texture = load_image_bytes(
+            &ctx,
+            42,
+            &synthetic_indexed_edata(),
+            TextureOptions::NEAREST,
+        )
+        .expect("synthetic original EDATA should decode");
+
+        assert_eq!(texture.size(), [400, 200]);
     }
 }

@@ -3,7 +3,7 @@ title: "Open Rebellion Full Functionality Audit"
 description: "Repository status, verified evidence, release blockers, and feature-by-feature acceptance plan"
 category: qa
 created: 2026-09-08
-updated: 2026-09-10
+updated: 2026-09-28
 commit: fc25634be905839dfa6fb477d5fff0faa49d8ae9
 tags: [qa, audit, functionality, parity, bitmap, wasm, astra, fable]
 ---
@@ -1447,7 +1447,7 @@ and underlying state mutation are both demonstrated.
 | P32 | Mods | Discovery, dependency order, cycles, versions, enable/disable/reload, New Game reapplication, save mismatch, hot reload, and additive-feature scope. |
 | P33 | Audio | Music, SFX, voices, context transitions, gain/mute, missing files/devices, browser user-gesture policy, and platform scope. |
 | P34 | Droid advisors | Both factions, original embedded chrome, every decoded sequence, exact frame IDs/order/timing, priority, message/audio behavior, missing frames, and packaged browser assets. The authentic idle-frame transport/rendering tranche passes; shell overlap and authored behavior remain open. |
-| P35 | Encyclopedia and EData | Original Index/Topic surfaces, every category/entity, exact EDATA identity, navigation, system focus, fallback, and browser loading. WASM currently returns no encyclopedia texture. |
+| P35 | Encyclopedia and EData | Original Index/Topic surfaces, every category/entity, exact EDATA identity, navigation, system focus, fallback, and browser loading. [P62](../2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md) transports all 187 owned images and proves one native-size browser display pixel-for-pixel. The authentic catalog, windows, bindings, navigation, and complete `OBJ-01` matrix remain open. |
 | P36 | Bitmap and interface sweep | Complete every required cell in the [43-family interface ledger](../2026-09-10-interface-parity-audit/surface-ledger.json), with exact resources, composition, geometry, hotspots, native/browser screenshots, and zero invented or unknown visible elements. |
 | P37 | Campaign acceptance | Short smoke runs and long multi-seed campaigns for both factions/difficulties with bounded fleet/event growth, balance, diversity, victory, and full parity reports. |
 | P38 | Release artifacts | Fresh native install and deployed browser package, exact artifact contents, startup/storage/media/input tests, and documentation generated from results. |

@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-macroquad-orange.svg" alt="Rust">
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Browser-blue.svg" alt="Platform">
-  <img src="https://img.shields.io/badge/Tests-671%20passing-green.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-workspace%20passing-green.svg" alt="Tests">
   <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg" alt="License">
   <a href="https://tdimino.github.io/open-rebellion/"><img src="https://img.shields.io/badge/Docs-Ghidra%20RE-blueviolet.svg" alt="Ghidra RE Docs"></a>
 </p>
@@ -40,7 +40,7 @@ Open Rebellion reads the original game data files, converts them to clean JSON, 
 
 ### Current development state
 
-> **Verification (2026-09-18):** All 706 workspace tests and the 84-case muted tactical browser gate pass. Verified checkpoints include the original shuttle and strategic shell plus source-rendered tactical units, controls, damage, movement, command assignment, maneuver completion, and fighter recovery. The [interface audit](docs/qa/2026-09-10-interface-parity-audit/) tracks the original-view, battle, multiplayer, and release gates still open.
+> **Verification (2026-09-28):** The workspace suite passes. The bounded tactical launcher passes 144 muted browser cases with 106/106 deterministic A1 mappings; strict A0 acceptance remains 0/106. All 187 owned encyclopedia images now reach native and browser builds, with one native-size image matching all 80,000 source pixels. Authentic encyclopedia windows, wider interface parity, multiplayer, and release acceptance remain open in the [interface audit](docs/qa/2026-09-10-interface-parity-audit/).
 
 | Layer | Implementation status | Release acceptance |
 |-------|-----------------------|--------------------|

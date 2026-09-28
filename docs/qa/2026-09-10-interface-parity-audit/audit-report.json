@@ -61,7 +61,7 @@
     "galaxy_display": "partial_original_backdrops_and_gid_menu_22_commands_browser_matrix_passed_no_original_acceptance_provisional_metrics_special_overlays_expanded_legend_and_exact_input_open",
     "system_navigation": "partial_sector_system_shells_tabs_source_mapped_item_minis_bounded_scroll_coarse_intelligence_gating_and_rail_lifecycle_work_nested_compositions_exact_intelligence_commands_and_complete_matrix_open",
     "wasm_advisors": "partial_original_idle_runs_visible_in_scaled_apertures_actions_voice_and_chrome_open",
-    "wasm_encyclopedia_art": "fail",
+    "wasm_encyclopedia_art": "partial_original_edata_transport_cache_decode_and_exact_native_size_browser_display_pass_authentic_index_topic_windows_and_obj_01_acceptance_open",
     "tactical_interface": "fail_strict_acceptance_open_p58_b22_bounded_practical_launcher_complete_with_106_of_106_deterministic_A1_cells_source_tactical_rng_power_allocation_completion_destruction_callbacks_timed_trench_producer_and_shared_campaign_return_0_of_106_A0_accepted",
     "required_baseline_cells": "564_pending_or_open",
     "retrieval_package_coverage": "43_of_43_required_surface_families",
@@ -132,19 +132,25 @@
       "id": "UIP-F-005",
       "severity": "P0",
       "status": "partial",
-      "title": "Browser pack includes ALSPRITE and EMSPRITE bitmap/type-302 resources; briefing, dialog, encyclopedia, advisor-control, and voice families remain omitted",
+      "title": "Browser pack includes ALSPRITE and EMSPRITE bitmap/type-302 resources plus all 187 original EDATA images; briefing, dialog, advisor-control, and remaining voice families remain omitted",
       "evidence": [
         "scripts/build-runtime-pack.py",
-        "docs/qa/2026-09-08-full-functionality-audit/evidence/advisor-droids-r4/verification.json"
+        "docs/qa/2026-09-08-full-functionality-audit/evidence/advisor-droids-r4/verification.json",
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md"
       ],
       "affected_surfaces": ["PRE-03", "PRE-05", "CMD-07", "OBJ-01"]
     },
     {
       "id": "UIP-F-006",
       "severity": "P1",
-      "status": "fail",
-      "title": "WASM encyclopedia image loading always returns no texture",
-      "evidence": ["crates/rebellion-render/src/encyclopedia.rs:486"],
+      "status": "partial",
+      "title": "Native and WASM EDATA transport, lazy decode, exact missing-asset logging, and native-size browser display work; the authentic encyclopedia catalog, index, topic windows, bindings, and OBJ-01 matrix remain open",
+      "evidence": [
+        "crates/rebellion-render/src/encyclopedia.rs",
+        "scripts/build-runtime-pack.py",
+        "tools/interface-parity/encyclopedia-art.mjs",
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md"
+      ],
       "affected_surfaces": ["OBJ-01"]
     },
     {
@@ -344,9 +350,10 @@
     "p58_b19_mixed_task_force_target": "evidence/2026-09-25-tactical-mixed-task-force-target.md",
     "p58_b20_recovery_withdrawal_feedback": "evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md",
     "p58_b21_shared_post_battle_orchestration": "evidence/2026-09-27-tactical-post-battle-orchestration.md",
+    "p62_encyclopedia_artwork_transport": "evidence/2026-09-28-encyclopedia-artwork-transport.md",
     "ledger_validator": "../../../scripts/validate-interface-parity-ledgers.mjs",
     "screenshot_ledger": "screenshot-ledger.md",
     "capture_manifest": "reference-captures/SHA256SUMS"
   },
-  "next_action": "Preserve the P58-B22 bounded practical launcher and complete strict acceptance: capture owned lossless A0 baselines, compare all 106 cells, bind the strategic commander slot, verify whole-process RNG continuity and native beam/audio/media behavior, and keep every strict cell open until its complete evidence passes."
+  "next_action": "Preserve the P58-B22 bounded practical launcher while strict A0 work continues. Complete UIP-B05 by recovering the original encyclopedia catalog, index and topic windows, stable entity bindings, text, navigation, contextual entry, faction and viewport matrices. Keep OBJ-01 open until every original-interface gate passes."
 }

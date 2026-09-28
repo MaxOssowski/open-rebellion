@@ -53,6 +53,10 @@ pub use cockpit::{
     CockpitViewport, GidMode, StrategicControlSpec, STRATEGIC_LOGICAL_HEIGHT,
     STRATEGIC_LOGICAL_WIDTH,
 };
+#[cfg(feature = "interface-test-fixtures")]
+pub use encyclopedia::draw_encyclopedia_artwork_fixture;
+#[cfg(target_arch = "wasm32")]
+pub use encyclopedia::set_encyclopedia_asset_cache;
 pub use encyclopedia::{draw_encyclopedia, EncyclopediaState, EncyclopediaTab};
 pub use event_screen::{
     draw_event_screen, show_event_screen, show_event_screen_raw, update_event_screen,

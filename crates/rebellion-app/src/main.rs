@@ -181,6 +181,54 @@ fn original_game_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("../star-wars-rebellion"))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn common_edata_sibling(gdata_path: &Path) -> Option<PathBuf> {
+    gdata_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| name.eq_ignore_ascii_case("GData"))
+        .and_then(|_| gdata_path.parent())
+        .map(|root| root.join("EData"))
+}
+
+fn configured_edata_path(gdata_path: &Path) -> PathBuf {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Some(path) = std::env::var_os("REBELLION_EDATA_DIR").map(PathBuf::from) {
+            return path;
+        }
+        let nested = gdata_path.join("EData");
+        if nested.is_dir() {
+            return nested;
+        }
+        if let Some(sibling) = common_edata_sibling(gdata_path) {
+            if sibling.is_dir() {
+                return sibling;
+            }
+        }
+        original_game_dir().join("EData")
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        gdata_path.join("EData")
+    }
+}
+
+#[cfg(test)]
+mod edata_path_tests {
+    use super::*;
+
+    #[test]
+    fn common_original_install_uses_sibling_edata_directory() {
+        assert_eq!(
+            common_edata_sibling(Path::new("/games/Rebellion/GData")),
+            Some(PathBuf::from("/games/Rebellion/EData"))
+        );
+        assert_eq!(common_edata_sibling(Path::new("data/base")), None);
+    }
+}
+
 /// Resolve the explicit native asset profile. Browser builds remain on the
 /// original-parity profile until manifest-approved HD entries join the runtime
 /// pack, so a missing enhancement can never alter browser parity evidence.
@@ -424,6 +472,9 @@ fn install_runtime_pack(
         }
     }
 
+    let encyclopedia_assets =
+        runtime_pack::take_namespace(&mut pack.game_files, "encyclopedia/assets/");
+    let encyclopedia_asset_count = encyclopedia_assets.len();
     let game_file_count = pack.game_files.len();
     let string_table: std::collections::HashMap<u16, String> = pack
         .game_files
@@ -447,13 +498,15 @@ fn install_runtime_pack(
         .collect();
 
     rebellion_data::set_string_table(string_table);
+    rebellion_render::set_encyclopedia_asset_cache(encyclopedia_assets);
     rebellion_data::set_file_cache(pack.game_files);
     rebellion_render::set_advisor_asset_cache(pack.advisor_frames, advisor_bitmaps);
     rebellion_render::set_bmp_cache(pack.bitmaps);
     rebellion_render::set_tactical_asset_cache(pack.tactical_meshes, pack.tactical_textures);
     macroquad::logging::info!(
-        "runtime_asset_pack loaded game_files={} ui_bitmaps={} advisor_frames={} audio_files={} tactical_meshes={} tactical_textures={} bytes={}",
+        "runtime_asset_pack loaded game_files={} encyclopedia_assets={} ui_bitmaps={} advisor_frames={} audio_files={} tactical_meshes={} tactical_textures={} bytes={}",
         game_file_count,
+        encyclopedia_asset_count,
         bitmap_count,
         advisor_frame_count,
         audio_file_count,
@@ -868,7 +921,7 @@ async fn main() {
     let mut mod_manager_state = rebellion_render::ModManagerState::default();
     #[cfg(debug_assertions)]
     let mut command_palette_state = rebellion_render::CommandPaletteState::new();
-    enc_state.set_edata_path(gdata_path.join("EData"));
+    enc_state.set_edata_path(configured_edata_path(&gdata_path));
     enc_state.set_asset_profile(asset_render_profile);
     // HD upscaled PNGs live as a sibling of the base data directory.
     let hd_path = gdata_path
@@ -2915,7 +2968,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     jedi_panel_state = JediPanelState::default();
                                     bombardment_panel_state = BombardmentPanelState::default();
                                     enc_state = EncyclopediaState::new();
-                                    enc_state.set_edata_path(gdata_path.join("EData"));
+                                    enc_state.set_edata_path(configured_edata_path(&gdata_path));
                                     enc_state.set_asset_profile(asset_render_profile);
                                     enc_state.set_hd_path(
                                         gdata_path
@@ -3305,6 +3358,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                         draw_encyclopedia(ctx, &world, &mut enc_state, &mut bmp_cache)
                     {
                         panel_actions.push(PanelAction::FocusFleetSystem(sys_key));
+                    }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if interface_fixture_request.is_some_and(|request| {
+                        request.scenario == interface_test_fixture::Scenario::EncyclopediaArtwork
+                    }) {
+                        rebellion_render::draw_encyclopedia_artwork_fixture(
+                            ctx,
+                            42,
+                            &mut enc_state,
+                        );
                     }
 
                     // Mod Manager (floating window)
@@ -4075,7 +4138,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             jedi_panel_state = JediPanelState::default();
                             bombardment_panel_state = BombardmentPanelState::default();
                             enc_state = EncyclopediaState::new();
-                            enc_state.set_edata_path(gdata_path.join("EData"));
+                            enc_state.set_edata_path(configured_edata_path(&gdata_path));
                             enc_state.set_asset_profile(asset_render_profile);
                             enc_state.set_hd_path(
                                 gdata_path
