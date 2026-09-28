@@ -1680,7 +1680,9 @@
         "2026-09-27 decoy call chain (ghidra/notes/decoy-roll.md): FUN_00589620 is slot +4 of the functor vtable 0x0066a878, a pointer Ghidra did not turn into a reference. Mission execution FUN_00547f60 runs phase FUN_0058a020, which walks every defender at the target system (FUN_00587640: special forces, regiments, and each fleet's ships and special forces) and lets a random decoy character from the mission's pool roll TDECOYTB or FDECOYTB against each. The original decoy is a character attached to a mission; the port has none, so the invented is_decoy roll and check_decoy are removed with their two tests and the field stays for the save layout. Porting mission decoys needs decoy characters on ActiveMission, a save-format change",
         "F-026 follow-up: try_subdue and the invented UPRIS1TB start roll are removed; a Subdue Uprising success raises support by FUN_0055cb10 (1..20 on its own side's system, 1..10 when contested) and ends the revolt through FUN_0050c910 once regiments cover the undoubled garrison",
         "Open divergences: the port's Subdue success check uses diplomacy, while FUN_00569b90 rolls SUBDMSTB on leadership, support, and the Stormtrooper count; BetrayalSystem still reads UPRIS1TB as a loyalty table",
-        "2026-09-27 review fix: the Subdue gain draw took the next completing mission's outcome roll, and one roll per mission left the last mission on the 0.5 fallback; callers now reserve ROLLS_PER_MISSION (2) rolls per mission, outcomes reading the first half and gains the second; a test fails without the change"
+        "2026-09-27 review fix: the Subdue gain draw took the next completing mission's outcome roll, and one roll per mission left the last mission on the 0.5 fallback; callers now reserve ROLLS_PER_MISSION (2) rolls per mission, outcomes reading the first half and gains the second; a test fails without the change",
+        "2026-09-28 recovery pass 3 (ghidra/notes/decoy-roll.md): decoy and detection phases run on mission phases 2, 3, 7, and 9. The mode word is the code constant 0x4112 in FUN_005236e0 for every class except Adrift, not a DAT column. Betrayal runs only in phase 9 (0x592500). The MSTB success roll is phase 10 (FUN_00592f50), once per team member through slot +0x274, characters and then special forces; decoys and captives never roll. The requester supplies decoys as an explicit key list (FUN_0054bb90, command 0x250). Open: the sender of that command",
+        "2026-09-28 recovery pass 4 (ghidra/notes/ai-mission-planning.md, mission-lifecycle.md): both the player and the AI fill the decoy list. Mission orders 0x240..0x242 hold a team (+0x2c) and decoys (+0x58); FUN_004f4a00 copies them into command 0x250. The player's mission dialog (FUN_0046c3c0, cases 0xca/0xcb) moves characters between the two lists. The AI planners (factory FUN_0042f830, state machine FUN_004bced0) pick decoys for Sabotage, Rescue, Incite, Espionage, DS Sabotage, Abduction and Assassination, up to (record +0xbc + 2) / 2 through the filter FUN_00403460; Diplomacy, Recruitment, Subdue, Recon and Research pick none. Phases chain in one tick except phase 4 (wait for transit) and phase 8 (timer 0x38b, MISSNSD min + rand(spread)). Port plan: ~/.claude/plans/open-rebellion-2026-09-28-f019-mission-phases-port.md, landing per phase. The port's 10 agent kinds are in scope."
       ],
       "acceptance": "Each path runs in the simulation with recovered rules and a test that fails without the call."
     },
@@ -1960,6 +1962,17 @@
         "entity-system.md:383 conflicts with two iterator recoveries on the fleet type range"
       ],
       "acceptance": "Each false claim is corrected at its source and every note citation resolves to a .c line in our build."
+    },
+    {
+      "id": "F-040",
+      "severity": "P2",
+      "status": "open",
+      "title": "Original mission kinds the port lacks",
+      "evidence": [
+        "MISSNSD holds 25 records; the port has 10 agent kinds plus Autoscrap. Missing: Reconnaissance 0x54 (always succeeds, 56bec0), Research 0x53 (three records, repeat, 56cdb0), Palace 0x64 (rescue plus free every prisoner there, 56e650), Bounty 0x65 (575de0), Jedi Training 0x58 (5712b0), Dagobah 0x71, Vacation 0x72 and Pickup 0x73 (572470/56da80), and the movement pseudo-missions Move, Return, Autorouting and Adrift 0x41..0x44 (ghidra/notes/mission-lifecycle.md)",
+        "F-019 ports phases, decoys and the per-member roll for the port's 10 kinds only (decision 2026-09-28)"
+      ],
+      "acceptance": "Each original kind runs through the F-019 lifecycle with its recovered +0x274/+0x27c/+0x280 slots, AI planner and legality rules, or is documented as deliberately excluded with evidence."
     }
   ],
   "fable_review": {

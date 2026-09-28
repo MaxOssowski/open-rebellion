@@ -107,7 +107,8 @@ ctx)` walks those iterators and applies `FUN_005883b0` to each member: a
 member counts only if its role flags `+0x78` have bits 2 and 3 clear, it has
 a location (`+0x1c`), and, when `not_decoying` is set, bit 5 is clear.
 
-The path by which the player or the AI fills the decoy list is not traced.
+The player's mission dialog and the AI planners both fill the decoy list; see
+`ai-mission-planning.md` (recovered 2026-09-28).
 
 ## Role and detector flags
 
@@ -178,8 +179,9 @@ skip; `+0x4c` detected.
 
 1. `FUN_00589a40` sets up. It skips (`+0x48`) a finished mission (`+0x64`),
    one without its record `+0x2c -> +0x60`, or mode 0. The mode is
-   `FUN_00520e50`: a nibble of the mission-kind record (`+0x54 -> +0x34`)
-   chosen by the mission state `+0x68` (2, 3, 7, 9). Mode 2 enables the
+   `FUN_00520e50`: a nibble of the mission's runtime block (`+0x54 -> +0x34`)
+   chosen by the phase `+0x68` (2, 3, 7, 9); see "Phases, modes, and the
+   success roll" below (corrected 2026-09-28). Mode 2 enables the
    system's regiments when the system is held by the enemy of the mission's
    side; mode 3 also enables enemy fleets' ships and fighters when the
    mission's side has nothing there; modes 1 and 4 act on the first pass.
@@ -246,7 +248,8 @@ identical, `-20:10, -19:20, -9:40, 0:50, 10:60, 20:70, 30:80, 40:90, 50:92,
   traced.
 - The mission-kind record `+0x34` nibbles are not matched to a MISSNSD
   column, so each mission's mode per state is unknown.
-- The player's and the AI's decoy assignment paths are not traced.
+- The player's and the AI's decoy assignment paths: resolved in
+  `ai-mission-planning.md`.
 - The in-memory shift that puts `detection` at class `+0x5c` is inferred.
 - `FUN_00520cd0` (Incite and Subdue leadership in the uprising incident)
   averages over `FUN_00525bb0`, all team, decoy, and captured members; the
@@ -350,15 +353,17 @@ mission's slot `+0x1dc` with 3, or 4 when `FUN_00520ad0` (mission kind
 `FUN_00587f80` (each member faces a random defender through `FUN_005888f0`),
 and through `FUN_00587b70` (`:25-40`).
 
-Slot `+0x1dc` sets the mission's state. The mission validator
+Slot `+0x1dc` (`FUN_005233d0` -> `FUN_00521900`) sets the mission's end
+code `+0x64`, validated `0..0x10`, not the phase; see "Phases, modes, and the
+success roll" below (corrected 2026-09-28). The mission validator
 `FUN_00522480` computes a new state and passes it to the same slot
 (`FUN_00522480.c:137`). It uses state 5 when no member lacks a remove or
 resign request (`+0x78 & 0xc`, `:40-52`, message `0x40`/`0x91`) and state 1
 when the current state `+0x68` is `0xb` (`:130-133`). `FUN_00545240.c:104`
 sets 7. So detection moves the mission to state 3 (4 for the later mission
-kinds) and exposes every team member. That the slot stores `+0x68` is
-inferred from setup reading `+0x68` for the mode; the names of states 3, 4,
-5, 7, and `0xb` are not recovered.
+kinds) and exposes every team member. A non-zero end code ends the mission
+(`FUN_00520e40`), and the next phase step jumps to `0xb`. The names of end
+codes 1, 3, 4, 5, and 7 are not recovered.
 
 ### Adding members (`FUN_00522b30`)
 
@@ -392,19 +397,158 @@ No count limit appears in this function. The decoy flag arrives only as an
 argument of this slot. Who calls the slot with `as_decoy = 1` (the player's
 mission dialog, or the AI) is not traced, since its callers are virtual.
 
-### Still open (2026-09-28)
+## Phases, modes, and the success roll (recovered 2026-09-28, pass 3)
 
-- The mode nibbles: `FUN_00520e50` reads mission `+0x54 -> +0x34` (nibble 0
-  for state 2, 1 for 3, 2 for 7, 3 for 9) when `+0x54 -> +0x18` is non-zero.
-  No MISSNSD column holds a packed word: every flag column is 0, 1, or 2 in
-  the shipped file. So a loader builds `+0x34` from several columns, or `+0x54`
-  is not the DAT record. The loader is not traced.
+Betrayal (slot `+0x1c8`, `FUN_00589f10`) is on only in phase 9 for every agent
+class (`0x592500`: `+0x68 == 9`). Move, Return, Autorouting, and Adrift return
+0 (`FUN_006158b0`).
+
+Sources are a full read-only decompile of REBEXE.EXE (22,808 functions) plus
+vtable dumps of the 29 mission classes.
+
+### Mission classes
+
+Every mission class shares `FUN_00522b30` at vtable slot `+0x1cc`. Slot `+4`
+returns the class's MISSNSD family (`MOV EAX, imm`): Move `0x41`, Return
+`0x42`, Autorouting `0x43`, Adrift `0x44`, Diplomacy `0x51`, Espionage `0x52`,
+Research `0x53`, Reconnaissance `0x54`, Recruitment `0x55`, Incite `0x56`,
+Subdue `0x57`, Jedi Training `0x58`, Rescue `0x61`, Abduction `0x62`,
+Assassination `0x63`, Palace `0x64`, Bounty `0x65`, Sabotage `0x69`, Death
+Star Sabotage `0x6a`, Dagobah `0x71`, Vacation `0x72`, Pickup `0x73`.
+
+### The phase `+0x68` and the end code `+0x64`
+
+- `FUN_00521980` sets the phase `+0x68` (validated `0..0xb`) and calls slot
+  `+0x1f4` with the old and new phase. The base handler `FUN_00524b70` stores
+  the new phase in the runtime block (`+0x54 -> +0x1c`, except `0xb`) and
+  recomputes `+0x54 -> +0x18`: 1 when no member has `+0x50` bit 11
+  (autorouting) (`FUN_00522a90`).
+- `FUN_005227d0` steps the phase one at a time. After phase 10 a mission whose
+  record `+0x58` is set loops back to 8. A mission with an end code
+  (`FUN_00520e40`, `+0x64 != 0`) goes straight to `0xb`.
+- In `FUN_00524b70`, phase 4 starts each member's transit to the target
+  (`FUN_00556430` into `+0x6c`/`+0x78`), phase 6 lands them
+  (`FUN_004f7640`), and phase 8 schedules the mission timer (event `0x38b`,
+  range from record `+0x50`/`+0x54`, `FUN_005236e0`).
+- `FUN_00546ea0` runs on each phase change. In order: the decoy manager
+  (`FUN_00547f60`), then `FUN_00548120`, then `FUN_00548370` on phase 2, then
+  `FUN_005484d0`, then `FUN_00548840`.
+
+### The mode word (`+0x54 -> +0x34`)
+
+The word is set once, at init (slot `+0x94`), through `FUN_00522a60`, which
+copies it into `+0x54 -> +0x30/+0x34`. No DAT column holds it; it is a
+constant in code.
+
+- `FUN_005236e0` builds `(0 & ~0xf ^ 2) & 0xffff411f | 0x4110 = 0x4112`.
+  Every concrete class reaches it: slot `+0x94` is `00576d10` or `00574420`
+  (both calling `FUN_00574080`), or `005761b0` (calling `FUN_00576250`), each
+  ending in `FUN_00593a80` -> `FUN_005236e0`.
+- Adrift alone (`00576960` -> `FUN_00576a20`) overrides it with `0x4103`.
+
+So for every mission except Adrift:
+
+| Phase | Mode | Setup (`FUN_00589a40`) |
+|-------|------|------------------------|
+| 2 | 2 | first pass: system defenders and regiments when the system is held by the mission side's enemy |
+| 3 | 1 | first pass: enemy fleets' ships and fighters when the mission side has no fleet there, plus the system when `FUN_00520bb0` (target != current location) |
+| 7 | 1 | as phase 3 |
+| 9 | 4 | first pass: the target's container (`FUN_00521160`); the system's regiments when it is the target system, else the enemy fleets |
+
+The mode applies only when `+0x54 -> +0x18` is set, meaning no member is
+still autorouting. Mode 0 and the second pass skip, except that mode 3 runs
+the mode-2 body on the second pass. Adrift uses 3, 0, 1, 4.
+
+### Record flags (`+0x2c`)
+
+The in-memory MISSNSD record sits `0x28` above the file offsets. This is
+inferred from the pattern below: `+0x50`/`+0x54` are the file's
+`max_officers`/`base_duration`, which read as a duration base and spread,
+e.g. Jedi Training `(60, 30)`.
+
+- `+0x58`, file col6, repeat. Phase 10 loops to 8. Set for Diplomacy,
+  Research, Incite, and Subdue.
+- `+0x5c`, file col7, hidden (`FUN_00520b70`, OnHiddenMission). Set for
+  Move, Return, Autorouting, Adrift, Dagobah, Palace, Vacation, Pickup, and
+  Bounty.
+- `+0x60`, file col8, decoy phases on (`FUN_00520b80`, setup skips when 0).
+  Set for every mission except Bounty.
+- `+0x64`, file col9, CanResign (`FUN_00520b90`). Set for the agent missions.
+
+### The success roll (phase 10)
+
+The agent classes override slot `+0x1f4` with `FUN_00592f50`: every MSTB
+mission, plus Reconnaissance, Research, Palace, and Bounty. Jedi Training
+(`0x571410`), Dagobah (`0x5751d0`), Vacation, and Pickup (`0x594460`) have
+their own handlers, and Move, Return, Autorouting, and Adrift keep the base
+`FUN_00524b70`. `FUN_00592f50` runs `FUN_00524b70`, then on phase 10:
+
+1. It calls slot `+0x278`.
+2. For each team character (`FUN_00526090`: the team list `+0x84` only,
+   families `0x30..0x3c`), it rolls `FUN_00593320` -> slot `+0x274(member)`.
+   It collects the results by member and applies them through slot
+   `+0x27c(member, success, ctx, 10)`, in order of the map's `+0x1c`.
+3. For each team special force (`FUN_00525e70`, `0x3c..0x40`), it rolls and
+   applies the same way.
+4. It calls slots `+0x280` and `+0x284`. On phase `0xb` it calls `+0x284`
+   only.
+
+Decoys (`+0x8c`) and captives (`+0x94`) never roll success
+(`FUN_00525870`/`FUN_00525a50`: flags `(1,0,0)` select the team). Slot
+`+0x274` per class, with `a`, `b`, `c` the table wrapper's arguments
+(`uprising-incident.md`):
+
+| Mission | Slot fn | Table | Input |
+|---------|---------|-------|-------|
+| Diplomacy | `00573ff0` | DIPLMSTB | a = member diplomacy (`+0x1dc`), b = system support for the side (`FUN_00507270`), c = `FUN_005091f0`: `(c - b) + a` |
+| Espionage | `00573090` | ESPIMSTB | member espionage (`+0x1e0`) |
+| Rescue | `0056ae30` | RESCMSTB | member combat (`+0x1f0`) |
+| Sabotage | `0056a2d0` | SBTGMSTB | (espionage + combat) / 2 |
+| DS Sabotage | `00574600` | DSSBMSTB | (espionage + combat) / 2 |
+| Recruitment | `0056b7b0` | RCRTMSTB | member leadership (`+0x1f4`) - `FUN_00507270` |
+| Incite | `005719d0` | INCTMSTB | (leadership - `FUN_00507270`) - `FUN_005091f0` |
+| Subdue | `00569b90` | SUBDMSTB | (`FUN_005091f0` - `FUN_00507270`) + leadership |
+| Abduction | `00576e50` | ABDCMSTB | member combat - target combat (`FUN_00586c80`) |
+| Assassination | `005765c0` | ASSNMSTB | member combat - target combat |
+
+Slot `+0x274` also covers the missions without an MSTB. Reconnaissance
+always succeeds (`0x56bea0`: 100) and Research returns 0 (`0x56cb20`). Palace
+rolls `FUN_0055c910` on (espionage + combat) / 2, not read. Bounty and the
+leisure classes return `DAT_00661a88`, which is 100.
+
+Character slots `+0x1dc..+0x1f8` return the effective skills `+0x7c..+0x8a`
+in order: diplomacy, espionage, ship design, troop training, facility design,
+combat, leadership, loyalty. `FUN_00507270` and `FUN_005091f0` take the
+target system with the mission side's index and are not read; the notes
+cite them only by role.
+
+### Who assigns decoys
+
+A mission is created through `FUN_005422f0` or `FUN_00542b60`.
+`FUN_0054bb90(mission, team_in, decoy_in, ...)` takes separate team and decoy
+key lists from the requester. It moves any prisoner (slot `+0x1d4`) from
+either list to the captured list, and fails with message `0x40`/`0x91` when
+the team is empty. `FUN_0054c200` then adds the team with `as_decoy = 0`,
+the decoys with 1, and the captured with 0, through slot `+0x1cc`
+(`FUN_00522b30`).
+
+Decoys are therefore chosen explicitly by whoever issues the request. The
+request is mission-create command `0x250` (command object `FUN_0054cd80`,
+vtable `0x00661e28`; validate `FUN_0054d280`, execute `FUN_0054d360`; factory
+registered by `FUN_0051ef80`). A mission order (`0x240`..`0x242`) fills it:
+`FUN_004f4a00` copies the order's team `+0x2c` to command `+0x64` and its
+decoys `+0x58` to `+0x6c`. The player's mission dialog (`FUN_0046c3c0`)
+moves chosen characters between the two lists, and the AI planners pick
+decoys for Sabotage, Rescue, Incite, Espionage, DS Sabotage, Abduction, and
+Assassination (`ai-mission-planning.md`, recovered 2026-09-28).
+
+### Still open (2026-09-28, after pass 3)
+
+- The sender of command `0x250`: resolved in `ai-mission-planning.md`.
+  Phase stepping and the phase-10 outcomes are in `mission-lifecycle.md`.
 - The phase-2 character hook (`FUN_00589e40`, DatIds `0x32000242` and
   `0x35000281`), `FUN_0058a5b0`, and the meaning of `+0xa0` and `+0x8c`.
-- Which mission classes answer true in slot `+0x1c8` (betrayal on), and the
-  names of mission states 3, 4, 5, 7, and `0xb`.
-- The MSTB success roll's place relative to these phases, and its input.
-  The uprising incident's `FUN_00520cd0` averages leadership (`+0x88`) over
-  all three lists, but the mission-success caller was not reached in this
-  pass.
-- The callers of `FUN_00522b30` with `as_decoy = 1`.
+- Slots `+0x278`, `+0x27c` (the per-member outcome), `+0x280`, and `+0x284`,
+  and the end codes' names.
+- `FUN_00507270` and `FUN_005091f0` (the support and counter terms in the
+  Diplomacy, Recruitment, Incite, and Subdue inputs).

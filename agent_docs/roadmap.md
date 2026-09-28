@@ -468,8 +468,12 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   timers (F-029).
 - [x] Port the en-route delivery of manufactured objects on the recovered
   per-object transit (F-030, save v16, browser pass pending).
-- [ ] Port the mission decoy phase (F-019) once its mode loader, success-roll
-  placement, and decoy assignment are recovered.
+- [ ] Port the mission phases, decoys, and per-member success roll (F-019).
+  The rules are in `ghidra/notes/decoy-roll.md`, `mission-lifecycle.md`, and
+  `ai-mission-planning.md`; the player's dialog and the AI planners both fill
+  the decoy list. It lands per phase.
+- [ ] Add the original mission kinds the port lacks: Reconnaissance, Research,
+  Palace, Bounty, Jedi Training, and the leisure and movement kinds (F-040).
 - [x] Gate uncited simulation rules with `tools/provenance-scan`; its baseline
   may only shrink (F-031; 130 items after F-032 transit).
 - [x] Port fleet transit time from `FUN_0055d8c0` (F-032 transit; bombardment

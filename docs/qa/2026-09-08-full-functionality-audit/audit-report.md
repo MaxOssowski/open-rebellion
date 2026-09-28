@@ -842,6 +842,27 @@ cross-runtime proof remain open
   last mission on the 0.5 fallback. Callers now reserve `ROLLS_PER_MISSION`
   (2) rolls per mission; outcomes read the first half and gains the second.
   A test fails without the change.
+- Recovery pass 3 (2026-09-28, `ghidra/notes/decoy-roll.md`): the decoy and
+  detection phases run on mission phases 2, 3, 7, and 9. The mode word is
+  the code constant `0x4112` (`FUN_005236e0`) for every class except Adrift,
+  not a DAT column. Betrayal runs only in phase 9. The MSTB success roll is
+  phase 10 (`FUN_00592f50`), once per team member through slot `+0x274`,
+  characters and then special forces; decoys and captives never roll. The
+  requester supplies decoys as an explicit key list (`FUN_0054bb90`, command
+  `0x250`). Open: the sender of that command.
+- Recovery pass 4 (2026-09-28, `ghidra/notes/ai-mission-planning.md`,
+  `mission-lifecycle.md`): both the player and the AI fill the decoy list.
+  - A mission order (`0x240`..`0x242`) holds a team `+0x2c` and decoys
+    `+0x58`. `FUN_004f4a00` copies them into command `0x250`.
+  - The player's dialog (`FUN_0046c3c0`, cases `0xca`/`0xcb`) moves chosen
+    characters between the two lists.
+  - The AI planners (`FUN_0042f830`, `FUN_004bced0`) pick decoys for
+    Sabotage, Rescue, Incite, Espionage, DS Sabotage, Abduction, and
+    Assassination, up to `(record.+0xbc + 2) / 2`. Diplomacy, Recruitment,
+    Subdue, Recon, and Research pick none.
+  - Phases chain within one tick except phase 4 (transit) and phase 8
+    (timer `0x38b`, MISSNSD min + rand(spread)).
+  - The port lands per phase and covers the port's 10 agent kinds.
 
 ### F-020: A mod with a missing dependency fails silently
 
@@ -1283,6 +1304,28 @@ cross-runtime proof remain open
     type range
 - Acceptance: Each false claim is corrected at its source and every note
   citation resolves to a .c line in our build.
+
+### F-040: Original mission kinds the port lacks
+
+- Severity: P2
+- Status: open
+- Evidence:
+  - MISSNSD holds 25 records; the port has 10 agent kinds plus Autoscrap.
+    The missing kinds, with their outcome slots:
+    - Reconnaissance `0x54` (always succeeds, `56bec0`)
+    - Research `0x53` (three records, repeat, `56cdb0`)
+    - Palace `0x64` (rescue plus free every prisoner there, `56e650`)
+    - Bounty `0x65` (`575de0`)
+    - Jedi Training `0x58` (`5712b0`)
+    - Dagobah `0x71`, Vacation `0x72` and Pickup `0x73`
+    - the movement pseudo-missions `0x41..0x44`
+
+    See `ghidra/notes/mission-lifecycle.md`.
+  - F-019 ports phases, decoys, and the per-member roll for the port's 10
+    kinds only (decision 2026-09-28).
+- Acceptance: Each original kind runs through the F-019 lifecycle with its
+  recovered slots, AI planner, and legality rules, or is documented as
+  deliberately excluded with evidence.
 
 ## Fable 5.1 audit synthesis
 
