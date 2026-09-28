@@ -1394,6 +1394,73 @@ mod tests {
     }
 
     #[test]
+    fn a_round_trip_keeps_mission_members_and_special_force_skills() {
+        use rebellion_core::missions::{
+            MissionFaction, MissionKind, MissionMember, MissionRequest,
+        };
+        use rebellion_core::world::{Character, MissionRecord, SpecialForceUnit};
+        let saves_dir = tmp_dir("v17_mission_members_round_trip");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let class_id = rebellion_core::ids::DatId::new(0x3c00_0001);
+        let lead = state.world.characters.insert(Character {
+            is_alliance: true,
+            current_system: Some(system),
+            ..Default::default()
+        });
+        let prisoner = state.world.characters.insert(Character {
+            is_alliance: true,
+            is_captive: true,
+            current_system: Some(system),
+            ..Default::default()
+        });
+        let unit = state.world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: class_id,
+            is_alliance: true,
+            skills: [1, 2, 3, 4, 5, 6, 7, 8],
+            on_mission: false,
+        });
+        state.world.systems[system].special_forces.push(unit);
+        state.world.mission_records.push(MissionRecord {
+            dat_id: rebellion_core::ids::DatId::new(0x5100_0010),
+            timer_min_days: 5,
+            timer_spread_days: 10,
+            repeats: true,
+            hidden: false,
+            detection_phases: true,
+            can_resign: false,
+        });
+        let request = MissionRequest {
+            kind: MissionKind::Diplomacy,
+            faction: MissionFaction::Alliance,
+            team: vec![MissionMember::Character(lead)],
+            decoys: vec![
+                MissionMember::SpecialForce(unit),
+                MissionMember::Character(prisoner),
+            ],
+            target_system: system,
+            target_character: None,
+            duration_roll: 0.5,
+        };
+        state
+            .missions
+            .dispatch_guarded(request, &mut state.world)
+            .expect("the mission should dispatch");
+        save_slot(&saves_dir, 0, "V17 Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        let mission = &loaded.missions.missions()[0];
+        assert_eq!(mission.team, vec![MissionMember::Character(lead)]);
+        assert_eq!(mission.decoys, vec![MissionMember::SpecialForce(unit)]);
+        assert_eq!(mission.captured, vec![MissionMember::Character(prisoner)]);
+        let loaded_unit = &loaded.world.special_forces[unit];
+        assert_eq!(loaded_unit.skills, [1, 2, 3, 4, 5, 6, 7, 8]);
+        assert!(loaded_unit.on_mission);
+        assert_eq!(loaded.world.mission_records, state.world.mission_records);
+    }
+
+    #[test]
     fn deterministic_hash_order_independent() {
         let mods_forward = vec![
             ("Alpha".to_string(), "1.0".to_string()),

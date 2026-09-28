@@ -113,9 +113,15 @@ The player's mission dialog and the AI planners both fill the decoy list; see
 ## Role and detector flags
 
 Role flags live at character/special-force `+0x78`. Setters
-`FUN_005344f0`..`FUN_005348e0` set one bit each (`FUN_0053a640(1 << n)`) and
-call view slots `+0x2a4 + 4 * n`; the character vtable `0x0065ca70` holds the
-notifiers there (`+0x2a4` `FUN_00536940`, `+0x2b8` `FUN_00536a80`):
+`FUN_005344f0`..`FUN_005348e0` set one bit each (`FUN_0053a640(1 << n)`). For
+each side's view of the object (`FUN_00539fd0(this, 1)` and `(this, 2)`) they
+call a per-bit copier (`FUN_005358a0` for bit 0), which copies the bit from
+the master and calls the view's slot `+0x2a4 + 4 * n`. The setter then calls
+its own slot `+0x24c + 4 * n` (`CALL [EDX + 0x24c]` at `0x00534544`), which is
+the stub `FUN_00524fb0` (returns 1) in the character (`0x0065ca70`), person
+base (`0x00660d60`), and special-force (`0x0065e160`) vtables. All three hold
+the notifiers at `+0x2a4 + 4 * n` (`+0x2a4` `FUN_00536940`, `+0x2b8`
+`FUN_00536a80`; vtable dumps 2026-09-28):
 
 | Bit | Setter | Notifier | Name |
 |-----|--------|----------|------|
@@ -371,7 +377,7 @@ codes 1, 3, 4, 5, and 7 are not recovered.
 every mission class; the data references at `0x0065efc4`, `0x00663d44`,
 `0x00663fd4`, and eight more vtables point to it. It is the only caller that
 sets the Decoy role (`FUN_005344f0`, call at `0x00522e32`; the other caller,
-`FUN_00536220`, clears the role flags when a member leaves). It accepts a
+`FUN_00536220`, clears it when a member leaves). It accepts a
 member only when all of these hold (`FUN_00522b30.c`):
 
 - its DatId family is `0x30..0x3f`, a character or a special force;
@@ -392,6 +398,13 @@ OnMandatoryMission (bit 9) from mission `+0xa4` bit 2, Decoy (bit 0) =
 inserts the member into the decoy list `+0x8c` (`FUN_00521ef0`) when
 `as_decoy`, else the captured list `+0x94` for a prisoner (`FUN_00521fb0`),
 else the team `+0x84` (`FUN_00521e30`).
+
+When a member leaves, `FUN_00536220` clears role bits 0, 2, 3, 4, and 5
+(`FUN_005344f0`, `FUN_005345d0`, `FUN_00534640`, `FUN_005346b0`,
+`FUN_00534720`) and recomputes OnMission (bit 7) through `FUN_00534950`: it
+clears the bit when the member's mission key `+0x68` is empty and bit 1 is
+clear. When given a key it clears only bit 1 (`FUN_00534560`). It does not
+touch OnHiddenMission (bit 8); where that bit clears is not traced.
 
 No count limit appears in this function. The decoy flag arrives only as an
 argument of this slot. Who calls the slot with `as_decoy = 1` (the player's

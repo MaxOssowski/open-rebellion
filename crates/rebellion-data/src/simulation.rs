@@ -452,16 +452,9 @@ pub fn run_simulation_tick(
             &mut states.uprising,
             &mut states.death_star,
         );
-        for character in result.effects.iter().filter_map(|effect| match effect {
-            rebellion_core::missions::MissionEffect::MemberAvailable { member } => {
-                member.character()
-            }
-            _ => None,
-        }) {
-            states.ai.mark_available(character);
-            if let Some(ref mut ai2) = states.ai2 {
-                ai2.mark_available(character);
-            }
+        states.ai.free_mission_members(&result.effects);
+        if let Some(ref mut ai2) = states.ai2 {
+            ai2.free_mission_members(&result.effects);
         }
         // Knesset Shamash-Bet #R11: emit `EVT_CHARACTER_KILLED` telemetry for
         // mission-side assassinations. The integrator's `MissionEffect::CharacterKilled`

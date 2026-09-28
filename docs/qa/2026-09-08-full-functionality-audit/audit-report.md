@@ -874,6 +874,11 @@ cross-runtime proof remain open
   - The uprising leadership term averages every member (`FUN_00520cd0`).
   - The resolver still rolls one lead character until phase 4. A 1500-tick
     dual-AI playtest produces identical telemetry before and after.
+  - Review fixes (2026-09-28): a killed character is refused and hidden from
+    the mission panel. Prisoners leave both lists before the team, decoys,
+    and captured are added in `FUN_0054c200` order. MISSNSD records are found
+    by id, since Research and Vacation share families across records. Save
+    v17 has a round-trip test for the new fields.
 
 ### F-020: A mod with a missing dependency fails silently
 

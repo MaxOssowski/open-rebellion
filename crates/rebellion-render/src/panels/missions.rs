@@ -235,6 +235,7 @@ fn draw_dispatch_tab(
         .iter()
         .filter(|(_, c)| {
             c.can_be_commander
+                && !c.is_killed
                 && !c.on_mission
                 && !c.on_mandatory_mission
                 && match player_faction {

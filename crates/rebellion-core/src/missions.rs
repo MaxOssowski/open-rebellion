@@ -318,8 +318,9 @@ impl MissionKind {
 
     /// Mission duration range in game-days: (`min_ticks`, `max_ticks`).
     ///
-    /// Drawn from MISSNSD.DAT `base_duration`. War Machine types use longer
-    /// ranges reflecting the original game's espionage timescales.
+    /// These ranges are not the original's: a mission's timer is its MISSNSD
+    /// record's minimum plus `rand(0..=spread)` (`FUN_005236e0`; Diplomacy is
+    /// 5 and 10). F-019 phase 2 replaces them with `MissionRecord`.
     #[must_use]
     pub fn tick_range(self) -> (u32, u32) {
         match self {
@@ -539,6 +540,10 @@ struct MemberState {
 
 /// Where a member is: a fleet, else a system (the original compares each
 /// member's location key, slot `+0xc`, in `FUN_00522b30`).
+///
+/// port: `FUN_00522b30` also compares the en route bit (`+0x50` bit 5) and
+/// the arrival tick (`+0x44`); the port has no en route members yet, so
+/// members with no location match each other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MemberLocation {
     Fleet(crate::ids::FleetKey),
@@ -549,7 +554,9 @@ enum MemberLocation {
 fn member_state(world: &GameWorld, member: MissionMember) -> Option<MemberState> {
     match member {
         MissionMember::Character(key) => {
-            let c = world.characters.get(key)?;
+            // port: the original deletes a killed character; the port keeps
+            // it in the arena (`Character::mark_killed`), so it counts as gone.
+            let c = world.characters.get(key).filter(|c| !c.is_killed)?;
             let location = match (c.current_fleet, c.current_system) {
                 (Some(fleet), _) => MemberLocation::Fleet(fleet),
                 (None, Some(system)) => MemberLocation::System(system),
@@ -602,6 +609,10 @@ pub fn member_skill(world: &GameWorld, member: MissionMember, skill: Skill) -> O
 
 /// Set or clear a member's on-mission role flag. Clearing it also clears a
 /// character's hidden-mission flag.
+///
+/// The original's leave path `FUN_00536220` recomputes OnMission (bit 7,
+/// `FUN_00534950` → `FUN_00534800`) and clears bits 0 and 2..5; where it
+/// clears OnHiddenMission (bit 8) is untraced. port: bit 8 clears with bit 7.
 pub fn set_on_mission(world: &mut GameWorld, member: MissionMember, on_mission: bool) {
     match member {
         MissionMember::Character(key) => {
@@ -676,46 +687,51 @@ impl MissionState {
         world: &mut GameWorld,
     ) -> Result<u64, MissionRefusal> {
         let side_is_alliance = request.faction == MissionFaction::Alliance;
-        let mut team = Vec::new();
-        let mut decoys = Vec::new();
-        let mut captured = Vec::new();
-        let mut location = None;
-        for (member, as_decoy) in request
+        // FUN_0054bb90 moves every prisoner out of the team and decoy lists
+        // into the captured list first. FUN_0054c200 then adds the team, the
+        // decoys, and the captured, in that order, so the first free team
+        // member sets the location the others must share.
+        let mut requested: [Vec<(MissionMember, MemberState)>; 3] = Default::default();
+        for (member, list) in request
             .team
             .iter()
-            .map(|m| (*m, false))
-            .chain(request.decoys.iter().map(|m| (*m, true)))
+            .map(|m| (*m, 0))
+            .chain(request.decoys.iter().map(|m| (*m, 1)))
         {
-            if team.contains(&member) || decoys.contains(&member) || captured.contains(&member) {
-                continue;
-            }
-            // Saves written before dispatch set the flag can hold an active
-            // mission for a member whose flag is still false.
-            let busy_elsewhere = self
-                .missions
-                .iter()
-                .any(|m| m.members().any(|x| x == member));
-            let Some(state) = member_state(world, member) else {
-                return Err(MissionRefusal::MemberUnavailable(member));
-            };
-            if state.is_alliance != side_is_alliance || state.busy || busy_elsewhere {
-                return Err(MissionRefusal::MemberUnavailable(member));
-            }
-            match location {
-                None => location = Some(state.location),
-                Some(here) if here != state.location => {
+            let state =
+                member_state(world, member).ok_or(MissionRefusal::MemberUnavailable(member))?;
+            requested[if state.prisoner { 2 } else { list }].push((member, state));
+        }
+        // port: one refused member refuses the whole request. FUN_0054c200
+        // keeps adding after a refusal and returns false; what its caller
+        // does with that is untraced.
+        let mut lists: [Vec<MissionMember>; 3] = Default::default();
+        let mut location = None;
+        for (index, members) in requested.iter().enumerate() {
+            for &(member, ref state) in members {
+                if lists.iter().any(|list| list.contains(&member)) {
+                    continue;
+                }
+                // Saves written before dispatch set the flag can hold an
+                // active mission for a member whose flag is still false.
+                let busy_elsewhere = self
+                    .missions
+                    .iter()
+                    .any(|m| m.members().any(|x| x == member));
+                if state.is_alliance != side_is_alliance || state.busy || busy_elsewhere {
                     return Err(MissionRefusal::MemberUnavailable(member));
                 }
-                Some(_) => {}
-            }
-            if state.prisoner {
-                captured.push(member);
-            } else if as_decoy {
-                decoys.push(member);
-            } else {
-                team.push(member);
+                match location {
+                    None => location = Some(state.location),
+                    Some(here) if here != state.location => {
+                        return Err(MissionRefusal::MemberUnavailable(member));
+                    }
+                    Some(_) => {}
+                }
+                lists[index].push(member);
             }
         }
+        let [team, decoys, captured] = lists;
         if team.is_empty() {
             return Err(MissionRefusal::EmptyTeam);
         }
@@ -2016,6 +2032,7 @@ mod tests {
         state.next_id = 1;
 
         let results = MissionSystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], &[0.0]);
+        assert_eq!(results.len(), 1);
         let freed: Vec<MissionMember> = results[0]
             .effects
             .iter()
@@ -2145,8 +2162,11 @@ mod tests {
             ),
             &mut world,
         );
-        assert!(
-            result.is_err(),
+        assert_eq!(
+            result,
+            Err(MissionRefusal::MemberUnavailable(MissionMember::Character(
+                character
+            ))),
             "mandatory mission character should be blocked"
         );
         assert!(state.is_empty());
@@ -2185,7 +2205,12 @@ mod tests {
             &mut world,
         );
 
-        assert!(second.is_err());
+        assert_eq!(
+            second,
+            Err(MissionRefusal::MemberUnavailable(MissionMember::Character(
+                character
+            )))
+        );
         assert_eq!(state.len(), 1);
     }
 
@@ -2366,16 +2391,22 @@ mod tests {
 
     #[test]
     fn the_lead_is_the_first_team_character_and_a_special_force_has_no_character_key() {
-        // The interim resolver rolls one character (F-019 phase 4); a
-        // special force (family 0x3c..0x3f) is never that character.
+        // port: the interim resolver rolls one character until F-019 phase 4
+        // ports the per-member roll; a special force is never that character.
         let mut sf: slotmap::SlotMap<SpecialForceKey, ()> = slotmap::SlotMap::with_key();
         let unit = MissionMember::SpecialForce(sf.insert(()));
-        let (system, character) = mock_keys();
+        let mut chr: slotmap::SlotMap<CharacterKey, ()> = slotmap::SlotMap::with_key();
+        let (character, second) = (chr.insert(()), chr.insert(()));
+        let (system, _) = mock_keys();
         let mission = ActiveMission::new(
             0,
             MissionKind::Sabotage,
             MissionFaction::Alliance,
-            vec![unit, MissionMember::Character(character)],
+            vec![
+                unit,
+                MissionMember::Character(character),
+                MissionMember::Character(second),
+            ],
             system,
             1,
         );
@@ -2395,9 +2426,10 @@ mod tests {
 
     #[test]
     fn leaving_a_mission_clears_the_hidden_mission_flag_and_joining_keeps_it() {
-        // Leaving clears RoleOnMission (bit 7) and RoleOnHiddenMission (bit 8)
-        // together; joining sets only bit 7 (FUN_00522b30 sets bit 8 from the
-        // record, F-019 phase 2).
+        // port: leaving clears RoleOnMission (bit 7) and RoleOnHiddenMission
+        // (bit 8) together. FUN_00536220 recomputes bit 7 on leave, and where
+        // bit 8 clears is untraced. Joining sets only bit 7 here (FUN_00522b30
+        // sets bit 8 from the record, F-019 phase 2).
         let mut world = minimal_world();
         let (here, _) = two_systems();
         let lead = agent_at(&mut world, here, true);
@@ -2410,16 +2442,12 @@ mod tests {
         assert!(!world.characters[lead].on_hidden_mission);
     }
 
-    #[test]
-    fn a_special_force_decoy_joins_the_decoys_and_is_freed_on_release() {
-        // FUN_0054c200 adds the decoy list with as_decoy = 1 (FUN_00522b30
-        // accepts families 0x30..0x3f); releasing clears each member's flag.
-        let mut world = minimal_world();
-        let (here, _) = two_systems();
-        let lead = agent_at(&mut world, here, true);
+    /// A special force on the surface of a new system (special forces live
+    /// in a system's list, not in a fleet).
+    fn unit_on_surface(world: &mut GameWorld, is_alliance: bool) -> (SpecialForceKey, SystemKey) {
         let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
             class_dat_id: crate::ids::DatId::new(0x3c00_0003),
-            is_alliance: true,
+            is_alliance,
             skills: [0; 8],
             on_mission: false,
         });
@@ -2446,6 +2474,183 @@ mod tests {
             is_destroyed: false,
             control: crate::world::ControlKind::Uncontrolled,
         });
+        (unit, at)
+    }
+
+    #[test]
+    fn a_killed_character_is_refused() {
+        // FUN_00522b30 accepts only a member that exists. port: a killed
+        // character stays in the arena (Character::mark_killed), so it counts
+        // as gone.
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let dead = agent_at(&mut world, here, true);
+        world.characters[dead].mark_killed();
+        let mut state = MissionState::new();
+        let member = MissionMember::Character(dead);
+
+        assert_eq!(
+            state.dispatch_guarded(request(vec![member], vec![], here), &mut world),
+            Err(MissionRefusal::MemberUnavailable(member))
+        );
+        assert!(state.is_empty());
+        assert!(!world.characters[dead].on_mission);
+    }
+
+    #[test]
+    fn a_member_that_no_longer_exists_is_refused_and_no_flag_is_set() {
+        // FUN_00522b30 accepts only a member that exists; flags are set only
+        // after every member passes.
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let lead = agent_at(&mut world, here, true);
+        let gone = agent_at(&mut world, here, true);
+        world.characters.remove(gone);
+        let mut state = MissionState::new();
+        let team = vec![
+            MissionMember::Character(lead),
+            MissionMember::Character(gone),
+        ];
+
+        assert_eq!(
+            state.dispatch_guarded(request(team, vec![], here), &mut world),
+            Err(MissionRefusal::MemberUnavailable(MissionMember::Character(
+                gone
+            )))
+        );
+        assert!(!world.characters[lead].on_mission);
+    }
+
+    #[test]
+    fn a_special_force_already_on_a_mission_is_refused_and_no_flag_is_set() {
+        // FUN_00522b30: a member must have no mission yet (+0x68 key empty).
+        let mut world = minimal_world();
+        let (unit, at) = unit_on_surface(&mut world, true);
+        world.special_forces[unit].on_mission = true;
+        let lead = agent_at(&mut world, at, true);
+        let mut state = MissionState::new();
+        let decoy = MissionMember::SpecialForce(unit);
+
+        assert_eq!(
+            state.dispatch_guarded(
+                request(vec![MissionMember::Character(lead)], vec![decoy], at),
+                &mut world
+            ),
+            Err(MissionRefusal::MemberUnavailable(decoy))
+        );
+        assert!(!world.characters[lead].on_mission);
+    }
+
+    #[test]
+    fn a_member_held_on_another_missions_captured_list_is_busy() {
+        // FUN_00522b30: a member must have no mission yet; a captured member
+        // has one (FUN_0054c200 adds the captured list too).
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let prisoner = MissionMember::Character(agent_at(&mut world, here, true));
+        let mut state = MissionState::new();
+        let mut held = ActiveMission::new(
+            0,
+            MissionKind::Rescue,
+            MissionFaction::Alliance,
+            vec![MissionMember::Character(agent_at(&mut world, here, true))],
+            here,
+            5,
+        );
+        held.captured = vec![prisoner];
+        state.missions.push_back(held);
+        state.next_id = 1;
+
+        assert_eq!(
+            state.dispatch_guarded(request(vec![prisoner], vec![], here), &mut world),
+            Err(MissionRefusal::MemberUnavailable(prisoner))
+        );
+    }
+
+    #[test]
+    fn a_prisoner_named_as_a_decoy_goes_to_the_captured_list_not_the_decoys() {
+        // FUN_0054bb90 moves a prisoner out of the decoy list before any add,
+        // so FUN_00522b30 never sees a prisoner as a decoy; it records the
+        // mission on every member it accepts (FUN_00534230).
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let lead = agent_at(&mut world, here, true);
+        let prisoner = agent_at(&mut world, here, true);
+        world.characters[prisoner].is_captive = true;
+        let mut state = MissionState::new();
+
+        state
+            .dispatch_guarded(
+                request(
+                    vec![MissionMember::Character(lead)],
+                    vec![MissionMember::Character(prisoner)],
+                    here,
+                ),
+                &mut world,
+            )
+            .expect("dispatch");
+        let mission = &state.missions()[0];
+        assert!(mission.decoys.is_empty());
+        assert_eq!(mission.captured, vec![MissionMember::Character(prisoner)]);
+        assert!(world.characters[prisoner].on_mission);
+    }
+
+    #[test]
+    fn the_first_free_team_member_sets_the_location_even_after_a_prisoner() {
+        // FUN_0054bb90 moves prisoners out first; FUN_0054c200 then adds the
+        // team before the captured list, so a prisoner held elsewhere is the
+        // member refused, not the free lead named after it.
+        let mut world = minimal_world();
+        let (here, there) = two_systems();
+        let prisoner = agent_at(&mut world, there, true);
+        world.characters[prisoner].is_captive = true;
+        let lead = agent_at(&mut world, here, true);
+        let mut state = MissionState::new();
+        let team = vec![
+            MissionMember::Character(prisoner),
+            MissionMember::Character(lead),
+        ];
+
+        assert_eq!(
+            state.dispatch_guarded(request(team, vec![], here), &mut world),
+            Err(MissionRefusal::MemberUnavailable(MissionMember::Character(
+                prisoner
+            )))
+        );
+    }
+
+    #[test]
+    fn a_fleet_character_and_a_surface_character_at_one_system_are_refused() {
+        // FUN_00522b30 compares the location key (slot +0xc): a fleet in orbit
+        // and the system below it are different locations.
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let mut fleets: slotmap::SlotMap<crate::ids::FleetKey, ()> = slotmap::SlotMap::with_key();
+        let aboard = agent_at(&mut world, here, true);
+        world.characters[aboard].current_fleet = Some(fleets.insert(()));
+        let below = agent_at(&mut world, here, true);
+        let mut state = MissionState::new();
+        let team = vec![
+            MissionMember::Character(aboard),
+            MissionMember::Character(below),
+        ];
+
+        assert_eq!(
+            state.dispatch_guarded(request(team, vec![], here), &mut world),
+            Err(MissionRefusal::MemberUnavailable(MissionMember::Character(
+                below
+            )))
+        );
+    }
+
+    #[test]
+    fn a_special_force_decoy_joins_the_decoys_and_is_freed_on_release() {
+        // FUN_0054c200 adds the decoy list with as_decoy = 1 (FUN_00522b30
+        // accepts families 0x30..0x3f); releasing clears each member's flag.
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let lead = agent_at(&mut world, here, true);
+        let (unit, at) = unit_on_surface(&mut world, true);
         world.characters[lead].current_system = Some(at);
         let mut state = MissionState::new();
         let decoy = MissionMember::SpecialForce(unit);

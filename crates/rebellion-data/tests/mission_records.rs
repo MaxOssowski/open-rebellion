@@ -21,7 +21,9 @@ fn missnsd_records_carry_the_mission_timer_and_flags() {
     let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
 
     assert_eq!(world.mission_records.len(), 25);
-    let diplomacy = world.mission_record(0x51).expect("Diplomacy record");
+    let diplomacy = world
+        .mission_record(DatId::new(0x5100_0010))
+        .expect("Diplomacy record");
     assert_eq!(diplomacy.dat_id, DatId::new(0x5100_0010));
     assert_eq!(
         (diplomacy.timer_min_days, diplomacy.timer_spread_days),
@@ -29,12 +31,42 @@ fn missnsd_records_carry_the_mission_timer_and_flags() {
     );
     assert!(diplomacy.repeats && diplomacy.detection_phases && diplomacy.can_resign);
     assert!(!diplomacy.hidden);
-    let sabotage = world.mission_record(0x69).expect("Sabotage record");
+    let sabotage = world
+        .mission_record(DatId::new(0x6900_0012))
+        .expect("Sabotage record");
     assert_eq!(
         (sabotage.timer_min_days, sabotage.timer_spread_days),
         (1, 2)
     );
     assert!(!sabotage.repeats);
+}
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn a_mission_family_can_hold_several_missnsd_records() {
+    // MISSNSD ids 69 and 70 are both Vacation (family 0x72) with different
+    // timers, so a record is found by its id (`GameWorld::mission_record`).
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+
+    let vacation: Vec<_> = world
+        .mission_records
+        .iter()
+        .filter(|record| record.dat_id.family() == 0x72)
+        .map(|record| (record.dat_id, record.timer_min_days))
+        .collect();
+    assert_eq!(
+        vacation,
+        vec![
+            (DatId::new(0x7200_0045), 60),
+            (DatId::new(0x7200_0046), 1000)
+        ]
+    );
+    let research = world
+        .mission_records
+        .iter()
+        .filter(|record| record.dat_id.family() == 0x53)
+        .count();
+    assert_eq!(research, 3);
 }
 
 #[test]

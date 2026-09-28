@@ -13,10 +13,10 @@ use dat_dumper::types::general_params::GeneralParamsFile;
 use dat_dumper::types::int_table::IntTableFile;
 use dat_dumper::types::major_characters::{CharacterEntry, MajorCharactersFile};
 use dat_dumper::types::minor_characters::MinorCharactersFile;
-use dat_dumper::types::missions::MissionsFile;
+use dat_dumper::types::missions::{Mission, MissionsFile};
 use dat_dumper::types::sectors::SectorsFile;
 use dat_dumper::types::side_params::SideParamsFile;
-use dat_dumper::types::special_forces::SpecialForcesFile;
+use dat_dumper::types::special_forces::{SpecialForce, SpecialForcesFile};
 use dat_dumper::types::systems::SystemsFile;
 #[cfg(not(target_arch = "wasm32"))]
 use dat_dumper::types::textstra;
@@ -401,29 +401,8 @@ pub fn load_game_data_with_options(
     if file_available(&specfc_path) {
         let specfc_file: SpecialForcesFile = read_dat_file(&specfc_path)?;
         for dat in &specfc_file.units {
-            // Like TROOPSD, a sequential record id takes the header's family.
-            let class_dat_id = if dat.id >> 24 == 0 {
-                DatId::new((specfc_file.family_id << 24) | dat.id)
-            } else {
-                DatId::new(dat.id)
-            };
-            let pair = |base, variance| SkillPair { base, variance };
-            world.special_force_classes.insert(
-                class_dat_id,
-                SpecialForceClassDef {
-                    skills: [
-                        pair(dat.diplomacy_base, dat.diplomacy_variance),
-                        pair(dat.espionage_base, dat.espionage_variance),
-                        pair(dat.ship_design_base, dat.ship_design_variance),
-                        pair(dat.troop_training_base, dat.troop_training_variance),
-                        pair(dat.facility_design_base, dat.facility_design_variance),
-                        pair(dat.combat_base, dat.combat_variance),
-                        pair(dat.leadership_base, dat.leadership_variance),
-                        pair(dat.loyalty_base, dat.loyalty_variance),
-                    ],
-                    mission_mask: dat.mission_id,
-                },
-            );
+            let (class_dat_id, class) = special_force_class(specfc_file.family_id, dat);
+            world.special_force_classes.insert(class_dat_id, class);
         }
     }
 
@@ -580,24 +559,10 @@ pub fn load_game_data_with_options(
     }
 
     // ── 10b. Mission records (MISSNSD.DAT) ─────────────────────────────────
-    // A record's DatId is `family << 24 | id`; the timer and flag fields are
-    // the in-memory record `+0x50..+0x64` (ghidra/notes/mission-lifecycle.md).
     let missions_path = gdata_path.join("MISSNSD.DAT");
     if file_available(&missions_path) {
         let missions_file: MissionsFile = read_dat_file(&missions_path)?;
-        world.mission_records = missions_file
-            .missions
-            .iter()
-            .map(|m| MissionRecord {
-                dat_id: DatId::new(m.family_id << 24 | m.id),
-                timer_min_days: m.timer_min_days,
-                timer_spread_days: m.timer_spread_days,
-                repeats: m.repeats != 0,
-                hidden: m.hidden != 0,
-                detection_phases: m.detection_phases != 0,
-                can_resign: m.can_resign != 0,
-            })
-            .collect();
+        world.mission_records = missions_file.missions.iter().map(mission_record).collect();
     }
 
     // ── 11. Apply enabled mods ──────────────────────────────────────────────
@@ -638,6 +603,48 @@ pub fn init_mod_runtime(gdata_path: &Path) -> Option<crate::mods::ModRuntime> {
         Some(crate::mods::ModRuntime::discover(&mods_dir))
     } else {
         None
+    }
+}
+
+/// A SPECFCSD record's class id and definition. Like TROOPSD, a sequential
+/// record id takes the header's family; the skill pairs are the class record's
+/// `+0x58..+0x94` and the mission mask its `+0x98`
+/// (ghidra/notes/mission-lifecycle.md, "The mission record").
+fn special_force_class(family_id: u32, dat: &SpecialForce) -> (DatId, SpecialForceClassDef) {
+    let class_dat_id = if dat.id >> 24 == 0 {
+        DatId::new((family_id << 24) | dat.id)
+    } else {
+        DatId::new(dat.id)
+    };
+    let pair = |base, variance| SkillPair { base, variance };
+    let class = SpecialForceClassDef {
+        skills: [
+            pair(dat.diplomacy_base, dat.diplomacy_variance),
+            pair(dat.espionage_base, dat.espionage_variance),
+            pair(dat.ship_design_base, dat.ship_design_variance),
+            pair(dat.troop_training_base, dat.troop_training_variance),
+            pair(dat.facility_design_base, dat.facility_design_variance),
+            pair(dat.combat_base, dat.combat_variance),
+            pair(dat.leadership_base, dat.leadership_variance),
+            pair(dat.loyalty_base, dat.loyalty_variance),
+        ],
+        mission_mask: dat.mission_id,
+    };
+    (class_dat_id, class)
+}
+
+/// A MISSNSD record: its DatId is `family << 24 | id`, and the timer and flag
+/// fields are the in-memory record `+0x50..+0x64`
+/// (ghidra/notes/mission-lifecycle.md, "The mission record").
+fn mission_record(m: &Mission) -> MissionRecord {
+    MissionRecord {
+        dat_id: DatId::new(m.family_id << 24 | m.id),
+        timer_min_days: m.timer_min_days,
+        timer_spread_days: m.timer_spread_days,
+        repeats: m.repeats != 0,
+        hidden: m.hidden != 0,
+        detection_phases: m.detection_phases != 0,
+        can_resign: m.can_resign != 0,
     }
 }
 
@@ -779,4 +786,78 @@ pub(crate) fn file_available(path: &Path) -> bool {
 pub fn parse_dat_bytes<T: DatRecord>(data: &[u8], name: &str) -> anyhow::Result<T> {
     let mut reader = ByteReader::new(data);
     T::parse(&mut reader).with_context(|| format!("parsing {name}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A one-record DAT file: a 16-byte header, then `record`.
+    fn one_record_file(family_id: u32, record: &[u32]) -> Vec<u8> {
+        [1, 1, family_id, 0]
+            .iter()
+            .chain(record)
+            .flat_map(|word| word.to_le_bytes())
+            .collect()
+    }
+
+    #[test]
+    fn a_missnsd_record_id_combines_family_and_index_and_reads_its_flags() {
+        // File fields 0x28..0x3c are the in-memory +0x50..+0x64
+        // (ghidra/notes/mission-lifecycle.md, "The mission record").
+        let mut record = [0_u32; 28];
+        record[0] = 0x10; // id
+        record[4] = 0x51; // family
+        record[10] = 5; // timer minimum, file 0x28
+        record[11] = 10; // timer spread, file 0x2c
+        record[12] = 1; // repeat
+        record[13] = 0; // hidden
+        record[14] = 2; // detection phases: any nonzero value is on
+        record[15] = 1; // can resign
+        let file: MissionsFile =
+            parse_dat_bytes(&one_record_file(0x40, &record), "MISSNSD.DAT").unwrap();
+
+        assert_eq!(
+            mission_record(&file.missions[0]),
+            MissionRecord {
+                dat_id: DatId::new(0x5100_0010),
+                timer_min_days: 5,
+                timer_spread_days: 10,
+                repeats: true,
+                hidden: false,
+                detection_phases: true,
+                can_resign: true,
+            }
+        );
+    }
+
+    #[test]
+    fn a_sequential_specfcsd_id_takes_the_header_family() {
+        // FUN_00535e40 reads the skill pairs at class record +0x58..+0x94
+        // (file 0x30..0x6c) and FUN_00503b40 the mission mask at +0x98
+        // (file 0x70).
+        let mut record = [0_u32; 29];
+        record[0] = 3; // sequential id
+        record[12] = 55; // diplomacy base, file 0x30
+        record[13] = 4; // diplomacy variance
+        record[26] = 70; // loyalty base, file 0x68
+        record[28] = 0x21; // mission mask, file 0x70
+        let file: SpecialForcesFile =
+            parse_dat_bytes(&one_record_file(0x3c, &record), "SPECFCSD.DAT").unwrap();
+
+        let (id, class) = special_force_class(file.family_id, &file.units[0]);
+        assert_eq!(id, DatId::new(0x3c00_0003));
+        assert_eq!((class.skills[0].base, class.skills[0].variance), (55, 4));
+        assert_eq!(class.skills[7].base, 70);
+        assert_eq!(class.mission_mask, 0x21);
+
+        let (full, _) = special_force_class(
+            0x3c,
+            &SpecialForce {
+                id: 0x3d00_0001,
+                ..file.units[0].clone()
+            },
+        );
+        assert_eq!(full, DatId::new(0x3d00_0001));
+    }
 }

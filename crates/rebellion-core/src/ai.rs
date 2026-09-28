@@ -210,6 +210,18 @@ impl AIState {
     pub fn is_busy(&self, character: CharacterKey) -> bool {
         self.busy_characters.contains(&character)
     }
+
+    /// Release every character a resolved mission frees. Special forces
+    /// are not in the busy set.
+    pub fn free_mission_members(&mut self, effects: &[crate::missions::MissionEffect]) {
+        for effect in effects {
+            if let crate::missions::MissionEffect::MemberAvailable { member } = effect {
+                if let Some(character) = member.character() {
+                    self.mark_available(character);
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2547,6 +2559,35 @@ mod tests {
         CapitalShipClass, Character, FighterClass, Fleet, GameWorld, Sector, ShipInstance,
         SkillPair, System,
     };
+
+    #[test]
+    fn every_character_a_mission_frees_leaves_the_busy_set() {
+        use crate::missions::{MissionEffect, MissionMember};
+        let mut keys: slotmap::SlotMap<CharacterKey, ()> = slotmap::SlotMap::with_key();
+        let (lead, second, idle) = (keys.insert(()), keys.insert(()), keys.insert(()));
+        let mut units: slotmap::SlotMap<crate::ids::SpecialForceKey, ()> =
+            slotmap::SlotMap::with_key();
+        let mut ai = AIState::new(AiFaction::Empire);
+        for character in [lead, second, idle] {
+            ai.mark_busy(character);
+        }
+
+        ai.free_mission_members(&[
+            MissionEffect::MemberAvailable {
+                member: MissionMember::Character(lead),
+            },
+            MissionEffect::MemberAvailable {
+                member: MissionMember::SpecialForce(units.insert(())),
+            },
+            MissionEffect::MemberAvailable {
+                member: MissionMember::Character(second),
+            },
+        ]);
+
+        assert!(!ai.is_busy(lead));
+        assert!(!ai.is_busy(second));
+        assert!(ai.is_busy(idle));
+    }
 
     // -----------------------------------------------------------------------
     // World builder helpers

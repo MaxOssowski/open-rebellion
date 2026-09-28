@@ -1104,7 +1104,8 @@ pub struct MissionRecord {
     pub timer_min_days: u32,
     /// Mission timer spread in days (record `+0x54`, `FUN_005236e0`).
     pub timer_spread_days: u32,
-    /// Phase 10 loops back to phase 8 (record `+0x58`, `FUN_005227d0`).
+    /// Phase 10 loops back to phase 8 (record `+0x58`, `FUN_00520b60`, read
+    /// by the stepper `FUN_005227d0`).
     pub repeats: bool,
     /// Members are on a hidden mission (record `+0x5c`, `FUN_00520b70`).
     pub hidden: bool,
@@ -1357,17 +1358,16 @@ pub struct GameWorld {
     pub production_facilities: slotmap::SlotMap<ProductionFacilityKey, ProductionFacilityInstance>,
     /// Troop class definitions keyed by `DatId` (from TROOPSD.DAT).
     /// Used by ground combat to look up per-class attack/defense values.
-    /// Repopulated from DAT on load; default to empty for save compatibility.
+    /// Saved with the world (bincode ignores `serde(default)`).
     #[serde(default)]
     pub troop_classes: HashMap<crate::ids::DatId, TroopClassDef>,
     /// Defense facility class definitions keyed by `DatId` (from DEFFACSD.DAT).
     /// Used by bombardment to look up per-class `bombardment_defense` values.
-    /// Repopulated from DAT on load; default to empty for save compatibility.
+    /// Saved with the world (bincode ignores `serde(default)`).
     #[serde(default)]
     pub defense_facility_classes: HashMap<crate::ids::DatId, DefenseFacilityClassDef>,
     /// Special-forces class definitions keyed by `DatId` (from SPECFCSD.DAT).
-    /// Repopulated from DAT on load.
-    #[serde(default)]
+    /// Saved with the world.
     pub special_force_classes: HashMap<crate::ids::DatId, SpecialForceClassDef>,
     /// Game-balance parameters from GNPRTB.DAT (combat formulas, bombardment divisors, etc.).
     pub gnprtb: GnprtbParams,
@@ -1375,8 +1375,7 @@ pub struct GameWorld {
     pub sdprtb: SdprtbParams,
     /// Mission probability tables keyed by DAT file stem (e.g. "DIPLMSTB", "ESPIMSTB").
     pub mission_tables: HashMap<String, MstbTable>,
-    /// MISSNSD.DAT records in file order. Repopulated from DAT on load.
-    #[serde(default)]
+    /// MISSNSD.DAT records in file order. Saved with the world.
     pub mission_records: Vec<MissionRecord>,
     /// GNPRTB difficulty column index (0-7) for this game session.
     /// Set from `SeedOptions::gnprtb_index()` at game start. Default 2 (Alliance Medium).
@@ -1389,24 +1388,25 @@ fn default_difficulty_index() -> u8 {
 }
 
 impl GameWorld {
-    /// The first MISSNSD record of a mission family (e.g. `0x51` Diplomacy).
-    /// A mission class reads its record through `+0x2c`
-    /// (`ghidra/notes/mission-lifecycle.md`).
+    /// The MISSNSD record with id `id` (e.g. `0x51000010` for Diplomacy).
+    /// A mission class reads one record through `+0x2c`
+    /// (`ghidra/notes/mission-lifecycle.md`). The id, not the family, picks
+    /// it: Research (`0x53`) has three records and Vacation (`0x72`) two.
     #[must_use]
-    pub fn mission_record(&self, family: u8) -> Option<&MissionRecord> {
-        self.mission_records
-            .iter()
-            .find(|record| record.dat_id.family() == family)
+    pub fn mission_record(&self, id: crate::ids::DatId) -> Option<&MissionRecord> {
+        self.mission_records.iter().find(|record| record.dat_id == id)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
-    fn a_mission_record_is_found_by_its_family_byte() {
-        // A mission class reads its MISSNSD record by family (the record's
-        // DatId high byte), e.g. 0x51 Diplomacy (ghidra/notes/mission-lifecycle.md).
+    fn a_mission_record_is_found_by_its_id_not_its_family() {
+        // A mission class reads one MISSNSD record through +0x2c
+        // (ghidra/notes/mission-lifecycle.md); two records can share a
+        // family, as Vacation 0x72 does.
         let record = |raw, min| MissionRecord {
             dat_id: crate::ids::DatId::new(raw),
             timer_min_days: min,
@@ -1419,19 +1419,21 @@ mod tests {
         let world = GameWorld {
             mission_records: vec![
                 record(0x4100_0001, 0),
-                record(0x5300_0020, 10),
-                record(0x5300_0021, 11),
+                record(0x7200_0045, 60),
+                record(0x7200_0046, 1000),
             ],
             ..GameWorld::default()
         };
+        let min = |raw| {
+            world
+                .mission_record(crate::ids::DatId::new(raw))
+                .map(|r| r.timer_min_days)
+        };
 
-        assert_eq!(
-            world.mission_record(0x53).map(|r| r.timer_min_days),
-            Some(10)
-        );
-        assert!(world.mission_record(0x51).is_none());
+        assert_eq!(min(0x7200_0046), Some(1000));
+        assert_eq!(min(0x7200_0045), Some(60));
+        assert_eq!(min(0x5100_0010), None);
     }
-    use super::*;
 
     /// Helper: create a minimal Character for tests.
     fn default_character() -> Character {

@@ -38,7 +38,7 @@ pub struct Mission {
     pub timer_min_days: u32,
     // Mission timer spread in days (record +0x54, FUN_005236e0)
     pub timer_spread_days: u32,
-    // Phase 10 loops back to 8 (record +0x58, FUN_00520b60)
+    // Phase 10 loops back to 8 (record +0x58, FUN_00520b60, read by FUN_005227d0)
     pub repeats: u32,
     // Members go on a hidden mission (record +0x5c, FUN_00520b70)
     pub hidden: u32,

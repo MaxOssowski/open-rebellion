@@ -89,7 +89,7 @@ Incite (`0x56`) or Subdue (`0x57`) mission enters or leaves phases 8..10.
 |--------|-----------|---------|--------|
 | `+0x50` | `max_officers` (0x28) | timer minimum days | `FUN_005236e0` |
 | `+0x54` | `base_duration` (0x2c) | timer spread days | `FUN_005236e0` |
-| `+0x58` | `flag_col6` | repeat (phase 10 loops to 8) | `FUN_005227d0` |
+| `+0x58` | `flag_col6` | repeat (phase 10 loops to 8) | `FUN_00520b60`, read by `FUN_005227d0` |
 | `+0x5c` | `flag_col7` | hidden (OnHiddenMission) | `FUN_00520b70` |
 | `+0x60` | `flag_col8` | detection phases on | `FUN_00520b80` |
 | `+0x64` | `flag_col9` | members can resign | `FUN_00520b90` |

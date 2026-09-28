@@ -473,6 +473,8 @@ fn uprising_mission_terms(
         if mission.target_system != system {
             continue;
         }
+        // port: a member destroyed mid-mission drops out of the count; the
+        // original removes a destroyed object from the mission's lists.
         let (total, count) = mission
             .members()
             .filter_map(|member| member_skill(world, member, Skill::Leadership))
@@ -1771,6 +1773,109 @@ mod tests {
         assert_eq!(
             uprising_mission_terms(&world, &missions, system),
             (0, -3, false)
+        );
+    }
+
+    #[test]
+    fn an_uprising_mission_averages_its_decoys_captured_and_special_forces_too() {
+        // FUN_00525bb0 walks the team, decoy, and captured lists, and
+        // FUN_00520cd0 reads each member's slot +0x1f4, which a special force
+        // answers from its own skill (vtable 0x0065e160). 20, 40, and 60
+        // average to 40; FUN_005484d0 divides by GNPRTB 6144 (10).
+        use crate::missions::MissionMember;
+        let (mut world, system) = world_with(Faction::Alliance, 0.3);
+        let agent = |world: &mut GameWorld, base, is_captive| {
+            world.characters.insert(Character {
+                is_alliance: true,
+                is_captive,
+                current_system: Some(system),
+                leadership: SkillPair { base, variance: 0 },
+                ..Character::default()
+            })
+        };
+        let lead = agent(&mut world, 20, false);
+        let prisoner = agent(&mut world, 60, true);
+        let mut skills = [0; 8];
+        skills[crate::world::Skill::Leadership as usize] = 40;
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills,
+            on_mission: false,
+        });
+        world.systems[system].special_forces.push(unit);
+        let mut missions = MissionState::new();
+        missions
+            .dispatch_guarded(
+                MissionRequest {
+                    decoys: vec![
+                        MissionMember::SpecialForce(unit),
+                        MissionMember::Character(prisoner),
+                    ],
+                    ..MissionRequest::single(
+                        MissionKind::SubdueUprising,
+                        MissionFaction::Alliance,
+                        lead,
+                        system,
+                        None,
+                        0.0,
+                    )
+                },
+                &mut world,
+            )
+            .expect("dispatch");
+        assert_eq!(
+            missions.missions()[0].captured,
+            vec![MissionMember::Character(prisoner)]
+        );
+
+        assert_eq!(
+            uprising_mission_terms(&world, &missions, system),
+            (0, -4, false)
+        );
+
+        // port: a member destroyed mid-mission drops out of the count, so
+        // 20 and 40 average to 30 (counting it as 0 would give 20).
+        world.characters.remove(prisoner);
+        assert_eq!(
+            uprising_mission_terms(&world, &missions, system),
+            (0, -3, false)
+        );
+    }
+
+    #[test]
+    fn the_average_leadership_is_taken_before_the_divisor() {
+        // FUN_00520cd0 divides the integer sum by the count: 19 and 22
+        // average to 20, and FUN_005484d0 then divides by GNPRTB 6144 (10)
+        // for 2. Dividing each member first would give 1.
+        let (mut world, system) = world_with(Faction::Alliance, 0.3);
+        let agent = |world: &mut GameWorld, base| {
+            world.characters.insert(Character {
+                leadership: SkillPair { base, variance: 0 },
+                ..Character::default()
+            })
+        };
+        let lead = agent(&mut world, 19);
+        let second = agent(&mut world, 22);
+        let mut missions = MissionState::new();
+        missions.dispatch(MissionRequest {
+            team: vec![
+                crate::missions::MissionMember::Character(lead),
+                crate::missions::MissionMember::Character(second),
+            ],
+            ..MissionRequest::single(
+                MissionKind::InciteUprising,
+                MissionFaction::Alliance,
+                lead,
+                system,
+                None,
+                0.0,
+            )
+        });
+
+        assert_eq!(
+            uprising_mission_terms(&world, &missions, system),
+            (2, 0, true)
         );
     }
 

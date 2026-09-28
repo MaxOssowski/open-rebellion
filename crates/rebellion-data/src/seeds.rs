@@ -2164,13 +2164,49 @@ mod tests {
         let known = world.special_forces.insert(unit(class));
         let unknown = world.special_forces.insert(unit(DatId::new(0)));
 
-        roll_special_force_skills(&mut world, &mut Xoshiro256PlusPlus::seed_from_u64(7));
+        roll_special_force_skills(&mut world, &mut Xoshiro256PlusPlus::seed_from_u64(42));
 
         let rolled = world.special_forces[known].skills;
         assert_eq!(rolled[1], 55);
-        assert!((20..=30).contains(&rolled[5]), "combat {}", rolled[5]);
+        // The one draw is the combat variance; seed 42 gives a nonzero bonus,
+        // so a roll that ignored the variance would fail here.
+        let bonus: u32 = Xoshiro256PlusPlus::seed_from_u64(42).gen_range(0..=10);
+        assert_ne!(bonus, 0);
+        assert_eq!(rolled[5], 20 + bonus);
         assert_eq!(rolled[0], 0);
         assert_eq!(world.special_forces[unknown].skills, [0; 8]);
+    }
+
+    #[test]
+    fn special_forces_with_no_variance_draw_nothing_from_the_rng() {
+        // The shipped SPECFCSD variances are all 0 (ghidra/notes/
+        // mission-lifecycle.md, "Member skills"), so the seed roll must leave
+        // the stream where it was.
+        let mut world = GameWorld::default();
+        let class = DatId::new(0x3c00_0001);
+        world.special_force_classes.insert(
+            class,
+            rebellion_core::world::SpecialForceClassDef {
+                skills: [SkillPair {
+                    base: 30,
+                    variance: 0,
+                }; 8],
+                mission_mask: 1,
+            },
+        );
+        world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: class,
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+        let untouched = rng.clone();
+
+        roll_special_force_skills(&mut world, &mut rng);
+
+        assert_eq!(rng, untouched);
+        assert!(world.special_forces.values().all(|u| u.skills == [30; 8]));
     }
 
     #[test]
