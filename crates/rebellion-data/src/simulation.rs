@@ -16,6 +16,7 @@ use rebellion_core::bombardment::BombardmentSystem;
 use rebellion_core::combat::{CombatSide, CombatSystem};
 use rebellion_core::dat::Faction;
 use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
+use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyState, EconomySystem};
 use rebellion_core::events::{EventState, EventSystem};
 use rebellion_core::fog::{FogState, FogSystem};
@@ -65,6 +66,8 @@ pub struct SimulationStates {
     pub economy: EconomyState,
     pub repair: RepairState,
     pub troop_transport: TroopTransportState,
+    /// Manufactured objects travelling to their destination (F-030).
+    pub deliveries: DeliveryState,
     pub combat_cooldowns: HashMap<SystemKey, u64>,
     /// Original new-game choices that continue to govern this campaign.
     pub campaign_config: CampaignConfig,
@@ -143,6 +146,14 @@ pub fn run_simulation_tick(
     integrator.apply_build_completions(world, &mfg_advance.completions);
     integrator.apply_manufacturing_idle(world, &mfg_advance.newly_idle);
     for completion in &mfg_advance.completions {
+        states.combat_cooldowns.remove(&completion.system);
+    }
+    // Remote products travel, then complete at their destination (F-030).
+    states.deliveries.depart(world, &mfg_advance.departures);
+    let delivered = states.deliveries.advance(world, tick_events);
+    integrator.apply_build_completions(world, &delivered.arrivals);
+    integrator.apply_deliveries_lost(world, &delivered.lost);
+    for completion in &delivered.arrivals {
         states.combat_cooldowns.remove(&completion.system);
     }
 
@@ -585,7 +596,6 @@ pub fn run_simulation_tick(
         &mut states.research,
         world,
         current_tick,
-        config,
         false,
     );
 
@@ -613,7 +623,6 @@ pub fn run_simulation_tick(
             &mut states.research,
             world,
             current_tick,
-            config,
             true,
         );
     }
@@ -832,6 +841,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             troop_transport: TroopTransportState::default(),
+            deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
             campaign_config: CampaignConfig::default(),
         };
@@ -955,6 +965,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             troop_transport: TroopTransportState::default(),
+            deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
             campaign_config: CampaignConfig::default(),
         };
@@ -1099,6 +1110,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             troop_transport: TroopTransportState::default(),
+            deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
             campaign_config: CampaignConfig {
                 victory_conditions: VictoryConditions::HeadquartersOnly,
@@ -1229,6 +1241,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             troop_transport: TroopTransportState::default(),
+            deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
             campaign_config: CampaignConfig {
                 victory_conditions: VictoryConditions::HeadquartersOnly,
@@ -1377,6 +1390,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             troop_transport: TroopTransportState::default(),
+            deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
             campaign_config: CampaignConfig::default(),
         };

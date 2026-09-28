@@ -26,6 +26,8 @@ pub struct ManufacturingPanelState {
     pub expanded_system: Option<SystemKey>,
     /// Current selection in the "add to queue" combo for the expanded system.
     pub add_selection: AddSelection,
+    /// Where new builds for the expanded system go; `None` keeps them there.
+    pub destination: Option<SystemKey>,
 }
 
 /// What the player has selected to add to the production queue.
@@ -75,15 +77,7 @@ pub fn draw_manufacturing(
 
                     // Popularity ownership check: show systems where the player
                     // faction is dominant (> 0.5).
-                    let is_controlled = match player_faction {
-                        MissionFaction::Alliance => {
-                            system.popularity_alliance > system.popularity_empire
-                        }
-                        MissionFaction::Empire => {
-                            system.popularity_empire > system.popularity_alliance
-                        }
-                    };
-                    if !is_controlled {
+                    if !faction_holds(system, player_faction) {
                         continue;
                     }
 
@@ -99,6 +93,7 @@ pub fn draw_manufacturing(
                             panel_state.expanded_system =
                                 if is_expanded { None } else { Some(sys_key) };
                             panel_state.add_selection = AddSelection::None;
+                            panel_state.destination = None;
                         }
 
                         ui.label(RichText::new(&system.name).strong());
@@ -227,6 +222,30 @@ pub fn draw_manufacturing(
                                     .color(Color32::from_gray(180)),
                             );
 
+                            // port: the original picks a destination by dropping the
+                            // order on a system; this combo lists the held systems.
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("Deliver to:").small());
+                                let name_of = |key: Option<SystemKey>| {
+                                    key.and_then(|key| world.systems.get(key))
+                                        .map_or("here", |s| s.name.as_str())
+                                };
+                                egui::ComboBox::from_id_salt(format!("dest_combo_{sys_key:?}"))
+                                    .selected_text(name_of(panel_state.destination))
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut panel_state.destination, None, "here");
+                                        for (key, other) in &world.systems {
+                                            if key != sys_key && faction_holds(other, player_faction) {
+                                                ui.selectable_value(
+                                                    &mut panel_state.destination,
+                                                    Some(key),
+                                                    &other.name,
+                                                );
+                                            }
+                                        }
+                                    });
+                            });
+
                             // Collect the classes this faction has researched.
                             let is_alliance = player_faction == MissionFaction::Alliance;
                             let ships: Vec<_> = world
@@ -301,6 +320,7 @@ pub fn draw_manufacturing(
                                                     kind: BuildableKind::CapitalShip(*class_key),
                                                     cost: class.refined_material_cost,
                                                     ticks: class.research_difficulty.max(1),
+                                                    destination: panel_state.destination,
                                                 });
                                             }
                                         }
@@ -354,6 +374,7 @@ pub fn draw_manufacturing(
                                                     // material cost / 5 + 5 as a build-time proxy.
                                                     ticks: (class.refined_material_cost / 5 + 5)
                                                         .max(1),
+                                                    destination: panel_state.destination,
                                                 });
                                             }
                                         }
@@ -376,6 +397,14 @@ pub fn draw_manufacturing(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Whether `faction` holds `system` by popular support.
+fn faction_holds(system: &rebellion_core::world::System, faction: MissionFaction) -> bool {
+    match faction {
+        MissionFaction::Alliance => system.popularity_alliance > system.popularity_empire,
+        MissionFaction::Empire => system.popularity_empire > system.popularity_alliance,
+    }
+}
 
 /// Human-readable label for a `BuildableKind`.
 fn buildable_label(kind: BuildableKind, world: &GameWorld) -> String {

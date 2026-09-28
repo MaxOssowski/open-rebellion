@@ -39,6 +39,7 @@ use rebellion_core::bombardment::BombardmentSystem;
 use rebellion_core::combat::{CombatSide, CombatSystem};
 use rebellion_core::dat::Faction;
 use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
+use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyEvent, EconomyState, EconomySystem};
 use rebellion_core::events::{EventAction, EventState, EventSystem};
 use rebellion_core::fog::{FogState, FogSystem};
@@ -260,6 +261,7 @@ struct LiveCampaign<'a> {
     ai2: &'a mut Option<AIState>,
     repair: &'a mut RepairState,
     troop_transport: &'a mut TroopTransportState,
+    deliveries: &'a mut DeliveryState,
     combat_cooldowns: &'a mut std::collections::HashMap<rebellion_core::ids::SystemKey, u64>,
     game_config: &'a mut rebellion_core::tuning::GameConfig,
     campaign_config: &'a mut CampaignConfig,
@@ -293,6 +295,7 @@ impl LiveCampaign<'_> {
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
             troop_transport: self.troop_transport.clone(),
+            deliveries: self.deliveries.clone(),
         }
     }
 
@@ -326,6 +329,7 @@ impl LiveCampaign<'_> {
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
         *self.troop_transport = state.troop_transport;
+        *self.deliveries = state.deliveries;
     }
 }
 
@@ -814,6 +818,7 @@ async fn main() {
     let mut betrayal_state = BetrayalState::new();
     let mut repair_state = RepairState::default();
     let mut troop_transport_state = TroopTransportState::default();
+    let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
     // Find HQ systems for victory detection
     let alliance_hq = world
@@ -1384,6 +1389,60 @@ Some(RailAudience::side(*faction_is_alliance)),
                 advisor_manufacturing_complete(&mut advisor_state, &sys_name);
                 #[cfg(not(target_arch = "wasm32"))]
                 audio_engine.play_sfx(SfxKind::BuildComplete, &audio_vol);
+            }
+            // Remote products complete at their facility, then travel to
+            // their destination and complete there on arrival (F-030).
+            let system_name = |world: &GameWorld, key| {
+                world
+                    .systems
+                    .get(key)
+                    .map_or_else(|| "unknown".to_string(), |s| s.name.clone())
+            };
+            for departure in &mfg_advance.departures {
+                let origin = system_name(&world, departure.origin);
+                let destination = system_name(&world, departure.destination);
+                // Notification 0x21, Construction Complete.
+                msg_log.push(filed(
+                    GameMessage::at_system(
+                        departure.tick,
+                        format!("Construction complete at {origin}, en route to {destination}"),
+                        MessageCategory::Manufacturing,
+                        departure.origin,
+                    ),
+                    MessageRail::Manufacturing,
+                    system_audience(&world, departure.origin),
+                ));
+                advisor_manufacturing_complete(&mut advisor_state, &origin);
+                #[cfg(not(target_arch = "wasm32"))]
+                audio_engine.play_sfx(SfxKind::BuildComplete, &audio_vol);
+            }
+            delivery_state.depart(&world, &mfg_advance.departures);
+            let delivered = delivery_state.advance(&world, &tick_events);
+            for completion in &delivered.arrivals {
+                rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
+                // Notification 0xd, Unit Arrival.
+                msg_log.push(filed(
+                    GameMessage::at_system(
+                        completion.tick,
+                        format!("Unit arrived at {}", system_name(&world, completion.system)),
+                        MessageCategory::Manufacturing,
+                        completion.system,
+                    ),
+                    MessageRail::Manufacturing,
+                    system_audience(&world, completion.system),
+                ));
+            }
+            for lost in &delivered.lost {
+                // Event 0x303, GameObjDestroyedOnArrivalNotif.
+                msg_log.push(GameMessage::at_system(
+                    lost.arrival_tick,
+                    format!(
+                        "Unit lost on arrival: {} no longer exists",
+                        system_name(&world, lost.destination)
+                    ),
+                    MessageCategory::Manufacturing,
+                    lost.origin,
+                ));
             }
             // K6 EVT_MANUFACTURING_IDLE (0x160) — surface idle transitions
             // in the player-facing message log.
@@ -2830,6 +2889,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     betrayal_state = BetrayalState::new();
                                     repair_state = RepairState::default();
                                     troop_transport_state = TroopTransportState::default();
+                                    delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
                                     game_config = rebellion_core::tuning::GameConfig::default();
                                     dual_ai_mode = false;
@@ -3904,6 +3964,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         ai2: &mut secondary_ai_state,
                         repair: &mut repair_state,
                         troop_transport: &mut troop_transport_state,
+                        deliveries: &mut delivery_state,
                         combat_cooldowns: &mut combat_cooldowns,
                         game_config: &mut game_config,
                         campaign_config: &mut campaign_config,
@@ -3944,11 +4005,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                     match rebellion_data::save::load_slot(&saves_dir, slot) {
                         Ok((meta, state)) => {
                             macroquad::logging::info!(
-                                "load_state_fingerprint slot={} tick={} fingerprint={} verified={}",
+                                "load_state_fingerprint slot={} tick={} fingerprint={}",
                                 slot,
                                 meta.game_tick,
-                                meta.state_fingerprint,
-                                meta.fingerprint_verified
+                                meta.state_fingerprint
                             );
                             let mut campaign = LiveCampaign {
                                 world: &mut world,
@@ -3973,6 +4033,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 ai2: &mut secondary_ai_state,
                                 repair: &mut repair_state,
                                 troop_transport: &mut troop_transport_state,
+                                deliveries: &mut delivery_state,
                                 combat_cooldowns: &mut combat_cooldowns,
                                 game_config: &mut game_config,
                                 campaign_config: &mut campaign_config,
@@ -4120,7 +4181,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &mut secondary_ai_state,
                         &mut victory_state,
                         campaign_config,
-                        &game_config,
                         &mut blockade_state,
                         &event_state,
                         &mut mod_runtime,
@@ -4347,7 +4407,6 @@ fn apply_panel_action(
     secondary_ai_state: &mut Option<AIState>,
     victory_state: &mut VictoryState,
     campaign_config: CampaignConfig,
-    game_config: &rebellion_core::tuning::GameConfig,
     blockade_state: &mut BlockadeState,
     event_state: &EventState,
     mod_runtime: &mut rebellion_data::mods::ModRuntime,
@@ -4496,7 +4555,6 @@ fn apply_panel_action(
                 fleet,
                 destination,
                 expected_is_alliance,
-                &game_config.movement,
             ) {
                 Ok(departure) => {
                     let origin_name = world
@@ -4543,9 +4601,15 @@ fn apply_panel_action(
             system,
             kind,
             ticks,
+            destination,
             ..
         } => {
-            mfg_state.enqueue(system, QueueItem::new(kind, ticks, ticks));
+            let item = QueueItem::new(kind, ticks, ticks);
+            let item = match destination {
+                Some(destination) => item.delivered_to(destination),
+                None => item,
+            };
+            mfg_state.enqueue(system, item);
         }
         PanelAction::CancelQueueItem { system, index } => {
             mfg_state.queue_mut(system).cancel(index);
@@ -4784,10 +4848,16 @@ fn apply_panel_action(
                     ));
                 } else if let Some(fleet) = world.fleets.get(fleet_key) {
                     let origin = fleet.location;
-                    if origin != system {
-                        let ticks = rebellion_core::movement::fleet_transit_ticks(
-                            fleet, world, origin, system,
-                        );
+                    let ticks = rebellion_core::movement::fleet_transit_ticks(
+                        fleet, world, origin, system,
+                    );
+                    if origin != system && ticks.is_none() {
+                        msg_log.push(GameMessage::new(
+                            clock.tick,
+                            "Death Star fleet cannot enter hyperspace".to_string(),
+                            MessageCategory::Event,
+                        ));
+                    } else if let (true, Some(ticks)) = (origin != system, ticks) {
                         let dest_name = world
                             .systems
                             .get(system)
@@ -5438,16 +5508,14 @@ fn apply_ai_actions(
                 reason,
                 troops,
             } => {
-                let transit = world.fleets.get(*fleet).map(|fleet| {
-                    (
-                        rebellion_core::movement::fleet_transit_ticks(
-                            fleet,
-                            world,
-                            fleet.location,
-                            *to_system,
-                        ),
-                        fleet.is_alliance,
+                let transit = world.fleets.get(*fleet).and_then(|fleet| {
+                    rebellion_core::movement::fleet_transit_ticks(
+                        fleet,
+                        world,
+                        fleet.location,
+                        *to_system,
                     )
+                    .map(|ticks| (ticks, fleet.is_alliance))
                 });
                 if let Some((transit, is_alliance)) = transit {
                     let embarked = troops.is_empty()

@@ -31,7 +31,7 @@ use rebellion_core::game_events::{
     EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
     EVT_SUPPORT_CHANGE, EVT_SUPPORT_DRIFT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
-    EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
+    EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
     EVT_UPRISING_INCIDENT, EVT_VICTORY, EVT_VICTORY_CHECK, SYS_AI, SYS_BETRAYAL, SYS_BLOCKADE,
     SYS_COMBAT, SYS_DEATH_STAR, SYS_ECONOMY, SYS_EVENTS, SYS_FOG, SYS_JEDI, SYS_MANUFACTURING,
     SYS_MISSIONS, SYS_MOVEMENT, SYS_REPAIR, SYS_RESEARCH, SYS_STORY, SYS_UPRISING, SYS_VICTORY,
@@ -569,6 +569,26 @@ impl PerceptionIntegrator {
         }
     }
 
+    /// Report manufactured objects lost on arrival: their destination was
+    /// destroyed while they travelled (event `0x303`, `FUN_004fc080`).
+    pub fn apply_deliveries_lost(
+        &mut self,
+        world: &GameWorld,
+        lost: &[rebellion_core::delivery::Delivery],
+    ) {
+        for delivery in lost {
+            self.emit(
+                SYS_MANUFACTURING,
+                EVT_DESTROYED_ON_ARRIVAL,
+                serde_json::json!({
+                    "origin": sys_name(world, delivery.origin),
+                    "destination": sys_name(world, delivery.destination),
+                    "kind": format!("{:?}", delivery.kind),
+                }),
+            );
+        }
+    }
+
     /// Apply fleet arrivals: update locations + emit telemetry.
     pub fn apply_arrivals(
         &mut self,
@@ -1070,7 +1090,6 @@ impl PerceptionIntegrator {
         research_state: &mut ResearchState,
         world: &mut GameWorld,
         tick: u64,
-        config: &rebellion_core::tuning::GameConfig,
         is_dual: bool,
     ) {
         let applied = apply_ai_actions_inner(
@@ -1084,7 +1103,6 @@ impl PerceptionIntegrator {
             research_state,
             world,
             tick,
-            config,
         );
         for (action, was_applied) in actions.iter().zip(applied) {
             if !was_applied {
@@ -1968,7 +1986,6 @@ fn apply_ai_actions_inner(
     research_state: &mut ResearchState,
     world: &mut GameWorld,
     _tick: u64,
-    config: &rebellion_core::tuning::GameConfig,
 ) -> Vec<bool> {
     let mission_faction = ai_state.faction.map_or(
         MissionFaction::Empire,
@@ -2036,16 +2053,8 @@ fn apply_ai_actions_inner(
                 troops,
                 ..
             } => {
-                let transit = world.fleets.get(*fleet).map(|f| {
-                    rebellion_core::movement::fleet_transit_ticks_with_config(
-                        f,
-                        world,
-                        f.location,
-                        *to_system,
-                        config.movement.distance_scale,
-                        config.movement.min_transit_ticks,
-                        config.movement.default_fighter_hyperdrive,
-                    )
+                let transit = world.fleets.get(*fleet).and_then(|f| {
+                    rebellion_core::movement::fleet_transit_ticks(f, world, f.location, *to_system)
                 });
                 let embarked = if troops.is_empty() {
                     true
@@ -2079,7 +2088,6 @@ mod tests {
     use rebellion_core::ai::{AiFaction, FleetMoveReason};
     use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
     use rebellion_core::missions::MissionOutcome;
-    use rebellion_core::tuning::GameConfig;
     use rebellion_core::world::{CapitalShipClass, Sector, System};
 
     fn add_system(world: &mut GameWorld, name: &str) -> SystemKey {
@@ -2331,9 +2339,14 @@ mod tests {
         let origin = add_system(&mut world, "Origin");
         let first_target = add_system(&mut world, "First Target");
         let second_target = add_system(&mut world, "Second Target");
+        // A fleet needs a capital ship to enter hyperspace (FUN_004fda10).
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            hyperdrive: 100,
+            ..CapitalShipClass::default()
+        });
         let fleet = world.fleets.insert(Fleet {
             location: origin,
-            capital_ships: vec![],
+            capital_ships: vec![ShipInstance::new(class, 100, false)],
             fighters: vec![],
             characters: vec![],
             is_alliance: false,
@@ -2374,7 +2387,6 @@ mod tests {
             &mut research,
             &mut world,
             5,
-            &GameConfig::default(),
             false,
         );
 
@@ -2439,7 +2451,6 @@ mod tests {
             &mut research,
             &mut world,
             5,
-            &GameConfig::default(),
             false,
         );
 

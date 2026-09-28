@@ -87,12 +87,14 @@ pub enum PanelAction {
     },
 
     // ── Manufacturing ─────────────────────────────────────────────────────────
-    /// Add a buildable to the production queue at a system.
+    /// Add a buildable to the production queue at a system. With a
+    /// `destination`, the finished object travels there (F-030).
     Enqueue {
         system: SystemKey,
         kind: BuildableKind,
         cost: u32,
         ticks: u32,
+        destination: Option<SystemKey>,
     },
     /// Cancel the queue item at `index` in a system's production queue.
     CancelQueueItem { system: SystemKey, index: usize },

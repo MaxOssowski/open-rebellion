@@ -1822,12 +1822,15 @@
     {
       "id": "F-030",
       "severity": "P3",
-      "status": "open",
+      "status": "remediated_browser_pending",
       "title": "Manufactured objects arrive without an en-route phase",
       "evidence": [
         "The integrator's manufacturing completion inserts a finished facility, regiment, or ship straight into its system or fleet",
         "The original keeps an en-route state (+0x50 bit 4, GameObjEnrouteNotif FUN_004fc240; bit 5, GameObjEnrouteActiveNotif; GameObjDestroyedOnArrivalNotif for an object lost on arrival), and an en-route object is not usable (0x004f7b80), so the disaster (FUN_00511930) and the incident pick skip it (ghidra/notes/object-state-flags.md)",
-        "Open: the delivery rule (who sets bit 4, the travel time, and the arrival handler) is not yet recovered; storing en-route objects changes the save format"
+        "Open: the delivery rule (who sets bit 4, the travel time, and the arrival handler) is not yet recovered; storing en-route objects changes the save format",
+        "2026-09-28 remediation: a queue item may name a destination; on completion it departs (FUN_0052bee0) and arrives after the FUN_0055d8c0 transit at its own speed (capital ship FUN_00500820, fighter FIGHTSD hyperdrive FUN_00502f80, others GNPRTB 1). An object whose destination is destroyed is lost on arrival (0x303, FUN_004fc080). Save v16 stores destinations and DeliveryState (delivery.rs, ghidra/notes/build-delivery.md)",
+        "hyp: the port holds a travelling object outside the world and places it on arrival, so every walk skips it; the original keeps it in the destination container, marked en route",
+        "port: the production panel picks the destination from a list of held systems; the original order path is unrecovered, and AI builds stay at their facility"
       ],
       "acceptance": "Completed objects travel en route under recovered rules, the disaster and incident skip them, and a test fails without the phase."
     },
@@ -1848,14 +1851,15 @@
     {
       "id": "F-032",
       "severity": "P1",
-      "status": "open",
+      "status": "partially_remediated",
       "title": "Fleet transit time and bombardment rest on an invented formula and a misread",
       "evidence": [
         "movement.rs computes ceil(distance * DISTANCE_SCALE 2 / slowest hyperdrive) with MIN_TRANSIT_TICKS 10 and DEFAULT_FIGHTER_HYPERDRIVE 60, none sourced",
         "The original moves each object on its own: FUN_00514a60 -> FUN_00556430 -> FUN_0055d8c0, ticks = max(1, isqrt(dx^2+dy^2) / GNPRTB 5120 * speed(+0x34) / 100), arrival event 0x387 (ghidra/notes/build-delivery.md)",
         "bombardment.rs and ghidra/notes/bombardment.md read that transit chain as a bombardment formula: the short pair from FUN_00509620 is the system position, not combat strength; the real bombardment function is unrecovered",
         "blockade.rs matches its decompiles; fog.rs has no source and is port-owned until tagged",
-        "evidence/invention-review-r1/movement.md"
+        "evidence/invention-review-r1/movement.md",
+        "2026-09-28 transit remediated: movement.rs ports FUN_0055d8c0 with the original isqrt (FUN_0053e1d0), GNPRTB 5120 and 1, the ship speed FUN_00500820, and the fleet speed FUN_004fd900; a fleet without a capital ship cannot enter hyperspace (FUN_004fda10). The per-ship damage nibble is not modelled. Bombardment and fog remain open"
       ],
       "acceptance": "Transit follows FUN_0055d8c0 per object with a failing-without test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs is tagged port:."
     },

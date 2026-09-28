@@ -318,6 +318,8 @@ pub fn load_game_data_with_options(
             turbolaser_attack_strength: dat.turbolaser_attack_strength,
             ion_cannon_attack_strength: dat.ion_cannon_attack_strength,
             laser_cannon_attack_strength: dat.laser_cannon_attack_strength,
+            hyperdrive: dat.hyperdrive,
+            hyperdrive_if_damaged: dat.hyperdrive_if_damaged,
         };
         world.fighter_classes.insert(class);
     }

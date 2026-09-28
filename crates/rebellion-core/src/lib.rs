@@ -6,6 +6,7 @@ pub mod combat;
 pub mod commands;
 pub mod dat;
 pub mod death_star;
+pub mod delivery;
 pub mod economy;
 pub mod effects;
 pub mod events;

@@ -466,10 +466,14 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
 - [ ] Move the remaining probability-table consumers to the recovered step
   lookup (F-028) and the informant and resource incidents to their recovered
   timers (F-029).
-- [ ] Recover and port the en-route delivery of manufactured objects (F-030)
-  and the mission decoy phase (F-019); both change the save format.
+- [x] Port the en-route delivery of manufactured objects on the recovered
+  per-object transit (F-030, save v16, browser pass pending).
+- [ ] Port the mission decoy phase (F-019) once its mode loader, success-roll
+  placement, and decoy assignment are recovered.
 - [x] Gate uncited simulation rules with `tools/provenance-scan`; its baseline
-  of 135 items may only shrink (F-031).
+  may only shrink (F-031; 130 items after F-032 transit).
+- [x] Port fleet transit time from `FUN_0055d8c0` (F-032 transit; bombardment
+  and fog remain).
 - [ ] Replace the invented rules found by the invention review, one system at
   a time: transit and bombardment (F-032), strategic combat (F-033), missions
   (F-034), manufacturing and repair (F-035), AI (F-036), economy and research

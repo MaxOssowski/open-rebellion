@@ -120,20 +120,158 @@ shorts are system coordinates and the "damage" is travel ticks.
   destroyed object that was en route active (bit 5) with a non-zero
   `+0x40 & 0xff0000`.
 
+## Recovered 2026-09-28
+
+All lines cite `ghidra/notes/<function>.c`. "Inference" marks a reading the
+code does not state outright.
+
+### Transit arithmetic
+
+`FUN_0055d8c0.c:11` computes `FUN_0053e190(d / DAT_006bb6e8, speed)`, and
+`FUN_0053e190(x, s)` is `FUN_0053e170(x, s, DAT_00661a88)`
+(`FUN_0053e190.c:5`), which is `(s * x) / 100` (`FUN_0053e170.c:5`,
+`FUN_0053e150.c:5`; `DAT_00661a88` is 100, `blockade-troop-withdrawal.md`).
+With integer division at each step:
+
+```c
+d = isqrt(dx*dx + dy*dy);                  // 0 -> 0 ticks (same position)
+t = ((d / GNPRTB[5120]) * speed) / 100;    // GNPRTB 5120 = 5 in every column
+return t == 0 ? 1 : t;
+```
+
+No difficulty or side factor enters: `DAT_006bb6e8` is GNPRTB `0x1400`
+(`FUN_0055cb60.c:5`) and is 5 in all eight columns of the shipped GNPRTB.DAT.
+`speed` is a time percentage: 100 is the default and a larger value is slower.
+
+`FUN_00555d30` calls the mobile slot `+0x38` (`FUN_00555d30.c:12`) and then
+the speed slot `+0x34` with argument 1 (`FUN_00555d30.c:16`, disassembly
+`0x00555d49`/`0x00555d6f`).
+
+### Speed (`+0x34`) and mobile (`+0x38`) per class
+
+Vtables were found through the shared side-key slot `+0xc` (`FUN_004f6a80`,
+46 object vtables) and read with `DumpSlots`.
+
+| Class (type) | Vtable | `+0x34` speed | `+0x38` mobile |
+|---|---|---|---|
+| Fleet (`0x08`) | `0x0065d438` | `FUN_004fd900`: the largest speed among member capital ships (`FUN_00502db0`, types `0x14..0x1c`) that are completed and not in transit; any such member returning 0 makes the result 0 (`FUN_004fd900.c:33-45`) | `FUN_004fda10`: at least one member ship completed and not in transit (`FUN_004fda10.c:23`) |
+| Capital ship (`0x14`, `0x18`) | `0x0065d650`, `0x0065d930` | `FUN_00500820`: class `+0x6c` minus `FUN_005011f0`; if 0, class `+0x70` minus `FUN_00501230`; if still 0 and `+0x40` byte 1 is 0, the default (`FUN_00500820.c:10-19`) | `FUN_004f6410`: Deployed, bit 16 (`FUN_004f6410.c:5`) |
+| Fighter squadron (`0x1c`) | `0x0065def0` | `FUN_00502f80`: the same, with both subtrahends `FUN_006158b0` = 0, so class `+0x6c`, else `+0x70`, else the default (`FUN_00502f80.c:19`) | Deployed |
+| Regiment (`0x10`) | `0x0065e438` | `FUN_004f63f0`: the default (`FUN_004f63f0.c:9`) | Deployed |
+| Special forces (`0x3c`) | `0x0065e160` | `FUN_005338a0` -> `FUN_004f63f0(1)`: the default | Deployed |
+| Facilities (`0x20..0x2d`, `0x80`, `0xa0..0xa4`) | e.g. `0x00660280`, `0x006629a0` | `FUN_004f63f0`: the default | Deployed |
+| Characters (`0x30..0x35`, `0x38`) | `0x006657f0`..`0x006681d0` | `FUN_004ed370`: `+0x9a`, MissionHyperdriveModifier (`FUN_004ed370.c:9`) | Deployed |
+
+- The default is `DAT_006b9050`, loaded by `FUN_0053e0b0` as GNPRTB 1
+  (`FUN_0053e0b0.c:7`, `FUN_0053e390` is the GNPRTB lookup); GNPRTB 1 is 100
+  in every column. Every speed slot returns 0 for an object that is not
+  existing (`+0x50` bit 6).
+- Class `+0x6c`/`+0x70` are CAPSHPSD/FIGHTSD `hyperdrive` and
+  `hyperdrive_if_damaged`: the class record getters read `+0x6c`
+  (`FUN_00557470`) and `+0x70` (`FUN_00557480`), and the in-memory record is
+  the DAT record shifted by `0x28` (max hull at `+0xc0`, `FUN_00500550`, is
+  DAT `hull` at `0x98`; `hyperdrive` is DAT `0x44`). Shipped values: capital
+  ships 50..100 (damaged 0..180); fighters 60 or 0.
+- `FUN_005011f0` is `class+0x6c * nibble` where the nibble is ship `+0x64`
+  bits 16..19 (`FUN_005011f0.c:16-20`), set only to 0 or 1 by `FUN_00501780`
+  (validated against `FUN_00500680`). Inference: that bit marks the hyperdrive
+  as damaged, so a damaged ship uses `hyperdrive_if_damaged`, and one with
+  both disabled falls back to the default only while `+0x40` byte 1 (the
+  `DeploymentCount` byte, `FUN_004f7260`) is 0.
+- Characters start at the default (`FUN_004eceb0.c:30`). On a mission state
+  change (`FUN_00546ea0` -> `FUN_00548370`), every member of the mission gets
+  `FUN_004ee470(speed)` (`FUN_00548370.c:65`), where `FUN_00542990` gives GNPRTB
+  3083 (50) when Han Solo (`0x33000243`, `FUN_00506f50.c:13`; TEXTSTRA 10307)
+  qualifies and the default otherwise (`FUN_00542990.c:15`,
+  `FUN_0055e5b0.c:80`). The qualifying test (Han's `+0x68` matching the
+  mission key and `+0xac` bit 0 clear, and an empty mission list from
+  `FUN_00525a00`) is read but its fields are unnamed.
+- A fleet moves as one object: its speed is its slowest member ship's. Fleet
+  members are inside the fleet container, so they are en route through the
+  container rule (`FUN_004f8240`) rather than their own timers. The fleet's
+  own `+0x11c` arrival slot `FUN_004ff600` runs the base `FUN_004fb520` and
+  then clears three fleet fields (`FUN_004fe380`, `FUN_004fe4d0`,
+  `FUN_004fe460`, not read).
+
+### When transit starts
+
+- The only caller of `FUN_00514a60` is `FUN_0057ba50.c:16`, the fire slot of
+  event `0x31a` (factory `FUN_0057bbb0`, `FUN_0051ef80.c:27`). Event `0x31a`
+  is raised by the object slot stub at `0x004fbaf0` (object vtable `+0x148`).
+  So travel is started after a container change, with the object already in
+  its new container; the arrival handler does not move it again (below).
+- `FUN_004fb4b0` (object vtable `+0x118`) sets Deployed (`FUN_004fb4b0.c:10`)
+  and raises event `0x308` (`FUN_004fb4b0.c:18`), whose handler
+  `FUN_005150c0` (via `FUN_0057a9e0`) does, for types `0x10..0x3f`:
+  - when the object's key at `+0x38` names a manager (`FUN_00505750`), it
+    calls `FUN_00529d70` on it (`FUN_005150c0.c:47`), which sets that
+    manager's progress to `min(cost +0x68, +0x60)` and subtracts it from
+    `+0x60` (`FUN_00529d70.c:11`);
+  - for a non-character, `FUN_00556430(obj, +0x38, own location)`
+    (`FUN_005150c0.c:93`): the product travels from the key at `+0x38` to the
+    container it already sits in. Inference: `+0x38` holds the producing
+    facility's key, so the travel clock starts at deployment, not at the
+    order.
+- Who calls slots `+0x118` and `+0x148` is not traced.
+
+### Build progress
+
+- `FUN_0052b960.c:8` completes the product when `0 < +0x5c` and
+  `+0x68 <= +0x5c`.
+- `FUN_0052a430` adds one to progress `+0x5c` while it is below the cost
+  `+0x68`, otherwise one to `+0x60` (`FUN_0052a430.c:8`).
+- Its only caller is `FUN_00530950.c:18` (facility `+0x60` bit 2 set, then
+  `FUN_0053a860`), called from `FUN_00516360.c:142` in mode 3, whose recurring
+  caller is `FUN_00578a40.c:16`, the fire slot of event `0x315` (class
+  `0x00669528`, factory `FUN_005788f0`, `FUN_0051ef80.c:25`). `FUN_0053b1d0`
+  raises `0x315` on a facility state change (`FUN_0053b1d0.c:37`).
+- Facility timer `0x394` (`FUN_0053b330`, fire `FUN_0053aa20`) sets that
+  facility `+0x60` bit 2 when `+0x58` is 2 (`timer-scheduler.md`). Inference:
+  each facility cycle adds one unit of progress, so the per-day rate is one
+  unit per `0x394` period, read from the record at facility `+0x54` field
+  `+0x20`. That record's source (MANFACSD `processing_rate` is a candidate)
+  is not traced.
+- `FUN_00528890` accepts a queued product that is created (bit 1) and not
+  completed, destroyed or en route (bits 2..4, `FUN_00528890.c:19`), and whose
+  key from `FUN_0048a640` equals the manager's own key. Inference: the product
+  belongs to this manager. No side test is made.
+
+### Arrival
+
+- Event `0x387`'s class `0x00669838` fires `FUN_0057bf80`: after validating the
+  target at `+0x3c`, it calls `FUN_004f7fc0` (`FUN_0057bf80.c:35`), which, for
+  an autorouting object, clears Autorouting (bit 11) and the arrival tick
+  `+0x44` (`FUN_004f7fc0.c:9`).
+- Clearing bit 11 calls slot `+0x138`, `FUN_004fba10`, which cancels the
+  pending `0x387` and raises event `0x306` (`FUN_004fba10.c:9`). Its handler
+  `FUN_0057ac90` -> `FUN_00515a50`:
+  - a character (`0x30..0x3f`) goes to `FUN_00545820` (`FUN_00515a50.c:39`),
+    which resolves its mission or group and calls `FUN_00522280`;
+  - any other object goes to `FUN_00556620` (`FUN_00515a50.c:51`), which
+    compares its location (slot `+0xc`) with the destination `+0x3c` and, if
+    they differ, starts the next leg with `FUN_00556430`
+    (`FUN_00556620.c:31`); when no leg remains, `FUN_004f7640(obj, 0)` clears
+    en route active (bit 5).
+- Clearing bit 5 runs slot `+0x124`, `FUN_004fb760`, which zeroes the
+  `DestinationCount` byte (`+0x40` byte 2, `FUN_004fb760.c:9`,
+  `FUN_004f72f0`) and recomputes en route and usable.
+- No container change and no battle or blockade test is in this path. The
+  object joins its container when the move is made (event `0x31a`), and the
+  arrival only ends its en-route state. Where battles are triggered on arrival
+  is not traced.
+
 ## Open
 
-- Where a product sits while queued: `FUN_0052bee0` implies it already has a
-  location different from the facility's when it is sent elsewhere, but the
-  order path that creates it and moves it (and so whether the travel clock
-  starts at the order or at completion) is not traced. `FUN_00528890`'s
-  acceptance rule is not read.
-- The speed slot `+0x34` and the mobile slot `+0x38` per class (ship,
-  fighter, regiment, facility) are not read.
-- The arrival handler's placement step (which container the object joins,
-  fleet or system list) is not traced past `FUN_004fb520`; `FUN_00556390`
-  (via `FUN_00515440`) handles an object dropped into another system's
-  container without autorouting.
-- The `+0x40 & 0xff0000` field in the destroyed-on-arrival test is unnamed.
+- The order path that creates a queued product and places it in its
+  container, and the callers of object slots `+0x118` (deploy, event `0x308`)
+  and `+0x148` (container change, event `0x31a`).
+- The `0x394` delay record at facility `+0x54` `+0x20`, which sets the build
+  rate.
+- The meaning of ship `+0x64` bits 16..23 (hyperdrive damage, inference) and
+  of `FUN_0048a640`'s key in `FUN_00528890`.
+- Where a fleet's arrival triggers battle or blockade checks.
+- The `+0x40 & 0xff0000` field in the destroyed-on-arrival test is
+  `DestinationCount` (`FUN_004f72f0`); the test's other operand is unnamed.
 - `FUN_004fd340` returns the value of the callback at `DAT_006b2b08`,
   read here as the game clock because it is added to a tick delay; the
   callback itself is not traced.

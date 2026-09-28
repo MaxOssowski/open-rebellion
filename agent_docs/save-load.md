@@ -1,9 +1,9 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v15, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, and historical migration"
+description: "Native and browser save v16, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-09-26
+updated: 2026-09-28
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 
@@ -11,22 +11,23 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v15.
+serializable snapshot. The current format is v16, and it is the only one
+that loads.
 
-## Native format (v15)
+## Native format (v16)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 15
+[version: u32 LE]             — SAVE_VERSION = 16
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
-[mod_count: u32 LE]           — v4+
+[mod_count: u32 LE]
   for each mod:
     [name_len: u32 + name: UTF-8]
     [version_len: u32 + version: UTF-8]
 [mod_hash: u64 LE]            — FNV-1a over sorted name/version pairs
-[fingerprint_version: u16 LE] — v9+
-[state_fingerprint: u64 LE]   — v9+
+[fingerprint_version: u16 LE]
+[state_fingerprint: u64 LE]
 [bincode body: SaveState]
 ```
 
@@ -64,22 +65,15 @@ Every mutable campaign subsystem required by the app is serialized:
 | `game_config` | `GameConfig` |
 | `campaign_config` | `CampaignConfig` |
 | `troop_transport` | `TroopTransportState` |
+| `deliveries` | `DeliveryState` |
 
-The five fields ending with `game_config` began as the v10 continuation
-envelope. Loading restores them instead of reseeding RNG or clearing dual-AI,
-repair, and combat memory. Save v11 added `campaign_config`, preserving the
-selected difficulty, original galaxy-size label, player faction, and Standard
-versus Headquarters Only victory mode. Save v12 persists the fleet set already
-under repair so `RepairCheckPerformed` remains a true episode-start event
-across save/load. Save v13 persists regiment cargo keyed by its carrying fleet.
-Save v14 stores the clock's original Game Speed (Paused, Very Slow, Slow,
-Medium, Fast), its partial day as a fraction of a day, and the pause stop day,
-so a game saved while paused reloads paused at its kept speed. Save v15
-persists blockade embarked-regiment tracking (F-021), so a regiment's orbit
-and withdraw percent survive save/load instead of resetting to 100. It also
-stores the recovered `UprisingState` (F-026): each revolt's start tick and next
-incident tick, and the galaxy disaster timer. The v14 shape (a loyalty
-snapshot per revolt plus incident cooldowns) lives on as `UprisingStateV14`.
+Loading restores the RNG, dual-AI state, repair episodes, and combat memory
+instead of reseeding or clearing them. `campaign_config` keeps the selected
+difficulty, galaxy-size label, player faction, and victory mode. The clock
+keeps its original Game Speed and partial day, so a game saved while paused
+reloads paused. Blockade embarked-regiment tracking (F-021) and the recovered
+`UprisingState` (F-026) persist. v16 added each queue item's destination and
+the objects travelling to theirs (`DeliveryState`, F-030).
 
 ## Deterministic fingerprints
 
@@ -93,58 +87,31 @@ fingerprint proves only that one recorded logical snapshot matches. F-011B4
 adds exact-artifact native/WASM checkpoint equivalence for the seed-42 fixture;
 interactive app/playtest and combat-path convergence remain open.
 
-## Migration rules
+## No migration
 
-- v15 is read directly and its stored fingerprint must match.
-- v14 is decoded through the exact historical `SaveStateV14` body. Its stored
-  fingerprint is checked before migration, embarked-regiment tracking begins
-  empty, each revolt keeps its start tick and redraws its incident timer, the
-  disaster timer is redrawn, and the migrated fingerprint is unverified.
-- v13 is decoded through the exact historical `SaveStateV13` body, whose clock
-  is `GameClockV13`. Its stored fingerprint is checked before migration. Normal
-  becomes Medium, and Fast and Faster become Fast. The accumulator carries over
-  unchanged, because v13 counted Normal-speed seconds against a one-second day,
-  which equals a fraction of a day. The migrated fingerprint is unverified.
-  v9 through v12 bodies use the same legacy clock.
-- v12 is decoded through the exact historical `SaveStateV12` body. Its stored
-  fingerprint is checked before migration, troop cargo begins empty, and the
-  migrated fingerprint is unverified.
-- v11 is decoded through the exact historical `SaveStateV11` body. Its stored
-  fingerprint is checked before migration, repair episodes begin empty because
-  v11 stored a unit `RepairState`, and the migrated fingerprint is unverified.
-- v10 is decoded through the exact historical `SaveStateV10` body. Its stored
-  fingerprint is checked before migration. Faction and difficulty are inferred
-  from preserved state; galaxy size and victory mode use explicit Standard
-  defaults because v10 did not retain them. The migrated fingerprint is
-  reported as unverified.
-- v9 is decoded through the exact historical `SaveStateV9` body. Its v9
-  fingerprint is checked before migration; v10 continuation fields and v11
-  campaign setup receive explicit defaults, and the migrated fingerprint is
-  reported as unverified.
-- v8 uses the same historical body without a stored fingerprint. It migrates
-  with explicit defaults and is reported as unverified.
-- v3–v7 are recognized but rejected with an incompatibility explanation.
-- Versions newer than v15 and versions older than v3 fail closed.
+The port has no released saves, so the loader reads only `SAVE_VERSION`. Any
+other version is rejected with a message to start a new game. Version 16
+removed the V9 to V15 bodies, the frozen legacy core types, and the v9 binary
+fixture (2026-09-28).
 
-Do not rely on `#[serde(default)]` to migrate bincode. Bincode is positional.
-Changing `SaveState` requires a version bump and an exact legacy body struct.
-The checked-in 718-byte v9 fixture was produced by the old writer and protects
-the real migration boundary.
+Changing `SaveState`, or any type it holds, including `GameWorld`, changes the
+bincode layout. Bincode is positional, so `#[serde(default)]` does not keep old
+files readable. Bump `SAVE_VERSION` for every layout change. Once saves are
+released, restore versioned migration before the next layout change.
 
 ## Browser storage
 
 WASM stores base64 bincode and versioned JSON metadata in `localStorage`:
 
 ```text
-rebellion_save_v15_<slot>
-rebellion_meta_v15_<slot>
+rebellion_save_v16_<slot>
+rebellion_meta_v16_<slot>
 ```
 
 Metadata includes the full save name, game tick, and fingerprint with its
 `u64` value encoded as a decimal string so JavaScript cannot truncate it. The
-reader falls back through v14, v13, v12, v11, v10, and v9 keys, validates any stored
-fingerprint, migrates the body, and writes new saves only under v15 keys.
-Delete removes all seven generations.
+key prefix follows `SAVE_VERSION`, so entries from older builds are ignored.
+Their stale entries remain in `localStorage` until the browser clears them.
 
 This path is functional but not the production persistence target: base64 and
 synchronous `localStorage` can block the main thread or hit quota limits. M3
@@ -165,15 +132,12 @@ Native saves live at `<saves_dir>/<slot>.reb`. The UI exposes ten slots.
 
 ## Safe change checklist
 
-1. Add the field to the current `SaveState` and the live snapshot/restore path.
-2. Preserve the previous body exactly in a versioned legacy struct.
-3. Bump `SAVE_VERSION` and browser key prefixes.
-4. Validate the old stored fingerprint before migration.
-5. Define explicit migration defaults and mark migrated fingerprints honestly.
-6. Update native and WASM load/list/delete paths.
-7. Add current round-trip, corruption, exact-continuation, and real-artifact
-   migration tests.
-8. Run workspace tests, the seeded fingerprint probe, WASM/package checks, and
+1. Add the field to `SaveState` and the live snapshot/restore path.
+2. Bump `SAVE_VERSION`. The browser key prefixes follow it.
+3. Add round-trip, corruption, and exact-continuation tests.
+4. Regenerate the seed-42 replay golden, since the version is hashed into
+   every fingerprint, and name the cause in the commit.
+5. Run workspace tests, the seeded fingerprint probe, WASM/package checks, and
    an independent browser save/reload/load/continue pass with bitmap and error gates.
 
 Current verification evidence:

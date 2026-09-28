@@ -1057,7 +1057,7 @@ cross-runtime proof remain open
 ### F-030: Manufactured objects arrive without an en-route phase
 
 - Severity: P3
-- Status: open
+- Status: remediated, browser pending
 - Evidence: the integrator's manufacturing completion inserts a finished
   facility, regiment, or ship straight into its system or fleet. The original
   keeps an en-route state (`+0x50` bit 4, `GameObjEnrouteNotif` `FUN_004fc240`;
@@ -1068,6 +1068,18 @@ cross-runtime proof remain open
 - Open: the delivery rule (who sets bit 4, the travel time, and the arrival
   handler) is not yet recovered. Storing en-route objects changes the save
   format.
+- Remediated 2026-09-28: a queue item may name a destination. On completion it
+  departs (`FUN_0052bee0`) and arrives after the `FUN_0055d8c0` transit at its
+  own speed: capital ship `FUN_00500820`, fighter FIGHTSD hyperdrive
+  `FUN_00502f80`, others GNPRTB 1. An object whose destination is destroyed is
+  lost on arrival (`0x303`, `FUN_004fc080`). Save v16 stores destinations and
+  `DeliveryState` (`delivery.rs`, `ghidra/notes/build-delivery.md`).
+  - hyp: the port holds a travelling object outside the world and places it
+    on arrival, so every walk skips it. The original keeps it in the
+    destination container, marked en route.
+  - port: the production panel picks the destination from a list of held
+    systems. The original order path is unrecovered, and AI builds stay at
+    their facility.
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 
@@ -1094,7 +1106,7 @@ cross-runtime proof remain open
 ### F-032: Fleet transit time and bombardment rest on an invented formula and a misread
 
 - Severity: P1
-- Status: open
+- Status: partially remediated (transit)
 - Evidence:
   - movement.rs computes ceil(distance * DISTANCE_SCALE 2 / slowest
     hyperdrive) with MIN_TRANSIT_TICKS 10 and DEFAULT_FIGHTER_HYPERDRIVE 60,
@@ -1109,6 +1121,11 @@ cross-runtime proof remain open
   - blockade.rs matches its decompiles; fog.rs has no source and is port-owned
     until tagged
   - evidence/invention-review-r1/movement.md
+  - Transit remediated 2026-09-28: movement.rs ports FUN_0055d8c0 with the
+    original isqrt (FUN_0053e1d0), GNPRTB 5120 and 1, the ship speed
+    FUN_00500820, and the fleet speed FUN_004fd900. A fleet without a capital
+    ship cannot enter hyperspace (FUN_004fda10). The per-ship damage nibble is
+    not modelled. Bombardment and fog remain open.
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.

@@ -91,6 +91,10 @@ pub struct QueueItem {
     pub ticks_remaining: u32,
     /// Original construction cost in refined materials (for UI display).
     pub total_cost: u32,
+    /// Where the finished object goes; `None` keeps it at the building
+    /// system. A different system makes it travel there once completed
+    /// (`FUN_0052bee0`, `crate::delivery`).
+    pub destination: Option<SystemKey>,
 }
 
 impl QueueItem {
@@ -101,6 +105,16 @@ impl QueueItem {
             kind,
             ticks_remaining,
             total_cost,
+            destination: None,
+        }
+    }
+
+    /// The same item, delivered to `destination` once completed.
+    #[must_use]
+    pub fn delivered_to(self, destination: SystemKey) -> Self {
+        QueueItem {
+            destination: Some(destination),
+            ..self
         }
     }
 
@@ -199,7 +213,7 @@ impl ProductionQueue {
     /// Returns a list of `BuildableKind` items that completed during this
     /// advance. Multiple completions are possible if `ticks` is large and
     /// several items have small remaining costs.
-    fn advance_ticks(&mut self, ticks: u32) -> Vec<BuildableKind> {
+    fn advance_ticks(&mut self, ticks: u32) -> Vec<QueueItem> {
         let mut completed = Vec::new();
         let mut remaining_ticks = ticks;
 
@@ -207,8 +221,7 @@ impl ProductionQueue {
             if remaining_ticks >= front.ticks_remaining {
                 // This item completes; consume its cost and continue with leftover ticks.
                 remaining_ticks -= front.ticks_remaining;
-                let finished = self.items.pop_front().unwrap();
-                completed.push(finished.kind);
+                completed.push(self.items.pop_front().unwrap());
             } else {
                 // Partial progress — item survives.
                 front.ticks_remaining -= remaining_ticks;
@@ -301,6 +314,22 @@ pub struct CompletionEvent {
 pub struct ManufacturingAdvance {
     pub completions: Vec<CompletionEvent>,
     pub newly_idle: Vec<SystemKey>,
+    /// Completed items bound for another system; `crate::delivery` times
+    /// their travel and completes them there on arrival.
+    pub departures: Vec<Departure>,
+}
+
+/// A completed item leaving its building system for its destination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Departure {
+    /// The building system.
+    pub origin: SystemKey,
+    /// Where the item goes.
+    pub destination: SystemKey,
+    /// The game-day on which the item completed.
+    pub tick: u64,
+    /// What was built.
+    pub kind: BuildableKind,
 }
 
 // ---------------------------------------------------------------------------
@@ -382,6 +411,7 @@ impl ManufacturingSystem {
         // started non-empty and ends empty is "newly idle" (SIMP-H4).
         let mut completions = Vec::new();
         let mut newly_idle = Vec::new();
+        let mut departures = Vec::new();
 
         // HashMap iteration order is randomized per process. Completion order
         // mutates slotmaps downstream, so walk queues by stable system key.
@@ -399,12 +429,20 @@ impl ManufacturingSystem {
                 .get_mut(&system_key)
                 .expect("manufacturing queue key collected from the same map");
             let pre_len = queue.len();
-            for kind in queue.advance_ticks(tick_count) {
-                completions.push(CompletionEvent {
-                    system: system_key,
-                    tick: final_tick,
-                    kind,
-                });
+            for item in queue.advance_ticks(tick_count) {
+                match item.destination.filter(|&destination| destination != system_key) {
+                    Some(destination) => departures.push(Departure {
+                        origin: system_key,
+                        destination,
+                        tick: final_tick,
+                        kind: item.kind,
+                    }),
+                    None => completions.push(CompletionEvent {
+                        system: system_key,
+                        tick: final_tick,
+                        kind: item.kind,
+                    }),
+                }
             }
             if pre_len > 0 && queue.is_empty() {
                 newly_idle.push(system_key);
@@ -414,6 +452,7 @@ impl ManufacturingSystem {
         ManufacturingAdvance {
             completions,
             newly_idle,
+            departures,
         }
     }
 }
@@ -449,6 +488,34 @@ mod tests {
         let mut sm: slotmap::SlotMap<FighterKey, ()> = slotmap::SlotMap::with_key();
         let key = sm.insert(());
         QueueItem::new(BuildableKind::Fighter(key), ticks, ticks)
+    }
+
+    // FUN_0052bee0: a product built for another system leaves its facility
+    // en route on completion; one built for its own system completes there.
+    #[test]
+    fn a_build_for_another_system_departs_and_one_for_its_own_completes_there() {
+        let systems = mock_system_keys(3);
+        let mut state = ManufacturingState::new();
+        state.enqueue(systems[0], cap_ship_item(1).delivered_to(systems[1]));
+        state.enqueue(systems[2], fighter_item(1).delivered_to(systems[2]));
+
+        let advance = ManufacturingSystem::advance_tracked(
+            &mut state,
+            &[TickEvent { tick: 9 }],
+            &HashSet::new(),
+        );
+
+        assert_eq!(
+            advance.departures,
+            vec![Departure {
+                origin: systems[0],
+                destination: systems[1],
+                tick: 9,
+                kind: cap_ship_item(1).kind,
+            }]
+        );
+        assert_eq!(advance.completions.len(), 1);
+        assert_eq!(advance.completions[0].system, systems[2]);
     }
 
     // --- ProductionQueue tests ---

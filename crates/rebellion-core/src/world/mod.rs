@@ -544,6 +544,14 @@ pub struct FighterClass {
     pub ion_cannon_attack_strength: u32,
     #[serde(default)]
     pub laser_cannon_attack_strength: u32,
+    /// Hyperdrive rating, the squadron's travel speed (`FUN_00502f80`).
+    /// DAT offset: `hyperdrive`.
+    #[serde(default)]
+    pub hyperdrive: u32,
+    /// Hyperdrive rating when damaged, used when `hyperdrive` is 0. DAT
+    /// offset: `hyperdrive_if_damaged`.
+    #[serde(default)]
+    pub hyperdrive_if_damaged: u32,
 }
 
 impl Default for FighterClass {
@@ -576,6 +584,8 @@ impl Default for FighterClass {
             turbolaser_attack_strength: 0,
             ion_cannon_attack_strength: 0,
             laser_cannon_attack_strength: 0,
+            hyperdrive: 0,
+            hyperdrive_if_damaged: 0,
         }
     }
 }

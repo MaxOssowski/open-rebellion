@@ -1,4 +1,4 @@
-//! Externalized tuning parameters for AI, movement, and production systems.
+//! Externalized tuning parameters for AI and production systems.
 //!
 //! All hardcoded constants are centralized here as `GameConfig`. The struct
 //! is `Serialize`/`Deserialize` so the autoresearch loop can mutate parameters
@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct GameConfig {
     pub ai: AiConfig,
-    pub movement: MovementConfig,
     pub production: ProductionConfig,
     pub scoring: ScoringConfig,
 }
@@ -122,30 +121,6 @@ impl Default for AiConfig {
             troop_garrison_donor_threshold: 3,
             ds_retreat_strength_ratio: 2.0,
             max_recon_per_eval: 2,
-        }
-    }
-}
-
-/// Fleet movement tuning parameters.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MovementConfig {
-    /// Euclidean distance multiplier for transit time. **Augmentation.**
-    pub distance_scale: u32,
-
-    /// Minimum transit time in game-days. **Augmentation.**
-    pub min_transit_ticks: u32,
-
-    /// Default hyperdrive rating for fighters without a class value. **Parity.**
-    pub default_fighter_hyperdrive: u32,
-}
-
-impl Default for MovementConfig {
-    fn default() -> Self {
-        Self {
-            distance_scale: 2,
-            min_transit_ticks: 10,
-            default_fighter_hyperdrive: 60,
         }
     }
 }

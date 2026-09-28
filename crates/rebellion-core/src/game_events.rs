@@ -119,6 +119,9 @@ pub const EVT_VICTORY_CHECK: &str = "victory_status";
 // Phase 3 telemetry constants
 pub const EVT_SUPPORT_CHANGE: &str = "support_change";
 pub const EVT_UNITS_DEPLOYED: &str = "units_deployed";
+/// A manufactured object lost because its destination no longer exists
+/// (`GameObjDestroyedOnArrivalNotif`, event `0x303`).
+pub const EVT_DESTROYED_ON_ARRIVAL: &str = "destroyed_on_arrival";
 pub const EVT_HQ_CAPTURED: &str = "hq_captured";
 pub const EVT_INFORMANT_INTEL: &str = "informant_intel";
 pub const EVT_RESOURCE_DISCOVERY: &str = "resource_discovery";

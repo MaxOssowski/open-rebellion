@@ -234,65 +234,6 @@ impl Default for GameClock {
     }
 }
 
-/// Speed enum persisted through save format v13.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum GameSpeedV13 {
-    Paused,
-    Normal,
-    Fast,
-    Faster,
-}
-
-impl From<GameSpeedV13> for GameSpeed {
-    /// Map to the original speed with the nearest day length: Normal was
-    /// 1 s/day (Medium is 1.2 s), Fast 0.5 s and Faster 0.25 s (Fast is 0.4 s).
-    fn from(legacy: GameSpeedV13) -> Self {
-        match legacy {
-            GameSpeedV13::Paused => Self::Paused,
-            GameSpeedV13::Normal => Self::Medium,
-            GameSpeedV13::Fast | GameSpeedV13::Faster => Self::Fast,
-        }
-    }
-}
-
-/// Clock layout persisted through save format v13.
-///
-/// Its accumulator held Normal-speed seconds with a one-second day, which
-/// equals the fraction of a day the current clock stores.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameClockV13 {
-    tick: u64,
-    speed: GameSpeedV13,
-    accumulator: f32,
-}
-
-impl From<&GameClock> for GameClockV13 {
-    /// Write a clock in the v13 layout, for legacy save fixtures. The three
-    /// slower running speeds all become Normal.
-    fn from(current: &GameClock) -> Self {
-        Self {
-            tick: current.tick,
-            speed: match current.speed {
-                GameSpeed::Paused => GameSpeedV13::Paused,
-                GameSpeed::VerySlow | GameSpeed::Slow | GameSpeed::Medium => GameSpeedV13::Normal,
-                GameSpeed::Fast => GameSpeedV13::Fast,
-            },
-            accumulator: current.accumulator,
-        }
-    }
-}
-
-impl From<GameClockV13> for GameClock {
-    fn from(legacy: GameClockV13) -> Self {
-        Self {
-            tick: legacy.tick,
-            speed: legacy.speed.into(),
-            accumulator: legacy.accumulator.clamp(0.0, 1.0 - f32::EPSILON),
-            stop_day: None,
-        }
-    }
-}
-
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -361,18 +302,6 @@ mod tests {
         assert!(clock.advance(-5.0).is_empty());
         assert!(clock.advance(0.0).is_empty());
         assert_eq!(clock.advance(1.3), vec![TickEvent { tick: 1 }]);
-    }
-
-    #[test]
-    fn a_legacy_clock_keeps_its_partial_day_below_one() {
-        let legacy = GameClockV13 {
-            tick: 7,
-            speed: GameSpeedV13::Normal,
-            accumulator: 1.5,
-        };
-        let clock = GameClock::from(legacy);
-        assert!(clock.accumulator < 1.0);
-        assert!(clock.accumulator > 0.999);
     }
 
     #[test]
@@ -492,22 +421,4 @@ mod tests {
         assert_eq!(GameSpeed::Paused.slower(), GameSpeed::Paused);
     }
 
-    #[test]
-    fn v13_clock_migrates_to_nearest_original_speed_and_keeps_progress() {
-        for (legacy, expected) in [
-            (GameSpeedV13::Paused, GameSpeed::Paused),
-            (GameSpeedV13::Normal, GameSpeed::Medium),
-            (GameSpeedV13::Fast, GameSpeed::Fast),
-            (GameSpeedV13::Faster, GameSpeed::Fast),
-        ] {
-            let clock = GameClock::from(GameClockV13 {
-                tick: 42,
-                speed: legacy,
-                accumulator: 0.25,
-            });
-            assert_eq!(clock.tick, 42);
-            assert_eq!(clock.speed, expected);
-            assert!(close(clock.accumulator, 0.25));
-        }
-    }
 }

@@ -254,3 +254,157 @@ identical, `-20:10, -19:20, -9:40, 0:50, 10:60, 20:70, 30:80, 40:90, 50:92,
 - The port has no decoy characters on missions. Its invented `is_decoy` roll
   and `MissionSystem::check_decoy` are removed (2026-09-27); the `is_decoy`
   field stays only for the save layout.
+
+## Recovered 2026-09-28
+
+### Exposure (`FUN_005888f0`, `FUN_005349e0`)
+
+`FUN_005888f0(manager, d, fleet, member, ctx)` (`FUN_005888f0.c:24-36`) looks
+up the defender's officer by rank `d.+0x1bc`: `FUN_00509330` on the system
+when `fleet` is null, else `FUN_004fd790` on the fleet. With an officer it
+passes the officer's key and its slot `+0x1f0`; without one it passes the
+defender's own key and 0 (`:39-50`). Then:
+
+```
+FUN_005349e0(member, key, c, ctx):                 // FUN_005349e0.c:10-24
+    x = member.slot_1f0() - c                      // effective combat
+    roll RLEVADTB (table 13) at x                  // FUN_0055bfa0.c:5-6, FUN_0053e310
+    if the row was found:                          // inferred: EAX of FUN_0053e340
+        if draw(0..99) < RLEVADTB(x): member.slot_208(ctx)      // evades
+        else:                         member.slot_20c(key, ctx) // captured
+```
+
+Slot `+0x1f0` in the character vtable `0x0065ca70` is `FUN_004edc40`, the
+short at `+0x86`: effective combat (the effective skills run diplomacy `+0x7c`,
+espionage `+0x7e`, ship design `+0x80`, troop training `+0x82`, facility
+design `+0x84`, combat `+0x86`, leadership `+0x88`, loyalty `+0x8a`).
+
+- Evade, slot `+0x208` `FUN_004ef450` (`:5-9`): `FUN_00534c20` sets the
+  resign request (`FUN_00534640`) when the member can resign (`+0x78` bit 4)
+  and `+0x68` holds a key (`FUN_00534c20.c:6-11`); then slot `+0x2e4`.
+- Captured, slot `+0x20c` `FUN_004ef480` (`:9-27`): unless destroyed
+  (`+0x50` bit 3), slot `+0x2e4`, then `FUN_004ee3e0(member, 0)` sets the
+  status short `+0x98` to 0 (`FUN_004ee3e0.c:12-17`; 1 is free, see
+  `uprising-incident.md` code 4), then `FUN_004ef190` stores the captor key
+  (the officer, or the defender) at `+0x54 -> +0x30` (`FUN_004ef190.c:4-5`).
+  The `+0x98` change handler, slot `+0x334` `FUN_004f18e0`, raises event
+  `0x30a`.
+- Slot `+0x2e4` is `FUN_004ef5f0`, the injury roll already recovered for the
+  uprising incident code 3: chance `max(G2565, 100 - combat)`, injury
+  `rand(chance) + rand(G2567) + G2566` into `+0x94` through `FUN_0053e990`
+  and slot `+0x2f0` `FUN_004ef6d0` with cause 10 (`FUN_004ef5f0.c:8-12`).
+
+So an exposed member (a detected team member, or a decoy whose roll failed)
+rolls RLEVADTB on its combat against the matching officer's combat. It either
+evades, resigning from the mission and risking injury, or is injured and
+captured by that officer, or by the defender when no officer holds that
+rank. Afterwards (`FUN_005888f0.c:61-84`), a member that can resign and has
+no remove request gets a resign request, and one with either request leaves
+the pool's team count (`+0x2c`) or decoy count (`+0x30`, when `+0x78` bit 0
+is set). The pool sits at manager `+8`, so these are manager `+0x34` and
+`+0x38`.
+
+### Phases 2 and 3 (`FUN_00589e40`, `FUN_00589f10`)
+
+`FUN_00589970` runs, in order, setup `FUN_00589a40`, `FUN_00589e40`,
+`FUN_00589f10`, the decoy phase `FUN_0058a020`, detection `FUN_0058a130`,
+and the detected outcome `FUN_0058a1c0`, all skipped when setup sets `+0x48`
+(`FUN_00589970.c:13-50`).
+
+- `FUN_00589e40` (`:18-41`) first calls `FUN_0058a5b0` (`FUN_0058a5f0`,
+  `FUN_0058a6c0`, not read), then walks a key list through `FUN_0058a9e0` and
+  `FUN_0058a2c0`. `FUN_0058a9e0` seeds the walk with two fixed DatIds,
+  `0x32000242` and `0x35000281` (`FUN_0058a9e0.c:19-35`), looked up in the
+  manager's `+0x68` list by `FUN_0058ac50`. This is a phase for specific
+  characters, not a general rule; its effect is not traced.
+- `FUN_00589f10`, betrayal (`:13-43`), runs when the mission's slot `+0x1c8`
+  is true and nothing has detected the mission yet (`+0x4c == 0`):
+
+```
+for each team or decoy member (characters and special forces) not decoying:
+                                         // FUN_00587b90 -> FUN_00587bb0(1,1,1,1,1)
+    betrays = draw(0..99) < 100 - member.loyalty
+                                         // functor 0x0066a840 slot +4 FUN_005890d0
+                                         // -> FUN_00588da0: slot +0x1f8 FUN_004edc60,
+                                         // loyalty +0x8a; FUN_0055e520: DAT_00661a88 (100) - x
+    if betrays: pool +0x38 = member      // FUN_00588da0.c:22-27; the walk stops
+if pool +0x38 holds a member:            // FUN_0048a640
+    detected = 1                         // manager +0x4c
+    for each other member:               // functor 0x0066a868 slot +4 FUN_00589490
+        if draw(0..99) < member.+0x8c:   // FUN_00588e80, FUN_0055e550 (x itself)
+            member.+0xa0 = traitor       // FUN_004ee5c0 twice (clear, then set), slot +0x340
+```
+
+So a disloyal member betrays the mission before the decoys act. Setting
+detected skips the decoy phase and detection, and sends the whole team to
+`FUN_0058a1c0` (exposure). Each other member may learn the traitor
+(`+0xa0`); what `+0xa0` and the `+0x8c` short mean is inferred only. The
+earlier note reads `+0x8c` as a shared percent modifier. Which mission kinds
+answer true in slot `+0x1c8` is not traced.
+
+### The detected outcome (`FUN_0058a1c0`) and mission slot `+0x1dc`
+
+When the mission is detected (`+0x4c`), `FUN_0058a1c0` (`:17-24`) calls the
+mission's slot `+0x1dc` with 3, or 4 when `FUN_00520ad0` (mission kind
+`+0x54 -> +0x1c` above 4) is true. It then walks the team through
+`FUN_00587f80` (each member faces a random defender through `FUN_005888f0`),
+and through `FUN_00587b70` (`:25-40`).
+
+Slot `+0x1dc` sets the mission's state. The mission validator
+`FUN_00522480` computes a new state and passes it to the same slot
+(`FUN_00522480.c:137`). It uses state 5 when no member lacks a remove or
+resign request (`+0x78 & 0xc`, `:40-52`, message `0x40`/`0x91`) and state 1
+when the current state `+0x68` is `0xb` (`:130-133`). `FUN_00545240.c:104`
+sets 7. So detection moves the mission to state 3 (4 for the later mission
+kinds) and exposes every team member. That the slot stores `+0x68` is
+inferred from setup reading `+0x68` for the mode; the names of states 3, 4,
+5, 7, and `0xb` are not recovered.
+
+### Adding members (`FUN_00522b30`)
+
+`FUN_00522b30(mission, member_key, as_decoy, ctx)` is a virtual slot shared by
+every mission class; the data references at `0x0065efc4`, `0x00663d44`,
+`0x00663fd4`, and eight more vtables point to it. It is the only caller that
+sets the Decoy role (`FUN_005344f0`, call at `0x00522e32`; the other caller,
+`FUN_00536220`, clears the role flags when a member leaves). It accepts a
+member only when all of these hold (`FUN_00522b30.c`):
+
+- its DatId family is `0x30..0x3f`, a character or a special force;
+- it is not already in the team, decoy, or captured list (`FUN_00520c30`:
+  `FUN_00520bd0`, `FUN_00520bf0`, `FUN_00520c10`);
+- it exists and is on the mission's side (`+0x24 & 0xc0` equal);
+- it is not asked to decoy while a prisoner (slot `+0x1d4` `FUN_004edc70`,
+  `+0xac` bit 0; `(prisoner == 0) || !as_decoy`, `:55-61`);
+- it has no mission yet (`+0x68` key empty, `FUN_0042d170`);
+- it travels with the current members: same location key (slot `+0xc`), the
+  same en route active bit (`+0x50` bit 5), and, when autorouting (bit 11),
+  the same arrival tick (`+0x44`).
+
+It then records the mission on the member (`FUN_00534230`, `FUN_005342e0`),
+sets OnHiddenMission (bit 8) when `FUN_00520b70(mission)` holds,
+OnMandatoryMission (bit 9) from mission `+0xa4` bit 2, Decoy (bit 0) =
+`as_decoy`, and CanResign (bit 4) from `FUN_00520b90(mission)`. Last, it
+inserts the member into the decoy list `+0x8c` (`FUN_00521ef0`) when
+`as_decoy`, else the captured list `+0x94` for a prisoner (`FUN_00521fb0`),
+else the team `+0x84` (`FUN_00521e30`).
+
+No count limit appears in this function. The decoy flag arrives only as an
+argument of this slot. Who calls the slot with `as_decoy = 1` (the player's
+mission dialog, or the AI) is not traced, since its callers are virtual.
+
+### Still open (2026-09-28)
+
+- The mode nibbles: `FUN_00520e50` reads mission `+0x54 -> +0x34` (nibble 0
+  for state 2, 1 for 3, 2 for 7, 3 for 9) when `+0x54 -> +0x18` is non-zero.
+  No MISSNSD column holds a packed word: every flag column is 0, 1, or 2 in
+  the shipped file. So a loader builds `+0x34` from several columns, or `+0x54`
+  is not the DAT record. The loader is not traced.
+- The phase-2 character hook (`FUN_00589e40`, DatIds `0x32000242` and
+  `0x35000281`), `FUN_0058a5b0`, and the meaning of `+0xa0` and `+0x8c`.
+- Which mission classes answer true in slot `+0x1c8` (betrayal on), and the
+  names of mission states 3, 4, 5, 7, and `0xb`.
+- The MSTB success roll's place relative to these phases, and its input.
+  The uprising incident's `FUN_00520cd0` averages leadership (`+0x88`) over
+  all three lists, but the mission-success caller was not reached in this
+  pass.
+- The callers of `FUN_00522b30` with `as_decoy = 1`.

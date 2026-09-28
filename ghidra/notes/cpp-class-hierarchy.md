@@ -31,7 +31,7 @@ These slots appear on all combat entity objects; they are the base interface.
 ```
 +0x004  GetFamilyId()                   — entity class identifier byte (id >> 0x18)
 +0x00c  GetSideKey()                    — which combat side (1=attacker, 2=defender)
-+0x034  CanBombard()                    — boolean, whether unit can perform orbital bombardment
++0x034  GetSpeed()                      — hyperspace speed for transit (FUN_0055d8c0; ship FUN_00500820, fighter FUN_00502f80, default FUN_004f63f0). Earlier read as CanBombard (F-032)
 +0x038  IsActive()                      — reads status_flags bit0
 ```
 
@@ -88,7 +88,7 @@ The hierarchy is inferred from:
 CRebObject (base)
 │  +0x00  void* vtable
 │  Virtual:
-│    GetFamilyId(), GetSideKey(), IsActive(), CanBombard()
+│    GetFamilyId(), GetSideKey(), IsActive(), GetSpeed()
 │    (and many more base slots not yet traced)
 │
 ├── CNotifyObject (adds observer plumbing)
