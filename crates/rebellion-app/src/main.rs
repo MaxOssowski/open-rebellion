@@ -1887,13 +1887,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         ));
                     }
                 }
-                for effect in &result.effects {
-                    if let MissionEffect::MemberAvailable { member } = effect {
-                        if let Some(character) = member.character() {
-                            ai_state.mark_available(character);
-                        }
-                    }
-                }
+                ai_state.free_mission_members(&result.effects);
 
                 // Advisor trigger for player faction missions.
                 if result.faction == player_faction {
@@ -4717,7 +4711,7 @@ fn apply_panel_action(
                         format!("{char_name} is a prisoner and cannot lead a mission")
                     }
                     rebellion_core::missions::MissionRefusal::MemberUnavailable(_) => {
-                        format!("{char_name} is already on a mission")
+                        format!("{char_name} cannot join this mission")
                     }
                 };
                 msg_log.push(GameMessage::new(clock.tick, text, MessageCategory::Mission));
