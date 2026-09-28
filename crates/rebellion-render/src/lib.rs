@@ -99,8 +99,8 @@ pub use tactical_resources::{
     DEATH_STAR_DAT_ID, DEATH_STAR_TACTICAL_RESOURCE,
 };
 pub use tactical_view::{
-    draw_tactical_view, BattlePhase, BattleSession, CombatWinner, TacticalAction, TacticalState,
-    TacticalTrenchRunOutcome,
+    draw_tactical_view, BattlePhase, BattleSession, CombatWinner, OriginalTacticalRng,
+    TacticalAction, TacticalState, TacticalTrenchRunOutcome,
 };
 pub use video_player::{VideoError, VideoPlayer};
 

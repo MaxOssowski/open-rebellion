@@ -753,7 +753,7 @@ would tune around known simulation feedback defects.
   the requested class, clear exhausted lists, and pass the 92-case muted
   browser gate plus independent A1 review. Keep exact weapon behavior, fighter
   combat, collision, formation, A0, and every strict tactical cell open.
-- [ ] Complete the consolidated UIP-B06 space-battle bundle: exact weapon arcs,
+- [x] Complete the consolidated UIP-B06 practical space-battle bundle: exact weapon arcs,
   ranges, availability, projectile events and recharge; fighter combat;
   collision and formation; Death Star and outcome paths; campaign return; and
   direct test launch of the same production scene. Run the complete 120-case
@@ -857,6 +857,15 @@ would tune around known simulation feedback defects.
   routing pass seven focused tests, the full workspace, and four muted browser
   cases. Exact global sequencing, native playback, remaining special-state and
   audio routes, and every strict A0 comparison stay open.
+  P58-B22 closes the bounded practical launcher implementation. It adds one
+  source-compatible tactical RNG stream, persisted shield/weapon allocation,
+  exact maneuver/order completion and destruction/loss callbacks, and the
+  native timed trench-run producer with ordered chatter and casualty rules.
+  The final fresh-process muted matrix passes 144/144, and independent review
+  finds no P0/P1 visual blocker across 88 full-resolution captures.
+  Whole-process RNG continuity, strategic commander-slot binding, native beam
+  and playback comparison, rare audio routes, and all 106 strict A0 cells stay
+  open.
 - [ ] After original parity, use a separate Fable and `/ce:plan` design pass for
   an optional X-Wing Alliance-style skirmish setup menu. It may select ship
   distribution, planet, and space background, but it must reuse the production

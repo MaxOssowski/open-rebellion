@@ -51,6 +51,7 @@ the source of truth for scope, acceptance, and current work.
 | P58-B19 | [Mixed-task-force target rejection](2026-09-25-tactical-mixed-task-force-target.md) | [`p58-b19-tactical-mixed-task-force-target/`](p58-b19-tactical-mixed-task-force-target/) |
 | P58-B20 | [Recovery and withdrawal feedback](2026-09-26-tactical-recovery-withdrawal-feedback.md) | [`p58-b20-tactical-recovery-withdrawal-feedback/`](p58-b20-tactical-recovery-withdrawal-feedback/) |
 | P58-B21 | [Shared post-battle orchestration](2026-09-27-tactical-post-battle-orchestration.md) | [`p58-b21-tactical-post-battle-orchestration/`](p58-b21-tactical-post-battle-orchestration/) |
+| P58-B22 | [Tactical source completion](2026-09-28-tactical-source-completion.md) | [`p58-b22-tactical-source-completion/`](p58-b22-tactical-source-completion/) |
 
 ## Current strategic correction
 

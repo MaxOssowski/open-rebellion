@@ -3,7 +3,7 @@ title: "Batched Interface Parity Execution Plan"
 description: "Current plan for restoring the original bitmap interface in coherent, independently accepted browser bundles"
 category: plan
 created: 2026-09-11
-updated: 2026-09-21
+updated: 2026-09-28
 tags: [interface, parity, bitmap, browser, qa]
 status: active
 ---
@@ -32,7 +32,7 @@ The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine addi
 |---|---:|
 | Practical interface scope materially tackled | approximately 20 to 25% |
 | Practical interface scope remaining | approximately 75 to 80% |
-| Practical space-battle launcher implementation | approximately 97% |
+| Bounded practical space-battle launcher implementation | complete at P58-B22 |
 | Required surface families | 43 |
 | Family status | 0 complete, 9 partial, 34 fail |
 | Strictly accepted required cells | 0 of 564 |
@@ -42,11 +42,11 @@ checkpoints. It is not a release-parity score. A required cell passes only
 after its complete original-evidence, native, browser, viewport, faction,
 interaction, audio, and diagnostic matrix passes.
 
-P58-B19 is the latest tactical checkpoint. It restores source-exact rejection
-of a hostile focus target when selected capitals span multiple task forces,
-preserves their existing orders, and routes the faction response in the shared
-production renderer. Deterministic A1 mapping remains 106/106; strict A0
-acceptance remains 0/106.
+P58-B22 is the latest tactical checkpoint. It closes the bounded practical
+launcher implementation with source-compatible tactical randomness, persisted
+power allocation, completion and destruction callbacks, and the timed
+source-derived trench-run producer. Deterministic A1 mapping is runnable at
+106/106; strict A0 acceptance remains 0/106.
 
 ## Working cadence
 

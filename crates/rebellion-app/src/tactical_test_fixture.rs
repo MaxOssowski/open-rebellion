@@ -627,6 +627,7 @@ pub(crate) fn apply(
             defender,
             player_is_attacker,
             tick: 0,
+            rng_seed: 0x5eed_ba77,
         },
         tactical,
         cooldowns,
@@ -703,7 +704,10 @@ pub(crate) fn apply(
         tactical.configure_attack_target_lifecycle_fixture();
     }
     #[cfg(feature = "interface-test-fixtures")]
-    if request.death_star_presentation {
+    // Outcome fixtures enter the same production Death Star path themselves.
+    // Do not pre-arm the Imperial observer route first: that would consume the
+    // fixture's deterministic result before its requested seed/rating is set.
+    if request.death_star_presentation && request.trench_run_outcome.is_none() {
         tactical.configure_death_star_presentation_fixture();
     }
     #[cfg(feature = "interface-test-fixtures")]
@@ -804,6 +808,9 @@ struct FixtureRecord<'a> {
     battle_options_withdrawal: bool,
     death_star_laser_journey: bool,
     trench_run_outcome: Option<&'a str>,
+    trench_run_remaining_ms: Option<f32>,
+    trench_run_group: Option<u8>,
+    tactical_rng_state: u32,
     tactical_lod: &'a str,
     system: &'a str,
     system_picture_id: u8,
@@ -1255,7 +1262,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         ],
     });
     emit(&FixtureRecord {
-        schema_version: 35,
+        schema_version: 36,
         status: "battle-ready",
         family: "tactical",
         fixture_code: request.code,
@@ -1302,6 +1309,9 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
             TacticalTrenchRunOutcome::Success => "success",
             TacticalTrenchRunOutcome::Failure => "failure",
         }),
+        trench_run_remaining_ms: session.trench_run_remaining_ms,
+        trench_run_group: session.trench_run_group,
+        tactical_rng_state: session.tactical_rng.state(),
         tactical_lod: request.lod_fixture.label(),
         system: &session.system_name,
         system_picture_id: session.system_picture_id,
@@ -1336,7 +1346,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
 
 pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
     emit(&FixtureRecord {
-        schema_version: 35,
+        schema_version: 36,
         status: "failed",
         family: "tactical",
         fixture_code: request.code,
@@ -1380,6 +1390,9 @@ pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
         battle_options_withdrawal: request.battle_options_withdrawal,
         death_star_laser_journey: request.death_star_laser_journey,
         trench_run_outcome: None,
+        trench_run_remaining_ms: None,
+        trench_run_group: None,
+        tactical_rng_state: 0,
         tactical_lod: request.lod_fixture.label(),
         system: "",
         system_picture_id: 0,

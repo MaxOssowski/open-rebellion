@@ -3,7 +3,7 @@ title: "Ghidra RE Notes — Index"
 description: "Master index of 5,408 decompiled C files (5,207 by address, 201 named copies), Ghidra scripts, and recovered subsystem notes"
 category: "ghidra"
 created: 2026-03-13
-updated: 2026-09-26
+updated: 2026-09-28
 ---
 
 # Ghidra RE Notes — Index
@@ -46,7 +46,7 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | [tactical-weapon-loop.md](tactical-weapon-loop.md) | Four capital battery arcs, family event order, range, energy queue, and recharge | FUN_005b05c0, FUN_005b3a40, FUN_005b3f10, FUN_005b6530, FUN_005b6320 |
 | [tactical-fighter-combat.md](tactical-fighter-combat.md) | Fighter construction, float hull and shields, family and torpedo events, maneuver defense, and strategic return | FUN_005b9c60, FUN_005b49e0, FUN_005b7780, FUN_005b5100 through FUN_005b5f50 |
 | [tactical-collision-formation.md](tactical-collision-formation.md) | Mesh collision envelope, strict overlap response, exact fighter-group assignment, and bounded formation facts | FUN_005ab0e0, FUN_005b2e60, FUN_005b2f30, FUN_005ae460, FUN_005c81d0 through FUN_005c83c0 |
-| [tactical-death-star-path.md](tactical-death-star-path.md) | Separate Death Star object, operational fields, sprite state, laser charge, attack mission, and exact 201/202 trench-run result routing | FUN_005ba420, FUN_005ba5e0, FUN_005ba7f0, FUN_005afe40, FUN_005caf20, FUN_005cfec0, FUN_005c4ed0, FUN_005df110 |
+| [tactical-death-star-path.md](tactical-death-star-path.md) | Separate Death Star object, laser path, source RNG, timed trench-run producer, ordered chatter, casualties, and exact 201/202 routing | FUN_005ba420, FUN_005ba5e0, FUN_005ba7f0, FUN_005cfec0, FUN_005d04e0, FUN_005d03f0, FUN_005ad7e0, FUN_0061a310 |
 | [ground-combat.md](ground-combat.md) | Ground combat — troop iteration + per-unit resolution | FUN_00560d50, FUN_004ee350, FUN_005617b0 |
 | [bombardment.md](bombardment.md) | Orbital bombardment — Euclidean distance formula | FUN_00556430, FUN_0055d8c0, FUN_0055d860 |
 | [blockade-troop-withdrawal.md](blockade-troop-withdrawal.md) | Regiments lost running a blockade: withdraw percent, per-regiment copy, departure roll, event 0x340 | FUN_0050b310, FUN_0055a020, FUN_00504990, FUN_00504a00, FUN_00508660 |

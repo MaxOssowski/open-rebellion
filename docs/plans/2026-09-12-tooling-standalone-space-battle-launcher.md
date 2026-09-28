@@ -3,7 +3,7 @@ title: "Standalone Space-Battle Test Launcher"
 description: "Test-only entry into the production tactical battle path and its original-interface parity matrix"
 category: plan
 created: 2026-09-12
-updated: 2026-09-22
+updated: 2026-09-28
 tags: [interface, parity, tactical, browser, testing]
 status: in_progress
 ---
@@ -38,7 +38,7 @@ process and closes its browser and local server when complete.
 T0 and T1 are partially complete. The [tactical result-identity regression](../qa/2026-09-08-full-functionality-audit/evidence/2026-09-12-tactical-result-identity.md)
 preserves surviving hull damage and exact fighter roster losses. Campaign and
 test-only browser entry share the validated production tactical-entry function.
-P52 through the current P58F17C checkpoint, following
+P52 through the current P58-B22 checkpoint, following
 [P58F13](../qa/2026-09-10-interface-parity-audit/evidence/2026-09-19-tactical-attack-target-lifecycle.md),
 restore the first authentic shell controls, complete tactical asset decode, one
 three-LOD family, source camera and layout, stable participants, authored
@@ -82,11 +82,12 @@ automatic colored fighter groups and bounded task forces, the separate Death
 Star object, the authentic Battle Results and Battle Options surfaces, the
 authored type-303 resource 5030 star field, and the 1021-through-1024
 superlaser control journey through target destruction.
-Exact global RNG sequencing, exact original arrival callbacks and recovery
-trajectories, power allocation, exact planet placement, the native Death Star
-beam contract, native trench-run playback, remaining special-state and audio
-routes, original view acceptance, and all 106
-visual cells remain open. The deterministic A1 matrix now maps all 106
+P58-B22 closes the bounded practical launcher implementation with one recovered
+tactical RNG stream, source arrival/completion/destruction callbacks, persisted
+shield/weapon allocation, and the native timed trench-run producer. Exact
+whole-process RNG continuity, strategic commander-slot binding, exact planet
+framing, retained-mode beam pixels, native playback, rare audio routes,
+original view acceptance, and all 106 visual cells remain open. The deterministic A1 matrix now maps all 106
 canonical tactical cells through 87 browser journeys and 19 snapshots. The
 complete 120-case implementation matrix passes both factions and both
 viewports with clean muted-browser isolation. This implementation coverage
@@ -95,11 +96,11 @@ does not replace the strict 0 of 106 tactical-cell acceptance result.
 ## Current contract and limits
 
 - Campaign combat and the direct fixture enter `GameMode::TacticalCombat` through the validated `begin_player_battle` function in `crates/rebellion-app/src/tactical_flow.rs`. P58-B06 moved hull, fighter-roster, Death Star, empty-fleet, and cargo-loss transport into the shared `apply_results` function. P58-B21 adds one `resolve_post_battle` route for played and automatic bombardment, landing, contested ground continuation, unopposed occupation, and result destination routing.
-- `crates/rebellion-render/src/tactical_view.rs` already models placement, combat, results, ships, fighters, selection, retreat, pause, speed, and auto-resolution. The selected-capital path now uses original panel 1302, but power allocation and results composition remain incomplete or replacement UI.
+- `crates/rebellion-render/src/tactical_view.rs` models placement, combat, results, ships, fighters, selection, retreat, pause, speed, and auto-resolution. The selected-capital path uses original panel 1302; strategic power nibbles now enter combat with source defaults and exact persisted overrides.
 - The interactive `BattleSession` simulation and `CombatSystem::resolve_space` auto-resolution remain different combat solvers. Their outcomes now enter one post-battle campaign route, while exact solver equivalence and the full rare-outcome cross-product remain open.
 - The separate `interface-test-fixtures` WASM build already provides a deterministic, audio-muted GID fixture bridge and browser harness. Its production-exclusion check must remain a release gate.
 - The [surface ledger](../qa/2026-09-10-interface-parity-audit/surface-ledger.json) has 106 pending space-battle cells in `TAC-01` through `TAC-07`. `EVT-02` covers Battle Alert. `TAC-08` is the separate ground-assault report flow, not a live space-battle scene.
-- The [native tactical lookup](../reference/asset-library/tactical-lookup.json) proves all 29 ship, eight fighter, and Death Star DAT-to-ordinal resource joins. P54 through P58-B21 prove staging, decoding, camera, placement, render state, exact identity joins, live capital and fighter rendering, interactions, commands, weapon behavior, collision, automatic group assignment, capability-sorted task forces, forward-relative retained follower geometry, the separate Death Star object, original result/options panels, resource 5030 stars, the superlaser control journey, exact 201/202 trench-run routing, exact strategic roster, capture, and Death Star-state application, plus shared post-battle campaign routing. The [P58-B21 evidence](../qa/2026-09-10-interface-parity-audit/evidence/2026-09-27-tactical-post-battle-orchestration.md) records the latest gate. Exact planet placement, exact global RNG sequencing, exact original arrival callbacks and recovery trajectories, power allocation, the native Death Star beam contract, native playback, remaining special-state and audio paths, and original view acceptance remain open. The source tactical 3D window uses the standard arrow cursor.
+- The [native tactical lookup](../reference/asset-library/tactical-lookup.json) proves all 29 ship, eight fighter, and Death Star DAT-to-ordinal resource joins. P54 through P58-B22 prove staging, decoding, camera, placement, render state, exact identity joins, live forces, interactions, commands, combat, grouping, the Death Star, original result/options panels, exact 201/202 routing and producer semantics, strategic result application, and the shared campaign return. The [P58-B22 evidence](../qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-tactical-source-completion.md) records the latest gate. Exact planet framing, whole-process RNG continuity, strategic commander binding, retained-mode beam pixels, native playback, rare audio paths, and original view acceptance remain open. The source tactical 3D window uses the standard arrow cursor.
 - The [screenshot ledger](../qa/2026-09-10-interface-parity-audit/screenshot-ledger.md) has useful tactical HUD, selection, damage, and results references. Most are compressed, localized, or from an altered campaign. They support reconstruction and provisional comparison, not strict pixel acceptance. Lossless original-executable captures remain open.
 
 ## Design
@@ -211,21 +212,22 @@ Imperial voice without mutating existing orders.
 P58-B21 shares played and automatic bombardment, landing, ground follow-up,
 occupation, and Battle Results destination routing through one production
 entry, with focused tests for contested and unopposed landings.
-Power allocation, exact planet placement, native Death Star beam behavior,
-remaining completion, destruction, recovery, warning, and ordered trench voice
-callers, exact shared-RNG sequencing, mixing,
-native playback, and A0
-view acceptance remain T3 and T4 work.
+P58-B22 closes the bounded practical launcher implementation with source-
+compatible tactical RNG sequencing, persisted shield/weapon allocation,
+arrival/completion/destruction callbacks, and the native timed trench producer
+through its ordered chatter, casualties, and result movies.
+Exact planet framing, whole-process RNG continuity, strategic commander-slot
+binding, retained-mode Death Star beam pixels, rare warning/ejection voice
+callers, mixing, native playback, and A0 view acceptance remain T3 and T4 work.
 No `TAC-*` acceptance cell is closed.
 
 ### Consolidated completion boundary
 
-The next implementation commit carries the remaining T3, T4, sequencing, and
-rare-state behavior as one coherent space-battle bundle. Focused tests may
-run during construction, but the complete workspace, packaged WASM, 106-cell
-muted browser harness, and independent review run once at the bundle gate. This
-makes space battles available through the campaign and direct test launcher
-without introducing a second renderer or an invented in-game menu.
+P58-B22 is the consolidated practical implementation bundle. The complete
+workspace and packaged WASM pass; the complete muted browser bundle passes
+144/144 with 106/106 deterministic A1 mappings, and independent browser review
+passes. Strict native comparison remains a
+separate acceptance phase and cannot be inferred from deterministic A1 proof.
 
 A later optional skirmish setup menu is a separate feature. It will use an
 X-Wing Alliance-style flow to configure ships, planet, and space background,

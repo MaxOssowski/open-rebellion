@@ -3,7 +3,7 @@ title: "Original Interface Parity Audit"
 description: "Authoritative screenshot corpus, surface ledger, findings, and acceptance gates for reproducing every visible Rebellion interface state"
 category: qa
 created: 2026-09-10
-updated: 2026-09-27
+updated: 2026-09-28
 tags: [qa, interface, parity, bitmap, screenshots, rebellion, supremacy]
 ---
 
@@ -20,7 +20,7 @@ The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine addi
 |---|---:|
 | Practical interface scope materially tackled | approximately 20 to 25% |
 | Practical interface scope remaining | approximately 75 to 80% |
-| Practical space-battle launcher implementation | approximately 97% |
+| Bounded practical space-battle launcher implementation | complete at P58-B22 |
 | Strict tactical acceptance | 0 of 106 cells |
 | Required surface families | 43 |
 | Family status | 0 complete, 9 partial, 34 fail |
@@ -127,6 +127,7 @@ navigation, animation, audio presentation, and the absence of invented UI.
 | [P58-B19 mixed-task-force target evidence](evidence/2026-09-25-tactical-mixed-task-force-target.md) | Source-exact rejection of a hostile focus target across multiple selected task forces, unchanged orders, and exact Alliance/Imperial voice routing. |
 | [P58-B20 recovery/withdrawal feedback evidence](evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md) | Final-group recovery, no-carrier-capacity, and disabled-hyperdrive withdrawal feedback with exact faction voice routing across twelve muted browser cases. |
 | [P58-B21 shared post-battle evidence](evidence/2026-09-27-tactical-post-battle-orchestration.md) | One production route for interactive and automatic bombardment, landing, contested ground continuation, unopposed occupation, and result destinations. |
+| [P58-B22 source-completion evidence](evidence/2026-09-28-tactical-source-completion.md) | Recovered tactical RNG, persisted power allocation, completion/destruction callbacks, and the timed trench-run producer; strict A0 remains 0/106. |
 | [Evidence index](evidence/README.md) | Reports and artifact bundles, including a required `README.md` inventory for each new bundle. |
 | [JSON Schema](schemas/interface-parity.schema.json) | Validation contract for the audit summary and status vocabulary. |
 | [Ledger validator](../../../scripts/validate-interface-parity-ledgers.mjs) | Dependency-free generator and consistency gate for cell IDs and retrieval-package links. |
@@ -294,11 +295,11 @@ replacement, and exhausted-list clearing without random or cross-class
 fallback. The P58-B06 checkpoint adds source-backed capital and fighter
 combat, collision, automatic grouping, forward-relative retained formations,
 the separate Death Star object, original result/options panels, both trench-run
-routes, and shared post-battle bombardment, landing, ground continuation,
-occupation, and result destinations. Exact planet placement, global RNG
-sequencing, original arrival callbacks, power allocation, native beam behavior,
-native playback, A0 comparison, and every tactical cell
-remain open.
+routes, shared post-battle campaign outcomes, tactical RNG sequencing,
+persisted power allocation, completion/destruction callbacks, and the timed
+trench-run producer. Whole-process RNG continuity, strategic commander
+binding, exact planet framing, native beam and playback comparison, A0
+comparison, and every tactical cell remain open.
 Runtime pack v3 now
 includes all 3,988 ALSPRITE and EMSPRITE type-302 frames, while briefing,
 tactical, dialog, encyclopedia, advisor-control, and voice resources remain

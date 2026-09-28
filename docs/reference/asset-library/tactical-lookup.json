@@ -180,8 +180,8 @@
     "implementation": ["crates/rebellion-render/src/tactical_view.rs", "crates/rebellion-app/src/audio.rs"],
     "evidence": "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-25-tactical-complete-voice-bank.md",
     "full_bank_transport": "285 source resources implemented",
-    "production_dispatch": "command, withdrawal, battle outcome, selected Death Star, and group trench-run transitions implemented",
-    "open": ["remaining completion destruction recovery warning and ordered trench dispatch", "exact shared RNG sequence", "mixing ducking and interruption", "audible native comparison", "strict A0 acceptance"]
+    "production_dispatch": "command, completion, destruction, recovery, withdrawal, battle outcome, selected Death Star, and ordered group trench-run transitions implemented",
+    "open": ["fighter launch ejection abandonment and remaining warning dispatch", "whole process RNG continuity", "strategic commander slot binding", "mixing ducking and interruption", "audible native comparison", "strict A0 acceptance"]
   },
   "projectile_field_contract": {
     "projectile_source_functions": ["FUN_005b1ea0", "FUN_005b1f60", "FUN_005b2080", "FUN_005b2c70", "FUN_005d3de0", "FUN_005ee590", "LAB_005eeb90"],
@@ -215,5 +215,5 @@
     "visual_grade": "provisional-A1",
     "evidence": "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-15-tactical-selected-damage.md"
   },
-  "unresolved": ["automatic production task-force and fighter-group distribution", "remaining type-301 family view rules", "fighter formation offsets", "exact field combat-command timing", "unused white projectile material branch", "fighter impact emission", "tactical planet retained-frame transform and visibility", "power allocation and remaining selected-unit states", "remaining original control-state and render geometry"]
+  "unresolved": ["remaining type-301 family view rules", "unused white projectile material branch", "tactical planet retained-frame transform and visibility", "remaining original control-state and render geometry", "whole-process RNG continuity", "strategic tactical-commander slot binding", "remaining rare voice callers", "native beam audio and media comparison", "strict A0 acceptance"]
 }

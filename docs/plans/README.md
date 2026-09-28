@@ -25,8 +25,9 @@ recovered maneuver waypoints, Hold execution, source-rate turning, waypoint comp
 full fighter recovery states, typed attack target acquisition, and stable
 same-class target replacement when a target becomes invalid. P58-B06 passes
 the 120-case implementation gate, P58-B21 shares the post-battle campaign path,
-and the deterministic A1 crosswalk maps all 106 cells through 87 journeys and
-19 snapshots. The practical launcher estimate is approximately 97%. The final
+P58-B22 closes the bounded practical launcher implementation, and the
+deterministic A1 crosswalk maps all 106 cells through 87 journeys and 19
+snapshots. Strict acceptance remains 0 of 106. The final
 acceptance train captures and compares all 106 strict cells. Missing
 lossless original baselines remain explicit A0 blockers and cannot be accepted
 by browser evidence alone.
@@ -39,8 +40,8 @@ gate per family.
 
 The [Standalone Space-Battle Test Launcher](2026-09-12-tooling-standalone-space-battle-launcher.md)
 is the active `UIP-B06` companion. It uses the production tactical scene,
-test-only fixtures, and the P58-B21 shared bombardment, landing, ground
-follow-up, occupation, and result destination route. Its
+test-only fixtures, the P58-B21 shared campaign return, and the P58-B22 source-
+backed tactical completion bundle. Its
 [asset reference library](../reference/asset-library/README.md) records the current
 resource inventory and the original-mapping proof queue. Its
 [operational reference](../reference/space-battle-launcher/README.md) records the
@@ -66,9 +67,9 @@ recovered execution states, typed attack target acquisition, and stable
 same-class target replacement with exhausted-list clearing. Exact weapon arcs,
 ranges, availability, projectile events, recharge, fighter combat, collision,
 formations, the Death Star, and outcome transport are implemented within their
-recorded A1 bounds. Exact sequencing, power allocation, native beam and media
-playback, remaining special-state and audio paths, and A0 acceptance remain
-open inside the consolidated completion bundle.
+recorded A1 bounds. Whole-process RNG continuity, strategic commander binding,
+native beam and media comparison, remaining rare audio paths, and A0
+acceptance remain open.
 Modern replacement models remain in a separate experimental profile.
 
 See the [plans index](INDEX.md) for active, planned, and completed work. The

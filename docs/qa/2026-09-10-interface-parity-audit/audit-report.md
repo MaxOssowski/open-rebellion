@@ -3,7 +3,7 @@ title: "Original Interface Parity Audit Report"
 description: "Evidence-backed diagnosis and execution plan for complete bitmap-driven UI parity"
 category: qa
 created: 2026-09-10
-updated: 2026-09-22
+updated: 2026-09-28
 tags: [qa, interface, parity, bitmap, strategy, tactical, multiplayer]
 ---
 
@@ -15,7 +15,7 @@ tags: [qa, interface, parity, bitmap, strategy, tactical, multiplayer]
 |---|---:|
 | Practical interface scope materially tackled | approximately 20 to 25% |
 | Practical interface scope remaining | approximately 75 to 80% |
-| Practical space-battle launcher implementation | approximately 97% |
+| Bounded practical space-battle launcher implementation | complete at P58-B22 |
 | Required surface families | 43 |
 | Family status | 0 complete, 9 partial, 34 fail |
 | Strictly accepted required cells | 0 of 564 |
@@ -101,7 +101,7 @@ The local source inspection establishes the implementation causes:
 | Blank browser encyclopedia art | `crates/rebellion-render/src/encyclopedia.rs:486` | Manual pp. 71–72 and 192 original EDATA entries |
 | Incomplete browser asset pack | `scripts/build-runtime-pack.py:29` | Original ALSPRITE, EMSPRITE, ALBRIEF, EMBRIEF, REBDLOG, and EDATA families |
 | Invented live ground-combat screen | `crates/rebellion-render/src/ground_combat.rs:202` | Manual pp. 119–121 assault summaries and reports |
-| First original tactical shell and control states; all original 3D assets decoded and transported; exact DAT resource joins; live capital and fighter behavior; commands; combat; collision; automatic groups; capability-sorted task forces with forward-relative retained geometry; original results/options panels; resource 5030 stars; the provisional Death Star superlaser journey; exact result-to-film trench-run routing; exact strategic roster, capture, and Death Star-state application; and shared post-battle bombardment, landing, ground continuation, occupation, and destination routing use recovered source contracts. Native beam semantics, native playback, remaining special-state and audio paths, and A0 acceptance remain open | `crates/rebellion-render/src/tactical_view.rs`, `crates/rebellion-render/src/tactical_resources.rs`, `crates/rebellion-render/src/tactical_assets.rs`, `crates/rebellion-render/src/bmp_cache.rs`, `tools/stage-ui-assets` | Manual pp. 139–150, original TACTICAL resources, [P52 through P58-B21 evidence](evidence/README.md), and the [P58-B21 shared post-battle checkpoint](evidence/2026-09-27-tactical-post-battle-orchestration.md) |
+| The bounded practical tactical launcher is implementation-complete: original shell and controls, transported 3D corpus, exact resource joins, live forces, commands, combat, grouping, effects, results/options, Death Star paths, shared campaign return, one source-compatible tactical RNG stream, persisted power allocation, completion/destruction callbacks, and the timed trench-run producer use recovered source contracts. Native beam and playback comparison, whole-process RNG continuity, strategic commander binding, rare audio routes, and A0 acceptance remain open | `crates/rebellion-render/src/tactical_view.rs`, `crates/rebellion-render/src/tactical_resources.rs`, `crates/rebellion-render/src/tactical_assets.rs`, `crates/rebellion-core/src/combat.rs`, `tools/interface-parity` | Manual pp. 139–150, original TACTICAL resources, [P52 through P58-B22 evidence](evidence/README.md), and the [P58-B22 source-completion checkpoint](evidence/2026-09-28-tactical-source-completion.md) |
 
 The original identity baseline comes from the locally preserved
 [official manual](../../reference/campaign-history/archive/star-wars-rebellion-manual.pdf),
@@ -155,8 +155,7 @@ capacity limits. P58F6 routes capital and fighter fire through the recovered
 shield-overflow, hull-loss, subsystem-selection, condition, and tractor-source
 cancellation path. P58F7 restores the 50-second repair cadence, inclusive
 damage-control roll, subsystem repair order, sublight-engine condition, and
-active tractor drag used by the mobility calculation. Exact global RNG
-sequencing remains open. P58F8 restores the maneuver-state bonus producer,
+active tractor drag used by the mobility calculation. P58F8 restores the maneuver-state bonus producer,
 effective-power velocity, and millisecond position integration while preserving
 the stationary constructor state. P58F9 restores both original bitmap command
 panels, exact shared order and tactic codes, source-shaped controls, disabled
@@ -164,20 +163,20 @@ states, and selected-unit commit and cancel behavior. P58F10 connects the four
 maneuver orders to recovered waypoint construction, executes Hold, and starts
 Recover through carrier reservation and Returning state 2. P58F11 adds
 source-rate signed turning, deterministic waypoint completion, and the Docking
-and Recovered fighter states while preserving strategic squadron counts. Exact
-original arrival callbacks and recovery trajectories remain open. P58F12 adds
+and Recovered fighter states while preserving strategic squadron counts. P58F12 adds
 typed Attack Fighters and Attack Capital Ships target acquisition for capital
 and fighter owners. P58F13 adds live invalidation, stable same-class target
 replacement, and exhausted-list clearing without cross-class or random
 fallback. P58-B06 adds capital and fighter weapon behavior, collision,
 automatic groups, retained formations, the separate Death Star, original
 result/options panels, the superlaser journey, both trench-run routes, and
-exact strategic roster, capture, and Death Star-state application. Power
-allocation, native beam behavior, native playback, and A0 acceptance remain
-open. P58-B21 closes the shared post-battle
-orchestration item with one production bombardment, landing, ground follow-up,
-occupation, and destination route. Exact sequencing and original callbacks
-remain open.
+exact strategic roster, capture, and Death Star-state application. P58-B21
+closes the shared post-battle orchestration item with one production
+bombardment, landing, ground follow-up, occupation, and destination route.
+P58-B22 adds the recovered tactical RNG, power nibbles,
+completion/destruction callbacks, and timed trench producer. Whole-process RNG
+continuity, strategic commander binding, native beam and playback comparison,
+rare audio routes, and A0 acceptance remain open.
 P46A corroborates the shell and aperture portion at runtime, including one
 shared transform for overlays, hit tests, and advisors. P46B implements the six
 primary faction controls from their exact resources, geometry, state, input,
@@ -212,7 +211,7 @@ acceptance.
 | UIP-F-006 | P1 | WASM encyclopedia image loading always returns no texture. | fail |
 | UIP-F-007 | P1 | Finders, production, missions, messages, options, and object status use replacement layouts or are absent. | fail |
 | UIP-F-008 | P1 | Battle Alert, assault/bombardment reports, and battle-result routing are absent or bypassed. | fail |
-| UIP-F-009 | P1 | The original 640×480 tactical shell, complete asset transport, exact participant joins, production rendering, controls, effects, subsystem behavior, commands, capital and fighter combat, collision, automatic groups, retained formations, the separate Death Star, original result/options panels, superlaser journey, both trench-run routes, exact strategic roster, capture, and Death Star-state application, plus shared post-battle bombardment, landing, ground follow-up, occupation, and result routing pass implementation gates. Original view acceptance, exact planet placement, global RNG sequencing, original arrival callbacks, power allocation, native beam behavior, native playback, and remaining special-state and audio paths stay open. | fail |
+| UIP-F-009 | P1 | The bounded practical tactical launcher passes its implementation gates through P58-B22, including combat, commands, grouping, Death Star and result paths, shared campaign return, tactical RNG sequencing, power allocation, completion/destruction callbacks, and the timed trench-run producer. Original view acceptance, whole-process RNG continuity, strategic commander binding, exact planet framing, native beam/playback comparison, and rare audio paths stay open. | fail |
 | UIP-F-010 | P1 | The custom live ground-combat screen has no original counterpart. | fail |
 | UIP-F-011 | P1 | Modeless focus, close, minimize, restore, and 12-slot rail routing work; exact active/inactive rail thumbnails and the complete multiwindow matrix remain open. | partial |
 | UIP-F-012 | P1 | Authoritative original captures are still missing for rare and transient states. | partial |
@@ -368,6 +367,16 @@ muted browser journey proves the shared campaign-path probe, both faction
 result surfaces, both viewports, and strategic destination routing. Exact
 global sequencing, native playback, remaining special-state and audio paths,
 and strict A0 acceptance stay open.
+
+P58-B22 closes the bounded practical launcher implementation. It uses one
+source-compatible tactical RNG stream, consumes persisted shield/weapon
+allocation nibbles, emits exact maneuver/order completion and destruction/loss
+callbacks, and follows the native two-minute trench-run producer through
+ordered chatter, casualty rules, and MDATA 201/202. Whole-process RNG
+continuity, strategic commander-slot binding, remaining rare voice callers,
+native visual/audio comparison, and strict A0 acceptance stay open. Its final
+fresh-process muted gate passes 144/144, and independent review finds no P0/P1
+visual blocker across 88 full-resolution captures.
 
 Asset-swap families may use exhaustive resource-identity checks only after the
 shared layout and rendering rule pass. Every unique composite topology and every
@@ -546,6 +555,6 @@ the [checkpoint evidence](evidence/2026-09-22-tactical-completion-bundle.md).
 Independent visual review is a qualified A1 pass with no P0 or P1 findings.
 P58-B21 also shares bombardment, landing, ground follow-up, occupation, and
 result destination routing between automatic and interactive outcomes.
-The authentic Game Options window, Alliance Death Star framing baseline, and
-persistent trench-run outcome proof remain bounded follow-ups. Original A0
-comparison and all strict tactical acceptance cells remain open.
+P58-B22 closes the bounded practical launcher implementation with recovered
+sequencing, power, callback, and trench-run contracts. Native A0 comparison and
+all strict tactical acceptance cells remain open.

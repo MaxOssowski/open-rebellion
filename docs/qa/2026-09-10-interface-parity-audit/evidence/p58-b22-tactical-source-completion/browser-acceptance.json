@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "checkpoint": "P58-B22",
+  "run_id": "2026-09-28T16-25-44-532Z-14479",
+  "reviewer": {
+    "effort": "medium",
+    "scope": "live_browser_visual_acceptance_only"
+  },
+  "environment": {
+    "fresh_chromium": true,
+    "mute_audio_flag": true,
+    "browser_closed": true
+  },
+  "result": {
+    "status": "pass",
+    "p0_p1_visual_blockers": 0,
+    "full_resolution_screenshots_inspected": 88,
+    "factions": ["alliance", "empire"],
+    "viewports": ["640x480", "1280x800-letterboxed"],
+    "observations": [
+      "Both faction HUDs, tactical bitmaps, and close-view 3D ships render.",
+      "Inspected panels and controls remain within bounds with coherent selected, pressed, and disabled states.",
+      "Death Star, superlaser, trench-success, trench-failure, withdrawal, audio-control, 3D-off, options, and results evidence is present.",
+      "No replacement strategic menu intrudes into the tactical surfaces."
+    ],
+    "nonblocking_limits": [
+      "Battlefield ships remain small and dark in retained captures.",
+      "Alliance Death Star captures place most of the station beyond the battlefield top edge.",
+      "Still-image review cannot verify audible routing or mixing.",
+      "The review is scoped A1 evidence and does not establish original-game parity."
+    ]
+  },
+  "automation_context": {
+    "browser_cases": 144,
+    "browser_passed": 144,
+    "four_request_startups": 144,
+    "launch_timeouts": 0,
+    "browser_processes_closed": 144,
+    "independently_rerun_by_reviewer": false
+  },
+  "strict_a0_acceptance": "0_of_106"
+}

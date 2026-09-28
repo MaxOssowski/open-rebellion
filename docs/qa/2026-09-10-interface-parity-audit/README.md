@@ -5,7 +5,7 @@ This folder is the source of truth for restoring every visible surface from
 bitmap-driven interface. Replacement panels, invented controls, approximate
 geometry, and unverified asset mappings do not count as parity.
 
-The current P58-B21 space-battle checkpoint maps all 106 canonical cells to
+The current P58-B22 space-battle checkpoint maps all 106 canonical cells to
 deterministic A1 evidence through 87 journeys and 19 snapshots. Capital and
 fighter combat, tactical commands,
 original results and options panels, resource 5030 stars, empty-space
@@ -19,7 +19,10 @@ warning, production
 trench-run launch, and exact strategic loss
 persistence now work within their recorded bounds. Played and automatic space
 battles also share bombardment, landing, ground follow-up, occupation, and
-Battle Results destination routing. The strict result remains
+Battle Results destination routing. One source-compatible tactical RNG stream,
+persisted power allocation, exact completion/destruction callbacks, and the
+timed trench-run producer now close the bounded practical launcher
+implementation. The strict result remains
 0 of 106 accepted tactical cells until every row has authoritative A0 evidence
 and passes the complete comparison contract.
 
@@ -223,6 +226,9 @@ and passes the complete comparison contract.
 - Review the [P58-B21 shared post-battle evidence](evidence/2026-09-27-tactical-post-battle-orchestration.md)
   for the common bombardment, landing, ground-continuation, occupation, and
   Battle Results destination path.
+- Review the [P58-B22 source-completion evidence](evidence/2026-09-28-tactical-source-completion.md)
+  for tactical RNG sequencing, persisted power nibbles, production completion
+  and destruction callbacks, and the timed trench-run producer.
 - Use the [evidence index](evidence/README.md) to find each durable report and
   artifact bundle. Every new bundle must include its own `README.md` inventory.
 
@@ -260,10 +266,11 @@ The practical implementation estimate is approximately 20 to 25% tackled and
 complete evidence and execution matrices pass. The practical estimate guides
 bundle planning; it does not replace strict acceptance.
 
-Within that total, the standalone space-battle launcher is approximately 97%
-implemented at the P58-B21 checkpoint. Its formal acceptance remains 0 of 106
-tactical cells because exact original-view evidence and the remaining native
-beam, playback, sequencing, and special-state contracts are open.
+Within that total, the bounded practical space-battle launcher implementation
+is complete at the P58-B22 checkpoint. Its formal acceptance remains 0 of 106
+tactical cells because exact original-view evidence, native beam and playback
+comparison, whole-process RNG continuity, strategic commander binding, and
+rare audio routes remain open.
 
 The first recovered implementation tranche now packages and renders the four
 original faction-advisor idle runs. See the
@@ -360,13 +367,14 @@ a stable same-class list and clears exhausted lists without a cross-class or
 random fallback. P58-B06 adds capital and fighter combat, collision, automatic
 group distribution, forward-relative retained formations, the separate Death
 Star, original result/options panels, both trench-run routes, and exact
-strategic roster, officer-capture, and Death Star-state application. Exact
-planet placement, global RNG sequencing, original arrival callbacks and
-recovery trajectories, power allocation, native beam behavior, native
-playback, remaining special-state and audio routes, and A0 comparisons remain
-open. P58-B21 routes interactive and automatic outcomes through the same
+strategic roster, officer-capture, and Death Star-state application. P58-B21
+routes interactive and automatic outcomes through the same
 bombardment, troop-landing, ground-follow-up, occupation, and result-destination
-path.
+path. P58-B22 adds one ordered tactical RNG stream, persisted power allocation,
+completion/destruction callbacks, and the source-timed trench-run producer.
+Exact planet framing, whole-process RNG continuity, strategic commander-slot
+binding, native beam and playback comparison, rare audio routes, and A0
+comparisons remain open.
 `CMD-01`, `CMD-03`, `CMD-04`, `CMD-10`, and `UIP-T01` remain open because the
 full control matrix, remaining GID modes and map art, nested object
 compositions and commands, exact rail thumbnails, original destination

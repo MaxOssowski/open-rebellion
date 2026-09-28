@@ -918,6 +918,9 @@ impl ShipInstance {
         ShipInstance {
             class,
             hull_current: hull,
+            // Zero is the legacy/uninitialized sentinel. Space-combat entry
+            // derives the source defaults from the class when this word has
+            // not yet been allocated.
             shield_weapon_packed: 0,
             alive: true,
         }
@@ -941,6 +944,22 @@ impl ShipInstance {
     #[must_use]
     pub fn weapon_nibble(&self) -> u8 {
         (self.shield_weapon_packed >> 4) & 0x0f
+    }
+
+    /// Replace the shield allocation nibble while preserving weapon power.
+    ///
+    /// `FUN_00501510` accepts only the low four bits and performs the same
+    /// masked read-modify-write against source offset `+0x64`.
+    pub fn set_shield_nibble(&mut self, value: u8) {
+        self.shield_weapon_packed = (self.shield_weapon_packed & 0xf0) | value.min(0x0f);
+    }
+
+    /// Replace the weapon allocation nibble while preserving shield power.
+    ///
+    /// `FUN_005015a0` stores the bounded value in bits 4 through 7 of source
+    /// offset `+0x64`.
+    pub fn set_weapon_nibble(&mut self, value: u8) {
+        self.shield_weapon_packed = (self.shield_weapon_packed & 0x0f) | (value.min(0x0f) << 4);
     }
 }
 
@@ -1529,5 +1548,24 @@ mod tests {
             has_death_star: true,
         };
         assert!(!fleet.is_empty());
+    }
+
+    #[test]
+    fn ship_power_allocations_store_independent_bounded_nibbles() {
+        let mut ship = ShipInstance::new(CapitalShipKey::default(), 100, true);
+        assert_eq!(ship.shield_nibble(), 0);
+        assert_eq!(ship.weapon_nibble(), 0);
+
+        ship.set_shield_nibble(4);
+        assert_eq!(ship.shield_nibble(), 4);
+        assert_eq!(ship.weapon_nibble(), 0);
+
+        ship.set_weapon_nibble(9);
+        assert_eq!(ship.shield_nibble(), 4);
+        assert_eq!(ship.weapon_nibble(), 9);
+
+        ship.set_shield_nibble(u8::MAX);
+        ship.set_weapon_nibble(u8::MAX);
+        assert_eq!(ship.shield_weapon_packed, 0xff);
     }
 }

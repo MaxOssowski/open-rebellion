@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "checkpoint": "P58-B22",
+  "status": "bounded_practical_implementation_verified_strict_a0_open",
+  "implemented_behavior": [
+    "source_compatible_ordered_tactical_rng_stream",
+    "persisted_shield_and_weapon_power_nibbles",
+    "maneuver_and_order_completion_voice_callbacks",
+    "target_capital_and_fighter_destruction_voice_callbacks",
+    "timed_trench_run_producer_with_ordered_chatter",
+    "source_trench_run_maneuver_damage_and_casualty_rules",
+    "exact_MDATA_201_and_202_result_routing"
+  ],
+  "verification": {
+    "focused_tests": "115_renderer_passed_3_ignored_13_app_passed_core_power_tests_passed",
+    "workspace_tests": "pass",
+    "wasm_package": "pass",
+    "production_fixture_exclusion": "pass",
+    "provenance_scan": "pass_130_uncited_items_within_baseline_0_growth",
+    "matrix_coverage": "106_of_106_deterministic_A1",
+    "harness_unit_tests": "26_passed_0_failed",
+    "browser_harness": "144_of_144_fresh_muted_cases_four_requests_zero_timeouts_all_closed_run_2026-09-28T16-25-44-532Z-14479",
+    "independent_browser_review": "medium_effort_browser_use_pass_88_full_resolution_screenshots_no_P0_or_P1_visual_blocker",
+    "strict_gate_run": false,
+    "strict_a0_acceptance": "0_of_106"
+  },
+  "hashes": {
+    "browser_summary_sha256": "521f7e14b89956c3fa82a57dcbd94a14e3da73a1cf184febc939e1dff088c37c",
+    "wasm_sha256": "6ce93cb257f43969f3bfdcafbc1498377959e027689ef09b7b517ddd5dfd44d9",
+    "runtime_pack_sha256": "b76ed32899e1408f5433c899effb489681e8e01732e4dffca0274c9c6d355e5a",
+    "web_package_sha256": "4dffbfdb64781124c566ae8f1daea13ead096d422ffb6e3dc68bd814a2648819"
+  },
+  "limits": [
+    "lossless_A0_capture_and_comparison_open",
+    "whole_process_rng_continuity_open",
+    "strategic_tactical_commander_slot_binding_open",
+    "native_death_star_beam_comparison_open",
+    "audible_native_playback_mixing_and_interruption_open",
+    "remaining_rare_warning_ejection_and_abandonment_callers_open"
+  ],
+  "proprietary_artifacts_committed": false
+}

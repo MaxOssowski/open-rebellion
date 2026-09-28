@@ -33,7 +33,7 @@
     "current_matrix_coverage": 0,
     "current_a0_coverage": 0,
     "current_parity_acceptance": 0,
-    "checkpoint": "P58-B19"
+    "checkpoint": "P58-B22"
   },
   "surfaces": [
     {
@@ -4307,7 +4307,7 @@
         149,
         150
       ],
-      "current_implementation": "P54 through P58F13 restore the original shell, complete tactical asset transport, camera and render state, exact participant identities, fighter detail, group controls, planets, effects, fields, selected damage, subsystem behavior, movement, commands, recovery, and typed target lifecycle. P58-B06 adds source-backed capital and fighter combat, collision, automatic colored groups, capability-sorted task forces with forward-relative retained formations, the separate Death Star object, original Battle Results and Battle Options surfaces, resource 5030 stars, the superlaser journey, both trench-run routes, and exact strategic roster, capture, and Death Star-state application. P58-B12 adds deterministic empty-space presentation. P58-B15 restores the source-built faction Battle Alert, paused Take Command entry, and MDATA 307 battle music. P58-B16 restores all 22 TACTICAL weapon-audio variants. P58-B17 restores 90 exact VOICEFXA/VOICEFXE battle-ready and task-force/RGBY command acknowledgements. P58-B18 transports all 285 source-addressed faction voices and dispatches selected withdrawal, battle-outcome, Death Star, and RGBY trench-run transitions. P58-B19 restores source-exact mixed-task-force hostile-target rejection and faction feedback without mutating existing orders. P58-B20 restores final fighter-recovery, carrier-capacity, and disabled-hyperdrive withdrawal feedback. P58-B21 shares played and automatic bombardment, landing, ground follow-up, occupation, and result destination routing. All 106 cells have deterministic A1 scenarios through 87 journeys and 19 snapshots. Exact global RNG sequencing, original arrival callbacks, exact planet placement, power allocation, native beam behavior, remaining completion/destruction/recovery/warning and ordered trench voice callers, native playback, rare states, and lossless A0 comparison keep every TAC-01 cell pending.",
+      "current_implementation": "P54 through P58-B21 restore the original shell, complete tactical asset transport, camera/render state, exact participants, live capital/fighter behavior, controls, commands, combat, effects, grouping, the separate Death Star, original results/options, exact strategic result application, and the shared campaign return. P58-B22 closes the bounded practical launcher implementation with one source-compatible tactical RNG stream, persisted shield/weapon allocation, exact maneuver/order completion and destruction/loss callbacks, and the native timed trench-run producer with ordered chatter and casualty rules. All 106 cells have deterministic A1 scenarios through 87 journeys and 19 snapshots. Whole-process RNG continuity, strategic commander-slot binding, exact planet framing, native beam and playback comparison, rare audio routes, and lossless A0 comparison keep every TAC-01 cell pending.",
       "finding_ids": [
         "UIP-F-009"
       ],
@@ -4527,7 +4527,7 @@
       "title": "Tactical ship selection, status, damage, and targeting",
       "required": true,
       "status": "fail",
-      "latest_checkpoint": "P58-B21 preserves P58-B06 source-backed weapon behavior, collision, formations, Death Star paths, original result/options panels, both trench-run routes, and exact strategic result application while sharing post-battle bombardment, landing, ground follow-up, occupation, and destinations. Native beam behavior, native playback, A0 comparison, and all TAC-03 cells remain open.",
+      "latest_checkpoint": "P58-B22 preserves source-backed weapon behavior, collision, formations, Death Star paths, original result/options panels, both trench-run routes, exact strategic result application, and the shared campaign return while adding tactical RNG sequencing, persisted power allocation, and exact completion/destruction callbacks. Native beam/playback comparison, A0 comparison, and all TAC-03 cells remain open.",
       "required_states": [
         "healthy",
         "damaged",
@@ -4563,7 +4563,7 @@
         145,
         146
       ],
-      "current_implementation": "P58B through P58F13 restore production identities, projection-aligned selection and targeting, fighter and capital detail panels, portraits, live meters, subsystem condition and repair, movement, authentic command delivery, recovery, typed targets, and stable reacquisition. P58-B06 adds capital and fighter weapon behavior, collision, retained formations, the separate Death Star selection and attack path, original result/options surfaces, superlaser controls, and both trench-run routes. P58-B14 adds a complete TACTICAL 3368 destroyed presentation and compact GOKRES personnel assignments in the original selected-capital 1302 contents apertures. Exact global RNG sequencing, original arrival callbacks, power allocation, the complete passenger and destroyed-selection matrices, native beam behavior, and A0 comparison remain open, so every TAC-03 cell stays pending.",
+      "current_implementation": "P58B through P58F13 restore production identities, projection-aligned selection and targeting, fighter and capital detail panels, portraits, live meters, subsystem condition and repair, movement, authentic command delivery, recovery, typed targets, and stable reacquisition. P58-B06 adds capital and fighter weapon behavior, collision, retained formations, the separate Death Star selection and attack path, original result/options surfaces, superlaser controls, and both trench-run routes. P58-B14 adds the TACTICAL 3368 destroyed presentation and compact GOKRES personnel assignments in the original selected-capital 1302 contents apertures. P58-B22 adds one ordered source-compatible tactical RNG stream, persisted shield and weapon power nibbles, completion and destruction callbacks, and the timed trench-run producer. Whole-process RNG continuity, strategic commander binding, complete passenger and destroyed-selection matrices, native beam and playback comparison, rare audio routes, and A0 comparison remain open, so every TAC-03 cell stays pending.",
       "finding_ids": [
         "UIP-F-009",
         "UIP-F-012"

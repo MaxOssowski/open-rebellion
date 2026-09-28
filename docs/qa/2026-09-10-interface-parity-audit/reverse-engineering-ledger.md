@@ -166,10 +166,10 @@ and a next proof in the [machine-readable ledger](reverse-engineering-ledger.jso
 | RE-BAT-01 | Battle Alert, strategic reports, and results | static-partial | Trace state setters and callers into constructors, choices, force tabs, results, media callbacks, and return routing |
 | RE-GND-01 | Original ground-assault presentation | static-partial | Prove report-only flow and remove the invented live-combat route |
 | RE-TAC-01 | Tactical loader, control tree, and event-handler registry | static-proven | Join subordinate control vtables and event slots to exact rectangles, predicates, handlers, and observable transitions |
-| RE-TAC-02 | Tactical control geometry and resource-state selection | static-partial; complete corpus and joins plus live rendering, damage, repair, movement, commands, capital/fighter combat, collision, groups, retained formations, Death Star, original result/options panels, withdrawal confirmation, destroyed presentation, selected-ship contents, Escort, trench-run routes, and strategic result application source-proven/browser-rendered | Follow the [ranked recovery map](../../reference/space-battle-launcher/reverse-engineering-map.md) through exact global RNG sequencing, original arrival callbacks, power allocation, native beam behavior, post-battle orchestration, native playback, remaining controls, and A0 comparison |
+| RE-TAC-02 | Tactical control geometry and resource-state selection | static-partial; bounded practical launcher complete at P58-B22 | Follow the [ranked recovery map](../../reference/space-battle-launcher/reverse-engineering-map.md) through whole-process RNG continuity, strategic commander binding, native beam/playback behavior, rare audio callers, remaining controls, and A0 comparison |
 | RE-TAC-03 | Tactical battle-results composition | static-partial | Connect state setters, result construction, canonical application, reports, media, and strategic return |
 | RE-DS-01 | Strategic Destroy System and sabotage paths | static-partial | Resolve confirmation, report, and family `0x34` predicates |
-| RE-DS-02 | Tactical Death Star and trench-run routing | static-partial; exact result-to-film dispatch proven and implemented | Recover the original state-6 versus state-7 producer, compare native playback and return timing, and close A0 |
+| RE-DS-02 | Tactical Death Star and trench-run routing | static-partial; exact producer, timer, chatter, casualties, and result-to-film dispatch implemented | Bind the strategic commander slot, compare native beam/playback/audio timing and return behavior, and close A0 |
 | RE-END-01 | Campaign endings, skip, return, restart, and failure | static-partial | Recover the complete terminal media matrix |
 | RE-NET-01 | Original multiplayer screens and controls | static-partial | Finish template 10100–10103 geometry and provider/host/join routing |
 | RE-NET-02 | Two-peer sync, chat, pause, saves, departure, and errors | runtime-needed | Run an original two-peer fixture and compare protocol traces |
@@ -275,11 +275,12 @@ text, control, cancel, and confirm contract. The
 [P58-B14 evidence](evidence/2026-09-23-tactical-detail-escort.md) adds complete
 destroyed presentation, compact GOKRES assignments in panel 1302, and direct
 right-click Escort from `FUN_005ca6d0` with order code 1, retained target,
-marker, follow, opportunity fire, and target cleanup. Exact global RNG
-sequencing, original arrival callbacks and
-recovery trajectories, power allocation, native beam behavior, shared
-post-battle bombardment, landing, and navigation orchestration, native
-playback, and original visual acceptance remain open.
+marker, follow, opportunity fire, and target cleanup. P58-B21 shares the
+post-battle campaign route. P58-B22 adds one recovered tactical RNG stream,
+persisted power allocation, completion/destruction callbacks, and the timed
+trench producer. Whole-process RNG continuity, strategic commander binding,
+native beam/playback comparison, rare audio callers, and original visual
+acceptance remain open.
 
 [P58-B15 evidence](evidence/2026-09-24-tactical-battle-alert-audio.md) traces
 `FUN_0044f860` into the faction Battle Alert resources and recovers MDATA 307
@@ -322,6 +323,13 @@ targets and queue Alliance event `0x84` / WAVE `14101` or Imperial event
 `0x102` / WAVE `15105`. Four muted faction/viewport cases pass; audible native
 comparison and strict A0 acceptance remain open.
 
+[P58-B22 evidence](evidence/2026-09-28-tactical-source-completion.md) follows
+`FUN_0061a310`, `FUN_005a8a70`, `FUN_00501510`, `FUN_005015a0`,
+`FUN_005a5cf0`, `FUN_005cfec0`, `FUN_005d04e0`, and `FUN_005d03f0`. The
+bounded practical launcher now uses one ordered tactical RNG stream, persisted
+shield/weapon allocation, exact completion/destruction callbacks, and the
+timed trench-run producer. Strict A0 acceptance remains 0/106.
+
 ## Immediate implementation order
 
 1. Trace SPT to BIN to frame and WAV selection for both factions on top of the
@@ -335,11 +343,10 @@ comparison and strict A0 acceptance remain open.
 5. Continue the full GID mapping without replacement art: recover the code-built
    menu, expanded legend, remaining filter predicates and overlays, and exact
    map input.
-6. Continue the `TAC-01` through `TAC-07` space-battle
-   path using the [ranked Windows/Ghidra recovery map](../../reference/space-battle-launcher/reverse-engineering-map.md),
-   including remaining completion, destruction, recovery, warning, and
-   ordered trench voice dispatch, results, and native Death Star behavior,
-   then acquire A0 evidence for the complete mapped matrix.
+6. Preserve the P58-B22 tactical implementation, bind the strategic commander
+   slot, verify whole-process RNG continuity and remaining rare audio/native
+   Death Star behavior, then acquire A0 evidence for the complete mapped
+   matrix using the [ranked Windows/Ghidra recovery map](../../reference/space-battle-launcher/reverse-engineering-map.md).
 7. Use original-runtime capture only for the remaining dynamic proof boundary.
 
 No static discovery marks a surface complete. It closes only the corresponding

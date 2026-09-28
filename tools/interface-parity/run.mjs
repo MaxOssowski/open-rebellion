@@ -2779,6 +2779,18 @@ async function probeTacticalDeathStarPresentation(
     type: enabled ? "attack-death-star-enabled" : "attack-death-star-disabled",
     ...verifyTacticalBitmap(viewport, missions, enabled ? 1176 : 1178, 567, 186),
   }];
+  if (ready.faction === "alliance") {
+    assert.equal(ready.tactical_rng_state, 0x5eedba77,
+      "idle Alliance Death Star journey changed its tactical RNG seed");
+  } else {
+    assert.notEqual(ready.tactical_rng_state, 0x5eedba77,
+      "Imperial station-under-attack entry did not consume the tactical RNG");
+  }
+  probes.push({
+    type: "source-tactical-rng-entry",
+    source: ["FUN_0061a310", "FUN_005a8a70"],
+    rng_state: ready.tactical_rng_state,
+  });
 
   await click(590, 199);
   const afterAttack = await capture(enabled
@@ -2806,12 +2818,66 @@ async function probeTacticalDeathStarPresentation(
     assert.ok(orderLogs.some((line) =>
       /panel=missions event=commit order=6 tactic=0 capital_members=0 fighter_members=1/.test(line)),
     "Alliance fighter group did not commit Attack Death Star");
-    assert.ok(consoleLines.some(({ text }) =>
-      text.includes("[tactical_death_star] trench_run_launch status=launched fighter_members=1")),
+    const launchLog = consoleLines.find(({ text }) =>
+      text.includes("[tactical_death_star] trench_run_launch status=launched fighter_members=1")
+        && text.includes("group=0")
+        && text.includes("remaining_ms=120000"));
+    assert.ok(launchLog,
     "Alliance fighter group did not enter the production trench-run lifecycle");
+    const launchRngState = Number(launchLog.text.match(/rng_state=(\d+)/)?.[1]);
+    assert.ok(Number.isInteger(launchRngState));
+    assert.notEqual(launchRngState, ready.tactical_rng_state,
+      "trench-run state entry did not consume the shared tactical RNG");
   } else {
     assert.ok(!orderLogs.some((line) => /order=6/.test(line)),
       "Imperial fighter group committed an attack against its friendly Death Star");
+  }
+  const expectedEntryVoice = enabled
+    ? {
+        name: "TrenchRunStarted", event: "0x139", wave: 15160, faction: "Alliance",
+      }
+    : {
+        name: "DeathStarUnderAttack", event: "0x115", wave: 15124, faction: "Empire",
+      };
+  const entryVoiceLog = consoleLines.find(({ text }) =>
+    text.includes(`voice_event=${expectedEntryVoice.name}`)
+      && text.includes(`source_event=${expectedEntryVoice.event}`)
+      && text.includes(`wave=${expectedEntryVoice.wave}`)
+      && text.includes(`faction=${expectedEntryVoice.faction}`)
+      && text.includes("routed=true")
+      && text.includes("loaded=true")
+      && text.includes("muted=true"));
+  assert.ok(entryVoiceLog,
+    `Death Star entry voice did not route ${JSON.stringify(expectedEntryVoice)}`);
+  probes.push({
+    type: "death-star-attack-entry-voice",
+    source: "FUN_005d0340",
+    ...expectedEntryVoice,
+    routed: true,
+    loaded: true,
+    muted: true,
+  });
+  if (enabled) {
+    const committedVoice = consoleLines.find(({ text }) =>
+      text.includes("voice_event=TrenchRunCommitted")
+        && text.includes("source_event=0x13a")
+        && text.includes("wave=15161")
+        && text.includes("faction=Alliance")
+        && text.includes("routed=true")
+        && text.includes("loaded=true")
+        && text.includes("muted=true"));
+    assert.ok(committedVoice, "timed trench-run follow-up voice did not route");
+    probes.push({
+      type: "trench-run-timed-state-entry",
+      source: "FUN_005cfec0",
+      group: 0,
+      remaining_ms: 120000,
+      source_event: "0x13a",
+      wave: 15161,
+      routed: true,
+      loaded: true,
+      muted: true,
+    });
   }
   probes.push({
     type: "source-traced-tactical-death-star-manager",
@@ -2944,16 +3010,47 @@ async function probeTacticalDeathStarLaserJourney(
 
 function probeTacticalTrenchRunOutcome(folder, stable, consoleLines, ready, expected) {
   const movie = expected === "success" ? "201.webm" : "202.webm";
+  const expectedChatter = expected === "success"
+    ? [0x11e, 0x11f, 0x120, 0x128, 0x121, 0x122, 0x129]
+    : [0x11e, 0x123, 0x124, 0x125, 0x12a, 0x12b, 0x126, 0x12c, 0x127];
   assert.equal(ready.trench_run_outcome, expected);
+  assert.equal(ready.trench_run_remaining_ms, null,
+    "resolved trench run retained an active source timer");
+  assert.equal(ready.trench_run_group, 0,
+    "resolved trench run lost its RGBY source group");
+  assert.notEqual(ready.tactical_rng_state, 0x5eedba77,
+    "native trench-run producer did not consume the tactical RNG stream");
   const route = consoleLines.find(({ text }) =>
     text.includes(`[cutscene] opened path=assets/references/ref-videos/${movie}`));
   assert.ok(route, `trench-run ${expected} did not route through ${movie}`);
+  const observedChatter = consoleLines
+    .filter(({ text }) => text.includes("voice_event=TrenchRunChatter"))
+    .map(({ text }) => {
+      const match = text.match(/source_event=0x([0-9a-f]+) wave=(\d+)/);
+      assert.ok(match, `malformed trench chatter log: ${text}`);
+      return {
+        source_event: Number.parseInt(match[1], 16),
+        wave: Number(match[2]),
+      };
+    });
+  assert.deepEqual(
+    observedChatter,
+    expectedChatter.map((sourceEvent) => ({
+      source_event: sourceEvent,
+      wave: 15133 + sourceEvent - 0x11e,
+    })),
+    `trench-run ${expected} did not preserve the recovered chatter order`,
+  );
   fs.writeFileSync(path.join(folder, `trench-run-${expected}-return.png`), stable.bytes);
   return [{
     type: `trench-run-${expected}-route`,
     result_state: expected === "success" ? 6 : 7,
     movie,
     returned_to: "tactical-combat",
+    native_producer: ["FUN_005cfec0", "FUN_005d04e0", "FUN_0061a310"],
+    fighter_group: ready.trench_run_group,
+    rng_state: ready.tactical_rng_state,
+    ordered_chatter: observedChatter,
     log: route.text,
   }];
 }
@@ -4205,7 +4302,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         : [{ type: "tactical-3d-negative-control", proof_enabled: false }])]
       : await probeGid(page, faction, scenario, viewport, folder, consoleLines, ready);
     if (battle) {
-      assert.equal(ready.schema_version, 35);
+      assert.equal(ready.schema_version, 36);
       assert.equal(ready.family, "tactical");
       assert.equal(ready.faction, faction);
       assert.equal(ready.proof_enabled, scenario.tactical_proof);

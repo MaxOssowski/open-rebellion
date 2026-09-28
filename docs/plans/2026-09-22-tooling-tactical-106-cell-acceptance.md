@@ -3,7 +3,7 @@ title: "Tactical 106-Cell Acceptance Train"
 description: "Final local commit train for a runnable and honestly accepted TAC-01 through TAC-07 parity matrix"
 category: plan
 created: 2026-09-22
-updated: 2026-09-23
+updated: 2026-09-28
 tags: [interface, parity, tactical, browser, evidence, testing]
 status: in_progress
 ---
@@ -29,6 +29,10 @@ a later modernization track and is not part of this denominator.
 - P58-B21 shares played and automatic post-battle bombardment, landing,
   contested ground continuation, unopposed occupation, and result destination
   routing. Focused tests and four muted browser cases pass.
+- P58-B22 closes the bounded practical launcher implementation with source-
+  compatible tactical RNG sequencing, persisted power allocation, exact
+  completion/destruction callbacks, and the timed trench-run producer. This
+  advances implementation, not strict A0 acceptance.
 - The strict matrix contains exactly 106 pending cells: 13 in `TAC-01`, 13 in
   `TAC-02`, 20 in `TAC-03`, 14 in `TAC-04`, 23 in `TAC-05`, nine in `TAC-06`,
   and 14 in `TAC-07`.
@@ -189,6 +193,12 @@ P58-B21 establishes the common production return route without changing the
 denominator. Played and automatic battles now share bombardment, troop landing,
 contested ground continuation, unopposed occupation, and Battle Results
 destination routing. Strict A0 acceptance remains 0/106.
+
+P58-B22 closes the bounded practical implementation without changing the
+denominator. It adds the recovered tactical random stream, power nibbles,
+completion/destruction callbacks, and timed trench-run outcome/chatter path.
+Whole-process RNG continuity, strategic commander binding, native visual and
+audible comparison, and all strict A0 verdicts remain C6 evidence work.
 
 - Give every catalog scenario one or more exact `audit_cells` values.
 - Distinguish journeys from snapshots in the schema and report.

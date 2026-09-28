@@ -329,9 +329,9 @@ cross-runtime proof remain open
   command center, and tactical Battle Options routes. Tactical display controls
   are disabled during a battle, and the empty-space fixture retains its
   starfield while omitting the planet.
-- Matrix: 100 of 106 cells have deterministic A1 scenarios through 81 browser
-  journeys and 19 snapshots. Six scenarios and all 106 lossless A0 captures
-  remain open. See
+- At this checkpoint, 100 of 106 cells had deterministic A1 scenarios through
+  81 browser journeys and 19 snapshots. P58-B15 later completed the A1 mapping
+  at 106 of 106; all 106 lossless A0 captures remain open. See
   `../2026-09-10-interface-parity-audit/evidence/2026-09-23-tactical-game-options-empty-space.md`.
 
 ### P58-B13: Tactical withdrawal confirmation
@@ -457,6 +457,24 @@ cross-runtime proof remain open
   native playback, remaining special-state and audio paths, and strict A0
   acceptance remain open. See
   `../2026-09-10-interface-parity-audit/evidence/2026-09-27-tactical-post-battle-orchestration.md`.
+
+### P58-B22: Bounded tactical source completion
+
+- Status: practical launcher implementation complete within the deterministic
+  A1 boundary; strict original-interface acceptance remains open at 0/106.
+- Evidence: one source-compatible tactical random stream, persisted shield and
+  weapon power nibbles, exact completion and destruction voice families, and
+  the source-derived 120-second trench-run producer now share the production
+  battle path. The trench run includes ordered chatter, maneuver damage,
+  commander-rating resolution, casualty rules, and MDATA 201/202 routing.
+- Verification: see the retained
+  [P58-B22 evidence](../2026-09-10-interface-parity-audit/evidence/2026-09-28-tactical-source-completion.md).
+  The workspace and WASM/package gates pass, as do all 144 fresh-process muted
+  browser cases. Independent review of 88 full-resolution captures found no
+  P0/P1 visual blocker.
+  Owned lossless A0 comparison, exact native beam pixels, audible native
+  playback and mixing, whole-process random-state continuity, strategic
+  commander binding, and rare warning/ejection callers remain open.
 
 ### F-008: Browser media and mods are incomplete
 
@@ -1364,7 +1382,7 @@ and underlying state mutation are both demonstrated.
 | P21 | Blockade and repair | Enter/exit, ownership/economy effects, breach outcomes, hull recovery, cost/cap, interruptions, and persistence. |
 | P22 | AI | Both factions; validator pass/reject boundaries; budgets; research; production; troop deployment; recon; defense; retreat; target deconfliction; Death Star escort/targeting. |
 | P23 | Core space combat | Seven phases, weapon classes, shields, ion effects, recharge, carriers, fighters, officers, Emperor, retreat, destruction, and result application. |
-| P24 | Tactical space combat | Placement, selection, formations, movement, focus fire, pause/speed, retreat, visual state, accepted formulas, and galaxy result application. [Per-hull/fighter result identity and shared entry](evidence/2026-09-12-tactical-result-identity.md) are verified partial tranches. P54 through P57B2C2B stage and decode the original 3D corpus and recover its camera, placement, transform, palette, light, and retained-mode state. [P58A](../2026-09-10-interface-parity-audit/evidence/2026-09-14-tactical-resource-join.md) joins every ship and fighter DAT identity to its original resources and transports all 87 meshes and 397 textures. P58B through P58F13 render live capital/fighter families and restore their interaction and command paths. The [P58-B06 checkpoint](../2026-09-10-interface-parity-audit/evidence/2026-09-22-tactical-completion-bundle.md) adds capital and fighter combat, collision, automatic groups, retained formations, the separate Death Star, original result/options panels, superlaser journey, both trench-run routes, and exact strategic roster, capture, and Death Star-state application. [P58-B15](../2026-09-10-interface-parity-audit/evidence/2026-09-24-tactical-battle-alert-audio.md) restores Battle Alert entry and MDATA 307, completing deterministic A1 mapping at 106/106. [P58-B16](../2026-09-10-interface-parity-audit/evidence/2026-09-24-tactical-weapon-audio.md) corrects event 0x14 and restores all 22 weapon-audio variants. [P58-B17](../2026-09-10-interface-parity-audit/evidence/2026-09-24-tactical-command-voice.md) restores 90 exact faction battle-ready and group command acknowledgements. [P58-B18](../2026-09-10-interface-parity-audit/evidence/2026-09-25-tactical-complete-voice-bank.md) transports all 285 tactical voices and dispatches selected withdrawal, result, Death Star, and trench-run transitions. [P58-B19](../2026-09-10-interface-parity-audit/evidence/2026-09-25-tactical-mixed-task-force-target.md) restores source-exact mixed-task-force focus-target rejection and faction feedback without mutating existing orders. [P58-B20](../2026-09-10-interface-parity-audit/evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md) restores final-group recovery, carrier-capacity, and disabled-hyperdrive withdrawal feedback. [P58-B21](../2026-09-10-interface-parity-audit/evidence/2026-09-27-tactical-post-battle-orchestration.md) shares bombardment, landing, ground follow-up, occupation, and result destination routing between played and automatic outcomes. [P58-B07](../2026-09-10-interface-parity-audit/evidence/2026-09-22-tactical-106-matrix-contract.md) generates and validates the exact 106-cell denominator. [P58-B08](../2026-09-10-interface-parity-audit/evidence/2026-09-22-tactical-a0-ingestion.md) adds fail-closed original-capture provenance and ingestion, while the offline capture host leaves A0 coverage and acceptance at 0. Original view acceptance, exact global RNG sequencing, original arrival callbacks and recovery trajectories, power allocation, native beam behavior, native playback, remaining completion/destruction/warning voice callers, and battle acceptance remain open. |
+| P24 | Tactical space combat | Placement, selection, formations, movement, focus fire, pause/speed, retreat, visual state, accepted formulas, and galaxy result application. [Per-hull/fighter result identity and shared entry](evidence/2026-09-12-tactical-result-identity.md) are verified partial tranches. P54 through P57B2C2B stage and decode the original 3D corpus and recover its camera, placement, transform, palette, light, and retained-mode state. [P58A](../2026-09-10-interface-parity-audit/evidence/2026-09-14-tactical-resource-join.md) joins every ship and fighter DAT identity to its original resources and transports all 87 meshes and 397 textures. P58B through P58F13 render live capital/fighter families and restore their interaction and command paths. The [P58-B06 checkpoint](../2026-09-10-interface-parity-audit/evidence/2026-09-22-tactical-completion-bundle.md) adds capital and fighter combat, collision, automatic groups, retained formations, the separate Death Star, original result/options panels, superlaser journey, both trench-run routes, and exact strategic roster, capture, and Death Star-state application. P58-B15 through P58-B21 restore Battle Alert, weapon and command voice banks, mixed-task-force rejection, recovery/withdrawal feedback, and shared post-battle orchestration. [P58-B22](../2026-09-10-interface-parity-audit/evidence/2026-09-28-tactical-source-completion.md) completes the bounded practical launcher with source-compatible tactical randomness, persisted power allocation, completion/destruction callbacks, and the timed source-derived trench-run producer. [P58-B07](../2026-09-10-interface-parity-audit/evidence/2026-09-22-tactical-106-matrix-contract.md) generates and validates the exact 106-cell denominator, and [P58-B08](../2026-09-10-interface-parity-audit/evidence/2026-09-22-tactical-a0-ingestion.md) adds fail-closed original-capture provenance and ingestion. Deterministic A1 mapping is runnable at 106/106, but owned lossless A0 coverage and acceptance remain 0/106. Exact native beam pixels, audible native playback and mixing, whole-process random-state continuity, strategic commander binding, exact planet framing, rare warning/ejection callers, and strict battle acceptance remain open. |
 | P25 | Ground combat | Troop attack/defense, facilities, officers/difficulty, selection, casualties, conquest, visuals, and parity between automatic and interactive paths. |
 | P26 | Bombardment | Eligibility, shields, losses, popularity, ownership, messages, persistence, and visual feedback. |
 | P27 | Death Star | Construction, sabotage, escort, retreat, shielding, targeting, firing, cooldown, destruction, cleanup, contribution to the Imperial HQ objective, and nonterminal Alliance destruction behavior. |

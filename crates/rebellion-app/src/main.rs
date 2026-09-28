@@ -60,8 +60,7 @@ use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
 use rebellion_core::victory::{VictoryState, VictorySystem};
 use rebellion_core::world::{
-    CampaignConfig, ControlKind, GameWorld, MstbTable, SeedDifficulty, SeedOptions,
-    VictoryConditions,
+    CampaignConfig, GameWorld, MstbTable, SeedDifficulty, SeedOptions, VictoryConditions,
 };
 
 use rebellion_render::game_speed::{
@@ -1616,6 +1615,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             defender: def_fleet,
                             player_is_attacker,
                             tick: current_tick,
+                            rng_seed: sim_rng.gen::<u32>(),
                         },
                         &mut tactical_state,
                         &mut combat_cooldowns,
@@ -5690,7 +5690,9 @@ mod tactical_ground_tests {
     use super::*;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
     use rebellion_core::ids::{CapitalShipKey, DatId, FighterKey};
-    use rebellion_core::world::{FighterEntry, Fleet, Sector, ShipInstance, System, TroopUnit};
+    use rebellion_core::world::{
+        ControlKind, FighterEntry, Fleet, Sector, ShipInstance, System, TroopUnit,
+    };
 
     #[test]
     fn trench_run_outcomes_route_to_their_source_movies() {
@@ -5979,6 +5981,13 @@ mod tactical_ground_tests {
             }),
             death_star_beam: None,
             trench_run_outcome: None,
+            trench_run_remaining_ms: None,
+            trench_run_group: None,
+            trench_run_success_rating: 1,
+            trench_run_pending_outcome: None,
+            trench_run_participants: vec![],
+            trench_run_chatter: [0x13d; 9],
+            trench_run_chatter_cursor: 0,
             trench_run_cinematic_pending: false,
             navigation_sets: std::array::from_fn(|_| Vec::new()),
             source_layout: rebellion_render::tactical_view::OriginalTacticalLayout::default(),
@@ -5987,6 +5996,7 @@ mod tactical_ground_tests {
             placement_confirmed: true,
             start_tick: 1,
             combat_tick: 1,
+            tactical_rng: rebellion_render::OriginalTacticalRng::new(0x5eed_ba77),
             weapon_effects: vec![],
             impact_effects: vec![],
             pending_audio_cues: vec![],

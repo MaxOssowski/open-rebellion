@@ -24,6 +24,7 @@ pub(crate) struct BattleEntry {
     pub defender: FleetKey,
     pub player_is_attacker: bool,
     pub tick: u64,
+    pub rng_seed: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,6 +181,7 @@ pub(crate) fn begin_player_battle(
         entry.defender,
         entry.player_is_attacker,
         entry.tick,
+        entry.rng_seed,
     );
     cooldowns.insert(entry.system, entry.tick);
     messages.push(GameMessage::at_system(
@@ -952,6 +954,7 @@ mod tests {
                     defender,
                     player_is_attacker,
                     tick: 17,
+                    rng_seed: 0x1111_0001,
                 },
                 &mut tactical,
                 &mut cooldowns,
@@ -985,6 +988,7 @@ mod tests {
                 defender: attacker,
                 player_is_attacker: true,
                 tick: 17,
+                rng_seed: 0x1111_0002,
             },
             &mut tactical,
             &mut cooldowns,
@@ -1015,6 +1019,7 @@ mod tests {
                 defender,
                 player_is_attacker: true,
                 tick: 17,
+                rng_seed: 0x1111_0003,
             },
             &mut tactical,
             &mut cooldowns,
@@ -1040,7 +1045,8 @@ mod tests {
             ..Character::default()
         });
         world.fleets[defender].characters.push(captive);
-        let mut session = BattleSession::new(&world, system, attacker, defender, true, 23);
+        let mut session =
+            BattleSession::new(&world, system, attacker, defender, true, 23, 0x1111_0004);
         session.winner = Some(CombatWinner::Attacker);
 
         let before = persistence_snapshot(&session, &world);

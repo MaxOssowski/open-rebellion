@@ -352,8 +352,20 @@ impl CombatSystem {
                     shield_max: class.shield_strength.cast_signed(),
                     pending_damage: 0,
                     pending_ion_damage: 0,
-                    shield_nibble: (class.shield_recharge_rate.min(15)) as u8,
-                    weapon_nibble: 0x0f,
+                    // Legacy and newly manufactured records retain zero until
+                    // a player allocation is stored. Source combat entry uses
+                    // the class shield default and full weapon power in that
+                    // case; any non-zero packed word is consumed verbatim.
+                    shield_nibble: if ship.shield_weapon_packed == 0 {
+                        class.shield_recharge_rate.min(15) as u8
+                    } else {
+                        ship.shield_nibble()
+                    },
+                    weapon_nibble: if ship.shield_weapon_packed == 0 {
+                        0x0f
+                    } else {
+                        ship.weapon_nibble()
+                    },
                     alive: true,
                     is_death_star: is_ds_ship,
                 }
@@ -1459,6 +1471,27 @@ mod tests {
         });
         world.systems[sys].fleets.push(key);
         key
+    }
+
+    // Source: FUN_00501510 / FUN_005015a0 packed allocation setters and the
+    // combat-entry defaults recorded by the recovered phase initializer.
+    #[test]
+    fn space_combat_consumes_persisted_power_nibbles_with_source_defaults() {
+        let mut world = empty_world();
+        let sector = make_sector(&mut world);
+        let system = make_system(&mut world, sector);
+        let class = make_class(&mut world, 100, 10);
+        let fleet = make_fleet(&mut world, system, class, 1, true);
+
+        let (legacy, _) = CombatSystem::snapshot_fleet(&world, fleet);
+        assert_eq!(legacy[0].shield_nibble, 3);
+        assert_eq!(legacy[0].weapon_nibble, 15);
+
+        world.fleets[fleet].capital_ships[0].set_shield_nibble(4);
+        world.fleets[fleet].capital_ships[0].set_weapon_nibble(9);
+        let (allocated, _) = CombatSystem::snapshot_fleet(&world, fleet);
+        assert_eq!(allocated[0].shield_nibble, 4);
+        assert_eq!(allocated[0].weapon_nibble, 9);
     }
 
     #[test]

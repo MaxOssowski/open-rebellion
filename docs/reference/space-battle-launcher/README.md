@@ -202,6 +202,11 @@ and closes every process. Raw runs live under ignored
   production post-battle entry. Shared bombardment, troop landing, contested
   ground continuation, unopposed occupation, and result destination routing
   pass focused tests and a four-case muted browser journey.
+- P58-B22 closes the bounded practical launcher implementation: one recovered
+  tactical RNG stream, persisted shield/weapon allocation nibbles, exact
+  maneuver/order completion and destruction/loss callbacks, and the native
+  two-minute trench-run producer with ordered chatter and casualty rules. The
+  106-cell A1 crosswalk remains runnable; strict A0 acceptance remains open.
 - The current completion checkpoint adds recovered capital weapon
   resolution, fighter combat, collision envelopes, source group assignment,
   a separate Death Star manager, original Battle Results and Battle Options
@@ -216,17 +221,13 @@ and closes every process. Raw runs live under ignored
   clean diagnostics, and complete browser cleanup.
 
 This does not accept an original tactical surface. The fixture's zoom-to-depth
-bridge, fighter focus, and filled group matrix are test-only. Native GPU and
-A0 comparison, exact global RNG sequencing,
-exact original arrival callbacks and recovery trajectories, exact planet
-placement, power allocation,
-beam dimensions and timing, native trench-run playback comparison,
-remaining completion, destruction, recovery, warning, and ordered trench voice
-callers, exact shared-RNG sequencing, audio mixing and native comparison, and
-remaining result semantics remain open. The source 3D
-window uses the standard arrow cursor, so no invented targeting cursor is
-required. All
-106 `TAC-01` through `TAC-07` cells remain pending in the
+bridge, fighter focus, and filled group matrix are test-only. Lossless native
+GPU comparison, whole-process RNG continuity, strategic commander-slot
+binding, exact planet framing, retained-mode beam raster comparison, audible
+native playback, remaining rare voice callers, and mixing/interruption remain
+open. The source 3D window uses the standard arrow cursor, so no invented
+targeting cursor is required. All 106 `TAC-01` through `TAC-07` cells remain
+pending in the
 [surface ledger](../../qa/2026-09-10-interface-parity-audit/surface-ledger.json).
 
 ## Evidence and asset maps
@@ -238,6 +239,7 @@ required. All
 - [P58-B15 tactical Battle Alert and audio evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-tactical-battle-alert-audio.md)
 - [P58-B16 tactical weapon-audio evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-tactical-weapon-audio.md)
 - [P58-B21 shared post-battle evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-27-tactical-post-battle-orchestration.md)
+- [P58-B22 practical launcher completion evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-tactical-source-completion.md)
 - [P58F13 tactical attack-target lifecycle evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-19-tactical-attack-target-lifecycle.md)
 - [P58F12 tactical attack-targeting evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-18-tactical-attack-targeting.md)
 - [P58F11 tactical command-progression evidence](../../qa/2026-09-10-interface-parity-audit/evidence/2026-09-18-tactical-command-progression.md)
