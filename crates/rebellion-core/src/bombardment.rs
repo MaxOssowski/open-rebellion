@@ -234,6 +234,7 @@ mod tests {
             troop_classes: HashMap::new(),
             defense_facility_classes: HashMap::new(),
             difficulty_index: 2,
+            recruit_pool_empty: [false; 2],
         }
     }
 

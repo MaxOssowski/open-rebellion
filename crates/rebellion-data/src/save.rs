@@ -78,7 +78,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 20;
+pub const SAVE_VERSION: u32 = 21;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1632,6 +1632,30 @@ mod tests {
         assert!(before.timer_due.is_some());
         assert_eq!(after.timer_due, before.timer_due);
         assert!(after.container_loss_seen);
+    }
+
+    /// A recruit (`+0x50` bit 1) and an emptied pool (side `+0xb8`) must
+    /// survive a save, or a reload would recruit the same character again
+    /// and let Recruitment run past its end `0x10` (`FUN_0056b370`).
+    #[test]
+    fn a_round_trip_keeps_recruits_and_an_emptied_recruit_pool() {
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::Character;
+        let saves_dir = tmp_dir("recruit_pool_round_trip");
+        let mut state = minimal_save_state();
+        let recruit = state.world.characters.insert(Character {
+            is_empire: true,
+            recruited: true,
+            ..Default::default()
+        });
+        state.world.set_recruit_pool_empty(Faction::Empire);
+        save_slot(&saves_dir, 0, "Recruit Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert!(loaded.world.characters[recruit].recruited);
+        assert!(loaded.world.recruit_pool_empty(Faction::Empire));
+        assert!(!loaded.world.recruit_pool_empty(Faction::Alliance));
     }
 
     #[test]

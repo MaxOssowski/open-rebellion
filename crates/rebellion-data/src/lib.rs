@@ -149,6 +149,7 @@ pub fn load_game_data_with_options(
         defense_facility_classes: std::collections::HashMap::new(),
         special_force_classes: std::collections::HashMap::new(),
         difficulty_index: seed_options.gnprtb_index(),
+        recruit_pool_empty: [false; 2],
     };
 
     // ── 1. Sectors ───────────────────────────────────────────────────────────
@@ -501,6 +502,13 @@ pub fn load_game_data_with_options(
         }
     }
 
+    // port: a character placed at game start begins recruited (`+0x50` bit
+    // 1); the rest form the recruit pool, which Recruitment places at its
+    // target (`FUN_0055fe70`).
+    for (_, c) in &mut world.characters {
+        c.recruited = c.current_system.is_some() || c.current_fleet.is_some();
+    }
+
     // ── 9. Troop classes ──────────────────────────────────────────────────
     let troops_path = gdata_path.join("TROOPSD.DAT");
     if file_available(&troops_path) {
@@ -732,6 +740,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         current_fleet: None,
         heritage_known: false,
         is_killed: false,
+        recruited: false,
     }
 }
 

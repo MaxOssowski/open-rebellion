@@ -5324,11 +5324,18 @@ fn apply_mission_result(
                     sys.exploration_status = rebellion_core::dat::ExplorationStatus::Explored;
                 }
             }
-            MissionEffect::CharacterRecruited { faction, .. } => {
-                // Recruitment shifts the recruiter's faction allegiance
-                // (the recruit joins the faction that sent the recruiter)
-                let _ = faction; // port: the recruit pick waits for F-019 phase 4b
-            }
+            MissionEffect::CharacterRecruited {
+                character,
+                system,
+                faction,
+                pool_emptied,
+            } => rebellion_core::missions::recruit_character(
+                world,
+                *character,
+                *system,
+                *faction,
+                *pool_emptied,
+            ),
             MissionEffect::FacilitySabotaged {
                 system,
                 facility_index,

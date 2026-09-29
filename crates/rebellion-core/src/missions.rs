@@ -674,6 +674,41 @@ pub fn raise_skill(world: &mut GameWorld, character: CharacterKey, skill: Skill,
     }
 }
 
+/// `FUN_0055ef30`'s pool: `side`'s living characters it has not recruited
+/// (`+0x50` bit 1 clear). port: the original walks its character container
+/// (`FUN_00506e20`); the port walks them in `DatId` order.
+fn recruit_pool(world: &GameWorld, side: crate::dat::Faction) -> Vec<CharacterKey> {
+    let mut pool: Vec<(crate::ids::DatId, CharacterKey)> = world
+        .characters
+        .iter()
+        .filter(|(_, c)| !c.recruited && !c.is_killed && character_side(c) == Some(side))
+        .map(|(key, c)| (c.dat_id, key))
+        .collect();
+    pool.sort_by_key(|&(dat_id, _)| dat_id.raw());
+    pool.into_iter().map(|(_, key)| key).collect()
+}
+
+/// Apply [`MissionEffect::CharacterRecruited`]: `FUN_0055fe70` places the
+/// recruit at `system` (slot `+0xa8`) and sets `+0x50` bits 1 and 2
+/// (`FUN_004f7480`, `FUN_004f74f0`); taking the last one sets the side's
+/// `+0xb8` (`FUN_0052f590`). port: bit 2 is not modelled.
+pub fn recruit_character(
+    world: &mut GameWorld,
+    character: CharacterKey,
+    system: SystemKey,
+    faction: MissionFaction,
+    pool_emptied: bool,
+) {
+    if let Some(c) = world.characters.get_mut(character) {
+        c.recruited = true;
+        c.current_system = Some(system);
+        c.current_fleet = None;
+    }
+    if pool_emptied {
+        world.set_recruit_pool_empty(faction.into());
+    }
+}
+
 /// Hold `character` at `at_system` as `captured_by`'s prisoner.
 pub fn capture_character(
     world: &mut GameWorld,
@@ -926,12 +961,13 @@ pub enum MissionEffect {
         skill: Skill,
         amount: i32,
     },
-    /// A character was recruited to the faction (placed at the target system).
+    /// A pool character joins `faction` at `system` ([`recruit_character`]).
     CharacterRecruited {
+        character: CharacterKey,
         system: SystemKey,
-        /// The character who conducted the recruitment.
-        recruiter: CharacterKey,
         faction: MissionFaction,
+        /// The pick took the side's last pool character (`FUN_0055fc80`).
+        pool_emptied: bool,
     },
 
     // ── War Machine ──────────────────────────────────────────────────────────
@@ -1077,6 +1113,8 @@ const SHIPPED_HAN_SOLO_SPEED: i64 = 50;
 const GNPRTB_DIPLOMACY_RAISE: u16 = 6156;
 /// GNPRTB 6157 (`DAT_006bb534`): Espionage's espionage raise.
 const GNPRTB_ESPIONAGE_RAISE: u16 = 6157;
+/// GNPRTB 6159 (`DAT_006bb5b0`): Recruitment's leadership raise.
+const GNPRTB_RECRUITMENT_RAISE: u16 = 6159;
 /// GNPRTB 6160 (`DAT_006bb5a0`): Incite's leadership raise.
 const GNPRTB_INCITE_RAISE: u16 = 6160;
 /// GNPRTB 6161 (`DAT_006bb538`): Subdue's leadership raise.
@@ -1352,13 +1390,17 @@ pub(crate) fn running_end_code(
         }
         TargetRules::Object => {}
     }
-    // FUN_00573ee0: Diplomacy stops at full support. Recruitment's end 0x10
-    // (FUN_0056b370, the side's recruit pool is empty) waits for the recruit
-    // pick of F-019 phase 4.
+    // FUN_00573ee0: Diplomacy stops at full support.
     if mission.kind == MissionKind::Diplomacy
         && crate::uprising::support_points(container, side) == FULL_SUPPORT
     {
         return 0xf;
+    }
+    // FUN_0056b370: Recruitment stops once its side recruited the last pool
+    // character (side +0xb8). port: its +0xc test and the FUN_0056b680 and
+    // FUN_0056b550 rules are not traced.
+    if mission.kind == MissionKind::Recruitment && world.recruit_pool_empty(side) {
+        return 0x10;
     }
     0
 }
@@ -1723,8 +1765,8 @@ impl MissionSystem {
                 mission.timer_due = Some(now + delay);
             }
             PHASE_OUTCOME => {
-                out.results
-                    .push(Self::roll_members(mission, ctx, now, &mut draws.stream));
+                let result = Self::roll_members(mission, ctx, now, &mut draws.stream, &out.results);
+                out.results.push(result);
             }
             PHASE_END => {
                 validate(mission, state);
@@ -1814,12 +1856,14 @@ impl MissionSystem {
     /// (slot `+0x27c`); the class's slot `+0x280` then applies the result
     /// `+0x60` once (`ghidra/notes/mission-lifecycle.md`, "Outcomes").
     /// Decoys and captives never roll. port: the draws come from the
-    /// mission's seeded stream.
+    /// mission's seeded stream, and a recruit in `earlier`, this step's
+    /// results so far, has left the pool although the world applies it later.
     fn roll_members(
         mission: &ActiveMission,
         ctx: &StepContext<'_>,
         now: u64,
         stream: &mut crate::mission_detection::MissionRng,
+        earlier: &[MissionResult],
     ) -> MissionResult {
         use crate::uprising::Draws;
         let world = ctx.world;
@@ -1846,6 +1890,23 @@ impl MissionSystem {
         // Subdue's view of the target as the successes change it.
         let mut system = world.systems.get(target).cloned();
         let mut revolting = ctx.uprisings.is_uprising(target);
+        // FUN_0055ef30: the side's characters Recruitment may still pick.
+        let mut pool = if mission.kind == MissionKind::Recruitment {
+            let taken: Vec<CharacterKey> = earlier
+                .iter()
+                .flat_map(|result| &result.effects)
+                .filter_map(|effect| match effect {
+                    MissionEffect::CharacterRecruited { character, .. } => Some(*character),
+                    _ => None,
+                })
+                .collect();
+            recruit_pool(world, side)
+                .into_iter()
+                .filter(|character| !taken.contains(character))
+                .collect()
+        } else {
+            Vec::new()
+        };
         for member in members {
             if mission.kind == MissionKind::SubdueUprising && !(system.is_some() && revolting) {
                 // FUN_00569c20 needs the target in an uprising (+0x88 bit 2).
@@ -1894,9 +1955,28 @@ impl MissionSystem {
                         effects.extend(raise(Skill::Espionage, GNPRTB_ESPIONAGE_RAISE));
                     }
                 }
-                // FUN_0056b9a0. port: the recruit pick (FUN_0055fc80) and its
-                // leadership raise (G6159) wait for F-019 phase 4b.
-                MissionKind::Recruitment => result = 3,
+                // FUN_0056b9a0: at the target system (FUN_00586720), a
+                // random pool character (FUN_0055fc80, draw FUN_0053e290)
+                // joins there (FUN_0055fe70); then 3 and the leadership
+                // raise. An empty pool leaves the result alone.
+                MissionKind::Recruitment => {
+                    let pick = if world.systems.contains_key(target) {
+                        stream.pick(pool.len())
+                    } else {
+                        None
+                    };
+                    if let Some(index) = pick {
+                        let character = pool.remove(index);
+                        effects.push(MissionEffect::CharacterRecruited {
+                            character,
+                            system: target,
+                            faction: mission.faction,
+                            pool_emptied: pool.is_empty(),
+                        });
+                        result = 3;
+                        effects.extend(raise(Skill::Leadership, GNPRTB_RECRUITMENT_RAISE));
+                    }
+                }
                 // FUN_0056ae50: the target's slot +0x210 frees it.
                 MissionKind::Rescue => {
                     result = 3;
@@ -2051,16 +2131,6 @@ impl MissionSystem {
                             faction: mission.faction,
                         });
                     }
-                }
-                // port: interim until F-019 phase 4b ports the recruit pick.
-                MissionKind::Recruitment => {
-                    effects.extend(mission.lead_character().map(|recruiter| {
-                        MissionEffect::CharacterRecruited {
-                            system: target,
-                            recruiter,
-                            faction: mission.faction,
-                        }
-                    }));
                 }
                 // port: interim until F-019 phase 4c ports the target object
                 // that FUN_005746e0 destroys (slot +0xac(6)).
@@ -2702,6 +2772,7 @@ mod tests {
                 variance: 0,
             },
             current_system: Some(system),
+            recruited: true,
             ..Default::default()
         })
     }
@@ -4046,6 +4117,204 @@ mod tests {
 
         assert!(advance.results.is_empty());
         assert_eq!(advance.ended[0].end_code, 0xf);
+    }
+
+    /// MISSNSD Recruitment `0x55000016`, columns 11..21 = 1 1 1 1 0 0 1 1
+    /// 0 0 (`ghidra/notes/mission-lifecycle.md`). port: the timer is
+    /// Diplomacy's, which these tests do not read.
+    fn recruitment_record() -> crate::world::MissionRecord {
+        crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x5500_0016),
+            rules: crate::world::MissionTargetRules {
+                other_side_target: false,
+                revolting_target: true,
+                ..diplomacy_record().rules
+            },
+            ..diplomacy_record()
+        }
+    }
+
+    /// An Alliance character outside the side's roster (`+0x50` bit 1 clear).
+    fn pool_character(world: &mut GameWorld, dat_id: u32) -> CharacterKey {
+        world.characters.insert(Character {
+            dat_id: crate::ids::DatId::new(dat_id),
+            is_alliance: true,
+            ..Default::default()
+        })
+    }
+
+    fn recruits(result: &MissionResult) -> Vec<(CharacterKey, bool)> {
+        result
+            .effects
+            .iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::CharacterRecruited {
+                    character,
+                    pool_emptied,
+                    ..
+                } => Some((*character, *pool_emptied)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_recruiter_signs_one_of_its_side_s_unrecruited_characters_and_gains_leadership() {
+        // FUN_0056b9a0 -> FUN_0055fc80: a random character of the side with
+        // +0x50 bit 1 clear (FUN_0055ef30); a killed, recruited, or enemy
+        // one is not in the pool. The raise is GNPRTB 6159.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Recruitment, 100);
+        let recruiter = agent_at(&mut world, here, true);
+        let first = pool_character(&mut world, 2);
+        let second = pool_character(&mut world, 3);
+        let dead = pool_character(&mut world, 4);
+        world.characters[dead].is_killed = true;
+        let enemy = pool_character(&mut world, 5);
+        world.characters[enemy].is_alliance = false;
+        world.characters[enemy].is_empire = true;
+
+        let result = phase_ten(
+            &world,
+            MissionKind::Recruitment,
+            vec![MissionMember::Character(recruiter)],
+            here,
+            None,
+        );
+
+        let signed = recruits(&result);
+        assert_eq!(signed.len(), 1);
+        assert!([first, second].contains(&signed[0].0));
+        assert!(!signed[0].1, "one pool character is left");
+        assert_eq!(result.outcome, MissionOutcome::Success);
+        assert_eq!(raised(&result), vec![(recruiter, Skill::Leadership, 1)]);
+    }
+
+    #[test]
+    fn each_successful_recruiter_signs_a_different_character_and_the_last_empties_the_pool() {
+        // FUN_0055fc80 sets side +0xb8 (FUN_0052f590) when it takes the
+        // last one; a recruiter that finds the pool empty signs no one.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Recruitment, 100);
+        let team = (0..3)
+            .map(|_| MissionMember::Character(agent_at(&mut world, here, true)))
+            .collect();
+        let first = pool_character(&mut world, 2);
+        let second = pool_character(&mut world, 3);
+
+        let result = phase_ten(&world, MissionKind::Recruitment, team, here, None);
+
+        let signed = recruits(&result);
+        assert_eq!(signed.len(), 2);
+        assert!(signed.iter().any(|&(c, _)| c == first));
+        assert!(signed.iter().any(|&(c, _)| c == second));
+        assert_eq!(signed.iter().filter(|&&(_, emptied)| emptied).count(), 1);
+        assert!(signed[1].1, "the second pick takes the last one");
+        assert_eq!(raised(&result).len(), 2);
+    }
+
+    #[test]
+    fn a_recruiter_with_an_empty_pool_fails_without_a_raise() {
+        // FUN_0056b9a0 sets 3 only after a recruit; slot +0x280 turns the
+        // unset result into 2.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Recruitment, 100);
+        let recruiter = agent_at(&mut world, here, true);
+
+        let result = phase_ten(
+            &world,
+            MissionKind::Recruitment,
+            vec![MissionMember::Character(recruiter)],
+            here,
+            None,
+        );
+
+        assert!(recruits(&result).is_empty());
+        assert!(raised(&result).is_empty());
+        assert_eq!(result.outcome, MissionOutcome::Failure);
+    }
+
+    #[test]
+    fn two_recruitments_in_one_step_cannot_sign_the_same_character() {
+        // port: the world applies recruits after the step, so a later
+        // mission skips the pick of an earlier one, as FUN_0055fc80 would
+        // skip its +0x50 bit 1.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Recruitment, 100);
+        let only = pool_character(&mut world, 2);
+        let mut state = MissionState::new();
+        for id in 0..2 {
+            let recruiter = agent_at(&mut world, here, true);
+            state.push_timed(ActiveMission::timed(
+                id,
+                MissionKind::Recruitment,
+                MissionFaction::Alliance,
+                vec![MissionMember::Character(recruiter)],
+                here,
+                1,
+            ));
+        }
+
+        let advance = step(&mut state, &world, 1, &[]);
+
+        let signed: Vec<_> = advance.results.iter().flat_map(recruits).collect();
+        assert_eq!(signed, vec![(only, true)]);
+    }
+
+    #[test]
+    fn a_recruit_joins_at_the_target_and_an_emptied_pool_marks_its_side() {
+        // FUN_0055fe70: slot +0xa8 places it, FUN_004f7480 sets +0x50 bit
+        // 1; FUN_0052f590 sets the side's +0xb8.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let recruit = pool_character(&mut world, 2);
+        let other = pool_character(&mut world, 3);
+
+        recruit_character(&mut world, recruit, here, MissionFaction::Alliance, false);
+        assert!(!world.recruit_pool_empty(crate::dat::Faction::Alliance));
+        recruit_character(&mut world, other, here, MissionFaction::Alliance, true);
+
+        let c = &world.characters[recruit];
+        assert!(c.recruited);
+        assert_eq!(c.current_system, Some(here));
+        assert!(world.recruit_pool_empty(crate::dat::Faction::Alliance));
+        assert!(!world.recruit_pool_empty(crate::dat::Faction::Empire));
+    }
+
+    #[test]
+    fn recruitment_ends_with_code_0x10_once_its_side_recruited_the_last_pool_character() {
+        // FUN_0056b370: after the system rules, side +0xb8 ends it with 0x10.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        held_by(&mut world, here, crate::dat::Faction::Alliance);
+        world.mission_records = vec![recruitment_record()];
+        let recruiter = agent_at(&mut world, here, true);
+        let mut state = MissionState::new();
+        state
+            .dispatch_guarded(
+                MissionRequest::single(
+                    MissionKind::Recruitment,
+                    MissionFaction::Alliance,
+                    recruiter,
+                    here,
+                    None,
+                    0,
+                ),
+                &mut world,
+            )
+            .expect("a free recruiter");
+        step(&mut state, &world, 1, &[0.0]);
+        assert!(step(&mut state, &world, 2, &[0.0]).ended.is_empty());
+        world.set_recruit_pool_empty(crate::dat::Faction::Alliance);
+
+        let advance = step(&mut state, &world, 5, &[0.0]);
+
+        assert!(advance.results.is_empty());
+        assert_eq!(advance.ended[0].end_code, 0x10);
     }
 
     #[test]

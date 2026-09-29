@@ -702,6 +702,11 @@ pub struct Character {
     /// NOTE: Like `heritage_known`, this field lands under the v8 save bump — no
     /// `#[serde(default)]` under bincode.
     pub is_killed: bool,
+
+    /// The side has recruited this character (`+0x50` bit 1). Recruitment
+    /// picks among the side's characters without it (`FUN_0055ef30`,
+    /// `FUN_0055fc80`) and sets it (`FUN_0055fe70` via `FUN_004f7480`).
+    pub recruited: bool,
 }
 
 impl Character {
@@ -799,6 +804,7 @@ impl Default for Character {
             current_fleet: None,
             heritage_known: false,
             is_killed: false,
+            recruited: false,
         }
     }
 }
@@ -1448,6 +1454,10 @@ pub struct GameWorld {
     /// Set from `SeedOptions::gnprtb_index()` at game start. Default 2 (Alliance Medium).
     #[serde(default = "default_difficulty_index")]
     pub difficulty_index: u8,
+    /// Per side (Alliance, Empire): the side recruited its last pool
+    /// character (side `+0xb8`, set by `FUN_0052f590` from `FUN_0055fc80`).
+    /// Recruitment then ends with code `0x10` (`FUN_0056b370`).
+    pub recruit_pool_empty: [bool; 2],
 }
 
 fn default_difficulty_index() -> u8 {
@@ -1462,6 +1472,28 @@ impl GameWorld {
     #[must_use]
     pub fn mission_record(&self, id: crate::ids::DatId) -> Option<&MissionRecord> {
         self.mission_records.iter().find(|record| record.dat_id == id)
+    }
+
+    /// Whether `side` recruited its last pool character (side `+0xb8`).
+    #[must_use]
+    pub fn recruit_pool_empty(&self, side: crate::dat::Faction) -> bool {
+        recruit_side_index(side).is_some_and(|index| self.recruit_pool_empty[index])
+    }
+
+    /// Set `side`'s `+0xb8` (`FUN_0052f590(side, 1)`); Neutral has none
+    /// (`FUN_0055fc80` takes only sides 1 and 2).
+    pub fn set_recruit_pool_empty(&mut self, side: crate::dat::Faction) {
+        if let Some(index) = recruit_side_index(side) {
+            self.recruit_pool_empty[index] = true;
+        }
+    }
+}
+
+fn recruit_side_index(side: crate::dat::Faction) -> Option<usize> {
+    match side {
+        crate::dat::Faction::Alliance => Some(0),
+        crate::dat::Faction::Empire => Some(1),
+        crate::dat::Faction::Neutral => None,
     }
 }
 
@@ -1596,9 +1628,9 @@ mod tests {
     #[test]
     fn serde_backward_compat_missing_new_fields() {
         // Simulate deserializing a save file that lacks fields added before v8.
-        // NOTE: `heritage_known` and `is_killed` are required here because they
-        // were added in v8 and have no `#[serde(default)]` — the v8 bump is the
-        // migration boundary, not serde field-default. This test still exercises
+        // NOTE: `heritage_known` and `is_killed` (v8) and `recruited` (v21) are
+        // required here because they have no `#[serde(default)]` — the save
+        // bump is the migration boundary, not serde field-default. This test still exercises
         // the `#[serde(default)]` path for earlier fields that legitimately have
         // the attribute.
         let json = r#"{
@@ -1621,7 +1653,8 @@ mod tests {
             "can_be_commander": true,
             "can_be_general": true,
             "heritage_known": false,
-            "is_killed": false
+            "is_killed": false,
+            "recruited": false
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

@@ -179,3 +179,26 @@ fn every_port_mission_kind_names_its_shipped_record_and_target_columns() {
     }
     assert_eq!(MissionKind::Autoscrap.record_id(), None);
 }
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn characters_placed_at_game_start_are_recruited_and_the_rest_form_each_side_s_pool() {
+    // FUN_0055fe70 places a recruit and sets +0x50 bit 1, so an unplaced
+    // character is one Recruitment may still sign (FUN_0055ef30).
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+
+    let placed = |c: &rebellion_core::world::Character| {
+        c.current_system.is_some() || c.current_fleet.is_some()
+    };
+    assert!(world.characters.values().all(|c| c.recruited == placed(c)));
+    for side in [true, false] {
+        let pool = world
+            .characters
+            .values()
+            .filter(|c| c.is_alliance == side && !c.recruited)
+            .count();
+        assert!(pool > 0, "side alliance={side} has a recruit pool");
+    }
+    assert!(!world.recruit_pool_empty(rebellion_core::dat::Faction::Alliance));
+    assert!(!world.recruit_pool_empty(rebellion_core::dat::Faction::Empire));
+}

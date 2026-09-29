@@ -974,6 +974,28 @@ cross-runtime proof remain open
     uprising start and control flip no longer run. The golden moves to
     `v1:acbd440f1734677c` -> `v1:f5bfb82d01bda045` for the per-member roll
     and the three roll slots.
+- Phase 4b (2026-09-29, save v21): Recruitment signs a pool character
+  (`FUN_0056b9a0`).
+  - A character carries `recruited`, the original's `+0x50` bit 1.
+    port: a character placed at game start begins recruited. The other 51
+    of the 60 form the pool.
+  - Each successful member picks `draw(0..=n-1)` among its side's living
+    characters without that bit (`FUN_0055ef30`, `FUN_0055fc80`,
+    `FUN_0053e290`). The recruit joins at the target (`FUN_0055fe70`: slot
+    `+0xa8`, then `FUN_004f7480` sets the bit). The result becomes 3, and
+    leadership rises by GNPRTB 6159. An empty pool leaves the result unset,
+    so the member fails.
+  - Taking the last one sets the side's `+0xb8` (`FUN_0052f590`), and the
+    validator then ends Recruitment with `0x10` (`FUN_0056b370`).
+  - port: the pool is walked in `DatId` order. A later mission in the same
+    step skips an earlier mission's pick, because the world applies recruits
+    after the step.
+  - The 1500-tick seed-42 playtest resolves 1053 missions instead of 1212,
+    fewer Diplomacy (327, was 444) and Incite (160, was 207). A run that
+    marks recruits without placing them reproduces 1212 exactly, so placing
+    the recruits at their targets accounts for the whole change. The golden
+    moves to `v1:c6a7cdfec25f7b55` -> `v1:2ceb75524906c42b` for save v21 and
+    the recruit pool.
 
 ### F-020: A mod with a missing dependency fails silently
 

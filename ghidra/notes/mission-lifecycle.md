@@ -201,11 +201,24 @@ class's slot `+4` (`MOV EAX, imm`).
   (`0x90..0x98`), observation level 10 for the mission side
   (`FUN_0050d5a0`), then the revelation counts (`FUN_0055c940`, first read)
   applied by `FUN_00573170` (not read).
-- Recruitment (re-read): on a success `56b9a0` finds the target system
-  (`FUN_00586720`), picks a recruitable character there for the side
-  (`FUN_0055fc80`, not read), recruits it (`FUN_0056b1a0`), sets 3, and
-  raises the member's leadership (`+0x64`) by GNPRTB 6159 (`0x180f`).
-  Each successful member recruits one character.
+- Recruitment (re-read 2026-09-29): on a success (`FUN_0053e2f0`, the draw
+  below the chance) `56b9a0` finds the target system (`FUN_00586720`) and
+  picks a recruit for the mission side (`+0x24 >> 6 & 3`) with
+  `FUN_0055fc80`. When one was picked it records the recruit on the mission
+  (`FUN_0056b1a0` writes `+0xa8` and notifies), sets 3, and raises the
+  member's leadership (`+0x64`) by GNPRTB 6159 (`0x180f`, `DAT_006bb5b0`)
+  through slot `+0x1d8`. An empty pool leaves the result alone. Each
+  successful member recruits one character.
+  - `FUN_0055fc80`: the pool is the global character container
+    (`FUN_00506e20`, `DAT_006b2bb0 + 0xb0`) filtered by side and the family
+    range `0x38..0x3c` (`FUN_0056f450` -> `FUN_00513090`). It counts those
+    with `+0x50` bit 1 clear (`FUN_0055ef30`), draws index
+    `FUN_0053e290(count - 1)` (0..=count-1), and recruits it with
+    `FUN_0055fe70`. When the count was 1 it sets the side's `+0xb8`
+    (`FUN_0052f590(side, 1)`), for sides 1 and 2 only.
+  - `FUN_0055fe70`: a character with bit 1 clear takes slot `+0xa8(system)`
+    (placed at the target), then `FUN_004f7480` and `FUN_004f74f0` set
+    `+0x50` bits 1 and 2 (`FUN_0053a640(2 | 4, 1)`) and notify.
 - Rescue (re-read): `56ae50` on a success sets 3, raises combat (`+0x62`)
   by GNPRTB 6162 (`0x1812`), and calls the target character's slot `+0x210`
   with the member's key (the release). The target is `FUN_00586c80`.
@@ -277,10 +290,18 @@ ports the roll and the in-roll outcomes above, re-read from the `.c` files.
   - The kill always destroys the target.
   - A member's incident reads the world before earlier members' effects
     apply.
-- **Interim, until 4b and 4c.** Recruitment's pick (`FUN_0055fc80`) and
-  leadership raise, the Sabotage and DS Sabotage target object
+- **Interim, until 4c.** The Sabotage and DS Sabotage target object
   (`FUN_005746e0`, slot `+0xac(6)`), and Espionage's revelation counts
   (`FUN_0055c940`).
+
+### Ported (F-019 phase 4b)
+
+- `Character::recruited` is `+0x50` bit 1, and
+  `GameWorld::recruit_pool_empty` is each side's `+0xb8`.
+- port: a character placed at game start begins recruited.
+- The pool is walked in `DatId` order.
+- Bit 2 is not modelled.
+- A later mission in the same step skips an earlier mission's pick.
 
 ### The end (`FUN_00592c80`, re-read 2026-09-29)
 
@@ -446,8 +467,9 @@ its holder. Neither is traced to a writer.
   target `+0x70` and container `+0x74` (the per-class slot `+0x1bc` init is
   not a defined function in the database).
 - What system slot `+0xc` returns, for the location rule above.
-- `FUN_0055c940`/`FUN_00573170` (what Espionage reveals), `FUN_0055fc80`
-  (whom Recruitment picks), and `FUN_0056b1a0`.
+- `FUN_0055c940`/`FUN_00573170` (what Espionage reveals).
+- What `+0x50` bit 2 of a recruit means, the `+0xc` test in
+  `FUN_0056b370`, and its `FUN_0056b680`/`FUN_0056b550` rules.
 - `FUN_00548120` and `FUN_00548840` (run on every phase change).
 - What end codes 1, 3, 4, 5, and 7 are shown as.
 

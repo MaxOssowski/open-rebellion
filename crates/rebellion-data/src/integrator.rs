@@ -1513,7 +1513,18 @@ fn apply_mission_effects_inner(
                     sys.exploration_status = rebellion_core::dat::ExplorationStatus::Explored;
                 }
             }
-            MissionEffect::CharacterRecruited { .. } => {}
+            MissionEffect::CharacterRecruited {
+                character,
+                system,
+                faction,
+                pool_emptied,
+            } => rebellion_core::missions::recruit_character(
+                world,
+                *character,
+                *system,
+                *faction,
+                *pool_emptied,
+            ),
             MissionEffect::FacilitySabotaged {
                 system,
                 facility_index,
