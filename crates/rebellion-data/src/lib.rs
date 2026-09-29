@@ -25,8 +25,9 @@ use rebellion_core::dat::{ExplorationStatus, SectorGroup};
 use rebellion_core::ids::{DatId, SectorKey, SystemKey};
 use rebellion_core::world::{
     CapitalShipClass, Character, ControlKind, DefenseFacilityClassDef, FighterClass, GameWorld,
-    GnprtbEntry, GnprtbParams, MissionRecord, MstbEntry, MstbTable, SdprtbEntry, SdprtbParams,
-    Sector, SeedOptions, SkillPair, SpecialForceClassDef, System, TroopClassDef,
+    GnprtbEntry, GnprtbParams, MissionRecord, MissionTargetRules, MstbEntry, MstbTable,
+    SdprtbEntry, SdprtbParams, Sector, SeedOptions, SkillPair, SpecialForceClassDef, System,
+    TroopClassDef,
 };
 
 pub mod integrator;
@@ -645,6 +646,18 @@ fn mission_record(m: &Mission) -> MissionRecord {
         hidden: m.hidden != 0,
         detection_phases: m.detection_phases != 0,
         can_resign: m.can_resign != 0,
+        rules: MissionTargetRules {
+            container_loss_ends: m.container_loss_ends != 0,
+            needs_populated_container: m.needs_populated_container != 0,
+            target_loss_ends: m.target_loss_ends != 0,
+            own_side_target: m.own_side_target != 0,
+            other_side_target: m.other_side_target != 0,
+            opponent_target: m.opponent_target != 0,
+            revolting_target: m.revolting_target != 0,
+            calm_target: m.calm_target != 0,
+            prisoner_target: m.prisoner_target != 0,
+            free_target: m.free_target != 0,
+        },
     }
 }
 
@@ -814,6 +827,11 @@ mod tests {
         record[13] = 0; // hidden
         record[14] = 2; // detection phases: any nonzero value is on
         record[15] = 1; // can resign
+                        // Target rules, file 0x44..0x6c: the odd words 17..27 set, so each
+                        // column lands in its own field (in-memory +0x6c..+0x94).
+        for word in (17..28).step_by(2) {
+            record[word] = 1;
+        }
         let file: MissionsFile =
             parse_dat_bytes(&one_record_file(0x40, &record), "MISSNSD.DAT").unwrap();
 
@@ -827,6 +845,18 @@ mod tests {
                 hidden: false,
                 detection_phases: true,
                 can_resign: true,
+                rules: MissionTargetRules {
+                    container_loss_ends: true,
+                    needs_populated_container: true,
+                    target_loss_ends: false,
+                    own_side_target: true,
+                    other_side_target: false,
+                    opponent_target: true,
+                    revolting_target: false,
+                    calm_target: true,
+                    prisoner_target: false,
+                    free_target: true,
+                },
             }
         );
     }

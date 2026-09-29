@@ -860,6 +860,19 @@ impl PerceptionIntegrator {
     // ── Step 5: Missions + Escapes ──────────────────────────────────────
 
     /// Apply mission result: world mutations + telemetry.
+    /// Apply a mission advance's member moves and releases
+    /// (`MissionAdvance::effects`), before its results.
+    pub fn apply_mission_lifecycle(
+        &mut self,
+        world: &mut GameWorld,
+        effects: &[MissionEffect],
+        tick: u64,
+        uprising_state: &mut UprisingState,
+        death_star_state: &mut DeathStarState,
+    ) {
+        apply_mission_effects_inner(effects, world, tick, uprising_state, death_star_state);
+    }
+
     pub fn apply_mission_result(
         &mut self,
         world: &mut GameWorld,
@@ -1082,7 +1095,6 @@ impl PerceptionIntegrator {
     pub fn apply_ai_actions(
         &mut self,
         actions: &[AIAction],
-        rolls: &[f64],
         ai_state: &mut AIState,
         mission_state: &mut MissionState,
         mfg_state: &mut ManufacturingState,
@@ -1095,7 +1107,6 @@ impl PerceptionIntegrator {
     ) {
         let applied = apply_ai_actions_inner(
             actions,
-            rolls,
             ai_state,
             mission_state,
             mfg_state,
@@ -1632,6 +1643,9 @@ fn apply_mission_effects_inner(
             MissionEffect::MemberAvailable { member } => {
                 rebellion_core::missions::set_on_mission(world, *member, false);
             }
+            MissionEffect::MemberMoved { member, to } => {
+                rebellion_core::missions::move_member(world, *member, *to);
+            }
             MissionEffect::CharacterEscaped {
                 character,
                 escaped_to_alliance,
@@ -1972,7 +1986,6 @@ pub fn apply_event_action_to_world(
 )]
 fn apply_ai_actions_inner(
     actions: &[AIAction],
-    rolls: &[f64],
     ai_state: &mut AIState,
     mission_state: &mut MissionState,
     mfg_state: &mut ManufacturingState,
@@ -1980,14 +1993,13 @@ fn apply_ai_actions_inner(
     troop_transport: &mut TroopTransportState,
     research_state: &mut ResearchState,
     world: &mut GameWorld,
-    _tick: u64,
+    tick: u64,
 ) -> Vec<bool> {
     let mission_faction = ai_state.faction.map_or(
         MissionFaction::Empire,
         rebellion_core::ai::AiFaction::as_mission_faction,
     );
 
-    let mut roll_idx = 0;
     let mut applied = Vec::with_capacity(actions.len());
     for action in actions {
         let was_applied = match action {
@@ -1996,10 +2008,7 @@ fn apply_ai_actions_inner(
                 character,
                 target_system,
                 target_character,
-                duration_roll,
             } => {
-                let roll = rolls.get(roll_idx).copied().unwrap_or(*duration_roll);
-                roll_idx += 1;
                 let dispatched = mission_state
                     .dispatch_guarded(
                         MissionRequest {
@@ -2009,7 +2018,7 @@ fn apply_ai_actions_inner(
                             decoys: Vec::new(),
                             target_system: *target_system,
                             target_character: *target_character,
-                            duration_roll: roll,
+                            tick,
                         },
                         world,
                     )
@@ -2290,6 +2299,39 @@ mod tests {
     }
 
     #[test]
+    fn mission_lifecycle_effects_land_the_member_and_free_it() {
+        // FUN_00556390 moves a member into the target container; the end
+        // clears RoleOnMissionNotif (FUN_00536b00).
+        use rebellion_core::missions::MissionMember;
+        let mut world = GameWorld::default();
+        let target = add_system(&mut world, "Naboo");
+        let envoy = world.characters.insert(rebellion_core::world::Character {
+            is_alliance: true,
+            on_mission: true,
+            ..Default::default()
+        });
+        let member = MissionMember::Character(envoy);
+        let mut integrator = PerceptionIntegrator::new(3, 0);
+
+        integrator.apply_mission_lifecycle(
+            &mut world,
+            &[
+                MissionEffect::MemberMoved {
+                    member,
+                    to: Some(target),
+                },
+                MissionEffect::MemberAvailable { member },
+            ],
+            3,
+            &mut UprisingState::default(),
+            &mut DeathStarState::default(),
+        );
+
+        assert_eq!(world.characters[envoy].current_system, Some(target));
+        assert!(!world.characters[envoy].on_mission);
+    }
+
+    #[test]
     fn applying_a_disaster_sets_the_eroded_resources_and_records_it() {
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Naboo");
@@ -2376,7 +2418,6 @@ mod tests {
 
         integrator.apply_ai_actions(
             &actions,
-            &[],
             &mut ai,
             &mut missions,
             &mut manufacturing,
@@ -2440,7 +2481,6 @@ mod tests {
 
         integrator.apply_ai_actions(
             &actions,
-            &[],
             &mut ai,
             &mut missions,
             &mut manufacturing,

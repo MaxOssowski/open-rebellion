@@ -1,9 +1,9 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v17, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v18, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-09-28
+updated: 2026-09-29
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 
@@ -11,14 +11,14 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v17, and it is the only one
+serializable snapshot. The current format is v18, and it is the only one
 that loads.
 
-## Native format (v17)
+## Native format (v18)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 17
+[version: u32 LE]             — SAVE_VERSION = 18
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
 [mod_count: u32 LE]
@@ -71,12 +71,10 @@ Loading restores the RNG, dual-AI state, repair episodes, and combat memory
 instead of reseeding or clearing them. `campaign_config` keeps the selected
 difficulty, galaxy-size label, player faction, and victory mode. The clock
 keeps its original Game Speed and partial day, so a game saved while paused
-reloads paused. Blockade embarked-regiment tracking (F-021) and the recovered
-`UprisingState` (F-026) persist. v16 added each queue item's destination and
-the objects travelling to theirs (`DeliveryState`, F-030). v17 gives each
-mission team, decoy, and captured member lists, gives special forces their
-SPECFCSD skills and an on-mission flag, and stores the MISSNSD records and
-SPECFCSD classes in the world (F-019).
+reloads paused. The save also holds blockade embarked-regiment tracking,
+`UprisingState`, queue destinations and en-route deliveries, missions with
+their member lists, phase, and timer, members travelling to a mission
+target, and the MISSNSD and SPECFCSD records.
 
 ## Deterministic fingerprints
 
@@ -93,9 +91,7 @@ interactive app/playtest and combat-path convergence remain open.
 ## No migration
 
 The port has no released saves, so the loader reads only `SAVE_VERSION`. Any
-other version is rejected with a message to start a new game. Version 16
-removed the V9 to V15 bodies, the frozen legacy core types, and the v9 binary
-fixture (2026-09-28).
+other version is rejected with a message to start a new game.
 
 Changing `SaveState`, or any type it holds, including `GameWorld`, changes the
 bincode layout. Bincode is positional, so `#[serde(default)]` does not keep old
@@ -107,8 +103,8 @@ released, restore versioned migration before the next layout change.
 WASM stores base64 bincode and versioned JSON metadata in `localStorage`:
 
 ```text
-rebellion_save_v17_<slot>
-rebellion_meta_v17_<slot>
+rebellion_save_v18_<slot>
+rebellion_meta_v18_<slot>
 ```
 
 Metadata includes the full save name, game tick, and fingerprint with its

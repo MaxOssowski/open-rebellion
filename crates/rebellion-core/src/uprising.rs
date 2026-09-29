@@ -392,8 +392,14 @@ fn timer_delay(min: i32, spread: i32, rolls: &mut Rolls<'_>) -> u64 {
     u64::try_from(delay.max(1)).unwrap_or(1)
 }
 
+/// A timer delay of `min + rand(0..=spread)` days from one roll
+/// (`FUN_00586130`), as a mission's timer `0x38b` draws it.
+pub(crate) fn one_roll_timer_delay(min: i32, spread: i32, roll: f64) -> u64 {
+    timer_delay(min, spread, &mut Rolls::new(std::slice::from_ref(&roll)))
+}
+
 /// The side holding `sys`, if it is the Alliance or the Empire.
-fn holder(sys: &System) -> Option<Faction> {
+pub(crate) fn holder(sys: &System) -> Option<Faction> {
     sys.control.faction().filter(|f| *f != Faction::Neutral)
 }
 
@@ -402,7 +408,7 @@ fn holder(sys: &System) -> Option<Faction> {
     clippy::cast_possible_truncation,
     reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
 )]
-fn support_points(sys: &System, side: Faction) -> i32 {
+pub(crate) fn support_points(sys: &System, side: Faction) -> i32 {
     let fraction = if side == Faction::Alliance {
         sys.popularity_alliance
     } else {
@@ -1395,7 +1401,7 @@ mod tests {
             agent,
             system,
             None,
-            0.0,
+            0,
         ));
         let mut state = in_revolt(system, 5);
         let events = UprisingSystem::advance(
@@ -1712,7 +1718,7 @@ mod tests {
             subduer,
             system,
             None,
-            0.0,
+            0,
         ));
         assert_eq!(
             uprising_mission_terms(&world, &missions, system),
@@ -1724,7 +1730,7 @@ mod tests {
             inciter,
             system,
             None,
-            0.0,
+            0,
         ));
         missions.dispatch(MissionRequest::single(
             MissionKind::InciteUprising,
@@ -1732,7 +1738,7 @@ mod tests {
             elsewhere,
             SystemKey::default(),
             None,
-            0.0,
+            0,
         ));
         assert_eq!(
             uprising_mission_terms(&world, &missions, system),
@@ -1766,7 +1772,7 @@ mod tests {
                 lead,
                 system,
                 None,
-                0.0,
+                0,
             )
         });
 
@@ -1818,7 +1824,7 @@ mod tests {
                         lead,
                         system,
                         None,
-                        0.0,
+                        0,
                     )
                 },
                 &mut world,
@@ -1869,7 +1875,7 @@ mod tests {
                 lead,
                 system,
                 None,
-                0.0,
+                0,
             )
         });
 
@@ -1943,7 +1949,7 @@ mod tests {
                 agent,
                 system,
                 None,
-                0.0,
+                0,
             ));
             let mut state = in_revolt(system, 5);
             let events = UprisingSystem::advance(
@@ -1972,24 +1978,30 @@ mod tests {
             ..Character::default()
         });
         let mut missions = MissionState::new();
-        for (kind, character) in [
-            (MissionKind::SubdueUprising, agent),
-            (MissionKind::Diplomacy, envoy),
+        for (id, kind, character) in [
+            (0, MissionKind::SubdueUprising, agent),
+            (1, MissionKind::Diplomacy, envoy),
         ] {
-            missions.dispatch(MissionRequest::single(
+            missions.push_timed(crate::missions::ActiveMission::timed(
+                id,
                 kind,
                 MissionFaction::Alliance,
-                character,
+                vec![crate::missions::MissionMember::Character(character)],
                 system,
-                None,
-                0.0,
+                1,
             ));
         }
-        let ticks: Vec<TickEvent> = (1..=200).map(|tick| TickEvent { tick }).collect();
-        // ROLLS_PER_MISSION: two outcome rolls, then the two gain draws.
-        let rolls = [0.0, 0.0, 0.5, 0.0];
-        let results =
-            crate::missions::MissionSystem::advance(&mut missions, &world, &ticks, &rolls);
+        // ROLLS_PER_MISSION per mission: the Subdue outcome and gain draw,
+        // then the Diplomacy outcome in its own window.
+        let rolls = [0.0, 0.5, 0.9, 0.9, 0.0, 0.9, 0.9, 0.9];
+        let results = crate::missions::MissionSystem::advance(
+            &mut missions,
+            &world,
+            &UprisingState::default(),
+            &[TickEvent { tick: 1 }],
+            &rolls,
+        )
+        .results;
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|r| r.outcome == MissionOutcome::Success));
         let gain = results[0].effects.iter().find_map(|e| match e {
@@ -2211,7 +2223,7 @@ mod tests {
             agent,
             system,
             None,
-            0.0,
+            0,
         ));
         let mut state = in_revolt(system, 5);
         let events = UprisingSystem::advance(

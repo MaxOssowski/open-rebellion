@@ -62,7 +62,7 @@ const SHIPPED_TRANSIT_DISTANCE_DIVISOR: i64 = 5;
 const SHIPPED_DEFAULT_SPEED: i64 = 100;
 
 /// A GNPRTB value, or its shipped value when the table is not loaded.
-fn gnprtb_or_shipped(world: &GameWorld, id: u16, shipped: i64) -> i64 {
+pub(crate) fn gnprtb_or_shipped(world: &GameWorld, id: u16, shipped: i64) -> i64 {
     match world.gnprtb.value(id, world.difficulty_index) {
         0 => shipped,
         value => i64::from(value),

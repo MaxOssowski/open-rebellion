@@ -1,6 +1,6 @@
 //! Save / load for the full game state.
 //!
-//! # Format (v17)
+//! # Format (v18)
 //!
 //! Binary `bincode` encoding. A save file is:
 //!
@@ -78,11 +78,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-///
-/// v17: missions carry team, decoy, and captured member lists; special
-/// forces carry skills and an on-mission flag; the world holds MISSNSD
-/// records and SPECFCSD classes (F-019).
-pub const SAVE_VERSION: u32 = 17;
+pub const SAVE_VERSION: u32 = 18;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1429,6 +1425,11 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: false,
+            rules: rebellion_core::world::MissionTargetRules {
+                container_loss_ends: true,
+                target_loss_ends: true,
+                ..Default::default()
+            },
         });
         let request = MissionRequest {
             kind: MissionKind::Diplomacy,
@@ -1440,7 +1441,7 @@ mod tests {
             ],
             target_system: system,
             target_character: None,
-            duration_roll: 0.5,
+            tick: 0,
         };
         state
             .missions
@@ -1458,6 +1459,73 @@ mod tests {
         assert_eq!(loaded_unit.skills, [1, 2, 3, 4, 5, 6, 7, 8]);
         assert!(loaded_unit.on_mission);
         assert_eq!(loaded.world.mission_records, state.world.mission_records);
+    }
+
+    #[test]
+    fn a_round_trip_keeps_mission_phases_and_members_in_transit() {
+        use rebellion_core::missions::{
+            move_member, MissionEffect, MissionFaction, MissionKind, MissionMember, MissionRequest,
+            MissionSystem, PHASE_TRANSIT,
+        };
+        use rebellion_core::tick::TickEvent;
+        use rebellion_core::world::Character;
+        let saves_dir = tmp_dir("v18_mission_transit_round_trip");
+        let mut state = minimal_save_state();
+        let mut systems = state.world.systems.keys();
+        let (from, to) = (systems.next().unwrap(), systems.next().unwrap());
+        let envoy = state.world.characters.insert(Character {
+            is_alliance: true,
+            current_system: Some(from),
+            ..Default::default()
+        });
+        state
+            .missions
+            .dispatch_guarded(
+                MissionRequest::single(
+                    MissionKind::Diplomacy,
+                    MissionFaction::Alliance,
+                    envoy,
+                    to,
+                    None,
+                    0,
+                ),
+                &mut state.world,
+            )
+            .expect("the mission should dispatch");
+        let advance = MissionSystem::advance(
+            &mut state.missions,
+            &state.world,
+            &state.uprising,
+            &[TickEvent { tick: 1 }],
+            &[],
+        );
+        for effect in &advance.effects {
+            if let MissionEffect::MemberMoved { member, to } = effect {
+                move_member(&mut state.world, *member, *to);
+            }
+        }
+        save_slot(&saves_dir, 0, "V18 Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        let (before, after) = (
+            &state.missions.missions()[0],
+            &loaded.missions.missions()[0],
+        );
+        assert_eq!(after.phase, PHASE_TRANSIT);
+        assert_eq!(
+            (
+                after.ready,
+                after.origin,
+                after.speed,
+                after.wait_start,
+                after.timer_due
+            ),
+            (before.ready, Some(from), 100, 0, None)
+        );
+        assert_eq!(loaded.missions.en_route(), state.missions.en_route());
+        assert!(loaded.missions.is_en_route(MissionMember::Character(envoy)));
+        assert_eq!(loaded.world.characters[envoy].current_system, None);
     }
 
     #[test]

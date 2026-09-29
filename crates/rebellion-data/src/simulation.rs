@@ -441,21 +441,34 @@ pub fn run_simulation_tick(
     integrator.emit_fog_reveals(&reveals, world);
 
     // ── 5. Missions ──────────────────────────────────────────────────────
-    let mission_rolls =
-        take_rolls(states.missions.len() * rebellion_core::missions::ROLLS_PER_MISSION);
-    let mission_results =
-        MissionSystem::advance(&mut states.missions, world, tick_events, &mission_rolls);
-    for result in &mission_results {
+    let mission_rolls = take_rolls(
+        states.missions.len() * tick_events.len() * rebellion_core::missions::ROLLS_PER_MISSION,
+    );
+    let mission_advance = MissionSystem::advance(
+        &mut states.missions,
+        world,
+        &states.uprising,
+        tick_events,
+        &mission_rolls,
+    );
+    integrator.apply_mission_lifecycle(
+        world,
+        &mission_advance.effects,
+        current_tick,
+        &mut states.uprising,
+        &mut states.death_star,
+    );
+    states.ai.free_mission_members(&mission_advance.effects);
+    if let Some(ref mut ai2) = states.ai2 {
+        ai2.free_mission_members(&mission_advance.effects);
+    }
+    for result in &mission_advance.results {
         integrator.apply_mission_result(
             world,
             result,
             &mut states.uprising,
             &mut states.death_star,
         );
-        states.ai.free_mission_members(&result.effects);
-        if let Some(ref mut ai2) = states.ai2 {
-            ai2.free_mission_members(&result.effects);
-        }
         // Knesset Shamash-Bet #R11: emit `EVT_CHARACTER_KILLED` telemetry for
         // mission-side assassinations. The integrator's `MissionEffect::CharacterKilled`
         // arm marks `is_killed = true` via `mark_killed()` instead of deleting
@@ -584,10 +597,8 @@ pub fn run_simulation_tick(
         config,
         &states.research,
     );
-    let ai_rolls = take_rolls(8);
     integrator.apply_ai_actions(
         &ai_actions,
-        &ai_rolls,
         &mut states.ai,
         &mut states.missions,
         &mut states.manufacturing,
@@ -611,10 +622,8 @@ pub fn run_simulation_tick(
             config,
             &states.research,
         );
-        let secondary_rolls = take_rolls(8);
         integrator.apply_ai_actions(
             &secondary_actions,
-            &secondary_rolls,
             ai2,
             &mut states.missions,
             &mut states.manufacturing,

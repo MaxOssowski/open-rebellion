@@ -102,14 +102,14 @@ pub enum PanelAction {
     PrioritizeQueueItem { system: SystemKey, index: usize },
 
     // ── Missions ──────────────────────────────────────────────────────────────
-    /// Dispatch a mission.  `duration_roll` is a pre-supplied [0,1) random value.
+    /// Dispatch a mission ordered on day `tick`.
     DispatchMission {
         kind: MissionKind,
         faction: MissionFaction,
         character: CharacterKey,
         target: SystemKey,
         target_character: Option<CharacterKey>,
-        duration_roll: f64,
+        tick: u64,
     },
     /// Cancel a mission that is currently in progress.
     CancelMission(u64),

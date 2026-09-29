@@ -295,7 +295,7 @@ pub fn apply(
                 character_key,
                 primary,
                 None,
-                0.0,
+                0,
             ));
         }
     }

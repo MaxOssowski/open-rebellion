@@ -1844,13 +1844,32 @@ Some(RailAudience::side(*faction_is_alliance)),
 
             // ── Missions ────────────────────────────────────────────────────
             let mission_rolls: Vec<f64> = (0..mission_state.len()
+                * tick_events.len()
                 * rebellion_core::missions::ROLLS_PER_MISSION)
                 .map(|_| sim_rng.gen::<f64>())
                 .collect();
-            let mission_results =
-                MissionSystem::advance(&mut mission_state, &world, &tick_events, &mission_rolls);
+            let mission_advance = MissionSystem::advance(
+                &mut mission_state,
+                &world,
+                &uprising_state,
+                &tick_events,
+                &mission_rolls,
+            );
+            // Member moves and releases come before the results.
+            for effect in &mission_advance.effects {
+                match effect {
+                    MissionEffect::MemberMoved { member, to } => {
+                        rebellion_core::missions::move_member(&mut world, *member, *to);
+                    }
+                    MissionEffect::MemberAvailable { member } => {
+                        rebellion_core::missions::set_on_mission(&mut world, *member, false);
+                    }
+                    _ => {}
+                }
+            }
+            ai_state.free_mission_members(&mission_advance.effects);
 
-            for result in &mission_results {
+            for result in &mission_advance.results {
                 apply_mission_result(
                     result,
                     &mut world,
@@ -1887,7 +1906,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                         ));
                     }
                 }
-                ai_state.free_mission_members(&result.effects);
 
                 // Advisor trigger for player faction missions.
                 if result.faction == player_faction {
@@ -2095,10 +2113,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                 &game_config,
                 &research_state,
             );
-            let ai_rolls: Vec<f64> = (0..8).map(|_| sim_rng.gen::<f64>()).collect();
             apply_ai_actions(
                 &ai_actions,
-                &ai_rolls,
                 &mut ai_state,
                 &mut mission_state,
                 &mut mfg_state,
@@ -2126,10 +2142,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                     &game_config,
                     &research_state,
                 );
-                let second_rolls: Vec<f64> = (0..8).map(|_| sim_rng.gen::<f64>()).collect();
                 apply_ai_actions(
                     &second_actions,
-                    &second_rolls,
                     second_ai,
                     &mut mission_state,
                     &mut mfg_state,
@@ -3284,14 +3298,13 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                     }
                     if show_missions {
-                        let duration_roll = sim_rng.gen::<f64>();
                         if let Some(action) = draw_missions(
                             ctx,
                             &world,
                             &mission_state,
                             &mut missions_panel_state,
                             player_faction,
-                            duration_roll,
+                            clock.tick,
                         ) {
                             panel_actions.push(action);
                         }
@@ -4711,7 +4724,7 @@ fn apply_panel_action(
             character,
             target,
             target_character,
-            duration_roll,
+            tick,
         } => {
             let request = rebellion_core::missions::MissionRequest {
                 kind,
@@ -4722,7 +4735,7 @@ fn apply_panel_action(
                 decoys: Vec::new(),
                 target_system: target,
                 target_character,
-                duration_roll,
+                tick,
             };
             if let Err(refusal) = mission_state.dispatch_guarded(request, world) {
                 let char_name = world
@@ -5414,6 +5427,9 @@ fn apply_mission_result(
             MissionEffect::MemberAvailable { member } => {
                 rebellion_core::missions::set_on_mission(world, *member, false);
             }
+            MissionEffect::MemberMoved { member, to } => {
+                rebellion_core::missions::move_member(world, *member, *to);
+            }
             MissionEffect::DecoyTriggered {
                 system,
                 decoy_character,
@@ -5527,7 +5543,6 @@ fn apply_space_combat_result(
 )]
 fn apply_ai_actions(
     actions: &[AIAction],
-    rolls: &[f64],
     ai_state: &mut AIState,
     mission_state: &mut MissionState,
     mfg_state: &mut ManufacturingState,
@@ -5540,7 +5555,6 @@ fn apply_ai_actions(
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
 ) {
-    let mut roll_idx = 0;
     for action in actions {
         match action {
             AIAction::DispatchMission {
@@ -5548,10 +5562,7 @@ fn apply_ai_actions(
                 character,
                 target_system,
                 target_character,
-                duration_roll,
             } => {
-                let roll = rolls.get(roll_idx).copied().unwrap_or(*duration_roll);
-                roll_idx += 1;
                 let ai_faction = ai_state.faction.unwrap_or(AiFaction::Empire);
                 let request = rebellion_core::missions::MissionRequest {
                     kind: *kind,
@@ -5562,7 +5573,7 @@ fn apply_ai_actions(
                     decoys: Vec::new(),
                     target_system: *target_system,
                     target_character: *target_character,
-                    duration_roll: roll,
+                    tick,
                 };
                 if mission_state.dispatch_guarded(request, world).is_err() {
                     continue;

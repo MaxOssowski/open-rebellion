@@ -41,7 +41,8 @@ After each phase change `FUN_00546ea0` runs:
 phase in the same tick except two:
 
 - **Phase 4, transit.** Entering it starts every member's transit to the target
-  (`FUN_00556430` into `+0x6c`/`+0x78`) and calls `FUN_00522280`. That
+  (`FUN_00556430` from `+0x6c` to `+0x78`, then into container `+0x74`) and
+  calls `FUN_00522280`. That
   function, and `FUN_00545820` on later arrivals, sets the ready bit once no
   member (`FUN_00525bb0`: team, decoys, and captured) still has its en-route
   active bit (`+0x50` bit 5, `FUN_00556620`) and no end code is set
@@ -233,39 +234,159 @@ their shared `+0x280` (`576700`) only turns result 0 into 2 (failed).
 - Reconnaissance `56bec0`: always succeeds, end code 3.
 - The missions also raise skills on success; the amounts are not read.
 
-### The end (`FUN_00592c80`, first read)
+### The end (`FUN_00592c80`, re-read 2026-09-29)
 
-Slot `+0x284` announces the mission to the target side (`FUN_0050d5a0`,
-observation level 6) and sends the members back: to their origin when the
-target is a system, else by the target character's location. A repeating
-mission never reaches it until an end code is set.
+Slot `+0x284` returns at once for Move, Return, Autorouting, and Adrift with
+a remote target (`FUN_00520af0`). Otherwise, when the target location `+0x78`
+is a system, it raises observation level 6 there for the mission's own side
+(`FUN_0050d5a0(system, 6, mission +0x24 >> 6 & 3)`). It then reroutes the
+target's container `+0x70`/`+0x74` (`FUN_00521160`, `FUN_00521030`) when that
+container is neither a system (`0x90..0x98`) nor a sector (`0x98..0xa0`),
+through the container's slot `+0x24` or `FUN_004f7f20`. It never moves the
+members: they stay where phase 4 put them. A repeating mission never reaches
+this slot until an end code is set.
 
-## The validator and the end codes (`FUN_00522480`)
+## Members travel and stay (re-read 2026-09-29)
+
+Phase 4 (`FUN_00524b70.c:79-128`) runs the validator, then for every member
+of the team, decoy, and captured lists (`FUN_00525bb0`, families
+`0x30..0x40`, all three lists):
+
+1. `FUN_00556430(member, +0x6c, +0x78)` starts its transit from the origin
+   location to the target location (`build-delivery.md`, "Travel"): no
+   transit when both are the same system;
+2. `FUN_00556390(member, +0x74)` moves it into the target container `+0x74`
+   through the member's slot `+0xa8`.
+
+`FUN_00522280` then sets the ready bit once no member is still en route
+(bit 5). A member destroyed on the way counts as arrived. Phase 6 clears
+every member's en route bit (`FUN_004f7640(member, 0)`) and runs the
+validator; phases 5 and 6 act only when the target differs from the origin
+(`FUN_00520bb0`). After the end the members are still in the target
+container.
+
+On phase 2, `FUN_00548370` sets every character member's travel speed
+`+0x9a` (`FUN_004ee470`; characters in all three lists, `FUN_00525fe0`): GNPRTB
+3083 (50, `FUN_005725a0` -> `DAT_006bb748`) when Han Solo (`0x33000243`,
+`FUN_00506f50`) holds this mission's key at `+0x68`, is not a prisoner
+(`+0xac` bit 0), and no special force is a member (`FUN_00525dc0`,
+`FUN_00525a00`; `FUN_00542990`). Otherwise the GNPRTB 1 default (100). A
+special force travels at the default (`build-delivery.md`).
+
+When an object is destroyed, `FUN_00545240` walks every mission. A mission
+whose container `+0x74` (`FUN_00520c70`) or target (`FUN_00520cb0`) is that
+object runs the validator at once. Then, if the container was destroyed, no
+end code is set, and the mission is an agent class (kind > 6,
+`FUN_00520ae0`), it gets end code 7 through slot `+0x1dc`
+(`FUN_00545240.c:85-111`). A destroyed target therefore ends through the
+validator's rule 4 (code 6) when the record's column 14 asks for it.
+
+## The validator and the end codes (`FUN_00522480`, re-read 2026-09-29)
 
 The validator runs on leaving phase 8, on entering 4, 5 (conditionally), 6,
 and `0xb`. With no end code set yet:
 
-1. End code 5 (message `0x40`/`0x91`) when every member has a remove or
-   resign request (`+0x78 & 0xc`), unless `+0xa4` bit 1 is set.
-2. It then builds the mission's rule check. `FUN_005830a0` validates the
-   member lists, which is the same call mission creation makes in
-   `FUN_005422f0`. After that come slot `+0x1bc` and a checker object
-   `FUN_00582b90` (vtable `0x0066a090`) over the side, the record, the
-   lists, and the target and its container (`FUN_00521030`/`FUN_00521050`,
-   or `FUN_00521160`/`FUN_005211c0`). The checker's callback can set an end
-   code.
-3. In phase `0xb` with no code, the end code is 1.
+1. End code 5 (message `0x40`/`0x91`) when every team member has a remove or
+   resign request (`+0x78 & 0xc`; team only, `FUN_00525c60`), unless `+0xa4`
+   bit 1 is set.
+2. `FUN_005830a0` summarises the three lists (`FUN_00582fb0`): the OR of the
+   special forces' mission masks, the OR of the characters' masks, and which
+   sides the members belong to. It sets status `0x14` when both sides appear
+   and `0x16` when none does. A status skips every later check; it is not an
+   end code.
+3. Slot `+0x1bc` (`MOV [EAX], 0x592aa0; MOV [EAX+4], validator`) yields the
+   class's validator, called over a checker built by `FUN_00582b90` with
+   `+4` = 0 (the creation-only checks are off), `+0xc` = 1 (running),
+   `+0x10` side, `+0x14` the MISSNSD record, `+0x24..+0x2c` the lists,
+   `+0x34` the container `+0x74`, and `+0x38` the target `+0x70`
+   (`FUN_00521050`, `FUN_00521030`; `FUN_00520af0` holds for every agent).
+4. In phase `0xb` with no code, the end code is 1.
 
-A non-zero code goes to slot `+0x1dc` and then `FUN_00521900`, and the next
-step jumps to `0xb`. A repeating mission therefore runs until a member
-resigns or the creation rules stop holding. The checker's per-kind rules
-(`FUN_005830a0`, the `0x0066a090` callback) are not read; the port must
-reuse the same rules it applies at creation.
+The first rule that fires sets the status and wins: later rules check
+`status +4 == -1`. A non-zero code goes to slot `+0x1dc`, then
+`FUN_00521900`, and the next step jumps to `0xb`.
+
+### Validators per class
+
+| Family | Mission | Validator | Rules |
+|---|---|---|---|
+| 0x51 | Diplomacy | `573ee0` | system rules, then end `0xf` (message `0x40`/`0x33`) when the side's support at the target is 100 (`FUN_00507270 == DAT_00661a88`) |
+| 0x52 | Espionage | `573010` | system rules |
+| 0x55 | Recruitment | `56b370` | system rules, then end `0x10` (`0x40`/`0x35`) when the side object's `+0xb8` is set |
+| 0x56 | Incite | `571950` | system rules |
+| 0x57 | Subdue | `569b10` | system rules |
+| 0x61 | Rescue | `56adb0` | character rules |
+| 0x62 | Abduction | `576dd0` | character rules |
+| 0x63 | Assassination | `576540` | character rules |
+| 0x69 | Sabotage | `56a110` | object rules (its own checks are creation-only) |
+| 0x6a | DS Sabotage | `5744c0` | object rules (creation-only checks) |
+
+Side `+0xb8` is set by `FUN_0052f590(side, 1)` from `FUN_0055fc80`, the
+recruit pick: it counts the side's recruitable characters (`FUN_0055ef30`),
+picks index `rand(0..=count-1)` among those not yet recruited (`+0x50` bit 1
+clear), recruits it (`FUN_0055fe70`), and sets `+0xb8` when that was the
+last one. So Recruitment ends once the pool is empty.
+
+### The running checks
+
+`R` is the MISSNSD record (in-memory offsets; file column = `(offset -
+0x28) / 4`, `tools/dat-dumper/src/types/missions.rs`), `T` the target, `C` the
+container. Every family runs the base rules; the system, character, and
+object rules add their own.
+
+Base (`FUN_00523450`, then `FUN_00592600`):
+
+1. `T` or `C` missing: the remaining checks are skipped.
+2. `R +0x6c` (col 11) and `C` destroyed (`+0x50` bit 3): end 7 (`0x40`/`0x12`).
+3. `T`'s side (`+0x24 >> 6 & 3`) against the mission's: the same side reads
+   `R +0x7c` (col 15), the opponent (`1 <-> 2`) `R +0x84` (col 17), any other
+   `R +0x80` (col 16). A zero column ends 8 (`0x40`/`0x23`).
+4. `R +0x78` (col 14) and `T` destroyed: end 6 (`0x40`/`0x21`).
+5. `T` en route (`+0x50` bit 4): end 6 (`0x40`/`0x22`).
+6. `T`'s location key (slot `+0xc`) empty or different from `C`'s: end 6
+   (`0x40`/`0x20`). Inference: the target left its container.
+7. `R +0x74` (col 13) and `C` not a populated system (`+0x88` bit 0): end
+   `0xd` (`0x40`/`0x16`).
+
+System rules (`FUN_005868c0`): `T`'s uprising bit (`+0x88` bit 2,
+`uprising-incident.md`) set needs `R +0x88` (col 18), clear needs `R +0x8c`
+(col 19); otherwise end 6 (`0x40`/`0x20`).
+
+Character rules (`FUN_00586e20`): when `T` is a character (`0x30..0x3c`), a
+prisoner target (`+0xac` bit 0) needs `R +0x90` (col 20) and a free one
+`R +0x94` (col 21); otherwise end 6 (`0x40`/`0x2a`, `0x2b`).
+
+Object rules (`FUN_00593500`): the base rules only, while running.
+
+The shipped columns for the port's kinds:
+
+| Family | c11 | c13 | c14 | c15 own | c16 other | c17 opp | c18 | c19 | c20 | c21 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0x51 Diplomacy | 1 | 1 | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 0 |
+| 0x52 Espionage | 0 | 0 | 0 | 1 | 1 | 1 | 1 | 1 | 0 | 0 |
+| 0x55 Recruitment | 1 | 1 | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 |
+| 0x56 Incite | 1 | 1 | 1 | 0 | 0 | 1 | 1 | 1 | 0 | 0 |
+| 0x57 Subdue | 1 | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
+| 0x61 Rescue | 0 | 0 | 1 | 0 | 0 | 1 | 0 | 0 | 1 | 0 |
+| 0x62 Abduction | 0 | 0 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 1 |
+| 0x63 Assassination | 0 | 0 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 1 |
+| 0x69 Sabotage | 0 | 0 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 |
+| 0x6a DS Sabotage | 0 | 0 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
+
+So Diplomacy stops on an enemy-held or revolting system, Subdue once the
+revolt is over, and Rescue once its target is free.
+
+Inference: Rescue's own-side column is 0, so a prisoner must read as its
+captor's side for a Rescue to run; the side a system reads as is taken to be
+its holder. Neither is traced to a writer.
 
 ## Still open
 
-- The per-kind legality rules behind `FUN_005830a0` and the `0x0066a090`
-  checker, which both refuse a new mission and end a running one.
+- The creation-only checks (checker `+4` = 1) that refuse a new mission.
+- Which object a character, Sabotage, or DS Sabotage mission stores as its
+  target `+0x70` and container `+0x74` (the per-class slot `+0x1bc` init is
+  not a defined function in the database).
+- What system slot `+0xc` returns, for the location rule above.
 - `FUN_0055c940`/`FUN_00573170` (what Espionage reveals), `FUN_0055fc80`
   (whom Recruitment picks), and `FUN_0056b1a0`.
 - `FUN_00548120` and `FUN_00548840` (run on every phase change).

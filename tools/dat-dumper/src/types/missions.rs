@@ -46,19 +46,31 @@ pub struct Mission {
     pub detection_phases: u32,
     // Members may resign (record +0x64, FUN_00520b90)
     pub can_resign: u32,
-    // Remaining boolean flags, not yet mapped
+    // Not yet mapped
     pub flag_col10: u32,
-    pub flag_col11: u32,
+    // A running mission ends (code 7) when its container is destroyed
+    // (record +0x6c, FUN_00523450)
+    pub container_loss_ends: u32,
+    // Not yet mapped (record +0x70, a creation-only check in FUN_00592600)
     pub flag_col12: u32,
-    pub flag_col13: u32,
-    pub flag_col14: u32,
-    pub flag_col15: u32,
-    pub flag_col16: u32,
-    pub flag_col17: u32,
-    pub flag_col18: u32,
-    pub flag_col19: u32,
-    pub flag_col20: u32,
-    pub flag_col21: u32,
+    // The container must be a populated system, else end 0xd (+0x74, FUN_00592600)
+    pub needs_populated_container: u32,
+    // The mission ends (code 6) when its target is destroyed (+0x78, FUN_00592600)
+    pub target_loss_ends: u32,
+    // A target on the mission's side is allowed, else end 8 (+0x7c, FUN_00523450)
+    pub own_side_target: u32,
+    // A target of a third side is allowed (+0x80, FUN_00523450)
+    pub other_side_target: u32,
+    // A target of the opponent is allowed (+0x84, FUN_00523450)
+    pub opponent_target: u32,
+    // A system target in an uprising is allowed, else end 6 (+0x88, FUN_005868c0)
+    pub revolting_target: u32,
+    // A system target not in an uprising is allowed (+0x8c, FUN_005868c0)
+    pub calm_target: u32,
+    // A prisoner character target is allowed, else end 6 (+0x90, FUN_00586e20)
+    pub prisoner_target: u32,
+    // A free character target is allowed (+0x94, FUN_00586e20)
+    pub free_target: u32,
 }
 
 impl DatRecord for MissionsFile {
@@ -112,17 +124,17 @@ impl Mission {
             detection_phases: r.read_u32()?,
             can_resign: r.read_u32()?,
             flag_col10: r.read_u32()?,
-            flag_col11: r.read_u32()?,
+            container_loss_ends: r.read_u32()?,
             flag_col12: r.read_u32()?,
-            flag_col13: r.read_u32()?,
-            flag_col14: r.read_u32()?,
-            flag_col15: r.read_u32()?,
-            flag_col16: r.read_u32()?,
-            flag_col17: r.read_u32()?,
-            flag_col18: r.read_u32()?,
-            flag_col19: r.read_u32()?,
-            flag_col20: r.read_u32()?,
-            flag_col21: r.read_u32()?,
+            needs_populated_container: r.read_u32()?,
+            target_loss_ends: r.read_u32()?,
+            own_side_target: r.read_u32()?,
+            other_side_target: r.read_u32()?,
+            opponent_target: r.read_u32()?,
+            revolting_target: r.read_u32()?,
+            calm_target: r.read_u32()?,
+            prisoner_target: r.read_u32()?,
+            free_target: r.read_u32()?,
         })
     }
 
@@ -145,16 +157,16 @@ impl Mission {
         w.write_u32(self.detection_phases);
         w.write_u32(self.can_resign);
         w.write_u32(self.flag_col10);
-        w.write_u32(self.flag_col11);
+        w.write_u32(self.container_loss_ends);
         w.write_u32(self.flag_col12);
-        w.write_u32(self.flag_col13);
-        w.write_u32(self.flag_col14);
-        w.write_u32(self.flag_col15);
-        w.write_u32(self.flag_col16);
-        w.write_u32(self.flag_col17);
-        w.write_u32(self.flag_col18);
-        w.write_u32(self.flag_col19);
-        w.write_u32(self.flag_col20);
-        w.write_u32(self.flag_col21);
+        w.write_u32(self.needs_populated_container);
+        w.write_u32(self.target_loss_ends);
+        w.write_u32(self.own_side_target);
+        w.write_u32(self.other_side_target);
+        w.write_u32(self.opponent_target);
+        w.write_u32(self.revolting_target);
+        w.write_u32(self.calm_target);
+        w.write_u32(self.prisoner_target);
+        w.write_u32(self.free_target);
     }
 }

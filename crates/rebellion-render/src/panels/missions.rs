@@ -36,9 +36,8 @@ pub struct MissionsPanelState {
     /// Target character for character-targeted missions (Assassination, Abduction, Recruitment).
     pub selected_target_character: Option<CharacterKey>,
 
-    /// Pre-supplied [0,1) roll used if the player dispatches.
-    /// Refreshed each frame so consecutive dispatches get different durations.
-    pub pending_duration_roll: f64,
+    /// The current day, stamped on a dispatched order.
+    pub today: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -55,16 +54,16 @@ pub enum MissionsTab {
 /// Render the missions panel as a left-side egui panel.
 ///
 /// `mission_state` is read-only — mutations come back as `PanelAction`.
-/// `duration_roll` should be a fresh random value each frame from the caller.
+/// `today` is the current game day.
 pub fn draw_missions(
     ctx: &egui::Context,
     world: &GameWorld,
     mission_state: &MissionState,
     panel_state: &mut MissionsPanelState,
     player_faction: MissionFaction,
-    duration_roll: f64,
+    today: u64,
 ) -> Option<PanelAction> {
-    panel_state.pending_duration_roll = duration_roll;
+    panel_state.today = today;
     let mut action = None;
 
     egui::SidePanel::left("missions_panel")
@@ -101,7 +100,7 @@ pub fn draw_missions(
 
             match panel_state.tab {
                 MissionsTab::Active => {
-                    draw_active_tab(ui, world, mission_state, player_faction, &mut action);
+                    draw_active_tab(ui, world, mission_state, player_faction, today, &mut action);
                 }
                 MissionsTab::Dispatch => {
                     draw_dispatch_tab(ui, world, panel_state, player_faction, &mut action);
@@ -121,6 +120,7 @@ fn draw_active_tab(
     world: &GameWorld,
     mission_state: &MissionState,
     player_faction: MissionFaction,
+    today: u64,
     action: &mut Option<PanelAction>,
 ) {
     let faction_missions: Vec<&ActiveMission> = mission_state
@@ -183,7 +183,8 @@ fn draw_active_tab(
                         .color(Color32::from_gray(160)),
                 );
 
-                let frac = mission.progress_fraction();
+                let last_arrival = mission_state.last_arrival(mission.id);
+                let frac = mission.wait_fraction(today, last_arrival);
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(80.0, 8.0), egui::Sense::hover());
                 ui.painter().rect_filled(rect, 2.0, Color32::from_gray(40));
                 ui.painter().rect_filled(
@@ -195,11 +196,10 @@ fn draw_active_tab(
                     Color32::from_rgb(100, 160, 255),
                 );
 
-                ui.label(
-                    RichText::new(format!("{} days", mission.ticks_remaining))
-                        .small()
-                        .color(Color32::from_gray(140)),
-                );
+                let wait = mission
+                    .days_left(today, last_arrival)
+                    .map_or_else(String::new, |days| format!("{days} days"));
+                ui.label(RichText::new(wait).small().color(Color32::from_gray(140)));
             });
 
             ui.separator();
@@ -392,7 +392,7 @@ fn draw_dispatch_tab(
                     character,
                     target,
                     target_character: panel_state.selected_target_character,
-                    duration_roll: panel_state.pending_duration_roll,
+                    tick: panel_state.today,
                 });
                 // Reset form after dispatch.
                 panel_state.selected_commander = None;

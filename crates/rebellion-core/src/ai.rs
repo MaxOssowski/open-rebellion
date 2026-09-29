@@ -241,8 +241,6 @@ pub enum AIAction {
         target_system: SystemKey,
         /// Target character for character-targeted missions (Assassination, Abduction, Recruitment).
         target_character: Option<CharacterKey>,
-        /// Suggested duration roll (0..1) for `MissionState::dispatch`.
-        duration_roll: f64,
     },
 
     /// Enqueue a unit or facility for construction at a system.
@@ -604,7 +602,6 @@ impl AISystem {
                             character: char_key,
                             target_system: target,
                             target_character: None,
-                            duration_roll: 0.5,
                         });
                         incite_dispatched = true;
                         continue;
@@ -616,7 +613,6 @@ impl AISystem {
                         character: char_key,
                         target_system: target,
                         target_character: None,
-                        duration_roll: 0.5,
                     });
                     continue;
                 }
@@ -630,7 +626,6 @@ impl AISystem {
                         character: char_key,
                         target_system: base_system,
                         target_character: Some(unrecruited[0]),
-                        duration_roll: 0.5,
                     });
                     continue;
                 }
@@ -644,7 +639,6 @@ impl AISystem {
                         character: char_key,
                         target_system: target,
                         target_character: None,
-                        duration_roll: 0.5,
                     });
                 }
             }
@@ -819,7 +813,6 @@ impl AISystem {
                 character: char_key,
                 target_system: *target_sys,
                 target_character: None,
-                duration_roll: 0.5,
             });
             op_idx += 1;
             ops_queued += 1;
@@ -908,7 +901,6 @@ impl AISystem {
                     character: char_key,
                     target_system: target_sys,
                     target_character: Some(target_char),
-                    duration_roll: 0.5,
                 });
                 op_idx += 1;
                 ops_queued += 1;
@@ -937,7 +929,6 @@ impl AISystem {
                     character: char_key,
                     target_system: target_sys,
                     target_character: Some(target_char),
-                    duration_roll: 0.5,
                 });
                 op_idx += 1;
                 ops_queued += 1;
@@ -976,7 +967,6 @@ impl AISystem {
                 character: char_key,
                 target_system: *target_sys,
                 target_character: None,
-                duration_roll: 0.5,
             });
             op_idx += 1;
             ops_queued += 1;
@@ -1071,7 +1061,6 @@ impl AISystem {
                     character: rescuer,
                     target_system: *captive_system,
                     target_character: Some(*captive_key),
-                    duration_roll: 0.5,
                 });
             } else {
                 break; // No more operatives available.
@@ -1180,7 +1169,6 @@ impl AISystem {
                 character: char_key,
                 target_system: *target_sys,
                 target_character: None,
-                duration_roll: 0.5,
             });
             scout_idx += 1;
             dispatched += 1;
@@ -2012,7 +2000,6 @@ impl AISystem {
                 character: char_key,
                 target_system: at_risk[dispatched],
                 target_character: None,
-                duration_roll: 0.5,
             });
             dispatched += 1;
 

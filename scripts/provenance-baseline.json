@@ -1,10 +1,10 @@
 {
   "items": {
-    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_espionage": 7,
-    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_officers": 7,
+    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_espionage": 3,
+    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_officers": 3,
     "crates/rebellion-core/src/ai.rs::AISystem::evaluate_production": 9,
-    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_reconnaissance": 2,
-    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_rescue": 3,
+    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_reconnaissance": 1,
+    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_rescue": 2,
     "crates/rebellion-core/src/ai.rs::AISystem::evaluate_research": 4,
     "crates/rebellion-core/src/ai.rs::AISystem::evaluate_troop_deployment": 4,
     "crates/rebellion-core/src/ai.rs::AISystem::expected_success": 2,
@@ -106,7 +106,6 @@
     "crates/rebellion-core/src/missions.rs::MissionKind::compute_table_input": 12,
     "crates/rebellion-core/src/missions.rs::MissionKind::max_success_prob": 1,
     "crates/rebellion-core/src/missions.rs::MissionKind::skill_score": 2,
-    "crates/rebellion-core/src/missions.rs::MissionSystem::advance": 2,
     "crates/rebellion-core/src/missions.rs::MissionSystem::determine_outcome": 3,
     "crates/rebellion-core/src/missions.rs::foil_prob": 4,
     "crates/rebellion-core/src/missions.rs::total_success_prob": 3,
@@ -129,6 +128,6 @@
     "crates/rebellion-data/src/integrator.rs::apply_mission_effects_inner": 2,
     "crates/rebellion-data/src/simulation.rs::COMBAT_RETRY_TICKS": 1,
     "crates/rebellion-data/src/simulation.rs::MAX_SYSTEM_GROUND_COMBAT_ROUNDS": 1,
-    "crates/rebellion-data/src/simulation.rs::run_simulation_tick": 7
+    "crates/rebellion-data/src/simulation.rs::run_simulation_tick": 5
   }
 }

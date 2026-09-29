@@ -879,6 +879,26 @@ cross-runtime proof remain open
     and captured are added in `FUN_0054c200` order. MISSNSD records are found
     by id, since Research and Vacation share families across records. Save
     v17 has a round-trip test for the new fields.
+- Phase 2 (2026-09-29, save v18): missions step through the recovered
+  phases instead of counting down.
+  - The stepper `FUN_005227d0` chains phases in one tick except phase 4
+    (members travel from the origin to the target, `FUN_00556430`, and stay
+    there) and phase 8 (timer `0x38b`, MISSNSD min + rand(spread)).
+  - Phase 2 sets Han Solo's speed, GNPRTB 3083, when he is a free member and
+    no special force is (`FUN_00548370`). Phase 10 resolves and repeats to
+    phase 8 when the record repeats; phase `0xb` ends with code 1 when no
+    rule fired.
+  - The validator `FUN_00522480` reads the MISSNSD target columns: lost
+    container 7, target side 8, lost, travelling, or departed target 6,
+    unpopulated container `0xd`, the uprising and prisoner columns, and
+    Diplomacy's full support `0xf`. A destroyed container or target runs it
+    at once (`FUN_00545240`).
+  - Open: Recruitment's `0x10` (the recruit pick, phase 4), resign (5), and
+    the end's observation level (phase 3). The roll is still the interim
+    lead-character roll.
+  - A 1500-tick seed-42 dual-AI playtest resolves 2644 missions instead of
+    1823, mostly repeating Incite on its 2..12-day timer. The seed-42 golden
+    is regenerated for this cause.
 
 ### F-020: A mod with a missing dependency fails silently
 

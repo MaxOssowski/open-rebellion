@@ -88,3 +88,94 @@ fn seeded_special_forces_take_their_skills_from_specfcsd() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn every_port_mission_kind_names_its_shipped_record_and_target_columns() {
+    // MISSNSD columns 11..21 (in-memory +0x6c..+0x94) read by FUN_00523450,
+    // FUN_00592600, FUN_005868c0 and FUN_00586e20
+    // (ghidra/notes/mission-lifecycle.md, "The running checks").
+    use rebellion_core::missions::MissionKind;
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+    let expected = [
+        (
+            MissionKind::Diplomacy,
+            (5, 10, true),
+            [1, 1, 1, 1, 1, 0, 0, 1, 0, 0],
+        ),
+        (
+            MissionKind::Espionage,
+            (1, 20, false),
+            [0, 0, 0, 1, 1, 1, 1, 1, 0, 0],
+        ),
+        (
+            MissionKind::Recruitment,
+            (5, 20, false),
+            [1, 1, 1, 1, 0, 0, 1, 1, 0, 0],
+        ),
+        (
+            MissionKind::InciteUprising,
+            (2, 10, true),
+            [1, 1, 1, 0, 0, 1, 1, 1, 0, 0],
+        ),
+        (
+            MissionKind::SubdueUprising,
+            (2, 10, true),
+            [1, 1, 1, 1, 0, 0, 1, 0, 0, 0],
+        ),
+        (
+            MissionKind::Rescue,
+            (1, 6, false),
+            [0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+        ),
+        (
+            MissionKind::Abduction,
+            (1, 2, false),
+            [0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+        ),
+        (
+            MissionKind::Assassination,
+            (1, 1, false),
+            [0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+        ),
+        (
+            MissionKind::Sabotage,
+            (1, 2, false),
+            [0, 0, 1, 0, 1, 1, 0, 0, 0, 0],
+        ),
+        (
+            MissionKind::DeathStarSabotage,
+            (1, 1, false),
+            [0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+        ),
+    ];
+    for (kind, (min, spread, repeats), columns) in expected {
+        let id = kind.record_id().expect("an original mission kind");
+        let record = world.mission_record(id).expect("a shipped record");
+        assert_eq!(
+            (
+                record.timer_min_days,
+                record.timer_spread_days,
+                record.repeats
+            ),
+            (min, spread, repeats),
+            "{kind:?}"
+        );
+        let r = record.rules;
+        let read = [
+            r.container_loss_ends,
+            r.needs_populated_container,
+            r.target_loss_ends,
+            r.own_side_target,
+            r.other_side_target,
+            r.opponent_target,
+            r.revolting_target,
+            r.calm_target,
+            r.prisoner_target,
+            r.free_target,
+        ]
+        .map(u8::from);
+        assert_eq!(read, columns, "{kind:?}");
+    }
+    assert_eq!(MissionKind::Autoscrap.record_id(), None);
+}

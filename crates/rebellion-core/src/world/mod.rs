@@ -1113,6 +1113,38 @@ pub struct MissionRecord {
     pub detection_phases: bool,
     /// Members may resign (record `+0x64`, `FUN_00520b90`).
     pub can_resign: bool,
+    /// What the validator requires of a running mission's target and
+    /// container (record `+0x6c..+0x94`).
+    pub rules: MissionTargetRules,
+}
+
+/// The MISSNSD columns the running-mission validator reads
+/// (`ghidra/notes/mission-lifecycle.md`, "The running checks").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MissionTargetRules {
+    /// End 7 when the container is destroyed (`+0x6c`, `FUN_00523450`).
+    pub container_loss_ends: bool,
+    /// End `0xd` unless the container is a populated system (`+0x74`,
+    /// `FUN_00592600`).
+    pub needs_populated_container: bool,
+    /// End 6 when the target is destroyed (`+0x78`, `FUN_00592600`).
+    pub target_loss_ends: bool,
+    /// A target on the mission's side is allowed, else end 8 (`+0x7c`).
+    pub own_side_target: bool,
+    /// A target of a third side is allowed (`+0x80`).
+    pub other_side_target: bool,
+    /// A target of the opponent is allowed (`+0x84`).
+    pub opponent_target: bool,
+    /// A system target in an uprising is allowed, else end 6 (`+0x88`,
+    /// `FUN_005868c0`).
+    pub revolting_target: bool,
+    /// A system target not in an uprising is allowed (`+0x8c`).
+    pub calm_target: bool,
+    /// A prisoner character target is allowed, else end 6 (`+0x90`,
+    /// `FUN_00586e20`).
+    pub prisoner_target: bool,
+    /// A free character target is allowed (`+0x94`).
+    pub free_target: bool,
 }
 
 /// A lookup table loaded from one of the `*MSTB.DAT` / `*TB.DAT` files.
@@ -1415,6 +1447,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            rules: MissionTargetRules::default(),
         };
         let world = GameWorld {
             mission_records: vec![
