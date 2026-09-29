@@ -47,13 +47,13 @@
 //! The phase 10 roll and the probability paths above are interim until
 //! F-019 phase 4 ports the per-member roll.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{CharacterKey, SpecialForceKey, SystemKey};
 use crate::tick::TickEvent;
-use crate::world::{Character, GameWorld, MstbTable, Skill};
+use crate::world::{Character, GameWorld, Skill};
 
 // ---------------------------------------------------------------------------
 // MissionKind
@@ -114,29 +114,9 @@ pub enum MissionKind {
 }
 
 impl MissionKind {
-    /// Whether this mission kind is covert and subject to enemy counter-intelligence.
-    ///
-    /// Covert missions (espionage, sabotage, assassination, abduction, rescue,
-    /// Death Star sabotage) can be foiled by enemy operatives at the target system.
-    /// Non-covert missions (diplomacy, recruitment, uprising) are visible operations
-    /// that succeed or fail on their own merit without foil risk.
-    #[must_use]
-    pub fn is_covert(self) -> bool {
-        matches!(
-            self,
-            MissionKind::Sabotage
-                | MissionKind::Assassination
-                | MissionKind::Espionage
-                | MissionKind::Rescue
-                | MissionKind::Abduction
-                | MissionKind::DeathStarSabotage
-        )
-    }
-
-    /// DAT file stem for this kind's *MSTB probability table.
-    ///
-    /// This is the key used to look up `world.mission_tables`. `None` for
-    /// `Autoscrap` (no probability table — it always succeeds).
+    /// DAT file stem for this kind's MSTB table, ids `0x14..0x1d` of
+    /// `FUN_0058b420` (`ghidra/notes/uprising-incident.md`). `None` for
+    /// `Autoscrap`, which has none.
     #[must_use]
     pub fn mstb_key(self) -> Option<&'static str> {
         match self {
@@ -152,177 +132,6 @@ impl MissionKind {
             MissionKind::DeathStarSabotage => Some("DSSBMSTB"),
             MissionKind::Autoscrap => None,
         }
-    }
-
-    /// Quadratic success-probability fallback coefficients: (a, b, c).
-    ///
-    /// Formula: `prob% = a·score² + b·score + c`, clamped to [min%, max%].
-    ///
-    /// Diplomacy and Recruitment are from rebellion2 Mission.cs.
-    /// Other types use placeholder coefficients fit to approximate MSTB curves.
-    /// Once `world.mission_tables` is populated, these are never used.
-    #[must_use]
-    pub fn coefficients(self) -> (f64, f64, f64) {
-        match self {
-            MissionKind::Diplomacy => (0.005_558, 0.7656, 20.15),
-            MissionKind::Recruitment => (-0.001_748, 0.8657, 11.923),
-            MissionKind::Sabotage => (-0.002, 0.75, 15.0),
-            MissionKind::Assassination => (-0.003, 0.80, 10.0),
-            MissionKind::Espionage => (-0.002, 0.78, 12.0),
-            MissionKind::Rescue => (-0.002, 0.72, 10.0),
-            MissionKind::Abduction => (-0.002, 0.70, 8.0),
-            MissionKind::InciteUprising => (-0.003, 0.65, 18.0),
-            MissionKind::SubdueUprising => (-0.002, 0.70, 20.0),
-            MissionKind::DeathStarSabotage => (-0.003, 0.60, 10.0),
-            MissionKind::Autoscrap => (0.0, 0.0, 100.0), // always succeeds
-        }
-    }
-
-    /// Extract the relevant skill score from a character for this mission type.
-    #[must_use]
-    pub fn skill_score(self, character: &Character) -> u32 {
-        let pair = match self {
-            MissionKind::Recruitment => character.leadership,
-            MissionKind::Sabotage
-            | MissionKind::Espionage
-            | MissionKind::Abduction
-            | MissionKind::DeathStarSabotage => character.espionage,
-            MissionKind::Assassination | MissionKind::Rescue => character.combat,
-            MissionKind::Diplomacy | MissionKind::InciteUprising | MissionKind::SubdueUprising => {
-                character.diplomacy
-            }
-            // Autoscrap has no character; callers guard against passing None.
-            MissionKind::Autoscrap => return 100,
-        };
-        // Expected value: base + half variance (variance resolved at scenario start).
-        pair.base + pair.variance / 2
-    }
-
-    /// Compute the composite input value for MSTB table lookup.
-    ///
-    /// The original game (per Ghidra RE + `TheArchitect2018` wiki) computes a
-    /// composite input from character skill + game-state context before looking
-    /// up the probability table. This replaces our previous approach of passing
-    /// raw `skill_score` directly to `MstbTable::lookup()`.
-    ///
-    /// Source functions from REBEXE.EXE:
-    /// - Diplomacy:     `sub_55ae50` → `(enemy_pop - our_pop) + diplomacy_rating`
-    /// - Recruitment:   `sub_55aed0` → `leadership - target_resistance`
-    /// - Espionage:     `sub_55ae90` → `espionage_skill` (direct lookup)
-    /// - Subdue:        `sub_55af50` → `(enemy_pop - our_pop) + diplomacy_rating`
-    /// - DS Sabotage:   `sub_55b0a0` → `(espionage + combat) / 2`
-    /// - Escape:        `sub_55cfb0` → `((p3 + p2) - p4) - p5` (see `check_escapes`)
-    #[must_use]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
-    )]
-    #[expect(
-        clippy::manual_midpoint,
-        reason = "Preserve the existing signed sum and division semantics, including overflow behavior."
-    )]
-    pub fn compute_table_input(
-        self,
-        character: &Character,
-        system: Option<&crate::world::System>,
-        faction: MissionFaction,
-        target_character: Option<&Character>,
-    ) -> i32 {
-        let skill = self.skill_score(character).cast_signed();
-
-        match self {
-            // sub_55ae50: input = (enemy_popularity - our_popularity) + diplomacy_rating
-            // Original: INCTMS_TABLE[(diplomacy - pop_support) - espionage_rating]
-            MissionKind::InciteUprising => {
-                if let Some(sys) = system {
-                    let (our_pop, enemy_pop) = match faction {
-                        MissionFaction::Alliance => {
-                            (sys.popularity_alliance, sys.popularity_empire)
-                        }
-                        MissionFaction::Empire => (sys.popularity_empire, sys.popularity_alliance),
-                    };
-                    let pop_delta = ((enemy_pop - our_pop) * 100.0) as i32;
-                    let counter_intel = (sys.espionage_rating * 100.0) as i32;
-                    pop_delta + skill - counter_intel
-                } else {
-                    skill
-                }
-            }
-
-            // sub_55af50: same formula as diplomacy
-            MissionKind::Diplomacy | MissionKind::SubdueUprising => {
-                if let Some(sys) = system {
-                    let (our_pop, enemy_pop) = match faction {
-                        MissionFaction::Alliance => {
-                            (sys.popularity_alliance, sys.popularity_empire)
-                        }
-                        MissionFaction::Empire => (sys.popularity_empire, sys.popularity_alliance),
-                    };
-                    let pop_delta = ((enemy_pop - our_pop) * 100.0) as i32;
-                    pop_delta + skill
-                } else {
-                    skill
-                }
-            }
-
-            // FIX #5: Recruitment uses target character's loyalty as resistance.
-            // Original: RCRTMS_TABLE[leadership - target_resistance]
-            MissionKind::Recruitment => {
-                let resistance = if let Some(target) = target_character {
-                    (target.loyalty.base + target.loyalty.variance / 2).cast_signed()
-                } else if let Some(sys) = system {
-                    let our_pop = match faction {
-                        MissionFaction::Alliance => sys.popularity_alliance,
-                        MissionFaction::Empire => sys.popularity_empire,
-                    };
-                    (50.0 - our_pop * 100.0).max(0.0) as i32
-                } else {
-                    0
-                };
-                skill - resistance
-            }
-
-            // sub_55b0a0 / SBTGMS_TABLE: both sabotage kinds use (espionage + combat) / 2
-            MissionKind::DeathStarSabotage | MissionKind::Sabotage => {
-                let espionage =
-                    (character.espionage.base + character.espionage.variance / 2).cast_signed();
-                let combat = (character.combat.base + character.combat.variance / 2).cast_signed();
-                (espionage + combat) / 2
-            }
-
-            // FIX #4: Assassination subtracts target defense (combat rating).
-            // Original: ASSNMS_TABLE[combat - target_defense]
-            MissionKind::Assassination => {
-                let target_defense = target_character
-                    .map_or(0, |t| (t.combat.base + t.combat.variance / 2).cast_signed());
-                skill - target_defense
-            }
-
-            // FIX #3: Abduction subtracts target defense (combat rating).
-            // Original: ABDCMS_TABLE[espionage - target_defense]
-            MissionKind::Abduction => {
-                let target_defense = target_character
-                    .map_or(0, |t| (t.combat.base + t.combat.variance / 2).cast_signed());
-                skill - target_defense
-            }
-
-            // sub_55ae90: direct skill lookup (no composite)
-            MissionKind::Espionage | MissionKind::Rescue => skill,
-
-            MissionKind::Autoscrap => 100,
-        }
-    }
-
-    /// Minimum success probability (percent, 1–100).
-    #[must_use]
-    pub fn min_success_prob(self) -> f64 {
-        1.0
-    }
-
-    /// Maximum success probability (percent, 1–100).
-    #[must_use]
-    pub fn max_success_prob(self) -> f64 {
-        100.0
     }
 
     /// Mission duration range in game-days: (`min_ticks`, `max_ticks`).
@@ -700,6 +509,89 @@ pub fn member_skill(world: &GameWorld, member: MissionMember, skill: Skill) -> O
     }
 }
 
+/// Slot `+0x274`: `member`'s success chance in percent, the MSTB row
+/// (`FUN_0053e240` -> `FUN_0055bed0`, a step lookup `FUN_00595090`) for the
+/// class's input (`ghidra/notes/decoy-roll.md`, "The success roll"):
+///
+/// - Diplomacy (`FUN_00573ff0`, `FUN_0055c680`): `(stormtroopers - opposing
+///   support) + diplomacy`.
+/// - Espionage (`FUN_00573090`): espionage. Rescue (`FUN_0056ae30`): combat.
+/// - Sabotage and DS Sabotage (`FUN_0056a2d0`, `FUN_00574600`):
+///   `(espionage + combat) / 2`.
+/// - Recruitment (`FUN_0056b7b0`): `leadership - opposing support`.
+/// - Incite (`FUN_005719d0`): `(leadership - opposing support) -
+///   stormtroopers`; Subdue (`FUN_00569b90`): `(stormtroopers - opposing
+///   support) + leadership`.
+/// - Abduction and Assassination (`FUN_00576e50`, `FUN_005765c0`): `combat -
+///   target combat`.
+///
+/// The opposing support is `FUN_00507270` for side `2 - (side != 1)`, and
+/// the stormtroopers are `FUN_005091f0`. A missing table, row, target system
+/// (`FUN_00586720`), or target character (`FUN_00586c80`) gives 0.
+#[must_use]
+pub fn member_chance(
+    world: &GameWorld,
+    kind: MissionKind,
+    faction: MissionFaction,
+    target_system: SystemKey,
+    target_character: Option<CharacterKey>,
+    member: MissionMember,
+) -> i32 {
+    let skill = |skill| {
+        member_skill(world, member, skill).map_or(0, |value| i32::try_from(value).unwrap_or(0))
+    };
+    let side = crate::dat::Faction::from(faction);
+    let opponent = if side == crate::dat::Faction::Alliance {
+        crate::dat::Faction::Empire
+    } else {
+        crate::dat::Faction::Alliance
+    };
+    let system = world.systems.get(target_system);
+    let support = |sys| crate::uprising::support_points(sys, opponent);
+    let stormtroopers = |sys| crate::uprising::stormtroopers(world, sys);
+    let target_combat = || {
+        target_character
+            .filter(|key| world.characters.contains_key(*key))
+            .map(|key| skill_of(world, key, Skill::Combat))
+    };
+    let input = match kind {
+        MissionKind::Diplomacy => {
+            system.map(|sys| stormtroopers(sys) - support(sys) + skill(Skill::Diplomacy))
+        }
+        MissionKind::Espionage => Some(skill(Skill::Espionage)),
+        MissionKind::Rescue => Some(skill(Skill::Combat)),
+        MissionKind::Sabotage | MissionKind::DeathStarSabotage => {
+            Some((skill(Skill::Espionage) + skill(Skill::Combat)) / 2)
+        }
+        MissionKind::Recruitment => system.map(|sys| skill(Skill::Leadership) - support(sys)),
+        MissionKind::InciteUprising => {
+            system.map(|sys| skill(Skill::Leadership) - support(sys) - stormtroopers(sys))
+        }
+        MissionKind::SubdueUprising => {
+            system.map(|sys| stormtroopers(sys) - support(sys) + skill(Skill::Leadership))
+        }
+        MissionKind::Abduction | MissionKind::Assassination => {
+            target_combat().map(|target| skill(Skill::Combat) - target)
+        }
+        // Autoscrap is no MSTB mission; it always succeeds.
+        MissionKind::Autoscrap => return 100,
+    };
+    let (Some(input), Some(table)) = (
+        input,
+        kind.mstb_key()
+            .and_then(|key| world.mission_tables.get(key)),
+    ) else {
+        return 0;
+    };
+    i32::try_from(table.step_lookup(input)).unwrap_or(i32::MAX)
+}
+
+/// A character's skill as [`member_skill`] reads it.
+fn skill_of(world: &GameWorld, character: CharacterKey, skill: Skill) -> i32 {
+    member_skill(world, MissionMember::Character(character), skill)
+        .map_or(0, |value| i32::try_from(value).unwrap_or(0))
+}
+
 /// Set or clear a member's on-mission role flag. Clearing it also clears a
 /// character's hidden-mission flag.
 ///
@@ -770,6 +662,15 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
             MissionEffect::SpecialForceDestroyed { unit } => destroy_special_force(world, *unit),
             _ => {}
         }
+    }
+}
+
+/// Raise `character`'s base `skill` by `amount` ([`MissionEffect::SkillRaised`]).
+/// The setters (`FUN_00533e20`..`FUN_005341a0`) take the new short as given.
+pub fn raise_skill(world: &mut GameWorld, character: CharacterKey, skill: Skill, amount: i32) {
+    if let Some(c) = world.characters.get_mut(character) {
+        let pair = c.skill_mut(skill);
+        pair.base = pair.base.saturating_add_signed(amount);
     }
 }
 
@@ -1010,12 +911,20 @@ impl MissionState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MissionEffect {
     // ── Living Galaxy ────────────────────────────────────────────────────────
-    /// System popularity shifted toward the faction by `delta` (0.0–1.0 scale).
-    PopularityShifted {
+    /// A Diplomacy success (`FUN_00574120`) changes `side`'s support at
+    /// `system` by `points` through `FUN_0050c9f0`
+    /// ([`crate::uprising::apply_support_change`]).
+    SupportGained {
         system: SystemKey,
-        faction: MissionFaction,
-        /// Amount added to the faction's popularity (rebellion2 uses +1/100 per success).
-        delta: f32,
+        side: crate::dat::Faction,
+        points: i32,
+    },
+    /// A successful member's base skill rises by `amount` (GNPRTB
+    /// 6156..6168, the skill setters `FUN_00533e20`..`FUN_005341a0`).
+    SkillRaised {
+        character: CharacterKey,
+        skill: Skill,
+        amount: i32,
     },
     /// A character was recruited to the faction (placed at the target system).
     CharacterRecruited {
@@ -1070,12 +979,10 @@ pub enum MissionEffect {
         faction: MissionFaction,
     },
 
-    /// An uprising was incited — shift popularity against the controlling faction.
-    UprisingStarted {
-        system: SystemKey,
-        /// Popularity delta applied against the controlling faction (positive = shift toward other side).
-        popularity_delta: f32,
-    },
+    /// An Incite Uprising member's success ran the uprising incident
+    /// `FUN_0050d030` at the target (`FUN_00571a60`); apply it with
+    /// [`crate::uprising::apply_uprising_event`].
+    UprisingIncident(crate::uprising::UprisingEvent),
 
     // ── Member availability tracking ────────────────────────────────────────
     /// A member has left its mission and may take another
@@ -1088,13 +995,7 @@ pub enum MissionEffect {
         to: Option<SystemKey>,
     },
 
-    // ── Decoy / Escape ──────────────────────────────────────────────────────
-    /// A decoy drew a defender away from the mission. Nothing raises it until
-    /// the recovered decoy phase (`FUN_0058a020`) is ported (F-019).
-    DecoyTriggered {
-        system: SystemKey,
-        decoy_character: CharacterKey,
-    },
+    // ── Escape ──────────────────────────────────────────────────────────────
     /// A captured character escaped on their own.
     CharacterEscaped {
         character: CharacterKey,
@@ -1133,13 +1034,12 @@ pub enum MissionEffect {
 // MissionOutcome / MissionResult
 // ---------------------------------------------------------------------------
 
-/// Whether a mission succeeded, failed, or was foiled.
+/// Whether a mission's phase 10 succeeded: its result `+0x60` is 3
+/// (`FUN_00521880`), else 2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MissionOutcome {
     Success,
     Failure,
-    /// Enemy counter-intelligence detected and blocked the mission.
-    Foiled,
 }
 
 /// The result emitted when a mission resolves.
@@ -1151,115 +1051,13 @@ pub struct MissionResult {
     pub tick: u64,
     pub kind: MissionKind,
     pub faction: MissionFaction,
-    /// The team character the interim resolver rolled for
-    /// (`ActiveMission::lead_character`).
+    /// The first team character (`ActiveMission::lead_character`), named in
+    /// the mission's messages.
     pub character: Option<CharacterKey>,
     pub target_system: SystemKey,
     pub outcome: MissionOutcome,
-    /// World-state changes to apply (only non-empty on Success).
+    /// World-state changes to apply, in the order the members acted.
     pub effects: Vec<MissionEffect>,
-}
-
-// ---------------------------------------------------------------------------
-// Probability helpers (pure functions, testable)
-// ---------------------------------------------------------------------------
-
-/// Evaluate the quadratic success-probability formula.
-///
-/// Returns a probability in percent [0, 100].
-#[must_use]
-pub fn quadratic_prob(score: f64, a: f64, b: f64, c: f64) -> f64 {
-    a * score * score + b * score + c
-}
-
-/// Clamp a probability to the mission's configured [min%, max%] range.
-#[must_use]
-pub fn clamp_prob(p: f64, min: f64, max: f64) -> f64 {
-    p.max(min).min(max)
-}
-
-/// Combined success probability: `agent_prob% * (1 - foil_prob%)`.
-///
-/// Both inputs are in percent [0, 100]; output is in percent [0, 100].
-#[must_use]
-pub fn total_success_prob(agent_prob_pct: f64, foil_prob_pct: f64) -> f64 {
-    let agent = agent_prob_pct / 100.0;
-    let foil = foil_prob_pct / 100.0;
-    agent * (1.0 - foil) * 100.0
-}
-
-/// Foil probability from defense score.
-///
-/// Coefficients from Mission.cs `FoilProbability`: -0.001999·d² + 0.8879·d + 84.61.
-/// Returns 0.0 if the mission is in a friendly system (no counter-intel threat).
-#[expect(
-    clippy::manual_clamp,
-    reason = "min/max map NaN to the lower bound; clamp would propagate NaN."
-)]
-#[must_use]
-pub fn foil_prob(defense_score: f64, own_system: bool) -> f64 {
-    if own_system {
-        return 0.0;
-    }
-    quadratic_prob(defense_score, -0.001_999, 0.8879, 84.61)
-        .max(0.0)
-        .min(100.0)
-}
-
-/// Compute the counter-intelligence defense score at a target system.
-///
-/// Sums the espionage skill of all enemy characters present at the system.
-/// The enemy faction is the opposite of whoever dispatched the mission.
-/// A higher score means stronger counter-intelligence, raising the foil probability.
-///
-/// From the original game: enemy operatives stationed at a system can detect
-/// and block covert missions. The system's `espionage_rating` provides a
-/// baseline; stationed characters add their espionage skill on top.
-#[must_use]
-pub fn compute_defense_score(
-    world: &GameWorld,
-    target_system: SystemKey,
-    mission_faction: MissionFaction,
-) -> f64 {
-    let Some(sys) = world.systems.get(target_system) else {
-        return 0.0;
-    };
-
-    // Baseline from the system's own counter-intelligence rating.
-    let mut score = f64::from(sys.espionage_rating);
-
-    // Add espionage skill of enemy characters stationed at this system.
-    for (_key, character) in &world.characters {
-        if character.current_system != Some(target_system) {
-            continue;
-        }
-        // Only count characters belonging to the opposing faction.
-        let is_enemy = match mission_faction {
-            MissionFaction::Alliance => character.is_empire,
-            MissionFaction::Empire => character.is_alliance,
-        };
-        if is_enemy {
-            // Use base espionage skill (expected value of the pair).
-            score += f64::from(character.espionage.base);
-        }
-    }
-
-    score
-}
-
-/// Whether the target system is controlled by the mission's faction.
-///
-/// Missions in friendly systems face no counter-intelligence threat.
-#[must_use]
-pub fn is_own_system(world: &GameWorld, target_system: SystemKey, faction: MissionFaction) -> bool {
-    let Some(sys) = world.systems.get(target_system) else {
-        return false;
-    };
-    match sys.control.faction() {
-        Some(crate::dat::Faction::Alliance) => faction == MissionFaction::Alliance,
-        Some(crate::dat::Faction::Empire) => faction == MissionFaction::Empire,
-        _ => false,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1274,6 +1072,42 @@ const GNPRTB_HAN_SOLO_SPEED: u16 = 3083;
 /// Shipped GNPRTB.DAT value of parameter 3083, used only when no GNPRTB
 /// table is loaded.
 const SHIPPED_HAN_SOLO_SPEED: i64 = 50;
+/// GNPRTB 6156..6168 (`FUN_0055bfd0`), each shipped 1: the base skill a
+/// successful member gains.
+const GNPRTB_DIPLOMACY_RAISE: u16 = 6156;
+/// GNPRTB 6157 (`DAT_006bb534`): Espionage's espionage raise.
+const GNPRTB_ESPIONAGE_RAISE: u16 = 6157;
+/// GNPRTB 6160 (`DAT_006bb5a0`): Incite's leadership raise.
+const GNPRTB_INCITE_RAISE: u16 = 6160;
+/// GNPRTB 6161 (`DAT_006bb538`): Subdue's leadership raise.
+const GNPRTB_SUBDUE_RAISE: u16 = 6161;
+/// GNPRTB 6162 (`DAT_006bb55c`): Rescue's combat raise.
+const GNPRTB_RESCUE_RAISE: u16 = 6162;
+/// GNPRTB 6163 (`DAT_006bb574`): Abduction's combat raise.
+const GNPRTB_ABDUCTION_RAISE: u16 = 6163;
+/// GNPRTB 6164 (`DAT_006bb584`): Assassination's combat raise.
+const GNPRTB_ASSASSINATION_RAISE: u16 = 6164;
+/// GNPRTB 6165 (`DAT_006bb58c`): Sabotage's espionage raise.
+const GNPRTB_SABOTAGE_ESPIONAGE_RAISE: u16 = 6165;
+/// GNPRTB 6166 (`DAT_006bb518`): Sabotage's combat raise.
+const GNPRTB_SABOTAGE_COMBAT_RAISE: u16 = 6166;
+/// GNPRTB 6167 (`DAT_006bb5c0`): DS Sabotage's espionage raise.
+const GNPRTB_DS_SABOTAGE_ESPIONAGE_RAISE: u16 = 6167;
+/// GNPRTB 6168 (`DAT_006bb57c`): DS Sabotage's combat raise.
+const GNPRTB_DS_SABOTAGE_COMBAT_RAISE: u16 = 6168;
+/// The shipped value of every skill raise, GNPRTB 6156..6168.
+const SHIPPED_SKILL_RAISE: i64 = 1;
+
+/// A skill raise's GNPRTB value, or the shipped one without a table.
+fn skill_raise(world: &GameWorld, id: u16) -> i32 {
+    i32::try_from(crate::movement::gnprtb_or_shipped(
+        world,
+        id,
+        SHIPPED_SKILL_RAISE,
+    ))
+    .unwrap_or(0)
+}
+
 /// Full support, the Diplomacy end threshold (`DAT_00661a88`, `FUN_00573ee0`).
 const FULL_SUPPORT: i32 = 100;
 
@@ -1547,22 +1381,21 @@ pub(crate) fn running_end_code(
 /// mission.
 pub struct MissionSystem;
 
-/// Draws one mission may take on one tick event: the creation chain's timer,
-/// then the outcome roll, the Subdue Uprising support draw
-/// (`FUN_0055cb10`), and the repeat's timer, then the seed of the detection
-/// draws (`mission_detection`). port: the size of the port's per-mission
-/// window.
-pub const ROLLS_PER_MISSION: usize = 5;
+/// Draws one mission may take on one tick event: the creation chain's timer
+/// and the repeat's timer, then the seed of the mission's stream, which the
+/// detection run and the phase 10 roll draw from. port: the size of the
+/// port's per-mission window.
+pub const ROLLS_PER_MISSION: usize = 3;
 
-/// port: the window slot that seeds the detection draws; the draws before
+/// port: the window slot that seeds the mission's stream; the draws before
 /// it are taken in order.
-const DETECTION_SEED_ROLL: usize = 4;
+const STREAM_SEED_ROLL: usize = 2;
 
 /// One mission's window of rolls for one tick event.
 struct MissionRolls<'a> {
     rolls: &'a [f64],
     next: usize,
-    detection: crate::mission_detection::DetectionRng,
+    stream: crate::mission_detection::MissionRng,
 }
 
 impl MissionRolls<'_> {
@@ -1572,7 +1405,7 @@ impl MissionRolls<'_> {
         let roll = self
             .rolls
             .get(self.next)
-            .filter(|_| self.next < DETECTION_SEED_ROLL)
+            .filter(|_| self.next < STREAM_SEED_ROLL)
             .copied()
             .unwrap_or(0.5);
         self.next += 1;
@@ -1609,6 +1442,9 @@ pub struct MissionAdvance {
 struct StepContext<'a> {
     world: &'a GameWorld,
     uprisings: &'a crate::uprising::UprisingState,
+    /// Every mission as the tick event began, for the uprising incident's
+    /// mission terms.
+    missions: &'a VecDeque<ActiveMission>,
 }
 
 impl MissionSystem {
@@ -1631,7 +1467,6 @@ impl MissionSystem {
         tick_events: &[TickEvent],
         rolls: &[f64],
     ) -> MissionAdvance {
-        let ctx = StepContext { world, uprisings };
         let mut out = MissionAdvance::default();
         let count = state.missions.len();
         for (event_index, event) in tick_events.iter().enumerate() {
@@ -1651,7 +1486,12 @@ impl MissionSystem {
             );
 
             let missions = std::mem::take(&mut state.missions);
-            for (index, mut mission) in missions.into_iter().enumerate() {
+            let ctx = StepContext {
+                world,
+                uprisings,
+                missions: &missions,
+            };
+            for (index, mut mission) in missions.clone().into_iter().enumerate() {
                 // port: the mission's own window (see the RNG contract).
                 let start = (event_index * count + index) * ROLLS_PER_MISSION;
                 let window = rolls
@@ -1660,8 +1500,8 @@ impl MissionSystem {
                 let mut draws = MissionRolls {
                     rolls: window,
                     next: 0,
-                    detection: crate::mission_detection::DetectionRng::seeded(
-                        window.get(DETECTION_SEED_ROLL).copied().unwrap_or(0.5),
+                    stream: crate::mission_detection::MissionRng::seeded(
+                        window.get(STREAM_SEED_ROLL).copied().unwrap_or(0.5),
                         mission.id,
                     ),
                 };
@@ -1799,7 +1639,7 @@ impl MissionSystem {
                 ctx.world,
                 ctx.uprisings,
                 &state.en_route,
-                &mut draws.detection,
+                &mut draws.stream,
                 &mut out.effects,
             );
             // FUN_00522980: every phase but 4 and 8 steps on at once.
@@ -1883,24 +1723,8 @@ impl MissionSystem {
                 mission.timer_due = Some(now + delay);
             }
             PHASE_OUTCOME => {
-                let roll = draws.next();
-                let mut result = Self::resolve_mission(mission, world, now, roll);
-                for effect in &mut result.effects {
-                    if let MissionEffect::UprisingSubdued {
-                        system,
-                        side,
-                        support_gain,
-                    } = effect
-                    {
-                        *support_gain = crate::uprising::subdue_support_gain(
-                            world,
-                            *system,
-                            *side,
-                            draws.next(),
-                        );
-                    }
-                }
-                out.results.push(result);
+                out.results
+                    .push(Self::roll_members(mission, ctx, now, &mut draws.stream));
             }
             PHASE_END => {
                 validate(mission, state);
@@ -1984,235 +1808,286 @@ impl MissionSystem {
         }
     }
 
-    /// Resolve a single completed mission into a `MissionResult`.
-    fn resolve_mission(
+    /// Phase 10 (`FUN_00592f50`): each team character, then each team
+    /// special force (`FUN_00526090`, `FUN_00525e70`), draws `0..99` below
+    /// its chance (slot `+0x274`, [`member_chance`]) and acts on a success
+    /// (slot `+0x27c`); the class's slot `+0x280` then applies the result
+    /// `+0x60` once (`ghidra/notes/mission-lifecycle.md`, "Outcomes").
+    /// Decoys and captives never roll. port: the draws come from the
+    /// mission's seeded stream.
+    fn roll_members(
         mission: &ActiveMission,
-        world: &GameWorld,
-        tick: u64,
-        roll: f64,
+        ctx: &StepContext<'_>,
+        now: u64,
+        stream: &mut crate::mission_detection::MissionRng,
     ) -> MissionResult {
-        let lead = mission.lead_character();
-        let character = lead.and_then(|key| world.characters.get(key));
-        let target_system = world.systems.get(mission.target_system);
-
-        // Compute composite table input per original game formulas (TheArchitect2018 wiki).
-        let target_char = mission
-            .target_character
-            .and_then(|k| world.characters.get(k));
-        let table_input = character.map_or(0, |c| {
-            mission
-                .kind
-                .compute_table_input(c, target_system, mission.faction, target_char)
-        });
-
-        // Compute counter-intelligence inputs for covert missions.
-        let defense_score = compute_defense_score(world, mission.target_system, mission.faction);
-        let own_system = is_own_system(world, mission.target_system, mission.faction);
-
-        let (outcome, effects) = Self::determine_outcome(
-            mission,
-            character,
-            table_input,
-            tick,
-            roll,
-            &world.mission_tables,
-            defense_score,
-            own_system,
-        );
-
+        use crate::uprising::Draws;
+        let world = ctx.world;
+        let side = crate::dat::Faction::from(mission.faction);
+        let target = mission.target_system;
+        let characters = mission
+            .team
+            .iter()
+            .filter(|member| member.character().is_some());
+        let special_forces = mission
+            .team
+            .iter()
+            .filter(|member| member.character().is_none());
+        let members: Vec<MissionMember> = characters
+            .chain(special_forces)
+            .copied()
+            .filter(|&member| member_state(world, member).is_some())
+            .collect();
+        let mut effects = Vec::new();
+        // +0x60: 0 unset, 2 failed, 3 succeeded (FUN_00521880).
+        let mut result = 0_u8;
+        // The target of an in-roll action, once it has been acted on.
+        let mut target_taken = false;
+        // Subdue's view of the target as the successes change it.
+        let mut system = world.systems.get(target).cloned();
+        let mut revolting = ctx.uprisings.is_uprising(target);
+        for member in members {
+            if mission.kind == MissionKind::SubdueUprising && !(system.is_some() && revolting) {
+                // FUN_00569c20 needs the target in an uprising (+0x88 bit 2).
+                continue;
+            }
+            if mission.kind == MissionKind::InciteUprising && system.is_none() {
+                continue;
+            }
+            let chance = member_chance(
+                world,
+                mission.kind,
+                mission.faction,
+                target,
+                mission.target_character,
+                member,
+            );
+            if !stream.chance(chance) {
+                continue;
+            }
+            // Slot +0x1d8 holds for a character (FUN_0040f340) and not for a
+            // special force (FUN_006158b0).
+            let raise = |skill: Skill, id: u16| {
+                member
+                    .character()
+                    .map(|character| MissionEffect::SkillRaised {
+                        character,
+                        skill,
+                        amount: skill_raise(world, id),
+                    })
+            };
+            match mission.kind {
+                // FUN_005740a0.
+                MissionKind::Diplomacy => {
+                    result = 3;
+                    effects.extend(raise(Skill::Diplomacy, GNPRTB_DIPLOMACY_RAISE));
+                }
+                // FUN_00573540: the raise needs a target (FUN_00521070) of
+                // another side.
+                MissionKind::Espionage => {
+                    result = 3;
+                    let foreign = world
+                        .systems
+                        .get(target)
+                        .is_some_and(|sys| crate::uprising::holder(sys) != Some(side));
+                    if foreign {
+                        effects.extend(raise(Skill::Espionage, GNPRTB_ESPIONAGE_RAISE));
+                    }
+                }
+                // FUN_0056b9a0. port: the recruit pick (FUN_0055fc80) and its
+                // leadership raise (G6159) wait for F-019 phase 4b.
+                MissionKind::Recruitment => result = 3,
+                // FUN_0056ae50: the target's slot +0x210 frees it.
+                MissionKind::Rescue => {
+                    result = 3;
+                    effects.extend(raise(Skill::Combat, GNPRTB_RESCUE_RAISE));
+                    if let Some(character) = mission.target_character.filter(|_| !target_taken) {
+                        target_taken = true;
+                        effects.push(MissionEffect::CharacterRescued {
+                            character,
+                            returned_to: mission.faction,
+                            at_system: target,
+                        });
+                    }
+                }
+                // FUN_00576eb0: the target's slot +0x20c takes it prisoner.
+                MissionKind::Abduction => {
+                    result = 3;
+                    effects.extend(raise(Skill::Combat, GNPRTB_ABDUCTION_RAISE));
+                    if let Some(character) = mission.target_character.filter(|_| !target_taken) {
+                        target_taken = true;
+                        effects.push(MissionEffect::CharacterCaptured {
+                            character,
+                            captured_by: mission.faction,
+                            at_system: target,
+                        });
+                    }
+                }
+                // FUN_00576620: slot +0x2ec kills the target; the result and
+                // the raise need it destroyed (+0x50 bit 3). port: the kill
+                // always destroys.
+                MissionKind::Assassination => {
+                    if let Some(character) = mission.target_character {
+                        if !target_taken {
+                            target_taken = true;
+                            effects.push(MissionEffect::CharacterKilled {
+                                character,
+                                faction: mission.faction,
+                            });
+                        }
+                        result = 3;
+                        effects.extend(raise(Skill::Combat, GNPRTB_ASSASSINATION_RAISE));
+                    }
+                }
+                // FUN_00571a60: the uprising incident, then 2 while the
+                // holder keeps a regiment there (FUN_00509020), else 3.
+                // port: its other test, the system's +0x84 bits 2..3 against
+                // the opponent, reads a field no recovered function writes.
+                MissionKind::InciteUprising => {
+                    let event =
+                        crate::uprising::incite_incident(world, ctx.missions, target, now, stream);
+                    let lost: Vec<crate::ids::TroopKey> = event
+                        .iter()
+                        .flat_map(|event| match event {
+                            crate::uprising::UprisingEvent::UprisingIncident { losses, .. } => {
+                                losses.clone()
+                            }
+                            _ => Vec::new(),
+                        })
+                        .filter_map(|loss| match loss {
+                            crate::uprising::IncidentLoss::Regiment(troop) => Some(troop),
+                            _ => None,
+                        })
+                        .collect();
+                    let garrisoned = world.systems.get(target).is_some_and(|sys| {
+                        crate::uprising::holder(sys).is_some_and(|holder| {
+                            sys.ground_units.iter().any(|key| {
+                                !lost.contains(key)
+                                    && world.troops.get(*key).is_some_and(|troop| {
+                                        crate::mission_detection::faction_of(troop.is_alliance)
+                                            == holder
+                                    })
+                            })
+                        })
+                    });
+                    effects.extend(event.map(MissionEffect::UprisingIncident));
+                    result = if garrisoned { 2 } else { 3 };
+                    if result == 3 {
+                        effects.extend(raise(Skill::Leadership, GNPRTB_INCITE_RAISE));
+                    }
+                }
+                // FUN_00569c20: support (FUN_0055cb10, FUN_0050c9f0), then the
+                // end check (FUN_0050c910); 3 once the uprising ended, else 2.
+                MissionKind::SubdueUprising => {
+                    if let Some(sys) = system.as_mut() {
+                        let gain = crate::uprising::mission_support_gain(
+                            world,
+                            sys,
+                            side,
+                            crate::uprising::SupportGain::Subdue,
+                            stream,
+                        );
+                        *sys = crate::uprising::with_support_change(world, sys, side, gain);
+                        effects.push(MissionEffect::UprisingSubdued {
+                            system: target,
+                            side,
+                            support_gain: gain,
+                        });
+                        if crate::uprising::garrison_covers(world, sys) {
+                            revolting = false;
+                        }
+                    }
+                    result = if revolting { 2 } else { 3 };
+                    if result == 3 {
+                        effects.extend(raise(Skill::Leadership, GNPRTB_SUBDUE_RAISE));
+                    }
+                }
+                // FUN_0056a300 and FUN_00574630.
+                MissionKind::Sabotage => {
+                    result = 3;
+                    effects.extend(raise(Skill::Espionage, GNPRTB_SABOTAGE_ESPIONAGE_RAISE));
+                    effects.extend(raise(Skill::Combat, GNPRTB_SABOTAGE_COMBAT_RAISE));
+                }
+                MissionKind::DeathStarSabotage => {
+                    result = 3;
+                    effects.extend(raise(Skill::Espionage, GNPRTB_DS_SABOTAGE_ESPIONAGE_RAISE));
+                    effects.extend(raise(Skill::Combat, GNPRTB_DS_SABOTAGE_COMBAT_RAISE));
+                }
+                MissionKind::Autoscrap => result = 3,
+            }
+        }
+        // Slot +0x280: an unset result fails (FUN_00576700).
+        if result == 0 {
+            result = 2;
+        }
+        if result == 3 {
+            match mission.kind {
+                // FUN_00574120: FUN_0055cac0 support through FUN_0050c9f0.
+                MissionKind::Diplomacy => {
+                    if let Some(sys) = world.systems.get(target) {
+                        let points = crate::uprising::mission_support_gain(
+                            world,
+                            sys,
+                            side,
+                            crate::uprising::SupportGain::Diplomacy,
+                            stream,
+                        );
+                        if points != 0 {
+                            effects.push(MissionEffect::SupportGained {
+                                system: target,
+                                side,
+                                points,
+                            });
+                        }
+                    }
+                }
+                // FUN_00573610: observation level 10 at a system target
+                // (FUN_0050d5a0). port: the port reveals the system; the
+                // counts of FUN_0055c940 are not ported.
+                MissionKind::Espionage => {
+                    if world.systems.contains_key(target) {
+                        effects.push(MissionEffect::SystemIntelligenceGathered {
+                            system: target,
+                            faction: mission.faction,
+                        });
+                    }
+                }
+                // port: interim until F-019 phase 4b ports the recruit pick.
+                MissionKind::Recruitment => {
+                    effects.extend(mission.lead_character().map(|recruiter| {
+                        MissionEffect::CharacterRecruited {
+                            system: target,
+                            recruiter,
+                            faction: mission.faction,
+                        }
+                    }));
+                }
+                // port: interim until F-019 phase 4c ports the target object
+                // that FUN_005746e0 destroys (slot +0xac(6)).
+                MissionKind::Sabotage => effects.push(MissionEffect::FacilitySabotaged {
+                    system: target,
+                    facility_index: 0,
+                    ticks_lost: 10,
+                }),
+                MissionKind::DeathStarSabotage => {
+                    effects.push(MissionEffect::DeathStarSabotaged { ticks_delayed: 50 });
+                }
+                _ => {}
+            }
+        }
         MissionResult {
             mission_id: mission.id,
-            tick,
+            tick: now,
             kind: mission.kind,
             faction: mission.faction,
-            character: lead,
-            target_system: mission.target_system,
-            outcome,
+            character: mission.lead_character(),
+            target_system: target,
+            outcome: if result == 3 {
+                MissionOutcome::Success
+            } else {
+                MissionOutcome::Failure
+            },
             effects,
-        }
-    }
-
-    /// Compute outcome and effects given a pre-rolled value.
-    ///
-    /// Uses MSTB table lookup when available in `world.mission_tables`,
-    /// falls back to quadratic coefficients otherwise. The `table_input` is
-    /// a composite value computed from character skill + game context per the
-    /// original REBEXE.EXE formulas (see `MissionKind::compute_table_input`).
-    ///
-    /// For covert missions, `defense_score` and `own_system` determine the
-    /// foil probability from enemy counter-intelligence. Non-covert missions
-    /// ignore the foil path entirely.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Keep the existing explicit simulation inputs; grouping them changes the API."
-    )]
-    fn determine_outcome(
-        mission: &ActiveMission,
-        character: Option<&Character>,
-        table_input: i32,
-        _tick: u64,
-        roll: f64,
-        mission_tables: &HashMap<String, MstbTable>,
-        defense_score: f64,
-        own_system: bool,
-    ) -> (MissionOutcome, Vec<MissionEffect>) {
-        // Autoscrap always succeeds — no character or probability check needed.
-        if mission.kind == MissionKind::Autoscrap {
-            return (MissionOutcome::Success, Self::build_effects(mission));
-        }
-
-        let skill_score: u32 = character.map_or(0, |c| mission.kind.skill_score(c));
-
-        // Priority 1: MSTB table lookup using composite input (per original game formulas).
-        // Priority 2: quadratic fallback using raw skill_score (rebellion2 Mission.cs).
-        let agent_prob = if let Some(key) = mission.kind.mstb_key() {
-            if let Some(table) = mission_tables.get(key) {
-                let raw = f64::from(table.lookup(table_input));
-                clamp_prob(
-                    raw,
-                    mission.kind.min_success_prob(),
-                    mission.kind.max_success_prob(),
-                )
-            } else {
-                let (a, b, c) = mission.kind.coefficients();
-                let raw = quadratic_prob(f64::from(skill_score), a, b, c);
-                clamp_prob(
-                    raw,
-                    mission.kind.min_success_prob(),
-                    mission.kind.max_success_prob(),
-                )
-            }
-        } else {
-            100.0 // No MSTB key → always succeeds (only Autoscrap, handled above)
-        };
-
-        // Counter-intelligence foil check for covert missions.
-        // From Mission.cs FoilProbability: quadratic formula on defense_score.
-        // Non-covert missions (diplomacy, recruitment, uprising) are never foiled.
-        let foil_pct = if mission.kind.is_covert() {
-            foil_prob(defense_score, own_system)
-        } else {
-            0.0
-        };
-        let success_prob = total_success_prob(agent_prob, foil_pct);
-
-        if roll * 100.0 <= success_prob {
-            let effects = Self::build_effects(mission);
-            (MissionOutcome::Success, effects)
-        } else if mission.kind.is_covert() && foil_pct > 0.0 {
-            // The mission was foiled by enemy counter-intelligence.
-            // Distinguish from plain failure: if the agent would have succeeded
-            // without foil interference (roll <= agent_prob), it was specifically
-            // the counter-intel that blocked it.
-            if roll * 100.0 <= agent_prob {
-                (MissionOutcome::Foiled, Vec::new())
-            } else {
-                (MissionOutcome::Failure, Vec::new())
-            }
-        } else {
-            (MissionOutcome::Failure, Vec::new())
-        }
-    }
-
-    /// Build the world-state effects for a successful mission.
-    ///
-    /// Conservative defaults for War Machine types: the caller is expected to
-    /// apply these effects to `GameWorld` and may override the values based on
-    /// additional game state (e.g. facility selection for Sabotage).
-    fn build_effects(mission: &ActiveMission) -> Vec<MissionEffect> {
-        match mission.kind {
-            MissionKind::Diplomacy => {
-                vec![MissionEffect::PopularityShifted {
-                    system: mission.target_system,
-                    faction: mission.faction,
-                    // rebellion2 uses +1 on a 0–100 integer scale → +0.01 on our f32 [0,1]
-                    delta: 0.01,
-                }]
-            }
-            MissionKind::Recruitment => mission
-                .lead_character()
-                .map(|recruiter| MissionEffect::CharacterRecruited {
-                    system: mission.target_system,
-                    recruiter,
-                    faction: mission.faction,
-                })
-                .into_iter()
-                .collect(),
-            MissionKind::Sabotage => {
-                // Target facility index 0 as default — callers should select the
-                // specific facility based on game state before dispatching.
-                vec![MissionEffect::FacilitySabotaged {
-                    system: mission.target_system,
-                    facility_index: 0,
-                    // ~10 ticks of production lost per successful sabotage.
-                    ticks_lost: 10,
-                }]
-            }
-            MissionKind::Assassination => {
-                if let Some(target) = mission.target_character {
-                    vec![MissionEffect::CharacterKilled {
-                        character: target,
-                        faction: mission.faction,
-                    }]
-                } else {
-                    vec![] // No target specified — no effect
-                }
-            }
-            MissionKind::Espionage => {
-                vec![MissionEffect::SystemIntelligenceGathered {
-                    system: mission.target_system,
-                    faction: mission.faction,
-                }]
-            }
-            MissionKind::Rescue => {
-                if let Some(target) = mission.target_character {
-                    vec![MissionEffect::CharacterRescued {
-                        character: target,
-                        returned_to: mission.faction,
-                        at_system: mission.target_system,
-                    }]
-                } else {
-                    vec![]
-                }
-            }
-            MissionKind::Abduction => {
-                if let Some(target) = mission.target_character {
-                    let captured_by = mission.faction;
-                    vec![MissionEffect::CharacterCaptured {
-                        character: target,
-                        captured_by,
-                        at_system: mission.target_system,
-                    }]
-                } else {
-                    vec![]
-                }
-            }
-            MissionKind::InciteUprising => {
-                vec![MissionEffect::UprisingStarted {
-                    system: mission.target_system,
-                    // +0.05 popularity delta: more impactful than diplomacy (+0.01).
-                    popularity_delta: 0.05,
-                }]
-            }
-            MissionKind::SubdueUprising => {
-                vec![MissionEffect::UprisingSubdued {
-                    system: mission.target_system,
-                    side: mission.faction.into(),
-                    // MissionSystem::advance draws the gain.
-                    support_gain: 0,
-                }]
-            }
-            MissionKind::DeathStarSabotage => {
-                vec![MissionEffect::DeathStarSabotaged {
-                    // Delay construction by ~50 ticks (significant setback).
-                    ticks_delayed: 50,
-                }]
-            }
-            MissionKind::Autoscrap => {
-                // Autoscrap has no world-state effects — the actual unit removal
-                // is handled outside the mission system.
-                Vec::new()
-            }
         }
     }
 
@@ -2261,60 +2136,9 @@ impl MissionSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ids::{CharacterKey, SectorKey, SystemKey};
+    use crate::ids::{CharacterKey, SystemKey};
     use crate::uprising::UprisingState;
     use crate::world::{Character, GameWorld, SkillPair};
-
-    // --- Probability formula tests ---
-
-    #[test]
-    fn quadratic_prob_at_zero_score_equals_constant() {
-        let (a, b, c) = MissionKind::Diplomacy.coefficients();
-        let p = quadratic_prob(0.0, a, b, c);
-        assert!((p - c).abs() < 1e-9, "expected {c}, got {p}");
-    }
-
-    #[test]
-    fn quadratic_prob_diplomacy_at_max_skill() {
-        // Max skill score is 100 (u32 base) — should be near 100%.
-        let (a, b, c) = MissionKind::Diplomacy.coefficients();
-        let p = quadratic_prob(100.0, a, b, c);
-        let clamped = clamp_prob(p, 1.0, 100.0);
-        assert!(
-            clamped >= 90.0,
-            "expected high probability at max skill, got {clamped}"
-        );
-    }
-
-    #[test]
-    fn total_success_prob_no_foil() {
-        // With 0% foil, total == agent prob.
-        let total = total_success_prob(75.0, 0.0);
-        assert!((total - 75.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn total_success_prob_full_foil() {
-        // With 100% foil, total == 0%.
-        let total = total_success_prob(75.0, 100.0);
-        assert!(total.abs() < 1e-9);
-    }
-
-    #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "Friendly systems must return exactly zero, not an approximation."
-    )]
-    fn foil_prob_own_system_is_zero() {
-        assert_eq!(foil_prob(99.0, true), 0.0);
-    }
-
-    #[test]
-    fn foil_prob_enemy_system_increases_with_defense() {
-        let low = foil_prob(0.0, false);
-        let high = foil_prob(50.0, false);
-        assert!(high > low, "expected foil to increase with defense score");
-    }
 
     #[test]
     fn a_kind_with_no_record_times_its_mission_from_the_port_range() {
@@ -2335,51 +2159,6 @@ mod tests {
             step(&mut state, &world, 1, &[roll]);
             assert_eq!(state.missions()[0].timer_due, Some(due), "roll {roll}");
         }
-    }
-
-    // --- is_covert classification ---
-
-    #[test]
-    fn covert_missions_classified_correctly() {
-        assert!(MissionKind::Sabotage.is_covert());
-        assert!(MissionKind::Assassination.is_covert());
-        assert!(MissionKind::Espionage.is_covert());
-        assert!(MissionKind::Rescue.is_covert());
-        assert!(MissionKind::Abduction.is_covert());
-        assert!(MissionKind::DeathStarSabotage.is_covert());
-    }
-
-    #[test]
-    fn non_covert_missions_classified_correctly() {
-        assert!(!MissionKind::Diplomacy.is_covert());
-        assert!(!MissionKind::Recruitment.is_covert());
-        assert!(!MissionKind::InciteUprising.is_covert());
-        assert!(!MissionKind::SubdueUprising.is_covert());
-        assert!(!MissionKind::Autoscrap.is_covert());
-    }
-
-    // --- Counter-intelligence integration ---
-
-    #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "An empty defense must produce exactly zero."
-    )]
-    fn defense_score_zero_with_no_enemies() {
-        let world = GameWorld::default();
-        let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let sys_key = sys_sm.insert(());
-        // System not in world → score is 0.
-        let score = compute_defense_score(&world, sys_key, MissionFaction::Alliance);
-        assert_eq!(score, 0.0);
-    }
-
-    #[test]
-    fn own_system_returns_false_for_missing_system() {
-        let world = GameWorld::default();
-        let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let sys_key = sys_sm.insert(());
-        assert!(!is_own_system(&world, sys_key, MissionFaction::Alliance));
     }
 
     // --- MissionState tests ---
@@ -2564,85 +2343,6 @@ mod tests {
     }
 
     #[test]
-    fn diplomacy_success_emits_popularity_effect() {
-        let mut world = minimal_world();
-        let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let system = sys_sm.insert(());
-        let character = character_with_diplomacy(&mut world, 90);
-
-        let mut state = MissionState::new();
-        state.missions.push_back(ActiveMission::timed(
-            0,
-            MissionKind::Diplomacy,
-            MissionFaction::Alliance,
-            vec![MissionMember::Character(character)],
-            system,
-            1,
-        ));
-        state.next_id = 1;
-
-        let results = MissionSystem::advance(
-            &mut state,
-            &world,
-            &UprisingState::default(),
-            &[TickEvent { tick: 1 }],
-            &[0.0], // guaranteed success
-        )
-        .results;
-        assert_eq!(results[0].outcome, MissionOutcome::Success);
-        // PopularityShifted only; the release comes with the mission's end.
-        assert_eq!(results[0].effects.len(), 1);
-        match &results[0].effects[0] {
-            MissionEffect::PopularityShifted { faction, delta, .. } => {
-                assert_eq!(*faction, MissionFaction::Alliance);
-                assert!((delta - 0.01).abs() < 1e-6);
-            }
-            _ => panic!("expected PopularityShifted"),
-        }
-    }
-
-    #[test]
-    fn recruitment_success_emits_recruit_effect() {
-        let mut world = minimal_world();
-        let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let system = sys_sm.insert(());
-        let character = world.characters.insert(Character {
-            name: "Leader".into(),
-            is_alliance: true,
-            leadership: skill_pair(80),
-            can_be_commander: true,
-            ..Default::default()
-        });
-
-        let mut state = MissionState::new();
-        state.missions.push_back(ActiveMission::timed(
-            0,
-            MissionKind::Recruitment,
-            MissionFaction::Empire,
-            vec![MissionMember::Character(character)],
-            system,
-            1,
-        ));
-        state.next_id = 1;
-
-        let results = MissionSystem::advance(
-            &mut state,
-            &world,
-            &UprisingState::default(),
-            &[TickEvent { tick: 5 }],
-            &[0.0], // guaranteed success
-        )
-        .results;
-        assert_eq!(results[0].outcome, MissionOutcome::Success);
-        match &results[0].effects[0] {
-            MissionEffect::CharacterRecruited { faction, .. } => {
-                assert_eq!(*faction, MissionFaction::Empire);
-            }
-            _ => panic!("expected CharacterRecruited"),
-        }
-    }
-
-    #[test]
     fn multiple_missions_resolve_independently() {
         let mut world = minimal_world();
         let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
@@ -2714,183 +2414,6 @@ mod tests {
         .results;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].outcome, MissionOutcome::Success);
-    }
-
-    #[test]
-    fn sabotage_success_emits_facility_sabotaged() {
-        let mut world = minimal_world();
-        let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let system = sys_sm.insert(());
-        let character = world.characters.insert(Character {
-            name: "Spy".into(),
-            is_alliance: true,
-            espionage: skill_pair(80), // high espionage
-            can_be_commander: true,
-            ..Default::default()
-        });
-
-        let mut state = MissionState::new();
-        state.missions.push_back(ActiveMission::timed(
-            0,
-            MissionKind::Sabotage,
-            MissionFaction::Alliance,
-            vec![MissionMember::Character(character)],
-            system,
-            1,
-        ));
-        state.next_id = 1;
-
-        let results = MissionSystem::advance(
-            &mut state,
-            &world,
-            &UprisingState::default(),
-            &[TickEvent { tick: 1 }],
-            &[0.0], // guaranteed success
-        )
-        .results;
-        assert_eq!(results[0].outcome, MissionOutcome::Success);
-        assert!(results[0]
-            .effects
-            .iter()
-            .any(|e| matches!(e, MissionEffect::FacilitySabotaged { .. })));
-    }
-
-    #[test]
-    fn incite_uprising_success_emits_uprising_started() {
-        let mut world = minimal_world();
-        let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let system = sys_sm.insert(());
-        let character = world.characters.insert(Character {
-            name: "Agitator".into(),
-            is_alliance: true,
-            diplomacy: skill_pair(70),
-            can_be_commander: true,
-            ..Default::default()
-        });
-
-        let mut state = MissionState::new();
-        state.missions.push_back(ActiveMission::timed(
-            0,
-            MissionKind::InciteUprising,
-            MissionFaction::Alliance,
-            vec![MissionMember::Character(character)],
-            system,
-            1,
-        ));
-        state.next_id = 1;
-
-        let results = MissionSystem::advance(
-            &mut state,
-            &world,
-            &UprisingState::default(),
-            &[TickEvent { tick: 1 }],
-            &[0.0],
-        )
-        .results;
-        assert_eq!(results[0].outcome, MissionOutcome::Success);
-        assert!(results[0]
-            .effects
-            .iter()
-            .any(|e| matches!(e, MissionEffect::UprisingStarted { .. })));
-    }
-
-    #[test]
-    fn mstb_table_lookup_used_when_populated() {
-        use crate::world::{MstbEntry, MstbTable};
-
-        let mut world = minimal_world();
-        let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let system = sys_sm.insert(());
-        let character = world.characters.insert(Character {
-            name: "Diplomat".into(),
-            is_alliance: true,
-            diplomacy: skill_pair(50), // score = 50 → threshold delta = 0 → table midpoint
-            can_be_commander: true,
-            ..Default::default()
-        });
-
-        // Install a minimal DIPLMSTB table: two entries, threshold 0 = value 99.
-        // With score=50 → delta=0 → table lookup returns 99 → guaranteed success.
-        let table = MstbTable::new(vec![
-            MstbEntry {
-                threshold: -50,
-                value: 1,
-            },
-            MstbEntry {
-                threshold: 0,
-                value: 99,
-            },
-            MstbEntry {
-                threshold: 50,
-                value: 100,
-            },
-        ]);
-        world.mission_tables.insert("DIPLMSTB".to_string(), table);
-
-        let mut state = MissionState::new();
-        state.missions.push_back(ActiveMission::timed(
-            0,
-            MissionKind::Diplomacy,
-            MissionFaction::Alliance,
-            vec![MissionMember::Character(character)],
-            system,
-            1,
-        ));
-        state.next_id = 1;
-
-        // roll = 0.98 → 98% < 99% success → should succeed via MSTB table
-        let results = MissionSystem::advance(
-            &mut state,
-            &world,
-            &UprisingState::default(),
-            &[TickEvent { tick: 1 }],
-            &[0.98],
-        )
-        .results;
-        assert_eq!(
-            results[0].outcome,
-            MissionOutcome::Success,
-            "MSTB table lookup should yield ~99% success at skill=50"
-        );
-    }
-
-    #[test]
-    fn espionage_success_emits_intelligence_gathered() {
-        let mut world = minimal_world();
-        let mut sys_sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
-        let system = sys_sm.insert(());
-        let character = world.characters.insert(Character {
-            name: "Intel".into(),
-            is_alliance: true,
-            espionage: skill_pair(75),
-            can_be_commander: true,
-            ..Default::default()
-        });
-
-        let mut state = MissionState::new();
-        state.missions.push_back(ActiveMission::timed(
-            0,
-            MissionKind::Espionage,
-            MissionFaction::Alliance,
-            vec![MissionMember::Character(character)],
-            system,
-            1,
-        ));
-        state.next_id = 1;
-
-        let results = MissionSystem::advance(
-            &mut state,
-            &world,
-            &UprisingState::default(),
-            &[TickEvent { tick: 1 }],
-            &[0.0],
-        )
-        .results;
-        assert_eq!(results[0].outcome, MissionOutcome::Success);
-        assert!(results[0]
-            .effects
-            .iter()
-            .any(|e| matches!(e, MissionEffect::SystemIntelligenceGathered { .. })));
     }
 
     #[test]
@@ -3590,7 +3113,487 @@ mod tests {
         assert!(!world.characters[lead].on_mission);
     }
 
-    // --- P0 formula correction tests ---
+    // --- Phase 10: the per-member roll (FUN_00592f50) ---
+
+    /// A table whose every row is `percent`.
+    fn always(world: &mut GameWorld, kind: MissionKind, percent: u32) {
+        world.mission_tables.insert(
+            kind.mstb_key().unwrap().to_string(),
+            crate::world::MstbTable::new(vec![crate::world::MstbEntry {
+                threshold: 0,
+                value: percent,
+            }]),
+        );
+    }
+
+    /// Run phase 10 of a `kind` mission by `team` at `target` on day 1.
+    fn phase_ten(
+        world: &GameWorld,
+        kind: MissionKind,
+        team: Vec<MissionMember>,
+        target: SystemKey,
+        target_character: Option<CharacterKey>,
+    ) -> MissionResult {
+        let mut mission = ActiveMission::timed(0, kind, MissionFaction::Alliance, team, target, 1);
+        mission.target_character = target_character;
+        let mut state = MissionState::new();
+        state.push_timed(mission);
+        step(&mut state, world, 1, &[]).results.remove(0)
+    }
+
+    fn raised(result: &MissionResult) -> Vec<(CharacterKey, Skill, i32)> {
+        result
+            .effects
+            .iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::SkillRaised {
+                    character,
+                    skill,
+                    amount,
+                } => Some((*character, *skill, *amount)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn held_by(world: &mut GameWorld, system: SystemKey, side: crate::dat::Faction) {
+        world.systems[system].control = crate::world::ControlKind::Controlled(side);
+    }
+
+    #[test]
+    fn every_team_character_rolls_and_a_success_raises_its_skill_by_gnprtb() {
+        // FUN_00592f50 rolls each team character, then each team special
+        // force; decoys never roll. FUN_005740a0 raises diplomacy by GNPRTB
+        // 6156 (shipped 1) through slot +0x1d8, which a special force lacks
+        // (FUN_006158b0).
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Diplomacy, 100);
+        let first = agent_at(&mut world, here, true);
+        let second = agent_at(&mut world, here, true);
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x1400_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: true,
+        });
+        let team = vec![
+            MissionMember::SpecialForce(unit),
+            MissionMember::Character(first),
+            MissionMember::Character(second),
+        ];
+
+        let result = phase_ten(&world, MissionKind::Diplomacy, team, here, None);
+
+        assert_eq!(result.outcome, MissionOutcome::Success);
+        assert_eq!(
+            raised(&result),
+            vec![(first, Skill::Diplomacy, 1), (second, Skill::Diplomacy, 1)]
+        );
+    }
+
+    #[test]
+    fn a_failed_roll_leaves_the_result_failed_and_changes_nothing() {
+        // Slot +0x280 (FUN_00576700) turns an unset result into 2.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Diplomacy, 0);
+        let envoy = MissionMember::Character(agent_at(&mut world, here, true));
+
+        let result = phase_ten(&world, MissionKind::Diplomacy, vec![envoy], here, None);
+
+        assert_eq!(result.outcome, MissionOutcome::Failure);
+        assert!(result.effects.is_empty());
+    }
+
+    #[test]
+    fn diplomacy_wins_support_at_its_side_s_or_a_neutral_system_but_not_the_opponent_s() {
+        // FUN_00574120 -> FUN_0055cac0: G6183 + rand(0..=G6184) at home,
+        // G6185 + rand(0..=G6186) at a neutral system (side 3,
+        // FUN_004f8c60), 0 at a system the opponent holds.
+        let mut world = minimal_world();
+        world.gnprtb =
+            crate::world::GnprtbParams::uniform(&[(6183, 4), (6184, 0), (6185, 2), (6186, 0)]);
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Diplomacy, 100);
+        let envoy = MissionMember::Character(agent_at(&mut world, here, true));
+        let support = |result: &MissionResult| {
+            result
+                .effects
+                .iter()
+                .filter(|effect| matches!(effect, MissionEffect::SupportGained { .. }))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        held_by(&mut world, here, crate::dat::Faction::Alliance);
+        let home = phase_ten(&world, MissionKind::Diplomacy, vec![envoy], here, None);
+        held_by(&mut world, here, crate::dat::Faction::Empire);
+        let away = phase_ten(&world, MissionKind::Diplomacy, vec![envoy], here, None);
+        world.systems[here].control = crate::world::ControlKind::Uncontrolled;
+        let neutral = phase_ten(&world, MissionKind::Diplomacy, vec![envoy], here, None);
+
+        assert_eq!(
+            support(&home),
+            vec![MissionEffect::SupportGained {
+                system: here,
+                side: crate::dat::Faction::Alliance,
+                points: 4,
+            }]
+        );
+        assert!(support(&away).is_empty());
+        assert_eq!(
+            support(&neutral),
+            vec![MissionEffect::SupportGained {
+                system: here,
+                side: crate::dat::Faction::Alliance,
+                points: 2,
+            }]
+        );
+        assert_eq!(away.outcome, MissionOutcome::Success);
+    }
+
+    #[test]
+    fn espionage_raises_espionage_only_at_a_system_its_side_does_not_hold() {
+        // FUN_00573540: the raise needs a target of another side; FUN_00573610
+        // raises observation at a system target either way.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Espionage, 100);
+        let spy = agent_at(&mut world, here, true);
+
+        held_by(&mut world, here, crate::dat::Faction::Alliance);
+        let home = phase_ten(
+            &world,
+            MissionKind::Espionage,
+            vec![MissionMember::Character(spy)],
+            here,
+            None,
+        );
+        world.systems[here].control = crate::world::ControlKind::Uncontrolled;
+        let away = phase_ten(
+            &world,
+            MissionKind::Espionage,
+            vec![MissionMember::Character(spy)],
+            here,
+            None,
+        );
+
+        assert!(raised(&home).is_empty());
+        assert_eq!(raised(&away), vec![(spy, Skill::Espionage, 1)]);
+        for result in [&home, &away] {
+            assert!(result
+                .effects
+                .contains(&MissionEffect::SystemIntelligenceGathered {
+                    system: here,
+                    faction: MissionFaction::Alliance,
+                }));
+        }
+    }
+
+    #[test]
+    fn a_rescue_frees_its_target_once_and_raises_each_successful_member() {
+        // FUN_0056ae50: each success raises combat (G6162) and calls the
+        // target's slot +0x210; the port frees it once.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Rescue, 100);
+        let (a, b) = (
+            agent_at(&mut world, here, true),
+            agent_at(&mut world, here, true),
+        );
+        let prisoner = agent_at(&mut world, here, true);
+        world.characters[prisoner].is_captive = true;
+        let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
+
+        let result = phase_ten(&world, MissionKind::Rescue, team, here, Some(prisoner));
+
+        let freed = result
+            .effects
+            .iter()
+            .filter(|effect| matches!(effect, MissionEffect::CharacterRescued { .. }))
+            .count();
+        assert_eq!(freed, 1);
+        assert_eq!(
+            raised(&result),
+            vec![(a, Skill::Combat, 1), (b, Skill::Combat, 1)]
+        );
+    }
+
+    #[test]
+    fn an_abduction_takes_its_target_prisoner_for_the_mission_s_side() {
+        // FUN_00576eb0: the target's slot +0x20c with the member as captor.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Abduction, 100);
+        let agent = agent_at(&mut world, here, true);
+        let target = agent_at(&mut world, here, false);
+
+        let result = phase_ten(
+            &world,
+            MissionKind::Abduction,
+            vec![MissionMember::Character(agent)],
+            here,
+            Some(target),
+        );
+
+        assert_eq!(
+            result.effects,
+            vec![
+                MissionEffect::SkillRaised {
+                    character: agent,
+                    skill: Skill::Combat,
+                    amount: 1
+                },
+                MissionEffect::CharacterCaptured {
+                    character: target,
+                    captured_by: MissionFaction::Alliance,
+                    at_system: here,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn an_assassination_kills_its_target_once_and_raises_every_successful_member() {
+        // FUN_00576620: slot +0x2ec kills; with the target destroyed each
+        // success sets 3 and raises combat (G6164).
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Assassination, 100);
+        let (a, b) = (
+            agent_at(&mut world, here, true),
+            agent_at(&mut world, here, true),
+        );
+        let target = agent_at(&mut world, here, false);
+        let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
+
+        let result = phase_ten(&world, MissionKind::Assassination, team, here, Some(target));
+
+        let kills = result
+            .effects
+            .iter()
+            .filter(|effect| matches!(effect, MissionEffect::CharacterKilled { .. }))
+            .count();
+        assert_eq!(kills, 1);
+        assert_eq!(
+            raised(&result),
+            vec![(a, Skill::Combat, 1), (b, Skill::Combat, 1)]
+        );
+        assert_eq!(result.outcome, MissionOutcome::Success);
+    }
+
+    #[test]
+    fn an_incite_success_runs_the_incident_and_fails_while_the_holder_keeps_a_regiment() {
+        // FUN_00571a60: FUN_0050d030 runs, then the result is 2 while the
+        // holder has a regiment there (FUN_00509020), else 3 with a
+        // leadership raise (G6160).
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        held_by(&mut world, here, crate::dat::Faction::Empire);
+        always(&mut world, MissionKind::InciteUprising, 100);
+        let agitator = agent_at(&mut world, here, true);
+        let team = || vec![MissionMember::Character(agitator)];
+        let incidents = |result: &MissionResult| {
+            result
+                .effects
+                .iter()
+                .filter(|effect| matches!(effect, MissionEffect::UprisingIncident(_)))
+                .count()
+        };
+
+        let open = phase_ten(&world, MissionKind::InciteUprising, team(), here, None);
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: crate::ids::DatId::new(0x1000_0007),
+            is_alliance: false,
+            regiment_strength: 1,
+        });
+        world.systems[here].ground_units.push(troop);
+        let garrisoned = phase_ten(&world, MissionKind::InciteUprising, team(), here, None);
+
+        assert_eq!(open.outcome, MissionOutcome::Success);
+        assert_eq!(raised(&open), vec![(agitator, Skill::Leadership, 1)]);
+        assert_eq!(garrisoned.outcome, MissionOutcome::Failure);
+        assert!(raised(&garrisoned).is_empty());
+        assert_eq!((incidents(&open), incidents(&garrisoned)), (1, 1));
+    }
+
+    #[test]
+    fn a_subdue_member_rolls_only_during_an_uprising_and_succeeds_once_it_ends() {
+        // FUN_00569c20: nothing without the uprising bit (+0x88 bit 2); a
+        // success adds FUN_0055cb10 support, runs FUN_0050c910, and sets 3
+        // only once the uprising ended.
+        let mut world = minimal_world();
+        world.gnprtb =
+            crate::world::GnprtbParams::uniform(&[(6187, 1), (6188, 0), (7761, 60), (7762, -10)]);
+        let here = system_at(&mut world, 0);
+        held_by(&mut world, here, crate::dat::Faction::Alliance);
+        world.systems[here].popularity_alliance = 0.3;
+        world.systems[here].popularity_empire = 0.7;
+        always(&mut world, MissionKind::SubdueUprising, 100);
+        let governor = agent_at(&mut world, here, true);
+        let run = |world: &GameWorld, uprisings: &UprisingState| {
+            let mut state = MissionState::new();
+            state.push_timed(ActiveMission::timed(
+                0,
+                MissionKind::SubdueUprising,
+                MissionFaction::Alliance,
+                vec![MissionMember::Character(governor)],
+                here,
+                1,
+            ));
+            MissionSystem::advance(&mut state, world, uprisings, &[TickEvent { tick: 1 }], &[])
+                .results
+                .remove(0)
+        };
+        let calm = UprisingState::default();
+        let mut revolt = UprisingState::default();
+        revolt.active_uprisings.insert(
+            here,
+            crate::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+            },
+        );
+
+        let quiet = run(&world, &calm);
+        let unended = run(&world, &revolt);
+        for _ in 0..3 {
+            let troop = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: crate::ids::DatId::new(0x1000_0001),
+                is_alliance: true,
+                regiment_strength: 1,
+            });
+            world.systems[here].ground_units.push(troop);
+        }
+        let ended = run(&world, &revolt);
+
+        assert!(quiet.effects.is_empty());
+        assert_eq!(quiet.outcome, MissionOutcome::Failure);
+        assert_eq!(unended.outcome, MissionOutcome::Failure);
+        assert_eq!(
+            unended.effects,
+            vec![MissionEffect::UprisingSubdued {
+                system: here,
+                side: crate::dat::Faction::Alliance,
+                support_gain: 1,
+            }]
+        );
+        assert_eq!(ended.outcome, MissionOutcome::Success);
+        assert_eq!(raised(&ended), vec![(governor, Skill::Leadership, 1)]);
+    }
+
+    #[test]
+    fn an_incite_whose_incident_destroys_the_holder_s_last_regiment_succeeds() {
+        // FUN_00571a60 tests the holder's regiments after FUN_0050d030: here
+        // UPRIS1TB gives code 2 (FUN_0050d150 destroys a regiment), so none
+        // is left and the result is 3.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        held_by(&mut world, here, crate::dat::Faction::Empire);
+        always(&mut world, MissionKind::InciteUprising, 100);
+        world.mission_tables.insert(
+            "UPRIS1TB".into(),
+            crate::world::MstbTable::new(vec![crate::world::MstbEntry {
+                threshold: i32::MIN,
+                value: 2,
+            }]),
+        );
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: crate::ids::DatId::new(0x1000_0007),
+            is_alliance: false,
+            regiment_strength: 1,
+        });
+        world.systems[here].ground_units.push(troop);
+        let agitator = agent_at(&mut world, here, true);
+
+        let result = phase_ten(
+            &world,
+            MissionKind::InciteUprising,
+            vec![MissionMember::Character(agitator)],
+            here,
+            None,
+        );
+
+        assert_eq!(result.outcome, MissionOutcome::Success);
+        assert!(result.effects.iter().any(|effect| matches!(
+            effect,
+            MissionEffect::UprisingIncident(crate::uprising::UprisingEvent::UprisingIncident {
+                losses,
+                ..
+            }) if losses == &[crate::uprising::IncidentLoss::Regiment(troop)]
+        )));
+    }
+
+    #[test]
+    fn both_sabotages_raise_espionage_and_combat_by_their_own_gnprtb() {
+        // FUN_0056a300: G6165 and G6166; FUN_00574630: G6167 and G6168.
+        let mut world = minimal_world();
+        world.gnprtb =
+            crate::world::GnprtbParams::uniform(&[(6165, 2), (6166, 3), (6167, 4), (6168, 5)]);
+        let here = system_at(&mut world, 0);
+        let saboteur = agent_at(&mut world, here, true);
+        let mut raises = Vec::new();
+        for kind in [MissionKind::Sabotage, MissionKind::DeathStarSabotage] {
+            always(&mut world, kind, 100);
+            let team = vec![MissionMember::Character(saboteur)];
+            raises.push(raised(&phase_ten(&world, kind, team, here, None)));
+        }
+
+        assert_eq!(
+            raises,
+            vec![
+                vec![
+                    (saboteur, Skill::Espionage, 2),
+                    (saboteur, Skill::Combat, 3)
+                ],
+                vec![
+                    (saboteur, Skill::Espionage, 4),
+                    (saboteur, Skill::Combat, 5)
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn a_raise_reads_its_gnprtb_value_and_adds_to_the_base_skill() {
+        // FUN_005740a0 adds GNPRTB 6156 to the base diplomacy (+0x58) through
+        // FUN_00533e20.
+        let mut world = minimal_world();
+        world.gnprtb = crate::world::GnprtbParams::uniform(&[(6156, 3)]);
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Diplomacy, 100);
+        let envoy = agent_at(&mut world, here, true);
+        world.characters[envoy].diplomacy = skill_pair(40);
+
+        let result = phase_ten(
+            &world,
+            MissionKind::Diplomacy,
+            vec![MissionMember::Character(envoy)],
+            here,
+            None,
+        );
+        assert_eq!(raised(&result), vec![(envoy, Skill::Diplomacy, 3)]);
+        raise_skill(&mut world, envoy, Skill::Diplomacy, 3);
+
+        assert_eq!(world.characters[envoy].diplomacy.base, 43);
+    }
+
+    // --- Slot +0x274, the phase 10 chance ---
+
+    /// A table whose row `t` holds `t + 200`, so the chance reads back its
+    /// input.
+    fn echo_table(world: &mut GameWorld, name: &str) {
+        let rows = (-200..=200)
+            .map(|threshold| crate::world::MstbEntry {
+                threshold,
+                value: u32::try_from(threshold + 200).unwrap(),
+            })
+            .collect();
+        world
+            .mission_tables
+            .insert(name.to_string(), crate::world::MstbTable::new(rows));
+    }
 
     fn character_with_skills(
         world: &mut GameWorld,
@@ -3598,189 +3601,120 @@ mod tests {
         combat: u32,
         diplomacy: u32,
         leadership: u32,
-        loyalty: u32,
-    ) -> CharacterKey {
-        world.characters.insert(Character {
+    ) -> MissionMember {
+        MissionMember::Character(world.characters.insert(Character {
             name: "Agent".into(),
             is_alliance: true,
             diplomacy: skill_pair(diplomacy),
             espionage: skill_pair(espionage),
             combat: skill_pair(combat),
             leadership: skill_pair(leadership),
-            loyalty: skill_pair(loyalty),
             can_be_commander: true,
             ..Default::default()
-        })
+        }))
     }
 
     #[test]
-    fn sabotage_uses_composite_espionage_and_combat() {
-        let mut world = GameWorld::default();
-        let key = character_with_skills(&mut world, 60, 40, 0, 0, 0);
-        let character = world.characters.get(key).unwrap();
-        let input = MissionKind::Sabotage.compute_table_input(
-            character,
-            None,
-            MissionFaction::Alliance,
-            None,
-        );
-        // (60 + 40) / 2 = 50
-        assert_eq!(input, 50, "sabotage should use (espionage + combat) / 2");
+    fn each_class_reads_its_recovered_table_input() {
+        // Slot +0x274 per class (decoy-roll.md, "The success roll"): an
+        // Empire-held system at 60 Empire support with two Stormtrooper
+        // regiments (FUN_005091f0) against an Alliance member.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        world.systems[here].popularity_empire = 0.6;
+        world.systems[here].popularity_alliance = 0.4;
+        world.systems[here].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        for _ in 0..2 {
+            let troop = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: crate::ids::DatId::new(0x1000_0006),
+                is_alliance: false,
+                regiment_strength: 1,
+            });
+            world.systems[here].ground_units.push(troop);
+        }
+        for kind in [
+            MissionKind::Diplomacy,
+            MissionKind::Espionage,
+            MissionKind::Rescue,
+            MissionKind::Sabotage,
+            MissionKind::DeathStarSabotage,
+            MissionKind::Recruitment,
+            MissionKind::InciteUprising,
+            MissionKind::SubdueUprising,
+            MissionKind::Abduction,
+            MissionKind::Assassination,
+        ] {
+            echo_table(&mut world, kind.mstb_key().unwrap());
+        }
+        let agent = character_with_skills(&mut world, 60, 40, 80, 70);
+        let target = character_with_skills(&mut world, 0, 25, 0, 0).character();
+        let chance =
+            |kind| member_chance(&world, kind, MissionFaction::Alliance, here, target, agent) - 200;
+
+        // FUN_0055c680: (stormtroopers - opposing support) + diplomacy.
+        assert_eq!(chance(MissionKind::Diplomacy), 2 - 60 + 80);
+        assert_eq!(chance(MissionKind::Espionage), 60);
+        assert_eq!(chance(MissionKind::Rescue), 40);
+        // FUN_0055c890 / FUN_0055c8d0: (espionage + combat) / 2.
+        assert_eq!(chance(MissionKind::Sabotage), 50);
+        assert_eq!(chance(MissionKind::DeathStarSabotage), 50);
+        // FUN_0055c700: leadership - opposing support.
+        assert_eq!(chance(MissionKind::Recruitment), 70 - 60);
+        // FUN_0055c740: (leadership - opposing support) - stormtroopers.
+        assert_eq!(chance(MissionKind::InciteUprising), 70 - 60 - 2);
+        // FUN_0055c780: (stormtroopers - opposing support) + leadership.
+        assert_eq!(chance(MissionKind::SubdueUprising), 2 - 60 + 70);
+        // FUN_0055c810 / FUN_0055c850: combat - target combat.
+        assert_eq!(chance(MissionKind::Abduction), 40 - 25);
+        assert_eq!(chance(MissionKind::Assassination), 40 - 25);
     }
 
     #[test]
-    fn incite_uprising_equals_diplomacy_with_zero_espionage() {
-        let mut world = GameWorld::default();
-        let key = character_with_skills(&mut world, 0, 0, 80, 0, 0);
-        let character = world.characters.get(key).unwrap();
-
-        let sys = crate::world::System {
-            dat_id: crate::ids::DatId(0),
-            name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.3,
-            popularity_empire: 0.6,
-            is_populated: false,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
-            control: crate::world::ControlKind::Uncontrolled,
+    fn a_chance_without_its_table_system_or_target_is_zero() {
+        // FUN_0053e240 leaves 0 without a row; FUN_00586720 and FUN_00586c80
+        // leave the chance unset without a target.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let elsewhere = system_at(&mut world, 1);
+        world.systems.remove(elsewhere);
+        let agent = character_with_skills(&mut world, 60, 40, 80, 70);
+        let chance = |world: &GameWorld, kind, system| {
+            member_chance(world, kind, MissionFaction::Alliance, system, None, agent)
         };
-
-        let diplomacy_input = MissionKind::Diplomacy.compute_table_input(
-            character,
-            Some(&sys),
-            MissionFaction::Alliance,
-            None,
-        );
-        let incite_input = MissionKind::InciteUprising.compute_table_input(
-            character,
-            Some(&sys),
-            MissionFaction::Alliance,
-            None,
-        );
-        assert_eq!(
-            incite_input, diplomacy_input,
-            "with espionage_rating=0, incite should equal diplomacy"
-        );
+        assert_eq!(chance(&world, MissionKind::Espionage, here), 0);
+        echo_table(&mut world, "DIPLMSTB");
+        echo_table(&mut world, "ASSNMSTB");
+        assert_eq!(chance(&world, MissionKind::Diplomacy, elsewhere), 0);
+        assert_eq!(chance(&world, MissionKind::Assassination, here), 0);
+        assert_eq!(chance(&world, MissionKind::Diplomacy, here), 200 - 50 + 80);
     }
 
     #[test]
-    fn incite_uprising_reduced_by_espionage_rating() {
-        let mut world = GameWorld::default();
-        let key = character_with_skills(&mut world, 0, 0, 80, 0, 0);
-        let character = world.characters.get(key).unwrap();
-
-        let sys = crate::world::System {
-            dat_id: crate::ids::DatId(0),
-            name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.3,
-            popularity_empire: 0.6,
-            is_populated: false,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.25,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
-            control: crate::world::ControlKind::Uncontrolled,
-        };
-
-        let diplomacy_input = MissionKind::Diplomacy.compute_table_input(
-            character,
-            Some(&sys),
+    fn a_special_force_rolls_on_its_own_skills() {
+        // Slots +0x1e0 and +0x1f0 of vtable 0x0065e160 read the unit's base
+        // espionage and combat (FUN_00503c40, FUN_00503c80).
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        echo_table(&mut world, "SBTGMSTB");
+        let mut skills = [0; 8];
+        skills[Skill::Espionage as usize] = 30;
+        skills[Skill::Combat as usize] = 50;
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x1400_0001),
+            is_alliance: true,
+            skills,
+            on_mission: false,
+        });
+        let chance = member_chance(
+            &world,
+            MissionKind::Sabotage,
             MissionFaction::Alliance,
+            here,
             None,
+            MissionMember::SpecialForce(unit),
         );
-        let incite_input = MissionKind::InciteUprising.compute_table_input(
-            character,
-            Some(&sys),
-            MissionFaction::Alliance,
-            None,
-        );
-        assert!(
-            incite_input < diplomacy_input,
-            "espionage_rating=0.25 should reduce incite input below diplomacy: {incite_input} vs {diplomacy_input}"
-        );
-        // 0.25 * 100 = 25 reduction
-        assert_eq!(diplomacy_input - incite_input, 25);
-    }
-
-    #[test]
-    fn abduction_subtracts_target_defense() {
-        let mut world = GameWorld::default();
-        let agent_key = character_with_skills(&mut world, 70, 0, 0, 0, 0);
-        let target_key = character_with_skills(&mut world, 0, 40, 0, 0, 0);
-        let agent = world.characters.get(agent_key).unwrap();
-        let target = world.characters.get(target_key).unwrap();
-        let input = MissionKind::Abduction.compute_table_input(
-            agent,
-            None,
-            MissionFaction::Alliance,
-            Some(target),
-        );
-        // 70 - 40 = 30
-        assert_eq!(input, 30, "abduction should subtract target combat defense");
-    }
-
-    #[test]
-    fn assassination_subtracts_target_defense() {
-        let mut world = GameWorld::default();
-        let agent_key = character_with_skills(&mut world, 0, 80, 0, 0, 0);
-        let target_key = character_with_skills(&mut world, 0, 50, 0, 0, 0);
-        let agent = world.characters.get(agent_key).unwrap();
-        let target = world.characters.get(target_key).unwrap();
-        let input = MissionKind::Assassination.compute_table_input(
-            agent,
-            None,
-            MissionFaction::Alliance,
-            Some(target),
-        );
-        // 80 - 50 = 30
-        assert_eq!(
-            input, 30,
-            "assassination should subtract target combat defense"
-        );
-    }
-
-    #[test]
-    fn recruitment_uses_target_character_loyalty() {
-        let mut world = GameWorld::default();
-        let agent_key = character_with_skills(&mut world, 0, 0, 0, 60, 0);
-        let target_key = character_with_skills(&mut world, 0, 0, 0, 0, 45);
-        let agent = world.characters.get(agent_key).unwrap();
-        let target = world.characters.get(target_key).unwrap();
-        let input = MissionKind::Recruitment.compute_table_input(
-            agent,
-            None,
-            MissionFaction::Alliance,
-            Some(target),
-        );
-        // 60 - 45 = 15
-        assert_eq!(
-            input, 15,
-            "recruitment should use target loyalty as resistance"
-        );
+        assert_eq!(chance, 200 + 40);
     }
     // --- Lifecycle (FUN_005227d0, FUN_00524b70, FUN_00522480) ---
 
@@ -4230,36 +4164,31 @@ mod tests {
 
     #[test]
     fn each_mission_draws_from_its_own_window_of_rolls() {
-        // port: ROLLS_PER_MISSION per mission per tick; the first mission's
-        // second draw never reaches the second mission's outcome roll.
+        // port: ROLLS_PER_MISSION per mission per tick. Each repeating
+        // Diplomacy re-arms timer 0x38b (MISSNSD 5 + rand(0..=10)) from the
+        // first draw of its own window.
         let (system, _) = mock_keys();
         let mut world = minimal_world();
+        world.mission_records = vec![diplomacy_record()];
         let character = agent_at(&mut world, system, true);
         let mut state = MissionState::new();
-        for id in 0..2 {
+        for id in 0..3 {
             state.push_timed(ActiveMission::timed(
                 id,
-                MissionKind::Autoscrap,
-                MissionFaction::Empire,
+                MissionKind::Diplomacy,
+                MissionFaction::Alliance,
                 vec![MissionMember::Character(character)],
                 system,
                 1,
             ));
         }
-        state.push_timed(ActiveMission::timed(
-            2,
-            MissionKind::Diplomacy,
-            MissionFaction::Alliance,
-            vec![MissionMember::Character(character)],
-            system,
-            1,
-        ));
-        let mut rolls = vec![1.0; 3 * ROLLS_PER_MISSION];
+        let mut rolls = vec![0.99; 3 * ROLLS_PER_MISSION];
         rolls[2 * ROLLS_PER_MISSION] = 0.0;
 
-        let advance = step(&mut state, &world, 1, &rolls);
+        step(&mut state, &world, 1, &rolls);
 
-        assert_eq!(advance.results[2].outcome, MissionOutcome::Success);
+        let due: Vec<_> = state.missions().iter().map(|m| m.timer_due).collect();
+        assert_eq!(due, vec![Some(16), Some(16), Some(6)]);
     }
 
     #[test]
@@ -4539,6 +4468,7 @@ mod tests {
         let mut world = minimal_world();
         let character = agent_at(&mut world, system, true);
         let mut state = MissionState::new();
+        world.mission_records = vec![diplomacy_record()];
         for (id, due) in [(0, 2), (1, 50)] {
             state.push_timed(ActiveMission::timed(
                 id,
@@ -4552,7 +4482,7 @@ mod tests {
         let mut rolls = vec![0.99; 2 * 2 * ROLLS_PER_MISSION];
         rolls[2 * ROLLS_PER_MISSION] = 0.0;
 
-        let advance = MissionSystem::advance(
+        MissionSystem::advance(
             &mut state,
             &world,
             &UprisingState::default(),
@@ -4560,7 +4490,8 @@ mod tests {
             &rolls,
         );
 
-        assert_eq!(advance.results[0].outcome, MissionOutcome::Success);
+        // Mission 0 repeats on event 1 (tick 2) and re-arms from roll 0.0.
+        assert_eq!(state.missions()[0].timer_due, Some(2 + 5));
     }
 
     #[test]
@@ -4913,15 +4844,15 @@ mod tests {
     }
 
     #[test]
-    fn a_fifth_sequential_draw_reads_the_fallback_not_the_detection_seed() {
-        // port: slot DETECTION_SEED_ROLL only seeds the detection stream.
-        let window = [0.1, 0.2, 0.3, 0.4, 0.9];
+    fn a_draw_past_the_timers_reads_the_fallback_not_the_stream_seed() {
+        // port: slot STREAM_SEED_ROLL only seeds the mission's stream.
+        let window = [0.1, 0.2, 0.9];
         let mut draws = MissionRolls {
             rolls: &window,
             next: 0,
-            detection: crate::mission_detection::DetectionRng::seeded(0.9, 0),
+            stream: crate::mission_detection::MissionRng::seeded(0.9, 0),
         };
-        let taken: Vec<f64> = (0..5).map(|_| draws.next()).collect();
-        assert_eq!(taken, vec![0.1, 0.2, 0.3, 0.4, 0.5]);
+        let taken: Vec<f64> = (0..3).map(|_| draws.next()).collect();
+        assert_eq!(taken, vec![0.1, 0.2, 0.5]);
     }
 }

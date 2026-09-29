@@ -1009,6 +1009,24 @@ impl GnprtbParams {
         Self { entries }
     }
 
+    /// Parameters holding the same value at every difficulty.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn uniform(values: &[(u16, i32)]) -> Self {
+        let entry = |&(id, value): &(u16, i32)| GnprtbEntry {
+            parameter_id: u32::from(id),
+            development: value,
+            alliance_sp_easy: value,
+            alliance_sp_medium: value,
+            alliance_sp_hard: value,
+            empire_sp_easy: value,
+            empire_sp_medium: value,
+            empire_sp_hard: value,
+            multiplayer: value,
+        };
+        Self::new(values.iter().map(entry).collect())
+    }
+
     /// Return the parameter value for `param_id` at `difficulty`.
     ///
     /// `difficulty`: 0=development, `1=alliance_easy`, `2=alliance_medium`, `3=alliance_hard`,
@@ -1353,6 +1371,20 @@ impl Character {
             Skill::Combat => self.combat,
             Skill::Leadership => self.leadership,
             Skill::Loyalty => self.loyalty,
+        }
+    }
+
+    /// The skill pair for `skill`, to change it.
+    pub fn skill_mut(&mut self, skill: Skill) -> &mut SkillPair {
+        match skill {
+            Skill::Diplomacy => &mut self.diplomacy,
+            Skill::Espionage => &mut self.espionage,
+            Skill::ShipDesign => &mut self.ship_design,
+            Skill::TroopTraining => &mut self.troop_training,
+            Skill::FacilityDesign => &mut self.facility_design,
+            Skill::Combat => &mut self.combat,
+            Skill::Leadership => &mut self.leadership,
+            Skill::Loyalty => &mut self.loyalty,
         }
     }
 }

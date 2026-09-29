@@ -524,21 +524,6 @@ pub fn run_simulation_tick(
                     );
                 }
             }
-            rebellion_core::missions::MissionOutcome::Foiled => {
-                // #R7: Counter-intelligence foiled a covert mission → saboteur detected.
-                let char_name = result
-                    .character
-                    .and_then(|key| world.characters.get(key))
-                    .map_or_else(|| String::from("<unknown>"), |c| c.name.clone());
-                integrator.emit(
-                    rebellion_core::game_events::SYS_MISSIONS,
-                    rebellion_core::game_events::EVT_SABOTEUR_DETECTED,
-                    serde_json::json!({
-                        "character": char_name,
-                        "mission_kind": format!("{:?}", result.kind),
-                    }),
-                );
-            }
             rebellion_core::missions::MissionOutcome::Failure => {
                 // #R8: Mission failure on combat/assassination → character health hit.
                 if matches!(

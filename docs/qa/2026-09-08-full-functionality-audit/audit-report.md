@@ -938,6 +938,42 @@ cross-runtime proof remain open
     resolves 2949 missions instead of 3076 because the fifth roll shifts the
     later systems' draws. The golden moves to `v1:acbd440f1734677c` ->
     `v1:276e317d8c392b5e` for save v20 and the fifth roll.
+- Phase 4a (2026-09-29): phase 10 rolls every team member
+  (`FUN_00592f50`). Team characters roll first, then team special forces.
+  Decoys and captives never roll.
+  - The chance (slot `+0x274`) is a step lookup (`FUN_00595090`) of the
+    class's MSTB table on its recovered input (`member_chance`). A missing
+    table, row, or target gives 0. The draw `0..99 < chance` comes from the
+    mission's seeded stream.
+  - Each success raises the base skill by GNPRTB 6156..6168. Special forces
+    never raise, because their slot `+0x1d8` returns 0 (`FUN_006158b0`).
+  - The in-roll actions:
+    - Rescue frees the target.
+    - Abduction captures it with the member as captor.
+    - Assassination kills it.
+    - Incite runs the uprising incident `FUN_0050d030`. The result is 2
+      while the holder keeps a regiment (`FUN_00509020`).
+    - Subdue rolls only during an uprising, adds the `FUN_0055cb10` gain,
+      and runs `FUN_0050c910`.
+  - Slot `+0x280` turns result 0 into 2. Diplomacy wins `FUN_0055cac0`
+    support: G6183 + rand 6184 at its side's own system, G6185 + rand 6186 at
+    a neutral one (side bits 3, `FUN_004f8c60`), and none at the opponent's.
+    Espionage reveals the system.
+  - Deleted: the invented quadratic, foil probability, defense score,
+    covert flags, the interpolating MSTB lookup, fixed effect sizes,
+    `MissionOutcome::Foiled`, and the integrator's control flip. The AI and
+    the panel preview read `member_chance`. The provenance baseline shrinks
+    by 9, to 119.
+  - The earlier Subdue gain mapped side 3 to contested. It is neutral.
+  - port, interim until phases 4b and 4c: Recruitment's recruit, and the
+    fixed Sabotage and Death Star Sabotage effects.
+  - Roll slots per mission drop from 5 to 3: the creation timer, the repeat
+    timer, and the stream seed.
+  - The 1500-tick seed-42 playtest resolves 1212 missions instead of 2949.
+    Incite and Recruitment now end with code 8, because the invented
+    uprising start and control flip no longer run. The golden moves to
+    `v1:acbd440f1734677c` -> `v1:f5bfb82d01bda045` for the per-member roll
+    and the three roll slots.
 
 ### F-020: A mod with a missing dependency fails silently
 

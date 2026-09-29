@@ -157,7 +157,7 @@ favours side 1 or hurts side 2, and `FUN_0053e0d0` clamps the result to
 ## Subdue Uprising success (`FUN_00569c20`)
 
 Support rises by `FUN_0055cb10(mission side, system side)`: on its own side's
-system `G6187 + rand[0..=G6188]` (1..20); at a contested system (side 3)
+system `G6187 + rand[0..=G6188]` (1..20); at a neutral system (side 3, "Neutral" in `FUN_004f8c60`)
 `G6189 + rand[0..=G6190]` (1..10); otherwise 0. Then `FUN_0050c910` runs the
 end check. The success check itself (`FUN_00569b90`) is SUBDMSTB through
 `FUN_0055c780(leadership, support, p5)`.

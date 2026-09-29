@@ -191,7 +191,7 @@ class's slot `+4` (`MOV EAX, imm`).
   becomes 2 (failed). On 3 it finds the target system (`FUN_00586720`)
   and adds `FUN_0055cac0(mission side, system side)` support through
   `FUN_0050c9f0`. The gain is GNPRTB 6183 + rand(0..=6184) when the
-  system is the mission side's, 6185 + rand(0..=6186) when its side is 3,
+  system is the mission side's, 6185 + rand(0..=6186) when its side is 3 (neutral, `FUN_004f8c60`),
   and 0 otherwise (`FUN_0055cac0.c`; ids from `FUN_0055bfd0.c:269-290`).
   One success among the members is enough; more successes add nothing
   beyond their own skill raises.
@@ -224,7 +224,7 @@ class's slot `+4` (`MOV EAX, imm`).
 The target actions of Recruitment, Rescue, Abduction, Assassination, and
 Incite run inside `+0x27c`, once per successful member, in member order;
 their shared `+0x280` (`576700`) only turns result 0 into 2 (failed).
-- Subdue `569c20`: support gain `FUN_0055cb10` (6187 + rand(6188), contested
+- Subdue `569c20`: support gain `FUN_0055cb10` (6187 + rand(6188), neutral
   6189 + rand(6190)), then the end-revolt check `FUN_0050c910`.
 - Sabotage (re-read): `56a300` sets 3 on a success and raises espionage by
   GNPRTB 6165 (`0x1815`) and combat by 6166 (`0x1816`). DS Sabotage
@@ -235,6 +235,52 @@ their shared `+0x280` (`576700`) only turns result 0 into 2 (failed).
 - Palace `56e650`: rescues the target, then frees every prisoner there.
 - Reconnaissance `56bec0`: always succeeds, end code 3.
 - The missions also raise skills on success; the amounts are not read.
+
+### Ported (F-019 phase 4a, 2026-09-29)
+
+`MissionSystem::roll_members` in `crates/rebellion-core/src/missions.rs`
+ports the roll and the in-roll outcomes above, re-read from the `.c` files.
+
+- **Chance (`+0x274`).** The wrapper `FUN_0053e240` finds the row through
+  `FUN_0055bed0` -> `FUN_0058b7e0` -> `FUN_00595090`, the step lookup. A
+  missing row leaves 0, as does a missing target system (`FUN_00586720`,
+  family `0x90..0x97`) or target character (`FUN_00586c80`, `0x30..0x3b`).
+- **Support and stormtroopers.** The "opposing support" in the Diplomacy,
+  Recruitment, Incite and Subdue inputs is `FUN_00507270(system, 2 -
+  (side != 1))`, the same opponent formula as the detection setup. Incite
+  and Subdue read the member's own leadership (`+0x1f4`), not the mission
+  average.
+- **Skill raises.** They go to the base skill only through slot `+0x1d8`,
+  which a special force lacks (vtable `0x0065e160` slot 118 is
+  `FUN_006158b0`, returning 0). The shipped GNPRTB 6156..6168 are all 1, and
+  Subdue's is 6161 (`0x1811`, `DAT_006bb538`).
+- **Result `+0x60`.** Each class sets it through `FUN_00521880`, so a later
+  member's 2 overwrites an earlier 3 (Incite, Subdue).
+- **Incite `FUN_00571a60`.** The incident is `FUN_0050d030`. The result is 2
+  when the holder keeps a regiment (`FUN_00509020(system, holder, 1)`: kind
+  1, as in `FUN_005091f0`). port: the other test, the system's `+0x84` bits
+  2..3 against the opponent, reads a field that no recovered function
+  writes, so the port takes it as false.
+- **Subdue `FUN_00569c20`.** It rolls only while `+0x88` bit 2 (revolting)
+  holds. Each success adds `FUN_0055cb10` support and runs `FUN_0050c910`;
+  once that ends the uprising, a later member does not roll.
+- **Diplomacy support `FUN_0055cac0`.** It is `G6183 + rand(0..=G6184)` only
+  when the system's side equals the mission's, and `G6185 + rand(0..=G6186)`
+  when it is neutral (side bits 3: `FUN_004f8c60` names 3 "Neutral"). At an
+  opposing system it is 0. The Subdue port read side 3 as the port's
+  `ControlKind::Contested`; it is the neutral system.
+- **Port choices:**
+  - The draws come from the mission's seeded stream (`MissionRng`,
+    `ROLLS_PER_MISSION` 3: two timers and the seed).
+  - A target action runs once, however many members succeed: Rescue's
+    release, Abduction's capture and Assassination's kill.
+  - The kill always destroys the target.
+  - A member's incident reads the world before earlier members' effects
+    apply.
+- **Interim, until 4b and 4c.** Recruitment's pick (`FUN_0055fc80`) and
+  leadership raise, the Sabotage and DS Sabotage target object
+  (`FUN_005746e0`, slot `+0xac(6)`), and Espionage's revelation counts
+  (`FUN_0055c940`).
 
 ### The end (`FUN_00592c80`, re-read 2026-09-29)
 

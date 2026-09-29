@@ -41,14 +41,15 @@ const RLEVADTB: &str = "RLEVADTB";
 /// `+0x68 == 9`, for every agent class.
 const PHASE_BETRAYAL: u8 = 9;
 
-/// port: the detection draws. The original draws each roll inline from its
+/// port: a mission's draws for one tick event, taken by the detection run
+/// and the phase 10 roll. The original draws each roll inline from its
 /// global generator; the port seeds a SplitMix64 per mission and tick from
 /// one caller roll, so the caller's budget stays fixed.
-pub(crate) struct DetectionRng {
+pub(crate) struct MissionRng {
     state: u64,
 }
 
-impl DetectionRng {
+impl MissionRng {
     /// port: the seed spreads the roll over 53 bits and mixes in the
     /// mission id with the SplitMix64 increment.
     #[must_use]
@@ -74,7 +75,7 @@ impl DetectionRng {
     }
 }
 
-impl Draws for DetectionRng {
+impl Draws for MissionRng {
     /// `FUN_0053e290(n)`: uniform over `0..=n`, or `-(0..=-n)` for negative
     /// `n`.
     fn draw(&mut self, n: i32) -> i32 {
@@ -144,7 +145,7 @@ struct Defender {
     side: Faction,
 }
 
-fn faction_of(is_alliance: bool) -> Faction {
+pub(crate) fn faction_of(is_alliance: bool) -> Faction {
     if is_alliance {
         Faction::Alliance
     } else {
@@ -229,7 +230,7 @@ fn walk(world: &GameWorld, location: SystemKey, flags: Flags, kinds: Kinds) -> V
 ///
 /// port: a present table always yields a row (`MstbTable::step_lookup`); an
 /// absent table is data the port was not given, reported as `None`.
-fn table_roll(world: &GameWorld, table: &str, x: i32, rng: &mut DetectionRng) -> Option<bool> {
+fn table_roll(world: &GameWorld, table: &str, x: i32, rng: &mut MissionRng) -> Option<bool> {
     let table = world.mission_tables.get(table)?;
     let value = i32::try_from(table.step_lookup(x)).unwrap_or(i32::MAX);
     Some(rng.chance(value))
@@ -326,7 +327,7 @@ impl Run<'_> {
         mission: &mut ActiveMission,
         defender: Defender,
         member: MissionMember,
-        rng: &mut DetectionRng,
+        rng: &mut MissionRng,
         out: &mut Vec<MissionEffect>,
     ) {
         let combat = self.skill(member, Skill::Combat);
@@ -382,7 +383,7 @@ impl Run<'_> {
         &self,
         character: crate::ids::CharacterKey,
         combat: i32,
-        rng: &mut DetectionRng,
+        rng: &mut MissionRng,
         out: &mut Vec<MissionEffect>,
     ) {
         if let Some(injury) = roll_injury(
@@ -407,7 +408,7 @@ impl Run<'_> {
         &mut self,
         mission: &mut ActiveMission,
         kinds: Kinds,
-        rng: &mut DetectionRng,
+        rng: &mut MissionRng,
         out: &mut Vec<MissionEffect>,
     ) {
         let decoy_lists = Lists {
@@ -452,7 +453,7 @@ impl Run<'_> {
 
     /// `FUN_0058a130` with functor `FUN_005896e0`: each defender not decoyed
     /// rolls FOILTB until one detects the team.
-    fn detect(&mut self, mission: &ActiveMission, rng: &mut DetectionRng) {
+    fn detect(&mut self, mission: &ActiveMission, rng: &mut MissionRng) {
         if self.team == 0 {
             return;
         }
@@ -498,7 +499,7 @@ impl Run<'_> {
     /// fails `draw(0..99) < 100 - loyalty` betrays the mission
     /// (`FUN_00588da0`, `FUN_0055e520`). port: the other members' learning
     /// the traitor (`+0xa0`, `FUN_00588e80`) is not ported.
-    fn betray(&mut self, mission: &ActiveMission, rng: &mut DetectionRng) {
+    fn betray(&mut self, mission: &ActiveMission, rng: &mut MissionRng) {
         let lists = Lists {
             chars: true,
             sforces: true,
@@ -522,7 +523,7 @@ impl Run<'_> {
     fn expose_team(
         &mut self,
         mission: &mut ActiveMission,
-        rng: &mut DetectionRng,
+        rng: &mut MissionRng,
         out: &mut Vec<MissionEffect>,
     ) {
         let lists = Lists {
@@ -579,7 +580,7 @@ pub(crate) fn run(
     world: &GameWorld,
     uprisings: &UprisingState,
     en_route: &[MemberTransit],
-    rng: &mut DetectionRng,
+    rng: &mut MissionRng,
     out: &mut Vec<MissionEffect>,
 ) {
     if mission.end_code != 0 {
@@ -609,7 +610,7 @@ fn first_pass(
     mission: &mut ActiveMission,
     world: &GameWorld,
     location: SystemKey,
-    rng: &mut DetectionRng,
+    rng: &mut MissionRng,
     out: &mut Vec<MissionEffect>,
     validate: &dyn Fn(&mut ActiveMission),
 ) {
@@ -957,7 +958,7 @@ mod tests {
 
     fn run_seeded(mission: &mut ActiveMission, world: &GameWorld, roll: f64) -> Vec<MissionEffect> {
         let mut out = Vec::new();
-        let mut rng = DetectionRng::seeded(roll, mission.id);
+        let mut rng = MissionRng::seeded(roll, mission.id);
         run(
             mission,
             world,
@@ -1218,11 +1219,11 @@ mod tests {
     #[test]
     fn detection_draws_stay_in_range_and_repeat_for_the_same_seed() {
         // Our helper: draw(n) covers 0..=n (FUN_0053e290), 0 for n <= 0.
-        let mut rng = DetectionRng::seeded(0.5, 7);
+        let mut rng = MissionRng::seeded(0.5, 7);
         let draws: Vec<i32> = (0..200).map(|_| rng.draw(3)).collect();
         assert!(draws.iter().all(|d| (0..=3).contains(d)));
         assert!((0..=3).all(|n| draws.contains(&n)));
-        let mut again = DetectionRng::seeded(0.5, 7);
+        let mut again = MissionRng::seeded(0.5, 7);
         assert_eq!(draws, (0..200).map(|_| again.draw(3)).collect::<Vec<_>>());
         let negative: Vec<i32> = (0..200).map(|_| rng.draw(-3)).collect();
         assert!((-3..=0).all(|n| negative.contains(&n)));
@@ -1234,12 +1235,9 @@ mod tests {
     fn detection_draws_are_splitmix64_seeded_by_the_roll_and_the_mission() {
         // Our helper: the published SplitMix64 first output from state 0,
         // and a mission id that changes the stream.
-        assert_eq!(
-            DetectionRng::seeded(0.0, 0).next_u64(),
-            0xe220_a839_7b1d_cdaf
-        );
-        assert_eq!(DetectionRng::seeded(0.5, 0).state, 1 << 52);
-        let first = |roll, id| DetectionRng::seeded(roll, id).next_u64();
+        assert_eq!(MissionRng::seeded(0.0, 0).next_u64(), 0xe220_a839_7b1d_cdaf);
+        assert_eq!(MissionRng::seeded(0.5, 0).state, 1 << 52);
+        let first = |roll, id| MissionRng::seeded(roll, id).next_u64();
         assert_ne!(first(0.0, 1), first(0.0, 0));
         assert_ne!(first(0.5, 1), first(0.0, 1));
     }
@@ -1366,7 +1364,7 @@ mod tests {
 
         let out = run_seeded(&mut mission, &world, 0.0);
 
-        let mut expected = DetectionRng::seeded(0.0, 0);
+        let mut expected = MissionRng::seeded(0.0, 0);
         expected.draw(99);
         expected.draw(0);
         expected.draw(99);

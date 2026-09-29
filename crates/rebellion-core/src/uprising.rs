@@ -31,7 +31,7 @@
 //!
 //! Evidence: `ghidra/notes/uprising-incident.md`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -41,7 +41,7 @@ use crate::ids::{
     CharacterKey, DefenseFacilityKey, ManufacturingFacilityKey, ProductionFacilityKey, SystemKey,
     TroopKey,
 };
-use crate::missions::{member_skill, MissionKind, MissionState};
+use crate::missions::{member_skill, ActiveMission, MissionKind, MissionState};
 use crate::tick::TickEvent;
 use crate::world::{Character, GameWorld, MstbTable, Skill, System};
 
@@ -80,14 +80,22 @@ const GNPRTB_DISASTER_FACILITY_CHANCE: u16 = 7716;
 const GNPRTB_DISASTER_MIN: u16 = 7717;
 /// 7718 (`DAT_006bb41c`) = 399: disaster timer spread.
 const GNPRTB_DISASTER_SPREAD: u16 = 7718;
+/// 6183 (`DAT_006bb56c`) = 1: diplomacy support gain base, own system.
+const GNPRTB_DIPLOMACY_OWN_BASE: u16 = 6183;
+/// 6184 (`DAT_006bb5ac`) = 19: diplomacy support gain spread, own system.
+const GNPRTB_DIPLOMACY_OWN_SPREAD: u16 = 6184;
+/// 6185 (`DAT_006bb51c`) = 1: diplomacy support gain base, neutral system.
+const GNPRTB_DIPLOMACY_NEUTRAL_BASE: u16 = 6185;
+/// 6186 (`DAT_006bb598`) = 9: diplomacy support gain spread, neutral system.
+const GNPRTB_DIPLOMACY_NEUTRAL_SPREAD: u16 = 6186;
 /// 6187 (`DAT_006bb5c8`) = 1: subdue support gain base, own system.
 const GNPRTB_SUBDUE_OWN_BASE: u16 = 6187;
 /// 6188 (`DAT_006bb540`) = 19: subdue support gain spread, own system.
 const GNPRTB_SUBDUE_OWN_SPREAD: u16 = 6188;
-/// 6189 (`DAT_006bb53c`) = 1: subdue support gain base, contested system.
-const GNPRTB_SUBDUE_CONTESTED_BASE: u16 = 6189;
-/// 6190 (`DAT_006bb580`) = 9: subdue support gain spread, contested system.
-const GNPRTB_SUBDUE_CONTESTED_SPREAD: u16 = 6190;
+/// 6189 (`DAT_006bb53c`) = 1: subdue support gain base, neutral system.
+const GNPRTB_SUBDUE_NEUTRAL_BASE: u16 = 6189;
+/// 6190 (`DAT_006bb580`) = 9: subdue support gain spread, neutral system.
+const GNPRTB_SUBDUE_NEUTRAL_SPREAD: u16 = 6190;
 
 /// TROOPSD record 6, Stormtrooper Regiment (TEXTSTRA 9344). `FUN_005091f0`
 /// counts Empire regiments of this class against the incident score.
@@ -233,12 +241,6 @@ impl<'a> Rolls<'a> {
     fn chance(&mut self, percent: i32) -> bool {
         self.draw(99) < percent
     }
-
-    /// `FUN_00559b80`: one of `count` items, drawing nothing when empty.
-    fn pick(&mut self, count: usize) -> Option<usize> {
-        let last = i32::try_from(count.checked_sub(1)?).ok()?;
-        usize::try_from(self.draw(last)).ok()
-    }
 }
 
 impl Draws for Rolls<'_> {
@@ -251,10 +253,16 @@ impl Draws for Rolls<'_> {
     }
 }
 
-/// The draws `FUN_0053e990` takes: `FUN_0053e290` and `FUN_0053e2f0`.
+/// The original's draws: `FUN_0053e290` and `FUN_0053e2f0`.
 pub(crate) trait Draws {
     fn draw(&mut self, n: i32) -> i32;
     fn chance(&mut self, percent: i32) -> bool;
+
+    /// `FUN_00559b80`: one of `count` items, drawing nothing when empty.
+    fn pick(&mut self, count: usize) -> Option<usize> {
+        let last = i32::try_from(count.checked_sub(1)?).ok()?;
+        usize::try_from(self.draw(last)).ok()
+    }
 }
 
 /// `FUN_0053e990`: with chance `max(min_chance, 100 - combat)` percent, an
@@ -386,7 +394,13 @@ impl UprisingSystem {
             // losses. An overdue timer fires again on the next advance.
             if due <= tick {
                 if let Some(event) = resolve_incident(
-                    world, missions, system, tick, upris1tb, upris2tb, &mut rolls,
+                    world,
+                    missions.missions(),
+                    system,
+                    tick,
+                    upris1tb,
+                    upris2tb,
+                    &mut rolls,
                 ) {
                     events.push(event);
                 }
@@ -499,7 +513,7 @@ fn facilities(world: &GameWorld, sys: &System, side: Option<Faction>) -> Vec<Fac
 /// Uprising, family 0x56, and `+0x78` for Subdue Uprising, family 0x57).
 fn uprising_mission_terms(
     world: &GameWorld,
-    missions: &MissionState,
+    missions: &VecDeque<ActiveMission>,
     system: SystemKey,
 ) -> (i32, i32, bool) {
     let divisor = world
@@ -507,7 +521,7 @@ fn uprising_mission_terms(
         .value(GNPRTB_UPRISING_MISSION_DIVISOR, world.difficulty_index)
         .max(1);
     let (mut incite, mut subdue, mut any_incite) = (0, 0, false);
-    for mission in missions.missions() {
+    for mission in missions {
         if mission.target_system != system {
             continue;
         }
@@ -552,15 +566,30 @@ fn support_change(world: &GameWorld, sys: &System, side: Faction, delta: i32) ->
     (before + delta).clamp(0, 100) - before
 }
 
+/// `FUN_005091f0`: the Empire's Stormtrooper regiments at `sys`.
+pub(crate) fn stormtroopers(world: &GameWorld, sys: &System) -> i32 {
+    i32::try_from(
+        sys.ground_units
+            .iter()
+            .filter(|k| {
+                world.troops.get(**k).is_some_and(|t| {
+                    !t.is_alliance && t.class_dat_id.raw() == STORMTROOPER_REGIMENT
+                })
+            })
+            .count(),
+    )
+    .unwrap_or(i32::MAX)
+}
+
 /// `FUN_0050d030`: score the uprising at `system` and apply both outcome codes.
 fn resolve_incident(
     world: &GameWorld,
-    missions: &MissionState,
+    missions: &VecDeque<ActiveMission>,
     system: SystemKey,
     tick: u64,
     upris1tb: &MstbTable,
     upris2tb: &MstbTable,
-    rolls: &mut Rolls<'_>,
+    rolls: &mut impl Draws,
 ) -> Option<UprisingEvent> {
     let sys = world.systems.get(system)?;
     let side = holder(sys)?;
@@ -579,17 +608,7 @@ fn resolve_incident(
         1
     };
     let troops = i32::try_from(regiments(world, sys, side).len()).unwrap_or(i32::MAX);
-    let stormtroopers = i32::try_from(
-        sys.ground_units
-            .iter()
-            .filter(|k| {
-                world.troops.get(**k).is_some_and(|t| {
-                    !t.is_alliance && t.class_dat_id.raw() == STORMTROOPER_REGIMENT
-                })
-            })
-            .count(),
-    )
-    .unwrap_or(i32::MAX);
+    let stormtroopers = stormtroopers(world, sys);
     let (incite, subdue, any_incite) = uprising_mission_terms(world, missions, system);
     let score = first
         + second
@@ -632,7 +651,7 @@ fn apply_code(
     side: Faction,
     code: u32,
     losses: &mut Vec<IncidentLoss>,
-    rolls: &mut Rolls<'_>,
+    rolls: &mut impl Draws,
 ) {
     let param = |id| world.gnprtb.value(id, world.difficulty_index);
     match code {
@@ -793,23 +812,94 @@ fn resolve_disaster(world: &GameWorld, tick: u64, rolls: &mut Rolls<'_>) -> Opti
 // Subdue Uprising (FUN_00569c20)
 // ---------------------------------------------------------------------------
 
-/// `FUN_0055cb10`: the support a successful Subdue Uprising by `side` wins at
-/// `system`. On its own side's system: GNPRTB 6187 + rand(0..=6188). On a
-/// contested system: GNPRTB 6189 + rand(0..=6190). Otherwise nothing.
-#[must_use]
-pub fn subdue_support_gain(world: &GameWorld, system: SystemKey, side: Faction, roll: f64) -> i32 {
-    let Some(sys) = world.systems.get(system) else {
-        return 0;
-    };
+/// Which mission's support gain [`mission_support_gain`] rolls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SupportGain {
+    /// `FUN_0055cac0`, GNPRTB 6183..6186.
+    Diplomacy,
+    /// `FUN_0055cb10`, GNPRTB 6187..6190.
+    Subdue,
+}
+
+/// `FUN_0055cac0` and `FUN_0055cb10`: the support a mission success by
+/// `side` wins at `sys`. On its own side's system: base + rand(0..=spread).
+/// On a neutral system (side bits 3, "Neutral" in `FUN_004f8c60`): the
+/// neutral pair. At the opponent's system: nothing.
+pub(crate) fn mission_support_gain(
+    world: &GameWorld,
+    sys: &System,
+    side: Faction,
+    gain: SupportGain,
+    draws: &mut impl Draws,
+) -> i32 {
     let param = |id| world.gnprtb.value(id, world.difficulty_index);
-    let mut rolls = Rolls::new(std::slice::from_ref(&roll));
-    if holder(sys) == Some(side) {
-        param(GNPRTB_SUBDUE_OWN_BASE) + rolls.draw(param(GNPRTB_SUBDUE_OWN_SPREAD))
-    } else if sys.control == crate::world::ControlKind::Contested {
-        param(GNPRTB_SUBDUE_CONTESTED_BASE) + rolls.draw(param(GNPRTB_SUBDUE_CONTESTED_SPREAD))
-    } else {
-        0
-    }
+    let (own, neutral) = match gain {
+        SupportGain::Diplomacy => (
+            (GNPRTB_DIPLOMACY_OWN_BASE, GNPRTB_DIPLOMACY_OWN_SPREAD),
+            (
+                GNPRTB_DIPLOMACY_NEUTRAL_BASE,
+                GNPRTB_DIPLOMACY_NEUTRAL_SPREAD,
+            ),
+        ),
+        SupportGain::Subdue => (
+            (GNPRTB_SUBDUE_OWN_BASE, GNPRTB_SUBDUE_OWN_SPREAD),
+            (GNPRTB_SUBDUE_NEUTRAL_BASE, GNPRTB_SUBDUE_NEUTRAL_SPREAD),
+        ),
+    };
+    let (base, spread) = match holder(sys) {
+        Some(holder) if holder == side => own,
+        Some(_) => return 0,
+        None => neutral,
+    };
+    // FUN_0055cac0 draws the spread before adding the base.
+    draws.draw(param(spread)) + param(base)
+}
+
+/// `sys` after `FUN_0050c9f0` shifts `side`'s support by `delta` points.
+pub(crate) fn with_support_change(
+    world: &GameWorld,
+    sys: &System,
+    side: Faction,
+    delta: i32,
+) -> System {
+    let mut after = sys.clone();
+    shift_system(&mut after, side, support_change(world, sys, side, delta));
+    after
+}
+
+/// `FUN_0050c910`'s test: the regiments at `sys` (`FUN_00504c40`, every
+/// side) cover its holder's garrison requirement without the uprising
+/// doubling (`FUN_00559fb0`).
+pub(crate) fn garrison_covers(world: &GameWorld, sys: &System) -> bool {
+    let Some(side) = holder(sys) else {
+        return false;
+    };
+    let difficulty = world.difficulty_index;
+    let requirement = economy::garrison_requirement(
+        side,
+        support_points(sys, side),
+        economy::is_strong_support(sys, &world.gnprtb, difficulty),
+        false,
+        &world.gnprtb,
+        difficulty,
+    );
+    i32::try_from(sys.ground_units.len()).unwrap_or(i32::MAX) >= requirement
+}
+
+/// `FUN_0050d030` run by a successful Incite Uprising member
+/// (`FUN_00571a60`): the uprising incident at `system`, scored with every
+/// mission in `missions`.
+pub(crate) fn incite_incident(
+    world: &GameWorld,
+    missions: &VecDeque<ActiveMission>,
+    system: SystemKey,
+    tick: u64,
+    draws: &mut impl Draws,
+) -> Option<UprisingEvent> {
+    let empty = MstbTable::new(Vec::new());
+    let upris1tb = world.mission_tables.get("UPRIS1TB").unwrap_or(&empty);
+    let upris2tb = world.mission_tables.get("UPRIS2TB").unwrap_or(&empty);
+    resolve_incident(world, missions, system, tick, upris1tb, upris2tb, draws)
 }
 
 /// `FUN_0050c910`: after a Subdue Uprising success, end the revolt at `system`
@@ -824,19 +914,7 @@ pub fn end_if_garrisoned(
     if !state.is_uprising(system) {
         return None;
     }
-    let sys = world.systems.get(system)?;
-    let side = holder(sys)?;
-    let difficulty = world.difficulty_index;
-    let requirement = economy::garrison_requirement(
-        side,
-        support_points(sys, side),
-        economy::is_strong_support(sys, &world.gnprtb, difficulty),
-        false,
-        &world.gnprtb,
-        difficulty,
-    );
-    let troops = i32::try_from(sys.ground_units.len()).unwrap_or(i32::MAX);
-    if troops < requirement {
+    if !garrison_covers(world, world.systems.get(system)?) {
         return None;
     }
     state.active_uprisings.remove(&system);
@@ -858,14 +936,20 @@ pub fn apply_support_change(world: &mut GameWorld, system: SystemKey, side: Fact
     shift_support(world, system, side, change);
 }
 
+fn shift_support(world: &mut GameWorld, system: SystemKey, side: Faction, points: i32) {
+    if let Some(sys) = world.systems.get_mut(system) {
+        shift_system(sys, side, points);
+    }
+}
+
+/// Shift `side`'s support at `sys` by `points`, the other side's by the
+/// opposite. port: the port keeps support as a `0..=1` fraction; the
+/// original keeps points at `+0x58` (`FUN_00507270`).
 #[expect(
     clippy::cast_precision_loss,
     reason = "support changes are at most 100 points"
 )]
-fn shift_support(world: &mut GameWorld, system: SystemKey, side: Faction, points: i32) {
-    let Some(sys) = world.systems.get_mut(system) else {
-        return;
-    };
+fn shift_system(sys: &mut System, side: Faction, points: i32) {
     let fraction = points as f32 / 100.0;
     let (ours, theirs) = match side {
         Faction::Alliance => (&mut sys.popularity_alliance, &mut sys.popularity_empire),
@@ -956,8 +1040,8 @@ mod tests {
     use super::*;
     use crate::dat::{ExplorationStatus, SectorGroup};
     use crate::ids::DatId;
+    use crate::missions::MissionFaction;
     use crate::missions::MissionRequest;
-    use crate::missions::{MissionEffect, MissionFaction, MissionOutcome};
     use crate::world::{
         Character, ControlKind, DefenseFacilityInstance, GnprtbEntry, GnprtbParams,
         ManufacturingFacilityInstance, MstbEntry, ProductionFacilityInstance, Sector, SkillPair,
@@ -1009,8 +1093,8 @@ mod tests {
                 (GNPRTB_DISASTER_SPREAD, 399),
                 (GNPRTB_SUBDUE_OWN_BASE, 1),
                 (GNPRTB_SUBDUE_OWN_SPREAD, 19),
-                (GNPRTB_SUBDUE_CONTESTED_BASE, 1),
-                (GNPRTB_SUBDUE_CONTESTED_SPREAD, 9),
+                (GNPRTB_SUBDUE_NEUTRAL_BASE, 1),
+                (GNPRTB_SUBDUE_NEUTRAL_SPREAD, 9),
                 (7682, 2),
                 (7732, 40),
                 (7761, 60),
@@ -1456,24 +1540,60 @@ mod tests {
     }
 
     #[test]
-    fn a_subdue_success_wins_one_to_twenty_at_home_one_to_ten_when_contested_else_nothing() {
-        // FUN_0055cb10: same side -> GNPRTB 6187 + rand(0..=6188); contested
-        // -> 6189 + rand(0..=6190); otherwise 0.
+    fn a_subdue_success_wins_one_to_twenty_at_home_one_to_ten_when_neutral_else_nothing() {
+        // FUN_0055cb10: same side -> GNPRTB 6187 + rand(0..=6188); neutral
+        // (side 3, FUN_004f8c60) -> 6189 + rand(0..=6190); otherwise 0.
         let (mut world, system) = world_with(Faction::Alliance, 0.3);
-        assert_eq!(
-            subdue_support_gain(&world, system, Faction::Alliance, 0.0),
-            1
+        let gain = |world: &GameWorld, side, roll: f64| {
+            let sys = &world.systems[system];
+            mission_support_gain(
+                world,
+                sys,
+                side,
+                SupportGain::Subdue,
+                &mut Rolls::new(&[roll]),
+            )
+        };
+        assert_eq!(gain(&world, Faction::Alliance, 0.0), 1);
+        assert_eq!(gain(&world, Faction::Alliance, 0.999), 20);
+        assert_eq!(gain(&world, Faction::Empire, 0.5), 0);
+        world.systems[system].control = ControlKind::Uncontrolled;
+        assert_eq!(gain(&world, Faction::Empire, 0.999), 10);
+    }
+
+    #[test]
+    fn a_diplomacy_success_wins_its_own_pair_at_home_and_when_neutral() {
+        // FUN_0055cac0: same side -> GNPRTB 6183 + rand(0..=6184); neutral
+        // (side 3, FUN_004f8c60) -> 6185 + rand(0..=6186); otherwise 0.
+        let (mut world, system) = world_with(Faction::Alliance, 0.3);
+        // Distinct values tell the Diplomacy ids from Subdue's.
+        world.gnprtb = GnprtbParams::new(
+            [
+                (GNPRTB_DIPLOMACY_OWN_BASE, 2),
+                (GNPRTB_DIPLOMACY_OWN_SPREAD, 5),
+                (GNPRTB_DIPLOMACY_NEUTRAL_BASE, 3),
+                (GNPRTB_DIPLOMACY_NEUTRAL_SPREAD, 4),
+            ]
+            .into_iter()
+            .map(|(id, value)| gnprtb_entry(id, value))
+            .collect(),
         );
-        assert_eq!(
-            subdue_support_gain(&world, system, Faction::Alliance, 0.999),
-            20
-        );
-        assert_eq!(subdue_support_gain(&world, system, Faction::Empire, 0.5), 0);
-        world.systems[system].control = ControlKind::Contested;
-        assert_eq!(
-            subdue_support_gain(&world, system, Faction::Empire, 0.999),
-            10
-        );
+        let gain = |world: &GameWorld, side, roll: f64| {
+            let sys = &world.systems[system];
+            mission_support_gain(
+                world,
+                sys,
+                side,
+                SupportGain::Diplomacy,
+                &mut Rolls::new(&[roll]),
+            )
+        };
+        assert_eq!(gain(&world, Faction::Alliance, 0.0), 2);
+        assert_eq!(gain(&world, Faction::Alliance, 0.999), 7);
+        assert_eq!(gain(&world, Faction::Empire, 0.999), 0);
+        world.systems[system].control = ControlKind::Uncontrolled;
+        assert_eq!(gain(&world, Faction::Empire, 0.999), 7);
+        assert_eq!(gain(&world, Faction::Empire, 0.0), 3);
     }
 
     #[test]
@@ -1752,7 +1872,7 @@ mod tests {
             0,
         ));
         assert_eq!(
-            uprising_mission_terms(&world, &missions, system),
+            uprising_mission_terms(&world, missions.missions(), system),
             (0, -4, false)
         );
         missions.dispatch(MissionRequest::single(
@@ -1772,7 +1892,7 @@ mod tests {
             0,
         ));
         assert_eq!(
-            uprising_mission_terms(&world, &missions, system),
+            uprising_mission_terms(&world, missions.missions(), system),
             (2, -4, true)
         );
     }
@@ -1808,7 +1928,7 @@ mod tests {
         });
 
         assert_eq!(
-            uprising_mission_terms(&world, &missions, system),
+            uprising_mission_terms(&world, missions.missions(), system),
             (0, -3, false)
         );
     }
@@ -1867,7 +1987,7 @@ mod tests {
         );
 
         assert_eq!(
-            uprising_mission_terms(&world, &missions, system),
+            uprising_mission_terms(&world, missions.missions(), system),
             (0, -4, false)
         );
 
@@ -1875,7 +1995,7 @@ mod tests {
         // 20 and 40 average to 30 (counting it as 0 would give 20).
         world.characters.remove(prisoner);
         assert_eq!(
-            uprising_mission_terms(&world, &missions, system),
+            uprising_mission_terms(&world, missions.missions(), system),
             (0, -3, false)
         );
     }
@@ -1911,7 +2031,7 @@ mod tests {
         });
 
         assert_eq!(
-            uprising_mission_terms(&world, &missions, system),
+            uprising_mission_terms(&world, missions.missions(), system),
             (2, 0, true)
         );
     }
@@ -1993,53 +2113,6 @@ mod tests {
             );
             assert_eq!(incident(&events).2, expected, "{side:?}");
         }
-    }
-
-    #[test]
-    fn a_subdue_success_draws_its_gain_without_taking_the_next_missions_roll() {
-        // FUN_0055cb10 draws the gain after the outcome roll. Two missions
-        // complete on outcomes 0.0 and 0.0; the gain draw 0.5 gives 1 + 10.
-        let (mut world, system) = world_with(Faction::Alliance, 0.3);
-        let agent = world.characters.insert(Character {
-            is_alliance: true,
-            ..Character::default()
-        });
-        let envoy = world.characters.insert(Character {
-            is_alliance: true,
-            ..Character::default()
-        });
-        let mut missions = MissionState::new();
-        for (id, kind, character) in [
-            (0, MissionKind::SubdueUprising, agent),
-            (1, MissionKind::Diplomacy, envoy),
-        ] {
-            missions.push_timed(crate::missions::ActiveMission::timed(
-                id,
-                kind,
-                MissionFaction::Alliance,
-                vec![crate::missions::MissionMember::Character(character)],
-                system,
-                1,
-            ));
-        }
-        // ROLLS_PER_MISSION per mission: the Subdue outcome and gain draw,
-        // then the Diplomacy outcome in its own window.
-        let rolls = [0.0, 0.5, 0.9, 0.9, 0.9, 0.0, 0.9, 0.9, 0.9, 0.9];
-        let results = crate::missions::MissionSystem::advance(
-            &mut missions,
-            &world,
-            &UprisingState::default(),
-            &[TickEvent { tick: 1 }],
-            &rolls,
-        )
-        .results;
-        assert_eq!(results.len(), 2);
-        assert!(results.iter().all(|r| r.outcome == MissionOutcome::Success));
-        let gain = results[0].effects.iter().find_map(|e| match e {
-            MissionEffect::UprisingSubdued { support_gain, .. } => Some(*support_gain),
-            _ => None,
-        });
-        assert_eq!(gain, Some(11));
     }
 
     #[test]

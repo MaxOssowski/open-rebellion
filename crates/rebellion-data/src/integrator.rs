@@ -1493,62 +1493,27 @@ fn apply_mission_effects_inner(
     uprising_state: &mut UprisingState,
     death_star_state: &mut DeathStarState,
 ) -> Vec<UprisingEvent> {
-    const CONTROL_THRESHOLD: f32 = 0.6;
-
     for effect in effects {
         match effect {
-            MissionEffect::PopularityShifted {
+            MissionEffect::SupportGained {
                 system,
-                faction,
-                delta,
-            } => {
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    match faction {
-                        MissionFaction::Alliance => {
-                            sys.popularity_alliance =
-                                (sys.popularity_alliance + delta).clamp(0.0, 1.0);
-                        }
-                        MissionFaction::Empire => {
-                            sys.popularity_empire = (sys.popularity_empire + delta).clamp(0.0, 1.0);
-                        }
-                    }
-                    let a_pop = sys.popularity_alliance;
-                    let e_pop = sys.popularity_empire;
-                    let new_control = if a_pop >= CONTROL_THRESHOLD && a_pop > e_pop + 0.1 {
-                        Some(ControlKind::Controlled(
-                            rebellion_core::dat::Faction::Alliance,
-                        ))
-                    } else if e_pop >= CONTROL_THRESHOLD && e_pop > a_pop + 0.1 {
-                        Some(ControlKind::Controlled(
-                            rebellion_core::dat::Faction::Empire,
-                        ))
-                    } else {
-                        None
-                    };
-                    if let Some(new) = new_control {
-                        if sys.control != new {
-                            sys.control = new;
-                        }
-                    }
-                }
-            }
-            MissionEffect::UprisingStarted {
-                system,
-                popularity_delta,
-            } => {
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    sys.popularity_alliance =
-                        (sys.popularity_alliance + popularity_delta).clamp(0.0, 1.0);
-                    sys.popularity_empire =
-                        (sys.popularity_empire - popularity_delta).clamp(0.0, 1.0);
-                }
+                side,
+                points,
+            } => rebellion_core::uprising::apply_support_change(world, *system, *side, *points),
+            MissionEffect::SkillRaised {
+                character,
+                skill,
+                amount,
+            } => rebellion_core::missions::raise_skill(world, *character, *skill, *amount),
+            MissionEffect::UprisingIncident(event) => {
+                rebellion_core::uprising::apply_uprising_event(world, event);
             }
             MissionEffect::SystemIntelligenceGathered { system, .. } => {
                 if let Some(sys) = world.systems.get_mut(*system) {
                     sys.exploration_status = rebellion_core::dat::ExplorationStatus::Explored;
                 }
             }
-            MissionEffect::CharacterRecruited { .. } | MissionEffect::DecoyTriggered { .. } => {}
+            MissionEffect::CharacterRecruited { .. } => {}
             MissionEffect::FacilitySabotaged {
                 system,
                 facility_index,

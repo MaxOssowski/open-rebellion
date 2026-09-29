@@ -5266,7 +5266,6 @@ fn apply_mission_result(
     let outcome_str = match result.outcome {
         rebellion_core::missions::MissionOutcome::Success => "succeeded",
         rebellion_core::missions::MissionOutcome::Failure => "failed",
-        rebellion_core::missions::MissionOutcome::Foiled => "was foiled",
     };
 
     let category = match result.kind {
@@ -5306,34 +5305,18 @@ fn apply_mission_result(
 
     for effect in &result.effects {
         match effect {
-            MissionEffect::PopularityShifted {
+            MissionEffect::SupportGained {
                 system,
-                faction,
-                delta,
-            } => {
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    match faction {
-                        MissionFaction::Alliance => {
-                            sys.popularity_alliance =
-                                (sys.popularity_alliance + delta).clamp(0.0, 1.0);
-                        }
-                        MissionFaction::Empire => {
-                            sys.popularity_empire = (sys.popularity_empire + delta).clamp(0.0, 1.0);
-                        }
-                    }
-                }
-            }
-            MissionEffect::UprisingStarted {
-                system,
-                popularity_delta,
-            } => {
-                // Shift popularity against the controlling faction.
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    sys.popularity_alliance =
-                        (sys.popularity_alliance + popularity_delta).clamp(0.0, 1.0);
-                    sys.popularity_empire =
-                        (sys.popularity_empire - popularity_delta).clamp(0.0, 1.0);
-                }
+                side,
+                points,
+            } => rebellion_core::uprising::apply_support_change(world, *system, *side, *points),
+            MissionEffect::SkillRaised {
+                character,
+                skill,
+                amount,
+            } => rebellion_core::missions::raise_skill(world, *character, *skill, *amount),
+            MissionEffect::UprisingIncident(event) => {
+                rebellion_core::uprising::apply_uprising_event(world, event);
             }
             MissionEffect::SystemIntelligenceGathered { system, .. } => {
                 // Reveal fog: mark system as explored (full implementation in fog task).
@@ -5344,7 +5327,7 @@ fn apply_mission_result(
             MissionEffect::CharacterRecruited { faction, .. } => {
                 // Recruitment shifts the recruiter's faction allegiance
                 // (the recruit joins the faction that sent the recruiter)
-                let _ = faction; // effect is already applied via PopularityShifted
+                let _ = faction; // port: the recruit pick waits for F-019 phase 4b
             }
             MissionEffect::FacilitySabotaged {
                 system,
@@ -5427,32 +5410,6 @@ fn apply_mission_result(
             }
             MissionEffect::MemberMoved { member, to } => {
                 rebellion_core::missions::move_member(world, *member, *to);
-            }
-            MissionEffect::DecoyTriggered {
-                system,
-                decoy_character,
-            } => {
-                let sys_name = world
-                    .systems
-                    .get(*system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                let char_name = world
-                    .characters
-                    .get(*decoy_character)
-                    .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                // Notification 0x17, Mission Failed.
-                log.push(filed(
-                    GameMessage::at_system(
-                        result.tick,
-                        format!("Mission intercepted by decoy {char_name} at {sys_name}"),
-                        MessageCategory::Mission,
-                        *system,
-                    ),
-                    MessageRail::Mission,
-                    Some(RailAudience::side(
-                        result.faction == MissionFaction::Alliance,
-                    )),
-                ));
             }
             MissionEffect::CharacterEscaped {
                 character,

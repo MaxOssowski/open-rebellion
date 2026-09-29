@@ -13,7 +13,7 @@
 use egui_macroquad::egui::{self, Color32, RichText, ScrollArea};
 use rebellion_core::ids::{CharacterKey, SystemKey};
 use rebellion_core::missions::{
-    clamp_prob, quadratic_prob, ActiveMission, MissionFaction, MissionKind, MissionState,
+    member_chance, ActiveMission, MissionFaction, MissionKind, MissionMember, MissionState,
 };
 use rebellion_core::world::GameWorld;
 
@@ -321,23 +321,19 @@ fn draw_dispatch_tab(
     if let (Some(char_key), Some(kind)) =
         (panel_state.selected_commander, panel_state.selected_kind)
     {
-        if let Some(character) = world.characters.get(char_key) {
-            let skill = match kind {
-                MissionKind::Recruitment | MissionKind::Autoscrap => character.leadership,
-                MissionKind::Sabotage
-                | MissionKind::Espionage
-                | MissionKind::Abduction
-                | MissionKind::DeathStarSabotage => character.espionage,
-                MissionKind::Assassination | MissionKind::Rescue => character.combat,
-                MissionKind::Diplomacy
-                | MissionKind::InciteUprising
-                | MissionKind::SubdueUprising => character.diplomacy,
-                // no-op; Autoscrap never shown in UI
-            };
-            let score = f64::from(skill.base) + f64::from(skill.variance) * 0.5;
-            let (a, b, c) = kind.coefficients();
-            let raw = quadratic_prob(score, a, b, c);
-            let prob = clamp_prob(raw, kind.min_success_prob(), kind.max_success_prob());
+        if let Some(target) = panel_state
+            .selected_target
+            .filter(|_| world.characters.contains_key(char_key))
+        {
+            // Slot +0x274, the chance phase 10 rolls against.
+            let prob = f64::from(member_chance(
+                world,
+                kind,
+                player_faction,
+                target,
+                panel_state.selected_target_character,
+                MissionMember::Character(char_key),
+            ));
 
             let prob_color = if prob >= 70.0 {
                 Color32::from_rgb(100, 220, 100)

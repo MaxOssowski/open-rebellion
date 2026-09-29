@@ -798,11 +798,13 @@ impl AISystem {
             if ops_queued >= config.ai.max_covert_ops_per_eval || op_idx >= operatives.len() {
                 break;
             }
-            let (char_key, esp_score) = operatives[op_idx];
+            let (char_key, _) = operatives[op_idx];
             if !Self::expected_success(
                 world,
                 MissionKind::Sabotage,
-                esp_score,
+                faction,
+                char_key,
+                (*target_sys, None),
                 config.ai.covert_min_success_prob,
             ) {
                 op_idx += 1;
@@ -881,16 +883,12 @@ impl AISystem {
                     break;
                 }
                 let (char_key, _) = operatives[op_idx];
-                let combat_score = if let Some(c) = world.characters.get(char_key) {
-                    c.combat.base + c.combat.variance / 2
-                } else {
-                    op_idx += 1;
-                    continue;
-                };
                 if !Self::expected_success(
                     world,
                     MissionKind::Assassination,
-                    combat_score,
+                    faction,
+                    char_key,
+                    (target_sys, Some(target_char)),
                     config.ai.covert_min_success_prob,
                 ) {
                     op_idx += 1;
@@ -914,11 +912,13 @@ impl AISystem {
                 if ops_queued >= config.ai.max_covert_ops_per_eval || op_idx >= operatives.len() {
                     break;
                 }
-                let (char_key, esp_score) = operatives[op_idx];
+                let (char_key, _) = operatives[op_idx];
                 if !Self::expected_success(
                     world,
                     MissionKind::Abduction,
-                    esp_score,
+                    faction,
+                    char_key,
+                    (target_sys, Some(target_char)),
                     config.ai.covert_min_success_prob,
                 ) {
                     op_idx += 1;
@@ -952,11 +952,13 @@ impl AISystem {
             if ops_queued >= config.ai.max_covert_ops_per_eval || op_idx >= operatives.len() {
                 break;
             }
-            let (char_key, esp_score) = operatives[op_idx];
+            let (char_key, _) = operatives[op_idx];
             if !Self::expected_success(
                 world,
                 MissionKind::Espionage,
-                esp_score,
+                faction,
+                char_key,
+                (*target_sys, None),
                 config.ai.covert_min_success_prob,
             ) {
                 op_idx += 1;
@@ -973,32 +975,27 @@ impl AISystem {
         }
     }
 
-    /// Estimate whether a mission is worth dispatching given the operative's
-    /// skill score.
-    ///
-    /// Uses the MSTB table if loaded; falls back to the quadratic formula.
-    /// Returns true if expected success probability ≥ the configured minimum.
+    /// Whether `character`'s success chance on the mission reaches
+    /// `min_prob`. port: the planner reads the phase 10 chance (slot
+    /// `+0x274`, [`crate::missions::member_chance`]); the original planner's
+    /// own estimate is not read.
     fn expected_success(
         world: &GameWorld,
         kind: MissionKind,
-        skill_score: u32,
+        faction: AiFaction,
+        character: CharacterKey,
+        target: (SystemKey, Option<CharacterKey>),
         min_prob: f64,
     ) -> bool {
-        let prob_pct: f64 = if let Some(key) = kind.mstb_key() {
-            if let Some(table) = world.mission_tables.get(key) {
-                f64::from(table.lookup(skill_score.cast_signed()))
-            } else {
-                // MSTB not loaded — quadratic fallback.
-                let (a, b, c) = kind.coefficients();
-                let s = f64::from(skill_score);
-                (a * s * s + b * s + c).clamp(kind.min_success_prob(), kind.max_success_prob())
-            }
-        } else {
-            // Autoscrap and others without tables always succeed.
-            100.0
-        };
-
-        prob_pct / 100.0 >= min_prob
+        let chance = crate::missions::member_chance(
+            world,
+            kind,
+            faction.as_mission_faction(),
+            target.0,
+            target.1,
+            crate::missions::MissionMember::Character(character),
+        );
+        f64::from(chance) / 100.0 >= min_prob
     }
 
     // -----------------------------------------------------------------------
@@ -1154,11 +1151,13 @@ impl AISystem {
             if dispatched >= config.ai.max_recon_per_eval || scout_idx >= scouts.len() {
                 break;
             }
-            let (char_key, esp_score) = scouts[scout_idx];
+            let (char_key, _) = scouts[scout_idx];
             if !Self::expected_success(
                 world,
                 MissionKind::Espionage,
-                esp_score,
+                faction,
+                char_key,
+                (*target_sys, None),
                 config.ai.covert_min_success_prob,
             ) {
                 scout_idx += 1;
@@ -3506,6 +3505,9 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Helper: insert a character with custom espionage + combat scores.
+    /// A covert operative. The covert tables read their input as the chance
+    /// (row `t` holds `t`), so the chance follows the operative's skills
+    /// through `member_chance`.
     fn add_spy(
         world: &mut GameWorld,
         is_alliance: bool,
@@ -3513,6 +3515,17 @@ mod tests {
         espionage_base: u32,
         combat_base: u32,
     ) -> CharacterKey {
+        for key in ["SBTGMSTB", "ESPIMSTB", "ASSNMSTB", "ABDCMSTB"] {
+            let rows = (0..=100)
+                .map(|threshold| crate::world::MstbEntry {
+                    threshold,
+                    value: threshold.unsigned_abs(),
+                })
+                .collect();
+            world
+                .mission_tables
+                .insert(key.to_string(), crate::world::MstbTable::new(rows));
+        }
         world.characters.insert(Character {
             name: "TestSpy".into(),
             is_alliance,
@@ -3535,8 +3548,9 @@ mod tests {
         })
     }
 
-    #[test]
-    fn high_espionage_character_dispatched_on_sabotage() {
+    /// Whether the Empire sends an operative of `espionage` and `combat` to
+    /// sabotage an Alliance manufacturing system.
+    fn sabotage_dispatched(espionage: u32, combat: u32) -> bool {
         let mut world = empty_world();
         let sector = add_sector(&mut world);
 
@@ -3574,7 +3588,7 @@ mod tests {
         });
 
         // Empire spy with high espionage — above threshold.
-        let spy = add_spy(&mut world, false, false, 80, 50);
+        let spy = add_spy(&mut world, false, false, espionage, combat);
 
         let mut state = AIState::new(AiFaction::Empire);
         let mfg = ManufacturingState::new();
@@ -3603,10 +3617,23 @@ mod tests {
                 if *character == spy && *target_system == enemy_sys
             )
         });
+        sabotage.is_some()
+    }
+
+    #[test]
+    fn high_espionage_character_dispatched_on_sabotage() {
         assert!(
-            sabotage.is_some(),
+            sabotage_dispatched(80, 50),
             "expected sabotage mission against enemy shipyard"
         );
+    }
+
+    #[test]
+    fn an_operative_below_the_minimum_chance_is_not_sent_on_sabotage() {
+        // The spy passes the espionage gate (50), but SBTGMSTB reads
+        // (espionage + combat) / 2 = 25, a 25% chance under the configured
+        // 30% minimum.
+        assert!(!sabotage_dispatched(50, 0));
     }
 
     #[test]
