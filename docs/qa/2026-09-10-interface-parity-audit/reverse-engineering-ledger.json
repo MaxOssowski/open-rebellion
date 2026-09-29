@@ -325,7 +325,7 @@
       "retrieval": {
         "sources": ["REBEXE.EXE", "STRATEGY.DLL", "TEXTSTRA.DLL", "REBDLOG.DLL", "VOICEFXA.DLL", "VOICEFXE.DLL"],
         "method": "Cross-reference category labels, report strings, sound IDs, and navigate/delete commands to constructors, filters, item menus, and destination handlers.",
-        "next_proof": "FUN_0042a240, the Message Index constructor, category mapping, rail resting path, and Advice slowdown are recovered in evidence/2026-09-24-message-index-recovery.md. Recover the illumination-on path (FUN_0048aa90, FUN_00488030, FUN_00603aa0), then implement the window, report navigation, clear/delete actions, and A0 captures."
+        "next_proof": "FUN_0042a240, the Message Index constructor, categories, rail states, Advice slowdown, and the exact empty shell are recovered in evidence/2026-09-24-message-index-recovery.md and corrected P63 evidence. Populate rows and selection, then implement navigation, clear/delete, chat, production routing, and A0 captures."
       },
       "runtime_capture_required": true
     },
@@ -337,7 +337,7 @@
       "retrieval": {
         "sources": ["REBEXE.EXE", "ENCYBMAP.DLL", "ENCYTEXT.DLL", "EData", "GOKRES.DLL"],
         "method": "Trace topic commands and previous/next navigation through ENCYBMAP mappings, ENCYTEXT records, EData image selection, and missing-entry handling.",
-        "next_proof": "Recover all index categories, topic constructors, image/text mappings, and context-open paths."
+        "next_proof": "Continue from FUN_0045d400 and FUN_0045ddc0, not the corrected Message Index shell: recover the exact category/resource table, catalog ordering, topic composition, image/text bindings, navigation, context-open paths, clipping, and A0 evidence."
       },
       "runtime_capture_required": true
     },

@@ -16,8 +16,8 @@ node run.mjs --all --no-build  # reuse a verified fixture build
 node run.mjs --all --scenario=pan --no-build  # four focused faction/viewport cases
 node encyclopedia-art.mjs  # build and verify original EDATA browser transport
 node encyclopedia-art.mjs --no-build  # reuse a verified fixture build
-node encyclopedia-shell.mjs  # verify both original index shells and control states
-node encyclopedia-shell.mjs --no-build  # reuse a verified fixture build
+node message-index-shell.mjs  # verify both original Message Index shells
+node message-index-shell.mjs --no-build  # reuse a verified fixture build
 ```
 
 Harness unit regressions can be run from the repository root with
@@ -32,13 +32,14 @@ accepts the replacement encyclopedia window. Set `REBELLION_EDATA_DIR` or
 repository. Captures and decoded comparisons remain under ignored
 `.artifacts/interface-parity/` storage.
 
-The Encyclopedia-shell gate is the next bounded step toward `OBJ-01`. It
+The Message Index-shell gate is a bounded step toward `CMD-08`. It
 composes the source-recovered 470×331 faction shell, right rail, index content,
 and ten category controls. Two fresh muted browser processes compare the normal
 shell and every held control state pixel-for-pixel against the owned STRATEGY
-resources, then probe the exclusive right edge of the first control. Catalog
-ordering, category semantics, topic text, and navigation remain open, so
-command `0x131` continues to fail closed in production.
+resources, then probe the exclusive right edge of the first control. Populated
+message rows, selection, navigation, clear/delete actions, Advice slowdown,
+chat, and production routing remain open. The authentic Encyclopedia is a
+separate `OBJ-01` surface and command `0x131` continues to fail closed.
 
 The tactical acceptance denominator is generated directly from the surface
 ledger rather than maintained as a second hand-written list:

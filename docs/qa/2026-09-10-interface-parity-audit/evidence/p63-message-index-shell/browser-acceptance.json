@@ -15,6 +15,6 @@
   "limits": [
     "The reviewer inspected retained screenshots and did not rerun the browser harness.",
     "This does not establish production command routing or category semantics.",
-    "This does not establish catalog or topic behavior, 470-by-330 outer clipping, viewport coverage, or A0 parity."
+    "This does not establish populated rows, navigation, clear/delete behavior, viewport coverage, or A0 parity."
   ]
 }

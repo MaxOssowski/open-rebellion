@@ -13,6 +13,7 @@ pub mod game_speed;
 pub mod ground_combat;
 pub mod main_menu;
 pub mod main_menu_destinations;
+pub mod message_index;
 pub mod message_log;
 pub mod panels;
 pub mod sector_window;
@@ -53,11 +54,11 @@ pub use cockpit::{
     CockpitViewport, GidMode, StrategicControlSpec, STRATEGIC_LOGICAL_HEIGHT,
     STRATEGIC_LOGICAL_WIDTH,
 };
+#[cfg(feature = "interface-test-fixtures")]
+pub use encyclopedia::draw_encyclopedia_artwork_fixture;
 #[cfg(target_arch = "wasm32")]
 pub use encyclopedia::set_encyclopedia_asset_cache;
 pub use encyclopedia::{draw_encyclopedia, EncyclopediaState, EncyclopediaTab};
-#[cfg(feature = "interface-test-fixtures")]
-pub use encyclopedia::{draw_encyclopedia_artwork_fixture, draw_encyclopedia_index_fixture};
 pub use event_screen::{
     draw_event_screen, show_event_screen, show_event_screen_raw, update_event_screen,
     EventScreenState,
@@ -71,6 +72,9 @@ pub use main_menu_destinations::{
     draw_credits, draw_multiplayer_setup, CreditsState, MenuDestinationAction,
     MultiplayerSetupAction, MultiplayerSetupState, MultiplayerTransport,
 };
+#[cfg(feature = "interface-test-fixtures")]
+pub use message_index::draw_message_index_fixture;
+pub use message_index::draw_message_index_shell;
 pub use message_log::{
     draw_message_log, GameMessage, MessageCategory, MessageLog, MessageLogState, MessageRail,
     RailAudience,

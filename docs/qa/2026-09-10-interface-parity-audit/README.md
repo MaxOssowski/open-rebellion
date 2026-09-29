@@ -84,10 +84,10 @@ and passes the complete comparison contract.
 - Review the [P62 encyclopedia-artwork evidence](evidence/2026-09-28-encyclopedia-artwork-transport.md)
   for all 187 validated EDATA assets, native and WASM cache routing, exact
   native-size browser display, and the authentic `OBJ-01` work kept open.
-- Review the [P63 Encyclopedia index-shell evidence](evidence/2026-09-28-encyclopedia-index-shell.md)
-  for recovered faction composition, all ten normal and held controls, modal
-  input blocking, exact browser comparisons, independent visual review, and the catalog/topic work
-  kept open.
+- Review the [corrected P63 Message Index-shell evidence](evidence/2026-09-28-message-index-shell.md)
+  for recovered faction composition, all ten normal and held message-category
+  controls, modal input blocking, exact browser comparisons, independent visual
+  review, and the still-open production Message Index behavior.
 - Review the [P50 GID menu-frame evidence](evidence/2026-09-12-gid-menu-frame.md)
   for original frame tiles, source-pixel checks, and the remaining menu gaps.
 - Review the [P51 GID hover and occlusion evidence](evidence/2026-09-12-gid-hover-and-occlusion.md)

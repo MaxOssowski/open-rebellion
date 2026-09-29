@@ -1,15 +1,19 @@
-# P63 Encyclopedia index-shell checkpoint
+# P63 Message Index shell checkpoint
 
-P63 reconstructs the original faction-specific Encyclopedia index shell and
-its ten bitmap category controls. The implementation remains test-only while
-the catalog, text, topic, and navigation contracts are recovered. Production
-command `0x131` and F7 therefore continue to fail closed.
+P63 reconstructs the original faction-specific Message Index shell and its ten
+bitmap category controls. This report corrects the original P63 classification:
+the verified resource family belongs to the Message Index, not the Galactic
+Encyclopedia. The implementation remains test-only while populated rows,
+selection, navigation, clear/delete actions, Advice slowdown, and chat are
+recovered.
 
 ## Source contract
 
-`FUN_00429f30`, `FUN_00466350`, and `FUN_004665f0` establish the window route,
-shell composition, and control geometry. The detailed mapping is preserved in
-[`ghidra/notes/encyclopedia-window.md`](../../../../ghidra/notes/encyclopedia-window.md).
+`FUN_0042a240`, `FUN_00466350`, and `FUN_004665f0` establish the Message Index
+route, shell composition, and control geometry. `FUN_00468fb0` labels index mode
+with TEXTSTRA `0x8019`, and `FUN_004697b0` supplies the exact category masks.
+The corrected mapping is preserved in
+[`ghidra/notes/message-index-window.md`](../../../../ghidra/notes/message-index-window.md).
 
 - faction bases: STRATEGY 10335 and 10336;
 - faction rails: STRATEGY 10820 and 10821 at 412,0;
@@ -23,22 +27,22 @@ SHA-256 `df0891b2b8182aebc4ada40ed3d72a38b3d4e1a090d21c41ead388425ee4679f`.
 
 ## Implementation
 
-- `crates/rebellion-render/src/encyclopedia.rs` composes the source bitmaps at
+- `crates/rebellion-render/src/message_index.rs` composes the source bitmaps at
   native coordinates and returns the recovered command ID only for an exact,
   right-and-bottom-exclusive hit.
 - `crates/rebellion-app/src/main.rs` blocks strategic-map pointer input while
-  an Encyclopedia surface is present, preventing modal clicks from opening an
+  the test-only Message Index surface is present, preventing modal clicks from opening an
   underlying system window.
 - fixture scenario 40 is compiled only with `interface-test-fixtures` and is
   absent from production artifacts.
-- `tools/interface-parity/encyclopedia-shell.mjs` launches a new muted pinned
+- `tools/interface-parity/message-index-shell.mjs` launches a new muted pinned
   browser process for each faction, builds independent source composites, and
   compares normal, ten held, and outside-edge states.
 
 ## Verification
 
 The durable result is summarized in
-[`p63-encyclopedia-index-shell/summary.json`](p63-encyclopedia-index-shell/summary.json).
+[`p63-message-index-shell/summary.json`](p63-message-index-shell/summary.json).
 Raw owned bitmaps and browser captures remain under ignored local storage.
 
 | Gate | Result |
@@ -55,6 +59,12 @@ Raw owned bitmaps and browser captures remain under ignored local storage.
 | Browser diagnostics | zero errors |
 | Independent browser-evidence visual review | pass; no P0-P3 findings |
 
+The identity correction was rebuilt on current `main` and rerun on 2026-09-30
+through the same exact
+gate under its Message Index name: 24 of 24 states and 3,733,680 of 3,733,680
+pixels passed, all eight startup requests returned 200, diagnostics remained
+empty, audio remained muted, and both fresh browser processes closed.
+
 The independent reviewer inspected the retained 24-state contact sheet. It
 found intact textures and chrome, correct faction consistency, distinct held
 states without neighboring-control disturbance, and normal outside-edge
@@ -62,9 +72,9 @@ states. This was a visual evidence review, not an independent browser rerun.
 
 ## Acceptance boundary
 
-This checkpoint proves the faction shell, index composition, control bitmap
-states, fixed geometry, modal pointer boundary, and one exact edge probe. It
-does not prove category meanings, catalog ordering, stable entity bindings,
-ENCYTEXT rendering, topic composition, previous/next behavior, contextual
-entry, window dragging, 470-by-330 outer clipping, viewport variants, or A0
-comparison. No `OBJ-01` cell is accepted by P63 alone.
+This checkpoint proves the Message Index faction shell, empty index composition,
+control bitmap states, fixed geometry, modal pointer boundary, and one exact
+edge probe. It does not prove populated rows, selection, navigation,
+clear/delete actions, Advice slowdown, chat, production routing, window
+dragging, viewport variants, or A0 comparison. No `CMD-08` cell is accepted by
+P63 alone.

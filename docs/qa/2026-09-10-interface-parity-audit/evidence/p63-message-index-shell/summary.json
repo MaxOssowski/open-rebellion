@@ -2,12 +2,12 @@
   "schema_version": 1,
   "checkpoint": "P63",
   "status": "bounded_pass",
-  "scope": "test-only source-exact Encyclopedia index shell and category-control states",
+  "scope": "test-only source-exact Message Index shell and category-control states",
   "source": {
     "dll": "STRATEGY.DLL",
     "resource_count": 33,
     "aggregate_sha256": "df0891b2b8182aebc4ada40ed3d72a38b3d4e1a090d21c41ead388425ee4679f",
-    "functions": ["FUN_00429f30", "FUN_00466350", "FUN_004665f0"]
+    "functions": ["FUN_0042a240", "FUN_00466350", "FUN_004665f0", "FUN_00468fb0", "FUN_004697b0"]
   },
   "browser": {
     "version": "151.0.7922.34",
@@ -40,20 +40,32 @@
     "verdict": "pass_no_P0_P1_P2_or_P3",
     "reran_browser_harness": false
   },
+  "identity_correction": {
+    "date": "2026-09-29",
+    "from": "Encyclopedia index shell",
+    "to": "Message Index shell",
+    "corroboration": [
+      "FUN_0042a240 route and window id 0x0d",
+      "FUN_00468fb0 TEXTSTRA 0x8019 Message Index label",
+      "FUN_004697b0 message category masks",
+      "original Message Index screenshots"
+    ],
+    "browser_reverification": "24/24 exact states; 3733680/3733680 pixels; fresh muted processes closed"
+  },
   "artifacts": {
-    "wasm_sha256": "a78dc02fc62117a381519e4db13c7198710fc1b16759c45d326418c9ccde6eb7",
+    "wasm_sha256": "c2bcf1c03cb031a965436371ae97e80362772bb73a731a490aca8d6fd611b2e3",
     "runtime_pack_sha256": "400de11d5812754d4d3711995891a0e88a075350c0e73585b8c127c09eda68fc",
     "raw_storage": "ignored .artifacts/interface-parity storage"
   },
   "acceptance": {
-    "obj_01_cells_accepted": 0,
-    "production_route": "fail_closed",
+    "cmd_08_cells_accepted": 0,
+    "production_route": "not_integrated",
     "remaining": [
-      "category semantics and catalog ordering",
-      "stable entity and ENCYTEXT bindings",
-      "topic composition and navigation",
-      "contextual entry and missing-entry behavior",
-      "outer-window clipping, viewport matrix, and A0 comparison"
+      "populated message rows and selection",
+      "navigation and clear/delete actions",
+      "Advice slowdown and chat",
+      "production routing and modal lifecycle",
+      "viewport matrix and A0 comparison"
     ]
   }
 }

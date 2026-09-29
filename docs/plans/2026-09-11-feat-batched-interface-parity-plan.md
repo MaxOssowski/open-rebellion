@@ -87,20 +87,22 @@ matrix passes.
 | UIP-B06 | Space-battle interface | Both tactical HUDs, units, assignments, selection, targeting, navigation, maneuvers, tactics, missions, damage, recovery, retreat, Death Star, trench run, results, and strategic return. Use the [standalone test-launcher plan](2026-09-12-tooling-standalone-space-battle-launcher.md), [tactical 3D asset plan](2026-09-12-feat-tactical-3d-asset-pipeline.md), and [asset library](../reference/asset-library/README.md). | All 106 TAC-01 through TAC-07 baseline cells are implemented and accepted |
 | UIP-B07 | Multiplayer and release acceptance | Original provider, host, join, ready, wait, sync, chat, pause, save/load, resign, disconnect, reconnect, errors, cross-browser, and A0 closure | Two real peers and every required interface cell pass the release matrix |
 
-## Current execution focus: P63 complete; UIP-B05 continues
+## Current execution focus: P63 corrected; authentic Encyclopedia recovery continues
 
-P62 closes the bounded native/browser artwork-availability slice of UIP-B05.
-P63 then recovers the 470-by-331 faction index compositions, all ten normal and
-held category controls, and the modal pointer boundary. Its local gate compares
-24 browser states and 3,733,680 source pixels exactly across two fresh muted
-processes; independent visual review finds no P0-P3 issue. Both fixtures are
-test-only and absent from production.
+P62 closes the bounded native/browser Encyclopedia-artwork transport slice of
+UIP-B05. Source cross-checking corrects P63: its 470-by-331 faction index
+compositions, ten normal and held category controls, and modal pointer boundary
+belong to the Message Index under UIP-B03. Its 24 browser states and 3,733,680
+exact source-pixel comparisons remain valid for that corrected identity. Both
+fixtures are test-only and absent from production.
 
-UIP-B05 now proceeds through catalog ordering and stable entity bindings,
+UIP-B05 proceeds from `FUN_0045d400` and `FUN_0045ddc0` through the authentic
+Encyclopedia category table, catalog ordering and stable entity bindings,
 ENCYTEXT rendering, topic composition, previous and next navigation,
 contextual entry, missing-entry behavior, outer-window clipping, independent
 browser rerun, and the complete faction and viewport matrix. Command `0x131`
-continues to fail closed, and no `OBJ-01` cell passes from P62 or P63 alone.
+continues to fail closed, and no `OBJ-01` cell passes from P62 or the corrected
+P63 evidence.
 
 P46C established the first UIP-B01 checkpoint. Selecting a galaxy system opens
 the recovered 235x360 modeless sector window instead of the invented right

@@ -3,10 +3,11 @@
 - [P62 encyclopedia artwork transport](2026-09-28-encyclopedia-artwork-transport.md)
   tracks validated native/WASM EDATA transport. It does not accept the current
   replacement encyclopedia or any `OBJ-01` cell.
-- [P63 Encyclopedia index shell](2026-09-28-encyclopedia-index-shell.md)
-  tracks the source-exact faction shells, ten category controls, modal input
-  boundary, 24 exact pixel comparisons, and independent visual review. Catalog
-  and topic behavior remain open, so it accepts no `OBJ-01` cell.
+- [Corrected P63 Message Index shell](2026-09-28-message-index-shell.md)
+  tracks the source-exact faction shells, ten message-category controls, modal
+  input boundary, 24 exact pixel comparisons, and independent visual review.
+  Populated behavior and production routing remain open, so it accepts no
+  `CMD-08` cell.
 
 This directory contains the durable reports and review artifacts for each
 verified interface checkpoint. The parent [audit index](../README.md) remains

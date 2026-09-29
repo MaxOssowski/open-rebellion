@@ -36,7 +36,7 @@ const factions = [
   { name: "empire", byte: 2, base: 10336, rail: 10821 },
 ];
 const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`;
-const runDir = path.join(root, ".artifacts/interface-parity", `encyclopedia-shell-${runId}`);
+const runDir = path.join(root, ".artifacts/interface-parity", `message-index-shell-${runId}`);
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -227,7 +227,7 @@ async function stableShellScreenshot(page, directory, label) {
   assert.equal(
     sha256(PNG.sync.write(firstShell)),
     sha256(PNG.sync.write(secondShell)),
-    "Encyclopedia shell did not stabilize",
+    "Message Index shell did not stabilize",
   );
   return secondShell;
 }
@@ -379,8 +379,8 @@ async function main() {
   const passed = results.every((result) => result.status === "pass");
   const summary = {
     schema_version: 1,
-    family: "encyclopedia-index-shell",
-    scope: "test-only source-exact shell and category-control states; catalog and topic behavior remain open",
+    family: "message-index-shell",
+    scope: "test-only source-exact Message Index shell and category-control states; populated rows and production routing remain open",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

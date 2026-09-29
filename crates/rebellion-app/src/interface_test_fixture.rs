@@ -76,7 +76,7 @@ pub enum Scenario {
     DeathStarShields = 36,
     PlanetaryShields = 37,
     EncyclopediaArtwork = 38,
-    EncyclopediaShell = 39,
+    MessageIndexShell = 39,
 }
 
 impl Scenario {
@@ -121,7 +121,7 @@ impl Scenario {
             36 => Self::DeathStarShields,
             37 => Self::PlanetaryShields,
             38 => Self::EncyclopediaArtwork,
-            39 => Self::EncyclopediaShell,
+            39 => Self::MessageIndexShell,
             _ => return None,
         })
     }
