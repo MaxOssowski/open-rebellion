@@ -11,6 +11,8 @@
     "test:gid:no-build": "node run.mjs --all --no-build",
     "test:encyclopedia-art": "node encyclopedia-art.mjs",
     "test:encyclopedia-art:no-build": "node encyclopedia-art.mjs --no-build",
+    "test:encyclopedia-shell": "node encyclopedia-shell.mjs",
+    "test:encyclopedia-shell:no-build": "node encyclopedia-shell.mjs --no-build",
     "check": "node validate-catalog.mjs && node validate-tactical-matrix.mjs && node verify-tactical-a0-exclusion.mjs && node verify-production-exclusion.mjs"
   },
   "dependencies": {

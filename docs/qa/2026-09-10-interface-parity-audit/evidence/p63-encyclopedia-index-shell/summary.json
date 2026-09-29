@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "checkpoint": "P63",
+  "status": "bounded_pass",
+  "scope": "test-only source-exact Encyclopedia index shell and category-control states",
+  "source": {
+    "dll": "STRATEGY.DLL",
+    "resource_count": 33,
+    "aggregate_sha256": "df0891b2b8182aebc4ada40ed3d72a38b3d4e1a090d21c41ead388425ee4679f",
+    "functions": ["FUN_00429f30", "FUN_00466350", "FUN_004665f0"]
+  },
+  "browser": {
+    "version": "151.0.7922.34",
+    "muted": true,
+    "fresh_processes": 2,
+    "processes_closed": 2,
+    "viewport": [640, 480],
+    "fixture_codes": {
+      "alliance": 296,
+      "empire": 552
+    },
+    "requests_200": 8,
+    "request_failures": 0,
+    "browser_errors": 0
+  },
+  "comparison": {
+    "surface_dimensions": [470, 331],
+    "states_per_faction": 12,
+    "states_total": 24,
+    "pixels_per_state": 155570,
+    "pixels_checked": 3733680,
+    "different_pixels": 0,
+    "normal_states": 2,
+    "pressed_states": 20,
+    "outside_edge_states": 2
+  },
+  "independent_review": {
+    "date": "2026-09-29",
+    "basis": "retained 24-state browser contact sheet",
+    "verdict": "pass_no_P0_P1_P2_or_P3",
+    "reran_browser_harness": false
+  },
+  "artifacts": {
+    "wasm_sha256": "a78dc02fc62117a381519e4db13c7198710fc1b16759c45d326418c9ccde6eb7",
+    "runtime_pack_sha256": "400de11d5812754d4d3711995891a0e88a075350c0e73585b8c127c09eda68fc",
+    "raw_storage": "ignored .artifacts/interface-parity storage"
+  },
+  "acceptance": {
+    "obj_01_cells_accepted": 0,
+    "production_route": "fail_closed",
+    "remaining": [
+      "category semantics and catalog ordering",
+      "stable entity and ENCYTEXT bindings",
+      "topic composition and navigation",
+      "contextual entry and missing-entry behavior",
+      "outer-window clipping, viewport matrix, and A0 comparison"
+    ]
+  }
+}

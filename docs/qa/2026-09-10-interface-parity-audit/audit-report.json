@@ -144,12 +144,14 @@
       "id": "UIP-F-006",
       "severity": "P1",
       "status": "partial",
-      "title": "Native and WASM EDATA transport, lazy decode, exact missing-asset logging, and native-size browser display work; the authentic encyclopedia catalog, index, topic windows, bindings, and OBJ-01 matrix remain open",
+      "title": "Native and WASM EDATA transport plus source-recovered faction index shells, ten category-control pairs, and modal input blocking pass exact browser gates and independent visual review; catalog ordering, text/entity bindings, topics, navigation, and OBJ-01 remain open",
       "evidence": [
         "crates/rebellion-render/src/encyclopedia.rs",
         "scripts/build-runtime-pack.py",
         "tools/interface-parity/encyclopedia-art.mjs",
-        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md"
+        "tools/interface-parity/encyclopedia-shell.mjs",
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md",
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-index-shell.md"
       ],
       "affected_surfaces": ["OBJ-01"]
     },
@@ -351,9 +353,10 @@
     "p58_b20_recovery_withdrawal_feedback": "evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md",
     "p58_b21_shared_post_battle_orchestration": "evidence/2026-09-27-tactical-post-battle-orchestration.md",
     "p62_encyclopedia_artwork_transport": "evidence/2026-09-28-encyclopedia-artwork-transport.md",
+    "p63_encyclopedia_index_shell": "evidence/2026-09-28-encyclopedia-index-shell.md",
     "ledger_validator": "../../../scripts/validate-interface-parity-ledgers.mjs",
     "screenshot_ledger": "screenshot-ledger.md",
     "capture_manifest": "reference-captures/SHA256SUMS"
   },
-  "next_action": "Preserve the P58-B22 bounded practical launcher while strict A0 work continues. Complete UIP-B05 by recovering the original encyclopedia catalog, index and topic windows, stable entity bindings, text, navigation, contextual entry, faction and viewport matrices. Keep OBJ-01 open until every original-interface gate passes."
+  "next_action": "Preserve the P58-B22 bounded practical launcher while strict A0 work continues. Complete UIP-B05 from the P63 index-shell checkpoint by recovering catalog ordering, stable entity and ENCYTEXT bindings, topic composition, navigation, contextual entry, outer-window clipping, an independent browser rerun, and the faction/viewport matrix. Keep OBJ-01 open until every original-interface gate passes."
 }

@@ -3136,10 +3136,23 @@ Some(RailAudience::side(*faction_is_alliance)),
                 ));
                 map_state.display_scale = cockpit_layout.scale;
                 let pointer = mouse_position();
+                #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                let original_encyclopedia_fixture_open =
+                    interface_fixture_request.is_some_and(|request| {
+                        matches!(
+                            request.scenario,
+                            interface_test_fixture::Scenario::EncyclopediaArtwork
+                                | interface_test_fixture::Scenario::EncyclopediaShell
+                        )
+                    });
+                #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
+                let original_encyclopedia_fixture_open = false;
                 map_state.pointer_blocked = sector_window_state
                     .contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.contains_screen_point(cockpit_layout, pointer)
                     || cockpit_state.gid_ui.menu_open
+                    || enc_state.open
+                    || original_encyclopedia_fixture_open
                     || game_speed_ui.menu_anchor.is_some()
                     || pause_alert_contains_screen_point(&clock, cockpit_layout, pointer)
                     || event_screen_state.is_active();
@@ -3361,6 +3374,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                             ctx,
                             42,
                             &mut enc_state,
+                        );
+                    }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let Some(request) = interface_fixture_request.filter(|request| {
+                        request.scenario == interface_test_fixture::Scenario::EncyclopediaShell
+                    }) {
+                        rebellion_render::draw_encyclopedia_index_fixture(
+                            ctx,
+                            &mut bmp_cache,
+                            request.faction,
                         );
                     }
 

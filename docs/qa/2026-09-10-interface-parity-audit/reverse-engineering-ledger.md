@@ -156,7 +156,7 @@ and a next proof in the [machine-readable ledger](reverse-engineering-ledger.jso
 | RE-GID-01 | Filters, legends, marker rules, pan, zoom, and selection | static-partial; default GID and source frame runtime-corroborated | Recover menu interior and geometry, expanded legend, remaining filter predicates and overlays, and exact map input |
 | RE-OVR-01 | Galaxy Overview | untriaged | Recover geometry, category formulas, resources, and destinations |
 | RE-MSG-01 | Messages, Agent menus, alerts, and reports | static-partial; rail controls recovered | Decompile `FUN_0042a240`, map unread states and the original index window, then join reports, audio, and navigation |
-| RE-ENC-01 | Encyclopedia index and topics | static-partial | Complete ENCYBMAP, ENCYTEXT, EData, and navigation mappings |
+| RE-ENC-01 | Encyclopedia index and topics | static-partial; index shell and ten control pairs runtime-corroborated | Complete catalog ordering, ENCYTEXT/entity bindings, topic composition, navigation, outer-window clipping, and A0 comparison using the [P63 mapping](../../../ghidra/notes/encyclopedia-window.md) |
 | RE-OBJ-01 | System, sector, and object-window constructors | static-partial; sector and system shells runtime-corroborated | Complete system item compositions and commands, then map the remaining object families |
 | RE-ADV-01 | Type-302 advisor and briefing frame decoding | runtime-corroborated | Extend the verified advisor decoder/transport to briefings and compare with A0 captures |
 | RE-ADV-02 | SPT/BIN/FDT action semantics, cadence, and sound | static-partial | Replace inferred priority thirds with authored action mappings |

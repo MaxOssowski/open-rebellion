@@ -67,7 +67,7 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 |--------|--------------|---------------|------------|
 | Game init / CRT | 0x401000-0x403e90 | entry, CRT boilerplate | ~100 |
 | Galaxy map rendering (GDI) | 0x422000-0x43a000 | FUN_00422ce0 (11K), FUN_00433e40 (6K) | ~50 |
-| UI dialogs / windows | 0x43a000-0x470000 | FUN_0044c630 (6K), FUN_004665f0 (6K) | ~200 |
+| UI dialogs / windows | 0x43a000-0x470000 | FUN_0044c630 (6K), FUN_004665f0 (6K); [Encyclopedia mapping](encyclopedia-window.md) | ~200 |
 | Game logic / turn processing | 0x490000-0x4a0000 | FUN_004927c0 (9K) | ~50 |
 | Character system | 0x4ee000-0x4f4000 | Enhanced skills, Force, loyalty | ~80 |
 | Game object base | 0x4f4000-0x500000 | Faction handler, fleet events, mission destroy | ~60 |

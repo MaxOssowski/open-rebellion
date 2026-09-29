@@ -128,6 +128,7 @@ navigation, animation, audio presentation, and the absence of invented UI.
 | [P58-B20 recovery/withdrawal feedback evidence](evidence/2026-09-26-tactical-recovery-withdrawal-feedback.md) | Final-group recovery, no-carrier-capacity, and disabled-hyperdrive withdrawal feedback with exact faction voice routing across twelve muted browser cases. |
 | [P58-B21 shared post-battle evidence](evidence/2026-09-27-tactical-post-battle-orchestration.md) | One production route for interactive and automatic bombardment, landing, contested ground continuation, unopposed occupation, and result destinations. |
 | [P58-B22 source-completion evidence](evidence/2026-09-28-tactical-source-completion.md) | Recovered tactical RNG, persisted power allocation, completion/destruction callbacks, and the timed trench-run producer; strict A0 remains 0/106. |
+| [P63 Encyclopedia index-shell evidence](evidence/2026-09-28-encyclopedia-index-shell.md) | Source-recovered faction compositions, ten normal/held controls, modal pointer blocking, 24 exact browser states, and independent visual review; catalog/topic behavior and `OBJ-01` acceptance remain open. |
 | [Evidence index](evidence/README.md) | Reports and artifact bundles, including a required `README.md` inventory for each new bundle. |
 | [JSON Schema](schemas/interface-parity.schema.json) | Validation contract for the audit summary and status vocabulary. |
 | [Ledger validator](../../../scripts/validate-interface-parity-ledgers.mjs) | Dependency-free generator and consistency gate for cell IDs and retrieval-package links. |
@@ -302,10 +303,13 @@ binding, exact planet framing, native beam and playback comparison, A0
 comparison, and every tactical cell remain open.
 Runtime pack v3 now includes all 3,988 ALSPRITE and EMSPRITE type-302 frames
 and all 187 validated original EDATA images. P62 proves the dedicated EDATA
-namespace, lazy cache and decode path, and one native-size browser image
-pixel-for-pixel. Briefing, dialog, advisor-control, remaining voice resources,
-and the authentic encyclopedia catalog and windows remain open. Its 27
-packages give every required surface a named recovery or removal path.
+namespace, lazy cache and decode path. P63 proves both recovered index shells
+and all ten normal/held controls pixel-for-pixel, with independent visual
+review, while keeping the
+production route closed. Briefing, dialog, advisor-control, remaining voice
+resources, encyclopedia catalog and topics, and `OBJ-01` acceptance remain
+open. Its 27 packages give every required surface a named recovery or removal
+path.
 
 ## What 100% means
 

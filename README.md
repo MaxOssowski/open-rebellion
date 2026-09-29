@@ -40,7 +40,7 @@ Open Rebellion reads the original game data files, converts them to clean JSON, 
 
 ### Current development state
 
-> **Verification (2026-09-28):** The workspace suite passes. The bounded tactical launcher passes 144 muted browser cases with 106/106 deterministic A1 mappings; strict A0 acceptance remains 0/106. All 187 owned encyclopedia images now reach native and browser builds, with one native-size image matching all 80,000 source pixels. Authentic encyclopedia windows, wider interface parity, multiplayer, and release acceptance remain open in the [interface audit](docs/qa/2026-09-10-interface-parity-audit/).
+> **Verification (2026-09-29):** The workspace suite passes. The bounded tactical launcher passes 144 muted browser cases with 106/106 deterministic A1 mappings; strict A0 acceptance remains 0/106. All 187 owned encyclopedia images reach native and browser builds. The source-exact faction index shells and ten controls pass two-faction pixel gates and independent visual review, while the production catalog, topics, wider interface parity, multiplayer, and release acceptance remain open in the [interface audit](docs/qa/2026-09-10-interface-parity-audit/).
 
 | Layer | Implementation status | Release acceptance |
 |-------|-----------------------|--------------------|

@@ -99,6 +99,7 @@ The local source inspection establishes the implementation causes:
 | Partial original sector and system navigation | `crates/rebellion-render/src/sector_window.rs`, `crates/rebellion-render/src/system_window.rs` | Manual pp. 67–68, 97–100, and 122–124; recovered constructors, [navigation evidence](evidence/2026-09-11-strategic-window-navigation.md), and [tab-item evidence](evidence/2026-09-11-detailed-system-tab-items.md) |
 | Partial browser droids | `crates/rebellion-render/src/advisor.rs` | Manual pp. 20–21 and 73–79; official Steam faction captures; [P44 evidence](../2026-09-08-full-functionality-audit/evidence/2026-09-10-authentic-droid-advisors.md) |
 | Bounded original encyclopedia-art transport | `crates/rebellion-render/src/encyclopedia.rs`, `scripts/build-runtime-pack.py`, `tools/interface-parity/encyclopedia-art.mjs` | Manual pp. 71–72, 187 owned original EDATA entries, and [P62 evidence](evidence/2026-09-28-encyclopedia-artwork-transport.md) |
+| Source-recovered Encyclopedia index shell | `crates/rebellion-render/src/encyclopedia.rs`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/encyclopedia-shell.mjs` | `FUN_00429f30`, `FUN_00466350`, `FUN_004665f0`, 33 owned STRATEGY resources, and [P63 evidence](evidence/2026-09-28-encyclopedia-index-shell.md) |
 | Incomplete browser asset pack | `scripts/build-runtime-pack.py` | Original ALSPRITE, EMSPRITE, EDATA, ALBRIEF, EMBRIEF, REBDLOG, advisor-control, and voice families |
 | Invented live ground-combat screen | `crates/rebellion-render/src/ground_combat.rs:202` | Manual pp. 119–121 assault summaries and reports |
 | The bounded practical tactical launcher is implementation-complete: original shell and controls, transported 3D corpus, exact resource joins, live forces, commands, combat, grouping, effects, results/options, Death Star paths, shared campaign return, one source-compatible tactical RNG stream, persisted power allocation, completion/destruction callbacks, and the timed trench-run producer use recovered source contracts. Native beam and playback comparison, whole-process RNG continuity, strategic commander binding, rare audio routes, and A0 acceptance remain open | `crates/rebellion-render/src/tactical_view.rs`, `crates/rebellion-render/src/tactical_resources.rs`, `crates/rebellion-render/src/tactical_assets.rs`, `crates/rebellion-core/src/combat.rs`, `tools/interface-parity` | Manual pp. 139–150, original TACTICAL resources, [P52 through P58-B22 evidence](evidence/README.md), and the [P58-B22 source-completion checkpoint](evidence/2026-09-28-tactical-source-completion.md) |
@@ -117,7 +118,12 @@ preserve all 3,988 ALSPRITE and EMSPRITE type-302 frames. Briefing, tactical,
 dialog, advisor-control, and voice families remain incomplete. P62 adds all
 187 validated original EDATA images in a dedicated namespace and proves one
 native-size browser display pixel-for-pixel. The authentic encyclopedia
-catalog and windows remain absent, so `OBJ-01` stays open.
+catalog and windows remain absent, so `OBJ-01` stays open. P63 then recovers
+both faction index compositions and all ten normal/held category controls,
+blocks modal click-through, passes 24 exact browser comparisons, and passes
+independent visual review with no P0-P3 issue.
+Catalog ordering, stable entity/text bindings, topics, navigation, outer
+clipping, and every `OBJ-01` cell remain open.
 P54 separately stages every original type-301 mesh and type-303 texture or
 palette resource with a source-bound content-addressed manifest. P55 decodes
 the full corpus into verified deterministic mesh and texture objects. P56 and
