@@ -1856,7 +1856,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 &mission_rolls,
             );
             // Member moves and releases come before the results.
-            rebellion_core::missions::apply_member_effects(&mut world, &mission_advance.effects);
+            rebellion_core::missions::apply_advance_effects(&mut world, &mission_advance.effects);
             ai_state.free_mission_members(&mission_advance.effects);
             if let Some(second_ai) = secondary_ai_state.as_mut() {
                 second_ai.free_mission_members(&mission_advance.effects);
@@ -5395,6 +5395,11 @@ fn apply_mission_result(
                     fleet.characters.retain(|&k| k != *character);
                 }
             }
+            MissionEffect::SpecialForceDestroyed { unit } => {
+                rebellion_core::missions::destroy_special_force(world, *unit);
+            }
+            // port: the port stores no injury (F-026).
+            MissionEffect::CharacterInjured { .. } => {}
             MissionEffect::CharacterRescued {
                 character,
                 returned_to,

@@ -67,11 +67,11 @@ const GNPRTB_UPRISING_MISSION_DIVISOR: u16 = 6144;
 /// 6145 (`DAT_006bb52c`) = -2: support change while Incite Uprising is active.
 const GNPRTB_INCITE_SUPPORT_DELTA: u16 = 6145;
 /// 2565 (`DAT_006b9080`) = 1: minimum injury chance.
-const GNPRTB_INJURY_MIN_CHANCE: u16 = 2565;
+pub(crate) const GNPRTB_INJURY_MIN_CHANCE: u16 = 2565;
 /// 2566 (`DAT_006b908c`) = 1: injury base.
-const GNPRTB_INJURY_BASE: u16 = 2566;
+pub(crate) const GNPRTB_INJURY_BASE: u16 = 2566;
 /// 2567 (`DAT_006b90d8`) = 29: injury spread.
-const GNPRTB_INJURY_SPREAD: u16 = 2567;
+pub(crate) const GNPRTB_INJURY_SPREAD: u16 = 2567;
 /// 7715 (`DAT_006bb3ec`) = 5: disaster erosion percent per remaining unit.
 const GNPRTB_DISASTER_EROSION: u16 = 7715;
 /// 7716 (`DAT_006bb43c`) = 10: disaster facility destruction percent.
@@ -239,6 +239,38 @@ impl<'a> Rolls<'a> {
         let last = i32::try_from(count.checked_sub(1)?).ok()?;
         usize::try_from(self.draw(last)).ok()
     }
+}
+
+impl Draws for Rolls<'_> {
+    fn draw(&mut self, n: i32) -> i32 {
+        Rolls::draw(self, n)
+    }
+
+    fn chance(&mut self, percent: i32) -> bool {
+        Rolls::chance(self, percent)
+    }
+}
+
+/// The draws `FUN_0053e990` takes: `FUN_0053e290` and `FUN_0053e2f0`.
+pub(crate) trait Draws {
+    fn draw(&mut self, n: i32) -> i32;
+    fn chance(&mut self, percent: i32) -> bool;
+}
+
+/// `FUN_0053e990`: with chance `max(min_chance, 100 - combat)` percent, an
+/// injury of `rand(chance) + rand(spread) + base`. On a miss the original
+/// applies injury 0, which changes nothing, so the roll gives `None`.
+pub(crate) fn roll_injury(
+    combat: i32,
+    min_chance: i32,
+    spread: i32,
+    base: i32,
+    draws: &mut impl Draws,
+) -> Option<i32> {
+    let chance = min_chance.max(100 - combat);
+    draws
+        .chance(chance)
+        .then(|| draws.draw(chance) + draws.draw(spread) + base)
 }
 
 // ---------------------------------------------------------------------------
@@ -635,15 +667,14 @@ fn apply_code(
                 .collect();
             if let Some(i) = rolls.pick(free.len()) {
                 let (character, combat) = free[i];
-                // FUN_0053e990
-                let chance = param(GNPRTB_INJURY_MIN_CHANCE).max(100 - combat);
-                if rolls.chance(chance) {
-                    let injury = rolls.draw(chance)
-                        + rolls.draw(param(GNPRTB_INJURY_SPREAD))
-                        + param(GNPRTB_INJURY_BASE);
-                    if injury > 0 {
-                        losses.push(IncidentLoss::CharacterInjured { character, injury });
-                    }
+                if let Some(injury) = roll_injury(
+                    combat,
+                    param(GNPRTB_INJURY_MIN_CHANCE),
+                    param(GNPRTB_INJURY_SPREAD),
+                    param(GNPRTB_INJURY_BASE),
+                    rolls,
+                ) {
+                    losses.push(IncidentLoss::CharacterInjured { character, injury });
                 }
             }
         }
@@ -1993,7 +2024,7 @@ mod tests {
         }
         // ROLLS_PER_MISSION per mission: the Subdue outcome and gain draw,
         // then the Diplomacy outcome in its own window.
-        let rolls = [0.0, 0.5, 0.9, 0.9, 0.0, 0.9, 0.9, 0.9];
+        let rolls = [0.0, 0.5, 0.9, 0.9, 0.9, 0.0, 0.9, 0.9, 0.9, 0.9];
         let results = crate::missions::MissionSystem::advance(
             &mut missions,
             &world,

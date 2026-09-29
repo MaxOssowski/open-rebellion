@@ -1629,6 +1629,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 50,
                 defense_strength: 20,
+                detection: 0,
             },
         );
         world.troop_classes.insert(
@@ -1636,6 +1637,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 5,
                 defense_strength: 5,
+                detection: 0,
             },
         );
 
@@ -1674,6 +1676,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 20,
                 defense_strength: 20,
+                detection: 0,
             },
         );
 
@@ -1734,6 +1737,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 20,
                 defense_strength: 10,
+                detection: 0,
             },
         );
 
@@ -1856,6 +1860,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 80,
                 defense_strength: 60,
+                detection: 0,
             },
         );
         world.troop_classes.insert(
@@ -1863,6 +1868,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 10,
                 defense_strength: 5,
+                detection: 0,
             },
         );
 
@@ -2699,6 +2705,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 30,
                 defense_strength: 20,
+                detection: 0,
             },
         );
 
@@ -2729,6 +2736,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 30,
                 defense_strength: 20,
+                detection: 0,
             },
         );
 

@@ -115,7 +115,7 @@ The ignored fixture test requires the locally supplied original `.DAT` files.
 It records a nine-command, 25-tick, 200-system campaign, reloads its initial
 state through the current save format, and checks every command-prefix
 fingerprint against a cross-process golden, which currently runs
-`v1:d8edefc22cfdf7cd` -> `v1:6f404bcf7868244a`. Any save layout or
+`v1:acbd440f1734677c` -> `v1:276e317d8c392b5e`. Any save layout or
 simulation change moves every fingerprint; regenerate the golden only for a
 named cause and name it in the commit. The v13 goldens did not reproduce
 even at their own commit `e8d4945`; that cause remains open. The unit tests use

@@ -451,7 +451,7 @@ pub fn run_simulation_tick(
         tick_events,
         &mission_rolls,
     );
-    rebellion_core::missions::apply_member_effects(world, &mission_advance.effects);
+    rebellion_core::missions::apply_advance_effects(world, &mission_advance.effects);
     states.ai.free_mission_members(&mission_advance.effects);
     if let Some(ref mut ai2) = states.ai2 {
         ai2.free_mission_members(&mission_advance.effects);
@@ -933,6 +933,7 @@ mod tests {
             TroopClassDef {
                 attack_strength: 0,
                 defense_strength: 10,
+                detection: 0,
             },
         );
         let alliance_troop = world.troops.insert(TroopUnit {

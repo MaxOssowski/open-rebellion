@@ -520,6 +520,7 @@ pub fn load_game_data_with_options(
                 TroopClassDef {
                     attack_strength: dat.attack_strength,
                     defense_strength: dat.defense_strength,
+                    detection: dat.detection,
                 },
             );
         }

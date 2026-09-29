@@ -1593,19 +1593,17 @@ fn apply_mission_effects_inner(
                 character,
                 captured_by,
                 at_system,
-            } => {
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.is_captive = true;
-                    c.captured_by = Some(match captured_by {
-                        MissionFaction::Alliance => rebellion_core::dat::Faction::Alliance,
-                        MissionFaction::Empire => rebellion_core::dat::Faction::Empire,
-                    });
-                    c.current_system = Some(*at_system);
-                }
-                for (_, fleet) in &mut world.fleets {
-                    fleet.characters.retain(|&k| k != *character);
-                }
+            } => rebellion_core::missions::capture_character(
+                world,
+                *character,
+                *captured_by,
+                *at_system,
+            ),
+            MissionEffect::SpecialForceDestroyed { unit } => {
+                rebellion_core::missions::destroy_special_force(world, *unit);
             }
+            // port: the port stores no injury (F-026).
+            MissionEffect::CharacterInjured { .. } => {}
             MissionEffect::CharacterRescued {
                 character,
                 returned_to,

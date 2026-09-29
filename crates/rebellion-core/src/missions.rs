@@ -39,6 +39,11 @@
 //! repeats 10 -> 8 when its record says so, and ends in phase `0xb` once the
 //! validator (`FUN_00522480`) or the last step sets an end code.
 //!
+//! After each phase change the detection run (`mission_detection`,
+//! `FUN_00547f60`) lets the decoys draw off defenders, the defenders try to
+//! detect the team, and phase 9 looks for a traitor; a detected team is
+//! exposed, and its members evade and resign or are captured.
+//!
 //! The phase 10 roll and the probability paths above are interim until
 //! F-019 phase 4 ports the per-member roll.
 
@@ -431,6 +436,9 @@ pub struct ActiveMission {
     /// Whether the destruction check (`FUN_00545240`) has run for the
     /// destroyed container. The original runs it once, on the destruction.
     pub container_loss_seen: bool,
+    /// Members with a resign request (role `+0x78` bit 3, `FUN_00534640`),
+    /// set when an exposed member may resign (record column 9).
+    pub resigning: Vec<MissionMember>,
 }
 
 /// The phase that starts every member's transit (`FUN_00520b20`).
@@ -472,6 +480,7 @@ impl ActiveMission {
             wait_start: ordered_tick,
             timer_due: None,
             container_loss_seen: false,
+            resigning: Vec::new(),
         }
     }
 
@@ -662,6 +671,16 @@ fn member_state(world: &GameWorld, member: MissionMember) -> Option<MemberState>
     }
 }
 
+/// Whether a present member stands in a fleet (`Some(true)`) or at a system
+/// (`Some(false)`); `None` without a location.
+pub(crate) fn member_location_kind(world: &GameWorld, member: MissionMember) -> Option<bool> {
+    match member_state(world, member)?.location {
+        MemberLocation::Fleet(_) => Some(true),
+        MemberLocation::System(_) => Some(false),
+        MemberLocation::Nowhere => None,
+    }
+}
+
 /// A member's skill: a character's rolled template (base plus half of any
 /// unrolled variance, as `MissionKind::skill_score` reads it), or a special
 /// force's rolled skill. `None` when the member no longer exists.
@@ -735,17 +754,49 @@ pub fn move_member(world: &mut GameWorld, member: MissionMember, to: Option<Syst
     }
 }
 
-/// Apply the member moves and releases of [`MissionAdvance::effects`] in
-/// order; every other effect is left to the result handlers. The native and
-/// browser app shares this with the headless integrator.
-pub fn apply_member_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
+/// Apply [`MissionAdvance::effects`] in order: member moves and releases,
+/// and the detection's captures, lost special forces, and injuries. The
+/// native and browser app shares this with the headless integrator.
+pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
     for effect in effects {
         match effect {
             MissionEffect::MemberMoved { member, to } => move_member(world, *member, *to),
             MissionEffect::MemberAvailable { member } => set_on_mission(world, *member, false),
+            MissionEffect::CharacterCaptured {
+                character,
+                captured_by,
+                at_system,
+            } => capture_character(world, *character, *captured_by, *at_system),
+            MissionEffect::SpecialForceDestroyed { unit } => destroy_special_force(world, *unit),
             _ => {}
         }
     }
+}
+
+/// Hold `character` at `at_system` as `captured_by`'s prisoner.
+pub fn capture_character(
+    world: &mut GameWorld,
+    character: CharacterKey,
+    captured_by: MissionFaction,
+    at_system: SystemKey,
+) {
+    if let Some(c) = world.characters.get_mut(character) {
+        c.is_captive = true;
+        c.captured_by = Some(captured_by.into());
+        c.current_system = Some(at_system);
+        c.current_fleet = None;
+    }
+    for (_, fleet) in &mut world.fleets {
+        fleet.characters.retain(|&k| k != character);
+    }
+}
+
+/// Remove a special force from its system and the world.
+pub fn destroy_special_force(world: &mut GameWorld, unit: crate::ids::SpecialForceKey) {
+    for (_, system) in &mut world.systems {
+        system.special_forces.retain(|&key| key != unit);
+    }
+    world.special_forces.remove(unit);
 }
 
 /// One mission member travelling to its mission's target, as the original's
@@ -1064,6 +1115,18 @@ pub enum MissionEffect {
         /// Number of construction ticks added to the countdown.
         ticks_delayed: u32,
     },
+
+    /// A special force captured on a mission is destroyed (slot `+0x20c`,
+    /// `FUN_00503eb0` -> slot `+0xac(9)`).
+    SpecialForceDestroyed { unit: crate::ids::SpecialForceKey },
+
+    /// A character took the injury roll `FUN_004ef5f0` (health `+0x94`).
+    /// port: the port stores no injury (F-026), so applying it changes
+    /// nothing.
+    CharacterInjured {
+        character: CharacterKey,
+        injury: i32,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -1217,7 +1280,7 @@ const FULL_SUPPORT: i32 = 100;
 /// Which rules the class validator adds to the base rules
 /// (`ghidra/notes/mission-lifecycle.md`, "Validators per class").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TargetRules {
+pub(crate) enum TargetRules {
     /// `FUN_005868c0`: the uprising columns.
     System,
     /// `FUN_00586e20`: the prisoner columns.
@@ -1248,7 +1311,7 @@ impl MissionKind {
         Some(crate::ids::DatId::new(raw))
     }
 
-    fn target_rules(self) -> TargetRules {
+    pub(crate) fn target_rules(self) -> TargetRules {
         match self {
             MissionKind::Rescue | MissionKind::Abduction | MissionKind::Assassination => {
                 TargetRules::Character
@@ -1354,14 +1417,24 @@ fn target_view(
 /// with a remote target (`FUN_00520af0` false), the original reads the
 /// side's own copy of them instead (`FUN_00521160`, `FUN_005211c0` through
 /// `FUN_004f2d10`); the port keeps no per-side copies.
-fn running_end_code(
+pub(crate) fn running_end_code(
     mission: &ActiveMission,
     world: &GameWorld,
     uprisings: &crate::uprising::UprisingState,
     en_route: &[MemberTransit],
 ) -> u8 {
     use crate::dat::Faction;
-    // port: a kind with no MISSNSD record runs no checks.
+    // Rule 1 (FUN_00522480.c:42-52): end 5 unless a team member stands
+    // without a remove or resign request; an empty team ends too, and a
+    // killed member is deleted. port: the port has no remove requests, and
+    // +0xa4 bit 1, which lifts the rule, is untraced and taken as clear.
+    let standing = mission.team.iter().any(|&member| {
+        member_state(world, member).is_some() && !mission.resigning.contains(&member)
+    });
+    if !standing {
+        return 5;
+    }
+    // port: a kind with no MISSNSD record runs no other checks.
     let Some(record) = mission
         .kind
         .record_id()
@@ -1369,15 +1442,14 @@ fn running_end_code(
     else {
         return 0;
     };
-    // Rule 1, end 5 when every team member asked to resign: port: the port
-    // has no resign requests.
     // FUN_005830a0: members of both sides (status 0x14) or of none (0x16)
-    // skip every later check without an end code.
+    // skip every later check without an end code. Rule 1 has already ended
+    // a mission with no standing team member, so some member has a side.
     let sides: Vec<bool> = mission
         .members()
         .filter_map(|member| member_state(world, member).map(|state| state.is_alliance))
         .collect();
-    if sides.is_empty() || (sides.contains(&true) && sides.contains(&false)) {
+    if sides.contains(&true) && sides.contains(&false) {
         return 0;
     }
     let rules = record.rules;
@@ -1477,21 +1549,32 @@ pub struct MissionSystem;
 
 /// Draws one mission may take on one tick event: the creation chain's timer,
 /// then the outcome roll, the Subdue Uprising support draw
-/// (`FUN_0055cb10`), and the repeat's timer. port: the size of the port's
-/// per-mission window.
-pub const ROLLS_PER_MISSION: usize = 4;
+/// (`FUN_0055cb10`), and the repeat's timer, then the seed of the detection
+/// draws (`mission_detection`). port: the size of the port's per-mission
+/// window.
+pub const ROLLS_PER_MISSION: usize = 5;
+
+/// port: the window slot that seeds the detection draws; the draws before
+/// it are taken in order.
+const DETECTION_SEED_ROLL: usize = 4;
 
 /// One mission's window of rolls for one tick event.
 struct MissionRolls<'a> {
     rolls: &'a [f64],
     next: usize,
+    detection: crate::mission_detection::DetectionRng,
 }
 
 impl MissionRolls<'_> {
     /// port: a draw past the window reads 0.5, the port's under-supply
     /// fallback.
     fn next(&mut self) -> f64 {
-        let roll = self.rolls.get(self.next).copied().unwrap_or(0.5);
+        let roll = self
+            .rolls
+            .get(self.next)
+            .filter(|_| self.next < DETECTION_SEED_ROLL)
+            .copied()
+            .unwrap_or(0.5);
         self.next += 1;
         roll
     }
@@ -1577,6 +1660,10 @@ impl MissionSystem {
                 let mut draws = MissionRolls {
                     rolls: window,
                     next: 0,
+                    detection: crate::mission_detection::DetectionRng::seeded(
+                        window.get(DETECTION_SEED_ROLL).copied().unwrap_or(0.5),
+                        mission.id,
+                    ),
                 };
 
                 // port: dispatch only queues the mission; its creation steps
@@ -1706,6 +1793,15 @@ impl MissionSystem {
             let previous = mission.phase;
             mission.phase = next;
             Self::enter(mission, previous, ctx, state, out, now, draws);
+            // FUN_00546ea0 runs the detection manager after the change.
+            crate::mission_detection::run(
+                mission,
+                ctx.world,
+                ctx.uprisings,
+                &state.en_route,
+                &mut draws.detection,
+                &mut out.effects,
+            );
             // FUN_00522980: every phase but 4 and 8 steps on at once.
             if !matches!(mission.phase, PHASE_TRANSIT | PHASE_TIMER) {
                 mission.ready = true;
@@ -2224,8 +2320,9 @@ mod tests {
     fn a_kind_with_no_record_times_its_mission_from_the_port_range() {
         // port: without a MISSNSD record the timer draws from tick_range.
         for (roll, due) in [(0.0, 15), (1.0, 20)] {
-            let (system, character) = mock_keys();
-            let world = minimal_world();
+            let (system, _) = mock_keys();
+            let mut world = minimal_world();
+            let character = agent_at(&mut world, system, true);
             let mut state = MissionState::new();
             state.dispatch(MissionRequest::single(
                 MissionKind::Diplomacy,
@@ -2592,9 +2689,9 @@ mod tests {
 
     #[test]
     fn autoscrap_always_succeeds() {
-        // Autoscrap has no character in world — use a mock key from an empty slotmap.
-        let (system, character) = mock_keys();
-        let world = minimal_world();
+        let (system, _) = mock_keys();
+        let mut world = minimal_world();
+        let character = agent_at(&mut world, system, false);
         let mut state = MissionState::new();
         state.missions.push_back(ActiveMission::timed(
             0,
@@ -3070,11 +3167,17 @@ mod tests {
 
     // --- Member rules (FUN_0054bb90, FUN_00522b30) ---
 
+    /// A loyal agent (loyalty 100, so phase 9 never finds a traitor,
+    /// `FUN_00588da0`).
     fn agent_at(world: &mut GameWorld, system: SystemKey, is_alliance: bool) -> CharacterKey {
         world.characters.insert(Character {
             name: "Agent".into(),
             is_alliance,
             is_empire: !is_alliance,
+            loyalty: crate::world::SkillPair {
+                base: 100,
+                variance: 0,
+            },
             current_system: Some(system),
             ..Default::default()
         })
@@ -3709,7 +3812,8 @@ mod tests {
     }
 
     /// The shipped MISSNSD Diplomacy record `0x51000010`: timer (5, 10),
-    /// repeating, columns 11..21 = 1 1 1 1 1 0 0 1 0 0.
+    /// repeating, detection phases and resign on, columns 11..21 =
+    /// 1 1 1 1 1 0 0 1 0 0.
     fn diplomacy_record() -> crate::world::MissionRecord {
         crate::world::MissionRecord {
             dat_id: crate::ids::DatId::new(0x5100_0010),
@@ -3717,8 +3821,8 @@ mod tests {
             timer_spread_days: 10,
             repeats: true,
             hidden: false,
-            detection_phases: false,
-            can_resign: false,
+            detection_phases: true,
+            can_resign: true,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
                 needs_populated_container: true,
@@ -3735,7 +3839,8 @@ mod tests {
     }
 
     /// The shipped MISSNSD Rescue record `0x61000011`: timer (1, 6), not
-    /// repeating, columns 11..21 = 0 0 1 0 0 1 0 0 1 0.
+    /// repeating, detection phases and resign on, columns 11..21 =
+    /// 0 0 1 0 0 1 0 0 1 0.
     fn rescue_record() -> crate::world::MissionRecord {
         crate::world::MissionRecord {
             dat_id: crate::ids::DatId::new(0x6100_0011),
@@ -3744,7 +3849,7 @@ mod tests {
             repeats: false,
             hidden: false,
             detection_phases: true,
-            can_resign: false,
+            can_resign: true,
             rules: crate::world::MissionTargetRules {
                 target_loss_ends: true,
                 opponent_target: true,
@@ -4127,8 +4232,9 @@ mod tests {
     fn each_mission_draws_from_its_own_window_of_rolls() {
         // port: ROLLS_PER_MISSION per mission per tick; the first mission's
         // second draw never reaches the second mission's outcome roll.
-        let (system, character) = mock_keys();
-        let world = minimal_world();
+        let (system, _) = mock_keys();
+        let mut world = minimal_world();
+        let character = agent_at(&mut world, system, true);
         let mut state = MissionState::new();
         for id in 0..2 {
             state.push_timed(ActiveMission::timed(
@@ -4208,7 +4314,7 @@ mod tests {
                 repeats: false,
                 hidden: false,
                 detection_phases: true,
-                can_resign: false,
+                can_resign: true,
                 rules: crate::world::MissionTargetRules {
                     target_loss_ends: true,
                     opponent_target: true,
@@ -4341,8 +4447,8 @@ mod tests {
             timer_spread_days: 0,
             repeats: false,
             hidden: false,
-            detection_phases: false,
-            can_resign: false,
+            detection_phases: true,
+            can_resign: true,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
                 needs_populated_container: true,
@@ -4410,28 +4516,28 @@ mod tests {
     }
 
     #[test]
-    fn a_mission_with_no_living_member_skips_the_running_checks() {
-        // FUN_005830a0 sets status 0x16 when no member is left; the later
-        // checks are skipped, so an enemy-held target does not end it.
+    fn a_mission_whose_team_is_gone_ends_with_code_five() {
+        // FUN_00522480.c:42-52: no team member stands without a request once
+        // the killed envoy is deleted, so the validator gives 5 before the
+        // FUN_005830a0 summary.
         let mut world = minimal_world();
         let here = system_at(&mut world, 0);
         let (mut state, envoy) = diplomacy_from(&mut world, here, here);
         step(&mut state, &world, 1, &[0.0]);
         world.characters[envoy].mark_killed();
-        world.systems[here].control =
-            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
 
         let advance = step(&mut state, &world, 5, &[0.99, 0.0]);
 
-        assert_eq!(advance.results.len(), 1);
-        assert!(advance.ended.is_empty());
+        assert!(advance.results.is_empty());
+        assert_eq!(advance.ended[0].end_code, 5);
     }
 
     #[test]
     fn each_tick_of_an_advance_gives_every_mission_its_own_window() {
         // port: mission i on event e draws from (e * n + i) * ROLLS_PER_MISSION.
-        let (system, character) = mock_keys();
-        let world = minimal_world();
+        let (system, _) = mock_keys();
+        let mut world = minimal_world();
+        let character = agent_at(&mut world, system, true);
         let mut state = MissionState::new();
         for (id, due) in [(0, 2), (1, 50)] {
             state.push_timed(ActiveMission::timed(
@@ -4599,7 +4705,8 @@ mod tests {
     #[test]
     fn a_team_killed_on_the_way_counts_as_arrived() {
         // FUN_00522280: the original deletes a killed member, so no member
-        // is left travelling and the wait ends.
+        // is left travelling and the wait ends at once; phase 5's validator
+        // then ends the teamless mission with code 5 (FUN_00522480.c:42-52).
         let mut world = minimal_world();
         let from = system_at(&mut world, 0);
         let to = system_at(&mut world, 100);
@@ -4607,9 +4714,16 @@ mod tests {
         step(&mut state, &world, 1, &[]);
         world.characters[envoy].mark_killed();
 
-        step(&mut state, &world, 2, &[0.0]);
+        let advance = step(&mut state, &world, 2, &[0.0]);
 
-        assert_eq!(state.missions()[0].phase, PHASE_TIMER);
+        assert_eq!(
+            advance
+                .ended
+                .iter()
+                .map(|e| (e.end_code, e.tick))
+                .collect::<Vec<_>>(),
+            vec![(5, 2)]
+        );
     }
 
     #[test]
@@ -4697,7 +4811,7 @@ mod tests {
         world.characters[envoy].on_mission = true;
         let member = MissionMember::Character(envoy);
 
-        apply_member_effects(
+        apply_advance_effects(
             &mut world,
             &[
                 MissionEffect::MemberMoved {
@@ -4716,5 +4830,98 @@ mod tests {
         assert_eq!(character.current_system, Some(to));
         assert!(!character.on_mission);
         assert!(!character.is_killed);
+    }
+
+    #[test]
+    fn detection_effects_take_the_prisoner_and_destroy_the_special_force() {
+        // Slot +0x20c holds the captured character at the location for the
+        // captor; FUN_00503eb0 destroys a captured special force.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let elsewhere = system_at(&mut world, 100);
+        let spy = agent_at(&mut world, elsewhere, true);
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: elsewhere,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![spy],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.characters[spy].current_fleet = Some(fleet);
+        let unit = |world: &mut GameWorld| {
+            let key = world.special_forces.insert(crate::world::SpecialForceUnit {
+                class_dat_id: crate::ids::DatId::new(0x1400_0001),
+                is_alliance: true,
+                skills: [0; 8],
+                on_mission: true,
+            });
+            world.systems[here].special_forces.push(key);
+            key
+        };
+        let (lost, kept) = (unit(&mut world), unit(&mut world));
+
+        apply_advance_effects(
+            &mut world,
+            &[
+                MissionEffect::CharacterCaptured {
+                    character: spy,
+                    captured_by: MissionFaction::Empire,
+                    at_system: here,
+                },
+                MissionEffect::SpecialForceDestroyed { unit: lost },
+            ],
+        );
+
+        let prisoner = &world.characters[spy];
+        assert!(prisoner.is_captive);
+        assert_eq!(prisoner.captured_by, Some(crate::dat::Faction::Empire));
+        assert_eq!(
+            (prisoner.current_system, prisoner.current_fleet),
+            (Some(here), None)
+        );
+        assert!(world.fleets[fleet].characters.is_empty());
+        assert!(!world.special_forces.contains_key(lost));
+        assert_eq!(world.systems[here].special_forces, vec![kept]);
+        assert!(world.special_forces.contains_key(kept));
+    }
+
+    #[test]
+    fn a_mission_with_members_of_both_sides_skips_the_running_checks() {
+        // FUN_005830a0 status 0x14: no end code, though Diplomacy at a
+        // system the opponent holds would end 8 (column 17).
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        world.systems[here].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.mission_records = vec![diplomacy_record()];
+        let envoy = MissionMember::Character(agent_at(&mut world, here, true));
+        let mut mission = ActiveMission::timed(
+            0,
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            vec![envoy],
+            here,
+            5,
+        );
+        let uprisings = UprisingState::default();
+        assert_eq!(running_end_code(&mission, &world, &uprisings, &[]), 8);
+
+        mission.decoys = vec![MissionMember::Character(agent_at(&mut world, here, false))];
+
+        assert_eq!(running_end_code(&mission, &world, &uprisings, &[]), 0);
+    }
+
+    #[test]
+    fn a_fifth_sequential_draw_reads_the_fallback_not_the_detection_seed() {
+        // port: slot DETECTION_SEED_ROLL only seeds the detection stream.
+        let window = [0.1, 0.2, 0.3, 0.4, 0.9];
+        let mut draws = MissionRolls {
+            rolls: &window,
+            next: 0,
+            detection: crate::mission_detection::DetectionRng::seeded(0.9, 0),
+        };
+        let taken: Vec<f64> = (0..5).map(|_| draws.next()).collect();
+        assert_eq!(taken, vec![0.1, 0.2, 0.3, 0.4, 0.5]);
     }
 }

@@ -1,6 +1,6 @@
 //! Save / load for the full game state.
 //!
-//! # Format (v19)
+//! # Format (v20)
 //!
 //! Binary `bincode` encoding. A save file is:
 //!
@@ -78,7 +78,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 19;
+pub const SAVE_VERSION: u32 = 20;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1459,6 +1459,48 @@ mod tests {
         assert_eq!(loaded_unit.skills, [1, 2, 3, 4, 5, 6, 7, 8]);
         assert!(loaded_unit.on_mission);
         assert_eq!(loaded.world.mission_records, state.world.mission_records);
+    }
+
+    #[test]
+    fn a_round_trip_keeps_resign_requests_and_troop_detection() {
+        use rebellion_core::missions::{ActiveMission, MissionFaction, MissionKind, MissionMember};
+        use rebellion_core::world::{Character, TroopClassDef};
+        let saves_dir = tmp_dir("v20_resign_detection_round_trip");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let lead = MissionMember::Character(state.world.characters.insert(Character {
+            is_alliance: true,
+            current_system: Some(system),
+            ..Default::default()
+        }));
+        let class = rebellion_core::ids::DatId::new(0x1000_0001);
+        state.world.troop_classes.insert(
+            class,
+            TroopClassDef {
+                attack_strength: 1,
+                defense_strength: 2,
+                detection: 7,
+            },
+        );
+        let mut mission = ActiveMission::new(
+            0,
+            MissionKind::Sabotage,
+            MissionFaction::Alliance,
+            vec![lead],
+            system,
+            0,
+        );
+        mission.resigning = vec![lead];
+        // MissionState exposes no mutable missions; build it from its serde form.
+        let mut missions = serde_json::to_value(&state.missions).unwrap();
+        missions["missions"] = serde_json::json!([mission]);
+        state.missions = serde_json::from_value(missions).unwrap();
+        save_slot(&saves_dir, 0, "V20 Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(loaded.missions.missions()[0].resigning, vec![lead]);
+        assert_eq!(loaded.world.troop_classes[&class].detection, 7);
     }
 
     #[test]

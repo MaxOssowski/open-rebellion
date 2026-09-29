@@ -565,3 +565,141 @@ Assassination (`ai-mission-planning.md`, recovered 2026-09-28).
   and the end codes' names.
 - `FUN_00507270` and `FUN_005091f0` (the support and counter terms in the
   Diplomacy, Recruitment, Incite, and Subdue inputs).
+
+## Re-read for the port (2026-09-29, F-019 phase 3)
+
+Read-only decompiles of the functor bodies (vtables `0x0066a818`,
+`0x0066a828`, `0x0066a850`, `0x0066a858`, `0x0066a860`, `0x0066a880`, slot
+`+4`), the member iterators, and the special-force slots. Corrections to the
+sections above come first.
+
+### Corrections
+
+- The decoy roll does not need a counterpart. `FUN_00588b90` rolls with the
+  officer's espionage at 0 when `FUN_00509330`/`FUN_004fd790` find no officer
+  (`FUN_00588b90.c:26-50`); the lookup only feeds the return status. The
+  same holds for detection (`FUN_00588a90`).
+- `FUN_00588b90` decrements the defender count only on success
+  (`:60-73`); a failure runs the exposure `FUN_005888f0`.
+- `FUN_0053e340` sets the outcome to 1 and replaces it with the chance roll
+  only when the row is found, so a missing row succeeds (`FUN_0053e340.c`).
+
+### The run (`FUN_00547f60`, `FUN_005898f0`)
+
+- It returns at once with an end code. It reads the location from the
+  target `+0x78` (`FUN_00521070`) when the phase (`+0x54 -> +0x1c`) is above 4
+  (`FUN_00520ad0`), else the members' current location (`FUN_00520f40`), and
+  runs only at a system (`0x90..0x98`).
+- `FUN_005898f0` runs `FUN_00589970` twice on the same manager, first with
+  `+0x44` = 1, unless the side is 3. Setup only sets its flags, so the second
+  pass inherits them. Modes 1, 2, and 4 set skip (`+0x48`) on the second pass,
+  which still runs the validator and the counts.
+- A run that leaves an end code calls `FUN_004f9510(mission, opponent, ...)`
+  (`FUN_00547f60.c:71-92`); not read.
+- `FUN_00546ea0` runs the manager after every phase change, then
+  `FUN_00548120`, `FUN_00548370` on phase 2, `FUN_005484d0`, `FUN_00548840`,
+  and `FUN_00522980` (ready).
+
+### Setup (`FUN_00589a40`)
+
+It runs the validator `FUN_00522480` first, then skips on an end code, a
+record without column 8 (`FUN_00520b80`), or mode 0. The opponent is
+`2 - (side != 1)`. `local_70` is "the opponent has a fleet here"
+(`FUN_004ffef0` + `FUN_005131b0`), `bVar1` "the side has a fleet here"
+(`FUN_005275d0`), and `bVar10` "the system's holder is the opponent".
+Manager flags: `+0x18` counts members standing at a system, `+0x1c` members
+in a fleet (`FUN_005883b0` compares the member's container with its
+system), `+0x20` walks the system, `+0x24` the fleets, `+0x28` capital
+ships, `+0x2c` fighters, `+0x30` regiments.
+
+| Mode | First pass |
+|------|------------|
+| 1 | `+0x1c`; `+0x18` when the target is remote (`FUN_00520bb0`); `+0x24 +0x28 +0x2c` when the opponent has a fleet here and the side has none |
+| 2 | `+0x18`; `+0x20 +0x30` when the holder is the opponent |
+| 4 | `+0x18 +0x1c`; when the target (side copy, `FUN_00521160`) is a system, `+0x20 +0x30` if the holder is the opponent, else `+0x24 +0x28 +0x2c` if the opponent has a fleet here |
+
+It then clears every defender's `IsDecoyed` and every decoy's `IsDecoying`
+and counts the defenders (`+0x34`, the full walk `FUN_005875e0`), the team
+(`+0x2c`, `FUN_00587b50`: team characters and special forces not decoying),
+and the decoys (`+0x30`, `FUN_00587b30`).
+
+### The walks
+
+- `FUN_00587bb0(pool, f, chars, sforces, team, decoys, not_decoying)` visits
+  team special forces, team characters, decoy special forces, then decoy
+  characters, each counted by `FUN_005883b0`: no remove or resign request,
+  not decoying when asked, a location, and the location flag above.
+- `FUN_00588000` (the exposure walk, `FUN_00587f80` = `(1,1,1,0,1)`) visits
+  team characters of families `0x30..0x37`, then `0x38..0x3b`
+  (`FUN_00526350`, `FUN_005261f0`), then the decoy lists when asked
+  (`FUN_00526400`, `FUN_005262a0`).
+- `FUN_00587640` walks the system when `+0x20`: its fighters, then its
+  regiments when `+0x30` and asked. It walks each fleet when `+0x24`: each
+  capital ship when `+0x28` and asked, then that ship's fighters when
+  `+0x2c`, then its regiments when `+0x30`. `FUN_005875e0` asks for all
+  three kinds, `FUN_00587600` ships, `FUN_00587620` fighters, each skipping
+  decoyed defenders.
+
+### The phases
+
+- Decoys (`FUN_0058a020`): with the system flag, the full walk; with the
+  fleet flag, the ships walk, then the fighters walk. So a defender whose
+  decoy failed meets another decoy on a later walk. The functor
+  (`FUN_00589620`) draws `draw(0..decoys-1)` and takes that counted decoy
+  (`FUN_00587360` -> `FUN_005873c0`), stopping the walk when there is none.
+- Detection (`FUN_0058a130`, functor `FUN_005896e0`): nothing when the team
+  count is 0. The first call takes the team's average espionage (sum over
+  `FUN_00587b50` / team count, `FUN_005887a0`) and the count of team special
+  forces not decoying (`FUN_00587b70`, `FUN_005872a0`). Each defender then
+  rolls FOILTB until one detects.
+- Betrayal (`FUN_00589f10`) walks `FUN_00587b90` and stops at the first
+  traitor. Its second walk (`FUN_00587f60`) lets each other member learn the
+  traitor (`+0xa0`); the field is not ported.
+- The detected outcome (`FUN_0058a1c0`) sets end code 3, or 4 past phase 4,
+  only when the record's column 9 (can resign) is set. Each team character,
+  then each team special force, not decoying: a member holding a key at
+  `+0x9c` goes to `FUN_00588d30` (not read); the others face a random
+  defender (`FUN_00588650`: `draw(0..defenders-1)` over the full walk), and
+  the walk stops when none is left (`FUN_005891e0`).
+
+### Exposure (`FUN_005888f0`, `FUN_005349e0`)
+
+With no officer the captor is the defender and the counterpart's combat is
+0 (`:26-53`). `FUN_005349e0` rolls RLEVADTB on combat minus that and acts
+only when the row is found. Afterwards any member that can resign (bit 4),
+has no remove request, and is on a mission gets a resign request; one with
+either request leaves the team count, or the decoy count when it holds the
+Decoy role.
+
+Special forces (vtable `0x0065e160`) read their base skills: espionage
+`+0x5a` (`FUN_00503c40`), combat `+0x62` (`FUN_00503c80`), loyalty `+0x66`
+(`FUN_00503ca0`). One that evades only gets the resign request
+(`FUN_00503ea0` -> `FUN_00534c20`, no injury); one captured is destroyed
+(`FUN_00503eb0`: slot `+0xac(9)`).
+
+### The validator's rule 1
+
+`FUN_00522480.c:42-52` gives end code 5 unless some team member has no
+remove or resign request, or `+0xa4` bit 1 is set. An empty team therefore
+ends with 5, and so does a team whose members were all deleted.
+
+### Port decisions (`mission_detection.rs`)
+
+- The setup sets `+0x28 +0x2c` only with `+0x24` and `+0x30` only with
+  `+0x20`, so the port folds each kind flag into its walk flag.
+- With no officer ranks, the officer terms of the decoy and detection rolls
+  (`espionage * G3588 / 100`, `espionage * G3589 / 100`) are 0 and omitted.
+- A captured member's capture applies after the run, so the run marks it
+  gone from its lists at once, as it does a destroyed special force.
+- Only a decoy decoys, and the lists that skip decoying members never meet
+  one, so the port keeps no `IsDecoying` mark. A resigning team member's
+  exit from the team count is dropped too: nothing reads that count once
+  the team is exposed.
+- The draws come from a SplitMix64 stream seeded per mission and tick by one
+  caller roll (`DETECTION_SEED_ROLL`).
+
+### Still open
+
+`FUN_00589e40` (the character hook), `FUN_00588d30` (the `+0x9c` branch),
+the traitor's own fate, `FUN_004f9510`, `+0xa4` bit 1, and the officer ranks
+of a side (the port assigns none).

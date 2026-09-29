@@ -1298,6 +1298,9 @@ pub struct TroopClassDef {
     pub attack_strength: u32,
     /// Ground defense strength of this troop class.
     pub defense_strength: u32,
+    /// Detection, the class record's `+0x5c` that a regiment reads as a
+    /// detector (slot `+0x1c4`, `ghidra/notes/decoy-roll.md`).
+    pub detection: u32,
 }
 
 /// Class definition for a special-forces unit, from SPECFCSD.DAT.

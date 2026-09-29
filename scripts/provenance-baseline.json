@@ -125,7 +125,6 @@
     "crates/rebellion-core/src/world/mod.rs::default_difficulty_index": 1,
     "crates/rebellion-data/src/integrator.rs::MAX_SYSTEM_COMBAT_ROUNDS": 1,
     "crates/rebellion-data/src/integrator.rs::apply_build_completion_inner": 3,
-    "crates/rebellion-data/src/integrator.rs::apply_mission_effects_inner": 2,
     "crates/rebellion-data/src/simulation.rs::COMBAT_RETRY_TICKS": 1,
     "crates/rebellion-data/src/simulation.rs::MAX_SYSTEM_GROUND_COMBAT_ROUNDS": 1,
     "crates/rebellion-data/src/simulation.rs::run_simulation_tick": 5

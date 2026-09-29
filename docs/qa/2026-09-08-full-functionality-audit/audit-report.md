@@ -916,6 +916,28 @@ cross-runtime proof remain open
       (phase 4) takes them out of play. The golden moves to
       `v1:d8edefc22cfdf7cd` -> `v1:6f404bcf7868244a` for save v19 and the
       new mission field.
+- Phase 3 (2026-09-29, save v20): the detection run `FUN_00547f60` follows
+  each phase change (`crates/rebellion-core/src/mission_detection.rs`).
+  - Setup `FUN_00589a40` picks mode 2, 1, or 4 for phases 2, 3 and 7, and 9,
+    and which members and defenders count.
+  - Decoys draw off defenders on TDECOYTB/FDECOYTB (espionage - detection,
+    `FUN_00589620`) or are exposed. Defenders roll FOILTB on the team's
+    average espionage - detection - special forces - G3584 (`FUN_005896e0`).
+    Phase 9 finds a traitor on `draw(0..99) < 100 - loyalty`
+    (`FUN_00589f10`).
+  - A detected team ends 3, or 4 past phase 4, when members may resign.
+    Each member faces a random defender and rolls RLEVADTB: an evader
+    resigns and takes the injury roll (`FUN_0053e990`), a captured
+    character is injured and held, and a captured special force is
+    destroyed (`FUN_00503eb0`). Validator rule 1 ends 5 once no team member
+    stands without a resign request.
+  - port: no officer ranks, so the officer terms are 0; the draws come from a
+    SplitMix64 stream seeded by a fifth per-mission roll.
+  - The seed-42 playtest never detects: its teams are unplaced pool
+    characters that no location filter counts (phase 4's recruit pool). It
+    resolves 2949 missions instead of 3076 because the fifth roll shifts the
+    later systems' draws. The golden moves to `v1:acbd440f1734677c` ->
+    `v1:276e317d8c392b5e` for save v20 and the fifth roll.
 
 ### F-020: A mod with a missing dependency fails silently
 

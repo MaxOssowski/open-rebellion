@@ -15,6 +15,7 @@ pub mod game_events;
 pub mod ids;
 pub mod jedi;
 pub mod manufacturing;
+mod mission_detection;
 pub mod missions;
 pub mod movement;
 pub mod net_protocol;
