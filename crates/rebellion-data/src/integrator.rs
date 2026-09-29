@@ -860,19 +860,6 @@ impl PerceptionIntegrator {
     // ── Step 5: Missions + Escapes ──────────────────────────────────────
 
     /// Apply mission result: world mutations + telemetry.
-    /// Apply a mission advance's member moves and releases
-    /// (`MissionAdvance::effects`), before its results.
-    pub fn apply_mission_lifecycle(
-        &mut self,
-        world: &mut GameWorld,
-        effects: &[MissionEffect],
-        tick: u64,
-        uprising_state: &mut UprisingState,
-        death_star_state: &mut DeathStarState,
-    ) {
-        apply_mission_effects_inner(effects, world, tick, uprising_state, death_star_state);
-    }
-
     pub fn apply_mission_result(
         &mut self,
         world: &mut GameWorld,
@@ -2296,39 +2283,6 @@ mod tests {
             .events
             .iter()
             .any(|e| e.event_type == EVT_UPRISING_ENDED && e.tick == 9));
-    }
-
-    #[test]
-    fn mission_lifecycle_effects_land_the_member_and_free_it() {
-        // FUN_00556390 moves a member into the target container; the end
-        // clears RoleOnMissionNotif (FUN_00536b00).
-        use rebellion_core::missions::MissionMember;
-        let mut world = GameWorld::default();
-        let target = add_system(&mut world, "Naboo");
-        let envoy = world.characters.insert(rebellion_core::world::Character {
-            is_alliance: true,
-            on_mission: true,
-            ..Default::default()
-        });
-        let member = MissionMember::Character(envoy);
-        let mut integrator = PerceptionIntegrator::new(3, 0);
-
-        integrator.apply_mission_lifecycle(
-            &mut world,
-            &[
-                MissionEffect::MemberMoved {
-                    member,
-                    to: Some(target),
-                },
-                MissionEffect::MemberAvailable { member },
-            ],
-            3,
-            &mut UprisingState::default(),
-            &mut DeathStarState::default(),
-        );
-
-        assert_eq!(world.characters[envoy].current_system, Some(target));
-        assert!(!world.characters[envoy].on_mission);
     }
 
     #[test]

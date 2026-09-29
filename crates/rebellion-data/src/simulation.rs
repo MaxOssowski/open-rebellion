@@ -451,13 +451,7 @@ pub fn run_simulation_tick(
         tick_events,
         &mission_rolls,
     );
-    integrator.apply_mission_lifecycle(
-        world,
-        &mission_advance.effects,
-        current_tick,
-        &mut states.uprising,
-        &mut states.death_star,
-    );
+    rebellion_core::missions::apply_member_effects(world, &mission_advance.effects);
     states.ai.free_mission_members(&mission_advance.effects);
     if let Some(ref mut ai2) = states.ai2 {
         ai2.free_mission_members(&mission_advance.effects);

@@ -43,14 +43,16 @@ phase in the same tick except two:
 - **Phase 4, transit.** Entering it starts every member's transit to the target
   (`FUN_00556430` from `+0x6c` to `+0x78`, then into container `+0x74`) and
   calls `FUN_00522280`. That
-  function, and `FUN_00545820` on later arrivals, sets the ready bit once no
-  member (`FUN_00525bb0`: team, decoys, and captured) still has its en-route
-  active bit (`+0x50` bit 5, `FUN_00556620`) and no end code is set
-  (`FUN_00522280.c`).
+  function, and `FUN_00545820` on later arrivals, sets the ready bit unless
+  every member (`FUN_00525bb0`: team, decoys, and captured) still has its
+  en-route active bit (`+0x50` bit 5, `FUN_00556620`), and only with no end
+  code set. It keeps two flags, one for a member still travelling and one
+  for a member off the road; both set means ready (`FUN_00522280.c:66-100`).
+  With no member at all the mission is ready.
 - **Phase 8, the mission timer.** Entering it sets the result code `+0x60` to 0
   (`FUN_00521880`) and arms timer `0x38b` (`FUN_0053fa60(0x38b, 1, ...)`).
-  Leaving it disarms the timer (`FUN_0053fa60(0x38b, 0, ...)`) and runs the
-  validator `FUN_00522480`. The timer fires `FUN_00522a10`, which sets the
+  Leaving it runs the validator `FUN_00522480`, then disarms the timer
+  (`FUN_0053fa60(0x38b, 0, ...)`; `FUN_00524b70.c:50-58`). The timer fires `FUN_00522a10`, which sets the
   ready bit only in phase 8.
 
 The timer's delay record (`+0x54 -> +0x20`) is written at init by
@@ -236,8 +238,10 @@ their shared `+0x280` (`576700`) only turns result 0 into 2 (failed).
 
 ### The end (`FUN_00592c80`, re-read 2026-09-29)
 
-Slot `+0x284` returns at once for Move, Return, Autorouting, and Adrift with
-a remote target (`FUN_00520af0`). Otherwise, when the target location `+0x78`
+Slot `+0x284` returns at once when `FUN_00520af0` is false: the mission's
+last phase (`+0x54 -> +0x1c`, `FUN_00520ac0`, written by `FUN_00524b70` for
+every phase but `0xb`) is below 5 and its target `+0x78` differs from its
+origin `+0x6c` (`FUN_00520bb0`), so its members never landed. Otherwise, when the target location `+0x78`
 is a system, it raises observation level 6 there for the mission's own side
 (`FUN_0050d5a0(system, 6, mission +0x24 >> 6 & 3)`). It then reroutes the
 target's container `+0x70`/`+0x74` (`FUN_00521160`, `FUN_00521030`) when that
@@ -258,8 +262,10 @@ of the team, decoy, and captured lists (`FUN_00525bb0`, families
 2. `FUN_00556390(member, +0x74)` moves it into the target container `+0x74`
    through the member's slot `+0xa8`.
 
-`FUN_00522280` then sets the ready bit once no member is still en route
-(bit 5). A member destroyed on the way counts as arrived. Phase 6 clears
+`FUN_00522280` then sets the ready bit unless every member is still en
+route (bit 5). The original deletes a destroyed member, so a team destroyed
+on the way counts as arrived. With no origin (`FUN_00504dc0` null),
+`FUN_00556430` starts no transit (`:31-33`) and the member stays put. Phase 6 clears
 every member's en route bit (`FUN_004f7640(member, 0)`) and runs the
 validator; phases 5 and 6 act only when the target differs from the origin
 (`FUN_00520bb0`). After the end the members are still in the target
@@ -276,9 +282,11 @@ special force travels at the default (`build-delivery.md`).
 When an object is destroyed, `FUN_00545240` walks every mission. A mission
 whose container `+0x74` (`FUN_00520c70`) or target (`FUN_00520cb0`) is that
 object runs the validator at once. Then, if the container was destroyed, no
-end code is set, and the mission is an agent class (kind > 6,
-`FUN_00520ae0`), it gets end code 7 through slot `+0x1dc`
-(`FUN_00545240.c:85-111`). A destroyed target therefore ends through the
+end code is set, and the mission's phase is above 6 (`FUN_00520ae0` over
+`+0x54 -> +0x1c`), past the landing, it gets end code 7 through slot
+`+0x1dc` (`FUN_00545240.c:85-111`). A container lost while the members
+travel ends nothing unless the validator's column 11 asks for it. The check
+runs once, on the destruction. A destroyed target therefore ends through the
 validator's rule 4 (code 6) when the record's column 14 asks for it.
 
 ## The validator and the end codes (`FUN_00522480`, re-read 2026-09-29)
@@ -299,7 +307,11 @@ and `0xb`. With no end code set yet:
    `+4` = 0 (the creation-only checks are off), `+0xc` = 1 (running),
    `+0x10` side, `+0x14` the MISSNSD record, `+0x24..+0x2c` the lists,
    `+0x34` the container `+0x74`, and `+0x38` the target `+0x70`
-   (`FUN_00521050`, `FUN_00521030`; `FUN_00520af0` holds for every agent).
+   (`FUN_00521050`, `FUN_00521030`) once `FUN_00520af0` holds, from phase 5
+   or with the target at the origin. Before that the checker reads the
+   side's own copy of the target and container (`FUN_00521160`,
+   `FUN_005211c0` through `FUN_004f2d10`; `FUN_00522480.c:62-80`). The port
+   has no per-side copies and reads the real objects.
 4. In phase `0xb` with no code, the end code is 1.
 
 The first rule that fires sets the status and wins: later rules check
@@ -329,8 +341,9 @@ last one. So Recruitment ends once the pool is empty.
 
 ### The running checks
 
-`R` is the MISSNSD record (in-memory offsets; file column = `(offset -
-0x28) / 4`, `tools/dat-dumper/src/types/missions.rs`), `T` the target, `C` the
+`R` is the MISSNSD record (in-memory offsets; file word = `(offset -
+0x28) / 4`, column = `(offset - 0x40) / 4`,
+`tools/dat-dumper/src/types/missions.rs`), `T` the target, `C` the
 container. Every family runs the base rules; the system, character, and
 object rules add their own.
 

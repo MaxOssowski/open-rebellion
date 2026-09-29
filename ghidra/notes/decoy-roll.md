@@ -228,7 +228,7 @@ detected = draw(0..99) < FOILTB(x)       // sets manager +0x4c, ends the walk
 ```
 
 5. `FUN_0058a1c0`, when detected: the mission's slot `+0x1dc` receives 3, or
-   4 when the mission kind (`+0x54 -> +0x1c`) is above 4, and each team
+   4 when the mission's phase (`+0x54 -> +0x1c`) is above 4, and each team
    member faces a random defender through `FUN_005888f0`.
 
 `FUN_005888f0(d, fleet, member)` finds the defender's officer, then calls
@@ -354,7 +354,7 @@ answer true in slot `+0x1c8` is not traced.
 ### The detected outcome (`FUN_0058a1c0`) and mission slot `+0x1dc`
 
 When the mission is detected (`+0x4c`), `FUN_0058a1c0` (`:17-24`) calls the
-mission's slot `+0x1dc` with 3, or 4 when `FUN_00520ad0` (mission kind
+mission's slot `+0x1dc` with 3, or 4 when `FUN_00520ad0` (the phase
 `+0x54 -> +0x1c` above 4) is true. It then walks the team through
 `FUN_00587f80` (each member faces a random defender through `FUN_005888f0`),
 and through `FUN_00587b70` (`:25-40`).

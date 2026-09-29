@@ -1856,18 +1856,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                 &mission_rolls,
             );
             // Member moves and releases come before the results.
-            for effect in &mission_advance.effects {
-                match effect {
-                    MissionEffect::MemberMoved { member, to } => {
-                        rebellion_core::missions::move_member(&mut world, *member, *to);
-                    }
-                    MissionEffect::MemberAvailable { member } => {
-                        rebellion_core::missions::set_on_mission(&mut world, *member, false);
-                    }
-                    _ => {}
-                }
-            }
+            rebellion_core::missions::apply_member_effects(&mut world, &mission_advance.effects);
             ai_state.free_mission_members(&mission_advance.effects);
+            if let Some(second_ai) = secondary_ai_state.as_mut() {
+                second_ai.free_mission_members(&mission_advance.effects);
+            }
 
             for result in &mission_advance.results {
                 apply_mission_result(

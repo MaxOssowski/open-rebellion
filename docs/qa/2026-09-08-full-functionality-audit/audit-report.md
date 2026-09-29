@@ -899,6 +899,23 @@ cross-runtime proof remain open
   - A 1500-tick seed-42 dual-AI playtest resolves 2644 missions instead of
     1823, mostly repeating Incite on its 2..12-day timer. The seed-42 golden
     is regenerated for this cause.
+  - Review fixes (2026-09-29, save v19):
+    - `FUN_00520ac0` reads the mission's phase (`+0x54 -> +0x1c`), not a
+      class, so a destroyed container gives code 7 only past phase 6. The
+      check runs once per destruction.
+    - Phase 4 ends unless every living member still travels
+      (`FUN_00522280`), and a null origin moves no one (`FUN_00556430`).
+    - Leaving phase 8 validates before disarming the timer. The app frees
+      both AIs' mission members through one shared helper.
+    - Open: before phase 5 the validator should read the side's own copy of
+      the target (`FUN_00521160`, `FUN_005211c0`), which the port does not
+      keep.
+    - The 1500-tick playtest now resolves 3076 missions. Of the 60 seeded
+      characters, 51 unrecruited ones have no location, and they now stay
+      nowhere instead of landing at their first target. The recruit pool
+      (phase 4) takes them out of play. The golden moves to
+      `v1:d8edefc22cfdf7cd` -> `v1:6f404bcf7868244a` for save v19 and the
+      new mission field.
 
 ### F-020: A mod with a missing dependency fails silently
 

@@ -1,6 +1,6 @@
 //! Save / load for the full game state.
 //!
-//! # Format (v18)
+//! # Format (v19)
 //!
 //! Binary `bincode` encoding. A save file is:
 //!
@@ -78,7 +78,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 18;
+pub const SAVE_VERSION: u32 = 19;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1526,6 +1526,70 @@ mod tests {
         assert_eq!(loaded.missions.en_route(), state.missions.en_route());
         assert!(loaded.missions.is_en_route(MissionMember::Character(envoy)));
         assert_eq!(loaded.world.characters[envoy].current_system, None);
+    }
+
+    #[test]
+    fn a_round_trip_keeps_a_mission_s_armed_timer_and_its_seen_loss() {
+        use rebellion_core::missions::{
+            move_member, MissionEffect, MissionFaction, MissionKind, MissionRequest, MissionSystem,
+            PHASE_TIMER,
+        };
+        use rebellion_core::tick::TickEvent;
+        use rebellion_core::world::Character;
+        let saves_dir = tmp_dir("mission_timer_round_trip");
+        let mut state = minimal_save_state();
+        let mut systems = state.world.systems.keys();
+        let (from, to) = (systems.next().unwrap(), systems.next().unwrap());
+        let envoy = state.world.characters.insert(Character {
+            is_alliance: true,
+            current_system: Some(from),
+            ..Default::default()
+        });
+        state
+            .missions
+            .dispatch_guarded(
+                MissionRequest::single(
+                    MissionKind::Diplomacy,
+                    MissionFaction::Alliance,
+                    envoy,
+                    to,
+                    None,
+                    0,
+                ),
+                &mut state.world,
+            )
+            .expect("the mission should dispatch");
+        let step = |state: &mut SaveState, tick: u64| {
+            let advance = MissionSystem::advance(
+                &mut state.missions,
+                &state.world,
+                &state.uprising,
+                &[TickEvent { tick }],
+                &[],
+            );
+            for effect in &advance.effects {
+                if let MissionEffect::MemberMoved { member, to } = effect {
+                    move_member(&mut state.world, *member, *to);
+                }
+            }
+        };
+        step(&mut state, 1);
+        let arrival = state.missions.en_route()[0].arrival;
+        state.world.systems[to].is_destroyed = true;
+        step(&mut state, 2);
+        step(&mut state, arrival);
+        save_slot(&saves_dir, 0, "Timer Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        let (before, after) = (
+            &state.missions.missions()[0],
+            &loaded.missions.missions()[0],
+        );
+        assert_eq!(after.phase, PHASE_TIMER);
+        assert!(before.timer_due.is_some());
+        assert_eq!(after.timer_due, before.timer_due);
+        assert!(after.container_loss_seen);
     }
 
     #[test]
