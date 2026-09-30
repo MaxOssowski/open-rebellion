@@ -140,7 +140,8 @@ Port decisions:
 - port: the target is a system, so only kinds with a system target are
   listed; a drop onto a character or object is phase 7.
 - hyp: `FUN_00606980` places the window in the galaxy view's rectangle; the port
-  centers it there.
+  centers it there, rounded to whole pixels (both 640 by 480 galaxy views put
+  the center on a half pixel).
 - port: the scroll bars are not drawn; the wheel scrolls a list or the
   drop-down by one item.
 - hyp: choosing a drop-down item closes it.
@@ -149,6 +150,25 @@ Port decisions:
   (P66 binds contextual entries).
 - port: a list click toggles an item's selection; `FUN_00609410`'s selection
   rules are not traced.
+
+## Bitmap size
+
+`FUN_00602150` (`CoolStrobeButton`) paints through `FUN_00602d30`, which calls
+`FUN_005fc140(bitmap, dc, '@', SRCCOPY, 0, 0, 0, 0, 0, 0)`. A zero width or
+height means the bitmap's own, so each bitmap is blitted at its native size
+and the control's window clips it. "Encylopedia", "Begin Mission" and
+"Cancel" are 64 by 33 controls holding 66 by 33 bitmaps (10592..10597): they
+show the left 64 columns. The port draws every dialog bitmap this way.
+
+## Browser gate (F-019 phase 6)
+
+`tools/interface-parity/mission-dialog.mjs` opens fixture scenarios
+`MissionDialogMission` (code 43) and `MissionDialogAgents` (44) for both sides.
+It compares the static STRATEGY chrome exactly: the panel, the title bars,
+the close box, the tabs, the headers, the arrows, the Missions button and the
+three bottom buttons. Text, the kind item, the target art and the lists are
+masked and kept as captures. The Mission scenario also clicks the Agents tab
+and checks the second page.
 
 ## Still open
 

@@ -466,8 +466,8 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   the binary has no build-delay rule for sabotage (F-017).
 - [ ] Wire the recovered rules the 2026-09-25 test-pruning pass found uncalled:
   research gating of buildable ships (F-018), the decoy roll and the SUBDMSTB
-  Subdue success check (F-019; guarded dispatch and the Subdue support gain and
-  revolt end are wired), mod dependency errors (F-020), and blockade troop
+  Subdue success check (F-019; both now run, and its remaining phases are
+  tracked below), mod dependency errors (F-020), and blockade troop
   destruction (F-021; tracking now persists in save v15, browser pass
   pending).
 - [ ] Correct or re-source the code behaviors the 2026-09-26 citation audit
@@ -481,9 +481,13 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
 - [x] Port the en-route delivery of manufactured objects on the recovered
   per-object transit (F-030, save v16, browser pass pending).
 - [ ] Port the mission phases, decoys, and per-member success roll (F-019).
-  The rules are in `ghidra/notes/decoy-roll.md`, `mission-lifecycle.md`, and
-  `ai-mission-planning.md`; the player's dialog and the AI planners both fill
-  the decoy list. It lands per phase.
+  The rules are in `ghidra/notes/decoy-roll.md`, `mission-lifecycle.md`,
+  `ai-mission-planning.md`, and `mission-dialog.md`. Phases 0-6 have landed:
+  the lifecycle, detection, the per-member roll, the recruit pool, sabotage
+  targets, legality, the AI team and decoy selectors, the original mission
+  dialog, dispatch telemetry, and the dialog's browser gate. Phase 7 builds the
+  dialog's drag from the system window, removes the invented mission entry
+  points, and traces the validator's error strings.
 - [ ] Add the original mission kinds the port lacks: Reconnaissance, Research,
   Palace, Bounty, Jedi Training, and the leisure and movement kinds (F-040).
 - [x] Gate uncited simulation rules with `tools/provenance-scan`; its baseline

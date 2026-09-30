@@ -372,20 +372,30 @@ fn paint_centered(
     Some(rect)
 }
 
+/// `FUN_005fc140` blits a bitmap at its own size (a zero width or height
+/// means the bitmap's) and the control's window clips the rest, so a bitmap
+/// wider than its control shows its left part.
+fn native(rect: egui::Rect, size: egui::Vec2, scale: f32) -> egui::Rect {
+    egui::Rect::from_min_size(rect.min, size * scale)
+}
+
 fn paint(
     painter: &egui::Painter,
     ctx: &egui::Context,
     cache: &mut BmpCache,
     resource_id: u32,
     rect: egui::Rect,
+    scale: f32,
 ) {
     if let Some(texture) = cache.get(ctx, DllSource::Strategy, resource_id) {
-        painter.image(
-            texture.id(),
-            rect,
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-            egui::Color32::WHITE,
-        );
+        painter
+            .with_clip_rect(painter.clip_rect().intersect(rect))
+            .image(
+                texture.id(),
+                native(rect, texture.size_vec2(), scale),
+                egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                egui::Color32::WHITE,
+            );
     }
 }
 
@@ -398,6 +408,7 @@ fn button(
     id: impl std::hash::Hash,
     (normal, pressed): (u32, u32),
     down: bool,
+    scale: f32,
 ) -> bool {
     let response = ui.interact(rect, ui.id().with(id), egui::Sense::click());
     let (pointer, primary_down) = ui.ctx().input(|input| {
@@ -413,12 +424,14 @@ fn button(
         cache,
         if down || held { pressed } else { normal },
         rect,
+        scale,
     );
     exact_clicked(&response, rect)
 }
 
 /// The dialog's screen rectangle. hyp: `FUN_00606980` places it in the
-/// galaxy view's rectangle (parent `+0xcc..+0xd8`); the port centers it.
+/// galaxy view's rectangle (parent `+0xcc..+0xd8`); the port centers it, on
+/// whole pixels so its bitmaps are not resampled.
 fn dialog_rect(layout: CockpitLayout) -> egui::Rect {
     let size = egui::vec2(
         MISSION_DIALOG_WIDTH * layout.scale,
@@ -428,7 +441,7 @@ fn dialog_rect(layout: CockpitLayout) -> egui::Rect {
         layout.galaxy.x + layout.galaxy.width / 2.0,
         layout.galaxy.y + layout.galaxy.height / 2.0,
     );
-    egui::Rect::from_center_size(center, size)
+    egui::Rect::from_min_size((center - size / 2.0).round(), size)
 }
 
 /// Draw the open dialog, if any, and report what the player asked for.
@@ -465,10 +478,24 @@ pub fn draw_mission_dialog(
                 MissionDialogPage::Mission => PANEL_MISSION,
                 MissionDialogPage::Agents => PANEL_AGENTS,
             };
-            paint(&painter, ctx, cache, panel, frame);
+            paint(&painter, ctx, cache, panel, frame, scale);
             let title = [TITLE_ALLIANCE, TITLE_EMPIRE][side];
-            paint(&painter, ctx, cache, title, at(2.0, 2.0, 240.0, 17.0));
-            paint(&painter, ctx, cache, title, at(32.0, 2.0, 240.0, 17.0));
+            paint(
+                &painter,
+                ctx,
+                cache,
+                title,
+                at(2.0, 2.0, 240.0, 17.0),
+                scale,
+            );
+            paint(
+                &painter,
+                ctx,
+                cache,
+                title,
+                at(32.0, 2.0, 240.0, 17.0),
+                scale,
+            );
             // FUN_0046a9c0 draws the first page's title black and leaves the
             // white of "Target" set for the second page's.
             let title_color = match dialog.page {
@@ -485,7 +512,15 @@ pub fn draw_mission_dialog(
                 title_color,
             );
 
-            if button(ui, cache, at(242.0, 3.0, 14.0, 14.0), "close", CLOSE, false) {
+            if button(
+                ui,
+                cache,
+                at(242.0, 3.0, 14.0, 14.0),
+                "close",
+                CLOSE,
+                false,
+                scale,
+            ) {
                 close = true;
             }
             for (page, x, art) in [
@@ -493,7 +528,15 @@ pub fn draw_mission_dialog(
                 (MissionDialogPage::Agents, 130.0, AGENTS_TAB[side]),
             ] {
                 let rect = at(7.0 + x, 20.0, 116.0, 33.0);
-                if button(ui, cache, rect, ("tab", x as i32), art, dialog.page == page) {
+                if button(
+                    ui,
+                    cache,
+                    rect,
+                    ("tab", x as i32),
+                    art,
+                    dialog.page == page,
+                    scale,
+                ) {
                     dialog.show_page(page);
                 }
             }
@@ -546,6 +589,7 @@ pub fn draw_mission_dialog(
                         "missions",
                         MISSIONS,
                         false,
+                        scale,
                     ) {
                         dialog.list_open = !dialog.list_open;
                     }
@@ -557,6 +601,7 @@ pub fn draw_mission_dialog(
                         cache,
                         AGENTS_HEADER[side],
                         at(8.0, 65.0, 108.0, 27.0),
+                        scale,
                     );
                     paint(
                         &painter,
@@ -564,6 +609,7 @@ pub fn draw_mission_dialog(
                         cache,
                         DECOYS_HEADER[side],
                         at(136.0, 65.0, 108.0, 27.0),
+                        scale,
                     );
                     for to_decoys in [false, true] {
                         let (x, y) = if to_decoys { DECOYS_LIST } else { AGENTS_LIST };
@@ -603,6 +649,7 @@ pub fn draw_mission_dialog(
                         "to-decoys",
                         TO_DECOYS,
                         false,
+                        scale,
                     ) {
                         dialog.move_selected(true);
                     }
@@ -613,6 +660,7 @@ pub fn draw_mission_dialog(
                         "to-agents",
                         TO_AGENTS,
                         false,
+                        scale,
                     ) {
                         dialog.move_selected(false);
                     }
@@ -626,6 +674,7 @@ pub fn draw_mission_dialog(
                 "cancel",
                 CANCEL,
                 false,
+                scale,
             ) {
                 close = true;
             }
@@ -636,6 +685,7 @@ pub fn draw_mission_dialog(
                 "begin",
                 BEGIN,
                 false,
+                scale,
             ) {
                 begin = true;
             }
@@ -646,6 +696,7 @@ pub fn draw_mission_dialog(
                 "encyclopedia",
                 ENCYCLOPEDIA,
                 false,
+                scale,
             ) {
                 action = Some(MissionDialogAction::Encyclopedia);
             }
@@ -941,6 +992,43 @@ mod tests {
     }
 
     /// The recovered Alliance cockpit at 640 by 480, scaled and offset.
+    #[test]
+    fn a_bitmap_wider_than_its_button_is_cropped_not_stretched() {
+        // FUN_0046a9c0 makes "Cancel" 0x40 by 0x21 (64 by 33); STRATEGY 10596
+        // is 66 by 33, and FUN_005fc140 blits it at its own size.
+        let control = egui::Rect::from_min_size(egui::pos2(170.0, 320.0), egui::vec2(64.0, 33.0));
+
+        let drawn = native(control, egui::vec2(66.0, 33.0), 1.0);
+
+        assert_eq!(
+            drawn,
+            egui::Rect::from_min_size(control.min, egui::vec2(66.0, 33.0))
+        );
+        let doubled = native(control, egui::vec2(66.0, 33.0), 2.0);
+        assert_eq!(doubled.size(), egui::vec2(132.0, 66.0));
+    }
+
+    #[test]
+    fn the_dialog_sits_on_whole_pixels_in_both_cockpits() {
+        // port: the original blits at integer coordinates; a half-pixel
+        // origin would resample every bitmap. Both galaxy views center the
+        // 259 by 355 window on a half pixel at 640 by 480.
+        for faction in [
+            crate::cockpit::CockpitFaction::Alliance,
+            crate::cockpit::CockpitFaction::Empire,
+        ] {
+            let layout = crate::cockpit::CockpitState::new(faction).layout_for(640.0, 480.0);
+
+            let rect = dialog_rect(layout);
+
+            assert_eq!(rect.min, rect.min.round(), "{faction:?}");
+            assert_eq!(
+                rect.size(),
+                egui::vec2(MISSION_DIALOG_WIDTH, MISSION_DIALOG_HEIGHT)
+            );
+        }
+    }
+
     fn layout(scale: f32) -> CockpitLayout {
         use crate::cockpit::CockpitViewport;
         CockpitLayout {

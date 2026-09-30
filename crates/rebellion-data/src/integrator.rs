@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use rebellion_core::ai::{AIAction, AIState};
+use rebellion_core::ai::{AIAction, AIState, AiFaction};
 use rebellion_core::betrayal::BetrayalEvent;
 use rebellion_core::blockade::BlockadeEvent;
 use rebellion_core::combat::{CombatSide, CombatSystem, GroundCombatResult, SpaceCombatResult};
@@ -28,7 +28,7 @@ use rebellion_core::game_events::{
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
     EVT_FOG_REVEALED, EVT_GARRISON_REQUIRED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL, EVT_JEDI_CHECK,
     EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE,
-    EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
+    EVT_MISSION_DISPATCHED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
     EVT_SUPPORT_CHANGE, EVT_SUPPORT_DRIFT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
@@ -43,7 +43,8 @@ use rebellion_core::manufacturing::{
     BuildableKind, CompletionEvent, ManufacturingState, QueueItem,
 };
 use rebellion_core::missions::{
-    MissionEffect, MissionFaction, MissionKind, MissionRequest, MissionResult, MissionState,
+    MissionEffect, MissionFaction, MissionKind, MissionMember, MissionRequest, MissionResult,
+    MissionState,
 };
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_fleet_transit, ArrivalEvent, MovementState,
@@ -80,6 +81,23 @@ pub fn char_name(world: &GameWorld, key: CharacterKey) -> String {
         .map_or_else(|| format!("{key:?}"), |c| c.name.clone())
 }
 
+/// Name a mission member: a character's name, or a special force's SPECFCSD
+/// class id (units carry no name of their own).
+#[must_use]
+pub fn member_name(world: &GameWorld, member: MissionMember) -> String {
+    match member {
+        MissionMember::Character(key) => char_name(world, key),
+        MissionMember::SpecialForce(key) => world.special_forces.get(key).map_or_else(
+            || format!("{key:?}"),
+            |unit| format!("special force {:#010x}", unit.class_dat_id.raw()),
+        ),
+    }
+}
+
+fn member_names(world: &GameWorld, members: &[MissionMember]) -> Vec<String> {
+    members.iter().map(|&m| member_name(world, m)).collect()
+}
+
 /// Format an `AIAction` as a structured JSON payload with readable names.
 #[must_use]
 pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value {
@@ -112,6 +130,8 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
         }
         AIAction::DispatchMission {
             kind,
+            team,
+            decoys,
             target_system,
             ..
         } => {
@@ -119,6 +139,8 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "type": "DispatchMission",
                 "kind": format!("{:?}", kind),
                 "target": sys_name(world, *target_system),
+                "team": member_names(world, team),
+                "decoys": member_names(world, decoys),
             })
         }
         AIAction::EnqueueProduction {
@@ -1107,6 +1129,29 @@ impl PerceptionIntegrator {
                 }
             }
             self.emit(SYS_AI, EVT_AI_ACTION, payload);
+            if let AIAction::DispatchMission {
+                kind,
+                team,
+                decoys,
+                target_system,
+                ..
+            } = action
+            {
+                let faction = ai_state
+                    .faction
+                    .map_or(MissionFaction::Empire, AiFaction::as_mission_faction);
+                self.emit(
+                    SYS_MISSIONS,
+                    EVT_MISSION_DISPATCHED,
+                    serde_json::json!({
+                        "kind": format!("{kind:?}"),
+                        "faction": format!("{faction:?}"),
+                        "team": member_names(world, team),
+                        "decoys": member_names(world, decoys),
+                        "target_system": sys_name(world, *target_system),
+                    }),
+                );
+            }
         }
     }
 
@@ -2316,6 +2361,114 @@ mod tests {
         assert_eq!(events[0].details["to"], "First Target");
     }
 
+    /// Apply `actions` for the Empire AI and return the telemetry.
+    fn empire_ai_events(world: &mut GameWorld, actions: &[AIAction]) -> Vec<GameEventRecord> {
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+        integrator.apply_ai_actions(
+            actions,
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut ResearchState::new(),
+            world,
+            5,
+            false,
+        );
+        integrator.finish()
+    }
+
+    fn imperial_at(world: &mut GameWorld, system: SystemKey, name: &str) -> MissionMember {
+        MissionMember::Character(world.characters.insert(rebellion_core::world::Character {
+            name: name.into(),
+            is_empire: true,
+            current_system: Some(system),
+            ..Default::default()
+        }))
+    }
+
+    #[test]
+    fn an_applied_ai_mission_reports_its_team_and_decoys_as_dispatched() {
+        let mut world = GameWorld::default();
+        let target = add_system(&mut world, "Target");
+        let envoy = imperial_at(&mut world, target, "Envoy");
+        let double = imperial_at(&mut world, target, "Double");
+
+        let events = empire_ai_events(
+            &mut world,
+            &[AIAction::DispatchMission {
+                kind: MissionKind::Diplomacy,
+                team: vec![envoy],
+                decoys: vec![double],
+                target_system: target,
+                target_character: None,
+                target_object: None,
+            }],
+        );
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event_type, EVT_AI_ACTION);
+        assert_eq!(events[0].details["team"], serde_json::json!(["Envoy"]));
+        assert_eq!(events[0].details["decoys"], serde_json::json!(["Double"]));
+        assert_eq!(events[1].system, SYS_MISSIONS);
+        assert_eq!(events[1].event_type, EVT_MISSION_DISPATCHED);
+        assert_eq!(
+            events[1].details,
+            serde_json::json!({
+                "kind": "Diplomacy",
+                "faction": "Empire",
+                "team": ["Envoy"],
+                "decoys": ["Double"],
+                "target_system": "Target",
+            })
+        );
+    }
+
+    #[test]
+    fn a_refused_ai_mission_reports_nothing() {
+        let mut world = GameWorld::default();
+        let target = add_system(&mut world, "Target");
+        let rebel = MissionMember::Character(world.characters.insert(
+            rebellion_core::world::Character {
+                name: "Rebel".into(),
+                is_alliance: true,
+                current_system: Some(target),
+                ..Default::default()
+            },
+        ));
+
+        let events = empire_ai_events(
+            &mut world,
+            &[AIAction::DispatchMission {
+                kind: MissionKind::Diplomacy,
+                team: vec![rebel],
+                decoys: vec![],
+                target_system: target,
+                target_character: None,
+                target_object: None,
+            }],
+        );
+
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn a_special_force_is_named_by_its_class() {
+        let mut world = GameWorld::default();
+        let unit = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0007),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: false,
+        });
+
+        assert_eq!(
+            member_name(&world, MissionMember::SpecialForce(unit)),
+            "special force 0x3c000007"
+        );
+    }
+
     #[test]
     fn ai_transport_action_embarks_before_authoritative_transit() {
         let mut world = GameWorld::default();
@@ -2375,6 +2528,60 @@ mod tests {
         assert_eq!(troop_transport.cargo(fleet), &[troop]);
         assert!(!world.systems[origin].ground_units.contains(&troop));
         assert_eq!(integrator.finish()[0].details["troops"], 1);
+    }
+
+    #[test]
+    fn troops_embarked_for_a_move_that_cannot_depart_land_again() {
+        let mut world = GameWorld::default();
+        let origin = add_system(&mut world, "Origin");
+        let destination = add_system(&mut world, "Destination");
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            is_alliance: false,
+            is_empire: true,
+            hull: 100,
+            troop_capacity: 1,
+            ..CapitalShipClass::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: origin,
+            capital_ships: vec![ShipInstance::new(class, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[origin].fleets.push(fleet);
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[origin].ground_units.push(troop);
+        let mut movement = MovementState::new();
+        // An order already held refuses the new one (MovementState::order).
+        assert!(movement.order(fleet, origin, destination, 3));
+        let mut troop_transport = TroopTransportState::default();
+
+        let applied = apply_ai_actions_inner(
+            &[AIAction::MoveFleet {
+                fleet,
+                to_system: destination,
+                reason: FleetMoveReason::Attack,
+                troops: vec![troop],
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut movement,
+            &mut troop_transport,
+            &mut ResearchState::new(),
+            &mut world,
+            5,
+        );
+
+        assert_eq!(applied, vec![false]);
+        assert!(troop_transport.cargo(fleet).is_empty());
+        assert!(world.systems[origin].ground_units.contains(&troop));
     }
 
     #[test]

@@ -7,10 +7,14 @@ use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
 use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::economy::EconomyState;
 use rebellion_core::manufacturing::ManufacturingState;
-use rebellion_core::missions::{MissionFaction, MissionKind, MissionState};
+use rebellion_core::missions::{
+    available_kinds, MissionFaction, MissionKind, MissionMember, MissionState,
+};
 use rebellion_core::movement::{begin_fleet_transit, reconcile_fleet_orbits, MovementState};
 use rebellion_core::tick::TickEvent;
+use rebellion_core::uprising::UprisingState;
 use rebellion_core::world::{ControlKind, GameWorld};
+use rebellion_render::mission_dialog::{MissionDialogPage, MissionDialogState};
 use rebellion_render::{
     CockpitFaction, CockpitState, GalaxyMapState, GidMode, SectorWindowState, SystemWindowState,
 };
@@ -20,7 +24,7 @@ use crate::GameMode;
 
 const FIXTURE_ABSENT: u32 = 0;
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 42;
+const SCENARIO_COUNT: u8 = 44;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -79,6 +83,8 @@ pub enum Scenario {
     MessageIndexShell = 39,
     EncyclopediaIndexShell = 40,
     EncyclopediaIndexCatalog = 41,
+    MissionDialogMission = 42,
+    MissionDialogAgents = 43,
 }
 
 impl Scenario {
@@ -126,6 +132,8 @@ impl Scenario {
             39 => Self::MessageIndexShell,
             40 => Self::EncyclopediaIndexShell,
             41 => Self::EncyclopediaIndexCatalog,
+            42 => Self::MissionDialogMission,
+            43 => Self::MissionDialogAgents,
             _ => return None,
         })
     }
@@ -473,6 +481,40 @@ pub fn emit_hover(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapSta
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
+/// Opens the mission dialog for the mission-dialog scenarios, as a drop of the
+/// fixture's first character onto its primary system would (`FUN_0042a320`).
+/// Returns false for every other scenario, or when no kind is available.
+pub fn open_mission_dialog(
+    request: FixtureRequest,
+    world: &GameWorld,
+    uprisings: &UprisingState,
+    dialog: &mut MissionDialogState,
+) -> bool {
+    let page = match request.scenario {
+        Scenario::MissionDialogMission => MissionDialogPage::Mission,
+        Scenario::MissionDialogAgents => MissionDialogPage::Agents,
+        _ => return false,
+    };
+    let (Some(character), Some(target)) =
+        (world.characters.keys().next(), world.systems.keys().next())
+    else {
+        return false;
+    };
+    let faction = match request.faction {
+        CockpitFaction::Alliance => MissionFaction::Alliance,
+        CockpitFaction::Empire => MissionFaction::Empire,
+    };
+    let team = vec![MissionMember::Character(character)];
+    let kinds = available_kinds(world, uprisings, faction, &team, &[], target);
+    if !dialog.open(faction, target, team, kinds) {
+        return false;
+    }
+    if let Some(open) = dialog.dialog_mut() {
+        open.show_page(page);
+    }
+    true
+}
+
 fn fnv1a64(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(0x100_0000_01b3)
@@ -489,6 +531,154 @@ mod tests {
             assert_eq!(Scenario::decode(value).unwrap() as u8, value);
         }
         assert!(Scenario::decode(SCENARIO_COUNT).is_none());
+    }
+
+    /// One system held by `side` with one recruited character of that side
+    /// on it, and the shipped MISSNSD Diplomacy record `0x51000010`.
+    fn diplomacy_world(side: Faction) -> GameWorld {
+        use rebellion_core::world::{
+            Character, MissionMemberRules, MissionRecord, MissionTargetRules, SkillPair, System,
+        };
+        let mut world = GameWorld::default();
+        let here = world.systems.insert(System {
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "System".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(side),
+        });
+        world.characters.insert(Character {
+            name: "Agent".into(),
+            is_alliance: side == Faction::Alliance,
+            is_empire: side == Faction::Empire,
+            loyalty: SkillPair {
+                base: 100,
+                variance: 0,
+            },
+            current_system: Some(here),
+            recruited: true,
+            ..Default::default()
+        });
+        world.mission_records = vec![MissionRecord {
+            dat_id: rebellion_core::ids::DatId::new(0x5100_0010),
+            timer_min_days: 5,
+            timer_spread_days: 10,
+            repeats: true,
+            hidden: false,
+            detection_phases: true,
+            can_resign: true,
+            rules: MissionTargetRules {
+                container_loss_ends: true,
+                needs_populated_container: true,
+                target_loss_ends: true,
+                own_side_target: true,
+                other_side_target: true,
+                opponent_target: false,
+                revolting_target: false,
+                calm_target: true,
+                prisoner_target: false,
+                free_target: false,
+            },
+            members: MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0,
+                character_mask: 0x1_0000,
+            },
+        }];
+        world
+    }
+
+    fn request(scenario: Scenario, faction: CockpitFaction) -> FixtureRequest {
+        FixtureRequest {
+            scenario,
+            faction,
+            code: 0,
+        }
+    }
+
+    #[test]
+    fn the_agents_scenario_opens_the_dialog_on_its_second_page() {
+        let world = diplomacy_world(Faction::Alliance);
+        let mut dialog = MissionDialogState::default();
+
+        let opened = open_mission_dialog(
+            request(Scenario::MissionDialogAgents, CockpitFaction::Alliance),
+            &world,
+            &UprisingState::default(),
+            &mut dialog,
+        );
+
+        assert!(opened);
+        let open = dialog.dialog().expect("the dialog is open");
+        assert_eq!(open.page(), MissionDialogPage::Agents);
+        assert_eq!(open.kind(), MissionKind::Diplomacy);
+        assert_eq!(open.agents().len(), 1);
+    }
+
+    #[test]
+    fn the_mission_scenario_opens_the_empire_dialog_on_its_first_page() {
+        let world = diplomacy_world(Faction::Empire);
+        let mut dialog = MissionDialogState::default();
+
+        let opened = open_mission_dialog(
+            request(Scenario::MissionDialogMission, CockpitFaction::Empire),
+            &world,
+            &UprisingState::default(),
+            &mut dialog,
+        );
+
+        assert!(opened);
+        let open = dialog.dialog().expect("the dialog is open");
+        assert_eq!(open.page(), MissionDialogPage::Mission);
+        let Some(rebellion_render::mission_dialog::MissionDialogAction::Begin { faction, .. }) =
+            dialog.begin()
+        else {
+            panic!("an open dialog begins its mission");
+        };
+        assert_eq!(faction, MissionFaction::Empire);
+    }
+
+    #[test]
+    fn other_scenarios_and_refused_teams_open_no_dialog() {
+        // FUN_0042a320: with no legal kind nothing opens. An Alliance agent
+        // cannot run an Empire mission (FUN_00583320).
+        let world = diplomacy_world(Faction::Alliance);
+        for request in [
+            request(Scenario::Galaxy, CockpitFaction::Alliance),
+            request(Scenario::MissionDialogAgents, CockpitFaction::Empire),
+        ] {
+            let mut dialog = MissionDialogState::default();
+
+            let opened =
+                open_mission_dialog(request, &world, &UprisingState::default(), &mut dialog);
+
+            assert!(!opened, "{:?}", request.scenario);
+            assert!(!dialog.is_open());
+        }
+        let mut dialog = MissionDialogState::default();
+        assert!(!open_mission_dialog(
+            request(Scenario::MissionDialogAgents, CockpitFaction::Alliance),
+            &GameWorld::default(),
+            &UprisingState::default(),
+            &mut dialog,
+        ));
     }
 
     #[test]

@@ -21,6 +21,8 @@ node message-index-shell.mjs --no-build  # reuse a verified fixture build
 node encyclopedia-index-shell.mjs  # verify both original Encyclopedia index shells
 node encyclopedia-index-shell.mjs --catalog  # verify source-derived index content
 node encyclopedia-index-shell.mjs --no-build  # reuse a verified fixture build
+node mission-dialog.mjs  # verify the original mission dialog's chrome on both pages
+node mission-dialog.mjs --no-build  # reuse a verified fixture build
 ```
 
 Harness unit regressions can be run from the repository root with
@@ -57,6 +59,14 @@ compares every static shell pixel while treating rendered text/list rectangles
 as dynamic; those regions must be visibly populated but remain outside exact
 A0 acceptance. Topic pages, text/art bindings, navigation, close routing, and
 production routing remain open.
+
+The mission-dialog gate is a bounded step toward `F-019`. Four fresh muted
+browser processes open the original mission dialog on its Mission and
+Agents pages for both factions, then click the Agents tab once. Each capture
+compares the panel, title bars, close box, tabs, headers, arrows, and buttons
+pixel-for-pixel against the owned STRATEGY resources. The bottom buttons are
+checked cropped to their 64-pixel controls. Text, the mission item, the target
+art, and the member lists are masked and kept as captures.
 
 The tactical acceptance denominator is generated directly from the surface
 ledger rather than maintained as a second hand-written list:

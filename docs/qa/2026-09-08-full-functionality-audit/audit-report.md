@@ -764,7 +764,9 @@ cross-runtime proof remain open
 ### F-019: Subdue, guarded dispatch, and initial Force awakening are never called
 
 - Severity: P1
-- Status: partially remediated; the decoy rule and the Subdue success check remain
+- Status: partially remediated; phases 0-6 of the mission port have landed
+  (the decoy rule and the Subdue success check now run, and the dialog passes
+  its browser gate). The dialog's drag entry (phase 7) remains
 - Evidence (before the 2026-09-25 fix): `UprisingSystem::try_subdue`
   (`uprising.rs`), `MissionSystem::dispatch_guarded` and `check_decoy`
   (`missions.rs`), and `JediSystem::apply_initial_awakening` (`jedi.rs`) had
@@ -1089,6 +1091,42 @@ cross-runtime proof remain open
     choosing a drop-down item closes it.
   - The replay golden is unchanged (`v1:7e1061cadd1e6f22`); the dialog is
     player input only.
+- Phase 6 (2026-09-30): telemetry and browser acceptance.
+  - `EVT_MISSION_DISPATCHED` was defined but never emitted. Each applied AI
+    `DispatchMission` now reports its kind, side, target, team, and decoys;
+    a refused order reports nothing. `integrator::member_name` names a
+    special force by its class.
+  - A new test catches the pre-existing mutant in the fleet-move rollback:
+    troops embarked for a move that cannot depart land again.
+  - `FUN_00602150` buttons blit their bitmaps at native size
+    (`FUN_00602d30` -> `FUN_005fc140` with a zero width), clipped by the
+    control. The 66 by 33 "Encylopedia", "Begin Mission", and "Cancel"
+    bitmaps sit in 64 by 33 controls, so they show their left 64 columns.
+    The dialog had stretched them. It also sits on whole pixels now; both
+    640 by 480 galaxy views center it on a half pixel (hyp placement).
+  - Fixture scenarios `MissionDialogMission` and `MissionDialogAgents` (codes
+    43 and 44) open the dialog for the fixture's first character at its
+    primary system. `tools/interface-parity/mission-dialog.mjs` runs four fresh
+    muted Chrome for Testing 151.0.7922.34 processes (two sides, two pages)
+    and clicks the Agents tab once. 277,588 of 277,588 static-chrome pixels
+    match 23 owned STRATEGY resources (aggregate `19e85900…f9f3ce`); text,
+    the kind item, the target art, and the lists are masked and kept as
+    captures. 16 of 16 requests return 200, with zero console or page
+    errors. With the bitmaps stretched again, five captures differ by 1,169
+    pixels each. The sixth also missed its tab click, because one-frame
+    clicks were flaky; the gate now spreads a click over frames, and three
+    runs in a row pass. The fixture WASM is `020a8010…cfa7853` and the runtime pack
+    `02244b24…cf7d90f4`. Evidence is kept under the ignored
+    `.artifacts/interface-parity/mission-dialog-2026-10-01T06-42-20-347Z-31048/`.
+  - Finding: in the 1500-tick seed-42 dual-AI playtest, 372 dispatches
+    (Diplomacy 220, Espionage 78, Recruitment 32, Sabotage 23, Incite 13,
+    Assassination 6) carry one member and no decoys. The selectors picked
+    only 4 decoys and 2 second members, and phase 5a's co-location rule
+    dropped them all, because the research reservation (hyp) and the few
+    special forces leave tiny candidate pools. Not fixed here.
+  - Native: the dialog's input is covered by the egui harness tests. A live
+    native capture waits for the phase 7 drag, which is the dialog's only
+    original entry point.
 
 ### F-020: A mod with a missing dependency fails silently
 

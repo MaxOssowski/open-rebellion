@@ -1204,6 +1204,12 @@ async fn main() {
             &mut sector_window_state,
             &mut system_window_state,
         );
+        interface_test_fixture::open_mission_dialog(
+            request,
+            &world,
+            &uprising_state,
+            &mut mission_dialog_state,
+        );
     }
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let tactical_fixture_request = tactical_test_fixture::requested();
