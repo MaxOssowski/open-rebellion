@@ -457,12 +457,7 @@ pub fn run_simulation_tick(
         ai2.free_mission_members(&mission_advance.effects);
     }
     for result in &mission_advance.results {
-        integrator.apply_mission_result(
-            world,
-            result,
-            &mut states.uprising,
-            &mut states.death_star,
-        );
+        integrator.apply_mission_result(world, result, &mut states.uprising);
         // Knesset Shamash-Bet #R11: emit `EVT_CHARACTER_KILLED` telemetry for
         // mission-side assassinations. The integrator's `MissionEffect::CharacterKilled`
         // arm marks `is_killed = true` via `mark_killed()` instead of deleting

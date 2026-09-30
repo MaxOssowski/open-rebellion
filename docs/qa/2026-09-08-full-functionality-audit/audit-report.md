@@ -996,6 +996,32 @@ cross-runtime proof remain open
     the recruits at their targets accounts for the whole change. The golden
     moves to `v1:c6a7cdfec25f7b55` -> `v1:2ceb75524906c42b` for save v21 and
     the recruit pool.
+  - Review fix: the pool holds minor characters only (families
+    `0x38..0x3c`, MNCHARSD, through `FUN_0056f450`), never a major.
+- Phase 4c (2026-09-30, save v22): Sabotage and DS Sabotage name a target
+  object (order `+0x4c`, read back by `FUN_00521030`).
+  - The object is a defense, manufacturing, or production facility, a
+    regiment, a special force, or a fleet's Death Star hull (class `0x88`,
+    family `0x18`).
+  - Dispatch refuses a Sabotage without an object or naming the Death Star
+    (`FUN_0056a110`, `0x40`/`0x28`), and a DS Sabotage naming anything else
+    (`FUN_005744c0`, `0x40`/`0x29`).
+  - On result 3, `FUN_005746e0` destroys the object once (slot `+0xac(6)`).
+    The validator's object rules (`FUN_00593500`) read its side, its system,
+    and whether it stands.
+  - Deleted: the interim removal of a system's first facility, and the
+    invented 50-tick Death Star construction delay (`add_sabotage_delay`).
+  - port: capital ships other than the Death Star, and fighter squadrons,
+    have no identity in the port and cannot be named. A removed object
+    reads as the opponent's and destroyed, so rule 4 ends the mission with
+    6. The AI names the first enemy manufacturing facility at its chosen
+    system (the planner's own choice is phase 5).
+  - The 1500-tick seed-42 playtest resolves 1069 missions instead of 1053.
+    In 4b the AI sabotaged Wistril 109 times, because removing the system's
+    first facility left the enemy yard standing. Naming the yard destroys it
+    within 7 missions, so Wistril completes 17 builds instead of 32. The
+    golden moves to `v1:8ff65dd8cf6fd7b2` -> `v1:41144ee79484fa1a` for save
+    v22 and the target objects.
 
 ### F-020: A mod with a missing dependency fails silently
 

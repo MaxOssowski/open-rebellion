@@ -1955,7 +1955,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                     &world,
                     result.tick,
                     &mut uprising_state,
-                    &mut death_star_state,
                 ) {
                     if let rebellion_core::uprising::UprisingEvent::UprisingEnded { system, tick } =
                         ended
@@ -4842,6 +4841,7 @@ fn apply_panel_action(
                 decoys: Vec::new(),
                 target_system: target,
                 target_character,
+                target_object: None,
                 tick,
             };
             if let Err(refusal) = mission_state.dispatch_guarded(request, world) {
@@ -4855,6 +4855,9 @@ fn apply_panel_action(
                     }
                     rebellion_core::missions::MissionRefusal::MemberUnavailable(_) => {
                         format!("{char_name} cannot join this mission")
+                    }
+                    rebellion_core::missions::MissionRefusal::TargetUnavailable => {
+                        "This target cannot be sabotaged".to_string()
                     }
                 };
                 msg_log.push(GameMessage::new(clock.tick, text, MessageCategory::Mission));
@@ -5450,25 +5453,25 @@ fn apply_mission_result(
                 *faction,
                 *pool_emptied,
             ),
-            MissionEffect::FacilitySabotaged {
-                system,
-                facility_index,
-                ticks_lost,
-            } => {
-                // Remove the facility at facility_index from the system
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    if *facility_index < sys.manufacturing_facilities.len() {
-                        let fac_key = sys.manufacturing_facilities.remove(*facility_index);
-                        world.manufacturing_facilities.remove(fac_key);
-                    } else if *facility_index
-                        < sys.manufacturing_facilities.len() + sys.defense_facilities.len()
-                    {
-                        let adj_idx = *facility_index - sys.manufacturing_facilities.len();
-                        let fac_key = sys.defense_facilities.remove(adj_idx);
-                        world.defense_facilities.remove(fac_key);
-                    }
+            MissionEffect::TargetSabotaged { target, .. } => {
+                rebellion_core::missions::destroy_target(world, *target);
+                if matches!(
+                    target,
+                    rebellion_core::missions::MissionTarget::DeathStar(_)
+                ) {
+                    // Notification 0x23, Death Star Sabotaged.
+                    log.push(filed(
+                        GameMessage::new(
+                            result.tick,
+                            "The Death Star has been sabotaged.".to_string(),
+                            MessageCategory::Mission,
+                        ),
+                        MessageRail::Mission,
+                        Some(RailAudience::side(
+                            result.faction == MissionFaction::Alliance,
+                        )),
+                    ));
                 }
-                let _ = ticks_lost;
             }
             MissionEffect::CharacterKilled { character, .. } => {
                 // Remove character from any fleet they're assigned to
@@ -5567,23 +5570,6 @@ fn apply_mission_result(
                     *support_gain,
                 );
             }
-            MissionEffect::DeathStarSabotaged { ticks_delayed } => {
-                // The caller applies the delay via apply_mission_state_effects.
-                // Notification 0x23, Death Star Sabotaged.
-                log.push(filed(
-                    GameMessage::new(
-                        result.tick,
-                        format!(
-                            "Death Star construction sabotaged! {ticks_delayed} ticks delayed."
-                        ),
-                        MessageCategory::Mission,
-                    ),
-                    MessageRail::Mission,
-                    Some(RailAudience::side(
-                        result.faction == MissionFaction::Alliance,
-                    )),
-                ));
-            }
         }
     }
 }
@@ -5638,6 +5624,7 @@ fn apply_ai_actions(
                 character,
                 target_system,
                 target_character,
+                target_object,
             } => {
                 let ai_faction = ai_state.faction.unwrap_or(AiFaction::Empire);
                 let request = rebellion_core::missions::MissionRequest {
@@ -5649,6 +5636,7 @@ fn apply_ai_actions(
                     decoys: Vec::new(),
                     target_system: *target_system,
                     target_character: *target_character,
+                    target_object: *target_object,
                     tick,
                 };
                 if mission_state.dispatch_guarded(request, world).is_err() {

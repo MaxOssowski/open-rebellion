@@ -1,6 +1,5 @@
 {
   "items": {
-    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_espionage": 2,
     "crates/rebellion-core/src/ai.rs::AISystem::evaluate_officers": 3,
     "crates/rebellion-core/src/ai.rs::AISystem::evaluate_production": 9,
     "crates/rebellion-core/src/ai.rs::AISystem::evaluate_reconnaissance": 1,

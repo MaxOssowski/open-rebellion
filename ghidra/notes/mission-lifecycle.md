@@ -291,9 +291,7 @@ ports the roll and the in-roll outcomes above, re-read from the `.c` files.
   - The kill always destroys the target.
   - A member's incident reads the world before earlier members' effects
     apply.
-- **Interim, until 4c.** The Sabotage and DS Sabotage target object
-  (`FUN_005746e0`, slot `+0xac(6)`), and Espionage's revelation counts
-  (`FUN_0055c940`).
+- **Still interim.** Espionage's revelation counts (`FUN_0055c940`).
 
 ### Ported (F-019 phase 4b)
 
@@ -303,6 +301,34 @@ ports the roll and the in-roll outcomes above, re-read from the `.c` files.
 - The pool is walked in `DatId` order.
 - Bit 2 is not modelled.
 - A later mission in the same step skips an earlier mission's pick.
+
+### Ported (F-019 phase 4c)
+
+- The creation checks read the target object's family (slot `+4`).
+  - `FUN_0056a110` (Sabotage) refuses families `0x18..0x1c` with
+    `0x40`/`0x28`, and `0x30..0x3c` (characters) with `0x40`/`0x25`.
+  - `FUN_005744c0` (DS Sabotage) refuses anything outside `0x18..0x1c` with
+    `0x40`/`0x29`.
+- The DAT family ranges `[field3, field4)`:
+
+  | Family range | DAT |
+  |---|---|
+  | `0x08..0x10` | fleets |
+  | `0x10..0x14` | troops |
+  | `0x14..0x1c` | capital ships |
+  | `0x1c..0x20` | fighters |
+  | `0x22..0x28` | defense facilities |
+  | `0x28..0x2c` | manufacturing facilities |
+  | `0x2c..0x30` | production facilities |
+  | `0x30..0x38` | major characters |
+  | `0x38..0x3c` | minor characters |
+  | `0x3c..0x40` | special forces |
+
+  CAPSHPSD's only family `0x18` record is `0x88`, the Death Star.
+- `MissionTarget` names a facility, a regiment, a special force, or a
+  fleet's Death Star hull. `destroy_target` is slot `+0xac(6)`.
+- port: other capital ships and fighters have no identity in the port. A
+  removed object reads as the opponent's and destroyed for rule 4.
 
 ### The end (`FUN_00592c80`, re-read 2026-09-29)
 
@@ -464,9 +490,11 @@ its holder. Neither is traced to a writer.
 ## Still open
 
 - The creation-only checks (checker `+4` = 1) that refuse a new mission.
-- Which object a character, Sabotage, or DS Sabotage mission stores as its
-  target `+0x70` and container `+0x74` (the per-class slot `+0x1bc` init is
-  not a defined function in the database).
+- Which object a character mission stores as its target `+0x70` and
+  container `+0x74` (the per-class slot `+0x1bc` init is not a defined
+  function in the database); Sabotage's is its order's object (`+0x4c`).
+- What slot `+0xac(6)` does beyond destroying the object (messages,
+  cargo aboard a destroyed hull).
 - What system slot `+0xc` returns, for the location rule above.
 - `FUN_0055c940`/`FUN_00573170` (what Espionage reveals).
 - What `+0x50` bit 2 of a recruit means, the `+0xc` test in

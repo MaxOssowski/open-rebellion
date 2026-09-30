@@ -78,7 +78,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 21;
+pub const SAVE_VERSION: u32 = 22;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1441,6 +1441,7 @@ mod tests {
             ],
             target_system: system,
             target_character: None,
+            target_object: None,
             tick: 0,
         };
         state
@@ -1656,6 +1657,60 @@ mod tests {
         assert!(loaded.world.characters[recruit].recruited);
         assert!(loaded.world.recruit_pool_empty(Faction::Empire));
         assert!(!loaded.world.recruit_pool_empty(Faction::Alliance));
+    }
+
+    /// A Sabotage order's object (`+0x4c`, read by `FUN_00521030`) must
+    /// survive a save, or a reload would leave the mission nothing to
+    /// destroy (`FUN_005746e0`).
+    #[test]
+    fn a_round_trip_keeps_a_sabotage_mission_s_target_object() {
+        use rebellion_core::missions::{
+            MissionFaction, MissionKind, MissionRequest, MissionTarget,
+        };
+        use rebellion_core::world::{Character, ManufacturingFacilityInstance};
+        let saves_dir = tmp_dir("sabotage_target_round_trip");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let yard = state
+            .world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+                is_alliance: false,
+                is_shipyard: true,
+            });
+        state.world.systems[system]
+            .manufacturing_facilities
+            .push(yard);
+        let spy = state.world.characters.insert(Character {
+            is_alliance: true,
+            current_system: Some(system),
+            recruited: true,
+            ..Default::default()
+        });
+        let target = MissionTarget::ManufacturingFacility(yard);
+        state
+            .missions
+            .dispatch_guarded(
+                MissionRequest {
+                    target_object: Some(target),
+                    ..MissionRequest::single(
+                        MissionKind::Sabotage,
+                        MissionFaction::Alliance,
+                        spy,
+                        system,
+                        None,
+                        0,
+                    )
+                },
+                &mut state.world,
+            )
+            .expect("the sabotage should dispatch");
+        save_slot(&saves_dir, 0, "Sabotage Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(loaded.missions.missions()[0].target_object, Some(target));
     }
 
     #[test]

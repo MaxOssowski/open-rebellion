@@ -133,13 +133,6 @@ impl DeathStarState {
     pub fn destroy_shield(&mut self) {
         self.shield_generator_active = false;
     }
-
-    /// Add construction delay from sabotage (increases `ticks_remaining`).
-    pub fn add_sabotage_delay(&mut self, ticks: u32) {
-        if let Some(ref mut construction) = self.under_construction {
-            construction.ticks_remaining = construction.ticks_remaining.saturating_add(ticks);
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

@@ -241,6 +241,8 @@ pub enum AIAction {
         target_system: SystemKey,
         /// Target character for character-targeted missions (Assassination, Abduction, Recruitment).
         target_character: Option<CharacterKey>,
+        /// The object a Sabotage or DS Sabotage mission names.
+        target_object: Option<crate::missions::MissionTarget>,
     },
 
     /// Enqueue a unit or facility for construction at a system.
@@ -602,6 +604,7 @@ impl AISystem {
                             character: char_key,
                             target_system: target,
                             target_character: None,
+                            target_object: None,
                         });
                         incite_dispatched = true;
                         continue;
@@ -613,6 +616,7 @@ impl AISystem {
                         character: char_key,
                         target_system: target,
                         target_character: None,
+                        target_object: None,
                     });
                     continue;
                 }
@@ -626,6 +630,7 @@ impl AISystem {
                         character: char_key,
                         target_system: base_system,
                         target_character: Some(unrecruited[0]),
+                        target_object: None,
                     });
                     continue;
                 }
@@ -639,6 +644,7 @@ impl AISystem {
                         character: char_key,
                         target_system: target,
                         target_character: None,
+                        target_object: None,
                     });
                 }
             }
@@ -765,36 +771,37 @@ impl AISystem {
 
         // ── Priority 1: Sabotage enemy manufacturing systems ─────────────────
         // Score each enemy system by number of mfg facilities (proxy for value).
-        let mut sabotage_targets: Vec<(SystemKey, usize)> = world
+        // port: the planner's object choice is untraced (F-019 phase 5); the
+        // AI names the system's first enemy manufacturing facility.
+        let mut sabotage_targets: Vec<(SystemKey, usize, ManufacturingFacilityKey)> = world
             .systems
             .iter()
             .filter_map(|(sys_key, system)| {
                 // Target systems where the enemy faction has manufacturing presence.
-                let enemy_mfg = system
+                let enemy_mfg: Vec<ManufacturingFacilityKey> = system
                     .manufacturing_facilities
                     .iter()
+                    .copied()
                     .filter(|mfk| {
                         world
                             .manufacturing_facilities
-                            .get(**mfk)
+                            .get(*mfk)
                             .is_some_and(|f| match faction {
                                 AiFaction::Alliance => !f.is_alliance, // enemy = empire
                                 AiFaction::Empire => f.is_alliance,    // enemy = alliance
                             })
                     })
-                    .count();
-                if enemy_mfg > 0 {
-                    Some((sys_key, enemy_mfg))
-                } else {
-                    None
-                }
+                    .collect();
+                enemy_mfg
+                    .first()
+                    .map(|&first| (sys_key, enemy_mfg.len(), first))
             })
             .collect();
 
         // Highest facility count first.
         sabotage_targets.sort_by_key(|a| std::cmp::Reverse(a.1));
 
-        for (target_sys, _) in &sabotage_targets {
+        for &(target_sys, _, facility) in &sabotage_targets {
             if ops_queued >= config.ai.max_covert_ops_per_eval || op_idx >= operatives.len() {
                 break;
             }
@@ -804,7 +811,7 @@ impl AISystem {
                 MissionKind::Sabotage,
                 faction,
                 char_key,
-                (*target_sys, None),
+                (target_sys, None),
                 config.ai.covert_min_success_prob,
             ) {
                 op_idx += 1;
@@ -813,8 +820,11 @@ impl AISystem {
             actions.push(AIAction::DispatchMission {
                 kind: MissionKind::Sabotage,
                 character: char_key,
-                target_system: *target_sys,
+                target_system: target_sys,
                 target_character: None,
+                target_object: Some(crate::missions::MissionTarget::ManufacturingFacility(
+                    facility,
+                )),
             });
             op_idx += 1;
             ops_queued += 1;
@@ -899,6 +909,7 @@ impl AISystem {
                     character: char_key,
                     target_system: target_sys,
                     target_character: Some(target_char),
+                    target_object: None,
                 });
                 op_idx += 1;
                 ops_queued += 1;
@@ -929,6 +940,7 @@ impl AISystem {
                     character: char_key,
                     target_system: target_sys,
                     target_character: Some(target_char),
+                    target_object: None,
                 });
                 op_idx += 1;
                 ops_queued += 1;
@@ -969,6 +981,7 @@ impl AISystem {
                 character: char_key,
                 target_system: *target_sys,
                 target_character: None,
+                target_object: None,
             });
             op_idx += 1;
             ops_queued += 1;
@@ -1058,6 +1071,7 @@ impl AISystem {
                     character: rescuer,
                     target_system: *captive_system,
                     target_character: Some(*captive_key),
+                    target_object: None,
                 });
             } else {
                 break; // No more operatives available.
@@ -1168,6 +1182,7 @@ impl AISystem {
                 character: char_key,
                 target_system: *target_sys,
                 target_character: None,
+                target_object: None,
             });
             scout_idx += 1;
             dispatched += 1;
@@ -1999,6 +2014,7 @@ impl AISystem {
                 character: char_key,
                 target_system: at_risk[dispatched],
                 target_character: None,
+                target_object: None,
             });
             dispatched += 1;
 
@@ -3551,6 +3567,13 @@ mod tests {
     /// Whether the Empire sends an operative of `espionage` and `combat` to
     /// sabotage an Alliance manufacturing system.
     fn sabotage_dispatched(espionage: u32, combat: u32) -> bool {
+        sabotage_dispatched_by(AiFaction::Empire, espionage, combat)
+    }
+
+    /// Whether `side`'s AI sends its spy to sabotage the enemy shipyard,
+    /// naming the shipyard as the target object.
+    fn sabotage_dispatched_by(side: AiFaction, espionage: u32, combat: u32) -> bool {
+        let alliance_ai = side == AiFaction::Alliance;
         let mut world = empty_world();
         let sector = add_sector(&mut world);
 
@@ -3560,7 +3583,7 @@ mod tests {
                 .manufacturing_facilities
                 .insert(crate::world::ManufacturingFacilityInstance {
                     class_dat_id: DatId(1),
-                    is_alliance: true, // alliance-owned → enemy from Empire's perspective
+                    is_alliance: !alliance_ai, // owned by the AI's enemy
                     is_shipyard: false,
                 });
         let enemy_sys = world.systems.insert(System {
@@ -3588,9 +3611,9 @@ mod tests {
         });
 
         // Empire spy with high espionage — above threshold.
-        let spy = add_spy(&mut world, false, false, espionage, combat);
+        let spy = add_spy(&mut world, alliance_ai, false, espionage, combat);
 
-        let mut state = AIState::new(AiFaction::Empire);
+        let mut state = AIState::new(side);
         let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
@@ -3612,9 +3635,10 @@ mod tests {
                     kind: MissionKind::Sabotage,
                     character,
                     target_system,
+                    target_object: Some(crate::missions::MissionTarget::ManufacturingFacility(yard)),
                     ..
                 }
-                if *character == spy && *target_system == enemy_sys
+                if *character == spy && *target_system == enemy_sys && *yard == mfg_key
             )
         });
         sabotage.is_some()
@@ -3626,6 +3650,11 @@ mod tests {
             sabotage_dispatched(80, 50),
             "expected sabotage mission against enemy shipyard"
         );
+    }
+
+    #[test]
+    fn an_alliance_spy_sabotages_an_empire_shipyard() {
+        assert!(sabotage_dispatched_by(AiFaction::Alliance, 80, 50));
     }
 
     #[test]

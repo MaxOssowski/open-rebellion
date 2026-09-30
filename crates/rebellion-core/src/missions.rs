@@ -222,6 +222,9 @@ pub struct ActiveMission {
     pub target_system: SystemKey,
     /// The target character (for assassination, abduction, rescue). None for area missions.
     pub target_character: Option<CharacterKey>,
+    /// The object a Sabotage or DS Sabotage mission names (order `+0x4c`,
+    /// read back by `FUN_00521030`).
+    pub target_object: Option<MissionTarget>,
     /// Phase `+0x68`, `0..=0xb`, advanced by the stepper `FUN_005227d0`
     /// (`ghidra/notes/mission-lifecycle.md`, "Phase stepping").
     pub phase: u8,
@@ -280,6 +283,7 @@ impl ActiveMission {
             captured: Vec::new(),
             target_system,
             target_character: None,
+            target_object: None,
             phase: 0,
             ready: true,
             end_code: 0,
@@ -371,6 +375,135 @@ impl ActiveMission {
 }
 
 // ---------------------------------------------------------------------------
+// Target objects
+// ---------------------------------------------------------------------------
+
+/// The object a Sabotage or DS Sabotage mission names. Sabotage refuses the
+/// Death Star (families `0x18..0x1c`) and characters (`0x30..0x3c`,
+/// `FUN_0056a110`); DS Sabotage needs the Death Star (`FUN_005744c0`).
+///
+/// port: capital ships other than the Death Star and fighter squadrons have
+/// no identity in the port, so they cannot be named yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MissionTarget {
+    DefenseFacility(crate::ids::DefenseFacilityKey),
+    ManufacturingFacility(crate::ids::ManufacturingFacilityKey),
+    ProductionFacility(crate::ids::ProductionFacilityKey),
+    Troop(crate::ids::TroopKey),
+    SpecialForce(crate::ids::SpecialForceKey),
+    /// The Death Star hull (class `0x88`, family `0x18`) in this fleet.
+    DeathStar(crate::ids::FleetKey),
+}
+
+/// What the validator reads about a target object.
+struct ObjectState {
+    side: crate::dat::Faction,
+    location: Option<SystemKey>,
+}
+
+impl MissionTarget {
+    /// The side holding the object and where it stands, or `None` once it
+    /// is gone.
+    fn state(self, world: &GameWorld) -> Option<ObjectState> {
+        let side = crate::mission_detection::faction_of;
+        let at = |listed: &dyn Fn(&crate::world::System) -> bool| {
+            world
+                .systems
+                .iter()
+                .find(|(_, sys)| listed(sys))
+                .map(|(key, _)| key)
+        };
+        let (is_alliance, location) = match self {
+            MissionTarget::DefenseFacility(key) => (
+                world.defense_facilities.get(key)?.is_alliance,
+                at(&|sys| sys.defense_facilities.contains(&key)),
+            ),
+            MissionTarget::ManufacturingFacility(key) => (
+                world.manufacturing_facilities.get(key)?.is_alliance,
+                at(&|sys| sys.manufacturing_facilities.contains(&key)),
+            ),
+            MissionTarget::ProductionFacility(key) => (
+                world.production_facilities.get(key)?.is_alliance,
+                at(&|sys| sys.production_facilities.contains(&key)),
+            ),
+            MissionTarget::Troop(key) => (
+                world.troops.get(key)?.is_alliance,
+                at(&|sys| sys.ground_units.contains(&key)),
+            ),
+            MissionTarget::SpecialForce(key) => (
+                world.special_forces.get(key)?.is_alliance,
+                at(&|sys| sys.special_forces.contains(&key)),
+            ),
+            MissionTarget::DeathStar(key) => {
+                let fleet = world.fleets.get(key)?;
+                fleet.capital_ships.iter().find(|ship| {
+                    ship.alive
+                        && world
+                            .capital_ship_classes
+                            .get(ship.class)
+                            .is_some_and(crate::world::CapitalShipClass::is_death_star)
+                })?;
+                (fleet.is_alliance, Some(fleet.location))
+            }
+        };
+        Some(ObjectState {
+            side: side(is_alliance),
+            location,
+        })
+    }
+}
+
+/// Destroy a sabotaged target (slot `+0xac(6)`, `FUN_005746e0`).
+///
+/// port: an emptied fleet keeps its slot until the fleet cleanup removes
+/// it; a regiment aboard a fleet is not at its container, so the validator
+/// ends the mission before it can be named here.
+pub fn destroy_target(world: &mut GameWorld, target: MissionTarget) {
+    match target {
+        MissionTarget::DefenseFacility(key) => {
+            for (_, sys) in &mut world.systems {
+                sys.defense_facilities.retain(|&k| k != key);
+            }
+            world.defense_facilities.remove(key);
+        }
+        MissionTarget::ManufacturingFacility(key) => {
+            for (_, sys) in &mut world.systems {
+                sys.manufacturing_facilities.retain(|&k| k != key);
+            }
+            world.manufacturing_facilities.remove(key);
+        }
+        MissionTarget::ProductionFacility(key) => {
+            for (_, sys) in &mut world.systems {
+                sys.production_facilities.retain(|&k| k != key);
+            }
+            world.production_facilities.remove(key);
+        }
+        MissionTarget::Troop(key) => {
+            for (_, sys) in &mut world.systems {
+                sys.ground_units.retain(|&k| k != key);
+            }
+            world.troops.remove(key);
+        }
+        MissionTarget::SpecialForce(key) => destroy_special_force(world, key),
+        MissionTarget::DeathStar(key) => {
+            let classes = &world.capital_ship_classes;
+            if let Some(fleet) = world.fleets.get_mut(key) {
+                if let Some(hull) = fleet.capital_ships.iter_mut().find(|ship| {
+                    ship.alive
+                        && classes
+                            .get(ship.class)
+                            .is_some_and(crate::world::CapitalShipClass::is_death_star)
+                }) {
+                    hull.alive = false;
+                }
+                fleet.capital_ships.retain(|ship| ship.alive);
+                fleet.has_death_star = false;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // MissionState
 // ---------------------------------------------------------------------------
 
@@ -385,6 +518,8 @@ pub struct MissionRequest {
     pub decoys: Vec<MissionMember>,
     pub target_system: SystemKey,
     pub target_character: Option<CharacterKey>,
+    /// The object a Sabotage or DS Sabotage order names (`+0x4c`).
+    pub target_object: Option<MissionTarget>,
     /// The day the order is given.
     pub tick: u64,
 }
@@ -407,6 +542,7 @@ impl MissionRequest {
             decoys: Vec::new(),
             target_system,
             target_character,
+            target_object: None,
             tick,
         }
     }
@@ -420,6 +556,10 @@ pub enum MissionRefusal {
     /// A member is missing, on the other side, already on a mission, or
     /// elsewhere than the other members (`FUN_00522b30`).
     MemberUnavailable(MissionMember),
+    /// Sabotage names no object or the Death Star (`FUN_0056a110`, `0x40`/
+    /// `0x28`), or DS Sabotage names no Death Star (`FUN_005744c0`,
+    /// `0x40`/`0x29`).
+    TargetUnavailable,
 }
 
 /// What the member checks read about one member.
@@ -809,6 +949,7 @@ impl MissionState {
         );
         mission.decoys = request.decoys;
         mission.target_character = request.target_character;
+        mission.target_object = request.target_object;
         self.missions.push_back(mission);
         id
     }
@@ -830,6 +971,20 @@ impl MissionState {
         world: &mut GameWorld,
     ) -> Result<u64, MissionRefusal> {
         let side_is_alliance = request.faction == MissionFaction::Alliance;
+        // The creation checks of FUN_0056a110 and FUN_005744c0 read the
+        // target object's family (slot +4). port: a missing object is
+        // refused, because every original order names one.
+        let death_star = request
+            .target_object
+            .map(|target| matches!(target, MissionTarget::DeathStar(_)));
+        let target_ok = match request.kind {
+            MissionKind::Sabotage => death_star == Some(false),
+            MissionKind::DeathStarSabotage => death_star == Some(true),
+            _ => true,
+        };
+        if !target_ok {
+            return Err(MissionRefusal::TargetUnavailable);
+        }
         // FUN_0054bb90 moves every prisoner out of the team and decoy lists
         // into the captured list first. FUN_0054c200 then adds the team, the
         // decoys, and the captured, in that order, so the first free team
@@ -974,17 +1129,11 @@ pub enum MissionEffect {
     },
 
     // ── War Machine ──────────────────────────────────────────────────────────
-    /// A facility was sabotaged — reduce its remaining production ticks.
-    ///
-    /// The caller applies `ticks_lost` to the appropriate facility at
-    /// `system.manufacturing_facilities[facility_index]` or
-    /// `system.defense_facilities[facility_index]`.
-    FacilitySabotaged {
+    /// A Sabotage or DS Sabotage target at `system` is destroyed
+    /// ([`destroy_target`]).
+    TargetSabotaged {
+        target: MissionTarget,
         system: SystemKey,
-        /// Index into the system's facility list (manufacturing or defense).
-        facility_index: usize,
-        /// Production ticks lost due to sabotage.
-        ticks_lost: u32,
     },
 
     /// A character was killed — remove from the game.
@@ -1048,12 +1197,6 @@ pub enum MissionEffect {
         system: SystemKey,
         side: crate::dat::Faction,
         support_gain: i32,
-    },
-
-    /// Death Star construction was sabotaged — delay by `ticks_delayed`.
-    DeathStarSabotaged {
-        /// Number of construction ticks added to the countdown.
-        ticks_delayed: u32,
     },
 
     /// A special force captured on a mission is destroyed (slot `+0x20c`,
@@ -1247,8 +1390,8 @@ fn character_side(character: &Character) -> Option<crate::dat::Faction> {
 /// The target the validator reads, `None` when it is missing (rule 1).
 ///
 /// port: the target of a system kind is its target system, which is also
-/// its container, and so is a Sabotage target until F-019 phase 4 names
-/// target objects. A system reads as located in itself (`hyp:` the system
+/// its container; an object kind reads its named object (a mission without
+/// one reads as missing). A system reads as located in itself (`hyp:` the system
 /// slot `+0xc` is untraced) and as its holder's side (inference).
 fn target_view(
     mission: &ActiveMission,
@@ -1256,7 +1399,24 @@ fn target_view(
     en_route: &[MemberTransit],
 ) -> Option<TargetView> {
     match mission.kind.target_rules() {
-        TargetRules::System | TargetRules::Object => {
+        // FUN_00521030 reads the order's object. port: the original keeps a
+        // destroyed object (+0x50 bit 3) for its rule 4; the port removes
+        // it, so a removed object reads as the opponent's and destroyed.
+        TargetRules::Object => {
+            let object = mission.target_object?.state(world);
+            let opponent = match crate::dat::Faction::from(mission.faction) {
+                crate::dat::Faction::Alliance => crate::dat::Faction::Empire,
+                _ => crate::dat::Faction::Alliance,
+            };
+            Some(TargetView {
+                side: Some(object.as_ref().map_or(opponent, |object| object.side)),
+                destroyed: object.is_none(),
+                en_route: false,
+                location: object.and_then(|object| object.location),
+                prisoner: false,
+            })
+        }
+        TargetRules::System => {
             let sys = world.systems.get(mission.target_system)?;
             Some(TargetView {
                 side: crate::uprising::holder(sys),
@@ -2135,15 +2295,18 @@ impl MissionSystem {
                         });
                     }
                 }
-                // port: interim until F-019 phase 4c ports the target object
-                // that FUN_005746e0 destroys (slot +0xac(6)).
-                MissionKind::Sabotage => effects.push(MissionEffect::FacilitySabotaged {
-                    system: target,
-                    facility_index: 0,
-                    ticks_lost: 10,
-                }),
-                MissionKind::DeathStarSabotage => {
-                    effects.push(MissionEffect::DeathStarSabotaged { ticks_delayed: 50 });
+                // FUN_005746e0: slot +0xac(6) destroys the order's object
+                // (FUN_00521030).
+                MissionKind::Sabotage | MissionKind::DeathStarSabotage => {
+                    effects.extend(
+                        mission
+                            .target_object
+                            .filter(|object| object.state(world).is_some())
+                            .map(|object| MissionEffect::TargetSabotaged {
+                                target: object,
+                                system: target,
+                            }),
+                    );
                 }
                 _ => {}
             }
@@ -2797,6 +2960,10 @@ mod tests {
             decoys,
             target_system: at,
             target_character: None,
+            // FUN_0056a110 reads only the object's family at creation.
+            target_object: Some(MissionTarget::ManufacturingFacility(
+                crate::ids::ManufacturingFacilityKey::default(),
+            )),
             tick: 0,
         }
     }
@@ -4352,6 +4519,328 @@ mod tests {
         assert_eq!(advance.ended[0].end_code, 0x10);
     }
 
+    /// MISSNSD Sabotage `0x69000012`, columns 11..21 = 0 0 1 0 1 1 0 0 0 0
+    /// (`ghidra/notes/mission-lifecycle.md`). port: the timer is
+    /// Diplomacy's, which these tests do not read.
+    fn sabotage_record() -> crate::world::MissionRecord {
+        crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x6900_0012),
+            rules: crate::world::MissionTargetRules {
+                container_loss_ends: false,
+                needs_populated_container: false,
+                target_loss_ends: true,
+                own_side_target: false,
+                other_side_target: true,
+                opponent_target: true,
+                revolting_target: false,
+                calm_target: false,
+                prisoner_target: false,
+                free_target: false,
+            },
+            ..diplomacy_record()
+        }
+    }
+
+    /// An Empire shipyard at `system`.
+    fn enemy_yard(
+        world: &mut GameWorld,
+        system: SystemKey,
+    ) -> crate::ids::ManufacturingFacilityKey {
+        let key =
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: crate::ids::DatId::new(0x2800_0001),
+                    is_alliance: false,
+                    is_shipyard: true,
+                });
+        world.systems[system].manufacturing_facilities.push(key);
+        key
+    }
+
+    /// An Empire fleet at `system` with a Star Destroyer and the Death Star.
+    fn death_star_fleet(world: &mut GameWorld, system: SystemKey) -> crate::ids::FleetKey {
+        let destroyer = world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass::default());
+        let death_star = world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass {
+                dat_id: crate::ids::DatId::new(crate::world::DEATH_STAR_CLASS_ID),
+                ..Default::default()
+            });
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: system,
+            capital_ships: vec![
+                crate::world::ShipInstance::new(destroyer, 100, false),
+                crate::world::ShipInstance::new(death_star, 100, false),
+            ],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: true,
+        });
+        world.systems[system].fleets.push(fleet);
+        fleet
+    }
+
+    fn sabotage_request(
+        world: &mut GameWorld,
+        kind: MissionKind,
+        at: SystemKey,
+        target: Option<MissionTarget>,
+    ) -> MissionRequest {
+        let agent = agent_at(world, at, true);
+        MissionRequest {
+            target_object: target,
+            ..MissionRequest::single(kind, MissionFaction::Alliance, agent, at, None, 0)
+        }
+    }
+
+    #[test]
+    fn sabotage_needs_an_object_other_than_the_death_star_and_ds_sabotage_needs_the_death_star() {
+        // FUN_0056a110 refuses a family 0x18..0x1c target (0x40/0x28);
+        // FUN_005744c0 refuses any other (0x40/0x29). port: every order
+        // names an object, so none is refused too.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let yard = MissionTarget::ManufacturingFacility(enemy_yard(&mut world, here));
+        let death_star = MissionTarget::DeathStar(death_star_fleet(&mut world, here));
+        let mut state = MissionState::new();
+        for (kind, target, allowed) in [
+            (MissionKind::Sabotage, None, false),
+            (MissionKind::Sabotage, Some(death_star), false),
+            (MissionKind::Sabotage, Some(yard), true),
+            (MissionKind::DeathStarSabotage, None, false),
+            (MissionKind::DeathStarSabotage, Some(yard), false),
+            (MissionKind::DeathStarSabotage, Some(death_star), true),
+        ] {
+            let request = sabotage_request(&mut world, kind, here, target);
+            let outcome = state.dispatch_guarded(request, &mut world);
+            assert_eq!(
+                outcome.is_ok(),
+                allowed,
+                "{kind:?} naming {target:?}: {outcome:?}"
+            );
+            if !allowed {
+                assert_eq!(outcome, Err(MissionRefusal::TargetUnavailable));
+            }
+        }
+    }
+
+    #[test]
+    fn a_successful_sabotage_destroys_its_target_object_once() {
+        // FUN_005746e0 runs once after every member rolled: on 3, slot
+        // +0xac(6) destroys the order's object (FUN_00521030).
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Sabotage, 100);
+        let yard = enemy_yard(&mut world, here);
+        let team = (0..2)
+            .map(|_| MissionMember::Character(agent_at(&mut world, here, true)))
+            .collect();
+        let mut mission = ActiveMission::timed(
+            0,
+            MissionKind::Sabotage,
+            MissionFaction::Alliance,
+            team,
+            here,
+            1,
+        );
+        mission.target_object = Some(MissionTarget::ManufacturingFacility(yard));
+        let mut state = MissionState::new();
+        state.push_timed(mission);
+
+        let result = step(&mut state, &world, 1, &[]).results.remove(0);
+
+        let destroyed: Vec<_> = result
+            .effects
+            .iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::TargetSabotaged { target, system } => Some((*target, *system)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            destroyed,
+            vec![(MissionTarget::ManufacturingFacility(yard), here)]
+        );
+        assert_eq!(result.outcome, MissionOutcome::Success);
+    }
+
+    #[test]
+    fn a_failed_sabotage_destroys_nothing() {
+        // FUN_005746e0 turns the unset result into 2 and destroys only on 3.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Sabotage, 0);
+        let yard = enemy_yard(&mut world, here);
+        let agent = agent_at(&mut world, here, true);
+        let mut mission = ActiveMission::timed(
+            0,
+            MissionKind::Sabotage,
+            MissionFaction::Alliance,
+            vec![MissionMember::Character(agent)],
+            here,
+            1,
+        );
+        mission.target_object = Some(MissionTarget::ManufacturingFacility(yard));
+        let mut state = MissionState::new();
+        state.push_timed(mission);
+
+        let result = step(&mut state, &world, 1, &[]).results.remove(0);
+
+        assert!(!result
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::TargetSabotaged { .. })));
+        assert_eq!(result.outcome, MissionOutcome::Failure);
+    }
+
+    #[test]
+    fn a_destroyed_object_leaves_its_system_and_the_world() {
+        // Slot +0xac(6) destroys the object; each kind leaves its system's
+        // list and its arena.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let yard = enemy_yard(&mut world, here);
+        let turret = world
+            .defense_facilities
+            .insert(crate::world::DefenseFacilityInstance {
+                class_dat_id: crate::ids::DatId::new(0x2200_0001),
+                is_alliance: false,
+            });
+        world.systems[here].defense_facilities.push(turret);
+        let mine = world
+            .production_facilities
+            .insert(crate::world::ProductionFacilityInstance {
+                class_dat_id: crate::ids::DatId::new(0x2c00_0001),
+                is_alliance: false,
+                is_mine: true,
+            });
+        world.systems[here].production_facilities.push(mine);
+        let regiment = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: crate::ids::DatId::new(0x1000_0001),
+            is_alliance: false,
+            regiment_strength: 10,
+        });
+        world.systems[here].ground_units.push(regiment);
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0001),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.systems[here].special_forces.push(unit);
+
+        for target in [
+            MissionTarget::ManufacturingFacility(yard),
+            MissionTarget::DefenseFacility(turret),
+            MissionTarget::ProductionFacility(mine),
+            MissionTarget::Troop(regiment),
+            MissionTarget::SpecialForce(unit),
+        ] {
+            assert!(target.state(&world).is_some(), "{target:?} stands");
+            destroy_target(&mut world, target);
+            assert!(target.state(&world).is_none(), "{target:?} is gone");
+        }
+        let sys = &world.systems[here];
+        assert!(sys.manufacturing_facilities.is_empty());
+        assert!(sys.defense_facilities.is_empty());
+        assert!(sys.production_facilities.is_empty());
+        assert!(sys.ground_units.is_empty());
+        assert!(sys.special_forces.is_empty());
+        assert!(world.manufacturing_facilities.is_empty());
+        assert!(world.troops.is_empty());
+    }
+
+    #[test]
+    fn ds_sabotage_destroys_only_the_fleet_s_death_star_hull() {
+        // FUN_005746e0 destroys the order's object, the Death Star (class
+        // 0x88, family 0x18); the fleet's other hulls stay.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let fleet = death_star_fleet(&mut world, here);
+        let target = MissionTarget::DeathStar(fleet);
+
+        destroy_target(&mut world, target);
+
+        let fleet = &world.fleets[fleet];
+        assert!(!fleet.has_death_star);
+        assert_eq!(fleet.capital_ships.len(), 1);
+        assert!(!world.capital_ship_classes[fleet.capital_ships[0].class].is_death_star());
+        assert!(target.state(&world).is_none());
+    }
+
+    /// A Sabotage of `target` at `here`, waiting in its timer phase.
+    fn waiting_sabotage(
+        world: &mut GameWorld,
+        here: SystemKey,
+        target: MissionTarget,
+    ) -> MissionState {
+        world.mission_records = vec![sabotage_record()];
+        let request = sabotage_request(world, MissionKind::Sabotage, here, Some(target));
+        let mut state = MissionState::new();
+        state
+            .dispatch_guarded(request, world)
+            .expect("a free saboteur");
+        step(&mut state, world, 1, &[0.0]);
+        assert!(step(&mut state, world, 2, &[0.0]).ended.is_empty());
+        state
+    }
+
+    #[test]
+    fn a_sabotage_ends_with_code_six_once_its_object_is_destroyed() {
+        // FUN_00593500 base rule 4 (col 14): a destroyed target ends 6.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let yard = enemy_yard(&mut world, here);
+        let mut state =
+            waiting_sabotage(&mut world, here, MissionTarget::ManufacturingFacility(yard));
+        destroy_target(&mut world, MissionTarget::ManufacturingFacility(yard));
+
+        let advance = step(&mut state, &world, 5, &[0.0]);
+
+        assert!(advance.results.is_empty());
+        assert_eq!(advance.ended[0].end_code, 6);
+    }
+
+    #[test]
+    fn a_sabotage_ends_with_code_six_once_its_object_leaves_the_target_system() {
+        // Base rules 5 and 6: the target has left its container.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let there = system_at(&mut world, 50);
+        let regiment = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: crate::ids::DatId::new(0x1000_0001),
+            is_alliance: false,
+            regiment_strength: 10,
+        });
+        world.systems[here].ground_units.push(regiment);
+        let mut state = waiting_sabotage(&mut world, here, MissionTarget::Troop(regiment));
+        world.systems[here].ground_units.clear();
+        world.systems[there].ground_units.push(regiment);
+
+        let advance = step(&mut state, &world, 5, &[0.0]);
+
+        assert_eq!(advance.ended[0].end_code, 6);
+    }
+
+    #[test]
+    fn a_sabotage_ends_with_code_eight_once_its_object_belongs_to_its_own_side() {
+        // Base rule 3 (col 15): Sabotage may not target its own side.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let yard = enemy_yard(&mut world, here);
+        let mut state =
+            waiting_sabotage(&mut world, here, MissionTarget::ManufacturingFacility(yard));
+        world.manufacturing_facilities[yard].is_alliance = true;
+
+        let advance = step(&mut state, &world, 5, &[0.0]);
+
+        assert_eq!(advance.ended[0].end_code, 8);
+    }
+
     #[test]
     fn diplomacy_ends_with_code_eight_at_a_system_the_opponent_holds() {
         // FUN_00592600 rule 3: an opponent target reads column 17, 0 for
@@ -4454,6 +4943,7 @@ mod tests {
                     decoys: vec![MissionMember::SpecialForce(unit)],
                     target_system: to,
                     target_character: None,
+                    target_object: None,
                     tick: 0,
                 },
                 &mut world,
@@ -4922,6 +5412,7 @@ mod tests {
                     decoys: vec![],
                     target_system: to,
                     target_character: None,
+                    target_object: None,
                     tick: 0,
                 },
                 &mut world,

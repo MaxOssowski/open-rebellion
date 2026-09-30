@@ -16,7 +16,7 @@ use rebellion_core::ai::{AIAction, AIState};
 use rebellion_core::betrayal::BetrayalEvent;
 use rebellion_core::blockade::BlockadeEvent;
 use rebellion_core::combat::{CombatSide, CombatSystem, GroundCombatResult, SpaceCombatResult};
-use rebellion_core::death_star::{DeathStarEvent, DeathStarState};
+use rebellion_core::death_star::DeathStarEvent;
 use rebellion_core::economy::{EconomyEvent, EconomyState};
 use rebellion_core::events::{EventAction, FiredEvent, SkillField, SystemTag};
 use rebellion_core::fog::RevealEvent;
@@ -865,15 +865,9 @@ impl PerceptionIntegrator {
         world: &mut GameWorld,
         result: &MissionResult,
         uprising_state: &mut UprisingState,
-        death_star_state: &mut DeathStarState,
     ) {
-        let ended = apply_mission_effects_inner(
-            &result.effects,
-            world,
-            result.tick,
-            uprising_state,
-            death_star_state,
-        );
+        let ended =
+            apply_mission_effects_inner(&result.effects, world, result.tick, uprising_state);
         for event in &ended {
             if let UprisingEvent::UprisingEnded { system, tick } = event {
                 self.events.push(GameEventRecord::new(
@@ -926,7 +920,7 @@ impl PerceptionIntegrator {
                     );
                 }
                 // R7: EVT_SABOTEUR_DETECTED — enemy sabotage on a system.
-                MissionEffect::FacilitySabotaged { system, .. } => {
+                MissionEffect::TargetSabotaged { system, .. } => {
                     self.emit(
                         SYS_MISSIONS,
                         EVT_SABOTEUR_DETECTED,
@@ -1491,7 +1485,6 @@ fn apply_mission_effects_inner(
     world: &mut GameWorld,
     tick: u64,
     uprising_state: &mut UprisingState,
-    death_star_state: &mut DeathStarState,
 ) -> Vec<UprisingEvent> {
     for effect in effects {
         match effect {
@@ -1525,23 +1518,8 @@ fn apply_mission_effects_inner(
                 *faction,
                 *pool_emptied,
             ),
-            MissionEffect::FacilitySabotaged {
-                system,
-                facility_index,
-                ..
-            } => {
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    if *facility_index < sys.manufacturing_facilities.len() {
-                        let fac_key = sys.manufacturing_facilities.remove(*facility_index);
-                        world.manufacturing_facilities.remove(fac_key);
-                    } else if *facility_index
-                        < sys.manufacturing_facilities.len() + sys.defense_facilities.len()
-                    {
-                        let adj_idx = *facility_index - sys.manufacturing_facilities.len();
-                        let fac_key = sys.defense_facilities.remove(adj_idx);
-                        world.defense_facilities.remove(fac_key);
-                    }
-                }
+            MissionEffect::TargetSabotaged { target, .. } => {
+                rebellion_core::missions::destroy_target(world, *target);
             }
             MissionEffect::CharacterKilled { character, .. } => {
                 // Knesset Shamash-Bet #R11: mark `is_killed = true` instead of
@@ -1631,34 +1609,30 @@ fn apply_mission_effects_inner(
                     *support_gain,
                 );
             }
-            MissionEffect::DeathStarSabotaged { .. } => {}
         }
     }
-    apply_mission_state_effects(effects, world, tick, uprising_state, death_star_state)
+    apply_mission_state_effects(effects, world, tick, uprising_state)
 }
 
 /// Apply the mission effects that live outside `GameWorld`, after the world
 /// effects: a Subdue Uprising success ends the revolt when the system is
-/// garrisoned (`FUN_0050c910`), and Death Star sabotage delays construction.
-/// Returns the revolts that ended. The native and browser app shares this
+/// garrisoned (`FUN_0050c910`). Returns the revolts that ended. The native and browser app shares this
 /// with the headless integrator.
 pub fn apply_mission_state_effects(
     effects: &[MissionEffect],
     world: &GameWorld,
     tick: u64,
     uprising_state: &mut UprisingState,
-    death_star_state: &mut DeathStarState,
 ) -> Vec<UprisingEvent> {
     let mut ended = Vec::new();
     for effect in effects {
-        match effect {
-            MissionEffect::UprisingSubdued { system, .. } => ended.extend(
-                rebellion_core::uprising::end_if_garrisoned(uprising_state, world, *system, tick),
-            ),
-            MissionEffect::DeathStarSabotaged { ticks_delayed } => {
-                death_star_state.add_sabotage_delay(*ticks_delayed);
-            }
-            _ => {}
+        if let MissionEffect::UprisingSubdued { system, .. } = effect {
+            ended.extend(rebellion_core::uprising::end_if_garrisoned(
+                uprising_state,
+                world,
+                *system,
+                tick,
+            ));
         }
     }
     ended
@@ -1969,6 +1943,7 @@ fn apply_ai_actions_inner(
                 character,
                 target_system,
                 target_character,
+                target_object,
             } => {
                 let dispatched = mission_state
                     .dispatch_guarded(
@@ -1979,6 +1954,7 @@ fn apply_ai_actions_inner(
                             decoys: Vec::new(),
                             target_system: *target_system,
                             target_character: *target_character,
+                            target_object: *target_object,
                             tick,
                         },
                         world,
@@ -2093,8 +2069,7 @@ mod tests {
     }
 
     #[test]
-    fn a_subdue_success_at_a_garrisoned_system_ends_the_uprising_and_sabotage_delays_the_death_star(
-    ) {
+    fn a_subdue_success_at_a_garrisoned_system_ends_the_uprising() {
         // FUN_00569c20 runs FUN_0050c910 after a Subdue Uprising success; with
         // no GNPRTB rows the garrison requirement is 0, so it ends.
         let mut world = GameWorld::default();
@@ -2107,27 +2082,15 @@ mod tests {
                 next_incident_tick: None,
             },
         );
-        let mut death_star = DeathStarState::default();
-        rebellion_core::death_star::DeathStarSystem::start_construction(&mut death_star, system);
-        let before = death_star
-            .under_construction
-            .as_ref()
-            .unwrap()
-            .ticks_remaining;
-
         let ended = apply_mission_state_effects(
-            &[
-                MissionEffect::UprisingSubdued {
-                    system,
-                    side: Faction::Empire,
-                    support_gain: 5,
-                },
-                MissionEffect::DeathStarSabotaged { ticks_delayed: 50 },
-            ],
+            &[MissionEffect::UprisingSubdued {
+                system,
+                side: Faction::Empire,
+                support_gain: 5,
+            }],
             &world,
             9,
             &mut uprisings,
-            &mut death_star,
         );
 
         assert_eq!(
@@ -2135,10 +2098,6 @@ mod tests {
             vec![UprisingEvent::UprisingEnded { system, tick: 9 }]
         );
         assert!(!uprisings.is_uprising(system));
-        assert_eq!(
-            death_star.under_construction.unwrap().ticks_remaining,
-            before + 50
-        );
     }
 
     #[test]
@@ -2200,12 +2159,7 @@ mod tests {
                 }],
             };
             let mut integrator = PerceptionIntegrator::new(9, 0);
-            integrator.apply_mission_result(
-                &mut world,
-                &result,
-                &mut uprisings,
-                &mut DeathStarState::default(),
-            );
+            integrator.apply_mission_result(&mut world, &result, &mut uprisings);
             assert_eq!(uprisings.is_uprising(system), !ends, "gain {support_gain}");
         }
     }
@@ -2244,12 +2198,7 @@ mod tests {
             }],
         };
         let mut integrator = PerceptionIntegrator::new(9, 0);
-        integrator.apply_mission_result(
-            &mut world,
-            &result,
-            &mut uprisings,
-            &mut DeathStarState::default(),
-        );
+        integrator.apply_mission_result(&mut world, &result, &mut uprisings);
 
         assert!((world.systems[system].popularity_empire - 0.65).abs() < 1e-6);
         assert!(!uprisings.is_uprising(system));
@@ -2498,7 +2447,7 @@ mod tests {
         world.systems[target].fleets.push(fleet);
         world.fleets[fleet].location = target;
         assert!(rebellion_core::death_star::DeathStarSystem::fire(
-            &DeathStarState::default(),
+            &rebellion_core::death_star::DeathStarState::default(),
             &world,
             target,
             2
