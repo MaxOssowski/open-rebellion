@@ -1,20 +1,18 @@
-//! Mission dispatch panel — pick commander, mission type, target, show probability.
+//! Missions panel.
 //!
 //! Two sub-views:
 //! 1. **Active missions list** — shows in-flight missions with progress bars and
 //!    a cancel button.
-//! 2. **Dispatch form** — pick a character, mission kind, and target system,
-//!    preview estimated success probability, then confirm.
+//! 2. **Dispatch form** — pick a character and a target system, then open the
+//!    original mission dialog (`crate::mission_dialog`) for them.
 //!
 //! Actions:
-//! - `PanelAction::DispatchMission` when the player confirms a new mission.
+//! - `PanelAction::OpenMissionDialog` when the player opens the dialog.
 //! - `PanelAction::CancelMission(id)` when the player cancels an active one.
 
 use egui_macroquad::egui::{self, Color32, RichText, ScrollArea};
 use rebellion_core::ids::{CharacterKey, SystemKey};
-use rebellion_core::missions::{
-    member_chance, ActiveMission, MissionFaction, MissionKind, MissionMember, MissionState,
-};
+use rebellion_core::missions::{ActiveMission, MissionFaction, MissionKind, MissionState};
 use rebellion_core::world::GameWorld;
 
 use super::PanelAction;
@@ -31,13 +29,7 @@ pub struct MissionsPanelState {
 
     // ── Dispatch form state ────────────────────────────────────────────────
     pub selected_commander: Option<CharacterKey>,
-    pub selected_kind: Option<MissionKind>,
     pub selected_target: Option<SystemKey>,
-    /// Target character for character-targeted missions (Assassination, Abduction, Recruitment).
-    pub selected_target_character: Option<CharacterKey>,
-
-    /// The current day, stamped on a dispatched order.
-    pub today: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -63,7 +55,6 @@ pub fn draw_missions(
     player_faction: MissionFaction,
     today: u64,
 ) -> Option<PanelAction> {
-    panel_state.today = today;
     let mut action = None;
 
     egui::SidePanel::left("missions_panel")
@@ -211,10 +202,6 @@ fn draw_active_tab(
 // Dispatch form tab
 // ---------------------------------------------------------------------------
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-)]
 fn draw_dispatch_tab(
     ui: &mut egui::Ui,
     world: &GameWorld,
@@ -267,27 +254,6 @@ fn draw_dispatch_tab(
 
     ui.add_space(6.0);
 
-    // ── Mission type selection ────────────────────────────────────────────────
-    ui.label(
-        RichText::new("Mission Type:")
-            .color(Color32::from_gray(180))
-            .small()
-            .strong(),
-    );
-    ui.horizontal(|ui| {
-        let is_diplo = panel_state.selected_kind == Some(MissionKind::Diplomacy);
-        let is_recrt = panel_state.selected_kind == Some(MissionKind::Recruitment);
-
-        if ui.selectable_label(is_diplo, "Diplomacy").clicked() {
-            panel_state.selected_kind = Some(MissionKind::Diplomacy);
-        }
-        if ui.selectable_label(is_recrt, "Recruitment").clicked() {
-            panel_state.selected_kind = Some(MissionKind::Recruitment);
-        }
-    });
-
-    ui.add_space(6.0);
-
     // ── Target system selection ───────────────────────────────────────────────
     ui.label(
         RichText::new("Target System:")
@@ -317,95 +283,30 @@ fn draw_dispatch_tab(
     ui.add_space(8.0);
     ui.separator();
 
-    // ── Success probability preview ───────────────────────────────────────────
-    if let (Some(char_key), Some(kind)) =
-        (panel_state.selected_commander, panel_state.selected_kind)
-    {
-        if let Some(target) = panel_state
-            .selected_target
-            .filter(|_| world.characters.contains_key(char_key))
-        {
-            // Slot +0x274, the chance phase 10 rolls against.
-            let prob = f64::from(member_chance(
-                world,
-                kind,
-                player_faction,
-                target,
-                panel_state.selected_target_character,
-                MissionMember::Character(char_key),
-            ));
+    // ── Open the mission dialog ───────────────────────────────────────────────
+    // port: until F-019 phase 7 builds the original drag from the system
+    // window, this pair stands in for the drop that opens the dialog.
+    let can_open =
+        panel_state.selected_commander.is_some() && panel_state.selected_target.is_some();
 
-            let prob_color = if prob >= 70.0 {
-                Color32::from_rgb(100, 220, 100)
-            } else if prob >= 40.0 {
-                Color32::from_rgb(220, 200, 60)
-            } else {
-                Color32::from_rgb(220, 100, 60)
-            };
-
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("Est. success:")
-                        .small()
-                        .color(Color32::from_gray(160)),
-                );
-                ui.label(
-                    RichText::new(format!("{prob:.0}%"))
-                        .strong()
-                        .color(prob_color),
-                );
-            });
-
-            let (min_t, max_t) = kind.tick_range();
-            ui.label(
-                RichText::new(format!("Duration: {min_t}–{max_t} days"))
-                    .small()
-                    .color(Color32::from_gray(140)),
-            );
-
-            ui.add_space(6.0);
-        }
-    }
-
-    // ── Dispatch button ───────────────────────────────────────────────────────
-    let can_dispatch = panel_state.selected_commander.is_some()
-        && panel_state.selected_kind.is_some()
-        && panel_state.selected_target.is_some();
-
-    ui.add_enabled_ui(can_dispatch, |ui| {
+    ui.add_enabled_ui(can_open, |ui| {
         if ui
-            .button(RichText::new("Dispatch Mission").strong())
+            .button(RichText::new("Create Mission").strong())
             .clicked()
         {
-            if let (Some(character), Some(kind), Some(target)) = (
-                panel_state.selected_commander,
-                panel_state.selected_kind,
-                panel_state.selected_target,
-            ) {
-                *action = Some(PanelAction::DispatchMission {
-                    kind,
+            if let (Some(character), Some(target)) =
+                (panel_state.selected_commander, panel_state.selected_target)
+            {
+                *action = Some(PanelAction::OpenMissionDialog {
                     faction: player_faction,
                     character,
                     target,
-                    target_character: panel_state.selected_target_character,
-                    tick: panel_state.today,
                 });
-                // Reset form after dispatch.
                 panel_state.selected_commander = None;
-                panel_state.selected_kind = None;
                 panel_state.selected_target = None;
-                panel_state.selected_target_character = None;
             }
         }
     });
-
-    if !can_dispatch {
-        ui.label(
-            RichText::new("Select commander, type, and target to dispatch.")
-                .small()
-                .color(Color32::from_gray(100)),
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------

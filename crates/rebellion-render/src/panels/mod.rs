@@ -44,7 +44,7 @@ pub use save_load::{draw_save_load, SaveLoadPanelState, SaveSlotInfo};
 
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
 use rebellion_core::manufacturing::BuildableKind;
-use rebellion_core::missions::{MissionFaction, MissionKind};
+use rebellion_core::missions::{MissionFaction, MissionKind, MissionMember};
 use rebellion_core::research::TechType;
 
 /// Player-initiated actions returned by War Room panels.
@@ -102,11 +102,20 @@ pub enum PanelAction {
     PrioritizeQueueItem { system: SystemKey, index: usize },
 
     // ── Missions ──────────────────────────────────────────────────────────────
-    /// Dispatch a mission ordered on day `tick`.
+    /// Open the original mission dialog for `character` against `target`,
+    /// as a drop onto the galaxy map does (`FUN_0042a320`).
+    OpenMissionDialog {
+        faction: MissionFaction,
+        character: CharacterKey,
+        target: SystemKey,
+    },
+    /// Dispatch a mission ordered on day `tick` with its agents and decoys
+    /// (the dialog's "Begin Mission", `FUN_0046c3c0` case `0x66`).
     DispatchMission {
         kind: MissionKind,
         faction: MissionFaction,
-        character: CharacterKey,
+        team: Vec<MissionMember>,
+        decoys: Vec<MissionMember>,
         target: SystemKey,
         target_character: Option<CharacterKey>,
         tick: u64,

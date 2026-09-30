@@ -676,8 +676,49 @@ pub fn members_allowed(
         && (!empire || rules.empire)
 }
 
-/// Whether a present member stands in a fleet (`Some(true)`) or at a system
-/// (`Some(false)`); `None` without a location.
+/// The missions the player's dialog lists for a team, decoys, and target
+/// system, in MISSNSD order (`FUN_004f5380` -> `FUN_005422f0`): every record
+/// that is not hidden, whose member rules admit the members, and whose class
+/// validator passes on a mission built from them (`FUN_0054c590` runs it on
+/// a temporary mission, `FUN_00582b90`).
+///
+/// port: records outside the port's kinds are skipped (Recon, Research, and
+/// Jedi Training are a separate finding), and so are kinds that need a
+/// character or object target, since this target is a system; the dialog's
+/// drop onto a character or object is F-019 phase 7.
+#[must_use]
+pub fn available_kinds(
+    world: &GameWorld,
+    uprisings: &crate::uprising::UprisingState,
+    faction: MissionFaction,
+    team: &[MissionMember],
+    decoys: &[MissionMember],
+    target_system: SystemKey,
+) -> Vec<MissionKind> {
+    world
+        .mission_records
+        .iter()
+        .filter(|record| !record.hidden)
+        .filter_map(|record| {
+            crate::mission_planning::KINDS
+                .into_iter()
+                .find(|kind| kind.record_id() == Some(record.dat_id))
+                .map(|kind| (kind, record))
+        })
+        .filter(|(kind, _)| kind.target_rules() == TargetRules::System)
+        .filter(|(_, record)| {
+            members_allowed(world, record.members, team.iter().chain(decoys).copied())
+        })
+        .filter(|(kind, _)| {
+            let mut mission =
+                ActiveMission::new(0, *kind, faction, team.to_vec(), target_system, 0);
+            mission.decoys = decoys.to_vec();
+            running_end_code(&mission, world, uprisings, &[]) == 0
+        })
+        .map(|(kind, _)| kind)
+        .collect()
+}
+
 /// Whether two present members stand at the same location, as
 /// `FUN_0054c200` requires of every member after the first free one.
 pub(crate) fn members_together(world: &GameWorld, a: MissionMember, b: MissionMember) -> bool {
@@ -687,6 +728,8 @@ pub(crate) fn members_together(world: &GameWorld, a: MissionMember, b: MissionMe
     }
 }
 
+/// Whether a present member stands in a fleet (`Some(true)`) or at a system
+/// (`Some(false)`); `None` without a location.
 pub(crate) fn member_location_kind(world: &GameWorld, member: MissionMember) -> Option<bool> {
     match member_state(world, member)?.location {
         MemberLocation::Fleet(_) => Some(true),
@@ -5881,5 +5924,112 @@ mod tests {
         assert_eq!(refused, Err(MissionRefusal::MembersNotAllowed));
         assert!(state.is_empty());
         assert!(!world.characters[envoy.character().unwrap()].on_mission);
+    }
+
+    // --- The dialog's mission list (FUN_004f5380, FUN_005422f0) ---
+
+    /// An Alliance envoy at an Alliance system, with records in `records`.
+    fn dialog_world(
+        records: Vec<crate::world::MissionRecord>,
+    ) -> (GameWorld, SystemKey, MissionMember) {
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        world.systems[here].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.mission_records = records;
+        let envoy = MissionMember::Character(agent_at(&mut world, here, true));
+        (world, here, envoy)
+    }
+
+    #[test]
+    fn the_dialog_lists_the_records_the_team_may_undertake_in_missnsd_order() {
+        // FUN_005422f0 walks the records in table order. Rescue names a
+        // character, so a system target leaves it out (port:).
+        let (world, here, envoy) = dialog_world(vec![
+            recruitment_record(),
+            rescue_record(),
+            diplomacy_record(),
+        ]);
+
+        let kinds = available_kinds(
+            &world,
+            &UprisingState::default(),
+            MissionFaction::Alliance,
+            &[envoy],
+            &[],
+            here,
+        );
+
+        assert_eq!(
+            kinds,
+            vec![MissionKind::Recruitment, MissionKind::Diplomacy]
+        );
+    }
+
+    #[test]
+    fn the_dialog_leaves_out_a_record_whose_validator_refuses_the_target() {
+        // FUN_0054c590 runs the class validator: Recruitment takes no target
+        // of a third side (column 16), Diplomacy does.
+        let (mut world, here, envoy) = dialog_world(vec![recruitment_record(), diplomacy_record()]);
+        world.systems[here].control = crate::world::ControlKind::Uncontrolled;
+
+        let kinds = available_kinds(
+            &world,
+            &UprisingState::default(),
+            MissionFaction::Alliance,
+            &[envoy],
+            &[],
+            here,
+        );
+
+        assert_eq!(kinds, vec![MissionKind::Diplomacy]);
+    }
+
+    #[test]
+    fn the_dialog_leaves_out_a_record_whose_member_rules_refuse_a_decoy() {
+        // FUN_005830a0 masks the decoys too; Diplomacy takes no special force.
+        let (mut world, here, envoy) = dialog_world(vec![diplomacy_record()]);
+        let unit = unit_of_mask(&mut world, 0x2, true);
+
+        let with_decoy = available_kinds(
+            &world,
+            &UprisingState::default(),
+            MissionFaction::Alliance,
+            &[envoy],
+            &[unit],
+            here,
+        );
+        let alone = available_kinds(
+            &world,
+            &UprisingState::default(),
+            MissionFaction::Alliance,
+            &[envoy],
+            &[],
+            here,
+        );
+
+        assert!(with_decoy.is_empty());
+        assert_eq!(alone, vec![MissionKind::Diplomacy]);
+    }
+
+    #[test]
+    fn the_dialog_never_lists_a_hidden_record() {
+        // FUN_005422f0 skips records with +0x5c set.
+        let hidden = crate::world::MissionRecord {
+            hidden: true,
+            ..diplomacy_record()
+        };
+        let (world, here, envoy) = dialog_world(vec![hidden]);
+
+        let kinds = available_kinds(
+            &world,
+            &UprisingState::default(),
+            MissionFaction::Alliance,
+            &[envoy],
+            &[],
+            here,
+        );
+
+        assert!(kinds.is_empty());
     }
 }

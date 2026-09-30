@@ -1055,7 +1055,7 @@ fn troop_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     Some((resource_id, label))
 }
 
-fn special_force_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
+pub(crate) fn special_force_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     if dat_id.family() != 0x3c {
         return None;
     }
@@ -1206,7 +1206,7 @@ fn cockpit_rect(layout: CockpitLayout, logical: (f32, f32, f32, f32)) -> egui::R
     )
 }
 
-fn logical_rect(
+pub(crate) fn logical_rect(
     parent: egui::Rect,
     scale: f32,
     x: f32,
@@ -1224,14 +1224,14 @@ fn logical_point(parent: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Pos2 {
     egui::pos2(parent.min.x + x * scale, parent.min.y + y * scale)
 }
 
-fn exact_clicked(response: &egui::Response, rect: egui::Rect) -> bool {
+pub(crate) fn exact_clicked(response: &egui::Response, rect: egui::Rect) -> bool {
     response.clicked()
         && response
             .interact_pointer_pos()
             .is_some_and(|point| rect_contains(rect, point))
 }
 
-fn rect_contains(rect: egui::Rect, point: egui::Pos2) -> bool {
+pub(crate) fn rect_contains(rect: egui::Rect, point: egui::Pos2) -> bool {
     point.x >= rect.min.x && point.x < rect.max.x && point.y >= rect.min.y && point.y < rect.max.y
 }
 

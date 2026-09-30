@@ -1063,6 +1063,32 @@ cross-runtime proof remain open
     Manufacturing completes 62 builds instead of 33. The golden moves to
     `v1:cff529f786c2ecc1` -> `v1:7e1061cadd1e6f22` for save v23 and the AI
     selection.
+- Phase 5b (2026-09-30): the player's original mission dialog
+  (`ghidra/notes/mission-dialog.md`).
+  - `crates/rebellion-render/src/mission_dialog.rs` ports the 259 by 355
+    window (`FUN_0046a750`, `FUN_0046a9c0`, `FUN_0046c3c0`). It uses the
+    STRATEGY page panels, title bars, tabs and buttons, the GOKRES mission
+    icons and minis, and the TEXTSTRA text. The first tab holds the
+    mission-kind box, its "Missions" drop-down, and the target; the second
+    holds the agents and decoys with the move arrows (and double clicks).
+    "Begin Mission" (`0x66`) submits and closes, "Cancel" (`0x65`) and the
+    close box (`0x64`) discard the order, and "Encylopedia" (`0x67`) opens
+    the Encyclopedia.
+  - `missions::available_kinds` lists the kinds as `FUN_005422f0` does: the
+    records in MISSNSD order that are not hidden, whose member rules admit
+    the team and decoys, and whose class validator accepts a temporary
+    mission (`FUN_0054c590`). With no kind, nothing opens (`FUN_0042a320`).
+  - `PanelAction::DispatchMission` carries the agents and decoys. The
+    missions panel's pickers open the dialog instead of dispatching, and
+    lose their invented kind buttons and success preview.
+  - port: until phase 7 builds the drag, those pickers stand in for the
+    drop, so the target is a system and only system-target kinds are
+    listed. The scroll bars and item status overlays are not drawn; the
+    wheel scrolls one item. The Encyclopedia opens without the kind's entry.
+  - hyp: the window is centered in the galaxy view (`FUN_00606980`), and
+    choosing a drop-down item closes it.
+  - The replay golden is unchanged (`v1:7e1061cadd1e6f22`); the dialog is
+    player input only.
 
 ### F-020: A mod with a missing dependency fails silently
 

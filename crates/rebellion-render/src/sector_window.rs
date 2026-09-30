@@ -502,7 +502,7 @@ pub(crate) fn planet_picture_id(dat_id: DatId) -> u8 {
         .unwrap_or(1)
 }
 
-fn planet_resource_id(dat_id: DatId) -> u32 {
+pub(crate) fn planet_resource_id(dat_id: DatId) -> u32 {
     let picture = planet_picture_id(dat_id);
     match picture {
         1..=23 => 10211 + u32::from(picture),

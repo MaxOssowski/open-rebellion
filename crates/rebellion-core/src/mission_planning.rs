@@ -81,7 +81,7 @@ fn capability(kind: MissionKind) -> Option<u32> {
 }
 
 /// The port's agent kinds, in capability-bit order.
-const KINDS: [MissionKind; 10] = [
+pub(crate) const KINDS: [MissionKind; 10] = [
     MissionKind::Diplomacy,
     MissionKind::Rescue,
     MissionKind::Sabotage,

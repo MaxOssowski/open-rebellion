@@ -63,6 +63,9 @@ use rebellion_core::world::{
     CampaignConfig, GameWorld, MstbTable, SeedDifficulty, SeedOptions, VictoryConditions,
 };
 
+use rebellion_render::mission_dialog::{
+    draw_mission_dialog, MissionDialogAction, MissionDialogState,
+};
 use rebellion_render::game_speed::{
     choose_game_speed, draw_day_readout, draw_game_speed_menu, draw_pause_alert,
     open_game_speed_menu_on_right_click, pause_alert_contains_screen_point, stepped_game_speed,
@@ -992,6 +995,7 @@ async fn main() {
     let mut fleets_state = FleetsState::default();
     let mut mfg_panel_state = ManufacturingPanelState::default();
     let mut missions_panel_state = MissionsPanelState::default();
+    let mut mission_dialog_state = MissionDialogState::default();
     let mut enc_state = EncyclopediaState::new();
     let mut research_panel_state = ResearchPanelState::default();
     let mut jedi_panel_state = JediPanelState::default();
@@ -3042,6 +3046,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     fleets_state = FleetsState::default();
                                     mfg_panel_state = ManufacturingPanelState::default();
                                     missions_panel_state = MissionsPanelState::default();
+                                    mission_dialog_state = MissionDialogState::default();
                                     research_panel_state = ResearchPanelState::default();
                                     jedi_panel_state = JediPanelState::default();
                                     bombardment_panel_state = BombardmentPanelState::default();
@@ -3236,6 +3241,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 map_state.pointer_blocked = sector_window_state
                     .contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.contains_screen_point(cockpit_layout, pointer)
+                    || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || cockpit_state.gid_ui.menu_open
                     || enc_state.open
                     || original_modal_fixture_open
@@ -3597,6 +3603,32 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 map_state.selected_system = Some(system);
                             }
                         }
+                    }
+
+                    match draw_mission_dialog(
+                        ctx,
+                        &world,
+                        &mut mission_dialog_state,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        Some(MissionDialogAction::Begin {
+                            kind,
+                            faction,
+                            team,
+                            decoys,
+                            target,
+                        }) => panel_actions.push(PanelAction::DispatchMission {
+                            kind,
+                            faction,
+                            team,
+                            decoys,
+                            target,
+                            target_character: None,
+                            tick: clock.tick,
+                        }),
+                        Some(MissionDialogAction::Encyclopedia) => enc_state.open = true,
+                        None => {}
                     }
 
                     // The replacement message and status bars covered the
@@ -4270,6 +4302,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             fleets_state = FleetsState::default();
                             mfg_panel_state = ManufacturingPanelState::default();
                             missions_panel_state = MissionsPanelState::default();
+                            mission_dialog_state = MissionDialogState::default();
                             research_panel_state = ResearchPanelState::default();
                             jedi_panel_state = JediPanelState::default();
                             bombardment_panel_state = BombardmentPanelState::default();
@@ -4350,9 +4383,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                 action => {
                     // Handle actions that need local UI state not available in apply_panel_action.
                     match &action {
-                        PanelAction::OpenMissionTo { target, kind, .. } => {
+                        PanelAction::OpenMissionTo { target, .. } => {
                             missions_panel_state.selected_target = Some(*target);
-                            missions_panel_state.selected_kind = Some(*kind);
                             missions_panel_state.tab =
                                 rebellion_render::panels::missions::MissionsTab::Dispatch;
                             show_missions = true;
@@ -4360,6 +4392,26 @@ Some(RailAudience::side(*faction_is_alliance)),
                         PanelAction::InitiateFleetMove { destination } => {
                             fleets_state.pending_move_destination = Some(*destination);
                             show_fleets = true;
+                        }
+                        PanelAction::OpenMissionDialog {
+                            faction,
+                            character,
+                            target,
+                        } => {
+                            // FUN_0042a320: the preflight lists the kinds the
+                            // team may undertake; with none, nothing opens.
+                            let team = vec![rebellion_core::missions::MissionMember::Character(
+                                *character,
+                            )];
+                            let kinds = rebellion_core::missions::available_kinds(
+                                &world,
+                                &uprising_state,
+                                *faction,
+                                &team,
+                                &[],
+                                *target,
+                            );
+                            mission_dialog_state.open(*faction, *target, team, kinds);
                         }
                         _ => {}
                     }
@@ -4827,28 +4879,29 @@ fn apply_panel_action(
         PanelAction::DispatchMission {
             kind,
             faction,
-            character,
+            team,
+            decoys,
             target,
             target_character,
             tick,
         } => {
+            // The first agent names the order in its messages.
+            let char_name = team
+                .iter()
+                .find_map(|member| member.character())
+                .and_then(|key| world.characters.get(key))
+                .map_or_else(|| "Your team".into(), |c| c.name.clone());
             let request = rebellion_core::missions::MissionRequest {
                 kind,
                 faction,
-                team: vec![rebellion_core::missions::MissionMember::Character(
-                    character,
-                )],
-                decoys: Vec::new(),
+                team,
+                decoys,
                 target_system: target,
                 target_character,
                 target_object: None,
                 tick,
             };
             if let Err(refusal) = mission_state.dispatch_guarded(request, world) {
-                let char_name = world
-                    .characters
-                    .get(character)
-                    .map_or_else(|| "Unknown".into(), |c| c.name.clone());
                 let text = match refusal {
                     rebellion_core::missions::MissionRefusal::EmptyTeam => {
                         format!("{char_name} is a prisoner and cannot lead a mission")
@@ -4866,10 +4919,6 @@ fn apply_panel_action(
                 msg_log.push(GameMessage::new(clock.tick, text, MessageCategory::Mission));
                 return;
             }
-            let char_name = world
-                .characters
-                .get(character)
-                .map_or_else(|| "Unknown".into(), |c| c.name.clone());
             let sys_name = world
                 .systems
                 .get(target)
@@ -4901,6 +4950,7 @@ fn apply_panel_action(
         // they require access to the full save state and are not routed through
         // this helper.
         PanelAction::SelectFaction(_)
+        | PanelAction::OpenMissionDialog { .. }
         | PanelAction::FocusCharacter(_)
         | PanelAction::OpenSaveLoad
         | PanelAction::SaveGame { .. }
