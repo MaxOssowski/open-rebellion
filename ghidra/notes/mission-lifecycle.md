@@ -211,7 +211,8 @@ class's slot `+4` (`MOV EAX, imm`).
   successful member recruits one character.
   - `FUN_0055fc80`: the pool is the global character container
     (`FUN_00506e20`, `DAT_006b2bb0 + 0xb0`) filtered by side and the family
-    range `0x38..0x3c` (`FUN_0056f450` -> `FUN_00513090`). It counts those
+    range `0x38..0x3c` (`FUN_0056f450` -> `FUN_00513090`), which is MNCHARSD:
+    minor characters only, never the majors of `0x30..0x38`. It counts those
     with `+0x50` bit 1 clear (`FUN_0055ef30`), draws index
     `FUN_0053e290(count - 1)` (0..=count-1), and recruits it with
     `FUN_0055fe70`. When the count was 1 it sets the side's `+0xb8`

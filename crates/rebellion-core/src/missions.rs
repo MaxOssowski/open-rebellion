@@ -674,14 +674,17 @@ pub fn raise_skill(world: &mut GameWorld, character: CharacterKey, skill: Skill,
     }
 }
 
-/// `FUN_0055ef30`'s pool: `side`'s living characters it has not recruited
-/// (`+0x50` bit 1 clear). port: the original walks its character container
+/// `FUN_0055ef30`'s pool: `side`'s living minor characters (families
+/// `0x38..0x3c`, MNCHARSD, `FUN_0056f450`) it has not recruited (`+0x50` bit
+/// 1 clear). port: the original walks its character container
 /// (`FUN_00506e20`); the port walks them in `DatId` order.
 fn recruit_pool(world: &GameWorld, side: crate::dat::Faction) -> Vec<CharacterKey> {
     let mut pool: Vec<(crate::ids::DatId, CharacterKey)> = world
         .characters
         .iter()
-        .filter(|(_, c)| !c.recruited && !c.is_killed && character_side(c) == Some(side))
+        .filter(|(_, c)| {
+            !c.is_major && !c.recruited && !c.is_killed && character_side(c) == Some(side)
+        })
         .map(|(key, c)| (c.dat_id, key))
         .collect();
     pool.sort_by_key(|&(dat_id, _)| dat_id.raw());
@@ -4160,9 +4163,10 @@ mod tests {
 
     #[test]
     fn a_recruiter_signs_one_of_its_side_s_unrecruited_characters_and_gains_leadership() {
-        // FUN_0056b9a0 -> FUN_0055fc80: a random character of the side with
-        // +0x50 bit 1 clear (FUN_0055ef30); a killed, recruited, or enemy
-        // one is not in the pool. The raise is GNPRTB 6159.
+        // FUN_0056b9a0 -> FUN_0055fc80: a random minor character (families
+        // 0x38..0x3c) of the side with +0x50 bit 1 clear (FUN_0055ef30); a
+        // killed, major, or enemy one is not in the pool. The raise is
+        // GNPRTB 6159.
         let mut world = minimal_world();
         let here = system_at(&mut world, 0);
         always(&mut world, MissionKind::Recruitment, 100);
@@ -4174,6 +4178,8 @@ mod tests {
         let enemy = pool_character(&mut world, 5);
         world.characters[enemy].is_alliance = false;
         world.characters[enemy].is_empire = true;
+        let major = pool_character(&mut world, 6);
+        world.characters[major].is_major = true;
 
         let result = phase_ten(
             &world,
@@ -4213,6 +4219,35 @@ mod tests {
         assert_eq!(signed.iter().filter(|&&(_, emptied)| emptied).count(), 1);
         assert!(signed[1].1, "the second pick takes the last one");
         assert_eq!(raised(&result).len(), 2);
+    }
+
+    #[test]
+    fn a_killed_major_or_enemy_character_is_never_recruited() {
+        // FUN_0055ef30 counts only the side's minor characters (families
+        // 0x38..0x3c through FUN_0056f450) with +0x50 bit 1 clear.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Recruitment, 100);
+        let recruiter = agent_at(&mut world, here, true);
+        let dead = pool_character(&mut world, 2);
+        world.characters[dead].is_killed = true;
+        let major = pool_character(&mut world, 3);
+        world.characters[major].is_major = true;
+        let enemy = pool_character(&mut world, 4);
+        world.characters[enemy].is_alliance = false;
+        world.characters[enemy].is_empire = true;
+        let signed = pool_character(&mut world, 5);
+        world.characters[signed].recruited = true;
+
+        let result = phase_ten(
+            &world,
+            MissionKind::Recruitment,
+            vec![MissionMember::Character(recruiter)],
+            here,
+            None,
+        );
+
+        assert!(recruits(&result).is_empty());
     }
 
     #[test]

@@ -980,7 +980,7 @@ cross-runtime proof remain open
     port: a character placed at game start begins recruited. The other 51
     of the 60 form the pool.
   - Each successful member picks `draw(0..=n-1)` among its side's living
-    characters without that bit (`FUN_0055ef30`, `FUN_0055fc80`,
+    minor characters (families `0x38..0x3c`, MNCHARSD) without that bit (`FUN_0055ef30`, `FUN_0055fc80`,
     `FUN_0053e290`). The recruit joins at the target (`FUN_0055fe70`: slot
     `+0xa8`, then `FUN_004f7480` sets the bit). The result becomes 3, and
     leadership rises by GNPRTB 6159. An empty pool leaves the result unset,
