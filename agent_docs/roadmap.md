@@ -3,7 +3,7 @@ title: "Roadmap"
 description: "Development milestones from Galaxy Viewer through Release packaging"
 category: "agent-docs"
 created: 2026-03-11
-updated: 2026-09-29
+updated: 2026-09-30
 tags: [roadmap, planning, milestones, parity]
 ---
 
@@ -21,13 +21,11 @@ audit-driven milestones are the source of truth.
 PR #11 checkpoint (2026-09-14): [cockpit routing is corrected](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-14-cockpit-routing-correction.md) for commands `0x131` through `0x133`, both factions, and F1/F7. GID uses its authentic bottom control and can open and close its original menu. Encyclopedia remains fail-closed. The [2026-09-26 Game Options review checkpoint](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md) restores the shared bitmap surface and save/audio/display wiring; PRE-03 strict acceptance remains open.
 
 P62 transports all 187 validated original EDATA images through native and
-browser builds. A source cross-check corrects P63: its 470-by-331 faction
-shells and ten normal/held controls are the Message Index, not the
-Encyclopedia. The exact browser evidence remains valid for that narrower
-`CMD-08` checkpoint. Command `0x131` still fails closed because the authentic
-Encyclopedia category table, catalog, entity/text bindings, topic composition,
-navigation, clipping, and full `OBJ-01` matrix remain open. See the
-[corrected P63 evidence](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md).
+browser builds. A source cross-check corrects P63 as Message Index evidence.
+P64 separately reconstructs both authentic Encyclopedia index shells, seven
+category states, right-rail states, and native clipping in a bounded exact
+browser gate. Production catalog content, topic pages, routing, and every
+`OBJ-01` cell remain open. See the [P64 evidence](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md).
 
 ## Galaxy Viewer: historical implementation tranche delivered
 *Interactive galaxy data viewer -- native + WASM*
@@ -593,6 +591,14 @@ would tune around known simulation feedback defects.
   P0-P3 issue. Populated rows, navigation, clear/delete actions, Advice
   slowdown, chat, production routing, A0, and every `CMD-08` acceptance cell
   remain open. The separate authentic Encyclopedia remains open under P35.
+- [x] Complete the P64 bounded Encyclopedia index-shell checkpoint: recover
+  both 470-by-330 faction compositions, seven selected category states, three
+  rail held states, native `0x75` clipping, modal boundaries, exclusive-edge
+  and transparent-pixel rejection, opaque press capture, and drag cancellation.
+  Compare 32 states and 4,963,200 source pixels exactly
+  in two fresh muted browsers, then retain independent source and visual
+  reviews. Production labels, rows, topics, navigation, routing, A0, and every
+  `OBJ-01` cell remain open.
 - [x] Restore the P50 GID root and submenu frame from STRATEGY 10100 through
   10107. Paint repeated edges in four batched meshes, remove the invented menu
   fade, and check native-size root pixels against the source BMPs in both

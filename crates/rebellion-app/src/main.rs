@@ -3150,6 +3150,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             request.scenario,
                             interface_test_fixture::Scenario::EncyclopediaArtwork
                                 | interface_test_fixture::Scenario::MessageIndexShell
+                                | interface_test_fixture::Scenario::EncyclopediaIndexShell
                         )
                     });
                 #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
@@ -3205,6 +3206,8 @@ Some(RailAudience::side(*faction_is_alliance)),
 
                 // 4. All egui panels in a single ui() + draw() pass
                 egui_macroquad::ui(|ctx| {
+                    let strategic_input_enabled =
+                        !event_screen_state.is_active() && !original_modal_fixture_open;
                     // Register the cockpit background before panels so the
                     // opaque chrome never covers their content or artwork.
                     draw_cockpit_background(ctx, &cockpit_state, &mut bmp_cache);
@@ -3214,7 +3217,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         ctx,
                         &mut cockpit_state,
                         &mut bmp_cache,
-                        !event_screen_state.is_active(),
+                        strategic_input_enabled,
                     ) {
                         macroquad::logging::info!(
                             "[interface] command=0x{:x} destination=gid status=selected label={}",
@@ -3230,7 +3233,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     // The day readout is the Game Speed control; a right
                     // click on it opens the original speed menu.
                     draw_day_readout(ctx, cockpit_layout, cockpit_state.faction, clock.tick);
-                    let speed_input = !event_screen_state.is_active();
+                    let speed_input = strategic_input_enabled;
                     if speed_input {
                         open_game_speed_menu_on_right_click(
                             ctx,
@@ -3392,6 +3395,21 @@ Some(RailAudience::side(*faction_is_alliance)),
                             request.faction,
                         );
                     }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let Some(request) = interface_fixture_request.filter(|request| {
+                        request.scenario == interface_test_fixture::Scenario::EncyclopediaIndexShell
+                    }) {
+                        if let Some(command) = rebellion_render::draw_encyclopedia_index_fixture(
+                            ctx,
+                            &mut bmp_cache,
+                            request.faction,
+                            enc_state.original_category_command,
+                        ) {
+                            if (0x6f..=0x75).contains(&command) {
+                                enc_state.original_category_command = command;
+                            }
+                        }
+                    }
 
                     // Mod Manager (floating window)
                     let mod_infos: Vec<rebellion_render::ModInfo> = mod_runtime
@@ -3501,7 +3519,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                     let event_screen_was_active = event_screen_state.is_active();
                     draw_event_screen(ctx, &mut event_screen_state, &mut bmp_cache);
 
-                    let cockpit_command = (!event_screen_was_active
+                    let cockpit_command = (!original_modal_fixture_open
+                        && !event_screen_was_active
                         && !event_screen_state.is_active())
                     .then(|| handle_cockpit_egui_input(ctx, &mut cockpit_state, &mut bmp_cache));
                     if let Some(btn) = cockpit_command.flatten() {

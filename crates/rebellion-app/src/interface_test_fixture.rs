@@ -20,7 +20,7 @@ use crate::GameMode;
 
 const FIXTURE_ABSENT: u32 = 0;
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 40;
+const SCENARIO_COUNT: u8 = 41;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -77,6 +77,7 @@ pub enum Scenario {
     PlanetaryShields = 37,
     EncyclopediaArtwork = 38,
     MessageIndexShell = 39,
+    EncyclopediaIndexShell = 40,
 }
 
 impl Scenario {
@@ -122,6 +123,7 @@ impl Scenario {
             37 => Self::PlanetaryShields,
             38 => Self::EncyclopediaArtwork,
             39 => Self::MessageIndexShell,
+            40 => Self::EncyclopediaIndexShell,
             _ => return None,
         })
     }

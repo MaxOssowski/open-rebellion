@@ -12,10 +12,57 @@ original screenshots establish distinct routes, layouts, and control sets.
 vtable `PTR_FUN_00659fa8`, loads both `encytext.dll` and `encybmap.dll`, and
 resolves an initial game object or falls back to index mode.
 
-`FUN_0045ddc0` is the Encyclopedia layout routine. It composes the faction base
-from STRATEGY 10335 or 10336 and builds the separate Encyclopedia frame, index
-controls, object list, and topic controls. It is not `FUN_004665f0`; that
-function belongs to the Message Index.
+`FUN_0045ddc0` is the Encyclopedia layout routine. The client is 470 by 330,
+while its faction base resources are 470 by 331 and therefore lose their
+bottom row at the client boundary. Index mode composes STRATEGY 10338 at
+`(12,13)`, faction base 10335 or 10336, faction rail 10585 or 10589 at
+`(412,0)`, and TEXTSTRA `0x1843` at `(36,48)`. Topic mode substitutes STRATEGY
+10337 at `(12,14)`. It is not `FUN_004665f0`; that function belongs to the
+Message Index.
+
+## Exact index controls
+
+The category parent is `(36,78,361,41)`. Every child has a 49 by 41 control
+rectangle. The table is ordered spatially; the constructor emits the controls
+in a different order.
+
+| Command | Absolute x | Filter | Label | Alliance normal/pressed | Empire normal/pressed |
+| --- | ---: | --- | ---: | --- | --- |
+| `0x6f` | 36 | all objects | `0x1850` | 10340 / 10339 | 10340 / 10339 |
+| `0x70` | 88 | family `[0x90,0x98)` | `0x1855` | 10350 / 10349 | 10350 / 10349 |
+| `0x71` | 140 | family `[0x14,0x20)` | `0x1854` | 10348 / 10347 | 10360 / 10359 |
+| `0x72` | 192 | family `[0x20,0x30)` | `0x1852` | 10344 / 10343 | 10356 / 10355 |
+| `0x73` | 244 | family `[0x40,0x80)` | `0x1851` | 11616 / 11615 | 11618 / 11617 |
+| `0x74` | 296 | family `[0x10,0x14)` | `0x1856` | 10352 / 10351 | 10362 / 10361 |
+| `0x75` | 348 | family `[0x30,0x40)` | `0x1853` | 10346 / 10345 | 10358 / 10357 |
+
+The `0x75` resources are 49 or 50 by 57 pixels. The original paints from
+source origin `(0,0)` into the fixed control, clipping the bottom 16 rows and,
+for the 50-pixel-wide resources, the rightmost column. It does not scale or
+center them.
+
+The right rail uses close `0xfb`, topic `0x67`, and index `0x68`. Alliance
+rectangles are `(423,25,32,31)`, `(423,93,32,31)`, and `(423,147,32,31)` with
+resource pairs 10370/10371, 10374/10375, and 10372/10373. Empire rectangles are
+`(426,21,44,41)`, `(426,89,44,41)`, and `(426,143,44,41)` with pairs
+10376/10377, 10380/10381, and 10378/10379. Index mode makes `0x68` current and
+topic mode makes `0x67` current.
+
+## Text, list, and topic geometry
+
+- main heading or topic title: `(36,14)`, width 350;
+- current-object selector: `(143,45,245,18)` in index mode;
+- selected-category label: `(40,119)`, width 283;
+- object list: `(36,137,350,160)`, command `0x65`;
+- EDATA image: native 400 by 200 at `(12,31)` in topic mode;
+- topic body: `(17,231,395,80)`;
+- previous `0x83`: `(28,14,21,17)`, resources 10385/10386/10387;
+- next `0x84`: `(380,14,21,17)`, resources 10382/10383/10384.
+
+Index Left and Right cycle visible category children and wrap. Topic Left and
+Right invoke previous and next. Exact localized category names beyond the
+source-backed labels must come from the original string resources, not icon
+interpretation.
 
 ## Recovered workflow
 
@@ -39,6 +86,8 @@ function belongs to the Message Index.
 - P62 proves transport for all 187 owned EDATA images. It does not prove this
   window's category ordering, entity bindings, text, navigation, geometry, or
   A0 parity.
-- No `OBJ-01` cell is accepted. The next source-recovery pass must finish the
-  exact STRATEGY resource and control table from `FUN_0045ddc0` before browser
-  reconstruction begins.
+- No `OBJ-01` cell is accepted. The exact empty index shell and control table
+  are sufficient for a bounded deterministic browser checkpoint only. Catalog
+  completeness, localized labels, entity/ENCYTEXT/EDATA bindings, topic
+  composition, navigation, contextual entry, production routing, and original
+  runtime comparison remain open.

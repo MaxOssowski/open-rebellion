@@ -129,6 +129,7 @@ navigation, animation, audio presentation, and the absence of invented UI.
 | [P58-B21 shared post-battle evidence](evidence/2026-09-27-tactical-post-battle-orchestration.md) | One production route for interactive and automatic bombardment, landing, contested ground continuation, unopposed occupation, and result destinations. |
 | [P58-B22 source-completion evidence](evidence/2026-09-28-tactical-source-completion.md) | Recovered tactical RNG, persisted power allocation, completion/destruction callbacks, and the timed trench-run producer; strict A0 remains 0/106. |
 | [Corrected P63 Message Index-shell evidence](evidence/2026-09-28-message-index-shell.md) | Source-recovered faction compositions, ten normal/held message-category controls, modal pointer blocking, 24 exact browser states, and independent visual review; populated behavior, production routing, and `CMD-08` acceptance remain open. |
+| [P64 Encyclopedia index-shell evidence](evidence/2026-09-30-encyclopedia-index-shell.md) | Separate source-recovered faction shells, seven selected category states, rail states, native clipping, native input rejection and capture, 32 exact browser states, and bounded independent review; catalog content, topic pages, production routing, and `OBJ-01` remain open. |
 | [Evidence index](evidence/README.md) | Reports and artifact bundles, including a required `README.md` inventory for each new bundle. |
 | [JSON Schema](schemas/interface-parity.schema.json) | Validation contract for the audit summary and status vocabulary. |
 | [Ledger validator](../../../scripts/validate-interface-parity-ledgers.mjs) | Dependency-free generator and consistency gate for cell IDs and retrieval-package links. |
@@ -306,10 +307,13 @@ and all 187 validated original EDATA images. P62 proves the dedicated EDATA
 namespace, lazy cache and decode path. Corrected P63 evidence proves both
 Message Index shells and all ten normal/held category controls pixel-for-pixel,
 with independent visual review, while keeping that production route and every
-`CMD-08` cell open. Briefing, dialog, advisor-control, remaining voice
-resources, the separate authentic Encyclopedia catalog and topics, and
-`OBJ-01` acceptance remain open. Its 27 packages give every required surface a
-named recovery or removal path.
+`CMD-08` cell open. P64 separately proves both empty Encyclopedia index shells,
+seven selected category states, rail states, native clipping, edge and
+transparent-pixel rejection, press capture, drag cancellation, and modal
+blocking through 32 exact browser comparisons. Briefing, dialog, advisor-control,
+remaining voice resources, production Encyclopedia content and routing, and
+`OBJ-01` acceptance remain open. Its 27 packages give every required surface
+a named recovery or removal path.
 
 ## What 100% means
 

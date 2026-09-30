@@ -1954,7 +1954,7 @@
         71,
         72
       ],
-      "current_implementation": "Replacement with only four categories; systems use placeholders and WASM returns no EDATA texture.",
+      "current_implementation": "P62 transports all 187 owned EDATA images in native and browser builds. P64 adds a production-dormant source-exact empty 470-by-330 index renderer for both factions, with seven selected category states, three rail held states, native oversized-resource clipping, edge and transparent-pixel rejection, opaque press capture, drag cancellation, and modal click-through blocking. Its browser route remains test-only. The production route still uses a replacement four-category window and remains fail-closed from command 0x131. Catalog rows, localized labels, stable entity/ENCYTEXT/EDATA bindings, topic pages, navigation, contextual entry, missing entries, production routing, viewport/A0 comparison, and every OBJ-01 cell remain open.",
       "finding_ids": [
         "UIP-F-005",
         "UIP-F-006",

@@ -144,12 +144,14 @@
       "id": "UIP-F-006",
       "severity": "P1",
       "status": "partial",
-      "title": "Native and WASM EDATA transport passes a bounded exact browser gate; the authentic Encyclopedia category table, catalog, text/entity bindings, topics, navigation, and OBJ-01 remain open",
+      "title": "Native and WASM EDATA transport plus a production-dormant source-exact Encyclopedia index renderer pass bounded browser gates; production catalog rows, bindings, topics, navigation, routing, and OBJ-01 remain open",
       "evidence": [
         "crates/rebellion-render/src/encyclopedia.rs",
         "scripts/build-runtime-pack.py",
         "tools/interface-parity/encyclopedia-art.mjs",
-        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md"
+        "tools/interface-parity/encyclopedia-index-shell.mjs",
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md",
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md"
       ],
       "affected_surfaces": ["OBJ-01"]
     },
@@ -352,9 +354,10 @@
     "p58_b21_shared_post_battle_orchestration": "evidence/2026-09-27-tactical-post-battle-orchestration.md",
     "p62_encyclopedia_artwork_transport": "evidence/2026-09-28-encyclopedia-artwork-transport.md",
     "p63_message_index_shell": "evidence/2026-09-28-message-index-shell.md",
+    "p64_encyclopedia_index_shell": "evidence/2026-09-30-encyclopedia-index-shell.md",
     "ledger_validator": "../../../scripts/validate-interface-parity-ledgers.mjs",
     "screenshot_ledger": "screenshot-ledger.md",
     "capture_manifest": "reference-captures/SHA256SUMS"
   },
-  "next_action": "Preserve the P58-B22 bounded practical launcher while strict A0 work continues. Complete UIP-B05 from the corrected FUN_0045d400/FUN_0045ddc0 Encyclopedia route by recovering the exact category/resource table, catalog ordering, stable entity and ENCYTEXT bindings, topic composition, navigation, contextual entry, clipping, independent browser rerun, and faction/viewport matrix. Continue CMD-08 separately from the corrected P63 Message Index shell."
+  "next_action": "Preserve the P58-B22 bounded practical launcher while strict A0 work continues. Continue UIP-B05 from the P64 source-exact empty Encyclopedia index shells by implementing catalog ordering, localized labels, stable entity, ENCYTEXT, and EDATA bindings, topic composition, previous and next navigation, contextual entry, missing entries, production routing, original-runtime comparison, and the complete faction and viewport matrix. Continue CMD-08 separately from the corrected P63 Message Index shell."
 }

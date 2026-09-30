@@ -8,6 +8,11 @@
   input boundary, 24 exact pixel comparisons, and independent visual review.
   Populated behavior and production routing remain open, so it accepts no
   `CMD-08` cell.
+- [P64 Encyclopedia index shell](2026-09-30-encyclopedia-index-shell.md)
+  tracks both faction shells, seven selected category states, rail held states,
+  native clipping, input rejection and capture, 32 exact browser states, and
+  independent source and visual review. Production content and routing remain
+  open, so it accepts no `OBJ-01` cell.
 
 This directory contains the durable reports and review artifacts for each
 verified interface checkpoint. The parent [audit index](../README.md) remains

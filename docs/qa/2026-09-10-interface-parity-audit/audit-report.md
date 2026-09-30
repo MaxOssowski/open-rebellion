@@ -99,6 +99,7 @@ The local source inspection establishes the implementation causes:
 | Partial original sector and system navigation | `crates/rebellion-render/src/sector_window.rs`, `crates/rebellion-render/src/system_window.rs` | Manual pp. 67–68, 97–100, and 122–124; recovered constructors, [navigation evidence](evidence/2026-09-11-strategic-window-navigation.md), and [tab-item evidence](evidence/2026-09-11-detailed-system-tab-items.md) |
 | Partial browser droids | `crates/rebellion-render/src/advisor.rs` | Manual pp. 20–21 and 73–79; official Steam faction captures; [P44 evidence](../2026-09-08-full-functionality-audit/evidence/2026-09-10-authentic-droid-advisors.md) |
 | Bounded original encyclopedia-art transport | `crates/rebellion-render/src/encyclopedia.rs`, `scripts/build-runtime-pack.py`, `tools/interface-parity/encyclopedia-art.mjs` | Manual pp. 71–72, 187 owned original EDATA entries, and [P62 evidence](evidence/2026-09-28-encyclopedia-artwork-transport.md) |
+| Source-recovered Encyclopedia index shell | `crates/rebellion-render/src/encyclopedia.rs`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/encyclopedia-index-shell.mjs` | `FUN_00429f30`, `FUN_0045d400`, `FUN_0045ddc0`, 41 owned STRATEGY resources, and [P64 evidence](evidence/2026-09-30-encyclopedia-index-shell.md) |
 | Source-recovered Message Index shell | `crates/rebellion-render/src/message_index.rs`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/message-index-shell.mjs` | `FUN_0042a240`, `FUN_00466350`, `FUN_004665f0`, `FUN_00468fb0`, `FUN_004697b0`, 33 owned STRATEGY resources, and [corrected P63 evidence](evidence/2026-09-28-message-index-shell.md) |
 | Incomplete browser asset pack | `scripts/build-runtime-pack.py` | Original ALSPRITE, EMSPRITE, EDATA, ALBRIEF, EMBRIEF, REBDLOG, advisor-control, and voice families |
 | Invented live ground-combat screen | `crates/rebellion-render/src/ground_combat.rs:202` | Manual pp. 119–121 assault summaries and reports |
@@ -117,14 +118,19 @@ construction, and faction advisor apertures. The extractor and runtime pack now
 preserve all 3,988 ALSPRITE and EMSPRITE type-302 frames. Briefing, tactical,
 dialog, advisor-control, and voice families remain incomplete. P62 adds all
 187 validated original EDATA images in a dedicated namespace and proves one
-native-size browser display pixel-for-pixel. The authentic encyclopedia
-catalog and windows remain absent, so `OBJ-01` stays open. Source cross-checking
+native-size browser display pixel-for-pixel. P64 separately reconstructs both
+authentic Encyclopedia index shells, seven selected category states, rail
+states, native clipping, and native input rejection and capture through 32
+exact browser comparisons. Production
+catalog rows, labels, topic pages, navigation, routing, and every `OBJ-01` cell
+remain open. Source cross-checking
 corrects P63: its faction index compositions and ten normal/held controls are
 the Message Index, corroborated by original screenshots and the executable's
 message labels and masks. Its 24 exact browser comparisons and independent
 visual review remain valid for that narrower `CMD-08` checkpoint. The authentic
-Encyclopedia category table, catalog ordering, stable entity/text bindings,
-topics, navigation, clipping, and every `OBJ-01` cell remain open.
+Encyclopedia catalog ordering, stable entity/text bindings, topics,
+navigation, production routing, original-runtime comparison, and every
+`OBJ-01` cell remain open.
 P54 separately stages every original type-301 mesh and type-303 texture or
 palette resource with a source-bound content-addressed manifest. P55 decodes
 the full corpus into verified deterministic mesh and texture objects. P56 and

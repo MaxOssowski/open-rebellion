@@ -18,6 +18,8 @@ node encyclopedia-art.mjs  # build and verify original EDATA browser transport
 node encyclopedia-art.mjs --no-build  # reuse a verified fixture build
 node message-index-shell.mjs  # verify both original Message Index shells
 node message-index-shell.mjs --no-build  # reuse a verified fixture build
+node encyclopedia-index-shell.mjs  # verify both original Encyclopedia index shells
+node encyclopedia-index-shell.mjs --no-build  # reuse a verified fixture build
 ```
 
 Harness unit regressions can be run from the repository root with
@@ -40,6 +42,15 @@ resources, then probe the exclusive right edge of the first control. Populated
 message rows, selection, navigation, clear/delete actions, Advice slowdown,
 chat, and production routing remain open. The authentic Encyclopedia is a
 separate `OBJ-01` surface and command `0x131` continues to fail closed.
+
+The Encyclopedia index-shell gate is a bounded step toward `OBJ-01`. It
+composes the source-recovered 470x330 faction shell, index content, seven
+category controls, and right rail. Two fresh muted browser processes compare
+category selection, held rail controls, native clipping, exclusive-edge and
+transparent-pixel rejection, press capture, drag cancellation, and modal
+click-through blocking pixel-for-pixel against the owned STRATEGY resources.
+Object labels, populated rows, topic pages, navigation, close routing, and
+production routing remain open.
 
 The tactical acceptance denominator is generated directly from the surface
 ledger rather than maintained as a second hand-written list:

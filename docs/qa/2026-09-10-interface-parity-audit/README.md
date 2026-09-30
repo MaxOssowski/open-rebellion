@@ -88,6 +88,10 @@ and passes the complete comparison contract.
   for recovered faction composition, all ten normal and held message-category
   controls, modal input blocking, exact browser comparisons, independent visual
   review, and the still-open production Message Index behavior.
+- Review the [P64 Encyclopedia index-shell evidence](evidence/2026-09-30-encyclopedia-index-shell.md)
+  for the separate source-recovered faction composition, seven selected
+  category states, rail states, native clipping, and exact browser comparisons.
+  Catalog content, topic pages, production routing, and `OBJ-01` remain open.
 - Review the [P50 GID menu-frame evidence](evidence/2026-09-12-gid-menu-frame.md)
   for original frame tiles, source-pixel checks, and the remaining menu gaps.
 - Review the [P51 GID hover and occlusion evidence](evidence/2026-09-12-gid-hover-and-occlusion.md)

@@ -88,6 +88,7 @@ acceptance plan required before the project can claim 100% functionality.
 | [Tactical source-completion proof](../2026-09-10-interface-parity-audit/evidence/2026-09-28-tactical-source-completion.md) | Bounded practical launcher implementation complete with source tactical RNG, power allocation, completion/destruction callbacks, and timed trench-run semantics; strict A0 remains 0/106. |
 | [Encyclopedia artwork transport proof](../2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md) | All 187 owned original EDATA images validate and travel through native/WASM caches; one native-size browser image matches all 80,000 source pixels while authentic `OBJ-01` windows remain open. |
 | [Corrected Message Index-shell proof](../2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md) | Both source-recovered faction shells and all ten normal/held message-category controls pass 24 exact browser comparisons and independent visual review; populated behavior, production routing, and `CMD-08` acceptance remain open. |
+| [Encyclopedia index-shell proof](../2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md) | Both source-recovered faction shells, seven selected categories, rail states, native clipping, and native input rejection and capture pass 32 exact browser comparisons; catalog content, topic pages, production routing, and `OBJ-01` remain open. |
 | [GitHub Pages proof](evidence/2026-09-08-github-pages.md) | Successful deployment run and public HTTP smoke tests for P40. |
 | [Project archive](../../../archive/INDEX.md) | Superseded progress and playtest artifacts retained for provenance. |
 
@@ -104,10 +105,10 @@ authentic advisor idle runs
 now render in native and WASM;
 their complete actions, voice, chrome, and shell integration remain open.
 Original encyclopedia artwork reaches native and browser renderers through
-P62. Source cross-checking corrects P63: its recovered faction shells and ten
-controls belong to the Message Index. The authentic Encyclopedia catalog,
-text/entity bindings, topic workflow, and navigation remain absent, so command
-`0x131` continues to fail closed.
+P62. Source cross-checking corrects P63 as Message Index evidence. P64 proves
+both authentic Encyclopedia index shells and their bounded control states.
+Catalog rows, text/entity bindings, topic workflow, navigation, and production
+routing remain absent, so command `0x131` continues to fail closed.
 Fleet-miniature acceptance, deterministic four-request browser
 startup, F-001 browser Save/Load/Delete, the F-011A fingerprint primitive,
 F-011B1 save continuation, the F-011B2 replay/data contract, F-011B3 native

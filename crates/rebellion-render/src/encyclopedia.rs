@@ -105,6 +105,11 @@ pub struct EncyclopediaState {
     pub hd_path: Option<PathBuf>,
     /// Explicit asset profile. Original parity is the default.
     pub asset_profile: AssetRenderProfile,
+    /// Selected original index category command (`0x6f..=0x75`).
+    ///
+    /// The replacement panel does not consume this field. It is retained for
+    /// the source-exact index renderer that will replace that panel.
+    pub original_category_command: u16,
     /// EDATA keys explicitly approved by the faithful-HD manifest.
     approved_hd_assets: HashMap<String, ApprovedHdAsset>,
     /// Cached textures keyed by EDATA file number (1-based).
@@ -158,6 +163,7 @@ impl Default for EncyclopediaState {
             edata_path: None,
             hd_path: None,
             asset_profile: AssetRenderProfile::OriginalParity,
+            original_category_command: 0x6f,
             approved_hd_assets: HashMap::new(),
             textures: HashMap::new(),
         }
@@ -554,6 +560,424 @@ pub fn draw_encyclopedia(
 }
 
 // ---------------------------------------------------------------------------
+// Original index shell
+// ---------------------------------------------------------------------------
+
+/// Native Galactic Encyclopedia window dimensions from `FUN_00429f30`.
+pub const ENCYCLOPEDIA_INDEX_WIDTH: f32 = 470.0;
+pub const ENCYCLOPEDIA_INDEX_HEIGHT: f32 = 330.0;
+
+const INDEX_CONTENT: u32 = 10_338;
+const INDEX_CONTENT_X: f32 = 12.0;
+const INDEX_CONTENT_Y: f32 = 13.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OriginalControlSpec {
+    command_id: u16,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    normal_resource: u32,
+    pressed_resource: u32,
+    selected_in_index: bool,
+}
+
+const fn encyclopedia_category_controls(
+    faction: crate::cockpit::CockpitFaction,
+) -> [OriginalControlSpec; 7] {
+    let (ships_normal, ships_pressed, fighters_normal, fighters_pressed) = match faction {
+        crate::cockpit::CockpitFaction::Alliance => (10_348, 10_347, 10_344, 10_343),
+        crate::cockpit::CockpitFaction::Empire => (10_360, 10_359, 10_356, 10_355),
+    };
+    let (characters_normal, characters_pressed, troops_normal, troops_pressed) = match faction {
+        crate::cockpit::CockpitFaction::Alliance => (10_346, 10_345, 11_616, 11_615),
+        crate::cockpit::CockpitFaction::Empire => (10_358, 10_357, 11_618, 11_617),
+    };
+    let (facilities_normal, facilities_pressed) = match faction {
+        crate::cockpit::CockpitFaction::Alliance => (10_352, 10_351),
+        crate::cockpit::CockpitFaction::Empire => (10_362, 10_361),
+    };
+    [
+        OriginalControlSpec {
+            command_id: 0x6f,
+            x: 36,
+            y: 78,
+            width: 49,
+            height: 41,
+            normal_resource: 10_340,
+            pressed_resource: 10_339,
+            selected_in_index: false,
+        },
+        OriginalControlSpec {
+            command_id: 0x70,
+            x: 88,
+            y: 78,
+            width: 49,
+            height: 41,
+            normal_resource: 10_350,
+            pressed_resource: 10_349,
+            selected_in_index: false,
+        },
+        OriginalControlSpec {
+            command_id: 0x71,
+            x: 140,
+            y: 78,
+            width: 49,
+            height: 41,
+            normal_resource: ships_normal,
+            pressed_resource: ships_pressed,
+            selected_in_index: false,
+        },
+        OriginalControlSpec {
+            command_id: 0x72,
+            x: 192,
+            y: 78,
+            width: 49,
+            height: 41,
+            normal_resource: fighters_normal,
+            pressed_resource: fighters_pressed,
+            selected_in_index: false,
+        },
+        OriginalControlSpec {
+            command_id: 0x73,
+            x: 244,
+            y: 78,
+            width: 49,
+            height: 41,
+            normal_resource: troops_normal,
+            pressed_resource: troops_pressed,
+            selected_in_index: false,
+        },
+        OriginalControlSpec {
+            command_id: 0x74,
+            x: 296,
+            y: 78,
+            width: 49,
+            height: 41,
+            normal_resource: facilities_normal,
+            pressed_resource: facilities_pressed,
+            selected_in_index: false,
+        },
+        OriginalControlSpec {
+            command_id: 0x75,
+            x: 348,
+            y: 78,
+            width: 49,
+            height: 41,
+            normal_resource: characters_normal,
+            pressed_resource: characters_pressed,
+            selected_in_index: false,
+        },
+    ]
+}
+
+const fn encyclopedia_rail_controls(
+    faction: crate::cockpit::CockpitFaction,
+) -> [OriginalControlSpec; 3] {
+    match faction {
+        crate::cockpit::CockpitFaction::Alliance => [
+            OriginalControlSpec {
+                command_id: 0xfb,
+                x: 423,
+                y: 25,
+                width: 32,
+                height: 31,
+                normal_resource: 10_370,
+                pressed_resource: 10_371,
+                selected_in_index: false,
+            },
+            OriginalControlSpec {
+                command_id: 0x67,
+                x: 423,
+                y: 93,
+                width: 32,
+                height: 31,
+                normal_resource: 10_374,
+                pressed_resource: 10_375,
+                selected_in_index: false,
+            },
+            OriginalControlSpec {
+                command_id: 0x68,
+                x: 423,
+                y: 147,
+                width: 32,
+                height: 31,
+                normal_resource: 10_372,
+                pressed_resource: 10_373,
+                selected_in_index: true,
+            },
+        ],
+        crate::cockpit::CockpitFaction::Empire => [
+            OriginalControlSpec {
+                command_id: 0xfb,
+                x: 426,
+                y: 21,
+                width: 44,
+                height: 41,
+                normal_resource: 10_376,
+                pressed_resource: 10_377,
+                selected_in_index: false,
+            },
+            OriginalControlSpec {
+                command_id: 0x67,
+                x: 426,
+                y: 89,
+                width: 44,
+                height: 41,
+                normal_resource: 10_380,
+                pressed_resource: 10_381,
+                selected_in_index: false,
+            },
+            OriginalControlSpec {
+                command_id: 0x68,
+                x: 426,
+                y: 143,
+                width: 44,
+                height: 41,
+                normal_resource: 10_378,
+                pressed_resource: 10_379,
+                selected_in_index: true,
+            },
+        ],
+    }
+}
+
+/// Paint the source-exact Galactic Encyclopedia index bitmap layers.
+///
+/// Text labels and the object list are intentionally absent until their
+/// `TEXTSTRA` and native-list contracts are transported. Category resource
+/// `0x75` is painted at native size and clipped to its 49-by-41 control, as
+/// the original constructor does; it is never scaled from 57 pixels high.
+pub fn draw_encyclopedia_index_shell(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    faction: crate::cockpit::CockpitFaction,
+    origin: egui::Pos2,
+    scale: f32,
+    selected_category: u16,
+) -> Option<u16> {
+    if scale <= 0.0 || !(0x6f..=0x75).contains(&selected_category) {
+        return None;
+    }
+
+    let mut activated = None;
+    egui::Area::new(egui::Id::new("original-encyclopedia-index-shell"))
+        .fixed_pos(origin)
+        .order(egui::Order::Middle)
+        .show(ctx, |ui| {
+            let size = egui::vec2(
+                ENCYCLOPEDIA_INDEX_WIDTH * scale,
+                ENCYCLOPEDIA_INDEX_HEIGHT * scale,
+            );
+            let (window_rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+            let (base, rail) = match faction {
+                crate::cockpit::CockpitFaction::Alliance => (10_335, 10_585),
+                crate::cockpit::CockpitFaction::Empire => (10_336, 10_589),
+            };
+            paint_original_resource_native(
+                ui.painter(),
+                ctx,
+                cache,
+                base,
+                window_rect.min,
+                scale,
+                window_rect,
+            );
+            paint_original_resource_native(
+                ui.painter(),
+                ctx,
+                cache,
+                rail,
+                encyclopedia_point(window_rect, scale, 412.0, 0.0),
+                scale,
+                window_rect,
+            );
+            let content_rect = encyclopedia_rect(
+                window_rect,
+                scale,
+                INDEX_CONTENT_X,
+                INDEX_CONTENT_Y,
+                400.0,
+                306.0,
+            );
+            paint_original_resource_native(
+                ui.painter(),
+                ctx,
+                cache,
+                INDEX_CONTENT,
+                content_rect.min,
+                scale,
+                content_rect,
+            );
+
+            for control in encyclopedia_category_controls(faction) {
+                if draw_original_control(
+                    ui,
+                    ctx,
+                    cache,
+                    window_rect,
+                    scale,
+                    control,
+                    control.command_id == selected_category,
+                ) {
+                    activated = Some(control.command_id);
+                }
+            }
+            for control in encyclopedia_rail_controls(faction) {
+                if draw_original_control(
+                    ui,
+                    ctx,
+                    cache,
+                    window_rect,
+                    scale,
+                    control,
+                    control.selected_in_index,
+                ) {
+                    activated = Some(control.command_id);
+                }
+            }
+        });
+    activated
+}
+
+fn draw_original_control(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    window_rect: egui::Rect,
+    scale: f32,
+    control: OriginalControlSpec,
+    selected: bool,
+) -> bool {
+    let rect = encyclopedia_rect(
+        window_rect,
+        scale,
+        f32::from(control.x),
+        f32::from(control.y),
+        f32::from(control.width),
+        f32::from(control.height),
+    );
+    let control_id = ui
+        .id()
+        .with(("encyclopedia-original-control", control.command_id));
+    let response = ui.interact(rect, control_id, egui::Sense::click());
+    let capture_id = control_id.with("opaque-press-origin");
+    if ctx.input(|input| input.pointer.primary_pressed()) {
+        let captured = ctx.pointer_latest_pos().is_some_and(|point| {
+            original_control_contains(cache, control.normal_resource, rect, scale, point)
+        });
+        ui.data_mut(|data| data.insert_temp(capture_id, captured));
+    }
+    let captured = ui.data(|data| data.get_temp::<bool>(capture_id).unwrap_or(false));
+    let (pointer, primary_down) = ctx.input(|input| {
+        (
+            input.pointer.interact_pos(),
+            input.pointer.button_down(egui::PointerButton::Primary),
+        )
+    });
+    let pointer_hits = pointer.is_some_and(|point| {
+        original_control_contains(cache, control.normal_resource, rect, scale, point)
+    });
+    let pressed = selected
+        || (primary_down && response.is_pointer_button_down_on() && captured && pointer_hits);
+    paint_original_resource_native(
+        ui.painter(),
+        ctx,
+        cache,
+        if pressed {
+            control.pressed_resource
+        } else {
+            control.normal_resource
+        },
+        rect.min,
+        scale,
+        rect,
+    );
+    captured
+        && response.clicked()
+        && response.interact_pointer_pos().is_some_and(|point| {
+            original_control_contains(cache, control.normal_resource, rect, scale, point)
+        })
+}
+
+fn original_control_contains(
+    cache: &mut BmpCache,
+    resource_id: u32,
+    rect: egui::Rect,
+    scale: f32,
+    point: egui::Pos2,
+) -> bool {
+    if point.x < rect.min.x
+        || point.x >= rect.max.x
+        || point.y < rect.min.y
+        || point.y >= rect.max.y
+    {
+        return false;
+    }
+    let x = ((point.x - rect.min.x) / scale).floor() as usize;
+    let y = ((point.y - rect.min.y) / scale).floor() as usize;
+    cache.is_resource_hit(DllSource::Strategy, resource_id, x, y)
+}
+
+fn encyclopedia_point(parent: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Pos2 {
+    egui::pos2(parent.min.x + x * scale, parent.min.y + y * scale)
+}
+
+fn encyclopedia_rect(
+    parent: egui::Rect,
+    scale: f32,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+) -> egui::Rect {
+    egui::Rect::from_min_size(
+        encyclopedia_point(parent, scale, x, y),
+        egui::vec2(width * scale, height * scale),
+    )
+}
+
+fn paint_original_resource_native(
+    painter: &egui::Painter,
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    resource_id: u32,
+    origin: egui::Pos2,
+    scale: f32,
+    clip_rect: egui::Rect,
+) {
+    let Some(texture) = cache.get(ctx, DllSource::Strategy, resource_id) else {
+        return;
+    };
+    let rect = egui::Rect::from_min_size(origin, texture.size_vec2() * scale);
+    painter.with_clip_rect(clip_rect).image(
+        texture.id(),
+        rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
+}
+
+/// Fixed-position test adapter for deterministic browser inspection.
+#[cfg(feature = "interface-test-fixtures")]
+pub fn draw_encyclopedia_index_fixture(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    faction: crate::cockpit::CockpitFaction,
+    selected_category: u16,
+) -> Option<u16> {
+    draw_encyclopedia_index_shell(
+        ctx,
+        cache,
+        faction,
+        egui::pos2(85.0, 55.0),
+        1.0,
+        selected_category,
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Image helpers
 // ---------------------------------------------------------------------------
 
@@ -806,5 +1230,101 @@ mod tests {
         .expect("synthetic original EDATA should decode");
 
         assert_eq!(texture.size(), [400, 200]);
+    }
+
+    #[test]
+    fn original_index_categories_match_the_recovered_command_geometry() {
+        let controls = encyclopedia_category_controls(crate::cockpit::CockpitFaction::Alliance);
+
+        assert_eq!(
+            controls.map(|control| (
+                control.command_id,
+                control.x,
+                control.y,
+                control.width,
+                control.height,
+            )),
+            [
+                (0x6f, 36, 78, 49, 41),
+                (0x70, 88, 78, 49, 41),
+                (0x71, 140, 78, 49, 41),
+                (0x72, 192, 78, 49, 41),
+                (0x73, 244, 78, 49, 41),
+                (0x74, 296, 78, 49, 41),
+                (0x75, 348, 78, 49, 41),
+            ]
+        );
+    }
+
+    #[test]
+    fn original_index_category_resources_preserve_faction_variants() {
+        let alliance = encyclopedia_category_controls(crate::cockpit::CockpitFaction::Alliance);
+        let empire = encyclopedia_category_controls(crate::cockpit::CockpitFaction::Empire);
+
+        assert_eq!(
+            alliance.map(|control| (control.normal_resource, control.pressed_resource)),
+            [
+                (10_340, 10_339),
+                (10_350, 10_349),
+                (10_348, 10_347),
+                (10_344, 10_343),
+                (11_616, 11_615),
+                (10_352, 10_351),
+                (10_346, 10_345),
+            ]
+        );
+        assert_eq!(
+            empire.map(|control| (control.normal_resource, control.pressed_resource)),
+            [
+                (10_340, 10_339),
+                (10_350, 10_349),
+                (10_360, 10_359),
+                (10_356, 10_355),
+                (11_618, 11_617),
+                (10_362, 10_361),
+                (10_358, 10_357),
+            ]
+        );
+    }
+
+    #[test]
+    fn original_index_rail_preserves_faction_geometry_and_selected_mode() {
+        let alliance = encyclopedia_rail_controls(crate::cockpit::CockpitFaction::Alliance);
+        let empire = encyclopedia_rail_controls(crate::cockpit::CockpitFaction::Empire);
+
+        assert_eq!(
+            alliance.map(|control| (
+                control.command_id,
+                control.x,
+                control.y,
+                control.width,
+                control.height,
+                control.normal_resource,
+                control.pressed_resource,
+                control.selected_in_index,
+            )),
+            [
+                (0xfb, 423, 25, 32, 31, 10_370, 10_371, false),
+                (0x67, 423, 93, 32, 31, 10_374, 10_375, false),
+                (0x68, 423, 147, 32, 31, 10_372, 10_373, true),
+            ]
+        );
+        assert_eq!(
+            empire.map(|control| (
+                control.command_id,
+                control.x,
+                control.y,
+                control.width,
+                control.height,
+                control.normal_resource,
+                control.pressed_resource,
+                control.selected_in_index,
+            )),
+            [
+                (0xfb, 426, 21, 44, 41, 10_376, 10_377, false),
+                (0x67, 426, 89, 44, 41, 10_380, 10_381, false),
+                (0x68, 426, 143, 44, 41, 10_378, 10_379, true),
+            ]
+        );
     }
 }
