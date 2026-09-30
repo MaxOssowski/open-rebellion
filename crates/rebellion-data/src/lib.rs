@@ -25,9 +25,9 @@ use rebellion_core::dat::{ExplorationStatus, SectorGroup};
 use rebellion_core::ids::{DatId, SectorKey, SystemKey};
 use rebellion_core::world::{
     CapitalShipClass, Character, ControlKind, DefenseFacilityClassDef, FighterClass, GameWorld,
-    GnprtbEntry, GnprtbParams, MissionRecord, MissionTargetRules, MstbEntry, MstbTable,
-    SdprtbEntry, SdprtbParams, Sector, SeedOptions, SkillPair, SpecialForceClassDef, System,
-    TroopClassDef,
+    GnprtbEntry, GnprtbParams, MissionMemberRules, MissionRecord, MissionTargetRules, MstbEntry,
+    MstbTable, SdprtbEntry, SdprtbParams, Sector, SeedOptions, SkillPair, SpecialForceClassDef,
+    System, TroopClassDef,
 };
 
 pub mod encyclopedia_catalog;
@@ -669,6 +669,13 @@ fn mission_record(m: &Mission) -> MissionRecord {
             prisoner_target: m.prisoner_target != 0,
             free_target: m.free_target != 0,
         },
+        // File 0x18..0x24 is the in-memory +0x40..+0x4c (FUN_00583320).
+        members: MissionMemberRules {
+            alliance: m.is_alliance != 0,
+            empire: m.is_empire != 0,
+            special_force_mask: m.special_force_eligibility,
+            character_mask: m.target_flags,
+        },
     }
 }
 
@@ -828,11 +835,16 @@ mod tests {
 
     #[test]
     fn a_missnsd_record_id_combines_family_and_index_and_reads_its_flags() {
-        // File fields 0x28..0x3c are the in-memory +0x50..+0x64
-        // (ghidra/notes/mission-lifecycle.md, "The mission record").
+        // File fields 0x18..0x3c are the in-memory +0x40..+0x64
+        // (ghidra/notes/mission-lifecycle.md, "The mission record";
+        // FUN_00583320 reads +0x40..+0x4c).
         let mut record = [0_u32; 28];
         record[0] = 0x10; // id
         record[4] = 0x51; // family
+        record[6] = 1; // Alliance members, file 0x18
+        record[7] = 0; // Empire members, file 0x1c
+        record[8] = 0x402; // special-force bits, file 0x20
+        record[9] = 0x1_0000; // character bits, file 0x24
         record[10] = 5; // timer minimum, file 0x28
         record[11] = 10; // timer spread, file 0x2c
         record[12] = 1; // repeat
@@ -868,6 +880,12 @@ mod tests {
                     calm_target: true,
                     prisoner_target: false,
                     free_target: true,
+                },
+                members: MissionMemberRules {
+                    alliance: true,
+                    empire: false,
+                    special_force_mask: 0x402,
+                    character_mask: 0x1_0000,
                 },
             }
         );

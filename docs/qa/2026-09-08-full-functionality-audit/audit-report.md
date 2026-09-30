@@ -1022,6 +1022,47 @@ cross-runtime proof remain open
     within 7 missions, so Wistril completes 17 builds instead of 32. The
     golden moves to `v1:8ff65dd8cf6fd7b2` -> `v1:41144ee79484fa1a` for save
     v22 and the target objects.
+- Phase 5a (2026-09-30, save v23): mission legality and the AI planners'
+  team and decoy selectors (`ghidra/notes/ai-mission-planning.md`).
+  - MISSNSD records gain their member rules (`+0x40..+0x4c`). Dispatch
+    refuses members the record does not admit (`FUN_005830a0`,
+    `FUN_00583320`): special-force mission bits outside `+0x48`, a character
+    where `+0x4c` lacks `0x10000`, mixed sides, or a side the record does not
+    run for. DS Sabotage is Alliance-only and Assassination Empire-only. A
+    running mission is never ended by this check.
+  - `crates/rebellion-core/src/mission_planning.rs` ports the AI records
+    (`FUN_00401d20`, `FUN_00402230`), the candidate query (`FUN_00403460`),
+    the ranking (ascending by skill, a coin flip on ties, positions from
+    `FUN_0041c230`), the pick (`FUN_004357b0`: the highest sum of positions,
+    only candidates every query found), and the ten kinds' selectors with
+    their sizes, thresholds, and decoy caps (4 for Rescue, Abduction, and DS
+    Sabotage, `FUN_004047d0`).
+  - `AIAction::DispatchMission` carries the team and decoy lists. Deleted:
+    the invented skill thresholds, the 30% success gate, and the Jedi skip;
+    the `diplomacy_skill_threshold`, `espionage_skill_threshold`,
+    `covert_min_success_prob`, and `covert_target_popularity_threshold`
+    tuning fields. Assassination and Abduction go to the target character's
+    system instead of the enemy's most popular one (`FUN_004bd0a0`).
+  - port: the mission kind and target stay the port's (side `+0x318` is
+    untraced). The planners run in one cycle, so the nearness query never
+    joins and an order keeps only the members standing with its first (the
+    original gathers them in state 7). A plan with no team keeps no decoys,
+    a member one plan sends is not taken by the next, and the tie draws come
+    from a stream seeded by the day and side.
+  - hyp: the posture that sets `+0xbc` is not ported, so Espionage, Incite,
+    Assassination, and Sabotage take one decoy. The side controller's leader
+    and research bits are read as clear, their constructor values, so the
+    four leaders stay off Incite, Rescue, Sabotage, Assassination, and DS
+    Sabotage teams, and every character legal for Research (all of them) is
+    reserved from Incite, Rescue, Sabotage, and Abduction teams. A character
+    in a fleet holds an officer rank.
+  - The 1500-tick seed-42 playtest resolves 480 missions instead of 1069
+    (Diplomacy 341, Espionage 89, Recruitment 32, Sabotage 18), from 372
+    orders instead of 1971. Characters reserved for research leave Sabotage
+    and Incite to special forces, and Espionage takes special forces only.
+    Manufacturing completes 62 builds instead of 33. The golden moves to
+    `v1:cff529f786c2ecc1` -> `v1:7e1061cadd1e6f22` for save v23 and the AI
+    selection.
 
 ### F-020: A mod with a missing dependency fails silently
 

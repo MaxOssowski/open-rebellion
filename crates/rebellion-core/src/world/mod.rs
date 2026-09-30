@@ -1140,6 +1140,24 @@ pub struct MissionRecord {
     /// What the validator requires of a running mission's target and
     /// container (record `+0x6c..+0x94`).
     pub rules: MissionTargetRules,
+    /// Who may be a member (record `+0x40..+0x4c`, `FUN_00583320`).
+    pub members: MissionMemberRules,
+}
+
+/// The MISSNSD columns the member check `FUN_00583320` reads
+/// (`ghidra/notes/ai-mission-planning.md`, "Legality").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MissionMemberRules {
+    /// Alliance members are allowed (`+0x40`).
+    pub alliance: bool,
+    /// Empire members are allowed (`+0x44`).
+    pub empire: bool,
+    /// The special-force mission bits allowed (`+0x48`); every bit of the
+    /// members' SPECFCSD masks must be here.
+    pub special_force_mask: u32,
+    /// The character bits allowed (`+0x4c`); a character contributes
+    /// `0x10000` (`FUN_004ed260`).
+    pub character_mask: u32,
 }
 
 /// The MISSNSD columns the running-mission validator reads
@@ -1515,6 +1533,7 @@ mod tests {
             detection_phases: true,
             can_resign: true,
             rules: MissionTargetRules::default(),
+            members: MissionMemberRules::default(),
         };
         let world = GameWorld {
             mission_records: vec![

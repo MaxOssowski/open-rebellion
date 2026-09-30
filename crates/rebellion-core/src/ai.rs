@@ -36,6 +36,7 @@ use crate::ids::{
     ManufacturingFacilityKey, SystemKey, TroopKey,
 };
 use crate::manufacturing::{BuildableKind, ManufacturingState};
+use crate::mission_planning::Planner;
 use crate::missions::{MissionFaction, MissionKind, MissionState};
 use crate::research::{ResearchState, ResearchSystem, TechType};
 use crate::tick::TickEvent;
@@ -59,15 +60,6 @@ pub const MAX_CONSTRUCTION_YARDS: usize = 5;
 /// Minimum popularity fraction below which the AI considers a system a
 /// diplomacy target (systems already at high popularity are deprioritized).
 pub const DIPLOMACY_TARGET_POPULARITY_CAP: f32 = 0.8;
-
-/// Espionage skill threshold above which a character is considered a viable
-/// covert operative. Characters below this threshold are not sent on
-/// Sabotage/Assassination/Espionage missions.
-pub const ESPIONAGE_SKILL_THRESHOLD: u32 = 50;
-
-/// Minimum expected success probability (0.0–1.0) the AI requires before
-/// dispatching a covert mission. Prevents wasting characters on impossible ops.
-pub const COVERT_MIN_SUCCESS_PROB: f64 = 0.30;
 
 /// Maximum number of new covert missions the AI will queue per evaluation pass.
 /// Prevents spamming every available operative on espionage each tick interval.
@@ -234,10 +226,12 @@ impl AIState {
 /// directly. The caller decides whether to apply each action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AIAction {
-    /// Dispatch a character on a mission.
+    /// Dispatch a mission: the order `0x240` a planner emits
+    /// (`FUN_0047b360`), with its team (`+0x2c`) and decoys (`+0x58`).
     DispatchMission {
         kind: MissionKind,
-        character: CharacterKey,
+        team: Vec<crate::missions::MissionMember>,
+        decoys: Vec<crate::missions::MissionMember>,
         target_system: SystemKey,
         /// Target character for character-targeted missions (Assassination, Abduction, Recruitment).
         target_character: Option<CharacterKey>,
@@ -295,7 +289,7 @@ impl AISystem {
     /// elapsed yet. The caller should apply each `AIAction` in order.
     ///
     /// After applying `DispatchMission` actions, the caller must also call
-    /// `state.mark_busy(character)` for each dispatched character, and
+    /// `state.mark_busy(character)` for each dispatched character member, and
     /// `state.mark_available(character)` when the corresponding
     /// `MissionResult` arrives.
     #[expect(
@@ -306,7 +300,7 @@ impl AISystem {
         state: &mut AIState,
         world: &GameWorld,
         mfg_state: &ManufacturingState,
-        _mission_state: &MissionState,
+        mission_state: &MissionState,
         movement: &crate::movement::MovementState,
         tick_events: &[TickEvent],
         config: &GameConfig,
@@ -329,13 +323,27 @@ impl AISystem {
         };
 
         let mut actions = Vec::new();
+        let mut planner = Planner::new(
+            world,
+            mission_state,
+            &state.busy_characters,
+            matches!(faction, AiFaction::Alliance),
+            current_tick,
+        );
 
         // Run each heuristic module.
-        Self::evaluate_officers(state, world, faction, config, &mut actions);
-        Self::evaluate_espionage(state, world, faction, config, &mut actions);
-        Self::evaluate_rescue(state, world, faction, config, &mut actions);
-        Self::evaluate_reconnaissance(state, world, faction, config, &mut actions);
-        Self::evaluate_research(state, world, research_state, faction, &mut actions);
+        Self::evaluate_officers(&mut planner, world, faction, config, &mut actions);
+        Self::evaluate_espionage(&mut planner, world, faction, config, &mut actions);
+        Self::evaluate_rescue(&mut planner, world, faction, &mut actions);
+        Self::evaluate_reconnaissance(&mut planner, world, faction, config, &mut actions);
+        Self::evaluate_research(
+            state,
+            &planner,
+            world,
+            research_state,
+            faction,
+            &mut actions,
+        );
         Self::evaluate_production(
             world,
             mfg_state,
@@ -344,7 +352,7 @@ impl AISystem {
             config,
             &mut actions,
         );
-        Self::evaluate_uprising_prevention(state, world, faction, config, &mut actions);
+        Self::evaluate_uprising_prevention(&mut planner, world, faction, &mut actions);
         Self::evaluate_ds_escort(world, movement, faction, config, &mut actions);
         Self::evaluate_fleet_deployment(
             state,
@@ -541,132 +549,93 @@ impl AISystem {
         true
     }
 
-    /// For each available character, decide whether to dispatch a mission.
+    /// Plan `kind`'s team and decoys (`crate::mission_planning`) and push
+    /// the order when the planner sends anyone. Returns whether it did.
+    fn dispatch_planned(
+        planner: &mut Planner<'_>,
+        kind: MissionKind,
+        target: (SystemKey, Option<CharacterKey>),
+        target_object: Option<crate::missions::MissionTarget>,
+        actions: &mut Vec<AIAction>,
+    ) -> bool {
+        let Some((team, decoys)) = planner.plan(kind) else {
+            return false;
+        };
+        actions.push(AIAction::DispatchMission {
+            kind,
+            team,
+            decoys,
+            target_system: target.0,
+            target_character: target.1,
+            target_object,
+        });
+        true
+    }
+
+    /// Incite, Diplomacy, and Recruitment orders.
     ///
-    /// Priority order (from AIManager.cs):
-    /// 1. Major characters → recruitment if unrecruited officers exist
-    /// 2. Major characters or high-diplomacy minors → diplomacy on low-popularity systems
+    /// port: the side's strategic choice of mission and target (side
+    /// `+0x318`, `+0x31c`) is untraced, so the port picks the targets; the
+    /// original planners pick the members.
+    /// - Incite: the enemy system where the enemy is most popular.
+    /// - Diplomacy: each system below the popularity cap, least popular
+    ///   first, while the planner finds a diplomat.
+    /// - Recruitment: the side's most popular system, while its recruit pool
+    ///   holds anyone and the planner finds a recruiter.
     fn evaluate_officers(
-        state: &AIState,
+        planner: &mut Planner<'_>,
         world: &GameWorld,
         faction: AiFaction,
         config: &GameConfig,
         actions: &mut Vec<AIAction>,
     ) {
-        // Unrecruited characters for this faction (can_be_commander but
-        // not yet flagged as belonging to the faction — proxy: opposite faction flag).
-        let unrecruited: Vec<CharacterKey> = world
-            .characters
-            .iter()
-            .filter(|(_, c)| c.can_be_commander && !faction.owns_character(c))
-            .map(|(k, _)| k)
-            .collect();
-
-        // Find the best diplomacy target: lowest-popularity system for this faction,
-        // below the popularity cap.
-        let diplomacy_target =
-            Self::find_diplomacy_target(world, faction, config.ai.diplomacy_target_popularity_cap);
-        let incite_target = Self::find_incite_target(world, faction);
-        let mut incite_dispatched = false;
-
-        for (char_key, character) in &world.characters {
-            if !Self::can_dispatch(state, faction, char_key, character) {
-                continue;
-            }
-
-            // Role-based character assignment:
-            // 1. Jedi-capable characters → Jedi training priority (if not yet trained)
-            // 2. High diplomacy → diplomacy missions
-            // 3. High espionage → espionage handled by evaluate_espionage
-            // 4. Major characters with unrecruited allies → recruitment
-            // 5. Fleet admirals (can_be_admiral + high combat) → assigned to fleets in fleet_deployment
-
-            let diplomacy_score = character.diplomacy.base + character.diplomacy.variance / 2;
-            // Scaffolding for fleet admiral assignment (high combat → fleet officer).
-
-            // Jedi-potential characters should not be wasted on diplomacy
-            // (they'll train via the Jedi system automatically).
-            if character.jedi_probability > 50
-                && character.force_tier == crate::world::ForceTier::None
-            {
-                // Skip — let them be available for Jedi training events.
-                continue;
-            }
-
-            // High-diplomacy characters: alternate between diplomacy and incite uprising.
-            // First eligible diplomat → incite uprising on enemy turf.
-            // Remaining diplomats → standard diplomacy on low-popularity systems.
-            if diplomacy_score > config.ai.diplomacy_skill_threshold {
-                if !incite_dispatched {
-                    if let Some(target) = incite_target {
-                        actions.push(AIAction::DispatchMission {
-                            kind: MissionKind::InciteUprising,
-                            character: char_key,
-                            target_system: target,
-                            target_character: None,
-                            target_object: None,
-                        });
-                        incite_dispatched = true;
-                        continue;
-                    }
-                }
-                if let Some(target) = diplomacy_target {
-                    actions.push(AIAction::DispatchMission {
-                        kind: MissionKind::Diplomacy,
-                        character: char_key,
-                        target_system: target,
-                        target_character: None,
-                        target_object: None,
-                    });
-                    continue;
-                }
-            }
-
-            // Major characters with unrecruited allies → recruitment.
-            if character.is_major && !unrecruited.is_empty() {
-                if let Some(base_system) = Self::find_friendly_system(world, faction) {
-                    actions.push(AIAction::DispatchMission {
-                        kind: MissionKind::Recruitment,
-                        character: char_key,
-                        target_system: base_system,
-                        target_character: Some(unrecruited[0]),
-                        target_object: None,
-                    });
-                    continue;
-                }
-            }
-
-            // Remaining major characters with decent diplomacy → diplomacy fallback.
-            if character.is_major && diplomacy_score > 30 {
-                if let Some(target) = diplomacy_target {
-                    actions.push(AIAction::DispatchMission {
-                        kind: MissionKind::Diplomacy,
-                        character: char_key,
-                        target_system: target,
-                        target_character: None,
-                        target_object: None,
-                    });
-                }
-            }
+        if let Some(target) = Self::find_incite_target(world, faction) {
+            Self::dispatch_planned(
+                planner,
+                MissionKind::InciteUprising,
+                (target, None),
+                None,
+                actions,
+            );
         }
-    }
 
-    /// Find the system with the lowest AI faction popularity (a good diplomacy target).
-    ///
-    /// Only returns systems below the popularity cap — systems
-    /// already firmly ours are not worth spending characters on.
-    fn find_diplomacy_target(world: &GameWorld, faction: AiFaction, cap: f32) -> Option<SystemKey> {
-        world
+        let cap = config.ai.diplomacy_target_popularity_cap;
+        let mut diplomacy_targets: Vec<(SystemKey, f32)> = world
             .systems
             .iter()
-            .filter(|(_, s)| faction.system_popularity(s) < cap)
-            .min_by(|(_, a), (_, b)| {
-                faction
-                    .system_popularity(a)
-                    .partial_cmp(&faction.system_popularity(b))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .map(|(k, _)| k)
+            .map(|(key, system)| (key, faction.system_popularity(system)))
+            .filter(|&(_, popularity)| popularity < cap)
+            .collect();
+        diplomacy_targets
+            .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        for (target, _) in diplomacy_targets {
+            if !Self::dispatch_planned(
+                planner,
+                MissionKind::Diplomacy,
+                (target, None),
+                None,
+                actions,
+            ) {
+                break;
+            }
+        }
+
+        let side = crate::dat::Faction::from(faction.as_mission_faction());
+        let mut pool = crate::missions::recruit_pool(world, side).len();
+        if let Some(base) = Self::find_friendly_system(world, faction) {
+            while pool > 0 && !world.recruit_pool_empty(side) {
+                if !Self::dispatch_planned(
+                    planner,
+                    MissionKind::Recruitment,
+                    (base, None),
+                    None,
+                    actions,
+                ) {
+                    break;
+                }
+                pool -= 1;
+            }
+        }
     }
 
     /// Find a system that the AI faction has relatively high popularity in —
@@ -720,54 +689,27 @@ impl AISystem {
     /// Dispatch covert operatives on Sabotage, Assassination, Abduction, and
     /// Espionage missions against the enemy faction.
     ///
-    /// Priority order (each pass picks the best available character for the
-    /// best available target):
-    /// 1. **Sabotage** — enemy systems with manufacturing facilities. High-value
-    ///    targets (more mfg facilities) first. Skill: espionage.
-    /// 2. **Assassination** — enemy major characters. Most dangerous first
-    ///    (highest combined skill). Skill: combat.
-    /// 3. **Espionage** (intelligence) — unexplored enemy systems. Skill: espionage.
+    /// port: the targets are the port's (side `+0x318` is untraced); the
+    /// planner of each kind picks the members (`crate::mission_planning`).
+    /// 1. **Sabotage**: enemy systems with manufacturing facilities, the most
+    ///    first.
+    /// 2. **Assassination**, then **Abduction**: enemy characters.
+    /// 3. **Espionage**: unexplored systems.
     ///
-    /// Only characters with skill ≥ `ESPIONAGE_SKILL_THRESHOLD` are considered.
-    /// A target is skipped if expected success probability < `COVERT_MIN_SUCCESS_PROB`.
-    /// At most `MAX_COVERT_OPS_PER_EVAL` covert missions are queued per pass.
+    /// At most `max_covert_ops_per_eval` covert missions are queued per pass,
+    /// and a kind stops once its planner finds no team.
     #[expect(
         clippy::too_many_lines,
         reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
     )]
     fn evaluate_espionage(
-        state: &AIState,
+        planner: &mut Planner<'_>,
         world: &GameWorld,
         faction: AiFaction,
         config: &GameConfig,
         actions: &mut Vec<AIAction>,
     ) {
-        // Collect available covert operatives sorted by espionage skill (desc).
-        let mut operatives: Vec<(CharacterKey, u32)> = world
-            .characters
-            .iter()
-            .filter_map(|(key, c)| {
-                if !Self::can_dispatch(state, faction, key, c) {
-                    return None;
-                }
-                let esp = c.espionage.base + c.espionage.variance / 2;
-                if esp >= config.ai.espionage_skill_threshold {
-                    Some((key, esp))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if operatives.is_empty() {
-            return;
-        }
-
-        // Sort descending by espionage score so best ops go to highest-value targets.
-        operatives.sort_by_key(|a| std::cmp::Reverse(a.1));
-
         let mut ops_queued = 0;
-        let mut op_idx = 0;
 
         // ── Priority 1: Sabotage enemy manufacturing systems ─────────────────
         // Score each enemy system by number of mfg facilities (proxy for value).
@@ -802,149 +744,75 @@ impl AISystem {
         sabotage_targets.sort_by_key(|a| std::cmp::Reverse(a.1));
 
         for &(target_sys, _, facility) in &sabotage_targets {
-            if ops_queued >= config.ai.max_covert_ops_per_eval || op_idx >= operatives.len() {
+            if ops_queued >= config.ai.max_covert_ops_per_eval {
                 break;
             }
-            let (char_key, _) = operatives[op_idx];
-            if !Self::expected_success(
-                world,
+            let target = Some(crate::missions::MissionTarget::ManufacturingFacility(
+                facility,
+            ));
+            if !Self::dispatch_planned(
+                planner,
                 MissionKind::Sabotage,
-                faction,
-                char_key,
                 (target_sys, None),
-                config.ai.covert_min_success_prob,
+                target,
+                actions,
             ) {
-                op_idx += 1;
-                continue;
+                break;
             }
-            actions.push(AIAction::DispatchMission {
-                kind: MissionKind::Sabotage,
-                character: char_key,
-                target_system: target_sys,
-                target_character: None,
-                target_object: Some(crate::missions::MissionTarget::ManufacturingFacility(
-                    facility,
-                )),
-            });
-            op_idx += 1;
             ops_queued += 1;
         }
 
-        // ── Priority 2: Assassination of dangerous enemy major characters ─────
-        // Score each enemy major character by total skill.
-        let enemy_major_chars: Vec<CharacterKey> = world
+        // ── Priority 2: Assassination, then Abduction, of enemy characters ──
+        // The target chooser (FUN_004bd0a0) sends the order to the target's
+        // system; a character in a fleet stands at the fleet's system.
+        let whereabouts = |c: &Character| {
+            c.current_system.or_else(|| {
+                c.current_fleet
+                    .and_then(|fleet| world.fleets.get(fleet))
+                    .map(|fleet| fleet.location)
+            })
+        };
+        let enemy_major_chars: Vec<(CharacterKey, SystemKey)> = world
             .characters
             .iter()
-            .filter_map(|(key, c)| {
-                if !c.is_major || faction.owns_character(c) {
-                    return None;
-                }
-                Some(key)
-            })
+            .filter(|(_, c)| c.is_major && !faction.owns_character(c) && !c.is_killed)
+            .filter(|(_, c)| !c.is_captive)
+            .filter_map(|(key, c)| whereabouts(c).map(|system| (key, system)))
             .collect();
 
         // Abduction targets: ALL enemy characters, sorted by lowest combat defense
         // (weakest first) to maximize capture probability.
-        let mut abduction_targets: Vec<(CharacterKey, u32)> = world
+        let mut abduction_targets: Vec<(CharacterKey, SystemKey, u32)> = world
             .characters
             .iter()
+            .filter(|(_, c)| !faction.owns_character(c) && !c.is_captive && !c.is_killed)
             .filter_map(|(key, c)| {
-                if faction.owns_character(c) || c.is_captive {
-                    return None;
-                }
                 let defense = c.combat.base + c.combat.variance / 2;
-                Some((key, defense))
+                whereabouts(c).map(|system| (key, system, defense))
             })
             .collect();
-        abduction_targets.sort_by_key(|a| a.1);
+        abduction_targets.sort_by_key(|a| a.2);
 
-        // For assassination we need a system to target — use any enemy system as the
-        // "location" proxy (the actual character is tracked by CharacterKey in effects).
-        // Pick the best-populated enemy system as target anchor.
-        let assassination_base = world
-            .systems
-            .iter()
-            .filter(|(_, s)| match faction {
-                AiFaction::Alliance => {
-                    s.popularity_empire > config.ai.covert_target_popularity_threshold
-                }
-                AiFaction::Empire => {
-                    s.popularity_alliance > config.ai.covert_target_popularity_threshold
-                }
-            })
-            .max_by(|(_, a), (_, b)| {
-                let pop_a = match faction {
-                    AiFaction::Alliance => a.popularity_empire,
-                    AiFaction::Empire => a.popularity_alliance,
-                };
-                let pop_b = match faction {
-                    AiFaction::Alliance => b.popularity_empire,
-                    AiFaction::Empire => b.popularity_alliance,
-                };
-                pop_a
-                    .partial_cmp(&pop_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .map(|(k, _)| k);
-
-        if let Some(target_sys) = assassination_base {
-            for &target_char in &enemy_major_chars {
-                if ops_queued >= config.ai.max_covert_ops_per_eval || op_idx >= operatives.len() {
-                    break;
-                }
-                let (char_key, _) = operatives[op_idx];
-                if !Self::expected_success(
-                    world,
-                    MissionKind::Assassination,
-                    faction,
-                    char_key,
-                    (target_sys, Some(target_char)),
-                    config.ai.covert_min_success_prob,
-                ) {
-                    op_idx += 1;
-                    continue;
-                }
-                actions.push(AIAction::DispatchMission {
-                    kind: MissionKind::Assassination,
-                    character: char_key,
-                    target_system: target_sys,
-                    target_character: Some(target_char),
-                    target_object: None,
-                });
-                op_idx += 1;
-                ops_queued += 1;
+        for &(target_char, target_sys) in &enemy_major_chars {
+            if ops_queued >= config.ai.max_covert_ops_per_eval {
+                break;
             }
+            let target = (target_sys, Some(target_char));
+            if !Self::dispatch_planned(planner, MissionKind::Assassination, target, None, actions) {
+                break;
+            }
+            ops_queued += 1;
         }
 
-        // ── Priority 2b: Abduction of enemy major characters ─────────────────
-        // Uses remaining operatives with espionage skill to capture enemy leaders.
-        if let Some(target_sys) = assassination_base {
-            for &(target_char, _) in &abduction_targets {
-                if ops_queued >= config.ai.max_covert_ops_per_eval || op_idx >= operatives.len() {
-                    break;
-                }
-                let (char_key, _) = operatives[op_idx];
-                if !Self::expected_success(
-                    world,
-                    MissionKind::Abduction,
-                    faction,
-                    char_key,
-                    (target_sys, Some(target_char)),
-                    config.ai.covert_min_success_prob,
-                ) {
-                    op_idx += 1;
-                    continue;
-                }
-                actions.push(AIAction::DispatchMission {
-                    kind: MissionKind::Abduction,
-                    character: char_key,
-                    target_system: target_sys,
-                    target_character: Some(target_char),
-                    target_object: None,
-                });
-                op_idx += 1;
-                ops_queued += 1;
+        for &(target_char, target_sys, _) in &abduction_targets {
+            if ops_queued >= config.ai.max_covert_ops_per_eval {
+                break;
             }
+            let target = (target_sys, Some(target_char));
+            if !Self::dispatch_planned(planner, MissionKind::Abduction, target, None, actions) {
+                break;
+            }
+            ops_queued += 1;
         }
 
         // ── Priority 3: Intelligence gathering on unexplored enemy systems ────
@@ -960,55 +828,21 @@ impl AISystem {
             })
             .collect();
 
-        for target_sys in &unexplored_targets {
-            if ops_queued >= config.ai.max_covert_ops_per_eval || op_idx >= operatives.len() {
+        for &target_sys in &unexplored_targets {
+            if ops_queued >= config.ai.max_covert_ops_per_eval {
                 break;
             }
-            let (char_key, _) = operatives[op_idx];
-            if !Self::expected_success(
-                world,
+            if !Self::dispatch_planned(
+                planner,
                 MissionKind::Espionage,
-                faction,
-                char_key,
-                (*target_sys, None),
-                config.ai.covert_min_success_prob,
+                (target_sys, None),
+                None,
+                actions,
             ) {
-                op_idx += 1;
-                continue;
+                break;
             }
-            actions.push(AIAction::DispatchMission {
-                kind: MissionKind::Espionage,
-                character: char_key,
-                target_system: *target_sys,
-                target_character: None,
-                target_object: None,
-            });
-            op_idx += 1;
             ops_queued += 1;
         }
-    }
-
-    /// Whether `character`'s success chance on the mission reaches
-    /// `min_prob`. port: the planner reads the phase 10 chance (slot
-    /// `+0x274`, [`crate::missions::member_chance`]); the original planner's
-    /// own estimate is not read.
-    fn expected_success(
-        world: &GameWorld,
-        kind: MissionKind,
-        faction: AiFaction,
-        character: CharacterKey,
-        target: (SystemKey, Option<CharacterKey>),
-        min_prob: f64,
-    ) -> bool {
-        let chance = crate::missions::member_chance(
-            world,
-            kind,
-            faction.as_mission_faction(),
-            target.0,
-            target.1,
-            crate::missions::MissionMember::Character(character),
-        );
-        f64::from(chance) / 100.0 >= min_prob
     }
 
     // -----------------------------------------------------------------------
@@ -1017,13 +851,12 @@ impl AISystem {
 
     /// Dispatch a rescue mission to free captive allies.
     ///
-    /// Scans for characters held captive by the enemy, then finds an available
-    /// character with sufficient combat skill to mount a rescue.
+    /// Scans for characters held captive by the enemy; the Rescue planner
+    /// (`FUN_0047e270`, `FUN_0047e3f0`) picks each team.
     fn evaluate_rescue(
-        state: &AIState,
+        planner: &mut Planner<'_>,
         world: &GameWorld,
         faction: AiFaction,
-        _config: &GameConfig,
         actions: &mut Vec<AIAction>,
     ) {
         // Find captive allies (our characters held by the enemy).
@@ -1039,42 +872,11 @@ impl AISystem {
             })
             .collect();
 
-        if captives.is_empty() {
-            return;
-        }
-
-        // Find available rescue operatives (combat >= 30), sorted best-first.
-        let mut operatives: Vec<(CharacterKey, u32)> = world
-            .characters
-            .iter()
-            .filter_map(|(char_key, character)| {
-                if !Self::can_dispatch(state, faction, char_key, character) {
-                    return None;
-                }
-                let combat_score = character.combat.base + character.combat.variance / 2;
-                if combat_score < 30 {
-                    return None;
-                }
-                Some((char_key, combat_score))
-            })
-            .collect();
-
-        // Best operatives first.
-        operatives.sort_by_key(|a| std::cmp::Reverse(a.1));
-
-        // Dispatch one rescue per captive, consuming operatives.
-        let mut op_iter = operatives.into_iter();
-        for (captive_key, captive_system) in &captives {
-            if let Some((rescuer, _)) = op_iter.next() {
-                actions.push(AIAction::DispatchMission {
-                    kind: MissionKind::Rescue,
-                    character: rescuer,
-                    target_system: *captive_system,
-                    target_character: Some(*captive_key),
-                    target_object: None,
-                });
-            } else {
-                break; // No more operatives available.
+        // One rescue per captive while the planner finds a team.
+        for (captive_key, captive_system) in captives {
+            let target = (captive_system, Some(captive_key));
+            if !Self::dispatch_planned(planner, MissionKind::Rescue, target, None, actions) {
+                break;
             }
         }
     }
@@ -1094,7 +896,7 @@ impl AISystem {
     /// Priority: enemy-controlled systems with the most fleets/facilities
     /// (highest strategic value to scout).
     fn evaluate_reconnaissance(
-        state: &AIState,
+        planner: &mut Planner<'_>,
         world: &GameWorld,
         faction: AiFaction,
         config: &GameConfig,
@@ -1135,57 +937,16 @@ impl AISystem {
         // Sort by highest value first (most important to scout).
         recon_targets.sort_by_key(|a| std::cmp::Reverse(a.1));
 
-        // Find available scouts: characters with espionage skill >= threshold.
-        let mut scouts: Vec<(CharacterKey, u32)> = world
-            .characters
-            .iter()
-            .filter_map(|(key, c)| {
-                if !Self::can_dispatch(state, faction, key, c) {
-                    return None;
-                }
-                let esp = c.espionage.base + c.espionage.variance / 2;
-                if esp >= config.ai.espionage_skill_threshold {
-                    Some((key, esp))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if scouts.is_empty() {
-            return;
-        }
-
-        // Sort by espionage score descending — best scouts go first.
-        scouts.sort_by_key(|a| std::cmp::Reverse(a.1));
-
-        let mut dispatched = 0;
-        let mut scout_idx = 0;
-        for (target_sys, _) in &recon_targets {
-            if dispatched >= config.ai.max_recon_per_eval || scout_idx >= scouts.len() {
+        for (target_sys, _) in recon_targets.into_iter().take(config.ai.max_recon_per_eval) {
+            if !Self::dispatch_planned(
+                planner,
+                MissionKind::Espionage,
+                (target_sys, None),
+                None,
+                actions,
+            ) {
                 break;
             }
-            let (char_key, _) = scouts[scout_idx];
-            if !Self::expected_success(
-                world,
-                MissionKind::Espionage,
-                faction,
-                char_key,
-                (*target_sys, None),
-                config.ai.covert_min_success_prob,
-            ) {
-                scout_idx += 1;
-                continue;
-            }
-            actions.push(AIAction::DispatchMission {
-                kind: MissionKind::Espionage,
-                character: char_key,
-                target_system: *target_sys,
-                target_character: None,
-                target_object: None,
-            });
-            scout_idx += 1;
-            dispatched += 1;
         }
     }
 
@@ -1203,6 +964,7 @@ impl AISystem {
     /// - Facility: `facility_design`
     fn evaluate_research(
         state: &AIState,
+        planner: &Planner<'_>,
         world: &GameWorld,
         research_state: &ResearchState,
         faction: AiFaction,
@@ -1224,7 +986,9 @@ impl AISystem {
             let best = world
                 .characters
                 .iter()
-                .filter(|(key, c)| Self::can_dispatch(state, faction, *key, c))
+                .filter(|(key, c)| {
+                    Self::can_dispatch(state, faction, *key, c) && !planner.sent(*key)
+                })
                 .filter_map(|(key, c)| {
                     let skill = match tech {
                         TechType::Ship => c.ship_design.base + c.ship_design.variance / 2,
@@ -1941,14 +1705,14 @@ impl AISystem {
 
     /// Strategic: send diplomats to low-support controlled systems to prevent uprisings.
     ///
-    /// Scans systems where our popularity < 0.4. If an idle diplomat is available,
-    /// dispatches them on a diplomacy mission to stabilize support before an uprising
-    /// can trigger (uprising threshold is popularity-dependent via UPRIS1TB).
+    /// Scans systems where our popularity < 0.4 and sends the Diplomacy
+    /// planner's diplomat (`FUN_004815a0`) to the two lowest, to stabilize
+    /// support before an uprising can trigger (uprising threshold is
+    /// popularity-dependent via UPRIS1TB).
     fn evaluate_uprising_prevention(
-        state: &AIState,
+        planner: &mut Planner<'_>,
         world: &GameWorld,
         faction: AiFaction,
-        config: &GameConfig,
         actions: &mut Vec<AIAction>,
     ) {
         let is_alliance = matches!(faction, AiFaction::Alliance);
@@ -1995,31 +1759,15 @@ impl AISystem {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Find idle diplomats.
-        let mut dispatched = 0;
-        for (char_key, character) in &world.characters {
-            if !Self::can_dispatch(state, faction, char_key, character) {
-                continue;
-            }
-            let diplomacy_skill = character.diplomacy.base + character.diplomacy.variance / 2;
-            if diplomacy_skill < config.ai.diplomacy_skill_threshold {
-                continue;
-            }
-            if dispatched >= at_risk.len() {
-                break;
-            }
-
-            actions.push(AIAction::DispatchMission {
-                kind: MissionKind::Diplomacy,
-                character: char_key,
-                target_system: at_risk[dispatched],
-                target_character: None,
-                target_object: None,
-            });
-            dispatched += 1;
-
-            // Limit to 2 uprising-prevention diplomats per cycle.
-            if dispatched >= 2 {
+        // Limit to 2 uprising-prevention diplomats per cycle.
+        for &target in at_risk.iter().take(2) {
+            if !Self::dispatch_planned(
+                planner,
+                MissionKind::Diplomacy,
+                (target, None),
+                None,
+                actions,
+            ) {
                 break;
             }
         }
@@ -2661,6 +2409,8 @@ mod tests {
                 variance: 0,
             },
             can_be_commander: true,
+            // A placed character belongs to its side's roster (+0x50 bit 2).
+            recruited: true,
             ..Default::default()
         })
     }
@@ -2718,80 +2468,80 @@ mod tests {
     // Officer heuristics
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn major_character_dispatched_on_recruitment_when_unrecruited_exist() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let _sys = add_system(&mut world, sector, 0.9, 0.1); // friendly high-pop system
+    /// The characters of the first `DispatchMission` of `kind`'s team.
+    fn team_of(
+        actions: &[AIAction],
+        kind: MissionKind,
+    ) -> Option<Vec<crate::missions::MissionMember>> {
+        actions.iter().find_map(|a| match a {
+            AIAction::DispatchMission { kind: k, team, .. } if *k == kind => Some(team.clone()),
+            _ => None,
+        })
+    }
 
-        // Major empire character — can be commander
-        let major = add_character(&mut world, false, true, 30);
-        // An unrecruited Alliance character (enemy faction = "unrecruited" from Empire perspective)
-        let _ = add_character(&mut world, true, false, 30);
-
-        let mut state = AIState::new(AiFaction::Empire);
-        let mfg = ManufacturingState::new();
-        let missions = MissionState::new();
-
-        let actions = AISystem::advance(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
+    fn advance_once(state: &mut AIState, world: &GameWorld) -> Vec<AIAction> {
+        AISystem::advance(
+            state,
+            world,
+            &ManufacturingState::new(),
+            &MissionState::new(),
             &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+        )
+    }
+
+    #[test]
+    fn a_recruiter_needs_leadership_of_80_and_someone_left_to_recruit() {
+        // FUN_0047db40: one member, leadership 80..=10000. FUN_0055fc80
+        // recruits from the side's unrecruited minor characters.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _sys = add_system(&mut world, sector, 0.1, 0.9);
+        let recruiter = add_character(&mut world, false, true, 30);
+        world.characters[recruiter].leadership.base = 80;
+        let weaker = add_character(&mut world, false, true, 30);
+        world.characters[weaker].leadership.base = 79;
+        let mut state = AIState::new(AiFaction::Empire);
+
+        assert_eq!(
+            team_of(&advance_once(&mut state, &world), MissionKind::Recruitment),
+            None
         );
 
-        let recruitment = actions.iter().find(|a| {
-            matches!(
-                a,
-                AIAction::DispatchMission { kind: MissionKind::Recruitment, character, .. }
-                if *character == major
-            )
-        });
-        assert!(
-            recruitment.is_some(),
-            "expected recruitment mission for major character"
+        let recruit = add_character(&mut world, false, false, 30);
+        world.characters[recruit].recruited = false;
+        let mut state = AIState::new(AiFaction::Empire);
+        let team = team_of(&advance_once(&mut state, &world), MissionKind::Recruitment);
+
+        assert_eq!(
+            team,
+            Some(vec![crate::missions::MissionMember::Character(recruiter)])
         );
     }
 
     #[test]
-    fn high_diplomacy_minor_dispatched_on_diplomacy() {
+    fn a_diplomat_needs_diplomacy_of_69() {
+        // FUN_004815a0: one member, diplomacy 69..=10000.
         let mut world = empty_world();
         let sector = add_sector(&mut world);
-        // Low-popularity empire system — a good diplomacy target
         let _ = add_system(&mut world, sector, 0.1, 0.2);
-
-        // Minor empire character with high diplomacy
-        let diplomat = add_character(&mut world, false, false, 80);
-
+        let _ = add_character(&mut world, false, false, 68);
         let mut state = AIState::new(AiFaction::Empire);
-        let mfg = ManufacturingState::new();
-        let missions = MissionState::new();
 
-        let actions = AISystem::advance(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
-            &crate::movement::MovementState::new(),
-            &ticks(7),
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
+        assert_eq!(
+            team_of(&advance_once(&mut state, &world), MissionKind::Diplomacy),
+            None
         );
 
-        let diplomacy = actions.iter().find(|a| {
-            matches!(
-                a,
-                AIAction::DispatchMission { kind: MissionKind::Diplomacy, character, .. }
-                if *character == diplomat
-            )
-        });
-        assert!(
-            diplomacy.is_some(),
-            "expected diplomacy mission for high-skill minor"
+        let diplomat = add_character(&mut world, false, false, 69);
+        let mut state = AIState::new(AiFaction::Empire);
+        let team = team_of(&advance_once(&mut state, &world), MissionKind::Diplomacy);
+
+        assert_eq!(
+            team,
+            Some(vec![crate::missions::MissionMember::Character(diplomat)])
         );
     }
 
@@ -3560,19 +3310,45 @@ mod tests {
                 variance: 0,
             },
             can_be_commander: true,
+            recruited: true,
             ..Default::default()
         })
     }
 
-    /// Whether the Empire sends an operative of `espionage` and `combat` to
-    /// sabotage an Alliance manufacturing system.
-    fn sabotage_dispatched(espionage: u32, combat: u32) -> bool {
-        sabotage_dispatched_by(AiFaction::Empire, espionage, combat)
+    /// A special force of `espionage` and `combat`, standing nowhere.
+    fn add_commando(
+        world: &mut GameWorld,
+        is_alliance: bool,
+        espionage: u32,
+        combat: u32,
+    ) -> crate::missions::MissionMember {
+        let mut skills = [0; 8];
+        skills[crate::world::Skill::Espionage as usize] = espionage;
+        skills[crate::world::Skill::Combat as usize] = combat;
+        crate::missions::MissionMember::SpecialForce(world.special_forces.insert(
+            crate::world::SpecialForceUnit {
+                class_dat_id: DatId(0x3c00_0002),
+                is_alliance,
+                skills,
+                on_mission: false,
+            },
+        ))
     }
 
-    /// Whether `side`'s AI sends its spy to sabotage the enemy shipyard,
-    /// naming the shipyard as the target object.
-    fn sabotage_dispatched_by(side: AiFaction, espionage: u32, combat: u32) -> bool {
+    /// Whether the Empire sends a special force of `espionage` and `combat`
+    /// to sabotage an Alliance manufacturing system.
+    fn sabotage_dispatched(espionage: u32, combat: u32) -> bool {
+        sabotage_dispatched_by(AiFaction::Empire, |world, alliance| {
+            add_commando(world, alliance, espionage, combat)
+        })
+    }
+
+    /// Whether `side`'s AI sends the agent `add` makes to sabotage the enemy
+    /// shipyard, naming the shipyard as the target object.
+    fn sabotage_dispatched_by(
+        side: AiFaction,
+        add: impl FnOnce(&mut GameWorld, bool) -> crate::missions::MissionMember,
+    ) -> bool {
         let alliance_ai = side == AiFaction::Alliance;
         let mut world = empty_world();
         let sector = add_sector(&mut world);
@@ -3610,8 +3386,7 @@ mod tests {
             control: ControlKind::Uncontrolled,
         });
 
-        // Empire spy with high espionage — above threshold.
-        let spy = add_spy(&mut world, alliance_ai, false, espionage, combat);
+        let spy = add(&mut world, alliance_ai);
 
         let mut state = AIState::new(side);
         let mfg = ManufacturingState::new();
@@ -3633,36 +3408,32 @@ mod tests {
                 a,
                 AIAction::DispatchMission {
                     kind: MissionKind::Sabotage,
-                    character,
+                    team,
                     target_system,
                     target_object: Some(crate::missions::MissionTarget::ManufacturingFacility(yard)),
                     ..
                 }
-                if *character == spy && *target_system == enemy_sys && *yard == mfg_key
+                if *team == [spy] && *target_system == enemy_sys && *yard == mfg_key
             )
         });
         sabotage.is_some()
     }
 
     #[test]
-    fn high_espionage_character_dispatched_on_sabotage() {
-        assert!(
-            sabotage_dispatched(80, 50),
-            "expected sabotage mission against enemy shipyard"
-        );
+    fn a_sabotage_team_needs_combat_and_espionage_of_51() {
+        // FUN_0047d520 queries combat 51..=10000 and espionage 51..=10000
+        // and takes only hits of both (FUN_004357b0).
+        assert!(sabotage_dispatched(51, 51));
+        assert!(!sabotage_dispatched(50, 80));
+        assert!(!sabotage_dispatched(80, 50));
     }
 
     #[test]
-    fn an_alliance_spy_sabotages_an_empire_shipyard() {
-        assert!(sabotage_dispatched_by(AiFaction::Alliance, 80, 50));
-    }
-
-    #[test]
-    fn an_operative_below_the_minimum_chance_is_not_sent_on_sabotage() {
-        // The spy passes the espionage gate (50), but SBTGMSTB reads
-        // (espionage + combat) / 2 = 25, a 25% chance under the configured
-        // 30% minimum.
-        assert!(!sabotage_dispatched(50, 0));
+    fn an_alliance_commando_sabotages_an_empire_shipyard() {
+        assert!(sabotage_dispatched_by(
+            AiFaction::Alliance,
+            |world, alliance| { add_commando(world, alliance, 80, 60) }
+        ));
     }
 
     #[test]
@@ -3770,8 +3541,8 @@ mod tests {
             control: ControlKind::Uncontrolled,
         });
 
-        // Alliance spy.
-        let spy = add_spy(&mut world, true, false, 75, 40);
+        // FUN_004808c0 takes special forces only.
+        let spy = add_commando(&mut world, true, 75, 40);
 
         let mut state = AIState::new(AiFaction::Alliance);
         let mfg = ManufacturingState::new();
@@ -3793,11 +3564,11 @@ mod tests {
                 a,
                 AIAction::DispatchMission {
                     kind: MissionKind::Espionage,
-                    character,
+                    team,
                     target_system,
                     ..
                 }
-                if *character == spy && *target_system == unexplored
+                if *team == [spy] && *target_system == unexplored
             )
         });
         assert!(
@@ -3849,9 +3620,9 @@ mod tests {
             });
         }
 
-        // 5 Empire spies — all highly skilled.
-        for _ in 0..5 {
-            add_spy(&mut world, false, false, 80, 60);
+        // 10 Empire special forces — all highly skilled.
+        for _ in 0..10 {
+            add_commando(&mut world, false, 80, 60);
         }
 
         let mut state = AIState::new(AiFaction::Empire);
@@ -4401,28 +4172,667 @@ mod tests {
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
         });
 
-        // Empire spy for recon.
-        let spy = add_spy(&mut world, false, false, 70, 40);
+        // Empire special force for recon.
+        let spy = add_commando(&mut world, false, 70, 40);
 
-        let state = AIState::new(AiFaction::Empire);
+        let mut planner = Planner::new(&world, &MissionState::new(), &HashSet::new(), false, 7);
         let mut actions = Vec::new();
-        AISystem::evaluate_reconnaissance(&state, &world, AiFaction::Empire, &config, &mut actions);
+        AISystem::evaluate_reconnaissance(
+            &mut planner,
+            &world,
+            AiFaction::Empire,
+            &config,
+            &mut actions,
+        );
 
         let recon = actions.iter().find(|a| {
             matches!(
                 a,
                 AIAction::DispatchMission {
                     kind: MissionKind::Espionage,
-                    character,
+                    team,
                     target_system,
                     ..
                 }
-                if *character == spy && *target_system == enemy_sys
+                if *team == [spy] && *target_system == enemy_sys
             )
         });
         assert!(
             recon.is_some(),
             "expected reconnaissance mission on explored enemy system"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Planned missions (F-019 phase 5a)
+    // -----------------------------------------------------------------------
+
+    use crate::missions::MissionMember;
+
+    fn planner_for(world: &GameWorld, faction: AiFaction) -> Planner<'_> {
+        Planner::new(
+            world,
+            &MissionState::new(),
+            &HashSet::new(),
+            faction == AiFaction::Alliance,
+            7,
+        )
+    }
+
+    /// Each `kind` order as (team, target system, target character).
+    fn orders(
+        actions: &[AIAction],
+        kind: MissionKind,
+    ) -> Vec<(Vec<MissionMember>, SystemKey, Option<CharacterKey>)> {
+        actions
+            .iter()
+            .filter_map(|a| match a {
+                AIAction::DispatchMission {
+                    kind: k,
+                    team,
+                    target_system,
+                    target_character,
+                    ..
+                } if *k == kind => Some((team.clone(), *target_system, *target_character)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// `n` special forces of `combat` with no espionage, so none is a decoy.
+    fn fighters(world: &mut GameWorld, is_alliance: bool, n: usize) -> Vec<MissionMember> {
+        (0..n)
+            .map(|_| add_commando(world, is_alliance, 0, 90))
+            .collect()
+    }
+
+    fn at(world: &mut GameWorld, character: CharacterKey, system: SystemKey) {
+        world.characters[character].current_system = Some(system);
+    }
+
+    #[test]
+    fn each_diplomat_goes_to_another_system_below_the_cap_least_popular_first() {
+        // port: the targets are the port's; FUN_004815a0 picks the best
+        // diplomat for each.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let warmer = add_system(&mut world, sector, 0.1, 0.3);
+        let coldest = add_system(&mut world, sector, 0.1, 0.1);
+        let _capped = add_system(&mut world, sector, 0.1, 0.8);
+        let best = add_character(&mut world, false, false, 90);
+        let next = add_character(&mut world, false, false, 80);
+        // A third diplomat is left idle: the capped system is no target.
+        let _idle = add_character(&mut world, false, false, 70);
+        let mut planner = planner_for(&world, AiFaction::Empire);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_officers(
+            &mut planner,
+            &world,
+            AiFaction::Empire,
+            &GameConfig::default(),
+            &mut actions,
+        );
+
+        let character = MissionMember::Character;
+        assert_eq!(
+            orders(&actions, MissionKind::Diplomacy),
+            vec![
+                (vec![character(best)], coldest, None),
+                (vec![character(next)], warmer, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn recruitment_sends_one_recruiter_per_character_left_to_recruit() {
+        // FUN_0055fc80 recruits from the side's pool; once the side has
+        // recruited its last (FUN_0052f590), no Recruitment goes out.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _ = add_system(&mut world, sector, 0.1, 0.9);
+        for _ in 0..3 {
+            let recruiter = add_character(&mut world, false, true, 30);
+            world.characters[recruiter].leadership.base = 90;
+        }
+        for _ in 0..2 {
+            let recruit = add_character(&mut world, false, false, 30);
+            world.characters[recruit].recruited = false;
+        }
+        let run = |world: &GameWorld| {
+            let mut planner = planner_for(world, AiFaction::Empire);
+            let mut actions = Vec::new();
+            AISystem::evaluate_officers(
+                &mut planner,
+                world,
+                AiFaction::Empire,
+                &GameConfig::default(),
+                &mut actions,
+            );
+            orders(&actions, MissionKind::Recruitment).len()
+        };
+
+        assert_eq!(run(&world), 2);
+
+        world.set_recruit_pool_empty(crate::dat::Faction::Empire);
+
+        assert_eq!(run(&world), 0);
+    }
+
+    #[test]
+    fn a_sabotage_goes_to_each_enemy_yard() {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let mut yards = Vec::new();
+        for _ in 0..2 {
+            let system = add_system(&mut world, sector, 0.8, 0.1);
+            let yard = world.manufacturing_facilities.insert(
+                crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: DatId(1),
+                    is_alliance: true,
+                    is_shipyard: false,
+                },
+            );
+            world.systems[system].manufacturing_facilities.push(yard);
+            yards.push(system);
+        }
+        for _ in 0..4 {
+            add_commando(&mut world, false, 0, 90);
+        }
+        for member in world.special_forces.values_mut() {
+            member.skills[crate::world::Skill::Espionage as usize] = 90;
+        }
+        let mut planner = planner_for(&world, AiFaction::Empire);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_espionage(
+            &mut planner,
+            &world,
+            AiFaction::Empire,
+            &GameConfig::default(),
+            &mut actions,
+        );
+
+        let targets: Vec<SystemKey> = orders(&actions, MissionKind::Sabotage)
+            .into_iter()
+            .map(|(_, system, _)| system)
+            .collect();
+        assert_eq!(targets.len(), 2);
+        assert!(yards.iter().all(|yard| targets.contains(yard)));
+    }
+
+    #[test]
+    fn an_assassination_goes_where_a_free_enemy_major_stands_up_to_the_covert_cap() {
+        // FUN_004bd0a0 sends the order to the target's system; a character
+        // in a fleet stands at the fleet's system.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let here = add_system(&mut world, sector, 0.8, 0.1);
+        let docked = add_system(&mut world, sector, 0.8, 0.1);
+        let fleet = world.fleets.insert(Fleet {
+            location: docked,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let target = add_character(&mut world, true, true, 30);
+        at(&mut world, target, here);
+        let aboard = add_character(&mut world, true, true, 30);
+        world.characters[aboard].current_fleet = Some(fleet);
+        for (captive, killed) in [(true, false), (false, true)] {
+            let spared = add_character(&mut world, true, true, 30);
+            at(&mut world, spared, here);
+            world.characters[spared].is_captive = captive;
+            world.characters[spared].is_killed = killed;
+        }
+        let own = add_character(&mut world, false, true, 30);
+        at(&mut world, own, here);
+        for _ in 0..2 {
+            let other = add_character(&mut world, true, true, 30);
+            at(&mut world, other, here);
+        }
+        fighters(&mut world, false, 10);
+        let mut planner = planner_for(&world, AiFaction::Empire);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_espionage(
+            &mut planner,
+            &world,
+            AiFaction::Empire,
+            &GameConfig::default(),
+            &mut actions,
+        );
+
+        let sent = orders(&actions, MissionKind::Assassination);
+        assert_eq!(sent.len(), GameConfig::default().ai.max_covert_ops_per_eval);
+        assert!(sent.iter().any(|(_, _, c)| *c == Some(target)));
+        assert!(sent.iter().any(|(_, _, c)| *c == Some(aboard)));
+        for (_, system, character) in &sent {
+            let character = character.unwrap();
+            assert!(character != own && !world.characters[character].is_captive);
+            assert!(!world.characters[character].is_killed);
+            let expected = if character == aboard { docked } else { here };
+            assert_eq!(*system, expected);
+        }
+    }
+
+    #[test]
+    fn abduction_takes_the_weakest_enemy_first_up_to_the_covert_cap() {
+        // port: the port orders abduction targets by combat, base plus half
+        // the variance, weakest first.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let here = add_system(&mut world, sector, 0.8, 0.1);
+        let enemy = |world: &mut GameWorld, base, variance| {
+            let key = add_character(world, true, false, 30);
+            world.characters[key].combat = SkillPair { base, variance };
+            at(world, key, here);
+            key
+        };
+        let middle = enemy(&mut world, 20, 6); // 23
+        let weakest = enemy(&mut world, 22, 0);
+        let strongest = enemy(&mut world, 24, 0);
+        let _spare = enemy(&mut world, 30, 0);
+        let prisoner = enemy(&mut world, 1, 0);
+        world.characters[prisoner].is_captive = true;
+        let own = add_character(&mut world, false, false, 30);
+        at(&mut world, own, here);
+        fighters(&mut world, false, 8);
+        let mut planner = planner_for(&world, AiFaction::Empire);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_espionage(
+            &mut planner,
+            &world,
+            AiFaction::Empire,
+            &GameConfig::default(),
+            &mut actions,
+        );
+
+        let targets: Vec<_> = orders(&actions, MissionKind::Abduction)
+            .into_iter()
+            .map(|(_, _, character)| character.unwrap())
+            .collect();
+        assert_eq!(targets, vec![weakest, middle, strongest]);
+    }
+
+    #[test]
+    fn espionage_goes_to_unexplored_systems_up_to_the_covert_cap() {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        for _ in 0..5 {
+            let system = add_system(&mut world, sector, 0.0, 0.0);
+            world.systems[system].exploration_status = ExplorationStatus::Unexplored;
+        }
+        for _ in 0..10 {
+            add_commando(&mut world, true, 80, 0);
+        }
+        let mut planner = planner_for(&world, AiFaction::Alliance);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_espionage(
+            &mut planner,
+            &world,
+            AiFaction::Alliance,
+            &GameConfig::default(),
+            &mut actions,
+        );
+
+        let sent = orders(&actions, MissionKind::Espionage);
+        assert_eq!(sent.len(), GameConfig::default().ai.max_covert_ops_per_eval);
+        let mut targets: Vec<_> = sent.iter().map(|(_, system, _)| *system).collect();
+        targets.dedup();
+        assert_eq!(targets.len(), sent.len());
+    }
+
+    #[test]
+    fn each_captive_ally_gets_a_rescue_at_its_prison() {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let first_prison = add_system(&mut world, sector, 0.1, 0.8);
+        let second_prison = add_system(&mut world, sector, 0.1, 0.8);
+        let captive = |world: &mut GameWorld, is_alliance, system| {
+            let key = add_character(world, is_alliance, false, 30);
+            world.characters[key].is_captive = true;
+            at(world, key, system);
+            key
+        };
+        let first = captive(&mut world, true, first_prison);
+        let second = captive(&mut world, true, second_prison);
+        let _enemy_prisoner = captive(&mut world, false, first_prison);
+        let free = add_character(&mut world, true, false, 30);
+        at(&mut world, free, first_prison);
+        fighters(&mut world, true, 6);
+        let mut planner = planner_for(&world, AiFaction::Alliance);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_rescue(&mut planner, &world, AiFaction::Alliance, &mut actions);
+
+        let sent: Vec<_> = orders(&actions, MissionKind::Rescue)
+            .into_iter()
+            .map(|(_, system, character)| (system, character.unwrap()))
+            .collect();
+        assert_eq!(sent.len(), 2);
+        assert!(sent.contains(&(first_prison, first)));
+        assert!(sent.contains(&(second_prison, second)));
+    }
+
+    #[test]
+    fn reconnaissance_scouts_only_explored_systems_the_enemy_holds() {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let held = |world: &mut GameWorld, control| {
+            let system = add_system(world, sector, 0.8, 0.1);
+            world.systems[system].control = control;
+            system
+        };
+        let first = held(
+            &mut world,
+            ControlKind::Controlled(crate::dat::Faction::Alliance),
+        );
+        let second = held(
+            &mut world,
+            ControlKind::Controlled(crate::dat::Faction::Alliance),
+        );
+        let _neutral = held(&mut world, ControlKind::Uncontrolled);
+        let _own = held(
+            &mut world,
+            ControlKind::Controlled(crate::dat::Faction::Empire),
+        );
+        for _ in 0..6 {
+            add_commando(&mut world, false, 80, 0);
+        }
+        let mut planner = planner_for(&world, AiFaction::Empire);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_reconnaissance(
+            &mut planner,
+            &world,
+            AiFaction::Empire,
+            &GameConfig::default(),
+            &mut actions,
+        );
+
+        let mut targets: Vec<_> = orders(&actions, MissionKind::Espionage)
+            .into_iter()
+            .map(|(_, system, _)| system)
+            .collect();
+        targets.sort();
+        let mut expected = vec![first, second];
+        expected.sort();
+        assert_eq!(targets, expected);
+    }
+
+    #[test]
+    fn uprising_prevention_sends_diplomats_to_our_systems_below_40_percent() {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let ours = |world: &mut GameWorld, support| {
+            let system = add_system(world, sector, support, 0.5);
+            world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+            system
+        };
+        let lowest = ours(&mut world, 0.2);
+        let low = ours(&mut world, 0.3);
+        let _steady = ours(&mut world, 0.4);
+        let _lower = ours(&mut world, 0.35);
+        let enemy = add_system(&mut world, sector, 0.1, 0.5);
+        world.systems[enemy].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        for _ in 0..3 {
+            add_character(&mut world, true, false, 90);
+        }
+        let mut planner = planner_for(&world, AiFaction::Alliance);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_uprising_prevention(
+            &mut planner,
+            &world,
+            AiFaction::Alliance,
+            &mut actions,
+        );
+
+        let targets: Vec<_> = orders(&actions, MissionKind::Diplomacy)
+            .into_iter()
+            .map(|(_, system, _)| system)
+            .collect();
+        assert_eq!(targets, vec![lowest, low]);
+    }
+
+    #[test]
+    fn uprising_prevention_skips_a_system_at_exactly_40_percent() {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let steady = add_system(&mut world, sector, 0.4, 0.5);
+        world.systems[steady].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        add_character(&mut world, true, false, 90);
+        let mut planner = planner_for(&world, AiFaction::Alliance);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_uprising_prevention(
+            &mut planner,
+            &world,
+            AiFaction::Alliance,
+            &mut actions,
+        );
+
+        assert!(orders(&actions, MissionKind::Diplomacy).is_empty());
+    }
+
+    #[test]
+    fn the_best_free_designer_of_each_tree_researches_it() {
+        // port: research is the port's own dispatch, not a mission; it
+        // takes the highest base plus half the variance, of 30 or more, and
+        // leaves characters the planners sent.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _ = add_system(&mut world, sector, 0.5, 0.5);
+        let designer = |world: &mut GameWorld, tech: TechType, base, variance| {
+            let key = add_character(world, true, false, 30);
+            let pair = SkillPair { base, variance };
+            let c = &mut world.characters[key];
+            match tech {
+                TechType::Ship => c.ship_design = pair,
+                TechType::Troop => c.troop_training = pair,
+                TechType::Facility => c.facility_design = pair,
+            }
+            key
+        };
+        let ship = designer(&mut world, TechType::Ship, 30, 21); // 40
+        let _ = designer(&mut world, TechType::Ship, 39, 0);
+        let troop = designer(&mut world, TechType::Troop, 30, 21);
+        let _ = designer(&mut world, TechType::Troop, 39, 0);
+        let facility = designer(&mut world, TechType::Facility, 30, 21);
+        let _ = designer(&mut world, TechType::Facility, 39, 0);
+        let _below = designer(&mut world, TechType::Facility, 29, 0);
+        let state = AIState::new(AiFaction::Alliance);
+        let planner = planner_for(&world, AiFaction::Alliance);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_research(
+            &state,
+            &planner,
+            &world,
+            &ResearchState::new(),
+            AiFaction::Alliance,
+            &mut actions,
+        );
+
+        let researchers: Vec<_> = actions
+            .iter()
+            .filter_map(|a| match a {
+                AIAction::DispatchResearch {
+                    character,
+                    tech_type,
+                    ..
+                } => Some((*tech_type, *character)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            researchers,
+            vec![
+                (TechType::Ship, ship),
+                (TechType::Troop, troop),
+                (TechType::Facility, facility),
+            ]
+        );
+    }
+
+    #[test]
+    fn research_reads_half_the_variance() {
+        // base 30 + 4 / 2 = 32 loses to a flat 33 in every tree.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _ = add_system(&mut world, sector, 0.5, 0.5);
+        let mut expected = Vec::new();
+        for tech in [TechType::Ship, TechType::Troop, TechType::Facility] {
+            for (base, variance) in [(30, 4), (33, 0)] {
+                let key = add_character(&mut world, true, false, 30);
+                let pair = SkillPair { base, variance };
+                let c = &mut world.characters[key];
+                match tech {
+                    TechType::Ship => c.ship_design = pair,
+                    TechType::Troop => c.troop_training = pair,
+                    TechType::Facility => c.facility_design = pair,
+                }
+                if base == 33 {
+                    expected.push((tech, key));
+                }
+            }
+        }
+        let state = AIState::new(AiFaction::Alliance);
+        let planner = planner_for(&world, AiFaction::Alliance);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_research(
+            &state,
+            &planner,
+            &world,
+            &ResearchState::new(),
+            AiFaction::Alliance,
+            &mut actions,
+        );
+
+        let researchers: Vec<_> = actions
+            .iter()
+            .filter_map(|a| match a {
+                AIAction::DispatchResearch {
+                    character,
+                    tech_type,
+                    ..
+                } => Some((*tech_type, *character)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(researchers, expected);
+    }
+
+    #[test]
+    fn reconnaissance_scouts_the_enemy_s_strongest_systems_first() {
+        // port: recon ranks enemy-held systems by the enemy's own assets;
+        // our regiments there do not count.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let regiment = |world: &mut GameWorld, system, is_alliance| {
+            let troop = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: DatId(0),
+                is_alliance,
+                regiment_strength: 50,
+            });
+            world.systems[system].ground_units.push(troop);
+        };
+        let held = |world: &mut GameWorld| {
+            let system = add_system(world, sector, 0.8, 0.1);
+            world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+            system
+        };
+        let garrisoned = held(&mut world);
+        let empty = held(&mut world);
+        let occupied = held(&mut world);
+        regiment(&mut world, garrisoned, true);
+        regiment(&mut world, occupied, false);
+        for _ in 0..4 {
+            add_commando(&mut world, false, 80, 0);
+        }
+        let mut planner = planner_for(&world, AiFaction::Empire);
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_reconnaissance(
+            &mut planner,
+            &world,
+            AiFaction::Empire,
+            &GameConfig::default(),
+            &mut actions,
+        );
+
+        let targets: Vec<_> = orders(&actions, MissionKind::Espionage)
+            .into_iter()
+            .map(|(_, system, _)| system)
+            .collect();
+        assert_eq!(targets, vec![garrisoned, empty]);
+    }
+
+    #[test]
+    fn research_skips_a_tree_the_side_already_researches_and_anyone_a_planner_sent() {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _ = add_system(&mut world, sector, 0.1, 0.5);
+        let busy = add_character(&mut world, true, false, 90);
+        world.characters[busy].ship_design = SkillPair {
+            base: 90,
+            variance: 0,
+        };
+        let spare = add_character(&mut world, true, false, 0);
+        world.characters[spare].ship_design = SkillPair {
+            base: 40,
+            variance: 0,
+        };
+        world.characters[spare].troop_training = SkillPair {
+            base: 40,
+            variance: 0,
+        };
+        let mut research = ResearchState::new();
+        research.projects.push(crate::research::ResearchProject {
+            tech_type: TechType::Troop,
+            character: busy,
+            faction_is_alliance: true,
+            ticks_remaining: 5,
+            total_ticks: 5,
+        });
+        research.projects.push(crate::research::ResearchProject {
+            tech_type: TechType::Ship,
+            character: busy,
+            faction_is_alliance: false,
+            ticks_remaining: 5,
+            total_ticks: 5,
+        });
+        let state = AIState::new(AiFaction::Alliance);
+        let mut planner = planner_for(&world, AiFaction::Alliance);
+        assert!(planner.plan(MissionKind::Diplomacy).is_some());
+        let mut actions = Vec::new();
+
+        AISystem::evaluate_research(
+            &state,
+            &planner,
+            &world,
+            &research,
+            AiFaction::Alliance,
+            &mut actions,
+        );
+
+        let researchers: Vec<_> = actions
+            .iter()
+            .filter_map(|a| match a {
+                AIAction::DispatchResearch {
+                    character,
+                    tech_type,
+                    ..
+                } => Some((*tech_type, *character)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(researchers, vec![(TechType::Ship, spare)]);
     }
 }

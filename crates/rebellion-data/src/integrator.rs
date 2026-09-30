@@ -43,8 +43,7 @@ use rebellion_core::manufacturing::{
     BuildableKind, CompletionEvent, ManufacturingState, QueueItem,
 };
 use rebellion_core::missions::{
-    MissionEffect, MissionFaction, MissionKind, MissionMember, MissionRequest, MissionResult,
-    MissionState,
+    MissionEffect, MissionFaction, MissionKind, MissionRequest, MissionResult, MissionState,
 };
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_fleet_transit, ArrivalEvent, MovementState,
@@ -1940,7 +1939,8 @@ fn apply_ai_actions_inner(
         let was_applied = match action {
             AIAction::DispatchMission {
                 kind,
-                character,
+                team,
+                decoys,
                 target_system,
                 target_character,
                 target_object,
@@ -1950,8 +1950,8 @@ fn apply_ai_actions_inner(
                         MissionRequest {
                             kind: *kind,
                             faction: mission_faction,
-                            team: vec![MissionMember::Character(*character)],
-                            decoys: Vec::new(),
+                            team: team.clone(),
+                            decoys: decoys.clone(),
                             target_system: *target_system,
                             target_character: *target_character,
                             target_object: *target_object,
@@ -1961,7 +1961,9 @@ fn apply_ai_actions_inner(
                     )
                     .is_ok();
                 if dispatched {
-                    ai_state.mark_busy(*character);
+                    for character in team.iter().chain(decoys).filter_map(|m| m.character()) {
+                        ai_state.mark_busy(character);
+                    }
                 }
                 dispatched
             }

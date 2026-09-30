@@ -4859,6 +4859,9 @@ fn apply_panel_action(
                     rebellion_core::missions::MissionRefusal::TargetUnavailable => {
                         "This target cannot be sabotaged".to_string()
                     }
+                    rebellion_core::missions::MissionRefusal::MembersNotAllowed => {
+                        format!("{char_name} cannot undertake this mission")
+                    }
                 };
                 msg_log.push(GameMessage::new(clock.tick, text, MessageCategory::Mission));
                 return;
@@ -5621,7 +5624,8 @@ fn apply_ai_actions(
         match action {
             AIAction::DispatchMission {
                 kind,
-                character,
+                team,
+                decoys,
                 target_system,
                 target_character,
                 target_object,
@@ -5630,10 +5634,8 @@ fn apply_ai_actions(
                 let request = rebellion_core::missions::MissionRequest {
                     kind: *kind,
                     faction: ai_faction.as_mission_faction(),
-                    team: vec![rebellion_core::missions::MissionMember::Character(
-                        *character,
-                    )],
-                    decoys: Vec::new(),
+                    team: team.clone(),
+                    decoys: decoys.clone(),
                     target_system: *target_system,
                     target_character: *target_character,
                     target_object: *target_object,
@@ -5642,7 +5644,9 @@ fn apply_ai_actions(
                 if mission_state.dispatch_guarded(request, world).is_err() {
                     continue;
                 }
-                ai_state.mark_busy(*character);
+                for character in team.iter().chain(decoys).filter_map(|m| m.character()) {
+                    ai_state.mark_busy(character);
+                }
                 let faction_name = match ai_faction {
                     AiFaction::Alliance => "Alliance",
                     AiFaction::Empire => "Empire",

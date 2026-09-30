@@ -560,6 +560,10 @@ pub enum MissionRefusal {
     /// `0x28`), or DS Sabotage names no Death Star (`FUN_005744c0`,
     /// `0x40`/`0x29`).
     TargetUnavailable,
+    /// The record does not admit these members: a special force or
+    /// character the record does not take, or a side it does not run for
+    /// (`FUN_00583320`, `0x40`/`0x01`).
+    MembersNotAllowed,
 }
 
 /// What the member checks read about one member.
@@ -620,8 +624,69 @@ fn member_state(world: &GameWorld, member: MissionMember) -> Option<MemberState>
     }
 }
 
+/// The mission bits a character contributes to the member mask
+/// (`FUN_004ed260`).
+const CHARACTER_MISSION_BIT: u32 = 0x1_0000;
+
+/// Whether `members` may undertake a mission whose record admits `rules`
+/// (`FUN_005830a0` builds the mask, `FUN_00583320` checks it). Every bit of
+/// the special forces' SPECFCSD masks and of the characters' `0x10000` must
+/// be allowed, and the members must all be of one side that the record
+/// admits; no side at all fails too (status `0x16`). Skills and rank play no
+/// part.
+#[must_use]
+pub fn members_allowed(
+    world: &GameWorld,
+    rules: crate::world::MissionMemberRules,
+    members: impl IntoIterator<Item = MissionMember>,
+) -> bool {
+    let (mut special_forces, mut characters) = (0_u32, 0_u32);
+    let (mut alliance, mut empire) = (false, false);
+    for member in members {
+        let is_alliance = match member {
+            MissionMember::Character(key) => {
+                let Some(c) = world.characters.get(key) else {
+                    continue;
+                };
+                characters |= CHARACTER_MISSION_BIT;
+                c.is_alliance
+            }
+            MissionMember::SpecialForce(key) => {
+                let Some(unit) = world.special_forces.get(key) else {
+                    continue;
+                };
+                // port: a unit whose class is missing contributes no bits.
+                special_forces |= world
+                    .special_force_classes
+                    .get(&unit.class_dat_id)
+                    .map_or(0, |class| class.mission_mask);
+                unit.is_alliance
+            }
+        };
+        if is_alliance {
+            alliance = true;
+        } else {
+            empire = true;
+        }
+    }
+    special_forces & rules.special_force_mask == special_forces
+        && characters & rules.character_mask == characters
+        && alliance != empire
+        && (!alliance || rules.alliance)
+        && (!empire || rules.empire)
+}
+
 /// Whether a present member stands in a fleet (`Some(true)`) or at a system
 /// (`Some(false)`); `None` without a location.
+/// Whether two present members stand at the same location, as
+/// `FUN_0054c200` requires of every member after the first free one.
+pub(crate) fn members_together(world: &GameWorld, a: MissionMember, b: MissionMember) -> bool {
+    match (member_state(world, a), member_state(world, b)) {
+        (Some(a), Some(b)) => a.location == b.location,
+        _ => false,
+    }
+}
+
 pub(crate) fn member_location_kind(world: &GameWorld, member: MissionMember) -> Option<bool> {
     match member_state(world, member)?.location {
         MemberLocation::Fleet(_) => Some(true),
@@ -818,7 +883,7 @@ pub fn raise_skill(world: &mut GameWorld, character: CharacterKey, skill: Skill,
 /// `0x38..0x3c`, MNCHARSD, `FUN_0056f450`) it has not recruited (`+0x50` bit
 /// 1 clear). port: the original walks its character container
 /// (`FUN_00506e20`); the port walks them in `DatId` order.
-fn recruit_pool(world: &GameWorld, side: crate::dat::Faction) -> Vec<CharacterKey> {
+pub(crate) fn recruit_pool(world: &GameWorld, side: crate::dat::Faction) -> Vec<CharacterKey> {
     let mut pool: Vec<(crate::ids::DatId, CharacterKey)> = world
         .characters
         .iter()
@@ -933,6 +998,12 @@ impl MissionState {
         self.en_route.iter().any(|transit| transit.member == member)
     }
 
+    /// Put `transit` on the road, for other modules' tests.
+    #[cfg(test)]
+    pub(crate) fn push_transit(&mut self, transit: MemberTransit) {
+        self.en_route.push(transit);
+    }
+
     /// Dispatch a new mission and return its assigned id. Members are taken
     /// as given; [`MissionState::dispatch_guarded`] applies the original's
     /// member rules. The mission steps from phase 0 on the next advance.
@@ -1036,6 +1107,18 @@ impl MissionState {
         let [team, decoys, captured] = lists;
         if team.is_empty() {
             return Err(MissionRefusal::EmptyTeam);
+        }
+        // FUN_005420d0 checks the mask of all three lists (FUN_00583320).
+        // port: a kind with no MISSNSD record admits any members.
+        if let Some(record) = request
+            .kind
+            .record_id()
+            .and_then(|id| world.mission_record(id))
+        {
+            let members = team.iter().chain(&decoys).chain(&captured).copied();
+            if !members_allowed(world, record.members, members) {
+                return Err(MissionRefusal::MembersNotAllowed);
+            }
         }
         for member in team.iter().chain(&decoys).chain(&captured) {
             set_on_mission(world, *member, true);
@@ -4010,6 +4093,12 @@ mod tests {
                 prisoner_target: false,
                 free_target: false,
             },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0,
+                character_mask: 0x1_0000,
+            },
         }
     }
 
@@ -4030,6 +4119,12 @@ mod tests {
                 opponent_target: true,
                 prisoner_target: true,
                 ..Default::default()
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0x802,
+                character_mask: 0x1_0000,
             },
         }
     }
@@ -4536,6 +4631,12 @@ mod tests {
                 calm_target: false,
                 prisoner_target: false,
                 free_target: false,
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0x402,
+                character_mask: 0x1_0000,
             },
             ..diplomacy_record()
         }
@@ -5044,6 +5145,14 @@ mod tests {
                     free_target: true,
                     ..Default::default()
                 },
+                // port: the shipped record admits only Empire members; this
+                // fixture's assassin is Alliance, so both sides are allowed.
+                members: crate::world::MissionMemberRules {
+                    alliance: true,
+                    empire: true,
+                    special_force_mask: 0x800,
+                    character_mask: 0x1_0000,
+                },
             }];
         }
         let assassin = agent_at(world, here, true);
@@ -5180,6 +5289,12 @@ mod tests {
                 revolting_target: true,
                 calm_target: true,
                 ..Default::default()
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0,
+                character_mask: 0x1_0000,
             },
         }];
         let recruiter = agent_at(&mut world, here, true);
@@ -5649,5 +5764,122 @@ mod tests {
         };
         let taken: Vec<f64> = (0..3).map(|_| draws.next()).collect();
         assert_eq!(taken, vec![0.1, 0.2, 0.5]);
+    }
+
+    // --- Member legality (FUN_005830a0, FUN_00583320) ---
+
+    /// A special force of a class whose SPECFCSD mission mask is `mask`.
+    fn unit_of_mask(world: &mut GameWorld, mask: u32, is_alliance: bool) -> MissionMember {
+        let class_dat_id = crate::ids::DatId::new(0x3c00_0000 | mask);
+        world.special_force_classes.insert(
+            class_dat_id,
+            crate::world::SpecialForceClassDef {
+                skills: [skill_pair(0); 8],
+                mission_mask: mask,
+            },
+        );
+        MissionMember::SpecialForce(world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id,
+            is_alliance,
+            skills: [0; 8],
+            on_mission: false,
+        }))
+    }
+
+    #[test]
+    fn a_special_force_is_allowed_only_when_the_record_takes_every_bit_of_its_class() {
+        // FUN_00583320: the members' SPECFCSD masks must be a subset of the
+        // record's +0x48. The shipped Rescue record takes 0x802.
+        let mut world = minimal_world();
+        let rescue = rescue_record().members;
+        let commandos = unit_of_mask(&mut world, 0x2, true);
+        let spies = unit_of_mask(&mut world, 0x8, true);
+
+        assert!(members_allowed(&world, rescue, [commandos]));
+        assert!(!members_allowed(&world, rescue, [spies]));
+        assert!(!members_allowed(&world, rescue, [commandos, spies]));
+    }
+
+    #[test]
+    fn a_record_with_no_special_force_bits_takes_only_characters() {
+        // The shipped Diplomacy record has +0x48 = 0 and +0x4c = 0x10000.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let diplomacy = diplomacy_record().members;
+        let envoy = MissionMember::Character(agent_at(&mut world, here, true));
+        let unit = unit_of_mask(&mut world, 0x2, true);
+
+        assert!(members_allowed(&world, diplomacy, [envoy]));
+        assert!(!members_allowed(&world, diplomacy, [envoy, unit]));
+        let no_characters = crate::world::MissionMemberRules {
+            character_mask: 0,
+            ..diplomacy
+        };
+        assert!(!members_allowed(&world, no_characters, [envoy]));
+    }
+
+    #[test]
+    fn members_must_share_one_side_that_the_record_runs_for() {
+        // FUN_00583320: both sides fail (0x14), no side fails (0x16), and a
+        // side needs the record's +0x40 (Alliance) or +0x44 (Empire). The
+        // shipped Assassination record is Empire-only.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let rules = crate::world::MissionMemberRules {
+            alliance: false,
+            empire: true,
+            special_force_mask: 0x800,
+            character_mask: 0x1_0000,
+        };
+        let rebel = MissionMember::Character(agent_at(&mut world, here, true));
+        let imperial = MissionMember::Character(agent_at(&mut world, here, false));
+
+        assert!(members_allowed(&world, rules, [imperial]));
+        assert!(!members_allowed(&world, rules, [rebel]));
+        assert!(!members_allowed(&world, rules, [imperial, rebel]));
+        assert!(!members_allowed(&world, rules, []));
+        // The shipped DS Sabotage record is Alliance-only.
+        let alliance_only = crate::world::MissionMemberRules {
+            alliance: true,
+            empire: false,
+            ..rules
+        };
+        assert!(members_allowed(&world, alliance_only, [rebel]));
+        assert!(!members_allowed(&world, alliance_only, [imperial]));
+    }
+
+    #[test]
+    fn a_request_whose_members_the_record_does_not_admit_is_refused() {
+        // FUN_005420d0 runs the member check on the team, decoys, and
+        // captured before anything is created.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        world.mission_records = vec![diplomacy_record()];
+        let envoy = MissionMember::Character(agent_at(&mut world, here, true));
+        let unit = unit_of_mask(&mut world, 0x2, true);
+        world.systems[here].special_forces.push(match unit {
+            MissionMember::SpecialForce(key) => key,
+            MissionMember::Character(_) => unreachable!(),
+        });
+        let mut state = MissionState::new();
+
+        let refused = state.dispatch_guarded(
+            MissionRequest {
+                decoys: vec![unit],
+                ..MissionRequest::single(
+                    MissionKind::Diplomacy,
+                    MissionFaction::Alliance,
+                    envoy.character().unwrap(),
+                    here,
+                    None,
+                    0,
+                )
+            },
+            &mut world,
+        );
+
+        assert_eq!(refused, Err(MissionRefusal::MembersNotAllowed));
+        assert!(state.is_empty());
+        assert!(!world.characters[envoy.character().unwrap()].on_mission);
     }
 }

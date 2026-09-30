@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v22, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v23, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-09-29
@@ -11,14 +11,14 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v22, and it is the only one
+serializable snapshot. The current format is v23, and it is the only one
 that loads.
 
-## Native format (v22)
+## Native format (v23)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 22
+[version: u32 LE]             — SAVE_VERSION = 23
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
 [mod_count: u32 LE]
@@ -103,8 +103,8 @@ released, restore versioned migration before the next layout change.
 WASM stores base64 bincode and versioned JSON metadata in `localStorage`:
 
 ```text
-rebellion_save_v22_<slot>
-rebellion_meta_v22_<slot>
+rebellion_save_v23_<slot>
+rebellion_meta_v23_<slot>
 ```
 
 Metadata includes the full save name, game tick, and fingerprint with its

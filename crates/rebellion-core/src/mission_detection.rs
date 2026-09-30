@@ -821,6 +821,12 @@ mod tests {
                 calm_target: true,
                 ..MissionTargetRules::default()
             },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0x402,
+                character_mask: 0x1_0000,
+            },
         }
     }
 

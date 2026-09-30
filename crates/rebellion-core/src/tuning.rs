@@ -27,17 +27,8 @@ pub struct AiConfig {
     /// Game-days between AI re-evaluations. **Augmentation** (original unknown).
     pub tick_interval: u64,
 
-    /// Minimum diplomacy skill to dispatch on diplomacy missions. **Parity.**
-    pub diplomacy_skill_threshold: u32,
-
     /// Maximum popularity at which AI still sends diplomacy missions. **Augmentation.**
     pub diplomacy_target_popularity_cap: f32,
-
-    /// Minimum espionage skill for covert ops dispatch. **Augmentation.**
-    pub espionage_skill_threshold: u32,
-
-    /// Minimum expected success probability for covert ops. **Augmentation.**
-    pub covert_min_success_prob: f64,
 
     /// Maximum covert operations dispatched per evaluation cycle. **Augmentation.**
     pub max_covert_ops_per_eval: usize,
@@ -63,9 +54,6 @@ pub struct AiConfig {
     pub weight_deconfliction: f64,
     /// Weight for battle freshness in attack scoring.
     pub weight_freshness: f64,
-
-    /// Minimum popularity threshold for Alliance covert target selection. **Augmentation.**
-    pub covert_target_popularity_threshold: f32,
 
     /// Alliance deployment budget — fraction of `max_attack_fronts` the Alliance uses.
     /// **Parity** (`FUN_00506ea0`: Alliance evaluator at +0xc4 on global struct).
@@ -101,10 +89,7 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             tick_interval: 7,
-            diplomacy_skill_threshold: 60,
             diplomacy_target_popularity_cap: 0.8,
-            espionage_skill_threshold: 50,
-            covert_min_success_prob: 0.30,
             max_covert_ops_per_eval: 3,
             max_construction_yards: 5,
             max_attack_fronts: 3,
@@ -114,7 +99,6 @@ impl Default for AiConfig {
             weight_proximity: 0.30,
             weight_deconfliction: 0.25,
             weight_freshness: 0.15,
-            covert_target_popularity_threshold: 0.3,
             alliance_deploy_budget: 0.6,
             empire_deploy_budget: 0.8,
             troop_garrison_min: 1,

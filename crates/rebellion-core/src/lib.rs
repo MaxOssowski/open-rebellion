@@ -16,6 +16,7 @@ pub mod ids;
 pub mod jedi;
 pub mod manufacturing;
 mod mission_detection;
+mod mission_planning;
 pub mod missions;
 pub mod movement;
 pub mod net_protocol;
