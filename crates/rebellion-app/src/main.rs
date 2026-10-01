@@ -4967,6 +4967,9 @@ fn apply_panel_action(
                 tick,
             };
             if let Err(refusal) = mission_state.dispatch_guarded(request, world) {
+                // port: FUN_00487c90 shows no text; the side's advisor
+                // schedules a reaction (`mission-dialog.md`, "Refusal"). These
+                // lines stand in until the advisor plays it (audit P34).
                 let text = match refusal {
                     rebellion_core::missions::MissionRefusal::EmptyTeam => {
                         format!("{char_name} is a prisoner and cannot lead a mission")
