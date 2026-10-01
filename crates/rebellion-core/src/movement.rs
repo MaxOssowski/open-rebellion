@@ -34,11 +34,12 @@
 //! // for event in &arrivals { apply_fleet_arrival(&mut world, &mut cargo, event); }
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::dat::Faction;
 use crate::ids::{FleetKey, SystemKey};
 use crate::tick::TickEvent;
 use crate::troop_transport::TroopTransportState;
@@ -451,6 +452,36 @@ pub fn fleet_move_enabled(
     expected_is_alliance: bool,
 ) -> bool {
     movable_fleet(state, world, fleet, expected_is_alliance).is_ok()
+}
+
+/// Whether a fleet's valid move asks for confirmation before it departs:
+/// `FUN_00487cc0`. Confirmed Move (`0x202`, `confirmed`) always asks. Move
+/// (`0x201`) asks only when the fleet's system is blockaded (`+0x88` bit
+/// `0x20`) and the system's side bits (`+0x24` bits 6-7, [`ControlKind`](crate::world::ControlKind))
+/// equal the fleet's. port: an uprising keeps its faction's side, as
+/// [`ControlKind::is_controlled_by`](crate::world::ControlKind::is_controlled_by) reads it.
+#[must_use]
+pub fn fleet_move_confirms(
+    world: &GameWorld,
+    blockaded: &HashSet<SystemKey>,
+    fleet: FleetKey,
+    confirmed: bool,
+) -> bool {
+    if confirmed {
+        return true;
+    }
+    let Some(value) = world.fleets.get(fleet) else {
+        return false;
+    };
+    let Some(system) = world.systems.get(value.location) else {
+        return false;
+    };
+    let side = if value.is_alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    blockaded.contains(&value.location) && system.control.is_controlled_by(side)
 }
 
 /// Validate a player-facing fleet dispatch without mutating the campaign:
@@ -1142,6 +1173,33 @@ mod tests {
         world.fleets.remove(fleet);
         let idle = MovementState::new();
         assert!(!fleet_move_enabled(&idle, &world, fleet, true));
+    }
+
+    #[test]
+    fn a_move_asks_first_only_from_its_own_sides_blockaded_system() {
+        // FUN_00487cc0: 0x202 always confirms; 0x201 confirms when the
+        // fleet's system has the blockade bit and the fleet's side bits.
+        let (mut world, origin, _) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let fleet = add_test_fleet(&mut world, origin, ship_key);
+        let blockaded = HashSet::from([origin]);
+        let clear = HashSet::new();
+        world.systems[origin].control = ControlKind::Controlled(Faction::Alliance);
+
+        assert!(fleet_move_confirms(&world, &clear, fleet, true));
+        assert!(!fleet_move_confirms(&world, &clear, fleet, false));
+        assert!(fleet_move_confirms(&world, &blockaded, fleet, false));
+
+        world.systems[origin].control = ControlKind::Uprising(Faction::Alliance);
+        assert!(fleet_move_confirms(&world, &blockaded, fleet, false));
+        for other in [
+            ControlKind::Controlled(Faction::Empire),
+            ControlKind::Contested,
+            ControlKind::Uncontrolled,
+        ] {
+            world.systems[origin].control = other;
+            assert!(!fleet_move_confirms(&world, &blockaded, fleet, false));
+        }
     }
 
     #[test]

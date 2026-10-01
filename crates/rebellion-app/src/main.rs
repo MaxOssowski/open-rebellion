@@ -50,8 +50,9 @@ use rebellion_core::missions::{
     MissionEffect, MissionFaction, MissionKind, MissionState, MissionSystem,
 };
 use rebellion_core::movement::{
-    apply_fleet_arrival, begin_faction_fleet_transit, begin_fleet_transit, reconcile_fleet_orbits,
-    validate_fleet_dispatch, MovementState, MovementSystem,
+    apply_fleet_arrival, begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms,
+    fleet_move_enabled, reconcile_fleet_orbits, validate_fleet_dispatch, MovementState,
+    MovementSystem,
 };
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
@@ -3640,7 +3641,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                                                 &[member],
                                             )
                                         }),
-                                    fleet_move: false,
+                                    fleet_move: match selection {
+                                        Some(MenuObject::Fleet(fleet)) => fleet_move_enabled(
+                                            &movement_state,
+                                            &world,
+                                            fleet,
+                                            player_faction == MissionFaction::Alliance,
+                                        ),
+                                        _ => false,
+                                    },
                                 };
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
@@ -3666,6 +3675,17 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 targeting =
                                     Some(Targeting::new(TargetOrder::Mission(vec![member])));
                             }
+                        }
+                        // FUN_004ac730 → FUN_00486fb0: a move with no
+                        // target goes to targeting too (FUN_00429320).
+                        Some((
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
+                            Some(MenuObject::Fleet(fleet)),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::FleetMove {
+                                fleet,
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                            }));
                         }
                         // port: the other items are drawn disabled.
                         Some(_) | None => {}
@@ -3732,20 +3752,60 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 &system_window_state,
                                 pointer,
                             );
-                            if let Some(TargetingEnd::Target {
-                                order: TargetOrder::Mission(team),
-                                system,
-                            }) = targeting.take().map(|order| order.release(destination))
-                            {
-                                let kinds = rebellion_core::missions::available_kinds(
-                                    &world,
-                                    &uprising_state,
-                                    player_faction,
-                                    &team,
-                                    &[],
+                            match targeting.take().map(|order| order.release(destination)) {
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::Mission(team),
                                     system,
-                                );
-                                mission_dialog_state.open(player_faction, system, team, kinds);
+                                }) => {
+                                    let kinds = rebellion_core::missions::available_kinds(
+                                        &world,
+                                        &uprising_state,
+                                        player_faction,
+                                        &team,
+                                        &[],
+                                        system,
+                                    );
+                                    mission_dialog_state.open(player_faction, system, team, kinds);
+                                }
+                                // FUN_00487740: the validator first, then
+                                // FUN_00487cc0 decides whether to confirm.
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::FleetMove { fleet, confirmed },
+                                    system,
+                                }) => {
+                                    let is_alliance = player_faction == MissionFaction::Alliance;
+                                    if let Err(error) = validate_fleet_dispatch(
+                                        &movement_state,
+                                        &world,
+                                        fleet,
+                                        system,
+                                        is_alliance,
+                                    ) {
+                                        // port: FUN_00487c90 plays the side's
+                                        // advisor reaction; this line stands in.
+                                        msg_log.push(GameMessage::new(
+                                            clock.tick,
+                                            format!("Fleet move rejected: {error}"),
+                                            MessageCategory::Event,
+                                        ));
+                                    } else if fleet_move_confirms(
+                                        &world,
+                                        blockade_state.blockaded_systems(),
+                                        fleet,
+                                        confirmed,
+                                    ) {
+                                        // port: the confirmation window
+                                        // (FUN_0048a340) is not ported yet, so
+                                        // the order is dropped.
+                                    } else {
+                                        panel_actions.push(PanelAction::DispatchFleet {
+                                            fleet,
+                                            destination: system,
+                                            troops: Vec::new(),
+                                        });
+                                    }
+                                }
+                                Some(TargetingEnd::Dropped) | None => {}
                             }
                         }
                     }

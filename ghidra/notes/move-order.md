@@ -392,6 +392,11 @@ not found. The confirmation window's own Escape is recovered
   system, a sector window's the planet whose 37 by 37 rectangle holds the
   point (`sector-window-hit-test.md`), and the bare map nothing. Mission
   uses it too.
+- Phase 3b: a fleet's Move and Confirmed Move start targeting; the release
+  validates (refusals go to the message log, `port:`), then
+  `movement::fleet_move_confirms` applies `FUN_00487cc0`, then the fleet
+  departs. A move that asks for confirmation is dropped until the window
+  (phase 4) is ported.
 
 ## Order 0x214 (Destination)
 
