@@ -419,9 +419,13 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   orders from 306,012 to 78,946 ([F-007A evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-fleet-redispatch.md)).
 - [x] Model fleet position explicitly, merge compatible arrivals, and prevent
   production from attaching to in-transit fleets ([F-007B evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-fleet-position-consolidation.md)).
-- [x] Wire ordinary player fleet dispatch through the validated authoritative
+- [ ] Wire ordinary player fleet dispatch through the validated authoritative
   departure path and pass independent bitmap acceptance for both factions
   ([F-007C evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-player-fleet-dispatch.md)).
+  Reopened 2026-10-01: the egui context menu that set the destination lost
+  its caller in 23d15da, so the player cannot move a fleet, and the fleet
+  panel's destination banner and Dispatch button are unreachable. The
+  original Move order (below) restores it.
 - [x] Resolve every hostile task force at a system as one bounded engagement,
   persist fighter attrition, correct fighter launch and shield handling, and
   suppress unchanged five-tick stalemates. Seed 42 now reports two decisive
@@ -485,9 +489,22 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   `ai-mission-planning.md`, and `mission-dialog.md`. Phases 0-6 have landed:
   the lifecycle, detection, the per-member roll, the recruit pool, sabotage
   targets, legality, the AI team and decoy selectors, the original mission
-  dialog, dispatch telemetry, and the dialog's browser gate. Phase 7 builds the
-  dialog's drag from the system window, removes the invented mission entry
-  points, and traces the validator's error strings.
+  dialog, dispatch telemetry, and the dialog's browser gate. Phase 7 ports the
+  original entry (right click, Mission, targeting cursor, target), removes the
+  invented entry points, and traces refusals to the advisor; the entry passes
+  its browser gate for both sides. A native check remains.
+- [ ] Port the Move and Confirmed Move orders (`0x201`/`0x202`): the pop-up
+  menu items, targeting with the `+0x70` hit test, and the list drag
+  (`FUN_006083c0` notification `0x29a`). This restores player fleet movement
+  (F-007C). Retire, the Command submenu, and Status share the menu.
+- [ ] Port targeting of characters and objects (`+0x68` hit test, the walk up
+  from a team member) so the dialog offers Rescue, Assassination, and
+  Abduction (F-019).
+- [ ] Trace the galaxy view's right click on a system or fleet, then port
+  what it opens.
+- [ ] Play the advisor's mission-refusal reactions (P34; the slots are in
+  `ghidra/notes/mission-dialog.md`, "Refusal"), replacing the message-log
+  stand-ins.
 - [ ] Add the original mission kinds the port lacks: Reconnaissance, Research,
   Palace, Bounty, Jedi Training, and the leisure and movement kinds (F-040).
 - [x] Gate uncited simulation rules with `tools/provenance-scan`; its baseline
@@ -510,6 +527,8 @@ would tune around known simulation feedback defects.
 ### M2: One Authoritative Game Engine — 3 weeks
 
 - [ ] Route the app and playtest through one simulation tick API and event sink.
+- [ ] Move the panel-action handling out of `rebellion-app/src/main.rs` into
+  modules native tests reach; every mutation run leaves survivors there.
 - [ ] Make automatic, tactical, and ground combat share resumable core state and calculations. Tactical ground damage and occupation capture now persist.
 - [ ] Construct the victory modal and unify win/loss transitions.
 - [ ] Remove `AdvanceTicks` or make it execute the real simulation.

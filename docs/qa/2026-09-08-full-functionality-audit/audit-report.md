@@ -262,7 +262,9 @@ cross-runtime proof remain open
   attaches production only to orbiting garrisons, preserves significant task
   forces, and merges anonymous same-faction arrivals deterministically. The
   then-current five-seed runs passed the fleet-arena and move/arrival bounds.
-  F-007C wires
+  F-007C (reopened 2026-10-01: its only entry, the egui system context
+  menu's Move Fleet Here, lost its caller in 23d15da, so the player cannot
+  move a fleet; the original entry is the Move order) wired
   ordinary player dispatch through the same validated departure helper, fixes
   map/context-menu click ordering and stale targets, and reports authoritative
   destinations and countdowns in the fleet panel. Astra medium passed both
@@ -764,9 +766,10 @@ cross-runtime proof remain open
 ### F-019: Subdue, guarded dispatch, and initial Force awakening are never called
 
 - Severity: P1
-- Status: partially remediated; phases 0-6 of the mission port have landed
-  (the decoy rule and the Subdue success check now run, and the dialog passes
-  its browser gate). The dialog's drag entry (phase 7) remains
+- Status: partially remediated; phases 0-7 of the mission port have landed
+  (the decoy rule and the Subdue success check now run, and the dialog opens
+  from its original entry and passes its browser gate). A native check of
+  that entry, and targets other than systems, remain
 - Evidence (before the 2026-09-25 fix): `UprisingSystem::try_subdue`
   (`uprising.rs`), `MissionSystem::dispatch_guarded` and `check_decoy`
   (`missions.rs`), and `JediSystem::apply_initial_awakening` (`jedi.rs`) had
@@ -1127,6 +1130,47 @@ cross-runtime proof remain open
   - Native: the dialog's input is covered by the egui harness tests. A live
     native capture waits for the phase 7 drag, which is the dialog's only
     original entry point.
+- Phase 7 (2026-10-01): the original entry and cleanup.
+  - Correction: a drag from the system window onto the map is a move
+    (`0x201`/`0x202`), not the dialog's entry. A mission starts with a right
+    click on an object, Mission, the targeting cursor, and a click on the
+    target (manual pp. 39, 57, 100; `ghidra/notes/object-popup-menu.md`).
+  - 7a: `game_menu.rs` draws the Game Menu Window (`FUN_00442860`) for any
+    owner; the speed menu uses it, and its first two items were swapped.
+  - 7b: a right click on a character or special force in a system window
+    opens the object pop-up menu (`FUN_004ac5c0`, `FUN_0051d990`) with the
+    STRATEGY records' rows. Mission follows `FUN_0051fe20`; Encyclopedia
+    opens the Encyclopedia. port: Move, Confirmed Move, Command, Status, and
+    Retire are drawn disabled.
+  - 7c: Mission starts the galaxy view's targeting mode (`FUN_00429320`,
+    `FUN_00422ce0`): the view holds the pointer, REBEXE.EXE cursor 1002 is
+    staged and drawn with its hotspot on the pointer, and a release on a map
+    system opens the dialog through `available_kinds`. port: only a map
+    system is a target (no `+0x68` object hit test), Shift's pass-through is
+    not ported, and Escape cancels.
+  - 7d: the invented entry points are gone: Send Diplomat, Send Spy,
+    `PanelAction::OpenMissionTo`, the missions panel's Dispatch tab, and
+    `PanelAction::OpenMissionDialog`.
+  - 7e: a refused order shows no text in the original; the side's advisor
+    schedules a reaction (`FUN_00487c90` to advisor slot `+0xc`,
+    `ghidra/notes/mission-dialog.md`, "Refusal"). port: the message-log lines
+    stand in until P34 plays the reactions.
+  - 7f: the unreachable egui system and fleet context menus and
+    `PanelAction::InitiateFleetMove` are deleted (see F-007C). The browser
+    gate found the pop-up menu and the dialog drawn under the system window
+    they open over; both now take the order above the modeless windows.
+    Fixture scenario `MissionTargeting` (code 45) and the gate's third
+    scenario reach the dialog through the original entry for both sides: six
+    of six fresh muted Chrome for Testing 151.0.7922.34 runs pass, 378,406
+    of 378,406 checked pixels (dialog chrome and cursor 1002's 89 opaque
+    pixels), 24 of 24 requests, zero console or page errors. Fixture WASM
+    `b384974078a2…`, runtime pack `d1989cd84df5…`, cursor `d4196586faef…`.
+    Evidence: the ignored
+    `.artifacts/interface-parity/mission-dialog-2026-10-01T18-07-25-702Z-95298/`.
+  - Open: a native check of the entry and of the speed menu's colors;
+    character and object targets
+    (Rescue, Assassination, and Abduction need them); the advisor's refusal
+    reactions (P34).
 
 ### F-020: A mod with a missing dependency fails silently
 

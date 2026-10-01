@@ -210,7 +210,7 @@ and an accelerator; the strategic multiplayer shell uses these alongside
 code-built controls. Neither DLL contains the full rendered interface as a
 standalone screenshot.
 
-## REBEXE.EXE (2.8MB) — 2 cursor groups
+## REBEXE.EXE (2.8MB)—2 cursor groups
 
 The executable carries resources too. Only its cursor groups are cataloged;
 its other resource types are not inventoried yet.

@@ -94,6 +94,12 @@ acceptance plan required before the project can claim 100% functionality.
 | [GitHub Pages proof](evidence/2026-09-08-github-pages.md) | Successful deployment run and public HTTP smoke tests for P40. |
 | [Project archive](../../../archive/INDEX.md) | Superseded progress and playtest artifacts retained for provenance. |
 
+## Ledger rules
+
+- An open item names the finding that owns it, so a feature that waits on
+  another (F-019's refusal reactions on P34) cannot read as finished.
+- A removed entry point reopens every finding whose acceptance used it.
+
 ## Current conclusion
 
 The project is substantially implemented, but it is not yet demonstrably 100%
@@ -119,11 +125,12 @@ Fleet-miniature acceptance, deterministic four-request browser
 startup, F-001 browser Save/Load/Delete, the F-011A fingerprint primitive,
 F-011B1 save continuation, the F-011B2 replay/data contract, F-011B3 native
 replay execution, F-011B4 native/WASM fixture equivalence, F-007A fleet-order
-protection, F-007B fleet-position consolidation, F-007C player fleet dispatch,
+protection, F-007B fleet-position consolidation,
 F-007D system-combat backlog closure, the F-007E logistics/data/repair,
 transport/occupation/player-dispatch, and victory-contract checkpoints, and F-016A/B/C/D/E
 cockpit/setup functionality now pass; P03 and P04 are complete. The source
-review still leaves capture/evasion open. Faction liveness, the wider
+review still leaves capture/evasion open. F-007C player fleet dispatch is
+reopened: its context-menu entry lost its caller in 23d15da. Faction liveness, the wider
 campaign loop, five-seed cross-runtime replay,
 interactive/tactical convergence, browser
 memory/media work, cross-browser performance, formatting, lint, and
