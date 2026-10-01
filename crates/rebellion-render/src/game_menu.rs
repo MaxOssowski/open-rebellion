@@ -14,7 +14,7 @@ use egui_macroquad::egui;
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{
-    gid_popup_frame, paint_gid_frame_border, CockpitFaction, CockpitLayout,
+    gid_popup_frame, paint_gid_frame_border, CockpitFaction, CockpitLayout, CockpitViewport,
     STRATEGIC_LOGICAL_HEIGHT, STRATEGIC_LOGICAL_WIDTH,
 };
 
@@ -136,6 +136,43 @@ pub fn game_menu_origin(cursor: (f32, f32), size: (f32, f32), owner: (f32, f32))
     (x, y)
 }
 
+/// Where a menu opens: the cursor point and the window that owns the menu,
+/// both in 640 by 480 canvas coordinates. `FUN_00442860` flips the menu at
+/// the owner's right and bottom edges.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GameMenuPlacement {
+    pub owner: CockpitViewport,
+    pub point: (f32, f32),
+}
+
+impl GameMenuPlacement {
+    /// A menu owned by the main frame, as the speed menu is (`FUN_0042d190`
+    /// passes the command center window).
+    #[must_use]
+    pub const fn in_frame(point: (f32, f32)) -> Self {
+        Self {
+            owner: CockpitViewport {
+                x: 0.0,
+                y: 0.0,
+                width: STRATEGIC_LOGICAL_WIDTH,
+                height: STRATEGIC_LOGICAL_HEIGHT,
+            },
+            point,
+        }
+    }
+
+    /// The menu's top-left corner for a menu of `size`.
+    #[must_use]
+    pub fn origin(self, size: (f32, f32)) -> (f32, f32) {
+        let (x, y) = game_menu_origin(
+            (self.point.0 - self.owner.x, self.point.1 - self.owner.y),
+            size,
+            (self.owner.width, self.owner.height),
+        );
+        (self.owner.x + x, self.owner.y + y)
+    }
+}
+
 /// What the player did with an open menu this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameMenuResponse {
@@ -146,13 +183,13 @@ pub enum GameMenuResponse {
     Dismissed,
 }
 
-/// Draw a Game Menu Window at a logical anchor in the galaxy view.
+/// Draw a Game Menu Window at `placement`.
 ///
 /// Rows highlight under the pointer, a left click chooses an enabled row
 /// (`FUN_004424c0`), and a press outside or Escape closes the menu.
 #[expect(
     clippy::too_many_arguments,
-    reason = "Keep the menu's owner, faction, anchor and entries explicit at this drawing boundary."
+    reason = "Keep the menu's owner, faction, placement and entries explicit at this drawing boundary."
 )]
 pub fn draw_game_menu(
     ctx: &egui::Context,
@@ -160,7 +197,7 @@ pub fn draw_game_menu(
     cache: &mut BmpCache,
     layout: CockpitLayout,
     faction: CockpitFaction,
-    anchor: (f32, f32),
+    placement: GameMenuPlacement,
     entries: &[GameMenuEntry<'_>],
     input_enabled: bool,
 ) -> GameMenuResponse {
@@ -192,11 +229,7 @@ pub fn draw_game_menu(
         })
         .collect();
     let geometry = game_menu_geometry(&icon_sizes, &text_sizes);
-    let (x, y) = game_menu_origin(
-        anchor,
-        (geometry.width, geometry.height),
-        (STRATEGIC_LOGICAL_WIDTH, STRATEGIC_LOGICAL_HEIGHT),
-    );
+    let (x, y) = placement.origin((geometry.width, geometry.height));
     let origin = egui::pos2(
         layout.canvas.x + x * layout.scale,
         layout.canvas.y + y * layout.scale,
@@ -372,7 +405,7 @@ mod tests {
                     &mut cache,
                     layout,
                     CockpitFaction::Alliance,
-                    (100.0, 100.0),
+                    GameMenuPlacement::in_frame((100.0, 100.0)),
                     entries,
                     true,
                 );
@@ -722,6 +755,32 @@ mod tests {
         assert_eq!(
             game_menu_origin((0.0, 26.0), (83.0, 102.0), owner),
             (0.0, 26.0)
+        );
+    }
+
+    #[test]
+    fn a_menu_flips_at_its_owner_window_not_the_canvas() {
+        // FUN_004ac5c0 maps the point into the galaxy view, which owns the
+        // menu (FUN_00442380); FUN_00442860 flips at the owner's edges.
+        let galaxy = GameMenuPlacement {
+            owner: CockpitViewport {
+                x: 55.0,
+                y: 40.0,
+                width: 485.0,
+                height: 350.0,
+            },
+            point: (500.0, 360.0),
+        };
+        assert_eq!(galaxy.origin((83.0, 102.0)), (417.0, 258.0));
+        let inside = GameMenuPlacement {
+            point: (120.0, 60.0),
+            ..galaxy
+        };
+        assert_eq!(inside.origin((83.0, 102.0)), (120.0, 60.0));
+        // The same point in the frame does not cross its edges.
+        assert_eq!(
+            GameMenuPlacement::in_frame((500.0, 360.0)).origin((83.0, 102.0)),
+            (500.0, 360.0)
         );
     }
 

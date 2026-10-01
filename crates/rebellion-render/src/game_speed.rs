@@ -22,7 +22,9 @@ use crate::cockpit::{
     gid_popup_frame, logical_rect_to_screen, CockpitFaction, CockpitLayout, CockpitViewport,
     STRATEGIC_LOGICAL_HEIGHT, STRATEGIC_LOGICAL_WIDTH,
 };
-use crate::game_menu::{draw_game_menu, faction_text_color, GameMenuEntry, GameMenuResponse};
+use crate::game_menu::{
+    draw_game_menu, faction_text_color, GameMenuEntry, GameMenuPlacement, GameMenuResponse,
+};
 
 /// Game-font entry 10 (`FUN_0060eed0`): 14-pixel Arial, normal weight.
 ///
@@ -377,7 +379,7 @@ pub fn draw_game_speed_menu(
         cache,
         layout,
         faction,
-        anchor,
+        GameMenuPlacement::in_frame(anchor),
         &entries,
         input_enabled,
     ) {
