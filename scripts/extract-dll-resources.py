@@ -9,11 +9,16 @@ Extract BMP resources from Win32 PE DLLs (Star Wars Rebellion asset extraction).
 Extracts RT_BITMAP (type 2) and RT_RCDATA (type 10) resources from DLLs like
 ALSPRITE.DLL, EMSPRITE.DLL, ALBRIEF.DLL, EMBRIEF.DLL, REBDLOG.DLL.
 
+With --cursors, converts each RT_GROUP_CURSOR (type 12) to a staged BMP named
+by its group id. The AND mask becomes the blue-screen key (0, 0, 255) that
+BmpCache makes transparent for the `rebexe-exe` source.
+
 Usage:
     uv run scripts/extract-dll-resources.py ALSPRITE.DLL --output assets/references/ref-ui/07-droid-advisors/alliance/
     uv run scripts/extract-dll-resources.py EMBRIEF.DLL --output assets/references/ref-ui/12-empire-briefing/
     uv run scripts/extract-dll-resources.py --all          # Extract all unextracted DLLs
     uv run scripts/extract-dll-resources.py --list ALSPRITE.DLL  # List resources without extracting
+    uv run scripts/extract-dll-resources.py REBEXE.EXE --cursors  # Stage cursors in data/base/ui/rebexe-exe/BMP/
 """
 
 import argparse
@@ -28,9 +33,17 @@ GAME_DIR = Path.home() / "Desktop" / "Programming" / "star-wars-rebellion"
 PROJECT_DIR = Path(__file__).parent.parent
 REF_UI = PROJECT_DIR / "assets" / "references" / "ref-ui"
 
-# RT_BITMAP = 2, RT_RCDATA = 10, RT_GROUP_ICON = 14
+# RT_CURSOR = 1, RT_BITMAP = 2, RT_RCDATA = 10, RT_GROUP_CURSOR = 12
+RT_CURSOR = 1
 RT_BITMAP = 2
 RT_RCDATA = 10
+RT_GROUP_CURSOR = 12
+
+# Staged cursors, read by BmpCache as DllSource::Rebexe.
+CURSOR_STAGING = PROJECT_DIR / "data" / "base" / "ui" / "rebexe-exe" / "BMP"
+
+# The AND-mask key; BmpCache's blue-screen rule makes it transparent.
+CURSOR_KEY = (0, 0, 255)
 
 # BMP file header (14 bytes) — needed because PE RT_BITMAP resources
 # store DIB data WITHOUT the BMP file header
@@ -133,6 +146,97 @@ def extract_bitmaps(dll_path: Path, output_dir: Path, list_only: bool = False) -
     return count
 
 
+def resource_entries(pe, resource_type: int) -> dict[int, bytes]:
+    """Return the first-language data of each numbered resource of a type."""
+    image = pe.get_memory_mapped_image()
+    entries = {}
+    if not hasattr(pe, 'DIRECTORY_ENTRY_RESOURCE'):
+        return entries
+    for entry in pe.DIRECTORY_ENTRY_RESOURCE.entries:
+        if entry.struct.Id != resource_type or not hasattr(entry, 'directory'):
+            continue
+        for res_entry in entry.directory.entries:
+            if res_entry.struct.Id is None or not hasattr(res_entry, 'directory'):
+                continue
+            data = res_entry.directory.entries[0].data.struct
+            entries[res_entry.struct.Id] = image[data.OffsetToData:data.OffsetToData + data.Size]
+    return entries
+
+
+def group_cursor_image(group: bytes) -> int:
+    """Return the RT_CURSOR id a color display loads from a cursor group.
+
+    hyp: LookupIconIdFromDirectoryEx picks the deepest image on a display of
+    8 bits or more, so the entry with the most bits per pixel is taken.
+    """
+    _, kind, count = struct.unpack_from('<HHH', group, 0)
+    if kind != 2 or count == 0:
+        raise ValueError(f"not a cursor group (type {kind}, {count} entries)")
+    entries = [struct.unpack_from('<HHHHIH', group, 6 + 14 * i) for i in range(count)]
+    return max(entries, key=lambda e: e[3])[5]
+
+
+def cursor_to_bmp(cursor: bytes) -> tuple[bytes, tuple[int, int]]:
+    """Convert an RT_CURSOR resource to a 24-bit BMP and its hotspot.
+
+    The resource is a hotspot (two words) and a DIB whose height covers the
+    XOR image and the AND mask. Masked pixels become CURSOR_KEY. A masked
+    pixel with a nonzero XOR color inverts the screen, which a key cannot
+    express, so it is rejected.
+    """
+    hotspot = struct.unpack_from('<HH', cursor, 0)
+    dib = cursor[4:]
+    header_size, width, double_height, _, bit_count = struct.unpack_from('<IiiHH', dib, 0)
+    colors_used = struct.unpack_from('<I', dib, 32)[0]
+    if bit_count not in (1, 4, 8) or width <= 0 or double_height <= 0 or double_height % 2:
+        raise ValueError(f"unsupported cursor DIB {width}x{double_height} at {bit_count} bpp")
+    height = double_height // 2
+    colors = colors_used or 1 << bit_count
+    palette = [struct.unpack_from('<BBB', dib, header_size + 4 * i) for i in range(colors)]
+    xor_offset = header_size + 4 * colors
+    xor_stride = (width * bit_count + 31) // 32 * 4
+    and_offset = xor_offset + xor_stride * height
+    and_stride = (width + 31) // 32 * 4
+    if len(dib) < and_offset + and_stride * height:
+        raise ValueError("cursor DIB is truncated")
+
+    out_stride = (width * 3 + 3) & ~3
+    pixels = bytearray(out_stride * height)
+    # Both the DIB and the output are bottom-up, so rows map one to one.
+    for row in range(height):
+        for x in range(width):
+            bit = x * bit_count
+            byte = dib[xor_offset + row * xor_stride + bit // 8]
+            index = (byte >> (8 - bit_count - bit % 8)) & ((1 << bit_count) - 1)
+            masked = dib[and_offset + row * and_stride + x // 8] >> (7 - x % 8) & 1
+            blue, green, red = palette[index]
+            if masked and (red, green, blue) != (0, 0, 0):
+                raise ValueError(f"cursor pixel ({x}, {height - 1 - row}) inverts the screen")
+            red, green, blue = CURSOR_KEY if masked else (red, green, blue)
+            at = row * out_stride + x * 3
+            pixels[at:at + 3] = bytes((blue, green, red))
+
+    pixel_offset = BMP_HEADER_SIZE + 40
+    bmp = struct.pack('<2sIHHI', b'BM', pixel_offset + len(pixels), 0, 0, pixel_offset)
+    bmp += struct.pack('<IiiHHIIiiII', 40, width, height, 1, 24, 0, len(pixels), 0, 0, 0, 0)
+    return bmp + bytes(pixels), hotspot
+
+
+def extract_cursors(exe_path: Path, output_dir: Path, list_only: bool = False) -> int:
+    """Stage each cursor group as {group_id}.bmp. Returns count."""
+    pe = pefile.PE(str(exe_path))
+    cursors = resource_entries(pe, RT_CURSOR)
+    groups = resource_entries(pe, RT_GROUP_CURSOR)
+    if not list_only:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    for group_id, group in sorted(groups.items()):
+        bmp, (hot_x, hot_y) = cursor_to_bmp(cursors[group_cursor_image(group)])
+        print(f"  cursor {group_id}: hotspot ({hot_x}, {hot_y})")
+        if not list_only:
+            (output_dir / f"{group_id}.bmp").write_bytes(bmp)
+    return len(groups)
+
+
 # Default extraction targets
 TARGETS = {
     'ALBRIEF.DLL': '11-alliance-briefing',
@@ -151,6 +255,7 @@ def main():
     parser.add_argument("--game-dir", type=Path, default=GAME_DIR, help="Game installation directory")
     parser.add_argument("--all", action="store_true", help="Extract all unextracted DLLs")
     parser.add_argument("--list", action="store_true", help="List resources without extracting")
+    parser.add_argument("--cursors", action="store_true", help="Stage cursor groups as BMPs")
     args = parser.parse_args()
 
     if args.all:
@@ -176,6 +281,10 @@ def main():
     if not dll_path.exists():
         print(f"ERROR: {args.dll} not found", file=sys.stderr)
         sys.exit(1)
+
+    if args.cursors:
+        extract_cursors(dll_path, args.output or CURSOR_STAGING, args.list)
+        return
 
     if args.output:
         out = args.output

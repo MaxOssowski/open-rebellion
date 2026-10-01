@@ -331,6 +331,8 @@ pub enum DllSource {
     Gokres,
     /// `REBDLOG.DLL` — in-game alert and dialog frames
     Rebdlog,
+    /// `REBEXE.EXE` — cursors, staged by `extract-dll-resources.py --cursors`
+    Rebexe,
 }
 
 impl DllSource {
@@ -345,6 +347,7 @@ impl DllSource {
             DllSource::Tactical => "tactical-dll",
             DllSource::Gokres => "gokres-dll",
             DllSource::Rebdlog => "rebdlog-dll",
+            DllSource::Rebexe => "rebexe-exe",
         }
     }
 
@@ -357,6 +360,7 @@ impl DllSource {
             DllSource::Tactical => "tactical",
             DllSource::Gokres => "gokres",
             DllSource::Rebdlog => "rebdlog",
+            DllSource::Rebexe => "rebexe",
         }
     }
 }
@@ -1305,6 +1309,15 @@ pub mod resources {
         /// Ship mini-icon: Imperial dreadnaught.
         pub const MINI_SHIP_IMPERIAL_DREADNOUGHT: u32 = 18318;
     }
+
+    /// Cursor group IDs in `REBEXE.EXE`.
+    pub mod rebexe {
+        /// The galaxy view's targeting cursor: `LoadCursorA(.., 0x3ea)` in
+        /// `FUN_00422ce0`'s `WM_CREATE`, a 32 by 32 crosshair.
+        pub const TARGETING_CURSOR: u32 = 1002;
+        /// The targeting cursor's hotspot, from its RT_CURSOR header.
+        pub const TARGETING_CURSOR_HOTSPOT: (f32, f32) = (12.0, 12.0);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1779,6 +1792,8 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
         ),
         // Alert and dialog frames are opaque windows.
         DllSource::Rebdlog => false,
+        // Staging writes each cursor's AND mask as the blue key.
+        DllSource::Rebexe => true,
     }
 }
 
@@ -2126,6 +2141,33 @@ mod tests {
 
         assert_eq!(decoded.pixels[0].a(), 0);
         assert_eq!(decoded.pixels[1].a(), 255);
+    }
+
+    #[test]
+    fn a_staged_cursor_mask_is_transparent_and_its_white_is_opaque() {
+        // Source: REBEXE.EXE cursor 1002, whose AND mask staging keys blue.
+        let mut image = image::RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        image.put_pixel(1, 0, image::Rgba([255, 255, 255, 255]));
+
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Bmp,
+            )
+            .unwrap();
+        let decoded = decode_color_image(
+            &encoded,
+            DllSource::Rebexe,
+            resources::rebexe::TARGETING_CURSOR,
+        )
+        .unwrap();
+
+        assert_eq!(decoded.pixels[0].a(), 0);
+        assert_eq!(decoded.pixels[1].a(), 255);
+        assert_eq!(DllSource::Rebexe.dll_dir_name(), "rebexe-exe");
+        assert_eq!(DllSource::Rebexe.texture_prefix(), "rebexe");
     }
 
     #[test]
