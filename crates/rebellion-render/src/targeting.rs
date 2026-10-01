@@ -1,14 +1,15 @@
-//! The galaxy view's targeting mode for a Mission order. Recovery notes:
-//! `ghidra/notes/object-popup-menu.md`, "Targeting".
+//! The galaxy view's targeting mode for a Mission, Move or Confirmed Move
+//! order. Recovery notes: `ghidra/notes/object-popup-menu.md`, "Targeting",
+//! and `ghidra/notes/move-order.md`.
 //!
-//! Choosing Mission from the object pop-up menu hands the order to the galaxy
-//! view (`FUN_00429320`): mode `+0xc0` becomes 2, the order waits at `+0xc4`,
+//! Choosing one of those orders from the object pop-up menu hands it to the
+//! galaxy view (`FUN_00429320`): mode `+0xc0` becomes 2, the order waits at `+0xc4`,
 //! the mouse is captured and the cursor is REBEXE.EXE cursor 1002. The next
 //! left-button release (`FUN_00422ce0`) targets the object under the point,
 //! which only a child window can supply.
 
 use egui_macroquad::egui;
-use rebellion_core::ids::SystemKey;
+use rebellion_core::ids::{FleetKey, SystemKey};
 use rebellion_core::missions::MissionMember;
 use rebellion_core::world::GameWorld;
 
@@ -19,19 +20,29 @@ use crate::system_window::SystemWindowState;
 
 const CAPTURE_ID: &str = "original_targeting_capture";
 
-/// A Mission order waiting for its target.
+/// The order that waits for a target, built by `FUN_00487c50` with the
+/// menu's selection as its team.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetOrder {
+    /// Mission: `FUN_0042a320` opens the mission dialog for the target.
+    Mission(Vec<MissionMember>),
+    /// Move (`0x201`), or Confirmed Move (`0x202`) when `confirmed`, for one
+    /// fleet. port: a character's or special force's move is not ported.
+    FleetMove { fleet: FleetKey, confirmed: bool },
+}
+
+/// An order waiting for its target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Targeting {
-    team: Vec<MissionMember>,
+    order: TargetOrder,
 }
 
 /// How a release ends targeting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TargetingEnd {
-    /// The order's target is set (vtable `+0x2c`); `FUN_0042a320` opens the
-    /// mission dialog, or hands the order back when no kind is legal.
+    /// The order's target is set (vtable `+0x2c`).
     Target {
-        team: Vec<MissionMember>,
+        order: TargetOrder,
         system: SystemKey,
     },
     /// No object was under the point, so the order is destroyed.
@@ -39,15 +50,14 @@ pub enum TargetingEnd {
 }
 
 impl Targeting {
-    /// `FUN_00487c50` builds the order with the menu's selection as its team.
     #[must_use]
-    pub fn new(team: Vec<MissionMember>) -> Self {
-        Self { team }
+    pub fn new(order: TargetOrder) -> Self {
+        Self { order }
     }
 
     #[must_use]
-    pub fn team(&self) -> &[MissionMember] {
-        &self.team
+    pub fn order(&self) -> &TargetOrder {
+        &self.order
     }
 
     /// `FUN_00422ce0`'s `WM_LBUTTONUP` in mode 2, given the system
@@ -56,7 +66,7 @@ impl Targeting {
     pub fn release(self, system: Option<SystemKey>) -> TargetingEnd {
         match system {
             Some(system) => TargetingEnd::Target {
-                team: self.team,
+                order: self.order,
                 system,
             },
             None => TargetingEnd::Dropped,
@@ -71,6 +81,7 @@ impl Targeting {
 /// the view itself, so a release over it, or between planets, gives none
 /// and the order is destroyed (`ghidra/notes/move-order.md`, "Hit tests").
 ///
+/// Move and Confirmed Move ask `+0x70`, the container under the point.
 /// port: Mission asks `+0x68`, which may answer a character or a fleet;
 /// every object reduces to its system here, so both hit tests give the same
 /// answer. The walk up from a team member and Shift's pass-through click are
@@ -184,30 +195,55 @@ mod tests {
         }
     }
 
-    fn team() -> Vec<MissionMember> {
-        vec![MissionMember::Character(CharacterKey::default())]
+    fn mission() -> TargetOrder {
+        TargetOrder::Mission(vec![MissionMember::Character(CharacterKey::default())])
     }
 
     #[test]
     fn a_release_on_a_system_targets_it_with_the_team() {
         // FUN_00422ce0 WM_LBUTTONUP, mode 2: the target is set (+0x2c).
         let system = SystemKey::default();
-        let targeting = Targeting::new(team());
-        assert_eq!(targeting.team(), team().as_slice());
+        let targeting = Targeting::new(mission());
+        assert_eq!(targeting.order(), &mission());
 
         assert_eq!(
             targeting.release(Some(system)),
             TargetingEnd::Target {
-                team: team(),
+                order: mission(),
                 system,
             }
         );
     }
 
     #[test]
+    fn a_move_keeps_its_fleet_and_kind_through_the_release() {
+        // FUN_00422ce0 sets the target on the order it holds at +0xc4,
+        // whatever its kind; FUN_00487cc0 later reads 0x201 or 0x202.
+        let system = SystemKey::default();
+        for confirmed in [false, true] {
+            let order = TargetOrder::FleetMove {
+                fleet: FleetKey::default(),
+                confirmed,
+            };
+            assert_eq!(
+                Targeting::new(order.clone()).release(Some(system)),
+                TargetingEnd::Target { order, system }
+            );
+        }
+    }
+
+    #[test]
     fn a_release_on_no_object_drops_the_order() {
         // FUN_00422ce0: with no object under the point the order is destroyed.
-        assert_eq!(Targeting::new(team()).release(None), TargetingEnd::Dropped);
+        assert_eq!(
+            Targeting::new(mission()).release(None),
+            TargetingEnd::Dropped
+        );
+        let order = TargetOrder::FleetMove {
+            fleet: FleetKey::default(),
+            confirmed: true,
+        };
+        assert_eq!(Targeting::new(order).release(None), TargetingEnd::Dropped);
     }
 
     #[test]

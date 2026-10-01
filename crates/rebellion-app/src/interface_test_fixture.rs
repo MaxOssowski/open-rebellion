@@ -625,7 +625,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rebellion_render::object_menu::MenuObject;
+    use rebellion_render::object_menu::{MenuObject, OrderGates};
 
     #[test]
     fn scenario_table_is_stable_and_complete() {
@@ -846,7 +846,14 @@ mod tests {
         assert!(!systems.contains_screen_point(layout, (corner.0, corner.1 - 1.0)));
         assert_eq!(sectors.window_count(), 1);
 
-        let menu = ObjectMenuState::new(Some(MenuObject::Character(agent)), true, (0, 0));
+        let menu = ObjectMenuState::new(
+            Some(MenuObject::Character(agent)),
+            OrderGates {
+                mission: true,
+                fleet_move: false,
+            },
+            (0, 0),
+        );
         let rect = egui_macroquad::egui::Rect::from_min_size(
             egui_macroquad::egui::pos2(100.0, 150.0),
             egui_macroquad::egui::vec2(120.0, 142.0),

@@ -72,7 +72,7 @@ use rebellion_render::mission_dialog::{
     draw_mission_dialog, MissionDialogAction, MissionDialogState,
 };
 use rebellion_render::object_menu::{
-    draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState,
+    draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState, OrderGates,
 };
 use rebellion_render::panels::bombardment::{draw_bombardment, BombardmentPanelState};
 use rebellion_render::panels::death_star::draw_death_star;
@@ -80,7 +80,8 @@ use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::panels::research::{draw_research, ResearchPanelState};
 use rebellion_render::targeting::{
-    capture_pointer, draw_targeting_cursor, release_destination, Targeting, TargetingEnd,
+    capture_pointer, draw_targeting_cursor, release_destination, TargetOrder, Targeting,
+    TargetingEnd,
 };
 use rebellion_render::{
     advisor_combat_result, advisor_death_star, advisor_greet, advisor_manufacturing_complete,
@@ -3629,17 +3630,19 @@ Some(RailAudience::side(*faction_is_alliance)),
                             SystemWindowAction::OpenObjectMenu {
                                 selection, point, ..
                             } => {
-                                let mission_enabled = selection
-                                    .and_then(MenuObject::mission_member)
-                                    .is_some_and(|member| {
-                                        mission_state.mission_order_enabled(
-                                            &world,
-                                            player_faction,
-                                            &[member],
-                                        )
-                                    });
-                                object_menu =
-                                    Some(ObjectMenuState::new(selection, mission_enabled, point));
+                                let gates = OrderGates {
+                                    mission: selection
+                                        .and_then(MenuObject::mission_member)
+                                        .is_some_and(|member| {
+                                            mission_state.mission_order_enabled(
+                                                &world,
+                                                player_faction,
+                                                &[member],
+                                            )
+                                        }),
+                                    fleet_move: false,
+                                };
+                                object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
                         }
                     }
@@ -3660,7 +3663,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                         // as its team; FUN_00429320 starts targeting.
                         Some((ObjectMenuCommand::Mission, Some(object))) => {
                             if let Some(member) = object.mission_member() {
-                                targeting = Some(Targeting::new(vec![member]));
+                                targeting =
+                                    Some(Targeting::new(TargetOrder::Mission(vec![member])));
                             }
                         }
                         // port: the other items are drawn disabled.
@@ -3728,8 +3732,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 &system_window_state,
                                 pointer,
                             );
-                            if let Some(TargetingEnd::Target { team, system }) =
-                                targeting.take().map(|order| order.release(destination))
+                            if let Some(TargetingEnd::Target {
+                                order: TargetOrder::Mission(team),
+                                system,
+                            }) = targeting.take().map(|order| order.release(destination))
                             {
                                 let kinds = rebellion_core::missions::available_kinds(
                                     &world,

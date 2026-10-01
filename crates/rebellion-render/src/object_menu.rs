@@ -192,19 +192,20 @@ impl ObjectMenuRow {
 /// record, so they never show.
 /// An empty selection lists only Encyclopedia and Status, both disabled.
 ///
-/// - Mission is enabled when `mission_enabled` says so
+/// - Mission is enabled when `gates.mission` says so
 ///   (`MissionState::mission_order_enabled`). port: the global gate
 ///   `FUN_0051de80` is taken as clear.
+/// - A fleet's Move and Confirmed Move are enabled when `gates.fleet_move`
+///   says so (`movement::fleet_move_enabled`, each order's `+0x18`).
 /// - Encyclopedia is enabled for a single selection.
-/// - port: Move, Confirmed Move, Command, Status, Retire and the fleet orders
-///   stay disabled until their windows and orders are ported. In the original, Status is
+/// - port: a character's or special force's Move and Confirmed Move,
+///   Command, Status, Retire and the other fleet orders stay disabled until
+///   their windows and orders are ported. In the original, Status is
 ///   enabled for a single selection that is not a system, and Command is a
 ///   submenu parent.
 #[must_use]
-pub fn object_menu_rows(
-    selection: Option<MenuObject>,
-    mission_enabled: bool,
-) -> Vec<ObjectMenuRow> {
+pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
+    let fleet = matches!(selection, Some(MenuObject::Fleet(_)));
     let offered: &[ObjectMenuItem] = match selection {
         Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
         Some(MenuObject::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
@@ -217,7 +218,10 @@ pub fn object_menu_rows(
         .map(|&item| ObjectMenuRow {
             item,
             enabled: match item.command {
-                ObjectMenuCommand::Mission => mission_enabled,
+                ObjectMenuCommand::Mission => gates.mission,
+                ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove => {
+                    fleet && gates.fleet_move
+                }
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 _ => false,
             },
@@ -225,6 +229,13 @@ pub fn object_menu_rows(
         .collect();
     rows.sort_by_key(|row| row.item.sort_key);
     rows
+}
+
+/// Whether the selection passes each order's own rule, its `+0x18` slot.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OrderGates {
+    pub mission: bool,
+    pub fleet_move: bool,
 }
 
 /// An open object pop-up menu.
@@ -239,10 +250,10 @@ pub struct ObjectMenuState {
 impl ObjectMenuState {
     /// Open the menu for `selection` at a canvas `point`.
     #[must_use]
-    pub fn new(selection: Option<MenuObject>, mission_enabled: bool, point: (i16, i16)) -> Self {
+    pub fn new(selection: Option<MenuObject>, gates: OrderGates, point: (i16, i16)) -> Self {
         Self {
             selection,
-            rows: object_menu_rows(selection, mission_enabled),
+            rows: object_menu_rows(selection, gates),
             point: (f32::from(point.0), f32::from(point.1)),
         }
     }
@@ -322,6 +333,11 @@ pub fn draw_object_menu(
 mod tests {
     use super::*;
 
+    const MISSION_GATE: OrderGates = OrderGates {
+        mission: true,
+        fleet_move: false,
+    };
+
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
         rows.iter().map(|row| row.item.label).collect()
     }
@@ -337,7 +353,10 @@ mod tests {
     fn a_characters_menu_matches_the_manual_and_the_strategy_records() {
         // Manual p. 99 and Fig. 3.45; STRATEGY RT_RCDATA words 2 and 5;
         // FUN_004f2400 over FUN_00536bc0.
-        let rows = object_menu_rows(Some(MenuObject::Character(CharacterKey::default())), true);
+        let rows = object_menu_rows(
+            Some(MenuObject::Character(CharacterKey::default())),
+            MISSION_GATE,
+        );
         assert_eq!(
             labels(&rows),
             [
@@ -379,7 +398,7 @@ mod tests {
         // FUN_00503fa0 copies only the unit list of FUN_00536bc0.
         let rows = object_menu_rows(
             Some(MenuObject::SpecialForce(SpecialForceKey::default())),
-            true,
+            MISSION_GATE,
         );
         assert_eq!(
             labels(&rows),
@@ -398,7 +417,7 @@ mod tests {
     fn a_fleets_menu_matches_the_manual_and_the_strategy_records() {
         // Manual Fig. 3.64; FUN_004ff8e0's list; STRATEGY RT_RCDATA words 2,
         // 4 and 5 (ghidra/notes/move-order.md, "The Fleet menu").
-        let rows = object_menu_rows(Some(MenuObject::Fleet(FleetKey::default())), true);
+        let rows = object_menu_rows(Some(MenuObject::Fleet(FleetKey::default())), MISSION_GATE);
         assert_eq!(
             labels(&rows),
             [
@@ -438,6 +457,31 @@ mod tests {
     }
 
     #[test]
+    fn a_fleets_move_rows_follow_its_move_rule() {
+        // FUN_0053c100 -> FUN_004fdc70: each move order's +0x18 enables its
+        // row; the two rows share one rule.
+        let fleet = Some(MenuObject::Fleet(FleetKey::default()));
+        let gates = OrderGates {
+            mission: false,
+            fleet_move: true,
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(fleet, gates)),
+            ["Move", "Confirmed Move", "Encyclopedia"]
+        );
+        assert_eq!(
+            enabled(&object_menu_rows(fleet, OrderGates::default())),
+            ["Encyclopedia"]
+        );
+        // port: a character's move is not ported, so its rows stay disabled.
+        let character = Some(MenuObject::Character(CharacterKey::default()));
+        assert_eq!(
+            enabled(&object_menu_rows(character, gates)),
+            ["Encyclopedia"]
+        );
+    }
+
+    #[test]
     fn only_characters_and_special_forces_are_mission_members() {
         let character = CharacterKey::default();
         let unit = SpecialForceKey::default();
@@ -461,11 +505,11 @@ mod tests {
         // for a single selection.
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
-            enabled(&object_menu_rows(character, true)),
+            enabled(&object_menu_rows(character, MISSION_GATE)),
             ["Mission", "Encyclopedia"]
         );
         assert_eq!(
-            enabled(&object_menu_rows(character, false)),
+            enabled(&object_menu_rows(character, OrderGates::default())),
             ["Encyclopedia"]
         );
     }
@@ -474,7 +518,7 @@ mod tests {
     fn an_empty_selection_lists_encyclopedia_and_status_disabled() {
         // FUN_0051d990 always adds 0x100 and 0x103; neither is enabled
         // without exactly one selected object.
-        let rows = object_menu_rows(None, true);
+        let rows = object_menu_rows(None, MISSION_GATE);
         assert_eq!(labels(&rows), ["Encyclopedia", "Status"]);
         assert!(enabled(&rows).is_empty());
     }
@@ -482,7 +526,10 @@ mod tests {
     #[test]
     fn a_row_becomes_a_menu_entry_without_an_icon() {
         // The character records carry no icon (words 7 and 8 are zero).
-        let rows = object_menu_rows(Some(MenuObject::Character(CharacterKey::default())), true);
+        let rows = object_menu_rows(
+            Some(MenuObject::Character(CharacterKey::default())),
+            MISSION_GATE,
+        );
         let command = rows.iter().find(|row| row.item.label == "Command").unwrap();
         assert_eq!(
             command.entry(),
@@ -559,13 +606,13 @@ mod tests {
         // STRATEGY RT_RCDATA sort keys: Move 10, Confirmed Move 12, Mission
         // 300, Command, Encyclopedia 1000, Status 1001, Retire 2002.
         let agent = Some(MenuObject::Character(CharacterKey::default()));
-        let menu = ObjectMenuState::new(agent, true, (100, 100));
+        let menu = ObjectMenuState::new(agent, MISSION_GATE, (100, 100));
         assert_eq!(menu.row_count(), 7);
         assert_eq!(menu.row_of(ObjectMenuCommand::Mission), Some(2));
         assert_eq!(menu.row_of(ObjectMenuCommand::Encyclopedia), Some(4));
 
         // FUN_0051d990 lists only Encyclopedia and Status for no selection.
-        let empty = ObjectMenuState::new(None, true, (100, 100));
+        let empty = ObjectMenuState::new(None, MISSION_GATE, (100, 100));
         assert_eq!(empty.row_of(ObjectMenuCommand::Mission), None);
     }
 
@@ -574,7 +621,7 @@ mod tests {
         // FUN_004424c0 reports the kind to the owner's vtable +0x20
         // (FUN_004ac730), which acts on the copied selection +0x11c.
         let agent = Some(MenuObject::Character(CharacterKey::default()));
-        let mut menu = Some(ObjectMenuState::new(agent, true, (100, 100)));
+        let mut menu = Some(ObjectMenuState::new(agent, MISSION_GATE, (100, 100)));
         let (chosen, _) = click_row(&mut menu, 2);
         assert_eq!(chosen, Some((ObjectMenuCommand::Mission, agent)));
         assert_eq!(menu, None);
@@ -583,7 +630,7 @@ mod tests {
     #[test]
     fn a_disabled_row_keeps_the_menu_open() {
         let agent = Some(MenuObject::Character(CharacterKey::default()));
-        let mut menu = Some(ObjectMenuState::new(agent, true, (100, 100)));
+        let mut menu = Some(ObjectMenuState::new(agent, MISSION_GATE, (100, 100)));
         let (chosen, _) = click_row(&mut menu, 0);
         assert_eq!(chosen, None);
         assert!(menu.is_some());
@@ -618,7 +665,7 @@ mod tests {
             }
         );
         let agent = Some(MenuObject::Character(CharacterKey::default()));
-        let mut inside = Some(ObjectMenuState::new(agent, true, (100, 100)));
+        let mut inside = Some(ObjectMenuState::new(agent, MISSION_GATE, (100, 100)));
         let (_, rect) = click_row(&mut inside, 0);
         assert_eq!(
             rect.min,
@@ -628,7 +675,7 @@ mod tests {
             )
         );
         // Near the galaxy view's bottom right, inside the canvas: it flips.
-        let mut corner = Some(ObjectMenuState::new(agent, true, (530, 380)));
+        let mut corner = Some(ObjectMenuState::new(agent, MISSION_GATE, (530, 380)));
         let (_, rect) = click_row(&mut corner, 0);
         assert_eq!(
             rect.max,
