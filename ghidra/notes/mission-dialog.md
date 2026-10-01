@@ -129,6 +129,37 @@ item (command `0xbba`, notification `0x29b`) selects it through
 `FUN_0060f640` with base ids `0x299a` (the drop-down) and `0x29fc` (agents and
 decoys). STRATEGY holds 10749..10751 but not 10650 or 10748.
 
+## Refusal
+
+A refused order shows no text: the side's advisor droid reacts.
+`FUN_00487740` hands the validator's two-word status to `FUN_00487c90`, which
+calls vtable `+0xc` of the object at `+0xc0` and then destroys the order.
+`FUN_004861b0` builds that object for the side, 0x194 bytes over the base
+`FUN_00439320`: `FUN_004c27f0` (vtable `0x0065c4c8`) for side 1 and
+`FUN_004c0710` (`0x0065c4a0`) for side 2. Its `+0x168` table holds 88
+(`+0x164`) due times, one per advisor reaction.
+
+Slot `+0xc` (`FUN_004c2940`, `FUN_004c0870`) remembers the status at `+0x174`
+and sorts it by its first word: `0x90..0x97`, `0xa0..0xaf`, `8..0xf`,
+`0x14..0x1b`, `0xf3`, and everything else (`FUN_004c3bb0`, `FUN_004c19f0`).
+Each handler schedules one reaction by writing the clock `DAT_006b28cc` plus
+10 into a table slot. For the statuses the port's dispatch refuses
+(`MissionRefusal`):
+
+| Status | Side 1 slot | Side 2 slot |
+|---|---|---|
+| The same status as the last one | `+0x3c`, then `+0x40` and the memory clears (`FUN_004c43d0`) | `+0x40`, then `+0x44` (`FUN_004c21d0`) |
+| `0x40`/`0x91` for a Mission (`0x240`) whose target passes `FUN_004ece60`, with no target object and a `+0x58` (decoy) list | `+0x50` | `+0x54` |
+| `0x40`/`0x01`, `0x28`, `0x29`, or any other `0x91` | `+0x44` or `+0x48` | `+0x48` or `+0x4c` |
+
+The last row is the generic reaction: `FUN_004c4390` and `FUN_004c2230` pick
+one of two slots with `FUN_0041cd80(2)`. Which clip and voice line each slot
+plays is not traced; that belongs to the droid advisors' authored behavior
+(audit P34).
+
+port: until P34 plays these reactions, the dispatch writes a message-log line
+for each refusal (`apply_panel_action`, `PanelAction::DispatchMission`).
+
 ## Ported (F-019 phase 5b)
 
 `crates/rebellion-render/src/mission_dialog.rs` draws the dialog and handles
@@ -176,7 +207,8 @@ and checks the second page.
 
 - `FUN_00606980`'s placement, and `FUN_0060f640`'s scroll bar.
 - `FUN_0060c970` and whether a selection closes the drop-down.
-- The validator's error strings (`FUN_00487c90`), phase 7.
+- The reader of the advisor's `+0x168` table and the clip each refusal slot
+  plays (P34).
 
 ## Supporting decompiles
 
@@ -186,4 +218,6 @@ and checks the second page.
 `FUN_0060c1f0`, `FUN_0060c210`, `FUN_0060d590`, `FUN_0060cac0`, `FUN_0060cc50`,
 `FUN_0060d020`, `FUN_00607ea0`, `FUN_0060a490`, `FUN_0042c3b0`, `FUN_0045c970`,
 `FUN_00601b30`, `FUN_00601b80`, `FUN_00601c60`, `FUN_00601c90`, `FUN_00601ce0`,
-`FUN_0054c590`, `FUN_005422f0`.
+`FUN_0054c590`, `FUN_005422f0`, `FUN_00487c90`, `FUN_004c2940`,
+`FUN_004c0870`, `FUN_004c3bb0`, `FUN_004c19f0`, `FUN_004c4390`,
+`FUN_004c2230`, `FUN_004c43d0`, `FUN_004c21d0`.
