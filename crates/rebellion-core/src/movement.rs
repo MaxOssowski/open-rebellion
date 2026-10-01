@@ -415,7 +415,55 @@ impl fmt::Display for FleetDispatchError {
     }
 }
 
-/// Validate a player-facing fleet dispatch without mutating the campaign.
+/// The fleet, when a Move or Confirmed Move order may be built for it: the
+/// rows' enabled slot `+0x18` (`FUN_0053c100` → `FUN_00578c00`;
+/// `ghidra/notes/move-order.md`). The fleet must resolve (`1`/`0x12`) and pass
+/// the object check `FUN_004f9860` through `FUN_004fdc70`: the order's side
+/// and not en route. The blockade escape `FUN_005555e0` covers only ALLFACSD
+/// objects, so it never refuses a fleet.
+fn movable_fleet<'a>(
+    state: &MovementState,
+    world: &'a GameWorld,
+    fleet: FleetKey,
+    expected_is_alliance: bool,
+) -> Result<&'a Fleet, FleetDispatchError> {
+    let value = world
+        .fleets
+        .get(fleet)
+        .ok_or(FleetDispatchError::MissingFleet)?;
+    if value.is_alliance != expected_is_alliance {
+        return Err(FleetDispatchError::WrongFaction);
+    }
+    if state.is_in_transit(fleet) {
+        return Err(FleetDispatchError::AlreadyInTransit);
+    }
+    Ok(value)
+}
+
+/// Whether the fleet's pop-up menu enables Move and Confirmed Move. No
+/// destination is known yet, so a fleet that cannot enter hyperspace is
+/// still enabled; the release refuses it (`FUN_00578d00`).
+#[must_use]
+pub fn fleet_move_enabled(
+    state: &MovementState,
+    world: &GameWorld,
+    fleet: FleetKey,
+    expected_is_alliance: bool,
+) -> bool {
+    movable_fleet(state, world, fleet, expected_is_alliance).is_ok()
+}
+
+/// Validate a player-facing fleet dispatch without mutating the campaign:
+/// the move command's validator with a destination, `FUN_00578d00`.
+///
+/// After [`fleet_move_enabled`]'s checks, the destination must resolve
+/// (`1`/`0x22`), and a fleet moving between systems needs a non-zero speed
+/// (`FUN_00555920`, `FUN_004fd900`: `1`/`0x18`).
+///
+/// port: the origin, destroyed-destination, same-system and empty-fleet
+/// checks are the port's own. The original's validator accepts a move within
+/// one system (its leg builders are not read), and an empty fleet meets the
+/// speed refusal.
 ///
 /// # Errors
 /// Returns a dispatch error for missing entities, a faction mismatch, an empty
@@ -428,16 +476,7 @@ pub fn validate_fleet_dispatch(
     destination: SystemKey,
     expected_is_alliance: bool,
 ) -> Result<(), FleetDispatchError> {
-    let value = world
-        .fleets
-        .get(fleet)
-        .ok_or(FleetDispatchError::MissingFleet)?;
-    if value.is_alliance != expected_is_alliance {
-        return Err(FleetDispatchError::WrongFaction);
-    }
-    if state.is_in_transit(fleet) {
-        return Err(FleetDispatchError::AlreadyInTransit);
-    }
+    let value = movable_fleet(state, world, fleet, expected_is_alliance)?;
     if !world.systems.contains_key(value.location) {
         return Err(FleetDispatchError::MissingOrigin);
     }
@@ -1082,6 +1121,49 @@ mod tests {
         assert!(world.fleets.contains_key(stationed));
         assert!(world.fleets.contains_key(arriving));
         assert_eq!(world.systems[destination].fleets, vec![stationed, arriving]);
+    }
+
+    #[test]
+    fn a_fleet_may_take_a_move_on_its_own_side_outside_hyperspace() {
+        // FUN_00578c00 → FUN_004fdc70 → FUN_004f9860: the order's side, and
+        // not en route (ghidra/notes/move-order.md, "The move command").
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let fleet = add_test_fleet(&mut world, origin, ship_key);
+        let mut movement = MovementState::new();
+
+        assert!(fleet_move_enabled(&movement, &world, fleet, true));
+        assert!(!fleet_move_enabled(&movement, &world, fleet, false));
+
+        begin_faction_fleet_transit(&mut movement, &mut world, fleet, destination, true)
+            .expect("the fleet departs");
+        assert!(!fleet_move_enabled(&movement, &world, fleet, true));
+
+        world.fleets.remove(fleet);
+        let idle = MovementState::new();
+        assert!(!fleet_move_enabled(&idle, &world, fleet, true));
+    }
+
+    #[test]
+    fn a_fleet_that_cannot_enter_hyperspace_may_open_a_move_but_is_refused_its_destination() {
+        // The enabled slot reads no speed; the validator with a destination
+        // refuses 1/0x18 (FUN_00555920, FUN_004fd900), which FUN_004fda10's
+        // capital-ship walk gives a fighter-only fleet.
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let fleet = add_test_fleet(&mut world, origin, ship_key);
+        world.fleets[fleet].capital_ships.clear();
+        world.fleets[fleet].fighters.push(FighterEntry {
+            class: world.fighter_classes.insert(FighterClass::default()),
+            count: 1,
+        });
+        let movement = MovementState::new();
+
+        assert!(fleet_move_enabled(&movement, &world, fleet, true));
+        assert_eq!(
+            validate_fleet_dispatch(&movement, &world, fleet, destination, true),
+            Err(FleetDispatchError::NoHyperdrive),
+        );
     }
 
     #[test]

@@ -383,6 +383,10 @@ not found. The confirmation window's own Escape is recovered
   STRATEGY rows above. port: every fleet order is drawn disabled until the
   move order and its targeting are ported; Encyclopedia opens as for any
   single selection.
+- Phase 2: `movement::fleet_move_enabled` is the rows' `+0x18` (side, not en
+  route); `validate_fleet_dispatch` adds the destination (`1`/`0x22`) and the
+  speed refusal (`1`/`0x18`). port: its origin, destroyed-destination,
+  same-system and empty-fleet checks are the port's own.
 
 ## Still open
 
