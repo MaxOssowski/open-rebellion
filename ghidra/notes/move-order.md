@@ -378,6 +378,11 @@ not found. The confirmation window's own Escape is recovered
   before reusing them.
 - The refusal statuses above reach the advisor as in `mission-dialog.md`,
   "Refusal" (for example `1`/`0x18` and `1`/`0x22`).
+- Phase 1: a right release on a fleet in the system window's Fleets tab
+  opens the Fleet menu (`object_menu.rs`, `MenuObject::Fleet`) with the
+  STRATEGY rows above. port: every fleet order is drawn disabled until the
+  move order and its targeting are ported; Encyclopedia opens as for any
+  single selection.
 
 ## Still open
 

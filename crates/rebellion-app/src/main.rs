@@ -71,7 +71,9 @@ use rebellion_render::game_speed::{
 use rebellion_render::mission_dialog::{
     draw_mission_dialog, MissionDialogAction, MissionDialogState,
 };
-use rebellion_render::object_menu::{draw_object_menu, ObjectMenuCommand, ObjectMenuState};
+use rebellion_render::object_menu::{
+    draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState,
+};
 use rebellion_render::panels::bombardment::{draw_bombardment, BombardmentPanelState};
 use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
@@ -3647,13 +3649,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                             SystemWindowAction::OpenObjectMenu {
                                 selection, point, ..
                             } => {
-                                let mission_enabled = selection.is_some_and(|member| {
-                                    mission_state.mission_order_enabled(
-                                        &world,
-                                        player_faction,
-                                        &[member],
-                                    )
-                                });
+                                let mission_enabled = selection
+                                    .and_then(MenuObject::mission_member)
+                                    .is_some_and(|member| {
+                                        mission_state.mission_order_enabled(
+                                            &world,
+                                            player_faction,
+                                            &[member],
+                                        )
+                                    });
                                 object_menu =
                                     Some(ObjectMenuState::new(selection, mission_enabled, point));
                             }
@@ -3671,8 +3675,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                         Some((ObjectMenuCommand::Encyclopedia, _)) => enc_state.open = true,
                         // FUN_00487c50 builds the order with the selection
                         // as its team; FUN_00429320 starts targeting.
-                        Some((ObjectMenuCommand::Mission, Some(member))) => {
-                            targeting = Some(Targeting::new(vec![member]));
+                        Some((ObjectMenuCommand::Mission, Some(object))) => {
+                            if let Some(member) = object.mission_member() {
+                                targeting = Some(Targeting::new(vec![member]));
+                            }
                         }
                         // port: the other items are drawn disabled.
                         Some(_) | None => {}

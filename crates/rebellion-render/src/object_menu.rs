@@ -1,6 +1,6 @@
-//! The object pop-up menu a right-click on a character or special force opens
-//! in a system window (`FUN_004ac5c0`). Recovery notes:
-//! `ghidra/notes/object-popup-menu.md`.
+//! The object pop-up menu a right-click on a character, special force or
+//! fleet opens in a system window (`FUN_004ac5c0`). Recovery notes:
+//! `ghidra/notes/object-popup-menu.md` and `ghidra/notes/move-order.md`.
 //!
 //! `FUN_0051d990` lists the orders the selection's class offers, sorts them
 //! by their STRATEGY `RT_RCDATA` record's key, and always adds Encyclopedia
@@ -8,6 +8,7 @@
 //! submenu (word 1) and its sort key (word 2).
 
 use egui_macroquad::egui;
+use rebellion_core::ids::{CharacterKey, FleetKey, SpecialForceKey};
 use rebellion_core::missions::MissionMember;
 
 use crate::bmp_cache::BmpCache;
@@ -24,6 +25,30 @@ pub enum ObjectMenuCommand {
     Encyclopedia,
     Status,
     Retire,
+    Bombardment,
+    Assault,
+    Rename,
+    Scrap,
+}
+
+/// The object a menu opens for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuObject {
+    Character(CharacterKey),
+    SpecialForce(SpecialForceKey),
+    Fleet(FleetKey),
+}
+
+impl MenuObject {
+    /// The object as a mission team member; a fleet is none.
+    #[must_use]
+    pub const fn mission_member(self) -> Option<MissionMember> {
+        match self {
+            Self::Character(key) => Some(MissionMember::Character(key)),
+            Self::SpecialForce(key) => Some(MissionMember::SpecialForce(key)),
+            Self::Fleet(_) => None,
+        }
+    }
 }
 
 /// One STRATEGY menu record.
@@ -110,6 +135,33 @@ const RETIRE: ObjectMenuItem = item(
     false,
 );
 
+/// The parent of the four bombardment targets (`0x220..0x223`).
+const BOMBARDMENT: ObjectMenuItem = item(
+    0x120,
+    ObjectMenuCommand::Bombardment,
+    200,
+    12313,
+    "Planetary Bombardment",
+    true,
+);
+const ASSAULT: ObjectMenuItem = item(
+    0x234,
+    ObjectMenuCommand::Assault,
+    220,
+    12318,
+    "Planetary Assault",
+    false,
+);
+const RENAME: ObjectMenuItem = item(
+    0x203,
+    ObjectMenuCommand::Rename,
+    500,
+    12291,
+    "Rename",
+    false,
+);
+const SCRAP: ObjectMenuItem = item(0x200, ObjectMenuCommand::Scrap, 2000, 12295, "Scrap", false);
+
 /// One row of an open object menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjectMenuRow {
@@ -133,26 +185,30 @@ impl ObjectMenuRow {
 ///
 /// A character's class offers Move, Confirmed Move, Retire and Mission
 /// (`FUN_00536bc0`) and the Command ranks (`FUN_004f2400`); a special
-/// force's only the first four (`FUN_00503fa0`). Kinds `0x204`, `0x241` and
-/// `0x268` are offered too but have no STRATEGY record, so they never show.
+/// force's only the first four (`FUN_00503fa0`). A fleet's class offers Move,
+/// Confirmed Move, the bombardments, Assault, Rename and Scrap
+/// (`FUN_004ff8e0`); the bombardment targets sit under their submenu parent.
+/// Kinds `0x204`, `0x241` and `0x268` are offered too but have no STRATEGY
+/// record, so they never show.
 /// An empty selection lists only Encyclopedia and Status, both disabled.
 ///
 /// - Mission is enabled when `mission_enabled` says so
 ///   (`MissionState::mission_order_enabled`). port: the global gate
 ///   `FUN_0051de80` is taken as clear.
 /// - Encyclopedia is enabled for a single selection.
-/// - port: Move, Confirmed Move, Command, Status and Retire stay disabled
-///   until their windows and orders are ported. In the original, Status is
+/// - port: Move, Confirmed Move, Command, Status, Retire and the fleet orders
+///   stay disabled until their windows and orders are ported. In the original, Status is
 ///   enabled for a single selection that is not a system, and Command is a
 ///   submenu parent.
 #[must_use]
 pub fn object_menu_rows(
-    selection: Option<MissionMember>,
+    selection: Option<MenuObject>,
     mission_enabled: bool,
 ) -> Vec<ObjectMenuRow> {
     let offered: &[ObjectMenuItem] = match selection {
-        Some(MissionMember::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
-        Some(MissionMember::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
+        Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
+        Some(MenuObject::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
+        Some(MenuObject::Fleet(_)) => &[MOVE, CONFIRMED_MOVE, BOMBARDMENT, ASSAULT, RENAME, SCRAP],
         None => &[],
     };
     let mut rows: Vec<ObjectMenuRow> = offered
@@ -174,7 +230,7 @@ pub fn object_menu_rows(
 /// An open object pop-up menu.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjectMenuState {
-    selection: Option<MissionMember>,
+    selection: Option<MenuObject>,
     rows: Vec<ObjectMenuRow>,
     /// The 640 by 480 canvas point of the right-button release.
     point: (f32, f32),
@@ -183,7 +239,7 @@ pub struct ObjectMenuState {
 impl ObjectMenuState {
     /// Open the menu for `selection` at a canvas `point`.
     #[must_use]
-    pub fn new(selection: Option<MissionMember>, mission_enabled: bool, point: (i16, i16)) -> Self {
+    pub fn new(selection: Option<MenuObject>, mission_enabled: bool, point: (i16, i16)) -> Self {
         Self {
             selection,
             rows: object_menu_rows(selection, mission_enabled),
@@ -232,7 +288,7 @@ pub fn draw_object_menu(
     layout: CockpitLayout,
     faction: CockpitFaction,
     input_enabled: bool,
-) -> Option<(ObjectMenuCommand, Option<MissionMember>)> {
+) -> Option<(ObjectMenuCommand, Option<MenuObject>)> {
     let open = menu.as_ref()?;
     let entries: Vec<GameMenuEntry<'static>> = open.rows.iter().map(ObjectMenuRow::entry).collect();
     let placement = GameMenuPlacement {
@@ -265,7 +321,6 @@ pub fn draw_object_menu(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rebellion_core::ids::{CharacterKey, SpecialForceKey};
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
         rows.iter().map(|row| row.item.label).collect()
@@ -282,10 +337,7 @@ mod tests {
     fn a_characters_menu_matches_the_manual_and_the_strategy_records() {
         // Manual p. 99 and Fig. 3.45; STRATEGY RT_RCDATA words 2 and 5;
         // FUN_004f2400 over FUN_00536bc0.
-        let rows = object_menu_rows(
-            Some(MissionMember::Character(CharacterKey::default())),
-            true,
-        );
+        let rows = object_menu_rows(Some(MenuObject::Character(CharacterKey::default())), true);
         assert_eq!(
             labels(&rows),
             [
@@ -326,7 +378,7 @@ mod tests {
     fn a_special_forces_menu_has_no_command_submenu() {
         // FUN_00503fa0 copies only the unit list of FUN_00536bc0.
         let rows = object_menu_rows(
-            Some(MissionMember::SpecialForce(SpecialForceKey::default())),
+            Some(MenuObject::SpecialForce(SpecialForceKey::default())),
             true,
         );
         assert_eq!(
@@ -343,10 +395,71 @@ mod tests {
     }
 
     #[test]
+    fn a_fleets_menu_matches_the_manual_and_the_strategy_records() {
+        // Manual Fig. 3.64; FUN_004ff8e0's list; STRATEGY RT_RCDATA words 2,
+        // 4 and 5 (ghidra/notes/move-order.md, "The Fleet menu").
+        let rows = object_menu_rows(Some(MenuObject::Fleet(FleetKey::default())), true);
+        assert_eq!(
+            labels(&rows),
+            [
+                "Move",
+                "Confirmed Move",
+                "Planetary Bombardment",
+                "Planetary Assault",
+                "Rename",
+                "Encyclopedia",
+                "Status",
+                "Scrap"
+            ]
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.item.kind).collect::<Vec<_>>(),
+            [0x201, 0x202, 0x120, 0x234, 0x203, 0x100, 0x103, 0x200]
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.item.label_string_id)
+                .collect::<Vec<_>>(),
+            [12312, 12311, 12313, 12318, 12291, 12292, 12293, 12295]
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.item.sort_key).collect::<Vec<_>>(),
+            [10, 12, 200, 220, 500, 1000, 1001, 2000]
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.item.submenu)
+                .map(|row| row.item.label)
+                .collect::<Vec<_>>(),
+            ["Planetary Bombardment"]
+        );
+        // A fleet is no mission member, so Mission's gate never reaches it.
+        assert_eq!(enabled(&rows), ["Encyclopedia"]);
+    }
+
+    #[test]
+    fn only_characters_and_special_forces_are_mission_members() {
+        let character = CharacterKey::default();
+        let unit = SpecialForceKey::default();
+        assert_eq!(
+            MenuObject::Character(character).mission_member(),
+            Some(MissionMember::Character(character))
+        );
+        assert_eq!(
+            MenuObject::SpecialForce(unit).mission_member(),
+            Some(MissionMember::SpecialForce(unit))
+        );
+        assert_eq!(
+            MenuObject::Fleet(FleetKey::default()).mission_member(),
+            None
+        );
+    }
+
+    #[test]
     fn mission_follows_the_order_rule_and_encyclopedia_needs_one_selection() {
         // FUN_0051fe20 enables Mission; FUN_0051d990 enables Encyclopedia
         // for a single selection.
-        let character = Some(MissionMember::Character(CharacterKey::default()));
+        let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, true)),
             ["Mission", "Encyclopedia"]
@@ -369,10 +482,7 @@ mod tests {
     #[test]
     fn a_row_becomes_a_menu_entry_without_an_icon() {
         // The character records carry no icon (words 7 and 8 are zero).
-        let rows = object_menu_rows(
-            Some(MissionMember::Character(CharacterKey::default())),
-            true,
-        );
+        let rows = object_menu_rows(Some(MenuObject::Character(CharacterKey::default())), true);
         let command = rows.iter().find(|row| row.item.label == "Command").unwrap();
         assert_eq!(
             command.entry(),
@@ -396,10 +506,7 @@ mod tests {
     fn click_row(
         menu: &mut Option<ObjectMenuState>,
         row: usize,
-    ) -> (
-        Option<(ObjectMenuCommand, Option<MissionMember>)>,
-        egui::Rect,
-    ) {
+    ) -> (Option<(ObjectMenuCommand, Option<MenuObject>)>, egui::Rect) {
         let layout = galaxy_layout();
         let ctx = egui::Context::default();
         let mut cache = BmpCache::new();
@@ -451,7 +558,7 @@ mod tests {
     fn a_characters_menu_lists_mission_third_of_seven_rows() {
         // STRATEGY RT_RCDATA sort keys: Move 10, Confirmed Move 12, Mission
         // 300, Command, Encyclopedia 1000, Status 1001, Retire 2002.
-        let agent = Some(MissionMember::Character(CharacterKey::default()));
+        let agent = Some(MenuObject::Character(CharacterKey::default()));
         let menu = ObjectMenuState::new(agent, true, (100, 100));
         assert_eq!(menu.row_count(), 7);
         assert_eq!(menu.row_of(ObjectMenuCommand::Mission), Some(2));
@@ -466,7 +573,7 @@ mod tests {
     fn choosing_mission_returns_it_with_the_selection_and_closes_the_menu() {
         // FUN_004424c0 reports the kind to the owner's vtable +0x20
         // (FUN_004ac730), which acts on the copied selection +0x11c.
-        let agent = Some(MissionMember::Character(CharacterKey::default()));
+        let agent = Some(MenuObject::Character(CharacterKey::default()));
         let mut menu = Some(ObjectMenuState::new(agent, true, (100, 100)));
         let (chosen, _) = click_row(&mut menu, 2);
         assert_eq!(chosen, Some((ObjectMenuCommand::Mission, agent)));
@@ -475,7 +582,7 @@ mod tests {
 
     #[test]
     fn a_disabled_row_keeps_the_menu_open() {
-        let agent = Some(MissionMember::Character(CharacterKey::default()));
+        let agent = Some(MenuObject::Character(CharacterKey::default()));
         let mut menu = Some(ObjectMenuState::new(agent, true, (100, 100)));
         let (chosen, _) = click_row(&mut menu, 0);
         assert_eq!(chosen, None);
@@ -510,7 +617,7 @@ mod tests {
                 height: 350.0,
             }
         );
-        let agent = Some(MissionMember::Character(CharacterKey::default()));
+        let agent = Some(MenuObject::Character(CharacterKey::default()));
         let mut inside = Some(ObjectMenuState::new(agent, true, (100, 100)));
         let (_, rect) = click_row(&mut inside, 0);
         assert_eq!(

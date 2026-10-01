@@ -12,11 +12,11 @@ use rebellion_core::ids::{
     CharacterKey, DatId, DefenseFacilityKey, FleetKey, ManufacturingFacilityKey,
     ProductionFacilityKey, SpecialForceKey, SystemKey, TroopKey,
 };
-use rebellion_core::missions::MissionMember;
 use rebellion_core::world::{ControlKind, GameWorld};
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
+use crate::object_menu::MenuObject;
 use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
 
 pub const SYSTEM_WINDOW_CLIENT_WIDTH: f32 = 226.0;
@@ -329,7 +329,7 @@ pub enum SystemWindowAction {
     /// (`FUN_004ac5c0`) for the selection, at a 640 by 480 canvas point.
     OpenObjectMenu {
         system: SystemKey,
-        selection: Option<MissionMember>,
+        selection: Option<MenuObject>,
         point: (i16, i16),
     },
 }
@@ -348,7 +348,7 @@ struct WindowDrawResult {
     item: Option<SystemWindowItem>,
     deselect: bool,
     scroll_row: Option<usize>,
-    object_menu: Option<(Option<MissionMember>, (i16, i16))>,
+    object_menu: Option<(Option<MenuObject>, (i16, i16))>,
 }
 
 /// Draw the faction rail and every visible original detailed system window.
@@ -681,15 +681,16 @@ struct TabContentDrawResult {
     focus: bool,
     /// The selection and screen point of a right-button release that opens
     /// the object pop-up menu.
-    object_menu: Option<(Option<MissionMember>, egui::Pos2)>,
+    object_menu: Option<(Option<MenuObject>, egui::Pos2)>,
 }
 
-/// The mission member an item is, when its pop-up menu is ported: a
-/// character or a special force (`FUN_004ed350`, `FUN_00503b50`).
-fn item_member(item: SystemWindowItem) -> Option<MissionMember> {
+/// The object an item is, when its pop-up menu is ported: a character, a
+/// special force (`FUN_004ed350`, `FUN_00503b50`) or a fleet (`FUN_004ff8e0`).
+fn item_menu_object(item: SystemWindowItem) -> Option<MenuObject> {
     match item {
-        SystemWindowItem::Character(key) => Some(MissionMember::Character(key)),
-        SystemWindowItem::SpecialForce(key) => Some(MissionMember::SpecialForce(key)),
+        SystemWindowItem::Character(key) => Some(MenuObject::Character(key)),
+        SystemWindowItem::SpecialForce(key) => Some(MenuObject::SpecialForce(key)),
+        SystemWindowItem::Fleet(key) => Some(MenuObject::Fleet(key)),
         _ => None,
     }
 }
@@ -758,11 +759,12 @@ fn paint_tab_content(
     }
 
     // The list control under the items (FUN_006083c0). A press on empty
-    // space clears the selection (FUN_006094b0). port: only the Personnel and
-    // Troops tabs open the pop-up menu; the other tabs' classes are not ported.
+    // space clears the selection (FUN_006094b0). port: only the Personnel,
+    // Fleets and Troops tabs open the pop-up menu; the other tabs' classes are
+    // not ported.
     let menu_tab = matches!(
         window.tab,
-        SystemWindowTab::Personnel | SystemWindowTab::Troops
+        SystemWindowTab::Personnel | SystemWindowTab::Fleets | SystemWindowTab::Troops
     );
     let list_rect = logical_rect(
         parent,
@@ -867,13 +869,13 @@ fn paint_tab_content(
             result.focus = true;
         }
         if menu_tab && response.secondary_clicked() {
-            if let (Some(member), Some(point)) = (
-                item_member(item.key),
+            if let (Some(object), Some(point)) = (
+                item_menu_object(item.key),
                 response
                     .interact_pointer_pos()
                     .filter(|point| rect_contains(image_rect, *point)),
             ) {
-                result.object_menu = Some((Some(member), point));
+                result.object_menu = Some((Some(object), point));
             }
         }
     }
@@ -1948,7 +1950,7 @@ mod tests {
         (actions, state.windows[0].selected_item)
     }
 
-    fn menus(actions: &[SystemWindowAction]) -> Vec<(Option<MissionMember>, (i16, i16))> {
+    fn menus(actions: &[SystemWindowAction]) -> Vec<(Option<MenuObject>, (i16, i16))> {
         actions
             .iter()
             .filter_map(|action| match *action {
@@ -1995,7 +1997,7 @@ mod tests {
         // The window sits at (60, 40) in the canvas.
         assert_eq!(
             menus(&actions),
-            [(Some(MissionMember::Character(agent)), (100, 128))]
+            [(Some(MenuObject::Character(agent)), (100, 128))]
         );
         assert!(actions.iter().any(|action| matches!(
             action,
@@ -2027,7 +2029,42 @@ mod tests {
         assert_eq!(selected, Some(SystemWindowItem::SpecialForce(unit)));
         assert_eq!(
             menus(&actions),
-            [(Some(MissionMember::SpecialForce(unit)), (100, 128))]
+            [(Some(MenuObject::SpecialForce(unit)), (100, 128))]
+        );
+    }
+
+    #[test]
+    fn a_right_click_on_a_fleet_opens_its_menu() {
+        // The fleet list owns the fleet's pop-up menu (FUN_004ff8e0;
+        // ghidra/notes/move-order.md, "The Fleet menu").
+        let (mut world, systems) = fixture_world(1);
+        let class = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x1c00_0001),
+                ..Default::default()
+            });
+        let fleet = world.fleets.insert(Fleet {
+            location: systems[0],
+            capital_ships: Vec::new(),
+            fighters: vec![rebellion_core::world::FighterEntry { class, count: 1 }],
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[systems[0]].fleets.push(fleet);
+        let (actions, selected) = click_in_window(
+            &world,
+            systems[0],
+            SystemWindowTab::Fleets,
+            None,
+            FIRST_ITEM,
+            egui::PointerButton::Secondary,
+        );
+        assert_eq!(selected, Some(SystemWindowItem::Fleet(fleet)));
+        assert_eq!(
+            menus(&actions),
+            [(Some(MenuObject::Fleet(fleet)), (100, 128))]
         );
     }
 
