@@ -8,6 +8,7 @@ pub mod encyclopedia;
 pub mod event_screen;
 pub mod fleet_movement;
 pub mod fog;
+pub mod game_menu;
 pub mod game_options;
 pub mod game_speed;
 pub mod ground_combat;

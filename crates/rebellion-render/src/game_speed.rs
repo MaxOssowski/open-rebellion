@@ -19,19 +19,16 @@ use rebellion_core::tick::{GameClock, GameSpeed};
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{
-    gid_popup_frame, logical_rect_to_screen, paint_gid_frame_border, CockpitFaction, CockpitLayout,
-    CockpitViewport, STRATEGIC_LOGICAL_HEIGHT, STRATEGIC_LOGICAL_WIDTH,
+    gid_popup_frame, logical_rect_to_screen, CockpitFaction, CockpitLayout, CockpitViewport,
+    STRATEGIC_LOGICAL_HEIGHT, STRATEGIC_LOGICAL_WIDTH,
 };
+use crate::game_menu::{draw_game_menu, faction_text_color, GameMenuEntry, GameMenuResponse};
 
 /// Game-font entry 10 (`FUN_0060eed0`): 14-pixel Arial, normal weight.
 ///
 /// Arial is not redistributable in the browser build, so text uses egui's
 /// proportional face at the recovered height.
 const DAY_FONT_HEIGHT: f32 = 14.0;
-
-/// Menu text height. The Game Menu Window uses the application default font
-/// (`FUN_00603850`), whose table entry is not yet recovered.
-const MENU_FONT_HEIGHT: f32 = 14.0;
 
 /// One record of the original speed menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,75 +113,6 @@ pub const fn day_text_origin(faction: CockpitFaction) -> (f32, f32) {
         CockpitFaction::Alliance => (104.0, 18.0),
         CockpitFaction::Empire => (500.0, 18.0),
     }
-}
-
-/// Faction text color: Alliance `0x20000ff` (red), Empire `0x200ff00` (green).
-#[must_use]
-pub const fn faction_text_color(faction: CockpitFaction) -> egui::Color32 {
-    match faction {
-        CockpitFaction::Alliance => egui::Color32::from_rgb(255, 0, 0),
-        CockpitFaction::Empire => egui::Color32::from_rgb(0, 255, 0),
-    }
-}
-
-/// Highlight color `0x2ffffff` that `FUN_0042d190` passes to every item.
-const MENU_HIGHLIGHT_COLOR: egui::Color32 = egui::Color32::WHITE;
-
-/// Row geometry of a Game Menu Window, in logical pixels.
-#[derive(Debug, Clone, PartialEq)]
-pub struct GameMenuGeometry {
-    /// Widest item icon (`FUN_004abf60`), shared by every row.
-    pub icon_column: f32,
-    pub width: f32,
-    pub height: f32,
-    /// Top edge and height of each row.
-    pub rows: Vec<(f32, f32)>,
-}
-
-/// Lay out rows as `FUN_00442a80` and `FUN_004abb80` / `FUN_004abbf0` /
-/// `FUN_004abc70` do.
-///
-/// Each row is `icon_column + 12 + text` wide and `max(icon, text) + 4` tall.
-/// Rows start two pixels down, and the window adds two pixels below the sum.
-#[must_use]
-pub fn game_menu_geometry(
-    icon_sizes: &[(f32, f32)],
-    text_sizes: &[(f32, f32)],
-) -> GameMenuGeometry {
-    let icon_column = icon_sizes.iter().map(|size| size.0).fold(0.0, f32::max);
-    let mut width = 0.0_f32;
-    let mut rows = Vec::with_capacity(text_sizes.len());
-    let mut top = 2.0;
-    for (index, text) in text_sizes.iter().enumerate() {
-        let icon_height = icon_sizes.get(index).map_or(0.0, |size| size.1);
-        width = width.max(icon_column + 12.0 + text.0);
-        let height = (icon_height + 4.0).max(text.1 + 4.0);
-        rows.push((top, height));
-        top += height;
-    }
-    let height = rows.iter().map(|row| row.1).sum::<f32>() + 2.0;
-    GameMenuGeometry {
-        icon_column,
-        width,
-        height,
-        rows,
-    }
-}
-
-/// Place a menu at the cursor, flipping as `FUN_00442860` does when it would
-/// cross the owner window's right or bottom edge.
-#[must_use]
-pub fn game_menu_origin(cursor: (f32, f32), size: (f32, f32), owner: (f32, f32)) -> (f32, f32) {
-    let (mut x, mut y) = cursor;
-    if y + size.1 > owner.1 {
-        y -= size.1;
-    }
-    if x < 0.0 {
-        x += size.0;
-    } else if x + size.0 > owner.0 {
-        x -= size.0;
-    }
-    (x, y)
 }
 
 /// Speed menu state owned by the command center.
@@ -409,8 +337,12 @@ pub fn open_game_speed_menu_on_right_click(
     let Some(pointer) = pointer.filter(|_| released) else {
         return false;
     };
+    // The rectangle's right and bottom edges are exclusive, as Win32's
+    // `PtInRect` treats them; egui's `Rect::contains` includes them.
     let hit = logical_rect_to_screen(layout, day_readout_rect(faction));
-    if !hit.contains(pointer) {
+    if !(hit.x_range().min..hit.x_range().max).contains(&pointer.x)
+        || !(hit.y_range().min..hit.y_range().max).contains(&pointer.y)
+    {
         return false;
     }
     ui_state.menu_anchor = Some((
@@ -432,117 +364,33 @@ pub fn draw_game_speed_menu(
     input_enabled: bool,
 ) -> Option<GameSpeed> {
     let anchor = ui_state.menu_anchor?;
-    let scale = layout.scale.max(0.5);
     let items = game_speed_menu_items(faction);
-    let font = egui::FontId::proportional(MENU_FONT_HEIGHT * scale);
-    let text_sizes: Vec<(f32, f32)> = items
-        .iter()
-        .map(|item| {
-            let size = ctx
-                .fonts(|fonts| {
-                    fonts.layout_no_wrap(item.label.to_owned(), font.clone(), egui::Color32::WHITE)
-                })
-                .size();
-            (size.x / scale, size.y / scale)
-        })
-        .collect();
-    let icon_sizes: Vec<(f32, f32)> = items
-        .iter()
-        .map(|item| {
-            cache
-                .get(ctx, DllSource::Strategy, item.icon_resource)
-                .map_or((16.0, 10.0), |texture| {
-                    let size = texture.size_vec2();
-                    (size.x, size.y)
-                })
-        })
-        .collect();
-    let geometry = game_menu_geometry(&icon_sizes, &text_sizes);
-    let (x, y) = game_menu_origin(
+    let entries = items.map(|item| GameMenuEntry {
+        label: item.label,
+        icon: Some(item.icon_resource),
+        enabled: true,
+        submenu: false,
+    });
+    match draw_game_menu(
+        ctx,
+        egui::Id::new("original_game_speed_menu"),
+        cache,
+        layout,
+        faction,
         anchor,
-        (geometry.width, geometry.height),
-        (STRATEGIC_LOGICAL_WIDTH, STRATEGIC_LOGICAL_HEIGHT),
-    );
-    let origin = egui::pos2(
-        layout.canvas.x + x * layout.scale,
-        layout.canvas.y + y * layout.scale,
-    );
-    let menu_rect = egui::Rect::from_min_size(
-        origin,
-        egui::vec2(geometry.width * scale, geometry.height * scale),
-    );
-
-    let chosen = egui::Area::new(egui::Id::new("original_game_speed_menu"))
-        .order(egui::Order::Foreground)
-        .fade_in(false)
-        .fixed_pos(origin)
-        .show(ctx, |ui| {
-            if !input_enabled {
-                ui.disable();
-            }
-            let (rect, _) = ui.allocate_exact_size(menu_rect.size(), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 0.0, gid_popup_frame().fill);
-            let mut chosen = None;
-            for ((item, (top, height)), text) in items
-                .iter()
-                .zip(geometry.rows.iter().copied())
-                .zip(text_sizes.iter().copied())
-            {
-                let row = egui::Rect::from_min_size(
-                    rect.min + egui::vec2(0.0, top * scale),
-                    egui::vec2(rect.width(), height * scale),
-                );
-                let response = ui.interact(
-                    row,
-                    ui.id().with(("game_speed_item", item.item_id)),
-                    egui::Sense::click(),
-                );
-                if let Some(texture) = cache.get(ctx, DllSource::Strategy, item.icon_resource) {
-                    let size = texture.size_vec2() * scale;
-                    ui.painter().image(
-                        texture.id(),
-                        egui::Rect::from_min_size(row.min + egui::vec2(6.0 * scale, 0.0), size),
-                        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-                        egui::Color32::WHITE,
-                    );
-                }
-                let color = if response.hovered() {
-                    MENU_HIGHLIGHT_COLOR
-                } else {
-                    faction_text_color(faction)
-                };
-                ui.painter().text(
-                    egui::pos2(
-                        row.min.x + (geometry.icon_column + 6.0) * scale,
-                        row.min.y + ((height - text.1) / 2.0) * scale,
-                    ),
-                    egui::Align2::LEFT_TOP,
-                    item.label,
-                    font.clone(),
-                    color,
-                );
-                if response.clicked() {
-                    chosen = Some(item.speed);
-                }
-            }
-            paint_gid_frame_border(ui, cache, rect, scale);
-            chosen
-        });
-
-    let dismiss = input_enabled
-        && chosen.inner.is_none()
-        && ctx.input(|input| {
-            input.key_pressed(egui::Key::Escape)
-                || (input.pointer.any_pressed()
-                    && input
-                        .pointer
-                        .interact_pos()
-                        .is_some_and(|pointer| !chosen.response.rect.contains(pointer)))
-        });
-    if chosen.inner.is_some() || dismiss {
-        ui_state.menu_anchor = None;
+        &entries,
+        input_enabled,
+    ) {
+        GameMenuResponse::Open => None,
+        GameMenuResponse::Dismissed => {
+            ui_state.menu_anchor = None;
+            None
+        }
+        GameMenuResponse::Chosen(index) => {
+            ui_state.menu_anchor = None;
+            Some(items[index].speed)
+        }
     }
-    chosen.inner
 }
 
 #[cfg(test)]
@@ -606,39 +454,6 @@ mod tests {
             faction_text_color(CockpitFaction::Empire),
             egui::Color32::from_rgb(0, 255, 0)
         );
-    }
-
-    #[test]
-    fn menu_rows_follow_native_width_and_height_rules() {
-        let icons = [(16.0, 10.0); 5];
-        let texts = [
-            (30.0, 16.0),
-            (55.0, 16.0),
-            (24.0, 16.0),
-            (44.0, 16.0),
-            (26.0, 16.0),
-        ];
-        let geometry = game_menu_geometry(&icons, &texts);
-        assert_eq!(geometry.icon_column, 16.0);
-        // Widest row: 16 + 12 + 55.
-        assert_eq!(geometry.width, 83.0);
-        assert_eq!(
-            geometry.rows,
-            vec![
-                (2.0, 20.0),
-                (22.0, 20.0),
-                (42.0, 20.0),
-                (62.0, 20.0),
-                (82.0, 20.0)
-            ]
-        );
-        assert_eq!(geometry.height, 102.0);
-    }
-
-    #[test]
-    fn short_text_rows_keep_icon_height_plus_padding() {
-        let geometry = game_menu_geometry(&[(16.0, 10.0)], &[(10.0, 8.0)]);
-        assert_eq!(geometry.rows, vec![(2.0, 14.0)]);
     }
 
     fn running(speed: GameSpeed) -> GameClock {
@@ -746,34 +561,6 @@ mod tests {
     }
 
     #[test]
-    fn menu_touching_an_owner_edge_does_not_flip() {
-        // FUN_00442860 flips only when the menu strictly crosses the edge.
-        let owner = (640.0, 480.0);
-        assert_eq!(
-            game_menu_origin((557.0, 378.0), (83.0, 102.0), owner),
-            (557.0, 378.0)
-        );
-        assert_eq!(
-            game_menu_origin((558.0, 379.0), (83.0, 102.0), owner),
-            (475.0, 277.0)
-        );
-    }
-
-    #[test]
-    fn menu_left_of_the_owner_moves_right_by_its_width() {
-        // FUN_00442860: a negative x gains the menu width; zero stays put.
-        let owner = (640.0, 480.0);
-        assert_eq!(
-            game_menu_origin((-10.0, 26.0), (83.0, 102.0), owner),
-            (73.0, 26.0)
-        );
-        assert_eq!(
-            game_menu_origin((0.0, 26.0), (83.0, 102.0), owner),
-            (0.0, 26.0)
-        );
-    }
-
-    #[test]
     fn pause_alert_hit_area_matches_its_scaled_rectangle() {
         let layout = CockpitLayout {
             canvas: CockpitViewport {
@@ -803,20 +590,328 @@ mod tests {
         assert!(!hit(left, bottom));
     }
 
+    fn primary(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        }
+    }
+
+    fn key(key: egui::Key) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        }
+    }
+
+    /// Run one egui frame with the pointer at `pointer` and `events` after it,
+    /// returning the shapes it painted.
+    fn frame(
+        ctx: &egui::Context,
+        pointer: egui::Pos2,
+        events: Vec<egui::Event>,
+        draw: impl FnMut(&egui::Context),
+    ) -> Vec<egui::epaint::ClippedShape> {
+        let mut all = vec![egui::Event::PointerMoved(pointer)];
+        all.extend(events);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 1040.0),
+            )),
+            events: all,
+            ..Default::default()
+        };
+        ctx.run(input, draw).shapes
+    }
+
+    fn strategic_layout(scale: f32) -> CockpitLayout {
+        crate::cockpit::CockpitState::new(CockpitFaction::Alliance)
+            .layout_for(640.0 * scale, 480.0 * scale)
+    }
+
+    fn screen(layout: CockpitLayout, (x, y): (f32, f32)) -> egui::Pos2 {
+        egui::pos2(
+            layout.canvas.x + x * layout.scale,
+            layout.canvas.y + y * layout.scale,
+        )
+    }
+
     #[test]
-    fn menu_flips_away_from_right_and_bottom_owner_edges() {
-        let owner = (640.0, 480.0);
+    fn a_right_release_on_the_day_readout_opens_the_menu_at_the_pointer() {
+        // FUN_00422ce0: WM_RBUTTONUP inside (103,21)-(185,33) opens the menu
+        // at the cursor; PtInRect excludes the right and bottom edges.
+        // An offset canvas, so the anchor must subtract it.
+        let mut layout = strategic_layout(2.0);
+        layout.canvas.x += 10.0;
+        layout.canvas.y += 20.0;
+        let open_at = |point: (f32, f32), button: egui::PointerButton, covered: bool| {
+            let ctx = egui::Context::default();
+            let mut state = GameSpeedUiState::default();
+            let pos = screen(layout, point);
+            let button_event = |pressed| egui::Event::PointerButton {
+                pos,
+                button,
+                pressed,
+                modifiers: egui::Modifiers::default(),
+            };
+            let mut opened = false;
+            for events in [vec![], vec![button_event(true)], vec![button_event(false)]] {
+                frame(&ctx, pos, events, |ctx| {
+                    if covered {
+                        // Another window, such as an open menu, over the readout.
+                        egui::Area::new(egui::Id::new("cover"))
+                            .fixed_pos(egui::Pos2::ZERO)
+                            .show(ctx, |ui| {
+                                ui.allocate_exact_size(
+                                    egui::vec2(1400.0, 1040.0),
+                                    egui::Sense::hover(),
+                                );
+                            });
+                    }
+                    opened |= open_game_speed_menu_on_right_click(
+                        ctx,
+                        &mut state,
+                        layout,
+                        CockpitFaction::Alliance,
+                    );
+                });
+            }
+            (opened, state.menu_anchor)
+        };
+        let secondary = egui::PointerButton::Secondary;
         assert_eq!(
-            game_menu_origin((120.0, 26.0), (83.0, 102.0), owner),
-            (120.0, 26.0)
+            open_at((120.0, 27.0), secondary, false),
+            (true, Some((120.0, 27.0)))
         );
         assert_eq!(
-            game_menu_origin((600.0, 26.0), (83.0, 102.0), owner),
-            (517.0, 26.0)
+            open_at((103.0, 21.0), secondary, false),
+            (true, Some((103.0, 21.0)))
         );
+        assert_eq!(open_at((185.0, 27.0), secondary, false), (false, None));
+        assert_eq!(open_at((120.0, 33.0), secondary, false), (false, None));
         assert_eq!(
-            game_menu_origin((120.0, 420.0), (83.0, 102.0), owner),
-            (120.0, 318.0)
+            open_at((120.0, 27.0), egui::PointerButton::Primary, false),
+            (false, None)
         );
+        assert_eq!(open_at((120.0, 27.0), secondary, true), (false, None));
+    }
+
+    #[test]
+    fn choosing_a_speed_menu_row_returns_its_speed_and_closes_the_menu() {
+        // FUN_004424c0 reports the chosen item; FUN_0042d190's records map
+        // the five rows to the five speeds in order.
+        for index in 0..GameSpeed::ALL.len() {
+            let layout = strategic_layout(1.0);
+            let ctx = egui::Context::default();
+            let mut cache = BmpCache::new();
+            let mut state = GameSpeedUiState {
+                menu_anchor: Some((100.0, 100.0)),
+            };
+            let mut chosen = None;
+            let mut draw = |ctx: &egui::Context| {
+                chosen = chosen.or(draw_game_speed_menu(
+                    ctx,
+                    &mut state,
+                    &mut cache,
+                    layout,
+                    CockpitFaction::Alliance,
+                    true,
+                ));
+            };
+            frame(&ctx, egui::Pos2::ZERO, vec![], &mut draw);
+            frame(&ctx, egui::Pos2::ZERO, vec![], &mut draw);
+            let rect = ctx
+                .memory(|memory| memory.area_rect(egui::Id::new("original_game_speed_menu")))
+                .expect("the speed menu is laid out");
+            let row = (rect.height() - 2.0) / GameSpeed::ALL.len() as f32;
+            let at = egui::pos2(
+                rect.center().x,
+                rect.min.y + 2.0 + row * (index as f32 + 0.5),
+            );
+            frame(&ctx, at, vec![primary(at, true)], &mut draw);
+            frame(&ctx, at, vec![primary(at, false)], &mut draw);
+            assert_eq!(chosen, Some(GameSpeed::ALL[index]), "row {index}");
+            assert_eq!(state.menu_anchor, None);
+        }
+    }
+
+    #[test]
+    fn a_press_outside_the_speed_menu_closes_it_without_a_choice() {
+        let layout = strategic_layout(1.0);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let mut state = GameSpeedUiState {
+            menu_anchor: Some((100.0, 100.0)),
+        };
+        let mut chosen = None;
+        let outside = screen(layout, (600.0, 450.0));
+        for events in [vec![], vec![], vec![primary(outside, true)]] {
+            frame(&ctx, outside, events, |ctx| {
+                chosen = chosen.or(draw_game_speed_menu(
+                    ctx,
+                    &mut state,
+                    &mut cache,
+                    layout,
+                    CockpitFaction::Alliance,
+                    true,
+                ));
+            });
+        }
+        assert_eq!(chosen, None);
+        assert_eq!(state.menu_anchor, None);
+    }
+
+    /// Draw the alert with the pointer at logical `point`: two layout frames,
+    /// then a frame with the presses in `last` and one with the rest. Returns
+    /// whether any frame asked to resume.
+    fn alert_resumes(clock: &GameClock, point: (f32, f32), last: Vec<egui::Event>) -> bool {
+        let layout = strategic_layout(2.0);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let pos = screen(layout, point);
+        let mut resumed = false;
+        let last = last
+            .into_iter()
+            .map(|event| match event {
+                egui::Event::PointerButton { pressed, .. } => primary(pos, pressed),
+                other => other,
+            })
+            .collect::<Vec<_>>();
+        let (press, release): (Vec<_>, Vec<_>) = last
+            .into_iter()
+            .partition(|event| matches!(event, egui::Event::PointerButton { pressed: true, .. }));
+        for events in [vec![], vec![], press, release] {
+            frame(&ctx, pos, events, |ctx| {
+                resumed |= draw_pause_alert(ctx, clock, &mut cache, layout, true);
+            });
+        }
+        resumed
+    }
+
+    #[test]
+    fn the_pause_alert_checkmark_or_enter_resumes_and_nothing_else_does() {
+        // FUN_00417150: the checkmark button at (176,134), 57 by 28, inside the
+        // alert centred by FUN_005ffeb0; Enter is its default button.
+        let mut paused = running(GameSpeed::Slow);
+        paused.pause();
+        let (x, y) = pause_alert_origin();
+        let checkmark = (x + 176.0 + 28.0, y + 134.0 + 14.0);
+        let click = vec![
+            primary(egui::Pos2::ZERO, true),
+            primary(egui::Pos2::ZERO, false),
+        ];
+        assert!(alert_resumes(&paused, checkmark, click.clone()));
+        assert!(alert_resumes(
+            &paused,
+            (x + 20.0, y + 20.0),
+            vec![key(egui::Key::Enter)]
+        ));
+        assert!(!alert_resumes(&paused, (x + 20.0, y + 20.0), click.clone()));
+        assert!(!alert_resumes(&paused, checkmark, vec![]));
+        let running = running(GameSpeed::Slow);
+        assert!(!alert_resumes(&running, checkmark, click));
+        assert!(!alert_resumes(
+            &running,
+            checkmark,
+            vec![key(egui::Key::Enter)]
+        ));
+    }
+
+    #[test]
+    fn the_pause_alert_message_is_centred_in_its_rectangle() {
+        // The message rectangle (43,25)-(368,112) read from 0x00658920.
+        let layout = strategic_layout(2.0);
+        let mut paused = running(GameSpeed::Slow);
+        paused.pause();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let mut shapes = Vec::new();
+        for _ in 0..2 {
+            shapes = frame(&ctx, egui::Pos2::ZERO, vec![], |ctx| {
+                draw_pause_alert(ctx, &paused, &mut cache, layout, true);
+            });
+        }
+        let text = shapes
+            .into_iter()
+            .find_map(|clipped| match clipped.shape {
+                egui::Shape::Text(text) if text.galley.text() == RESUME_GAME_PLAY => Some(text),
+                _ => None,
+            })
+            .expect("the message is painted");
+        let (x, y) = pause_alert_origin();
+        let centre = screen(
+            layout,
+            (
+                x + ALERT_TEXT_RECT.x + ALERT_TEXT_RECT.width / 2.0,
+                y + ALERT_TEXT_RECT.y + ALERT_TEXT_RECT.height / 2.0,
+            ),
+        );
+        let painted = text.pos + text.galley.size() / 2.0;
+        assert!(
+            (painted - centre).length() < 0.5,
+            "{painted:?} vs {centre:?}"
+        );
+        assert_eq!(text.fallback_color, ALERT_TEXT_COLOR);
+        let expected = ctx.fonts(|fonts| {
+            fonts
+                .layout_no_wrap(
+                    RESUME_GAME_PLAY.to_owned(),
+                    egui::FontId::proportional(ALERT_FONT_HEIGHT * 2.0),
+                    ALERT_TEXT_COLOR,
+                )
+                .size()
+        });
+        assert_eq!(text.galley.size(), expected);
+        // FUN_00417020: the 412 by 176 alert, at twice the size.
+        let rect = ctx
+            .memory(|memory| memory.area_rect(egui::Id::new("original_pause_alert")))
+            .expect("the alert is laid out");
+        assert_eq!(rect.size(), egui::vec2(ALERT_WIDTH, ALERT_HEIGHT) * 2.0);
+    }
+
+    #[test]
+    fn the_day_readout_is_centred_between_its_anchor_and_the_hit_rectangle() {
+        // FUN_00601ce0 centres the text from FUN_00601b30's anchor to the
+        // right edge of the readout.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let layout = crate::cockpit::CockpitState::new(faction).layout_for(1280.0, 960.0);
+            let ctx = egui::Context::default();
+            let shapes = frame(&ctx, egui::Pos2::ZERO, vec![], |ctx| {
+                draw_day_readout(ctx, layout, faction, 42);
+            });
+            let text = shapes
+                .into_iter()
+                .find_map(|clipped| match clipped.shape {
+                    egui::Shape::Text(text) => Some(text),
+                    _ => None,
+                })
+                .expect("the day is painted");
+            assert_eq!(text.galley.text(), "42");
+            let (x, y) = day_text_origin(faction);
+            let hit = day_readout_rect(faction);
+            let centre = screen(layout, ((x + hit.x + hit.width) / 2.0, y));
+            assert!(
+                (text.pos.x + text.galley.size().x / 2.0 - centre.x).abs() < 0.01,
+                "{faction:?}"
+            );
+            assert_eq!(text.pos.y, centre.y, "{faction:?}");
+            assert_eq!(text.fallback_color, faction_text_color(faction));
+            let expected = ctx.fonts(|fonts| {
+                fonts
+                    .layout_no_wrap(
+                        "42".to_owned(),
+                        egui::FontId::proportional(DAY_FONT_HEIGHT * layout.scale),
+                        faction_text_color(faction),
+                    )
+                    .size()
+            });
+            assert_eq!(text.galley.size(), expected, "{faction:?}");
+        }
     }
 }

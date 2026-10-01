@@ -7,10 +7,10 @@ controls and resources, its two pages, and what each command does. Read with
 
 ## Opening
 
-A character dragged from the system window and dropped onto a system on the
-galaxy map creates order type `0x240` with that system as its target
-(`FUN_00422ce0`, the drag starts at `FUN_00520720(.., 0x240)` and
-`FUN_0041cdf0`). `FUN_0042a320` then asks `FUN_004f5380` → `FUN_005422f0` for
+The player right-clicks a character or team, chooses Mission (order `0x240`)
+from the pop-up menu, and clicks the target with the targeting cursor
+(`object-popup-menu.md`). A drag onto the map moves the team instead.
+`FUN_0042a320` then asks `FUN_004f5380` → `FUN_005422f0` for
 the MISSNSD records the team may undertake. With none, the order is handed back
 through `FUN_0041ce20(order, 0)` and no dialog opens. Otherwise
 `FUN_0046a750` builds the dialog.
@@ -135,8 +135,8 @@ decoys). STRATEGY holds 10749..10751 but not 10650 or 10748.
 its controls. `rebellion_core::missions::available_kinds` builds the kind list.
 Port decisions:
 
-- port: until phase 7 builds the drag, the missions panel's character and
-  target pickers stand in for the drop.
+- port: until phase 7 ports the pop-up menu and targeting cursor, the
+  missions panel's character and target pickers stand in for them.
 - port: the target is a system, so only kinds with a system target are
   listed; a drop onto a character or object is phase 7.
 - hyp: `FUN_00606980` places the window in the galaxy view's rectangle; the port
