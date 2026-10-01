@@ -20,15 +20,22 @@ const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-
 // FUN_0046a750 builds a 259 by 355 window; the port centers it on whole pixels
 // in the galaxy view (hyp: FUN_00606980). At 640 by 480 that is:
 const dimensions = { width: 259, height: 355 };
+// `galaxy` is the galaxy view's top-left at 640 by 480 (CockpitState::layout_for).
 const factions = [
-  { name: "alliance", byte: 1, origin: { x: 168, y: 38 }, title: 10801, tabs: [[11103, 11104], [11107, 11108]], headers: [11121, 11122] },
-  { name: "empire", byte: 2, origin: { x: 231, y: 40 }, title: 10802, tabs: [[11105, 11106], [11109, 11110]], headers: [11123, 11124] },
+  { name: "alliance", byte: 1, galaxy: { x: 55, y: 40 }, origin: { x: 168, y: 38 }, title: 10801, tabs: [[11103, 11104], [11107, 11108]], headers: [11121, 11122] },
+  { name: "empire", byte: 2, galaxy: { x: 120, y: 40 }, origin: { x: 231, y: 40 }, title: 10802, tabs: [[11105, 11106], [11109, 11110]], headers: [11123, 11124] },
 ];
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
+// "targeting" reaches the dialog through the original entry: a right-click on
+// the agent in a system window, Mission, and a release over a map system.
 const scenarios = [
-  { name: "mission", code: 43 },
-  { name: "agents", code: 44 },
+  { name: "mission", code: 43, page: "mission" },
+  { name: "agents", code: 44, page: "agents" },
+  { name: "targeting", code: 45, page: "mission" },
 ];
+// REBEXE.EXE cursor 1002 (FUN_00422ce0 WM_CREATE), 32 by 32 with its hotspot
+// at (12, 12); extract-dll-resources.py --cursors keys its mask to blue.
+const cursor = { id: 1002, hotspot: { x: 12, y: 12 }, key: [0, 0, 255] };
 // FUN_0046a9c0 controls: (x, y, control width, control height, normal bitmap).
 const bottomButtons = [
   { x: 33, y: 320, width: 64, height: 33, id: 10592, native: [66, 33] },
@@ -146,6 +153,102 @@ function decodeIndexedBmp(bytes, expectedWidth, expectedHeight) {
     }
   }
   return png;
+}
+
+function cursorFile() {
+  const candidates = [
+    process.env.REBELLION_REBEXE_BMP_DIR,
+    path.join(root, "data/base/ui/rebexe-exe/BMP"),
+  ].filter(Boolean).map((directory) => path.join(directory, `${cursor.id}.bmp`));
+  const file = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!file) {
+    throw new Error("REBEXE.EXE cursor 1002 is not staged; run extract-dll-resources.py REBEXE.EXE --cursors");
+  }
+  return file;
+}
+
+function decodeTrueColorBmp(bytes) {
+  assert.equal(bytes.toString("ascii", 0, 2), "BM", "cursor is not a BMP");
+  const dataOffset = bytes.readUInt32LE(10);
+  const width = bytes.readInt32LE(18);
+  const signedHeight = bytes.readInt32LE(22);
+  const height = Math.abs(signedHeight);
+  assert.deepEqual([bytes.readUInt16LE(28), bytes.readUInt32LE(30)], [24, 0], "cursor is not 24-bit");
+  const stride = (width * 3 + 3) & ~3;
+  const png = new PNG({ width, height });
+  for (let y = 0; y < height; y += 1) {
+    const sourceY = signedHeight > 0 ? height - 1 - y : y;
+    for (let x = 0; x < width; x += 1) {
+      const at = dataOffset + sourceY * stride + x * 3;
+      png.data.set([bytes[at + 2], bytes[at + 1], bytes[at], 255], (y * width + x) * 4);
+    }
+  }
+  return png;
+}
+
+// Every opaque cursor pixel is drawn exactly, with the hotspot on the pointer.
+function compareCursor(screenshotBytes, pointer, directory) {
+  const screenshot = PNG.sync.read(screenshotBytes);
+  const image = decodeTrueColorBmp(fs.readFileSync(cursorFile()));
+  let opaque = 0;
+  let different = 0;
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      const source = (y * image.width + x) * 4;
+      const pixel = [...image.data.subarray(source, source + 3)];
+      if (pixel.every((value, index) => value === cursor.key[index])) continue;
+      opaque += 1;
+      const sx = pointer.x - cursor.hotspot.x + x;
+      const sy = pointer.y - cursor.hotspot.y + y;
+      const at = (sy * screenshot.width + sx) * 4;
+      if (pixel.some((value, index) => screenshot.data[at + index] !== value)) different += 1;
+    }
+  }
+  fs.writeFileSync(path.join(directory, "cursor-expected.png"), PNG.sync.write(image));
+  assert.ok(opaque > 0, "the staged cursor has no opaque pixel");
+  return { label: "targeting-cursor", opaque_pixels: opaque, different_pixels: different };
+}
+
+async function click(page, point, button = "left") {
+  // egui resolves a click across frames: hover, press, then release.
+  await page.mouse.move(point.x, point.y);
+  await frames(page);
+  await page.mouse.down({ button });
+  await frames(page);
+  await page.mouse.up({ button });
+  await frames(page);
+}
+
+// The original entry (manual p. 100): right-click the agent, choose Mission,
+// then click the target. Returns the cursor check and the menu report.
+async function target(page, faction, directory) {
+  // The fixture opens the system window 5 pixels into the galaxy view; its
+  // first item's picture is centred 40 by 88 into the window.
+  const agent = { x: faction.galaxy.x + 5 + 40, y: faction.galaxy.y + 5 + 88 };
+  await click(page, agent, "right");
+  await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+    null, { timeout: 10_000 });
+  const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+  assert.notEqual(menu.mission_row, null, "the agent's menu lists Mission");
+  fs.writeFileSync(path.join(directory, "menu-screen.png"), await page.screenshot({ animations: "disabled" }));
+  // Rows below a 2-pixel border share one height: the character records carry no icon.
+  const row = (menu.height - 2) / menu.rows;
+  await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + row * (menu.mission_row + 0.5) });
+
+  const pointer = { x: Math.round(menu.target_screen_x), y: Math.round(menu.target_screen_y) };
+  await page.mouse.move(pointer.x, pointer.y);
+  await page.waitForTimeout(150);
+  await frames(page);
+  const targeting = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "targeting-screen.png"), targeting);
+  const cursorCheck = compareCursor(targeting, pointer, directory);
+  // FUN_00422ce0 has no WM_LBUTTONDOWN case in mode 2; the release targets.
+  await page.mouse.down();
+  await frames(page);
+  await page.mouse.up();
+  await frames(page);
+  await page.mouse.move(2, 2);
+  return { cursorCheck, menu, pointer };
 }
 
 function resource(source, id, width, height) {
@@ -327,8 +430,10 @@ async function inspect(server, source, faction, scenario, executable) {
 
     const { origin } = faction;
     const comparisons = [];
+    let targeting = null;
+    if (scenario.name === "targeting") targeting = await target(page, faction, directory);
     const opened = await stableDialog(page, origin, directory, "opened");
-    comparisons.push(compare(opened, composeExpected(source, faction, scenario.name), scenario.name, "opened", directory));
+    comparisons.push(compare(opened, composeExpected(source, faction, scenario.page), scenario.page, "opened", directory));
     if (scenario.name === "mission") {
       // A click on the Agents tab (0x98) switches pages (FUN_0046c8a0).
       // egui resolves a click across frames: hover, press, then release.
@@ -343,6 +448,7 @@ async function inspect(server, source, faction, scenario, executable) {
       comparisons.push(compare(switched, composeExpected(source, faction, "agents"), "agents", "agents-tab-clicked", directory));
     }
 
+    if (targeting) comparisons.push(targeting.cursorCheck);
     assert.ok(comparisons.every(({ different_pixels: differentPixels }) => differentPixels === 0),
       JSON.stringify(comparisons.filter(({ different_pixels: differentPixels }) => differentPixels !== 0)));
     assert.deepEqual(requests.map(({ url }) => url).sort(), [...expectedRequests].sort());
@@ -354,6 +460,7 @@ async function inspect(server, source, faction, scenario, executable) {
       scenario: scenario.name,
       fixture_code: fixtureCode,
       ready,
+      ...(targeting ? { object_menu: targeting.menu, target_pointer: targeting.pointer } : {}),
       comparisons,
       requests,
       errors,
@@ -411,7 +518,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "mission-dialog",
-    scope: "test-only mission dialog (FUN_0046a750) on both pages: static STRATEGY chrome compared exactly; text, kind item, target art and member lists masked and kept as captures",
+    scope: "test-only mission dialog (FUN_0046a750) on both pages, and reached through the pop-up menu and targeting cursor: static STRATEGY chrome and REBEXE cursor 1002 compared exactly; text, kind item, target art and member lists masked and kept as captures",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,
@@ -423,6 +530,7 @@ async function main() {
     origins: Object.fromEntries(factions.map(({ name, origin }) => [name, origin])),
     masks,
     source: sourceIdentity(source),
+    cursor: { exe: "REBEXE.EXE", id: cursor.id, sha256: sha256(fs.readFileSync(cursorFile())) },
     factions: results,
     wasm_sha256: sha256(fs.readFileSync(path.join(site, "open-rebellion-test.wasm"))),
     runtime_pack_sha256: sha256(fs.readFileSync(path.join(site, "data/runtime.orpk"))),

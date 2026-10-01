@@ -31,6 +31,8 @@ const fixturePlugin = `    <script>
                             window.__openRebellionInterfaceSelection = message;
                         } else if (message.status === "hovered") {
                             window.__openRebellionInterfaceHover = message;
+                        } else if (message.status === "object-menu") {
+                            window.__openRebellionInterfaceObjectMenu = message;
                         } else {
                             window.__openRebellionInterfaceReady = message;
                         }
