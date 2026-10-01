@@ -63,14 +63,15 @@ use rebellion_core::world::{
     CampaignConfig, GameWorld, MstbTable, SeedDifficulty, SeedOptions, VictoryConditions,
 };
 
-use rebellion_render::mission_dialog::{
-    draw_mission_dialog, MissionDialogAction, MissionDialogState,
-};
 use rebellion_render::game_speed::{
     choose_game_speed, draw_day_readout, draw_game_speed_menu, draw_pause_alert,
     open_game_speed_menu_on_right_click, pause_alert_contains_screen_point, stepped_game_speed,
     GameSpeedUiState,
 };
+use rebellion_render::mission_dialog::{
+    draw_mission_dialog, MissionDialogAction, MissionDialogState,
+};
+use rebellion_render::object_menu::{draw_object_menu, ObjectMenuCommand, ObjectMenuState};
 use rebellion_render::panels::bombardment::{draw_bombardment, BombardmentPanelState};
 use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
@@ -1040,6 +1041,8 @@ async fn main() {
     let mut game_speed_ui = GameSpeedUiState::default();
     let mut sector_window_state = SectorWindowState::default();
     let mut system_window_state = SystemWindowState::default();
+    // The object pop-up menu a right-click in a system window opens.
+    let mut object_menu: Option<ObjectMenuState> = None;
     let mut bmp_cache = BmpCache::new();
     {
         // gdata_path is data/base; staged UI BMPs live at data/base/ui/
@@ -1308,7 +1311,10 @@ async fn main() {
             } else if matches!(game_mode, GameMode::Credits | GameMode::MultiplayerSetup) {
                 game_mode = GameMode::MainMenu;
             } else if game_mode == GameMode::Galaxy {
-                if game_speed_ui.menu_anchor.is_some() {
+                if object_menu.is_some() {
+                    // Escape closes only the open object pop-up menu.
+                    object_menu = None;
+                } else if game_speed_ui.menu_anchor.is_some() {
                     // Escape closes only the open Game Speed menu.
                     game_speed_ui.menu_anchor = None;
                 } else if cockpit_state.gid_ui.menu_open {
@@ -2700,6 +2706,7 @@ Some(RailAudience::side(*faction_is_alliance)),
             GameMode::MainMenu => {
                 sector_window_state.clear();
                 system_window_state.clear();
+                object_menu = None;
                 #[cfg(not(target_arch = "wasm32"))]
                 audio_engine.play_music_for_context(
                     MusicContext::MainMenu,
@@ -3136,6 +3143,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     });
                                 sector_window_state.clear();
                                 system_window_state.clear();
+                                object_menu = None;
 
                                 // Initialize game state for chosen faction
                                 fog_alliance_state = FogState::new(Faction::Alliance);
@@ -3252,6 +3260,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || enc_state.open
                     || original_modal_fixture_open
                     || game_speed_ui.menu_anchor.is_some()
+                    || object_menu.is_some()
                     || pause_alert_contains_screen_point(&clock, cockpit_layout, pointer)
                     || event_screen_state.is_active();
 
@@ -3608,7 +3617,35 @@ Some(RailAudience::side(*faction_is_alliance)),
                             SystemWindowAction::SelectSystem(system) => {
                                 map_state.selected_system = Some(system);
                             }
+                            SystemWindowAction::OpenObjectMenu {
+                                selection, point, ..
+                            } => {
+                                let mission_enabled = selection.is_some_and(|member| {
+                                    mission_state.mission_order_enabled(
+                                        &world,
+                                        player_faction,
+                                        &[member],
+                                    )
+                                });
+                                object_menu =
+                                    Some(ObjectMenuState::new(selection, mission_enabled, point));
+                            }
                         }
+                    }
+
+                    match draw_object_menu(
+                        ctx,
+                        &mut object_menu,
+                        &mut bmp_cache,
+                        cockpit_layout,
+                        cockpit_state.faction,
+                        strategic_input_enabled,
+                    ) {
+                        Some((ObjectMenuCommand::Encyclopedia, _)) => enc_state.open = true,
+                        // F-019 phase 7c: Mission starts the targeting cursor.
+                        Some((ObjectMenuCommand::Mission, _)) => {}
+                        // port: the other items are drawn disabled.
+                        Some(_) | None => {}
                     }
 
                     match draw_mission_dialog(
@@ -4304,6 +4341,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             map_state = GalaxyMapState::default();
                             sector_window_state.clear();
                             system_window_state.clear();
+                            object_menu = None;
                             officers_state = OfficersState::default();
                             fleets_state = FleetsState::default();
                             mfg_panel_state = ManufacturingPanelState::default();

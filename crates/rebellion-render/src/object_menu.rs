@@ -7,9 +7,12 @@
 //! and Status. Each record names its text (word 5, TEXTSTRA), its parent
 //! submenu (word 1) and its sort key (word 2).
 
+use egui_macroquad::egui;
 use rebellion_core::missions::MissionMember;
 
-use crate::game_menu::GameMenuEntry;
+use crate::bmp_cache::BmpCache;
+use crate::cockpit::{CockpitFaction, CockpitLayout, CockpitViewport};
+use crate::game_menu::{draw_game_menu, GameMenuEntry, GameMenuPlacement, GameMenuResponse};
 
 /// What an item does when chosen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,6 +171,78 @@ pub fn object_menu_rows(
     rows
 }
 
+/// An open object pop-up menu.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectMenuState {
+    selection: Option<MissionMember>,
+    rows: Vec<ObjectMenuRow>,
+    /// The 640 by 480 canvas point of the right-button release.
+    point: (f32, f32),
+}
+
+impl ObjectMenuState {
+    /// Open the menu for `selection` at a canvas `point`.
+    #[must_use]
+    pub fn new(selection: Option<MissionMember>, mission_enabled: bool, point: (i16, i16)) -> Self {
+        Self {
+            selection,
+            rows: object_menu_rows(selection, mission_enabled),
+            point: (f32::from(point.0), f32::from(point.1)),
+        }
+    }
+}
+
+/// The galaxy view in canvas coordinates: the menu's owner window
+/// (`FUN_004ac5c0` maps the point into it and `FUN_00442380` opens there).
+fn galaxy_owner(layout: CockpitLayout) -> CockpitViewport {
+    let scale = layout.scale.max(f32::EPSILON);
+    CockpitViewport {
+        x: (layout.galaxy.x - layout.canvas.x) / scale,
+        y: (layout.galaxy.y - layout.canvas.y) / scale,
+        width: layout.galaxy.width / scale,
+        height: layout.galaxy.height / scale,
+    }
+}
+
+/// Draw the open menu. Returns the chosen command and the selection it acts
+/// on; a choice, a press outside or Escape closes the menu.
+pub fn draw_object_menu(
+    ctx: &egui::Context,
+    menu: &mut Option<ObjectMenuState>,
+    cache: &mut BmpCache,
+    layout: CockpitLayout,
+    faction: CockpitFaction,
+    input_enabled: bool,
+) -> Option<(ObjectMenuCommand, Option<MissionMember>)> {
+    let open = menu.as_ref()?;
+    let entries: Vec<GameMenuEntry<'static>> = open.rows.iter().map(ObjectMenuRow::entry).collect();
+    let placement = GameMenuPlacement {
+        owner: galaxy_owner(layout),
+        point: open.point,
+    };
+    match draw_game_menu(
+        ctx,
+        egui::Id::new("original_object_menu"),
+        cache,
+        layout,
+        faction,
+        placement,
+        &entries,
+        input_enabled,
+    ) {
+        GameMenuResponse::Open => None,
+        GameMenuResponse::Dismissed => {
+            *menu = None;
+            None
+        }
+        GameMenuResponse::Chosen(index) => {
+            let chosen = (open.rows[index].item.command, open.selection);
+            *menu = None;
+            Some(chosen)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +366,137 @@ mod tests {
         );
         let mission = rows.iter().find(|row| row.item.label == "Mission").unwrap();
         assert!(mission.entry().enabled && !mission.entry().submenu);
+    }
+
+    fn galaxy_layout() -> CockpitLayout {
+        crate::cockpit::CockpitState::new(CockpitFaction::Alliance).layout_for(1280.0, 960.0)
+    }
+
+    /// Draw `menu` for two layout frames, then click the centre of row
+    /// `row`. Returns the choice and the menu's rectangle.
+    fn click_row(
+        menu: &mut Option<ObjectMenuState>,
+        row: usize,
+    ) -> (
+        Option<(ObjectMenuCommand, Option<MissionMember>)>,
+        egui::Rect,
+    ) {
+        let layout = galaxy_layout();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let count = menu.as_ref().map_or(0, |open| open.rows.len());
+        let mut chosen = None;
+        let mut rect = egui::Rect::NOTHING;
+        for frame in 0..4 {
+            let mut events = Vec::new();
+            if frame >= 2 {
+                rect = ctx
+                    .memory(|memory| memory.area_rect(egui::Id::new("original_object_menu")))
+                    .expect("the menu is laid out");
+                let height = (rect.height() - 2.0 * layout.scale) / count as f32;
+                let pos = egui::pos2(
+                    rect.center().x,
+                    rect.min.y + 2.0 * layout.scale + height * (row as f32 + 0.5),
+                );
+                events.push(egui::Event::PointerMoved(pos));
+                events.push(egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 2,
+                    modifiers: egui::Modifiers::default(),
+                });
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 960.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                if let Some(choice) = draw_object_menu(
+                    ctx,
+                    menu,
+                    &mut cache,
+                    layout,
+                    CockpitFaction::Alliance,
+                    true,
+                ) {
+                    chosen = Some(choice);
+                }
+            });
+        }
+        (chosen, rect)
+    }
+
+    #[test]
+    fn choosing_mission_returns_it_with_the_selection_and_closes_the_menu() {
+        // FUN_004424c0 reports the kind to the owner's vtable +0x20
+        // (FUN_004ac730), which acts on the copied selection +0x11c.
+        let agent = Some(MissionMember::Character(CharacterKey::default()));
+        let mut menu = Some(ObjectMenuState::new(agent, true, (100, 100)));
+        let (chosen, _) = click_row(&mut menu, 2);
+        assert_eq!(chosen, Some((ObjectMenuCommand::Mission, agent)));
+        assert_eq!(menu, None);
+    }
+
+    #[test]
+    fn a_disabled_row_keeps_the_menu_open() {
+        let agent = Some(MissionMember::Character(CharacterKey::default()));
+        let mut menu = Some(ObjectMenuState::new(agent, true, (100, 100)));
+        let (chosen, _) = click_row(&mut menu, 0);
+        assert_eq!(chosen, None);
+        assert!(menu.is_some());
+    }
+
+    #[test]
+    fn the_menu_opens_in_the_galaxy_view_and_flips_at_its_edges() {
+        // FUN_00442860 flips at the owner's edges; the owner is the galaxy
+        // view (55, 40) to (540, 390) for the Alliance (FUN_00421c70).
+        let mut offset = galaxy_layout();
+        offset.canvas.x += 10.0;
+        offset.canvas.y += 20.0;
+        offset.galaxy.x += 10.0;
+        offset.galaxy.y += 20.0;
+        assert_eq!(
+            galaxy_owner(offset),
+            CockpitViewport {
+                x: 55.0,
+                y: 40.0,
+                width: 485.0,
+                height: 350.0,
+            }
+        );
+        let layout = galaxy_layout();
+        assert_eq!(
+            galaxy_owner(layout),
+            CockpitViewport {
+                x: 55.0,
+                y: 40.0,
+                width: 485.0,
+                height: 350.0,
+            }
+        );
+        let agent = Some(MissionMember::Character(CharacterKey::default()));
+        let mut inside = Some(ObjectMenuState::new(agent, true, (100, 100)));
+        let (_, rect) = click_row(&mut inside, 0);
+        assert_eq!(
+            rect.min,
+            egui::pos2(
+                layout.canvas.x + 100.0 * layout.scale,
+                layout.canvas.y + 100.0 * layout.scale
+            )
+        );
+        // Near the galaxy view's bottom right, inside the canvas: it flips.
+        let mut corner = Some(ObjectMenuState::new(agent, true, (530, 380)));
+        let (_, rect) = click_row(&mut corner, 0);
+        assert_eq!(
+            rect.max,
+            egui::pos2(
+                layout.canvas.x + 530.0 * layout.scale,
+                layout.canvas.y + 380.0 * layout.scale
+            )
+        );
     }
 }

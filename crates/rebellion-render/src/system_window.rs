@@ -12,6 +12,7 @@ use rebellion_core::ids::{
     CharacterKey, DatId, DefenseFacilityKey, FleetKey, ManufacturingFacilityKey,
     ProductionFacilityKey, SpecialForceKey, SystemKey, TroopKey,
 };
+use rebellion_core::missions::MissionMember;
 use rebellion_core::world::{ControlKind, GameWorld};
 
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -298,6 +299,17 @@ impl SystemWindowState {
         self.focus(system);
     }
 
+    fn deselect(&mut self, system: SystemKey) {
+        if let Some(window) = self
+            .windows
+            .iter_mut()
+            .find(|window| window.system == system)
+        {
+            window.selected_item = None;
+        }
+        self.focus(system);
+    }
+
     fn set_scroll_row(&mut self, system: SystemKey, row: usize) {
         if let Some(window) = self
             .windows
@@ -313,6 +325,13 @@ impl SystemWindowState {
 pub enum SystemWindowAction {
     FocusSector(SystemKey),
     SelectSystem(SystemKey),
+    /// A right-button release on a list opens the object pop-up menu
+    /// (`FUN_004ac5c0`) for the selection, at a 640 by 480 canvas point.
+    OpenObjectMenu {
+        system: SystemKey,
+        selection: Option<MissionMember>,
+        point: (i16, i16),
+    },
 }
 
 #[derive(Default)]
@@ -327,7 +346,9 @@ struct WindowDrawResult {
     focus_sector: bool,
     tab: Option<SystemWindowTab>,
     item: Option<SystemWindowItem>,
+    deselect: bool,
     scroll_row: Option<usize>,
+    object_menu: Option<(Option<MissionMember>, (i16, i16))>,
 }
 
 /// Draw the faction rail and every visible original detailed system window.
@@ -351,6 +372,7 @@ pub fn draw_system_windows(
     let mut minimized = None;
     let mut selected_tab = None;
     let mut selected_item = None;
+    let mut deselected = None;
     let mut selected_scroll_row = None;
 
     for window in windows {
@@ -384,6 +406,16 @@ pub fn draw_system_windows(
         if let Some(item) = result.item {
             selected_item = Some((window.system, item));
         }
+        if result.deselect {
+            deselected = Some(window.system);
+        }
+        if let Some((selection, point)) = result.object_menu {
+            actions.push(SystemWindowAction::OpenObjectMenu {
+                system: window.system,
+                selection,
+                point,
+            });
+        }
         if let Some(row) = result.scroll_row {
             selected_scroll_row = Some((window.system, row));
         }
@@ -397,6 +429,8 @@ pub fn draw_system_windows(
         state.select_tab(system, tab);
     } else if let Some((system, item)) = selected_item {
         state.select_item(system, item);
+    } else if let Some(system) = deselected {
+        state.deselect(system);
     } else if let Some((system, row)) = selected_scroll_row {
         state.set_scroll_row(system, row);
     }
@@ -619,8 +653,12 @@ fn draw_system_window(
                 local_window,
             );
             result.item = tab_result.item;
+            result.deselect = tab_result.deselect;
             result.scroll_row = tab_result.scroll_row;
             result.focus |= tab_result.focus;
+            result.object_menu = tab_result
+                .object_menu
+                .map(|(selection, point)| (selection, canvas_point(layout, point)));
 
             result.focus_sector = exact_clicked(&sector_response, sector_rect);
             result.minimize = exact_clicked(&minimize_response, minimize_rect);
@@ -638,8 +676,36 @@ fn draw_system_window(
 #[derive(Default)]
 struct TabContentDrawResult {
     item: Option<SystemWindowItem>,
+    deselect: bool,
     scroll_row: Option<usize>,
     focus: bool,
+    /// The selection and screen point of a right-button release that opens
+    /// the object pop-up menu.
+    object_menu: Option<(Option<MissionMember>, egui::Pos2)>,
+}
+
+/// The mission member an item is, when its pop-up menu is ported: a
+/// character or a special force (`FUN_004ed350`, `FUN_00503b50`).
+fn item_member(item: SystemWindowItem) -> Option<MissionMember> {
+    match item {
+        SystemWindowItem::Character(key) => Some(MissionMember::Character(key)),
+        SystemWindowItem::SpecialForce(key) => Some(MissionMember::SpecialForce(key)),
+        _ => None,
+    }
+}
+
+/// A screen point in 640 by 480 canvas coordinates, truncated as a Win32
+/// `POINT` is.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "Canvas coordinates fit an i16, as the original's POINT words do."
+)]
+fn canvas_point(layout: CockpitLayout, point: egui::Pos2) -> (i16, i16) {
+    let scale = layout.scale.max(f32::EPSILON);
+    (
+        ((point.x - layout.canvas.x) / scale).floor() as i16,
+        ((point.y - layout.canvas.y) / scale).floor() as i16,
+    )
 }
 
 #[expect(
@@ -689,6 +755,43 @@ fn paint_tab_content(
     );
     if system.exploration_status == ExplorationStatus::Unexplored {
         return result;
+    }
+
+    // The list control under the items (FUN_006083c0). A press on empty
+    // space clears the selection (FUN_006094b0). port: only the Personnel and
+    // Troops tabs open the pop-up menu; the other tabs' classes are not ported.
+    let menu_tab = matches!(
+        window.tab,
+        SystemWindowTab::Personnel | SystemWindowTab::Troops
+    );
+    let list_rect = logical_rect(
+        parent,
+        scale,
+        7.0,
+        CONTENT_TOP,
+        SCROLL_X - 7.0,
+        SCROLL_BOTTOM - CONTENT_TOP,
+    );
+    let list_response = ui.interact(
+        list_rect,
+        ui.id().with((window.system, window.tab, "list")),
+        egui::Sense::click(),
+    );
+    let (any_pressed, release_point) = ui.ctx().input(|input| {
+        (
+            input.pointer.button_pressed(egui::PointerButton::Primary)
+                || input.pointer.button_pressed(egui::PointerButton::Secondary),
+            input.pointer.interact_pos(),
+        )
+    });
+    if any_pressed && list_response.is_pointer_button_down_on() {
+        result.deselect = true;
+        result.focus = true;
+    }
+    if menu_tab && list_response.secondary_clicked() {
+        if let Some(point) = release_point.filter(|point| rect_contains(list_rect, *point)) {
+            result.object_menu = Some((None, point));
+        }
     }
 
     let items = tab_visual_items(world, fog, player_faction, window.system, window.tab);
@@ -752,6 +855,26 @@ fn paint_tab_content(
         );
         if exact_clicked(&response, image_rect) {
             result.item = Some(item.key);
+        }
+        // A right press selects the item as a left press does (FUN_006083c0
+        // shares the WM_LBUTTONDOWN path); the release opens the menu.
+        if response.is_pointer_button_down_on()
+            && ui
+                .ctx()
+                .input(|input| input.pointer.button_pressed(egui::PointerButton::Secondary))
+        {
+            result.item = Some(item.key);
+            result.focus = true;
+        }
+        if menu_tab && response.secondary_clicked() {
+            if let (Some(member), Some(point)) = (
+                item_member(item.key),
+                response
+                    .interact_pointer_pos()
+                    .filter(|point| rect_contains(image_rect, *point)),
+            ) {
+                result.object_menu = Some((Some(member), point));
+            }
         }
     }
 
@@ -1767,6 +1890,246 @@ mod tests {
 
         assert_eq!(state.windows.last().unwrap().system, systems[1]);
         assert_eq!(state.windows[0].scroll_row, 0);
+    }
+
+    /// Open `system`'s window at (60, 40) on `tab`, then press and release
+    /// `button` at window pixel `at` after two layout frames. Returns every
+    /// action and the window's selection afterwards.
+    fn click_in_window(
+        world: &GameWorld,
+        system: SystemKey,
+        tab: SystemWindowTab,
+        selected: Option<SystemWindowItem>,
+        at: (f32, f32),
+        button: egui::PointerButton,
+    ) -> (Vec<SystemWindowAction>, Option<SystemWindowItem>) {
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.open(world, system, (60, 40), CockpitFaction::Alliance, layout);
+        state.select_tab(system, tab);
+        if let Some(item) = selected {
+            state.select_item(system, item);
+        }
+        let origin = window_screen_rect(state.windows[0], layout).min;
+        let pos = origin + egui::vec2(at.0, at.1) * layout.scale;
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let fog = FogState::new(Faction::Alliance);
+        let mut actions = Vec::new();
+        let event = |pressed| egui::Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        for events in [vec![], vec![], vec![event(true)], vec![event(false)]] {
+            let mut all = vec![egui::Event::PointerMoved(pos)];
+            all.extend(events);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1000.0),
+                )),
+                events: all,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                actions.extend(draw_system_windows(
+                    ctx,
+                    world,
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                ));
+            });
+        }
+        (actions, state.windows[0].selected_item)
+    }
+
+    fn menus(actions: &[SystemWindowAction]) -> Vec<(Option<MissionMember>, (i16, i16))> {
+        actions
+            .iter()
+            .filter_map(|action| match *action {
+                SystemWindowAction::OpenObjectMenu {
+                    selection, point, ..
+                } => Some((selection, point)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The first grid cell's picture, 66 by 25 at (7, 76).
+    const FIRST_ITEM: (f32, f32) = (40.0, 88.0);
+    /// Between the first and second columns of the list.
+    const LIST_GAP: (f32, f32) = (75.0, 88.0);
+
+    fn world_with_agent() -> (GameWorld, SystemKey, CharacterKey) {
+        let (mut world, systems) = fixture_world(1);
+        let agent = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(832),
+            name: "Agent".into(),
+            is_alliance: true,
+            current_system: Some(systems[0]),
+            recruited: true,
+            ..Default::default()
+        });
+        (world, systems[0], agent)
+    }
+
+    #[test]
+    fn a_right_click_on_a_character_selects_it_and_opens_its_menu_at_the_cursor() {
+        // FUN_006083c0 selects on WM_RBUTTONDOWN; WM_RBUTTONUP reaches
+        // FUN_004ac5c0 with the cursor point.
+        let (world, system, agent) = world_with_agent();
+        let (actions, selected) = click_in_window(
+            &world,
+            system,
+            SystemWindowTab::Personnel,
+            None,
+            FIRST_ITEM,
+            egui::PointerButton::Secondary,
+        );
+        assert_eq!(selected, Some(SystemWindowItem::Character(agent)));
+        // The window sits at (60, 40) in the canvas.
+        assert_eq!(
+            menus(&actions),
+            [(Some(MissionMember::Character(agent)), (100, 128))]
+        );
+        assert!(actions.iter().any(|action| matches!(
+            action,
+            SystemWindowAction::OpenObjectMenu { system: s, .. } if *s == system
+        )));
+    }
+
+    #[test]
+    fn a_right_click_on_a_special_force_opens_its_menu() {
+        // FUN_00503b50 gives a special force the unit orders.
+        let (mut world, systems) = fixture_world(1);
+        let unit = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: DatId::new(0x3c00_0001),
+                is_alliance: true,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        world.systems[systems[0]].special_forces.push(unit);
+        let (actions, selected) = click_in_window(
+            &world,
+            systems[0],
+            SystemWindowTab::Troops,
+            None,
+            FIRST_ITEM,
+            egui::PointerButton::Secondary,
+        );
+        assert_eq!(selected, Some(SystemWindowItem::SpecialForce(unit)));
+        assert_eq!(
+            menus(&actions),
+            [(Some(MissionMember::SpecialForce(unit)), (100, 128))]
+        );
+    }
+
+    #[test]
+    fn a_right_click_on_empty_list_space_clears_the_selection_and_opens_an_empty_menu() {
+        // FUN_006094b0 clears the selection on a press away from an item;
+        // FUN_0051d990 still lists Encyclopedia and Status.
+        let (world, system, agent) = world_with_agent();
+        let (actions, selected) = click_in_window(
+            &world,
+            system,
+            SystemWindowTab::Personnel,
+            Some(SystemWindowItem::Character(agent)),
+            LIST_GAP,
+            egui::PointerButton::Secondary,
+        );
+        assert_eq!(selected, None);
+        assert_eq!(menus(&actions), [(None, (135, 128))]);
+    }
+
+    #[test]
+    fn a_right_click_beside_or_below_the_list_keeps_the_selection_and_opens_nothing() {
+        // The list control spans (7, 76) to (214, 301); the window's other
+        // pixels are not part of it.
+        let (world, system, agent) = world_with_agent();
+        for at in [(100.0, 302.5), (220.0, 150.0), (100.0, 60.0)] {
+            let (actions, selected) = click_in_window(
+                &world,
+                system,
+                SystemWindowTab::Personnel,
+                Some(SystemWindowItem::Character(agent)),
+                at,
+                egui::PointerButton::Secondary,
+            );
+            assert_eq!(selected, Some(SystemWindowItem::Character(agent)), "{at:?}");
+            assert!(menus(&actions).is_empty(), "{at:?}");
+        }
+    }
+
+    #[test]
+    fn a_left_press_on_empty_list_space_clears_the_selection_without_a_menu() {
+        let (world, system, agent) = world_with_agent();
+        let (actions, selected) = click_in_window(
+            &world,
+            system,
+            SystemWindowTab::Personnel,
+            Some(SystemWindowItem::Character(agent)),
+            LIST_GAP,
+            egui::PointerButton::Primary,
+        );
+        assert_eq!(selected, None);
+        assert!(menus(&actions).is_empty());
+    }
+
+    #[test]
+    fn a_left_click_on_a_character_selects_it_without_a_menu() {
+        let (world, system, agent) = world_with_agent();
+        let (actions, selected) = click_in_window(
+            &world,
+            system,
+            SystemWindowTab::Personnel,
+            None,
+            FIRST_ITEM,
+            egui::PointerButton::Primary,
+        );
+        assert_eq!(selected, Some(SystemWindowItem::Character(agent)));
+        assert!(menus(&actions).is_empty());
+    }
+
+    #[test]
+    fn a_right_click_on_a_tab_whose_menus_are_not_ported_selects_but_opens_nothing() {
+        // port: only characters and special forces have ported menus.
+        let (mut world, systems) = fixture_world(1);
+        let mine =
+            world
+                .production_facilities
+                .insert(rebellion_core::world::ProductionFacilityInstance {
+                    class_dat_id: DatId::new(0x2c00_0001),
+                    is_alliance: true,
+                    is_mine: true,
+                });
+        world.systems[systems[0]].production_facilities.push(mine);
+        for at in [FIRST_ITEM, LIST_GAP] {
+            let (actions, _) = click_in_window(
+                &world,
+                systems[0],
+                SystemWindowTab::Production,
+                None,
+                at,
+                egui::PointerButton::Secondary,
+            );
+            assert!(menus(&actions).is_empty(), "{at:?}");
+        }
+        let (_, selected) = click_in_window(
+            &world,
+            systems[0],
+            SystemWindowTab::Production,
+            None,
+            FIRST_ITEM,
+            egui::PointerButton::Secondary,
+        );
+        assert_eq!(selected, Some(SystemWindowItem::Production(mine)));
     }
 
     #[test]

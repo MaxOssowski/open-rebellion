@@ -167,8 +167,15 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   (`FUN_004abe10`, `FUN_004aba60`). The P60 speed menu had the first two
   swapped. A submenu parent without an icon reserves 20 pixels
   (`FUN_004abf60`). port: Escape closes the menu.
-- The character pop-up, the targeting cursor and the hand-off to the mission
-  dialog are 7b..7d.
+- 7b: a right press selects a system window item and a right release on a
+  character (Personnel), a special force (Troops) or empty list space opens
+  the menu in the galaxy view (`system_window.rs`, `object_menu.rs`). Rows
+  follow the STRATEGY records; Mission follows
+  `MissionState::mission_order_enabled` and Encyclopedia opens the
+  Encyclopedia. port: Move, Confirmed Move, Command, Status and Retire are
+  drawn disabled, the other tabs' classes open no menu, and the global gate
+  `FUN_0051de80` is taken as clear.
+- The targeting cursor and the hand-off to the mission dialog are 7c..7d.
 
 ## Supporting decompiles
 
