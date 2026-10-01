@@ -388,6 +388,128 @@ not found. The confirmation window's own Escape is recovered
   speed refusal (`1`/`0x18`). port: its origin, destroyed-destination,
   same-system and empty-fleet checks are the port's own.
 
+## Order 0x214 (Destination)
+
+`FUN_0051f4b0` registers `FUN_00537090` for kind `0x214`. `FUN_00537090`
+allocates 0x44 bytes and calls `FUN_00537040`, which chains the order base
+`FUN_0051fa20` and sets vtable `0x00661040`. The kind slot at `+0xc`
+(`0x00537100`) is `mov eax, 0x214; ret` (not a named function in Ghidra).
+
+| Slot | Function | Role |
+|---|---|---|
+| `+0xc` | `0x00537100` | Kind `0x214` |
+| `+0x10` | `FUN_0040f340` | Listed: always 1 |
+| `+0x14` | `FUN_0051fd30` | Checked: always 0 |
+| `+0x18` | `FUN_0051fe20` | Enabled: built, then `+0x4c` |
+| `+0x1c` | `FUN_0051ff30` | Validator: enabled, then `+0x50`, then per-command `+0x1c` (`FUN_00553960`) |
+| `+0x20` | `FUN_00520040` | Execute: validate, then submit commands (`FUN_005539f0`) |
+| `+0x24` | `FUN_0051fb70` | Set the team (list at `+0x2c`) |
+| `+0x28` | `FUN_0051fb80` | The team list (`this + 0x2c`) |
+| `+0x2c` | `FUN_0051fbb0` | Set the target (`+0x34`) |
+| `+0x48` | `FUN_00537110` | Create command (vtable `0x00669a30`, 0x58 bytes, `FUN_0057ddc0`) |
+| `+0x4c` | `FUN_005201c0` | Command checks: `FUN_005535b0` |
+| `+0x50` | `FUN_00537180` | Destination checks |
+
+Unlike `0x201`/`0x202`, the order extends the order base directly (0x44
+bytes), not the move base (0x4c bytes). It has no sub-order list; instead
+`FUN_005535b0` creates one command per resolved team member (`FUN_0053f150`),
+each holding its object at `+0x3c`, and adds it to the command list at
+`+0x40`.
+
+### Destination checks (`FUN_00537180`)
+
+`FUN_00537180` (slot `+0x50`) runs after `FUN_005202d0` confirms the order is
+built:
+
+1. `FUN_00553b80` resolves the side from the team.
+2. `FUN_00504e60` resolves the destination (`1`/`0x22` when it does not
+   resolve).
+3. Iterates the team checking whether every member is a capital ship
+   (`0x14..0x1b`). Sets a flag false when any member is not.
+4. Refuses `1`/`0x28` when the destination's side bits (`+0x24` bits 6..7)
+   differ from the order's side and the team has any non-capital-ship member.
+   There is no regiment exception, unlike `FUN_0053d430` for `0x204`.
+5. Routes via `FUN_00551060`, `FUN_00551190`, `FUN_005513a0`.
+6. Per member, when the member's `+0x58` is zero:
+   - resolves through `FUN_00504e60` (`1`/`0x22`);
+   - family `0xa0..0xa2`: calls `FUN_00553410`;
+   - otherwise: `+0x50` bit 2 clear gives `1`/`0x20` (unrecruited), bit 4 set
+     gives `1`/`0x21` (en route), bit 3 set and family not `0x90..0x98` gives
+     `1`/`0x22` (untraced);
+   - the member must be family `0x90..0x98`, `0x08..0x10` or `0x14..0x1c`,
+     else `1`/`0x25`;
+   - assigns the leg at the member's `+0x48` (`FUN_004f26d0`).
+7. Per member with `+0x58` non-zero: `FUN_00552210` builds the route leg,
+   then iterates sub-objects with `FUN_00551900` and `FUN_00583f50`.
+
+### The command (vtable `0x00669a30`)
+
+`FUN_00537110` allocates 0x58 bytes. `FUN_0057ddc0` chains the command base
+`FUN_0054f2c0`, initialises a list at `+0x50` (`FUN_00583e80`), and sets
+vtable `0x00669a30`.
+
+| Slot | Function | Role |
+|---|---|---|
+| `+0x18` | `FUN_0057e000` | Can move: resolves object `+0x3c`, calls object's `+0x1e0` |
+| `+0x1c` | `FUN_0057e0d0` | Validate: resolves object and destination `+0x48`, routes, calls object's `+0x1e4` |
+| `+0x20` | `FUN_0057e380` | Execute: resolves object, calls object's `+0x200` |
+
+For a fleet (vtable `0x0065d438`), slots `+0x1e0` and `+0x1e4` are both
+`FUN_00524fb0`, which returns 1 unconditionally. Slot `+0x200` is
+`FUN_004ff7a0`:
+
+1. `FUN_0053a010`: checks `object+0x24 & 0x30` (has a player side).
+2. `FUN_004f8880`: logs `"FleetBattleNotif"` / `"Battle"` (debug
+   notification, not game logic).
+3. `FUN_0053fdd0(0x180, fleet, route_ctx, list)`: creates a `0x180` game
+   event through a separate factory (`FUN_0051f730`, table at
+   `DAT_006b2fdc`).
+
+`FUN_005400f0` populates the event: side from the fleet's `+0x24` bits 4..5,
+the fleet id at `+0x20`, and route data from the list's `+0x14`/`+0x18`.
+`FUN_004fd3b0` submits it (indirect call through `DAT_006b2ad4`). hyp: the
+`0x180` event is the fleet departure that sets the transit bit and enters
+hyperspace, analogous to `FUN_004f7640` in the `0x201` path.
+
+### Confirmation
+
+`FUN_00487cc0` has no case for `0x214`; it falls to `default` and returns 0.
+The order never confirms, even when the fleet's system is blockaded. A system
+window drag departs immediately, where a menu Move (`0x201`) under blockade
+would show the evacuation warning.
+
+### STRATEGY record
+
+None. `0x214` is never a menu item; `FUN_00442790` will not find a record for
+it. It is issued only from the drag path (`FUN_00422ce0`'s `0x29a` handler,
+window types 1 and 9).
+
+### How the drag issues it
+
+From "A drag is a move" above:
+
+- Window type 9 (system window): always `0x214` against the `+0x70` object.
+  Ctrl has no effect; there is no confirmed variant.
+- Window type 1 (sector window): members whose list entry has flag 4 are split
+  into a `0x214` order against the `+0x68` object; the rest get `0x201` or
+  `0x202`.
+
+Because the order carries a target, `FUN_00486fb0` skips targeting and goes
+straight to `FUN_00487740(order, 0)`.
+
+### Port notes
+
+- The port's list drag path should issue `0x214` for system-window drags, not
+  `0x201`. The difference: `0x214` never confirms (no blockade warning on
+  drag), creates per-object commands directly (no sub-order split into `0x204`
+  and `0x241`), and departs through a `0x180` game event rather than
+  `FUN_004f7640`. hyp: the `0x180` path may handle the departure identically;
+  this needs verification before collapsing the two.
+- Ctrl+drag from a system window is still `0x214`, not `0x202`. The Confirmed
+  Move variant applies only to types 1, 4 and 10.
+- The enemy-destination refusal (`1`/`0x28`) lacks `0x204`'s regiment
+  exception.
+
 ## Still open
 
 - The names of window types 4, 10 and 11, and `FUN_004a2f80` (type 4's
@@ -396,8 +518,10 @@ not found. The confirmation window's own Escape is recovered
 - Families `0x20..0x21` (ALLFACSD) and `0x98..0x9f`.
 - The leg builders `FUN_005529a0`, `FUN_00552000`, `FUN_00552300` and
   `FUN_00552dd0`.
-- What order `0x214` (Destination) does when a system window's selection is
-  dragged out (drag type 9).
+- What the `0x180` game event does on the simulation side (hyp: fleet
+  departure, analogous to `FUN_004f7640`).
+- What fleet vtable `+0x200` (`FUN_004ff7a0`) does for non-fleet objects
+  (characters, capital ships) in a `0x214` team.
 - `FUN_0053efa0`'s class handlers (`+0x2c`) that turn a team id into moving
   objects.
 - Where Escape cancels targeting, if anywhere outside the frame.
@@ -432,4 +556,10 @@ not found. The confirmation window's own Escape is recovered
 `FUN_0045c660`, `FUN_0045c6b0`, `FUN_0045c830`, `FUN_00458b80`,
 `FUN_004aa470`, `FUN_004a3130`, `FUN_004aa380`, `FUN_004a09a0`,
 `FUN_00555460`, `FUN_00551100`, `FUN_00551270`, `FUN_00552e80`,
-`FUN_00552ff0`, `FUN_005531b0`, `FUN_00552d10`.
+`FUN_00552ff0`, `FUN_005531b0`, `FUN_00552d10`,
+`FUN_00537040`, `FUN_00537060`, `FUN_00537090`, `FUN_00537110`,
+`FUN_00537180`, `FUN_00537bc0`, `FUN_0057ddc0`, `FUN_0057e000`,
+`FUN_0057e0d0`, `FUN_0057e380`, `FUN_004ff7a0`, `FUN_00524fb0`,
+`FUN_0053a010`, `FUN_004f8880`, `FUN_0053fdd0`, `FUN_005400f0`,
+`FUN_004fd3b0`, `FUN_004fd2f0`, `FUN_004fd370`, `FUN_0051f730`,
+`FUN_00553960`, `FUN_005539f0`, `FUN_00583f50`.
