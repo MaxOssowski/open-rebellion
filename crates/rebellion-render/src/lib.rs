@@ -17,6 +17,7 @@ pub mod main_menu_destinations;
 pub mod message_index;
 pub mod message_log;
 pub mod mission_dialog;
+pub mod object_menu;
 pub mod panels;
 pub mod sector_window;
 pub mod system_window;
