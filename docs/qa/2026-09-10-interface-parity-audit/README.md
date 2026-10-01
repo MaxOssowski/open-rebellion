@@ -95,6 +95,11 @@ and passes the complete comparison contract.
   for all 356 source entries, seven TEXTSTRA labels and family filters, stable
   selection, scrolling, and both faction browser journeys. Topic pages,
   ENCYTEXT/EDATA bindings, production routing, A0, and `OBJ-01` remain open.
+- Review the [P66A Encyclopedia topic-source evidence](evidence/2026-10-01-encyclopedia-topic-source-bindings.md)
+  for strict English ENCYTEXT/ENCYBMAP extraction, exact system and factional
+  lookup rules, 346 complete source joins per faction, and ten explicit
+  source-empty mission records. Browser transport, topic rendering, routing,
+  A0, and `OBJ-01` remain open.
 - Review the [P50 GID menu-frame evidence](evidence/2026-09-12-gid-menu-frame.md)
   for original frame tiles, source-pixel checks, and the remaining menu gaps.
 - Review the [P51 GID hover and occlusion evidence](evidence/2026-09-12-gid-hover-and-occlusion.md)

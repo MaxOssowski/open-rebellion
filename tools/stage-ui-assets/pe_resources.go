@@ -295,6 +295,10 @@ func readPERawResources(path string, resourceTypeID uint32) ([]rawResource, erro
 	return readPETypedRawResources(path, resourceTypeID, "")
 }
 
+func readPERawResourcesFromBytes(source []byte, resourceTypeID uint32) ([]rawResource, error) {
+	return readPETypedRawResourcesFromBytes(source, resourceTypeID, "")
+}
+
 func readPEMixedRawResourcesFromBytes(source []byte, resourceTypeID uint32, limits rawResourceLimits) ([]rawResource, error) {
 	file, err := pe.NewFile(bytes.NewReader(source))
 	if err != nil {
@@ -327,6 +331,30 @@ func readPETypedRawResources(path string, resourceTypeID uint32, typeName string
 	file, err := pe.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open PE file: %w", err)
+	}
+	defer file.Close()
+
+	resourceDirectory, err := peDataDirectory(file, 2)
+	if err != nil {
+		return nil, err
+	}
+	if resourceDirectory.VirtualAddress == 0 || resourceDirectory.Size == 0 {
+		return nil, fmt.Errorf("PE file has no resource directory")
+	}
+
+	resourceData, err := readPERange(file, resourceDirectory.VirtualAddress, resourceDirectory.Size)
+	if err != nil {
+		return nil, fmt.Errorf("read resource directory: %w", err)
+	}
+	return parseTypedRawResources(resourceData, func(rva, size uint32) ([]byte, error) {
+		return readPERange(file, rva, size)
+	}, resourceTypeID, typeName)
+}
+
+func readPETypedRawResourcesFromBytes(source []byte, resourceTypeID uint32, typeName string) ([]rawResource, error) {
+	file, err := pe.NewFile(bytes.NewReader(source))
+	if err != nil {
+		return nil, fmt.Errorf("open PE snapshot: %w", err)
 	}
 	defer file.Close()
 

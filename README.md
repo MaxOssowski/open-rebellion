@@ -40,7 +40,7 @@ Open Rebellion reads the original game data files, converts them to clean JSON, 
 
 ### Current development state
 
-> **Verification (2026-09-29):** The workspace suite passes. The bounded tactical launcher passes 144 muted browser cases with 106/106 deterministic A1 mappings; strict A0 acceptance remains 0/106. All 187 owned encyclopedia images reach native and browser builds. The source-exact faction index shells and ten controls pass two-faction pixel gates and independent visual review, while the production catalog, topics, wider interface parity, multiplayer, and release acceptance remain open in the [interface audit](docs/qa/2026-09-10-interface-parity-audit/).
+> **Verification (2026-10-01):** The workspace suite passes. The bounded tactical launcher has 106/106 deterministic A1 mappings; strict A0 acceptance remains 0/106. The authentic Encyclopedia index has 356 source entries, and strict local extraction binds 346 complete topics per faction while exposing ten source-empty mission records. Production topic rendering, wider interface parity, multiplayer, and release acceptance remain open in the [interface audit](docs/qa/2026-09-10-interface-parity-audit/).
 
 | Layer | Implementation status | Release acceptance |
 |-------|-----------------------|--------------------|
@@ -225,7 +225,7 @@ Additional pipelines:
 
 1. **3D Models**—Hunyuan3D Pro, WaveSpeedAI ($0.02/model), Meshy, Trellis 2 → Blender sprite sheets
 2. **Audio**—Voicebox/Qwen3-TTS (voice cloning), LavaSR v2 (upscaling), ACE-Step 1.5 (music), ElevenLabs (SFX)
-3. **Encyclopedia Content**—TEXTSTRA.DLL names + Wookieepedia-sourced descriptions
+3. **Encyclopedia Content**—strict local ENCYTEXT/ENCYBMAP extraction plus original EData artwork
 
 See [CREDITS.md](CREDITS.md) for full tool attribution.
 

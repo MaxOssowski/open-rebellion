@@ -21,10 +21,21 @@ The dedicated muted browser gate also proves `EDATA.042` at native 400x200
 size with all 80,000 source pixels matching. Its test-only renderer is absent
 from production and does not stand in for an encyclopedia window.
 
-The canonical text catalog, manifest, stable entity bindings, mod overlays,
-and recovered original index/topic windows below remain planned. Command
-`0x131` therefore remains fail-closed, and no `OBJ-01` acceptance cell passes
-from the transport slice alone.
+P66A implements the local English source-data gate. The dependency-free Go
+stager now extracts all 348 `ENCYTEXT` type-10 records and all 191 logical
+`ENCYBMAP` strings into an ignored, checksummed catalog with strict
+Windows-1252 decoding. The typed Rust join reproduces the ordinary low-12-bit
+plus `0x1000` lookup, the 26-value system-picture switch, and the factional
+mission-art offset. It resolves 346 of the 356 index objects for each faction
+and reports the ten source-empty mission records without fallback content. All
+186 mapped EDATA filenames exist in the 187-file owned set; unreferenced
+`EDATA.192` remains outside the proven lookup table. See the
+[P66A evidence record](../qa/2026-09-10-interface-parity-audit/evidence/2026-10-01-encyclopedia-topic-source-bindings.md).
+
+Browser packaging and installation, topic composition, contextual and
+production routing, exact previous/next behavior, mod overlays, and visual A0
+acceptance remain planned. Command `0x131` therefore remains fail-closed, and
+no `OBJ-01` acceptance cell passes from P62 through P66A alone.
 
 ## 1. Purpose and scope
 
@@ -33,10 +44,12 @@ its artwork predictably, and have the encyclopedia display that data on native
 and browser builds. Mod authors should change text and replace artwork without
 editing DLLs or Rust. Re-extraction must never overwrite a mod author's work.
 
-This is a proposed design, requested for review before implementation. It does
-not introduce a runtime schema, extractor, new dependency, or acceptance claim.
-The repository baseline is `e101e6c7bc74ec75487e16d81b1c2bb55025562c`.
-All paths, flags and Rust types explicitly described as proposed are future work.
+This began as a proposed design at repository baseline
+`e101e6c7bc74ec75487e16d81b1c2bb55025562c`. P62, P64, P65, and P66A now
+implement the transport, index shell, index catalog, and local source-binding
+checkpoints described above. Sections that still describe browser topic
+transport, composition, navigation, contextual entry, mod overlays, or
+production routing remain future work and confer no acceptance by themselves.
 
 The first delivery includes original-data extraction, a validated catalog,
 native and browser asset loading, native mod overrides, and an original-style
@@ -271,23 +284,27 @@ Its string decoder already understands Windows string blocks but currently
 rejects duplicate bundle IDs across languages: group resources by LANGID first,
 then reuse the decoder per group without changing TEXTSTRA's existing output.
 
-Proposed CLI (not implemented):
+P66A implements the focused owned-English source extractor and offline verifier:
 
 ```bash
 go run ./tools/stage-ui-assets \
   --source /path/to/owned-install \
   --encyclopedia-only \
-  --encyclopedia-output data/base/encyclopedia
+  --encyclopedia-output data/base/encyclopedia/source.json
 
 go run ./tools/stage-ui-assets \
   --encyclopedia-only --verify \
-  --encyclopedia-output data/base/encyclopedia
+  --encyclopedia-output data/base/encyclopedia/source.json
 ```
 
+This bounded source catalog is the input to the later runtime/browser schema;
+it does not by itself implement the versioned overlay model proposed below.
+
 The focused mode must run before the existing ffmpeg/cutscene prerequisites; a
-text/image extraction must not require unrelated media conversion. The regular
-full staging command also calls this stage. `--force` follows the existing
-explicit-overwrite rule for generated output; it never reaches `mods/`.
+text/image extraction must not require unrelated media conversion. A later
+runtime-transport slice must integrate this stage into the regular full staging
+command. `--force` follows the existing explicit-overwrite rule for generated
+output; it never reaches `mods/`.
 
 ```text
 <owned-install>/

@@ -106,7 +106,10 @@ classified original capture.
 - P65 proves the 356-entry English source catalog, source-family filtering,
   alphabetical ordering, stable row identity, and scrolling inside both
   faction shells. The route remains test-only.
+- P66A proves strict local English ENCYTEXT/ENCYBMAP extraction plus ordinary,
+  system-picture, and factional artwork binding for 346 topics per faction.
+  Browser transport and visible topic composition remain open.
 - No `OBJ-01` cell is accepted. Other localizations, exact font rendering,
-  ENCYTEXT/EDATA bindings, topic composition, navigation, contextual entry,
-  missing entries, production routing, and original-runtime comparison remain
-  open.
+  browser/runtime source ingestion, topic composition, navigation, contextual
+  entry, visible missing entries, production routing, and original-runtime
+  comparison remain open.

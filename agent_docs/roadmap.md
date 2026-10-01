@@ -26,9 +26,11 @@ P64 separately reconstructs both authentic Encyclopedia index shells, seven
 category states, right-rail states, and native clipping in a bounded exact
 browser gate. P65 adds the complete source-derived 356-entry English catalog,
 seven category filters, stable selection, and scrolling without changing saves
-or exposing the unfinished production route. Topic composition,
-ENCYTEXT/EDATA binding, contextual entry, production routing, A0 comparison,
-and every `OBJ-01` cell remain open. See the [P65 evidence](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md).
+or exposing the unfinished production route. P66A strictly extracts 348 topic
+texts and 191 image mappings, binds 346 complete topics per faction, and keeps
+ten source-empty mission records explicit. Browser topic transport and
+composition, contextual entry, production routing, A0 comparison, and every
+`OBJ-01` cell remain open. See the [P66A evidence](../docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-01-encyclopedia-topic-source-bindings.md).
 
 ## Galaxy Viewer: historical implementation tranche delivered
 *Interactive galaxy data viewer -- native + WASM*
@@ -611,6 +613,12 @@ would tune around known simulation feedback defects.
   preserving the complete P64 regression matrix. Topic
   composition, ENCYTEXT/EDATA bindings, contextual entry, production routing,
   A0, and every `OBJ-01` cell remain open.
+- [x] Complete the P66A Encyclopedia topic-source checkpoint: strictly extract
+  the owned English ENCYTEXT and ENCYBMAP resources, reproduce ordinary,
+  system-picture, and factional mission lookup identities, bind all supported
+  index objects, and report missing source parts without invented fallback.
+  Browser transport, topic composition, interactive navigation, contextual and
+  production routing, other languages, A0, and every `OBJ-01` cell remain open.
 - [x] Restore the P50 GID root and submenu frame from STRATEGY 10100 through
   10107. Paint repeated edges in four batched meshes, remove the invented menu
   fade, and check native-size root pixels against the source BMPs in both

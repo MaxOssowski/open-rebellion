@@ -19,6 +19,7 @@ func runCLIWithMedia(args []string, stdout, stderr io.Writer, targets []dllTarge
 	audioOutput := flags.String("audio-output", "data/sounds", "runtime audio directory")
 	mdata := flags.String("mdata", "", "original MDATA directory (default: source/MDATA)")
 	stringsOutput := flags.String("strings-output", "data/base/textstra.json", "runtime text string JSON file")
+	encyclopediaOutput := flags.String("encyclopedia-output", "data/base/encyclopedia/source.json", "runtime Encyclopedia source JSON file")
 	cutsceneOutput := flags.String("cutscene-output", "assets/references", "parent of ref-videos and cutscene-frames outputs")
 	force := flags.Bool("force", false, "replace staged assets whose contents differ")
 	verifyOnly := flags.Bool("verify", false, "verify staged assets without reading source files")
@@ -26,20 +27,29 @@ func runCLIWithMedia(args []string, stdout, stderr io.Writer, targets []dllTarge
 	tactical3DOnly := flags.Bool("tactical-3d-only", false, "stage or verify only original type-301/type-303 tactical resources")
 	tactical3DConvert := flags.Bool("tactical-3d-convert", false, "convert or verify the staged tactical resources")
 	tactical3DAssimpOracle := flags.String("tactical-3d-assimp-oracle", "", "verify staged tactical meshes against this Assimp executable")
+	encyclopediaOnly := flags.Bool("encyclopedia-only", false, "stage or verify only ENCYTEXT and ENCYBMAP source data")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
 	}
-	selectedTacticalModes := 0
-	for _, selected := range []bool{*tactical3D, *tactical3DOnly, *tactical3DConvert, *tactical3DAssimpOracle != ""} {
+	selectedExclusiveModes := 0
+	for _, selected := range []bool{*tactical3D, *tactical3DOnly, *tactical3DConvert, *tactical3DAssimpOracle != "", *encyclopediaOnly} {
 		if selected {
-			selectedTacticalModes++
+			selectedExclusiveModes++
 		}
 	}
-	if selectedTacticalModes > 1 {
-		return fmt.Errorf("--tactical-3d, --tactical-3d-only, --tactical-3d-convert, and --tactical-3d-assimp-oracle are mutually exclusive")
+	if selectedExclusiveModes > 1 {
+		return fmt.Errorf("--tactical-3d, --tactical-3d-only, --tactical-3d-convert, --tactical-3d-assimp-oracle, and --encyclopedia-only are mutually exclusive")
+	}
+	if *encyclopediaOnly {
+		if !*verifyOnly {
+			if err := stageEncyclopediaSource(*sourceDir, *encyclopediaOutput, *force, stdout); err != nil {
+				return err
+			}
+		}
+		return verifyEncyclopediaSource(*encyclopediaOutput, stdout)
 	}
 	if *tactical3DAssimpOracle != "" {
 		return verifyTactical3DWithAssimp(*outputDir, *tactical3DAssimpOracle, stdout)

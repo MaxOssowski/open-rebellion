@@ -13,6 +13,14 @@
   native clipping, input rejection and capture, 32 exact browser states, and
   independent source and visual review. Production content and routing remain
   open, so it accepts no `OBJ-01` cell.
+- [P65 Encyclopedia index catalog](2026-09-30-encyclopedia-index-catalog.md)
+  tracks all 356 source entries, seven English labels and family filters,
+  stable selection, scrolling, and a two-faction browser checkpoint.
+- [P66A Encyclopedia topic sources](2026-10-01-encyclopedia-topic-source-bindings.md)
+  tracks strict extraction of 348 prose records and 191 image mappings, 346
+  complete per-faction object joins, and ten explicit source-empty mission
+  records. Browser transport, topic rendering, routing, A0, and `OBJ-01` remain
+  open.
 
 This directory contains the durable reports and review artifacts for each
 verified interface checkpoint. The parent [audit index](../README.md) remains
@@ -76,6 +84,7 @@ the source of truth for scope, acceptance, and current work.
 | P60 | [Game Speed recovery](2026-09-24-game-speed-recovery.md) and [Message Index recovery](2026-09-24-message-index-recovery.md) | [`p60-game-speed/`](p60-game-speed/) |
 | P64 | [Encyclopedia index-shell checkpoint](2026-09-30-encyclopedia-index-shell.md) | [`p64-encyclopedia-index-shell/`](p64-encyclopedia-index-shell/) |
 | P65 | [Encyclopedia index-catalog checkpoint](2026-09-30-encyclopedia-index-catalog.md) | [`p65-encyclopedia-index-catalog/`](p65-encyclopedia-index-catalog/) |
+| P66A | [Encyclopedia topic-source checkpoint](2026-10-01-encyclopedia-topic-source-bindings.md) | [`p66a-encyclopedia-topic-bindings/`](p66a-encyclopedia-topic-bindings/) |
 
 Earlier strategic, GID, shell, control, staging, and render reports are indexed
 in the parent [audit overview](../index.md). Every new artifact directory must

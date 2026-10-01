@@ -50,7 +50,7 @@ pub struct EncyclopediaCategory {
     pub command_id: u16,
     pub label_resource_id: u16,
     pub label: String,
-    family_range: Option<std::ops::Range<u8>>,
+    pub(crate) family_range: Option<std::ops::Range<u8>>,
 }
 
 impl EncyclopediaCategory {
@@ -290,7 +290,7 @@ fn push_entry(
     Ok(())
 }
 
-const fn compound_object_id(record_id: u32, family: u8) -> u32 {
+pub(crate) const fn compound_object_id(record_id: u32, family: u8) -> u32 {
     if record_id >> 24 == 0 {
         ((family as u32) << 24) | record_id
     } else {

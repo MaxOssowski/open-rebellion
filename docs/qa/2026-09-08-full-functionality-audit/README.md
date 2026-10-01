@@ -90,6 +90,7 @@ acceptance plan required before the project can claim 100% functionality.
 | [Corrected Message Index-shell proof](../2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md) | Both source-recovered faction shells and all ten normal/held message-category controls pass 24 exact browser comparisons and independent visual review; populated behavior, production routing, and `CMD-08` acceptance remain open. |
 | [Encyclopedia index-shell proof](../2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md) | Both source-recovered faction shells, seven selected categories, rail states, native clipping, and native input rejection and capture pass 32 exact browser comparisons; catalog content, topic pages, production routing, and `OBJ-01` remain open. |
 | [Encyclopedia index-catalog proof](../2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md) | All 356 source entries, seven English TEXTSTRA labels and family filters, stable selection, scrolling, and the selected-category no-op pass a 22-state two-faction browser checkpoint; topic pages, production routing, A0, and `OBJ-01` remain open. |
+| [Encyclopedia topic-source proof](../2026-09-10-interface-parity-audit/evidence/2026-10-01-encyclopedia-topic-source-bindings.md) | Strict local extraction yields 348 prose records and 191 image mappings; exact lookup rules bind 346 topics per faction and expose ten source-empty missions without invented fallback. Browser transport, topic rendering, routing, A0, and `OBJ-01` remain open. |
 | [GitHub Pages proof](evidence/2026-09-08-github-pages.md) | Successful deployment run and public HTTP smoke tests for P40. |
 | [Project archive](../../../archive/INDEX.md) | Superseded progress and playtest artifacts retained for provenance. |
 
@@ -109,9 +110,11 @@ Original encyclopedia artwork reaches native and browser renderers through
 P62. Source cross-checking corrects P63 as Message Index evidence. P64 proves
 both authentic Encyclopedia index shells and their bounded control states.
 P65 adds the complete source-derived 356-entry English index catalog, category
-filtering, stable selection, and scrolling. Topic text/art bindings,
-navigation, contextual entry, A0 comparison, and production routing remain
-absent, so command `0x131` continues to fail closed.
+filtering, stable selection, and scrolling. P66A extracts 348 topic texts and
+191 image mappings, joins 346 complete topics per faction, and exposes ten
+source-empty mission records without fallback. Browser transport, topic
+composition, navigation, contextual entry, A0 comparison, and production
+routing remain absent, so command `0x131` continues to fail closed.
 Fleet-miniature acceptance, deterministic four-request browser
 startup, F-001 browser Save/Load/Delete, the F-011A fingerprint primitive,
 F-011B1 save continuation, the F-011B2 replay/data contract, F-011B3 native

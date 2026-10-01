@@ -337,7 +337,7 @@
       "retrieval": {
         "sources": ["REBEXE.EXE", "ENCYBMAP.DLL", "ENCYTEXT.DLL", "EData", "GOKRES.DLL"],
         "method": "Trace topic commands and previous/next navigation through ENCYBMAP mappings, ENCYTEXT records, EData image selection, and missing-entry handling.",
-        "next_proof": "P64 recovers and browser-corroborates the exact empty index shells, category/resource table, rail states, and clipping. P65 adds the source-derived 356-entry English catalog, recovered labels and filters, stable selection, and scrolling. Continue with ENCYTEXT/EDATA bindings, topic composition, navigation, context-open paths, production routing, and A0 evidence."
+        "next_proof": "P64 recovers and browser-corroborates the exact empty index shells, category/resource table, rail states, and clipping. P65 adds the source-derived 356-entry English catalog, recovered labels and filters, stable selection, and scrolling. P66A strictly extracts 348 ENCYTEXT records and 191 ENCYBMAP mappings, reproduces ordinary, system-picture, and factional mission lookup rules, binds 346 complete topics per faction, and reports ten source-empty missions. Continue with browser transport, topic composition, interactive navigation, context-open paths, production routing, and A0 evidence."
       },
       "runtime_capture_required": true
     },

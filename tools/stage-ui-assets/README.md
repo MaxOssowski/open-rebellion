@@ -11,6 +11,11 @@ An opt-in tactical-only path also preserves all 87 type-301 DirectX meshes and
 397 type-303 texture/palette resources from `TACTICAL.DLL` in a
 content-addressed raw store. It does not require the media tools.
 
+An opt-in Encyclopedia-only path extracts the owned English `ENCYTEXT.DLL`
+prose and `ENCYBMAP.DLL` EDATA-name table into one ignored, checksummed JSON
+source catalog. It uses strict Windows-1252 decoding and rejects unknown
+languages, undefined bytes, duplicate IDs, malformed filenames, and traversal.
+
 For standard bitmaps, the extractor preserves the original DIB bytes and adds a
 BMP file header. For advisor animations, it preserves each custom PE type-302
 resource byte for byte. It does not resize or re-encode the artwork.
@@ -23,6 +28,8 @@ resource byte for byte. It does not resize or re-encode the artwork.
 - Your own copy of the seven UI DLLs listed below plus `VOICEFXA.DLL` and
   `VOICEFXE.DLL` and `TEXTSTRA.DLL`, together in one source directory, and the original
   `MDATA.300`–`MDATA.315` soundtrack files and the 15 movies listed below in `source/MDATA` or `--mdata`. Extraction reads these files without modifying them.
+- `--encyclopedia-only` additionally requires `ENCYTEXT.DLL` and
+  `ENCYBMAP.DLL` in `--source`; it does not require ffmpeg.
 
 The compiled executable does not require Go to run. Game files are not included
 in this repository.
@@ -158,8 +165,10 @@ make the final count check fail even with `--force`.
 | `--audio-output` | `data/sounds` | Audio output directory |
 | `--mdata` | `source/MDATA` | Original soundtrack and cutscene directory |
 | `--strings-output` | `data/base/textstra.json` | Original string JSON output |
+| `--encyclopedia-output` | `data/base/encyclopedia/source.json` | Ignored ENCYTEXT/ENCYBMAP source catalog |
 | `--cutscene-output` | `assets/references` | Parent for `ref-videos` and `cutscene-frames` |
 | `--verify` | `false` | Check existing output without extraction |
+| `--encyclopedia-only` | `false` | Stage or verify only the Encyclopedia source catalog |
 | `--force` | `false` | Replace files whose contents differ |
 | `--tactical-3d` | `false` | Add tactical type-301/type-303 staging to the full extraction |
 | `--tactical-3d-only` | `false` | Stage or verify only tactical type-301/type-303 resources |
@@ -353,6 +362,20 @@ UTF-16 and bundle bounds are checked; duplicate language bundles are rejected.
 A `.manifest.json` sidecar records the output count and SHA-256 so verification
 can detect missing or changed text without reopening the DLL. Browser packaging
 can use `--strings-output web/data/base/textstra.json` for its staging directory.
+
+For the original English Encyclopedia source profile:
+
+```sh
+go run ./tools/stage-ui-assets \
+  --encyclopedia-only \
+  --source "/path/to/Star Wars - Rebellion"
+```
+
+This writes ignored `data/base/encyclopedia/source.json` plus a manifest with
+the catalog and source-DLL checksums. `--verify --encyclopedia-only` validates
+those files without reopening the DLLs. The source catalog does not enable the
+production window by itself; runtime topic binding and UI acceptance remain
+separate gates.
 
 The supported movie IDs are `000`, `001`, `003`, `004`, `005`, `101`, `102`, `103`,
 `104`, `105`, `106`, `107`, `108`, `201`, and `202`. For each original `MDATA.ID`,

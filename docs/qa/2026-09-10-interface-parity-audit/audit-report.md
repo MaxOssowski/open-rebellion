@@ -99,7 +99,7 @@ The local source inspection establishes the implementation causes:
 | Partial original sector and system navigation | `crates/rebellion-render/src/sector_window.rs`, `crates/rebellion-render/src/system_window.rs` | Manual pp. 67–68, 97–100, and 122–124; recovered constructors, [navigation evidence](evidence/2026-09-11-strategic-window-navigation.md), and [tab-item evidence](evidence/2026-09-11-detailed-system-tab-items.md) |
 | Partial browser droids | `crates/rebellion-render/src/advisor.rs` | Manual pp. 20–21 and 73–79; official Steam faction captures; [P44 evidence](../2026-09-08-full-functionality-audit/evidence/2026-09-10-authentic-droid-advisors.md) |
 | Bounded original encyclopedia-art transport | `crates/rebellion-render/src/encyclopedia.rs`, `scripts/build-runtime-pack.py`, `tools/interface-parity/encyclopedia-art.mjs` | Manual pp. 71–72, 187 owned original EDATA entries, and [P62 evidence](evidence/2026-09-28-encyclopedia-artwork-transport.md) |
-| Source-recovered Encyclopedia index and catalog | `crates/rebellion-data/src/encyclopedia_catalog.rs`, `crates/rebellion-render/src/encyclopedia.rs`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/encyclopedia-index-shell.mjs` | `FUN_00429f30`, `FUN_0045d400`, `FUN_0045ddc0`, `FUN_0045f100`, 41 owned STRATEGY resources, the owned DAT/TEXTSTRA catalog, [P64 shell evidence](evidence/2026-09-30-encyclopedia-index-shell.md), and [P65 catalog evidence](evidence/2026-09-30-encyclopedia-index-catalog.md) |
+| Source-recovered Encyclopedia index, catalog, and topic bindings | `crates/rebellion-data/src/encyclopedia_catalog.rs`, `crates/rebellion-data/src/encyclopedia_topics.rs`, `crates/rebellion-render/src/encyclopedia.rs`, `tools/stage-ui-assets`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/encyclopedia-index-shell.mjs` | `FUN_00429f30`, `FUN_0045d400`, `FUN_0045ddc0`, `FUN_0045f100`, `FUN_0045fa60`, `FUN_0045f660`, 41 owned STRATEGY resources, the owned DAT/TEXTSTRA/ENCYTEXT/ENCYBMAP sources, [P64 shell evidence](evidence/2026-09-30-encyclopedia-index-shell.md), [P65 catalog evidence](evidence/2026-09-30-encyclopedia-index-catalog.md), and [P66A topic-source evidence](evidence/2026-10-01-encyclopedia-topic-source-bindings.md) |
 | Source-recovered Message Index shell | `crates/rebellion-render/src/message_index.rs`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/message-index-shell.mjs` | `FUN_0042a240`, `FUN_00466350`, `FUN_004665f0`, `FUN_00468fb0`, `FUN_004697b0`, 33 owned STRATEGY resources, and [corrected P63 evidence](evidence/2026-09-28-message-index-shell.md) |
 | Incomplete browser asset pack | `scripts/build-runtime-pack.py` | Original ALSPRITE, EMSPRITE, EDATA, ALBRIEF, EMBRIEF, REBDLOG, advisor-control, and voice families |
 | Invented live ground-combat screen | `crates/rebellion-render/src/ground_combat.rs:202` | Manual pp. 119–121 assault summaries and reports |
@@ -125,14 +125,17 @@ exact browser comparisons. P65 adds the complete source-derived 356-entry
 English catalog, seven family filters, stable selection, and scrolling through
 22 two-faction browser states, including the native selected-category no-op,
 while preserving the full P64 regression matrix.
-Topic composition, ENCYTEXT/EDATA bindings, contextual entry, production
-routing, A0 comparison, and every `OBJ-01` cell remain open. Source cross-checking
+P66A strictly extracts 348 ENCYTEXT prose records and 191 ENCYBMAP mappings,
+binds 346 complete topics per faction through the recovered ordinary, system,
+and mission lookup rules, and reports ten source-empty missions without
+fallback. Browser catalog transport, topic composition, contextual entry,
+production routing, A0 comparison, and every `OBJ-01` cell remain open. Source cross-checking
 corrects P63: its faction index compositions and ten normal/held controls are
 the Message Index, corroborated by original screenshots and the executable's
 message labels and masks. Its 24 exact browser comparisons and independent
 visual review remain valid for that narrower `CMD-08` checkpoint. The authentic
-Encyclopedia topic bindings, topic composition, navigation, contextual entry,
-production routing, original-runtime comparison, and every
+Encyclopedia topic composition, interactive navigation, contextual entry,
+browser and production routing, original-runtime comparison, and every
 `OBJ-01` cell remain open.
 P54 separately stages every original type-301 mesh and type-303 texture or
 palette resource with a source-bound content-addressed manifest. P55 decodes
@@ -227,7 +230,7 @@ acceptance.
 | UIP-F-003 | P0 | Original sector and detailed-system shells replace the invented sidebar; all six tabs have first-pass source-mapped items, while nested contents, commands, indicators, and uncommon states remain open. | partial |
 | UIP-F-004 | P0 | Authentic advisor idle runs render for both factions in the scaled apertures, but complete action, voice, and chrome behavior is absent. | partial |
 | UIP-F-005 | P0 | Runtime pack v3 includes ALSPRITE and EMSPRITE BMP/type-302 content plus all 187 original EDATA images; ALBRIEF, EMBRIEF, REBDLOG, action controls, and remaining voice resources remain omitted. | partial |
-| UIP-F-006 | P1 | Native and WASM EDATA transport, lazy decode, exact missing-asset logging, native-size browser display, authentic index shells, and the 356-entry English catalog work in bounded routes. Topic windows, text/art bindings, production routing, A0, and the complete `OBJ-01` matrix remain open. | partial |
+| UIP-F-006 | P1 | Native and WASM EDATA transport, lazy decode, exact missing-asset logging, native-size browser display, authentic index shells, the 356-entry English catalog, and source bindings for 346 topics per faction work in bounded routes. Browser topic composition and navigation, production routing, A0, and the complete `OBJ-01` matrix remain open. | partial |
 | UIP-F-007 | P1 | Finders, production, missions, messages, options, and object status use replacement layouts or are absent. | fail |
 | UIP-F-008 | P1 | Battle Alert, assault/bombardment reports, and battle-result routing are absent or bypassed. | fail |
 | UIP-F-009 | P1 | The bounded practical tactical launcher passes its implementation gates through P58-B22, including combat, commands, grouping, Death Star and result paths, shared campaign return, tactical RNG sequencing, power allocation, completion/destruction callbacks, and the timed trench-run producer. Original view acceptance, whole-process RNG continuity, strategic commander binding, exact planet framing, native beam/playback comparison, and rare audio paths stay open. | fail |

@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "checkpoint": "P66A",
+  "date": "2026-10-01",
+  "status": "source_binding_pass_visual_acceptance_open",
+  "source": {
+    "language_id": 1033,
+    "encoding": "windows-1252",
+    "source_code_page": 0,
+    "encytext_sha256": "49aea545a5e09e5fe9115a22bc785690f103d2f931e08bd4a53a617a42636d8c",
+    "encybmap_sha256": "fb545d19ae24b0277753494dbfaabf2dbdde660beab821287a32016c290e4560",
+    "catalog_sha256": "354643f3a5cb58c7bfa92e094d687ba3188c037eac14a961ea843f6b50566994",
+    "texts": 348,
+    "artwork_mappings": 191,
+    "distinct_artwork_files": 186,
+    "mapped_artwork_missing": 0,
+    "owned_artwork_unmapped": ["EDATA.192"]
+  },
+  "join": {
+    "index_entries": 356,
+    "alliance_complete": 346,
+    "empire_complete": 346,
+    "missing_text_per_faction": 10,
+    "missing_artwork_mapping_per_faction": 10,
+    "missing_system_picture_per_faction": 0,
+    "distinct_bound_artwork_per_faction": 172,
+    "unbound_text_resource_ids": [7176, 7427],
+    "unbound_artwork_resource_ids": [7188, 7427, 11284, 11523],
+    "missing_objects": [
+      "0x41000001 Move",
+      "0x42000002 Return",
+      "0x43000003 Autorouting",
+      "0x44000004 Adrift",
+      "0x64000044 Palace",
+      "0x65000083 Bounty",
+      "0x71000043 Dagobah",
+      "0x72000045 Vacation",
+      "0x72000046 Sabbatical",
+      "0x73000082 Pickup"
+    ]
+  },
+  "verification": {
+    "go_extractor_tests": "pass",
+    "go_vet": "pass",
+    "rust_binding_tests": "5 passed",
+    "rust_owned_profile_gate_test": "1 passed",
+    "scoped_clippy": "pass; warnings denied",
+    "workspace_tests": "pass",
+    "production_wasm": "pass; existing missing-local-media warnings only",
+    "owned_extract_verify": "pass",
+    "owned_profile_fail_closed_audit": "pass",
+    "edata_filename_crosscheck": "186/186 present",
+    "independent_source_code_review": "pass after all findings were corrected; final review reported no P0/P1 and its P2 documentation plus P3 test-coverage cleanup were also corrected"
+  },
+  "accepted_obj_01_cells": 0,
+  "remaining": [
+    "browser-pack transport and integrity",
+    "topic composition and rendering",
+    "previous and next interaction",
+    "contextual and production routing",
+    "other source languages",
+    "original A0 comparison and viewport matrix"
+  ]
+}
