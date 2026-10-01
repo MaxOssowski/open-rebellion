@@ -25,6 +25,7 @@ mod tactical_asset_cache;
 mod tactical_assets;
 mod tactical_resources;
 pub mod tactical_view;
+pub mod targeting;
 pub mod theme;
 pub mod video_player;
 
@@ -197,6 +198,8 @@ pub struct GalaxyMapState {
     pub activated_system: Option<SystemKey>,
     /// True while an original-interface window or modal overlay owns the pointer.
     pub pointer_blocked: bool,
+    /// True while a Mission order waits for its target (galaxy view mode 2).
+    pub targeting: bool,
     pub show_sector_labels: bool,
     pub show_grid: bool,
     /// Previous mouse position used for right-drag panning.
@@ -245,6 +248,7 @@ impl Default for GalaxyMapState {
             hovered_system: None,
             activated_system: None,
             pointer_blocked: false,
+            targeting: false,
             show_sector_labels: true,
             show_grid: false,
             drag_start: None,
@@ -443,10 +447,7 @@ pub fn draw_galaxy_map(
     }
 
     // ── Click to select ───────────────────────────────────────────────────────
-    if is_mouse_button_pressed(MouseButton::Left)
-        && in_viewport
-        && !context_menu_owns_pointer(state)
-    {
+    if is_mouse_button_pressed(MouseButton::Left) && in_viewport && map_press_selects(state) {
         state.selected_system = state.hovered_system;
         state.activated_system = state.hovered_system;
     }
@@ -830,6 +831,13 @@ fn gid_marker_resource(control: ControlKind, explored: bool, popularity: f32) ->
 /// system. Closing happens through the menu action or its explicit Close button.
 fn context_menu_owns_pointer(state: &GalaxyMapState) -> bool {
     state.context_menu_system.is_some() || state.context_menu_fleet.is_some()
+}
+
+/// Whether a left press on the map selects the system under it. In targeting
+/// mode the galaxy view holds the capture, and `FUN_00422ce0` has no
+/// `WM_LBUTTONDOWN` case, so the press does nothing; the release targets.
+fn map_press_selects(state: &GalaxyMapState) -> bool {
+    !context_menu_owns_pointer(state) && !state.targeting
 }
 
 /// Remove menu targets that disappeared after an arrival merge or world update.
@@ -1920,6 +1928,20 @@ mod interaction_tests {
         state.context_menu_system = None;
         state.context_menu_fleet = Some((FleetKey::default(), 30.0, 40.0));
         assert!(context_menu_owns_pointer(&state));
+    }
+
+    #[test]
+    fn a_press_during_targeting_selects_no_system() {
+        // FUN_00422ce0 mode 2: the captured press has no WM_LBUTTONDOWN case.
+        let mut state = GalaxyMapState::default();
+        assert!(map_press_selects(&state));
+
+        state.targeting = true;
+        assert!(!map_press_selects(&state));
+
+        state.targeting = false;
+        state.context_menu_system = Some((SystemKey::default(), 10.0, 20.0));
+        assert!(!map_press_selects(&state));
     }
 
     #[test]
