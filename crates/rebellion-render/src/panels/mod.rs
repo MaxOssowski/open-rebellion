@@ -166,12 +166,6 @@ pub enum PanelAction {
     StopJediTraining { character: CharacterKey },
 
     // ── Context Menu Actions ───────────────────────────────────────────
-    /// Open mission panel pre-targeted to a system with a specific mission kind.
-    OpenMissionTo {
-        target: SystemKey,
-        kind: MissionKind,
-        faction: MissionFaction,
-    },
     /// Start fleet movement selection — player picks which fleet to move.
     InitiateFleetMove { destination: SystemKey },
 

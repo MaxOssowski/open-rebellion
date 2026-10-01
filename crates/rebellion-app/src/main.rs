@@ -4477,12 +4477,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                 action => {
                     // Handle actions that need local UI state not available in apply_panel_action.
                     match &action {
-                        PanelAction::OpenMissionTo { target, .. } => {
-                            missions_panel_state.selected_target = Some(*target);
-                            missions_panel_state.tab =
-                                rebellion_render::panels::missions::MissionsTab::Dispatch;
-                            show_missions = true;
-                        }
                         PanelAction::InitiateFleetMove { destination } => {
                             fleets_state.pending_move_destination = Some(*destination);
                             show_fleets = true;
@@ -5078,14 +5072,6 @@ fn apply_panel_action(
                 format!("Reloaded {} mods", mod_runtime.discovered.len()),
                 MessageCategory::Event,
             ));
-        }
-        PanelAction::OpenMissionTo {
-            target,
-            kind: _,
-            faction: _,
-        } => {
-            map_state.selected_system = Some(target);
-            // Mission kind pre-selection handled at call site (needs missions_panel_state).
         }
         PanelAction::InitiateFleetMove { destination } => {
             map_state.selected_system = Some(destination);

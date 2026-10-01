@@ -36,7 +36,7 @@ use rebellion_core::dat::ExplorationStatus;
 use rebellion_core::economy::EconomyState;
 use rebellion_core::ids::{FleetKey, SystemKey};
 use rebellion_core::manufacturing::ManufacturingState;
-use rebellion_core::missions::{MissionFaction, MissionState};
+use rebellion_core::missions::MissionState;
 use rebellion_core::movement::MovementState;
 use rebellion_core::world::{ControlKind, GameWorld, System};
 
@@ -1434,7 +1434,8 @@ pub fn draw_system_info_panel(ctx: &egui::Context, world: &GameWorld, state: &Ga
 /// Draw the system right-click context menu as a floating egui window.
 ///
 /// Shows system summary (faction control, popularity, garrison) and quick
-/// action buttons (Send Diplomat, Move Fleet Here, Build Facility).
+/// action buttons (View Details, Move Fleet Here). A mission starts from the
+/// object pop-up menu (`object_menu.rs`), not from here.
 /// Returns `Some(PanelAction)` when an action button is clicked.
 #[expect(
     clippy::too_many_lines,
@@ -1444,7 +1445,6 @@ pub fn draw_system_context_menu(
     ctx: &egui::Context,
     world: &GameWorld,
     state: &mut GalaxyMapState,
-    player_faction: MissionFaction,
 ) -> Option<PanelAction> {
     let (sys_key, screen_x, screen_y) = state.context_menu_system?;
     let system = world.systems.get(sys_key)?;
@@ -1559,36 +1559,6 @@ pub fn draw_system_context_menu(
                 .clicked()
             {
                 action = Some(PanelAction::FocusFleetSystem(sys_key));
-                keep_open = false;
-            }
-            if ui
-                .button(
-                    egui::RichText::new("Send Diplomat")
-                        .color(theme::TEXT_PRIMARY)
-                        .size(11.0),
-                )
-                .clicked()
-            {
-                action = Some(PanelAction::OpenMissionTo {
-                    target: sys_key,
-                    kind: rebellion_core::missions::MissionKind::Diplomacy,
-                    faction: player_faction,
-                });
-                keep_open = false;
-            }
-            if ui
-                .button(
-                    egui::RichText::new("Send Spy")
-                        .color(theme::TEXT_PRIMARY)
-                        .size(11.0),
-                )
-                .clicked()
-            {
-                action = Some(PanelAction::OpenMissionTo {
-                    target: sys_key,
-                    kind: rebellion_core::missions::MissionKind::Espionage,
-                    faction: player_faction,
-                });
                 keep_open = false;
             }
             if ui
