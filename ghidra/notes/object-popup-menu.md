@@ -184,11 +184,14 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   is staged by `extract-dll-resources.py REBEXE.EXE --cursors`, and the
   system cursor stays visible when it is missing. A left release on a map
   system sets the target and opens the mission dialog through
-  `available_kinds`; a release anywhere else drops the order. port: only a
-  map system is a target, where the original takes none from the bare map
-  and asks the sector or system window under the point instead (no window
-  `+0x68` hit test, no walk up from a team member); Shift's pass-through
-  click is not ported, and Escape cancels as `0x15e` does.
+  `available_kinds`; a release anywhere else drops the order. Since F-007C
+  phase 3a the release asks the window under the point, as the original
+  does (`targeting::release_destination`, `move-order.md`, "Hit tests"): a
+  system window gives its system, a sector window the planet under the
+  point, and the bare map nothing. port: `+0x68`'s character and fleet
+  answers reduce to their system, there is no walk up from a team member,
+  Shift's pass-through click is not ported, and Escape cancels as `0x15e`
+  does.
 - 7d: the stand-in entry points are gone: the system context menu's Send
   Diplomat and Send Spy buttons (`PanelAction::OpenMissionTo`) and the
   missions panel's Dispatch tab (`PanelAction::OpenMissionDialog`). The

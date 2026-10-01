@@ -20,10 +20,10 @@ const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-
 // FUN_0046a750 builds a 259 by 355 window; the port centers it on whole pixels
 // in the galaxy view (hyp: FUN_00606980). At 640 by 480 that is:
 const dimensions = { width: 259, height: 355 };
-// `galaxy` is the galaxy view's top-left at 640 by 480 (CockpitState::layout_for).
+// `galaxy` is the galaxy view's top-left and width at 640 by 480 (CockpitState::layout_for).
 const factions = [
-  { name: "alliance", byte: 1, galaxy: { x: 55, y: 40 }, origin: { x: 168, y: 38 }, title: 10801, tabs: [[11103, 11104], [11107, 11108]], headers: [11121, 11122] },
-  { name: "empire", byte: 2, galaxy: { x: 120, y: 40 }, origin: { x: 231, y: 40 }, title: 10802, tabs: [[11105, 11106], [11109, 11110]], headers: [11123, 11124] },
+  { name: "alliance", byte: 1, galaxy: { x: 55, y: 40, width: 485 }, origin: { x: 168, y: 38 }, title: 10801, tabs: [[11103, 11104], [11107, 11108]], headers: [11121, 11122] },
+  { name: "empire", byte: 2, galaxy: { x: 120, y: 40, width: 480 }, origin: { x: 231, y: 40 }, title: 10802, tabs: [[11105, 11106], [11109, 11110]], headers: [11123, 11124] },
 ];
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 // "targeting" reaches the dialog through the original entry: a right-click on
@@ -222,9 +222,11 @@ async function click(page, point, button = "left") {
 // The original entry (manual p. 100): right-click the agent, choose Mission,
 // then click the target. Returns the cursor check and the menu report.
 async function target(page, faction, directory) {
-  // The fixture opens the system window 5 pixels into the galaxy view; its
-  // first item's picture is centred 40 by 88 into the window.
-  const agent = { x: faction.galaxy.x + 5 + 40, y: faction.galaxy.y + 5 + 88 };
+  // The fixture opens the 231-pixel system window 5 pixels in from the
+  // galaxy view's top-right corner; its first item's picture is centred 40
+  // by 88 into the window. The target's sector window opens on the left.
+  const windowLeft = faction.galaxy.x + faction.galaxy.width - 231 - 5;
+  const agent = { x: windowLeft + 40, y: faction.galaxy.y + 5 + 88 };
   await click(page, agent, "right");
   await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
     null, { timeout: 10_000 });
@@ -242,7 +244,8 @@ async function target(page, faction, directory) {
   const targeting = await page.screenshot({ animations: "disabled" });
   fs.writeFileSync(path.join(directory, "targeting-screen.png"), targeting);
   const cursorCheck = compareCursor(targeting, pointer, directory);
-  // FUN_00422ce0 has no WM_LBUTTONDOWN case in mode 2; the release targets.
+  // FUN_00422ce0 has no WM_LBUTTONDOWN case in mode 2; the release targets
+  // the planet the sector window's +0x70 finds under the point.
   await page.mouse.down();
   await frames(page);
   await page.mouse.up();

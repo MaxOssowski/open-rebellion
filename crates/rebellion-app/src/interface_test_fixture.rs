@@ -16,6 +16,7 @@ use rebellion_core::uprising::UprisingState;
 use rebellion_core::world::{ControlKind, GameWorld};
 use rebellion_render::mission_dialog::{MissionDialogPage, MissionDialogState};
 use rebellion_render::object_menu::{ObjectMenuCommand, ObjectMenuState};
+use rebellion_render::system_window::SYSTEM_WINDOW_WIDTH;
 use rebellion_render::{
     CockpitFaction, CockpitState, GalaxyMapState, GidMode, SectorWindowState, SystemWindowState,
 };
@@ -26,7 +27,6 @@ use crate::GameMode;
 const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
-const TARGET_OFFSET_X: f32 = 150.0;
 #[cfg(test)]
 const SCENARIO_COUNT: u8 = 45;
 
@@ -364,18 +364,22 @@ pub fn apply(
         );
     }
     if request.scenario == Scenario::MissionTargeting {
-        // The primary system's window at the galaxy view's left edge holds
-        // the agent; the second system sits right of centre as the target.
-        map.camera_x = f32::from(world.systems[secondary].x) - TARGET_OFFSET_X;
-        map.camera_y = f32::from(world.systems[secondary].y);
-        let galaxy = cockpit.layout_for(640.0, 480.0).galaxy;
+        // The primary system's window at the galaxy view's right edge holds
+        // the agent; the second system's planet in its sector window, in the
+        // first column on the left, is the target (FUN_0045c830).
+        let layout = cockpit.layout_for(640.0, 480.0);
+        let galaxy = layout.galaxy;
         systems.open(
             world,
             primary,
-            (galaxy.x as i16 + 5, galaxy.y as i16 + 5),
+            (
+                (galaxy.x + galaxy.width - SYSTEM_WINDOW_WIDTH) as i16 - 5,
+                galaxy.y as i16 + 5,
+            ),
             request.faction,
-            cockpit.layout_for(640.0, 480.0),
+            layout,
         );
+        sectors.open_for_system(world, secondary, request.faction);
     }
 
     let _ = manufacturing;
@@ -475,8 +479,8 @@ fn screen_point(
     )
 }
 
-/// The open object pop-up menu and the targeting scenario's target, so the
-/// browser gate can choose Mission and release over the target.
+/// The open object pop-up menu and the targeting scenario's target planet,
+/// so the browser gate can choose Mission and release over it.
 #[derive(Debug, Serialize, PartialEq)]
 struct FixtureObjectMenu<'a> {
     status: &'static str,
@@ -498,10 +502,12 @@ fn object_menu_report<'a>(
     rect: egui_macroquad::egui::Rect,
     menu: &ObjectMenuState,
     world: &'a GameWorld,
-    map: &GalaxyMapState,
+    sectors: &SectorWindowState,
 ) -> Option<FixtureObjectMenu<'a>> {
-    let target = world.systems.values().nth(1)?;
-    let (target_screen_x, target_screen_y) = screen_point(target, map, request.faction);
+    let (key, target) = world.systems.iter().nth(1)?;
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let planet = sectors.planet_screen_rect(world, layout, key)?.center();
+    let (target_screen_x, target_screen_y) = (planet.x, planet.y);
     Some(FixtureObjectMenu {
         status: "object-menu",
         code: request.code,
@@ -523,12 +529,12 @@ pub fn emit_object_menu(
     rect: egui_macroquad::egui::Rect,
     menu: &ObjectMenuState,
     world: &GameWorld,
-    map: &GalaxyMapState,
+    sectors: &SectorWindowState,
 ) {
     if request.scenario != Scenario::MissionTargeting {
         return;
     }
-    let Some(report) = object_menu_report(request, rect, menu, world, map) else {
+    let Some(report) = object_menu_report(request, rect, menu, world, sectors) else {
         return;
     };
     let bytes = serde_json::to_vec(&report).expect("serialize the object menu report");
@@ -778,21 +784,32 @@ mod tests {
     }
 
     #[test]
-    fn the_targeting_scenario_frees_the_agent_and_clears_the_target_of_its_window() {
+    fn the_targeting_scenario_frees_the_agent_and_shows_the_target_planet_clear_of_its_window() {
         let mut world = diplomacy_world(Faction::Alliance);
-        let mut second = world.systems.values().next().unwrap().clone();
+        let sector = world.sectors.insert(rebellion_core::world::Sector {
+            dat_id: rebellion_core::ids::DatId::new(0x8000_0001),
+            name: "Sector".into(),
+            group: rebellion_core::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: Vec::new(),
+        });
+        let here = world.systems.keys().next().unwrap();
+        world.systems[here].sector = sector;
+        let mut second = world.systems[here].clone();
         second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
         second.name = "Target".into();
-        second.x = 400;
-        second.y = 300;
-        world.systems.insert(second);
+        second.x = 26;
+        second.y = 20;
+        let target = world.systems.insert(second);
+        world.sectors[sector].systems = vec![here, target];
         let agent = world.characters.keys().next().unwrap();
         world.characters[agent].recruited = false;
         world.characters[agent].is_captive = true;
         let request = request(Scenario::MissionTargeting, CockpitFaction::Alliance);
         let mut cockpit = CockpitState::new(CockpitFaction::Alliance);
-        let mut map = GalaxyMapState::default();
         let mut missions = MissionState::default();
+        let mut sectors = SectorWindowState::default();
         let mut systems = SystemWindowState::default();
 
         apply(
@@ -801,13 +818,13 @@ mod tests {
             &mut GameMode::MainMenu,
             &mut MissionFaction::Alliance,
             &mut cockpit,
-            &mut map,
+            &mut GalaxyMapState::default(),
             &mut MovementState::default(),
             &mut ManufacturingState::default(),
             &mut EconomyState::default(),
             &mut missions,
             &mut BlockadeState::default(),
-            &mut SectorWindowState::default(),
+            &mut sectors,
             &mut systems,
         );
 
@@ -819,19 +836,22 @@ mod tests {
         ));
         let layout = cockpit.layout_for(640.0, 480.0);
         let galaxy = layout.galaxy;
-        // The window's first item, 40 by 88 into a window at the view's corner.
-        let item = (galaxy.x + 5.0 + 40.0, galaxy.y + 5.0 + 88.0);
-        assert!(systems.contains_screen_point(layout, item));
-        assert!(systems.contains_screen_point(layout, (galaxy.x + 5.0, galaxy.y + 5.0)));
-        assert!(!systems.contains_screen_point(layout, (galaxy.x + 4.0, galaxy.y + 5.0)));
-        assert!(!systems.contains_screen_point(layout, (galaxy.x + 5.0, galaxy.y + 4.0)));
+        // The window's top-left corner, 5 pixels in from the view's top-right.
+        let corner = (
+            galaxy.x + galaxy.width - SYSTEM_WINDOW_WIDTH - 5.0,
+            galaxy.y + 5.0,
+        );
+        assert!(systems.contains_screen_point(layout, corner));
+        assert!(!systems.contains_screen_point(layout, (corner.0 - 1.0, corner.1)));
+        assert!(!systems.contains_screen_point(layout, (corner.0, corner.1 - 1.0)));
+        assert_eq!(sectors.window_count(), 1);
 
         let menu = ObjectMenuState::new(Some(MenuObject::Character(agent)), true, (0, 0));
         let rect = egui_macroquad::egui::Rect::from_min_size(
             egui_macroquad::egui::pos2(100.0, 150.0),
             egui_macroquad::egui::vec2(120.0, 142.0),
         );
-        let report = object_menu_report(request, rect, &menu, &world, &map).unwrap();
+        let report = object_menu_report(request, rect, &menu, &world, &sectors).unwrap();
         assert_eq!(
             (report.left, report.top, report.width, report.height),
             (100.0, 150.0, 120.0, 142.0)
@@ -841,14 +861,11 @@ mod tests {
             (report.target_dat_id, report.target_name),
             (0x9000_0002, "Target")
         );
+        // The Alliance's first sector window sits at (60, 35); the target's
+        // planet at (74, 74) in it is 37 by 37.
         let target = (report.target_screen_x, report.target_screen_y);
-        assert_eq!(
-            target,
-            (
-                galaxy.x + galaxy.width / 2.0 + TARGET_OFFSET_X,
-                galaxy.y + galaxy.height / 2.0
-            )
-        );
+        assert_eq!(target, (60.0 + 74.0 + 18.5, 35.0 + 74.0 + 18.5));
+        assert!(sectors.contains_screen_point(layout, target));
         assert!(!systems.contains_screen_point(layout, target));
     }
 

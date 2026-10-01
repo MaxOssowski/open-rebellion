@@ -80,7 +80,7 @@ use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::panels::research::{draw_research, ResearchPanelState};
 use rebellion_render::targeting::{
-    capture_pointer, draw_targeting_cursor, Targeting, TargetingEnd,
+    capture_pointer, draw_targeting_cursor, release_destination, Targeting, TargetingEnd,
 };
 use rebellion_render::{
     advisor_combat_result, advisor_death_star, advisor_greet, advisor_manufacturing_complete,
@@ -3310,26 +3310,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                 if let Some(system) = map_state.activated_system {
                     sector_window_state.open_for_system(&world, system, cockpit_state.faction);
                 }
-                // FUN_00422ce0's WM_LBUTTONUP in mode 2 targets the system
-                // under the point, then FUN_0042a320 opens the dialog with
-                // the kinds the team may undertake; with none, nothing opens.
-                if is_mouse_button_released(MouseButton::Left) {
-                    if let Some(TargetingEnd::Target { team, system }) = targeting
-                        .take()
-                        .map(|order| order.release(map_state.hovered_system))
-                    {
-                        let kinds = rebellion_core::missions::available_kinds(
-                            &world,
-                            &uprising_state,
-                            player_faction,
-                            &team,
-                            &[],
-                            system,
-                        );
-                        mission_dialog_state.open(player_faction, system, team, kinds);
-                    }
-                }
-
                 set_cockpit_viewport_clip(None);
 
                 // The Message Index rail lights each category with unread
@@ -3664,6 +3644,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                     }
 
+                    // The menu commits on the release that starts targeting;
+                    // only a later release may end the order.
+                    let targeting_held = targeting.is_some();
                     match draw_object_menu(
                         ctx,
                         &mut object_menu,
@@ -3690,7 +3673,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                         rebellion_render::object_menu::object_menu_rect(ctx),
                     ) {
                         interface_test_fixture::emit_object_menu(
-                            request, rect, menu, &world, &map_state,
+                            request,
+                            rect,
+                            menu,
+                            &world,
+                            &sector_window_state,
                         );
                     }
 
@@ -3728,6 +3715,33 @@ Some(RailAudience::side(*faction_is_alliance)),
                             .unwrap_or(egui_macroquad::egui::pos2(mouse_x, mouse_y));
                         targeting_cursor_drawn =
                             draw_targeting_cursor(ctx, &mut bmp_cache, cockpit_layout, pointer);
+                        // FUN_00422ce0's WM_LBUTTONUP in mode 2 targets what
+                        // the window under the point answers, then
+                        // FUN_0042a320 opens the dialog with the kinds the
+                        // team may undertake; with none, nothing opens.
+                        if targeting_held && is_mouse_button_released(MouseButton::Left) {
+                            let destination = release_destination(
+                                ctx,
+                                &world,
+                                cockpit_layout,
+                                &sector_window_state,
+                                &system_window_state,
+                                pointer,
+                            );
+                            if let Some(TargetingEnd::Target { team, system }) =
+                                targeting.take().map(|order| order.release(destination))
+                            {
+                                let kinds = rebellion_core::missions::available_kinds(
+                                    &world,
+                                    &uprising_state,
+                                    player_faction,
+                                    &team,
+                                    &[],
+                                    system,
+                                );
+                                mission_dialog_state.open(player_faction, system, team, kinds);
+                            }
+                        }
                     }
 
                     // The replacement message and status bars covered the

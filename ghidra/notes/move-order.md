@@ -387,6 +387,11 @@ not found. The confirmation window's own Escape is recovered
   route); `validate_fleet_dispatch` adds the destination (`1`/`0x22`) and the
   speed refusal (`1`/`0x18`). port: its origin, destroyed-destination,
   same-system and empty-fleet checks are the port's own.
+- Phase 3a: every targeting release asks the topmost window under the point
+  (`targeting::release_destination`): a system window's `+0x70` gives its
+  system, a sector window's the planet whose 37 by 37 rectangle holds the
+  point (`sector-window-hit-test.md`), and the bare map nothing. Mission
+  uses it too.
 
 ## Order 0x214 (Destination)
 
