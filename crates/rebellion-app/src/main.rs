@@ -3677,6 +3677,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                         // port: the other items are drawn disabled.
                         Some(_) | None => {}
                     }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let (Some(request), Some(menu), Some(rect)) = (
+                        interface_fixture_request,
+                        object_menu.as_ref(),
+                        rebellion_render::object_menu::object_menu_rect(ctx),
+                    ) {
+                        interface_test_fixture::emit_object_menu(
+                            request, rect, menu, &world, &map_state,
+                        );
+                    }
 
                     match draw_mission_dialog(
                         ctx,

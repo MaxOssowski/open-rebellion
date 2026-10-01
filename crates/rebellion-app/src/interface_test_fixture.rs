@@ -15,6 +15,7 @@ use rebellion_core::tick::TickEvent;
 use rebellion_core::uprising::UprisingState;
 use rebellion_core::world::{ControlKind, GameWorld};
 use rebellion_render::mission_dialog::{MissionDialogPage, MissionDialogState};
+use rebellion_render::object_menu::{ObjectMenuCommand, ObjectMenuState};
 use rebellion_render::{
     CockpitFaction, CockpitState, GalaxyMapState, GidMode, SectorWindowState, SystemWindowState,
 };
@@ -23,8 +24,11 @@ use serde::Serialize;
 use crate::GameMode;
 
 const FIXTURE_ABSENT: u32 = 0;
+/// How far right of the galaxy view's centre the targeting scenario puts its
+/// target system, clear of the system window it opens on the left.
+const TARGET_OFFSET_X: f32 = 150.0;
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 44;
+const SCENARIO_COUNT: u8 = 45;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -85,6 +89,7 @@ pub enum Scenario {
     EncyclopediaIndexCatalog = 41,
     MissionDialogMission = 42,
     MissionDialogAgents = 43,
+    MissionTargeting = 44,
 }
 
 impl Scenario {
@@ -134,6 +139,7 @@ impl Scenario {
             41 => Self::EncyclopediaIndexCatalog,
             42 => Self::MissionDialogMission,
             43 => Self::MissionDialogAgents,
+            44 => Self::MissionTargeting,
             _ => return None,
         })
     }
@@ -292,6 +298,12 @@ pub fn apply(
             request.scenario,
             Scenario::Mission | Scenario::ActivePersonnel
         );
+        if request.scenario == Scenario::MissionTargeting {
+            // MissionState::mission_order_enabled: a free recruited member.
+            character.recruited = true;
+            character.is_captive = false;
+            character.on_mandatory_mission = false;
+        }
         if matches!(
             request.scenario,
             Scenario::Mission | Scenario::ActivePersonnel
@@ -351,6 +363,20 @@ pub fn apply(
             cockpit.layout_for(640.0, 480.0),
         );
     }
+    if request.scenario == Scenario::MissionTargeting {
+        // The primary system's window at the galaxy view's left edge holds
+        // the agent; the second system sits right of centre as the target.
+        map.camera_x = f32::from(world.systems[secondary].x) - TARGET_OFFSET_X;
+        map.camera_y = f32::from(world.systems[secondary].y);
+        let galaxy = cockpit.layout_for(640.0, 480.0).galaxy;
+        systems.open(
+            world,
+            primary,
+            (galaxy.x as i16 + 5, galaxy.y as i16 + 5),
+            request.faction,
+            cockpit.layout_for(640.0, 480.0),
+        );
+    }
 
     let _ = manufacturing;
 }
@@ -397,11 +423,7 @@ pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapSta
         .systems
         .iter()
         .map(|(_, system)| {
-            let x =
-                (f32::from(system.x) - map.camera_x) * map.zoom + aperture.x + aperture.width / 2.0;
-            let y = (f32::from(system.y) - map.camera_y) * map.zoom
-                + aperture.y
-                + aperture.height / 2.0;
+            let (x, y) = screen_point(system, map, request.faction);
             (system, x, y)
         })
         .filter(|(_, x, y)| {
@@ -437,6 +459,79 @@ pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapSta
         zoom: map.zoom,
     };
     let bytes = serde_json::to_vec(&report).expect("serialize interface fixture report");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+}
+
+/// Where `system` is drawn in the 640 by 480 fixture canvas.
+fn screen_point(
+    system: &rebellion_core::world::System,
+    map: &GalaxyMapState,
+    faction: CockpitFaction,
+) -> (f32, f32) {
+    let aperture = CockpitState::new(faction).layout_for(640.0, 480.0).galaxy;
+    (
+        (f32::from(system.x) - map.camera_x) * map.zoom + aperture.x + aperture.width / 2.0,
+        (f32::from(system.y) - map.camera_y) * map.zoom + aperture.y + aperture.height / 2.0,
+    )
+}
+
+/// The open object pop-up menu and the targeting scenario's target, so the
+/// browser gate can choose Mission and release over the target.
+#[derive(Debug, Serialize, PartialEq)]
+struct FixtureObjectMenu<'a> {
+    status: &'static str,
+    code: u32,
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+    rows: usize,
+    mission_row: Option<usize>,
+    target_dat_id: u32,
+    target_name: &'a str,
+    target_screen_x: f32,
+    target_screen_y: f32,
+}
+
+fn object_menu_report<'a>(
+    request: FixtureRequest,
+    rect: egui_macroquad::egui::Rect,
+    menu: &ObjectMenuState,
+    world: &'a GameWorld,
+    map: &GalaxyMapState,
+) -> Option<FixtureObjectMenu<'a>> {
+    let target = world.systems.values().nth(1)?;
+    let (target_screen_x, target_screen_y) = screen_point(target, map, request.faction);
+    Some(FixtureObjectMenu {
+        status: "object-menu",
+        code: request.code,
+        left: rect.min.x,
+        top: rect.min.y,
+        width: rect.width(),
+        height: rect.height(),
+        rows: menu.row_count(),
+        mission_row: menu.row_of(ObjectMenuCommand::Mission),
+        target_dat_id: target.dat_id.raw(),
+        target_name: &target.name,
+        target_screen_x,
+        target_screen_y,
+    })
+}
+
+pub fn emit_object_menu(
+    request: FixtureRequest,
+    rect: egui_macroquad::egui::Rect,
+    menu: &ObjectMenuState,
+    world: &GameWorld,
+    map: &GalaxyMapState,
+) {
+    if request.scenario != Scenario::MissionTargeting {
+        return;
+    }
+    let Some(report) = object_menu_report(request, rect, menu, world, map) else {
+        return;
+    };
+    let bytes = serde_json::to_vec(&report).expect("serialize the object menu report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
@@ -679,6 +774,106 @@ mod tests {
             &UprisingState::default(),
             &mut dialog,
         ));
+    }
+
+    #[test]
+    fn the_targeting_scenario_frees_the_agent_and_clears_the_target_of_its_window() {
+        let mut world = diplomacy_world(Faction::Alliance);
+        let mut second = world.systems.values().next().unwrap().clone();
+        second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
+        second.name = "Target".into();
+        second.x = 400;
+        second.y = 300;
+        world.systems.insert(second);
+        let agent = world.characters.keys().next().unwrap();
+        world.characters[agent].recruited = false;
+        world.characters[agent].is_captive = true;
+        let request = request(Scenario::MissionTargeting, CockpitFaction::Alliance);
+        let mut cockpit = CockpitState::new(CockpitFaction::Alliance);
+        let mut map = GalaxyMapState::default();
+        let mut missions = MissionState::default();
+        let mut systems = SystemWindowState::default();
+
+        apply(
+            request,
+            &mut world,
+            &mut GameMode::MainMenu,
+            &mut MissionFaction::Alliance,
+            &mut cockpit,
+            &mut map,
+            &mut MovementState::default(),
+            &mut ManufacturingState::default(),
+            &mut EconomyState::default(),
+            &mut missions,
+            &mut BlockadeState::default(),
+            &mut SectorWindowState::default(),
+            &mut systems,
+        );
+
+        // MissionState::mission_order_enabled enables the menu's Mission.
+        assert!(missions.mission_order_enabled(
+            &world,
+            MissionFaction::Alliance,
+            &[MissionMember::Character(agent)],
+        ));
+        let layout = cockpit.layout_for(640.0, 480.0);
+        let galaxy = layout.galaxy;
+        // The window's first item, 40 by 88 into a window at the view's corner.
+        let item = (galaxy.x + 5.0 + 40.0, galaxy.y + 5.0 + 88.0);
+        assert!(systems.contains_screen_point(layout, item));
+        assert!(systems.contains_screen_point(layout, (galaxy.x + 5.0, galaxy.y + 5.0)));
+        assert!(!systems.contains_screen_point(layout, (galaxy.x + 4.0, galaxy.y + 5.0)));
+        assert!(!systems.contains_screen_point(layout, (galaxy.x + 5.0, galaxy.y + 4.0)));
+
+        let menu = ObjectMenuState::new(Some(MissionMember::Character(agent)), true, (0, 0));
+        let rect = egui_macroquad::egui::Rect::from_min_size(
+            egui_macroquad::egui::pos2(100.0, 150.0),
+            egui_macroquad::egui::vec2(120.0, 142.0),
+        );
+        let report = object_menu_report(request, rect, &menu, &world, &map).unwrap();
+        assert_eq!(
+            (report.left, report.top, report.width, report.height),
+            (100.0, 150.0, 120.0, 142.0)
+        );
+        assert_eq!((report.rows, report.mission_row), (7, Some(2)));
+        assert_eq!(
+            (report.target_dat_id, report.target_name),
+            (0x9000_0002, "Target")
+        );
+        let target = (report.target_screen_x, report.target_screen_y);
+        assert_eq!(
+            target,
+            (
+                galaxy.x + galaxy.width / 2.0 + TARGET_OFFSET_X,
+                galaxy.y + galaxy.height / 2.0
+            )
+        );
+        assert!(!systems.contains_screen_point(layout, target));
+    }
+
+    #[test]
+    fn a_system_point_scales_its_offset_from_the_camera_by_the_zoom() {
+        let world = diplomacy_world(Faction::Alliance);
+        let mut system = world.systems.values().next().unwrap().clone();
+        system.x = 110;
+        system.y = 90;
+        let map = GalaxyMapState {
+            camera_x: 100.0,
+            camera_y: 100.0,
+            zoom: 2.0,
+            ..GalaxyMapState::default()
+        };
+        let galaxy = CockpitState::new(CockpitFaction::Empire)
+            .layout_for(640.0, 480.0)
+            .galaxy;
+
+        assert_eq!(
+            screen_point(&system, &map, CockpitFaction::Empire),
+            (
+                galaxy.x + galaxy.width / 2.0 + 20.0,
+                galaxy.y + galaxy.height / 2.0 - 20.0
+            )
+        );
     }
 
     #[test]

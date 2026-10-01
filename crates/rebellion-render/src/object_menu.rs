@@ -190,6 +190,25 @@ impl ObjectMenuState {
             point: (f32::from(point.0), f32::from(point.1)),
         }
     }
+
+    #[must_use]
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// The row that issues `command`, counted from the top.
+    #[must_use]
+    pub fn row_of(&self, command: ObjectMenuCommand) -> Option<usize> {
+        self.rows.iter().position(|row| row.item.command == command)
+    }
+}
+
+const MENU_ID: &str = "original_object_menu";
+
+/// The open menu's screen rectangle, once egui has laid it out.
+#[must_use]
+pub fn object_menu_rect(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.memory(|memory| memory.area_rect(egui::Id::new(MENU_ID)))
 }
 
 /// The galaxy view in canvas coordinates: the menu's owner window
@@ -222,7 +241,7 @@ pub fn draw_object_menu(
     };
     match draw_game_menu(
         ctx,
-        egui::Id::new("original_object_menu"),
+        egui::Id::new(MENU_ID),
         cache,
         layout,
         faction,
@@ -390,9 +409,7 @@ mod tests {
         for frame in 0..4 {
             let mut events = Vec::new();
             if frame >= 2 {
-                rect = ctx
-                    .memory(|memory| memory.area_rect(egui::Id::new("original_object_menu")))
-                    .expect("the menu is laid out");
+                rect = object_menu_rect(&ctx).expect("the menu is laid out");
                 let height = (rect.height() - 2.0 * layout.scale) / count as f32;
                 let pos = egui::pos2(
                     rect.center().x,
@@ -428,6 +445,21 @@ mod tests {
             });
         }
         (chosen, rect)
+    }
+
+    #[test]
+    fn a_characters_menu_lists_mission_third_of_seven_rows() {
+        // STRATEGY RT_RCDATA sort keys: Move 10, Confirmed Move 12, Mission
+        // 300, Command, Encyclopedia 1000, Status 1001, Retire 2002.
+        let agent = Some(MissionMember::Character(CharacterKey::default()));
+        let menu = ObjectMenuState::new(agent, true, (100, 100));
+        assert_eq!(menu.row_count(), 7);
+        assert_eq!(menu.row_of(ObjectMenuCommand::Mission), Some(2));
+        assert_eq!(menu.row_of(ObjectMenuCommand::Encyclopedia), Some(4));
+
+        // FUN_0051d990 lists only Encyclopedia and Status for no selection.
+        let empty = ObjectMenuState::new(None, true, (100, 100));
+        assert_eq!(empty.row_of(ObjectMenuCommand::Mission), None);
     }
 
     #[test]
