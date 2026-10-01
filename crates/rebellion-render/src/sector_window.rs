@@ -124,6 +124,58 @@ impl SectorWindowState {
         self.windows.len()
     }
 
+    /// Where `system`'s planet is drawn, in screen pixels, when its sector's
+    /// window is open.
+    #[must_use]
+    pub fn planet_screen_rect(
+        &self,
+        world: &GameWorld,
+        layout: CockpitLayout,
+        system: SystemKey,
+    ) -> Option<egui::Rect> {
+        let value = world.systems.get(system)?;
+        let window = self
+            .windows
+            .iter()
+            .find(|window| window.sector == value.sector)?;
+        let sector = world.sectors.get(window.sector)?;
+        let (x, y) = sector_planet_position(sector.x, sector.y, value.x, value.y);
+        let window_rect = window_screen_rect(self.faction, window.column, layout);
+        Some(planet_rect(window_rect, layout.scale, x, y))
+    }
+
+    /// The destination a targeting release at `point` takes from the sector
+    /// window egui draws as `layer`, or `None` when `layer` is none of them.
+    ///
+    /// The window's `+0x70` (`FUN_0045c830` → `FUN_0045c660`) gives the first
+    /// planet whose rectangle holds the point, and no system between planets.
+    /// `FUN_00459e30` sets each rectangle once to the 37 by 37 planet bitmap
+    /// at its position (`ghidra/notes/sector-window-hit-test.md`). hyp: the
+    /// items are listed in the sector's system order.
+    #[must_use]
+    pub fn release_target(
+        &self,
+        world: &GameWorld,
+        layout: CockpitLayout,
+        layer: egui::LayerId,
+        point: egui::Pos2,
+    ) -> Option<Option<SystemKey>> {
+        let window = self
+            .windows
+            .iter()
+            .find(|window| area_id(window.sector) == layer.id)?;
+        let Some(sector) = world.sectors.get(window.sector) else {
+            return Some(None);
+        };
+        let window_rect = window_screen_rect(self.faction, window.column, layout);
+        Some(sector.systems.iter().copied().find(|key| {
+            world.systems.get(*key).is_some_and(|system| {
+                let (x, y) = sector_planet_position(sector.x, sector.y, system.x, system.y);
+                rect_contains(planet_rect(window_rect, layout.scale, x, y), point)
+            })
+        }))
+    }
+
     pub fn clear(&mut self) {
         self.windows.clear();
     }
@@ -273,7 +325,7 @@ fn draw_sector_window(
         SECTOR_WINDOW_HEIGHT * layout.scale,
     );
 
-    let area_id = egui::Id::new(("original-sector-window", window.sector));
+    let area_id = area_id(window.sector);
     if focused {
         ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, area_id));
     }
@@ -349,8 +401,7 @@ fn draw_sector_window(
                 };
                 let (planet_x, planet_y) =
                     sector_planet_position(sector.x, sector.y, system.x, system.y);
-                let planet_rect =
-                    logical_rect(window_rect, layout.scale, planet_x, planet_y, 37.0, 37.0);
+                let planet_rect = planet_rect(window_rect, layout.scale, planet_x, planet_y);
                 let planet_response = ui.interact(
                     planet_rect,
                     ui.id().with((window.sector, *system_key)),
@@ -418,6 +469,15 @@ fn window_logical_position(faction: CockpitFaction, column: WindowColumn) -> (f3
         (CockpitFaction::Empire, WindowColumn::Primary) => (120.0, 40.0),
         (CockpitFaction::Empire, WindowColumn::Secondary) => (365.0, 40.0),
     }
+}
+
+fn area_id(sector: SectorKey) -> egui::Id {
+    egui::Id::new(("original-sector-window", sector))
+}
+
+/// A planet item's picture and hit rectangle: 37 by 37 at its position.
+fn planet_rect(window_rect: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Rect {
+    logical_rect(window_rect, scale, x, y, 37.0, 37.0)
 }
 
 fn window_screen_rect(

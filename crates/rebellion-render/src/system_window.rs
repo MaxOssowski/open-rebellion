@@ -211,6 +211,18 @@ impl SystemWindowState {
         self.windows.len()
     }
 
+    /// The destination a targeting release takes from the system window
+    /// egui draws as `layer`: its own system wherever the point lies
+    /// (`+0x70`, `FUN_004aa470`), so a release over a fleet in its list never
+    /// joins that fleet. `None` when `layer` is no open system window.
+    #[must_use]
+    pub fn release_target(&self, layer: egui::LayerId) -> Option<SystemKey> {
+        self.windows
+            .iter()
+            .find(|window| area_id(window.system) == layer.id)
+            .map(|window| window.system)
+    }
+
     #[must_use]
     pub fn rail_count(&self) -> usize {
         self.rail.len()
@@ -511,7 +523,7 @@ fn draw_system_window(
     let screen_rect = window_screen_rect(window, layout);
     let relationship = relationship(system.control, cockpit_faction(faction));
 
-    let area_id = egui::Id::new(("original-system-window", window.system));
+    let area_id = area_id(window.system);
     if focused {
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, area_id));
     }
@@ -682,6 +694,10 @@ struct TabContentDrawResult {
     /// The selection and screen point of a right-button release that opens
     /// the object pop-up menu.
     object_menu: Option<(Option<MenuObject>, egui::Pos2)>,
+}
+
+fn area_id(system: SystemKey) -> egui::Id {
+    egui::Id::new(("original-system-window", system))
 }
 
 /// The object an item is, when its pop-up menu is ported: a character, a
