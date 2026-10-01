@@ -92,7 +92,9 @@ pub fn capture_pointer(ctx: &egui::Context) {
         });
 }
 
-/// Draw the targeting cursor over every window at the pointer. Returns
+/// Draw the targeting cursor over every window at the pointer. egui paints a
+/// painter-only layer after the areas of its order, so it also covers the
+/// mission dialog, which shares Tooltip. Returns
 /// false when cursor 1002 is not staged, so the caller keeps the system
 /// cursor visible.
 #[must_use]
@@ -206,11 +208,14 @@ mod tests {
         let mut drawn = false;
         for _ in 0..2 {
             output = Some(ctx.run(egui::RawInput::default(), |ctx| {
-                egui::Area::new(egui::Id::new("window_below")).show(ctx, |ui| {
-                    ui.label("a window");
-                });
                 drawn =
                     draw_targeting_cursor(ctx, &mut cache, layout(2.0), egui::pos2(100.0, 100.0));
+                // The mission dialog's order, drawn after the cursor.
+                egui::Area::new(egui::Id::new("window_below"))
+                    .order(egui::Order::Tooltip)
+                    .show(ctx, |ui| {
+                        ui.label("a window");
+                    });
             }));
         }
         let output = output.unwrap();

@@ -464,9 +464,11 @@ pub fn draw_mission_dialog(
     let mut close = false;
     let mut begin = false;
 
+    // Above the modeless windows, which share Foreground and raise the
+    // focused one each frame (`system_window.rs`).
     egui::Area::new(egui::Id::new("original-mission-dialog"))
         .fixed_pos(window.min)
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Tooltip)
         .show(ctx, |ui| {
             let (frame, _) = ui.allocate_exact_size(window.size(), egui::Sense::hover());
             let painter = ui.painter().with_clip_rect(frame);
@@ -1199,6 +1201,42 @@ mod tests {
         let dialog = state.dialog().unwrap();
         assert_eq!(dialog.agents(), &[team[0]]);
         assert_eq!(dialog.decoys(), &[team[1]]);
+    }
+
+    #[test]
+    fn the_dialog_stays_above_a_system_window_that_raises_itself_every_frame() {
+        // FUN_0042a320 opens the dialog over the galaxy view's windows; a
+        // focused system window raises itself each frame (system_window.rs).
+        let (world, _, mut state) = dialog_in_world(1);
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let window = egui::Id::new("raising_window");
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 520.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, window));
+                egui::Area::new(window)
+                    .order(egui::Order::Foreground)
+                    .fixed_pos(egui::Pos2::ZERO)
+                    .show(ctx, |ui| {
+                        ui.allocate_response(egui::vec2(700.0, 520.0), egui::Sense::click());
+                    });
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            });
+        }
+
+        assert_eq!(
+            ctx.layer_id_at(dialog_rect(layout).center())
+                .map(|layer| layer.id),
+            Some(egui::Id::new("original-mission-dialog"))
+        );
     }
 
     #[test]

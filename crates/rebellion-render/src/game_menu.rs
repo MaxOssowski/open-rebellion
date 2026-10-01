@@ -236,8 +236,13 @@ pub fn draw_game_menu(
     );
     let menu_size = egui::vec2(geometry.width * scale, geometry.height * scale);
 
+    // FUN_00442860 opens a pop-up over every child window. The modeless
+    // windows share Foreground and a focused one raises itself each frame
+    // (`system_window.rs`), so the menu takes the order above them, which
+    // it shares with the mission dialog, and raises itself there.
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Tooltip, id));
     let shown = egui::Area::new(id)
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Tooltip)
         .fade_in(false)
         .fixed_pos(origin)
         .show(ctx, |ui| {
@@ -327,6 +332,92 @@ mod tests {
     }
 
     const MENU_ID: &str = "game_menu_test";
+
+    #[test]
+    fn the_menu_opens_above_a_dialog_shown_after_it() {
+        // FUN_00442860's pop-up is the topmost window; the mission dialog
+        // shares the order above the modeless windows (mission_dialog.rs).
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let dialog = egui::Id::new("dialog_above_windows");
+        let entries = [labelled("Mission", true)];
+        for _ in 0..3 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_game_menu(
+                    ctx,
+                    egui::Id::new(MENU_ID),
+                    &mut cache,
+                    layout,
+                    CockpitFaction::Alliance,
+                    GameMenuPlacement::in_frame((100.0, 100.0)),
+                    &entries,
+                    true,
+                );
+                egui::Area::new(dialog)
+                    .order(egui::Order::Tooltip)
+                    .fixed_pos(egui::Pos2::ZERO)
+                    .show(ctx, |ui| {
+                        ui.allocate_response(egui::vec2(400.0, 400.0), egui::Sense::click());
+                    });
+            });
+        }
+        let menu = ctx
+            .memory(|memory| memory.area_rect(egui::Id::new(MENU_ID)))
+            .expect("the menu is laid out");
+
+        assert_eq!(
+            ctx.layer_id_at(menu.center()).map(|layer| layer.id),
+            Some(egui::Id::new(MENU_ID))
+        );
+    }
+
+    #[test]
+    fn the_menu_stays_above_a_window_that_raises_itself_every_frame() {
+        // FUN_00442860 makes the Game Menu Window a pop-up over every child
+        // window; a focused system window raises itself each frame.
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let window = egui::Id::new("raising_window");
+        let entries = [labelled("Mission", true)];
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(640.0, 480.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, window));
+                egui::Area::new(window)
+                    .order(egui::Order::Foreground)
+                    .fixed_pos(egui::Pos2::ZERO)
+                    .show(ctx, |ui| {
+                        ui.allocate_response(egui::vec2(400.0, 400.0), egui::Sense::click());
+                    });
+                let _ = draw_game_menu(
+                    ctx,
+                    egui::Id::new(MENU_ID),
+                    &mut cache,
+                    layout,
+                    CockpitFaction::Alliance,
+                    GameMenuPlacement::in_frame((100.0, 100.0)),
+                    &entries,
+                    true,
+                );
+            });
+        }
+        let menu = ctx
+            .memory(|memory| memory.area_rect(egui::Id::new(MENU_ID)))
+            .expect("the menu is laid out");
+
+        assert_eq!(
+            ctx.layer_id_at(menu.center()).map(|layer| layer.id),
+            Some(egui::Id::new(MENU_ID))
+        );
+    }
 
     fn labelled(label: &'static str, enabled: bool) -> GameMenuEntry<'static> {
         GameMenuEntry {
