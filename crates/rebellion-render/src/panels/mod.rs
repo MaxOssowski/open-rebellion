@@ -158,10 +158,6 @@ pub enum PanelAction {
     /// Stop Force training for a character.
     StopJediTraining { character: CharacterKey },
 
-    // ── Context Menu Actions ───────────────────────────────────────────
-    /// Start fleet movement selection — player picks which fleet to move.
-    InitiateFleetMove { destination: SystemKey },
-
     // ── Bombardment ──────────────────────────────────────────────────
     /// Order orbital bombardment from a fleet against its current system.
     OrderBombardment { fleet: FleetKey, system: SystemKey },

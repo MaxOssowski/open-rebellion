@@ -34,7 +34,7 @@ use macroquad::prelude::*;
 use rebellion_core::blockade::BlockadeState;
 use rebellion_core::dat::ExplorationStatus;
 use rebellion_core::economy::EconomyState;
-use rebellion_core::ids::{FleetKey, SystemKey};
+use rebellion_core::ids::SystemKey;
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::MissionState;
 use rebellion_core::movement::MovementState;
@@ -204,10 +204,6 @@ pub struct GalaxyMapState {
     /// Previous mouse position used for right-drag panning.
     /// macroquad 0.4 has no `mouse_delta_position()`; we track it manually.
     pub drag_start: Option<(f32, f32)>,
-    /// System context menu: system key + screen position of right-click.
-    pub context_menu_system: Option<(SystemKey, f32, f32)>,
-    /// Fleet context menu: fleet key + screen position of right-click.
-    pub context_menu_fleet: Option<(FleetKey, f32, f32)>,
     /// Tracks whether right-mouse dragged (to distinguish click from pan).
     pub right_click_start: Option<(f32, f32)>,
     /// Cockpit viewport bounds for mouse input clamping.
@@ -251,8 +247,6 @@ impl Default for GalaxyMapState {
             show_sector_labels: true,
             show_grid: false,
             drag_start: None,
-            context_menu_system: None,
-            context_menu_fleet: None,
             right_click_start: None,
             viewport: None,
             display_scale: 1.0,
@@ -344,7 +338,6 @@ pub fn draw_galaxy_map(
     faction: CockpitFaction,
     gid: &GidOverlayContext<'_>,
 ) -> CameraView {
-    discard_stale_context_menus(world, state);
     state.activated_system = None;
 
     let sw = screen_width();
@@ -826,34 +819,11 @@ fn gid_marker_resource(control: ControlKind, explored: bool, popularity: f32) ->
     gid_marker_resource_for_size(control, explored, size)
 }
 
-/// An open egui context menu receives the click before the map may select a
-/// system. Closing happens through the menu action or its explicit Close button.
-fn context_menu_owns_pointer(state: &GalaxyMapState) -> bool {
-    state.context_menu_system.is_some() || state.context_menu_fleet.is_some()
-}
-
 /// Whether a left press on the map selects the system under it. In targeting
 /// mode the galaxy view holds the capture, and `FUN_00422ce0` has no
 /// `WM_LBUTTONDOWN` case, so the press does nothing; the release targets.
 fn map_press_selects(state: &GalaxyMapState) -> bool {
-    !context_menu_owns_pointer(state) && !state.targeting
-}
-
-/// Remove menu targets that disappeared after an arrival merge or world update.
-/// A stale target has no visible window and must not continue consuming map clicks.
-fn discard_stale_context_menus(world: &GameWorld, state: &mut GalaxyMapState) {
-    if state
-        .context_menu_system
-        .is_some_and(|(system, _, _)| world.systems.get(system).is_none())
-    {
-        state.context_menu_system = None;
-    }
-    if state
-        .context_menu_fleet
-        .is_some_and(|(fleet, _, _)| world.fleets.get(fleet).is_none())
-    {
-        state.context_menu_fleet = None;
-    }
+    !state.targeting
 }
 
 // ---------------------------------------------------------------------------
@@ -1426,328 +1396,6 @@ pub fn draw_system_info_panel(ctx: &egui::Context, world: &GameWorld, state: &Ga
     }
 }
 
-// ---------------------------------------------------------------------------
-// Context menus
-// ---------------------------------------------------------------------------
-
-/// Draw the system right-click context menu as a floating egui window.
-///
-/// Shows system summary (faction control, popularity, garrison) and quick
-/// action buttons (View Details, Move Fleet Here). A mission starts from the
-/// object pop-up menu (`object_menu.rs`), not from here.
-/// Returns `Some(PanelAction)` when an action button is clicked.
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-)]
-pub fn draw_system_context_menu(
-    ctx: &egui::Context,
-    world: &GameWorld,
-    state: &mut GalaxyMapState,
-) -> Option<PanelAction> {
-    let (sys_key, screen_x, screen_y) = state.context_menu_system?;
-    let system = world.systems.get(sys_key)?;
-
-    let mut action = None;
-    let mut keep_open = true;
-
-    egui::Window::new("system_context")
-        .title_bar(false)
-        .resizable(false)
-        .collapsible(false)
-        .fixed_pos(egui::pos2(screen_x, screen_y))
-        .min_width(200.0)
-        .max_width(240.0)
-        .show(ctx, |ui| {
-            // ── Header ──────────────────────────────────────────────────
-            let name_color = match system.control {
-                rebellion_core::world::ControlKind::Controlled(
-                    rebellion_core::dat::Faction::Alliance,
-                ) => theme::ALLIANCE_BLUE,
-                rebellion_core::world::ControlKind::Controlled(
-                    rebellion_core::dat::Faction::Empire,
-                ) => theme::EMPIRE_RED,
-                _ => theme::TEXT_PRIMARY,
-            };
-            ui.label(
-                egui::RichText::new(&system.name)
-                    .color(name_color)
-                    .strong()
-                    .size(14.0),
-            );
-
-            // Control status
-            let control_str = match system.control {
-                rebellion_core::world::ControlKind::Controlled(
-                    rebellion_core::dat::Faction::Alliance,
-                ) => "Alliance",
-                rebellion_core::world::ControlKind::Controlled(
-                    rebellion_core::dat::Faction::Empire,
-                ) => "Empire",
-                rebellion_core::world::ControlKind::Uncontrolled
-                | rebellion_core::world::ControlKind::Controlled(
-                    rebellion_core::dat::Faction::Neutral,
-                ) => "Neutral",
-                rebellion_core::world::ControlKind::Contested => "Contested",
-                rebellion_core::world::ControlKind::Uprising(_) => "Uprising",
-            };
-            ui.label(
-                egui::RichText::new(control_str)
-                    .color(theme::TEXT_SECONDARY)
-                    .size(10.0),
-            );
-
-            ui.separator();
-
-            // ── Popularity snapshot ──────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(format!("A: {:.0}%", system.popularity_alliance * 100.0))
-                        .color(theme::ALLIANCE_BLUE)
-                        .size(10.0),
-                );
-                ui.label(
-                    egui::RichText::new(format!("E: {:.0}%", system.popularity_empire * 100.0))
-                        .color(theme::EMPIRE_RED)
-                        .size(10.0),
-                );
-            });
-
-            // ── Garrison summary ────────────────────────────────────────
-            let fleet_count = system.fleets.len();
-            let troop_count = system.ground_units.len();
-            let fac_count = system.defense_facilities.len()
-                + system.manufacturing_facilities.len()
-                + system.production_facilities.len();
-
-            if fleet_count > 0 || troop_count > 0 || fac_count > 0 {
-                ui.horizontal(|ui| {
-                    if fleet_count > 0 {
-                        ui.label(
-                            egui::RichText::new(format!("{fleet_count} fleets"))
-                                .color(theme::TEXT_SECONDARY)
-                                .size(10.0),
-                        );
-                    }
-                    if troop_count > 0 {
-                        ui.label(
-                            egui::RichText::new(format!("{troop_count} troops"))
-                                .color(theme::TEXT_SECONDARY)
-                                .size(10.0),
-                        );
-                    }
-                    if fac_count > 0 {
-                        ui.label(
-                            egui::RichText::new(format!("{fac_count} facilities"))
-                                .color(theme::TEXT_SECONDARY)
-                                .size(10.0),
-                        );
-                    }
-                });
-            }
-
-            ui.separator();
-
-            // ── Quick actions ───────────────────────────────────────────
-            if ui
-                .button(
-                    egui::RichText::new("View Details")
-                        .color(theme::GOLD)
-                        .size(11.0),
-                )
-                .clicked()
-            {
-                action = Some(PanelAction::FocusFleetSystem(sys_key));
-                keep_open = false;
-            }
-            if ui
-                .button(
-                    egui::RichText::new("Move Fleet Here")
-                        .color(theme::TEXT_PRIMARY)
-                        .size(11.0),
-                )
-                .clicked()
-            {
-                action = Some(PanelAction::InitiateFleetMove {
-                    destination: sys_key,
-                });
-                keep_open = false;
-            }
-
-            ui.add_space(2.0);
-            if ui
-                .small_button(
-                    egui::RichText::new("Close")
-                        .color(theme::TEXT_DISABLED)
-                        .size(10.0),
-                )
-                .clicked()
-            {
-                keep_open = false;
-            }
-        });
-
-    if !keep_open {
-        state.context_menu_system = None;
-    }
-
-    action
-}
-
-/// Draw the fleet right-click context menu as a floating egui window.
-///
-/// Shows fleet composition, commander, faction, and quick actions
-/// (Move, View in Fleet Panel). Returns `Some(PanelAction)` on action.
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-)]
-pub fn draw_fleet_context_menu(
-    ctx: &egui::Context,
-    world: &GameWorld,
-    movement_state: &MovementState,
-    state: &mut GalaxyMapState,
-) -> Option<PanelAction> {
-    let (fleet_key, screen_x, screen_y) = state.context_menu_fleet?;
-    let fleet = world.fleets.get(fleet_key)?;
-
-    let mut action = None;
-    let mut keep_open = true;
-
-    egui::Window::new("fleet_context")
-        .title_bar(false)
-        .resizable(false)
-        .collapsible(false)
-        .fixed_pos(egui::pos2(screen_x, screen_y))
-        .min_width(180.0)
-        .max_width(220.0)
-        .show(ctx, |ui| {
-            // ── Header ──────────────────────────────────────────────────
-            let faction_color = if fleet.is_alliance {
-                theme::ALLIANCE_BLUE
-            } else {
-                theme::EMPIRE_RED
-            };
-            let faction_tag = if fleet.is_alliance {
-                "Alliance"
-            } else {
-                "Empire"
-            };
-            ui.label(
-                egui::RichText::new(format!("{faction_tag} Fleet"))
-                    .color(faction_color)
-                    .strong()
-                    .size(13.0),
-            );
-
-            // Location
-            if let Some(sys) = world.systems.get(fleet.location) {
-                ui.label(
-                    egui::RichText::new(format!("at {}", sys.name))
-                        .color(theme::TEXT_SECONDARY)
-                        .size(10.0),
-                );
-            }
-
-            // Transit status
-            if let Some(order) = movement_state.get(fleet_key) {
-                if let Some(dest) = world.systems.get(order.destination) {
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "→ {} ({}d)",
-                            dest.name,
-                            order.ticks_remaining()
-                        ))
-                        .color(theme::WARNING_AMBER)
-                        .size(10.0),
-                    );
-                }
-            }
-
-            ui.separator();
-
-            // ── Composition ─────────────────────────────────────────────
-            let ship_count: u32 = fleet.ship_count();
-            let fighter_count: u32 = fleet.fighters.iter().map(|e| e.count).sum();
-
-            if ship_count > 0 {
-                ui.label(
-                    egui::RichText::new(format!("{ship_count} capital ships"))
-                        .color(theme::TEXT_PRIMARY)
-                        .size(11.0),
-                );
-            }
-            if fighter_count > 0 {
-                ui.label(
-                    egui::RichText::new(format!("{fighter_count} fighter sqns"))
-                        .color(theme::TEXT_PRIMARY)
-                        .size(11.0),
-                );
-            }
-            if fleet.has_death_star {
-                ui.label(
-                    egui::RichText::new("DEATH STAR")
-                        .color(theme::DANGER_RED)
-                        .size(11.0)
-                        .strong(),
-                );
-            }
-
-            // Commander
-            for &char_key in &fleet.characters {
-                if let Some(c) = world.characters.get(char_key) {
-                    ui.label(
-                        egui::RichText::new(format!("Cmd: {}", c.name))
-                            .color(theme::GOLD_DIM)
-                            .size(10.0),
-                    );
-                }
-            }
-
-            ui.separator();
-
-            // ── Quick actions ───────────────────────────────────────────
-            if ui
-                .button(
-                    egui::RichText::new("View in Fleet Panel")
-                        .color(theme::GOLD)
-                        .size(11.0),
-                )
-                .clicked()
-            {
-                action = Some(PanelAction::FocusFleetSystem(fleet.location));
-                keep_open = false;
-            }
-
-            // Transit status
-            if movement_state.get(fleet_key).is_some() {
-                ui.label(
-                    egui::RichText::new("In transit")
-                        .color(theme::WARNING_AMBER)
-                        .size(10.0),
-                );
-            }
-
-            ui.add_space(2.0);
-            if ui
-                .small_button(
-                    egui::RichText::new("Close")
-                        .color(theme::TEXT_DISABLED)
-                        .size(10.0),
-                )
-                .clicked()
-            {
-                keep_open = false;
-            }
-        });
-
-    if !keep_open {
-        state.context_menu_fleet = None;
-    }
-
-    action
-}
-
 #[cfg(test)]
 mod interaction_tests {
     use super::*;
@@ -1887,19 +1535,6 @@ mod interaction_tests {
     }
 
     #[test]
-    fn open_context_menu_owns_map_left_click() {
-        let mut state = GalaxyMapState::default();
-        assert!(!context_menu_owns_pointer(&state));
-
-        state.context_menu_system = Some((SystemKey::default(), 10.0, 20.0));
-        assert!(context_menu_owns_pointer(&state));
-
-        state.context_menu_system = None;
-        state.context_menu_fleet = Some((FleetKey::default(), 30.0, 40.0));
-        assert!(context_menu_owns_pointer(&state));
-    }
-
-    #[test]
     fn a_press_during_targeting_selects_no_system() {
         // FUN_00422ce0 mode 2: the captured press has no WM_LBUTTONDOWN case.
         let mut state = GalaxyMapState::default();
@@ -1907,24 +1542,6 @@ mod interaction_tests {
 
         state.targeting = true;
         assert!(!map_press_selects(&state));
-
-        state.targeting = false;
-        state.context_menu_system = Some((SystemKey::default(), 10.0, 20.0));
-        assert!(!map_press_selects(&state));
-    }
-
-    #[test]
-    fn stale_context_menu_releases_map_left_click() {
-        let world = GameWorld::default();
-        let mut state = GalaxyMapState {
-            context_menu_system: Some((SystemKey::default(), 10.0, 20.0)),
-            context_menu_fleet: Some((FleetKey::default(), 30.0, 40.0)),
-            ..GalaxyMapState::default()
-        };
-
-        discard_stale_context_menus(&world, &mut state);
-
-        assert!(!context_menu_owns_pointer(&state));
     }
 
     #[test]

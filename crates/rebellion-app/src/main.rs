@@ -4467,14 +4467,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                     }
                 }
                 action => {
-                    // Handle actions that need local UI state not available in apply_panel_action.
-                    match &action {
-                        PanelAction::InitiateFleetMove { destination } => {
-                            fleets_state.pending_move_destination = Some(*destination);
-                            show_fleets = true;
-                        }
-                        _ => {}
-                    }
                     let active_fog_state = if player_faction == MissionFaction::Alliance {
                         &mut fog_alliance_state
                     } else {
@@ -5046,10 +5038,6 @@ fn apply_panel_action(
                 format!("Reloaded {} mods", mod_runtime.discovered.len()),
                 MessageCategory::Event,
             ));
-        }
-        PanelAction::InitiateFleetMove { destination } => {
-            map_state.selected_system = Some(destination);
-            // Fleet move flow handled at call site (needs fleets_state + show_fleets).
         }
         PanelAction::OrderBombardment { fleet, system } => {
             // Guard: both fleet and system must still exist (prevents panic in resolve).
