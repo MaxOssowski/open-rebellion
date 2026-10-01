@@ -3,7 +3,7 @@ title: "Architecture"
 description: "Crate dependency graph and module structure for the Open Rebellion codebase"
 category: "agent-docs"
 created: 2026-03-11
-updated: 2026-04-12
+updated: 2026-10-01
 tags: [architecture, crate-graph, entity-identity, simulation]
 ---
 
@@ -67,7 +67,12 @@ crates/rebellion-core/src/
 
 ```
 crates/rebellion-render/src/
-├── lib.rs              — Galaxy map (pan/zoom/click), system info panel, context menus (system + fleet)
+├── lib.rs              — Galaxy map (pan/zoom/click), system info panel
+├── game_menu.rs        — The original Game Menu Window (FUN_00442860), shared by the speed menu and the object pop-up menu
+├── object_menu.rs      — The right-click pop-up menu for a system window's characters and special forces (FUN_004ac5c0)
+├── targeting.rs        — The galaxy view's targeting mode after Mission: pointer capture and REBEXE cursor 1002
+├── mission_dialog.rs   — The original mission dialog (FUN_0046a750), opened by targeting
+├── system_window.rs / sector_window.rs — The original modeless system and sector windows
 ├── main_menu.rs        — Title screen with New Game / Load Game / Quit
 ├── video_player.rs     — Native cutscene playback from decoded PNG frame sequences + WAV sidecars; wasm32 stub returns finished immediately
 ├── theme.rs            — Star Wars egui theme: dark space bg, gold/amber accents, Liberation Sans font
@@ -83,12 +88,12 @@ crates/rebellion-render/src/
 ├── event_screen.rs     — Full-screen event overlays for story events. event_id_to_resource() maps story IDs to STRATEGY.DLL BMP offsets with heritage_known branching for Final Battle variants.
 ├── advisor.rs          — Animated droid advisors (C-3PO/R2-D2 or Imperial), priority message queue, BIN-driven frame sequencing with BMP modulo fallback
 └── panels/
-    ├── mod.rs           — PanelAction enum (31 variants, including context menu + combat actions)
+    ├── mod.rs           — PanelAction enum: panel, mission, save, and combat actions
     ├── game_setup.rs    — Galaxy size, difficulty, faction selection (replaces faction_select)
     ├── officers.rs       — Character roster with skill bars, full detail view (Force, location, skills)
     ├── fleets.rs         — Fleet editor: composition, assign/remove officers, merge fleets
     ├── manufacturing.rs  — Production queue manager
-    ├── missions.rs       — Mission dispatch with probability preview
+    ├── missions.rs       — Active missions with progress and cancel; missions start from the object pop-up menu
     ├── research.rs       — 3 tech tree tabs, active project progress, character assignment
     ├── jedi.rs           — Force-sensitive roster, tier progression, training controls
     ├── bombardment.rs    — Orbital bombardment targeting: fleet selection, damage forecast, fire
@@ -103,7 +108,7 @@ crates/rebellion-render/src/
 
 ```
 crates/rebellion-app/src/
-├── main.rs   — Entry point, simulation loop, effect application helpers (323 LOC)
+├── main.rs   — Entry point, interactive loop, panel action handling (~6,400 LOC; no headless tests, see agent-tooling.md)
 └── audio.rs  — quad-snd AudioEngine: load, play_sfx, play_music, volume sync, WASM audio base-path resolution
 
 Decoded cutscene assets are intentionally kept out of git. `scripts/decode-cutscenes.sh` expands `assets/references/ref-videos/*.webm` into `assets/references/cutscene-frames/<name>/frame-*.png`, `metadata.json`, and sibling `<name>.wav` files for the native `VideoPlayer`.
@@ -196,7 +201,7 @@ Interactive game (main.rs):
     MovementSystem::advance → update fleet.location + system.fleets
     (remaining systems identical to simulation.rs pattern)
   draw_galaxy_map → draw_fog_overlay → draw_fleet_overlays
-  egui_macroquad::ui: panels + context_menus + encyclopedia + system_info + message_log
+  egui_macroquad::ui: panels + object_menu + targeting + encyclopedia + system_info + message_log
 ```
 
 ### Save/Load Flow
@@ -252,10 +257,10 @@ Round-trip validation is enforced inside `parse_and_dump` in `tools/dat-dumper/s
 1. `draw_galaxy_map(world, state) -> CameraView` -- star map with pan/zoom/click, returns camera params
 2. `draw_fog_overlay(world, fog, cam)` -- dim non-visible systems
 3. `draw_fleet_overlays(world, movement, cam)` -- fleet icons and route lines
-4. `hovered_fleet(world, movement, cam, mx, my) -> Option<FleetKey>` -- fleet hit detection for context menus
+4. `hovered_fleet(world, movement, cam, mx, my) -> Option<FleetKey>` -- fleet hit detection
 5. `draw_system_info_panel(ctx, world, state)` -- egui right panel (selected system)
-6. `draw_system_context_menu(ctx, world, state, faction) -> Option<PanelAction>` -- right-click system popup
-7. `draw_fleet_context_menu(ctx, world, movement, state) -> Option<PanelAction>` -- right-click fleet popup
+6. `object_menu::draw_object_menu(ctx, menu, ...)` -- the original right-click pop-up menu for a system window's objects
+7. `targeting::{capture_pointer, draw_targeting_cursor}` -- the galaxy view's targeting mode after the menu's Mission
 8. `draw_status_bar(ctx, world, clock, audio_vol)` -- bottom bar with speed/audio controls
 9. `draw_message_log(ctx, log, state)` -- scrollable event feed
 10. Panel functions: `draw_officers`, `draw_fleets`, `draw_manufacturing`, `draw_missions`, `draw_research`, `draw_jedi`
@@ -263,9 +268,9 @@ Round-trip validation is enforced inside `parse_and_dump` in `tools/dat-dumper/s
 12. `draw_main_menu(ctx) -> MainMenuAction` -- title screen
 13. `draw_game_setup(ctx, state) -> GameSetupAction` -- new game config
 
-`GalaxyMapState` holds all mutable UI state: camera position, zoom, selected/hovered system, drag tracking, context menu state (system + fleet), right-click start position.
+`GalaxyMapState` holds all mutable UI state: camera position, zoom, selected/hovered system, drag tracking, the targeting flag, right-click start position.
 
-Input: mouse within map area only. Right-drag pans, scroll zooms (0.3x-5.0x). Left-click selects nearest system within hover radius. Right-click (no drag) opens context menu on hovered system or fleet.
+Input: mouse within map area only. Right-drag pans, scroll zooms (0.3x-5.0x). Left-click selects nearest system within hover radius, except while targeting, when the release targets it. A right-click on the map opens nothing; what the original's galaxy view does on a right-click is not traced yet. A system window's Personnel and Troops lists open the object pop-up menu.
 
 ## Adding a New Entity Type
 

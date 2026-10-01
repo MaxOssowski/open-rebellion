@@ -72,7 +72,16 @@ DATs are `#[ignore]`d and a plain run skips them. For seeding or replay code,
 append `-- --lib -- --include-ignored` so they run against each mutant.
 Mutants in rendering code often survive because the unit tests draw nothing.
 Browser acceptance covers that code, so record those survivors instead of
-writing tests that only mirror the drawing calls.
+writing tests that only mirror the drawing calls. The same holds for `main`,
+`apply_panel_action` and the other code in `rebellion-app/src/main.rs`, which
+no native test reaches, and for the WASM fixture bridges
+(`interface_test_fixture::emit_*`). Keep new logic out of `main.rs` where a
+module can own it and test it; moving the existing action handling out is
+roadmap M2 work.
+
+Tests and browser gates that assert original behavior cover both sides. The
+sides often run separate classes with different numbering (the advisors'
+reaction slots) and different cockpit geometry.
 
 ### Provenance Gate
 
@@ -100,6 +109,16 @@ record the smaller set; it refuses to let the baseline grow. `report --json
 PATH` writes every item with its hits for review. The scan is item-level: a
 cited item still needs a line-by-line check against its decompile, and a
 Ghidra note is never a sufficient source alone; cite the `.c` it rests on.
+
+### UI Reachability
+
+The provenance scan covers simulation code only. Before closing a UI
+feature, check that every entry point it adds or keeps has a caller a player
+can reach, and tag each stand-in for an unported original control `port:`.
+F-019 found two whole egui menus with no caller, and a fleet dispatch flow
+that went dead with them (F-007C). Invented visible UI is out of bounds
+(`docs/qa/2026-09-10-interface-parity-audit/`): remove it, or record it as a
+stand-in with the finding that replaces it.
 
 `proptest` is deferred until economy or combat math has edge cases the replay
 goldens do not pin. Adding it needs approval as a dev dependency. Formal
