@@ -186,7 +186,10 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   map system is a target (no window `+0x68` hit test, no walk up from a
   team member), Shift's pass-through click is not ported, and Escape
   cancels as `0x15e` does.
-- Removing the missions panel's stand-in entry points is 7d.
+- 7d: the stand-in entry points are gone: the system context menu's Send
+  Diplomat and Send Spy buttons (`PanelAction::OpenMissionTo`) and the
+  missions panel's Dispatch tab (`PanelAction::OpenMissionDialog`). The
+  missions panel lists active missions only.
 
 ## Supporting decompiles
 

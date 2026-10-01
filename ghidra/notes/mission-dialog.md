@@ -135,10 +135,12 @@ decoys). STRATEGY holds 10749..10751 but not 10650 or 10748.
 its controls. `rebellion_core::missions::available_kinds` builds the kind list.
 Port decisions:
 
-- port: until phase 7 ports the pop-up menu and targeting cursor, the
-  missions panel's character and target pickers stand in for them.
+- The dialog opens from the object pop-up menu's Mission item and the
+  targeting cursor (`object-popup-menu.md`, phase 7c). Phase 7d removed the
+  missions panel's character and target pickers that stood in for them.
 - port: the target is a system, so only kinds with a system target are
-  listed; a drop onto a character or object is phase 7.
+  listed; targeting a character or object is not ported
+  (`object-popup-menu.md`, "Ported").
 - hyp: `FUN_00606980` places the window in the galaxy view's rectangle; the port
   centers it there, rounded to whole pixels (both 640 by 480 galaxy views put
   the center on a half pixel).
