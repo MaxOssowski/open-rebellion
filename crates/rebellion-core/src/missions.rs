@@ -569,6 +569,9 @@ pub enum MissionRefusal {
 /// What the member checks read about one member.
 struct MemberState {
     is_alliance: bool,
+    /// A character the side has recruited; special forces always are
+    /// (`+0x50 & 4`, `FUN_004f9860`).
+    recruited: bool,
     busy: bool,
     prisoner: bool,
     location: MemberLocation,
@@ -600,6 +603,7 @@ fn member_state(world: &GameWorld, member: MissionMember) -> Option<MemberState>
             };
             Some(MemberState {
                 is_alliance: c.is_alliance,
+                recruited: c.recruited,
                 busy: c.on_mission || c.on_mandatory_mission,
                 prisoner: c.is_captive,
                 location,
@@ -616,6 +620,7 @@ fn member_state(world: &GameWorld, member: MissionMember) -> Option<MemberState>
                 });
             Some(MemberState {
                 is_alliance: unit.is_alliance,
+                recruited: true,
                 busy: unit.on_mission,
                 prisoner: false,
                 location,
@@ -1129,12 +1134,7 @@ impl MissionState {
                 // port: a member still travelling to an ended mission's
                 // target is refused; the original compares its en route bit
                 // and arrival tick instead (FUN_00522b30).
-                let busy_elsewhere = self
-                    .missions
-                    .iter()
-                    .any(|m| m.members().any(|x| x == member))
-                    || self.is_en_route(member);
-                if state.is_alliance != side_is_alliance || state.busy || busy_elsewhere {
+                if state.is_alliance != side_is_alliance || state.busy || self.engaged(member) {
                     return Err(MissionRefusal::MemberUnavailable(member));
                 }
                 match location {
@@ -1175,6 +1175,62 @@ impl MissionState {
             mission.captured = captured;
         }
         Ok(id)
+    }
+
+    /// Whether `member` belongs to a queued mission or is still travelling
+    /// to one.
+    fn engaged(&self, member: MissionMember) -> bool {
+        self.missions
+            .iter()
+            .any(|mission| mission.members().any(|x| x == member))
+            || self.is_en_route(member)
+    }
+
+    /// Whether the object pop-up menu enables Mission (order `0x240`) for
+    /// `team`. No target or kind is checked yet. `FUN_0051fe20` builds a
+    /// mission-create command from the team (`FUN_004f4a00`), and
+    /// `FUN_005429e0` checks it:
+    ///
+    /// - every member is the player's (`FUN_004f9860`, status 1), recruited
+    ///   (status 2), not on a mission (`FUN_00533ce0`), not travelling
+    ///   (status 4), and not a prisoner (`FUN_004ed560`);
+    /// - all located members share one place (`FUN_0054bf00`, `0x40`/3);
+    /// - at least one member has a location (`0x16`). An empty team fails
+    ///   the same way (`FUN_0054bb90`).
+    ///
+    /// port: `FUN_004ed560` also refuses an injured character (`+0x94`), and
+    /// `FUN_004f9860` an object with `+0x50 & 8`; the port tracks neither.
+    #[must_use]
+    pub fn mission_order_enabled(
+        &self,
+        world: &GameWorld,
+        faction: MissionFaction,
+        team: &[MissionMember],
+    ) -> bool {
+        let side_is_alliance = faction == MissionFaction::Alliance;
+        let mut place = None;
+        for &member in team {
+            let Some(state) = member_state(world, member) else {
+                return false;
+            };
+            if state.is_alliance != side_is_alliance
+                || !state.recruited
+                || state.busy
+                || state.prisoner
+                || self.engaged(member)
+            {
+                return false;
+            }
+            if state.location == MemberLocation::Nowhere {
+                continue;
+            }
+            match place {
+                None => place = Some(state.location),
+                Some(here) if here != state.location => return false,
+                Some(_) => {}
+            }
+        }
+        place.is_some()
     }
 
     /// Queue a mission built in a test, past the dispatch rules.
@@ -3092,6 +3148,107 @@ mod tests {
             )),
             tick: 0,
         }
+    }
+
+    // --- The pop-up menu's Mission item (FUN_0051fe20, FUN_005429e0) ---
+
+    #[test]
+    fn mission_is_enabled_for_a_free_recruited_member_of_the_players_side() {
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let agent = MissionMember::Character(agent_at(&mut world, here, true));
+        let state = MissionState::new();
+        assert!(state.mission_order_enabled(&world, MissionFaction::Alliance, &[agent]));
+        // FUN_004f9860: the other side's player may not order it (status 1).
+        assert!(!state.mission_order_enabled(&world, MissionFaction::Empire, &[agent]));
+    }
+
+    #[test]
+    fn mission_is_disabled_for_a_busy_captive_or_unrecruited_member() {
+        // FUN_004f9860 (unrecruited, status 2), FUN_00533ce0 (on a mission),
+        // FUN_004ed560 (a prisoner, for order 0x240).
+        type Spoil = fn(&mut Character);
+        let spoils: [(&str, Spoil); 4] = [
+            ("on a mission", |c| c.on_mission = true),
+            ("on a mandatory mission", |c| c.on_mandatory_mission = true),
+            ("a prisoner", |c| c.is_captive = true),
+            ("unrecruited", |c| c.recruited = false),
+        ];
+        for (why, spoil) in spoils {
+            let mut world = minimal_world();
+            let (here, _) = two_systems();
+            let key = agent_at(&mut world, here, true);
+            spoil(&mut world.characters[key]);
+            let state = MissionState::new();
+            assert!(
+                !state.mission_order_enabled(
+                    &world,
+                    MissionFaction::Alliance,
+                    &[MissionMember::Character(key)]
+                ),
+                "{why}"
+            );
+        }
+    }
+
+    #[test]
+    fn mission_is_disabled_while_a_member_travels_or_serves_a_queued_mission() {
+        // FUN_004f9860 refuses an object en route (status 4); FUN_00533ce0
+        // one already on a mission.
+        let mut world = minimal_world();
+        let (here, there) = two_systems();
+        let agent = MissionMember::Character(agent_at(&mut world, here, true));
+        let mut travelling = MissionState::new();
+        travelling.push_transit(MemberTransit {
+            member: agent,
+            mission_id: 7,
+            to: there,
+            arrival: 10,
+        });
+        assert!(!travelling.mission_order_enabled(&world, MissionFaction::Alliance, &[agent]));
+
+        let mut queued = MissionState::new();
+        queued.dispatch(request(vec![agent], vec![], here));
+        assert!(!queued.mission_order_enabled(&world, MissionFaction::Alliance, &[agent]));
+    }
+
+    #[test]
+    fn mission_needs_every_located_member_at_one_place_and_one_located_member() {
+        // FUN_0054bf00: members apart fail with 0x40/3, a team without a
+        // located member with 0x16; FUN_0054bb90 fails an empty team.
+        let mut world = minimal_world();
+        let (here, there) = two_systems();
+        let a = MissionMember::Character(agent_at(&mut world, here, true));
+        let b = MissionMember::Character(agent_at(&mut world, here, true));
+        let far = MissionMember::Character(agent_at(&mut world, there, true));
+        let nowhere_key = agent_at(&mut world, here, true);
+        world.characters[nowhere_key].current_system = None;
+        let nowhere = MissionMember::Character(nowhere_key);
+        let state = MissionState::new();
+        let enabled = |team: &[MissionMember]| {
+            state.mission_order_enabled(&world, MissionFaction::Alliance, team)
+        };
+
+        assert!(enabled(&[a, b]));
+        assert!(!enabled(&[a, far]));
+        assert!(enabled(&[a, nowhere]));
+        assert!(!enabled(&[nowhere]));
+        assert!(!enabled(&[]));
+    }
+
+    #[test]
+    fn mission_is_disabled_for_a_member_that_no_longer_exists() {
+        // port: a killed character stays in the arena but counts as gone.
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let key = agent_at(&mut world, here, true);
+        world.characters[key].is_killed = true;
+        let state = MissionState::new();
+        assert!(!state.mission_order_enabled(
+            &world,
+            MissionFaction::Alliance,
+            &[MissionMember::Character(key)]
+        ));
     }
 
     #[test]

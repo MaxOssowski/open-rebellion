@@ -60,8 +60,60 @@ bitmap, and 12 the module. The items a character may show:
 | `0x242` | 2002 | 12336 | Retire |
 
 The manual's character menu (p. 99) shows Move, Confirmed Move, Mission,
-Command, Encyclopedia and Status in that order. Which kinds a character's
-class offers in each status (`+0x3c`) is not yet traced.
+Command, Encyclopedia and Status in that order.
+
+### A character's orders
+
+`FUN_00504dc0` resolves each selected id to the object itself, so `+0x3c` is
+the object's own slot. In the character vtable `0x0065ca70` it is
+`FUN_004ed350`, which copies a static list built once by `FUN_004f2400`: the
+unit list of `FUN_00536bc0` (`0x201`, `0x202`, `0x242`, `0x240`, `0x204`,
+`0x241`, after `FUN_004f2a10`'s empty object list) plus `0x260..0x263` and
+`0x268`. The status argument is not read. STRATEGY holds no record for
+`0x204`, `0x241` or `0x268`, so they never become items. The Command parent
+`0x160` (word 4 = 1, a submenu) has the children None (sort 402), Admiral
+(406), General (408) and Commander (409), each with bitmap 11902.
+
+Orders are made by `FUN_004f5cd0` → `FUN_0051f8f0`, which looks the kind up
+in a table that `FUN_0051f930(kind, factory)` fills (`FUN_0041ec50`,
+`FUN_0051f4b0`). Mission `0x240` is `FUN_004f5250` → `FUN_004f5200`, vtable
+`0x0065d118` over the base `FUN_004f4690` / `FUN_0051fa20`.
+
+### When Mission is enabled
+
+- Listed: `+0x10` is `FUN_0040f340`, which returns 1.
+- Checked: `+0x14` is `FUN_0051fd30`, which returns 0.
+- Enabled: the global gate `FUN_0051de80` (bit `0x10000000` of
+  `+0xc0`→`+0x74` clear) and `+0x18`, `FUN_0051fe20`. That needs the order
+  built (`+0x1c`, set when `FUN_0051fa20` allocated the list at `+0x40`),
+  then `+0x4c` (`FUN_004f4a00`): it creates mission-create command `0x250`
+  (`FUN_004f4990` → `FUN_0054cd80`, vtable `0x00661e28`), copies the team
+  and decoys into it with placeholder target `0xf8000006`, and adds it to
+  `+0x40`. `FUN_00553770` then needs a command in the list (status `0x16`
+  otherwise), runs each command's `+0x18`, and requires all of them to share
+  the location state bits (`0x14`).
+- The command's `+0x18`, `FUN_0054d1a0`, resolves the target and calls
+  `FUN_005429e0(.., team, decoys, ..)`:
+  - `FUN_0054bb90` moves prisoners to the captured list and fails on an
+    empty team (`0x40`/`0x91`).
+  - `FUN_0054bf00` requires every member at one location (`0x40`/3) and
+    at least one located member (`0x16`).
+  - `FUN_0054c110` asks each member's slot `+0x1c8`.
+- Slot `+0x1c8` for a character is `FUN_004ed560`, for a special force
+  `FUN_00533ce0`, over the object check `FUN_004f9860`. A member is refused
+  (status `0x30`) when it:
+  - is not the order's side (`+0x24` bits 6..7, 1);
+  - is unrecruited (`+0x50` bit 2 clear), except for orders `0x203`,
+    `0x204`, `0x215` and `0x241` (2);
+  - has `+0x50` bit 3 set (3, meaning untraced);
+  - is en route (`+0x50` bit 4, 4);
+  - is on a mission (`+0x78` bit 7, 1);
+  - for `0x240`, is injured (`+0x94` != 0, 3);
+  - for `0x240`, is a prisoner (`+0xac` bit 0, 2).
+
+So Mission is enabled for a selection of free members of the player's side,
+not on a mission, not travelling, not injured, all at one place. No target
+or kind is checked; those wait for the dialog.
 
 ## The window
 
@@ -126,4 +178,10 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
 `FUN_00442d10`, `FUN_004424c0`, `FUN_004aab50`, `FUN_004ab560`,
 `FUN_004aba60`, `FUN_004ac730`, `FUN_0041cdf0`, `FUN_00436020`,
 `FUN_00486fb0`, `FUN_00487c50`, `FUN_0041d5e0`, `FUN_00429320`,
-`FUN_006083c0`, `FUN_004534f0`, `FUN_00422ce0`.
+`FUN_006083c0`, `FUN_004534f0`, `FUN_00422ce0`, `FUN_004ed350`,
+`FUN_004f2400`, `FUN_00536bc0`, `FUN_004f2a10`, `FUN_0051f8f0`,
+`FUN_0051f4b0`, `FUN_004f5250`, `FUN_004f5200`, `FUN_0040f340`,
+`FUN_0051fd30`, `FUN_0051fe20`, `FUN_0051de80`, `FUN_004f4a00`,
+`FUN_004f4990`, `FUN_0051fa20`, `FUN_00553770`, `FUN_0054d1a0`,
+`FUN_005429e0`, `FUN_0054bf00`, `FUN_0054c110`, `FUN_004ed560`,
+`FUN_00533ce0`, `FUN_004f9860`.
