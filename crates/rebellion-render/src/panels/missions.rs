@@ -1,43 +1,18 @@
-//! Missions panel.
+//! Missions panel: the player's in-flight missions with progress bars and a
+//! cancel button.
 //!
-//! Two sub-views:
-//! 1. **Active missions list** — shows in-flight missions with progress bars and
-//!    a cancel button.
-//! 2. **Dispatch form** — pick a character and a target system, then open the
-//!    original mission dialog (`crate::mission_dialog`) for them.
+//! A mission starts from the object pop-up menu (`crate::object_menu`) and the
+//! galaxy view's targeting mode (`crate::targeting`), which open the original
+//! mission dialog (`crate::mission_dialog`).
 //!
 //! Actions:
-//! - `PanelAction::OpenMissionDialog` when the player opens the dialog.
 //! - `PanelAction::CancelMission(id)` when the player cancels an active one.
 
 use egui_macroquad::egui::{self, Color32, RichText, ScrollArea};
-use rebellion_core::ids::{CharacterKey, SystemKey};
 use rebellion_core::missions::{ActiveMission, MissionFaction, MissionKind, MissionState};
 use rebellion_core::world::GameWorld;
 
 use super::PanelAction;
-
-// ---------------------------------------------------------------------------
-// MissionsPanelState
-// ---------------------------------------------------------------------------
-
-/// Mutable UI state for the missions panel.
-#[derive(Debug, Clone, Default)]
-pub struct MissionsPanelState {
-    /// Which tab is shown: active missions vs. dispatch form.
-    pub tab: MissionsTab,
-
-    // ── Dispatch form state ────────────────────────────────────────────────
-    pub selected_commander: Option<CharacterKey>,
-    pub selected_target: Option<SystemKey>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum MissionsTab {
-    #[default]
-    Active,
-    Dispatch,
-}
 
 // ---------------------------------------------------------------------------
 // draw_missions
@@ -51,7 +26,6 @@ pub fn draw_missions(
     ctx: &egui::Context,
     world: &GameWorld,
     mission_state: &MissionState,
-    panel_state: &mut MissionsPanelState,
     player_faction: MissionFaction,
     today: u64,
 ) -> Option<PanelAction> {
@@ -64,49 +38,17 @@ pub fn draw_missions(
             ui.heading("Missions");
             ui.separator();
 
-            // ── Tab bar ───────────────────────────────────────────────────────
-            ui.horizontal(|ui| {
-                let active_count = mission_state
-                    .missions()
-                    .iter()
-                    .filter(|m| m.faction == player_faction)
-                    .count();
-
-                let active_label = format!("Active ({active_count})");
-                if ui
-                    .selectable_label(panel_state.tab == MissionsTab::Active, active_label)
-                    .clicked()
-                {
-                    panel_state.tab = MissionsTab::Active;
-                }
-                if ui
-                    .selectable_label(panel_state.tab == MissionsTab::Dispatch, "Dispatch")
-                    .clicked()
-                {
-                    panel_state.tab = MissionsTab::Dispatch;
-                }
-            });
-
-            ui.separator();
-
-            match panel_state.tab {
-                MissionsTab::Active => {
-                    draw_active_tab(ui, world, mission_state, player_faction, today, &mut action);
-                }
-                MissionsTab::Dispatch => {
-                    draw_dispatch_tab(ui, world, panel_state, player_faction, &mut action);
-                }
-            }
+            draw_active_missions(ui, world, mission_state, player_faction, today, &mut action);
         });
 
     action
 }
 
 // ---------------------------------------------------------------------------
-// Active missions tab
+// Active missions
 // ---------------------------------------------------------------------------
 
-fn draw_active_tab(
+fn draw_active_missions(
     ui: &mut egui::Ui,
     world: &GameWorld,
     mission_state: &MissionState,
@@ -194,117 +136,6 @@ fn draw_active_tab(
             });
 
             ui.separator();
-        }
-    });
-}
-
-// ---------------------------------------------------------------------------
-// Dispatch form tab
-// ---------------------------------------------------------------------------
-
-fn draw_dispatch_tab(
-    ui: &mut egui::Ui,
-    world: &GameWorld,
-    panel_state: &mut MissionsPanelState,
-    player_faction: MissionFaction,
-    action: &mut Option<PanelAction>,
-) {
-    // ── Commander selection ───────────────────────────────────────────────────
-    ui.label(
-        RichText::new("Commander:")
-            .color(Color32::from_gray(180))
-            .small()
-            .strong(),
-    );
-
-    let available_commanders: Vec<_> = world
-        .characters
-        .iter()
-        .filter(|(_, c)| {
-            c.can_be_commander
-                && !c.is_killed
-                && !c.on_mission
-                && !c.on_mandatory_mission
-                && match player_faction {
-                    MissionFaction::Alliance => c.is_alliance,
-                    MissionFaction::Empire => c.is_empire,
-                }
-        })
-        .collect();
-
-    let commander_name = panel_state
-        .selected_commander
-        .and_then(|k| world.characters.get(k))
-        .map_or("— Select —", |c| c.name.as_str());
-
-    egui::ComboBox::from_id_salt("dispatch_commander")
-        .selected_text(commander_name)
-        .show_ui(ui, |ui| {
-            for (key, character) in &available_commanders {
-                let selected = panel_state.selected_commander == Some(*key);
-                let label = format!(
-                    "{} (dip:{} esp:{})",
-                    character.name, character.diplomacy.base, character.espionage.base
-                );
-                if ui.selectable_label(selected, label).clicked() {
-                    panel_state.selected_commander = Some(*key);
-                }
-            }
-        });
-
-    ui.add_space(6.0);
-
-    // ── Target system selection ───────────────────────────────────────────────
-    ui.label(
-        RichText::new("Target System:")
-            .color(Color32::from_gray(180))
-            .small()
-            .strong(),
-    );
-
-    let target_name = panel_state
-        .selected_target
-        .and_then(|k| world.systems.get(k))
-        .map_or("— Select —", |s| s.name.as_str());
-
-    egui::ComboBox::from_id_salt("dispatch_target")
-        .selected_text(target_name)
-        .show_ui(ui, |ui| {
-            let mut sorted_systems: Vec<_> = world.systems.iter().collect();
-            sorted_systems.sort_by_key(|(_, s)| s.name.as_str());
-            for (key, system) in sorted_systems {
-                let selected = panel_state.selected_target == Some(key);
-                if ui.selectable_label(selected, &system.name).clicked() {
-                    panel_state.selected_target = Some(key);
-                }
-            }
-        });
-
-    ui.add_space(8.0);
-    ui.separator();
-
-    // ── Open the mission dialog ───────────────────────────────────────────────
-    // port: until F-019 phase 7 builds the original drag from the system
-    // window, this pair stands in for the drop that opens the dialog.
-    let can_open =
-        panel_state.selected_commander.is_some() && panel_state.selected_target.is_some();
-
-    ui.add_enabled_ui(can_open, |ui| {
-        if ui
-            .button(RichText::new("Create Mission").strong())
-            .clicked()
-        {
-            if let (Some(character), Some(target)) =
-                (panel_state.selected_commander, panel_state.selected_target)
-            {
-                *action = Some(PanelAction::OpenMissionDialog {
-                    faction: player_faction,
-                    character,
-                    target,
-                });
-                panel_state.selected_commander = None;
-                panel_state.selected_target = None;
-            }
         }
     });
 }

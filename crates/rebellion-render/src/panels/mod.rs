@@ -37,7 +37,7 @@ pub mod command_palette;
 
 pub use fleets::{draw_fleets, FleetsState};
 pub use manufacturing::{draw_manufacturing, ManufacturingPanelState};
-pub use missions::{draw_missions, MissionsPanelState};
+pub use missions::draw_missions;
 pub use mod_manager::{draw_mod_manager, ModInfo, ModManagerAction, ModManagerState};
 pub use officers::{draw_officers, OfficersState};
 pub use save_load::{draw_save_load, SaveLoadPanelState, SaveSlotInfo};
@@ -102,13 +102,6 @@ pub enum PanelAction {
     PrioritizeQueueItem { system: SystemKey, index: usize },
 
     // ── Missions ──────────────────────────────────────────────────────────────
-    /// Open the original mission dialog for `character` against `target`,
-    /// as a drop onto the galaxy map does (`FUN_0042a320`).
-    OpenMissionDialog {
-        faction: MissionFaction,
-        character: CharacterKey,
-        target: SystemKey,
-    },
     /// Dispatch a mission ordered on day `tick` with its agents and decoys
     /// (the dialog's "Begin Mission", `FUN_0046c3c0` case `0x66`).
     DispatchMission {

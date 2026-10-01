@@ -72,14 +72,14 @@ use rebellion_render::mission_dialog::{
     draw_mission_dialog, MissionDialogAction, MissionDialogState,
 };
 use rebellion_render::object_menu::{draw_object_menu, ObjectMenuCommand, ObjectMenuState};
-use rebellion_render::targeting::{
-    capture_pointer, draw_targeting_cursor, Targeting, TargetingEnd,
-};
 use rebellion_render::panels::bombardment::{draw_bombardment, BombardmentPanelState};
 use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::panels::research::{draw_research, ResearchPanelState};
+use rebellion_render::targeting::{
+    capture_pointer, draw_targeting_cursor, Targeting, TargetingEnd,
+};
 use rebellion_render::{
     advisor_combat_result, advisor_death_star, advisor_greet, advisor_manufacturing_complete,
     advisor_mission_result, advisor_uprising, draw_advisor, draw_audio_controls,
@@ -94,7 +94,7 @@ use rebellion_render::{
     GameOptionsAction, GameOptionsOrigin, GameOptionsState, GameSetupAction, GameSetupState,
     GroundAction, GroundCombatState, MainMenuAction, MainMenuState, ManufacturingPanelState,
     MenuDestinationAction, MessageCategory, MessageLog, MessageLogState, MessageRail,
-    MissionsPanelState, MultiplayerSetupAction, MultiplayerSetupState, MusicContext, OfficersState,
+    MultiplayerSetupAction, MultiplayerSetupState, MusicContext, OfficersState,
     OriginalEncyclopediaCatalog, OriginalEncyclopediaEntry, PanelAction, RailAudience,
     SectorWindowAction, SectorWindowState, SfxKind, SystemWindowAction, SystemWindowState,
     TacticalAction, TacticalState, TacticalTrenchRunOutcome, VideoError, VideoPlayer,
@@ -998,7 +998,6 @@ async fn main() {
     let mut officers_state = OfficersState::default();
     let mut fleets_state = FleetsState::default();
     let mut mfg_panel_state = ManufacturingPanelState::default();
-    let mut missions_panel_state = MissionsPanelState::default();
     let mut mission_dialog_state = MissionDialogState::default();
     let mut enc_state = EncyclopediaState::new();
     let mut research_panel_state = ResearchPanelState::default();
@@ -3071,7 +3070,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     officers_state = OfficersState::default();
                                     fleets_state = FleetsState::default();
                                     mfg_panel_state = ManufacturingPanelState::default();
-                                    missions_panel_state = MissionsPanelState::default();
                                     mission_dialog_state = MissionDialogState::default();
                                     research_panel_state = ResearchPanelState::default();
                                     jedi_panel_state = JediPanelState::default();
@@ -3427,14 +3425,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                     }
                     if show_missions {
-                        if let Some(action) = draw_missions(
-                            ctx,
-                            &world,
-                            &mission_state,
-                            &mut missions_panel_state,
-                            player_faction,
-                            clock.tick,
-                        ) {
+                        if let Some(action) =
+                            draw_missions(ctx, &world, &mission_state, player_faction, clock.tick)
+                        {
                             panel_actions.push(action);
                         }
                     }
@@ -4395,7 +4388,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                             officers_state = OfficersState::default();
                             fleets_state = FleetsState::default();
                             mfg_panel_state = ManufacturingPanelState::default();
-                            missions_panel_state = MissionsPanelState::default();
                             mission_dialog_state = MissionDialogState::default();
                             research_panel_state = ResearchPanelState::default();
                             jedi_panel_state = JediPanelState::default();
@@ -4480,26 +4472,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                         PanelAction::InitiateFleetMove { destination } => {
                             fleets_state.pending_move_destination = Some(*destination);
                             show_fleets = true;
-                        }
-                        PanelAction::OpenMissionDialog {
-                            faction,
-                            character,
-                            target,
-                        } => {
-                            // FUN_0042a320: the preflight lists the kinds the
-                            // team may undertake; with none, nothing opens.
-                            let team = vec![rebellion_core::missions::MissionMember::Character(
-                                *character,
-                            )];
-                            let kinds = rebellion_core::missions::available_kinds(
-                                &world,
-                                &uprising_state,
-                                *faction,
-                                &team,
-                                &[],
-                                *target,
-                            );
-                            mission_dialog_state.open(*faction, *target, team, kinds);
                         }
                         _ => {}
                     }
@@ -5043,7 +5015,6 @@ fn apply_panel_action(
         // they require access to the full save state and are not routed through
         // this helper.
         PanelAction::SelectFaction(_)
-        | PanelAction::OpenMissionDialog { .. }
         | PanelAction::FocusCharacter(_)
         | PanelAction::OpenSaveLoad
         | PanelAction::SaveGame { .. }

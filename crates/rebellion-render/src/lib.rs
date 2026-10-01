@@ -93,9 +93,8 @@ pub use message_log::{
 pub use panels::game_setup::{draw_game_setup, Difficulty, GameSetupAction, GameSetupState};
 pub use panels::{
     draw_fleets, draw_manufacturing, draw_missions, draw_mod_manager, draw_officers,
-    draw_save_load, FleetsState, ManufacturingPanelState, MissionsPanelState, ModInfo,
-    ModManagerAction, ModManagerState, OfficersState, PanelAction, SaveLoadPanelState,
-    SaveSlotInfo,
+    draw_save_load, FleetsState, ManufacturingPanelState, ModInfo, ModManagerAction,
+    ModManagerState, OfficersState, PanelAction, SaveLoadPanelState, SaveSlotInfo,
 };
 pub use sector_window::{
     draw_sector_windows, SectorWindowAction, SectorWindowState, SECTOR_WINDOW_HEIGHT,
