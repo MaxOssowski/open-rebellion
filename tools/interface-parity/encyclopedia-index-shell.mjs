@@ -16,6 +16,7 @@ const root = path.resolve(here, "../..");
 const site = path.join(root, ".artifacts/interface-parity/site");
 const browserManifest = JSON.parse(fs.readFileSync(path.join(here, "browser.json"), "utf8"));
 const noBuild = process.argv.includes("--no-build");
+const catalogMode = process.argv.includes("--catalog");
 const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-test.wasm"];
 const origin = { x: 85, y: 55 };
 const dimensions = { width: 470, height: 330 };
@@ -254,20 +255,48 @@ function cropShell(screenshotBytes) {
   return shell;
 }
 
-function compare(actual, expected, label, directory) {
+function compare(actual, expected, label, directory, ignoredRects = []) {
   let differentPixels = 0;
+  let ignoredPixels = 0;
+  let ignoredDifferencePixels = 0;
+  const ignoredRegionDifferencePixels = Object.fromEntries(
+    ignoredRects.map((rect, index) => [rect.label || `region-${index}`, 0]),
+  );
   const diff = new PNG(dimensions);
   for (let offset = 0; offset < expected.data.length; offset += 4) {
+    const pixel = offset / 4;
+    const x = pixel % expected.width;
+    const y = Math.floor(pixel / expected.width);
+    const ignored = ignoredRects.some((rect) => x >= rect.x && x < rect.x + rect.width
+      && y >= rect.y && y < rect.y + rect.height);
     const matches = actual.data[offset] === expected.data[offset]
       && actual.data[offset + 1] === expected.data[offset + 1]
       && actual.data[offset + 2] === expected.data[offset + 2];
-    if (!matches) differentPixels += 1;
-    diff.data.set(matches ? [0, 0, 0, 255] : [255, 0, 80, 255], offset);
+    if (ignored) {
+      ignoredPixels += 1;
+      if (!matches) {
+        ignoredDifferencePixels += 1;
+        const region = ignoredRects.find((rect) => x >= rect.x && x < rect.x + rect.width
+          && y >= rect.y && y < rect.y + rect.height);
+        if (region) ignoredRegionDifferencePixels[region.label] += 1;
+      }
+      diff.data.set(matches ? [32, 32, 32, 255] : [0, 120, 255, 255], offset);
+    } else {
+      if (!matches) differentPixels += 1;
+      diff.data.set(matches ? [0, 0, 0, 255] : [255, 0, 80, 255], offset);
+    }
   }
   fs.writeFileSync(path.join(directory, `${label}-actual.png`), PNG.sync.write(actual));
   fs.writeFileSync(path.join(directory, `${label}-expected.png`), PNG.sync.write(expected));
   fs.writeFileSync(path.join(directory, `${label}-diff.png`), PNG.sync.write(diff));
-  return { label, pixels_checked: expected.width * expected.height, different_pixels: differentPixels };
+  return {
+    label,
+    pixels_checked: expected.width * expected.height - ignoredPixels,
+    ignored_pixels: ignoredPixels,
+    ignored_difference_pixels: ignoredDifferencePixels,
+    ignored_region_difference_pixels: ignoredRegionDifferencePixels,
+    different_pixels: differentPixels,
+  };
 }
 
 async function stableShellScreenshot(page, directory, label) {
@@ -323,128 +352,133 @@ async function inspectFaction(server, source, faction, executable) {
       }
     });
 
-    const fixtureCode = 41 | (faction.byte << 8);
+    const fixtureCode = (catalogMode ? 42 : 41) | (faction.byte << 8);
     await page.goto(`${serverOrigin}/?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
     await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
     const ready = await page.evaluate(() => window.__openRebellionInterfaceReady);
     assert.equal(ready.status, "ready", JSON.stringify(ready));
     assert.equal(ready.code, fixtureCode);
     await page.evaluate(() => document.fonts.ready);
+    if (catalogMode) {
+      assert.ok(
+        consoleLines.some(({ text }) => text.includes("[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69")),
+        "browser did not load the complete source-derived Encyclopedia catalog",
+      );
+    }
 
     const comparisons = [];
-    let selectedCategory = 0x6f;
-    comparisons.push(compare(
-      await stableShellScreenshot(page, directory, "selected-6f"),
-      composeExpected(source, faction, selectedCategory),
-      "selected-6f",
+    const ignoredRects = catalogMode ? [
+      { label: "title", x: 20, y: 4, width: 380, height: 32 },
+      { label: "topic-and-current-object", x: 30, y: 40, width: 365, height: 32 },
+      { label: "category-label", x: 40, y: 119, width: 330, height: 18 },
+      { label: "list", x: 36, y: 137, width: 338, height: 160 },
+    ] : [];
+    const compareState = async (label, category, heldCommand = null) => compare(
+      await stableShellScreenshot(page, directory, label),
+      composeExpected(source, faction, category, heldCommand),
+      label,
       directory,
-    ));
+      ignoredRects,
+    );
+    let selectedCategory = 0x6f;
+    comparisons.push(await compareState("selected-6f", selectedCategory));
     for (const control of categoryControls.slice(1)) {
       await page.mouse.click(origin.x + control.x + Math.floor(control.width / 2), origin.y + control.y + Math.floor(control.height / 2));
       selectedCategory = control.command;
       const label = `selected-${control.command.toString(16)}`;
-      comparisons.push(compare(
-        await stableShellScreenshot(page, directory, label),
-        composeExpected(source, faction, selectedCategory),
-        label,
-        directory,
-      ));
+      comparisons.push(await compareState(label, selectedCategory));
     }
-    for (const control of faction.railControls) {
-      await page.mouse.move(origin.x + control.x + Math.floor(control.width / 2), origin.y + control.y + Math.floor(control.height / 2));
+    if (catalogMode) {
+      const beforeScroll = fs.readFileSync(path.join(directory, "selected-75-actual.png"));
+      await page.mouse.click(origin.x + 380, origin.y + 290);
+      comparisons.push(await compareState("list-scroll-down", selectedCategory));
+      const afterScroll = fs.readFileSync(path.join(directory, "list-scroll-down-actual.png"));
+      assert.notEqual(sha256(beforeScroll), sha256(afterScroll), "the native list down control did not scroll the catalog");
+      const activeCategory = categoryControls.find(({ command }) => command === selectedCategory);
+      await page.mouse.click(
+        origin.x + activeCategory.x + Math.floor(activeCategory.width / 2),
+        origin.y + activeCategory.y + Math.floor(activeCategory.height / 2),
+      );
+      comparisons.push(await compareState("selected-category-reclick", selectedCategory));
+      const afterCategoryReclick = fs.readFileSync(path.join(directory, "selected-category-reclick-actual.png"));
+      assert.equal(
+        sha256(afterScroll),
+        sha256(afterCategoryReclick),
+        "re-clicking the selected category reset the native list scroll position",
+      );
+      const beforeSelection = PNG.sync.write(await stableShellScreenshot(page, directory, "row-selection-before"));
+      await page.mouse.click(origin.x + 100, origin.y + 137 + 1 * 18 + 9);
+      comparisons.push(await compareState("row-selection-after", selectedCategory));
+      const afterSelection = fs.readFileSync(path.join(directory, "row-selection-after-actual.png"));
+      assert.notEqual(sha256(beforeSelection), sha256(afterSelection), "selecting another catalog row did not alter the rendered state");
+      assert.ok(
+        comparisons.every(({ ignored_region_difference_pixels: regions }) =>
+          Object.keys(regions).length === ignoredRects.length
+          && Object.values(regions).every((count) => count > 100)),
+        "localized title, topic/current-object, category-label, or list content was not visible in every catalog state",
+      );
+    } else {
+      for (const control of faction.railControls) {
+        await page.mouse.move(origin.x + control.x + Math.floor(control.width / 2), origin.y + control.y + Math.floor(control.height / 2));
+        await page.mouse.down();
+        const label = `held-${control.command.toString(16)}`;
+        comparisons.push(await compareState(label, selectedCategory, control.command));
+        await page.mouse.up();
+      }
+      const edgeControl = categoryControls.at(-1);
+      await page.mouse.move(origin.x + edgeControl.x + edgeControl.width, origin.y + edgeControl.y + 20);
       await page.mouse.down();
-      const label = `held-${control.command.toString(16)}`;
-      comparisons.push(compare(
-        await stableShellScreenshot(page, directory, label),
-        composeExpected(source, faction, selectedCategory, control.command),
-        label,
-        directory,
-      ));
+      comparisons.push(await compareState("outside-category-right-edge", selectedCategory));
+      await page.mouse.up();
+      const close = faction.railControls[0];
+      await page.mouse.move(origin.x + close.x + close.width, origin.y + close.y + Math.floor(close.height / 2));
+      await page.mouse.down();
+      comparisons.push(await compareState("outside-close-right-edge", selectedCategory));
+      await page.mouse.up();
+
+      const retainedControl = categoryControls.at(-2);
+      await page.mouse.click(
+        origin.x + retainedControl.x + Math.floor(retainedControl.width / 2),
+        origin.y + retainedControl.y + Math.floor(retainedControl.height / 2),
+      );
+      await page.waitForTimeout(100);
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+      selectedCategory = retainedControl.command;
+      const probeControl = categoryControls.at(-1);
+      const [probeResource] = resourcesFor(probeControl, faction);
+      const transparentPoint = nearestMaskPoint(source, probeResource, probeControl, false);
+      await page.mouse.move(
+        origin.x + probeControl.x + transparentPoint.x,
+        origin.y + probeControl.y + transparentPoint.y,
+      );
+      await page.mouse.down();
+      comparisons.push(await compareState("transparent-category-hit-miss", selectedCategory));
+      await page.mouse.up();
+
+      const opaquePoint = nearestMaskPoint(source, probeResource, probeControl, true);
+      const probeInside = {
+        x: origin.x + probeControl.x + opaquePoint.x,
+        y: origin.y + probeControl.y + opaquePoint.y,
+      };
+      const probeOutside = {
+        x: origin.x + probeControl.x + probeControl.width,
+        y: probeInside.y,
+      };
+      await page.mouse.move(probeOutside.x, probeOutside.y);
+      await page.mouse.down();
+      await page.mouse.move(probeInside.x, probeInside.y);
+      comparisons.push(await compareState("press-origin-outside-drag-inside", selectedCategory));
+      await page.mouse.up();
+
+      await page.mouse.move(probeInside.x, probeInside.y);
+      await page.mouse.down();
+      await page.mouse.move(probeOutside.x, probeOutside.y);
+      comparisons.push(await compareState("press-origin-inside-drag-outside", selectedCategory));
       await page.mouse.up();
     }
-    const edgeControl = categoryControls.at(-1);
-    await page.mouse.move(origin.x + edgeControl.x + edgeControl.width, origin.y + edgeControl.y + 20);
-    await page.mouse.down();
-    comparisons.push(compare(
-      await stableShellScreenshot(page, directory, "outside-category-right-edge"),
-      composeExpected(source, faction, selectedCategory),
-      "outside-category-right-edge",
-      directory,
-    ));
-    await page.mouse.up();
-    const close = faction.railControls[0];
-    await page.mouse.move(origin.x + close.x + close.width, origin.y + close.y + Math.floor(close.height / 2));
-    await page.mouse.down();
-    comparisons.push(compare(
-      await stableShellScreenshot(page, directory, "outside-close-right-edge"),
-      composeExpected(source, faction, selectedCategory),
-      "outside-close-right-edge",
-      directory,
-    ));
-    await page.mouse.up();
-
-    const retainedControl = categoryControls.at(-2);
-    await page.mouse.click(
-      origin.x + retainedControl.x + Math.floor(retainedControl.width / 2),
-      origin.y + retainedControl.y + Math.floor(retainedControl.height / 2),
-    );
-    await page.waitForTimeout(100);
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
-    selectedCategory = retainedControl.command;
-    const probeControl = categoryControls.at(-1);
-    const [probeResource] = resourcesFor(probeControl, faction);
-    const transparentPoint = nearestMaskPoint(source, probeResource, probeControl, false);
-    await page.mouse.move(
-      origin.x + probeControl.x + transparentPoint.x,
-      origin.y + probeControl.y + transparentPoint.y,
-    );
-    await page.mouse.down();
-    comparisons.push(compare(
-      await stableShellScreenshot(page, directory, "transparent-category-hit-miss"),
-      composeExpected(source, faction, selectedCategory),
-      "transparent-category-hit-miss",
-      directory,
-    ));
-    await page.mouse.up();
-
-    const opaquePoint = nearestMaskPoint(source, probeResource, probeControl, true);
-    const probeInside = {
-      x: origin.x + probeControl.x + opaquePoint.x,
-      y: origin.y + probeControl.y + opaquePoint.y,
-    };
-    const probeOutside = {
-      x: origin.x + probeControl.x + probeControl.width,
-      y: probeInside.y,
-    };
-    await page.mouse.move(probeOutside.x, probeOutside.y);
-    await page.mouse.down();
-    await page.mouse.move(probeInside.x, probeInside.y);
-    comparisons.push(compare(
-      await stableShellScreenshot(page, directory, "press-origin-outside-drag-inside"),
-      composeExpected(source, faction, selectedCategory),
-      "press-origin-outside-drag-inside",
-      directory,
-    ));
-    await page.mouse.up();
-
-    await page.mouse.move(probeInside.x, probeInside.y);
-    await page.mouse.down();
-    await page.mouse.move(probeOutside.x, probeOutside.y);
-    comparisons.push(compare(
-      await stableShellScreenshot(page, directory, "press-origin-inside-drag-outside"),
-      composeExpected(source, faction, selectedCategory),
-      "press-origin-inside-drag-outside",
-      directory,
-    ));
-    await page.mouse.up();
 
     await page.mouse.click(faction.underlyingEncyclopedia.x, faction.underlyingEncyclopedia.y);
-    comparisons.push(compare(
-      await stableShellScreenshot(page, directory, "underlying-cockpit-encyclopedia-blocked"),
-      composeExpected(source, faction, selectedCategory),
-      "underlying-cockpit-encyclopedia-blocked",
-      directory,
-    ));
+    comparisons.push(await compareState("underlying-cockpit-encyclopedia-blocked", selectedCategory));
     assert.ok(
       consoleLines.every(({ text }) => !/\[interface\] command=0x131\b/.test(text)),
       "modal Encyclopedia fixture leaked input to the underlying cockpit control",
@@ -489,8 +523,10 @@ async function main() {
   const passed = results.every((result) => result.status === "pass");
   const summary = {
     schema_version: 1,
-    family: "encyclopedia-index-shell",
-    scope: "test-only source-exact Galactic Encyclopedia index bitmap shell, category selection, rail states, clipping, edge, palette-key, press-capture, cancel, and modal input probes; labels, object rows, topics, and production routing remain open",
+    family: catalogMode ? "encyclopedia-index-catalog" : "encyclopedia-index-shell",
+    scope: catalogMode
+      ? "production-dormant source-derived Galactic Encyclopedia localized catalog, seven family filters, alphabetical ordering, stable row identity, exact bitmap pixels outside dynamic text, and modal input blocking; topics and production routing remain open"
+      : "test-only source-exact Galactic Encyclopedia index bitmap shell, category selection, rail states, clipping, edge, palette-key, press-capture, cancel, and modal input probes; labels, object rows, topics, and production routing remain open",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

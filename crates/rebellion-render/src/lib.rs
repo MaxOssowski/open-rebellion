@@ -57,11 +57,15 @@ pub use cockpit::{
 #[cfg(target_arch = "wasm32")]
 pub use encyclopedia::set_encyclopedia_asset_cache;
 pub use encyclopedia::{
-    draw_encyclopedia, draw_encyclopedia_index_shell, EncyclopediaState, EncyclopediaTab,
+    draw_encyclopedia, draw_encyclopedia_index_catalog, draw_encyclopedia_index_shell,
+    EncyclopediaState, EncyclopediaTab, OriginalEncyclopediaCatalog, OriginalEncyclopediaEntry,
     ENCYCLOPEDIA_INDEX_HEIGHT, ENCYCLOPEDIA_INDEX_WIDTH,
 };
 #[cfg(feature = "interface-test-fixtures")]
-pub use encyclopedia::{draw_encyclopedia_artwork_fixture, draw_encyclopedia_index_fixture};
+pub use encyclopedia::{
+    draw_encyclopedia_artwork_fixture, draw_encyclopedia_index_catalog_fixture,
+    draw_encyclopedia_index_fixture,
+};
 pub use event_screen::{
     draw_event_screen, show_event_screen, show_event_screen_raw, update_event_screen,
     EventScreenState,

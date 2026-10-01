@@ -30,6 +30,7 @@ use rebellion_core::world::{
     TroopClassDef,
 };
 
+pub mod encyclopedia_catalog;
 pub mod integrator;
 pub mod mods;
 pub mod replay;

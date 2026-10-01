@@ -144,14 +144,15 @@
       "id": "UIP-F-006",
       "severity": "P1",
       "status": "partial",
-      "title": "Native and WASM EDATA transport plus a production-dormant source-exact Encyclopedia index renderer pass bounded browser gates; production catalog rows, bindings, topics, navigation, routing, and OBJ-01 remain open",
+      "title": "Native and WASM EDATA transport plus production-dormant source-exact Encyclopedia shells and a 356-entry English index catalog pass bounded browser gates; topic bindings, production routing, A0, and OBJ-01 remain open",
       "evidence": [
         "crates/rebellion-render/src/encyclopedia.rs",
         "scripts/build-runtime-pack.py",
         "tools/interface-parity/encyclopedia-art.mjs",
         "tools/interface-parity/encyclopedia-index-shell.mjs",
         "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-encyclopedia-artwork-transport.md",
-        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md"
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md",
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md"
       ],
       "affected_surfaces": ["OBJ-01"]
     },
@@ -359,5 +360,5 @@
     "screenshot_ledger": "screenshot-ledger.md",
     "capture_manifest": "reference-captures/SHA256SUMS"
   },
-  "next_action": "Preserve the P58-B22 bounded practical launcher while strict A0 work continues. Continue UIP-B05 from the P64 source-exact empty Encyclopedia index shells by implementing catalog ordering, localized labels, stable entity, ENCYTEXT, and EDATA bindings, topic composition, previous and next navigation, contextual entry, missing entries, production routing, original-runtime comparison, and the complete faction and viewport matrix. Continue CMD-08 separately from the corrected P63 Message Index shell."
+  "next_action": "Preserve the P58-B22 bounded practical launcher while strict A0 work continues. Continue UIP-B05 from the P65 source-derived Encyclopedia index catalog by implementing stable ENCYTEXT and EDATA bindings, topic composition, previous and next navigation, contextual entry, missing entries, exact text/A0 comparison, production routing, and the complete faction and viewport matrix. Continue CMD-08 separately from the corrected P63 Message Index shell."
 }

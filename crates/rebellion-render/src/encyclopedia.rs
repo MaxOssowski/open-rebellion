@@ -110,6 +110,10 @@ pub struct EncyclopediaState {
     /// The replacement panel does not consume this field. It is retained for
     /// the source-exact index renderer that will replace that panel.
     pub original_category_command: u16,
+    /// Stable compound object identity selected in the original index.
+    pub original_selected_object_id: Option<u32>,
+    /// First catalog row shown by the original index list.
+    pub original_scroll_row: usize,
     /// EDATA keys explicitly approved by the faithful-HD manifest.
     approved_hd_assets: HashMap<String, ApprovedHdAsset>,
     /// Cached textures keyed by EDATA file number (1-based).
@@ -164,6 +168,8 @@ impl Default for EncyclopediaState {
             hd_path: None,
             asset_profile: AssetRenderProfile::OriginalParity,
             original_category_command: 0x6f,
+            original_selected_object_id: None,
+            original_scroll_row: 0,
             approved_hd_assets: HashMap::new(),
             textures: HashMap::new(),
         }
@@ -567,6 +573,96 @@ pub fn draw_encyclopedia(
 pub const ENCYCLOPEDIA_INDEX_WIDTH: f32 = 470.0;
 pub const ENCYCLOPEDIA_INDEX_HEIGHT: f32 = 330.0;
 
+const ORIGINAL_INDEX_VISIBLE_ROWS: usize = 9;
+const ORIGINAL_INDEX_ROW_HEIGHT: f32 = 18.0;
+
+/// One immutable source object shown by the authentic index list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginalEncyclopediaEntry {
+    pub object_id: u32,
+    pub name: String,
+}
+
+impl OriginalEncyclopediaEntry {
+    #[must_use]
+    pub const fn family(&self) -> u8 {
+        (self.object_id >> 24) as u8
+    }
+}
+
+/// Localized source catalog transported from the original DAT/TEXTSTRA data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginalEncyclopediaCatalog {
+    pub title: String,
+    pub topic_label: String,
+    category_labels: [String; 7],
+    entries: Vec<OriginalEncyclopediaEntry>,
+}
+
+impl OriginalEncyclopediaCatalog {
+    #[must_use]
+    pub fn new(
+        title: String,
+        topic_label: String,
+        category_labels: [String; 7],
+        mut entries: Vec<OriginalEncyclopediaEntry>,
+    ) -> Self {
+        entries.sort_by(|left, right| {
+            left.name
+                .to_lowercase()
+                .cmp(&right.name.to_lowercase())
+                .then_with(|| left.object_id.cmp(&right.object_id))
+        });
+        entries.dedup_by_key(|entry| entry.object_id);
+        Self {
+            title,
+            topic_label,
+            category_labels,
+            entries,
+        }
+    }
+
+    #[must_use]
+    pub fn category_label(&self, command_id: u16) -> Option<&str> {
+        let index = usize::from(command_id.checked_sub(0x6f)?);
+        self.category_labels.get(index).map(String::as_str)
+    }
+
+    #[must_use]
+    pub fn entries_for(&self, command_id: u16) -> Vec<&OriginalEncyclopediaEntry> {
+        if !(0x6f..=0x75).contains(&command_id) {
+            return Vec::new();
+        }
+        self.entries
+            .iter()
+            .filter(|entry| original_category_contains(command_id, entry.family()))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+const fn original_category_contains(command_id: u16, family: u8) -> bool {
+    match command_id {
+        0x6f => true,
+        0x70 => family >= 0x90 && family < 0x98,
+        0x71 => family >= 0x14 && family < 0x20,
+        0x72 => family >= 0x20 && family < 0x30,
+        0x73 => family >= 0x40 && family < 0x80,
+        0x74 => family >= 0x10 && family < 0x14,
+        0x75 => family >= 0x30 && family < 0x40,
+        _ => false,
+    }
+}
+
 const INDEX_CONTENT: u32 = 10_338;
 const INDEX_CONTENT_X: f32 = 12.0;
 const INDEX_CONTENT_Y: f32 = 13.0;
@@ -586,15 +682,15 @@ struct OriginalControlSpec {
 const fn encyclopedia_category_controls(
     faction: crate::cockpit::CockpitFaction,
 ) -> [OriginalControlSpec; 7] {
-    let (ships_normal, ships_pressed, fighters_normal, fighters_pressed) = match faction {
+    let (ships_normal, ships_pressed, facilities_normal, facilities_pressed) = match faction {
         crate::cockpit::CockpitFaction::Alliance => (10_348, 10_347, 10_344, 10_343),
         crate::cockpit::CockpitFaction::Empire => (10_360, 10_359, 10_356, 10_355),
     };
-    let (characters_normal, characters_pressed, troops_normal, troops_pressed) = match faction {
+    let (personnel_normal, personnel_pressed, missions_normal, missions_pressed) = match faction {
         crate::cockpit::CockpitFaction::Alliance => (10_346, 10_345, 11_616, 11_615),
         crate::cockpit::CockpitFaction::Empire => (10_358, 10_357, 11_618, 11_617),
     };
-    let (facilities_normal, facilities_pressed) = match faction {
+    let (troops_normal, troops_pressed) = match faction {
         crate::cockpit::CockpitFaction::Alliance => (10_352, 10_351),
         crate::cockpit::CockpitFaction::Empire => (10_362, 10_361),
     };
@@ -635,8 +731,8 @@ const fn encyclopedia_category_controls(
             y: 78,
             width: 49,
             height: 41,
-            normal_resource: fighters_normal,
-            pressed_resource: fighters_pressed,
+            normal_resource: facilities_normal,
+            pressed_resource: facilities_pressed,
             selected_in_index: false,
         },
         OriginalControlSpec {
@@ -645,8 +741,8 @@ const fn encyclopedia_category_controls(
             y: 78,
             width: 49,
             height: 41,
-            normal_resource: troops_normal,
-            pressed_resource: troops_pressed,
+            normal_resource: missions_normal,
+            pressed_resource: missions_pressed,
             selected_in_index: false,
         },
         OriginalControlSpec {
@@ -655,8 +751,8 @@ const fn encyclopedia_category_controls(
             y: 78,
             width: 49,
             height: 41,
-            normal_resource: facilities_normal,
-            pressed_resource: facilities_pressed,
+            normal_resource: troops_normal,
+            pressed_resource: troops_pressed,
             selected_in_index: false,
         },
         OriginalControlSpec {
@@ -665,8 +761,8 @@ const fn encyclopedia_category_controls(
             y: 78,
             width: 49,
             height: 41,
-            normal_resource: characters_normal,
-            pressed_resource: characters_pressed,
+            normal_resource: personnel_normal,
+            pressed_resource: personnel_pressed,
             selected_in_index: false,
         },
     ]
@@ -757,11 +853,134 @@ pub fn draw_encyclopedia_index_shell(
     scale: f32,
     selected_category: u16,
 ) -> Option<u16> {
-    if scale <= 0.0 || !(0x6f..=0x75).contains(&selected_category) {
+    draw_encyclopedia_index_layers(ctx, cache, faction, origin, scale, selected_category, None)
+        .activated_command
+}
+
+/// Paint the authentic index shell together with localized source rows.
+///
+/// The catalog is immutable reference data and selection is stored by compound
+/// object id, so category changes and source reordering cannot silently select
+/// a different object. Topic composition remains a later parity checkpoint.
+pub fn draw_encyclopedia_index_catalog(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    faction: crate::cockpit::CockpitFaction,
+    origin: egui::Pos2,
+    scale: f32,
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+) -> Option<u16> {
+    if scale <= 0.0 || catalog.is_empty() {
         return None;
     }
+    reconcile_original_index_state(state, catalog, false);
+    let entries = catalog.entries_for(state.original_category_command);
+    let selected_name = entries
+        .iter()
+        .find(|entry| Some(entry.object_id) == state.original_selected_object_id)
+        .map(|entry| entry.name.as_str())
+        .unwrap_or("");
+    let category_label = catalog
+        .category_label(state.original_category_command)
+        .unwrap_or("");
+    let content = OriginalIndexContent {
+        title: &catalog.title,
+        topic_label: &catalog.topic_label,
+        category_label,
+        selected_name,
+        entries: &entries,
+        selected_object_id: state.original_selected_object_id,
+        scroll_row: state.original_scroll_row,
+    };
+    let outcome = draw_encyclopedia_index_layers(
+        ctx,
+        cache,
+        faction,
+        origin,
+        scale,
+        state.original_category_command,
+        Some(content),
+    );
+    if let Some(command) = outcome.activated_command {
+        if (0x6f..=0x75).contains(&command) && command != state.original_category_command {
+            state.original_category_command = command;
+            reconcile_original_index_state(state, catalog, true);
+        }
+    }
+    if let Some(scroll_row) = outcome.scroll_row {
+        state.original_scroll_row = scroll_row;
+        reconcile_original_index_state(state, catalog, false);
+    }
+    if let Some(object_id) = outcome.selected_object_id {
+        state.original_selected_object_id = Some(object_id);
+        reconcile_original_index_state(state, catalog, true);
+    }
+    outcome.activated_command
+}
 
-    let mut activated = None;
+fn reconcile_original_index_state(
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+    reveal_selection: bool,
+) {
+    if !(0x6f..=0x75).contains(&state.original_category_command) {
+        state.original_category_command = 0x6f;
+    }
+    let entries = catalog.entries_for(state.original_category_command);
+    if !entries
+        .iter()
+        .any(|entry| Some(entry.object_id) == state.original_selected_object_id)
+    {
+        state.original_selected_object_id = entries.first().map(|entry| entry.object_id);
+        state.original_scroll_row = 0;
+    }
+    let selected_index = entries
+        .iter()
+        .position(|entry| Some(entry.object_id) == state.original_selected_object_id)
+        .unwrap_or(0);
+    let max_scroll = entries.len().saturating_sub(ORIGINAL_INDEX_VISIBLE_ROWS);
+    state.original_scroll_row = state.original_scroll_row.min(max_scroll);
+    if reveal_selection {
+        if selected_index < state.original_scroll_row {
+            state.original_scroll_row = selected_index;
+        } else if selected_index >= state.original_scroll_row + ORIGINAL_INDEX_VISIBLE_ROWS {
+            state.original_scroll_row = selected_index + 1 - ORIGINAL_INDEX_VISIBLE_ROWS;
+        }
+    }
+}
+
+#[derive(Default)]
+struct OriginalIndexOutcome {
+    activated_command: Option<u16>,
+    selected_object_id: Option<u32>,
+    scroll_row: Option<usize>,
+}
+
+struct OriginalIndexContent<'a> {
+    title: &'a str,
+    topic_label: &'a str,
+    category_label: &'a str,
+    selected_name: &'a str,
+    entries: &'a [&'a OriginalEncyclopediaEntry],
+    selected_object_id: Option<u32>,
+    scroll_row: usize,
+}
+
+fn draw_encyclopedia_index_layers(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    faction: crate::cockpit::CockpitFaction,
+    origin: egui::Pos2,
+    scale: f32,
+    selected_category: u16,
+    content: Option<OriginalIndexContent<'_>>,
+) -> OriginalIndexOutcome {
+    if scale <= 0.0 || !(0x6f..=0x75).contains(&selected_category) {
+        return OriginalIndexOutcome::default();
+    }
+
+    let mut outcome = OriginalIndexOutcome::default();
     egui::Area::new(egui::Id::new("original-encyclopedia-index-shell"))
         .fixed_pos(origin)
         .order(egui::Order::Middle)
@@ -821,7 +1040,7 @@ pub fn draw_encyclopedia_index_shell(
                     control,
                     control.command_id == selected_category,
                 ) {
-                    activated = Some(control.command_id);
+                    outcome.activated_command = Some(control.command_id);
                 }
             }
             for control in encyclopedia_rail_controls(faction) {
@@ -834,11 +1053,124 @@ pub fn draw_encyclopedia_index_shell(
                     control,
                     control.selected_in_index,
                 ) {
-                    activated = Some(control.command_id);
+                    outcome.activated_command = Some(control.command_id);
                 }
             }
+            if let Some(content) = content {
+                draw_original_index_content(ui, window_rect, scale, content, &mut outcome);
+            }
         });
-    activated
+    outcome
+}
+
+fn draw_original_index_content(
+    ui: &mut egui::Ui,
+    window_rect: egui::Rect,
+    scale: f32,
+    content: OriginalIndexContent<'_>,
+    outcome: &mut OriginalIndexOutcome,
+) {
+    let painter = ui.painter();
+    let title_font = egui::FontId::proportional(15.0 * scale);
+    let list_font = egui::FontId::proportional(14.0 * scale);
+    painter.text(
+        encyclopedia_point(window_rect, scale, 211.0, 14.0),
+        egui::Align2::CENTER_TOP,
+        content.title,
+        title_font,
+        Color32::WHITE,
+    );
+    painter.text(
+        encyclopedia_point(window_rect, scale, 36.0, 48.0),
+        egui::Align2::LEFT_TOP,
+        content.topic_label,
+        list_font.clone(),
+        Color32::WHITE,
+    );
+    painter.text(
+        encyclopedia_point(window_rect, scale, 143.0, 47.0),
+        egui::Align2::LEFT_TOP,
+        content.selected_name,
+        list_font.clone(),
+        Color32::WHITE,
+    );
+    painter.text(
+        encyclopedia_point(window_rect, scale, 40.0, 120.0),
+        egui::Align2::LEFT_TOP,
+        content.category_label,
+        list_font.clone(),
+        Color32::WHITE,
+    );
+
+    let max_scroll = content
+        .entries
+        .len()
+        .saturating_sub(ORIGINAL_INDEX_VISIBLE_ROWS);
+    let list_rect = original_index_list_rect(window_rect, scale);
+    let list_painter = painter.with_clip_rect(list_rect);
+    if ui.rect_contains_pointer(list_rect) {
+        let wheel = ui.input(|input| input.raw_scroll_delta.y);
+        if wheel.abs() > f32::EPSILON {
+            let rows = ((wheel.abs() / 24.0).ceil() as usize).clamp(1, 3);
+            outcome.scroll_row = Some(if wheel < 0.0 {
+                content.scroll_row.saturating_add(rows).min(max_scroll)
+            } else {
+                content.scroll_row.saturating_sub(rows)
+            });
+        }
+    }
+    let up_rect = encyclopedia_rect(window_rect, scale, 374.0, 137.0, 12.0, 13.0);
+    let down_rect = encyclopedia_rect(window_rect, scale, 374.0, 284.0, 12.0, 13.0);
+    if ui
+        .interact(
+            up_rect,
+            ui.id().with("encyclopedia-index-scroll-up"),
+            egui::Sense::click(),
+        )
+        .clicked()
+    {
+        outcome.scroll_row = Some(content.scroll_row.saturating_sub(1));
+    }
+    if ui
+        .interact(
+            down_rect,
+            ui.id().with("encyclopedia-index-scroll-down"),
+            egui::Sense::click(),
+        )
+        .clicked()
+    {
+        outcome.scroll_row = Some(content.scroll_row.saturating_add(1).min(max_scroll));
+    }
+
+    for (visible_row, entry) in content
+        .entries
+        .iter()
+        .skip(content.scroll_row)
+        .take(ORIGINAL_INDEX_VISIBLE_ROWS)
+        .enumerate()
+    {
+        let y = 137.0 + visible_row as f32 * ORIGINAL_INDEX_ROW_HEIGHT;
+        let row_rect = original_index_row_rect(window_rect, scale, visible_row);
+        let selected = Some(entry.object_id) == content.selected_object_id;
+        if selected {
+            list_painter.rect_filled(row_rect, 0.0, Color32::from_rgb(0, 0, 96));
+        }
+        let response = ui.interact(
+            row_rect,
+            ui.id().with(("encyclopedia-index-row", entry.object_id)),
+            egui::Sense::click(),
+        );
+        list_painter.text(
+            encyclopedia_point(window_rect, scale, 40.0, y + 1.0),
+            egui::Align2::LEFT_TOP,
+            &entry.name,
+            list_font.clone(),
+            Color32::WHITE,
+        );
+        if response.clicked() {
+            outcome.selected_object_id = Some(entry.object_id);
+        }
+    }
 }
 
 fn draw_original_control(
@@ -938,6 +1270,23 @@ fn encyclopedia_rect(
     )
 }
 
+fn original_index_list_rect(parent: egui::Rect, scale: f32) -> egui::Rect {
+    encyclopedia_rect(parent, scale, 36.0, 137.0, 350.0, 160.0)
+}
+
+fn original_index_row_rect(parent: egui::Rect, scale: f32, visible_row: usize) -> egui::Rect {
+    let y = 137.0 + visible_row as f32 * ORIGINAL_INDEX_ROW_HEIGHT;
+    encyclopedia_rect(
+        parent,
+        scale,
+        36.0,
+        y,
+        338.0,
+        ORIGINAL_INDEX_ROW_HEIGHT,
+    )
+    .intersect(original_index_list_rect(parent, scale))
+}
+
 fn paint_original_resource_native(
     painter: &egui::Painter,
     ctx: &egui::Context,
@@ -974,6 +1323,26 @@ pub fn draw_encyclopedia_index_fixture(
         egui::pos2(85.0, 55.0),
         1.0,
         selected_category,
+    )
+}
+
+/// Fixed-position catalog adapter for deterministic browser inspection.
+#[cfg(feature = "interface-test-fixtures")]
+pub fn draw_encyclopedia_index_catalog_fixture(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    faction: crate::cockpit::CockpitFaction,
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+) -> Option<u16> {
+    draw_encyclopedia_index_catalog(
+        ctx,
+        cache,
+        faction,
+        egui::pos2(85.0, 55.0),
+        1.0,
+        state,
+        catalog,
     )
 }
 
@@ -1326,5 +1695,148 @@ mod tests {
                 (0x68, 426, 143, 44, 41, 10_378, 10_379, true),
             ]
         );
+    }
+
+    fn original_catalog_fixture() -> OriginalEncyclopediaCatalog {
+        OriginalEncyclopediaCatalog::new(
+            "Galactic Encyclopedia".into(),
+            "Topic".into(),
+            [
+                "All Databases".into(),
+                "System Database".into(),
+                "Ship Database".into(),
+                "Facilities Database".into(),
+                "Missions Database".into(),
+                "Troop Database".into(),
+                "Personnel Database".into(),
+            ],
+            vec![
+                OriginalEncyclopediaEntry {
+                    object_id: 0x9000_0001,
+                    name: "Allyuen".into(),
+                },
+                OriginalEncyclopediaEntry {
+                    object_id: 0x1400_0001,
+                    name: "Alliance Dreadnaught".into(),
+                },
+                OriginalEncyclopediaEntry {
+                    object_id: 0x1000_0001,
+                    name: "Alliance Army Regiment".into(),
+                },
+                OriginalEncyclopediaEntry {
+                    object_id: 0x3000_0001,
+                    name: "Ackbar".into(),
+                },
+            ],
+        )
+    }
+
+    #[test]
+    fn original_catalog_uses_source_labels_and_family_filters() {
+        let catalog = original_catalog_fixture();
+
+        assert_eq!(catalog.len(), 4);
+        assert!(!catalog.is_empty());
+        assert_eq!(catalog.category_label(0x6f), Some("All Databases"));
+        assert_eq!(catalog.category_label(0x75), Some("Personnel Database"));
+        assert_eq!(catalog.entries_for(0x6f).len(), 4);
+        assert_eq!(catalog.entries_for(0x70)[0].name, "Allyuen");
+        assert_eq!(catalog.entries_for(0x71)[0].name, "Alliance Dreadnaught");
+        assert_eq!(catalog.entries_for(0x74)[0].name, "Alliance Army Regiment");
+        assert_eq!(catalog.entries_for(0x75)[0].name, "Ackbar");
+    }
+
+    #[test]
+    fn original_catalog_selection_preserves_identity_or_resets_to_first_match() {
+        let catalog = original_catalog_fixture();
+        let mut state = EncyclopediaState {
+            original_selected_object_id: Some(0x1400_0001),
+            ..EncyclopediaState::default()
+        };
+
+        reconcile_original_index_state(&mut state, &catalog, false);
+        assert_eq!(state.original_selected_object_id, Some(0x1400_0001));
+
+        state.original_category_command = 0x71;
+        reconcile_original_index_state(&mut state, &catalog, true);
+        assert_eq!(state.original_selected_object_id, Some(0x1400_0001));
+
+        state.original_category_command = 0x70;
+        reconcile_original_index_state(&mut state, &catalog, true);
+        assert_eq!(state.original_selected_object_id, Some(0x9000_0001));
+        assert_eq!(state.original_scroll_row, 0);
+    }
+
+    #[test]
+    fn original_category_ranges_preserve_every_exclusive_boundary() {
+        assert!(original_category_contains(0x6f, 0));
+        for (command, start, end) in [
+            (0x70, 0x90, 0x98),
+            (0x71, 0x14, 0x20),
+            (0x72, 0x20, 0x30),
+            (0x73, 0x40, 0x80),
+            (0x74, 0x10, 0x14),
+            (0x75, 0x30, 0x40),
+        ] {
+            assert!(!original_category_contains(command, start - 1));
+            assert!(original_category_contains(command, start));
+            assert!(original_category_contains(command, end - 1));
+            assert!(!original_category_contains(command, end));
+        }
+        assert!(!original_category_contains(0x76, 0x30));
+    }
+
+    #[test]
+    fn original_catalog_reveal_and_clamp_keep_selection_visible() {
+        let entries = (0..12)
+            .map(|index| OriginalEncyclopediaEntry {
+                object_id: 0x9000_0000 | index,
+                name: format!("System {index:02}"),
+            })
+            .collect();
+        let catalog = OriginalEncyclopediaCatalog::new(
+            "Galactic Encyclopedia".into(),
+            "Topic".into(),
+            std::array::from_fn(|index| format!("Category {index}")),
+            entries,
+        );
+        let mut state = EncyclopediaState {
+            original_category_command: 0x70,
+            original_selected_object_id: Some(0x9000_000b),
+            original_scroll_row: 0,
+            ..EncyclopediaState::default()
+        };
+
+        reconcile_original_index_state(&mut state, &catalog, true);
+        assert_eq!(state.original_scroll_row, 3);
+
+        state.original_selected_object_id = Some(0x9000_0000);
+        reconcile_original_index_state(&mut state, &catalog, true);
+        assert_eq!(state.original_scroll_row, 0);
+
+        state.original_scroll_row = usize::MAX;
+        reconcile_original_index_state(&mut state, &catalog, false);
+        assert_eq!(state.original_scroll_row, 3);
+
+        state.original_category_command = 0xffff;
+        state.original_selected_object_id = Some(0xffff_ffff);
+        reconcile_original_index_state(&mut state, &catalog, false);
+        assert_eq!(state.original_category_command, 0x6f);
+        assert_eq!(state.original_selected_object_id, Some(0x9000_0000));
+        assert_eq!(state.original_scroll_row, 0);
+    }
+
+    #[test]
+    fn original_index_ninth_row_is_clipped_to_the_native_list_boundary() {
+        let parent = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(470.0, 330.0));
+        let list = original_index_list_rect(parent, 1.0);
+
+        for row in 0..ORIGINAL_INDEX_VISIBLE_ROWS {
+            let rect = original_index_row_rect(parent, 1.0, row);
+            assert!(rect.min.y >= list.min.y);
+            assert!(rect.max.y <= list.max.y);
+            assert!(rect.height() > 0.0);
+        }
+        assert_eq!(original_index_row_rect(parent, 1.0, 8).height(), 16.0);
     }
 }

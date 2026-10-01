@@ -88,9 +88,9 @@ use rebellion_render::{
     GroundAction, GroundCombatState, MainMenuAction, MainMenuState, ManufacturingPanelState,
     MenuDestinationAction, MessageCategory, MessageLog, MessageLogState, MessageRail,
     MissionsPanelState, MultiplayerSetupAction, MultiplayerSetupState, MusicContext, OfficersState,
-    PanelAction, RailAudience, SectorWindowAction, SectorWindowState, SfxKind, SystemWindowAction,
-    SystemWindowState, TacticalAction, TacticalState, TacticalTrenchRunOutcome, VideoError,
-    VideoPlayer,
+    OriginalEncyclopediaCatalog, OriginalEncyclopediaEntry, PanelAction, RailAudience,
+    SectorWindowAction, SectorWindowState, SfxKind, SystemWindowAction, SystemWindowState,
+    TacticalAction, TacticalState, TacticalTrenchRunOutcome, VideoError, VideoPlayer,
 };
 
 /// Top-level game mode state machine.
@@ -380,7 +380,7 @@ impl LiveCampaign<'_> {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 const REQUIRED_WASM_DATA: &[&str] = &[
     "SECTORSD.DAT",
     "SYSTEMSD.DAT",
@@ -391,11 +391,13 @@ const REQUIRED_WASM_DATA: &[&str] = &[
     "MNCHARSD.DAT",
 ];
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 const OPTIONAL_WASM_DATA: &[&str] = &[
     "GNPRTB.DAT",
     "SDPRTB.DAT",
     "DEFFACSD.DAT",
+    "MANFACSD.DAT",
+    "PROFACSD.DAT",
     "SYFCCRTB.DAT",
     "SYFCRMTB.DAT",
     "CMUNEFTB.DAT",
@@ -430,6 +432,33 @@ const OPTIONAL_WASM_DATA: &[&str] = &[
     "MISSNSD.DAT",
     "SPECFCSD.DAT",
 ];
+
+#[cfg(test)]
+mod wasm_data_manifest_tests {
+    use super::{OPTIONAL_WASM_DATA, REQUIRED_WASM_DATA};
+
+    #[test]
+    fn legacy_fallback_contains_every_encyclopedia_catalog_table() {
+        for required in [
+            "SYSTEMSD.DAT",
+            "CAPSHPSD.DAT",
+            "FIGHTSD.DAT",
+            "TROOPSD.DAT",
+            "MJCHARSD.DAT",
+            "MNCHARSD.DAT",
+            "DEFFACSD.DAT",
+            "MANFACSD.DAT",
+            "PROFACSD.DAT",
+            "MISSNSD.DAT",
+            "SPECFCSD.DAT",
+        ] {
+            assert!(
+                REQUIRED_WASM_DATA.contains(&required) || OPTIONAL_WASM_DATA.contains(&required),
+                "legacy browser fallback omits Encyclopedia source table {required}",
+            );
+        }
+    }
+}
 
 #[cfg(target_arch = "wasm32")]
 fn draw_loading_progress(label: &str, loaded: usize, total: usize) {
@@ -802,6 +831,55 @@ async fn main() {
         world.fighter_classes.len(),
         world.characters.len(),
     );
+
+    // The Galactic Encyclopedia is immutable reference data, not campaign
+    // state. Rebuild it from the installed DAT/TEXTSTRA source so opening the
+    // index after a save/load never changes the serialized world format.
+    let original_encyclopedia_catalog =
+        match rebellion_data::encyclopedia_catalog::load_encyclopedia_catalog(&gdata_path) {
+            Ok(source) => {
+                let category_counts: [usize; 7] = std::array::from_fn(|index| {
+                    source
+                        .entries_for(source.categories[index].command_id)
+                        .len()
+                });
+                let category_labels = source.categories.map(|category| category.label);
+                let entries = source
+                    .entries
+                    .into_iter()
+                    .map(|entry| OriginalEncyclopediaEntry {
+                        object_id: entry.object_id,
+                        name: entry.name,
+                    })
+                    .collect();
+                let catalog = OriginalEncyclopediaCatalog::new(
+                    source.title,
+                    source.topic_label,
+                    category_labels,
+                    entries,
+                );
+                macroquad::logging::info!(
+                    "[encyclopedia] source_catalog loaded entries={} categories=all:{},systems:{},ships:{},facilities:{},missions:{},troops:{},personnel:{}",
+                    catalog.len(),
+                    category_counts[0],
+                    category_counts[1],
+                    category_counts[2],
+                    category_counts[3],
+                    category_counts[4],
+                    category_counts[5],
+                    category_counts[6],
+                );
+                Some(catalog)
+            }
+            Err(error) => {
+                macroquad::logging::error!(
+                    "[encyclopedia] source_catalog unavailable error={error}"
+                );
+                None
+            }
+        };
+    #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
+    let _ = original_encyclopedia_catalog.as_ref();
 
     // ── Mod Runtime ──────────────────────────────────────────────────────────
     // mods/ lives alongside data/, not inside it: data/base → data → repo root → mods/
@@ -3151,6 +3229,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             interface_test_fixture::Scenario::EncyclopediaArtwork
                                 | interface_test_fixture::Scenario::MessageIndexShell
                                 | interface_test_fixture::Scenario::EncyclopediaIndexShell
+                                | interface_test_fixture::Scenario::EncyclopediaIndexCatalog
                         )
                     });
                 #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
@@ -3409,6 +3488,22 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 enc_state.original_category_command = command;
                             }
                         }
+                    }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let (Some(request), Some(catalog)) = (
+                        interface_fixture_request.filter(|request| {
+                            request.scenario
+                                == interface_test_fixture::Scenario::EncyclopediaIndexCatalog
+                        }),
+                        original_encyclopedia_catalog.as_ref(),
+                    ) {
+                        rebellion_render::draw_encyclopedia_index_catalog_fixture(
+                            ctx,
+                            &mut bmp_cache,
+                            request.faction,
+                            &mut enc_state,
+                            catalog,
+                        );
                     }
 
                     // Mod Manager (floating window)

@@ -130,6 +130,7 @@ navigation, animation, audio presentation, and the absence of invented UI.
 | [P58-B22 source-completion evidence](evidence/2026-09-28-tactical-source-completion.md) | Recovered tactical RNG, persisted power allocation, completion/destruction callbacks, and the timed trench-run producer; strict A0 remains 0/106. |
 | [Corrected P63 Message Index-shell evidence](evidence/2026-09-28-message-index-shell.md) | Source-recovered faction compositions, ten normal/held message-category controls, modal pointer blocking, 24 exact browser states, and independent visual review; populated behavior, production routing, and `CMD-08` acceptance remain open. |
 | [P64 Encyclopedia index-shell evidence](evidence/2026-09-30-encyclopedia-index-shell.md) | Separate source-recovered faction shells, seven selected category states, rail states, native clipping, native input rejection and capture, 32 exact browser states, and bounded independent review; catalog content, topic pages, production routing, and `OBJ-01` remain open. |
+| [P65 Encyclopedia index-catalog evidence](evidence/2026-09-30-encyclopedia-index-catalog.md) | Source-derived 356-entry catalog, seven English TEXTSTRA labels and family filters, stable selection and scrolling, the selected-category no-op, 22 two-faction browser states, and a clean P64 regression; topic pages, production routing, A0, and `OBJ-01` remain open. |
 | [Evidence index](evidence/README.md) | Reports and artifact bundles, including a required `README.md` inventory for each new bundle. |
 | [JSON Schema](schemas/interface-parity.schema.json) | Validation contract for the audit summary and status vocabulary. |
 | [Ledger validator](../../../scripts/validate-interface-parity-ledgers.mjs) | Dependency-free generator and consistency gate for cell IDs and retrieval-package links. |
@@ -310,8 +311,11 @@ with independent visual review, while keeping that production route and every
 `CMD-08` cell open. P64 separately proves both empty Encyclopedia index shells,
 seven selected category states, rail states, native clipping, edge and
 transparent-pixel rejection, press capture, drag cancellation, and modal
-blocking through 32 exact browser comparisons. Briefing, dialog, advisor-control,
-remaining voice resources, production Encyclopedia content and routing, and
+blocking through 32 exact browser comparisons. P65 adds all 356 source catalog
+entries, seven English TEXTSTRA labels and family filters, stable selection,
+scrolling, the selected-category no-op, and 22 two-faction browser states while retaining the complete P64
+regression matrix. Briefing, dialog, advisor-control, remaining voice
+resources, production Encyclopedia topics and routing, A0 comparison, and
 `OBJ-01` acceptance remain open. Its 27 packages give every required surface
 a named recovery or removal path.
 

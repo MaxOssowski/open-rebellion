@@ -64,6 +64,23 @@ Right invoke previous and next. Exact localized category names beyond the
 source-backed labels must come from the original string resources, not icon
 interpretation.
 
+## Source catalog and labels
+
+P65 binds the recovered family ranges to the immutable source DAT catalog.
+The owned English TEXTSTRA table resolves `0x1842` to `Galactic Encyclopedia`,
+`0x1843` to `Topic`, and the category resources to `All Databases`, `System
+Database`, `Ship Database`, `Facilities Database`, `Missions Database`, `Troop
+Database`, and `Personnel Database` in command order `0x6f..0x75`.
+
+The supported source families produce 356 entries: 200 systems; 30 capital
+ships and eight fighters; six defenses, six manufacturing facilities, and two
+production facilities; 25 mission types; ten troop types; and six major
+characters, 54 minor characters, and nine special-forces types. A compound
+object ID uses the DAT family as its high byte and the source record ID as its
+low word. P65 sorts case-insensitively by source name with that identity as a
+stable tie breaker, matching the alphabetical index behavior visible in the
+classified original capture.
+
 ## Recovered workflow
 
 - Index mode uses category commands `0x6f` through `0x75`.
@@ -86,8 +103,10 @@ interpretation.
 - P62 proves transport for all 187 owned EDATA images. It does not prove this
   window's category ordering, entity bindings, text, navigation, geometry, or
   A0 parity.
-- No `OBJ-01` cell is accepted. The exact empty index shell and control table
-  are sufficient for a bounded deterministic browser checkpoint only. Catalog
-  completeness, localized labels, entity/ENCYTEXT/EDATA bindings, topic
-  composition, navigation, contextual entry, production routing, and original
-  runtime comparison remain open.
+- P65 proves the 356-entry English source catalog, source-family filtering,
+  alphabetical ordering, stable row identity, and scrolling inside both
+  faction shells. The route remains test-only.
+- No `OBJ-01` cell is accepted. Other localizations, exact font rendering,
+  ENCYTEXT/EDATA bindings, topic composition, navigation, contextual entry,
+  missing entries, production routing, and original-runtime comparison remain
+  open.

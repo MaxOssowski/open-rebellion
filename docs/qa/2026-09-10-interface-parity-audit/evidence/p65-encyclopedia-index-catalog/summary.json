@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "checkpoint": "P65",
+  "status": "bounded_pass",
+  "scope": "production-dormant source-derived Galactic Encyclopedia index catalog with a test-only browser route",
+  "source": {
+    "object_count": 356,
+    "category_counts": {
+      "all": 356,
+      "systems": 200,
+      "ships": 38,
+      "facilities": 14,
+      "missions": 25,
+      "troops": 10,
+      "personnel": 69
+    },
+    "textstra_labels": {
+      "heading": "0x1842",
+      "topic": "0x1843",
+      "all": "0x1850",
+      "systems": "0x1855",
+      "ships": "0x1854",
+      "facilities": "0x1852",
+      "missions": "0x1851",
+      "troops": "0x1856",
+      "personnel": "0x1853"
+    },
+    "strategy_resource_count": 41,
+    "strategy_aggregate_sha256": "3a440072a73b1f69fa9134a9fd88e5ccf2994047cafb9c538cf72fc6875e2c11"
+  },
+  "browser": {
+    "version": "151.0.7922.34",
+    "muted": true,
+    "fresh_processes": 2,
+    "processes_closed": 2,
+    "viewport": [640, 480],
+    "fixture_codes": {
+      "alliance": 298,
+      "empire": 554
+    },
+    "requests_200": 8,
+    "request_failures": 0,
+    "browser_errors": 0
+  },
+  "comparison": {
+    "surface_dimensions": [470, 330],
+    "states_per_faction": 11,
+    "states_total": 22,
+    "static_pixels_per_state": 71240,
+    "static_pixels_checked": 1567280,
+    "different_static_pixels": 0,
+    "dynamic_regions": {
+      "assertion": "title, Topic/current-object, category-label, and list regions are separately required to contain visible rendered differences in every state; exact original-runtime text pixels are not claimed",
+      "minimum_difference_pixels_per_state": {
+        "title": 784,
+        "topic_and_current_object": 368,
+        "category_label": 499,
+        "list": 3550
+      }
+    },
+    "category_states": 14,
+    "selected_category_reclick_states": 2,
+    "scroll_states": 2,
+    "selection_states": 2,
+    "modal_click_through_states": 2
+  },
+  "p64_regression": {
+    "status": "pass",
+    "states_total": 32,
+    "pixels_checked": 4963200,
+    "different_pixels": 0,
+    "requests_200": 8,
+    "browser_errors": 0,
+    "processes_closed": 2
+  },
+  "independent_source_review": {
+    "date": "2026-09-30",
+    "verdict": "pass_after_corrections_no_P0_or_P1",
+    "confirmed": [
+      "executable family ranges match the implementation",
+      "owned DAT headers contain 356 records with 356 unique derived object identities",
+      "save format is unchanged"
+    ],
+    "corrections": [
+      "added MANFACSD.DAT and PROFACSD.DAT to the legacy WASM per-file fallback and locked all 11 catalog tables with a test",
+      "clipped ninth-row paint and hit geometry to the native 160-pixel list boundary",
+      "split and tightened dynamic masks so category-control pixels remain in exact comparison"
+    ]
+  },
+  "mutation_testing": {
+    "catalog_loader": {
+      "total": 30,
+      "caught": 15,
+      "missed": 11,
+      "unviable": 4,
+      "timeouts": 0,
+      "survivor_classification": "one equivalent compound-ID OR/XOR mutation plus ten platform string-loader substitutions outside host-unit reach; the exercised WASM loader is covered by the exact 356-entry browser log"
+    },
+    "app_and_renderer_diff": {
+      "total": 117,
+      "caught": 70,
+      "missed": 42,
+      "unviable": 5,
+      "timeouts": 0,
+      "survivor_classification": "async main, fixture routing, return-value, and egui paint/input substitutions not observable in host unit tests; retained two-faction browser matrices exercise the user-visible paths"
+    },
+    "acceptance_role": "diagnostic_only"
+  },
+  "independent_visual_review": {
+    "date": "2026-09-30",
+    "basis": "retained two-faction shell contact sheet plus ordered before/after scroll and row-selection contact sheet",
+    "verdict": "pass_no_P0_P1_P2_or_P3",
+    "confirmed": [
+      "both faction shells and controls are visible, stable, and undistorted",
+      "scroll advances the personnel rows while retaining the current object and geometry",
+      "row selection updates both the highlight and current-object field"
+    ],
+    "reran_browser_harness": false
+  },
+  "artifacts": {
+    "wasm_sha256": "c19f8b23f3c87cb82a220ec8e1968800b962c3a603df9fe79841a0dee64cd022",
+    "runtime_pack_sha256": "400de11d5812754d4d3711995891a0e88a075350c0e73585b8c127c09eda68fc",
+    "raw_storage": "ignored .artifacts/interface-parity storage"
+  },
+  "acceptance": {
+    "obj_01_cells_accepted": 0,
+    "production_route": "not_integrated",
+    "remaining": [
+      "stable ENCYTEXT and EDATA bindings",
+      "topic composition and previous or next navigation",
+      "contextual entry, missing entries, close, and production modal lifecycle",
+      "exact original font and text comparison",
+      "viewport matrix and original-runtime A0 comparison"
+    ]
+  }
+}

@@ -19,6 +19,7 @@ node encyclopedia-art.mjs --no-build  # reuse a verified fixture build
 node message-index-shell.mjs  # verify both original Message Index shells
 node message-index-shell.mjs --no-build  # reuse a verified fixture build
 node encyclopedia-index-shell.mjs  # verify both original Encyclopedia index shells
+node encyclopedia-index-shell.mjs --catalog  # verify source-derived index content
 node encyclopedia-index-shell.mjs --no-build  # reuse a verified fixture build
 ```
 
@@ -45,11 +46,16 @@ separate `OBJ-01` surface and command `0x131` continues to fail closed.
 
 The Encyclopedia index-shell gate is a bounded step toward `OBJ-01`. It
 composes the source-recovered 470x330 faction shell, index content, seven
-category controls, and right rail. Two fresh muted browser processes compare
+category controls, and right rail. By default, two fresh muted browser
+processes compare
 category selection, held rail controls, native clipping, exclusive-edge and
 transparent-pixel rejection, press capture, drag cancellation, and modal
 click-through blocking pixel-for-pixel against the owned STRATEGY resources.
-Object labels, populated rows, topic pages, navigation, close routing, and
+`--catalog` runs P65's source-derived 356-entry index, seven TEXTSTRA category
+labels and filters, scrolling, row selection, and modal-block checks. P65
+compares every static shell pixel while treating rendered text/list rectangles
+as dynamic; those regions must be visibly populated but remain outside exact
+A0 acceptance. Topic pages, text/art bindings, navigation, close routing, and
 production routing remain open.
 
 The tactical acceptance denominator is generated directly from the surface

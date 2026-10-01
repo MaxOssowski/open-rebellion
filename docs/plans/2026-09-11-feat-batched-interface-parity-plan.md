@@ -87,7 +87,7 @@ matrix passes.
 | UIP-B06 | Space-battle interface | Both tactical HUDs, units, assignments, selection, targeting, navigation, maneuvers, tactics, missions, damage, recovery, retreat, Death Star, trench run, results, and strategic return. Use the [standalone test-launcher plan](2026-09-12-tooling-standalone-space-battle-launcher.md), [tactical 3D asset plan](2026-09-12-feat-tactical-3d-asset-pipeline.md), and [asset library](../reference/asset-library/README.md). | All 106 TAC-01 through TAC-07 baseline cells are implemented and accepted |
 | UIP-B07 | Multiplayer and release acceptance | Original provider, host, join, ready, wait, sync, chat, pause, save/load, resign, disconnect, reconnect, errors, cross-browser, and A0 closure | Two real peers and every required interface cell pass the release matrix |
 
-## Current execution focus: P64 shell proven; Encyclopedia content continues
+## Current execution focus: P65 index catalog proven; Encyclopedia topics continue
 
 P62 closes the bounded native/browser Encyclopedia-artwork transport slice of
 UIP-B05. Source cross-checking corrects P63: its 470-by-331 faction index
@@ -103,12 +103,21 @@ exclusive-edge and transparent-pixel rejection, opaque press capture, drag
 cancellation, and modal click-through blocking pass 32 exact comparisons and
 4,963,200 source pixels. The fixture remains test-only.
 
-UIP-B05 proceeds through catalog ordering and stable entity bindings,
-localized label rendering, ENCYTEXT and EDATA topic composition, previous and
-next navigation, contextual entry, missing-entry behavior, production routing,
+P65 adds the complete source-derived English index catalog: 356 immutable DAT
+entries, the seven recovered TEXTSTRA labels and family filters, alphabetical
+source ordering, stable compound-object selection, and nine-row scrolling.
+Twenty-two two-faction browser states, including the native selected-category
+no-op, preserve all 1,567,280 checked static shell pixels, and a separate
+regression run preserves every P64 state. Dynamic text
+and list regions are visibly populated and functionally exercised but remain
+outside exact A0 acceptance. The fixture remains test-only.
+
+UIP-B05 proceeds through stable ENCYTEXT and EDATA topic bindings, topic
+composition, previous and next navigation, contextual entry, missing-entry
+behavior, other localizations, exact font comparison, production routing,
 original-runtime comparison, and the complete faction and viewport matrix.
 Command `0x131` continues to fail closed, and no `OBJ-01` cell passes from P62,
-corrected P63, or P64 evidence.
+corrected P63, P64, or P65 evidence.
 
 P46C established the first UIP-B01 checkpoint. Selecting a galaxy system opens
 the recovered 235x360 modeless sector window instead of the invented right
