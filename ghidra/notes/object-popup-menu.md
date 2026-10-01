@@ -175,7 +175,18 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   Encyclopedia. port: Move, Confirmed Move, Command, Status and Retire are
   drawn disabled, the other tabs' classes open no menu, and the global gate
   `FUN_0051de80` is taken as clear.
-- The targeting cursor and the hand-off to the mission dialog are 7c..7d.
+- 7c: Mission starts targeting (`targeting.rs`). The galaxy view takes the
+  capture, so no window or cockpit control gets a press, and a press on the
+  map selects nothing (`FUN_00422ce0` has no `WM_LBUTTONDOWN` case). Cursor
+  1002 is drawn with its hotspot on the pointer, scaled with the canvas; it
+  is staged by `extract-dll-resources.py REBEXE.EXE --cursors`, and the
+  system cursor stays visible when it is missing. A left release on a map
+  system sets the target and opens the mission dialog through
+  `available_kinds`; a release anywhere else drops the order. port: only a
+  map system is a target (no window `+0x68` hit test, no walk up from a
+  team member), Shift's pass-through click is not ported, and Escape
+  cancels as `0x15e` does.
+- Removing the missions panel's stand-in entry points is 7d.
 
 ## Supporting decompiles
 

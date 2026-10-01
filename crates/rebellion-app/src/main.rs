@@ -72,6 +72,9 @@ use rebellion_render::mission_dialog::{
     draw_mission_dialog, MissionDialogAction, MissionDialogState,
 };
 use rebellion_render::object_menu::{draw_object_menu, ObjectMenuCommand, ObjectMenuState};
+use rebellion_render::targeting::{
+    capture_pointer, draw_targeting_cursor, Targeting, TargetingEnd,
+};
 use rebellion_render::panels::bombardment::{draw_bombardment, BombardmentPanelState};
 use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
@@ -1043,6 +1046,10 @@ async fn main() {
     let mut system_window_state = SystemWindowState::default();
     // The object pop-up menu a right-click in a system window opens.
     let mut object_menu: Option<ObjectMenuState> = None;
+    // A Mission order waiting for its target (the galaxy view's mode 2).
+    let mut targeting: Option<Targeting> = None;
+    // Whether the system cursor is hidden behind the targeting cursor.
+    let mut system_cursor_hidden = false;
     let mut bmp_cache = BmpCache::new();
     {
         // gdata_path is data/base; staged UI BMPs live at data/base/ui/
@@ -1257,6 +1264,7 @@ async fn main() {
 
     loop {
         let dt = get_frame_time();
+        let mut targeting_cursor_drawn = false;
 
         #[cfg(target_arch = "wasm32")]
         if !browser_menu_audio_requested
@@ -1311,7 +1319,11 @@ async fn main() {
             } else if matches!(game_mode, GameMode::Credits | GameMode::MultiplayerSetup) {
                 game_mode = GameMode::MainMenu;
             } else if game_mode == GameMode::Galaxy {
-                if object_menu.is_some() {
+                if targeting.is_some() {
+                    // port: Escape cancels targeting, as command 0x15e does
+                    // in mode 2; no traced key posts 0x15e.
+                    targeting = None;
+                } else if object_menu.is_some() {
                     // Escape closes only the open object pop-up menu.
                     object_menu = None;
                 } else if game_speed_ui.menu_anchor.is_some() {
@@ -2707,6 +2719,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 sector_window_state.clear();
                 system_window_state.clear();
                 object_menu = None;
+                targeting = None;
                 #[cfg(not(target_arch = "wasm32"))]
                 audio_engine.play_music_for_context(
                     MusicContext::MainMenu,
@@ -3144,6 +3157,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 sector_window_state.clear();
                                 system_window_state.clear();
                                 object_menu = None;
+                                targeting = None;
 
                                 // Initialize game state for chosen faction
                                 fog_alliance_state = FogState::new(Faction::Alliance);
@@ -3263,6 +3277,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || object_menu.is_some()
                     || pause_alert_contains_screen_point(&clock, cockpit_layout, pointer)
                     || event_screen_state.is_active();
+                map_state.targeting = targeting.is_some();
 
                 // Keep every macroquad map layer inside the shell's transparent
                 // galaxy aperture. The clip is cleared before the egui pass.
@@ -3294,6 +3309,25 @@ Some(RailAudience::side(*faction_is_alliance)),
                 }
                 if let Some(system) = map_state.activated_system {
                     sector_window_state.open_for_system(&world, system, cockpit_state.faction);
+                }
+                // FUN_00422ce0's WM_LBUTTONUP in mode 2 targets the system
+                // under the point, then FUN_0042a320 opens the dialog with
+                // the kinds the team may undertake; with none, nothing opens.
+                if is_mouse_button_released(MouseButton::Left) {
+                    if let Some(TargetingEnd::Target { team, system }) = targeting
+                        .take()
+                        .map(|order| order.release(map_state.hovered_system))
+                    {
+                        let kinds = rebellion_core::missions::available_kinds(
+                            &world,
+                            &uprising_state,
+                            player_faction,
+                            &team,
+                            &[],
+                            system,
+                        );
+                        mission_dialog_state.open(player_faction, system, team, kinds);
+                    }
                 }
 
                 set_cockpit_viewport_clip(None);
@@ -3642,8 +3676,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                         strategic_input_enabled,
                     ) {
                         Some((ObjectMenuCommand::Encyclopedia, _)) => enc_state.open = true,
-                        // F-019 phase 7c: Mission starts the targeting cursor.
-                        Some((ObjectMenuCommand::Mission, _)) => {}
+                        // FUN_00487c50 builds the order with the selection
+                        // as its team; FUN_00429320 starts targeting.
+                        Some((ObjectMenuCommand::Mission, Some(member))) => {
+                            targeting = Some(Targeting::new(vec![member]));
+                        }
                         // port: the other items are drawn disabled.
                         Some(_) | None => {}
                     }
@@ -3674,6 +3711,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                         None => {}
                     }
 
+                    if targeting.is_some() {
+                        capture_pointer(ctx);
+                        let (mouse_x, mouse_y) = mouse_position();
+                        let pointer = ctx
+                            .input(|input| input.pointer.latest_pos())
+                            .unwrap_or(egui_macroquad::egui::pos2(mouse_x, mouse_y));
+                        targeting_cursor_drawn =
+                            draw_targeting_cursor(ctx, &mut bmp_cache, cockpit_layout, pointer);
+                    }
+
                     // The replacement message and status bars covered the
                     // original command controls. Keep those reconstructed
                     // surfaces out of parity mode until their bitmap-driven
@@ -3688,7 +3735,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                     let event_screen_was_active = event_screen_state.is_active();
                     draw_event_screen(ctx, &mut event_screen_state, &mut bmp_cache);
 
+                    // The galaxy view holds the capture while targeting.
                     let cockpit_command = (!original_modal_fixture_open
+                        && targeting.is_none()
                         && !event_screen_was_active
                         && !event_screen_state.is_active())
                     .then(|| handle_cockpit_egui_input(ctx, &mut cockpit_state, &mut bmp_cache));
@@ -4342,6 +4391,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             sector_window_state.clear();
                             system_window_state.clear();
                             object_menu = None;
+                            targeting = None;
                             officers_state = OfficersState::default();
                             fleets_state = FleetsState::default();
                             mfg_panel_state = ManufacturingPanelState::default();
@@ -4668,6 +4718,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                     interface_fixture_emitted = true;
                 }
             }
+        }
+
+        if targeting_cursor_drawn != system_cursor_hidden {
+            show_mouse(!targeting_cursor_drawn);
+            system_cursor_hidden = targeting_cursor_drawn;
         }
 
         next_frame().await;
