@@ -210,6 +210,19 @@ and an accelerator; the strategic multiplayer shell uses these alongside
 code-built controls. Neither DLL contains the full rendered interface as a
 standalone screenshot.
 
+## REBEXE.EXE (2.8MB) — 2 cursor groups
+
+The executable carries resources too. Only its cursor groups are cataloged;
+its other resource types are not inventoried yet.
+
+| Group | Images | Hotspot | Use |
+|---|---|---|---|
+| 1001 | one 1-bit image | (0, 0) | Not yet traced |
+| 1002 | 8-bit image 4 (used) and 1-bit image 5 | (12, 12) | The targeting cursor: `LoadCursorA(.., 0x3ea)` in `FUN_00422ce0`'s `WM_CREATE` (`ghidra/notes/object-popup-menu.md`) |
+
+Stage them with `extract-dll-resources.py REBEXE.EXE --cursors`
+(`agent_docs/assets.md`, "Cursor Staging").
+
 ## Smacker Videos (MDATA/) — DECODED TO WebM
 
 15 Smacker (.SMK2) video files decoded to VP9+Opus WebM in `assets/references/ref-videos/`.

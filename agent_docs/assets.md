@@ -235,6 +235,24 @@ Use `--source` or `--output` to override those default directories. Existing BMP
 are left unchanged when their contents match; use `--force` to replace differing
 files.
 
+### Cursor Staging
+
+The mission targeting cursor is REBEXE.EXE cursor group 1002, which the Go
+extractor does not read. Stage the executable's cursor groups with:
+
+```bash
+uv run scripts/extract-dll-resources.py REBEXE.EXE --cursors
+```
+
+The name resolves against `--game-dir` (default
+`~/Desktop/Programming/star-wars-rebellion`).
+
+It writes `data/base/ui/rebexe-exe/BMP/{group}.bmp` (1001 and 1002) as 24-bit
+BMPs with the mask keyed to pure blue, and prints each hotspot. `BmpCache`
+loads them as `DllSource::Rebexe`, and the runtime pack picks them up with the
+other `ui/*/BMP` directories. Without cursor 1002 the game keeps the system
+cursor while targeting. Tests: `uv run -q scripts/test_extract_dll_resources.py`.
+
 ### Advisor Frame Staging
 
 The same extractor also preserves the full type-302 droid corpus from an owned

@@ -3,7 +3,7 @@ title: "Ghidra Reverse Engineering"
 description: "RE status and methodology for REBEXE.EXE decompilation (22,741 functions)"
 category: "agent-docs"
 created: 2026-03-11
-updated: 2026-09-10
+updated: 2026-10-01
 tags: [ghidra, reverse-engineering, rebexe, gnprtb]
 ---
 
@@ -47,7 +47,10 @@ for the active UI evidence queue.
 | Bridge script | `~/ghidra/GhidraMCP/bridge_mcp_ghidra.py` (bethington v4.3.0 script, old plugin JAR) |
 | pyghidra-mcp | Config fixed: `--project-path`, `--force-analysis`, `--wait-for-analysis` |
 
-**Note**: Bethington GhidraMCP v4.3.0 JAR requires Ghidra 12.0.3 (we have 11.3.2). The bridge script is updated but the Java plugin is the old LaurieWired version. Use Jython scripts for unlimited function access.
+**Note**: the GhidraMCP rows above are historical. Current work runs Ghidra
+12.1.3 headless and read-only with the Java scripts in `ghidra/scripts/`
+(Workflow, below). The `.py` scripts need PyGhidra, which this install lacks,
+so headless runs refuse them.
 
 ## Target Files
 
@@ -84,6 +87,21 @@ Two binding tables map GNPRTB parameter IDs to global data addresses:
 | +0x96 | short | regiment_strength | Ground troops, 0=destroyed |
 | +0x9a | short | hyperdrive_modifier | Han Solo bonus, no upper bound |
 | +0xac bit 0 | bit | alive_flag | Combat-ready when set |
+
+### Interface Hubs
+
+The original builds its interface from a few shared mechanisms. Porting one
+makes every feature on it cheap, so trace the hub before the feature:
+
+| Hub | Functions | Serves | Note |
+|-----|-----------|--------|------|
+| Order objects | `FUN_0051f8f0` factory table, `FUN_0051d990` order list | Every right-click order: Move, Mission, Retire, Command | `ghidra/notes/object-popup-menu.md` |
+| Game Menu Window | `FUN_00442860`, `FUN_00442a80`, `FUN_004424c0` | The speed menu and the object pop-up menu | `ghidra/notes/object-popup-menu.md` |
+| Galaxy view modes | `FUN_00422ce0` (`+0xc0` mode, `+0xc4` order) | Targeting, move drops, list drags | `ghidra/notes/object-popup-menu.md` |
+| Advisor reactions | Side classes at `+0xc0`: vtables `0x0065c4c8` and `0x0065c4a0`; the 88-slot `+0x168` table | Refusals and about 45 game events (`FUN_004c44b0`) | `ghidra/notes/mission-dialog.md`, "Refusal" |
+
+The two sides often run separate classes with different slot numbers, as the
+advisors do. Trace and test both.
 
 ### Entity Family Bytes (DatId >> 24)
 | Range | Type |
@@ -127,9 +145,15 @@ Read these when implementing or modding:
 | `ghidra/notes/annotated-functions.md` | When you need exact field offsets or game rules |
 | `ghidra/notes/combat-formulas.md` | Master reference for all RE findings |
 
-## Ghidra Scripts (8 total)
+## Ghidra Scripts
 
-Run via Jython: `exec(open("path/to/script.py").read())`
+The Java scripts run headless (Workflow, below): `DecompileTargets.java`
+(functions with callers and callees), `DecompileVtable.java` (a vtable's
+slots), `FindOperandText.java` (instructions whose text matches, such as a
+field write `+ 0xc0],`), `DumpReferences.java`, `DumpInstructions.java`,
+`DumpPointerTable.java`, `DumpMemory.java`, `FindScalarUses.java`, and
+`CreateAndDecompileTargets.java`. The historical Jython scripts below need
+PyGhidra:
 
 | Script | Purpose |
 |--------|---------|
@@ -152,14 +176,17 @@ Decompiled via `curl -X POST http://127.0.0.1:8080/decompile -d "FUN_ADDR"` with
 |----------|-------|---------|
 | `FUN_0052e970` | 53 | **Not a scoring function** — binary capacity check. Checks if entity (family 0x10-0x3f) fits deployment budget at `this+0x58 - this+0x5c`. Our 4-factor model is strictly superior. |
 | `FUN_00506ea0` | 13 | Faction-specific evaluator pointer: Alliance at `DAT_006b2bb0+0xc4`, Empire at `+0xc8`. Different deployment budgets per faction. |
-| `FUN_004927c0` | 2098 | Master turn processing. AI triggered by **event 0x1f0** (day tick) — evaluates every game-day. Our `AI_TICK_INTERVAL=7` is intentional performance throttle. |
+| `FUN_004927c0` | 2098 | Master turn processing. The **event 0x1f0** day-tick reading is refuted; see `ghidra/notes/timer-scheduler.md`. |
 | `FUN_00520580` | 9 | 2-field struct setter (`*(this) = cmd; *(this+4) = param`). Not a transit calculator. |
 | `FUN_0053b870` | 7 | Entity capacity reader: returns `*(entity + 0x4c)`. |
 | `FUN_00508250` | 139 | **All 18 validator sub-functions decoded.** 2 are no-ops (FUN_0051ebb0 always returns 1). 4 match our existing checks. 12 are new capacity/composition/status checks. |
 
 ### Mission Probability Formulas (from TheArchitect2018 wiki)
 
-Composite input formulas ported to `missions.rs::compute_table_input()`:
+Superseded. F-019 deleted `compute_table_input()`; the per-member roll and
+its inputs are in `ghidra/notes/decoy-roll.md` and `mission-lifecycle.md`.
+The wiki's `sub_` addresses come from a different REBEXE build
+(`ghidra/notes/community-address-remap.md`). Historical list:
 - Diplomacy: `(enemy_pop - our_pop) + diplomacy_rating` (sub_55ae50)
 - Recruitment: `leadership - resistance` (sub_55aed0)
 - Subdue: `(enemy_pop - our_pop) + diplomacy` (sub_55af50)
@@ -168,8 +195,31 @@ Composite input formulas ported to `missions.rs::compute_table_input()`:
 
 ## Workflow
 
-1. Open Ghidra → Open Rebellion Ghidra project → double-click REBEXE.EXE
-2. Enable GhidraMCP plugin (File → Configure → Developer)
-3. Decompile via API: `curl -X POST http://127.0.0.1:8080/decompile -d "FUN_ADDR"`
-4. Or use Jython scripts for batch operations
-5. Document findings in `ghidra/notes/`
+Run the saved project headless and read-only, from the repository root:
+
+```bash
+/opt/homebrew/opt/ghidra/libexec/support/analyzeHeadless "$PWD/ghidra" \
+  "Open Rebellion Ghidra" -process REBEXE.EXE -readOnly -noanalysis \
+  -scriptPath "$PWD/ghidra/scripts" \
+  -postScript DecompileTargets.java OUTPUT_DIR FUN_00487c90 FUN_004861b0
+```
+
+Several `-postScript` pairs may follow one another. Keep scratch output
+outside the repository; copy each `.c` a note cites into `ghidra/notes/` and
+stage it with `git add -f` (`ghidra/` is ignored).
+
+### Porting an original flow
+
+A plan's account of how the original behaves is a hypothesis until a trace
+confirms it. F-019 corrected three such accounts: the planned drag entry was a
+Move, the "refusal strings" were advisor reactions, and the dialog's targets
+were systems only.
+
+1. Read the manual first
+   (`docs/reference/campaign-history/archive/star-wars-rebellion-manual.pdf`). One sentence
+   on p. 100 settled F-019's entry flow.
+2. Trace the window procedure and the hub it uses, for both sides.
+3. Write the note in `ghidra/notes/` with addresses, field offsets and the
+   cited `.c` files, then plan the port from the note.
+4. Mark what the port leaves out with `port:`, and name the finding that owns
+   it in the audit ledger.
