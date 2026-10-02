@@ -408,6 +408,18 @@ not found. The confirmation window's own Escape is recovered
   so the line uses the system window's "Fleet N" label. The checkmark
   dispatches the fleet, which validates again; the X and Escape drop the
   order, and the galaxy view's own Escape stands aside while it is open.
+- Phase 5a: `validate_fleet_destination` is `0x214`'s check for a fleet:
+  the move's refusals (hyp) plus the blockade refusal of step 7 below, with
+  no confirmation and no enemy-destination refusal.
+- Phase 5b: a left press on a system window item holds a drag until the
+  left release, and the galaxy map ignores the pointer meanwhile (the
+  list's capture). A release past `sqrt(24)` list pixels and outside the
+  list hit-tests the window under it as targeting does (sector window: the
+  system under the point; system window: its system; bare map: nothing),
+  validates, and dispatches the fleet at once. Ctrl does nothing. port: only
+  a fleet's drop moves (characters and special forces are not ported), a
+  drop on its own system window meets the port's same-system refusal, and
+  the drag image and cursor are not drawn.
 
 ## Order 0x214 (Destination)
 

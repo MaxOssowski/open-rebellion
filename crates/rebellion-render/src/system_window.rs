@@ -116,6 +116,20 @@ enum SystemWindowItem {
     Production(ProductionFacilityKey),
 }
 
+/// A left press held on a list item until its release (`CoolDragList`,
+/// `FUN_006083c0`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ItemDrag {
+    system: SystemKey,
+    item: SystemWindowItem,
+    press: egui::Pos2,
+    list: egui::Rect,
+}
+
+/// `CoolDragList` posts `0x29a` only when the release lies more than this
+/// squared distance, in list pixels, from the press (`FUN_006083c0`).
+const DRAG_DISTANCE_SQUARED: f32 = 24.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RailEntry {
     window: OpenSystemWindow,
@@ -128,6 +142,7 @@ pub struct SystemWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenSystemWindow>,
     rail: Vec<RailEntry>,
+    drag: Option<ItemDrag>,
 }
 
 impl Default for SystemWindowState {
@@ -136,6 +151,7 @@ impl Default for SystemWindowState {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
             rail: Vec::new(),
+            drag: None,
         }
     }
 }
@@ -223,6 +239,13 @@ impl SystemWindowState {
             .map(|window| window.system)
     }
 
+    /// Whether a left press on a list item is held: the list has captured
+    /// the mouse (`FUN_006083c0`), so nothing under the pointer answers it.
+    #[must_use]
+    pub fn is_dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
     #[must_use]
     pub fn rail_count(&self) -> usize {
         self.rail.len()
@@ -231,6 +254,36 @@ impl SystemWindowState {
     pub fn clear(&mut self) {
         self.windows.clear();
         self.rail.clear();
+        self.drag = None;
+    }
+
+    /// End a held drag on the left release: far enough from the press and
+    /// outside the list, it becomes the `0x29a` drop (`FUN_006083c0`).
+    fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<SystemWindowAction> {
+        let (released, down, point) = ctx.input(|input| {
+            (
+                input.pointer.primary_released(),
+                input.pointer.primary_down(),
+                input.pointer.latest_pos(),
+            )
+        });
+        if !released {
+            if !down {
+                self.drag = None;
+            }
+            return None;
+        }
+        let drag = self.drag.take()?;
+        let point = point?;
+        let moved = (point - drag.press) / scale;
+        if moved.length_sq() <= DRAG_DISTANCE_SQUARED || rect_contains(drag.list, point) {
+            return None;
+        }
+        Some(SystemWindowAction::DragItem {
+            system: drag.system,
+            selection: item_menu_object(drag.item)?,
+            point,
+        })
     }
 
     fn prepare_faction(&mut self, faction: CockpitFaction) {
@@ -344,6 +397,13 @@ pub enum SystemWindowAction {
         selection: Option<MenuObject>,
         point: (i16, i16),
     },
+    /// A list drag released outside its list (`0x29a`): the galaxy view
+    /// hit-tests the screen point and issues `0x214` (`FUN_00422ce0`).
+    DragItem {
+        system: SystemKey,
+        selection: MenuObject,
+        point: egui::Pos2,
+    },
 }
 
 #[derive(Default)]
@@ -361,6 +421,7 @@ struct WindowDrawResult {
     deselect: bool,
     scroll_row: Option<usize>,
     object_menu: Option<(Option<MenuObject>, (i16, i16))>,
+    drag: Option<(SystemWindowItem, egui::Pos2, egui::Rect)>,
 }
 
 /// Draw the faction rail and every visible original detailed system window.
@@ -376,9 +437,10 @@ pub fn draw_system_windows(
     state.prepare_faction(faction);
     draw_reference_rail(ctx, world, state, faction, layout, cache);
 
+    let mut actions: Vec<SystemWindowAction> =
+        state.end_drag(ctx, layout.scale).into_iter().collect();
     let windows = state.windows.clone();
     let focused_system = windows.last().map(|window| window.system);
-    let mut actions = Vec::new();
     let mut focused = None;
     let mut closed = None;
     let mut minimized = None;
@@ -430,6 +492,14 @@ pub fn draw_system_windows(
         }
         if let Some(row) = result.scroll_row {
             selected_scroll_row = Some((window.system, row));
+        }
+        if let Some((item, press, list)) = result.drag {
+            state.drag = Some(ItemDrag {
+                system: window.system,
+                item,
+                press,
+                list,
+            });
         }
     }
 
@@ -671,6 +741,7 @@ fn draw_system_window(
             result.object_menu = tab_result
                 .object_menu
                 .map(|(selection, point)| (selection, canvas_point(layout, point)));
+            result.drag = tab_result.drag;
 
             result.focus_sector = exact_clicked(&sector_response, sector_rect);
             result.minimize = exact_clicked(&minimize_response, minimize_rect);
@@ -694,6 +765,8 @@ struct TabContentDrawResult {
     /// The selection and screen point of a right-button release that opens
     /// the object pop-up menu.
     object_menu: Option<(Option<MenuObject>, egui::Pos2)>,
+    /// The item, press point and list rect of a left press on an item.
+    drag: Option<(SystemWindowItem, egui::Pos2, egui::Rect)>,
 }
 
 fn area_id(system: SystemKey) -> egui::Id {
@@ -873,6 +946,19 @@ fn paint_tab_content(
         );
         if exact_clicked(&response, image_rect) {
             result.item = Some(item.key);
+        }
+        // A left press on an item captures the mouse for a drag
+        // (FUN_006083c0).
+        if let Some(press) = ui.ctx().input(|input| {
+            input
+                .pointer
+                .button_pressed(egui::PointerButton::Primary)
+                .then(|| input.pointer.press_origin())
+                .flatten()
+        }) {
+            if response.is_pointer_button_down_on() && rect_contains(image_rect, press) {
+                result.drag = Some((item.key, press, list_rect));
+            }
         }
         // A right press selects the item as a left press does (FUN_006083c0
         // shares the WM_LBUTTONDOWN path); the release opens the menu.
@@ -1983,6 +2069,156 @@ mod tests {
             });
         }
         (actions, state.windows[0].selected_item)
+    }
+
+    /// Open `system`'s Fleets window at (60, 40), press the left button at
+    /// window pixel `from`, move to `to`, and release there. Returns every
+    /// action, the release's screen point, and whether a drag was held
+    /// before the release and after it.
+    fn drag_in_window(
+        world: &GameWorld,
+        system: SystemKey,
+        from: (f32, f32),
+        to: (f32, f32),
+    ) -> (Vec<SystemWindowAction>, egui::Pos2, (bool, bool)) {
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.open(world, system, (60, 40), CockpitFaction::Alliance, layout);
+        state.select_tab(system, SystemWindowTab::Fleets);
+        let origin = window_screen_rect(state.windows[0], layout).min;
+        let at = |point: (f32, f32)| origin + egui::vec2(point.0, point.1) * layout.scale;
+        let (press, release) = (at(from), at(to));
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let fog = FogState::new(Faction::Alliance);
+        let mut actions = Vec::new();
+        let mut held = (false, false);
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let frames = [
+            vec![egui::Event::PointerMoved(press)],
+            vec![egui::Event::PointerMoved(press)],
+            vec![egui::Event::PointerMoved(press), button(press, true)],
+            vec![egui::Event::PointerMoved(release)],
+            vec![egui::Event::PointerMoved(release), button(release, false)],
+        ];
+        for (index, events) in frames.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1000.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                actions.extend(draw_system_windows(
+                    ctx,
+                    world,
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                ));
+            });
+            match index {
+                3 => held.0 = state.is_dragging(),
+                4 => held.1 = state.is_dragging(),
+                _ => {}
+            }
+        }
+        (actions, release, held)
+    }
+
+    fn drops(actions: &[SystemWindowAction]) -> Vec<(SystemKey, MenuObject, egui::Pos2)> {
+        actions
+            .iter()
+            .filter_map(|action| match *action {
+                SystemWindowAction::DragItem {
+                    system,
+                    selection,
+                    point,
+                } => Some((system, selection, point)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn world_with_fleet() -> (GameWorld, SystemKey, FleetKey) {
+        let (mut world, systems) = fixture_world(1);
+        let class = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x1c00_0001),
+                ..Default::default()
+            });
+        let fleet = world.fleets.insert(Fleet {
+            location: systems[0],
+            capital_ships: Vec::new(),
+            fighters: vec![rebellion_core::world::FighterEntry { class, count: 1 }],
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[systems[0]].fleets.push(fleet);
+        (world, systems[0], fleet)
+    }
+
+    /// The top edge of the first grid cell's picture, just inside the list.
+    const FIRST_ITEM_TOP: (f32, f32) = (40.0, 78.0);
+
+    #[test]
+    fn a_fleet_dragged_out_of_its_list_drops_where_the_button_comes_up() {
+        // FUN_006083c0 captures the mouse on the press and posts 0x29a with
+        // the release point; FUN_00422ce0 hit-tests it.
+        let (world, system, fleet) = world_with_fleet();
+        let (actions, release, held) = drag_in_window(&world, system, FIRST_ITEM, (40.0, 20.0));
+
+        assert_eq!(
+            drops(&actions),
+            [(system, MenuObject::Fleet(fleet), release)]
+        );
+        assert_eq!(held, (true, false));
+    }
+
+    #[test]
+    fn a_drag_drops_only_past_five_pixels_and_outside_the_list() {
+        // FUN_006083c0: the squared distance must exceed 0x18 and the
+        // release must leave the list's client rect.
+        let (world, system, fleet) = world_with_fleet();
+        let near = drag_in_window(&world, system, FIRST_ITEM_TOP, (40.0, 74.0));
+        let far = drag_in_window(&world, system, FIRST_ITEM_TOP, (40.0, 73.0));
+        let inside = drag_in_window(&world, system, FIRST_ITEM, LIST_GAP);
+
+        assert!(drops(&near.0).is_empty());
+        assert_eq!(drops(&far.0), [(system, MenuObject::Fleet(fleet), far.1)]);
+        assert!(drops(&inside.0).is_empty());
+        assert_eq!(inside.2, (true, false));
+    }
+
+    #[test]
+    fn a_press_on_an_items_far_edge_starts_no_drag() {
+        // The picture spans x 7..73 in the window; its right edge is outside
+        // it, as a Win32 RECT's is.
+        let (world, system, _) = world_with_fleet();
+        let (actions, _, held) = drag_in_window(&world, system, (73.0, 88.0), (40.0, 20.0));
+
+        assert!(drops(&actions).is_empty());
+        assert_eq!(held, (false, false));
+    }
+
+    #[test]
+    fn a_press_on_empty_list_space_starts_no_drag() {
+        let (world, system, _) = world_with_fleet();
+        let (actions, _, held) = drag_in_window(&world, system, LIST_GAP, (40.0, 20.0));
+
+        assert!(drops(&actions).is_empty());
+        assert_eq!(held, (false, false));
     }
 
     fn menus(actions: &[SystemWindowAction]) -> Vec<(Option<MenuObject>, (i16, i16))> {

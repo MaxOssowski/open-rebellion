@@ -51,8 +51,8 @@ use rebellion_core::missions::{
 };
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms,
-    fleet_move_enabled, fleet_transit_ticks, reconcile_fleet_orbits, validate_fleet_dispatch,
-    MovementState, MovementSystem,
+    fleet_move_enabled, fleet_transit_ticks, reconcile_fleet_orbits, validate_fleet_destination,
+    validate_fleet_dispatch, MovementState, MovementSystem,
 };
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
@@ -3279,6 +3279,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 map_state.pointer_blocked = sector_window_state
                     .contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.contains_screen_point(cockpit_layout, pointer)
+                    || system_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
                     || cockpit_state.gid_ui.menu_open
@@ -3662,6 +3663,46 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 };
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
+                            // FUN_00422ce0: a drop from a system window issues
+                            // 0x214 against the window under the point, which
+                            // never confirms. port: only a fleet's drop moves.
+                            SystemWindowAction::DragItem {
+                                selection: MenuObject::Fleet(fleet),
+                                point,
+                                ..
+                            } => {
+                                let Some(destination) = release_destination(
+                                    ctx,
+                                    &world,
+                                    cockpit_layout,
+                                    &sector_window_state,
+                                    &system_window_state,
+                                    point,
+                                ) else {
+                                    continue;
+                                };
+                                match validate_fleet_destination(
+                                    &movement_state,
+                                    &world,
+                                    blockade_state.blockaded_systems(),
+                                    fleet,
+                                    destination,
+                                    player_faction == MissionFaction::Alliance,
+                                ) {
+                                    Ok(()) => panel_actions.push(PanelAction::DispatchFleet {
+                                        fleet,
+                                        destination,
+                                        troops: Vec::new(),
+                                    }),
+                                    // port: FUN_00487c90's advisor reaction.
+                                    Err(error) => msg_log.push(GameMessage::new(
+                                        clock.tick,
+                                        format!("Fleet move rejected: {error}"),
+                                        MessageCategory::Event,
+                                    )),
+                                }
+                            }
+                            SystemWindowAction::DragItem { .. } => {}
                         }
                     }
 
