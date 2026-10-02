@@ -51,8 +51,8 @@ use rebellion_core::missions::{
 };
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms,
-    fleet_move_enabled, reconcile_fleet_orbits, validate_fleet_dispatch, MovementState,
-    MovementSystem,
+    fleet_move_enabled, fleet_transit_ticks, reconcile_fleet_orbits, validate_fleet_dispatch,
+    MovementState, MovementSystem,
 };
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
@@ -72,6 +72,9 @@ use rebellion_render::game_speed::{
 use rebellion_render::mission_dialog::{
     draw_mission_dialog, MissionDialogAction, MissionDialogState,
 };
+use rebellion_render::move_confirmation::{
+    draw_move_confirmation, MoveConfirmation, MoveConfirmationAction, MoveConfirmationState,
+};
 use rebellion_render::object_menu::{
     draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState, OrderGates,
 };
@@ -80,6 +83,7 @@ use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::panels::research::{draw_research, ResearchPanelState};
+use rebellion_render::system_window::fleet_label;
 use rebellion_render::targeting::{
     capture_pointer, draw_targeting_cursor, release_destination, TargetOrder, Targeting,
     TargetingEnd,
@@ -1003,6 +1007,7 @@ async fn main() {
     let mut fleets_state = FleetsState::default();
     let mut mfg_panel_state = ManufacturingPanelState::default();
     let mut mission_dialog_state = MissionDialogState::default();
+    let mut move_confirmation_state = MoveConfirmationState::default();
     let mut enc_state = EncyclopediaState::new();
     let mut research_panel_state = ResearchPanelState::default();
     let mut jedi_panel_state = JediPanelState::default();
@@ -1326,6 +1331,8 @@ async fn main() {
                     // port: Escape cancels targeting, as command 0x15e does
                     // in mode 2; no traced key posts 0x15e.
                     targeting = None;
+                } else if move_confirmation_state.is_open() {
+                    // The window's own key slot answers Escape (FUN_0044f640).
                 } else if object_menu.is_some() {
                     // Escape closes only the open object pop-up menu.
                     object_menu = None;
@@ -3075,6 +3082,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     fleets_state = FleetsState::default();
                                     mfg_panel_state = ManufacturingPanelState::default();
                                     mission_dialog_state = MissionDialogState::default();
+                                    move_confirmation_state = MoveConfirmationState::default();
                                     research_panel_state = ResearchPanelState::default();
                                     jedi_panel_state = JediPanelState::default();
                                     bombardment_panel_state = BombardmentPanelState::default();
@@ -3272,6 +3280,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     .contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.contains_screen_point(cockpit_layout, pointer)
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
+                    || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
                     || cockpit_state.gid_ui.menu_open
                     || enc_state.open
                     || original_modal_fixture_open
@@ -3731,6 +3740,23 @@ Some(RailAudience::side(*faction_is_alliance)),
                         None => {}
                     }
 
+                    // FUN_0044f5e0: the checkmark resubmits with force 1,
+                    // which validates again and departs without asking.
+                    if let Some(MoveConfirmationAction::Confirm { fleet, destination }) =
+                        draw_move_confirmation(
+                            ctx,
+                            &mut move_confirmation_state,
+                            cockpit_layout,
+                            &mut bmp_cache,
+                        )
+                    {
+                        panel_actions.push(PanelAction::DispatchFleet {
+                            fleet,
+                            destination,
+                            troops: Vec::new(),
+                        });
+                    }
+
                     if targeting.is_some() {
                         capture_pointer(ctx);
                         let (mouse_x, mouse_y) = mouse_position();
@@ -3794,9 +3820,28 @@ Some(RailAudience::side(*faction_is_alliance)),
                                         fleet,
                                         confirmed,
                                     ) {
-                                        // port: the confirmation window
-                                        // (FUN_0048a340) is not ported yet, so
-                                        // the order is dropped.
+                                        // FUN_0048a340 → FUN_0049a350: one
+                                        // line, the fleet's name and days.
+                                        let lines = world
+                                            .fleets
+                                            .get(fleet)
+                                            .and_then(|value| {
+                                                let days = fleet_transit_ticks(
+                                                    value,
+                                                    &world,
+                                                    value.location,
+                                                    system,
+                                                )?;
+                                                Some((fleet_label(&world, fleet)?, days))
+                                            })
+                                            .into_iter()
+                                            .collect();
+                                        move_confirmation_state.open(MoveConfirmation {
+                                            faction: player_faction,
+                                            fleet,
+                                            destination: system,
+                                            lines,
+                                        });
                                     } else {
                                         panel_actions.push(PanelAction::DispatchFleet {
                                             fleet,
@@ -4485,6 +4530,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             fleets_state = FleetsState::default();
                             mfg_panel_state = ManufacturingPanelState::default();
                             mission_dialog_state = MissionDialogState::default();
+                            move_confirmation_state = MoveConfirmationState::default();
                             research_panel_state = ResearchPanelState::default();
                             jedi_panel_state = JediPanelState::default();
                             bombardment_panel_state = BombardmentPanelState::default();

@@ -403,6 +403,11 @@ not found. The confirmation window's own Escape is recovered
   checkmark and X, and Enter and Escape. hyp: font 4 is not mapped, so the
   mission dialog's text size stands in; the placement shares the mission
   dialog's centering.
+- Phase 4b: a move that asks opens the window with one line, the fleet's
+  label and its days (`fleet_transit_ticks`). port: fleets have no names yet,
+  so the line uses the system window's "Fleet N" label. The checkmark
+  dispatches the fleet, which validates again; the X and Escape drop the
+  order, and the galaxy view's own Escape stands aside while it is open.
 
 ## Order 0x214 (Destination)
 

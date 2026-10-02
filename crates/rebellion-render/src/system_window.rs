@@ -1043,7 +1043,7 @@ fn tab_visual_items(
                 Some(TabVisualItem {
                     key: SystemWindowItem::Fleet(*key),
                     resource_id,
-                    label: format!("Fleet {}", index + 1),
+                    label: numbered_fleet(index),
                 })
             })
             .collect(),
@@ -1124,6 +1124,25 @@ fn tab_visual_items(
             })
             .collect(),
     }
+}
+
+/// A fleet's name, as its system window lists it. port: fleets carry no
+/// names yet (`FUN_004f6270`; Rename is not ported), so each is numbered by
+/// its place in its system's fleet list.
+#[must_use]
+pub fn fleet_label(world: &GameWorld, fleet: FleetKey) -> Option<String> {
+    let location = world.fleets.get(fleet)?.location;
+    let index = world
+        .systems
+        .get(location)?
+        .fleets
+        .iter()
+        .position(|key| *key == fleet)?;
+    Some(numbered_fleet(index))
+}
+
+fn numbered_fleet(index: usize) -> String {
+    format!("Fleet {}", index + 1)
 }
 
 pub(crate) fn character_mini_resource_id(dat_id: DatId, is_major: bool) -> Option<u32> {
@@ -2082,6 +2101,50 @@ mod tests {
             menus(&actions),
             [(Some(MenuObject::Fleet(fleet)), (100, 128))]
         );
+    }
+
+    #[test]
+    fn a_fleets_label_is_the_one_its_fleets_tab_shows() {
+        let (mut world, systems) = fixture_world(1);
+        let class = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x1c00_0001),
+                ..Default::default()
+            });
+        let fleets: Vec<FleetKey> = (0..2)
+            .map(|_| {
+                let fleet = world.fleets.insert(Fleet {
+                    location: systems[0],
+                    capital_ships: Vec::new(),
+                    fighters: vec![rebellion_core::world::FighterEntry { class, count: 1 }],
+                    characters: Vec::new(),
+                    is_alliance: true,
+                    has_death_star: false,
+                });
+                world.systems[systems[0]].fleets.push(fleet);
+                fleet
+            })
+            .collect();
+        let fog = FogState::new(Faction::Alliance);
+        let items = tab_visual_items(
+            &world,
+            &fog,
+            Faction::Alliance,
+            systems[0],
+            SystemWindowTab::Fleets,
+        );
+
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.label.clone())
+                .collect::<Vec<_>>(),
+            ["Fleet 1", "Fleet 2"]
+        );
+        assert_eq!(fleet_label(&world, fleets[1]).as_deref(), Some("Fleet 2"));
+        world.systems[systems[0]].fleets.clear();
+        assert_eq!(fleet_label(&world, fleets[1]), None);
     }
 
     #[test]
