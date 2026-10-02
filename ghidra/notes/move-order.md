@@ -420,6 +420,11 @@ not found. The confirmation window's own Escape is recovered
   a fleet's drop moves (characters and special forces are not ported), a
   drop on its own system window meets the port's same-system refusal, and
   the drag image and cursor are not drawn.
+- Phase 7: `system_is_blockaded` follows `FUN_0050b8e0` (`blockade-bit.md`).
+  `fleet_move_confirms` keeps the `0x201` blockade branch; like the original's
+  fresh state it never fires, because a holder's fleet in the system turns
+  an enemy fleet into a battle. The original meets it only on a stale bit,
+  which the port, recomputing each tick, never holds.
 
 ## Order 0x214 (Destination)
 

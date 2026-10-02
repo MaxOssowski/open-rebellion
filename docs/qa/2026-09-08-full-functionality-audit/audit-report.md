@@ -271,9 +271,9 @@ cross-runtime proof remain open
   through the Fleet pop-up menu's Move and Confirmed Move (0x201/0x202,
   FUN_0044f060's confirmation window) and the system window drag (0x214),
   with a 12-case two-sided browser gate and 8 of 8 hand-applied main-loop
-  mutants caught; open: the uncited port blockade rule leaves the
-  confirmation's blockade branch unreachable, regiment loading, and a native
-  check) wired
+  mutants caught; the blockade bit follows FUN_0050b8e0, under which the
+  confirmation's blockade branch meets only a stale bit, as in the original;
+  open: regiment loading and a native check) wired
   ordinary player dispatch through the same validated departure helper, fixes
   map/context-menu click ordering and stale targets, and reports authoritative
   destinations and countdowns in the fleet panel. Astra medium passed both

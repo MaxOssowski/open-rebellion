@@ -76,17 +76,23 @@ original's fresh state.
 
 ## Port
 
-`crates/rebellion-core/src/blockade.rs` `system_is_blockaded` already
-computes the rule for systems held by one side: an enemy fleet and no holder
-fleet. Differences:
+`crates/rebellion-core/src/blockade.rs` `system_is_blockaded` ports the rule
+(2026-10-02): both sides' fleets make a battle; a system held by one side
+(`Controlled` or `Uprising`) is blockaded by the other side's fleets; a
+populated `Contested` system by either side's fleets; a neutral one never.
 
-- the port has no fighter squadrons outside fleets
-  (`blockade-troop-withdrawal.md`, "Port"), so presence is fleets only;
-- `ControlKind::Contested` is never blockaded; the original blockades a
-  populated side-3 system held by one side's fleets (hyp: the port's
-  `Contested` is side 3);
-- the port counts every fleet as active and recomputes each tick, where the
-  original reruns on the refresh and the command above.
+- port: the port has no fighter squadrons outside fleets
+  (`blockade-troop-withdrawal.md`, "Port"), so presence is fleets only, and
+  every fleet counts as active;
+- hyp: `ControlKind::Contested` is side 3, and an `Uprising` system keeps its
+  holder's side bits;
+- port: the rule reruns every tick (`BlockadeSystem::advance`), where the
+  original reruns on the refresh and the command above, so the port never
+  holds a stale bit.
+
+The 1500-tick seed-42 dual-AI playtest is unchanged by the contested and
+uprising cases (47,430 events identical apart from wall time; 3 blockades
+start, 2 end), and the replay golden stays `v1:7e1061cadd1e6f22`.
 
 Correction: `agent_docs/systems/ai-parity-tracker.md` lists `FUN_0050b8e0` as
 "system-level strength scoring". It scores nothing; it writes the battle,

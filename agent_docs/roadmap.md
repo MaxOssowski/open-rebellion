@@ -426,8 +426,9 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   its caller in 23d15da, so the player cannot move a fleet, and the fleet
   panel's destination banner and Dispatch button are unreachable. The
   original Move order (below) restores it: menu Move, Confirmed Move, and the
-  system window drag pass a two-sided browser gate (2026-10-02). Open: the
-  blockade bit and regiment loading (below), and a native check.
+  system window drag pass a two-sided browser gate (2026-10-02), and the
+  blockade bit follows the original. Open: regiment loading (below) and a
+  native check.
 - [x] Resolve every hostile task force at a system as one bounded engagement,
   persist fighter attrition, correct fighter launch and shield handling, and
   suppress unchanged five-tick stalemates. Seed 42 now reports two decisive
@@ -504,9 +505,11 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   (F-007C). Retire, the Command submenu, and Status share the menu. Phases
   0-6 have landed and pass the `fleet-move.mjs` gate for both sides; a native
   check remains.
-- [ ] Trace what sets the system blockade bit (`+0x88` bit `0x20`) and replace
-  the uncited `BlockadeSystem::system_is_blockaded` rule. The Move
-  confirmation's blockade branch is unreachable until then (F-007C).
+- [x] Trace what sets the system blockade bit (`+0x88` bit `0x20`) and replace
+  the uncited `BlockadeSystem::system_is_blockaded` rule (F-007C). It follows
+  `FUN_0050b8e0` (`ghidra/notes/blockade-bit.md`); the Move confirmation's
+  blockade branch meets only a stale bit in the original, so it stays
+  unreachable in the port.
 - [ ] Trace and port the original order that loads a regiment onto a fleet,
   through the existing capacity and embark core (F-007E player troop
   dispatch).

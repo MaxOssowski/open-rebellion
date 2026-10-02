@@ -1,7 +1,8 @@
 //! Blockade mechanics: manufacturing halt and troop regiment losses.
 //!
 //! A blockade occurs when a hostile fleet is present at a system with no
-//! defending fleet. This module:
+//! defending fleet (`FUN_0050b8e0`, `ghidra/notes/blockade-bit.md`). This
+//! module:
 //!
 //! 1. **Determines blockaded systems** each tick from fleet disposition.
 //! 2. **Emits `BlockadeEvent`s** when blockade state changes (enter/exit).
@@ -418,35 +419,37 @@ impl BlockadeSystem {
 
     // ── Private ───────────────────────────────────────────────────────────
 
-    /// A system is blockaded if it has at least one hostile fleet AND zero
-    /// defending fleets.
+    /// The system's blockade bit (`+0x88` `0x20`), as `FUN_0050b8e0` writes
+    /// it (`ghidra/notes/blockade-bit.md`). Both sides present is a battle
+    /// (bit `0x1000`, `FUN_00509710`), never a blockade. Otherwise a system
+    /// held by one side is blockaded by any fleet of the other, and a
+    /// contested one, when populated, by either side's fleets. A neutral
+    /// system never is.
     ///
-    /// "Hostile" is relative to the system's `control` (`ControlKind`). A neutral
-    /// system cannot be blockaded (no faction to defend it).
+    /// port: presence counts fleets only, because fighter squadrons exist
+    /// only inside fleets, and every fleet is active. hyp: `Contested` is the
+    /// original's side 3, and an `Uprising` system keeps its holder's side.
     fn system_is_blockaded(world: &GameWorld, sys: &crate::world::System) -> bool {
         use crate::dat::Faction;
 
-        let controlling = match sys.control {
-            ControlKind::Controlled(Faction::Alliance) => true,
-            ControlKind::Controlled(Faction::Empire) => false,
-            _ => return false, // neutral or contested — no blockade logic
-        };
-
-        let hostile_count = sys
+        let (alliance, empire) = sys
             .fleets
             .iter()
             .filter_map(|&fk| world.fleets.get(fk))
-            .filter(|f| f.is_alliance != controlling)
-            .count();
-
-        let defending_count = sys
-            .fleets
-            .iter()
-            .filter_map(|&fk| world.fleets.get(fk))
-            .filter(|f| f.is_alliance == controlling)
-            .count();
-
-        hostile_count > 0 && defending_count == 0
+            .fold((false, false), |(alliance, empire), fleet| {
+                (alliance || fleet.is_alliance, empire || !fleet.is_alliance)
+            });
+        if alliance && empire {
+            return false;
+        }
+        match sys.control {
+            ControlKind::Contested => sys.is_populated && (alliance || empire),
+            control => match control.faction() {
+                Some(Faction::Alliance) => empire,
+                Some(Faction::Empire) => alliance,
+                Some(Faction::Neutral) | None => false,
+            },
+        }
     }
 }
 
@@ -649,6 +652,75 @@ mod tests {
             .iter()
             .any(|e| matches!(e, BlockadeEvent::BlockadeEnded { .. })));
         assert!(!state.is_blockaded(sys));
+    }
+
+    fn blockaded_under(control: ControlKind, alliance_fleet: bool, empire_fleet: bool) -> bool {
+        let (mut world, sys) = make_world();
+        world.systems[sys].control = control;
+        if alliance_fleet {
+            add_fleet(&mut world, sys, true);
+        }
+        if empire_fleet {
+            add_fleet(&mut world, sys, false);
+        }
+        let mut state = BlockadeState::new();
+        BlockadeSystem::advance(&mut state, &world, &[tick(1)]);
+        state.is_blockaded(sys)
+    }
+
+    // FUN_0050b8e0: a populated side-3 system takes the blockade bit from any
+    // fleet whose side differs from 3. hyp: `Contested` is side 3.
+    #[test]
+    fn either_sides_fleets_alone_blockade_a_contested_system() {
+        assert!(blockaded_under(ControlKind::Contested, true, false));
+        assert!(blockaded_under(ControlKind::Contested, false, true));
+        assert!(!blockaded_under(ControlKind::Contested, false, false));
+    }
+
+    // FUN_0050b8e0 → FUN_00509710: both sides present sets the battle bit and
+    // clears the blockade bit, whoever holds the system.
+    #[test]
+    fn both_sides_fleets_make_a_battle_not_a_blockade() {
+        for control in [
+            ControlKind::Contested,
+            ControlKind::Controlled(Faction::Alliance),
+            ControlKind::Controlled(Faction::Empire),
+        ] {
+            assert!(!blockaded_under(control, true, true), "{control:?}");
+        }
+    }
+
+    // FUN_0050b8e0 writes every bit clear for side 0.
+    #[test]
+    fn a_neutral_system_is_never_blockaded() {
+        assert!(!blockaded_under(ControlKind::Uncontrolled, true, false));
+        assert!(!blockaded_under(ControlKind::Uncontrolled, false, true));
+    }
+
+    // FUN_0050b8e0: a held system is blockaded by the other side's fleet.
+    // hyp: an uprising system keeps its holder's side bits.
+    #[test]
+    fn an_uprising_system_is_blockaded_by_its_holders_enemy() {
+        assert!(blockaded_under(
+            ControlKind::Uprising(Faction::Empire),
+            true,
+            false
+        ));
+        assert!(!blockaded_under(
+            ControlKind::Uprising(Faction::Empire),
+            false,
+            true
+        ));
+        assert!(blockaded_under(
+            ControlKind::Uprising(Faction::Alliance),
+            false,
+            true
+        ));
+        assert!(!blockaded_under(
+            ControlKind::Uprising(Faction::Alliance),
+            true,
+            false
+        ));
     }
 
     #[test]
