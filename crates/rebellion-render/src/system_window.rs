@@ -38,6 +38,10 @@ const SCROLL_DOWN_PRESSED: u32 = 10366;
 const SCROLL_TRACK: u32 = 10369;
 const TAB_COLUMNS: usize = 3;
 const TAB_VISIBLE_ROWS: usize = 3;
+/// A list cell's picture, and the top of the list, in window pixels.
+const IMAGE_WIDTH: f32 = 66.0;
+const IMAGE_HEIGHT: f32 = 25.0;
+const CONTENT_TOP: f32 = 76.0;
 
 const TITLE_HOSTILE_ACTIVE: u32 = 10299;
 const TITLE_HOSTILE_INACTIVE: u32 = 10200;
@@ -220,6 +224,25 @@ impl SystemWindowState {
                 && point.1 >= rect.min.y
                 && point.1 < rect.max.y
         })
+    }
+
+    /// The screen rect of the first list cell's picture in `system`'s
+    /// window, at (7, 76) and 66 by 25, while that window is visible.
+    #[must_use]
+    pub fn first_item_screen_rect(
+        &self,
+        layout: CockpitLayout,
+        system: SystemKey,
+    ) -> Option<egui::Rect> {
+        let window = self.windows.iter().find(|window| window.system == system)?;
+        Some(logical_rect(
+            window_screen_rect(*window, layout),
+            layout.scale,
+            7.0,
+            CONTENT_TOP,
+            IMAGE_WIDTH,
+            IMAGE_HEIGHT,
+        ))
     }
 
     #[must_use]
@@ -820,9 +843,6 @@ fn paint_tab_content(
 ) -> TabContentDrawResult {
     const CELL_WIDTH: f32 = 70.0;
     const CELL_HEIGHT: f32 = 70.0;
-    const IMAGE_WIDTH: f32 = 66.0;
-    const IMAGE_HEIGHT: f32 = 25.0;
-    const CONTENT_TOP: f32 = 76.0;
     const SCROLL_X: f32 = 214.0;
     const SCROLL_TOP: f32 = 76.0;
     const SCROLL_BOTTOM: f32 = 301.0;
@@ -2199,6 +2219,39 @@ mod tests {
         assert_eq!(drops(&far.0), [(system, MenuObject::Fleet(fleet), far.1)]);
         assert!(drops(&inside.0).is_empty());
         assert_eq!(inside.2, (true, false));
+    }
+
+    #[test]
+    fn the_first_cells_screen_rect_is_the_picture_a_press_selects() {
+        let (world, system, fleet) = world_with_fleet();
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.open(&world, system, (60, 40), CockpitFaction::Alliance, layout);
+        let origin = window_screen_rect(state.windows[0], layout).min;
+
+        let rect = state.first_item_screen_rect(layout, system).unwrap();
+
+        assert_eq!(
+            rect,
+            egui::Rect::from_min_size(
+                origin + egui::vec2(7.0, 76.0) * 2.0,
+                egui::vec2(66.0, 25.0) * 2.0
+            )
+        );
+        let (_, selected) = click_in_window(
+            &world,
+            system,
+            SystemWindowTab::Fleets,
+            None,
+            FIRST_ITEM,
+            egui::PointerButton::Primary,
+        );
+        assert_eq!(selected, Some(SystemWindowItem::Fleet(fleet)));
+        assert!(rect.contains(origin + egui::vec2(FIRST_ITEM.0, FIRST_ITEM.1) * 2.0));
+        assert_eq!(
+            state.first_item_screen_rect(layout, SystemKey::default()),
+            None
+        );
     }
 
     #[test]

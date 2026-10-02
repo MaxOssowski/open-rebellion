@@ -1261,6 +1261,8 @@ async fn main() {
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let mut interface_fixture_emitted = tactical_fixture_failed;
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let mut fleet_move_watch = interface_test_fixture::FleetMoveWatch::default();
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let interface_fixture_active =
         interface_fixture_request.is_some() || tactical_fixture_request.is_some();
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
@@ -4846,8 +4848,24 @@ Some(RailAudience::side(*faction_is_alliance)),
                 interface_fixture_frames += 1;
                 if interface_fixture_frames >= 3 {
                     interface_test_fixture::emit_ready(request, &world, &map_state);
+                    interface_test_fixture::emit_fleet_move_setup(
+                        request,
+                        &world,
+                        &map_state,
+                        &sector_window_state,
+                        &system_window_state,
+                    );
                     interface_fixture_emitted = true;
                 }
+            } else if game_mode == GameMode::Galaxy {
+                fleet_move_watch.observe(
+                    request,
+                    &world,
+                    &movement_state,
+                    move_confirmation_state.is_open(),
+                    &map_state,
+                    msg_log.messages(),
+                );
             }
         }
         #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
