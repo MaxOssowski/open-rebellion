@@ -33,6 +33,10 @@ const fixturePlugin = `    <script>
                             window.__openRebellionInterfaceHover = message;
                         } else if (message.status === "object-menu") {
                             window.__openRebellionInterfaceObjectMenu = message;
+                        } else if (message.status === "fleet-move-setup") {
+                            window.__openRebellionInterfaceFleetMoveSetup = message;
+                        } else if (message.status === "fleet-move") {
+                            (window.__openRebellionInterfaceFleetMoves ||= []).push(message);
                         } else {
                             window.__openRebellionInterfaceReady = message;
                         }
