@@ -78,7 +78,7 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | 13 | `FUN_0050bc60` | 87 | Character iteration (family 4) + faction match + counting | DONE (faction match) |
 | 14 | `FUN_0050be00` | 99 | Character iteration (family 4) + mandatory mission check | DONE (on_mandatory_mission) |
 | 15 | `FUN_0050c350` | 95 | Fleet/facility nested iteration + per-entity FUN_0050c580 check | FAITHFUL (faction-ownership guaranteed by construction) |
-| 16 | `FUN_0050b8e0` | 89 | System-level strength scoring: both factions via FUN_00509710 | PARTIAL: writes derived readiness state in the original; Rust scores targets and applies a per-fleet 3× force-allocation bound |
+| 16 | `FUN_0050b8e0` | 89 | Writes the system battle (`+0x88` 0x1000), blockade (0x20), and change (0x4000) bits from both sides' presence via FUN_00509710 (`ghidra/notes/blockade-bit.md`; corrected 2026-10-02, not strength scoring) | PARTIAL: Rust scores targets and applies a per-fleet 3× force-allocation bound; the blockade bit is `BlockadeSystem::system_is_blockaded` |
 | 17 | `FUN_0050b800` | 34 | Status bits (+0x88 bits 0,2) + position check (+0x7c ≥ 0) | DONE (captive/mission checks + valid-system check) |
 | 18 | `FUN_0050bb00` | 28 | Faction + status bits + position → deployment flag | DONE (faction + is_busy + location validity) |
 
