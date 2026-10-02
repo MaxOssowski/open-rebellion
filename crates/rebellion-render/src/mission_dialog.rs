@@ -379,7 +379,7 @@ fn native(rect: egui::Rect, size: egui::Vec2, scale: f32) -> egui::Rect {
     egui::Rect::from_min_size(rect.min, size * scale)
 }
 
-fn paint(
+pub(crate) fn paint(
     painter: &egui::Painter,
     ctx: &egui::Context,
     cache: &mut BmpCache,
@@ -401,7 +401,7 @@ fn paint(
 
 /// A two-state bitmap button (`FUN_00602150`): the second bitmap shows while
 /// it is held or, for a tab, while it is the current page.
-fn button(
+pub(crate) fn button(
     ui: &egui::Ui,
     cache: &mut BmpCache,
     rect: egui::Rect,
@@ -429,14 +429,16 @@ fn button(
     exact_clicked(&response, rect)
 }
 
-/// The dialog's screen rectangle. hyp: `FUN_00606980` places it in the
-/// galaxy view's rectangle (parent `+0xcc..+0xd8`); the port centers it, on
-/// whole pixels so its bitmaps are not resampled.
+/// The dialog's screen rectangle.
 fn dialog_rect(layout: CockpitLayout) -> egui::Rect {
-    let size = egui::vec2(
-        MISSION_DIALOG_WIDTH * layout.scale,
-        MISSION_DIALOG_HEIGHT * layout.scale,
-    );
+    galaxy_centered_rect(layout, MISSION_DIALOG_WIDTH, MISSION_DIALOG_HEIGHT)
+}
+
+/// A `width` by `height` window of the galaxy view. hyp: `FUN_00606980`
+/// places it in the galaxy view's rectangle (parent `+0xcc..+0xd8`); the port
+/// centers it, on whole pixels so its bitmaps are not resampled.
+pub(crate) fn galaxy_centered_rect(layout: CockpitLayout, width: f32, height: f32) -> egui::Rect {
+    let size = egui::vec2(width * layout.scale, height * layout.scale);
     let center = egui::pos2(
         layout.galaxy.x + layout.galaxy.width / 2.0,
         layout.galaxy.y + layout.galaxy.height / 2.0,

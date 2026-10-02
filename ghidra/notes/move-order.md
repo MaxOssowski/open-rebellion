@@ -284,8 +284,9 @@ bytes, vtable `0x00659cd0`, `FUN_00606380` with size 0x1a8 by 0x14b, 424 by
 `FUN_0049a350` fills the confirmation for `0x201`/`0x202`:
 
 - Its text `+0x50` is TEXTSTRA `RT_RCDATA` 0x7057, "Transit time in days".
-  When the first member's system is blockaded (`+0x88` bit `0x20`) it is
-  0x7056 instead: "Units evacuating from worlds under blockade risk being
+  When the first member is not a fleet (families `0x08..0x0f`) and its
+  container is a blockaded system (`+0x88` bit `0x20`), it is 0x7056 instead
+  (so a fleet's move never shows it, even when a blockade made it ask): "Units evacuating from worlds under blockade risk being
   destroyed by blockading vessels.  Are you sure you want to proceed with
   the evacuation?\nTransit time in days". `FUN_0060b840` loads these templates
   from module 2.
@@ -294,8 +295,8 @@ bytes, vtable `0x00659cd0`, `FUN_00606380` with size 0x1a8 by 0x14b, 424 by
 - `FUN_0049a8b0` appends one line per moving object: its name
   (`FUN_004f6270`), `":  "` (`DAT_006a8798`), and its transit days, which
   `FUN_0053c2e0` collects from the sub-orders (`FUN_0053d200` for `0x204`,
-  `FUN_004f4850` for `0x241`). hyp: `FUN_00615f00(stream, 10)` starts each
-  line with a newline.
+  `FUN_004f4850` for `0x241`). `FUN_00615f00(stream, 10)` puts a newline
+  before each line; the same call with 0 ends the string.
 
 `FUN_0044f180` (slot `+0x38`) lays the window out:
 
@@ -397,6 +398,11 @@ not found. The confirmation window's own Escape is recovered
   `movement::fleet_move_confirms` applies `FUN_00487cc0`, then the fleet
   departs. A move that asks for confirmation is dropped until the window
   (phase 4) is ported.
+- Phase 4a: `move_confirmation` draws the window: background 11125/11126,
+  picture 1018/1019, the 0x7057 text with one `name:  days` line, the
+  checkmark and X, and Enter and Escape. hyp: font 4 is not mapped, so the
+  mission dialog's text size stands in; the placement shares the mission
+  dialog's centering.
 
 ## Order 0x214 (Destination)
 
