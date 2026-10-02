@@ -4,11 +4,16 @@ description: "Proposed source-derived encyclopedia catalog, asset staging, mod o
 type: design
 status: draft
 created: 2026-09-27
-updated: 2026-09-28
+updated: 2026-10-02
 tags: [encyclopedia, assets, modding, native, wasm, P35, RE-ENC-01]
 ---
 
 # Encyclopedia Data Extraction, Modding, and Display
+
+The
+[Will Forster Encyclopedia Handoff Adaptation](2026-10-02-feat-will-forster-encyclopedia-handoff-adaptation.md)
+is the execution companion for selectively bringing PR #16's strongest ideas
+into this canonical design without creating a second schema or runtime.
 
 ## Implementation checkpoint
 

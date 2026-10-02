@@ -76,6 +76,12 @@ See the [plans index](INDEX.md) for active, planned, and completed work. The
 [interface parity audit](../qa/2026-09-10-interface-parity-audit/) remains the
 strict acceptance authority.
 
+The
+[Will Forster Encyclopedia Handoff Adaptation](2026-10-02-feat-will-forster-encyclopedia-handoff-adaptation.md)
+is the active execution companion for P66. It credits and selectively adapts
+the strongest ideas from Will's PR #16 while preserving the current source,
+binding, packed-transport, and visual-acceptance authorities.
+
 After original space-battle parity is implemented, a separate planning pass
 will define an optional X-Wing Alliance-style skirmish setup surface for ship
 distribution, planet, and space-background selection. That feature must reuse
