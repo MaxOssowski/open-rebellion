@@ -1,17 +1,16 @@
 //! Fleets panel — fleet roster with composition editing, character assignment,
-//! fleet merge controls, and destination-based dispatch.
+//! and fleet merge controls.
 //!
 //! Rendered as a left-side egui panel. Lists all fleets belonging to the player
 //! faction. Clicking a fleet expands a detail row showing capital ships, fighter
 //! squadrons, assigned characters, and action buttons (assign/remove officer,
-//! merge with another fleet at the same system, move, and go to system).
-
-use std::collections::HashMap;
+//! merge with another fleet at the same system, and go to system). Fleets
+//! move through their pop-up menu and the system window drag.
 
 use egui_macroquad::egui::{self, RichText, ScrollArea, Vec2};
-use rebellion_core::ids::{CharacterKey, DatId, FleetKey, SystemKey, TroopKey};
+use rebellion_core::ids::{CharacterKey, DatId, FleetKey};
 use rebellion_core::missions::MissionFaction;
-use rebellion_core::movement::{validate_fleet_dispatch, FleetDispatchError, MovementState};
+use rebellion_core::movement::MovementState;
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::world::GameWorld;
 
@@ -86,10 +85,6 @@ pub struct FleetsState {
     pub expanded_fleet: Option<FleetKey>,
     /// If set, show the character assignment picker for this fleet.
     pub assigning_to: Option<FleetKey>,
-    /// If set, the context menu initiated a fleet move to this destination.
-    pub pending_move_destination: Option<SystemKey>,
-    /// Surface regiments selected to embark when a fleet is dispatched.
-    pub selected_troops: HashMap<FleetKey, Vec<TroopKey>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -138,45 +133,6 @@ pub fn draw_fleets(
                     .size(11.0),
             );
             ui.add_space(4.0);
-
-            if let Some(destination) = state.pending_move_destination {
-                ui.group(|ui| {
-                    let destination_name = world
-                        .systems
-                        .get(destination)
-                        .map_or("Unavailable destination", |system| system.name.as_str());
-                    ui.label(
-                        RichText::new("MOVE FLEET")
-                            .color(theme::GOLD_DIM)
-                            .size(10.0)
-                            .strong(),
-                    );
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(format!("Destination: {destination_name}"))
-                                .color(theme::TEXT_PRIMARY)
-                                .size(11.0),
-                        );
-                        if ui
-                            .small_button(
-                                RichText::new("Cancel")
-                                    .color(theme::TEXT_DISABLED)
-                                    .size(10.0),
-                            )
-                            .clicked()
-                        {
-                            state.pending_move_destination = None;
-                            state.selected_troops.clear();
-                        }
-                    });
-                    ui.label(
-                        RichText::new("Choose an orbiting fleet below.")
-                            .color(theme::TEXT_SECONDARY)
-                            .size(10.0),
-                    );
-                });
-                ui.add_space(4.0);
-            }
 
             ScrollArea::vertical().show(ui, |ui| {
                 for &(fleet_key, fleet) in &player_fleets {
@@ -237,117 +193,6 @@ pub fn draw_fleets(
                             }
                         });
                     });
-
-                    if let Some(destination) = state.pending_move_destination {
-                        let expected_is_alliance = player_faction == MissionFaction::Alliance;
-                        match validate_fleet_dispatch(
-                            movement_state,
-                            world,
-                            fleet_key,
-                            destination,
-                            expected_is_alliance,
-                        ) {
-                            Ok(()) => {
-                                let capacity = TroopTransportState::fleet_capacity(world, fleet_key)
-                                    .unwrap_or_default()
-                                    as usize;
-                                let carried = troop_transport.carried_count(fleet_key);
-                                let free_capacity = capacity.saturating_sub(carried);
-                                let available =
-                                    available_surface_troops(world, fleet_key, player_faction);
-                                let available_keys: Vec<_> =
-                                    available.iter().map(|(key, _)| *key).collect();
-                                let selected = state.selected_troops.entry(fleet_key).or_default();
-                                selected.retain(|key| available_keys.contains(key));
-                                while selected.len() > free_capacity {
-                                    selected.pop();
-                                }
-
-                                ui.label(
-                                    RichText::new(format!(
-                                        "Troop cargo: {}/{} regiments",
-                                        carried + selected.len(),
-                                        capacity,
-                                    ))
-                                    .color(theme::TEXT_SECONDARY)
-                                    .size(10.0),
-                                );
-                                for (troop, label) in &available {
-                                    let mut checked = selected.contains(troop);
-                                    let can_add = checked || selected.len() < free_capacity;
-                                    ui.add_enabled_ui(can_add, |ui| {
-                                        if ui.checkbox(&mut checked, label).changed() {
-                                            if checked {
-                                                selected.push(*troop);
-                                                selected.sort_unstable();
-                                                selected.dedup();
-                                            } else {
-                                                selected.retain(|key| key != troop);
-                                            }
-                                        }
-                                    });
-                                }
-                                if available.is_empty() && carried == 0 {
-                                    ui.label(
-                                        RichText::new(if capacity == 0 {
-                                            "This fleet has no troop capacity"
-                                        } else {
-                                            "No friendly surface regiments available"
-                                        })
-                                        .color(theme::TEXT_DISABLED)
-                                        .size(10.0),
-                                    );
-                                }
-
-                                let destination_name = world
-                                    .systems
-                                    .get(destination)
-                                    .map_or("destination", |system| system.name.as_str());
-                                if ui
-                                    .button(
-                                        RichText::new(format!("Dispatch to {destination_name}"))
-                                            .color(theme::GOLD)
-                                            .size(11.0),
-                                    )
-                                    .clicked()
-                                {
-                                    let troops = state
-                                        .selected_troops
-                                        .remove(&fleet_key)
-                                        .unwrap_or_default();
-                                    action = Some(PanelAction::DispatchFleet {
-                                        fleet: fleet_key,
-                                        destination,
-                                        troops,
-                                    });
-                                    state.pending_move_destination = None;
-                                    state.selected_troops.clear();
-                                }
-                            }
-                            Err(FleetDispatchError::AlreadyInTransit) => {
-                                ui.label(
-                                    RichText::new("Already in transit")
-                                        .color(theme::TEXT_DISABLED)
-                                        .size(10.0),
-                                );
-                            }
-                            Err(FleetDispatchError::AlreadyAtDestination) => {
-                                ui.label(
-                                    RichText::new("Already at destination")
-                                        .color(theme::TEXT_DISABLED)
-                                        .size(10.0),
-                                );
-                            }
-                            Err(FleetDispatchError::EmptyFleet) => {
-                                ui.label(
-                                    RichText::new("No ships available")
-                                        .color(theme::TEXT_DISABLED)
-                                        .size(10.0),
-                                );
-                            }
-                            Err(_) => {}
-                        }
-                    }
 
                     if is_expanded {
                         ui.indent("fleet_detail", |ui| {
@@ -646,39 +491,6 @@ fn fleet_color(faction: MissionFaction) -> egui::Color32 {
         MissionFaction::Alliance => theme::ALLIANCE_BLUE,
         MissionFaction::Empire => theme::EMPIRE_RED,
     }
-}
-
-fn available_surface_troops(
-    world: &GameWorld,
-    fleet_key: FleetKey,
-    player_faction: MissionFaction,
-) -> Vec<(TroopKey, String)> {
-    let Some(fleet) = world.fleets.get(fleet_key) else {
-        return Vec::new();
-    };
-    let Some(system) = world.systems.get(fleet.location) else {
-        return Vec::new();
-    };
-    let expected_is_alliance = player_faction == MissionFaction::Alliance;
-    let mut troops: Vec<_> = system
-        .ground_units
-        .iter()
-        .filter_map(|key| {
-            let troop = world.troops.get(*key)?;
-            (troop.is_alliance == expected_is_alliance && troop.regiment_strength > 0).then(|| {
-                (
-                    *key,
-                    format!(
-                        "Regiment {} · strength {}",
-                        troop.class_dat_id.index(),
-                        troop.regiment_strength,
-                    ),
-                )
-            })
-        })
-        .collect();
-    troops.sort_unstable_by_key(|(key, _)| *key);
-    troops
 }
 
 pub(crate) fn capital_ship_mini_id(dat_id: DatId) -> Option<u32> {

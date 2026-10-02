@@ -393,7 +393,6 @@ pub enum FleetDispatchError {
     WrongFaction,
     AlreadyInTransit,
     AlreadyAtDestination,
-    EmptyFleet,
     /// No living capital ship can carry the fleet through hyperspace
     /// (`FUN_004fda10`).
     NoHyperdrive,
@@ -412,7 +411,6 @@ impl fmt::Display for FleetDispatchError {
             Self::WrongFaction => "fleet is not controlled by the player",
             Self::AlreadyInTransit => "fleet is already in transit",
             Self::AlreadyAtDestination => "fleet is already at the destination",
-            Self::EmptyFleet => "fleet has no ships or fighter squadrons",
             Self::NoHyperdrive => "fleet has no capital ship to carry it through hyperspace",
             Self::Blockaded => "fleet is held in its system by a blockade",
         };
@@ -495,15 +493,14 @@ pub fn fleet_move_confirms(
 /// (`1`/`0x22`), and a fleet moving between systems needs a non-zero speed
 /// (`FUN_00555920`, `FUN_004fd900`: `1`/`0x18`).
 ///
-/// port: the origin, destroyed-destination, same-system and empty-fleet
-/// checks are the port's own. The original's validator accepts a move within
-/// one system (its leg builders are not read), and an empty fleet meets the
-/// speed refusal.
+/// port: the origin, destroyed-destination and same-system checks are the
+/// port's own. The original's validator accepts a move within one system (its
+/// leg builders are not read). An empty fleet meets the speed refusal.
 ///
 /// # Errors
-/// Returns a dispatch error for missing entities, a faction mismatch, an empty
-/// fleet, a fleet without a capital ship, an active transit order, or an
-/// invalid destination.
+/// Returns a dispatch error for missing entities, a faction mismatch, a fleet
+/// without a capital ship, an active transit order, or an invalid
+/// destination.
 pub fn validate_fleet_dispatch(
     state: &MovementState,
     world: &GameWorld,
@@ -524,9 +521,6 @@ pub fn validate_fleet_dispatch(
     }
     if value.location == destination {
         return Err(FleetDispatchError::AlreadyAtDestination);
-    }
-    if value.is_empty() {
-        return Err(FleetDispatchError::EmptyFleet);
     }
     if fleet_speed(value, world).is_none() {
         return Err(FleetDispatchError::NoHyperdrive);
@@ -1320,10 +1314,11 @@ mod tests {
             Err(FleetDispatchError::AlreadyAtDestination),
         );
 
+        // An empty fleet meets the speed refusal (FUN_004fd900: 1/0x18).
         world.fleets[fleet].capital_ships.clear();
         assert_eq!(
             validate_fleet_dispatch(&movement, &world, fleet, destination, true),
-            Err(FleetDispatchError::EmptyFleet),
+            Err(FleetDispatchError::NoHyperdrive),
         );
         world.fleets[fleet]
             .capital_ships
