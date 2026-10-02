@@ -445,23 +445,36 @@ built:
 1. `FUN_00553b80` resolves the side from the team.
 2. `FUN_00504e60` resolves the destination (`1`/`0x22` when it does not
    resolve).
-3. Iterates the team checking whether every member is a capital ship
-   (`0x14..0x1b`). Sets a flag false when any member is not.
+3. Iterates the commands (order `+0x40`, each object at command `+0x3c`,
+   `FUN_004fa150`) and, for each object, its child list `FUN_00528820`,
+   clearing a flag when any child is not a capital ship (`0x14..0x1b`).
+   `FUN_00528820` returns an empty static list for an object with a side
+   (`+0x24 & 0x30`) and `+0x54`→`+0x18` only for one without. A player's
+   fleet has a side, so the flag stays set.
 4. Refuses `1`/`0x28` when the destination's side bits (`+0x24` bits 6..7)
-   differ from the order's side and the team has any non-capital-ship member.
-   There is no regiment exception, unlike `FUN_0053d430` for `0x204`.
+   differ from the order's side and the flag was cleared. There is no
+   regiment exception, unlike `FUN_0053d430` for `0x204`, but for the reason
+   above it never refuses a sided fleet.
 5. Routes via `FUN_00551060`, `FUN_00551190`, `FUN_005513a0`.
-6. Per member, when the member's `+0x58` is zero:
-   - resolves through `FUN_00504e60` (`1`/`0x22`);
-   - family `0xa0..0xa2`: calls `FUN_00553410`;
-   - otherwise: `+0x50` bit 2 clear gives `1`/`0x20` (unrecruited), bit 4 set
-     gives `1`/`0x21` (en route), bit 3 set and family not `0x90..0x98` gives
-     `1`/`0x22` (untraced);
-   - the member must be family `0x90..0x98`, `0x08..0x10` or `0x14..0x1c`,
-     else `1`/`0x25`;
-   - assigns the leg at the member's `+0x48` (`FUN_004f26d0`).
-7. Per member with `+0x58` non-zero: `FUN_00552210` builds the route leg,
-   then iterates sub-objects with `FUN_00551900` and `FUN_00583f50`.
+6. Per command whose object's `+0x58` is zero:
+   - resolves the destination again through `FUN_00504e60` (`1`/`0x22`);
+   - an object of family `0xa0..0xa2` calls `FUN_00553410` on the
+     destination;
+   - otherwise the checks read the **destination**: `+0x50` bit 2 clear gives
+     `1`/`0x20`, bit 4 set `1`/`0x21`, bit 3 set on a non-system `1`/`0x22`;
+     the destination must be a system (`0x90..0x98`), a fleet (`0x08..0x10`)
+     or a capital ship (`0x14..0x1c`), else `1`/`0x25`;
+   - assigns the destination to the command's `+0x48` (`FUN_004f26d0`).
+7. Per command whose object's `+0x58` is non-zero: `FUN_00552210` asks
+   `FUN_005287f0` for the object's `+0x54`→`+0x18` list, which fails for an
+   object with a side, so the check returns 0 and the order is refused with
+   `1`/`1`. Otherwise `FUN_00552150` builds a leg per listed object
+   (`FUN_00552000`) and iterates them with `FUN_00551900` and
+   `FUN_00583f50`. For a fleet, `+0x58` bit 5 is the system's blockade bit,
+   copied by `FUN_0050c0b0` to every active fleet in the system
+   (`blockade-troop-withdrawal.md`). hyp: a fleet's `+0x58` is otherwise zero
+   outside combat, so a drag refuses exactly a fleet in a blockaded system,
+   on either side.
 
 ### The command (vtable `0x00669a30`)
 
@@ -529,7 +542,15 @@ straight to `FUN_00487740(order, 0)`.
 - Ctrl+drag from a system window is still `0x214`, not `0x202`. The Confirmed
   Move variant applies only to types 1, 4 and 10.
 - The enemy-destination refusal (`1`/`0x28`) lacks `0x204`'s regiment
-  exception.
+  exception, and never refuses a sided fleet (step 3 above).
+- A fleet in a blockaded system is refused (`1`/`1`, step 7); a menu Move
+  from the same system would open the evacuation warning instead.
+- `CoolDragList` (`FUN_006083c0`) posts `0x29a` on a left release more than
+  `sqrt(24)` pixels from the press (squared distance above `0x18`) and
+  outside the list's client rect, or anywhere when list flag `+0xf4` bit
+  `0x100000` is clear (hyp: set for the system window's list). While dragging it draws the item through
+  `FUN_0060dc80`/`FUN_0060dcb0`/`FUN_0060dce0` and sets cursor `+0xb4`; those
+  are not read.
 
 ## Still open
 

@@ -397,6 +397,9 @@ pub enum FleetDispatchError {
     /// No living capital ship can carry the fleet through hyperspace
     /// (`FUN_004fda10`).
     NoHyperdrive,
+    /// A system window drag cannot move a fleet out of a blockaded system
+    /// (`FUN_00537180` → `FUN_00552210`: `1`/`1`).
+    Blockaded,
 }
 
 impl fmt::Display for FleetDispatchError {
@@ -411,6 +414,7 @@ impl fmt::Display for FleetDispatchError {
             Self::AlreadyAtDestination => "fleet is already at the destination",
             Self::EmptyFleet => "fleet has no ships or fighter squadrons",
             Self::NoHyperdrive => "fleet has no capital ship to carry it through hyperspace",
+            Self::Blockaded => "fleet is held in its system by a blockade",
         };
         formatter.write_str(message)
     }
@@ -526,6 +530,41 @@ pub fn validate_fleet_dispatch(
     }
     if fleet_speed(value, world).is_none() {
         return Err(FleetDispatchError::NoHyperdrive);
+    }
+    Ok(())
+}
+
+/// Validate the Destination order (`0x214`) a system window drag issues for
+/// a fleet: `FUN_00537180` (`ghidra/notes/move-order.md`, "Order 0x214").
+///
+/// The order never confirms (`FUN_00487cc0` has no case for it), and its
+/// enemy-destination refusal (`1`/`0x28`) reads child lists that a sided
+/// fleet does not have (`FUN_00528820`). A fleet whose `+0x58` holds its
+/// system's blockade bit (`FUN_0050c0b0`) is refused (`FUN_00552210` →
+/// `FUN_005287f0`: `1`/`1`), whichever side it is on.
+///
+/// hyp: a fleet's `+0x58` is otherwise zero, and the order's route checks
+/// and the fleet's command slots refuse what [`validate_fleet_dispatch`]
+/// refuses.
+///
+/// # Errors
+/// Returns [`FleetDispatchError::Blockaded`] for a fleet in a blockaded
+/// system, or any error [`validate_fleet_dispatch`] returns.
+pub fn validate_fleet_destination(
+    state: &MovementState,
+    world: &GameWorld,
+    blockaded: &HashSet<SystemKey>,
+    fleet: FleetKey,
+    destination: SystemKey,
+    expected_is_alliance: bool,
+) -> Result<(), FleetDispatchError> {
+    validate_fleet_dispatch(state, world, fleet, destination, expected_is_alliance)?;
+    if world
+        .fleets
+        .get(fleet)
+        .is_some_and(|value| blockaded.contains(&value.location))
+    {
+        return Err(FleetDispatchError::Blockaded);
     }
     Ok(())
 }
@@ -1200,6 +1239,47 @@ mod tests {
             world.systems[origin].control = other;
             assert!(!fleet_move_confirms(&world, &blockaded, fleet, false));
         }
+    }
+
+    #[test]
+    fn a_drag_never_moves_a_fleet_out_of_a_blockaded_system_on_either_side() {
+        // FUN_00537180 → FUN_00552210 → FUN_005287f0: a sided fleet whose
+        // +0x58 holds the blockade bit (FUN_0050c0b0) is refused 1/1; an
+        // enemy-held destination is not refused (FUN_00528820).
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let fleet = add_test_fleet(&mut world, origin, ship_key);
+        let movement = MovementState::new();
+        let blockaded = HashSet::from([origin]);
+        let clear = HashSet::new();
+        world.systems[destination].control = ControlKind::Controlled(Faction::Empire);
+
+        assert_eq!(
+            validate_fleet_destination(&movement, &world, &clear, fleet, destination, true),
+            Ok(()),
+        );
+        for control in [
+            ControlKind::Controlled(Faction::Alliance),
+            ControlKind::Controlled(Faction::Empire),
+        ] {
+            world.systems[origin].control = control;
+            assert_eq!(
+                validate_fleet_destination(&movement, &world, &blockaded, fleet, destination, true),
+                Err(FleetDispatchError::Blockaded),
+            );
+        }
+        assert_eq!(
+            validate_fleet_destination(&movement, &world, &blockaded, fleet, destination, false),
+            Err(FleetDispatchError::WrongFaction),
+        );
+    }
+
+    #[test]
+    fn a_blockade_refusal_says_why_in_the_message_log() {
+        assert_eq!(
+            FleetDispatchError::Blockaded.to_string(),
+            "fleet is held in its system by a blockade",
+        );
     }
 
     #[test]
