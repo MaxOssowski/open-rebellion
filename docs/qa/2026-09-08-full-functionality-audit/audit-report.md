@@ -51,7 +51,9 @@ five-tick combat backlog. The first F-007E checkpoint also closes production
 ownership, friendly cycling, transit, repair-start, and troop-class defects.
 The second F-007E checkpoint adds save-v13 troop transport, landing, continuing
 ground combat, occupation, and provisional character capture. Player troop
-selection and dispatch passed in the following checkpoint. The campaign-history
+selection and dispatch passed in the following checkpoint (reopened 2026-10-02:
+its fleet-panel picker lost its caller in 23d15da and was deleted in F-007C
+phase 6a). The campaign-history
 review then reopened the victory and capture model. The next checkpoint now
 distinguishes Alliance control of Coruscant from Imperial destruction and
 occupation of the mobile Alliance HQ, preserves Standard leader conjunctions,
@@ -166,7 +168,8 @@ character capture and occupation-based Imperial HQ result are verified current
 behavior but not parity-correct. Save v13, all 567 workspace tests, the exact
 native/WASM replay, five 5,000-tick transport runs, and Astra medium two-faction
 bitmap/browser acceptance pass for the scoped transport path. Player troop
-dispatch passed in the next checkpoint. The following victory checkpoint
+dispatch passed in the next checkpoint (reopened 2026-10-02 with F-007C). The
+following victory checkpoint
 corrected the Imperial HQ, Death Star, Standard-conjunction, and timing rules;
 capture/evasion, faction liveness, battle diagnostics, and five-seed
 cross-runtime proof remain open
@@ -264,7 +267,13 @@ cross-runtime proof remain open
   then-current five-seed runs passed the fleet-arena and move/arrival bounds.
   F-007C (reopened 2026-10-01: its only entry, the egui system context
   menu's Move Fleet Here, lost its caller in 23d15da, so the player cannot
-  move a fleet; the original entry is the Move order) wired
+  move a fleet; the original entry is the Move order; restored 2026-10-02
+  through the Fleet pop-up menu's Move and Confirmed Move (0x201/0x202,
+  FUN_0044f060's confirmation window) and the system window drag (0x214),
+  with a 12-case two-sided browser gate and 8 of 8 hand-applied main-loop
+  mutants caught; open: the uncited port blockade rule leaves the
+  confirmation's blockade branch unreachable, regiment loading, and a native
+  check) wired
   ordinary player dispatch through the same validated departure helper, fixes
   map/context-menu click ordering and stale targets, and reports authoritative
   destinations and countdowns in the fleet panel. Astra medium passed both
@@ -285,6 +294,8 @@ cross-runtime proof remain open
   bitmap/browser gates pass for that scoped implementation. Source review then
   reopened Imperial HQ destruction, Death Star terminal outcomes,
   capture/evasion, and the 200-tick grace period. The next F-007E checkpoint
+  (reopened 2026-10-02: no player path loads regiments onto a fleet since the
+  chooser's picker was deleted; owner, the original regiment-to-fleet order)
   adds player regiment selection to the bitmap fleet chooser, enforces 0/0,
   2/2, and 3/3 live capacity in the browser, and carries selected cargo through
   dispatch and automatic landing. All 568 workspace tests and the packaged

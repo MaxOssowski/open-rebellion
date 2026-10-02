@@ -425,7 +425,9 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   Reopened 2026-10-01: the egui context menu that set the destination lost
   its caller in 23d15da, so the player cannot move a fleet, and the fleet
   panel's destination banner and Dispatch button are unreachable. The
-  original Move order (below) restores it.
+  original Move order (below) restores it: menu Move, Confirmed Move, and the
+  system window drag pass a two-sided browser gate (2026-10-02). Open: the
+  blockade bit and regiment loading (below), and a native check.
 - [x] Resolve every hostile task force at a system as one bounded engagement,
   persist fighter attrition, correct fighter launch and shield handling, and
   suppress unchanged five-tick stalemates. Seed 42 now reports two decisive
@@ -445,9 +447,12 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   occupation-based Imperial HQ victory are current behaviors, not accepted
   parity, and have been reopened
   ([evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-troop-transport-occupation.md)).
-- [x] Add player troop selection to the bitmap fleet workflow with live
+- [ ] Add player troop selection to the bitmap fleet workflow with live
   capacity, authoritative embarkation, transit, and automatic landing
   ([evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-player-troop-dispatch.md)).
+  Reopened 2026-10-02: the fleet panel's troop picker lost its caller in
+  23d15da and was deleted in F-007C phase 6a, so no player path loads
+  regiments onto a fleet. The original regiment-to-fleet order restores it.
 - [x] Establish a cited historical campaign baseline from the original manual,
   contemporary guides, and player testimony. It separates binding mechanics,
   observed original-AI behavior, reverse-engineered behavior, desired
@@ -496,7 +501,15 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
 - [ ] Port the Move and Confirmed Move orders (`0x201`/`0x202`): the pop-up
   menu items, targeting with the `+0x70` hit test, and the list drag
   (`FUN_006083c0` notification `0x29a`). This restores player fleet movement
-  (F-007C). Retire, the Command submenu, and Status share the menu.
+  (F-007C). Retire, the Command submenu, and Status share the menu. Phases
+  0-6 have landed and pass the `fleet-move.mjs` gate for both sides; a native
+  check remains.
+- [ ] Trace what sets the system blockade bit (`+0x88` bit `0x20`) and replace
+  the uncited `BlockadeSystem::system_is_blockaded` rule. The Move
+  confirmation's blockade branch is unreachable until then (F-007C).
+- [ ] Trace and port the original order that loads a regiment onto a fleet,
+  through the existing capacity and embark core (F-007E player troop
+  dispatch).
 - [ ] Port targeting of characters and objects (`+0x68` hit test, the walk up
   from a team member) so the dialog offers Rescue, Assassination, and
   Abduction (F-019).
