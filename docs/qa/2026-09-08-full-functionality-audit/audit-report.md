@@ -277,7 +277,10 @@ cross-runtime proof remain open
   confirmation's blockade branch meets only a stale bit, as in the original;
   regiments load through the original Fleet window (type 4, FUN_004a2630),
   opened from the sector window's fleet icon, with an 8-case two-sided gate;
-  a native check remains) wired
+  the sector window's other quadrant icons open the System window, the
+  System Defenses window (type 10, FUN_004a7790) and the Missions window
+  (type 11, FUN_0049f130), with a 10-case two-sided gate; a native check
+  remains) wired
   ordinary player dispatch through the same validated departure helper, fixes
   map/context-menu click ordering and stale targets, and reports authoritative
   destinations and countdowns in the fleet panel. Astra medium passed both
