@@ -258,7 +258,8 @@ Vtable slots: `[0]` `FUN_004a78d0`, `[5]` `FUN_004a86d0` (window proc),
 ## Type 11: the Missions window (FUN_0049f130)
 
 The class is vtable `0x0065bd10`, over `FUN_004ac120`, 235 by 304. The
-subject system is `+0x144`, and `+0x1c8` holds the selected mission's key.
+subject system is `+0x144`, `+0x1c4` is the selected mission row, and
+`+0x1c8` holds the selected mission's target.
 
 Vtable slots: `[0]` `FUN_0049f320`, `[5]` `FUN_0049f4b0` (window proc), `[9]`/`[10]`
 `FUN_004a0b00`/`FUN_004a0b90`, `[14]` `FUN_0049f540` (create), `[17]`
@@ -266,36 +267,102 @@ Vtable slots: `[0]` `FUN_0049f320`, `[5]` `FUN_0049f4b0` (window proc), `[9]`/`[
 `FUN_004a0400`, `FUN_004a0560`, `FUN_004a06d0`, `FUN_004a0870`, `[26]`
 `FUN_004a09a0`, `[27]` `FUN_004a1e10`, `[29]` `FUN_004a21c0`.
 
-- **Subject.** `FUN_004a1590` lists the distinct missions of the characters
-  and special forces at the system that are on a visible mission (the same
-  walk as `FUN_004a1f60`). Each row's picture is the 73 by 48 bitmap
-  `0x2b77` (11127), or `0x2b78` (11128) when the player is not side 1
-  (`+0x9c`).
-- **Background**: `0x2b9d` (11165). Title buttons: `0x27e1/0x27e0` (id
-  `0xca`), `0x277c/0x277d` (id `0x14`), `0x280d/0x280e` (id `0x15`).
-- **Mission list** `+0x1b8`: at (5, 24), 94 by 275, art `0x29fc`, white,
-  `+0xe4` 16.
-- **Second list** `+0x1c0`: at (107, 145), 117 by 147, art `0x29fc`, white.
-  hyp: the selected mission's members.
-- **Tab strip** (`FUN_0060d590`, id `0x16`): at (105, 127), 122 by 16. It
-  has two buttons, 61 by 43:
-  - id `0x17`: `0x2d28`/`0x2d29` (11560/11561), TEXTSTRA 34048 "Agents";
-  - id `0x18`: `0x2d2a`/`0x2d2b` (11562/11563), TEXTSTRA 34049 "Decoys".
+The left list holds the system's visible missions, and the right list the
+selected mission's agents or decoys under a two-tab strip. Above them are
+the mission's target picture and its name. In detail:
 
-  So the second list shows the selected mission's agents or decoys.
-- **Rail icon** (slot `+0x74`, `FUN_004a21c0`): by `FUN_004a1f60`'s side,
-  11539 (`0x2d13`) for side 1, 11540 for side 2, 11541 otherwise.
-- **Text**: `+0x174` at (109, 91), 113 by 32, white, font `0x11`; `+0x178`
-  at (109, 25), 113 by 16, white, font 1.
-- **Picture** at (108, 37): `FUN_004a09a0` hit-tests it (`move-order.md` row
-  11).
-
-Still to trace before the port (phase 1d):
-- the row text and art of both lists;
-- what each tab shows;
-- the picture's source;
-- input and drop rules;
-- minimize.
+- **Constructor** (`FUN_0049f130`): `FUN_004ac120` at 235 by 304 (`0xeb`
+  by `0x130`); `+0x1b0` is GOKRES.DLL (`FUN_005fefd0(10)`, else loaded).
+- **Create** (`FUN_0049f540`):
+  - background `0x2b9d`;
+  - the sector button `0x27e1`/`0x27e0` (id `0xca`) at (3, 3);
+  - the close button `0x277c`/`0x277d` (id `0x14`) at (width less its width
+    less 3, 3);
+  - the minimize button `0x280d`/`0x280e` (id `0x15`) just left of it;
+  - the title label `+0x17c` starts at the sector button's width plus 5.
+  The lists' full argument lists (disassembly at `0x0049f8e2`, `0x0049fa14`)
+  end `0, 0, 0, 0, 10, 1, 0`: `+0xc0` 10 and `+0xf0` 1, so both lay out
+  vertically (`FUN_00609ae0`). Ghidra's call shows only the first ten.
+  - Mission list `+0x1b8` (id 10): (5, 24), 94 by 275, items 90 by 50, flags
+    `0x20000` (no drag, no grid), scroll art `0x29fc`, unselected text white
+    (`FUN_00609950`), selected text the default white (`FUN_00607ea0`
+    `+0xdc`), format `0x10` (`DT_WORDBREAK`), font 10, text offset the
+    default (1, 0).
+  - Member list `+0x1c0` (id `0xb`): (107, 145), 117 by 147, cells 115 by
+    43, flags `0xa0000` (grid, no drag), white, format 1.
+  - The tab strip (id `0x16`) at (105, 127), 122 by 16, with buttons at
+    (0, 0) id `0x17` and (61, 0) id `0x18`. The create call passes 61 by
+    43, but their bitmaps (11560..11568) are 61 by 16. Their help strings
+    are TEXTSTRA 34048 "Agents" and 34049 "Decoys".
+  - `+0x174` at (109, 91), 113 by 32, white, font 5, format `0x11`
+    (centred, word-wrapped); `+0x178` at (109, 25), 113 by 16, white, font
+    5, format 1 (centred).
+  - Then `FUN_004a1590` fills the mission list and the first row is
+    selected (`FUN_00609500`).
+- **Title strips** (`FUN_004a2200`), by `FUN_004a1f60`'s side, focused and
+  not: side 1 `0x283b`/`0x27d8`, side 2 `0x27d9`/`0x283e`, otherwise
+  `0x283f`/`0x2840` (the Defenses window's art).
+- **Paint** (slot 17, `FUN_0049fef0`): the picture `+0x170` centered in the
+  122 by 50 box at (108, 37); `+0x174`, `+0x178`; the strip; the title
+  TEXTSTRA 34085 "Mission at " and the system name (`FUN_004f62d0`) at
+  (21, 2), 178 by 16 (235 less three times 19), font 5, format `0x24`
+  (one line, left-aligned, vertically centred).
+- **Mission rows** (`FUN_004a1590`). The walk is `FUN_00536da0(system, 3)`,
+  as in `FUN_004a1f60`. Each member on a visible mission (a mission key
+  `+0x68`, role `+0x78` bit 8 clear) records its mission once, with its
+  class `+0x6c` and the member's side bits (`+0x24 >> 6 & 3`). Rows whose
+  mission is gone are removed (`FUN_004a0c20` clears the selection when it
+  goes). Each new mission whose class (`FUN_0051cab0`) exists gets a row:
+  - picture GOKRES `0x4000 + (class +0x30 & 0xfff)` for side 1, else
+    `0x5000 + ...`. `+0x30` is the MISSNSD record's TEXTSTRA id (`0x2c00`
+    plus the record index), so Diplomacy is `0x4c10` (19472) or `0x5c10`
+    (23568), 73 by 48;
+  - the selected image is the picture with `0x2b77` (11127, 73 by 48) keyed
+    over it, or `0x2b78` (11128) when the player is not side 1;
+  - the label is the class name `+0x34` (TEXTSTRA `0x2c00` + index:
+    "Diplomacy", "Espionage", ...).
+- **Selecting a mission** (list notification `0x29b`, `FUN_004a0c60`,
+  `FUN_004a0ca0`): the tab art follows the mission's side (`FUN_004a24b0`:
+  the side bits of a member at the system carrying its key, else the
+  player's): side 1 `0x2d28`/`0x2d29` and `0x2d2a`/`0x2d2b`, side 2
+  `0x2d2d`/`0x2d2e` and `0x2d2f`/`0x2d30`. The strip and member list show,
+  the Agents tab is selected and filled (`FUN_004a1ba0(0x17, 1)`), and the
+  details refresh (`FUN_004a10a0`). With no mission selected, the strip and
+  the member list hide and `+0x174`/`+0x178` hide.
+- **Member rows** (`FUN_004a1ba0`, `FUN_004a0e10`): the members at the system
+  carrying the selected mission's key; Agents (`0x17`) keeps role `+0x78`
+  bit 0 clear, Decoys (`0x18`) bit 0 set. Each row is a 122 by 43 image with
+  the GOKRES mini (`FUN_0042c3b0(.., 0, 1)`) centered, and the name
+  (`FUN_004f62d0`) under the mini: item text offset (0, mini height + half
+  the spare height), font 10, format `0x21` (centred, one line). No selected
+  image.
+- **Details** (`FUN_004a10a0`). The target `+0x1c8`:
+  - the player's own mission: the mission object's target (`FUN_004f3000`,
+    `+0x70`);
+  - the other side's mission in families `0x50..0x5f`: the system;
+  - otherwise none.
+  The picture is a system target's planet (`FUN_0045c970(FUN_00509610)`,
+  STRATEGY), else the target's GOKRES image: a character's mini
+  (`FUN_0042c3b0(.., 0, 1)`, families `0x30..0x3f`), any other object's
+  portrait (`(.., 1, 1)`); centered in the box.
+  `+0x174` is the target's name, or TEXTSTRA 34087 "Target Unknown";
+  `+0x178` is TEXTSTRA 34081 "Target:".
+- **Commands** (`FUN_004a0120`): `0xca` opens the sector window
+  (`FUN_00429ce0`); `0x14` closes; `0x15` posts `0x466` (minimize); `0x16`
+  picks a tab and refills the member list.
+- **Keys** (`FUN_004a0e00`): Escape closes.
+- **Release target** (`FUN_004a09a0`): the picture rect gives `+0x1c8` (the
+  rect is (108, 37) to the picture's centred left/top, so empty for a
+  full-size picture: an original bug); a member row under the point offset
+  by (107, 145) gives that member; else the system.
+- **Refresh**: slots 23 to 25 (`FUN_004a0560`, `FUN_004a06d0`,
+  `FUN_004a0870`) refill or refresh when a member joins, leaves or changes
+  mission.
+- **Show object** (slot 27, `FUN_004a1e10`): a member picks its tab by bit 0
+  and is selected; a mission key `0x50..0x7f` selects its row.
+- **Rail icon** (`FUN_004a21c0`): `0x2d13`/`0x2d14`/`0x2d15` (11539..11541)
+  by `FUN_004a1f60`'s side.
+- **Save** (slots 9 and 10): the subject and `+0x24`. port: not saved.
 
 ## Port notes
 
@@ -307,3 +374,21 @@ Still to trace before the port (phase 1d):
   - kind 4 and kind 8 take the system's side;
   - kind 8 counts personnel only when they are not on a visible mission;
   - kind `0x40` prefers the other side's missions.
+- Phase 1c ports the System Defenses window (`defenses_window.rs`) and
+  phase 1d the Missions window (`missions_window.rs`). Both share the
+  title strips and title buttons, take the rail through `0x466`, and give
+  a move released over them their system (`+0x70`). What the port leaves
+  out of both:
+  - the scroll bars, so the lists show only what fits;
+  - the tabs' help text;
+  - the windows' keys, since the galaxy view's windows share no keyboard
+    focus;
+  - list drags;
+  - the `+0x68` hit test, which nothing in the port asks;
+  - saving open windows.
+- The Missions window lists only what the player sees of the other side,
+  as the sector window's icons do (`opposing_contents_visible`). Its rows
+  follow the mission ids (hyp: `FUN_004a1590`'s map orders them by key).
+  Member and target minis carry no status overlays, as in the Mission
+  dialog. The picture's hit rect bug (`FUN_004a09a0`) is moot, because the
+  port has no `+0x68` hit test.

@@ -390,9 +390,10 @@ pub fn rail_icon(world: &GameWorld, system: SystemKey) -> u32 {
     }
 }
 
-/// `FUN_004a9800`/`FUN_004a9ce0`: the Fleet window's title strips, by the
-/// shown side and whether the window is the galaxy view's focused child.
-fn title_resource(side: u8, focused: bool) -> u32 {
+/// `FUN_004a9800`/`FUN_004a9ce0`: the title strips, by the shown side and
+/// whether the window is the galaxy view's focused child. The Fleet window
+/// and the Missions window (`FUN_004a2200`) use the same art.
+pub(crate) fn title_resource(side: u8, focused: bool) -> u32 {
     match (side, focused) {
         (1, true) => 10299,
         (1, false) => 10200,

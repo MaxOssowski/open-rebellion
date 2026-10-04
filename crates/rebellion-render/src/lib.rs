@@ -19,6 +19,7 @@ pub mod main_menu_destinations;
 pub mod message_index;
 pub mod message_log;
 pub mod mission_dialog;
+pub mod missions_window;
 pub mod move_confirmation;
 pub mod object_menu;
 pub mod panels;
@@ -100,6 +101,9 @@ pub use message_index::draw_message_index_shell;
 pub use message_log::{
     draw_message_log, GameMessage, MessageCategory, MessageLog, MessageLogState, MessageRail,
     RailAudience,
+};
+pub use missions_window::{
+    draw_missions_windows, MissionsTab, MissionsWindowAction, MissionsWindowState,
 };
 pub use panels::game_setup::{draw_game_setup, Difficulty, GameSetupAction, GameSetupState};
 pub use panels::{

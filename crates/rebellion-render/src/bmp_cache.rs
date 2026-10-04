@@ -1768,9 +1768,10 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | resources::strategy::SECTOR_PLANET_SPECIAL_FIRST
                     ..=resources::strategy::SECTOR_PLANET_SPECIAL_LAST
                 // The Fleet window's frames, pictures and indicators, the
-                // Defenses window's tabs and row frames, the sector window's
-                // four quadrant icons and the rail icons
-                // (`ghidra/notes/fleet-window.md`,
+                // Defenses window's tabs and row frames, the Missions
+                // window's row frames and tabs (buttons blit keyed,
+                // `FUN_00602d30`), the sector window's four quadrant icons
+                // and the rail icons (`ghidra/notes/fleet-window.md`,
                 // `ghidra/notes/sector-quadrants.md`).
                 | 10400..=10406
                 | 10420..=10430
@@ -1779,9 +1780,13 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10550..=10576
                 | 10578..=10579
                 | 10771..=10790
-                | 11533..=11538
+                | 11127..=11128
+                | 11533..=11541
+                | 11560..=11569
         ),
-        DllSource::Gokres => matches!(resource_id, 16_000..=19_999),
+        // The minis, and the Empire's mission minis (`0x5c00..`), which the
+        // Missions window's list blits keyed (`FUN_00609960`).
+        DllSource::Gokres => matches!(resource_id, 16_000..=19_999 | 23_552..=23_807),
         DllSource::Common => matches!(
             resource_id,
             10001..=10003
@@ -2400,6 +2405,46 @@ mod tests {
         for resource_id in [10549, 10577, 10580, 11532] {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 255, "{resource_id}");
+        }
+    }
+
+    #[test]
+    fn the_missions_windows_frames_tabs_rail_icons_and_empire_minis_key_out_their_blue_matte() {
+        // STRATEGY 11127/11128 (the row frames FUN_004a1590 keys over a
+        // mission's mini), 11560..11569 (the tab buttons, blitted keyed by
+        // FUN_00602d30) and 11539..11541 (the rail icons, FUN_004a21c0);
+        // GOKRES 0x5c00.. (the Empire's mission minis, which the list blits
+        // keyed in FUN_00609960). The background 11165 stays opaque.
+        let mut image = image::RgbaImage::new(1, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let alpha = |source, resource_id| {
+            decode_color_image(&encoded, source, resource_id)
+                .unwrap()
+                .pixels[0]
+                .a()
+        };
+        for resource_id in [11127, 11128, 11539, 11541, 11560, 11569] {
+            assert_eq!(alpha(DllSource::Strategy, resource_id), 0, "{resource_id}");
+        }
+        for resource_id in [11126, 11129, 11165, 11542, 11559, 11570] {
+            assert_eq!(
+                alpha(DllSource::Strategy, resource_id),
+                255,
+                "{resource_id}"
+            );
+        }
+        for resource_id in [23_552, 23_568, 23_807] {
+            assert_eq!(alpha(DllSource::Gokres, resource_id), 0, "{resource_id}");
+        }
+        for resource_id in [23_551, 23_808] {
+            assert_eq!(alpha(DllSource::Gokres, resource_id), 255, "{resource_id}");
         }
     }
 

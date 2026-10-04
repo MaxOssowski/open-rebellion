@@ -519,6 +519,12 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   `FUN_004a2630`) loads it (`ghidra/notes/fleet-window.md`); the port holds
   the cargo aboard at its loading system until the fleet arrives elsewhere
   (save v24). The native check is tracked with F-007C.
+- [x] Port the sector window's four quadrant icons (`FUN_00459e30`) and the
+  windows the other three open: the System window (type 9), the System
+  Defenses window (type 10, `FUN_004a7790`) and the Missions window (type
+  11, `FUN_0049f130`), each with its rail icon (`ghidra/notes/sector-quadrants.md`).
+  The `sector-quadrants.mjs` gate passes both sides, its pixel compares exact
+  against STRATEGY.DLL and GOKRES.DLL. A native check remains.
 - [ ] Port targeting of characters and objects (`+0x68` hit test, the walk up
   from a team member) so the dialog offers Rescue, Assassination, and
   Abduction (F-019).

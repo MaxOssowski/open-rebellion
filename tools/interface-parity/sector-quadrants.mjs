@@ -366,6 +366,38 @@ async function openDefenses(page, setup, system) {
   return { at, dat, opened, window: defensesWindow(opened, dat) };
 }
 
+// The Missions window (type 11, missions_window.rs) the bottom-right icon
+// opens: a mission's GOKRES mini is 0x4000 + (TEXTSTRA id & 0xfff), 0x5000 +
+// for side 2 (FUN_004a1590; Diplomacy 0x2c10); the row frame by the player's
+// side; the tabs by the selected mission's side, pressed while selected
+// (FUN_004a0ca0); the rail icon by FUN_004a1f60's side (FUN_004a21c0).
+const DIPLOMACY_MINI = { 1: 0x4c10, 2: 0x5c10 };
+const MISSION_FRAME = { 1: 11127, 2: 11128 };
+const MISSION_TABS = { 1: { agents: 11560, decoys: 11562 }, 2: { agents: 11565, decoys: 11567 } };
+const MISSIONS_RAIL = { 1: 11539, 2: 11540 };
+
+function missionsWindow(observation, dat) {
+  return observation.missions_windows.find((window) => window.system_dat_id === dat);
+}
+
+// A mission row's mini below its name: the list draws the name over the
+// picture from (1, 0) (FUN_006083c0's DrawTextA after FUN_00609960), so the
+// first rows hold text in the original as in the port.
+const ROW_TEXT_BAND = 12;
+function compareRowMini(screenshot, rect, image, label, directory) {
+  const height = image.height - ROW_TEXT_BAND;
+  const crop = new PNG({ width: image.width, height });
+  image.data.copy(crop.data, 0, ROW_TEXT_BAND * image.width * 4);
+  return compareIcon(screenshot, [rect[0], rect[1] + ROW_TEXT_BAND], crop, label, directory);
+}
+
+function compareMissionTabs(screenshot, source, window, directory, prefix) {
+  return window.tabs.map(([name, rect]) => {
+    const id = MISSION_TABS[window.tab_side][name] + (window.tab === name ? 1 : 0);
+    return { id, ...compareIcon(screenshot, rect, resource(source, id), `${prefix}-tab-${name}`, directory) };
+  });
+}
+
 const cases = [
   {
     name: "icons",
@@ -499,6 +531,90 @@ const cases = [
       return { at, window, checks };
     },
   },
+  {
+    name: "missions",
+    // FUN_0045aac0 maps kind 0x40 to type 11 (FUN_0049f130): the primary
+    // system's two Diplomacy missions, the player's first and selected
+    // (FUN_0049f540, FUN_00609500), its agent listed; another row's click
+    // reselects (FUN_004a0c60), the Decoys tab refills (id 0x16), and
+    // minimize goes to the rail and back (0x466, FUN_004a21c0).
+    async run(page, faction, setup, directory, source) {
+      const [left, top] = quadrant(setup, "primary", "missions");
+      const at = { x: Math.round(left) + 24, y: Math.round(top) + 9 };
+      await doubleClick(page, at);
+      const dat = setup.primary_dat_id;
+      const opened = await until(page, "the missions icon opens the Missions window",
+        (o, value) => o.missions_windows.some((window) => window.system_dat_id === value), dat);
+      const window = missionsWindow(opened, dat);
+      assert.deepEqual(window.rows, [
+        ["Diplomacy", faction.side, DIPLOMACY_MINI[faction.side]],
+        ["Diplomacy", faction.other, DIPLOMACY_MINI[faction.other]],
+      ], JSON.stringify(window));
+      assert.equal(window.side, faction.other);
+      assert.deepEqual([window.selected, window.tab, window.tab_side], [0, "agents", faction.side]);
+      assert.equal(window.members.length, 1, JSON.stringify(window));
+      assert.ok(window.target && window.target !== "Target Unknown", JSON.stringify(window));
+      const [rowLeft, rowTop] = window.row_rects[0];
+      const origin = [rowLeft - 5, rowTop - 24];
+      const background = resource(source, 11165);
+      let screenshot = await stableScreen(page, directory, "missions");
+      const other = DIPLOMACY_MINI[faction.other];
+      const opening = [
+        // Below the two rows the list shows the background, as does the
+        // foot right of the list.
+        { id: 11165, ...compareRegion(screenshot, origin, background, [5, 124, 94, 175], "missions-list", directory) },
+        { id: 11165, ...compareRegion(screenshot, origin, background, [100, 292, 135, 12], "missions-foot", directory) },
+        { id: other, ...compareRowMini(screenshot, window.row_rects[1], gokres(other), "missions-second-mini", directory) },
+        { id: MISSION_FRAME[faction.side], ...compareIcon(screenshot, window.row_rects[0],
+          resource(source, MISSION_FRAME[faction.side]), "missions-selected-frame", directory) },
+        ...compareMissionTabs(screenshot, source, window, directory, "missions"),
+      ];
+      assertExact(opening);
+
+      const second = window.row_rects[1];
+      await click(page, { x: second[0] + 40, y: second[1] + 20 });
+      const reselected = missionsWindow(await until(page, "a click selects the other mission",
+        (o, value) => o.missions_windows.some((w) => w.system_dat_id === value && w.selected === 1), dat), dat);
+      assert.deepEqual([reselected.tab, reselected.tab_side], ["agents", faction.other]);
+      assert.equal(reselected.members.length, 1, JSON.stringify(reselected));
+      screenshot = await stableScreen(page, directory, "reselected");
+      const own = DIPLOMACY_MINI[faction.side];
+      const reselectedChecks = [
+        { id: own, ...compareRowMini(screenshot, reselected.row_rects[0], gokres(own), "reselected-first-mini", directory) },
+        { id: MISSION_FRAME[faction.side], ...compareIcon(screenshot, reselected.row_rects[1],
+          resource(source, MISSION_FRAME[faction.side]), "reselected-frame", directory) },
+        ...compareMissionTabs(screenshot, source, reselected, directory, "reselected"),
+      ];
+      assertExact(reselectedChecks);
+
+      const decoysTab = reselected.tabs.find(([name]) => name === "decoys")[1];
+      await click(page, { x: decoysTab[0] + 30, y: decoysTab[1] + 8 });
+      const decoys = missionsWindow(await until(page, "the Decoys tab refills the member list",
+        (o, value) => o.missions_windows.some((w) => w.system_dat_id === value && w.tab === "decoys"), dat), dat);
+      assert.deepEqual(decoys.members, []);
+      screenshot = await stableScreen(page, directory, "decoys");
+      const decoyChecks = compareMissionTabs(screenshot, source, decoys, directory, "decoys");
+      assertExact(decoyChecks);
+
+      await click(page, { x: origin[0] + 210, y: origin[1] + 9 });
+      const railed = await until(page, "minimize sends the window to the rail",
+        (o, value) => !o.missions_windows.some((w) => w.system_dat_id === value)
+          && o.rail.some(([system, kind]) => system === value && kind === "missions"), dat);
+      const slot = railed.rail.find(([system, kind]) => system === dat && kind === "missions")[2];
+      screenshot = await stableScreen(page, directory, "railed");
+      const icon = MISSIONS_RAIL[faction.other];
+      const railChecks = [{ id: icon, ...compareIcon(screenshot, slot, resource(source, icon), "rail-icon", directory) }];
+      assertExact(railChecks);
+
+      await click(page, { x: slot[0] + slot[2] / 2, y: slot[1] + slot[3] / 2 });
+      const restored = missionsWindow(await until(page, "the rail slot restores the window",
+        (o, value) => o.missions_windows.some((w) => w.system_dat_id === value)
+          && !o.rail.some(([system, kind]) => system === value && kind === "missions"), dat), dat);
+      assert.deepEqual(restored.origin, window.origin);
+      assert.equal(restored.selected, 0);
+      return { at, window, opening, reselected, reselectedChecks, decoyChecks, railChecks, restored };
+    },
+  },
 ];
 
 async function inspect(server, source, faction, testCase, executable) {
@@ -559,7 +675,9 @@ async function inspect(server, source, faction, testCase, executable) {
     assert.equal(setup.scale, 1, "the gate compares at the original's scale");
     assert.equal(setup.quadrants.length, 8, JSON.stringify(setup));
     const start = await latest(page);
-    assert.deepEqual([start.system_windows, start.defenses_windows, start.rail], [[], [], []],
+    assert.deepEqual(
+      [start.system_windows, start.defenses_windows, start.missions_windows, start.rail],
+      [[], [], [], []],
       JSON.stringify(start));
     await page.evaluate(() => document.fonts.ready);
     const { bytes: _ready, ...before } = await shot(page, directory, "ready");
@@ -661,7 +779,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "sector-quadrants",
-    scope: "test-only sector window quadrant icons (FUN_00459e30): each shown icon's art against STRATEGY.DLL, hidden icons absent, the system icon opening the System window, and the defenses icon opening the System Defenses window (tabs, rows, selection frame, rail) against STRATEGY.DLL and GOKRES.DLL, on both sides",
+    scope: "test-only sector window quadrant icons (FUN_00459e30): each shown icon's art against STRATEGY.DLL, hidden icons absent, the system icon opening the System window, and the defenses icon opening the System Defenses window (tabs, rows, selection frame, rail), and the missions icon opening the Missions window (rows, selection frame, tabs, rail) against STRATEGY.DLL and GOKRES.DLL, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

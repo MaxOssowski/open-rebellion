@@ -87,6 +87,33 @@ pub fn quadrant_side(
     }
 }
 
+/// The characters and special forces at `system` the player sees, each with
+/// its side and whether it is on a hidden mission; none at an unexplored
+/// system.
+pub(crate) fn visible_members(
+    world: &GameWorld,
+    fog: &FogState,
+    player: Faction,
+    system: SystemKey,
+) -> Vec<(MissionMember, u8, bool)> {
+    SystemContents::new(world, fog, player, system)
+        .map(|contents| contents.members().collect())
+        .unwrap_or_default()
+}
+
+/// `FUN_004a1f60(system, player side)` over what the player sees: the other
+/// side's missions win, then the player's, else 3.
+pub(crate) fn missions_side(
+    world: &GameWorld,
+    fog: &FogState,
+    missions: &MissionState,
+    player: Faction,
+    system: SystemKey,
+) -> u8 {
+    SystemContents::new(world, fog, player, system)
+        .map_or(3, |contents| mission_side(&contents, missions))
+}
+
 /// The quadrant item's two bitmaps, or `None` when it is not drawn.
 #[must_use]
 pub fn quadrant_icon(

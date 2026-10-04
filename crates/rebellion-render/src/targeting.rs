@@ -18,6 +18,7 @@ use crate::bmp_cache::{resources::rebexe, BmpCache, DllSource};
 use crate::cockpit::CockpitLayout;
 use crate::defenses_window::DefensesWindowState;
 use crate::fleet_window::FleetWindowState;
+use crate::missions_window::MissionsWindowState;
 use crate::sector_window::SectorWindowState;
 use crate::system_window::SystemWindowState;
 
@@ -106,11 +107,12 @@ pub struct ReleaseWindows<'a> {
     pub system: &'a SystemWindowState,
     pub fleet: &'a FleetWindowState,
     pub defenses: &'a DefensesWindowState,
+    pub missions: &'a MissionsWindowState,
 }
 
 /// The target a targeting release at `point` lands on. `FUN_00422ce0` asks
 /// the child window under the point (`ChildWindowFromPointEx`); here the
-/// topmost egui layer stands for it. A system window or a Defenses window
+/// topmost egui layer stands for it. A system, Defenses or Missions window
 /// gives its own system, a sector window the planet under the point, a Fleet
 /// window the fleet or system its `+0x70` gives; the galaxy map is drawn by
 /// the view itself, so a release over it, or between planets, gives none and
@@ -135,6 +137,9 @@ pub fn release_destination(
         return Some(ReleaseTarget::System(system));
     }
     if let Some(system) = windows.defenses.release_target(layer) {
+        return Some(ReleaseTarget::System(system));
+    }
+    if let Some(system) = windows.missions.release_target(layer) {
         return Some(ReleaseTarget::System(system));
     }
     if let Some(target) = windows
@@ -434,10 +439,12 @@ mod tests {
         use crate::cockpit::CockpitFaction;
         use crate::defenses_window::draw_defenses_windows;
         use crate::fleet_window::draw_fleet_windows;
+        use crate::missions_window::draw_missions_windows;
         use crate::sector_window::draw_sector_windows;
         use crate::system_window::draw_system_windows;
         use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
         use rebellion_core::ids::DatId;
+        use rebellion_core::missions::MissionState;
         use rebellion_core::troop_transport::TroopTransportState;
         use rebellion_core::world::{ControlKind, Fleet, Sector, System};
 
@@ -515,6 +522,26 @@ mod tests {
             defenses: &mut DefensesWindowState,
             at: (f32, f32),
         ) -> Option<ReleaseTarget> {
+            release_on_all(
+                world,
+                sectors,
+                systems,
+                fleets,
+                defenses,
+                (&mut MissionsWindowState::default(), &MissionState::new()),
+                at,
+            )
+        }
+
+        fn release_on_all(
+            world: &GameWorld,
+            sectors: &mut SectorWindowState,
+            systems: &mut SystemWindowState,
+            fleets: &mut FleetWindowState,
+            defenses: &mut DefensesWindowState,
+            (missions_windows, missions): (&mut MissionsWindowState, &MissionState),
+            at: (f32, f32),
+        ) -> Option<ReleaseTarget> {
             let layout = layout(1.0);
             let ctx = egui::Context::default();
             let mut cache = BmpCache::new();
@@ -531,18 +558,12 @@ mod tests {
                 let _ = ctx.run(input, |ctx| {
                     let faction = CockpitFaction::Alliance;
                     let _ = draw_sector_windows(
-                        ctx,
-                        world,
-                        &fog,
-                        sectors,
-                        faction,
-                        layout,
-                        &mut cache,
-                        &uprisings,
-                        &rebellion_core::missions::MissionState::new(),
+                        ctx, world, &fog, sectors, faction, layout, &mut cache, &uprisings,
+                        missions,
                     );
-                    let _ =
-                        draw_system_windows(ctx, world, &fog, systems, faction, layout, &mut cache);
+                    let _ = draw_system_windows(
+                        ctx, world, &fog, missions, systems, faction, layout, &mut cache,
+                    );
                     let _ = draw_fleet_windows(
                         ctx,
                         world,
@@ -564,6 +585,16 @@ mod tests {
                         layout,
                         &mut cache,
                     );
+                    let _ = draw_missions_windows(
+                        ctx,
+                        world,
+                        &fog,
+                        missions,
+                        missions_windows,
+                        faction,
+                        layout,
+                        &mut cache,
+                    );
                     capture_pointer(ctx);
                 });
             }
@@ -573,6 +604,7 @@ mod tests {
                 system: systems,
                 fleet: fleets,
                 defenses,
+                missions: missions_windows,
             };
             release_destination(&ctx, world, &fog, layout, windows, point)
         }
@@ -795,6 +827,58 @@ mod tests {
                         &mut SystemWindowState::default(),
                         &mut FleetWindowState::default(),
                         &mut defenses,
+                        at,
+                    ),
+                    Some(ReleaseTarget::System(first)),
+                    "{at:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn a_release_on_a_missions_window_targets_its_system_even_over_a_row() {
+            // FUN_004aa470 (+0x70) answers for type 11 too: the subject
+            // wherever the point is (move-order.md, "Hit tests").
+            let (mut world, first, _) = world();
+            let agent = world.characters.insert(rebellion_core::world::Character {
+                dat_id: rebellion_core::ids::DatId::new(832),
+                name: "Agent".into(),
+                is_alliance: true,
+                current_system: Some(first),
+                recruited: true,
+                ..Default::default()
+            });
+            let mut missions = MissionState::new();
+            missions.dispatch(rebellion_core::missions::MissionRequest::single(
+                rebellion_core::missions::MissionKind::Diplomacy,
+                rebellion_core::missions::MissionFaction::Alliance,
+                agent,
+                first,
+                None,
+                0,
+            ));
+            let fog = FogState::new(Faction::Alliance);
+            let mut windows = MissionsWindowState::default();
+            assert!(windows.open(
+                &world,
+                &fog,
+                &missions,
+                first,
+                (40, 50),
+                CockpitFaction::Alliance,
+                layout(1.0),
+            ));
+
+            // The first mission row spans (5, 24) to (95, 74) in the window.
+            for at in [(40.0 + 30.0, 50.0 + 40.0), (40.0 + 150.0, 50.0 + 200.0)] {
+                assert_eq!(
+                    release_on_all(
+                        &world,
+                        &mut SectorWindowState::default(),
+                        &mut SystemWindowState::default(),
+                        &mut FleetWindowState::default(),
+                        &mut DefensesWindowState::default(),
+                        (&mut windows, &missions),
                         at,
                     ),
                     Some(ReleaseTarget::System(first)),

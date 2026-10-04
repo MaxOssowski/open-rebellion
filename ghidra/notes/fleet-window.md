@@ -300,11 +300,13 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 ## Port notes
 
 - `crates/rebellion-render/src/fleet_window.rs` is type 4; `system_window.rs`
-  is type 9. Type 10 (System Defenses) is not ported.
+  is type 9; `defenses_window.rs` and `missions_window.rs` are types 10 and
+  11 (`sector-quadrants.md`).
 - **Entry.** The sector window paints the top-right overlay (10775/10776,
   10783/10784) at `(cx + 1, cy - 19)`, 28 by 19, with `FUN_0045ccc0`'s side
   rule, and a double click on it opens the Fleet window at the click
-  (clamped into the galaxy view). The other three quadrants are not ported.
+  (clamped into the galaxy view). The other three quadrants open the
+  System, System Defenses and Missions windows (`sector-quadrants.md`).
   A minimized Fleet window goes to the galaxy view's rail with icon
   11536..11538 (`FUN_004a76e0`) and reopens from it.
 - **Loading.** A regiment's pop-up menu enables Move (hyp: `FUN_004f9860`'s
@@ -337,8 +339,6 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 
 ## Still open
 
-- The other three quadrant rules (`FUN_0045cdc0`, `FUN_0045ce80`,
-  `FUN_0045d090`) are traced in `sector-quadrants.md` (2026-10-04).
 - The list item drawing (`FUN_004c7e10`, `CoolDragList`): text position, color
   and the selected look; the scroll bar `FUN_0060f640`.
 - The leg builders and the full-fleet refusal; `FUN_00558380`'s base order

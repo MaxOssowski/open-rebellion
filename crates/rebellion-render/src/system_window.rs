@@ -12,6 +12,7 @@ use rebellion_core::ids::{
     CharacterKey, DatId, DefenseFacilityKey, FleetKey, ManufacturingFacilityKey,
     ProductionFacilityKey, SpecialForceKey, SystemKey, TroopKey,
 };
+use rebellion_core::missions::MissionState;
 use rebellion_core::world::{ControlKind, GameWorld};
 
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -149,13 +150,20 @@ enum RailEntry {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A Missions window (type 11); its icon comes from `FUN_004a21c0`.
+    Missions {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
 }
 
 impl RailEntry {
     const fn system(&self) -> SystemKey {
         match self {
             Self::System(window) => window.system,
-            Self::Fleet { system, .. } | Self::Defenses { system, .. } => *system,
+            Self::Fleet { system, .. }
+            | Self::Defenses { system, .. }
+            | Self::Missions { system, .. } => *system,
         }
     }
 
@@ -349,13 +357,14 @@ impl SystemWindowState {
     }
 
     /// Each rail entry, oldest first: its system and its window, "system",
-    /// "fleet" or "defenses".
+    /// "fleet", "defenses" or "missions".
     pub fn rail_entries(&self) -> impl Iterator<Item = (SystemKey, &'static str)> + '_ {
         self.rail.iter().map(|entry| {
             let kind = match entry {
                 RailEntry::System(_) => "system",
                 RailEntry::Fleet { .. } => "fleet",
                 RailEntry::Defenses { .. } => "defenses",
+                RailEntry::Missions { .. } => "missions",
             };
             (entry.system(), kind)
         })
@@ -455,6 +464,14 @@ impl SystemWindowState {
         });
     }
 
+    /// Put a minimized Missions window on the rail (`0x466`).
+    pub fn minimize_missions_window(&mut self, system: SystemKey, logical_position: (i16, i16)) {
+        self.push_rail(RailEntry::Missions {
+            system,
+            logical_position,
+        });
+    }
+
     fn push_rail(&mut self, entry: RailEntry) {
         self.rail.retain(|held| !held.same_window(&entry));
         if self.rail.len() == REFERENCE_RAIL_SLOTS {
@@ -544,6 +561,11 @@ pub enum SystemWindowAction {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A click on a minimized Missions window's rail slot restores it.
+    RestoreMissionsWindow {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
     /// A list drag released outside its list (`0x29a`): the galaxy view
     /// hit-tests the screen point and issues `0x214` (`FUN_00422ce0`).
     DragItem {
@@ -572,17 +594,22 @@ struct WindowDrawResult {
 }
 
 /// Draw the faction rail and every visible original detailed system window.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Keep explicit state and rendering inputs at this UI boundary; the rail's Missions icon reads the mission state."
+)]
 pub fn draw_system_windows(
     ctx: &egui::Context,
     world: &GameWorld,
     fog: &FogState,
+    missions: &MissionState,
     state: &mut SystemWindowState,
     faction: CockpitFaction,
     layout: CockpitLayout,
     cache: &mut BmpCache,
 ) -> Vec<SystemWindowAction> {
     state.prepare_faction(faction);
-    let restored = draw_reference_rail(ctx, world, fog, state, faction, layout, cache);
+    let restored = draw_reference_rail(ctx, world, fog, missions, state, faction, layout, cache);
 
     let mut actions: Vec<SystemWindowAction> = restored
         .into_iter()
@@ -671,10 +698,15 @@ pub fn draw_system_windows(
     actions
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The rail's icons read the world, fog and mission state."
+)]
 fn draw_reference_rail(
     ctx: &egui::Context,
     world: &GameWorld,
     fog: &FogState,
+    missions: &MissionState,
     state: &mut SystemWindowState,
     faction: CockpitFaction,
     layout: CockpitLayout,
@@ -713,11 +745,15 @@ fn draw_reference_rail(
                     // A Fleet window's rail icon (`FUN_004a76e0`) sits at the
                     // slot's corner with the system's name after it, as the
                     // reference capture shows. port: a Defenses window's
-                    // (`FUN_004aa4a0`) is laid out the same way.
+                    // (`FUN_004aa4a0`) and a Missions window's
+                    // (`FUN_004a21c0`) are laid out the same way.
                     let icon = match entry {
                         RailEntry::Defenses { system, .. } => {
                             crate::defenses_window::rail_icon(world, *system)
                         }
+                        RailEntry::Missions { system, .. } => crate::missions_window::rail_icon(
+                            world, fog, missions, faction, *system,
+                        ),
                         _ => crate::fleet_window::rail_icon(
                             world,
                             fog,
@@ -770,6 +806,16 @@ fn draw_reference_rail(
         } => {
             state.rail.retain(|held| !held.same_window(&entry));
             Some(SystemWindowAction::RestoreDefensesWindow {
+                system,
+                logical_position,
+            })
+        }
+        entry @ RailEntry::Missions {
+            system,
+            logical_position,
+        } => {
+            state.rail.retain(|held| !held.same_window(&entry));
+            Some(SystemWindowAction::RestoreMissionsWindow {
                 system,
                 logical_position,
             })
@@ -1475,7 +1521,7 @@ pub(crate) fn character_mini_resource_id(dat_id: DatId, is_major: bool) -> Optio
     }
 }
 
-fn manufacturing_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
+pub(crate) fn manufacturing_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     let label = match dat_id.index() {
         1 => "Orbital Shipyard",
         2 => "Training Facility",
@@ -1505,7 +1551,7 @@ pub(crate) fn defense_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)
     matches!(dat_id.family(), 0x22..=0x25).then_some((resource_id, label))
 }
 
-fn production_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
+pub(crate) fn production_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     if !matches!(dat_id.family(), 0x2c..=0x2d) {
         return None;
     }
@@ -2250,6 +2296,7 @@ mod tests {
                 ctx,
                 &world,
                 &fog,
+                &rebellion_core::missions::MissionState::new(),
                 &mut state,
                 CockpitFaction::Alliance,
                 layout,
@@ -2307,6 +2354,7 @@ mod tests {
                     ctx,
                     world,
                     &fog,
+                    &rebellion_core::missions::MissionState::new(),
                     &mut state,
                     CockpitFaction::Alliance,
                     layout,
@@ -2376,6 +2424,7 @@ mod tests {
                     ctx,
                     world,
                     &fog,
+                    &rebellion_core::missions::MissionState::new(),
                     &mut state,
                     CockpitFaction::Alliance,
                     layout,
@@ -2866,6 +2915,7 @@ mod tests {
                     ctx,
                     world,
                     &fog,
+                    &rebellion_core::missions::MissionState::new(),
                     state,
                     CockpitFaction::Alliance,
                     layout,
@@ -2942,6 +2992,53 @@ mod tests {
         );
         assert_eq!(state.rail_count(), 1);
         assert!(matches!(state.rail[0], RailEntry::Fleet { .. }));
+    }
+
+    #[test]
+    fn a_minimized_missions_window_keeps_its_own_rail_slot_and_restores_from_it() {
+        // FUN_004a21c0: a Missions window minimizes (0x466) to its own rail
+        // entry beside the same system's Defenses window, one per window;
+        // with no mission there its icon is side 3's 11541.
+        let (world, systems) = fixture_world(1);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_missions_window(systems[0], (60, 40));
+        state.minimize_missions_window(systems[0], (60, 40));
+        assert_eq!(
+            state.rail_entries().collect::<Vec<_>>(),
+            [(systems[0], "defenses"), (systems[0], "missions")]
+        );
+
+        let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 1));
+        let point = slot.center();
+        let press = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+        let (actions, _) = run_rail(
+            &world,
+            &mut state,
+            vec![
+                vec![egui::Event::PointerMoved(point)],
+                vec![egui::Event::PointerMoved(point)],
+                vec![press(true)],
+                vec![press(false)],
+            ],
+        );
+        let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.take());
+        assert!(painted.contains(&(11541, slot.min)), "{painted:?}");
+        assert!(
+            actions.contains(&SystemWindowAction::RestoreMissionsWindow {
+                system: systems[0],
+                logical_position: (60, 40),
+            })
+        );
+        assert_eq!(state.rail_count(), 1);
+        assert!(matches!(state.rail[0], RailEntry::Defenses { .. }));
     }
 
     #[test]

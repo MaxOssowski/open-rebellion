@@ -269,6 +269,12 @@ pub enum SectorWindowAction {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A double click on a shown missions icon (`FUN_0045aac0`, kind
+    /// `0x40`): the Missions window, type 11.
+    OpenMissionsWindow {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
 }
 
 #[derive(Default)]
@@ -280,6 +286,7 @@ struct WindowDrawResult {
     opened: Option<(SystemKey, (i16, i16))>,
     opened_fleet: Option<(SystemKey, (i16, i16))>,
     opened_defenses: Option<(SystemKey, (i16, i16))>,
+    opened_missions: Option<(SystemKey, (i16, i16))>,
 }
 
 /// Paint and operate all open sector windows using the recovered strategic
@@ -347,6 +354,12 @@ pub fn draw_sector_windows(
         }
         if let Some((system, logical_position)) = result.opened_defenses {
             actions.push(SectorWindowAction::OpenDefensesWindow {
+                system,
+                logical_position,
+            });
+        }
+        if let Some((system, logical_position)) = result.opened_missions {
+            actions.push(SectorWindowAction::OpenMissionsWindow {
                 system,
                 logical_position,
             });
@@ -558,13 +571,13 @@ fn draw_sector_window(
                     let open_point = double_click.unwrap_or_else(|| icon_rect.center());
                     let opened = Some((*system_key, screen_to_logical(layout, open_point)));
                     // FUN_0045aac0: kind 4 opens the System window, kind 8
-                    // the Defenses window, kind 0x10 the Fleet window.
-                    // port: the Missions window (type 11) is not ported yet.
+                    // the Defenses window, kind 0x10 the Fleet window and
+                    // kind 0x40 the Missions window.
                     match quadrant {
                         Quadrant::System => result.opened = opened,
                         Quadrant::Defenses => result.opened_defenses = opened,
                         Quadrant::Fleets => result.opened_fleet = opened,
-                        Quadrant::Missions => {}
+                        Quadrant::Missions => result.opened_missions = opened,
                     }
                     result.focus = true;
                 }
@@ -1221,6 +1234,20 @@ mod tests {
         system: SystemKey,
         at: (f32, f32),
     ) -> Vec<SectorWindowAction> {
+        double_click_with_missions(
+            world,
+            system,
+            &rebellion_core::missions::MissionState::new(),
+            at,
+        )
+    }
+
+    fn double_click_with_missions(
+        world: &GameWorld,
+        system: SystemKey,
+        missions: &rebellion_core::missions::MissionState,
+        at: (f32, f32),
+    ) -> Vec<SectorWindowAction> {
         let layout = layout(1.0);
         let mut state = SectorWindowState::default();
         state.open_for_system(world, system, CockpitFaction::Alliance);
@@ -1266,7 +1293,7 @@ mod tests {
                     layout,
                     &mut cache,
                     &uprisings,
-                    &rebellion_core::missions::MissionState::new(),
+                    missions,
                 ));
             });
         }
@@ -1435,6 +1462,51 @@ mod tests {
             [SectorWindowAction::OpenDefensesWindow {
                 system,
                 logical_position: (66, 110),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_double_click_on_the_missions_icon_opens_the_missions_window() {
+        // FUN_0045aac0 maps kind 0x40 to window type 11. (119, 110) lies on
+        // the bottom-right icon, (93, 98) to (121, 117), right of the
+        // planet.
+        let (mut world, system, _) = fixture_world();
+        let agent = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(832),
+            name: "Agent".into(),
+            is_alliance: true,
+            current_system: Some(system),
+            recruited: true,
+            ..Default::default()
+        });
+        let mut missions = rebellion_core::missions::MissionState::new();
+        assert!(opened(&double_click_with_missions(
+            &world,
+            system,
+            &missions,
+            (119.0, 110.0)
+        ))
+        .is_empty());
+
+        missions.dispatch(rebellion_core::missions::MissionRequest::single(
+            rebellion_core::missions::MissionKind::Diplomacy,
+            rebellion_core::missions::MissionFaction::Alliance,
+            agent,
+            system,
+            None,
+            0,
+        ));
+        assert_eq!(
+            opened(&double_click_with_missions(
+                &world,
+                system,
+                &missions,
+                (119.0, 110.0)
+            )),
+            [SectorWindowAction::OpenMissionsWindow {
+                system,
+                logical_position: (119, 110),
             }]
         );
     }
