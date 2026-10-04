@@ -85,8 +85,8 @@ use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::panels::research::{draw_research, ResearchPanelState};
 use rebellion_render::system_window::fleet_label;
 use rebellion_render::targeting::{
-    capture_pointer, draw_targeting_cursor, release_destination, TargetOrder, Targeting,
-    TargetingEnd,
+    capture_pointer, draw_targeting_cursor, release_destination, ReleaseTarget, ReleaseWindows,
+    TargetOrder, Targeting, TargetingEnd,
 };
 use rebellion_render::{
     advisor_combat_result, advisor_death_star, advisor_greet, advisor_manufacturing_complete,
@@ -107,6 +107,7 @@ use rebellion_render::{
     SectorWindowAction, SectorWindowState, SfxKind, SystemWindowAction, SystemWindowState,
     TacticalAction, TacticalState, TacticalTrenchRunOutcome, VideoError, VideoPlayer,
 };
+use rebellion_render::{draw_fleet_windows, FleetWindowAction, FleetWindowState};
 
 /// Top-level game mode state machine.
 ///
@@ -1052,6 +1053,7 @@ async fn main() {
     let mut game_speed_ui = GameSpeedUiState::default();
     let mut sector_window_state = SectorWindowState::default();
     let mut system_window_state = SystemWindowState::default();
+    let mut fleet_window_state = FleetWindowState::default();
     // The object pop-up menu a right-click in a system window opens.
     let mut object_menu: Option<ObjectMenuState> = None;
     // A Mission order waiting for its target (the galaxy view's mode 2).
@@ -1221,7 +1223,14 @@ async fn main() {
             &mut blockade_state,
             &mut sector_window_state,
             &mut system_window_state,
+            &mut troop_transport_state,
         );
+        // The AI plays the other side, as a new game sets it.
+        ai_state = AIState::new(if player_faction == MissionFaction::Empire {
+            AiFaction::Alliance
+        } else {
+            AiFaction::Empire
+        });
         interface_test_fixture::open_mission_dialog(
             request,
             &world,
@@ -1262,6 +1271,10 @@ async fn main() {
     let mut interface_fixture_emitted = tactical_fixture_failed;
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let mut fleet_move_watch = interface_test_fixture::FleetMoveWatch::default();
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let mut fleet_load_watch = interface_test_fixture::FleetLoadWatch::default();
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let mut speed_menu_watch = interface_test_fixture::SpeedMenuWatch::default();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let interface_fixture_active =
         interface_fixture_request.is_some() || tactical_fixture_request.is_some();
@@ -1686,7 +1699,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     value
                         .fleets
                         .iter()
-                        .any(|fleet| troop_transport_state.carried_count(*fleet) > 0)
+                        .any(|fleet| troop_transport_state.landing_count(*fleet) > 0)
                         .then_some((system, faction))
                 })
                 .collect();
@@ -1698,7 +1711,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 .fleets
                                 .get(*fleet)
                                 .is_some_and(|value| !value.is_alliance)
-                                && troop_transport_state.carried_count(*fleet) > 0
+                                && troop_transport_state.landing_count(*fleet) > 0
                         })
                     });
                     if let Some(fleet) = bombardment_fleet {
@@ -2730,6 +2743,7 @@ Some(RailAudience::side(*faction_is_alliance)),
             GameMode::MainMenu => {
                 sector_window_state.clear();
                 system_window_state.clear();
+                fleet_window_state.clear();
                 object_menu = None;
                 targeting = None;
                 #[cfg(not(target_arch = "wasm32"))]
@@ -3168,6 +3182,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     });
                                 sector_window_state.clear();
                                 system_window_state.clear();
+                                fleet_window_state.clear();
                                 object_menu = None;
                                 targeting = None;
 
@@ -3281,6 +3296,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 map_state.pointer_blocked = sector_window_state
                     .contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.contains_screen_point(cockpit_layout, pointer)
+                    || fleet_window_state.contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
@@ -3378,6 +3394,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                         speed_input,
                     ) {
                         choose_game_speed(&mut clock, speed);
+                    }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let Some(request) = interface_fixture_request {
+                        speed_menu_watch.observe(
+                            request,
+                            game_speed_ui.menu_anchor.and_then(|_| {
+                                rebellion_render::game_speed::game_speed_menu_rect(ctx)
+                            }),
+                        );
                     }
                     if draw_pause_alert(ctx, &clock, &mut bmp_cache, cockpit_layout, speed_input) {
                         clock.resume();
@@ -3593,6 +3618,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     for action in draw_sector_windows(
                         ctx,
                         &world,
+                        fog_state,
                         &mut sector_window_state,
                         cockpit_state.faction,
                         cockpit_layout,
@@ -3609,6 +3635,19 @@ Some(RailAudience::side(*faction_is_alliance)),
                             } => {
                                 map_state.selected_system = Some(system);
                                 system_window_state.open(
+                                    &world,
+                                    system,
+                                    logical_position,
+                                    cockpit_state.faction,
+                                    cockpit_layout,
+                                );
+                            }
+                            SectorWindowAction::OpenFleetWindow {
+                                system,
+                                logical_position,
+                            } => {
+                                map_state.selected_system = Some(system);
+                                fleet_window_state.open(
                                     &world,
                                     system,
                                     logical_position,
@@ -3640,6 +3679,18 @@ Some(RailAudience::side(*faction_is_alliance)),
                             SystemWindowAction::SelectSystem(system) => {
                                 map_state.selected_system = Some(system);
                             }
+                            SystemWindowAction::RestoreFleetWindow {
+                                system,
+                                logical_position,
+                            } => {
+                                fleet_window_state.open(
+                                    &world,
+                                    system,
+                                    logical_position,
+                                    cockpit_state.faction,
+                                    cockpit_layout,
+                                );
+                            }
                             SystemWindowAction::OpenObjectMenu {
                                 selection, point, ..
                             } => {
@@ -3662,6 +3713,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                                         ),
                                         _ => false,
                                     },
+                                    troop_move: match selection {
+                                        Some(MenuObject::Troop(troop)) => troop_transport_state
+                                            .regiment_move_enabled(
+                                                &world,
+                                                troop,
+                                                player_faction == MissionFaction::Alliance,
+                                            ),
+                                        _ => false,
+                                    },
                                 };
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
@@ -3673,15 +3733,31 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 point,
                                 ..
                             } => {
-                                let Some(destination) = release_destination(
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                };
+                                let destination = match release_destination(
                                     ctx,
                                     &world,
+                                    fog_state,
                                     cockpit_layout,
-                                    &sector_window_state,
-                                    &system_window_state,
+                                    windows,
                                     point,
-                                ) else {
-                                    continue;
+                                ) {
+                                    Some(ReleaseTarget::System(system)) => system,
+                                    // port: joining a fleet is not ported.
+                                    Some(ReleaseTarget::Fleet { .. }) => {
+                                        msg_log.push(GameMessage::new(
+                                            clock.tick,
+                                            "Fleet move rejected: joining fleets is not ported"
+                                                .to_string(),
+                                            MessageCategory::Event,
+                                        ));
+                                        continue;
+                                    }
+                                    None => continue,
                                 };
                                 match validate_fleet_destination(
                                     &movement_state,
@@ -3705,6 +3781,37 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 }
                             }
                             SystemWindowAction::DragItem { .. } => {}
+                        }
+                    }
+
+                    for action in draw_fleet_windows(
+                        ctx,
+                        &world,
+                        fog_state,
+                        &troop_transport_state,
+                        &mut fleet_window_state,
+                        cockpit_state.faction,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        match action {
+                            FleetWindowAction::OpenSector(system) => {
+                                sector_window_state.open_for_system(
+                                    &world,
+                                    system,
+                                    cockpit_state.faction,
+                                );
+                                map_state.selected_system = Some(system);
+                            }
+                            FleetWindowAction::SelectSystem(system) => {
+                                map_state.selected_system = Some(system);
+                            }
+                            FleetWindowAction::Minimize {
+                                system,
+                                logical_position,
+                            } => {
+                                system_window_state.minimize_fleet_window(system, logical_position)
+                            }
                         }
                     }
 
@@ -3738,6 +3845,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 fleet,
                                 confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
+                        }
+                        Some((ObjectMenuCommand::Move, Some(MenuObject::Troop(troop)))) => {
+                            targeting = Some(Targeting::new(TargetOrder::TroopMove { troop }));
                         }
                         // port: the other items are drawn disabled.
                         Some(_) | None => {}
@@ -3813,19 +3923,25 @@ Some(RailAudience::side(*faction_is_alliance)),
                         // FUN_0042a320 opens the dialog with the kinds the
                         // team may undertake; with none, nothing opens.
                         if targeting_held && is_mouse_button_released(MouseButton::Left) {
+                            let windows = ReleaseWindows {
+                                sector: &sector_window_state,
+                                system: &system_window_state,
+                                fleet: &fleet_window_state,
+                            };
                             let destination = release_destination(
                                 ctx,
                                 &world,
+                                fog_state,
                                 cockpit_layout,
-                                &sector_window_state,
-                                &system_window_state,
+                                windows,
                                 pointer,
                             );
                             match targeting.take().map(|order| order.release(destination)) {
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::Mission(team),
-                                    system,
+                                    target,
                                 }) => {
+                                    let system = target.system();
                                     let kinds = rebellion_core::missions::available_kinds(
                                         &world,
                                         &uprising_state,
@@ -3838,9 +3954,43 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 }
                                 // FUN_00487740: the validator first, then
                                 // FUN_00487cc0 decides whether to confirm.
+                                // port: a fleet's move onto a fleet joins it,
+                                // which is not ported.
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::FleetMove { .. },
+                                    target: ReleaseTarget::Fleet { .. },
+                                }) => msg_log.push(GameMessage::new(
+                                    clock.tick,
+                                    "Fleet move rejected: joining fleets is not ported".to_string(),
+                                    MessageCategory::Event,
+                                )),
+                                // A regiment boards the fleet the Fleet
+                                // window gives (FUN_004a3130 → 0x201).
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::TroopMove { troop },
+                                    target: ReleaseTarget::Fleet { fleet, .. },
+                                }) => {
+                                    panel_actions.push(PanelAction::LoadRegiment { troop, fleet })
+                                }
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::TroopMove { troop },
+                                    target: ReleaseTarget::System(system),
+                                }) => {
+                                    if let Err(error) =
+                                        TroopTransportState::validate_regiment_system(
+                                            &world, troop, system,
+                                        )
+                                    {
+                                        msg_log.push(GameMessage::new(
+                                            clock.tick,
+                                            format!("Regiment move rejected: {error}"),
+                                            MessageCategory::Event,
+                                        ));
+                                    }
+                                }
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::FleetMove { fleet, confirmed },
-                                    system,
+                                    target: ReleaseTarget::System(system),
                                 }) => {
                                     let is_alliance = player_faction == MissionFaction::Alliance;
                                     if let Err(error) = validate_fleet_dispatch(
@@ -4567,6 +4717,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             map_state = GalaxyMapState::default();
                             sector_window_state.clear();
                             system_window_state.clear();
+                            fleet_window_state.clear();
                             object_menu = None;
                             targeting = None;
                             officers_state = OfficersState::default();
@@ -4855,6 +5006,12 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &sector_window_state,
                         &system_window_state,
                     );
+                    interface_test_fixture::emit_fleet_load_setup(
+                        request,
+                        &world,
+                        &sector_window_state,
+                        &system_window_state,
+                    );
                     interface_fixture_emitted = true;
                 }
             } else if game_mode == GameMode::Galaxy {
@@ -4865,6 +5022,20 @@ Some(RailAudience::side(*faction_is_alliance)),
                     move_confirmation_state.is_open(),
                     &map_state,
                     msg_log.messages(),
+                );
+                fleet_load_watch.observe(
+                    request,
+                    &world,
+                    if player_faction == MissionFaction::Alliance {
+                        &fog_alliance_state
+                    } else {
+                        &fog_empire_state
+                    },
+                    &movement_state,
+                    &troop_transport_state,
+                    &fleet_window_state,
+                    msg_log.messages(),
+                    map_state.zoom,
                 );
             }
         }
@@ -4932,6 +5103,28 @@ fn apply_panel_action(
     #[cfg(not(target_arch = "wasm32"))] _sounds_dir: &Path,
 ) {
     match action {
+        // FUN_00578f30 → FUN_00556390: a leg inside the system boards the
+        // regiment; the refusals are FUN_00555920's and FUN_00500b40's.
+        PanelAction::LoadRegiment { troop, fleet } => {
+            let expected_is_alliance = *player_faction == MissionFaction::Alliance;
+            let result = if world
+                .troops
+                .get(troop)
+                .is_some_and(|value| value.is_alliance == expected_is_alliance)
+            {
+                troop_transport_state.load(world, fleet, &[troop])
+            } else {
+                Err(rebellion_core::troop_transport::TroopTransportError::WrongFaction)
+            };
+            // port: FUN_00487c90's advisor reaction; this line stands in.
+            if let Err(error) = result {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    format!("Regiment move rejected: {error}"),
+                    MessageCategory::Event,
+                ));
+            }
+        }
         PanelAction::FocusFleetSystem(sys_key) => {
             if let Some(system) = world.systems.get(sys_key) {
                 map_state.camera_x = f32::from(system.x);

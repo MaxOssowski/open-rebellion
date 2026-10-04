@@ -280,16 +280,16 @@ pub fn run_simulation_tick(
         };
 
         if let Some(faction) = orbital_winner {
-            let landing_fleets: Vec<_> = orbiting
-                .iter()
-                .copied()
-                .filter(|fleet| {
-                    world
-                        .fleets
-                        .get(*fleet)
-                        .is_some_and(|value| value.is_alliance == (faction == Faction::Alliance))
-                })
-                .collect();
+            let landing_fleets: Vec<_> =
+                orbiting
+                    .iter()
+                    .copied()
+                    .filter(|fleet| {
+                        world.fleets.get(*fleet).is_some_and(|value| {
+                            value.is_alliance == (faction == Faction::Alliance)
+                        }) && !states.troop_transport.is_held(*fleet)
+                    })
+                    .collect();
 
             // An unopposed Imperial invasion of the mobile Alliance HQ has no
             // space battle to trigger the normal bombardment follow-up. Strike
@@ -747,8 +747,8 @@ mod tests {
         EVT_BOMBARDMENT, EVT_CAPTURE, EVT_COMBAT_GROUND, EVT_CONTROL_CHANGED, EVT_FLEET_ARRIVED,
         EVT_TROOP_MOVED, EVT_VICTORY,
     };
-    use rebellion_core::ids::DatId;
     use rebellion_core::ids::SectorKey;
+    use rebellion_core::ids::{DatId, FleetKey, TroopKey};
     use rebellion_core::movement::begin_fleet_transit;
     use rebellion_core::world::{
         CapitalShipClass, Character, ControlKind, Fleet, ShipInstance, System, TroopClassDef,
@@ -829,6 +829,79 @@ mod tests {
             campaign_config: CampaignConfig::default(),
         };
         (world, states)
+    }
+
+    /// An Alliance fleet with room for one regiment and one Alliance
+    /// regiment on the surface, both at the first system, which the Alliance
+    /// holds.
+    fn world_with_loading_fleet() -> (GameWorld, SimulationStates, FleetKey, TroopKey) {
+        let (mut world, states) = make_test_states();
+        let system = world.systems.keys().next().unwrap();
+        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            name: "Troop Transport".into(),
+            is_alliance: true,
+            hull: 100,
+            troop_capacity: 1,
+            ..CapitalShipClass::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![ShipInstance::new(class, 100, true)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[system].fleets.push(fleet);
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(20),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+        (world, states, fleet, troop)
+    }
+
+    fn run_one_tick(world: &mut GameWorld, states: &mut SimulationStates) {
+        run_simulation_tick(
+            world,
+            states,
+            &[TickEvent { tick: 1 }],
+            &[0.99; 2048],
+            10,
+            &rebellion_core::tuning::GameConfig::default(),
+        );
+    }
+
+    #[test]
+    fn a_regiment_loaded_by_order_stays_aboard_at_the_system_it_loaded_at() {
+        // port: the hold (ghidra/notes/fleet-window.md, "Port notes"); the
+        // original keeps a loaded regiment in its ship until a landing order.
+        let (mut world, mut states, fleet, troop) = world_with_loading_fleet();
+        let system = world.fleets[fleet].location;
+        states
+            .troop_transport
+            .load(&mut world, fleet, &[troop])
+            .unwrap();
+
+        run_one_tick(&mut world, &mut states);
+
+        assert_eq!(states.troop_transport.cargo(fleet), [troop]);
+        assert!(states.troop_transport.is_held(fleet));
+        assert!(!world.systems[system].ground_units.contains(&troop));
+
+        // The control: cargo embarked for a departure lands here.
+        let (mut world, mut states, fleet, troop) = world_with_loading_fleet();
+        states
+            .troop_transport
+            .embark(&mut world, fleet, &[troop])
+            .unwrap();
+
+        run_one_tick(&mut world, &mut states);
+
+        assert!(states.troop_transport.cargo(fleet).is_empty());
+        assert!(world.systems[system].ground_units.contains(&troop));
     }
 
     #[test]

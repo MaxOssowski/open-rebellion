@@ -1,5 +1,5 @@
-//! The object pop-up menu a right-click on a character, special force or
-//! fleet opens in a system window (`FUN_004ac5c0`). Recovery notes:
+//! The object pop-up menu a right-click on a character, special force, fleet
+//! or regiment opens in a system window (`FUN_004ac5c0`). Recovery notes:
 //! `ghidra/notes/object-popup-menu.md` and `ghidra/notes/move-order.md`.
 //!
 //! `FUN_0051d990` lists the orders the selection's class offers, sorts them
@@ -8,7 +8,7 @@
 //! submenu (word 1) and its sort key (word 2).
 
 use egui_macroquad::egui;
-use rebellion_core::ids::{CharacterKey, FleetKey, SpecialForceKey};
+use rebellion_core::ids::{CharacterKey, FleetKey, SpecialForceKey, TroopKey};
 use rebellion_core::missions::MissionMember;
 
 use crate::bmp_cache::BmpCache;
@@ -37,16 +37,18 @@ pub enum MenuObject {
     Character(CharacterKey),
     SpecialForce(SpecialForceKey),
     Fleet(FleetKey),
+    /// A regiment (`0x10..0x13`).
+    Troop(TroopKey),
 }
 
 impl MenuObject {
-    /// The object as a mission team member; a fleet is none.
+    /// The object as a mission team member; a fleet or regiment is none.
     #[must_use]
     pub const fn mission_member(self) -> Option<MissionMember> {
         match self {
             Self::Character(key) => Some(MissionMember::Character(key)),
             Self::SpecialForce(key) => Some(MissionMember::SpecialForce(key)),
-            Self::Fleet(_) => None,
+            Self::Fleet(_) | Self::Troop(_) => None,
         }
     }
 }
@@ -188,6 +190,8 @@ impl ObjectMenuRow {
 /// force's only the first four (`FUN_00503fa0`). A fleet's class offers Move,
 /// Confirmed Move, the bombardments, Assault, Rename and Scrap
 /// (`FUN_004ff8e0`); the bombardment targets sit under their submenu parent.
+/// A regiment's offers Move, Confirmed Move and Scrap (`FUN_00504b30`),
+/// after a base list (`FUN_00558380`) that is untraced.
 /// Kinds `0x204`, `0x241` and `0x268` are offered too but have no STRATEGY
 /// record, so they never show.
 /// An empty selection lists only Encyclopedia and Status, both disabled.
@@ -197,6 +201,9 @@ impl ObjectMenuRow {
 ///   `FUN_0051de80` is taken as clear.
 /// - A fleet's Move and Confirmed Move are enabled when `gates.fleet_move`
 ///   says so (`movement::fleet_move_enabled`, each order's `+0x18`).
+/// - A regiment's Move is enabled when `gates.troop_move` says so. port:
+///   its Confirmed Move stays disabled; loading onto a fleet in the same
+///   system needs no transit confirmation.
 /// - Encyclopedia is enabled for a single selection.
 /// - port: a character's or special force's Move and Confirmed Move,
 ///   Command, Status, Retire and the other fleet orders stay disabled until
@@ -206,10 +213,12 @@ impl ObjectMenuRow {
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
     let fleet = matches!(selection, Some(MenuObject::Fleet(_)));
+    let troop = matches!(selection, Some(MenuObject::Troop(_)));
     let offered: &[ObjectMenuItem] = match selection {
         Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
         Some(MenuObject::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
         Some(MenuObject::Fleet(_)) => &[MOVE, CONFIRMED_MOVE, BOMBARDMENT, ASSAULT, RENAME, SCRAP],
+        Some(MenuObject::Troop(_)) => &[MOVE, CONFIRMED_MOVE, SCRAP],
         None => &[],
     };
     let mut rows: Vec<ObjectMenuRow> = offered
@@ -219,9 +228,10 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             item,
             enabled: match item.command {
                 ObjectMenuCommand::Mission => gates.mission,
-                ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove => {
-                    fleet && gates.fleet_move
+                ObjectMenuCommand::Move => {
+                    (fleet && gates.fleet_move) || (troop && gates.troop_move)
                 }
+                ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 _ => false,
             },
@@ -236,6 +246,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
 pub struct OrderGates {
     pub mission: bool,
     pub fleet_move: bool,
+    pub troop_move: bool,
 }
 
 /// An open object pop-up menu.
@@ -336,6 +347,7 @@ mod tests {
     const MISSION_GATE: OrderGates = OrderGates {
         mission: true,
         fleet_move: false,
+        troop_move: false,
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -464,6 +476,7 @@ mod tests {
         let gates = OrderGates {
             mission: false,
             fleet_move: true,
+            troop_move: true,
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -482,6 +495,55 @@ mod tests {
     }
 
     #[test]
+    fn a_regiments_menu_offers_move_confirmed_move_and_scrap() {
+        // FUN_00504b30: 0x201, 0x202, 0x204 (no STRATEGY record) and 0x200.
+        let rows = object_menu_rows(Some(MenuObject::Troop(TroopKey::default())), MISSION_GATE);
+        assert_eq!(
+            labels(&rows),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"]
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.item.kind).collect::<Vec<_>>(),
+            [0x201, 0x202, 0x100, 0x103, 0x200]
+        );
+    }
+
+    #[test]
+    fn a_regiments_move_follows_its_gate_and_confirmed_move_stays_disabled() {
+        // port: only Move is ported for a regiment (loading onto a fleet).
+        let troop = Some(MenuObject::Troop(TroopKey::default()));
+        let gates = OrderGates {
+            troop_move: true,
+            ..OrderGates::default()
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(troop, gates)),
+            ["Move", "Encyclopedia"]
+        );
+        assert_eq!(
+            enabled(&object_menu_rows(troop, OrderGates::default())),
+            ["Encyclopedia"]
+        );
+        // The fleet's gate does not reach a regiment, nor the regiment's a
+        // fleet.
+        let fleet_gate = OrderGates {
+            fleet_move: true,
+            ..OrderGates::default()
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(troop, fleet_gate)),
+            ["Encyclopedia"]
+        );
+        assert_eq!(
+            enabled(&object_menu_rows(
+                Some(MenuObject::Fleet(FleetKey::default())),
+                gates
+            )),
+            ["Encyclopedia"]
+        );
+    }
+
+    #[test]
     fn only_characters_and_special_forces_are_mission_members() {
         let character = CharacterKey::default();
         let unit = SpecialForceKey::default();
@@ -495,6 +557,10 @@ mod tests {
         );
         assert_eq!(
             MenuObject::Fleet(FleetKey::default()).mission_member(),
+            None
+        );
+        assert_eq!(
+            MenuObject::Troop(TroopKey::default()).mission_member(),
             None
         );
     }

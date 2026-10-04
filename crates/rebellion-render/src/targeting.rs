@@ -9,12 +9,14 @@
 //! which only a child window can supply.
 
 use egui_macroquad::egui;
-use rebellion_core::ids::{FleetKey, SystemKey};
+use rebellion_core::fog::FogState;
+use rebellion_core::ids::{FleetKey, SystemKey, TroopKey};
 use rebellion_core::missions::MissionMember;
 use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{resources::rebexe, BmpCache, DllSource};
 use crate::cockpit::CockpitLayout;
+use crate::fleet_window::FleetWindowState;
 use crate::sector_window::SectorWindowState;
 use crate::system_window::SystemWindowState;
 
@@ -29,6 +31,28 @@ pub enum TargetOrder {
     /// Move (`0x201`), or Confirmed Move (`0x202`) when `confirmed`, for one
     /// fleet. port: a character's or special force's move is not ported.
     FleetMove { fleet: FleetKey, confirmed: bool },
+    /// A regiment's Move (`0x201`). Released on a Fleet window it boards the
+    /// fleet (`ghidra/notes/fleet-window.md`, "Loading a regiment onto a
+    /// fleet").
+    TroopMove { troop: TroopKey },
+}
+
+/// What a release lands on: a system, or a fleet a Fleet window gives
+/// (`+0x70`, `FUN_004a3130`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReleaseTarget {
+    System(SystemKey),
+    Fleet { fleet: FleetKey, system: SystemKey },
+}
+
+impl ReleaseTarget {
+    /// The system the target lies in.
+    #[must_use]
+    pub const fn system(self) -> SystemKey {
+        match self {
+            Self::System(system) | Self::Fleet { system, .. } => system,
+        }
+    }
 }
 
 /// An order waiting for its target.
@@ -43,7 +67,7 @@ pub enum TargetingEnd {
     /// The order's target is set (vtable `+0x2c`).
     Target {
         order: TargetOrder,
-        system: SystemKey,
+        target: ReleaseTarget,
     },
     /// No object was under the point, so the order is destroyed.
     Dropped,
@@ -60,47 +84,65 @@ impl Targeting {
         &self.order
     }
 
-    /// `FUN_00422ce0`'s `WM_LBUTTONUP` in mode 2, given the system
+    /// `FUN_00422ce0`'s `WM_LBUTTONUP` in mode 2, given the target
     /// [`release_destination`] found under the point.
     #[must_use]
-    pub fn release(self, system: Option<SystemKey>) -> TargetingEnd {
-        match system {
-            Some(system) => TargetingEnd::Target {
+    pub fn release(self, target: Option<ReleaseTarget>) -> TargetingEnd {
+        match target {
+            Some(target) => TargetingEnd::Target {
                 order: self.order,
-                system,
+                target,
             },
             None => TargetingEnd::Dropped,
         }
     }
 }
 
-/// The system a targeting release at `point` lands on. `FUN_00422ce0` asks
+/// The windows a release can land on.
+#[derive(Clone, Copy)]
+pub struct ReleaseWindows<'a> {
+    pub sector: &'a SectorWindowState,
+    pub system: &'a SystemWindowState,
+    pub fleet: &'a FleetWindowState,
+}
+
+/// The target a targeting release at `point` lands on. `FUN_00422ce0` asks
 /// the child window under the point (`ChildWindowFromPointEx`); here the
 /// topmost egui layer stands for it. A system window gives its own system,
-/// a sector window the planet under the point; the galaxy map is drawn by
-/// the view itself, so a release over it, or between planets, gives none
-/// and the order is destroyed (`ghidra/notes/move-order.md`, "Hit tests").
+/// a sector window the planet under the point, a Fleet window the fleet or
+/// system its `+0x70` gives; the galaxy map is drawn by the view itself, so
+/// a release over it, or between planets, gives none and the order is
+/// destroyed (`ghidra/notes/move-order.md`, "Hit tests").
 ///
 /// Move and Confirmed Move ask `+0x70`, the container under the point.
 /// port: Mission asks `+0x68`, which may answer a character or a fleet;
-/// every object reduces to its system here, so both hit tests give the same
-/// answer. The walk up from a team member and Shift's pass-through click are
-/// not ported.
+/// every object reduces to its system for a mission, so both hit tests give
+/// the same answer. The walk up from a team member and Shift's pass-through
+/// click are not ported.
 #[must_use]
 pub fn release_destination(
     ctx: &egui::Context,
     world: &GameWorld,
+    fog: &FogState,
     layout: CockpitLayout,
-    sector_windows: &SectorWindowState,
-    system_windows: &SystemWindowState,
+    windows: ReleaseWindows<'_>,
     point: egui::Pos2,
-) -> Option<SystemKey> {
+) -> Option<ReleaseTarget> {
     let layer = window_layer_at(ctx, point)?;
-    system_windows.release_target(layer).or_else(|| {
-        sector_windows
-            .release_target(world, layout, layer, point)
-            .flatten()
-    })
+    if let Some(system) = windows.system.release_target(layer) {
+        return Some(ReleaseTarget::System(system));
+    }
+    if let Some(target) = windows
+        .fleet
+        .release_target(world, fog, layout, layer, point)
+    {
+        return target;
+    }
+    windows
+        .sector
+        .release_target(world, layout, layer, point)
+        .flatten()
+        .map(ReleaseTarget::System)
 }
 
 /// The topmost visible area holding `point`, passing over the capture,
@@ -207,10 +249,10 @@ mod tests {
         assert_eq!(targeting.order(), &mission());
 
         assert_eq!(
-            targeting.release(Some(system)),
+            targeting.release(Some(ReleaseTarget::System(system))),
             TargetingEnd::Target {
                 order: mission(),
-                system,
+                target: ReleaseTarget::System(system),
             }
         );
     }
@@ -225,9 +267,10 @@ mod tests {
                 fleet: FleetKey::default(),
                 confirmed,
             };
+            let target = ReleaseTarget::System(system);
             assert_eq!(
-                Targeting::new(order.clone()).release(Some(system)),
-                TargetingEnd::Target { order, system }
+                Targeting::new(order.clone()).release(Some(target)),
+                TargetingEnd::Target { order, target }
             );
         }
     }
@@ -384,12 +427,13 @@ mod tests {
     mod release {
         use super::*;
         use crate::cockpit::CockpitFaction;
+        use crate::fleet_window::draw_fleet_windows;
         use crate::sector_window::draw_sector_windows;
         use crate::system_window::draw_system_windows;
         use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
-        use rebellion_core::fog::FogState;
         use rebellion_core::ids::DatId;
-        use rebellion_core::world::{ControlKind, Sector, System};
+        use rebellion_core::troop_transport::TroopTransportState;
+        use rebellion_core::world::{ControlKind, Fleet, Sector, System};
 
         /// A sector at (317, 248) holding two systems whose planets sit at
         /// (14, 44) and (159, 89) in its window.
@@ -443,6 +487,26 @@ mod tests {
             systems: &mut SystemWindowState,
             at: (f32, f32),
         ) -> Option<SystemKey> {
+            release_on(
+                world,
+                sectors,
+                systems,
+                &mut FleetWindowState::default(),
+                at,
+            )
+            .map(|target| match target {
+                ReleaseTarget::System(system) => system,
+                other @ ReleaseTarget::Fleet { .. } => panic!("no fleet window: {other:?}"),
+            })
+        }
+
+        fn release_on(
+            world: &GameWorld,
+            sectors: &mut SectorWindowState,
+            systems: &mut SystemWindowState,
+            fleets: &mut FleetWindowState,
+            at: (f32, f32),
+        ) -> Option<ReleaseTarget> {
             let layout = layout(1.0);
             let ctx = egui::Context::default();
             let mut cache = BmpCache::new();
@@ -459,15 +523,30 @@ mod tests {
                 let _ = ctx.run(input, |ctx| {
                     let faction = CockpitFaction::Alliance;
                     let _ = draw_sector_windows(
-                        ctx, world, sectors, faction, layout, &mut cache, &uprisings,
+                        ctx, world, &fog, sectors, faction, layout, &mut cache, &uprisings,
                     );
                     let _ =
                         draw_system_windows(ctx, world, &fog, systems, faction, layout, &mut cache);
+                    let _ = draw_fleet_windows(
+                        ctx,
+                        world,
+                        &fog,
+                        &TroopTransportState::default(),
+                        fleets,
+                        faction,
+                        layout,
+                        &mut cache,
+                    );
                     capture_pointer(ctx);
                 });
             }
             let point = egui::pos2(layout.canvas.x + at.0, layout.canvas.y + at.1);
-            release_destination(&ctx, world, layout, sectors, systems, point)
+            let windows = ReleaseWindows {
+                sector: sectors,
+                system: systems,
+                fleet: fleets,
+            };
+            release_destination(&ctx, world, &fog, layout, windows, point)
         }
 
         /// The Alliance's first sector window sits at (60, 35).
@@ -559,6 +638,97 @@ mod tests {
             assert_eq!(
                 release_at(&world, &mut sectors, &mut systems, at),
                 Some(second)
+            );
+        }
+
+        fn add_fleet(world: &mut GameWorld, system: SystemKey, is_alliance: bool) -> FleetKey {
+            let fleet = world.fleets.insert(Fleet {
+                location: system,
+                capital_ships: Vec::new(),
+                fighters: Vec::new(),
+                characters: Vec::new(),
+                is_alliance,
+                has_death_star: false,
+            });
+            world.systems[system].fleets.push(fleet);
+            fleet
+        }
+
+        #[test]
+        fn a_release_on_a_fleet_windows_fleet_targets_that_fleet() {
+            // FUN_004a3130: in the left list, the entry under the point.
+            let (mut world, first, _) = world();
+            world.systems[first].control = ControlKind::Controlled(Faction::Alliance);
+            let fleet = add_fleet(&mut world, first, true);
+            let mut fleets = FleetWindowState::default();
+            fleets.open(
+                &world,
+                first,
+                (70, 90),
+                CockpitFaction::Alliance,
+                layout(1.0),
+            );
+
+            // The first entry spans (4, 29) to (95, 79) in the window.
+            let at = (70.0 + 40.0, 90.0 + 50.0);
+            assert_eq!(
+                release_on(
+                    &world,
+                    &mut SectorWindowState::default(),
+                    &mut SystemWindowState::default(),
+                    &mut fleets,
+                    at,
+                ),
+                Some(ReleaseTarget::Fleet {
+                    fleet,
+                    system: first
+                })
+            );
+            // Below the last entry, the list gives the subject.
+            let at = (70.0 + 40.0, 90.0 + 150.0);
+            assert_eq!(
+                release_on(
+                    &world,
+                    &mut SectorWindowState::default(),
+                    &mut SystemWindowState::default(),
+                    &mut fleets,
+                    at,
+                ),
+                Some(ReleaseTarget::System(first))
+            );
+        }
+
+        #[test]
+        fn a_fleet_window_over_a_sector_window_answers_the_release() {
+            // ChildWindowFromPointEx finds the topmost child.
+            let (mut world, first, _) = world();
+            world.systems[first].control = ControlKind::Controlled(Faction::Alliance);
+            let fleet = add_fleet(&mut world, first, true);
+            let mut sectors = SectorWindowState::default();
+            sectors.open_for_system(&world, first, CockpitFaction::Alliance);
+            let mut fleets = FleetWindowState::default();
+            // Over the first planet at (74, 79) in the canvas.
+            fleets.open(
+                &world,
+                first,
+                (40, 50),
+                CockpitFaction::Alliance,
+                layout(1.0),
+            );
+
+            let at = (40.0 + 40.0, 50.0 + 50.0);
+            assert_eq!(
+                release_on(
+                    &world,
+                    &mut sectors,
+                    &mut SystemWindowState::default(),
+                    &mut fleets,
+                    at,
+                ),
+                Some(ReleaseTarget::Fleet {
+                    fleet,
+                    system: first
+                })
             );
         }
     }

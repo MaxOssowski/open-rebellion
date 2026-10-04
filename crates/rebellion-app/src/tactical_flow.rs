@@ -471,7 +471,7 @@ pub(crate) fn land_faction_cargo(
                         .fleets
                         .get(*fleet)
                         .is_some_and(|value| value.is_alliance == is_alliance)
-                        && troop_transport.carried_count(*fleet) > 0
+                        && troop_transport.landing_count(*fleet) > 0
                 })
                 .collect()
         })
@@ -903,6 +903,27 @@ mod tests {
             .messages()
             .iter()
             .any(|message| message.text.contains("regiment(s) landed")));
+    }
+
+    // port: a fleet holding regiments loaded by order keeps them aboard
+    // (`TroopTransportState::load`).
+    #[test]
+    fn a_held_fleet_lands_nothing_where_it_loaded() {
+        let (mut world, _, system, fleet, attacker, mut transport) =
+            post_battle_ground_fixture(false);
+        transport
+            .disembark_all(&mut world, fleet, system)
+            .expect("fixture regiment lands");
+        transport
+            .load(&mut world, fleet, &[attacker])
+            .expect("fixture troop loads");
+        let mut messages = MessageLog::default();
+
+        let landed =
+            land_faction_cargo(&mut world, &mut transport, system, true, &mut messages, 41);
+
+        assert_eq!(landed, 0);
+        assert_eq!(transport.cargo(fleet), &[attacker]);
     }
 
     #[test]

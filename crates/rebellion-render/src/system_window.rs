@@ -134,9 +134,28 @@ struct ItemDrag {
 /// squared distance, in list pixels, from the press (`FUN_006083c0`).
 const DRAG_DISTANCE_SQUARED: f32 = 24.0;
 
+/// A minimized window on the galaxy view's rail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RailEntry {
-    window: OpenSystemWindow,
+enum RailEntry {
+    System(OpenSystemWindow),
+    /// A Fleet window (type 4); its icon comes from `FUN_004a76e0`.
+    Fleet {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
+}
+
+impl RailEntry {
+    const fn system(&self) -> SystemKey {
+        match self {
+            Self::System(window) => window.system,
+            Self::Fleet { system, .. } => *system,
+        }
+    }
+
+    const fn is_system_window(&self) -> bool {
+        matches!(self, Self::System(_))
+    }
 }
 
 /// Mutable modeless-window and rail state. The last visible window is focused;
@@ -213,6 +232,42 @@ impl SystemWindowState {
         self.select_tab(system, SystemWindowTab::Fleets);
         self.select_item(system, SystemWindowItem::Fleet(fleet));
         true
+    }
+
+    /// Open `system`'s window on `tab`.
+    pub fn open_tab(
+        &mut self,
+        world: &GameWorld,
+        system: SystemKey,
+        tab: SystemWindowTab,
+        logical_position: (i16, i16),
+        faction: CockpitFaction,
+        layout: CockpitLayout,
+    ) -> bool {
+        if !self.open(world, system, logical_position, faction, layout) {
+            return false;
+        }
+        self.select_tab(system, tab);
+        true
+    }
+
+    /// The screen rect of `tab`'s button in `system`'s visible window.
+    #[must_use]
+    pub fn tab_screen_rect(
+        &self,
+        layout: CockpitLayout,
+        system: SystemKey,
+        tab: SystemWindowTab,
+    ) -> Option<egui::Rect> {
+        let window = self.windows.iter().find(|window| window.system == system)?;
+        Some(logical_rect(
+            window_screen_rect(*window, layout),
+            layout.scale,
+            2.0 + tab.x(),
+            20.0,
+            36.0,
+            33.0,
+        ))
     }
 
     #[must_use]
@@ -304,7 +359,7 @@ impl SystemWindowState {
         }
         Some(SystemWindowAction::DragItem {
             system: drag.system,
-            selection: item_menu_object(drag.item)?,
+            selection: item_drag_object(drag.item)?,
             point,
         })
     }
@@ -342,24 +397,39 @@ impl SystemWindowState {
             return false;
         };
         let window = self.windows.remove(index);
-        self.rail.retain(|entry| entry.window.system != system);
+        self.push_rail(RailEntry::System(window));
+        true
+    }
+
+    /// Put a minimized Fleet window on the rail (`0x466`).
+    pub fn minimize_fleet_window(&mut self, system: SystemKey, logical_position: (i16, i16)) {
+        self.push_rail(RailEntry::Fleet {
+            system,
+            logical_position,
+        });
+    }
+
+    fn push_rail(&mut self, entry: RailEntry) {
+        self.rail.retain(|held| {
+            held.system() != entry.system() || held.is_system_window() != entry.is_system_window()
+        });
         if self.rail.len() == REFERENCE_RAIL_SLOTS {
             self.rail.remove(0);
         }
-        self.rail.push(RailEntry { window });
-        true
+        self.rail.push(entry);
     }
 
     fn restore(&mut self, system: SystemKey) -> bool {
         let Some(index) = self
             .rail
             .iter()
-            .position(|entry| entry.window.system == system)
+            .position(|entry| entry.is_system_window() && entry.system() == system)
         else {
             return false;
         };
-        let entry = self.rail.remove(index);
-        self.windows.push(entry.window);
+        if let RailEntry::System(window) = self.rail.remove(index) {
+            self.windows.push(window);
+        }
         true
     }
 
@@ -420,6 +490,11 @@ pub enum SystemWindowAction {
         selection: Option<MenuObject>,
         point: (i16, i16),
     },
+    /// A click on a minimized Fleet window's rail slot restores it.
+    RestoreFleetWindow {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
     /// A list drag released outside its list (`0x29a`): the galaxy view
     /// hit-tests the screen point and issues `0x214` (`FUN_00422ce0`).
     DragItem {
@@ -458,10 +533,12 @@ pub fn draw_system_windows(
     cache: &mut BmpCache,
 ) -> Vec<SystemWindowAction> {
     state.prepare_faction(faction);
-    draw_reference_rail(ctx, world, state, faction, layout, cache);
+    let restored = draw_reference_rail(ctx, world, fog, state, faction, layout, cache);
 
-    let mut actions: Vec<SystemWindowAction> =
-        state.end_drag(ctx, layout.scale).into_iter().collect();
+    let mut actions: Vec<SystemWindowAction> = restored
+        .into_iter()
+        .chain(state.end_drag(ctx, layout.scale))
+        .collect();
     let windows = state.windows.clone();
     let focused_system = windows.last().map(|window| window.system);
     let mut focused = None;
@@ -548,45 +625,91 @@ pub fn draw_system_windows(
 fn draw_reference_rail(
     ctx: &egui::Context,
     world: &GameWorld,
+    fog: &FogState,
     state: &mut SystemWindowState,
     faction: CockpitFaction,
     layout: CockpitLayout,
     cache: &mut BmpCache,
-) {
+) -> Option<SystemWindowAction> {
     let entries = state.rail.clone();
     let mut restored = None;
     for (index, entry) in entries.iter().enumerate() {
-        let Some(system) = world.systems.get(entry.window.system) else {
+        let Some(system) = world.systems.get(entry.system()) else {
             continue;
         };
         let logical = rail_slot_rect(faction, index);
         let screen_rect = cockpit_rect(layout, logical);
+        let color = relationship_color(relationship(system.control, cockpit_faction(faction)));
         egui::Area::new(egui::Id::new(("original-reference-rail", index)))
             .fixed_pos(screen_rect.min)
             .order(egui::Order::Middle)
             .show(ctx, |ui| {
                 let (slot_rect, response) =
                     ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
-                paint_resource(ui.painter(), ctx, cache, WINDOW_BACKGROUND, slot_rect);
-                ui.painter().rect_filled(
-                    slot_rect,
-                    0.0,
-                    egui::Color32::from_rgba_unmultiplied(0, 0, 12, 122),
-                );
-                ui.painter().text(
-                    slot_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    &system.name,
-                    egui::FontId::proportional((7.0 * layout.scale).max(5.0)),
-                    relationship_color(relationship(system.control, cockpit_faction(faction))),
-                );
+                if entry.is_system_window() {
+                    paint_resource(ui.painter(), ctx, cache, WINDOW_BACKGROUND, slot_rect);
+                    ui.painter().rect_filled(
+                        slot_rect,
+                        0.0,
+                        egui::Color32::from_rgba_unmultiplied(0, 0, 12, 122),
+                    );
+                    ui.painter().text(
+                        slot_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        &system.name,
+                        egui::FontId::proportional((7.0 * layout.scale).max(5.0)),
+                        color,
+                    );
+                } else {
+                    // A Fleet window's rail icon (`FUN_004a76e0`) sits at the
+                    // slot's corner with the system's name after it, as the
+                    // reference capture shows.
+                    crate::fleet_window::paint_native(
+                        ui.painter(),
+                        ctx,
+                        cache,
+                        DllSource::Strategy,
+                        crate::fleet_window::rail_icon(
+                            world,
+                            fog,
+                            cockpit_faction(faction),
+                            entry.system(),
+                        ),
+                        slot_rect,
+                        layout.scale,
+                        0.0,
+                        0.0,
+                    );
+                    ui.painter().text(
+                        logical_point(slot_rect, layout.scale, 12.0, 2.0),
+                        egui::Align2::LEFT_TOP,
+                        &system.name,
+                        egui::FontId::proportional((9.0 * layout.scale).max(6.0)),
+                        color,
+                    );
+                }
                 if exact_clicked(&response, slot_rect) {
-                    restored = Some(entry.window.system);
+                    restored = Some(*entry);
                 }
             });
     }
-    if let Some(system) = restored {
-        state.restore(system);
+    match restored? {
+        RailEntry::System(window) => {
+            state.restore(window.system);
+            None
+        }
+        RailEntry::Fleet {
+            system,
+            logical_position,
+        } => {
+            state
+                .rail
+                .retain(|held| held.is_system_window() || held.system() != system);
+            Some(SystemWindowAction::RestoreFleetWindow {
+                system,
+                logical_position,
+            })
+        }
     }
 }
 
@@ -797,13 +920,26 @@ fn area_id(system: SystemKey) -> egui::Id {
 }
 
 /// The object an item is, when its pop-up menu is ported: a character, a
-/// special force (`FUN_004ed350`, `FUN_00503b50`) or a fleet (`FUN_004ff8e0`).
+/// special force (`FUN_004ed350`, `FUN_00503b50`), a fleet (`FUN_004ff8e0`)
+/// or a regiment (`FUN_00504b30`).
 fn item_menu_object(item: SystemWindowItem) -> Option<MenuObject> {
     match item {
         SystemWindowItem::Character(key) => Some(MenuObject::Character(key)),
         SystemWindowItem::SpecialForce(key) => Some(MenuObject::SpecialForce(key)),
         SystemWindowItem::Fleet(key) => Some(MenuObject::Fleet(key)),
+        SystemWindowItem::Troop(key) => Some(MenuObject::Troop(key)),
         _ => None,
+    }
+}
+
+/// The object a list drag carries. A regiment's drag is `0x214`, whose
+/// per-object check calls the regiment's `+0x1e4`, `FUN_006158b0`, which
+/// returns 0 (`ghidra/notes/fleet-window.md`). hyp: that refuses it; the
+/// refusal awaits a native check, so the port starts no regiment drag.
+fn item_drag_object(item: SystemWindowItem) -> Option<MenuObject> {
+    match item {
+        SystemWindowItem::Troop(_) => None,
+        item => item_menu_object(item),
     }
 }
 
@@ -1301,7 +1437,7 @@ fn production_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     }
 }
 
-fn troop_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
+pub(crate) fn troop_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     if dat_id.family() != 0x10 {
         return None;
     }
@@ -1420,16 +1556,27 @@ fn cockpit_faction(faction: CockpitFaction) -> Faction {
     }
 }
 
+fn clamp_to_galaxy(position: (i16, i16), layout: CockpitLayout) -> (i16, i16) {
+    clamp_window_to_galaxy(position, layout, SYSTEM_WINDOW_WIDTH, SYSTEM_WINDOW_HEIGHT)
+}
+
+/// Clamp a window of `width` by `height` logical pixels into the galaxy
+/// view (`FUN_0045aac0`, the view's `+0xcc..+0xd8` rect).
 #[expect(
     clippy::cast_possible_truncation,
     reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
 )]
-fn clamp_to_galaxy(position: (i16, i16), layout: CockpitLayout) -> (i16, i16) {
+pub(crate) fn clamp_window_to_galaxy(
+    position: (i16, i16),
+    layout: CockpitLayout,
+    width: f32,
+    height: f32,
+) -> (i16, i16) {
     let scale = layout.scale.max(f32::EPSILON);
     let min_x = ((layout.galaxy.x - layout.canvas.x) / scale).round();
     let min_y = ((layout.galaxy.y - layout.canvas.y) / scale).round();
-    let max_x = (min_x + layout.galaxy.width / scale - SYSTEM_WINDOW_WIDTH).max(min_x);
-    let max_y = (min_y + layout.galaxy.height / scale - SYSTEM_WINDOW_HEIGHT).max(min_y);
+    let max_x = (min_x + layout.galaxy.width / scale - width).max(min_x);
+    let max_y = (min_y + layout.galaxy.height / scale - height).max(min_y);
     (
         f32::from(position.0).clamp(min_x, max_x).round() as i16,
         f32::from(position.1).clamp(min_y, max_y).round() as i16,
@@ -1675,8 +1822,8 @@ mod tests {
             assert!(state.minimize(*system));
         }
         assert_eq!(state.rail_count(), REFERENCE_RAIL_SLOTS);
-        assert_eq!(state.rail[0].window.system, systems[1]);
-        assert_eq!(state.rail[11].window.system, systems[12]);
+        assert_eq!(state.rail[0].system(), systems[1]);
+        assert_eq!(state.rail[11].system(), systems[12]);
     }
 
     #[test]
@@ -2101,10 +2248,20 @@ mod tests {
         from: (f32, f32),
         to: (f32, f32),
     ) -> (Vec<SystemWindowAction>, egui::Pos2, (bool, bool)) {
+        drag_in_tab(world, system, SystemWindowTab::Fleets, from, to)
+    }
+
+    fn drag_in_tab(
+        world: &GameWorld,
+        system: SystemKey,
+        tab: SystemWindowTab,
+        from: (f32, f32),
+        to: (f32, f32),
+    ) -> (Vec<SystemWindowAction>, egui::Pos2, (bool, bool)) {
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
         state.open(world, system, (60, 40), CockpitFaction::Alliance, layout);
-        state.select_tab(system, SystemWindowTab::Fleets);
+        state.select_tab(system, tab);
         let origin = window_screen_rect(state.windows[0], layout).min;
         let at = |point: (f32, f32)| origin + egui::vec2(point.0, point.1) * layout.scale;
         let (press, release) = (at(from), at(to));
@@ -2203,6 +2360,34 @@ mod tests {
             drops(&actions),
             [(system, MenuObject::Fleet(fleet), release)]
         );
+        assert_eq!(held, (true, false));
+    }
+
+    fn world_with_regiment() -> (GameWorld, SystemKey, TroopKey) {
+        let (mut world, systems) = fixture_world(1);
+        let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[systems[0]].ground_units.push(troop);
+        (world, systems[0], troop)
+    }
+
+    #[test]
+    fn a_regiment_dragged_out_of_its_list_drops_nothing() {
+        // hyp: 0x214's per-object check fails on the regiment's +0x1e4
+        // (FUN_006158b0 returns 0); ghidra/notes/fleet-window.md.
+        let (world, system, _) = world_with_regiment();
+        let (actions, _, held) = drag_in_tab(
+            &world,
+            system,
+            SystemWindowTab::Troops,
+            FIRST_ITEM,
+            (40.0, 20.0),
+        );
+
+        assert!(drops(&actions).is_empty());
         assert_eq!(held, (true, false));
     }
 
@@ -2354,6 +2539,25 @@ mod tests {
         assert_eq!(
             menus(&actions),
             [(Some(MenuObject::SpecialForce(unit)), (100, 128))]
+        );
+    }
+
+    #[test]
+    fn a_right_click_on_a_regiment_opens_its_menu() {
+        // FUN_00504b30 gives a regiment Move, Confirmed Move and Scrap.
+        let (world, system, troop) = world_with_regiment();
+        let (actions, selected) = click_in_window(
+            &world,
+            system,
+            SystemWindowTab::Troops,
+            None,
+            FIRST_ITEM,
+            egui::PointerButton::Secondary,
+        );
+        assert_eq!(selected, Some(SystemWindowItem::Troop(troop)));
+        assert_eq!(
+            menus(&actions),
+            [(Some(MenuObject::Troop(troop)), (100, 128))]
         );
     }
 
@@ -2535,6 +2739,180 @@ mod tests {
             egui::PointerButton::Secondary,
         );
         assert_eq!(selected, Some(SystemWindowItem::Production(mine)));
+    }
+
+    /// A painted text's words, top-left corner, width and font size.
+    type RailText = (String, egui::Pos2, f32, f32);
+
+    /// Draw the windows and rail on the Alliance's layout at scale 2, one
+    /// frame per entry of `frames`. Returns every action and the last frame's
+    /// texts: their words, top-left corner, width and font size.
+    fn run_rail(
+        world: &GameWorld,
+        state: &mut SystemWindowState,
+        frames: Vec<Vec<egui::Event>>,
+    ) -> (Vec<SystemWindowAction>, Vec<RailText>) {
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let fog = FogState::new(Faction::Alliance);
+        let mut actions = Vec::new();
+        let mut texts = Vec::new();
+        for events in frames {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1000.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                actions.extend(draw_system_windows(
+                    ctx,
+                    world,
+                    &fog,
+                    state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                ));
+            });
+            texts = output
+                .shapes
+                .into_iter()
+                .filter_map(|clipped| match clipped.shape {
+                    egui::Shape::Text(text) => Some((
+                        text.galley.text().to_owned(),
+                        text.pos,
+                        text.galley.size().x,
+                        text.galley.job.sections[0].format.font_id.size,
+                    )),
+                    _ => None,
+                })
+                .collect();
+        }
+        (actions, texts)
+    }
+
+    #[test]
+    fn a_minimized_fleet_window_keeps_one_rail_slot_beside_its_systems_window() {
+        // FUN_004a76e0: a Fleet window minimizes to the rail as its own
+        // entry; the rail holds one entry per window.
+        let (world, systems) = fixture_world(2);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.minimize_fleet_window(systems[0], (100, 80));
+        state.minimize_fleet_window(systems[0], (100, 80));
+        assert_eq!(state.rail_count(), 1);
+        state.open(
+            &world,
+            systems[0],
+            (60, 40),
+            CockpitFaction::Alliance,
+            layout,
+        );
+        assert!(state.minimize(systems[0]));
+        state.minimize_fleet_window(systems[1], (120, 90));
+        assert_eq!(state.rail_count(), 3);
+
+        // The first slot, the Fleet window's: its icon at the corner and the
+        // name at (12, 2), 9 points; a system window's name is 7 points.
+        let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0));
+        let away = egui::pos2(2.0, 2.0);
+        let (_, texts) = run_rail(
+            &world,
+            &mut state,
+            vec![
+                vec![egui::Event::PointerMoved(away)],
+                vec![egui::Event::PointerMoved(away)],
+            ],
+        );
+        let name = slot.min + egui::vec2(12.0, 2.0) * 2.0;
+        assert!(
+            texts
+                .iter()
+                .any(|(text, pos, _, size)| text == "System 0" && *pos == name && *size == 18.0),
+            "{texts:?}"
+        );
+        let second = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 1));
+        assert!(
+            texts
+                .iter()
+                .any(|(text, pos, width, size)| text == "System 0"
+                    && (pos.x + width / 2.0 - second.center().x).abs() < 0.01
+                    && *size == 14.0),
+            "{texts:?}"
+        );
+
+        let point = slot.center();
+        let press = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let (actions, _) = run_rail(
+            &world,
+            &mut state,
+            vec![
+                vec![egui::Event::PointerMoved(point)],
+                vec![egui::Event::PointerMoved(point)],
+                vec![press(true)],
+                vec![press(false)],
+            ],
+        );
+        assert!(actions.contains(&SystemWindowAction::RestoreFleetWindow {
+            system: systems[0],
+            logical_position: (100, 80),
+        }));
+        assert_eq!(state.rail_count(), 2);
+        assert!(state.rail[0].is_system_window());
+        assert_eq!(state.rail[0].system(), systems[0]);
+        assert_eq!(state.rail[1].system(), systems[1]);
+    }
+
+    #[test]
+    fn a_window_opens_on_the_tab_it_is_asked_for() {
+        // Our own: the regiment-loading fixture opens the Troops tab.
+        let (mut world, systems) = fixture_world(2);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        let missing = systems[1];
+        world.systems.remove(missing);
+
+        assert!(state.open_tab(
+            &world,
+            systems[0],
+            SystemWindowTab::Troops,
+            (60, 40),
+            CockpitFaction::Alliance,
+            layout
+        ));
+        assert_eq!(state.windows[0].tab, SystemWindowTab::Troops);
+        assert!(!state.open_tab(
+            &world,
+            missing,
+            SystemWindowTab::Troops,
+            (60, 40),
+            CockpitFaction::Alliance,
+            layout
+        ));
+        assert_eq!(state.windows.len(), 1);
+
+        // The tab buttons sit at (2 + x, 20), 36 by 33.
+        let origin = window_screen_rect(state.windows[0], layout).min;
+        assert_eq!(
+            state.tab_screen_rect(layout, systems[0], SystemWindowTab::Troops),
+            Some(egui::Rect::from_min_size(
+                origin + egui::vec2(2.0 + SystemWindowTab::Troops.x(), 20.0) * 2.0,
+                egui::vec2(72.0, 66.0)
+            ))
+        );
+        assert_eq!(
+            state.tab_screen_rect(layout, missing, SystemWindowTab::Troops),
+            None
+        );
     }
 
     #[test]

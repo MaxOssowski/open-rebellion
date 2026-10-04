@@ -427,8 +427,8 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   panel's destination banner and Dispatch button are unreachable. The
   original Move order (below) restores it: menu Move, Confirmed Move, and the
   system window drag pass a two-sided browser gate (2026-10-02), and the
-  blockade bit follows the original. Open: regiment loading (below) and a
-  native check.
+  blockade bit follows the original. Regiments load through the Fleet window
+  (2026-10-04, below). A native check remains.
 - [x] Resolve every hostile task force at a system as one bounded engagement,
   persist fighter attrition, correct fighter launch and shield handling, and
   suppress unchanged five-tick stalemates. Seed 42 now reports two decisive
@@ -453,7 +453,10 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   ([evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-player-troop-dispatch.md)).
   Reopened 2026-10-02: the fleet panel's troop picker lost its caller in
   23d15da and was deleted in F-007C phase 6a, so no player path loads
-  regiments onto a fleet. The original regiment-to-fleet order restores it.
+  regiments onto a fleet. Restored 2026-10-04 through the original order: a
+  regiment's Move released on the Fleet window's fleet, opened from the
+  sector window's fleet icon; the `fleet-window.mjs` gate passes both sides
+  (load, hold, move, land, full-fleet refusal). A native check remains.
 - [x] Establish a cited historical campaign baseline from the original manual,
   contemporary guides, and player testimony. It separates binding mechanics,
   observed original-AI behavior, reverse-engineered behavior, desired
@@ -503,16 +506,19 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   menu items, targeting with the `+0x70` hit test, and the list drag
   (`FUN_006083c0` notification `0x29a`). This restores player fleet movement
   (F-007C). Retire, the Command submenu, and Status share the menu. Phases
-  0-6 have landed and pass the `fleet-move.mjs` gate for both sides; a native
-  check remains.
+  0-8 have landed and pass the `fleet-move.mjs` and `fleet-window.mjs` gates
+  for both sides; a native check remains.
 - [x] Trace what sets the system blockade bit (`+0x88` bit `0x20`) and replace
   the uncited `BlockadeSystem::system_is_blockaded` rule (F-007C). It follows
   `FUN_0050b8e0` (`ghidra/notes/blockade-bit.md`); the Move confirmation's
   blockade branch meets only a stale bit in the original, so it stays
   unreachable in the port.
-- [ ] Trace and port the original order that loads a regiment onto a fleet,
+- [x] Trace and port the original order that loads a regiment onto a fleet,
   through the existing capacity and embark core (F-007E player troop
-  dispatch).
+  dispatch). A regiment's Move released on the Fleet window (type 4,
+  `FUN_004a2630`) loads it (`ghidra/notes/fleet-window.md`); the port holds
+  the cargo aboard at its loading system until the fleet arrives elsewhere
+  (save v24). The native check is tracked with F-007C.
 - [ ] Port targeting of characters and objects (`+0x68` hit test, the walk up
   from a team member) so the dialog offers Rescue, Assassination, and
   Abduction (F-019).

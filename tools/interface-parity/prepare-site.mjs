@@ -37,6 +37,12 @@ const fixturePlugin = `    <script>
                             window.__openRebellionInterfaceFleetMoveSetup = message;
                         } else if (message.status === "fleet-move") {
                             (window.__openRebellionInterfaceFleetMoves ||= []).push(message);
+                        } else if (message.status === "fleet-load-setup") {
+                            window.__openRebellionInterfaceFleetLoadSetup = message;
+                        } else if (message.status === "fleet-load") {
+                            (window.__openRebellionInterfaceFleetLoads ||= []).push(message);
+                        } else if (message.status === "speed-menu") {
+                            window.__openRebellionInterfaceSpeedMenu = message;
                         } else {
                             window.__openRebellionInterfaceReady = message;
                         }

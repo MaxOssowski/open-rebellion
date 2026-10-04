@@ -1767,6 +1767,16 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                     ..=resources::strategy::SECTOR_PLANET_LAST
                 | resources::strategy::SECTOR_PLANET_SPECIAL_FIRST
                     ..=resources::strategy::SECTOR_PLANET_SPECIAL_LAST
+                // The Fleet window's frames, pictures and indicators, the
+                // sector window's fleet icons and the rail icons
+                // (`ghidra/notes/fleet-window.md`).
+                | 10400..=10406
+                | 10420..=10430
+                | 10450..=10456
+                | 10470..=10480
+                | 10775..=10776
+                | 10783..=10784
+                | 11536..=11538
         ),
         DllSource::Gokres => matches!(resource_id, 16_000..=19_999),
         DllSource::Common => matches!(
@@ -2308,6 +2318,35 @@ mod tests {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 0);
             assert_eq!(decoded.pixels[1].a(), 255);
+        }
+    }
+
+    #[test]
+    fn fleet_window_overlays_key_out_their_blue_matte_and_its_tabs_do_not() {
+        // STRATEGY 10400.. frames and pictures, 10775/10783 fleet icons and
+        // 11536.. rail icons carry the palette-blue matte; the pane art
+        // 10407 and the tab art 10409.. are blitted whole and clipped.
+        let mut image = image::RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        image.put_pixel(1, 0, image::Rgba([255, 0, 0, 255]));
+
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        for resource_id in [
+            10400, 10401, 10420, 10425, 10451, 10475, 10775, 10784, 11536,
+        ] {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            assert_eq!(decoded.pixels[0].a(), 0, "{resource_id}");
+            assert_eq!(decoded.pixels[1].a(), 255, "{resource_id}");
+        }
+        for resource_id in [10407, 10409, 10416, 10770] {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            assert_eq!(decoded.pixels[0].a(), 255, "{resource_id}");
         }
     }
 

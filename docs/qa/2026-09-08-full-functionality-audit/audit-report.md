@@ -53,7 +53,8 @@ The second F-007E checkpoint adds save-v13 troop transport, landing, continuing
 ground combat, occupation, and provisional character capture. Player troop
 selection and dispatch passed in the following checkpoint (reopened 2026-10-02:
 its fleet-panel picker lost its caller in 23d15da and was deleted in F-007C
-phase 6a). The campaign-history
+phase 6a; restored 2026-10-04 through the original order, a regiment's Move
+released on the Fleet window). The campaign-history
 review then reopened the victory and capture model. The next checkpoint now
 distinguishes Alliance control of Coruscant from Imperial destruction and
 occupation of the mobile Alliance HQ, preserves Standard leader conjunctions,
@@ -168,7 +169,8 @@ character capture and occupation-based Imperial HQ result are verified current
 behavior but not parity-correct. Save v13, all 567 workspace tests, the exact
 native/WASM replay, five 5,000-tick transport runs, and Astra medium two-faction
 bitmap/browser acceptance pass for the scoped transport path. Player troop
-dispatch passed in the next checkpoint (reopened 2026-10-02 with F-007C). The
+dispatch passed in the next checkpoint (reopened 2026-10-02 with F-007C;
+restored 2026-10-04 through the Fleet window). The
 following victory checkpoint
 corrected the Imperial HQ, Death Star, Standard-conjunction, and timing rules;
 capture/evasion, faction liveness, battle diagnostics, and five-seed
@@ -273,7 +275,9 @@ cross-runtime proof remain open
   with a 12-case two-sided browser gate and 8 of 8 hand-applied main-loop
   mutants caught; the blockade bit follows FUN_0050b8e0, under which the
   confirmation's blockade branch meets only a stale bit, as in the original;
-  open: regiment loading and a native check) wired
+  regiments load through the original Fleet window (type 4, FUN_004a2630),
+  opened from the sector window's fleet icon, with an 8-case two-sided gate;
+  a native check remains) wired
   ordinary player dispatch through the same validated departure helper, fixes
   map/context-menu click ordering and stale targets, and reports authoritative
   destinations and countdowns in the fleet panel. Astra medium passed both
@@ -295,7 +299,8 @@ cross-runtime proof remain open
   reopened Imperial HQ destruction, Death Star terminal outcomes,
   capture/evasion, and the 200-tick grace period. The next F-007E checkpoint
   (reopened 2026-10-02: no player path loads regiments onto a fleet since the
-  chooser's picker was deleted; owner, the original regiment-to-fleet order)
+  chooser's picker was deleted; restored 2026-10-04 through the original
+  regiment-to-fleet order, a regiment's Move released on the Fleet window)
   adds player regiment selection to the bitmap fleet chooser, enforces 0/0,
   2/2, and 3/3 live capacity in the browser, and carries selected cargo through
   dispatch and automatic landing. All 568 workspace tests and the packaged

@@ -85,6 +85,9 @@ pub enum PanelAction {
         destination: SystemKey,
         troops: Vec<TroopKey>,
     },
+    /// A regiment's Move released on a Fleet window's fleet: the regiment
+    /// boards it (`TroopTransportState::load`).
+    LoadRegiment { troop: TroopKey, fleet: FleetKey },
 
     // ── Manufacturing ─────────────────────────────────────────────────────────
     /// Add a buildable to the production queue at a system. With a

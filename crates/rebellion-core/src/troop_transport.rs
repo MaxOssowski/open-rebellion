@@ -21,6 +21,10 @@ pub struct TroopTransportState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     cargo: HashMap<FleetKey, Vec<TroopKey>>,
+    /// Fleets holding regiments loaded by order where they orbit, in key
+    /// order. port: the automatic landing skips them until they next arrive
+    /// somewhere, so a regiment loaded at its own system stays aboard.
+    held: Vec<FleetKey>,
 }
 
 /// Why a requested troop transfer could not be applied.
@@ -33,8 +37,14 @@ pub enum TroopTransportError {
     WrongFaction,
     TroopNotAtFleetSystem,
     AlreadyEmbarked,
-    CapacityExceeded { capacity: u32, requested: u32 },
+    CapacityExceeded {
+        capacity: u32,
+        requested: u32,
+    },
     FleetNotAtDestination,
+    /// A regiment has no speed, so it cannot move to another system
+    /// (`FUN_00555920`, `1`/`0x18`).
+    RegimentCannotTravel,
 }
 
 impl fmt::Display for TroopTransportError {
@@ -60,6 +70,9 @@ impl fmt::Display for TroopTransportError {
             ),
             Self::FleetNotAtDestination => {
                 formatter.write_str("fleet is not orbiting the landing system")
+            }
+            Self::RegimentCannotTravel => {
+                formatter.write_str("a regiment cannot travel to another system")
             }
         }
     }
@@ -89,6 +102,102 @@ impl TroopTransportState {
     #[must_use]
     pub fn is_embarked(&self, troop: TroopKey) -> bool {
         self.cargo.values().any(|cargo| cargo.contains(&troop))
+    }
+
+    /// Regiments the automatic landing may put down from `fleet`: none while
+    /// the fleet holds cargo loaded by order at the system it orbits.
+    #[must_use]
+    pub fn landing_count(&self, fleet: FleetKey) -> usize {
+        if self.is_held(fleet) {
+            0
+        } else {
+            self.carried_count(fleet)
+        }
+    }
+
+    #[must_use]
+    pub fn is_held(&self, fleet: FleetKey) -> bool {
+        self.held.binary_search(&fleet).is_ok()
+    }
+
+    /// Load regiments onto `fleet` by order (a regiment's Move released on
+    /// the Fleet window) and hold them aboard at the system it orbits.
+    ///
+    /// The refusals are [`Self::embark`]'s: a regiment of the other side
+    /// (`0x28`, `FUN_00555920`), one in another system (`1`/`0x18`: a
+    /// regiment has no speed, `ghidra/notes/fleet-window.md`), or more than
+    /// the fleet's room (`FUN_00500b40`: capacity minus regiments aboard).
+    /// port: the room is the whole fleet's, where the original's leg builders
+    /// pick one ship (untraced).
+    ///
+    /// # Errors
+    /// Returns [`Self::embark`]'s error, and then nothing changes.
+    pub fn load(
+        &mut self,
+        world: &mut GameWorld,
+        fleet: FleetKey,
+        troops: &[TroopKey],
+    ) -> Result<(), TroopTransportError> {
+        self.embark(world, fleet, troops)?;
+        if let Err(index) = self.held.binary_search(&fleet) {
+            self.held.insert(index, fleet);
+        }
+        Ok(())
+    }
+
+    /// Whether a regiment's pop-up menu enables Move: a regiment of the
+    /// player's side on a planet's surface. hyp: the move command's object
+    /// check (`FUN_00578c00` → slot `+0x6c`) is untraced for a regiment; it
+    /// is taken as `FUN_004f9860`'s side and en-route rules. port: an
+    /// embarked regiment's orders are not ported.
+    #[must_use]
+    pub fn regiment_move_enabled(
+        &self,
+        world: &GameWorld,
+        troop: TroopKey,
+        expected_is_alliance: bool,
+    ) -> bool {
+        world
+            .troops
+            .get(troop)
+            .is_some_and(|value| value.is_alliance == expected_is_alliance)
+            && !self.is_embarked(troop)
+            && regiment_system(world, troop).is_some()
+    }
+
+    /// A regiment's Move released on a system rather than a fleet: refused
+    /// across systems (`FUN_00555920`, `1`/`0x18`, a regiment has no
+    /// speed). In its own system the order has no leg to take. port: it
+    /// does nothing.
+    ///
+    /// # Errors
+    /// Returns [`TroopTransportError::MissingTroop`] for a regiment on no
+    /// surface, or [`TroopTransportError::RegimentCannotTravel`].
+    pub fn validate_regiment_system(
+        world: &GameWorld,
+        troop: TroopKey,
+        system: SystemKey,
+    ) -> Result<(), TroopTransportError> {
+        match regiment_system(world, troop) {
+            None => Err(TroopTransportError::MissingTroop),
+            Some(home) if home == system => Ok(()),
+            Some(_) => Err(TroopTransportError::RegimentCannotTravel),
+        }
+    }
+
+    /// End `fleet`'s hold. A fleet arriving anywhere releases its cargo to
+    /// the automatic landing.
+    pub fn release(&mut self, fleet: FleetKey) {
+        self.held.retain(|&key| key != fleet);
+    }
+
+    fn forget_if_empty(&mut self, fleet: FleetKey) {
+        if self.cargo.get(&fleet).is_some_and(Vec::is_empty) {
+            self.cargo.remove(&fleet);
+        }
+        if !self.cargo.contains_key(&fleet) {
+            self.release(fleet);
+        }
     }
 
     /// Fleet identities currently carrying at least one regiment.
@@ -210,6 +319,7 @@ impl TroopTransportState {
             .ok_or(TroopTransportError::MissingSystem)?;
 
         let mut landed = self.cargo.remove(&fleet).unwrap_or_default();
+        self.release(fleet);
         landed.retain(|troop| world.troops.contains_key(*troop));
         landed.sort_unstable();
         landed.dedup();
@@ -258,9 +368,7 @@ impl TroopTransportState {
                 }
             });
         }
-        if self.cargo.get(&fleet).is_some_and(Vec::is_empty) {
-            self.cargo.remove(&fleet);
-        }
+        self.forget_if_empty(fleet);
         landed.retain(|troop| world.troops.contains_key(*troop));
         landed.sort_unstable();
         landed.dedup();
@@ -275,6 +383,7 @@ impl TroopTransportState {
         if from == to {
             return;
         }
+        self.release(from);
         let Some(mut moved) = self.cargo.remove(&from) else {
             return;
         };
@@ -287,6 +396,7 @@ impl TroopTransportState {
     /// Destroy every regiment aboard a fleet that has been destroyed.
     pub fn destroy_fleet_cargo(&mut self, world: &mut GameWorld, fleet: FleetKey) -> Vec<TroopKey> {
         let cargo = self.cargo.remove(&fleet).unwrap_or_default();
+        self.release(fleet);
         for troop in &cargo {
             world.troops.remove(*troop);
         }
@@ -333,13 +443,21 @@ impl TroopTransportState {
             for troop in &lost {
                 world.troops.remove(*troop);
             }
-            if self.cargo.get(&fleet).is_some_and(Vec::is_empty) {
-                self.cargo.remove(&fleet);
-            }
+            self.forget_if_empty(fleet);
             destroyed.push((fleet, lost));
         }
         destroyed
     }
+}
+
+/// The system whose surface holds `troop`.
+#[must_use]
+pub fn regiment_system(world: &GameWorld, troop: TroopKey) -> Option<SystemKey> {
+    world
+        .systems
+        .iter()
+        .find(|(_, system)| system.ground_units.contains(&troop))
+        .map(|(key, _)| key)
 }
 
 #[cfg(test)]
@@ -584,5 +702,145 @@ mod tests {
         let decoded: TroopTransportState = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.cargo(first), state.cargo(first));
         assert_eq!(decoded.cargo(second), state.cargo(second));
+    }
+    // port: a regiment loaded by order stays aboard where it loaded
+    // (`TroopTransportState::load`, `ghidra/notes/fleet-window.md`).
+    #[test]
+    fn a_loaded_regiment_is_held_aboard_at_the_system_it_loaded_at() {
+        let (mut world, origin, _, fleet, troops) = fixture(2);
+        let mut state = TroopTransportState::new();
+
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+
+        assert_eq!(state.cargo(fleet), &troops[..1]);
+        assert_eq!(world.systems[origin].ground_units, troops[1..]);
+        assert_eq!(state.landing_count(fleet), 0);
+        assert_eq!(state.carried_count(fleet), 1);
+    }
+
+    #[test]
+    fn embarking_for_a_departure_does_not_hold_the_cargo() {
+        let (mut world, _, _, fleet, troops) = fixture(2);
+        let mut state = TroopTransportState::new();
+
+        state.embark(&mut world, fleet, &troops[..2]).unwrap();
+
+        assert_eq!(state.landing_count(fleet), 2);
+    }
+
+    // FUN_00500b40: the room is the capacity minus the regiments aboard.
+    #[test]
+    fn a_full_fleet_refuses_a_regiment_and_nothing_moves() {
+        let (mut world, origin, _, fleet, troops) = fixture(1);
+        let mut state = TroopTransportState::new();
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+
+        assert_eq!(
+            state.load(&mut world, fleet, &troops[1..2]),
+            Err(TroopTransportError::CapacityExceeded {
+                capacity: 1,
+                requested: 2,
+            })
+        );
+        assert_eq!(state.cargo(fleet), &troops[..1]);
+        assert_eq!(world.systems[origin].ground_units, troops[1..]);
+    }
+
+    // FUN_00555920: a regiment has no speed, so it loads only in its system.
+    #[test]
+    fn a_regiment_in_another_system_is_refused_and_not_held() {
+        let (mut world, origin, destination, fleet, troops) = fixture(2);
+        world.systems[origin]
+            .ground_units
+            .retain(|&key| key != troops[0]);
+        world.systems[destination].ground_units.push(troops[0]);
+        let mut state = TroopTransportState::new();
+
+        assert_eq!(
+            state.load(&mut world, fleet, &troops[..1]),
+            Err(TroopTransportError::TroopNotAtFleetSystem)
+        );
+        assert!(!state.is_held(fleet));
+    }
+
+    #[test]
+    fn releasing_a_hold_lets_the_cargo_land() {
+        let (mut world, _, _, fleet, troops) = fixture(2);
+        let mut state = TroopTransportState::new();
+        state.load(&mut world, fleet, &troops[..2]).unwrap();
+
+        state.release(fleet);
+
+        assert_eq!(state.landing_count(fleet), 2);
+    }
+
+    #[test]
+    fn landing_or_losing_the_cargo_ends_the_hold() {
+        let (mut world, origin, _, fleet, troops) = fixture(3);
+        let mut state = TroopTransportState::new();
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.disembark_all(&mut world, fleet, origin).unwrap();
+        assert!(!state.is_held(fleet));
+
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state
+            .disembark_selected(&mut world, fleet, origin, &troops[..1])
+            .unwrap();
+        assert!(!state.is_held(fleet));
+
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.destroy_fleet_cargo(&mut world, fleet);
+        assert!(!state.is_held(fleet));
+    }
+
+    #[test]
+    fn a_held_fleet_absorbed_into_another_passes_on_no_hold() {
+        let (mut world, origin, _, first, troops) = fixture(3);
+        let second = world.fleets.insert(Fleet {
+            location: origin,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let mut state = TroopTransportState::new();
+        state.load(&mut world, first, &troops[..1]).unwrap();
+
+        state.transfer_fleet(first, second);
+
+        assert!(!state.is_held(first));
+        assert!(!state.is_held(second));
+        assert_eq!(state.landing_count(second), 1);
+    }
+    #[test]
+    fn a_regiments_move_is_enabled_for_its_side_on_the_surface() {
+        let (mut world, _, _, fleet, troops) = fixture(1);
+        let mut state = TroopTransportState::new();
+
+        assert!(state.regiment_move_enabled(&world, troops[0], true));
+        assert!(!state.regiment_move_enabled(&world, troops[0], false));
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        assert!(!state.regiment_move_enabled(&world, troops[0], true));
+    }
+
+    // FUN_00555920: 1/0x18 across systems for an object with no speed.
+    #[test]
+    fn a_regiment_released_on_another_system_is_refused() {
+        let (world, origin, destination, _, troops) = fixture(1);
+
+        assert_eq!(
+            TroopTransportState::validate_regiment_system(&world, troops[0], destination),
+            Err(TroopTransportError::RegimentCannotTravel)
+        );
+        assert_eq!(
+            TroopTransportState::validate_regiment_system(&world, troops[0], origin),
+            Ok(())
+        );
+        // The message log prints the refusal after "Regiment move rejected: ".
+        assert_eq!(
+            TroopTransportError::RegimentCannotTravel.to_string(),
+            "a regiment cannot travel to another system"
+        );
     }
 }

@@ -129,8 +129,10 @@ protection, F-007B fleet-position consolidation,
 F-007D system-combat backlog closure, the F-007E logistics/data/repair,
 transport/occupation/player-dispatch, and victory-contract checkpoints, and F-016A/B/C/D/E
 cockpit/setup functionality now pass; P03 and P04 are complete. The source
-review still leaves capture/evasion open. F-007C player fleet dispatch is
-reopened: its context-menu entry lost its caller in 23d15da. Faction liveness, the wider
+review still leaves capture/evasion open. F-007C player fleet dispatch,
+reopened when its context-menu entry lost its caller in 23d15da, is restored
+through the original orders (Move, Confirmed Move, the system window drag, and
+regiment loading on the Fleet window); its native check remains. Faction liveness, the wider
 campaign loop, five-seed cross-runtime replay,
 interactive/tactical convergence, browser
 memory/media work, cross-browser performance, formatting, lint, and

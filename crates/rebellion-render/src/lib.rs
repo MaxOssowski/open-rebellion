@@ -7,6 +7,7 @@ pub mod cockpit;
 pub mod encyclopedia;
 pub mod event_screen;
 pub mod fleet_movement;
+pub mod fleet_window;
 pub mod fog;
 pub mod game_menu;
 pub mod game_options;
@@ -76,6 +77,10 @@ pub use event_screen::{
     EventScreenState,
 };
 pub use fleet_movement::{draw_fleet_overlays, hovered_fleet};
+pub use fleet_window::{
+    draw_fleet_windows, FleetWindowAction, FleetWindowState, FleetWindowTab, FLEET_WINDOW_HEIGHT,
+    FLEET_WINDOW_WIDTH,
+};
 pub use fog::draw_fog_overlay;
 pub use game_options::{draw_game_options, GameOptionsAction, GameOptionsOrigin, GameOptionsState};
 pub use ground_combat::{draw_ground_combat, GroundAction, GroundCombatState, GroundWinner};

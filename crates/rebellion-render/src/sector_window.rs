@@ -4,14 +4,18 @@
 //! window body is data-driven: each system uses its `SYSTEMSD.DAT` planet
 //! picture, sector-relative coordinates, and three compact status tracks.
 //! The close and side-switch controls use their original STRATEGY resources.
+//! A system with fleets shows the fleet icon at its planet's top right; a
+//! double click on it opens the Fleet window (`ghidra/notes/fleet-window.md`).
 
 use egui_macroquad::egui;
 use rebellion_core::dat::Faction;
+use rebellion_core::fog::FogState;
 use rebellion_core::ids::{DatId, SectorKey, SystemKey};
 use rebellion_core::world::{ControlKind, GameWorld};
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
+use crate::fleet_window::{fleet_icon, paint_native};
 
 pub const SECTOR_WINDOW_WIDTH: f32 = 235.0;
 pub const SECTOR_WINDOW_HEIGHT: f32 = 360.0;
@@ -144,6 +148,21 @@ impl SectorWindowState {
         Some(planet_rect(window_rect, layout.scale, x, y))
     }
 
+    /// Where `system`'s top-right quadrant overlay lies, in screen pixels,
+    /// when its sector's window is open: 28 by 19 from one pixel right of
+    /// the planet's center to its center row (`FUN_00459e30`, flag
+    /// `0x100000`).
+    #[must_use]
+    pub fn fleet_icon_screen_rect(
+        &self,
+        world: &GameWorld,
+        layout: CockpitLayout,
+        system: SystemKey,
+    ) -> Option<egui::Rect> {
+        let planet = self.planet_screen_rect(world, layout, system)?;
+        Some(fleet_icon_rect(planet, layout.scale))
+    }
+
     /// The destination a targeting release at `point` takes from the sector
     /// window egui draws as `layer`, or `None` when `layer` is none of them.
     ///
@@ -224,6 +243,12 @@ pub enum SectorWindowAction {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A double click on a shown fleet icon (`FUN_004593e0` case `0x203` →
+    /// `FUN_0045aac0`, kind `0x10`).
+    OpenFleetWindow {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
 }
 
 #[derive(Default)]
@@ -233,14 +258,20 @@ struct WindowDrawResult {
     switch_side: bool,
     selected: Option<SystemKey>,
     opened: Option<(SystemKey, (i16, i16))>,
+    opened_fleet: Option<(SystemKey, (i16, i16))>,
 }
 
 /// Paint and operate all open sector windows using the recovered strategic
 /// canvas. Window mutations are applied after the pass so area ordering stays
 /// deterministic.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Keep explicit state and rendering inputs at this existing UI boundary."
+)]
 pub fn draw_sector_windows(
     ctx: &egui::Context,
     world: &GameWorld,
+    fog: &FogState,
     state: &mut SectorWindowState,
     faction: CockpitFaction,
     layout: CockpitLayout,
@@ -259,6 +290,7 @@ pub fn draw_sector_windows(
         let result = draw_sector_window(
             ctx,
             world,
+            fog,
             window,
             focused_sector == Some(window.sector),
             faction,
@@ -284,6 +316,12 @@ pub fn draw_sector_windows(
                 logical_position,
             });
         }
+        if let Some((system, logical_position)) = result.opened_fleet {
+            actions.push(SectorWindowAction::OpenFleetWindow {
+                system,
+                logical_position,
+            });
+        }
     }
 
     if let Some(sector) = closed {
@@ -298,11 +336,13 @@ pub fn draw_sector_windows(
 
 #[expect(
     clippy::too_many_lines,
+    clippy::too_many_arguments,
     reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
 )]
 fn draw_sector_window(
     ctx: &egui::Context,
     world: &GameWorld,
+    fog: &FogState,
     window: OpenSectorWindow,
     focused: bool,
     faction: CockpitFaction,
@@ -395,6 +435,16 @@ fn draw_sector_window(
             );
 
             let player = cockpit_faction(faction);
+            let layer = egui::LayerId::new(egui::Order::Middle, area_id);
+            let double_click = ctx
+                .input(|input| {
+                    input
+                        .pointer
+                        .button_double_clicked(egui::PointerButton::Primary)
+                })
+                .then_some(pointer)
+                .flatten()
+                .filter(|point| ctx.layer_id_at(*point) == Some(layer));
             for system_key in &sector.systems {
                 let Some(system) = world.systems.get(*system_key) else {
                     continue;
@@ -409,7 +459,14 @@ fn draw_sector_window(
                 );
                 let planet_hovered = pointer.is_some_and(|point| rect_contains(planet_rect, point));
                 let planet_clicked = exact_clicked(&planet_response, planet_rect);
-                let planet_double_clicked = planet_response.double_clicked() && planet_clicked;
+                // FUN_0045d140 shows the overlay only while the side it picks
+                // has fleets; a double click finds it first (`FUN_0045cc10`).
+                let icon = fleet_icon(world, fog, player, *system_key);
+                let icon_rect = fleet_icon_rect(planet_rect, layout.scale);
+                let icon_double_clicked = icon.is_some()
+                    && double_click.is_some_and(|point| rect_contains(icon_rect, point));
+                let planet_double_clicked =
+                    planet_response.double_clicked() && planet_clicked && !icon_double_clicked;
                 paint_resource(
                     ui.painter(),
                     ctx,
@@ -435,6 +492,28 @@ fn draw_sector_window(
                     egui::FontId::proportional((10.0 * layout.scale).max(7.0)),
                     system_name_color(system.control, uprisings.is_uprising(*system_key), player),
                 );
+
+                if let Some((normal, _)) = icon {
+                    // port: the second bitmap (hyp: the pressed state) is not
+                    // drawn.
+                    paint_native(
+                        ui.painter(),
+                        ctx,
+                        cache,
+                        DllSource::Strategy,
+                        normal,
+                        icon_rect,
+                        layout.scale,
+                        0.0,
+                        0.0,
+                    );
+                }
+                if icon_double_clicked {
+                    let open_point = double_click.unwrap_or_else(|| icon_rect.center());
+                    result.opened_fleet =
+                        Some((*system_key, screen_to_logical(layout, open_point)));
+                    result.focus = true;
+                }
 
                 if planet_hovered || planet_clicked {
                     paint_selection_brackets(ui.painter(), planet_rect, layout.scale);
@@ -478,6 +557,16 @@ fn area_id(sector: SectorKey) -> egui::Id {
 /// A planet item's picture and hit rectangle: 37 by 37 at its position.
 fn planet_rect(window_rect: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Rect {
     logical_rect(window_rect, scale, x, y, 37.0, 37.0)
+}
+
+/// The top-right quadrant overlay around a planet whose center is
+/// (x + 18, y + 18): `(cx + 1, cy - 19)` to `(cx + 29, cy)`, the 27 by 18
+/// icon 10771 plus one (`FUN_00459e30`).
+fn fleet_icon_rect(planet: egui::Rect, scale: f32) -> egui::Rect {
+    egui::Rect::from_min_size(
+        planet.min + egui::vec2(19.0, -1.0) * scale,
+        egui::vec2(28.0, 19.0) * scale,
+    )
 }
 
 fn window_screen_rect(
@@ -1062,5 +1151,149 @@ mod tests {
         assert!(rect_contains(rect, egui::pos2(23.999, 33.999)));
         assert!(!rect_contains(rect, egui::pos2(24.0, 20.0)));
         assert!(!rect_contains(rect, egui::pos2(10.0, 34.0)));
+    }
+
+    /// Draw `system`'s sector window and double-click at the canvas point
+    /// `at`, returning every action.
+    fn double_click_at(
+        world: &GameWorld,
+        system: SystemKey,
+        at: (f32, f32),
+    ) -> Vec<SectorWindowAction> {
+        let layout = layout(1.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(world, system, CockpitFaction::Alliance);
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(system);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let point = egui::pos2(layout.canvas.x + at.0, layout.canvas.y + at.1);
+        let button = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let mut actions = Vec::new();
+        let frames = [
+            vec![egui::Event::PointerMoved(point)],
+            vec![egui::Event::PointerMoved(point)],
+            vec![button(true)],
+            vec![button(false)],
+            vec![button(true)],
+            vec![button(false)],
+            vec![],
+        ];
+        for (index, events) in frames.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 520.0),
+                )),
+                time: Some(index as f64 * 0.05),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                actions.extend(draw_sector_windows(
+                    ctx,
+                    world,
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                ));
+            });
+        }
+        actions
+    }
+
+    fn opened(actions: &[SectorWindowAction]) -> Vec<SectorWindowAction> {
+        actions
+            .iter()
+            .copied()
+            .filter(|action| !matches!(action, SectorWindowAction::SelectSystem(_)))
+            .collect()
+    }
+
+    fn add_fleet(world: &mut GameWorld, system: SystemKey) {
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: system,
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[system].fleets.push(fleet);
+    }
+
+    #[test]
+    fn a_double_click_on_the_fleet_icon_opens_the_fleet_window() {
+        // FUN_004593e0 case 0x203: the shown overlay under the point;
+        // FUN_0045aac0 maps kind 0x10 to window type 4. Chandrila's planet
+        // sits at (74, 79), so the icon spans (93, 78) to (121, 97).
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let actions = double_click_at(&world, system, (100.0, 85.0));
+
+        assert_eq!(
+            opened(&actions),
+            [SectorWindowAction::OpenFleetWindow {
+                system,
+                logical_position: (100, 85),
+            }]
+        );
+        // Past the planet's right edge, still on the icon.
+        let actions = double_click_at(&world, system, (115.0, 90.0));
+        assert!(matches!(
+            opened(&actions)[..],
+            [SectorWindowAction::OpenFleetWindow { .. }]
+        ));
+    }
+
+    #[test]
+    fn without_fleets_the_icons_corner_opens_the_system_window() {
+        // FUN_0045d140 hides the overlay at a zero count, so the planet
+        // answers.
+        let (world, system, _) = fixture_world();
+        let actions = double_click_at(&world, system, (100.0, 85.0));
+
+        assert!(matches!(
+            opened(&actions)[..],
+            [SectorWindowAction::OpenSystemWindow { .. }]
+        ));
+    }
+
+    #[test]
+    fn the_fleet_icons_rect_is_the_planets_top_right_quadrant() {
+        // FUN_00459e30, flag 0x100000: (cx + 1, cy - 19) to (cx + 29, cy).
+        let (world, system, _) = fixture_world();
+        let layout = layout(1.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+
+        assert_eq!(
+            state.fleet_icon_screen_rect(&world, layout, system),
+            Some(egui::Rect::from_min_size(
+                egui::pos2(10.0 + 93.0, 20.0 + 78.0),
+                egui::vec2(28.0, 19.0)
+            ))
+        );
+        // Twice the size: the offsets and the size scale with the window.
+        let doubled = CockpitLayout {
+            scale: 2.0,
+            ..layout
+        };
+        assert_eq!(
+            state.fleet_icon_screen_rect(&world, doubled, system),
+            Some(egui::Rect::from_min_size(
+                egui::pos2(10.0 + 93.0 * 2.0, 20.0 + 78.0 * 2.0),
+                egui::vec2(56.0, 38.0)
+            ))
+        );
     }
 }

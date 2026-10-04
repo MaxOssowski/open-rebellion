@@ -704,6 +704,8 @@ pub fn apply_fleet_arrival(
     for &fleet in &absorbed_keys {
         troop_transport.transfer_fleet(fleet, survivor);
     }
+    // port: an arrival ends a hold (`TroopTransportState::load`).
+    troop_transport.release(survivor);
 
     if let Some(fleet) = world.fleets.get_mut(survivor) {
         fleet.location = arrival.system;
@@ -1160,6 +1162,38 @@ mod tests {
         assert_eq!(world.systems[destination].fleets, vec![survivor]);
         assert_eq!(transport.cargo(survivor), &[troop]);
         assert!(transport.cargo(arriving).is_empty());
+    }
+
+    // port: an arrival ends a hold (`TroopTransportState::load`), so the
+    // regiment lands where the fleet goes.
+    #[test]
+    fn a_held_fleet_arriving_elsewhere_releases_its_cargo_to_land() {
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let fleet = add_test_fleet(&mut world, origin, ship_key);
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[origin].ground_units.push(troop);
+        let mut transport = TroopTransportState::default();
+        transport.load(&mut world, fleet, &[troop]).unwrap();
+        let mut movement = MovementState::new();
+        assert!(begin_fleet_transit(
+            &mut movement,
+            &mut world,
+            fleet,
+            destination,
+            5,
+        ));
+        assert!(transport.is_held(fleet));
+
+        let arrival = MovementSystem::advance(&mut movement, &ticks(5)).remove(0);
+        apply_fleet_arrival(&mut world, &mut transport, &arrival).unwrap();
+
+        assert!(!transport.is_held(fleet));
+        assert_eq!(transport.landing_count(fleet), 1);
     }
 
     #[test]

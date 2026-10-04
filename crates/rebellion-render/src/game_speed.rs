@@ -178,6 +178,7 @@ const ALERT_BUTTON_RECT: CockpitViewport = CockpitViewport {
 };
 /// Game-font entry 5: 16 pixels, bold. Drawn with egui's proportional face.
 const ALERT_FONT_HEIGHT: f32 = 16.0;
+const SPEED_MENU_ID: &str = "original_game_speed_menu";
 /// Text color `0x2f0fbff`.
 const ALERT_TEXT_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 251, 240);
 /// REBDLOG string 4611.
@@ -354,6 +355,12 @@ pub fn open_game_speed_menu_on_right_click(
     true
 }
 
+/// Where the open speed menu lies on screen.
+#[must_use]
+pub fn game_speed_menu_rect(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.memory(|memory| memory.area_rect(egui::Id::new(SPEED_MENU_ID)))
+}
+
 /// Draw the open speed menu and return the chosen speed.
 ///
 /// A choice, an outside press, or Escape closes the menu.
@@ -375,7 +382,7 @@ pub fn draw_game_speed_menu(
     });
     match draw_game_menu(
         ctx,
-        egui::Id::new("original_game_speed_menu"),
+        egui::Id::new(SPEED_MENU_ID),
         cache,
         layout,
         faction,
@@ -728,9 +735,7 @@ mod tests {
             };
             frame(&ctx, egui::Pos2::ZERO, vec![], &mut draw);
             frame(&ctx, egui::Pos2::ZERO, vec![], &mut draw);
-            let rect = ctx
-                .memory(|memory| memory.area_rect(egui::Id::new("original_game_speed_menu")))
-                .expect("the speed menu is laid out");
+            let rect = game_speed_menu_rect(&ctx).expect("the speed menu is laid out");
             let row = (rect.height() - 2.0) / GameSpeed::ALL.len() as f32;
             let at = egui::pos2(
                 rect.center().x,
