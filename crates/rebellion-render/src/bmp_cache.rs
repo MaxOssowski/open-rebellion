@@ -1768,15 +1768,18 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | resources::strategy::SECTOR_PLANET_SPECIAL_FIRST
                     ..=resources::strategy::SECTOR_PLANET_SPECIAL_LAST
                 // The Fleet window's frames, pictures and indicators, the
-                // sector window's four quadrant icons and the rail icons
+                // Defenses window's tabs and row frames, the sector window's
+                // four quadrant icons and the rail icons
                 // (`ghidra/notes/fleet-window.md`,
                 // `ghidra/notes/sector-quadrants.md`).
                 | 10400..=10406
                 | 10420..=10430
                 | 10450..=10456
                 | 10470..=10480
+                | 10550..=10576
+                | 10578..=10579
                 | 10771..=10790
-                | 11536..=11538
+                | 11533..=11538
         ),
         DllSource::Gokres => matches!(resource_id, 16_000..=19_999),
         DllSource::Common => matches!(
@@ -2369,6 +2372,32 @@ mod tests {
             assert_eq!(decoded.pixels[0].a(), 0, "{resource_id}");
         }
         for resource_id in [10770, 10791] {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            assert_eq!(decoded.pixels[0].a(), 255, "{resource_id}");
+        }
+    }
+
+    #[test]
+    fn the_defenses_windows_tabs_frames_and_rail_icons_key_out_their_blue_matte() {
+        // STRATEGY 10550..10576 (the tab buttons, blitted keyed by
+        // FUN_00602d30 through FUN_005fd0f0), 10578/10579 (the row frames,
+        // keyed over the mini by FUN_004a9ab0) and 11533..11535 (the rail
+        // icons) carry the palette-blue matte; the background 10577 is the
+        // window's surface and stays opaque.
+        let mut image = image::RgbaImage::new(1, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        for resource_id in [10550, 10563, 10576, 10578, 10579, 11533, 11535] {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            assert_eq!(decoded.pixels[0].a(), 0, "{resource_id}");
+        }
+        for resource_id in [10549, 10577, 10580, 11532] {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 255, "{resource_id}");
         }

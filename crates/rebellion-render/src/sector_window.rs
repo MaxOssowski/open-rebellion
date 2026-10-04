@@ -263,6 +263,12 @@ pub enum SectorWindowAction {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A double click on a shown defenses icon (`FUN_0045aac0`, kind 8):
+    /// the System Defenses window, type 10.
+    OpenDefensesWindow {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
 }
 
 #[derive(Default)]
@@ -273,6 +279,7 @@ struct WindowDrawResult {
     selected: Option<SystemKey>,
     opened: Option<(SystemKey, (i16, i16))>,
     opened_fleet: Option<(SystemKey, (i16, i16))>,
+    opened_defenses: Option<(SystemKey, (i16, i16))>,
 }
 
 /// Paint and operate all open sector windows using the recovered strategic
@@ -334,6 +341,12 @@ pub fn draw_sector_windows(
         }
         if let Some((system, logical_position)) = result.opened_fleet {
             actions.push(SectorWindowAction::OpenFleetWindow {
+                system,
+                logical_position,
+            });
+        }
+        if let Some((system, logical_position)) = result.opened_defenses {
+            actions.push(SectorWindowAction::OpenDefensesWindow {
                 system,
                 logical_position,
             });
@@ -544,13 +557,14 @@ fn draw_sector_window(
                 if let Some((quadrant, icon_rect)) = icon_double_clicked {
                     let open_point = double_click.unwrap_or_else(|| icon_rect.center());
                     let opened = Some((*system_key, screen_to_logical(layout, open_point)));
-                    // FUN_0045aac0: kind 4 opens the System window, kind 0x10
-                    // the Fleet window. port: the Defenses (type 10) and
-                    // Missions (type 11) windows are not ported yet.
+                    // FUN_0045aac0: kind 4 opens the System window, kind 8
+                    // the Defenses window, kind 0x10 the Fleet window.
+                    // port: the Missions window (type 11) is not ported yet.
                     match quadrant {
                         Quadrant::System => result.opened = opened,
+                        Quadrant::Defenses => result.opened_defenses = opened,
                         Quadrant::Fleets => result.opened_fleet = opened,
-                        Quadrant::Defenses | Quadrant::Missions => {}
+                        Quadrant::Missions => {}
                     }
                     result.focus = true;
                 }
@@ -1399,6 +1413,28 @@ mod tests {
             [SectorWindowAction::OpenSystemWindow {
                 system,
                 logical_position: (66, 80),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_double_click_on_the_defenses_icon_opens_the_defenses_window() {
+        // FUN_0045aac0 maps kind 8 to window type 10. (66, 110) lies on the
+        // bottom-left icon, (64, 98) to (92, 117), left of the planet.
+        let (mut world, system, _) = fixture_world();
+        assert!(opened(&double_click_at(&world, system, (66.0, 110.0))).is_empty());
+
+        let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0002),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+        assert_eq!(
+            opened(&double_click_at(&world, system, (66.0, 110.0))),
+            [SectorWindowAction::OpenDefensesWindow {
+                system,
+                logical_position: (66, 110),
             }]
         );
     }

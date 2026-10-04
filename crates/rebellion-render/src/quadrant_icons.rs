@@ -193,54 +193,59 @@ impl<'a> SystemContents<'a> {
     }
 
     /// The system's characters and special forces the player sees, each with
-    /// its side and whether it is on a hidden mission (role `+0x78` bit 8).
-    ///
-    /// port: special forces carry no hidden-mission flag.
+    /// its side and whether it is on a hidden mission.
     fn members(&self) -> impl Iterator<Item = (MissionMember, u8, bool)> + '_ {
-        let characters = self
-            .world
-            .characters
-            .iter()
-            .filter(|(_, character)| {
-                !character.is_killed && character.current_system == Some(self.system)
-            })
-            .map(|(key, character)| {
-                let side = if character.is_alliance {
-                    1
-                } else if character.is_empire {
-                    2
-                } else {
-                    0
-                };
-                (
-                    MissionMember::Character(key),
-                    side,
-                    character.on_hidden_mission,
-                )
-            });
-        let forces = self
-            .world
-            .systems
-            .get(self.system)
-            .into_iter()
-            .flat_map(|value| value.special_forces.iter())
-            .filter_map(|key| {
-                let force = self.world.special_forces.get(*key)?;
-                Some((
-                    MissionMember::SpecialForce(*key),
-                    fleet_side(force.is_alliance),
-                    false,
-                ))
-            });
-        characters
-            .chain(forces)
-            .filter(|(_, side, _)| self.seen(*side))
+        system_members(self.world, self.system).filter(|(_, side, _)| self.seen(*side))
     }
+}
+
+/// The characters and special forces at `system`, each with its side and
+/// whether it is on a hidden mission (role `+0x78` bit 8).
+///
+/// port: special forces carry no hidden-mission flag.
+pub(crate) fn system_members(
+    world: &GameWorld,
+    system: SystemKey,
+) -> impl Iterator<Item = (MissionMember, u8, bool)> + '_ {
+    let characters = world
+        .characters
+        .iter()
+        .filter(move |(_, character)| {
+            !character.is_killed && character.current_system == Some(system)
+        })
+        .map(|(key, character)| {
+            let side = if character.is_alliance {
+                1
+            } else if character.is_empire {
+                2
+            } else {
+                0
+            };
+            (
+                MissionMember::Character(key),
+                side,
+                character.on_hidden_mission,
+            )
+        });
+    let forces = world
+        .systems
+        .get(system)
+        .into_iter()
+        .flat_map(|value| value.special_forces.iter())
+        .filter_map(|key| {
+            let force = world.special_forces.get(*key)?;
+            Some((
+                MissionMember::SpecialForce(*key),
+                fleet_side(force.is_alliance),
+                false,
+            ))
+        });
+    characters.chain(forces)
 }
 
 /// Each mission member's mission key (`+0x68`): the mission whose team,
 /// decoys, or captured list holds it.
-fn mission_keys(missions: &MissionState) -> HashMap<MissionMember, u64> {
+pub(crate) fn mission_keys(missions: &MissionState) -> HashMap<MissionMember, u64> {
     let mut keys = HashMap::new();
     for mission in missions.missions() {
         for member in mission

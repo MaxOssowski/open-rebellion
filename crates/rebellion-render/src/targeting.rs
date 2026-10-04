@@ -16,6 +16,7 @@ use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{resources::rebexe, BmpCache, DllSource};
 use crate::cockpit::CockpitLayout;
+use crate::defenses_window::DefensesWindowState;
 use crate::fleet_window::FleetWindowState;
 use crate::sector_window::SectorWindowState;
 use crate::system_window::SystemWindowState;
@@ -104,15 +105,16 @@ pub struct ReleaseWindows<'a> {
     pub sector: &'a SectorWindowState,
     pub system: &'a SystemWindowState,
     pub fleet: &'a FleetWindowState,
+    pub defenses: &'a DefensesWindowState,
 }
 
 /// The target a targeting release at `point` lands on. `FUN_00422ce0` asks
 /// the child window under the point (`ChildWindowFromPointEx`); here the
-/// topmost egui layer stands for it. A system window gives its own system,
-/// a sector window the planet under the point, a Fleet window the fleet or
-/// system its `+0x70` gives; the galaxy map is drawn by the view itself, so
-/// a release over it, or between planets, gives none and the order is
-/// destroyed (`ghidra/notes/move-order.md`, "Hit tests").
+/// topmost egui layer stands for it. A system window or a Defenses window
+/// gives its own system, a sector window the planet under the point, a Fleet
+/// window the fleet or system its `+0x70` gives; the galaxy map is drawn by
+/// the view itself, so a release over it, or between planets, gives none and
+/// the order is destroyed (`ghidra/notes/move-order.md`, "Hit tests").
 ///
 /// Move and Confirmed Move ask `+0x70`, the container under the point.
 /// port: Mission asks `+0x68`, which may answer a character or a fleet;
@@ -130,6 +132,9 @@ pub fn release_destination(
 ) -> Option<ReleaseTarget> {
     let layer = window_layer_at(ctx, point)?;
     if let Some(system) = windows.system.release_target(layer) {
+        return Some(ReleaseTarget::System(system));
+    }
+    if let Some(system) = windows.defenses.release_target(layer) {
         return Some(ReleaseTarget::System(system));
     }
     if let Some(target) = windows
@@ -427,6 +432,7 @@ mod tests {
     mod release {
         use super::*;
         use crate::cockpit::CockpitFaction;
+        use crate::defenses_window::draw_defenses_windows;
         use crate::fleet_window::draw_fleet_windows;
         use crate::sector_window::draw_sector_windows;
         use crate::system_window::draw_system_windows;
@@ -492,6 +498,7 @@ mod tests {
                 sectors,
                 systems,
                 &mut FleetWindowState::default(),
+                &mut DefensesWindowState::default(),
                 at,
             )
             .map(|target| match target {
@@ -505,6 +512,7 @@ mod tests {
             sectors: &mut SectorWindowState,
             systems: &mut SystemWindowState,
             fleets: &mut FleetWindowState,
+            defenses: &mut DefensesWindowState,
             at: (f32, f32),
         ) -> Option<ReleaseTarget> {
             let layout = layout(1.0);
@@ -545,6 +553,17 @@ mod tests {
                         layout,
                         &mut cache,
                     );
+                    let _ = draw_defenses_windows(
+                        ctx,
+                        world,
+                        &fog,
+                        &rebellion_core::missions::MissionState::new(),
+                        &rebellion_core::economy::EconomyState::default(),
+                        defenses,
+                        faction,
+                        layout,
+                        &mut cache,
+                    );
                     capture_pointer(ctx);
                 });
             }
@@ -553,6 +572,7 @@ mod tests {
                 sector: sectors,
                 system: systems,
                 fleet: fleets,
+                defenses,
             };
             release_destination(&ctx, world, &fog, layout, windows, point)
         }
@@ -685,6 +705,7 @@ mod tests {
                     &mut SectorWindowState::default(),
                     &mut SystemWindowState::default(),
                     &mut fleets,
+                    &mut DefensesWindowState::default(),
                     at,
                 ),
                 Some(ReleaseTarget::Fleet {
@@ -700,6 +721,7 @@ mod tests {
                     &mut SectorWindowState::default(),
                     &mut SystemWindowState::default(),
                     &mut fleets,
+                    &mut DefensesWindowState::default(),
                     at,
                 ),
                 Some(ReleaseTarget::System(first))
@@ -731,6 +753,7 @@ mod tests {
                     &mut sectors,
                     &mut SystemWindowState::default(),
                     &mut fleets,
+                    &mut DefensesWindowState::default(),
                     at,
                 ),
                 Some(ReleaseTarget::Fleet {
@@ -738,6 +761,46 @@ mod tests {
                     system: first
                 })
             );
+        }
+        #[test]
+        fn a_release_on_a_defenses_window_targets_its_system_even_over_a_row() {
+            // FUN_004aa470 (+0x70): the window's subject wherever the point
+            // is, so a move never targets a listed object.
+            let (mut world, first, _) = world();
+            world.systems[first].control = ControlKind::Controlled(Faction::Alliance);
+            let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
+                is_alliance: true,
+                regiment_strength: 100,
+            });
+            world.systems[first].ground_units.push(troop);
+            let mut sectors = SectorWindowState::default();
+            sectors.open_for_system(&world, first, CockpitFaction::Alliance);
+            let mut defenses = DefensesWindowState::default();
+            defenses.open(
+                &world,
+                first,
+                (40, 50),
+                CockpitFaction::Alliance,
+                layout(1.0),
+            );
+
+            // The first cell spans (7, 81) to (77, 151) in the window; the
+            // window covers the first planet at (74, 79).
+            for at in [(40.0 + 30.0, 50.0 + 100.0), (40.0 + 150.0, 50.0 + 40.0)] {
+                assert_eq!(
+                    release_on(
+                        &world,
+                        &mut sectors,
+                        &mut SystemWindowState::default(),
+                        &mut FleetWindowState::default(),
+                        &mut defenses,
+                        at,
+                    ),
+                    Some(ReleaseTarget::System(first)),
+                    "{at:?}"
+                );
+            }
         }
     }
 }

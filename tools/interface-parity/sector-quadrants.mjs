@@ -61,6 +61,18 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function gokresDirectory() {
+  const candidates = [
+    process.env.REBELLION_GOKRES_BMP_DIR,
+    path.join(root, "data/base/ui/gokres-dll/BMP"),
+  ].filter(Boolean);
+  const directory = candidates.find((candidate) => fs.existsSync(path.join(candidate, "17472.bmp")));
+  if (!directory) {
+    throw new Error("owned GOKRES.DLL BMP extraction is unavailable; set REBELLION_GOKRES_BMP_DIR");
+  }
+  return directory;
+}
+
 function sourceDirectory() {
   const candidates = [
     process.env.REBELLION_STRATEGY_BMP_DIR,
@@ -150,10 +162,28 @@ function decodeIndexedBmp(bytes) {
 }
 
 const used = new Set();
+const usedGokres = new Set();
 
 function resource(source, id) {
   used.add(id);
   return decodeIndexedBmp(fs.readFileSync(path.join(source, `${id}.bmp`)));
+}
+
+function gokres(id) {
+  usedGokres.add(id);
+  return decodeIndexedBmp(fs.readFileSync(path.join(gokresDirectory(), `${id}.bmp`)));
+}
+
+// A window-sized bitmap's region (x, y, w, h) against the screenshot at the
+// window's screen corner, every pixel opaque.
+function compareRegion(screenshot, corner, image, region, label, directory) {
+  const [x0, y0, width, height] = region;
+  const crop = new PNG({ width, height });
+  for (let y = 0; y < height; y += 1) {
+    const from = ((y0 + y) * image.width + x0) * 4;
+    crop.data.set(image.data.subarray(from, from + width * 4), y * width * 4);
+  }
+  return compareIcon(screenshot, [corner[0] + x0, corner[1] + y0], crop, label, directory, false);
 }
 
 // The palette-blue matte every quadrant icon carries (bmp_cache.rs,
@@ -165,7 +195,7 @@ function blueKey(data, offset) {
 // The icon's opaque pixels against the screenshot at the overlay's top-left
 // (port: paint_native draws the bitmap at its own size there). The matte
 // shows whatever lies behind, so it stays out of the check.
-function compareIcon(screenshot, rect, icon, label, directory) {
+function compareIcon(screenshot, rect, icon, label, directory, keyed = true) {
   const [left, top] = rect;
   const diff = new PNG({ width: icon.width, height: icon.height });
   const actual = new PNG({ width: icon.width, height: icon.height });
@@ -176,7 +206,7 @@ function compareIcon(screenshot, rect, icon, label, directory) {
       const from = (y * icon.width + x) * 4;
       const at = ((Math.round(top) + y) * screenshot.width + Math.round(left) + x) * 4;
       actual.data.set(screenshot.data.subarray(at, at + 4), from);
-      if (blueKey(icon.data, from)) {
+      if (keyed && blueKey(icon.data, from)) {
         diff.data.set([0, 0, 96, 255], from);
         continue;
       }
@@ -192,6 +222,15 @@ function compareIcon(screenshot, rect, icon, label, directory) {
   fs.writeFileSync(path.join(directory, `${label}-expected.png`), PNG.sync.write(icon));
   fs.writeFileSync(path.join(directory, `${label}-diff.png`), PNG.sync.write(diff));
   return { label, pixels_checked: checked, different_pixels: different };
+}
+
+async function click(page, point) {
+  await page.mouse.move(point.x, point.y);
+  await frames(page);
+  await page.mouse.down();
+  await frames(page);
+  await page.mouse.up();
+  await frames(page);
 }
 
 async function frames(page, count = 1) {
@@ -268,6 +307,65 @@ function quadrant(setup, system, name) {
   return found.rect;
 }
 
+
+// The System Defenses window (type 10, defenses_window.rs) the bottom-left
+// icon opens: FUN_004a8790's tab art (normal, selected = +1, empty = +2;
+// one gray id for side 0/3 on the side-art tabs), and the pages the
+// fixture stocks.
+const TAB_BASE = {
+  batteries: [10550, 10550, 10550],
+  shields: [10553, 10553, 10553],
+  squadrons: [10562, 10556, 10559],
+  regiments: [10569, 10563, 10566],
+  personnel: [10576, 10570, 10573],
+};
+function tabArt(name, side, selected, empty) {
+  const base = TAB_BASE[name][side === 1 || side === 2 ? side : 0];
+  if ((side !== 1 && side !== 2) && !["batteries", "shields"].includes(name)) return base;
+  return base + (selected ? 1 : empty ? 2 : 0);
+}
+const PAGES = ["personnel", "regiments", "squadrons", "shields", "batteries"];
+// troop_mini: the Alliance Fleet Regiment and Stormtrooper Regiment minis.
+const REGIMENT_MINI = { 1: 17472, 2: 17536 };
+
+function defensesWindow(observation, dat) {
+  return observation.defenses_windows.find((window) => window.system_dat_id === dat);
+}
+
+// The window's screen corner from its personnel tab at (28, 20).
+function corner(window) {
+  const [left, top] = window.tabs.find(([name]) => name === "personnel")[1];
+  return [left - 28, top - 20];
+}
+
+function compareTabs(screenshot, source, window, directory, prefix) {
+  const checks = [];
+  for (const [name, rect] of window.tabs) {
+    const index = PAGES.indexOf(name);
+    const id = tabArt(name, window.side, window.page === name, window.counts[index] === 0);
+    checks.push({ id, ...compareIcon(screenshot, rect, resource(source, id), `${prefix}-tab-${name}`, directory) });
+  }
+  return checks;
+}
+
+function assertExact(checks) {
+  for (const check of checks) {
+    assert.ok(check.pixels_checked > 0, `${check.label} checked nothing`);
+    assert.equal(check.different_pixels, 0,
+      `${check.label} (${check.id}): ${check.different_pixels} of ${check.pixels_checked} pixels differ`);
+  }
+}
+
+async function openDefenses(page, setup, system) {
+  const [left, top] = quadrant(setup, system, "defenses");
+  const at = { x: Math.round(left) + 4, y: Math.round(top) + 9 };
+  await doubleClick(page, at);
+  const dat = system === "primary" ? setup.primary_dat_id : setup.second_dat_id;
+  const opened = await until(page, `the ${system} defenses icon opens the Defenses window`,
+    (o, value) => o.defenses_windows.some((window) => window.system_dat_id === value), dat);
+  return { at, dat, opened, window: defensesWindow(opened, dat) };
+}
+
 const cases = [
   {
     name: "icons",
@@ -315,6 +413,90 @@ const cases = [
         (o, dat) => o.system_windows.some(([system]) => system === dat), setup.primary_dat_id);
       assert.equal(opened.system_windows.length, 1, JSON.stringify(opened));
       return { at, opened };
+    },
+  },
+  {
+    name: "defenses",
+    // FUN_0045aac0 maps kind 8 to type 10 (FUN_004a7790), which opens on
+    // the personnel page (FUN_0060d7e0(strip, 1)). The player's own system:
+    // its regiment and KDY-150, the garrison line on the regiment page
+    // (FUN_004a90d0's tail), the row frame keyed over the selected mini
+    // (FUN_004a9ab0), and minimize to the rail and back (0x466,
+    // FUN_004aa4a0).
+    async run(page, faction, setup, directory, source) {
+      const { at, dat, window } = await openDefenses(page, setup, "primary");
+      assert.equal(window.side, faction.side, JSON.stringify(window));
+      assert.equal(window.page, "personnel");
+      assert.deepEqual(window.counts, [0, 1, 0, 0, 1]);
+      assert.deepEqual([window.rows, window.selected, window.garrison], [[], null, null]);
+      const origin = corner(window);
+      const background = resource(source, 10577);
+      let screenshot = await stableScreen(page, directory, "personnel");
+      const opening = [
+        ...compareTabs(screenshot, source, window, directory, "personnel"),
+        // The empty list and the strip below it show the background.
+        { id: 10577, ...compareRegion(screenshot, origin, background, [7, 81, 222, 210], "personnel-list", directory) },
+        { id: 10577, ...compareRegion(screenshot, origin, background, [0, 292, 235, 12], "personnel-bottom", directory) },
+      ];
+      assertExact(opening);
+
+      const regimentsTab = window.tabs.find(([name]) => name === "regiments")[1];
+      await click(page, { x: regimentsTab[0] + 18, y: regimentsTab[1] + 16 });
+      const regiments = defensesWindow(await until(page, "the regiment tab opens its page",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && w.page === "regiments"), dat), dat);
+      assert.equal(regiments.rows.length, 1, JSON.stringify(regiments));
+      assert.match(regiments.garrison, /^Garrison Requirement: \d+$/);
+      screenshot = await stableScreen(page, directory, "regiments");
+      const mini = REGIMENT_MINI[faction.side];
+      const regimentChecks = [
+        ...compareTabs(screenshot, source, regiments, directory, "regiments"),
+        { id: mini, ...compareIcon(screenshot, regiments.cells[0], gokres(mini), "regiments-mini", directory) },
+      ];
+      assertExact(regimentChecks);
+
+      const cell = regiments.cells[0];
+      await click(page, { x: cell[0] + 30, y: cell[1] + 12 });
+      const selected = defensesWindow(await until(page, "a click selects the row",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && w.selected === 0), dat), dat);
+      screenshot = await stableScreen(page, directory, "selected");
+      const frame = faction.side === 1 ? 10578 : 10579;
+      const selectedChecks = [
+        { id: frame, ...compareIcon(screenshot, selected.cells[0], resource(source, frame), "selected-frame", directory) },
+      ];
+      assertExact(selectedChecks);
+
+      await click(page, { x: origin[0] + 210, y: origin[1] + 9 });
+      const railed = await until(page, "minimize sends the window to the rail",
+        (o, value) => !o.defenses_windows.some((w) => w.system_dat_id === value)
+          && o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat);
+      const slot = railed.rail.find(([system, kind]) => system === dat && kind === "defenses")[2];
+      screenshot = await stableScreen(page, directory, "railed");
+      const icon = faction.side === 1 ? 11533 : 11534;
+      const railChecks = [{ id: icon, ...compareIcon(screenshot, slot, resource(source, icon), "rail-icon", directory) }];
+      assertExact(railChecks);
+
+      await click(page, { x: slot[0] + slot[2] / 2, y: slot[1] + slot[3] / 2 });
+      const restored = defensesWindow(await until(page, "the rail slot restores the window",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value)
+          && !o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat), dat);
+      assert.deepEqual(restored.origin, window.origin);
+      return { at, window, opening, regiments, regimentChecks, selectedChecks, railChecks, restored };
+    },
+  },
+  {
+    name: "defenses-other-side",
+    // +0x148 is the system's side: the other side's system lists only its
+    // objects, of which the fixture leaves none, so every tab shows that
+    // side's empty art and the player's regiment there is not listed.
+    async run(page, faction, setup, directory, source) {
+      const { at, window } = await openDefenses(page, setup, "second");
+      assert.equal(window.side, faction.other, JSON.stringify(window));
+      assert.deepEqual(window.counts, [0, 0, 0, 0, 0]);
+      assert.equal(window.garrison, null);
+      const screenshot = await stableScreen(page, directory, "other-side");
+      const checks = compareTabs(screenshot, source, window, directory, "other-side");
+      assertExact(checks);
+      return { at, window, checks };
     },
   },
 ];
@@ -377,7 +559,8 @@ async function inspect(server, source, faction, testCase, executable) {
     assert.equal(setup.scale, 1, "the gate compares at the original's scale");
     assert.equal(setup.quadrants.length, 8, JSON.stringify(setup));
     const start = await latest(page);
-    assert.deepEqual(start.system_windows, [], JSON.stringify(start));
+    assert.deepEqual([start.system_windows, start.defenses_windows, start.rail], [[], [], []],
+      JSON.stringify(start));
     await page.evaluate(() => document.fonts.ready);
     const { bytes: _ready, ...before } = await shot(page, directory, "ready");
 
@@ -435,7 +618,16 @@ function sourceIdentity(source) {
     aggregate.update(`${id}\0`);
     aggregate.update(fs.readFileSync(path.join(source, `${id}.bmp`)));
   }
-  return { dll: "STRATEGY.DLL", resource_ids: ids, aggregate_sha256: aggregate.digest("hex") };
+  const gokresIds = [...usedGokres].sort((left, right) => left - right);
+  const gokresAggregate = createHash("sha256");
+  for (const id of gokresIds) {
+    gokresAggregate.update(`${id}\0`);
+    gokresAggregate.update(fs.readFileSync(path.join(gokresDirectory(), `${id}.bmp`)));
+  }
+  return [
+    { dll: "STRATEGY.DLL", resource_ids: ids, aggregate_sha256: aggregate.digest("hex") },
+    { dll: "GOKRES.DLL", resource_ids: gokresIds, aggregate_sha256: gokresAggregate.digest("hex") },
+  ];
 }
 
 async function main() {
@@ -469,7 +661,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "sector-quadrants",
-    scope: "test-only sector window quadrant icons (FUN_00459e30): each shown icon's art against STRATEGY.DLL, hidden icons absent, and the system icon opening the System window, on both sides",
+    scope: "test-only sector window quadrant icons (FUN_00459e30): each shown icon's art against STRATEGY.DLL, hidden icons absent, the system icon opening the System window, and the defenses icon opening the System Defenses window (tabs, rows, selection frame, rail) against STRATEGY.DLL and GOKRES.DLL, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

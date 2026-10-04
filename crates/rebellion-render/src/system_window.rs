@@ -143,18 +143,30 @@ enum RailEntry {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A System Defenses window (type 10); its icon comes from
+    /// `FUN_004aa4a0`.
+    Defenses {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
 }
 
 impl RailEntry {
     const fn system(&self) -> SystemKey {
         match self {
             Self::System(window) => window.system,
-            Self::Fleet { system, .. } => *system,
+            Self::Fleet { system, .. } | Self::Defenses { system, .. } => *system,
         }
     }
 
     const fn is_system_window(&self) -> bool {
         matches!(self, Self::System(_))
+    }
+
+    /// One slot per window: the window type and its system.
+    fn same_window(&self, other: &Self) -> bool {
+        self.system() == other.system()
+            && std::mem::discriminant(self) == std::mem::discriminant(other)
     }
 }
 
@@ -336,6 +348,25 @@ impl SystemWindowState {
         self.rail.len()
     }
 
+    /// Each rail entry, oldest first: its system and its window, "system",
+    /// "fleet" or "defenses".
+    pub fn rail_entries(&self) -> impl Iterator<Item = (SystemKey, &'static str)> + '_ {
+        self.rail.iter().map(|entry| {
+            let kind = match entry {
+                RailEntry::System(_) => "system",
+                RailEntry::Fleet { .. } => "fleet",
+                RailEntry::Defenses { .. } => "defenses",
+            };
+            (entry.system(), kind)
+        })
+    }
+
+    /// The screen rect of the `index`th rail slot while it holds an entry.
+    #[must_use]
+    pub fn rail_slot_screen_rect(&self, layout: CockpitLayout, index: usize) -> Option<egui::Rect> {
+        (index < self.rail.len()).then(|| cockpit_rect(layout, rail_slot_rect(self.faction, index)))
+    }
+
     pub fn clear(&mut self) {
         self.windows.clear();
         self.rail.clear();
@@ -416,10 +447,16 @@ impl SystemWindowState {
         });
     }
 
-    fn push_rail(&mut self, entry: RailEntry) {
-        self.rail.retain(|held| {
-            held.system() != entry.system() || held.is_system_window() != entry.is_system_window()
+    /// Put a minimized Defenses window on the rail (`0x466`).
+    pub fn minimize_defenses_window(&mut self, system: SystemKey, logical_position: (i16, i16)) {
+        self.push_rail(RailEntry::Defenses {
+            system,
+            logical_position,
         });
+    }
+
+    fn push_rail(&mut self, entry: RailEntry) {
+        self.rail.retain(|held| !held.same_window(&entry));
         if self.rail.len() == REFERENCE_RAIL_SLOTS {
             self.rail.remove(0);
         }
@@ -499,6 +536,11 @@ pub enum SystemWindowAction {
     },
     /// A click on a minimized Fleet window's rail slot restores it.
     RestoreFleetWindow {
+        system: SystemKey,
+        logical_position: (i16, i16),
+    },
+    /// A click on a minimized Defenses window's rail slot restores it.
+    RestoreDefensesWindow {
         system: SystemKey,
         logical_position: (i16, i16),
     },
@@ -670,18 +712,25 @@ fn draw_reference_rail(
                 } else {
                     // A Fleet window's rail icon (`FUN_004a76e0`) sits at the
                     // slot's corner with the system's name after it, as the
-                    // reference capture shows.
-                    crate::fleet_window::paint_native(
-                        ui.painter(),
-                        ctx,
-                        cache,
-                        DllSource::Strategy,
-                        crate::fleet_window::rail_icon(
+                    // reference capture shows. port: a Defenses window's
+                    // (`FUN_004aa4a0`) is laid out the same way.
+                    let icon = match entry {
+                        RailEntry::Defenses { system, .. } => {
+                            crate::defenses_window::rail_icon(world, *system)
+                        }
+                        _ => crate::fleet_window::rail_icon(
                             world,
                             fog,
                             cockpit_faction(faction),
                             entry.system(),
                         ),
+                    };
+                    crate::fleet_window::paint_native(
+                        ui.painter(),
+                        ctx,
+                        cache,
+                        DllSource::Strategy,
+                        icon,
                         slot_rect,
                         layout.scale,
                         0.0,
@@ -705,14 +754,22 @@ fn draw_reference_rail(
             state.restore(window.system);
             None
         }
-        RailEntry::Fleet {
+        entry @ RailEntry::Fleet {
             system,
             logical_position,
         } => {
-            state
-                .rail
-                .retain(|held| held.is_system_window() || held.system() != system);
+            state.rail.retain(|held| !held.same_window(&entry));
             Some(SystemWindowAction::RestoreFleetWindow {
+                system,
+                logical_position,
+            })
+        }
+        entry @ RailEntry::Defenses {
+            system,
+            logical_position,
+        } => {
+            state.rail.retain(|held| !held.same_window(&entry));
+            Some(SystemWindowAction::RestoreDefensesWindow {
                 system,
                 logical_position,
             })
@@ -1435,7 +1492,7 @@ fn manufacturing_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     })
 }
 
-fn defense_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
+pub(crate) fn defense_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     let (resource_id, label) = match dat_id.index() {
         1 => (16_896, "KDY-150"),
         2 => (16_897, "LNR Series I"),
@@ -2833,6 +2890,61 @@ mod tests {
     }
 
     #[test]
+    fn a_minimized_defenses_window_keeps_its_own_rail_slot_and_restores_from_it() {
+        // FUN_004aa4a0: a Defenses window minimizes (0x466) to its own rail
+        // entry beside the same system's Fleet window, one per window.
+        let (world, systems) = fixture_world(1);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_fleet_window(systems[0], (100, 80));
+        state.minimize_defenses_window(systems[0], (90, 70));
+        assert_eq!(state.rail_count(), 2);
+        assert_eq!(
+            state.rail_entries().collect::<Vec<_>>(),
+            [(systems[0], "fleet"), (systems[0], "defenses")]
+        );
+
+        let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 1));
+        assert_eq!(state.rail_slot_screen_rect(layout, 1), Some(slot));
+        assert_eq!(state.rail_slot_screen_rect(layout, 2), None);
+        let point = slot.center();
+        let press = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+        let (actions, _) = run_rail(
+            &world,
+            &mut state,
+            vec![
+                vec![egui::Event::PointerMoved(point)],
+                vec![egui::Event::PointerMoved(point)],
+                vec![press(true)],
+                vec![press(false)],
+            ],
+        );
+        let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.take());
+        assert!(
+            painted.contains(&(
+                crate::defenses_window::rail_icon(&world, systems[0]),
+                slot.min
+            )),
+            "{painted:?}"
+        );
+        assert!(
+            actions.contains(&SystemWindowAction::RestoreDefensesWindow {
+                system: systems[0],
+                logical_position: (90, 70),
+            })
+        );
+        assert_eq!(state.rail_count(), 1);
+        assert!(matches!(state.rail[0], RailEntry::Fleet { .. }));
+    }
+
+    #[test]
     fn a_minimized_fleet_window_keeps_one_rail_slot_beside_its_systems_window() {
         // FUN_004a76e0: a Fleet window minimizes to the rail as its own
         // entry; the rail holds one entry per window.
@@ -2852,6 +2964,13 @@ mod tests {
         assert!(state.minimize(systems[0]));
         state.minimize_fleet_window(systems[1], (120, 90));
         assert_eq!(state.rail_count(), 3);
+        assert_eq!(
+            state
+                .rail_entries()
+                .map(|(_, kind)| kind)
+                .collect::<Vec<_>>(),
+            ["fleet", "system", "fleet"]
+        );
 
         // The first slot, the Fleet window's: its icon at the corner and the
         // name at (12, 2), 9 points; a system window's name is 7 points.

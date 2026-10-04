@@ -107,6 +107,7 @@ use rebellion_render::{
     SectorWindowAction, SectorWindowState, SfxKind, SystemWindowAction, SystemWindowState,
     TacticalAction, TacticalState, TacticalTrenchRunOutcome, VideoError, VideoPlayer,
 };
+use rebellion_render::{draw_defenses_windows, DefensesWindowAction, DefensesWindowState};
 use rebellion_render::{draw_fleet_windows, FleetWindowAction, FleetWindowState};
 
 /// Top-level game mode state machine.
@@ -1054,6 +1055,7 @@ async fn main() {
     let mut sector_window_state = SectorWindowState::default();
     let mut system_window_state = SystemWindowState::default();
     let mut fleet_window_state = FleetWindowState::default();
+    let mut defenses_window_state = DefensesWindowState::default();
     // The object pop-up menu a right-click in a system window opens.
     let mut object_menu: Option<ObjectMenuState> = None;
     // A Mission order waiting for its target (the galaxy view's mode 2).
@@ -2746,6 +2748,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 sector_window_state.clear();
                 system_window_state.clear();
                 fleet_window_state.clear();
+                defenses_window_state.clear();
                 object_menu = None;
                 targeting = None;
                 #[cfg(not(target_arch = "wasm32"))]
@@ -3185,6 +3188,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 sector_window_state.clear();
                                 system_window_state.clear();
                                 fleet_window_state.clear();
+                                defenses_window_state.clear();
                                 object_menu = None;
                                 targeting = None;
 
@@ -3299,6 +3303,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     .contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.contains_screen_point(cockpit_layout, pointer)
                     || fleet_window_state.contains_screen_point(cockpit_layout, pointer)
+                    || defenses_window_state.contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
@@ -3658,6 +3663,19 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     cockpit_layout,
                                 );
                             }
+                            SectorWindowAction::OpenDefensesWindow {
+                                system,
+                                logical_position,
+                            } => {
+                                map_state.selected_system = Some(system);
+                                defenses_window_state.open(
+                                    &world,
+                                    system,
+                                    logical_position,
+                                    cockpit_state.faction,
+                                    cockpit_layout,
+                                );
+                            }
                         }
                     }
 
@@ -3687,6 +3705,18 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 logical_position,
                             } => {
                                 fleet_window_state.open(
+                                    &world,
+                                    system,
+                                    logical_position,
+                                    cockpit_state.faction,
+                                    cockpit_layout,
+                                );
+                            }
+                            SystemWindowAction::RestoreDefensesWindow {
+                                system,
+                                logical_position,
+                            } => {
+                                defenses_window_state.open(
                                     &world,
                                     system,
                                     logical_position,
@@ -3740,6 +3770,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     sector: &sector_window_state,
                                     system: &system_window_state,
                                     fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
                                 };
                                 let destination = match release_destination(
                                     ctx,
@@ -3815,6 +3846,37 @@ Some(RailAudience::side(*faction_is_alliance)),
                             } => {
                                 system_window_state.minimize_fleet_window(system, logical_position)
                             }
+                        }
+                    }
+
+                    for action in draw_defenses_windows(
+                        ctx,
+                        &world,
+                        fog_state,
+                        &mission_state,
+                        &economy_state,
+                        &mut defenses_window_state,
+                        cockpit_state.faction,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        match action {
+                            DefensesWindowAction::OpenSector(system) => {
+                                sector_window_state.open_for_system(
+                                    &world,
+                                    system,
+                                    cockpit_state.faction,
+                                );
+                                map_state.selected_system = Some(system);
+                            }
+                            DefensesWindowAction::SelectSystem(system) => {
+                                map_state.selected_system = Some(system);
+                            }
+                            DefensesWindowAction::Minimize {
+                                system,
+                                logical_position,
+                            } => system_window_state
+                                .minimize_defenses_window(system, logical_position),
                         }
                     }
 
@@ -3930,6 +3992,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 sector: &sector_window_state,
                                 system: &system_window_state,
                                 fleet: &fleet_window_state,
+                                defenses: &defenses_window_state,
                             };
                             let destination = release_destination(
                                 ctx,
@@ -4721,6 +4784,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             sector_window_state.clear();
                             system_window_state.clear();
                             fleet_window_state.clear();
+                            defenses_window_state.clear();
                             object_menu = None;
                             targeting = None;
                             officers_state = OfficersState::default();
@@ -5045,7 +5109,21 @@ Some(RailAudience::side(*faction_is_alliance)),
                     msg_log.messages(),
                     map_state.zoom,
                 );
-                quadrant_watch.observe(request, &world, &system_window_state);
+                quadrant_watch.observe(
+                    request,
+                    &world,
+                    &interface_test_fixture::QuadrantWindows {
+                        systems: &system_window_state,
+                        defenses: &defenses_window_state,
+                        fog: if player_faction == MissionFaction::Alliance {
+                            &fog_alliance_state
+                        } else {
+                            &fog_empire_state
+                        },
+                        missions: &mission_state,
+                        economy: &economy_state,
+                    },
+                );
             }
         }
         #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]

@@ -29,6 +29,7 @@ use rebellion_render::{
     CockpitFaction, CockpitState, GalaxyMapState, GameMessage, GidMode, SectorWindowState,
     SystemWindowState, SystemWindowTab,
 };
+use rebellion_render::{DefensesPage, DefensesWindowState};
 use serde::Serialize;
 
 use crate::GameMode;
@@ -665,11 +666,11 @@ fn place_loading_fleet(
 /// second system in its sector (the other side's) are emptied, then stocked
 /// so each icon the gate checks has one cause:
 ///
-/// - primary: a player mine (kind 4), a player regiment (kind 8), the
-///   player's first fleet when it has one (kind `0x10`), and one agent of
-///   each side on a
-///   Diplomacy mission there (kind `0x40`, the other side's art,
-///   `FUN_004a1f60`);
+/// - primary: a player mine (kind 4), a player regiment and KDY-150
+///   (kind 8, and rows on the Defenses window's regiment and battery
+///   pages), the player's first fleet when it has one (kind `0x10`), and
+///   one agent of each side on a Diplomacy mission there (kind `0x40`, the
+///   other side's art, `FUN_004a1f60`);
 /// - second: a player regiment (kind 8, the system's side art) and a player
 ///   agent on a mission there (kind `0x40`, the player's art).
 ///
@@ -740,6 +741,13 @@ fn place_quadrant_contents(
                 is_mine: true,
             });
     world.systems[primary].production_facilities.push(mine);
+    let battery = world
+        .defense_facilities
+        .insert(rebellion_core::world::DefenseFacilityInstance {
+            class_dat_id: rebellion_core::ids::DatId::new(0x2200_0001),
+            is_alliance: player_is_alliance,
+        });
+    world.systems[primary].defense_facilities.push(battery);
     let class_dat_id = rebellion_core::ids::DatId::new(if player_is_alliance {
         0x1000_0001
     } else {
@@ -1190,15 +1198,56 @@ pub fn emit_quadrant_setup(
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
-/// The open System windows, back to front, for the quadrant gate.
+/// One open Defenses window, for the quadrant gate: what it shows and where
+/// its tab buttons and listed cells are, as `[left, top, width, height]`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct FixtureDefensesWindow {
+    system_dat_id: u32,
+    origin: (i16, i16),
+    side: u8,
+    page: &'static str,
+    counts: [usize; 5],
+    rows: Vec<String>,
+    selected: Option<usize>,
+    garrison: Option<String>,
+    tabs: Vec<(&'static str, [f32; 4])>,
+    cells: Vec<[f32; 4]>,
+}
+
+/// The open System and Defenses windows and the rail, for the quadrant gate.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 struct QuadrantObservation {
     status: &'static str,
     code: u32,
     system_windows: Vec<(u32, (i16, i16))>,
+    defenses_windows: Vec<FixtureDefensesWindow>,
+    rail: Vec<(u32, &'static str, [f32; 4])>,
 }
 
-/// Emits the open System windows each time they change.
+/// The windows and pages the quadrant observation reads.
+pub struct QuadrantWindows<'a> {
+    pub systems: &'a SystemWindowState,
+    pub defenses: &'a DefensesWindowState,
+    pub fog: &'a FogState,
+    pub missions: &'a MissionState,
+    pub economy: &'a EconomyState,
+}
+
+fn defenses_page_name(page: DefensesPage) -> &'static str {
+    match page {
+        DefensesPage::Personnel => "personnel",
+        DefensesPage::Regiments => "regiments",
+        DefensesPage::Squadrons => "squadrons",
+        DefensesPage::Shields => "shields",
+        DefensesPage::Batteries => "batteries",
+    }
+}
+
+fn rect_array(rect: egui_macroquad::egui::Rect) -> [f32; 4] {
+    [rect.min.x, rect.min.y, rect.width(), rect.height()]
+}
+
+/// Emits the open windows and the rail each time they change.
 #[derive(Debug, Default)]
 pub struct QuadrantWatch {
     last: Option<QuadrantObservation>,
@@ -1209,17 +1258,69 @@ impl QuadrantWatch {
         &mut self,
         request: FixtureRequest,
         world: &GameWorld,
-        systems: &SystemWindowState,
+        windows: &QuadrantWindows<'_>,
     ) -> Option<QuadrantObservation> {
         if request.scenario != Scenario::Quadrants {
             return None;
         }
+        let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+        let defenses_windows = world
+            .systems
+            .iter()
+            .filter_map(|(system, value)| {
+                let report = windows.defenses.report(
+                    world,
+                    windows.fog,
+                    windows.missions,
+                    windows.economy,
+                    system,
+                )?;
+                Some(FixtureDefensesWindow {
+                    system_dat_id: value.dat_id.raw(),
+                    origin: report.origin,
+                    side: report.side,
+                    page: defenses_page_name(report.page),
+                    counts: report.counts,
+                    cells: (0..report.rows.len().min(9))
+                        .filter_map(|index| {
+                            windows.defenses.cell_screen_rect(layout, system, index)
+                        })
+                        .map(rect_array)
+                        .collect(),
+                    rows: report.rows,
+                    selected: report.selected,
+                    garrison: report.garrison,
+                    tabs: DefensesPage::ALL
+                        .into_iter()
+                        .filter_map(|page| {
+                            let rect = windows.defenses.tab_screen_rect(layout, system, page)?;
+                            Some((defenses_page_name(page), rect_array(rect)))
+                        })
+                        .collect(),
+                })
+            })
+            .collect();
         let now = QuadrantObservation {
             status: "quadrant-observation",
             code: request.code,
-            system_windows: systems
+            system_windows: windows
+                .systems
                 .open_windows()
                 .filter_map(|(system, at)| Some((world.systems.get(system)?.dat_id.raw(), at)))
+                .collect(),
+            defenses_windows,
+            rail: windows
+                .systems
+                .rail_entries()
+                .enumerate()
+                .filter_map(|(index, (system, kind))| {
+                    let rect = windows.systems.rail_slot_screen_rect(layout, index)?;
+                    Some((
+                        world.systems.get(system)?.dat_id.raw(),
+                        kind,
+                        rect_array(rect),
+                    ))
+                })
                 .collect(),
         };
         if self.last.as_ref() == Some(&now) {
@@ -1233,9 +1334,9 @@ impl QuadrantWatch {
         &mut self,
         request: FixtureRequest,
         world: &GameWorld,
-        systems: &SystemWindowState,
+        windows: &QuadrantWindows<'_>,
     ) {
-        let Some(report) = self.next(request, world, systems) else {
+        let Some(report) = self.next(request, world, windows) else {
             return;
         };
         let bytes = serde_json::to_vec(&report).expect("serialize the quadrant observation");
@@ -2702,21 +2803,38 @@ mod tests {
     }
 
     #[test]
-    fn the_quadrant_watch_reports_the_open_system_windows_when_they_change() {
+    fn the_quadrant_watch_reports_the_open_windows_and_the_rail_when_they_change() {
         let mut applied = apply_quadrants(CockpitFaction::Alliance);
         let request = request(Scenario::Quadrants, CockpitFaction::Alliance);
-        let mut watch = QuadrantWatch::default();
-        let first = watch
-            .next(request, &applied.world, &applied.systems)
-            .unwrap();
-        assert_eq!(first.status, "quadrant-observation");
-        assert!(first.system_windows.is_empty());
-        assert!(watch
-            .next(request, &applied.world, &applied.systems)
-            .is_none());
-
         let primary = applied.world.systems.keys().next().unwrap();
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(primary);
+        let economy = EconomyState::default();
+        let mut defenses = DefensesWindowState::default();
+        let mut watch = QuadrantWatch::default();
+        macro_rules! next {
+            ($watch:expr) => {
+                $watch.next(
+                    request,
+                    &applied.world,
+                    &QuadrantWindows {
+                        systems: &applied.systems,
+                        defenses: &defenses,
+                        fog: &fog,
+                        missions: &applied.missions,
+                        economy: &economy,
+                    },
+                )
+            };
+        }
+        let first = next!(watch).unwrap();
+        assert_eq!(first.status, "quadrant-observation");
+        assert!(first.system_windows.is_empty() && first.defenses_windows.is_empty());
+        assert!(first.rail.is_empty());
+        assert!(next!(watch).is_none());
+
         let layout = CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
+        let dat = applied.world.systems[primary].dat_id.raw();
         assert!(applied.systems.open(
             &applied.world,
             primary,
@@ -2724,17 +2842,67 @@ mod tests {
             CockpitFaction::Alliance,
             layout
         ));
-        let opened = watch
-            .next(request, &applied.world, &applied.systems)
-            .unwrap();
+        let opened = next!(watch).unwrap();
+        assert_eq!(opened.system_windows, [(dat, (100, 50))]);
+
+        // The primary system's Defenses window: the player's regiment and
+        // KDY-150, the garrison line on the regiment page, and each tab's
+        // and listed cell's rect.
+        assert!(defenses.open(
+            &applied.world,
+            primary,
+            (200, 60),
+            CockpitFaction::Alliance,
+            layout
+        ));
+        let shown = next!(watch).unwrap();
+        let [window] = &shown.defenses_windows[..] else {
+            panic!("{:?}", shown.defenses_windows);
+        };
+        assert_eq!(window.system_dat_id, dat);
+        assert_eq!(window.origin, (200, 60));
+        assert_eq!((window.side, window.page), (1, "personnel"));
+        assert_eq!(window.counts, [0, 1, 0, 0, 1]);
+        assert!(window.rows.is_empty() && window.cells.is_empty());
+        assert_eq!((window.selected, window.garrison.as_deref()), (None, None));
+        let tab = |name: &str| {
+            window
+                .tabs
+                .iter()
+                .find(|(tab, _)| *tab == name)
+                .map(|(_, rect)| *rect)
+        };
+        let origin = |x: f32, y: f32| {
+            [
+                layout.canvas.x + (200.0 + x) * layout.scale,
+                layout.canvas.y + (60.0 + y) * layout.scale,
+            ]
+        };
+        let [left, top] = origin(64.0, 20.0);
         assert_eq!(
-            opened.system_windows,
-            [(applied.world.systems[primary].dat_id.raw(), (100, 50))]
+            tab("regiments"),
+            Some([left, top, 36.0 * layout.scale, 33.0 * layout.scale])
         );
+        assert_eq!(window.tabs.len(), 5);
+
+        applied.systems.minimize_defenses_window(primary, (200, 60));
+        let railed = next!(watch).unwrap();
+        let slot = applied.systems.rail_slot_screen_rect(layout, 0).unwrap();
+        assert_eq!(railed.rail, [(dat, "defenses", super::rect_array(slot))]);
 
         let other = super::tests::request(Scenario::FleetLoad, CockpitFaction::Alliance);
         assert!(QuadrantWatch::default()
-            .next(other, &applied.world, &applied.systems)
+            .next(
+                other,
+                &applied.world,
+                &QuadrantWindows {
+                    systems: &applied.systems,
+                    defenses: &defenses,
+                    fog: &fog,
+                    missions: &applied.missions,
+                    economy: &economy,
+                },
+            )
             .is_none());
     }
 

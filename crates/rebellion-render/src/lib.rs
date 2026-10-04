@@ -4,6 +4,7 @@ pub mod advisor;
 pub mod audio;
 pub mod bmp_cache;
 pub mod cockpit;
+pub mod defenses_window;
 pub mod encyclopedia;
 pub mod event_screen;
 pub mod fleet_movement;
@@ -60,6 +61,9 @@ pub use cockpit::{
     strategic_primary_controls, CockpitButton, CockpitFaction, CockpitLayout, CockpitState,
     CockpitViewport, GidMode, StrategicControlSpec, STRATEGIC_LOGICAL_HEIGHT,
     STRATEGIC_LOGICAL_WIDTH,
+};
+pub use defenses_window::{
+    draw_defenses_windows, DefensesPage, DefensesWindowAction, DefensesWindowState,
 };
 #[cfg(target_arch = "wasm32")]
 pub use encyclopedia::set_encyclopedia_asset_cache;
