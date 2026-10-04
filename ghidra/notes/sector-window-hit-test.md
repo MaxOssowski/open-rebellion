@@ -143,17 +143,20 @@ Created per-system in `FUN_00459e30` via `FUN_00442130` with flags:
 | Flag | Quadrant | Rect |
 |---|---|---|
 | `sys_id \| 0x40000` | top-left | `(center_x - 28, center_y - 19, center_x, center_y)` |
-| `sys_id \| 0x80000` | bottom-left | `(center_x - 28, center_y + 1, center_x, center_y + 19)` |
-| `sys_id \| 0x100000` | top-right | `(center_x + 1, center_y - 19, center_x + 28, center_y)` |
-| `sys_id \| 0x400000` | bottom-right | `(center_x + 1, center_y + 1, center_x + 28, center_y + 19)` |
+| `sys_id \| 0x80000` | bottom-left | `(center_x - 28, center_y + 1, center_x, center_y + 20)` |
+| `sys_id \| 0x100000` | top-right | `(center_x + 1, center_y - 19, center_x + 29, center_y)` |
+| `sys_id \| 0x400000` | bottom-right | `(center_x + 1, center_y + 1, center_x + 29, center_y + 20)` |
 
 Where `center_x = x + 18` (planet_w/2), `center_y = y + 18` (planet_h/2),
 and the overlay dimensions come from fleet icon resource 0x2a13 = 10771
 (27x18) + 1 = 28x19.
 
 These are NOT searched by `FUN_0045c6b0` (flag 0x10000 does not match
-`0x40003` etc.). hyp: they are used for rendering fleet-position icons in the
-four quadrants around each planet, not for hit testing.
+`0x40003` etc.). They are the quadrant icons: a double click on one opens its
+window (`FUN_004593e0` case `0x203`). The right and bottom edges are
+exclusive, and each rect starts one pixel off the center on its far side
+(corrected 2026-10-04 from `FUN_00459e30:369-447`). See
+`sector-quadrants.md` for their show rules, art and windows.
 
 ## Label rect: FUN_0045c1f0
 

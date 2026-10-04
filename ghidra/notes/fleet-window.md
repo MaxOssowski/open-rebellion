@@ -49,7 +49,7 @@ type 4: its id is `(system index & 0x3ff) << 6 | 4` (`FUN_0045aac0`).
   Defenses window of Fig. 3.73, opened by the Defense icon, manual p. 125);
   kind `0x40` (bottom-right, `0x400000`, `0x2a19/1a`, `0x2a21/22`) type 11
   (`FUN_0049f130`). Their show rules are `FUN_0045cdc0`, `FUN_0045ce80`,
-  `FUN_0045d090` (untraced).
+  `FUN_0045d090` (`sector-quadrants.md`).
 - **By object.** `FUN_00429440` (galaxy view) opens the window for an object
   id through the sector window's `FUN_0045c8e0` (type 4 → kind `0x10`).
   Callers `FUN_00464c20`, `FUN_0046df90`, `FUN_0046e5f0` (hyp: the Fleet
@@ -337,8 +337,8 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 
 ## Still open
 
-- `FUN_0045cdc0`, `FUN_0045ce80`, `FUN_0045d090`: the other three quadrant
-  rules.
+- The other three quadrant rules (`FUN_0045cdc0`, `FUN_0045ce80`,
+  `FUN_0045d090`) are traced in `sector-quadrants.md` (2026-10-04).
 - The list item drawing (`FUN_004c7e10`, `CoolDragList`): text position, color
   and the selected look; the scroll bar `FUN_0060f640`.
 - The leg builders and the full-fleet refusal; `FUN_00558380`'s base order
