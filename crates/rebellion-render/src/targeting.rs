@@ -523,7 +523,15 @@ mod tests {
                 let _ = ctx.run(input, |ctx| {
                     let faction = CockpitFaction::Alliance;
                     let _ = draw_sector_windows(
-                        ctx, world, &fog, sectors, faction, layout, &mut cache, &uprisings,
+                        ctx,
+                        world,
+                        &fog,
+                        sectors,
+                        faction,
+                        layout,
+                        &mut cache,
+                        &uprisings,
+                        &rebellion_core::missions::MissionState::new(),
                     );
                     let _ =
                         draw_system_windows(ctx, world, &fog, systems, faction, layout, &mut cache);

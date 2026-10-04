@@ -21,6 +21,7 @@ pub mod mission_dialog;
 pub mod move_confirmation;
 pub mod object_menu;
 pub mod panels;
+pub mod quadrant_icons;
 pub mod sector_window;
 pub mod system_window;
 mod tactical_asset_cache;

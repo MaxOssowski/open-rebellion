@@ -1276,6 +1276,8 @@ async fn main() {
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let mut speed_menu_watch = interface_test_fixture::SpeedMenuWatch::default();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let mut quadrant_watch = interface_test_fixture::QuadrantWatch::default();
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let interface_fixture_active =
         interface_fixture_request.is_some() || tactical_fixture_request.is_some();
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
@@ -3624,6 +3626,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         cockpit_layout,
                         &mut bmp_cache,
                         &uprising_state,
+                        &mission_state,
                     ) {
                         match action {
                             SectorWindowAction::SelectSystem(system) => {
@@ -5012,6 +5015,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &sector_window_state,
                         &system_window_state,
                     );
+                    interface_test_fixture::emit_quadrant_setup(
+                        request,
+                        &world,
+                        &sector_window_state,
+                    );
                     interface_fixture_emitted = true;
                 }
             } else if game_mode == GameMode::Galaxy {
@@ -5037,6 +5045,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     msg_log.messages(),
                     map_state.zoom,
                 );
+                quadrant_watch.observe(request, &world, &system_window_state);
             }
         }
         #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]

@@ -23,6 +23,7 @@ use rebellion_render::fleet_window::{FleetWindowEntry, FleetWindowState, FleetWi
 use rebellion_render::game_speed::day_readout_rect;
 use rebellion_render::mission_dialog::{MissionDialogPage, MissionDialogState};
 use rebellion_render::object_menu::{ObjectMenuCommand, ObjectMenuState};
+use rebellion_render::quadrant_icons::Quadrant;
 use rebellion_render::system_window::SYSTEM_WINDOW_WIDTH;
 use rebellion_render::{
     CockpitFaction, CockpitState, GalaxyMapState, GameMessage, GidMode, SectorWindowState,
@@ -36,7 +37,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 49;
+const SCENARIO_COUNT: u8 = 50;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -102,6 +103,7 @@ pub enum Scenario {
     FleetMoveBlockade = 46,
     FleetLoad = 47,
     FleetLoadFull = 48,
+    Quadrants = 49,
 }
 
 impl Scenario {
@@ -156,6 +158,7 @@ impl Scenario {
             46 => Self::FleetMoveBlockade,
             47 => Self::FleetLoad,
             48 => Self::FleetLoadFull,
+            49 => Self::Quadrants,
             _ => return None,
         })
     }
@@ -421,6 +424,9 @@ pub fn apply(
             primary,
         );
     }
+    if request.scenario == Scenario::Quadrants {
+        place_quadrant_contents(request, world, movement, missions, sectors, primary);
+    }
     if request.scenario == Scenario::MissionTargeting {
         // The primary system's window at the galaxy view's right edge holds
         // the agent; the second system's planet in its sector window, in the
@@ -652,6 +658,148 @@ fn place_loading_fleet(
         layout,
     );
     sectors.open_for_system(world, elsewhere, request.faction);
+    sectors.open_for_system(world, primary, request.faction);
+}
+
+/// The quadrant-icon scenario. The primary system (the player's) and a
+/// second system in its sector (the other side's) are emptied, then stocked
+/// so each icon the gate checks has one cause:
+///
+/// - primary: a player mine (kind 4), a player regiment (kind 8), the
+///   player's first fleet when it has one (kind `0x10`), and one agent of
+///   each side on a
+///   Diplomacy mission there (kind `0x40`, the other side's art,
+///   `FUN_004a1f60`);
+/// - second: a player regiment (kind 8, the system's side art) and a player
+///   agent on a mission there (kind `0x40`, the player's art).
+///
+/// Only the primary system's sector window is open.
+fn place_quadrant_contents(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    missions: &mut MissionState,
+    sectors: &mut SectorWindowState,
+    primary: SystemKey,
+) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let (player, enemy) = if player_is_alliance {
+        (Faction::Alliance, Faction::Empire)
+    } else {
+        (Faction::Empire, Faction::Alliance)
+    };
+    let Some(second) = loading_target(world, primary) else {
+        return;
+    };
+    let Some(elsewhere) = world
+        .systems
+        .keys()
+        .find(|&key| world.systems[key].sector != world.systems[primary].sector)
+    else {
+        return;
+    };
+    let fleet = world
+        .fleets
+        .iter()
+        .find(|(_, value)| value.is_alliance == player_is_alliance)
+        .map(|(key, _)| key);
+    world.systems[primary].control = ControlKind::Controlled(player);
+    world.systems[second].control = ControlKind::Controlled(enemy);
+    for system in [primary, second] {
+        let value = &mut world.systems[system];
+        value.exploration_status = ExplorationStatus::Explored;
+        value.defense_facilities.clear();
+        value.manufacturing_facilities.clear();
+        value.production_facilities.clear();
+        let troops = std::mem::take(&mut value.ground_units);
+        let forces = std::mem::take(&mut value.special_forces);
+        world.systems[elsewhere].ground_units.extend(troops);
+        world.systems[elsewhere].special_forces.extend(forces);
+    }
+    for (key, value) in &mut world.fleets {
+        if Some(key) != fleet && (value.location == primary || value.location == second) {
+            value.location = elsewhere;
+        }
+    }
+    if let Some(fleet) = fleet {
+        world.fleets[fleet].location = primary;
+    }
+    reconcile_fleet_orbits(movement, world);
+    for character in world.characters.values_mut() {
+        if character.current_system == Some(primary) || character.current_system == Some(second) {
+            character.current_system = Some(elsewhere);
+        }
+    }
+
+    let mine =
+        world
+            .production_facilities
+            .insert(rebellion_core::world::ProductionFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2c00_0001),
+                is_alliance: player_is_alliance,
+                is_mine: true,
+            });
+    world.systems[primary].production_facilities.push(mine);
+    let class_dat_id = rebellion_core::ids::DatId::new(if player_is_alliance {
+        0x1000_0001
+    } else {
+        0x1000_0006
+    });
+    for system in [primary, second] {
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id,
+            is_alliance: player_is_alliance,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+    }
+
+    let aboard: std::collections::HashSet<_> = world
+        .fleets
+        .values()
+        .flat_map(|value| value.characters.iter().copied())
+        .collect();
+    let agents = |alliance: bool| {
+        world
+            .characters
+            .iter()
+            .filter(|(key, character)| {
+                character.is_alliance == alliance
+                    && character.is_empire != alliance
+                    && !character.is_killed
+                    && !character.is_captive
+                    && !aboard.contains(key)
+            })
+            .map(|(key, _)| key)
+            .collect::<Vec<_>>()
+            .into_iter()
+    };
+    let mut own = agents(player_is_alliance);
+    let mut theirs = agents(!player_is_alliance);
+    let placements = [
+        (own.next(), primary, player_is_alliance),
+        (theirs.next(), primary, !player_is_alliance),
+        (own.next(), second, player_is_alliance),
+    ];
+    for (agent, system, alliance) in placements {
+        let Some(agent) = agent else {
+            continue;
+        };
+        world.characters[agent].current_system = Some(system);
+        missions.dispatch(rebellion_core::missions::MissionRequest::single(
+            MissionKind::Diplomacy,
+            if alliance {
+                MissionFaction::Alliance
+            } else {
+                MissionFaction::Empire
+            },
+            agent,
+            system,
+            None,
+            0,
+        ));
+        rebellion_core::missions::set_on_mission(world, MissionMember::Character(agent), true);
+    }
     sectors.open_for_system(world, primary, request.faction);
 }
 
@@ -971,6 +1119,128 @@ impl FleetMoveWatch {
 
 fn screen_center(rect: egui_macroquad::egui::Rect) -> (f32, f32) {
     (rect.center().x, rect.center().y)
+}
+
+/// One quadrant overlay's screen rect, as `[left, top, width, height]`.
+#[derive(Debug, Serialize, PartialEq)]
+struct FixtureQuadrant {
+    system_dat_id: u32,
+    quadrant: &'static str,
+    rect: [f32; 4],
+}
+
+/// Where the quadrant gate looks: every quadrant overlay rect of the primary
+/// system and the second system, and the layout's scale.
+#[derive(Debug, Serialize, PartialEq)]
+struct FixtureQuadrantSetup {
+    status: &'static str,
+    code: u32,
+    primary_dat_id: u32,
+    second_dat_id: u32,
+    scale: f32,
+    quadrants: Vec<FixtureQuadrant>,
+}
+
+fn quadrant_setup(
+    request: FixtureRequest,
+    world: &GameWorld,
+    sectors: &SectorWindowState,
+) -> Option<FixtureQuadrantSetup> {
+    if request.scenario != Scenario::Quadrants {
+        return None;
+    }
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let primary = world.systems.keys().next()?;
+    let second = loading_target(world, primary)?;
+    let mut quadrants = Vec::new();
+    for system in [primary, second] {
+        for (quadrant, name) in [
+            (Quadrant::System, "system"),
+            (Quadrant::Defenses, "defenses"),
+            (Quadrant::Fleets, "fleets"),
+            (Quadrant::Missions, "missions"),
+        ] {
+            let rect = sectors.quadrant_screen_rect(world, layout, system, quadrant)?;
+            quadrants.push(FixtureQuadrant {
+                system_dat_id: world.systems[system].dat_id.raw(),
+                quadrant: name,
+                rect: [rect.min.x, rect.min.y, rect.width(), rect.height()],
+            });
+        }
+    }
+    Some(FixtureQuadrantSetup {
+        status: "quadrant-setup",
+        code: request.code,
+        primary_dat_id: world.systems[primary].dat_id.raw(),
+        second_dat_id: world.systems[second].dat_id.raw(),
+        scale: layout.scale,
+        quadrants,
+    })
+}
+
+pub fn emit_quadrant_setup(
+    request: FixtureRequest,
+    world: &GameWorld,
+    sectors: &SectorWindowState,
+) {
+    let Some(report) = quadrant_setup(request, world, sectors) else {
+        return;
+    };
+    let bytes = serde_json::to_vec(&report).expect("serialize the quadrant setup");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+}
+
+/// The open System windows, back to front, for the quadrant gate.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct QuadrantObservation {
+    status: &'static str,
+    code: u32,
+    system_windows: Vec<(u32, (i16, i16))>,
+}
+
+/// Emits the open System windows each time they change.
+#[derive(Debug, Default)]
+pub struct QuadrantWatch {
+    last: Option<QuadrantObservation>,
+}
+
+impl QuadrantWatch {
+    fn next(
+        &mut self,
+        request: FixtureRequest,
+        world: &GameWorld,
+        systems: &SystemWindowState,
+    ) -> Option<QuadrantObservation> {
+        if request.scenario != Scenario::Quadrants {
+            return None;
+        }
+        let now = QuadrantObservation {
+            status: "quadrant-observation",
+            code: request.code,
+            system_windows: systems
+                .open_windows()
+                .filter_map(|(system, at)| Some((world.systems.get(system)?.dat_id.raw(), at)))
+                .collect(),
+        };
+        if self.last.as_ref() == Some(&now) {
+            return None;
+        }
+        self.last = Some(now.clone());
+        Some(now)
+    }
+
+    pub fn observe(
+        &mut self,
+        request: FixtureRequest,
+        world: &GameWorld,
+        systems: &SystemWindowState,
+    ) {
+        let Some(report) = self.next(request, world, systems) else {
+            return;
+        };
+        let bytes = serde_json::to_vec(&report).expect("serialize the quadrant observation");
+        unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+    }
 }
 
 /// Where the fleet-load gate presses: the fleet icon in the primary system's
@@ -1629,6 +1899,7 @@ mod tests {
         sectors: SectorWindowState,
         systems: SystemWindowState,
         transport: TroopTransportState,
+        missions: MissionState,
     }
 
     fn apply_to_fleet_world(request: FixtureRequest) -> Applied {
@@ -1640,6 +1911,7 @@ mod tests {
             sectors: SectorWindowState::default(),
             systems: SystemWindowState::default(),
             transport: TroopTransportState::default(),
+            missions: MissionState::default(),
         };
         apply(
             request,
@@ -1651,7 +1923,7 @@ mod tests {
             &mut applied.movement,
             &mut ManufacturingState::default(),
             &mut EconomyState::default(),
-            &mut MissionState::default(),
+            &mut applied.missions,
             &mut applied.blockade,
             &mut applied.sectors,
             &mut applied.systems,
@@ -1689,6 +1961,7 @@ mod tests {
             sectors: SectorWindowState::default(),
             systems: SystemWindowState::default(),
             transport: TroopTransportState::default(),
+            missions: MissionState::default(),
         };
         apply(
             request,
@@ -1700,7 +1973,7 @@ mod tests {
             &mut applied.movement,
             &mut ManufacturingState::default(),
             &mut EconomyState::default(),
-            &mut MissionState::default(),
+            &mut applied.missions,
             &mut applied.blockade,
             &mut applied.sectors,
             &mut applied.systems,
@@ -2232,6 +2505,237 @@ mod tests {
             ),
             None
         );
+    }
+
+    /// The quadrant scenario on the loading world (three systems, the third
+    /// in its own sector) plus a fourth in that sector, with one Alliance
+    /// fleet that carries the world's first agent, a bystander fleet and
+    /// agent at the fourth system, an agent waiting at the second system,
+    /// and three more agents of each side nowhere.
+    fn apply_quadrants(faction: CockpitFaction) -> Applied {
+        apply_to_loading_world_with(request(Scenario::Quadrants, faction), |world| {
+            use rebellion_core::world::{Character, Fleet};
+            let carried = world.characters.keys().next().unwrap();
+            let mut keys = world.systems.keys();
+            let (second, third) = (keys.nth(1).unwrap(), keys.next().unwrap());
+            let mut fourth = world.systems[third].clone();
+            fourth.dat_id = rebellion_core::ids::DatId::new(0x9000_0004);
+            let fourth = world.systems.insert(fourth);
+            let far = world.systems[third].sector;
+            world.sectors[far].systems.push(fourth);
+            world.characters[carried].current_system = Some(third);
+            for (location, is_alliance) in [(fourth, false), (fourth, true)] {
+                world.fleets.insert(Fleet {
+                    location,
+                    capital_ships: Vec::new(),
+                    fighters: Vec::new(),
+                    characters: Vec::new(),
+                    is_alliance,
+                    has_death_star: false,
+                });
+            }
+            for (name, location) in [("Bystander", fourth), ("Waiting", second)] {
+                world.characters.insert(Character {
+                    name: name.into(),
+                    is_alliance: false,
+                    is_empire: false,
+                    current_system: Some(location),
+                    ..Default::default()
+                });
+            }
+            world.fleets.insert(Fleet {
+                location: third,
+                capital_ships: Vec::new(),
+                fighters: Vec::new(),
+                characters: vec![carried],
+                is_alliance: true,
+                has_death_star: false,
+            });
+            for (index, is_alliance) in [true, true, true, false, false, false]
+                .into_iter()
+                .enumerate()
+            {
+                world.characters.insert(Character {
+                    name: format!("Agent {index}"),
+                    is_alliance,
+                    is_empire: !is_alliance,
+                    recruited: true,
+                    ..Default::default()
+                });
+            }
+        })
+    }
+
+    #[test]
+    fn the_quadrant_scenario_gives_each_checked_icon_its_side() {
+        // port: the fixture's own layout; the sides follow FUN_0045cdc0,
+        // FUN_0045ce80, FUN_0045ccc0 and FUN_004a1f60.
+        use rebellion_render::quadrant_icons::quadrant_side;
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let applied = apply_quadrants(faction);
+            let world = &applied.world;
+            let mut keys = world.systems.keys();
+            let (primary, second) = (keys.next().unwrap(), keys.next().unwrap());
+            let (player, own, other) = match faction {
+                CockpitFaction::Alliance => (Faction::Alliance, 1, 2),
+                CockpitFaction::Empire => (Faction::Empire, 2, 1),
+            };
+            let fog = FogState::new(player);
+            let side = |system, quadrant| {
+                quadrant_side(world, &fog, &applied.missions, player, system, quadrant)
+            };
+            assert_eq!(side(primary, Quadrant::System), Some(own), "{faction:?}");
+            assert_eq!(side(primary, Quadrant::Defenses), Some(own), "{faction:?}");
+            assert_eq!(side(primary, Quadrant::Fleets), Some(own), "{faction:?}");
+            assert_eq!(
+                side(primary, Quadrant::Missions),
+                Some(other),
+                "{faction:?}"
+            );
+            assert_eq!(side(second, Quadrant::System), None, "{faction:?}");
+            assert_eq!(side(second, Quadrant::Defenses), Some(other), "{faction:?}");
+            assert_eq!(side(second, Quadrant::Fleets), None, "{faction:?}");
+            assert_eq!(side(second, Quadrant::Missions), Some(own), "{faction:?}");
+            assert_eq!(applied.missions.missions().len(), 3, "{faction:?}");
+            assert_eq!(applied.sectors.window_count(), 1, "{faction:?}");
+
+            // Only what the scenario placed lies at the two systems.
+            let is_alliance = faction == CockpitFaction::Alliance;
+            let own_fleets: Vec<_> = world
+                .fleets
+                .iter()
+                .filter(|(_, fleet)| fleet.location == primary)
+                .map(|(_, fleet)| fleet.is_alliance)
+                .collect();
+            assert_eq!(own_fleets, [is_alliance], "{faction:?}");
+            assert!(world.fleets.values().all(|fleet| fleet.location != second));
+            let at = |system| {
+                world
+                    .characters
+                    .values()
+                    .filter(|character| character.current_system == Some(system))
+                    .count()
+            };
+            assert_eq!((at(primary), at(second)), (2, 1), "{faction:?}");
+            // What lies at the fourth system stays there.
+            let fourth = world.systems.keys().nth(3).unwrap();
+            assert_eq!(at(fourth), 1, "{faction:?}");
+            assert_eq!(
+                world
+                    .fleets
+                    .values()
+                    .filter(|fleet| fleet.location == fourth)
+                    .count(),
+                2,
+                "{faction:?}"
+            );
+            // Each mission is sent by its agent's side.
+            for mission in applied.missions.missions() {
+                let MissionMember::Character(agent) = mission.team[0] else {
+                    panic!("the scenario sends characters");
+                };
+                let sent_by_alliance = mission.faction == MissionFaction::Alliance;
+                assert_eq!(
+                    sent_by_alliance, world.characters[agent].is_alliance,
+                    "{faction:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_quadrant_scenario_leaves_an_agent_aboard_a_fleet_where_it_is() {
+        let applied = apply_quadrants(CockpitFaction::Alliance);
+        let world = &applied.world;
+        let carried = world.characters.keys().next().unwrap();
+        let third = world.systems.keys().nth(2).unwrap();
+        assert_eq!(world.characters[carried].current_system, Some(third));
+        assert!(!world.characters[carried].on_mission);
+        assert!(applied
+            .missions
+            .missions()
+            .iter()
+            .all(|mission| !mission.team.contains(&MissionMember::Character(carried))));
+    }
+
+    #[test]
+    fn the_quadrant_setup_reports_both_systems_four_rects_in_kind_order() {
+        let applied = apply_quadrants(CockpitFaction::Empire);
+        let request = request(Scenario::Quadrants, CockpitFaction::Empire);
+        let report = quadrant_setup(request, &applied.world, &applied.sectors).unwrap();
+        let world = &applied.world;
+        let mut keys = world.systems.keys();
+        let (primary, second) = (keys.next().unwrap(), keys.next().unwrap());
+        let layout = CockpitState::new(CockpitFaction::Empire).layout_for(640.0, 480.0);
+        assert_eq!(report.status, "quadrant-setup");
+        assert_eq!(report.primary_dat_id, world.systems[primary].dat_id.raw());
+        assert_eq!(report.second_dat_id, world.systems[second].dat_id.raw());
+        assert_eq!(report.scale, layout.scale);
+        let names = ["system", "defenses", "fleets", "missions"];
+        let kinds = [
+            Quadrant::System,
+            Quadrant::Defenses,
+            Quadrant::Fleets,
+            Quadrant::Missions,
+        ];
+        let mut expected = Vec::new();
+        for system in [primary, second] {
+            for (quadrant, name) in kinds.into_iter().zip(names) {
+                let rect = applied
+                    .sectors
+                    .quadrant_screen_rect(world, layout, system, quadrant)
+                    .unwrap();
+                expected.push(FixtureQuadrant {
+                    system_dat_id: world.systems[system].dat_id.raw(),
+                    quadrant: name,
+                    rect: [rect.min.x, rect.min.y, rect.width(), rect.height()],
+                });
+            }
+        }
+        assert_eq!(report.quadrants, expected);
+        assert!(quadrant_setup(
+            super::tests::request(Scenario::FleetLoad, CockpitFaction::Empire),
+            world,
+            &applied.sectors
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn the_quadrant_watch_reports_the_open_system_windows_when_they_change() {
+        let mut applied = apply_quadrants(CockpitFaction::Alliance);
+        let request = request(Scenario::Quadrants, CockpitFaction::Alliance);
+        let mut watch = QuadrantWatch::default();
+        let first = watch
+            .next(request, &applied.world, &applied.systems)
+            .unwrap();
+        assert_eq!(first.status, "quadrant-observation");
+        assert!(first.system_windows.is_empty());
+        assert!(watch
+            .next(request, &applied.world, &applied.systems)
+            .is_none());
+
+        let primary = applied.world.systems.keys().next().unwrap();
+        let layout = CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
+        assert!(applied.systems.open(
+            &applied.world,
+            primary,
+            (100, 50),
+            CockpitFaction::Alliance,
+            layout
+        ));
+        let opened = watch
+            .next(request, &applied.world, &applied.systems)
+            .unwrap();
+        assert_eq!(
+            opened.system_windows,
+            [(applied.world.systems[primary].dat_id.raw(), (100, 50))]
+        );
+
+        let other = super::tests::request(Scenario::FleetLoad, CockpitFaction::Alliance);
+        assert!(QuadrantWatch::default()
+            .next(other, &applied.world, &applied.systems)
+            .is_none());
     }
 
     #[test]

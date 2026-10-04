@@ -15,7 +15,8 @@ use rebellion_core::world::{ControlKind, GameWorld};
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
-use crate::fleet_window::{fleet_icon, paint_native};
+use crate::fleet_window::paint_native;
+use crate::quadrant_icons::{quadrant_icon, Quadrant};
 
 pub const SECTOR_WINDOW_WIDTH: f32 = 235.0;
 pub const SECTOR_WINDOW_HEIGHT: f32 = 360.0;
@@ -159,8 +160,21 @@ impl SectorWindowState {
         layout: CockpitLayout,
         system: SystemKey,
     ) -> Option<egui::Rect> {
+        self.quadrant_screen_rect(world, layout, system, Quadrant::Fleets)
+    }
+
+    /// Where one of `system`'s four quadrant overlays lies, in screen
+    /// pixels, when its sector's window is open (`FUN_00459e30`).
+    #[must_use]
+    pub fn quadrant_screen_rect(
+        &self,
+        world: &GameWorld,
+        layout: CockpitLayout,
+        system: SystemKey,
+        quadrant: Quadrant,
+    ) -> Option<egui::Rect> {
         let planet = self.planet_screen_rect(world, layout, system)?;
-        Some(fleet_icon_rect(planet, layout.scale))
+        Some(quadrant_rect(planet, layout.scale, quadrant))
     }
 
     /// The destination a targeting release at `point` takes from the sector
@@ -277,6 +291,7 @@ pub fn draw_sector_windows(
     layout: CockpitLayout,
     cache: &mut BmpCache,
     uprisings: &rebellion_core::uprising::UprisingState,
+    missions: &rebellion_core::missions::MissionState,
 ) -> Vec<SectorWindowAction> {
     state.prepare_faction(faction);
     let windows = state.windows.clone();
@@ -297,6 +312,7 @@ pub fn draw_sector_windows(
             layout,
             cache,
             uprisings,
+            missions,
         );
         if result.focus {
             focused = Some(window.sector);
@@ -349,6 +365,7 @@ fn draw_sector_window(
     layout: CockpitLayout,
     cache: &mut BmpCache,
     uprisings: &rebellion_core::uprising::UprisingState,
+    missions: &rebellion_core::missions::MissionState,
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(sector) = world.sectors.get(window.sector) else {
@@ -459,14 +476,30 @@ fn draw_sector_window(
                 );
                 let planet_hovered = pointer.is_some_and(|point| rect_contains(planet_rect, point));
                 let planet_clicked = exact_clicked(&planet_response, planet_rect);
-                // FUN_0045d140 shows the overlay only while the side it picks
-                // has fleets; a double click finds it first (`FUN_0045cc10`).
-                let icon = fleet_icon(world, fog, player, *system_key);
-                let icon_rect = fleet_icon_rect(planet_rect, layout.scale);
-                let icon_double_clicked = icon.is_some()
-                    && double_click.is_some_and(|point| rect_contains(icon_rect, point));
-                let planet_double_clicked =
-                    planet_response.double_clicked() && planet_clicked && !icon_double_clicked;
+                // FUN_0045d140 draws an overlay only while its rule has
+                // something to show; a double click finds it first
+                // (`FUN_0045cc10`).
+                let icons: Vec<(Quadrant, egui::Rect, u32)> = Quadrant::ALL
+                    .into_iter()
+                    .filter_map(|quadrant| {
+                        let (normal, _) =
+                            quadrant_icon(world, fog, missions, player, *system_key, quadrant)?;
+                        Some((
+                            quadrant,
+                            quadrant_rect(planet_rect, layout.scale, quadrant),
+                            normal,
+                        ))
+                    })
+                    .collect();
+                let icon_double_clicked = double_click.and_then(|point| {
+                    icons
+                        .iter()
+                        .find(|(_, rect, _)| rect_contains(*rect, point))
+                        .map(|(quadrant, rect, _)| (*quadrant, *rect))
+                });
+                let planet_double_clicked = planet_response.double_clicked()
+                    && planet_clicked
+                    && icon_double_clicked.is_none();
                 paint_resource(
                     ui.painter(),
                     ctx,
@@ -493,7 +526,7 @@ fn draw_sector_window(
                     system_name_color(system.control, uprisings.is_uprising(*system_key), player),
                 );
 
-                if let Some((normal, _)) = icon {
+                for (_, icon_rect, normal) in &icons {
                     // port: the second bitmap (hyp: the pressed state) is not
                     // drawn.
                     paint_native(
@@ -501,17 +534,24 @@ fn draw_sector_window(
                         ctx,
                         cache,
                         DllSource::Strategy,
-                        normal,
-                        icon_rect,
+                        *normal,
+                        *icon_rect,
                         layout.scale,
                         0.0,
                         0.0,
                     );
                 }
-                if icon_double_clicked {
+                if let Some((quadrant, icon_rect)) = icon_double_clicked {
                     let open_point = double_click.unwrap_or_else(|| icon_rect.center());
-                    result.opened_fleet =
-                        Some((*system_key, screen_to_logical(layout, open_point)));
+                    let opened = Some((*system_key, screen_to_logical(layout, open_point)));
+                    // FUN_0045aac0: kind 4 opens the System window, kind 0x10
+                    // the Fleet window. port: the Defenses (type 10) and
+                    // Missions (type 11) windows are not ported yet.
+                    match quadrant {
+                        Quadrant::System => result.opened = opened,
+                        Quadrant::Fleets => result.opened_fleet = opened,
+                        Quadrant::Defenses | Quadrant::Missions => {}
+                    }
                     result.focus = true;
                 }
 
@@ -559,12 +599,19 @@ fn planet_rect(window_rect: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Rec
     logical_rect(window_rect, scale, x, y, 37.0, 37.0)
 }
 
-/// The top-right quadrant overlay around a planet whose center is
-/// (x + 18, y + 18): `(cx + 1, cy - 19)` to `(cx + 29, cy)`, the 27 by 18
-/// icon 10771 plus one (`FUN_00459e30`).
-fn fleet_icon_rect(planet: egui::Rect, scale: f32) -> egui::Rect {
+/// A quadrant overlay around a planet whose center is (x + 18, y + 18),
+/// 28 by 19, the 27 by 18 icon 10771 plus one (`FUN_00459e30:369-447`):
+/// the left ones end at `cx`, the right ones start at `cx + 1`; the top ones
+/// end at `cy`, the bottom ones start at `cy + 1`.
+fn quadrant_rect(planet: egui::Rect, scale: f32, quadrant: Quadrant) -> egui::Rect {
+    let (x, y) = match quadrant {
+        Quadrant::System => (-10.0, -1.0),
+        Quadrant::Defenses => (-10.0, 19.0),
+        Quadrant::Fleets => (19.0, -1.0),
+        Quadrant::Missions => (19.0, 19.0),
+    };
     egui::Rect::from_min_size(
-        planet.min + egui::vec2(19.0, -1.0) * scale,
+        planet.min + egui::vec2(x, y) * scale,
         egui::vec2(28.0, 19.0) * scale,
     )
 }
@@ -1205,6 +1252,7 @@ mod tests {
                     layout,
                     &mut cache,
                     &uprisings,
+                    &rebellion_core::missions::MissionState::new(),
                 ));
             });
         }
@@ -1294,6 +1342,159 @@ mod tests {
                 egui::pos2(10.0 + 93.0 * 2.0, 20.0 + 78.0 * 2.0),
                 egui::vec2(56.0, 38.0)
             ))
+        );
+    }
+
+    #[test]
+    fn each_quadrant_icon_sits_at_its_corner_of_the_planet() {
+        // FUN_00459e30:369-447: 28 by 19 each; the left ones end at cx, the
+        // right ones start at cx + 1; the top ones end at cy, the bottom ones
+        // start at cy + 1. Chandrila's planet sits at (74, 79), so cx = 92
+        // and cy = 97.
+        let (world, system, _) = fixture_world();
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        let corners = [
+            (Quadrant::System, (64.0, 78.0)),
+            (Quadrant::Defenses, (64.0, 98.0)),
+            (Quadrant::Fleets, (93.0, 78.0)),
+            (Quadrant::Missions, (93.0, 98.0)),
+        ];
+        for scale in [1.0, 2.0] {
+            for (quadrant, (x, y)) in corners {
+                assert_eq!(
+                    state.quadrant_screen_rect(&world, layout(scale), system, quadrant),
+                    Some(egui::Rect::from_min_size(
+                        egui::pos2(10.0 + x * scale, 20.0 + y * scale),
+                        egui::vec2(28.0 * scale, 19.0 * scale)
+                    )),
+                    "{quadrant:?} at scale {scale}"
+                );
+            }
+        }
+    }
+
+    fn add_mine(world: &mut GameWorld, system: SystemKey) {
+        let mine =
+            world
+                .production_facilities
+                .insert(rebellion_core::world::ProductionFacilityInstance {
+                    class_dat_id: DatId::new(0x2c00_0001),
+                    is_alliance: true,
+                    is_mine: true,
+                });
+        world.systems[system].production_facilities.push(mine);
+    }
+
+    #[test]
+    fn a_double_click_on_the_system_icon_opens_the_system_window() {
+        // FUN_0045aac0 maps kind 4 to window type 9. (66, 80) lies on the
+        // top-left icon, left of the planet's picture.
+        let (mut world, system, _) = fixture_world();
+        assert!(opened(&double_click_at(&world, system, (66.0, 80.0))).is_empty());
+
+        add_mine(&mut world, system);
+        assert_eq!(
+            opened(&double_click_at(&world, system, (66.0, 80.0))),
+            [SectorWindowAction::OpenSystemWindow {
+                system,
+                logical_position: (66, 80),
+            }]
+        );
+    }
+
+    /// Draw `system`'s sector window at `scale` for two frames (an Area
+    /// paints nothing on its first) and return each quadrant bitmap painted
+    /// and where.
+    fn painted_quadrant_icons(
+        world: &GameWorld,
+        system: SystemKey,
+        missions: &rebellion_core::missions::MissionState,
+        scale: f32,
+    ) -> Vec<(u32, egui::Pos2)> {
+        let layout = layout(scale);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(world, system, CockpitFaction::Alliance);
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(system);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        for index in 0..2 {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1040.0),
+                )),
+                time: Some(f64::from(index) * 0.05),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                let _ = draw_sector_windows(
+                    ctx,
+                    world,
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    missions,
+                );
+            });
+        }
+        crate::fleet_window::tests::PAINTED
+            .with(|painted| painted.take())
+            .into_iter()
+            .filter(|(id, _)| (10771..=10790).contains(id))
+            .collect()
+    }
+
+    #[test]
+    fn the_sector_window_paints_each_shown_quadrant_icon_at_its_corner() {
+        // FUN_0045d140 paints FUN_0045ca80's first bitmap for each enabled
+        // item: a mine (kind 4), a regiment (kind 8), a fleet (kind 0x10)
+        // and an agent on a mission (kind 0x40), all Alliance (side 1).
+        let (mut world, system, _) = fixture_world();
+        let empty = rebellion_core::missions::MissionState::new();
+        assert!(painted_quadrant_icons(&world, system, &empty, 2.0).is_empty());
+
+        add_mine(&mut world, system);
+        add_fleet(&mut world, system);
+        let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(regiment);
+        let agent = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(832),
+            name: "Agent".into(),
+            is_alliance: true,
+            current_system: Some(system),
+            recruited: true,
+            ..Default::default()
+        });
+        let mut missions = rebellion_core::missions::MissionState::new();
+        missions.dispatch(rebellion_core::missions::MissionRequest::single(
+            rebellion_core::missions::MissionKind::Diplomacy,
+            rebellion_core::missions::MissionFaction::Alliance,
+            agent,
+            system,
+            None,
+            0,
+        ));
+
+        let at = |x: f32, y: f32| egui::pos2(10.0 + x * 2.0, 20.0 + y * 2.0);
+        assert_eq!(
+            painted_quadrant_icons(&world, system, &missions, 2.0),
+            [
+                (10771, at(64.0, 78.0)),
+                (10773, at(64.0, 98.0)),
+                (10775, at(93.0, 78.0)),
+                (10777, at(93.0, 98.0)),
+            ]
         );
     }
 }

@@ -305,6 +305,13 @@ impl SystemWindowState {
         self.windows.len()
     }
 
+    /// Each visible window's system and logical position, back to front.
+    pub fn open_windows(&self) -> impl Iterator<Item = (SystemKey, (i16, i16))> + '_ {
+        self.windows
+            .iter()
+            .map(|window| (window.system, window.logical_position))
+    }
+
     /// The destination a targeting release takes from the system window
     /// egui draws as `layer`: its own system wherever the point lies
     /// (`+0x70`, `FUN_004aa470`), so a release over a fleet in its list never
@@ -1238,8 +1245,8 @@ fn tab_visual_items(
         return Vec::new();
     }
     let player_is_alliance = player_faction == Faction::Alliance;
-    let opposing_contents_visible = system.control.is_controlled_by(player_faction)
-        || (fog.faction == player_faction && fog.is_visible(system_key));
+    let opposing_contents_visible =
+        opposing_contents_visible(world, fog, player_faction, system_key);
     match tab {
         SystemWindowTab::Personnel => world
             .characters
@@ -1366,6 +1373,21 @@ fn tab_visual_items(
             })
             .collect(),
     }
+}
+
+/// Whether the player sees the other side's objects at `system`: it holds
+/// the system, or its fog shows the system now.
+pub(crate) fn opposing_contents_visible(
+    world: &GameWorld,
+    fog: &FogState,
+    player: Faction,
+    system: SystemKey,
+) -> bool {
+    world
+        .systems
+        .get(system)
+        .is_some_and(|value| value.control.is_controlled_by(player))
+        || (fog.faction == player && fog.is_visible(system))
 }
 
 /// A fleet's name, as its system window lists it. port: fleets carry no
@@ -2361,6 +2383,21 @@ mod tests {
             [(system, MenuObject::Fleet(fleet), release)]
         );
         assert_eq!(held, (true, false));
+    }
+
+    #[test]
+    fn open_windows_lists_each_visible_window_back_to_front_with_its_position() {
+        let (world, systems) = fixture_world(2);
+        let layout = layout(CockpitFaction::Alliance, 1.0);
+        let mut state = SystemWindowState::default();
+        assert_eq!(state.open_windows().count(), 0);
+        for (system, at) in [(systems[0], (100, 50)), (systems[1], (120, 60))] {
+            assert!(state.open(&world, system, at, CockpitFaction::Alliance, layout));
+        }
+        assert_eq!(
+            state.open_windows().collect::<Vec<_>>(),
+            [(systems[0], (100, 50)), (systems[1], (120, 60))]
+        );
     }
 
     fn world_with_regiment() -> (GameWorld, SystemKey, TroopKey) {

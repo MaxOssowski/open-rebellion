@@ -18,9 +18,10 @@ use rebellion_core::world::{ControlKind, GameWorld};
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
+use crate::quadrant_icons::{quadrant_art, Quadrant};
 use crate::system_window::{
     character_mini_resource_id, clamp_window_to_galaxy, exact_clicked, fleet_label, logical_rect,
-    rect_contains, troop_mini,
+    opposing_contents_visible, rect_contains, troop_mini,
 };
 use crate::targeting::ReleaseTarget;
 
@@ -43,9 +44,6 @@ const TAB_BASE: u32 = 10409;
 const RIGHT_ITEM_SELECTED: u32 = 10420;
 const FLEET_PICTURE: u32 = 10425;
 const NO_HYPERDRIVE: u32 = 10430;
-/// The sector window's top-right quadrant icon (`FUN_0045ca80`, kind `0x10`).
-const ALLIANCE_FLEET_ICON: (u32, u32) = (10775, 10776);
-const EMPIRE_FLEET_ICON: (u32, u32) = (10783, 10784);
 /// The galaxy view rail's icon for a minimized Fleet window (`FUN_004a76e0`).
 const RAIL_ICONS: [u32; 3] = [11536, 11537, 11538];
 
@@ -405,9 +403,7 @@ pub fn fleet_icon(
 ) -> Option<(u32, u32)> {
     match icon_side(world, fog, player, system) {
         (_, 0) => None,
-        (1, _) => Some(ALLIANCE_FLEET_ICON),
-        (2, _) => Some(EMPIRE_FLEET_ICON),
-        _ => None,
+        (side, _) => quadrant_art(Quadrant::Fleets, side),
     }
 }
 
@@ -477,8 +473,7 @@ fn visible_fleets(
     if value.exploration_status == ExplorationStatus::Unexplored {
         return Vec::new();
     }
-    let opposing_visible =
-        value.control.is_controlled_by(player) || (fog.faction == player && fog.is_visible(system));
+    let opposing_visible = opposing_contents_visible(world, fog, player, system);
     let player_is_alliance = player == Faction::Alliance;
     let mut fleets: Vec<FleetKey> = value
         .fleets
@@ -734,7 +729,7 @@ fn side_art(base: u32, side: u8) -> u32 {
     }
 }
 
-const fn fleet_side(is_alliance: bool) -> u8 {
+pub(crate) const fn fleet_side(is_alliance: bool) -> u8 {
     if is_alliance {
         1
     } else {
@@ -742,7 +737,7 @@ const fn fleet_side(is_alliance: bool) -> u8 {
     }
 }
 
-fn faction_side(faction: Faction) -> u8 {
+pub(crate) fn faction_side(faction: Faction) -> u8 {
     match faction {
         Faction::Alliance => 1,
         Faction::Empire => 2,
@@ -752,7 +747,7 @@ fn faction_side(faction: Faction) -> u8 {
 
 /// hyp: `Contested` is side 3, and an uprising keeps its holder's side
 /// (`ghidra/notes/blockade-bit.md`, "Port").
-fn control_side(control: ControlKind) -> u8 {
+pub(crate) fn control_side(control: ControlKind) -> u8 {
     match control {
         ControlKind::Contested => 3,
         control => control.faction().map_or(0, faction_side),
@@ -1390,7 +1385,7 @@ fn paint_dotted(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::SectorGroup;
@@ -1842,7 +1837,7 @@ mod tests {
     thread_local! {
         /// Each bitmap [`paint_native`] was asked for and where, since the
         /// test cache holds no textures.
-        pub(super) static PAINTED: std::cell::RefCell<Vec<(u32, egui::Pos2)>> =
+        pub(crate) static PAINTED: std::cell::RefCell<Vec<(u32, egui::Pos2)>> =
             const { std::cell::RefCell::new(Vec::new()) };
     }
 

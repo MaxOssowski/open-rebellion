@@ -43,6 +43,10 @@ const fixturePlugin = `    <script>
                             (window.__openRebellionInterfaceFleetLoads ||= []).push(message);
                         } else if (message.status === "speed-menu") {
                             window.__openRebellionInterfaceSpeedMenu = message;
+                        } else if (message.status === "quadrant-setup") {
+                            window.__openRebellionInterfaceQuadrantSetup = message;
+                        } else if (message.status === "quadrant-observation") {
+                            (window.__openRebellionInterfaceQuadrants ||= []).push(message);
                         } else {
                             window.__openRebellionInterfaceReady = message;
                         }
