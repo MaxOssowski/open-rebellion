@@ -23,6 +23,11 @@ node encyclopedia-index-shell.mjs --catalog  # verify source-derived index conte
 node encyclopedia-index-shell.mjs --no-build  # reuse a verified fixture build
 node mission-dialog.mjs  # verify the original mission dialog's chrome on both pages
 node mission-dialog.mjs --no-build  # reuse a verified fixture build
+node fleet-move.mjs  # verify fleet Move, Confirmed Move and the system window drag
+node fleet-window.mjs  # verify the Fleet window, regiments, and joining and splitting
+node sector-quadrants.mjs  # verify the quadrant icons and the Defenses and Missions windows
+node fleet-finder.mjs  # verify the Fleet and Ship Finder
+node fleet-finder.mjs --no-build --only=alliance/chrome  # one faction/case, reusing a build
 ```
 
 Harness unit regressions can be run from the repository root with
@@ -67,6 +72,23 @@ compares the panel, title bars, close box, tabs, headers, arrows, and buttons
 pixel-for-pixel against the owned STRATEGY resources. The bottom buttons are
 checked cropped to their 64-pixel controls. Text, the mission item, the target
 art, and the member lists are masked and kept as captures.
+
+The fleet gates are steps toward `F-007C`. Each opens its windows only through
+the original entries, on both sides, from a fresh muted browser per case, and
+drives a fixture scenario (`interface_test_fixture.rs`) whose observations it
+asserts. `fleet-move.mjs` covers the fleet pop-up menu, targeting, the
+Confirmed Move window and the system window drag. `fleet-window.mjs` opens the
+Fleet window from the sector window's fleet icon, compares its chrome against
+STRATEGY.DLL, and covers loading and holding regiments, landing, unloading by
+hand, a regiment travelling on its own, and joining and splitting fleets.
+`sector-quadrants.mjs` covers the quadrant icons and the System, System
+Defenses and Missions windows they open. `fleet-finder.mjs` opens the Finder
+from the cockpit control and F3, compares its chrome in both modes, and opens a
+chosen fleet or ship in its Fleet window; its tabs case checks that the map
+under the Finder takes neither click nor zoom. `--only=<faction>/<case>` runs
+named cases. Each gate writes `result.json` and its captures under
+`.artifacts/interface-parity/<gate>-<timestamp>/`; the native GUI checks of the
+same journeys are recorded separately in the audit.
 
 The tactical acceptance denominator is generated directly from the surface
 ledger rather than maintained as a second hand-written list:

@@ -1,11 +1,11 @@
-//! Fleets panel — fleet roster with composition editing, character assignment,
-//! and fleet merge controls.
+//! Fleets panel — fleet roster with composition and character assignment.
 //!
 //! Rendered as a left-side egui panel. Lists all fleets belonging to the player
 //! faction. Clicking a fleet expands a detail row showing capital ships, fighter
-//! squadrons, assigned characters, and action buttons (assign/remove officer,
-//! merge with another fleet at the same system, and go to system). Fleets
-//! move through their pop-up menu and the system window drag.
+//! squadrons, assigned characters, and action buttons (assign/remove officer
+//! and go to system). Fleets move through their pop-up menu and the system
+//! window drag, and join or split on the Fleet window
+//! (`crate::fleet_window`).
 
 use egui_macroquad::egui::{self, RichText, ScrollArea, Vec2};
 use rebellion_core::ids::{CharacterKey, DatId, FleetKey};

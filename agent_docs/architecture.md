@@ -45,6 +45,11 @@ crates/rebellion-core/src/
 ├── ai.rs             — AISystem, per-fleet targeting, deconfliction, two-pass deployment, battle penalty, config-driven (1121 LOC, 13 tests)
 ├── tuning.rs         — GameConfig: 16 externalized AI/movement/production parameters, parity/augmentation tagged (~160 LOC)
 ├── movement.rs       — MovementOrder, Euclidean distance-based transit, config-aware variant (625 LOC, 19 tests). `cancel_orders_to(system)` cancels all in-transit orders targeting a given system (used by Death Star cleanup).
+├── fleet_join.rs     — Joining and splitting fleets: a move onto a fleet hands over its capital ships, Create Fleet, the join checks (FUN_004ffc90, FUN_004feca0; ghidra/notes/fleet-join-split.md)
+├── troop_transport.rs — Fleet cargo for regiments: loading through the Fleet window, the hold, unloading by hand and regiments travelling on their own (FUN_00556390, FUN_00552300)
+├── delivery.rs       — En-route delivery of manufactured objects (F-030)
+├── mission_detection.rs — The mission detection manager (FUN_00547f60): decoys, detection, betrayal, exposure
+├── mission_planning.rs — The AI mission planners' team and decoy selectors
 ├── fog.rs            — FogState, visibility sets, dim rendering tiers (373 LOC, 9 tests)
 ├── combat.rs         — Space combat 7-phase pipeline, ground combat, CombatPhaseFlags
 ├── bombardment.rs    — Orbital bombardment: Euclidean distance / GNPRTB[0x1400]
@@ -69,10 +74,17 @@ crates/rebellion-core/src/
 crates/rebellion-render/src/
 ├── lib.rs              — Galaxy map (pan/zoom/click), system info panel
 ├── game_menu.rs        — The original Game Menu Window (FUN_00442860), shared by the speed menu and the object pop-up menu
-├── object_menu.rs      — The right-click pop-up menu for a system window's characters and special forces (FUN_004ac5c0)
+├── object_menu.rs      — The right-click pop-up menu for a system window's characters, special forces, fleets and regiments, and the Fleet window's capital ships (FUN_004ac5c0)
 ├── targeting.rs        — The galaxy view's targeting mode after Mission: pointer capture and REBEXE cursor 1002
 ├── mission_dialog.rs   — The original mission dialog (FUN_0046a750), opened by targeting
 ├── system_window.rs / sector_window.rs — The original modeless system and sector windows
+├── quadrant_icons.rs   — The four icons a sector window draws around each planet (FUN_00459e30): which rule shows each, and its art
+├── fleet_window.rs     — The Fleet window (type 4, FUN_004a2630): a system's fleets, their contents under four tabs, loading, unloading, joining and splitting
+├── defenses_window.rs  — The System Defenses window (type 10, FUN_004a7790)
+├── missions_window.rs  — The Missions window (type 11, FUN_0049f130)
+├── fleet_finder.rs     — The Fleet and Ship Finder (type 0x15, FUN_00461750), opened by the cockpit control or F3
+├── move_confirmation.rs — The Confirmed Move window (FUN_0044f060)
+├── game_speed.rs       — The cockpit's day readout and its speed menu (FUN_00422ce0)
 ├── main_menu.rs        — Title screen with New Game / Load Game / Quit
 ├── video_player.rs     — Native cutscene playback from decoded PNG frame sequences + WAV sidecars; wasm32 stub returns finished immediately
 ├── theme.rs            — Star Wars egui theme: dark space bg, gold/amber accents, Liberation Sans font
@@ -91,7 +103,7 @@ crates/rebellion-render/src/
     ├── mod.rs           — PanelAction enum: panel, mission, save, and combat actions
     ├── game_setup.rs    — Galaxy size, difficulty, faction selection (replaces faction_select)
     ├── officers.rs       — Character roster with skill bars, full detail view (Force, location, skills)
-    ├── fleets.rs         — Fleet editor: composition, assign/remove officers, merge fleets
+    ├── fleets.rs         — Fleet roster: composition, assign/remove officers (joining is on the Fleet window)
     ├── manufacturing.rs  — Production queue manager
     ├── missions.rs       — Active missions with progress and cancel; missions start from the object pop-up menu
     ├── research.rs       — 3 tech tree tabs, active project progress, character assignment
@@ -108,8 +120,12 @@ crates/rebellion-render/src/
 
 ```
 crates/rebellion-app/src/
-├── main.rs   — Entry point, interactive loop, panel action handling (~6,400 LOC; no headless tests, see agent-tooling.md)
-└── audio.rs  — quad-snd AudioEngine: load, play_sfx, play_music, volume sync, WASM audio base-path resolution
+├── main.rs   — Entry point, interactive loop, panel action handling (~7,300 LOC; no headless tests, see agent-tooling.md)
+├── audio.rs  — quad-snd AudioEngine: load, play_sfx, play_music, volume sync, WASM audio base-path resolution
+├── interface_test_fixture.rs — Test-only interface fixture scenarios and the observations the browser gates in tools/interface-parity read
+├── tactical_flow.rs / tactical_test_fixture.rs — The production tactical-battle entry and its test-only direct entry
+├── runtime_pack.rs — Parser for the browser runtime asset pack
+└── web_accessibility.rs / web_replay.rs — The browser accessibility bridge and the native/WASM replay runner
 
 Decoded cutscene assets are intentionally kept out of git. `scripts/decode-cutscenes.sh` expands `assets/references/ref-videos/*.webm` into `assets/references/cutscene-frames/<name>/frame-*.png`, `metadata.json`, and sibling `<name>.wav` files for the native `VideoPlayer`.
 ```
@@ -119,7 +135,7 @@ Decoded cutscene assets are intentionally kept out of git. `scripts/decode-cutsc
 ```
 crates/rebellion-data/src/
 ├── seeds.rs      — Game seeding: 3-system model, character stat rolling, named placement (~1200 LOC, 8 tests)
-├── save.rs       — Save/load: bincode snapshots, save slots, version migration (v7). Native uses filesystem saves; WASM uses `web_sys::Storage` localStorage with base64 payloads and separate metadata keys for fast slot listing. v6→v7: ShipInstance promotion (bincode layout change). v3/v4/v5/v6 rejected.
+├── save.rs       — Save/load: bincode snapshots and save slots; only the current SAVE_VERSION loads, with no migrations (save-load.md). Native uses filesystem saves; WASM uses browser localStorage through the gl.js loader's imports, with separate metadata keys for fast slot listing.
 ├── mods.rs       — Mod loader + ModRuntime: TOML manifest, RFC 7396 merge patch, semver, hot reload
 ├── simulation.rs — Tick orchestrator: SimulationStates bundle + run_simulation_tick() (~449 LOC)
 └── integrator.rs — PerceptionIntegrator: all world mutation + telemetry emission (~1,200 LOC, 17 apply methods). Betrayal emits reveal-before-flip (EVT_TRAITOR_REVEALED) + side-change-after-flip (EVT_SIDE_CHANGE).

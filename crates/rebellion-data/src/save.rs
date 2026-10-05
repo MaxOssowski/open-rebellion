@@ -1,6 +1,6 @@
 //! Save / load for the full game state.
 //!
-//! # Format (v20)
+//! # Format (`SAVE_VERSION`)
 //!
 //! Binary `bincode` encoding. A save file is:
 //!

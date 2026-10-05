@@ -1,6 +1,8 @@
 //! The object pop-up menu a right-click on a character, special force, fleet
-//! or regiment opens in a system window (`FUN_004ac5c0`). Recovery notes:
-//! `ghidra/notes/object-popup-menu.md` and `ghidra/notes/move-order.md`.
+//! or regiment opens in a system window (`FUN_004ac5c0`), or on a capital
+//! ship in the Fleet window. Recovery notes:
+//! `ghidra/notes/object-popup-menu.md`, `ghidra/notes/move-order.md` and
+//! `ghidra/notes/fleet-join-split.md`.
 //!
 //! `FUN_0051d990` lists the orders the selection's class offers, sorts them
 //! by their STRATEGY `RT_RCDATA` record's key, and always adds Encyclopedia
