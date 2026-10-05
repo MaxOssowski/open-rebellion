@@ -341,6 +341,9 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 - The port's capacity rules (F-007E: 0/0, 2/2, 3/3 by class) stand in for
   `FUN_00500b40`'s `+0x270`/`+0x26c`. Check them against the capital ships'
   DAT capacities.
+- The Fleet Finder opens the window from the sector window's fleet icon
+  with the fleet or ship selected, expanding the fleet for a ship (slot
+  `+0x6c`, `FUN_00429440`; `fleet-finder.md`).
 
 ## Still open
 
@@ -349,7 +352,4 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 - `FUN_00558380`'s base order list; the regiment `0x214` refusal's status
   (native check pending). The leg builders and the full-fleet refusal are
   traced in `regiment-unload.md`.
-- The Fleet Finder (`FUN_00429440`, open-by-object) is not ported;
-  unloading by hand (`regiment-unload.md`) and joining and splitting fleets
-  (`fleet-join-split.md`) are.
 - What starts an in-place rename.

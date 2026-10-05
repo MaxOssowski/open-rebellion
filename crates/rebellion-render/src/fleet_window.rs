@@ -95,7 +95,8 @@ pub enum FleetWindowEntry {
 }
 
 impl FleetWindowEntry {
-    const fn fleet(self) -> FleetKey {
+    #[must_use]
+    pub const fn fleet(self) -> FleetKey {
         match self {
             Self::Fleet(fleet) | Self::Ship { fleet, .. } => fleet,
         }
@@ -204,6 +205,22 @@ impl FleetWindowState {
             expanded: Vec::new(),
             tab: FleetWindowTab::CapitalShips,
         });
+        true
+    }
+
+    /// Select `entry` in `system`'s open window, expanding its fleet for a
+    /// ship (slot `+0x6c`, as the Fleet Finder's open does, `FUN_00429440`).
+    pub fn select(&mut self, system: SystemKey, entry: FleetWindowEntry) -> bool {
+        let Some(window) = self.window_mut(system) else {
+            return false;
+        };
+        if let FleetWindowEntry::Ship { fleet, .. } = entry {
+            if !window.expanded.contains(&fleet) {
+                window.expanded.push(fleet);
+            }
+        }
+        window.selected = Some(entry);
+        window.selected_item = None;
         true
     }
 
@@ -1995,6 +2012,28 @@ pub(crate) mod tests {
         assert_eq!(state.windows[0].logical_position, (405, 176));
     }
 
+    #[test]
+    fn selecting_a_ship_from_outside_expands_its_fleet() {
+        // FUN_00429440 selects the Fleet Finder's object through slot +0x6c;
+        // a ship's entry lists only while its fleet is expanded.
+        let (mut world, system) = world(ControlKind::Uncontrolled);
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let mut state = FleetWindowState::default();
+        let ship = FleetWindowEntry::Ship { fleet, index: 0 };
+        assert!(!state.select(system, ship));
+        assert!(state.open(&world, system, (0, 0), CockpitFaction::Alliance, layout()));
+        state.windows[0].selected_item = Some(0);
+
+        assert!(state.select(system, ship));
+
+        let window = &state.windows[0];
+        assert_eq!(window.selected, Some(ship));
+        assert_eq!(window.selected_item, None);
+        assert!(left_entries(&world, &fog(system), Faction::Alliance, window).contains(&ship));
+        assert!(state.select(system, ship));
+        assert_eq!(state.windows[0].expanded, [fleet]);
+    }
+
     /// The canvas 10 by 20 pixels in and twice the original size, so offsets
     /// and scale both show.
     fn scaled() -> CockpitLayout {
@@ -2044,7 +2083,8 @@ pub(crate) mod tests {
     }
 
     thread_local! {
-        /// Each bitmap [`paint_native`] was asked for and where, since the
+        /// Each bitmap [`paint_native`] or the shared button art
+        /// (`mission_dialog::paint`) was asked for and where, since the
         /// test cache holds no textures.
         pub(crate) static PAINTED: std::cell::RefCell<Vec<(u32, egui::Pos2)>> =
             const { std::cell::RefCell::new(Vec::new()) };

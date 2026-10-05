@@ -148,7 +148,22 @@ Fleet window at its fleet icon's stored point (`FUN_0045c8e0` →
   only fleets in orbit.
 - port: fleet names are the port's labels (`fleet_label`, "Fleet N"); a
   ship's name is its class's.
-- port: no scroll bar, as the port's other lists.
+- port: no scroll bar, as the port's other lists; the wheel scrolls it.
+- port: the list keeps its own double click, two clicks on one row within
+  egui's double-click delay, since egui counts a double click across
+  widgets and a third click as a triple.
+- port: the Finder opens centered in the galaxy view and draws above its
+  other windows while open.
+- port: the galaxy view's letter keys stand aside while the Finder is open.
+  F1..F7 reach the cockpit once the name box loses the focus; the original
+  ignores `0x70..0x76` while a finder is open.
+- port: the Fleet window opens at the center of the system's fleet icon,
+  which is where the icon opens it without a double-click point
+  (`fleet-window.md`).
+- hyp: the current tab and mode show their second bitmap, as the mission
+  dialog's tab strip does; the selected row draws yellow.
+- The port's implementation is `crates/rebellion-render/src/fleet_finder.rs`;
+  `tools/interface-parity/fleet-finder.mjs` gates it for both sides.
 
 ## Still open
 

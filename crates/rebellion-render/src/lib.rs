@@ -7,6 +7,7 @@ pub mod cockpit;
 pub mod defenses_window;
 pub mod encyclopedia;
 pub mod event_screen;
+pub mod fleet_finder;
 pub mod fleet_movement;
 pub mod fleet_window;
 pub mod fog;

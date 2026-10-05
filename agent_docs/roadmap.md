@@ -546,6 +546,15 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   every compatible arrival (F-007B) is retired: no original rule merges
   fleets the player did not join (Tom, 2026-10-05). The `fleet-window.mjs`
   gate passes both sides. A native check remains.
+- [x] Port the Fleet Finder (window type `0x15`, `ghidra/notes/fleet-finder.md`).
+  The cockpit's control (`0x12e`) or F3 opens it (`FUN_0042a0c0`); it lists
+  the side's fleets, or in Ship Finder mode their capital ships, by name
+  under All, Alliance and Imperial tabs (`FUN_00462be0`); a typed name picks
+  the row it best begins (`FUN_00609650`), and Display, Enter or a double
+  click opens the system's sector window and its Fleet window with the
+  fleet or ship selected (`FUN_00429440`). The `fleet-finder.mjs` gate
+  passes both sides, its chrome exact against STRATEGY.DLL. A native check
+  remains.
 - [ ] Balance one-ship fleets in the AI. With the arrival merge retired, the
   AI's own fleets no longer combine where they meet: in seed 42's 1,500-tick
   dual-AI run the fleet count at its six snapshots runs 5, 6, 11, 11, 17, 17

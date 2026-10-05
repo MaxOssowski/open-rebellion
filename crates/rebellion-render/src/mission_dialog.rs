@@ -387,6 +387,10 @@ pub(crate) fn paint(
     rect: egui::Rect,
     scale: f32,
 ) {
+    #[cfg(test)]
+    crate::fleet_window::tests::PAINTED.with(|painted| {
+        painted.borrow_mut().push((resource_id, rect.min));
+    });
     if let Some(texture) = cache.get(ctx, DllSource::Strategy, resource_id) {
         painter
             .with_clip_rect(painter.clip_rect().intersect(rect))

@@ -47,6 +47,8 @@ const fixturePlugin = `    <script>
                             window.__openRebellionInterfaceQuadrantSetup = message;
                         } else if (message.status === "quadrant-observation") {
                             (window.__openRebellionInterfaceQuadrants ||= []).push(message);
+                        } else if (message.status === "fleet-finder") {
+                            (window.__openRebellionInterfaceFleetFinders ||= []).push(message);
                         } else {
                             window.__openRebellionInterfaceReady = message;
                         }

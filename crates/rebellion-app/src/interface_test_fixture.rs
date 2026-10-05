@@ -19,6 +19,7 @@ use rebellion_core::tick::TickEvent;
 use rebellion_core::troop_transport::{regiment_system, TroopTransportState};
 use rebellion_core::uprising::UprisingState;
 use rebellion_core::world::{ControlKind, GameWorld, ShipInstance, TroopUnit};
+use rebellion_render::fleet_finder::{FinderControl, FinderMode, FinderTab, FleetFinderState};
 use rebellion_render::fleet_window::{FleetWindowEntry, FleetWindowState, FleetWindowTab};
 use rebellion_render::game_speed::day_readout_rect;
 use rebellion_render::mission_dialog::{MissionDialogPage, MissionDialogState};
@@ -26,8 +27,8 @@ use rebellion_render::object_menu::{ObjectMenuCommand, ObjectMenuState};
 use rebellion_render::quadrant_icons::Quadrant;
 use rebellion_render::system_window::SYSTEM_WINDOW_WIDTH;
 use rebellion_render::{
-    CockpitFaction, CockpitState, GalaxyMapState, GameMessage, GidMode, SectorWindowState,
-    SystemWindowState, SystemWindowTab,
+    strategic_primary_controls, CockpitButton, CockpitFaction, CockpitState, GalaxyMapState,
+    GameMessage, GidMode, SectorWindowState, SystemWindowState, SystemWindowTab,
 };
 use rebellion_render::{DefensesPage, DefensesWindowState, MissionsTab, MissionsWindowState};
 use serde::Serialize;
@@ -38,7 +39,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 52;
+const SCENARIO_COUNT: u8 = 53;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -107,6 +108,7 @@ pub enum Scenario {
     Quadrants = 49,
     RegimentUnloadRefused = 50,
     FleetJoin = 51,
+    FleetFinder = 52,
 }
 
 impl Scenario {
@@ -164,6 +166,7 @@ impl Scenario {
             49 => Self::Quadrants,
             50 => Self::RegimentUnloadRefused,
             51 => Self::FleetJoin,
+            52 => Self::FleetFinder,
             _ => return None,
         })
     }
@@ -436,6 +439,9 @@ pub fn apply(
     if request.scenario == Scenario::Quadrants {
         place_quadrant_contents(request, world, movement, missions, sectors, primary);
     }
+    if request.scenario == Scenario::FleetFinder {
+        place_finder_fleets(request, world, movement, &system_keys);
+    }
     if request.scenario == Scenario::MissionTargeting {
         // The primary system's window at the galaxy view's right edge holds
         // the agent; the second system's planet in its sector window, in the
@@ -456,6 +462,36 @@ pub fn apply(
     }
 
     let _ = manufacturing;
+}
+
+/// The Fleet Finder scenario: the player's first fleet at the primary
+/// system, a copy of it at the third system (the player's), and a copy for
+/// the other side at the primary system, which the player holds and so sees
+/// into (`opposing_contents_visible`).
+fn place_finder_fleets(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &MovementState,
+    system_keys: &[SystemKey],
+) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let (Some(&primary), Some(&third), Some(first)) = (
+        system_keys.first(),
+        system_keys.get(2),
+        world.fleets.keys().next(),
+    ) else {
+        return;
+    };
+    let mut second = world.fleets[first].clone();
+    second.location = third;
+    second.is_alliance = player_is_alliance;
+    let mut enemy = world.fleets[first].clone();
+    enemy.location = primary;
+    enemy.is_alliance = !player_is_alliance;
+    enemy.has_death_star = false;
+    world.fleets.insert(second);
+    world.fleets.insert(enemy);
+    reconcile_fleet_orbits(movement, world);
 }
 
 /// The fleet-move scenarios: the player's first fleet, alone in the primary
@@ -1775,6 +1811,253 @@ impl FleetLoadWatch {
             return;
         };
         let bytes = serde_json::to_vec(&report).expect("serialize the fleet load observation");
+        unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+    }
+}
+
+/// One Fleet Finder row: its name, what it stands for (a fleet by its place
+/// in the world's fleets, and a ship by its index there), the side, and the
+/// system the Finder would open.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct FinderRowObservation {
+    name: String,
+    kind: &'static str,
+    fleet: Option<usize>,
+    ship: Option<usize>,
+    is_alliance: bool,
+    system_dat_id: Option<u32>,
+}
+
+/// Where the Finder's controls lie on screen, at their centers.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct FinderControlsObservation {
+    origin: (f32, f32),
+    tabs: Vec<(f32, f32)>,
+    close: (f32, f32),
+    display: (f32, f32),
+    ship_finder: (f32, f32),
+    fleet_finder: (f32, f32),
+    name_box: (f32, f32),
+    /// Each row's center while the list shows it.
+    rows: Vec<Option<(f32, f32)>>,
+}
+
+/// An open Fleet window and its selected entry.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct FinderFleetWindowObservation {
+    system_dat_id: u32,
+    selected: Option<&'static str>,
+    fleet: Option<usize>,
+    ship: Option<usize>,
+}
+
+/// What the fleet-finder gate checks after each step: the Finder (its mode,
+/// tab, name box, rows, choice and controls), the cockpit's Fleet Finder
+/// control, the open Fleet windows and the systems whose sector window is
+/// open, and the galaxy view's selected system.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct FleetFinderObservation {
+    status: &'static str,
+    code: u32,
+    open: bool,
+    player_is_alliance: bool,
+    mode: Option<&'static str>,
+    tab: Option<&'static str>,
+    name: Option<String>,
+    rows: Vec<FinderRowObservation>,
+    chosen: Option<usize>,
+    first_row: usize,
+    controls: Option<FinderControlsObservation>,
+    cockpit_button: (f32, f32),
+    fleet_windows: Vec<FinderFleetWindowObservation>,
+    sector_open: Vec<u32>,
+    selected_system_dat_id: Option<u32>,
+    left_panel_open: bool,
+    zoom: f32,
+}
+
+fn fleet_ordinal(world: &GameWorld, fleet: FleetKey) -> Option<usize> {
+    world.fleets.keys().position(|key| key == fleet)
+}
+
+fn finder_entry(
+    world: &GameWorld,
+    entry: FleetWindowEntry,
+) -> (&'static str, Option<usize>, Option<usize>) {
+    match entry {
+        FleetWindowEntry::Fleet(fleet) => ("fleet", fleet_ordinal(world, fleet), None),
+        FleetWindowEntry::Ship { fleet, index } => {
+            ("ship", fleet_ordinal(world, fleet), Some(index))
+        }
+    }
+}
+
+pub struct FinderWindows<'a> {
+    pub fog: &'a FogState,
+    pub finder: &'a FleetFinderState,
+    pub fleets: &'a FleetWindowState,
+    pub sectors: &'a SectorWindowState,
+    pub map: &'a GalaxyMapState,
+    /// Whether a left panel the galaxy view's letter keys toggle is open.
+    pub left_panel_open: bool,
+}
+
+fn fleet_finder_observation(
+    request: FixtureRequest,
+    world: &GameWorld,
+    windows: &FinderWindows<'_>,
+) -> Option<FleetFinderObservation> {
+    if request.scenario != Scenario::FleetFinder {
+        return None;
+    }
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let player = if request.faction == CockpitFaction::Alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    let report = windows.finder.report(world, windows.fog, player);
+    let rows = report.as_ref().map_or_else(Vec::new, |report| {
+        report
+            .rows
+            .iter()
+            .map(|row| {
+                let (kind, fleet, ship) = finder_entry(world, row.object);
+                let value = world.fleets.get(row.object.fleet());
+                FinderRowObservation {
+                    name: row.name.clone(),
+                    kind,
+                    fleet,
+                    ship,
+                    is_alliance: value.is_some_and(|value| value.is_alliance),
+                    system_dat_id: value
+                        .and_then(|value| world.systems.get(value.location))
+                        .map(|system| system.dat_id.raw()),
+                }
+            })
+            .collect()
+    });
+    let center = |control| {
+        windows
+            .finder
+            .control_screen_rect(layout, control)
+            .map(screen_center)
+    };
+    let controls = windows.finder.screen_rect(layout).and_then(|rect| {
+        Some(FinderControlsObservation {
+            origin: (rect.min.x, rect.min.y),
+            tabs: [FinderTab::All, FinderTab::Alliance, FinderTab::Imperial]
+                .into_iter()
+                .map(|tab| center(FinderControl::Tab(tab)))
+                .collect::<Option<_>>()?,
+            close: center(FinderControl::Close)?,
+            display: center(FinderControl::Display)?,
+            ship_finder: center(FinderControl::ShipFinder)?,
+            fleet_finder: center(FinderControl::FleetFinder)?,
+            name_box: center(FinderControl::NameBox)?,
+            rows: (0..rows.len())
+                .map(|row| center(FinderControl::Row(row)))
+                .collect(),
+        })
+    });
+    let button = strategic_primary_controls(request.faction)
+        .iter()
+        .find(|control| control.button == CockpitButton::FleetFinder)?
+        .rect;
+    let fleet_windows = world
+        .systems
+        .iter()
+        .filter_map(|(key, system)| {
+            let (selected, _) = windows.fleets.selection(key)?;
+            let (kind, fleet, ship) = selected.map_or((None, None, None), |entry| {
+                let (kind, fleet, ship) = finder_entry(world, entry);
+                (Some(kind), fleet, ship)
+            });
+            Some(FinderFleetWindowObservation {
+                system_dat_id: system.dat_id.raw(),
+                selected: kind,
+                fleet,
+                ship,
+            })
+        })
+        .collect();
+    let sector_open = world
+        .systems
+        .iter()
+        .filter(|(key, _)| {
+            windows
+                .sectors
+                .planet_screen_rect(world, layout, *key)
+                .is_some()
+        })
+        .map(|(_, system)| system.dat_id.raw())
+        .collect();
+    Some(FleetFinderObservation {
+        status: "fleet-finder",
+        code: request.code,
+        open: report.is_some(),
+        player_is_alliance: player == Faction::Alliance,
+        mode: report.as_ref().map(|report| match report.mode {
+            FinderMode::Fleets => "fleets",
+            FinderMode::Ships => "ships",
+        }),
+        tab: report.as_ref().map(|report| match report.tab {
+            FinderTab::All => "all",
+            FinderTab::Alliance => "alliance",
+            FinderTab::Imperial => "imperial",
+        }),
+        name: report.as_ref().map(|report| report.name.clone()),
+        rows,
+        chosen: report.as_ref().and_then(|report| report.chosen),
+        first_row: report.as_ref().map_or(0, |report| report.first_row),
+        controls,
+        cockpit_button: (
+            layout.canvas.x + (button.x + button.width / 2.0) * layout.scale,
+            layout.canvas.y + (button.y + button.height / 2.0) * layout.scale,
+        ),
+        fleet_windows,
+        sector_open,
+        selected_system_dat_id: windows
+            .map
+            .selected_system
+            .and_then(|system| world.systems.get(system))
+            .map(|system| system.dat_id.raw()),
+        left_panel_open: windows.left_panel_open,
+        zoom: windows.map.zoom,
+    })
+}
+
+#[derive(Debug, Default)]
+pub struct FleetFinderWatch {
+    last: Option<FleetFinderObservation>,
+}
+
+impl FleetFinderWatch {
+    /// The observation when it differs from the last one.
+    fn next(
+        &mut self,
+        request: FixtureRequest,
+        world: &GameWorld,
+        windows: &FinderWindows<'_>,
+    ) -> Option<FleetFinderObservation> {
+        let now = fleet_finder_observation(request, world, windows);
+        if now.is_none() || now == self.last {
+            return None;
+        }
+        self.last.clone_from(&now);
+        now
+    }
+
+    pub fn observe(
+        &mut self,
+        request: FixtureRequest,
+        world: &GameWorld,
+        windows: &FinderWindows<'_>,
+    ) {
+        let Some(report) = self.next(request, world, windows) else {
+            return;
+        };
+        let bytes = serde_json::to_vec(&report).expect("serialize the fleet finder observation");
         unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
     }
 }
@@ -3431,6 +3714,179 @@ mod tests {
                 Scenario::FleetJoin
             ]
         );
+    }
+
+    fn finder_observation(
+        applied: &Applied,
+        finder: &FleetFinderState,
+        faction: CockpitFaction,
+    ) -> FleetFinderObservation {
+        let player = if faction == CockpitFaction::Alliance {
+            Faction::Alliance
+        } else {
+            Faction::Empire
+        };
+        fleet_finder_observation(
+            request(Scenario::FleetFinder, faction),
+            &applied.world,
+            &FinderWindows {
+                fog: &FogState::new(player),
+                finder,
+                fleets: &FleetWindowState::default(),
+                sectors: &applied.sectors,
+                map: &applied.map,
+                left_panel_open: false,
+            },
+        )
+        .unwrap()
+    }
+
+    // port: the fixture's own layout; the rows follow FUN_00462be0.
+    #[test]
+    fn the_fleet_finder_scenario_lists_a_second_own_fleet_and_the_other_sides_fleet_at_home() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let applied = apply_to_fleet_world(request(Scenario::FleetFinder, faction));
+            let world = &applied.world;
+            let is_alliance = faction == CockpitFaction::Alliance;
+            let keys: Vec<_> = world.systems.keys().take(10).collect();
+            let (home, third) = (
+                world.systems[keys[0]].dat_id.raw(),
+                world.systems[keys[2]].dat_id.raw(),
+            );
+            assert_eq!(world.fleets.len(), 5);
+            let mut finder = FleetFinderState::default();
+            assert!(finder_observation(&applied, &finder, faction)
+                .rows
+                .is_empty());
+            finder.open(faction);
+
+            let observed = finder_observation(&applied, &finder, faction);
+
+            assert!(observed.open);
+            assert_eq!(observed.mode, Some("fleets"));
+            assert_eq!(observed.tab, Some("all"));
+            let row = |side: bool, system: u32| {
+                observed
+                    .rows
+                    .iter()
+                    .any(|row| row.is_alliance == side && row.system_dat_id == Some(system))
+            };
+            assert!(row(!is_alliance, home), "{faction:?}: {:?}", observed.rows);
+            assert!(row(is_alliance, third), "{faction:?}: {:?}", observed.rows);
+            let controls = observed.controls.unwrap();
+            assert_eq!(controls.rows.len(), observed.rows.len());
+            assert!(controls.rows.iter().all(Option::is_some));
+            assert_eq!(observed.player_is_alliance, is_alliance);
+            // FUN_00427270: the control's rectangle, (157, 407) 27 by 15 for
+            // the Alliance and (199, 434) 37 by 24 for the Empire.
+            let button = if is_alliance {
+                (170.5, 414.5)
+            } else {
+                (217.5, 446.0)
+            };
+            assert_eq!(observed.cockpit_button, button);
+            // The first fleet stays first; the other side's copy is the last.
+            let fleet = |ordinal| observed.rows.iter().find(|row| row.fleet == Some(ordinal));
+            let first = fleet(0).unwrap();
+            assert_eq!(
+                (first.kind, first.ship, first.is_alliance),
+                ("fleet", None, is_alliance)
+            );
+            assert_eq!(fleet(4).map(|row| row.is_alliance), Some(!is_alliance));
+        }
+    }
+
+    #[test]
+    fn the_finder_observation_names_ships_and_the_fleet_windows_selection() {
+        let faction = CockpitFaction::Alliance;
+        let mut applied = apply_to_fleet_world(request(Scenario::FleetFinder, faction));
+        let class = applied.world.capital_ship_classes.keys().next().unwrap();
+        let first = applied.world.fleets.keys().next().unwrap();
+        let home = applied.world.fleets[first].location;
+        applied.world.fleets[first].capital_ships = vec![
+            ShipInstance::new(class, 100, true),
+            ShipInstance::new(class, 100, true),
+        ];
+        let mut finder = FleetFinderState::default();
+        finder.open(faction);
+        let layout = CockpitState::new(faction).layout_for(640.0, 480.0);
+        let mut fleets = FleetWindowState::default();
+        assert!(fleets.open(&applied.world, home, (100, 100), faction, layout));
+        assert!(fleets.select(
+            home,
+            FleetWindowEntry::Ship {
+                fleet: first,
+                index: 1
+            }
+        ));
+        let observe = |finder: &FleetFinderState| {
+            fleet_finder_observation(
+                request(Scenario::FleetFinder, faction),
+                &applied.world,
+                &FinderWindows {
+                    fog: &FogState::new(Faction::Alliance),
+                    finder,
+                    fleets: &fleets,
+                    sectors: &applied.sectors,
+                    map: &applied.map,
+                    left_panel_open: true,
+                },
+            )
+            .unwrap()
+        };
+        let observed = observe(&finder);
+
+        let window = observed.fleet_windows.first().unwrap();
+        assert_eq!(observed.fleet_windows.len(), 1);
+        assert_eq!(
+            window.system_dat_id,
+            applied.world.systems[home].dat_id.raw()
+        );
+        assert_eq!(
+            (window.selected, window.fleet, window.ship),
+            (Some("ship"), Some(0), Some(1))
+        );
+        assert!(observed.left_panel_open);
+
+        finder.set_mode(FinderMode::Ships);
+        let observed = observe(&finder);
+        let row = observed
+            .rows
+            .iter()
+            .find(|row| row.fleet == Some(0) && row.ship == Some(1));
+        assert_eq!(row.map(|row| row.kind), Some("ship"));
+    }
+
+    #[test]
+    fn the_finder_watch_reports_only_a_changed_finder() {
+        let faction = CockpitFaction::Empire;
+        let applied = apply_to_fleet_world(request(Scenario::FleetFinder, faction));
+        let fog = FogState::new(Faction::Empire);
+        let fleets = FleetWindowState::default();
+        let mut finder = FleetFinderState::default();
+        let mut watch = FleetFinderWatch::default();
+        let next = |watch: &mut FleetFinderWatch, scenario, finder: &FleetFinderState| {
+            watch.next(
+                request(scenario, faction),
+                &applied.world,
+                &FinderWindows {
+                    fog: &fog,
+                    finder,
+                    fleets: &fleets,
+                    sectors: &applied.sectors,
+                    map: &applied.map,
+                    left_panel_open: false,
+                },
+            )
+        };
+
+        let finder_scenario = Scenario::FleetFinder;
+        assert!(next(&mut watch, finder_scenario, &finder).is_some_and(|observed| !observed.open));
+        assert!(next(&mut watch, finder_scenario, &finder).is_none());
+        finder.open(faction);
+        assert!(next(&mut watch, finder_scenario, &finder).is_some_and(|observed| observed.open));
+        assert!(next(&mut watch, finder_scenario, &finder).is_none());
+        assert!(next(&mut watch, Scenario::FleetJoin, &finder).is_none());
     }
 
     #[test]

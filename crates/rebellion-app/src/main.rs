@@ -65,6 +65,7 @@ use rebellion_core::world::{
     CampaignConfig, GameWorld, MstbTable, SeedDifficulty, SeedOptions, VictoryConditions,
 };
 
+use rebellion_render::fleet_finder::{draw_fleet_finder, FleetFinderAction, FleetFinderState};
 use rebellion_render::game_speed::{
     choose_game_speed, draw_day_readout, draw_game_speed_menu, draw_pause_alert,
     open_game_speed_menu_on_right_click, pause_alert_contains_screen_point, stepped_game_speed,
@@ -1012,6 +1013,7 @@ async fn main() {
     let mut mfg_panel_state = ManufacturingPanelState::default();
     let mut mission_dialog_state = MissionDialogState::default();
     let mut move_confirmation_state = MoveConfirmationState::default();
+    let mut fleet_finder_state = FleetFinderState::default();
     let mut enc_state = EncyclopediaState::new();
     let mut research_panel_state = ResearchPanelState::default();
     let mut jedi_panel_state = JediPanelState::default();
@@ -1283,6 +1285,8 @@ async fn main() {
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let mut quadrant_watch = interface_test_fixture::QuadrantWatch::default();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let mut fleet_finder_watch = interface_test_fixture::FleetFinderWatch::default();
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let interface_fixture_active =
         interface_fixture_request.is_some() || tactical_fixture_request.is_some();
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
@@ -1355,6 +1359,8 @@ async fn main() {
                     targeting = None;
                 } else if move_confirmation_state.is_open() {
                     // The window's own key slot answers Escape (FUN_0044f640).
+                } else if fleet_finder_state.is_open() {
+                    // The Fleet Finder's key slot closes it (FUN_00463360).
                 } else if object_menu.is_some() {
                     // Escape closes only the open object pop-up menu.
                     object_menu = None;
@@ -1387,7 +1393,12 @@ async fn main() {
             }
         }
         // ── Galaxy-mode keyboard shortcuts (blocked during event screen) ────
-        if game_mode == GameMode::Galaxy && !event_screen_state.is_active() && !show_save_load {
+        // The open Fleet Finder takes the keys for its name box.
+        if game_mode == GameMode::Galaxy
+            && !event_screen_state.is_active()
+            && !show_save_load
+            && !fleet_finder_state.is_open()
+        {
             if is_key_pressed(KeyCode::R) {
                 map_state = GalaxyMapState::default();
             }
@@ -3149,6 +3160,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     mfg_panel_state = ManufacturingPanelState::default();
                                     mission_dialog_state = MissionDialogState::default();
                                     move_confirmation_state = MoveConfirmationState::default();
+                                    fleet_finder_state = FleetFinderState::default();
                                     research_panel_state = ResearchPanelState::default();
                                     jedi_panel_state = JediPanelState::default();
                                     bombardment_panel_state = BombardmentPanelState::default();
@@ -3355,6 +3367,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || fleet_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
+                    || fleet_finder_state.contains_screen_point(cockpit_layout, pointer)
                     || cockpit_state.gid_ui.menu_open
                     || enc_state.open
                     || original_modal_fixture_open
@@ -4160,6 +4173,43 @@ Some(RailAudience::side(*faction_is_alliance)),
                         None => {}
                     }
 
+                    // FUN_00429440: the Finder's choice opens its system's
+                    // sector window, then the Fleet window from the fleet
+                    // icon with the fleet or ship selected.
+                    if let Some(FleetFinderAction::Open(entry)) = draw_fleet_finder(
+                        ctx,
+                        &world,
+                        fog_state,
+                        &mut fleet_finder_state,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        if let Some(system) =
+                            world.fleets.get(entry.fleet()).map(|fleet| fleet.location)
+                        {
+                            sector_window_state.open_for_system(
+                                &world,
+                                system,
+                                cockpit_state.faction,
+                            );
+                            if let Some(point) = sector_window_state.fleet_window_point(
+                                &world,
+                                cockpit_layout,
+                                system,
+                            ) {
+                                map_state.selected_system = Some(system);
+                                fleet_window_state.open(
+                                    &world,
+                                    system,
+                                    point,
+                                    cockpit_state.faction,
+                                    cockpit_layout,
+                                );
+                                fleet_window_state.select(system, entry);
+                            }
+                        }
+                    }
+
                     // FUN_0044f5e0: the checkmark resubmits with force 1,
                     // which validates again and departs without asking.
                     if let Some(MoveConfirmationAction::Confirm {
@@ -4426,7 +4476,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                     if let Some(btn) = cockpit_command.flatten() {
                         let (command, destination) = match btn {
                             CockpitButton::SystemFinder => (0x12d, "system_finder"),
-                            CockpitButton::FleetFinder => (0x12e, "fleet_finder"),
+                            CockpitButton::FleetFinder => {
+                                // FUN_0042a0c0 opens one Fleet Finder; F3
+                                // reaches the same case (FUN_00422ce0).
+                                fleet_finder_state.open(cockpit_state.faction);
+                                macroquad::logging::info!(
+                                    "[interface] command=0x12e destination=fleet_finder status=opened_original"
+                                );
+                                return;
+                            }
                             CockpitButton::PersonnelFinder => (0x12f, "personnel_finder"),
                             CockpitButton::TroopFinder => (0x130, "troop_finder"),
                             CockpitButton::GameOptions => (0x133, "game_options"),
@@ -5082,6 +5140,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             mfg_panel_state = ManufacturingPanelState::default();
                             mission_dialog_state = MissionDialogState::default();
                             move_confirmation_state = MoveConfirmationState::default();
+                            fleet_finder_state = FleetFinderState::default();
                             research_panel_state = ResearchPanelState::default();
                             jedi_panel_state = JediPanelState::default();
                             bombardment_panel_state = BombardmentPanelState::default();
@@ -5399,6 +5458,30 @@ Some(RailAudience::side(*faction_is_alliance)),
                     move_confirmation_state.is_open(),
                     msg_log.messages(),
                     map_state.zoom,
+                );
+                fleet_finder_watch.observe(
+                    request,
+                    &world,
+                    &interface_test_fixture::FinderWindows {
+                        fog: if player_faction == MissionFaction::Alliance {
+                            &fog_alliance_state
+                        } else {
+                            &fog_empire_state
+                        },
+                        finder: &fleet_finder_state,
+                        fleets: &fleet_window_state,
+                        sectors: &sector_window_state,
+                        map: &map_state,
+                        left_panel_open: show_officers
+                            || show_fleets
+                            || show_manufacturing
+                            || show_missions
+                            || show_research
+                            || show_jedi
+                            || show_bombardment
+                            || show_death_star
+                            || show_loyalty,
+                    },
                 );
                 quadrant_watch.observe(
                     request,

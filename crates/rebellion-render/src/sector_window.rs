@@ -163,6 +163,21 @@ impl SectorWindowState {
         self.quadrant_screen_rect(world, layout, system, Quadrant::Fleets)
     }
 
+    /// The logical point `system`'s Fleet window opens at from its open
+    /// sector window: the fleet icon's (`FUN_0045c8e0` →
+    /// `FUN_0045aac0(.., item +0x40, +0x44)`). port: the icon's center, as
+    /// an icon opened without a double-click point.
+    #[must_use]
+    pub fn fleet_window_point(
+        &self,
+        world: &GameWorld,
+        layout: CockpitLayout,
+        system: SystemKey,
+    ) -> Option<(i16, i16)> {
+        let icon = self.fleet_icon_screen_rect(world, layout, system)?;
+        Some(screen_to_logical(layout, icon.center()))
+    }
+
     /// Where one of `system`'s four quadrant overlays lies, in screen
     /// pixels, when its sector's window is open (`FUN_00459e30`).
     #[must_use]
@@ -1342,6 +1357,25 @@ mod tests {
             opened(&actions)[..],
             [SectorWindowAction::OpenFleetWindow { .. }]
         ));
+    }
+
+    #[test]
+    fn the_fleet_window_opens_from_the_fleet_icons_point() {
+        // FUN_0045c8e0 opens the Fleet window at the sector item's stored
+        // point; port: the center of the icon at (93, 78) to (121, 97).
+        let (world, system, _) = fixture_world();
+        let mut state = SectorWindowState::default();
+        assert_eq!(state.fleet_window_point(&world, layout(1.0), system), None);
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+
+        assert_eq!(
+            state.fleet_window_point(&world, layout(1.0), system),
+            Some((107, 88))
+        );
+        assert_eq!(
+            state.fleet_window_point(&world, layout(2.0), system),
+            Some((107, 88))
+        );
     }
 
     #[test]
