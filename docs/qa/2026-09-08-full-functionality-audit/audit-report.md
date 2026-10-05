@@ -291,8 +291,10 @@ cross-runtime proof remain open
   fleet of its own, with a 34-case two-sided gate, and F-007B's merge of
   compatible arrivals is retired as unsourced; the Fleet Finder (window
   type 0x15, FUN_00461960) opens from the cockpit or F3 and opens a chosen
-  fleet's or ship's Sector and Fleet windows (FUN_00429440), with a 14-case
-  two-sided gate; a native check remains)
+  fleet's or ship's Sector and Fleet windows (FUN_00429440), with an 18-case
+  two-sided gate. The Finder stays above a modeless Fleet window, and an
+  empty-list double-click over a covered sector planet leaves the selected
+  system unchanged. Remaining transport-limited native journeys stay open)
   wired
   ordinary player dispatch through the same validated departure helper, fixes
   map/context-menu click ordering and stale targets, and reports authoritative

@@ -33,6 +33,7 @@ acceptance plan required before the project can claim 100% functionality.
 | [Fleet redispatch proof](evidence/2026-09-09-fleet-redispatch.md) | F-007A active-order invariants, AI exclusion, accepted-event telemetry, and the 5,000-tick seed-42 delta. |
 | [Fleet position proof](evidence/2026-09-09-fleet-position-consolidation.md) | F-007B authoritative transit position, stale-index repair, orbit-only production, deterministic arrival consolidation, five-seed bounds, and Astra bitmap acceptance. |
 | [Player fleet dispatch proof](evidence/2026-09-09-player-fleet-dispatch.md) | F-007C validated destination selection, authoritative departure, transit feedback, stale-menu cleanup, and Astra two-faction bitmap acceptance. |
+| [Native strategic-interface acceptance](evidence/2026-10-05-f007c-native-interface-acceptance.md) | F-007C native strategic-window evidence, corrected Fleet Finder stacking, covered-window input proof, and remaining transport-limited checks. |
 | [System combat proof](evidence/2026-09-10-system-combat-resolution.md) | F-007D system-scoped multi-fleet resolution, persistent fighter attrition, shield correction, bounded stalemates, five-seed diagnostics, exact replay, and Astra bitmap acceptance. |
 | [AI campaign-logistics checkpoint](evidence/2026-09-10-ai-campaign-logistics.md) | F-007E ownership, targeting, HQ defense, blockade, troop-class, repair/save-v12, and five-seed evidence; conquest and balance remain open. |
 | [Troop transport and occupation proof](evidence/2026-09-10-troop-transport-occupation.md) | F-007E regiment cargo, invasion, political occupation, provisional character capture, source-review corrections, save-v13, five-seed evidence, and Astra browser acceptance. |
@@ -137,11 +138,12 @@ icons open the System, System Defenses, Fleet and Missions windows. Regiments
 unload by hand from the Fleet window and travel on their own, and fleets join
 and split there (a ship's or fleet's Move onto a fleet, Create Fleet); the
 arrival merge F-007B added is retired as unsourced. The Fleet Finder opens a
-chosen fleet's or ship's Sector and Fleet windows. Its native check remains. Faction liveness, the wider
-campaign loop, five-seed cross-runtime replay,
-interactive/tactical convergence, browser
-memory/media work, cross-browser performance, formatting, lint, and
-release-level visual acceptance remain incomplete.
+chosen fleet's or ship's Sector and Fleet windows. Its stacking fix and
+covered-window input contract pass focused native and deterministic browser
+checks; the transport-limited native journeys remain open. Faction liveness,
+the wider campaign loop, five-seed cross-runtime replay, interactive/tactical
+convergence, browser memory/media work, cross-browser performance, formatting,
+lint, and release-level visual acceptance remain incomplete.
 
 The JSON document is the canonical source for stable finding and feature IDs.
 The Markdown document explains the evidence and how to execute each pass. Its

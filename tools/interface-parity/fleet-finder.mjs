@@ -423,6 +423,8 @@ const cases = [
     // change clears the choice.
     async run(page) {
       const opened = await openFinder(page);
+      const selectedBefore = opened.selected_system_dat_id;
+      const sectorBefore = opened.sector_open;
       assert.ok(opened.rows.some((row) => row.is_alliance) && opened.rows.some((row) => !row.is_alliance),
         "the All tab lists both sides");
       await click(page, point(opened.controls.rows[0]));
@@ -435,21 +437,73 @@ const cases = [
       const imperial = await until(page, "the Imperial tab shows", (o) => o.tab === "imperial");
       assert.ok(imperial.rows.length > 0 && imperial.rows.every((row) => !row.is_alliance), JSON.stringify(imperial.rows));
       assert.equal(alliance.rows.length + imperial.rows.length, opened.rows.length);
-      // The galaxy map under the Finder takes none of its clicks.
-      assert.equal(imperial.selected_system_dat_id, null);
-      assert.deepEqual(imperial.sector_open, []);
+      // The galaxy map and authentic sector window under the Finder take none
+      // of its clicks.
+      assert.equal(imperial.selected_system_dat_id, selectedBefore);
+      assert.deepEqual(imperial.sector_open, sectorBefore);
       // Nor its wheel (pointer_blocked): a wheel over the title leaves the
-      // map's zoom; the control, the same wheel over the strip of map left of
-      // the Finder (the galaxy view starts 8 pixels left of it for the
-      // Alliance, 5 for the Empire), zooms it.
+      // map's zoom; the control, the same wheel over the strip of map right of
+      // the Finder, zooms it. The right strip stays clear of the sector window
+      // deliberately present under this fixture.
       const origin = { x: opened.controls.origin[0], y: opened.controls.origin[1] };
       const before = imperial.zoom;
       const over = await wheelAt(page, { x: origin.x + 200, y: origin.y + 20 });
       assert.equal(over, before, "a wheel over the Fleet Finder zoomed the map");
-      const gap = { x: origin.x - 3, y: origin.y + 150 };
+      const gap = { x: origin.x + windowSize.width + 3, y: origin.y + 150 };
       const control = await wheelAt(page, gap);
       assert.notEqual(control, before, `the control wheel at ${JSON.stringify(gap)} did not zoom the map`);
       return { opened, chosen, alliance, imperial, wheel: { before, over, control, gap } };
+    },
+  },
+  {
+    name: "sector-occlusion",
+    // A Finder empty-list double click must belong only to the top-level
+    // Finder, even when the same pixels cover another planet in the original
+    // modeless sector window.
+    async run(page) {
+      const opened = await openFinder(page);
+      const origin = { x: opened.controls.origin[0], y: opened.controls.origin[1] };
+      const firstEmptyRowY = origin.y + 138 + opened.rows.length * 20 + 2;
+      const listBottom = origin.y + 303;
+      const target = opened.sector_planets.find((planet) => {
+        const [x, y] = planet.center;
+        return planet.system_dat_id !== opened.selected_system_dat_id
+          && x >= origin.x + 36 && x < origin.x + 386
+          && y >= firstEmptyRowY && y < listBottom;
+      });
+      assert.ok(target, `no covered sector planet lies under empty Finder space: ${JSON.stringify(opened)}`);
+
+      await doubleClick(page, point(target.center));
+      await key(page, "Escape");
+      const closed = await until(page, "Escape closes the Finder", (o) => !o.open);
+      assert.equal(closed.selected_system_dat_id, opened.selected_system_dat_id,
+        "an empty Finder double click changed the covered sector selection");
+      assert.deepEqual(closed.sector_open, opened.sector_open,
+        "an empty Finder double click changed the covered sector windows");
+      return { opened, target, closed };
+    },
+  },
+  {
+    name: "fleet-overlap",
+    // Opening a result creates the original Fleet window. Reopening the
+    // Finder must keep its covered right-side controls above that modeless
+    // Foreground window.
+    async run(page) {
+      const opened = await openFinder(page);
+      await click(page, point(opened.controls.rows[0]));
+      const chosen = await until(page, "the first fleet is chosen", (o) => o.chosen === 0);
+      const row = chosen.rows[0];
+      await click(page, point(chosen.controls.display));
+      const fleet = await until(page, "Display opens the Fleet window", (o) => !o.open);
+      assertOpened(fleet, row);
+
+      await key(page, "F3");
+      const reopened = await until(page, "F3 reopens above the Fleet window", (o) => o.open);
+      assert.ok(reopened.fleet_windows.length > 0);
+      await click(page, point(reopened.controls.ship_finder));
+      const ships = await until(page, "the covered Ship Finder control responds", (o) => o.mode === "ships");
+      assert.ok(ships.fleet_windows.length > 0);
+      return { opened, chosen, fleet, reopened, ships };
     },
   },
   {

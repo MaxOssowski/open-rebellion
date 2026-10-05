@@ -441,6 +441,8 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetFinder {
         place_finder_fleets(request, world, movement, &system_keys);
+        map.selected_system = Some(primary);
+        sectors.open_for_system(world, primary, request.faction);
     }
     if request.scenario == Scenario::MissionTargeting {
         // The primary system's window at the galaxy view's right edge holds
@@ -1851,6 +1853,15 @@ struct FinderFleetWindowObservation {
     ship: Option<usize>,
 }
 
+/// A planet currently exposed by an open sector window. The browser gate uses
+/// these exact screen coordinates to prove that a Finder click cannot fall
+/// through to the covered original window.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct FinderSectorPlanetObservation {
+    system_dat_id: u32,
+    center: (f32, f32),
+}
+
 /// What the fleet-finder gate checks after each step: the Finder (its mode,
 /// tab, name box, rows, choice and controls), the cockpit's Fleet Finder
 /// control, the open Fleet windows and the systems whose sector window is
@@ -1871,6 +1882,7 @@ struct FleetFinderObservation {
     cockpit_button: (f32, f32),
     fleet_windows: Vec<FinderFleetWindowObservation>,
     sector_open: Vec<u32>,
+    sector_planets: Vec<FinderSectorPlanetObservation>,
     selected_system_dat_id: Option<u32>,
     left_panel_open: bool,
     zoom: f32,
@@ -1981,16 +1993,21 @@ fn fleet_finder_observation(
             })
         })
         .collect();
-    let sector_open = world
+    let sector_planets: Vec<_> = world
         .systems
         .iter()
-        .filter(|(key, _)| {
-            windows
-                .sectors
-                .planet_screen_rect(world, layout, *key)
-                .is_some()
+        .filter_map(|(key, system)| {
+            let rect = windows.sectors.planet_screen_rect(world, layout, key)?;
+            let center = rect.center();
+            Some(FinderSectorPlanetObservation {
+                system_dat_id: system.dat_id.raw(),
+                center: (center.x, center.y),
+            })
         })
-        .map(|(_, system)| system.dat_id.raw())
+        .collect();
+    let sector_open = sector_planets
+        .iter()
+        .map(|planet| planet.system_dat_id)
         .collect();
     Some(FleetFinderObservation {
         status: "fleet-finder",
@@ -2017,6 +2034,7 @@ fn fleet_finder_observation(
         ),
         fleet_windows,
         sector_open,
+        sector_planets,
         selected_system_dat_id: windows
             .map
             .selected_system

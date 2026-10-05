@@ -509,13 +509,15 @@ pub fn draw_fleet_finder(
     let mut enter = false;
     let mut wheel = 0.0;
 
-    // port: the galaxy view's windows each come to the top as they draw;
-    // the Finder draws after them, so it stays above them while open.
+    // FUN_0042a0c0 opens the Finder above the galaxy view's modeless child
+    // windows. Those windows share Foreground and raise the focused one each
+    // frame, so the Finder uses the popup layer, like the mission dialog and
+    // game menu.
     let id = egui::Id::new("original-fleet-finder");
-    ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Tooltip, id));
     egui::Area::new(id)
         .fixed_pos(rect.min)
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Tooltip)
         .show(ctx, |ui| {
             let (frame, _) = ui.allocate_exact_size(rect.size(), egui::Sense::click());
             let painter = ui.painter().with_clip_rect(frame);
@@ -1818,5 +1820,51 @@ mod tests {
         assert!(state.contains_screen_point(layout(), (rect.center().x, rect.center().y)));
         assert!(!state.contains_screen_point(layout(), (rect.max.x + 1.0, rect.center().y)));
         assert_eq!(rect.size(), egui::vec2(470.0, 330.0));
+    }
+
+    #[test]
+    fn the_finder_stays_above_a_modeless_window_that_raises_itself_every_frame() {
+        // FUN_0042a0c0 opens the Finder over the galaxy view's child windows;
+        // a focused Fleet window raises itself every frame (fleet_window.rs).
+        let galaxy = galaxy();
+        let layout = layout();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let mut state = opened(CockpitFaction::Alliance);
+        let modeless = egui::Id::new("raising-fleet-window");
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 520.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                let _ = draw_fleet_finder(
+                    ctx,
+                    &galaxy.world,
+                    &galaxy.fog,
+                    &mut state,
+                    layout,
+                    &mut cache,
+                );
+                // A focused child window may raise itself later in the same
+                // frame. The original Finder remains the top-level owner.
+                ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, modeless));
+                egui::Area::new(modeless)
+                    .order(egui::Order::Foreground)
+                    .fixed_pos(egui::Pos2::ZERO)
+                    .show(ctx, |ui| {
+                        ui.allocate_response(egui::vec2(700.0, 520.0), egui::Sense::click());
+                    });
+            });
+        }
+
+        assert_eq!(
+            ctx.layer_id_at(window_rect(layout).center())
+                .map(|layer| layer.id),
+            Some(egui::Id::new("original-fleet-finder"))
+        );
     }
 }

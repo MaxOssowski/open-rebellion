@@ -553,8 +553,10 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   the row it best begins (`FUN_00609650`), and Display, Enter or a double
   click opens the system's sector window and its Fleet window with the
   fleet or ship selected (`FUN_00429440`). The `fleet-finder.mjs` gate
-  passes both sides, its chrome exact against STRATEGY.DLL. A native check
-  remains.
+  passes 18/18 across both sides, including an authentic covered sector
+  window and an open Fleet window; its chrome is exact against STRATEGY.DLL.
+  The Finder now remains above modeless windows. Transport-limited native
+  journeys remain open under F-007C.
 - [ ] Balance one-ship fleets in the AI. With the arrival merge retired, the
   AI's own fleets no longer combine where they meet: in seed 42's 1,500-tick
   dual-AI run the fleet count at its six snapshots runs 5, 6, 11, 11, 17, 17
