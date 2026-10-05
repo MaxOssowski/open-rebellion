@@ -153,7 +153,9 @@ Fleet window at its fleet icon's stored point (`FUN_0045c8e0` →
   egui's double-click delay, since egui counts a double click across
   widgets and a third click as a triple.
 - port: the Finder opens centered in the galaxy view and draws above its
-  other windows while open.
+  other windows while open: it sits on egui's Tooltip order and raises itself
+  each frame, since the modeless windows share Foreground and raise the
+  focused one each frame (aeafc17f).
 - port: the galaxy view's letter keys stand aside while the Finder is open.
   F1..F7 reach the cockpit once the name box loses the focus; the original
   ignores `0x70..0x76` while a finder is open.
@@ -169,6 +171,11 @@ Fleet window at its fleet icon's stored point (`FUN_0045c8e0` →
 
 - `FUN_004fcee0`'s state value (below 2 refuses every finder).
 - `FUN_00606980`'s placement, and the tab group's pressed art.
+- Whether the move confirmation (`FUN_0044f060`) and the mission dialog are
+  modal. The port's cockpit controls stay live while either is open, so the
+  Fleet Finder control or F3 opens the Finder over them, and the Finder, the
+  larger of the two and centered in the same place, hides them until it
+  closes.
 - The System, Personnel and Troop finders (`FUN_0042a000`, `FUN_0042a180`,
   `FUN_0042a4d0`).
 

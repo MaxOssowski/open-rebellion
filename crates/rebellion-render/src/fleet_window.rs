@@ -242,6 +242,13 @@ impl FleetWindowState {
             .any(|window| rect_contains(window_screen_rect(window, layout), point))
     }
 
+    /// The screen rect of `system`'s window.
+    #[must_use]
+    pub fn screen_rect(&self, layout: CockpitLayout, system: SystemKey) -> Option<egui::Rect> {
+        let window = self.windows.iter().find(|window| window.system == system)?;
+        Some(window_screen_rect(window, layout))
+    }
+
     /// The screen rect of the `row`th left-list entry of `system`'s window.
     #[must_use]
     pub fn entry_screen_rect(
@@ -2561,6 +2568,14 @@ pub(crate) mod tests {
                 egui::vec2(62.0, 56.0)
             ))
         );
+        assert_eq!(
+            state.screen_rect(scaled(), system),
+            Some(egui::Rect::from_min_size(
+                at(0.0, 0.0),
+                egui::vec2(FLEET_WINDOW_WIDTH * 2.0, FLEET_WINDOW_HEIGHT * 2.0)
+            ))
+        );
+        assert_eq!(state.screen_rect(scaled(), missing), None);
         assert_eq!(state.entry_screen_rect(scaled(), missing, 0), None);
         assert_eq!(
             state.tab_screen_rect(scaled(), missing, FleetWindowTab::Troops),

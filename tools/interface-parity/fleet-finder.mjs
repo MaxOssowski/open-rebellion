@@ -500,10 +500,23 @@ const cases = [
       await key(page, "F3");
       const reopened = await until(page, "F3 reopens above the Fleet window", (o) => o.open);
       assert.ok(reopened.fleet_windows.length > 0);
-      await click(page, point(reopened.controls.ship_finder));
-      const ships = await until(page, "the covered Ship Finder control responds", (o) => o.mode === "ships");
-      assert.ok(ships.fleet_windows.length > 0);
-      return { opened, chosen, fleet, reopened, ships };
+      // A Finder control the Fleet window covers: below the Finder, the
+      // window would take this click (egui keeps the older of two raised
+      // Foreground layers below, and the Finder is the older).
+      const covered = (at) => reopened.fleet_windows.some(({ rect: [x, y, width, height] }) =>
+        at[0] >= x && at[0] < x + width && at[1] >= y && at[1] < y + height);
+      const candidates = [
+        { name: "ship_finder", at: reopened.controls.ship_finder, done: (o) => o.mode === "ships" },
+        { name: "alliance_tab", at: reopened.controls.tabs[1], done: (o) => o.tab === "alliance" },
+        { name: "imperial_tab", at: reopened.controls.tabs[2], done: (o) => o.tab === "imperial" },
+        { name: "close", at: reopened.controls.close, done: (o) => !o.open },
+      ];
+      const control = candidates.find((candidate) => covered(candidate.at));
+      assert.ok(control, `no Finder control lies under the Fleet window: ${JSON.stringify(reopened)}`);
+      await click(page, point(control.at));
+      const responded = await until(page, `the covered ${control.name} control responds`, control.done);
+      assert.ok(responded.fleet_windows.length > 0);
+      return { opened, chosen, fleet, reopened, control: control.name, responded };
     },
   },
   {

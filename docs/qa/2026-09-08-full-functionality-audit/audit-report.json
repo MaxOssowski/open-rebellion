@@ -489,7 +489,8 @@
               "release_wasm_sha256": "0b8ca1277f6f6c3fc6fb5692c10e7f11121052436ff37e6c8be00e10304beade",
               "console_or_page_errors": 0,
               "muted": true,
-              "final_native_binary_sha256": "5cb2d2ae6afa0c648115247f4aa9278c6bb3d03a913dd7b94b7cf0ef3fbbecb6"
+              "final_native_binary_sha256": "5cb2d2ae6afa0c648115247f4aa9278c6bb3d03a913dd7b94b7cf0ef3fbbecb6",
+              "review": {"date": "2026-10-05", "reviewer": "Claude (peer review of aeafc17f)", "finding": "the fleet-overlap browser case passed with the Finder back on Foreground on both factions: its Ship Finder click lay outside the reopened Fleet window, so only the unit test caught the stacking mutant", "fix": "the fixture reports each Fleet window's screen rect (FleetWindowState::screen_rect) and the case clicks a Finder control inside one (the Alliance tab on both factions); the Foreground mutant now fails both cases and Tooltip passes", "browser_cases": "18 of 18 pass across both factions", "requests": "72 of 72 HTTP 200", "console_or_page_errors": 0, "muted": true, "browser_run": ".artifacts/interface-parity/fleet-finder-2026-10-05T23-24-38-163Z-83071/", "wasm_sha256": "c3f50929ced3c628b1ee733c30c395f1407056a8c4f6a23ad8f5fea025a54296", "open": "whether the move confirmation and mission dialog are modal in the original; the port opens the Finder over them from the cockpit control or F3 (ghidra/notes/fleet-finder.md, Still open)"}
             },
             "remaining": "secondary-click, drag, function-key, populated Missions-window, hierarchical Ship Finder, and speed-menu journeys remain transport-limited"
           },

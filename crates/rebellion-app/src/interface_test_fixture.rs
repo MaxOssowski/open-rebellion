@@ -1851,6 +1851,9 @@ struct FinderFleetWindowObservation {
     selected: Option<&'static str>,
     fleet: Option<usize>,
     ship: Option<usize>,
+    /// The window's screen rect, `(x, y, width, height)`, so the gate can
+    /// click a Finder control the window covers.
+    rect: Option<(f32, f32, f32, f32)>,
 }
 
 /// A planet currently exposed by an open sector window. The browser gate uses
@@ -1990,6 +1993,10 @@ fn fleet_finder_observation(
                 selected: kind,
                 fleet,
                 ship,
+                rect: windows
+                    .fleets
+                    .screen_rect(layout, key)
+                    .map(|rect| (rect.min.x, rect.min.y, rect.width(), rect.height())),
             })
         })
         .collect();
@@ -3864,6 +3871,9 @@ mod tests {
             (window.selected, window.fleet, window.ship),
             (Some("ship"), Some(0), Some(1))
         );
+        // FUN_004a2630: the Fleet window is 235 by 304, where it opened.
+        let rect = fleets.screen_rect(layout, home).unwrap();
+        assert_eq!(window.rect, Some((rect.min.x, rect.min.y, 235.0, 304.0)));
         assert!(observed.left_panel_open);
 
         finder.set_mode(FinderMode::Ships);

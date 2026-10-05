@@ -97,6 +97,25 @@ and retained its captures under
 Its reported selection failure is retained, but reclassified as an invalid
 visual assertion for the hover-only brackets described above.
 
+## Review correction
+
+A review of `aeafc17f` found that the `fleet-overlap` browser case passed
+with the Finder put back on Foreground, on both factions. The case clicked
+the Ship Finder control, which lies outside the reopened Fleet window (the
+Alliance window spans x 121 to 356, the control sits at x 502), so nothing
+covered it. egui keeps the older of two raised Foreground layers below, and
+the Finder is the older, so wherever the two overlap the mutant puts the
+Fleet window on top. The fixture now reports each Fleet window's screen rect,
+and the case clicks a Finder control inside one (the Alliance tab on both
+factions) and fails without one. The Foreground mutant now fails both cases
+("the covered alliance_tab control responds"), and Tooltip passes. The full
+matrix reran 18 of 18 with 72 of 72 HTTP 200 responses, no console or page
+errors, muted: `.artifacts/interface-parity/fleet-finder-2026-10-05T23-24-38-163Z-83071/`,
+fixture WASM `c3f50929ced3c628b1ee733c30c395f1407056a8c4f6a23ad8f5fea025a54296`.
+The `sector-occlusion` case guards the covered-input contract but cannot fail
+on the Foreground order either, since sector windows sit on egui's Middle
+order below both.
+
 ## Pending native checks
 
 These assertions remain pending rather than failed:
