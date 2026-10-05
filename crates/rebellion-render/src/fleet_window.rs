@@ -6,12 +6,13 @@
 //! It opens from the fleet icon a sector window shows at the top right of a
 //! planet (`FUN_0045ccc0`, `FUN_0045aac0`), and a move released over it
 //! targets the fleet under the point (`+0x70`, `FUN_004a3130`), which is how
-//! a regiment boards a fleet.
+//! a regiment boards a fleet. A regiment dragged out of the Troops tab moves
+//! to where it is dropped (`0x201`, `ghidra/notes/regiment-unload.md`).
 
 use egui_macroquad::egui;
 use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::fog::FogState;
-use rebellion_core::ids::{FleetKey, SystemKey};
+use rebellion_core::ids::{FleetKey, SystemKey, TroopKey};
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::world::{ControlKind, GameWorld};
 
@@ -21,7 +22,7 @@ use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
 use crate::quadrant_icons::{quadrant_art, Quadrant};
 use crate::system_window::{
     character_mini_resource_id, clamp_window_to_galaxy, exact_clicked, fleet_label, logical_rect,
-    opposing_contents_visible, rect_contains, troop_mini,
+    opposing_contents_visible, rect_contains, troop_mini, DRAG_DISTANCE_SQUARED,
 };
 use crate::targeting::ReleaseTarget;
 
@@ -111,11 +112,21 @@ struct OpenFleetWindow {
     tab: FleetWindowTab,
 }
 
+/// A left press held on a Troops tab regiment until its release
+/// (`CoolDragList`, `FUN_006083c0`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RegimentDrag {
+    troop: TroopKey,
+    press: egui::Pos2,
+    list: egui::Rect,
+}
+
 /// The open Fleet windows. The last is focused and paints on top.
 #[derive(Debug)]
 pub struct FleetWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenFleetWindow>,
+    drag: Option<RegimentDrag>,
 }
 
 impl Default for FleetWindowState {
@@ -123,6 +134,7 @@ impl Default for FleetWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            drag: None,
         }
     }
 }
@@ -196,6 +208,25 @@ impl FleetWindowState {
             LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32,
             LEFT_LIST.2,
             LEFT_ITEM_HEIGHT,
+        ))
+    }
+
+    /// The screen rect of the `row`th right-list item of `system`'s window.
+    #[must_use]
+    pub fn item_screen_rect(
+        &self,
+        layout: CockpitLayout,
+        system: SystemKey,
+        row: usize,
+    ) -> Option<egui::Rect> {
+        let window = self.windows.iter().find(|window| window.system == system)?;
+        Some(logical_rect(
+            window_screen_rect(window, layout),
+            layout.scale,
+            RIGHT_LIST.0,
+            RIGHT_LIST.1 + RIGHT_ITEM_HEIGHT * row as f32,
+            125.0,
+            RIGHT_ITEM_HEIGHT,
         ))
     }
 
@@ -283,6 +314,47 @@ impl FleetWindowState {
 
     pub fn clear(&mut self) {
         self.windows.clear();
+        self.drag = None;
+    }
+
+    /// Whether a left press on a Troops tab regiment is held: the list has
+    /// captured the mouse (`FUN_006083c0`), so nothing under the pointer
+    /// answers it.
+    #[must_use]
+    pub fn is_dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    /// End a held drag on the left release: far enough from the press and
+    /// outside the list, it becomes the `0x29a` drop (`FUN_006083c0`), and
+    /// the galaxy view moves the whole selection against the window under
+    /// the point (`FUN_00422ce0`, window type 4: `0x201`).
+    ///
+    /// port: Ctrl's Confirmed Move (`0x202`) is not ported for a regiment.
+    fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<FleetWindowAction> {
+        let (released, down, point) = ctx.input(|input| {
+            (
+                input.pointer.primary_released(),
+                input.pointer.primary_down(),
+                input.pointer.latest_pos(),
+            )
+        });
+        if !released {
+            if !down {
+                self.drag = None;
+            }
+            return None;
+        }
+        let drag = self.drag.take()?;
+        let point = point?;
+        let moved = (point - drag.press) / scale;
+        if moved.length_sq() <= DRAG_DISTANCE_SQUARED || rect_contains(drag.list, point) {
+            return None;
+        }
+        Some(FleetWindowAction::DragRegiment {
+            troop: drag.troop,
+            point,
+        })
     }
 
     fn prepare_faction(&mut self, faction: CockpitFaction) {
@@ -333,7 +405,7 @@ pub struct FleetWindowReport {
 }
 
 /// Actions that leave the Fleet window manager.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FleetWindowAction {
     /// The restore-sector button (`0xca`) opens the subject's sector window
     /// (`FUN_00429ce0`).
@@ -344,6 +416,12 @@ pub enum FleetWindowAction {
     Minimize {
         system: SystemKey,
         logical_position: (i16, i16),
+    },
+    /// A Troops tab regiment dragged out of its list (`0x29a`): the galaxy
+    /// view hit-tests the screen point and issues `0x201` (`FUN_00422ce0`).
+    DragRegiment {
+        troop: TroopKey,
+        point: egui::Pos2,
     },
 }
 
@@ -605,6 +683,8 @@ struct RightItem {
     mini: Option<u32>,
     label: String,
     no_hyperdrive: bool,
+    /// The regiment a Troops tab item stands for, which a drag carries.
+    regiment: Option<TroopKey>,
 }
 
 /// The current tab's objects aboard the selected fleet (`FUN_004a6be0`).
@@ -630,6 +710,7 @@ fn right_items(
                 mini: capital_ship_mini_id(class.dat_id),
                 label: class.name.clone(),
                 no_hyperdrive: class.hyperdrive == 0,
+                regiment: None,
             })
             .collect(),
         // port: the port keeps squadrons as counts per class.
@@ -642,18 +723,20 @@ fn right_items(
                     mini: fighter_mini_id(class.dat_id),
                     label: class.name.clone(),
                     no_hyperdrive: false,
+                    regiment: None,
                 })
             })
             .collect(),
         FleetWindowTab::Troops => transport
             .cargo(fleet)
             .iter()
-            .filter_map(|&troop| world.troops.get(troop))
-            .filter_map(|troop| troop_mini(troop.class_dat_id))
-            .map(|(mini, label)| RightItem {
+            .filter_map(|&key| Some((key, world.troops.get(key)?)))
+            .filter_map(|(key, troop)| Some((key, troop_mini(troop.class_dat_id)?)))
+            .map(|(key, (mini, label))| RightItem {
                 mini: Some(mini),
                 label: label.to_owned(),
                 no_hyperdrive: false,
+                regiment: Some(key),
             })
             .collect(),
         FleetWindowTab::Personnel => value
@@ -664,6 +747,7 @@ fn right_items(
                 mini: character_mini_resource_id(character.dat_id, character.is_major),
                 label: character.name.clone(),
                 no_hyperdrive: false,
+                regiment: None,
             })
             .collect(),
     }
@@ -803,6 +887,7 @@ struct WindowDrawResult {
     toggle: Option<FleetKey>,
     tab: Option<FleetWindowTab>,
     item: Option<usize>,
+    drag: Option<RegimentDrag>,
 }
 
 /// Draw every open Fleet window.
@@ -823,7 +908,7 @@ pub fn draw_fleet_windows(
     state.prepare_faction(faction);
     let windows = state.windows.clone();
     let focused_system = windows.last().map(|window| window.system);
-    let mut actions = Vec::new();
+    let mut actions: Vec<_> = state.end_drag(ctx, layout.scale).into_iter().collect();
     for window in &windows {
         let result = draw_fleet_window(
             ctx,
@@ -837,6 +922,9 @@ pub fn draw_fleet_windows(
             cache,
         );
         let system = window.system;
+        if let Some(drag) = result.drag {
+            state.drag = Some(drag);
+        }
         if result.close || !world.systems.contains_key(system) {
             state.close(system);
             continue;
@@ -1295,6 +1383,26 @@ fn draw_fleet_window(
                         result.item = Some(row);
                         result.focus = true;
                     }
+                    // A left press on a regiment captures the mouse for a
+                    // drag (FUN_006083c0).
+                    if let (Some(troop), Some(press)) = (
+                        item.regiment,
+                        ui.ctx().input(|input| {
+                            input
+                                .pointer
+                                .button_pressed(egui::PointerButton::Primary)
+                                .then(|| input.pointer.press_origin())
+                                .flatten()
+                        }),
+                    ) {
+                        if response.is_pointer_button_down_on() && rect_contains(cell, press) {
+                            result.drag = Some(RegimentDrag {
+                                troop,
+                                press,
+                                list: right,
+                            });
+                        }
+                    }
                 }
             }
 
@@ -1633,6 +1741,7 @@ pub(crate) mod tests {
                 mini: Some(17_472),
                 label: "Alliance Fleet Regiment".into(),
                 no_hyperdrive: false,
+                regiment: Some(troop),
             }]
         );
         // A ship's own contents are not modelled, so its tabs stay dark.
@@ -1961,6 +2070,186 @@ pub(crate) mod tests {
         let mut state = FleetWindowState::default();
         assert!(state.open(world, system, ORIGIN, CockpitFaction::Alliance, scaled()));
         state
+    }
+
+    /// Open `system`'s window with `fleet` selected on `tab`, press at
+    /// window pixel `from`, move to `to` and release there. Returns the
+    /// actions, the release point, and whether a drag was held before the
+    /// release.
+    fn drag_from_tab(
+        world: &GameWorld,
+        transport: &TroopTransportState,
+        system: SystemKey,
+        fleet: FleetKey,
+        tab: FleetWindowTab,
+        from: (f32, f32),
+        to: (f32, f32),
+    ) -> (Vec<FleetWindowAction>, egui::Pos2, bool) {
+        let mut state = opened(world, system);
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.tab = tab;
+        }
+        let (start, end) = (at(from.0, from.1), at(to.0, to.1));
+        let mut frames = hover(start);
+        frames.extend([
+            vec![press(start, true)],
+            vec![egui::Event::PointerMoved(end)],
+        ]);
+        let held = run(
+            world,
+            transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            frames,
+        );
+        let dragging = state.is_dragging();
+        let released = run(
+            world,
+            transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            vec![vec![egui::Event::PointerMoved(end), press(end, false)]],
+        );
+        let mut actions = held.actions;
+        actions.extend(released.actions);
+        (actions, end, dragging)
+    }
+
+    fn regiment_drops(actions: &[FleetWindowAction]) -> Vec<(TroopKey, egui::Pos2)> {
+        actions
+            .iter()
+            .filter_map(|action| match *action {
+                FleetWindowAction::DragRegiment { troop, point } => Some((troop, point)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn fleet_with_regiment() -> (
+        GameWorld,
+        TroopTransportState,
+        SystemKey,
+        FleetKey,
+        TroopKey,
+    ) {
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 2);
+        let troop = add_troop(&mut world, system);
+        let mut transport = TroopTransportState::default();
+        transport.load(&mut world, fleet, &[troop]).unwrap();
+        (world, transport, system, fleet, troop)
+    }
+
+    /// Inside the first right-list item.
+    const FIRST_RIGHT_ITEM: (f32, f32) = (160.0, 150.0);
+
+    #[test]
+    fn a_regiment_dragged_out_of_the_troops_tab_drops_where_the_button_comes_up() {
+        // FUN_006083c0 captures the mouse on the press and posts 0x29a with
+        // the release point; FUN_00422ce0 moves a type 4 selection with
+        // 0x201 against the window under it.
+        let (world, transport, system, fleet, troop) = fleet_with_regiment();
+
+        let (actions, release, held) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::Troops,
+            FIRST_RIGHT_ITEM,
+            (40.0, 200.0),
+        );
+
+        assert!(held);
+        assert_eq!(regiment_drops(&actions), [(troop, release)]);
+    }
+
+    #[test]
+    fn a_regiment_released_inside_its_list_or_near_the_press_drops_nothing() {
+        // FUN_006083c0: the squared distance must exceed 0x18 and the
+        // release must leave the list's client rect.
+        let (world, transport, system, fleet, _) = fleet_with_regiment();
+        // Down the list; and 4 pixels up out of it from its top edge.
+        for (from, to) in [
+            (FIRST_RIGHT_ITEM, (160.0, 200.0)),
+            ((160.0, 128.0), (160.0, 124.0)),
+        ] {
+            let (actions, _, held) = drag_from_tab(
+                &world,
+                &transport,
+                system,
+                fleet,
+                FleetWindowTab::Troops,
+                from,
+                to,
+            );
+            assert!(held);
+            assert!(regiment_drops(&actions).is_empty());
+        }
+    }
+
+    #[test]
+    fn a_press_on_a_regiments_hidden_part_below_the_list_starts_no_drag() {
+        // The fourth row starts 150 below the list's top and the list is 164
+        // tall, so a press at row offset 23 lies in its cell but under the
+        // list's bottom edge.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 4);
+        let troops: Vec<_> = (0..4).map(|_| add_troop(&mut world, system)).collect();
+        let mut transport = TroopTransportState::default();
+        transport.load(&mut world, fleet, &troops).unwrap();
+
+        let (actions, _, held) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::Troops,
+            (160.0, 127.0 + 150.0 + 23.0),
+            (40.0, 200.0),
+        );
+
+        assert!(!held);
+        assert!(regiment_drops(&actions).is_empty());
+    }
+
+    #[test]
+    fn a_right_list_items_rect_steps_down_one_row_height() {
+        // Our own layout: 50-row items 125 wide from (101, 127).
+        let (world, _, system, _, _) = fleet_with_regiment();
+        let state = opened(&world, system);
+
+        assert_eq!(
+            state.item_screen_rect(scaled(), system, 1),
+            Some(egui::Rect::from_min_max(at(101.0, 177.0), at(226.0, 227.0)))
+        );
+        assert_eq!(
+            state.item_screen_rect(scaled(), system, 2),
+            Some(egui::Rect::from_min_max(at(101.0, 227.0), at(226.0, 277.0)))
+        );
+        let mut other = world.clone();
+        let missing = other.systems.insert(world.systems[system].clone());
+        assert_eq!(state.item_screen_rect(scaled(), missing, 0), None);
+    }
+
+    #[test]
+    fn a_capital_ship_dragged_out_of_its_tab_drops_nothing() {
+        // port: only a regiment's drag out of the Fleet window is ported.
+        let (world, transport, system, fleet, _) = fleet_with_regiment();
+
+        let (actions, _, held) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::CapitalShips,
+            FIRST_RIGHT_ITEM,
+            (40.0, 200.0),
+        );
+
+        assert!(!held);
+        assert!(regiment_drops(&actions).is_empty());
     }
 
     #[test]

@@ -38,7 +38,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 50;
+const SCENARIO_COUNT: u8 = 51;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -105,6 +105,7 @@ pub enum Scenario {
     FleetLoad = 47,
     FleetLoadFull = 48,
     Quadrants = 49,
+    RegimentUnloadRefused = 50,
 }
 
 impl Scenario {
@@ -160,6 +161,7 @@ impl Scenario {
             47 => Self::FleetLoad,
             48 => Self::FleetLoadFull,
             49 => Self::Quadrants,
+            50 => Self::RegimentUnloadRefused,
             _ => return None,
         })
     }
@@ -169,7 +171,10 @@ impl Scenario {
     }
 
     fn loads_a_regiment(self) -> bool {
-        matches!(self, Self::FleetLoad | Self::FleetLoadFull)
+        matches!(
+            self,
+            Self::FleetLoad | Self::FleetLoadFull | Self::RegimentUnloadRefused
+        )
     }
 
     /// The scenarios whose gate opens the object pop-up menu.
@@ -528,6 +533,20 @@ fn loading_target(world: &GameWorld, primary: SystemKey) -> Option<SystemKey> {
         .find(|&key| key != primary)
 }
 
+/// The system the loading scenarios' System window shows: the target in the
+/// refused variant (the drop it refuses), the primary system otherwise.
+fn system_window_subject(
+    request: FixtureRequest,
+    world: &GameWorld,
+    primary: SystemKey,
+) -> Option<SystemKey> {
+    if request.scenario == Scenario::RegimentUnloadRefused {
+        loading_target(world, primary)
+    } else {
+        Some(primary)
+    }
+}
+
 /// The fixture's regiment: the first on the primary system's surface.
 fn loading_regiment(world: &GameWorld, primary: SystemKey) -> Option<TroopKey> {
     world.systems.get(primary)?.ground_units.first().copied()
@@ -541,7 +560,11 @@ fn loading_regiment(world: &GameWorld, primary: SystemKey) -> Option<TroopKey> {
 /// so the Fleet window its icon opens lands clear of the system window. The
 /// target system, in the same sector, is the player's and empty, so the
 /// regiment lands there unopposed. In the full variant the fleet's room is
-/// taken by regiments loaded beforehand (`FUN_00500b40`).
+/// taken by regiments loaded beforehand (`FUN_00500b40`); in the refused
+/// variant the target is the other side's and populated, the regiment
+/// starts aboard and held, and the system window shows the target, so a
+/// drop on it is the refused move (the Fleet window covers the target's
+/// planet in the sector window).
 #[allow(clippy::too_many_arguments)]
 fn place_loading_fleet(
     request: FixtureRequest,
@@ -636,6 +659,18 @@ fn place_loading_fleet(
     }
     let troop = world.troops.insert(regiment());
     world.systems[primary].ground_units.push(troop);
+    // The refused variant: the target is the other side's and populated,
+    // which FUN_0053d430 refuses a regiment (1/0x28).
+    if request.scenario == Scenario::RegimentUnloadRefused {
+        let enemy = if player_is_alliance {
+            Faction::Empire
+        } else {
+            Faction::Alliance
+        };
+        world.systems[target].control = ControlKind::Controlled(enemy);
+        world.systems[target].is_populated = true;
+        let _ = troop_transport.load(world, fleet, &[troop]);
+    }
     if request.scenario == Scenario::FleetLoadFull {
         let room = world.capital_ship_classes[carrier].troop_capacity;
         let aboard: Vec<_> = (0..room)
@@ -652,7 +687,7 @@ fn place_loading_fleet(
     let galaxy = layout.galaxy;
     systems.open_tab(
         world,
-        primary,
+        system_window_subject(request, world, primary).unwrap_or(primary),
         SystemWindowTab::Troops,
         (galaxy.x as i16 + 5, galaxy.y as i16 + 5),
         request.faction,
@@ -1409,17 +1444,21 @@ impl QuadrantWatch {
 }
 
 /// Where the fleet-load gate presses: the fleet icon in the primary system's
-/// sector window, the regiment's cell and the Fleets tab in its system
-/// window, the target planet, and the day readout (the Game Speed control).
+/// sector window (and the target's name, for the arrival message), the
+/// regiment's cell (none when it starts aboard) and the
+/// Fleets tab in the system window, the primary and target planets, and the
+/// day readout (the Game Speed control).
 #[derive(Debug, Serialize, PartialEq)]
 struct FixtureFleetLoadSetup {
     status: &'static str,
     code: u32,
     primary_dat_id: u32,
     target_dat_id: u32,
+    target_name: String,
     icon: (f32, f32),
-    troop_item: (f32, f32),
+    troop_item: Option<(f32, f32)>,
     fleets_tab: (f32, f32),
+    primary_planet: (f32, f32),
     target_planet: (f32, f32),
     day_readout: (f32, f32),
     capacity: Option<u32>,
@@ -1438,19 +1477,24 @@ fn fleet_load_setup(
     let primary = world.systems.keys().next()?;
     let target = loading_target(world, primary)?;
     let fleet = world.fleets.keys().next()?;
+    let subject = system_window_subject(request, world, primary)?;
     let day = day_readout_rect(request.faction);
     Some(FixtureFleetLoadSetup {
         status: "fleet-load-setup",
         code: request.code,
         primary_dat_id: world.systems[primary].dat_id.raw(),
         target_dat_id: world.systems[target].dat_id.raw(),
+        target_name: world.systems[target].name.clone(),
         icon: screen_center(sectors.fleet_icon_screen_rect(world, layout, primary)?),
-        troop_item: screen_center(systems.first_item_screen_rect(layout, primary)?),
+        troop_item: systems
+            .first_item_screen_rect(layout, primary)
+            .map(screen_center),
         fleets_tab: screen_center(systems.tab_screen_rect(
             layout,
-            primary,
+            subject,
             SystemWindowTab::Fleets,
         )?),
+        primary_planet: screen_center(sectors.planet_screen_rect(world, layout, primary)?),
         target_planet: screen_center(sectors.planet_screen_rect(world, layout, target)?),
         day_readout: (
             layout.canvas.x + (day.x + day.width / 2.0) * layout.scale,
@@ -1474,9 +1518,10 @@ pub fn emit_fleet_load_setup(
 }
 
 /// What the fleet-load gate checks after each step: the primary system's
-/// Fleet window (its list, tabs and contents, and where its first entry and
-/// Troops tab lie), where the regiment is, the fleet's cargo and hold, its
-/// transit, and the last message (a refusal's text).
+/// Fleet window (its list, tabs and contents, and where its first entry,
+/// Troops tab and first right-list item lie), where the regiment is and
+/// whether it travels on its own, the fleet's cargo and hold, its transit,
+/// the last message (a refusal's text), and the last regiment line.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 struct FleetLoadObservation {
     status: &'static str,
@@ -1491,12 +1536,15 @@ struct FleetLoadObservation {
     counts: Option<(u32, u32)>,
     fleet_entry: Option<(f32, f32)>,
     troops_tab: Option<(f32, f32)>,
+    first_item: Option<(f32, f32)>,
     aboard: bool,
     held: bool,
     cargo: usize,
     troop_system_dat_id: Option<u32>,
     in_transit: bool,
+    regiment_travelling: bool,
     last_message: Option<String>,
+    last_regiment_message: Option<String>,
     zoom: f32,
 }
 
@@ -1542,6 +1590,9 @@ fn fleet_load_observation(
         troops_tab: fleets
             .tab_screen_rect(layout, primary, FleetWindowTab::Troops)
             .map(screen_center),
+        first_item: fleets
+            .item_screen_rect(layout, primary, 0)
+            .map(screen_center),
         aboard: transport.cargo(fleet).contains(&regiment),
         held: transport.is_held(fleet),
         cargo: transport.carried_count(fleet),
@@ -1549,14 +1600,26 @@ fn fleet_load_observation(
             .and_then(|system| world.systems.get(system))
             .map(|system| system.dat_id.raw()),
         in_transit: movement.is_in_transit(fleet),
+        regiment_travelling: transport
+            .transits()
+            .iter()
+            .any(|transit| transit.troop == regiment),
         last_message: messages.last().map(|message| message.text.clone()),
+        // One frame can run several days, so a regiment's line may not be
+        // the last.
+        last_regiment_message: messages
+            .iter()
+            .rev()
+            .find(|message| message.text.starts_with("Regiment "))
+            .map(|message| message.text.clone()),
         zoom,
     })
 }
 
 /// Emits a [`FleetLoadObservation`] whenever it changes. The regiment it
 /// follows is the one first on the primary system's surface when the watch
-/// starts.
+/// starts, or else the first aboard the player's fleet (the refused
+/// variant).
 #[derive(Debug, Default)]
 pub struct FleetLoadWatch {
     regiment: Option<TroopKey>,
@@ -1585,7 +1648,11 @@ impl FleetLoadWatch {
                 .systems
                 .keys()
                 .next()
-                .and_then(|primary| loading_regiment(world, primary));
+                .and_then(|primary| loading_regiment(world, primary))
+                .or_else(|| {
+                    let fleet = world.fleets.keys().next()?;
+                    transport.cargo(fleet).first().copied()
+                });
         }
         let now = fleet_load_observation(
             request,
@@ -2192,12 +2259,13 @@ mod tests {
             let setup =
                 fleet_load_setup(request, world, &applied.sectors, &applied.systems).unwrap();
             assert_eq!(setup.target_dat_id, world.systems[target].dat_id.raw());
+            assert_eq!(setup.target_name, world.systems[target].name);
             assert_eq!(setup.capacity, Some(class.troop_capacity));
             // The system window lies on the galaxy view's left, the primary
             // system's sector window in the right column.
             assert!(applied
                 .systems
-                .contains_screen_point(layout, setup.troop_item));
+                .contains_screen_point(layout, setup.troop_item.unwrap()));
             assert!(!applied.systems.contains_screen_point(layout, setup.icon));
             assert!(applied.sectors.contains_screen_point(layout, setup.icon));
             assert!(applied
@@ -2262,6 +2330,72 @@ mod tests {
     }
 
     #[test]
+    fn the_refused_unload_scenario_starts_with_the_regiment_held_aboard_and_the_target_in_the_system_window(
+    ) {
+        // port: the fixture's own layout; FUN_0053d430 refuses the drop
+        // (other side, populated).
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::RegimentUnloadRefused, faction);
+            let applied = apply_to_loading_world(request);
+            let world = &applied.world;
+            let mut keys = world.systems.keys();
+            let (here, target) = (keys.next().unwrap(), keys.next().unwrap());
+            let fleet = world.fleets.keys().next().unwrap();
+            let is_alliance = faction == CockpitFaction::Alliance;
+            let enemy = if is_alliance {
+                Faction::Empire
+            } else {
+                Faction::Alliance
+            };
+
+            assert_eq!(
+                world.systems[target].control,
+                ControlKind::Controlled(enemy),
+                "{faction:?}"
+            );
+            assert!(world.systems[target].is_populated);
+            assert!(world.systems[here].ground_units.is_empty());
+            let [regiment] = applied.transport.cargo(fleet) else {
+                panic!("{faction:?}: one regiment starts aboard");
+            };
+            assert_eq!(world.troops[*regiment].is_alliance, is_alliance);
+            assert!(applied.transport.is_held(fleet));
+            assert_eq!(
+                applied
+                    .systems
+                    .open_windows()
+                    .map(|(key, _)| key)
+                    .collect::<Vec<_>>(),
+                [target]
+            );
+
+            let layout = CockpitState::new(faction).layout_for(640.0, 480.0);
+            let setup =
+                fleet_load_setup(request, world, &applied.sectors, &applied.systems).unwrap();
+            assert_eq!(setup.troop_item, None);
+            assert!(applied
+                .systems
+                .contains_screen_point(layout, setup.fleets_tab));
+
+            let mut watch = FleetLoadWatch::default();
+            let start = watch
+                .next(
+                    request,
+                    world,
+                    &FogState::new(enemy),
+                    &applied.movement,
+                    &applied.transport,
+                    &FleetWindowState::default(),
+                    &[],
+                    1.0,
+                )
+                .unwrap();
+            assert!(start.aboard && start.held, "{faction:?}");
+            assert_eq!((start.cargo, start.troop_system_dat_id), (1, None));
+        }
+    }
+
+    #[test]
     fn the_fleet_load_scenario_leaves_fleets_elsewhere_where_they_are() {
         // port: only fleets at the loading and target systems are moved.
         let mut kept = None;
@@ -2318,6 +2452,91 @@ mod tests {
             assert!(inside(x, y), "{faction:?}");
             assert!(!inside(x - 0.5, y) && !inside(x, y - 0.5), "{faction:?}");
         }
+    }
+
+    #[test]
+    fn the_fleet_load_watch_reports_only_its_own_regiment_as_travelling() {
+        // port: the fixture's own report of TroopTransportState::transits.
+        use rebellion_core::troop_transport::RegimentTarget;
+        let request = request(Scenario::FleetLoad, CockpitFaction::Alliance);
+        let mut applied = apply_to_loading_world(request);
+        let mut keys = applied.world.systems.keys();
+        let (here, target) = (keys.next().unwrap(), keys.next().unwrap());
+        let regiment = loading_regiment(&applied.world, here).unwrap();
+        let other = applied
+            .world
+            .troops
+            .insert(applied.world.troops[regiment].clone());
+        applied.world.systems[here].ground_units.push(other);
+        let fog = FogState::new(Faction::Alliance);
+        let fleets = FleetWindowState::default();
+        let observe = |applied: &Applied| {
+            fleet_load_observation(
+                request,
+                regiment,
+                &applied.world,
+                &fog,
+                &applied.movement,
+                &applied.transport,
+                &fleets,
+                &[],
+                1.0,
+            )
+            .unwrap()
+        };
+
+        let blockaded = std::collections::HashSet::new();
+        applied
+            .transport
+            .move_regiment(
+                &mut applied.world,
+                &applied.movement,
+                &blockaded,
+                other,
+                RegimentTarget::System(target),
+                0,
+            )
+            .unwrap();
+        assert!(!observe(&applied).regiment_travelling);
+
+        applied
+            .transport
+            .move_regiment(
+                &mut applied.world,
+                &applied.movement,
+                &blockaded,
+                regiment,
+                RegimentTarget::System(target),
+                0,
+            )
+            .unwrap();
+        let travelling = observe(&applied);
+        assert!(travelling.regiment_travelling);
+        assert_eq!(travelling.troop_system_dat_id, None);
+
+        use rebellion_render::MessageCategory;
+        let line = |text: &str| GameMessage::new(0, text.to_string(), MessageCategory::Event);
+        let messages = [
+            line("Regiment move rejected: the destination is blockaded"),
+            line("Regiment arrived at Cathar"),
+            line("Luke Skywalker has reached Jedi Knight tier"),
+        ];
+        let later = fleet_load_observation(
+            request,
+            regiment,
+            &applied.world,
+            &fog,
+            &applied.movement,
+            &applied.transport,
+            &fleets,
+            &messages,
+            1.0,
+        )
+        .unwrap();
+        assert_eq!(
+            later.last_regiment_message.as_deref(),
+            Some("Regiment arrived at Cathar")
+        );
     }
 
     #[test]
@@ -3037,7 +3256,8 @@ mod tests {
                 Scenario::FleetMove,
                 Scenario::FleetMoveBlockade,
                 Scenario::FleetLoad,
-                Scenario::FleetLoadFull
+                Scenario::FleetLoadFull,
+                Scenario::RegimentUnloadRefused
             ]
         );
     }

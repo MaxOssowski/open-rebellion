@@ -57,7 +57,7 @@ use rebellion_core::movement::{
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
 use rebellion_core::tick::{GameClock, GameSpeed};
-use rebellion_core::troop_transport::TroopTransportState;
+use rebellion_core::troop_transport::{RegimentLeg, RegimentTarget, TroopTransportState};
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
 use rebellion_core::victory::{VictoryState, VictorySystem};
 use rebellion_core::world::{
@@ -1675,6 +1675,44 @@ Some(RailAudience::side(*faction_is_alliance)),
                 ));
                 #[cfg(not(target_arch = "wasm32"))]
                 audio_engine.play_sfx(SfxKind::FleetArrival, &audio_vol);
+            }
+            // Regiments travelling on their own (FUN_00556430, event 0x387).
+            let now = tick_events.last().map_or(clock.tick, |event| event.tick);
+            let regiments = troop_transport_state.advance_transit(&mut world, now);
+            for transit in &regiments.arrived {
+                let system = match transit.leg {
+                    RegimentLeg::Surface(system) => Some(system),
+                    RegimentLeg::Fleet(fleet) => world.fleets.get(fleet).map(|f| f.location),
+                };
+                let Some(system) = system else { continue };
+                let name = world
+                    .systems
+                    .get(system)
+                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                let audience = world
+                    .troops
+                    .get(transit.troop)
+                    .map(|troop| RailAudience::side(troop.is_alliance));
+                // Notification 0xd, Unit Arrival.
+                msg_log.push(filed(
+                    GameMessage::at_system(
+                        transit.arrival_tick,
+                        format!("Regiment arrived at {name}"),
+                        MessageCategory::Mission,
+                        system,
+                    ),
+                    MessageRail::Fleet,
+                    audience,
+                ));
+            }
+            for transit in &regiments.lost {
+                // Event 0x303, GameObjDestroyedOnArrivalNotif.
+                msg_log.push(GameMessage::at_system(
+                    transit.arrival_tick,
+                    "Regiment lost on arrival: its destination no longer exists".to_string(),
+                    MessageCategory::Mission,
+                    transit.origin,
+                ));
             }
 
             // Unopposed troop transports can land immediately. Contested
@@ -3310,6 +3348,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || defenses_window_state.contains_screen_point(cockpit_layout, pointer)
                     || missions_window_state.contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.is_dragging()
+                    || fleet_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
                     || cockpit_state.gid_ui.menu_open
@@ -3882,6 +3921,35 @@ Some(RailAudience::side(*faction_is_alliance)),
                             } => {
                                 system_window_state.minimize_fleet_window(system, logical_position)
                             }
+                            // FUN_00422ce0: a drop from the Fleet window
+                            // (type 4) moves the selection against the
+                            // window under the point with 0x201.
+                            FleetWindowAction::DragRegiment { troop, point } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                let target = match release_destination(
+                                    ctx,
+                                    &world,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) {
+                                    Some(ReleaseTarget::System(system)) => {
+                                        RegimentTarget::System(system)
+                                    }
+                                    Some(ReleaseTarget::Fleet { fleet, .. }) => {
+                                        RegimentTarget::Fleet(fleet)
+                                    }
+                                    None => continue,
+                                };
+                                panel_actions.push(PanelAction::MoveRegiment { troop, target });
+                            }
                         }
                     }
 
@@ -4097,30 +4165,23 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     "Fleet move rejected: joining fleets is not ported".to_string(),
                                     MessageCategory::Event,
                                 )),
-                                // A regiment boards the fleet the Fleet
-                                // window gives (FUN_004a3130 → 0x201).
+                                // A regiment's 0x201 against the release
+                                // window's +0x70 (FUN_004a3130 for a Fleet
+                                // window), boarding, landing or travelling.
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::TroopMove { troop },
                                     target: ReleaseTarget::Fleet { fleet, .. },
-                                }) => {
-                                    panel_actions.push(PanelAction::LoadRegiment { troop, fleet })
-                                }
+                                }) => panel_actions.push(PanelAction::MoveRegiment {
+                                    troop,
+                                    target: RegimentTarget::Fleet(fleet),
+                                }),
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::TroopMove { troop },
                                     target: ReleaseTarget::System(system),
-                                }) => {
-                                    if let Err(error) =
-                                        TroopTransportState::validate_regiment_system(
-                                            &world, troop, system,
-                                        )
-                                    {
-                                        msg_log.push(GameMessage::new(
-                                            clock.tick,
-                                            format!("Regiment move rejected: {error}"),
-                                            MessageCategory::Event,
-                                        ));
-                                    }
-                                }
+                                }) => panel_actions.push(PanelAction::MoveRegiment {
+                                    troop,
+                                    target: RegimentTarget::System(system),
+                                }),
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::FleetMove { fleet, confirmed },
                                     target: ReleaseTarget::System(system),
@@ -5259,16 +5320,22 @@ fn apply_panel_action(
     #[cfg(not(target_arch = "wasm32"))] _sounds_dir: &Path,
 ) {
     match action {
-        // FUN_00578f30 → FUN_00556390: a leg inside the system boards the
-        // regiment; the refusals are FUN_00555920's and FUN_00500b40's.
-        PanelAction::LoadRegiment { troop, fleet } => {
+        // FUN_00578f30 → FUN_00556390 (ghidra/notes/regiment-unload.md).
+        PanelAction::MoveRegiment { troop, target } => {
             let expected_is_alliance = *player_faction == MissionFaction::Alliance;
             let result = if world
                 .troops
                 .get(troop)
                 .is_some_and(|value| value.is_alliance == expected_is_alliance)
             {
-                troop_transport_state.load(world, fleet, &[troop])
+                troop_transport_state.move_regiment(
+                    world,
+                    movement_state,
+                    blockade_state.blockaded_systems(),
+                    troop,
+                    target,
+                    clock.tick,
+                )
             } else {
                 Err(rebellion_core::troop_transport::TroopTransportError::WrongFaction)
             };

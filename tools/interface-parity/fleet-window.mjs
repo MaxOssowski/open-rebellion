@@ -22,6 +22,7 @@ const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 const FLEET_LOAD = 48;
 const FLEET_LOAD_FULL = 49;
+const REGIMENT_UNLOAD_REFUSED = 51;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -388,6 +389,26 @@ async function loadRegiment(page, setup, directory) {
   return { opened, menu, loaded };
 }
 
+// A left press on the Troops tab's first regiment, held while the mouse
+// moves away, then released at `to` (CoolDragList, FUN_006083c0, posts 0x29a).
+async function dragRegiment(page, from, to) {
+  await page.mouse.move(from.x, from.y);
+  await frames(page);
+  await page.mouse.down();
+  await frames(page);
+  await page.mouse.move(to.x, to.y, { steps: 4 });
+  await frames(page);
+  await page.mouse.up();
+  await frames(page);
+}
+
+async function openTroopsTab(page, loaded) {
+  await click(page, point(loaded.troops_tab));
+  const troops = await until(page, "the Troops tab opens", (o) => o.tab === "Troops" && o.first_item);
+  assert.equal(troops.items.length, 1, "the Troops tab lists the regiment");
+  return troops;
+}
+
 async function wheelAt(page, at) {
   await page.mouse.move(at.x, at.y);
   await frames(page);
@@ -492,6 +513,103 @@ const cases = [
     },
   },
   {
+    name: "unload",
+    code: FLEET_LOAD,
+    // A drag out of the Troops tab released on the system window (type 9,
+    // +0x70: its subject) issues 0x201; in its own system the regiment
+    // changes container at once (FUN_00556390, regiment-unload.md).
+    async run(page, faction, setup, directory) {
+      const { loaded } = await loadRegiment(page, setup, directory);
+      const troops = await openTroopsTab(page, loaded);
+      await dragRegiment(page, point(troops.first_item), point(setup.fleets_tab));
+      const unloaded = await until(page, "the regiment lands on its planet",
+        (o, primary) => !o.aboard && !o.held && !o.regiment_travelling && o.troop_system_dat_id === primary,
+        setup.primary_dat_id);
+      assert.equal(unloaded.cargo, 0);
+      assert.equal(unloaded.in_transit, false);
+      await shot(page, directory, "unloaded");
+      return { loaded, troops, unloaded };
+    },
+  },
+  {
+    name: "drag-wheel",
+    code: FLEET_LOAD,
+    // While a regiment drags out of the Troops tab the list holds the mouse
+    // (CoolDragList, FUN_006083c0): a wheel over the bare map mid-drag does
+    // not zoom it, and a release back inside the list drops nothing. The
+    // control, the same wheel with no drag, zooms the map.
+    async run(page, faction, setup, directory) {
+      const { loaded } = await loadRegiment(page, setup, directory);
+      const troops = await openTroopsTab(page, loaded);
+      const gap = { x: faction.sectors[0] + 235 + 2, y: troops.origin[1] + 150 };
+      const from = point(troops.first_item);
+      const before = troops.zoom;
+      await page.mouse.move(from.x, from.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.move(gap.x, gap.y, { steps: 4 });
+      await frames(page);
+      for (let notch = 0; notch < 3; notch += 1) {
+        await page.mouse.wheel(0, -100);
+        await frames(page);
+      }
+      await page.mouse.move(from.x, from.y, { steps: 4 });
+      await frames(page);
+      await page.mouse.up();
+      await frames(page);
+      const held = await settle(page);
+      assert.equal(held.zoom, before, "a wheel mid-drag zoomed the map");
+      assert.ok(held.aboard && held.held, JSON.stringify(held));
+      const control = await wheelAt(page, gap);
+      assert.notEqual(control, before, `the control wheel at ${JSON.stringify(gap)} did not zoom the map`);
+      return { loaded, gap, held, control };
+    },
+  },
+  {
+    name: "unload-refused",
+    code: REGIMENT_UNLOAD_REFUSED,
+    // FUN_0053d430: a regiment group's destination of another side, other
+    // than an existing unpopulated system, is refused 1/0x28. The regiment
+    // starts aboard and held, and the system window shows the other side's
+    // populated target (the Fleet window covers its planet).
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup);
+      const selected = await selectFleet(page, opened);
+      assert.ok(selected.aboard && selected.held, JSON.stringify(selected));
+      assert.deepEqual(selected.enabled, [true, false, true, false], "the Troops tab lights with a regiment aboard");
+      const troops = await openTroopsTab(page, selected);
+      await dragRegiment(page, point(troops.first_item), point(setup.fleets_tab));
+      const refusal = "Regiment move rejected: the destination belongs to another side";
+      const refused = await until(page, "the other side's planet refuses the regiment",
+        (o, text) => o.last_message === text, refusal);
+      assert.ok(refused.aboard && refused.held, JSON.stringify(refused));
+      assert.equal(refused.regiment_travelling, false);
+      return { opened, selected, troops, refused };
+    },
+  },
+  {
+    name: "travel",
+    code: FLEET_LOAD,
+    // A regiment's speed is GNPRTB 1 (FUN_004f63f0), so its Move to another
+    // planet of its side travels on its own (FUN_00556430) and arrives.
+    async run(page, faction, setup, directory) {
+      const menu = await openMenu(page, point(setup.troop_item), directory, "regiment");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, point(setup.target_planet));
+      const departed = await until(page, "the regiment departs on its own",
+        (o) => o.regiment_travelling && o.troop_system_dat_id === null);
+      assert.equal(departed.aboard, false);
+      const speed = await runFast(page, setup);
+      const arrived = await until(page, "the regiment arrives at the target",
+        (o, target) => !o.regiment_travelling && o.troop_system_dat_id === target,
+        setup.target_dat_id, 90_000);
+      // Notification 0xd, Unit Arrival (main.rs).
+      assert.equal(arrived.last_regiment_message, `Regiment arrived at ${setup.target_name}`);
+      return { menu, departed, speed, arrived };
+    },
+  },
+  {
     name: "full",
     code: FLEET_LOAD_FULL,
     // FUN_00500b40: no room is left, so the move is refused and nothing
@@ -570,7 +688,10 @@ async function inspect(server, source, faction, testCase, executable) {
     assert.ok(setup.capacity > 0, "the fleet carries regiments");
     const start = await latest(page);
     assert.equal(start.window_open, false, JSON.stringify(start));
-    assert.equal(start.troop_system_dat_id, setup.primary_dat_id, JSON.stringify(start));
+    // The refused variant's regiment starts aboard (interface_test_fixture.rs).
+    const startsAboard = testCase.code === REGIMENT_UNLOAD_REFUSED;
+    assert.equal(start.aboard, startsAboard, JSON.stringify(start));
+    assert.equal(start.troop_system_dat_id, startsAboard ? null : setup.primary_dat_id, JSON.stringify(start));
     await page.evaluate(() => document.fonts.ready);
     const { bytes: _ready, ...before } = await shot(page, directory, "ready");
 
@@ -662,7 +783,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "fleet-window",
-    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, and a full fleet's refusal, on both sides",
+    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), and a regiment travelling on its own, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

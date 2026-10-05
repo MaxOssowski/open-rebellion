@@ -279,8 +279,12 @@ cross-runtime proof remain open
   opened from the sector window's fleet icon, with an 8-case two-sided gate;
   the sector window's other quadrant icons open the System window, the
   System Defenses window (type 10, FUN_004a7790) and the Missions window
-  (type 11, FUN_0049f130), with a 10-case two-sided gate; a native check
-  remains) wired
+  (type 11, FUN_0049f130), with a 10-case two-sided gate; a regiment
+  dragged out of the Fleet window's Troops tab unloads or boards at once in
+  its own system and otherwise travels on its own at GNPRTB 1 (FUN_00556390,
+  FUN_00556430; another side's populated destination is refused,
+  FUN_0053d430), with a 16-case two-sided gate; a native check remains)
+  wired
   ordinary player dispatch through the same validated departure helper, fixes
   map/context-menu click ordering and stale targets, and reports authoritative
   destinations and countdowns in the fleet panel. Astra medium passed both

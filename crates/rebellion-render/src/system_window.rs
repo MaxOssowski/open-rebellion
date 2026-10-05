@@ -133,7 +133,7 @@ struct ItemDrag {
 
 /// `CoolDragList` posts `0x29a` only when the release lies more than this
 /// squared distance, in list pixels, from the press (`FUN_006083c0`).
-const DRAG_DISTANCE_SQUARED: f32 = 24.0;
+pub(crate) const DRAG_DISTANCE_SQUARED: f32 = 24.0;
 
 /// A minimized window on the galaxy view's rail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -525,6 +525,19 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   11, `FUN_0049f130`), each with its rail icon (`ghidra/notes/sector-quadrants.md`).
   The `sector-quadrants.mjs` gate passes both sides, its pixel compares exact
   against STRATEGY.DLL and GOKRES.DLL. A native check remains.
+- [x] Port unloading a regiment by hand and regiment travel
+  (`ghidra/notes/regiment-unload.md`). A regiment dragged out of the Fleet
+  window's Troops tab, or a surface regiment's Move, issues `0x201` against
+  the release window's `+0x70` (`FUN_00556390`): within one system it lands
+  or boards at once; across systems it travels at speed GNPRTB 1
+  (`FUN_004f63f0`, `FUN_00556430`) and is placed on arrival (save v25).
+  Another side's populated destination is refused (`FUN_0053d430`, 1/0x28).
+  The `fleet-window.mjs` gate passes both sides. A native check remains.
+- [ ] Source or retire the port's automatic landing (F-007E: cargo lands
+  when its side alone orbits a system). The unloading trace finds no
+  original path that lands cargo without an order
+  (`ghidra/notes/regiment-unload.md`, "What happens to the rest of the
+  cargo"); it stays until traced (Tom, 2026-10-04).
 - [ ] Port targeting of characters and objects (`+0x68` hit test, the walk up
   from a team member) so the dialog offers Rescue, Assassination, and
   Abduction (F-019).

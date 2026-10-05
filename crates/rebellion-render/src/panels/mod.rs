@@ -46,6 +46,7 @@ use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
 use rebellion_core::manufacturing::BuildableKind;
 use rebellion_core::missions::{MissionFaction, MissionKind, MissionMember};
 use rebellion_core::research::TechType;
+use rebellion_core::troop_transport::RegimentTarget;
 
 /// Player-initiated actions returned by War Room panels.
 ///
@@ -85,9 +86,12 @@ pub enum PanelAction {
         destination: SystemKey,
         troops: Vec<TroopKey>,
     },
-    /// A regiment's Move released on a Fleet window's fleet: the regiment
-    /// boards it (`TroopTransportState::load`).
-    LoadRegiment { troop: TroopKey, fleet: FleetKey },
+    /// A regiment's Move (`0x201`) released on a system or fleet
+    /// (`TroopTransportState::move_regiment`).
+    MoveRegiment {
+        troop: TroopKey,
+        target: RegimentTarget,
+    },
 
     // ── Manufacturing ─────────────────────────────────────────────────────────
     /// Add a buildable to the production queue at a system. With a

@@ -316,10 +316,10 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
   side and en-route rules stand in for the untraced object check); Confirmed
   Move and Scrap are drawn disabled (port:). Targeting released on a Fleet
   window's fleet loads the regiment through F-007E's embark
-  (`TroopTransportState::load`): `1`/`0x18` refuses a regiment released on
-  another system (a port rule: a regiment has speed, `regiment-unload.md`),
-  and `FUN_00500b40`'s room refuses a full fleet ("troop
-  capacity exceeded"). A fleet's Move released on a Fleet window is refused
+  (`TroopTransportState::move_regiment`): in another system the regiment
+  travels there and boards (`regiment-unload.md`), and `FUN_00500b40`'s room,
+  counting regiments on their way, refuses a full fleet ("troop capacity
+  exceeded"). A fleet's Move released on a Fleet window is refused
   ("joining fleets is not ported").
 - **The hold** (port:). The original keeps a loaded regiment in its ship's
   container until a landing order. The port lands cargo at any uncontested
@@ -328,9 +328,10 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
   lands as before. The hold is saved (save v24, no migration).
 - **Port rules.** The left list follows the system window's fog rule; one
   entry is selected at a time; there are no scroll bars, no in-place rename,
-  no right-click menu and no drag out of the Fleet window; a listed ship
+  no right-click menu; a listed ship
   stands for its fleet as a release target and draws no selected look; the
-  pressed state of the sector window's icon is not drawn.
+  pressed state of the sector window's icon is not drawn. Only a Troops tab
+  regiment drags out of the window (`regiment-unload.md`).
 - **Gate.** `tools/interface-parity/fleet-window.mjs` (fixture codes 48 and
   49, both sides): the icon opens the window, whose chrome matches
   STRATEGY.DLL pixel for pixel outside masked text, the tree's dotted pen and
@@ -345,8 +346,10 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 
 - The list item drawing (`FUN_004c7e10`, `CoolDragList`): text position, color
   and the selected look; the scroll bar `FUN_0060f640`.
-- The leg builders and the full-fleet refusal; `FUN_00558380`'s base order
-  list; the regiment `0x214` refusal's status (native check pending).
-- Unloading by hand, joining and splitting fleets, and the Fleet Finder
-  (`FUN_00429440`, open-by-object) are not ported.
+- `FUN_00558380`'s base order list; the regiment `0x214` refusal's status
+  (native check pending). The leg builders and the full-fleet refusal are
+  traced in `regiment-unload.md`.
+- Joining and splitting fleets and the Fleet Finder (`FUN_00429440`,
+  open-by-object) are not ported; unloading by hand is
+  (`regiment-unload.md`).
 - What starts an in-place rename.

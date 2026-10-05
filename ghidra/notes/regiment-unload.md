@@ -163,18 +163,37 @@ no source in this trace.
 
 ## Port notes
 
-- `TroopTransportState::disembark_selected` already moves chosen regiments
-  from a fleet's cargo to its system's surface. A hand unload is that call
-  behind the refusals above, with no transit.
-- The hold (`held`, port:) is per fleet. A hand unload removes regiments
-  from the cargo, and `forget_if_empty` ends the hold once the fleet carries
-  none.
-- `RegimentCannotTravel` contradicts the speed above. A regiment's
-  cross-system move is a transit (`build-delivery.md`, "Travel": speed 100,
-  the arrival tick at `+0x44`), which the port does not have.
-- A regiment leaving a blockaded system on its own sets its in-transit bit,
-  so the departure roll (`blockade-troop-withdrawal.md`, step 4) applies to
-  it as to cargo.
+- `TroopTransportState::move_regiment` carries out the order: the en-route
+  test, `FUN_0053d430`'s side test, the leg choice (planet, else the first
+  fleet of the side there with room) and the execute. Within one system the
+  regiment changes container at once; across systems it joins
+  `TroopTransportState::transits` and `advance_transit` places it on its
+  arrival day (hyp: hold and place, as `delivery.rs` does, so no walk of the
+  destination sees it early). A fleet's room counts the regiments on their
+  way to it. A regiment bound for a fleet dies with the fleet and follows a
+  merge. A destination planet destroyed, or a fleet gone, loses it on
+  arrival. The save carries the transits (v25).
+- port: the leg builder's `+0x58` bit 1 fleet and the side-3, `+0x88` bit 1
+  planet are not modelled; a fleet's room is the whole fleet's.
+- port: a regiment leaving a planet on its own takes no departure roll. Its
+  withdraw percent is 100 unless it entered the planet while blockaded,
+  which a Move cannot do (`FUN_005073d0`'s `0x90`/4).
+- The hold (port:) is per fleet: a hand unload takes regiments out of the
+  cargo, and the hold ends once the fleet carries none. A regiment boarding
+  by order holds its fleet, as a load does.
+- The Fleet window's Troops tab is a drag source (`FUN_006083c0`'s distance
+  and list rules); `main.rs` hit-tests the drop with the release windows'
+  `+0x70` and issues the move. A surface regiment's pop-up Move does the
+  same. port: Ctrl's Confirmed Move (`0x202`) and the original's advisor
+  reaction are not ported; the refusal prints in the message log.
+- port: travelling regiments are not drawn (no Troops tab entry while en
+  route, no map stream).
+- Gate: `tools/interface-parity/fleet-window.mjs` cases `unload` (a drop
+  on the System window of the fleet's own system), `unload-refused`
+  (fixture code 51: the regiment starts aboard, and the drop lands on the
+  System window of the other side's populated system, since the open Fleet
+  window covers that planet in the sector window) and `travel`, on both
+  sides.
 
 ## Still open
 
@@ -184,6 +203,8 @@ no source in this trace.
   `+0xc8`, and `FUN_00514a60` calls `+0xc4`, `+0xcc` and `+0xd0`; which
   objects those calls reach is not checked here.
 - `FUN_004f9860`'s untraced condition for a regiment.
+- Which walks of a system use modes 3 and 4 and so would see a regiment
+  en route (the hold-and-place hyp above, shared with `delivery.rs`).
 - The meaning of system `+0x88` bit 1 (set with bit 3 by `FUN_005081f0`,
   system slot `+0xbc`).
 - The `0x204`/`0x241` split of a `0x201` group and how `FUN_0053d430`'s

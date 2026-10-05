@@ -163,6 +163,9 @@ pub fn run_simulation_tick(
     for arrival in &arrivals {
         states.combat_cooldowns.remove(&arrival.system);
     }
+    // Regiments travelling on their own (FUN_00556430, event 0x387).
+    let regiments = states.troop_transport.advance_transit(world, current_tick);
+    integrator.apply_regiment_arrivals(world, &regiments);
 
     // ── 3. Combat ────────────────────────────────────────────────────────
     let combat_triggers: Vec<_> = world

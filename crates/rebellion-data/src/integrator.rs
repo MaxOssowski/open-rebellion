@@ -51,7 +51,7 @@ use rebellion_core::movement::{
 };
 use rebellion_core::repair::RepairEvent;
 use rebellion_core::research::{ResearchResult, ResearchState};
-use rebellion_core::troop_transport::TroopTransportState;
+use rebellion_core::troop_transport::{RegimentArrivals, RegimentLeg, TroopTransportState};
 use rebellion_core::uprising::{UprisingEvent, UprisingState};
 use rebellion_core::victory::VictoryOutcome;
 use rebellion_core::world::{
@@ -777,6 +777,33 @@ impl PerceptionIntegrator {
             );
         }
         landed
+    }
+
+    /// Record regiments whose own transit ended (`FUN_00556430`, event
+    /// `0x387`): one movement record each, arrived or lost on arrival
+    /// (`FUN_004fc080`).
+    pub fn apply_regiment_arrivals(&mut self, world: &GameWorld, ended: &RegimentArrivals) {
+        let records = ended
+            .arrived
+            .iter()
+            .map(|transit| (transit, "arrived"))
+            .chain(ended.lost.iter().map(|transit| (transit, "lost_on_arrival")));
+        for (transit, status) in records {
+            let destination = match transit.leg {
+                RegimentLeg::Surface(system) => sys_name(world, system),
+                RegimentLeg::Fleet(fleet) => format!("{fleet:?}"),
+            };
+            self.emit(
+                SYS_MOVEMENT,
+                EVT_TROOP_MOVED,
+                serde_json::json!({
+                    "origin": sys_name(world, transit.origin),
+                    "destination": destination,
+                    "regiments": 1,
+                    "status": status,
+                }),
+            );
+        }
     }
 
     /// Apply territorial occupation after a decisive ground victory.
@@ -2113,6 +2140,46 @@ mod tests {
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
         })
+    }
+
+    #[test]
+    fn each_ended_regiment_transit_records_one_movement_line() {
+        let mut world = GameWorld::default();
+        let origin = add_system(&mut world, "Kuat");
+        let destination = add_system(&mut world, "Naboo");
+        let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId(0x1000_0001),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        let transit = |leg| rebellion_core::troop_transport::RegimentTransit {
+            troop,
+            origin,
+            leg,
+            arrival_tick: 5,
+        };
+        let ended = RegimentArrivals {
+            arrived: vec![transit(RegimentLeg::Surface(destination))],
+            lost: vec![transit(RegimentLeg::Surface(destination))],
+        };
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+
+        integrator.apply_regiment_arrivals(&world, &ended);
+
+        let records = integrator.finish();
+        let statuses: Vec<_> = records
+            .iter()
+            .map(|record| (record.event_type, record.details["status"].clone()))
+            .collect();
+        assert_eq!(
+            statuses,
+            [
+                (EVT_TROOP_MOVED, serde_json::json!("arrived")),
+                (EVT_TROOP_MOVED, serde_json::json!("lost_on_arrival")),
+            ]
+        );
+        assert_eq!(records[0].details["destination"], "Naboo");
+        assert_eq!(records[0].details["origin"], "Kuat");
     }
 
     #[test]
