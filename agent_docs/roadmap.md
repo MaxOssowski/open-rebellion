@@ -419,6 +419,8 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   orders from 306,012 to 78,946 ([F-007A evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-fleet-redispatch.md)).
 - [x] Model fleet position explicitly, merge compatible arrivals, and prevent
   production from attaching to in-transit fleets ([F-007B evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-fleet-position-consolidation.md)).
+  The arrival merge was retired on 2026-10-05 with joining fleets: it had no
+  original source (`ghidra/notes/fleet-join-split.md`).
 - [ ] Wire ordinary player fleet dispatch through the validated authoritative
   departure path and pass independent bitmap acceptance for both factions
   ([F-007C evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-player-fleet-dispatch.md)).
@@ -533,6 +535,23 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   (`FUN_004f63f0`, `FUN_00556430`) and is placed on arrival (save v25).
   Another side's populated destination is refused (`FUN_0053d430`, 1/0x28).
   The `fleet-window.mjs` gate passes both sides. A native check remains.
+- [x] Port joining and splitting fleets (`ghidra/notes/fleet-join-split.md`).
+  A fleet's or ship's Move released on another fleet joins it
+  (`FUN_004ffc90`, `FUN_004feca0`), and an emptied fleet disbands
+  (`FUN_004fe630`); a ship's Create Fleet (`0x270`, sort 50, TEXTSTRA 12319)
+  or Move to its own system makes it a fleet of its own (`FUN_005809c0`,
+  `FUN_00509b40`, `FUN_00507750`). A Capital Ships tab item drags like a
+  regiment. Across systems the movers depart as a fleet and join on arrival
+  if the target is still there (port: hyp; save v26). The port's merge of
+  every compatible arrival (F-007B) is retired: no original rule merges
+  fleets the player did not join (Tom, 2026-10-05). The `fleet-window.mjs`
+  gate passes both sides. A native check remains.
+- [ ] Balance one-ship fleets in the AI. With the arrival merge retired, the
+  AI's own fleets no longer combine where they meet: in seed 42's 1,500-tick
+  dual-AI run the fleet count at its six snapshots runs 5, 6, 11, 11, 17, 17
+  where it ran 4, 4, 9, 9, 15, 15. Teach the AI to avoid lone-ship fleets,
+  or join them by condition, and measure against that run (Tom,
+  2026-10-05).
 - [ ] Source or retire the port's automatic landing (F-007E: cargo lands
   when its side alone orbits a system). The unloading trace finds no
   original path that lands cargo without an order

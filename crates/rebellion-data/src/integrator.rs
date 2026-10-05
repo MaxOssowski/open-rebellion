@@ -615,11 +615,13 @@ impl PerceptionIntegrator {
     pub fn apply_arrivals(
         &mut self,
         world: &mut GameWorld,
+        movement: &MovementState,
         troop_transport: &mut TroopTransportState,
         arrivals: &[ArrivalEvent],
     ) {
         for arrival in arrivals {
-            let Some(applied) = apply_fleet_arrival(world, troop_transport, arrival) else {
+            let Some(applied) = apply_fleet_arrival(world, movement, troop_transport, arrival)
+            else {
                 continue;
             };
             self.emit(

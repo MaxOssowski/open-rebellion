@@ -39,6 +39,9 @@ pub struct MoveConfirmation {
     pub faction: MissionFaction,
     pub fleet: FleetKey,
     pub destination: SystemKey,
+    /// The fleet the move joins, when it was released on a Fleet window
+    /// (`ghidra/notes/fleet-join-split.md`).
+    pub join: Option<FleetKey>,
     /// One `(name, days)` line per moving object (`FUN_0053c2e0`).
     pub lines: Vec<(String, u32)>,
 }
@@ -75,6 +78,7 @@ pub enum MoveConfirmationAction {
     Confirm {
         fleet: FleetKey,
         destination: SystemKey,
+        join: Option<FleetKey>,
     },
     /// The X (control `0x15`) or Escape: the order is destroyed.
     Cancel,
@@ -110,6 +114,7 @@ impl MoveConfirmationState {
             MoveConfirmationAction::Confirm {
                 fleet: window.fleet,
                 destination: window.destination,
+                join: window.join,
             }
         } else {
             MoveConfirmationAction::Cancel
@@ -215,6 +220,7 @@ mod tests {
             faction,
             fleet: FleetKey::default(),
             destination: SystemKey::default(),
+            join: None,
             lines: vec![("Red Fleet".into(), 12)],
         }
     }
@@ -342,9 +348,37 @@ mod tests {
             Some(MoveConfirmationAction::Confirm {
                 fleet: FleetKey::default(),
                 destination: SystemKey::default(),
+                join: None,
             })
         );
         assert!(!state.is_open());
+    }
+
+    #[test]
+    fn the_checkmark_carries_the_fleet_a_confirmed_move_joins() {
+        // FUN_0044f5e0 resubmits the same order, so a move onto a fleet
+        // still joins it (ghidra/notes/fleet-join-split.md).
+        let mut world = rebellion_core::world::GameWorld::default();
+        let target = world.fleets.insert(rebellion_core::world::Fleet {
+            location: SystemKey::default(),
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let mut state = MoveConfirmationState::default();
+        state.open(MoveConfirmation {
+            join: Some(target),
+            ..confirmation(MissionFaction::Alliance)
+        });
+
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+
+        assert!(matches!(
+            action,
+            Some(MoveConfirmationAction::Confirm { join: Some(fleet), .. }) if fleet == target
+        ));
     }
 
     #[test]

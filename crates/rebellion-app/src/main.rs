@@ -42,6 +42,7 @@ use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyEvent, EconomyState, EconomySystem};
 use rebellion_core::events::{EventAction, EventState, EventSystem};
+use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::ids::{CharacterKey, SystemKey};
 use rebellion_core::jedi::{JediState, JediSystem};
@@ -1653,9 +1654,12 @@ Some(RailAudience::side(*faction_is_alliance)),
             // ── Movement ────────────────────────────────────────────────────
             let arrivals = MovementSystem::advance(&mut movement_state, &tick_events);
             for arrival in &arrivals {
-                let Some(applied) =
-                    apply_fleet_arrival(&mut world, &mut troop_transport_state, arrival)
-                else {
+                let Some(applied) = apply_fleet_arrival(
+                    &mut world,
+                    &movement_state,
+                    &mut troop_transport_state,
+                    arrival,
+                ) else {
                     continue;
                 };
                 let sys_name = world
@@ -3801,35 +3805,14 @@ Some(RailAudience::side(*faction_is_alliance)),
                             SystemWindowAction::OpenObjectMenu {
                                 selection, point, ..
                             } => {
-                                let gates = OrderGates {
-                                    mission: selection
-                                        .and_then(MenuObject::mission_member)
-                                        .is_some_and(|member| {
-                                            mission_state.mission_order_enabled(
-                                                &world,
-                                                player_faction,
-                                                &[member],
-                                            )
-                                        }),
-                                    fleet_move: match selection {
-                                        Some(MenuObject::Fleet(fleet)) => fleet_move_enabled(
-                                            &movement_state,
-                                            &world,
-                                            fleet,
-                                            player_faction == MissionFaction::Alliance,
-                                        ),
-                                        _ => false,
-                                    },
-                                    troop_move: match selection {
-                                        Some(MenuObject::Troop(troop)) => troop_transport_state
-                                            .regiment_move_enabled(
-                                                &world,
-                                                troop,
-                                                player_faction == MissionFaction::Alliance,
-                                            ),
-                                        _ => false,
-                                    },
-                                };
+                                let gates = order_gates(
+                                    selection,
+                                    &world,
+                                    &mission_state,
+                                    &movement_state,
+                                    &troop_transport_state,
+                                    player_faction,
+                                );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
                             // FUN_00422ce0: a drop from a system window issues
@@ -3924,6 +3907,63 @@ Some(RailAudience::side(*faction_is_alliance)),
                             // FUN_00422ce0: a drop from the Fleet window
                             // (type 4) moves the selection against the
                             // window under the point with 0x201.
+                            FleetWindowAction::OpenObjectMenu { selection, point } => {
+                                let gates = order_gates(
+                                    Some(selection),
+                                    &world,
+                                    &mission_state,
+                                    &movement_state,
+                                    &troop_transport_state,
+                                    player_faction,
+                                );
+                                object_menu =
+                                    Some(ObjectMenuState::new(Some(selection), gates, point));
+                            }
+                            // FUN_00422ce0: the ship moves with 0x201 against
+                            // the window under the point
+                            // (ghidra/notes/fleet-join-split.md).
+                            FleetWindowAction::DragShip {
+                                fleet,
+                                index,
+                                roster,
+                                point,
+                            } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                match release_destination(
+                                    ctx,
+                                    &world,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) {
+                                    Some(ReleaseTarget::Fleet { fleet: target, .. }) => {
+                                        panel_actions.push(PanelAction::JoinFleet {
+                                            mover: FleetMover::Ships {
+                                                fleet,
+                                                ships: vec![index],
+                                                roster,
+                                            },
+                                            target,
+                                        });
+                                    }
+                                    Some(ReleaseTarget::System(system)) => {
+                                        panel_actions.push(PanelAction::MoveShips {
+                                            fleet,
+                                            ships: vec![index],
+                                            roster,
+                                            system,
+                                        });
+                                    }
+                                    None => {}
+                                }
+                            }
                             FleetWindowAction::DragRegiment { troop, point } => {
                                 let windows = ReleaseWindows {
                                     sector: &sector_window_state,
@@ -4048,6 +4088,34 @@ Some(RailAudience::side(*faction_is_alliance)),
                         Some((ObjectMenuCommand::Move, Some(MenuObject::Troop(troop)))) => {
                             targeting = Some(Targeting::new(TargetOrder::TroopMove { troop }));
                         }
+                        Some((
+                            ObjectMenuCommand::Move,
+                            Some(MenuObject::Ship {
+                                fleet,
+                                index,
+                                roster,
+                            }),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::ShipMove {
+                                fleet,
+                                ships: vec![index],
+                                roster,
+                            }));
+                        }
+                        // FUN_00580b00: Create Fleet runs at once, against the
+                        // ships' own system.
+                        Some((
+                            ObjectMenuCommand::CreateFleet,
+                            Some(MenuObject::Ship {
+                                fleet,
+                                index,
+                                roster,
+                            }),
+                        )) => panel_actions.push(PanelAction::CreateFleet {
+                            fleet,
+                            ships: vec![index],
+                            roster,
+                        }),
                         // port: the other items are drawn disabled.
                         Some(_) | None => {}
                     }
@@ -4094,18 +4162,26 @@ Some(RailAudience::side(*faction_is_alliance)),
 
                     // FUN_0044f5e0: the checkmark resubmits with force 1,
                     // which validates again and departs without asking.
-                    if let Some(MoveConfirmationAction::Confirm { fleet, destination }) =
-                        draw_move_confirmation(
-                            ctx,
-                            &mut move_confirmation_state,
-                            cockpit_layout,
-                            &mut bmp_cache,
-                        )
-                    {
-                        panel_actions.push(PanelAction::DispatchFleet {
-                            fleet,
-                            destination,
-                            troops: Vec::new(),
+                    if let Some(MoveConfirmationAction::Confirm {
+                        fleet,
+                        destination,
+                        join,
+                    }) = draw_move_confirmation(
+                        ctx,
+                        &mut move_confirmation_state,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        panel_actions.push(match join {
+                            Some(target) => PanelAction::JoinFleet {
+                                mover: FleetMover::Fleet(fleet),
+                                target,
+                            },
+                            None => PanelAction::DispatchFleet {
+                                fleet,
+                                destination,
+                                troops: Vec::new(),
+                            },
                         });
                     }
 
@@ -4153,18 +4229,102 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     );
                                     mission_dialog_state.open(player_faction, system, team, kinds);
                                 }
-                                // FUN_00487740: the validator first, then
-                                // FUN_00487cc0 decides whether to confirm.
-                                // port: a fleet's move onto a fleet joins it,
-                                // which is not ported.
+                                // A fleet's move onto a fleet joins it
+                                // (FUN_004ffc90, FUN_004feca0). It is
+                                // checked first, as a move to a system is
+                                // (FUN_00487740); Confirmed Move, or a
+                                // departure from a blockaded system, asks
+                                // (FUN_00487cc0).
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::FleetMove { .. },
-                                    target: ReleaseTarget::Fleet { .. },
-                                }) => msg_log.push(GameMessage::new(
-                                    clock.tick,
-                                    "Fleet move rejected: joining fleets is not ported".to_string(),
-                                    MessageCategory::Event,
-                                )),
+                                    order: TargetOrder::FleetMove { fleet, confirmed },
+                                    target:
+                                        ReleaseTarget::Fleet {
+                                            fleet: target,
+                                            system,
+                                        },
+                                }) => {
+                                    let checked = rebellion_core::fleet_join::validate_join(
+                                        &world,
+                                        &movement_state,
+                                        &FleetMover::Fleet(fleet),
+                                        target,
+                                        player_faction == MissionFaction::Alliance,
+                                    );
+                                    if let Err(error) = checked {
+                                        msg_log.push(GameMessage::new(
+                                            clock.tick,
+                                            format!("Fleet move rejected: {error}"),
+                                            MessageCategory::Event,
+                                        ));
+                                    } else if rebellion_core::fleet_join::join_confirms(
+                                        &world,
+                                        blockade_state.blockaded_systems(),
+                                        fleet,
+                                        target,
+                                        confirmed,
+                                    ) {
+                                        let lines = world
+                                            .fleets
+                                            .get(fleet)
+                                            .and_then(|value| {
+                                                let days = if value.location == system {
+                                                    0
+                                                } else {
+                                                    fleet_transit_ticks(
+                                                        value,
+                                                        &world,
+                                                        value.location,
+                                                        system,
+                                                    )?
+                                                };
+                                                Some((fleet_label(&world, fleet)?, days))
+                                            })
+                                            .into_iter()
+                                            .collect();
+                                        move_confirmation_state.open(MoveConfirmation {
+                                            faction: player_faction,
+                                            fleet,
+                                            destination: system,
+                                            join: Some(target),
+                                            lines,
+                                        });
+                                    } else {
+                                        panel_actions.push(PanelAction::JoinFleet {
+                                            mover: FleetMover::Fleet(fleet),
+                                            target,
+                                        });
+                                    }
+                                }
+                                Some(TargetingEnd::Target {
+                                    order:
+                                        TargetOrder::ShipMove {
+                                            fleet,
+                                            ships,
+                                            roster,
+                                        },
+                                    target: ReleaseTarget::Fleet { fleet: target, .. },
+                                }) => panel_actions.push(PanelAction::JoinFleet {
+                                    mover: FleetMover::Ships {
+                                        fleet,
+                                        ships,
+                                        roster,
+                                    },
+                                    target,
+                                }),
+                                Some(TargetingEnd::Target {
+                                    order:
+                                        TargetOrder::ShipMove {
+                                            fleet,
+                                            ships,
+                                            roster,
+                                        },
+                                    target: ReleaseTarget::System(system),
+                                }) => panel_actions.push(PanelAction::MoveShips {
+                                    fleet,
+                                    ships,
+                                    roster,
+                                    system,
+                                }),
                                 // A regiment's 0x201 against the release
                                 // window's +0x70 (FUN_004a3130 for a Fleet
                                 // window), boarding, landing or travelling.
@@ -4227,6 +4387,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                             faction: player_faction,
                                             fleet,
                                             destination: system,
+                                            join: None,
                                             lines,
                                         });
                                     } else {
@@ -5235,6 +5396,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     &movement_state,
                     &troop_transport_state,
                     &fleet_window_state,
+                    move_confirmation_state.is_open(),
                     msg_log.messages(),
                     map_state.zoom,
                 );
@@ -5273,6 +5435,49 @@ Some(RailAudience::side(*faction_is_alliance)),
         }
 
         next_frame().await;
+    }
+}
+
+/// Whether each order of `selection`'s menu passes its own rule (`+0x18`).
+fn order_gates(
+    selection: Option<MenuObject>,
+    world: &GameWorld,
+    mission_state: &MissionState,
+    movement_state: &MovementState,
+    troop_transport_state: &TroopTransportState,
+    player_faction: MissionFaction,
+) -> OrderGates {
+    let is_alliance = player_faction == MissionFaction::Alliance;
+    OrderGates {
+        mission: selection
+            .and_then(MenuObject::mission_member)
+            .is_some_and(|member| {
+                mission_state.mission_order_enabled(world, player_faction, &[member])
+            }),
+        fleet_move: match selection {
+            Some(MenuObject::Fleet(fleet)) => {
+                fleet_move_enabled(movement_state, world, fleet, is_alliance)
+            }
+            _ => false,
+        },
+        troop_move: match selection {
+            Some(MenuObject::Troop(troop)) => {
+                troop_transport_state.regiment_move_enabled(world, troop, is_alliance)
+            }
+            _ => false,
+        },
+        // FUN_004f9860: the ship's fleet is the player's and in orbit.
+        ship_move: match selection {
+            Some(MenuObject::Ship { fleet, index, .. }) => {
+                fleet_move_enabled(movement_state, world, fleet, is_alliance)
+                    && world
+                        .fleets
+                        .get(fleet)
+                        .and_then(|value| value.capital_ships.get(index))
+                        .is_some_and(|ship| ship.alive)
+            }
+            _ => false,
+        },
     }
 }
 
@@ -5385,72 +5590,69 @@ fn apply_panel_action(
                 ));
             }
         }
-        PanelAction::MergeFleets { fleet_a, fleet_b } => {
-            // Guard: both fleets must still exist and neither should be in transit.
-            let a_exists = world.fleets.contains_key(fleet_a);
-            let b_exists = world.fleets.contains_key(fleet_b);
-            let a_transit = movement_state.get(fleet_a).is_some();
-            let b_transit = movement_state.get(fleet_b).is_some();
-
-            if !a_exists || !b_exists || a_transit || b_transit {
-                // Abort silently — stale action from a previous frame.
-            } else {
-                // Transfer all ships, fighters, and characters from fleet_b into fleet_a.
-                let source = world.fleets.get(fleet_b).unwrap();
-                let ships = source.capital_ships.clone();
-                let fighters = source.fighters.clone();
-                let chars = source.characters.clone();
-                let had_ds = source.has_death_star;
-
-                let dest = world.fleets.get_mut(fleet_a).unwrap();
-                // Merge capital ships — per-hull instances, just extend
-                dest.capital_ships.extend(ships);
-                // Merge fighters
-                for entry in fighters {
-                    if let Some(existing) =
-                        dest.fighters.iter_mut().find(|e| e.class == entry.class)
-                    {
-                        existing.count += entry.count;
-                    } else {
-                        dest.fighters.push(entry);
-                    }
-                }
-                // Merge characters + update current_fleet
-                for ck in &chars {
-                    if let Some(c) = world.characters.get_mut(*ck) {
-                        c.current_fleet = Some(fleet_a);
-                    }
-                }
-                let dest = world.fleets.get_mut(fleet_a).unwrap();
-                for ck in chars {
-                    if !dest.characters.contains(&ck) {
-                        dest.characters.push(ck);
-                    }
-                }
-                if had_ds {
-                    dest.has_death_star = true;
-                }
-
-                troop_transport_state.transfer_fleet(fleet_b, fleet_a);
-
-                // Cancel any movement order for fleet_b (defensive).
-                movement_state.cancel(fleet_b);
-
-                // Remove fleet_b from its system's fleet list and from the world.
-                if let Some(source) = world.fleets.get(fleet_b) {
-                    let loc = source.location;
-                    if let Some(sys) = world.systems.get_mut(loc) {
-                        sys.fleets.retain(|&fk| fk != fleet_b);
-                    }
-                }
-                world.fleets.remove(fleet_b);
+        // ghidra/notes/fleet-join-split.md.
+        PanelAction::JoinFleet { mover, target } => {
+            let result = rebellion_core::fleet_join::join_fleet(
+                world,
+                movement_state,
+                troop_transport_state,
+                &mover,
+                target,
+                *player_faction == MissionFaction::Alliance,
+            );
+            if let Err(error) = result {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    format!("Fleet move rejected: {error}"),
+                    MessageCategory::Event,
+                ));
             }
-
-            msg_log.push(GameMessage::new(
-                clock.tick,
-                "Fleets merged".to_string(),
-                MessageCategory::Event,
-            ));
+        }
+        PanelAction::CreateFleet {
+            fleet,
+            ships,
+            roster,
+        } => {
+            let result = rebellion_core::fleet_join::create_fleet(
+                world,
+                movement_state,
+                troop_transport_state,
+                fleet,
+                &ships,
+                roster,
+                *player_faction == MissionFaction::Alliance,
+            );
+            if let Err(error) = result {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    format!("Create Fleet rejected: {error}"),
+                    MessageCategory::Event,
+                ));
+            }
+        }
+        PanelAction::MoveShips {
+            fleet,
+            ships,
+            roster,
+            system,
+        } => {
+            let result = rebellion_core::fleet_join::move_ships_to_system(
+                world,
+                movement_state,
+                troop_transport_state,
+                fleet,
+                &ships,
+                roster,
+                system,
+                *player_faction == MissionFaction::Alliance,
+            );
+            if let Err(error) = result {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    format!("Fleet move rejected: {error}"),
+                    MessageCategory::Event,
+                ));
+            }
         }
         PanelAction::DispatchFleet {
             fleet,

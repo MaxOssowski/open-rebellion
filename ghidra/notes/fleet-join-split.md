@@ -131,17 +131,46 @@ Fleet 2, etc."); untraced.
   (`Fleet`, `TroopTransportState`); the original's ships carry them. A port
   join moves them with the ships; a split moves the ships and leaves the
   fleet's fighters, characters and cargo with the fleet they came from
-  unless every ship leaves. port: which ship carries which fighter or
-  regiment is not modelled.
+  unless every ship leaves. The regiments the staying ships have no room
+  for (counting regiments on their way to board) go with the ships that
+  leave, the last in key order first, so the capacity cleanup
+  (`destroy_untransportable_cargo`) loses none; a hold goes with them.
+  port: which ship carries which fighter or regiment is not modelled.
+- port: a Death Star whose class is a capital ship's
+  (`CapitalShipClass::is_death_star`) carries the fleet's Death Star flag
+  with it in a split or join; a flag with no Death Star ship is the separate
+  tactical object and stays with its fleet.
+- port: a ship order keeps the fleet's roster (`fleet_join::roster`, its
+  ships' classes in order) from when the ship was chosen, and is refused
+  ("the fleet's ships have changed") if a ship was lost or gained since:
+  the clock runs while a menu, drag or targeting is open, and an index
+  would otherwise name another ship.
+- A fleet's Move onto a fleet is checked as a move to a system is
+  (`FUN_00487740`, `validate_join`) before anything asks; Confirmed Move
+  asks, and Move asks when the fleet leaves a blockaded system of its side
+  (`FUN_00487cc0`, `join_confirms`). port: a ship's own Move never asks.
+- port: a fleet that joins on arrival comes in after the other arrivals of
+  its pass, so a target arriving in the same pass is already there.
+- port: cargo that joins a fleet holding regiments loaded where it orbits
+  shares that hold, so the automatic landing (itself unsourced, roadmap)
+  skips it until the fleet next arrives somewhere.
 - port: no spare fleets. The port creates the fleet when Create Fleet
   executes; the result a player sees, a new fleet of the selected ships in
   their system, is the same.
 - Fleets are runtime objects in the saved `GameWorld` slotmap; no DAT
   identity or id allocator is involved.
-- The port's `apply_fleet_arrival` merges same-side fleets without
-  characters or a Death Star whenever one arrives where another orbits. No
+- The port's `apply_fleet_arrival` merged same-side fleets without
+  characters or a Death Star whenever one arrived where another orbited. No
   original rule does this; the original keeps fleets apart until a player
-  joins them. It would undo a split at the next arrival.
+  joins them, and the merge would undo a split at the next arrival. It is
+  retired (Tom, 2026-10-05): a fleet now merges on arrival only into the
+  fleet its move named (`MovementOrder.join`, save v26), and only when that
+  fleet is still there, of its side and not in hyperspace; otherwise it
+  stays a fleet of its own (hyp).
+- port: a fleet moved onto a fleet in another system departs whole (its
+  ships split first when only some move) and joins on arrival, where the
+  original reparents each ship at once and lets it travel (manual p. 122).
+  The Death Star stays with its fleet unless the whole fleet joins.
 
 ## Still open
 
@@ -151,7 +180,10 @@ Fleet 2, etc."); untraced.
   reused.
 - Where "Fleet N" comes from, and its counter.
 - `FUN_00558380`'s base order list (`DAT_006bb368`).
-- Ctrl multi-selection in the Fleet window's lists.
+- Ctrl multi-selection in the Fleet window's lists (the port moves one
+  ship per drag or menu order).
+- A system window drag (`0x214`) released on a fleet: the port still
+  refuses it.
 
 ## Supporting decompiles
 

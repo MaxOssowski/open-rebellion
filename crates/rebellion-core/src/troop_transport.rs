@@ -791,6 +791,33 @@ impl TroopTransportState {
         cargo.dedup();
     }
 
+    /// Move `troops`, regiments aboard `from`, aboard `to`. A hold at the
+    /// loading system goes with them, as both fleets orbit it.
+    pub fn transfer_some(&mut self, from: FleetKey, to: FleetKey, troops: &[TroopKey]) {
+        let Some(cargo) = self.cargo.get_mut(&from) else {
+            return;
+        };
+        let moved: Vec<TroopKey> = cargo
+            .iter()
+            .copied()
+            .filter(|troop| troops.contains(troop))
+            .collect();
+        if moved.is_empty() {
+            return;
+        }
+        cargo.retain(|troop| !moved.contains(troop));
+        let held = self.is_held(from);
+        for troop in moved {
+            insert_sorted(self.cargo.entry(to).or_default(), troop);
+        }
+        if held {
+            if let Err(index) = self.held.binary_search(&to) {
+                self.held.insert(index, to);
+            }
+        }
+        self.forget_if_empty(from);
+    }
+
     /// Destroy every regiment aboard a fleet that has been destroyed.
     ///
     /// A regiment on its way to board the fleet dies with it: the original

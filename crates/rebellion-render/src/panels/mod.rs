@@ -42,6 +42,7 @@ pub use mod_manager::{draw_mod_manager, ModInfo, ModManagerAction, ModManagerSta
 pub use officers::{draw_officers, OfficersState};
 pub use save_load::{draw_save_load, SaveLoadPanelState, SaveSlotInfo};
 
+use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
 use rebellion_core::manufacturing::BuildableKind;
 use rebellion_core::missions::{MissionFaction, MissionKind, MissionMember};
@@ -75,10 +76,22 @@ pub enum PanelAction {
         character: CharacterKey,
         fleet: FleetKey,
     },
-    /// Merge `fleet_b` into `fleet_a` (ships, fighters, characters transfer).
-    MergeFleets {
-        fleet_a: FleetKey,
-        fleet_b: FleetKey,
+    /// A fleet's or capital ships' Move (`0x201`) released on a Fleet window
+    /// (`fleet_join::join_fleet`).
+    JoinFleet { mover: FleetMover, target: FleetKey },
+    /// A capital ship's Create Fleet (`0x270`, `fleet_join::create_fleet`).
+    CreateFleet {
+        fleet: FleetKey,
+        ships: Vec<usize>,
+        roster: u64,
+    },
+    /// Capital ships' Move (`0x201`) released on a system
+    /// (`fleet_join::move_ships_to_system`).
+    MoveShips {
+        fleet: FleetKey,
+        ships: Vec<usize>,
+        roster: u64,
+        system: SystemKey,
     },
     /// Dispatch one player-controlled fleet to a selected destination.
     DispatchFleet {

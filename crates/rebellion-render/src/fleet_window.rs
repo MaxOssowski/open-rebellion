@@ -11,6 +11,7 @@
 
 use egui_macroquad::egui;
 use rebellion_core::dat::{ExplorationStatus, Faction};
+use rebellion_core::fleet_join;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{FleetKey, SystemKey, TroopKey};
 use rebellion_core::troop_transport::TroopTransportState;
@@ -18,11 +19,12 @@ use rebellion_core::world::{ControlKind, GameWorld};
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
+use crate::object_menu::MenuObject;
 use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
 use crate::quadrant_icons::{quadrant_art, Quadrant};
 use crate::system_window::{
-    character_mini_resource_id, clamp_window_to_galaxy, exact_clicked, fleet_label, logical_rect,
-    opposing_contents_visible, rect_contains, troop_mini, DRAG_DISTANCE_SQUARED,
+    canvas_point, character_mini_resource_id, clamp_window_to_galaxy, exact_clicked, fleet_label,
+    logical_rect, opposing_contents_visible, rect_contains, troop_mini, DRAG_DISTANCE_SQUARED,
 };
 use crate::targeting::ReleaseTarget;
 
@@ -115,10 +117,41 @@ struct OpenFleetWindow {
 /// A left press held on a Troops tab regiment until its release
 /// (`CoolDragList`, `FUN_006083c0`).
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct RegimentDrag {
-    troop: TroopKey,
+struct ItemDrag {
+    object: ItemObject,
     press: egui::Pos2,
     list: egui::Rect,
+}
+
+/// The object a right-list item stands for, which a drag carries and a
+/// right click opens a menu for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ItemObject {
+    Regiment(TroopKey),
+    /// A capital ship, by its index in the fleet's `capital_ships` and the
+    /// fleet's roster then (`fleet_join::roster`).
+    Ship {
+        fleet: FleetKey,
+        index: usize,
+        roster: u64,
+    },
+}
+
+impl ItemObject {
+    const fn menu_object(self) -> MenuObject {
+        match self {
+            Self::Regiment(troop) => MenuObject::Troop(troop),
+            Self::Ship {
+                fleet,
+                index,
+                roster,
+            } => MenuObject::Ship {
+                fleet,
+                index,
+                roster,
+            },
+        }
+    }
 }
 
 /// The open Fleet windows. The last is focused and paints on top.
@@ -126,7 +159,7 @@ struct RegimentDrag {
 pub struct FleetWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenFleetWindow>,
-    drag: Option<RegimentDrag>,
+    drag: Option<ItemDrag>,
 }
 
 impl Default for FleetWindowState {
@@ -273,6 +306,14 @@ impl FleetWindowState {
         Some(FleetWindowReport {
             origin: window.logical_position,
             entries: entries.len(),
+            fleet_rows: entries
+                .iter()
+                .enumerate()
+                .filter_map(|(row, entry)| match entry {
+                    FleetWindowEntry::Fleet(fleet) => Some((*fleet, row)),
+                    FleetWindowEntry::Ship { .. } => None,
+                })
+                .collect(),
             selected,
             tab: window.tab,
             enabled: FleetWindowTab::ALL.map(|tab| tab_enabled(world, transport, selected, tab)),
@@ -351,9 +392,18 @@ impl FleetWindowState {
         if moved.length_sq() <= DRAG_DISTANCE_SQUARED || rect_contains(drag.list, point) {
             return None;
         }
-        Some(FleetWindowAction::DragRegiment {
-            troop: drag.troop,
-            point,
+        Some(match drag.object {
+            ItemObject::Regiment(troop) => FleetWindowAction::DragRegiment { troop, point },
+            ItemObject::Ship {
+                fleet,
+                index,
+                roster,
+            } => FleetWindowAction::DragShip {
+                fleet,
+                index,
+                roster,
+                point,
+            },
         })
     }
 
@@ -397,6 +447,8 @@ impl FleetWindowState {
 pub struct FleetWindowReport {
     pub origin: (i16, i16),
     pub entries: usize,
+    /// Each listed fleet and its row in the left list.
+    pub fleet_rows: Vec<(FleetKey, usize)>,
     pub selected: Option<FleetWindowEntry>,
     pub tab: FleetWindowTab,
     pub enabled: [bool; 4],
@@ -422,6 +474,20 @@ pub enum FleetWindowAction {
     DragRegiment {
         troop: TroopKey,
         point: egui::Pos2,
+    },
+    /// A Capital Ships tab item dragged out of its list: the same `0x201`
+    /// for the ship (`ghidra/notes/fleet-join-split.md`).
+    DragShip {
+        fleet: FleetKey,
+        index: usize,
+        roster: u64,
+        point: egui::Pos2,
+    },
+    /// A right click on a list entry or item opens its object's pop-up menu
+    /// (manual p. 120), at a 640 by 480 canvas point.
+    OpenObjectMenu {
+        selection: MenuObject,
+        point: (i16, i16),
     },
 }
 
@@ -683,8 +749,8 @@ struct RightItem {
     mini: Option<u32>,
     label: String,
     no_hyperdrive: bool,
-    /// The regiment a Troops tab item stands for, which a drag carries.
-    regiment: Option<TroopKey>,
+    /// The regiment or ship the item stands for.
+    object: Option<ItemObject>,
 }
 
 /// The current tab's objects aboard the selected fleet (`FUN_004a6be0`).
@@ -700,17 +766,23 @@ fn right_items(
     let Some(value) = world.fleets.get(fleet) else {
         return Vec::new();
     };
+    let roster = fleet_join::roster(world, fleet).unwrap_or_default();
     match tab {
         FleetWindowTab::CapitalShips => value
             .capital_ships
             .iter()
-            .filter(|ship| ship.alive)
-            .filter_map(|ship| world.capital_ship_classes.get(ship.class))
-            .map(|class| RightItem {
+            .enumerate()
+            .filter(|(_, ship)| ship.alive)
+            .filter_map(|(index, ship)| Some((index, world.capital_ship_classes.get(ship.class)?)))
+            .map(|(index, class)| RightItem {
                 mini: capital_ship_mini_id(class.dat_id),
                 label: class.name.clone(),
                 no_hyperdrive: class.hyperdrive == 0,
-                regiment: None,
+                object: Some(ItemObject::Ship {
+                    fleet,
+                    index,
+                    roster,
+                }),
             })
             .collect(),
         // port: the port keeps squadrons as counts per class.
@@ -723,7 +795,7 @@ fn right_items(
                     mini: fighter_mini_id(class.dat_id),
                     label: class.name.clone(),
                     no_hyperdrive: false,
-                    regiment: None,
+                    object: None,
                 })
             })
             .collect(),
@@ -736,7 +808,7 @@ fn right_items(
                 mini: Some(mini),
                 label: label.to_owned(),
                 no_hyperdrive: false,
-                regiment: Some(key),
+                object: Some(ItemObject::Regiment(key)),
             })
             .collect(),
         FleetWindowTab::Personnel => value
@@ -747,7 +819,7 @@ fn right_items(
                 mini: character_mini_resource_id(character.dat_id, character.is_major),
                 label: character.name.clone(),
                 no_hyperdrive: false,
-                regiment: None,
+                object: None,
             })
             .collect(),
     }
@@ -887,7 +959,8 @@ struct WindowDrawResult {
     toggle: Option<FleetKey>,
     tab: Option<FleetWindowTab>,
     item: Option<usize>,
-    drag: Option<RegimentDrag>,
+    drag: Option<ItemDrag>,
+    object_menu: Option<(MenuObject, egui::Pos2)>,
 }
 
 /// Draw every open Fleet window.
@@ -924,6 +997,12 @@ pub fn draw_fleet_windows(
         let system = window.system;
         if let Some(drag) = result.drag {
             state.drag = Some(drag);
+        }
+        if let Some((selection, point)) = result.object_menu {
+            actions.push(FleetWindowAction::OpenObjectMenu {
+                selection,
+                point: canvas_point(layout, point),
+            });
         }
         if result.close || !world.systems.contains_key(system) {
             state.close(system);
@@ -1217,6 +1296,20 @@ fn draw_fleet_window(
                         result.toggle = Some(*fleet);
                     }
                 }
+                if let (true, Some(point)) = (
+                    response.secondary_clicked(),
+                    response.interact_pointer_pos(),
+                ) {
+                    let selection = match *entry {
+                        FleetWindowEntry::Fleet(fleet) => MenuObject::Fleet(fleet),
+                        FleetWindowEntry::Ship { fleet, index } => MenuObject::Ship {
+                            fleet,
+                            index,
+                            roster: fleet_join::roster(world, fleet).unwrap_or_default(),
+                        },
+                    };
+                    result.object_menu = Some((selection, point));
+                }
             }
 
             if let Some(side) = selected_side {
@@ -1383,10 +1476,17 @@ fn draw_fleet_window(
                         result.item = Some(row);
                         result.focus = true;
                     }
-                    // A left press on a regiment captures the mouse for a
-                    // drag (FUN_006083c0).
-                    if let (Some(troop), Some(press)) = (
-                        item.regiment,
+                    if response.secondary_clicked() {
+                        if let (Some(object), Some(point)) =
+                            (item.object, response.interact_pointer_pos())
+                        {
+                            result.object_menu = Some((object.menu_object(), point));
+                        }
+                    }
+                    // A left press on a regiment or ship captures the mouse
+                    // for a drag (FUN_006083c0).
+                    if let (Some(object), Some(press)) = (
+                        item.object,
                         ui.ctx().input(|input| {
                             input
                                 .pointer
@@ -1396,8 +1496,8 @@ fn draw_fleet_window(
                         }),
                     ) {
                         if response.is_pointer_button_down_on() && rect_contains(cell, press) {
-                            result.drag = Some(RegimentDrag {
-                                troop,
+                            result.drag = Some(ItemDrag {
+                                object,
                                 press,
                                 list: right,
                             });
@@ -1741,7 +1841,7 @@ pub(crate) mod tests {
                 mini: Some(17_472),
                 label: "Alliance Fleet Regiment".into(),
                 no_hyperdrive: false,
-                regiment: Some(troop),
+                object: Some(ItemObject::Regiment(troop)),
             }]
         );
         // A ship's own contents are not modelled, so its tabs stay dark.
@@ -2234,11 +2334,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_capital_ship_dragged_out_of_its_tab_drops_nothing() {
-        // port: only a regiment's drag out of the Fleet window is ported.
+    fn a_capital_ship_dragged_out_of_its_tab_drops_that_ship_where_the_button_comes_up() {
+        // FUN_00422ce0 moves a type 4 selection with 0x201; manual p. 120:
+        // "To move ships [...] from one fleet to another, simply drag the
+        // item to their new destinations."
         let (world, transport, system, fleet, _) = fleet_with_regiment();
 
-        let (actions, _, held) = drag_from_tab(
+        let (actions, release, held) = drag_from_tab(
             &world,
             &transport,
             system,
@@ -2248,8 +2350,139 @@ pub(crate) mod tests {
             (40.0, 200.0),
         );
 
-        assert!(!held);
+        assert!(held);
         assert!(regiment_drops(&actions).is_empty());
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| matches!(action, FleetWindowAction::DragShip { .. }))
+                .collect::<Vec<_>>(),
+            [&FleetWindowAction::DragShip {
+                fleet,
+                index: 0,
+                roster: fleet_join::roster(&world, fleet).unwrap(),
+                point: release,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_capital_ship_item_stands_for_its_index_among_every_ship_of_the_fleet() {
+        // Our own list: a destroyed ship is not listed but keeps its index.
+        let (mut world, transport, _, fleet, _) = fleet_with_regiment();
+        let class = world.fleets[fleet].capital_ships[0].class;
+        world.fleets[fleet]
+            .capital_ships
+            .insert(0, ShipInstance::new(class, 100, true));
+        world.fleets[fleet].capital_ships[0].alive = false;
+
+        let items = right_items(
+            &world,
+            &transport,
+            Some(FleetWindowEntry::Fleet(fleet)),
+            FleetWindowTab::CapitalShips,
+        );
+
+        assert_eq!(
+            items.iter().map(|item| item.object).collect::<Vec<_>>(),
+            [Some(ItemObject::Ship {
+                fleet,
+                index: 1,
+                roster: fleet_join::roster(&world, fleet).unwrap(),
+            })]
+        );
+    }
+
+    fn right_click(
+        world: &GameWorld,
+        transport: &TroopTransportState,
+        state: &mut FleetWindowState,
+        point: egui::Pos2,
+    ) -> Vec<FleetWindowAction> {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let mut frames = hover(point);
+        frames.extend([vec![button(true)], vec![button(false)], vec![]]);
+        run(world, transport, state, CockpitFaction::Alliance, frames).actions
+    }
+
+    fn menus(actions: &[FleetWindowAction]) -> Vec<(MenuObject, (i16, i16))> {
+        actions
+            .iter()
+            .filter_map(|action| match *action {
+                FleetWindowAction::OpenObjectMenu { selection, point } => Some((selection, point)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_right_click_on_a_ship_or_regiment_item_opens_its_menu_where_it_was_clicked() {
+        // Manual p. 120: "Right-click on a ship to bring up its menu";
+        // FUN_004ac5c0 opens the menu at the canvas point.
+        let (world, transport, system, fleet, troop) = fleet_with_regiment();
+        let mut state = opened(&world, system);
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.tab = FleetWindowTab::CapitalShips;
+        }
+
+        let ship = right_click(&world, &transport, &mut state, at(160.0, 150.0));
+        assert_eq!(
+            menus(&ship),
+            [(
+                MenuObject::Ship {
+                    fleet,
+                    index: 0,
+                    roster: fleet_join::roster(&world, fleet).unwrap(),
+                },
+                (180, 180)
+            )]
+        );
+
+        if let Some(window) = state.window_mut(system) {
+            window.tab = FleetWindowTab::Troops;
+        }
+        let regiment = right_click(&world, &transport, &mut state, at(160.0, 150.0));
+        assert_eq!(menus(&regiment), [(MenuObject::Troop(troop), (180, 180))]);
+    }
+
+    #[test]
+    fn a_right_click_on_a_fleet_entry_opens_the_fleets_menu_and_on_a_fighter_none() {
+        // FUN_004ff8e0's fleet menu; port: a squadron has no menu yet.
+        let (mut world, transport, system, fleet, _) = fleet_with_regiment();
+        let fighter = world.fighter_classes.insert(Default::default());
+        world.fleets[fleet]
+            .fighters
+            .push(rebellion_core::world::FighterEntry {
+                class: fighter,
+                count: 1,
+            });
+        let mut state = opened(&world, system);
+        let entry = state
+            .entry_screen_rect(scaled(), system, 0)
+            .unwrap()
+            .center();
+
+        let actions = right_click(&world, &transport, &mut state, entry);
+        assert_eq!(
+            menus(&actions)
+                .into_iter()
+                .map(|(selection, _)| selection)
+                .collect::<Vec<_>>(),
+            [MenuObject::Fleet(fleet)]
+        );
+
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.tab = FleetWindowTab::Fighters;
+        }
+        let actions = right_click(&world, &transport, &mut state, at(160.0, 150.0));
+        assert!(menus(&actions).is_empty());
     }
 
     #[test]

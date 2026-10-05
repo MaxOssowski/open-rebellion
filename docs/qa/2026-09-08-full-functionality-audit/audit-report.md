@@ -265,7 +265,9 @@ cross-runtime proof remain open
   produced 78,946 attack orders and a 1.006 accepted-move/arrival ratio.
   F-007B removes transit fleets from orbit indexes, reconciles stale saves,
   attaches production only to orbiting garrisons, preserves significant task
-  forces, and merges anonymous same-faction arrivals deterministically. The
+  forces, and merges anonymous same-faction arrivals deterministically
+  (retired 2026-10-05: no original rule merges fleets the player did not
+  join, `ghidra/notes/fleet-join-split.md`). The
   then-current five-seed runs passed the fleet-arena and move/arrival bounds.
   F-007C (reopened 2026-10-01: its only entry, the egui system context
   menu's Move Fleet Here, lost its caller in 23d15da, so the player cannot
@@ -283,7 +285,11 @@ cross-runtime proof remain open
   dragged out of the Fleet window's Troops tab unloads or boards at once in
   its own system and otherwise travels on its own at GNPRTB 1 (FUN_00556390,
   FUN_00556430; another side's populated destination is refused,
-  FUN_0053d430), with a 16-case two-sided gate; a native check remains)
+  FUN_0053d430), with a 16-case two-sided gate; fleets join and split on
+  the Fleet window, a ship's or fleet's Move onto a fleet joining it
+  (FUN_004ffc90, FUN_004feca0) and a ship's Create Fleet (0x270) making it a
+  fleet of its own, with a 34-case two-sided gate, and F-007B's merge of
+  compatible arrivals is retired as unsourced; a native check remains)
   wired
   ordinary player dispatch through the same validated departure helper, fixes
   map/context-menu click ordering and stale targets, and reports authoritative

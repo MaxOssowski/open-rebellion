@@ -29,6 +29,8 @@ pub enum ObjectMenuCommand {
     Assault,
     Rename,
     Scrap,
+    /// A capital ship's Create Fleet (`0x270`).
+    CreateFleet,
 }
 
 /// The object a menu opens for.
@@ -39,6 +41,14 @@ pub enum MenuObject {
     Fleet(FleetKey),
     /// A regiment (`0x10..0x13`).
     Troop(TroopKey),
+    /// A capital ship (`0x14..0x1b`): the fleet that holds it, its index
+    /// in [`Fleet::capital_ships`](rebellion_core::world::Fleet), and the
+    /// fleet's roster when it was chosen (`fleet_join::roster`).
+    Ship {
+        fleet: FleetKey,
+        index: usize,
+        roster: u64,
+    },
 }
 
 impl MenuObject {
@@ -48,7 +58,7 @@ impl MenuObject {
         match self {
             Self::Character(key) => Some(MissionMember::Character(key)),
             Self::SpecialForce(key) => Some(MissionMember::SpecialForce(key)),
-            Self::Fleet(_) | Self::Troop(_) => None,
+            Self::Fleet(_) | Self::Troop(_) | Self::Ship { .. } => None,
         }
     }
 }
@@ -163,6 +173,15 @@ const RENAME: ObjectMenuItem = item(
     false,
 );
 const SCRAP: ObjectMenuItem = item(0x200, ObjectMenuCommand::Scrap, 2000, 12295, "Scrap", false);
+/// STRATEGY.DLL record 624 (`ghidra/notes/fleet-join-split.md`).
+const CREATE_FLEET: ObjectMenuItem = item(
+    0x270,
+    ObjectMenuCommand::CreateFleet,
+    50,
+    12319,
+    "Create Fleet",
+    false,
+);
 
 /// One row of an open object menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,7 +210,9 @@ impl ObjectMenuRow {
 /// Confirmed Move, the bombardments, Assault, Rename and Scrap
 /// (`FUN_004ff8e0`); the bombardment targets sit under their submenu parent.
 /// A regiment's offers Move, Confirmed Move and Scrap (`FUN_00504b30`),
-/// after a base list (`FUN_00558380`) that is untraced.
+/// after a base list (`FUN_00558380`) that is untraced. A capital ship's
+/// offers Move, Confirmed Move and Scrap (`FUN_00557ce0`), then Rename and
+/// Create Fleet (`FUN_00502bd0`).
 /// Kinds `0x204`, `0x241` and `0x268` are offered too but have no STRATEGY
 /// record, so they never show.
 /// An empty selection lists only Encyclopedia and Status, both disabled.
@@ -204,6 +225,9 @@ impl ObjectMenuRow {
 /// - A regiment's Move is enabled when `gates.troop_move` says so. port:
 ///   its Confirmed Move stays disabled; loading onto a fleet in the same
 ///   system needs no transit confirmation.
+/// - A capital ship's Move and Create Fleet are enabled when
+///   `gates.ship_move` says so (its fleet is the player's and in orbit).
+///   port: its Confirmed Move stays disabled.
 /// - Encyclopedia is enabled for a single selection.
 /// - port: a character's or special force's Move and Confirmed Move,
 ///   Command, Status, Retire and the other fleet orders stay disabled until
@@ -214,11 +238,13 @@ impl ObjectMenuRow {
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
     let fleet = matches!(selection, Some(MenuObject::Fleet(_)));
     let troop = matches!(selection, Some(MenuObject::Troop(_)));
+    let ship = matches!(selection, Some(MenuObject::Ship { .. }));
     let offered: &[ObjectMenuItem] = match selection {
         Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
         Some(MenuObject::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
         Some(MenuObject::Fleet(_)) => &[MOVE, CONFIRMED_MOVE, BOMBARDMENT, ASSAULT, RENAME, SCRAP],
         Some(MenuObject::Troop(_)) => &[MOVE, CONFIRMED_MOVE, SCRAP],
+        Some(MenuObject::Ship { .. }) => &[MOVE, CONFIRMED_MOVE, SCRAP, RENAME, CREATE_FLEET],
         None => &[],
     };
     let mut rows: Vec<ObjectMenuRow> = offered
@@ -229,8 +255,11 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             enabled: match item.command {
                 ObjectMenuCommand::Mission => gates.mission,
                 ObjectMenuCommand::Move => {
-                    (fleet && gates.fleet_move) || (troop && gates.troop_move)
+                    (fleet && gates.fleet_move)
+                        || (troop && gates.troop_move)
+                        || (ship && gates.ship_move)
                 }
+                ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
                 ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 _ => false,
@@ -247,6 +276,7 @@ pub struct OrderGates {
     pub mission: bool,
     pub fleet_move: bool,
     pub troop_move: bool,
+    pub ship_move: bool,
 }
 
 /// An open object pop-up menu.
@@ -348,6 +378,7 @@ mod tests {
         mission: true,
         fleet_move: false,
         troop_move: false,
+        ship_move: false,
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -477,6 +508,7 @@ mod tests {
             mission: false,
             fleet_move: true,
             troop_move: true,
+            ship_move: true,
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -492,6 +524,60 @@ mod tests {
             enabled(&object_menu_rows(character, gates)),
             ["Encyclopedia"]
         );
+    }
+
+    #[test]
+    fn a_capital_ships_menu_offers_create_fleet_after_the_moves() {
+        // FUN_00502bd0 (0x203, 0x270 after FUN_00557ce0's 0x201, 0x202,
+        // 0x204, 0x200); sorted by STRATEGY record word 2 (record 624 is 50).
+        let ship = Some(MenuObject::Ship {
+            fleet: FleetKey::default(),
+            index: 0,
+            roster: 0,
+        });
+        let rows = object_menu_rows(ship, MISSION_GATE);
+        assert_eq!(
+            labels(&rows),
+            [
+                "Move",
+                "Confirmed Move",
+                "Create Fleet",
+                "Rename",
+                "Encyclopedia",
+                "Status",
+                "Scrap"
+            ]
+        );
+        let create = rows[2].item;
+        assert_eq!(
+            (create.kind, create.sort_key, create.label_string_id),
+            (0x270, 50, 12319)
+        );
+    }
+
+    #[test]
+    fn a_capital_ships_move_and_create_fleet_follow_its_fleets_move_rule() {
+        // port: its fleet's side and orbit (FUN_004f9860); Confirmed Move
+        // stays disabled.
+        let ship = Some(MenuObject::Ship {
+            fleet: FleetKey::default(),
+            index: 1,
+            roster: 0,
+        });
+        let gates = OrderGates {
+            ship_move: true,
+            ..OrderGates::default()
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(ship, gates)),
+            ["Move", "Create Fleet", "Encyclopedia"]
+        );
+        assert_eq!(
+            enabled(&object_menu_rows(ship, OrderGates::default())),
+            ["Encyclopedia"]
+        );
+        let fleet = Some(MenuObject::Fleet(FleetKey::default()));
+        assert_eq!(enabled(&object_menu_rows(fleet, gates)), ["Encyclopedia"]);
     }
 
     #[test]

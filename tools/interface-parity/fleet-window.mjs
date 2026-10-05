@@ -23,6 +23,7 @@ const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-
 const FLEET_LOAD = 48;
 const FLEET_LOAD_FULL = 49;
 const REGIMENT_UNLOAD_REFUSED = 51;
+const FLEET_JOIN = 52;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -31,10 +32,18 @@ const windowSize = { width: 235, height: 304 };
 // sector window columns, 235 wide (sector_window.rs,
 // window_logical_position); the fixture fills both. `rail` is the galaxy
 // view rail's first slot (system_window.rs, rail_slot_rect).
+// `galaxy` is the galaxy view, which centers the move confirmation
+// (fleet-move.mjs).
 const factions = [
-  { name: "alliance", byte: 1, art: 0, title: 10299, sectors: [60, 300], rail: { x: 544, y: 61, width: 62, height: 18 } },
-  { name: "empire", byte: 2, art: 50, title: 10201, sectors: [120, 365], rail: { x: 21, y: 48, width: 54, height: 18 } },
+  { name: "alliance", byte: 1, art: 0, title: 10299, sectors: [60, 300], rail: { x: 544, y: 61, width: 62, height: 18 },
+    galaxy: { x: 55, y: 40, width: 485, height: 350 } },
+  { name: "empire", byte: 2, art: 50, title: 10201, sectors: [120, 365], rail: { x: 21, y: 48, width: 54, height: 18 },
+    galaxy: { x: 120, y: 40, width: 480, height: 355 } },
 ];
+// FUN_00487cc0: the move confirmation, 424 by 331, and its checkmark
+// (0x14, fleet-move.mjs).
+const confirmation = { width: 424, height: 331 };
+const checkmark = { x: 355 + 25.5, y: 244 + 17.5 };
 // Text the port draws with its own font, the tree's dotted pen, and the
 // right list's GOKRES minis and names stay out of the pixel check.
 const masks = {
@@ -324,10 +333,10 @@ async function stableWindow(page, origin, directory, label) {
 
 // The sector window's fleet icon opens the Fleet window (FUN_0045ccc0,
 // FUN_0045aac0, kind 0x10) at the double-click.
-async function openFleetWindow(page, setup) {
+async function openFleetWindow(page, setup, entries = 1) {
   await doubleClick(page, point(setup.icon));
   const observed = await until(page, "the fleet icon opens the Fleet window", (o) => o.window_open);
-  assert.equal(observed.entries, 1, "the window lists the system's one fleet");
+  assert.equal(observed.entries, entries, "the window lists the system's fleets");
   assert.equal(observed.selected, null);
   return observed;
 }
@@ -389,9 +398,9 @@ async function loadRegiment(page, setup, directory) {
   return { opened, menu, loaded };
 }
 
-// A left press on the Troops tab's first regiment, held while the mouse
-// moves away, then released at `to` (CoolDragList, FUN_006083c0, posts 0x29a).
-async function dragRegiment(page, from, to) {
+// A left press on a right-list item, held while the mouse moves away, then
+// released at `to` (CoolDragList, FUN_006083c0, posts 0x29a).
+async function dragItem(page, from, to) {
   await page.mouse.move(from.x, from.y);
   await frames(page);
   await page.mouse.down();
@@ -434,6 +443,30 @@ async function wheelOverWindow(page, faction, origin) {
   const control = await wheelAt(page, gap);
   assert.notEqual(control, before, `the control wheel at ${JSON.stringify(gap)} did not zoom the map`);
   return { checked: true, strip, gap, before, over, control };
+}
+
+function ships(observed) {
+  return observed.fleets.map((fleet) => fleet.ships);
+}
+
+// The joining scenario's Fleet window: two fleets of the player's, of two
+// ships and one, the first selected on its Capital Ships tab.
+async function openJoining(page, setup) {
+  const opened = await openFleetWindow(page, setup, 2);
+  assert.deepEqual(ships(opened), [2, 1], JSON.stringify(opened));
+  await click(page, point(opened.fleets[0].entry));
+  const selected = await until(page, "a click selects the first fleet",
+    (o) => o.selected === "fleet" && o.tab === "CapitalShips" && o.first_item);
+  assert.equal(selected.items.length, 2, "the Capital Ships tab lists the fleet's two ships");
+  return selected;
+}
+
+function confirmationCheckmark(faction) {
+  const { galaxy } = faction;
+  return {
+    x: Math.round(galaxy.x + galaxy.width / 2 - confirmation.width / 2 + checkmark.x),
+    y: Math.round(galaxy.y + galaxy.height / 2 - confirmation.height / 2 + checkmark.y),
+  };
 }
 
 // Each case starts from a fresh load and returns its checks.
@@ -521,7 +554,7 @@ const cases = [
     async run(page, faction, setup, directory) {
       const { loaded } = await loadRegiment(page, setup, directory);
       const troops = await openTroopsTab(page, loaded);
-      await dragRegiment(page, point(troops.first_item), point(setup.fleets_tab));
+      await dragItem(page, point(troops.first_item), point(setup.fleets_tab));
       const unloaded = await until(page, "the regiment lands on its planet",
         (o, primary) => !o.aboard && !o.held && !o.regiment_travelling && o.troop_system_dat_id === primary,
         setup.primary_dat_id);
@@ -579,7 +612,7 @@ const cases = [
       assert.ok(selected.aboard && selected.held, JSON.stringify(selected));
       assert.deepEqual(selected.enabled, [true, false, true, false], "the Troops tab lights with a regiment aboard");
       const troops = await openTroopsTab(page, selected);
-      await dragRegiment(page, point(troops.first_item), point(setup.fleets_tab));
+      await dragItem(page, point(troops.first_item), point(setup.fleets_tab));
       const refusal = "Regiment move rejected: the destination belongs to another side";
       const refused = await until(page, "the other side's planet refuses the regiment",
         (o, text) => o.last_message === text, refusal);
@@ -626,6 +659,157 @@ const cases = [
       assert.equal(refused.cargo, setup.capacity);
       assert.equal(refused.troop_system_dat_id, setup.primary_dat_id);
       return { opened, menu, refused };
+    },
+  },
+  {
+    name: "join-ship",
+    code: FLEET_JOIN,
+    // A ship dragged onto another fleet's entry moves into it (0x201 with a
+    // fleet destination, FUN_004feca0; manual p. 120).
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      await dragItem(page, point(selected.first_item), point(selected.fleets[1].entry));
+      const joined = await until(page, "the ship joins the second fleet",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,2]");
+      assert.equal(joined.entries, 2);
+      assert.equal(joined.in_transit, false);
+      await shot(page, directory, "joined");
+      return { selected, joined };
+    },
+  },
+  {
+    name: "join-refused",
+    code: FLEET_JOIN,
+    // A ship dropped on its own fleet goes nowhere (FUN_00553aa0 makes the
+    // move into the mover's own fleet 0x26).
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      await dragItem(page, point(selected.first_item), point(selected.fleets[0].entry));
+      const refusal = "Fleet move rejected: a fleet cannot move into itself";
+      const refused = await until(page, "the ship's own fleet refuses it",
+        (o, text) => o.last_message === text, refusal);
+      assert.deepEqual(ships(refused), [2, 1]);
+      return { selected, refused };
+    },
+  },
+  {
+    name: "create-fleet",
+    code: FLEET_JOIN,
+    // A ship's Create Fleet (0x270, TEXTSTRA 12319) makes a fleet of it in
+    // its system (FUN_005809c0, FUN_00509b40; manual p. 120).
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      const menu = await openMenu(page, point(selected.first_item), directory, "ship");
+      // FUN_00502bd0: Move, Confirmed Move, then Create Fleet (sort 50).
+      assert.deepEqual([menu.move_row, menu.confirmed_move_row, menu.create_fleet_row], [0, 1, 2],
+        JSON.stringify(menu));
+      await choose(page, menu, menu.create_fleet_row, "Create Fleet");
+      const created = await until(page, "Create Fleet makes a third fleet",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,1,1]");
+      assert.equal(created.entries, 3);
+      await shot(page, directory, "created");
+      return { selected, menu, created };
+    },
+  },
+  {
+    name: "ship-to-system",
+    code: FLEET_JOIN,
+    // A ship dragged onto its own system's window: a system holds no
+    // capital ships (FUN_00507750), so the ship forms a fleet of its own
+    // there (FUN_005097d0).
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      await dragItem(page, point(selected.first_item), point(setup.fleets_tab));
+      const created = await until(page, "the ship forms a fleet of its own",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,1,1]");
+      assert.equal(created.entries, 3);
+      return { selected, created };
+    },
+  },
+  {
+    name: "ship-move-join",
+    code: FLEET_JOIN,
+    // A ship's pop-up Move (0x201, FUN_00502bd0) released on another
+    // fleet's entry: the ship joins it (FUN_004feca0).
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      const menu = await openMenu(page, point(selected.first_item), directory, "ship");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, point(selected.fleets[1].entry));
+      const joined = await until(page, "the ship's Move joins the second fleet",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,2]");
+      return { selected, menu, joined };
+    },
+  },
+  {
+    name: "ship-move-system",
+    code: FLEET_JOIN,
+    // A ship's pop-up Move released on its own system's window forms a
+    // fleet of its own there (FUN_00507750, FUN_005097d0).
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      const menu = await openMenu(page, point(selected.first_item), directory, "ship");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, point(setup.fleets_tab));
+      const created = await until(page, "the ship's Move forms a fleet of its own",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,1,1]");
+      return { selected, menu, created };
+    },
+  },
+  {
+    name: "join-fleet",
+    code: FLEET_JOIN,
+    // A fleet's Move released on another fleet's entry: its ships join that
+    // fleet (FUN_004ffc90, FUN_004feca0), and the emptied fleet disbands
+    // (FUN_004fe630).
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup, 2);
+      const menu = await openMenu(page, point(opened.fleets[1].entry), directory, "fleet");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, point(opened.fleets[0].entry));
+      const joined = await until(page, "the second fleet joins the first",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[3]");
+      assert.equal(joined.entries, 1);
+      assert.equal(joined.confirmation_open, false);
+      await shot(page, directory, "joined");
+      return { opened, menu, joined };
+    },
+  },
+  {
+    name: "confirmed-join-refused",
+    code: FLEET_JOIN,
+    // The order is checked before it asks (FUN_00487740): a Confirmed Move
+    // onto the fleet itself is refused and opens no window (FUN_00553aa0).
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup, 2);
+      const menu = await openMenu(page, point(opened.fleets[0].entry), directory, "fleet");
+      await choose(page, menu, menu.confirmed_move_row, "Confirmed Move");
+      await click(page, point(opened.fleets[0].entry));
+      const refusal = "Fleet move rejected: a fleet cannot move into itself";
+      const refused = await until(page, "the fleet refuses itself",
+        (o, text) => o.last_message === text, refusal);
+      const settled = await settle(page);
+      assert.equal(settled.confirmation_open, false, "the confirmation opened for a refused order");
+      assert.deepEqual(ships(settled), [2, 1]);
+      return { opened, menu, refused, settled };
+    },
+  },
+  {
+    name: "confirmed-join",
+    code: FLEET_JOIN,
+    // Confirmed Move asks first (FUN_00487cc0); the checkmark joins.
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup, 2);
+      const menu = await openMenu(page, point(opened.fleets[1].entry), directory, "fleet");
+      await choose(page, menu, menu.confirmed_move_row, "Confirmed Move");
+      await click(page, point(opened.fleets[0].entry));
+      const open = await until(page, "the confirmation opens", (o) => o.confirmation_open);
+      assert.deepEqual(ships(open), [2, 1], "the fleets joined before the checkmark");
+      await shot(page, directory, "confirmation");
+      await click(page, confirmationCheckmark(faction));
+      const joined = await until(page, "the checkmark joins the fleets",
+        (o) => !o.confirmation_open && JSON.stringify(o.fleets.map((f) => f.ships)) === "[3]");
+      return { opened, menu, open, joined };
     },
   },
 ];
@@ -783,7 +967,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "fleet-window",
-    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), and a regiment travelling on its own, on both sides",
+    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

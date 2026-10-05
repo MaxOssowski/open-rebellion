@@ -31,7 +31,7 @@
 //!
 //! let tick_events = vec![TickEvent { tick: 1 }];
 //! let arrivals = MovementSystem::advance(&mut state, &tick_events);
-//! // for event in &arrivals { apply_fleet_arrival(&mut world, &mut cargo, event); }
+//! // for event in &arrivals { apply_fleet_arrival(&mut world, &state, &mut cargo, event); }
 //! ```
 
 use std::collections::{HashMap, HashSet};
@@ -43,7 +43,7 @@ use crate::dat::Faction;
 use crate::ids::{FleetKey, SystemKey};
 use crate::tick::TickEvent;
 use crate::troop_transport::TroopTransportState;
-use crate::world::{CapitalShipClass, FighterClass, FighterEntry, Fleet, GameWorld};
+use crate::world::{CapitalShipClass, FighterClass, Fleet, GameWorld};
 
 // ---------------------------------------------------------------------------
 // Transit time
@@ -204,6 +204,9 @@ pub struct MovementOrder {
     pub transit_ticks: u32,
     /// Ticks elapsed since departure.
     pub ticks_elapsed: u32,
+    /// The fleet this one joins on arrival, when it was sent onto a fleet
+    /// (`ghidra/notes/fleet-join-split.md`).
+    pub join: Option<FleetKey>,
 }
 
 impl MovementOrder {
@@ -221,6 +224,7 @@ impl MovementOrder {
             destination,
             transit_ticks,
             ticks_elapsed: 0,
+            join: None,
         }
     }
 
@@ -298,6 +302,13 @@ impl MovementState {
         true
     }
 
+    /// Mark a fleet in transit to join `target` on arrival.
+    pub fn set_join(&mut self, fleet: FleetKey, target: FleetKey) {
+        if let Some(order) = self.orders.get_mut(&fleet) {
+            order.join = Some(target);
+        }
+    }
+
     /// Cancel a movement order (fleet stays at current location).
     pub fn cancel(&mut self, fleet: FleetKey) -> Option<MovementOrder> {
         self.orders.remove(&fleet)
@@ -360,16 +371,18 @@ pub struct ArrivalEvent {
     pub origin: SystemKey,
     /// The system the fleet arrived at.
     pub system: SystemKey,
+    /// The fleet it was sent to join, if any.
+    pub join: Option<FleetKey>,
 }
 
 /// Result of applying one arrival to the canonical world fleet indexes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppliedArrival {
-    /// Stable fleet identity that remains at the destination.
+    /// The fleet now at the destination: the arrival, or the fleet it joined.
     pub fleet: FleetKey,
-    /// Faction retained before any redundant fleet record is removed.
+    /// The arriving fleet's side.
     pub is_alliance: bool,
-    /// Number of compatible fleet records absorbed into `fleet`.
+    /// 1 when the arrival joined another fleet, else 0.
     pub merged_fleets: usize,
 }
 
@@ -652,19 +665,18 @@ pub fn reconcile_fleet_orbits(state: &MovementState, world: &mut GameWorld) {
     }
 }
 
-/// Apply one arrival and consolidate anonymous, same-faction task forces.
-///
-/// Fleets carrying characters or a Death Star remain separate so explicit
-/// player task-force identity is preserved. Production and ordinary AI fleets
-/// can merge deterministically instead of accumulating one-ship records.
+/// Apply one arrival: the fleet enters its destination's orbit. A fleet sent
+/// onto another fleet joins it when that fleet is still there, of its side
+/// and not en route (`ghidra/notes/fleet-join-split.md`); otherwise it stays
+/// a fleet of its own. Fleets that merely meet stay apart: the original has
+/// no rule that merges them.
 pub fn apply_fleet_arrival(
     world: &mut GameWorld,
+    movement: &MovementState,
     troop_transport: &mut TroopTransportState,
     arrival: &ArrivalEvent,
 ) -> Option<AppliedArrival> {
-    let arriving = world.fleets.get(arrival.fleet)?;
-    let is_alliance = arriving.is_alliance;
-    let can_merge = arriving.characters.is_empty() && !arriving.has_death_star;
+    let is_alliance = world.fleets.get(arrival.fleet)?.is_alliance;
 
     if let Some(origin) = world.systems.get_mut(arrival.origin) {
         origin.fleets.retain(|&fleet| fleet != arrival.fleet);
@@ -672,75 +684,36 @@ pub fn apply_fleet_arrival(
     if let Some(fleet) = world.fleets.get_mut(arrival.fleet) {
         fleet.location = arrival.system;
     }
-
-    let mut compatible = Vec::new();
-    if can_merge {
-        if let Some(destination) = world.systems.get(arrival.system) {
-            compatible.extend(destination.fleets.iter().copied().filter(|&fleet| {
-                fleet != arrival.fleet
-                    && world.fleets.get(fleet).is_some_and(|value| {
-                        value.location == arrival.system
-                            && value.is_alliance == is_alliance
-                            && value.characters.is_empty()
-                            && !value.has_death_star
-                    })
-            }));
-        }
-    }
-    compatible.push(arrival.fleet);
-    compatible.sort_unstable();
-    compatible.dedup();
-
-    let survivor = compatible[0];
-    let absorbed_keys: Vec<_> = compatible
-        .iter()
-        .copied()
-        .filter(|&fleet| fleet != survivor)
-        .collect();
-    let absorbed: Vec<_> = absorbed_keys
-        .iter()
-        .filter_map(|&fleet| world.fleets.remove(fleet))
-        .collect();
-    for &fleet in &absorbed_keys {
-        troop_transport.transfer_fleet(fleet, survivor);
-    }
-    // port: an arrival ends a hold (`TroopTransportState::load`).
-    troop_transport.release(survivor);
-
-    if let Some(fleet) = world.fleets.get_mut(survivor) {
-        fleet.location = arrival.system;
-        for other in absorbed {
-            fleet.capital_ships.extend(other.capital_ships);
-            for fighter in other.fighters {
-                if let Some(entry) = fleet
-                    .fighters
-                    .iter_mut()
-                    .find(|entry| entry.class == fighter.class)
-                {
-                    entry.count = entry.count.saturating_add(fighter.count);
-                } else {
-                    fleet.fighters.push(FighterEntry {
-                        class: fighter.class,
-                        count: fighter.count,
-                    });
-                }
-            }
-        }
-    }
-
     if let Some(destination) = world.systems.get_mut(arrival.system) {
-        destination
-            .fleets
-            .retain(|fleet| !absorbed_keys.contains(fleet) && *fleet != survivor);
-        destination.fleets.push(survivor);
+        destination.fleets.push(arrival.fleet);
         destination.fleets.sort_unstable();
         destination.fleets.dedup();
     }
+    // port: an arrival ends a hold (`TroopTransportState::load`).
+    troop_transport.release(arrival.fleet);
 
+    let target = arrival.join.filter(|&target| {
+        target != arrival.fleet
+            && crate::fleet_join::joins_on_arrival(
+                world,
+                movement,
+                target,
+                arrival.system,
+                is_alliance,
+            )
+    });
+    if let Some(target) = target {
+        crate::fleet_join::merge_fleet_into(world, troop_transport, arrival.fleet, target);
+        return Some(AppliedArrival {
+            fleet: target,
+            is_alliance,
+            merged_fleets: 1,
+        });
+    }
     Some(AppliedArrival {
-        fleet: survivor,
+        fleet: arrival.fleet,
         is_alliance,
-        merged_fleets: absorbed_keys.len(),
+        merged_fleets: 0,
     })
 }
 
@@ -796,6 +769,7 @@ impl MovementSystem {
                     tick: final_tick,
                     origin: order.origin,
                     system: order.destination,
+                    join: order.join,
                 });
                 completed_keys.push(fleet_key);
             }
@@ -806,6 +780,11 @@ impl MovementSystem {
             state.orders.remove(&key);
         }
 
+        // A fleet that joins another on arrival comes in after the rest, so
+        // a target arriving in the same pass is already in orbit
+        // (`apply_fleet_arrival`). port: the order within each group stays
+        // by fleet key.
+        arrivals.sort_by_key(|arrival| arrival.join.is_some());
         arrivals
     }
 }
@@ -818,7 +797,7 @@ impl MovementSystem {
 mod tests {
     use super::*;
     use crate::tick::TickEvent;
-    use crate::world::ControlKind;
+    use crate::world::{ControlKind, FighterEntry};
 
     fn mock_fleet_and_systems() -> (FleetKey, SystemKey, SystemKey) {
         let mut fleet_sm: slotmap::SlotMap<FleetKey, ()> = slotmap::SlotMap::with_key();
@@ -1107,8 +1086,13 @@ mod tests {
         assert!(!world.systems[origin].fleets.contains(&fleet));
 
         let arrival = MovementSystem::advance(&mut movement, &ticks(5)).remove(0);
-        let applied =
-            apply_fleet_arrival(&mut world, &mut TroopTransportState::default(), &arrival).unwrap();
+        let applied = apply_fleet_arrival(
+            &mut world,
+            &MovementState::new(),
+            &mut TroopTransportState::default(),
+            &arrival,
+        )
+        .unwrap();
         assert_eq!(applied.fleet, fleet);
         assert_eq!(applied.merged_fleets, 0);
         assert_eq!(world.fleets[fleet].location, destination);
@@ -1132,17 +1116,20 @@ mod tests {
         assert_eq!(world.systems[destination].fleets, vec![stationary]);
     }
 
+    // ghidra/notes/fleet-join-split.md: no original rule merges fleets that
+    // meet; only a move onto a fleet joins it.
     #[test]
-    fn compatible_arrival_merges_into_stable_fleet_identity() {
+    fn fleets_of_one_side_meeting_on_arrival_stay_apart() {
         let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
         let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
-        let survivor = add_test_fleet(&mut world, destination, ship_key);
+        let stationed = add_test_fleet(&mut world, destination, ship_key);
         let arriving = add_test_fleet(&mut world, origin, ship_key);
         let arrival = ArrivalEvent {
             fleet: arriving,
             tick: 5,
             origin,
             system: destination,
+            join: None,
         };
         let troop = world.troops.insert(TroopUnit {
             class_dat_id: DatId::new(0x1000_0001),
@@ -1153,15 +1140,133 @@ mod tests {
         let mut transport = TroopTransportState::default();
         transport.embark(&mut world, arriving, &[troop]).unwrap();
 
-        let applied = apply_fleet_arrival(&mut world, &mut transport, &arrival).unwrap();
+        let applied =
+            apply_fleet_arrival(&mut world, &MovementState::new(), &mut transport, &arrival)
+                .unwrap();
 
-        assert_eq!(applied.fleet, survivor);
+        assert_eq!(applied.fleet, arriving);
+        assert_eq!(applied.merged_fleets, 0);
+        assert_eq!(world.fleets[stationed].ship_count(), 1);
+        assert_eq!(world.fleets[arriving].ship_count(), 1);
+        assert_eq!(world.systems[destination].fleets, vec![stationed, arriving]);
+        assert_eq!(transport.cargo(arriving), &[troop]);
+    }
+
+    // ghidra/notes/fleet-join-split.md: a move onto a fleet in another system
+    // ends with the movers in that fleet (FUN_004feca0; port: on arrival).
+    #[test]
+    fn a_fleet_sent_onto_another_joins_it_on_arrival_with_its_cargo() {
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let target = add_test_fleet(&mut world, destination, ship_key);
+        let arriving = add_test_fleet(&mut world, origin, ship_key);
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[origin].ground_units.push(troop);
+        let mut transport = TroopTransportState::default();
+        transport.embark(&mut world, arriving, &[troop]).unwrap();
+        let mut movement = MovementState::new();
+        assert!(begin_fleet_transit(
+            &mut movement,
+            &mut world,
+            arriving,
+            destination,
+            5
+        ));
+        movement.set_join(arriving, target);
+
+        let arrival = MovementSystem::advance(&mut movement, &ticks(5)).remove(0);
+        assert_eq!(arrival.join, Some(target));
+        let applied = apply_fleet_arrival(&mut world, &movement, &mut transport, &arrival).unwrap();
+
+        assert_eq!(applied.fleet, target);
         assert_eq!(applied.merged_fleets, 1);
         assert!(!world.fleets.contains_key(arriving));
-        assert_eq!(world.fleets[survivor].ship_count(), 2);
-        assert_eq!(world.systems[destination].fleets, vec![survivor]);
-        assert_eq!(transport.cargo(survivor), &[troop]);
-        assert!(transport.cargo(arriving).is_empty());
+        assert_eq!(world.fleets[target].ship_count(), 2);
+        assert_eq!(world.systems[destination].fleets, vec![target]);
+        assert_eq!(transport.cargo(target), &[troop]);
+    }
+
+    // port: a fleet sent onto another that arrives in the same pass comes in
+    // after it, so it finds its target in orbit.
+    #[test]
+    fn a_fleet_arriving_with_its_target_in_one_pass_still_joins_it() {
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        // The joiner has the lower key, so it would come in first by key.
+        let arriving = add_test_fleet(&mut world, origin, ship_key);
+        let target = add_test_fleet(&mut world, origin, ship_key);
+        assert!(arriving < target);
+        let mut movement = MovementState::new();
+        for fleet in [arriving, target] {
+            assert!(begin_fleet_transit(
+                &mut movement,
+                &mut world,
+                fleet,
+                destination,
+                5
+            ));
+        }
+        movement.set_join(arriving, target);
+
+        let arrivals = MovementSystem::advance(&mut movement, &ticks(5));
+        assert_eq!(
+            arrivals
+                .iter()
+                .map(|arrival| arrival.fleet)
+                .collect::<Vec<_>>(),
+            [target, arriving]
+        );
+        let mut transport = TroopTransportState::default();
+        for arrival in &arrivals {
+            apply_fleet_arrival(&mut world, &movement, &mut transport, arrival).unwrap();
+        }
+
+        assert!(!world.fleets.contains_key(arriving));
+        assert_eq!(world.fleets[target].ship_count(), 2);
+        assert_eq!(world.systems[destination].fleets, vec![target]);
+    }
+
+    // port: the original's member follows its fleet anywhere; the port's
+    // fleet joins only a target still in the system it arrives at.
+    #[test]
+    fn a_fleet_whose_target_has_left_stays_a_fleet_of_its_own() {
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let target = add_test_fleet(&mut world, destination, ship_key);
+        let arriving = add_test_fleet(&mut world, origin, ship_key);
+        let mut movement = MovementState::new();
+        assert!(begin_fleet_transit(
+            &mut movement,
+            &mut world,
+            arriving,
+            destination,
+            5
+        ));
+        movement.set_join(arriving, target);
+        assert!(begin_fleet_transit(
+            &mut movement,
+            &mut world,
+            target,
+            origin,
+            50
+        ));
+
+        let arrival = MovementSystem::advance(&mut movement, &ticks(5)).remove(0);
+        let applied = apply_fleet_arrival(
+            &mut world,
+            &movement,
+            &mut TroopTransportState::default(),
+            &arrival,
+        )
+        .unwrap();
+
+        assert_eq!((applied.fleet, applied.merged_fleets), (arriving, 0));
+        assert_eq!(world.fleets[arriving].location, destination);
+        assert_eq!(world.fleets[target].ship_count(), 1);
     }
 
     // port: an arrival ends a hold (`TroopTransportState::load`), so the
@@ -1190,7 +1295,7 @@ mod tests {
         assert!(transport.is_held(fleet));
 
         let arrival = MovementSystem::advance(&mut movement, &ticks(5)).remove(0);
-        apply_fleet_arrival(&mut world, &mut transport, &arrival).unwrap();
+        apply_fleet_arrival(&mut world, &movement, &mut transport, &arrival).unwrap();
 
         assert!(!transport.is_held(fleet));
         assert_eq!(transport.landing_count(fleet), 1);
@@ -1209,10 +1314,16 @@ mod tests {
             tick: 5,
             origin,
             system: destination,
+            join: None,
         };
 
-        let applied =
-            apply_fleet_arrival(&mut world, &mut TroopTransportState::default(), &arrival).unwrap();
+        let applied = apply_fleet_arrival(
+            &mut world,
+            &MovementState::new(),
+            &mut TroopTransportState::default(),
+            &arrival,
+        )
+        .unwrap();
 
         assert_eq!(applied.fleet, arriving);
         assert_eq!(applied.merged_fleets, 0);

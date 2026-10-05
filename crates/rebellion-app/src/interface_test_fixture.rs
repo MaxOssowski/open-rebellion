@@ -7,7 +7,7 @@ use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
 use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::economy::EconomyState;
 use rebellion_core::fog::FogState;
-use rebellion_core::ids::{SystemKey, TroopKey};
+use rebellion_core::ids::{FleetKey, SystemKey, TroopKey};
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::{
     available_kinds, MissionFaction, MissionKind, MissionMember, MissionState,
@@ -38,7 +38,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 51;
+const SCENARIO_COUNT: u8 = 52;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -106,6 +106,7 @@ pub enum Scenario {
     FleetLoadFull = 48,
     Quadrants = 49,
     RegimentUnloadRefused = 50,
+    FleetJoin = 51,
 }
 
 impl Scenario {
@@ -162,6 +163,7 @@ impl Scenario {
             48 => Self::FleetLoadFull,
             49 => Self::Quadrants,
             50 => Self::RegimentUnloadRefused,
+            51 => Self::FleetJoin,
             _ => return None,
         })
     }
@@ -170,16 +172,17 @@ impl Scenario {
         matches!(self, Self::FleetMove | Self::FleetMoveBlockade)
     }
 
-    fn loads_a_regiment(self) -> bool {
+    /// The scenarios whose gate works the primary system's Fleet window.
+    fn uses_the_fleet_window(self) -> bool {
         matches!(
             self,
-            Self::FleetLoad | Self::FleetLoadFull | Self::RegimentUnloadRefused
+            Self::FleetLoad | Self::FleetLoadFull | Self::RegimentUnloadRefused | Self::FleetJoin
         )
     }
 
     /// The scenarios whose gate opens the object pop-up menu.
     fn reports_object_menu(self) -> bool {
-        self == Self::MissionTargeting || self.moves_a_fleet() || self.loads_a_regiment()
+        self == Self::MissionTargeting || self.moves_a_fleet() || self.uses_the_fleet_window()
     }
 
     pub fn mode(self) -> GidMode {
@@ -418,7 +421,7 @@ pub fn apply(
             ),
         );
     }
-    if request.scenario.loads_a_regiment() {
+    if request.scenario.uses_the_fleet_window() {
         place_loading_fleet(
             request,
             world,
@@ -547,6 +550,23 @@ fn system_window_subject(
     }
 }
 
+/// The joining scenario's second fleet: the world's second, or a copy of
+/// the first when the world has one.
+fn joining_fleet(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    first: FleetKey,
+) -> Option<FleetKey> {
+    if request.scenario != Scenario::FleetJoin {
+        return None;
+    }
+    if let Some(second) = world.fleets.keys().nth(1) {
+        return Some(second);
+    }
+    let copy = world.fleets[first].clone();
+    Some(world.fleets.insert(copy))
+}
+
 /// The fixture's regiment: the first on the primary system's surface.
 fn loading_regiment(world: &GameWorld, primary: SystemKey) -> Option<TroopKey> {
     world.systems.get(primary)?.ground_units.first().copied()
@@ -586,6 +606,7 @@ fn place_loading_fleet(
     else {
         return;
     };
+    let second = joining_fleet(request, world, fleet);
     let Some(elsewhere) = world
         .systems
         .keys()
@@ -598,7 +619,10 @@ fn place_loading_fleet(
         world.systems[system].exploration_status = ExplorationStatus::Explored;
     }
     for (key, value) in &mut world.fleets {
-        if key != fleet && (value.location == primary || value.location == target) {
+        if key != fleet
+            && Some(key) != second
+            && (value.location == primary || value.location == target)
+        {
             value.location = elsewhere;
         }
     }
@@ -631,6 +655,20 @@ fn place_loading_fleet(
     value.characters.clear();
     value.fighters.clear();
     value.capital_ships = vec![ShipInstance::new(carrier, 100, player_is_alliance)];
+    // The joining variant: the first fleet holds two ships and a second
+    // fleet of the player's, with one, orbits beside it.
+    if let Some(second) = second {
+        value
+            .capital_ships
+            .push(ShipInstance::new(carrier, 100, player_is_alliance));
+        let other = &mut world.fleets[second];
+        other.location = primary;
+        other.is_alliance = player_is_alliance;
+        other.has_death_star = false;
+        other.characters.clear();
+        other.fighters.clear();
+        other.capital_ships = vec![ShipInstance::new(carrier, 100, player_is_alliance)];
+    }
     reconcile_fleet_orbits(movement, world);
 
     let class_dat_id = world
@@ -954,6 +992,7 @@ struct FixtureObjectMenu<'a> {
     mission_row: Option<usize>,
     move_row: Option<usize>,
     confirmed_move_row: Option<usize>,
+    create_fleet_row: Option<usize>,
     target_dat_id: u32,
     target_name: &'a str,
     target_screen_x: f32,
@@ -967,7 +1006,7 @@ fn object_menu_report<'a>(
     world: &'a GameWorld,
     sectors: &SectorWindowState,
 ) -> Option<FixtureObjectMenu<'a>> {
-    let key = if request.scenario.loads_a_regiment() {
+    let key = if request.scenario.uses_the_fleet_window() {
         loading_target(world, world.systems.keys().next()?)?
     } else {
         world.systems.keys().nth(1)?
@@ -987,6 +1026,7 @@ fn object_menu_report<'a>(
         mission_row: menu.row_of(ObjectMenuCommand::Mission),
         move_row: menu.row_of(ObjectMenuCommand::Move),
         confirmed_move_row: menu.row_of(ObjectMenuCommand::ConfirmedMove),
+        create_fleet_row: menu.row_of(ObjectMenuCommand::CreateFleet),
         target_dat_id: target.dat_id.raw(),
         target_name: &target.name,
         target_screen_x,
@@ -1470,7 +1510,7 @@ fn fleet_load_setup(
     sectors: &SectorWindowState,
     systems: &SystemWindowState,
 ) -> Option<FixtureFleetLoadSetup> {
-    if !request.scenario.loads_a_regiment() {
+    if !request.scenario.uses_the_fleet_window() {
         return None;
     }
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
@@ -1517,11 +1557,20 @@ pub fn emit_fleet_load_setup(
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
+/// One fleet the primary system's Fleet window lists: its living capital
+/// ships and where its entry lies.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct FleetEntryObservation {
+    ships: usize,
+    entry: (f32, f32),
+}
+
 /// What the fleet-load gate checks after each step: the primary system's
 /// Fleet window (its list, tabs and contents, and where its first entry,
-/// Troops tab and first right-list item lie), where the regiment is and
-/// whether it travels on its own, the fleet's cargo and hold, its transit,
-/// the last message (a refusal's text), and the last regiment line.
+/// each listed fleet, the Troops tab and the first right-list item lie),
+/// where the regiment is and whether it travels on its own, the fleet's
+/// cargo and hold, its transit, whether the move confirmation is open, the
+/// last message (a refusal's text), and the last regiment line.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 struct FleetLoadObservation {
     status: &'static str,
@@ -1535,6 +1584,7 @@ struct FleetLoadObservation {
     items: Vec<String>,
     counts: Option<(u32, u32)>,
     fleet_entry: Option<(f32, f32)>,
+    fleets: Vec<FleetEntryObservation>,
     troops_tab: Option<(f32, f32)>,
     first_item: Option<(f32, f32)>,
     aboard: bool,
@@ -1543,6 +1593,7 @@ struct FleetLoadObservation {
     troop_system_dat_id: Option<u32>,
     in_transit: bool,
     regiment_travelling: bool,
+    confirmation_open: bool,
     last_message: Option<String>,
     last_regiment_message: Option<String>,
     zoom: f32,
@@ -1557,6 +1608,7 @@ fn fleet_load_observation(
     movement: &MovementState,
     transport: &TroopTransportState,
     fleets: &FleetWindowState,
+    confirmation_open: bool,
     messages: &[GameMessage],
     zoom: f32,
 ) -> Option<FleetLoadObservation> {
@@ -1587,6 +1639,27 @@ fn fleet_load_observation(
         fleet_entry: fleets
             .entry_screen_rect(layout, primary, 0)
             .map(screen_center),
+        fleets: report
+            .as_ref()
+            .map(|report| {
+                report
+                    .fleet_rows
+                    .iter()
+                    .filter_map(|&(listed, row)| {
+                        Some(FleetEntryObservation {
+                            ships: world
+                                .fleets
+                                .get(listed)?
+                                .capital_ships
+                                .iter()
+                                .filter(|ship| ship.alive)
+                                .count(),
+                            entry: screen_center(fleets.entry_screen_rect(layout, primary, row)?),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         troops_tab: fleets
             .tab_screen_rect(layout, primary, FleetWindowTab::Troops)
             .map(screen_center),
@@ -1604,6 +1677,7 @@ fn fleet_load_observation(
             .transits()
             .iter()
             .any(|transit| transit.troop == regiment),
+        confirmation_open,
         last_message: messages.last().map(|message| message.text.clone()),
         // One frame can run several days, so a regiment's line may not be
         // the last.
@@ -1637,10 +1711,11 @@ impl FleetLoadWatch {
         movement: &MovementState,
         transport: &TroopTransportState,
         fleets: &FleetWindowState,
+        confirmation_open: bool,
         messages: &[GameMessage],
         zoom: f32,
     ) -> Option<FleetLoadObservation> {
-        if !request.scenario.loads_a_regiment() {
+        if !request.scenario.uses_the_fleet_window() {
             return None;
         }
         if self.regiment.is_none() {
@@ -1662,6 +1737,7 @@ impl FleetLoadWatch {
             movement,
             transport,
             fleets,
+            confirmation_open,
             messages,
             zoom,
         );
@@ -1681,11 +1757,20 @@ impl FleetLoadWatch {
         movement: &MovementState,
         transport: &TroopTransportState,
         fleets: &FleetWindowState,
+        confirmation_open: bool,
         messages: &[GameMessage],
         zoom: f32,
     ) {
         let Some(report) = self.next(
-            request, world, fog, movement, transport, fleets, messages, zoom,
+            request,
+            world,
+            fog,
+            movement,
+            transport,
+            fleets,
+            confirmation_open,
+            messages,
+            zoom,
         ) else {
             return;
         };
@@ -1720,7 +1805,7 @@ impl SpeedMenuWatch {
         request: FixtureRequest,
         rect: Option<egui_macroquad::egui::Rect>,
     ) -> Option<FixtureSpeedMenu> {
-        if !request.scenario.loads_a_regiment() || rect == self.last {
+        if !request.scenario.uses_the_fleet_window() || rect == self.last {
             return None;
         }
         self.last = rect;
@@ -2281,6 +2366,86 @@ mod tests {
     }
 
     #[test]
+    fn the_joining_scenario_puts_a_player_fleet_of_one_ship_beside_one_of_two() {
+        // port: the fixture's own layout for the join gate
+        // (ghidra/notes/fleet-join-split.md).
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let applied = apply_to_loading_world(request(Scenario::FleetJoin, faction));
+            let world = &applied.world;
+            let here = world.systems.keys().next().unwrap();
+            let first = world.fleets.keys().next().unwrap();
+            let is_alliance = faction == CockpitFaction::Alliance;
+            let [a, b] = world.systems[here].fleets.as_slice() else {
+                panic!("{faction:?}: two fleets orbit the primary system");
+            };
+            assert_eq!(*a, first, "{faction:?}");
+            for (fleet, ships) in [(*a, 2), (*b, 1)] {
+                let value = &world.fleets[fleet];
+                assert_eq!(value.capital_ships.len(), ships, "{faction:?}");
+                assert!(value.capital_ships.iter().all(|ship| ship.alive));
+                assert_eq!(value.is_alliance, is_alliance);
+                assert!(!value.has_death_star && value.characters.is_empty());
+                assert!(!applied.movement.is_in_transit(fleet));
+            }
+        }
+    }
+
+    #[test]
+    fn the_fleet_load_observation_lists_each_fleet_with_its_ships_and_entry() {
+        // port: the fixture's own report.
+        let request = request(Scenario::FleetJoin, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world(request);
+        let here = applied.world.systems.keys().next().unwrap();
+        let regiment = loading_regiment(&applied.world, here).unwrap();
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(here);
+        let layout = CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
+        let mut fleets = FleetWindowState::default();
+        fleets.open(
+            &applied.world,
+            here,
+            (300, 80),
+            CockpitFaction::Alliance,
+            layout,
+        );
+        let observe = |confirmation_open| {
+            fleet_load_observation(
+                request,
+                regiment,
+                &applied.world,
+                &fog,
+                &applied.movement,
+                &applied.transport,
+                &fleets,
+                confirmation_open,
+                &[],
+                1.0,
+            )
+            .unwrap()
+        };
+        let row = |row| screen_center(fleets.entry_screen_rect(layout, here, row).unwrap());
+
+        let observed = observe(false);
+        assert_eq!(observed.entries, 2);
+        assert_eq!(
+            observed.fleets,
+            [
+                FleetEntryObservation {
+                    ships: 2,
+                    entry: row(0)
+                },
+                FleetEntryObservation {
+                    ships: 1,
+                    entry: row(1)
+                },
+            ]
+        );
+        assert_ne!(row(0), row(1));
+        assert!(!observed.confirmation_open);
+        assert!(observe(true).confirmation_open);
+    }
+
+    #[test]
     fn the_fleet_load_scenario_picks_a_carrier_of_the_players_side_that_can_jump() {
         // port: the fixture's own choice of a regiment carrier.
         use rebellion_core::world::CapitalShipClass;
@@ -2386,6 +2551,7 @@ mod tests {
                     &applied.movement,
                     &applied.transport,
                     &FleetWindowState::default(),
+                    false,
                     &[],
                     1.0,
                 )
@@ -2479,6 +2645,7 @@ mod tests {
                 &applied.movement,
                 &applied.transport,
                 &fleets,
+                false,
                 &[],
                 1.0,
             )
@@ -2529,6 +2696,7 @@ mod tests {
             &applied.movement,
             &applied.transport,
             &fleets,
+            false,
             &messages,
             1.0,
         )
@@ -2560,6 +2728,7 @@ mod tests {
                 &applied.movement,
                 &applied.transport,
                 fleets,
+                false,
                 &[],
                 zoom,
             )
@@ -2614,6 +2783,7 @@ mod tests {
                 &applied.movement,
                 &applied.transport,
                 &fleets,
+                false,
                 &[],
                 1.0,
             ),
@@ -3243,7 +3413,7 @@ mod tests {
     }
 
     #[test]
-    fn the_targeting_fleet_move_and_fleet_load_scenarios_report_the_object_menu() {
+    fn the_targeting_fleet_move_and_fleet_window_scenarios_report_the_object_menu() {
         let reporting: Vec<_> = (0..SCENARIO_COUNT)
             .filter_map(Scenario::decode)
             .filter(|scenario| scenario.reports_object_menu())
@@ -3257,7 +3427,8 @@ mod tests {
                 Scenario::FleetMoveBlockade,
                 Scenario::FleetLoad,
                 Scenario::FleetLoadFull,
-                Scenario::RegimentUnloadRefused
+                Scenario::RegimentUnloadRefused,
+                Scenario::FleetJoin
             ]
         );
     }

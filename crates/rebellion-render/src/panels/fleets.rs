@@ -94,7 +94,7 @@ pub struct FleetsState {
 /// Render the fleet roster as a left-side egui panel.
 ///
 /// `player_faction` filters which fleets are shown. Returns panel actions for
-/// character assignment, fleet merging, and map navigation.
+/// character assignment and map navigation.
 #[expect(
     clippy::too_many_lines,
     reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
@@ -404,54 +404,6 @@ pub fn draw_fleets(
                                 .clicked()
                             {
                                 state.assigning_to = Some(fleet_key);
-                            }
-
-                            // ── Merge with fleet at same location ────────
-                            // Only show merge for stationary fleets (not in transit).
-                            ui.add_space(4.0);
-                            let this_in_transit = movement_state.get(fleet_key).is_some();
-                            let same_loc_fleets: Vec<(FleetKey, u32)> = if this_in_transit {
-                                vec![]
-                            } else {
-                                player_fleets
-                                    .iter()
-                                    .filter(|(fk, f)| {
-                                        *fk != fleet_key
-                                            && f.location == fleet.location
-                                            && movement_state.get(*fk).is_none()
-                                    })
-                                    .map(|(fk, f)| {
-                                        let sc: u32 = f.ship_count();
-                                        (*fk, sc)
-                                    })
-                                    .collect()
-                            };
-
-                            if !same_loc_fleets.is_empty() {
-                                ui.label(
-                                    RichText::new("MERGE")
-                                        .color(theme::GOLD_DIM)
-                                        .size(10.0)
-                                        .strong(),
-                                );
-                                for (other_key, other_ships) in &same_loc_fleets {
-                                    if ui
-                                        .button(
-                                            RichText::new(format!(
-                                                "Merge with fleet ({other_ships} ships)"
-                                            ))
-                                            .color(theme::TEXT_PRIMARY)
-                                            .size(11.0),
-                                        )
-                                        .clicked()
-                                    {
-                                        action = Some(PanelAction::MergeFleets {
-                                            fleet_a: fleet_key,
-                                            fleet_b: *other_key,
-                                        });
-                                        state.expanded_fleet = None;
-                                    }
-                                }
                             }
 
                             // ── Navigation ───────────────────────────────

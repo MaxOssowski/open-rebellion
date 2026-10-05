@@ -159,7 +159,12 @@ pub fn run_simulation_tick(
 
     // ── 2. Movement ──────────────────────────────────────────────────────
     let arrivals = MovementSystem::advance(&mut states.movement, tick_events);
-    integrator.apply_arrivals(world, &mut states.troop_transport, &arrivals);
+    integrator.apply_arrivals(
+        world,
+        &states.movement,
+        &mut states.troop_transport,
+        &arrivals,
+    );
     for arrival in &arrivals {
         states.combat_cooldowns.remove(&arrival.system);
     }

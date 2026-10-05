@@ -1059,7 +1059,7 @@ fn item_drag_object(item: SystemWindowItem) -> Option<MenuObject> {
     clippy::cast_possible_truncation,
     reason = "Canvas coordinates fit an i16, as the original's POINT words do."
 )]
-fn canvas_point(layout: CockpitLayout, point: egui::Pos2) -> (i16, i16) {
+pub(crate) fn canvas_point(layout: CockpitLayout, point: egui::Pos2) -> (i16, i16) {
     let scale = layout.scale.max(f32::EPSILON);
     (
         ((point.x - layout.canvas.x) / scale).floor() as i16,

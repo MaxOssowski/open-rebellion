@@ -10,6 +10,7 @@ pub mod delivery;
 pub mod economy;
 pub mod effects;
 pub mod events;
+pub mod fleet_join;
 pub mod fog;
 pub mod game_events;
 pub mod ids;

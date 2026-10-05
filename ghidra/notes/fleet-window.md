@@ -349,7 +349,7 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 - `FUN_00558380`'s base order list; the regiment `0x214` refusal's status
   (native check pending). The leg builders and the full-fleet refusal are
   traced in `regiment-unload.md`.
-- Joining and splitting fleets and the Fleet Finder (`FUN_00429440`,
-  open-by-object) are not ported; unloading by hand is
-  (`regiment-unload.md`).
+- The Fleet Finder (`FUN_00429440`, open-by-object) is not ported;
+  unloading by hand (`regiment-unload.md`) and joining and splitting fleets
+  (`fleet-join-split.md`) are.
 - What starts an in-place rename.

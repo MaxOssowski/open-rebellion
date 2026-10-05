@@ -37,6 +37,14 @@ pub enum TargetOrder {
     /// fleet (`ghidra/notes/fleet-window.md`, "Loading a regiment onto a
     /// fleet").
     TroopMove { troop: TroopKey },
+    /// A capital ship's Move (`0x201`). Released on a Fleet window it joins
+    /// that fleet; on a system it forms a fleet of its own there
+    /// (`ghidra/notes/fleet-join-split.md`).
+    ShipMove {
+        fleet: FleetKey,
+        ships: Vec<usize>,
+        roster: u64,
+    },
 }
 
 /// What a release lands on: a system, or a fleet a Fleet window gives

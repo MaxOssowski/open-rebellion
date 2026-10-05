@@ -134,8 +134,9 @@ reopened when its context-menu entry lost its caller in 23d15da, is restored
 through the original orders (Move, Confirmed Move, the system window drag, and
 regiment loading on the Fleet window), and the sector window's quadrant
 icons open the System, System Defenses, Fleet and Missions windows. Regiments
-unload by hand from the Fleet window and travel on their own; its native
-check remains. Faction liveness, the wider
+unload by hand from the Fleet window and travel on their own, and fleets join
+and split there (a ship's or fleet's Move onto a fleet, Create Fleet); the
+arrival merge F-007B added is retired as unsourced. Its native check remains. Faction liveness, the wider
 campaign loop, five-seed cross-runtime replay,
 interactive/tactical convergence, browser
 memory/media work, cross-browser performance, formatting, lint, and
