@@ -139,12 +139,13 @@ when all of the following hold:
 - some member is neither a fleet (`0x08..0x0f`) nor a capital ship
   (`0x14..0x1b`);
 - and either some member is not a regiment (`0x10..0x13`), or the
-  destination is not a system with `+0x50` bit `0x40` set and `+0x88` bit 1
-  clear.
+  destination is not an existing (`+0x50` bit `0x40`) system whose `+0x88`
+  bit 0 (populated, `economy-systems.md`) is clear. (An earlier reading gave
+  this as `+0x88` bit 1; the test is `& 1`, `regiment-unload.md`.)
 
 So fleets and capital ships may move to an enemy or neutral destination; a
 group holding anything else may not, except an all-regiment group landing on
-such a system (hyp: an invasion). A fleet-only move never meets this
+an unpopulated system. A fleet-only move never meets this
 refusal. Then it plans the route (`FUN_00551190`, `FUN_005513a0`, below) and
 gives each member its leg (`FUN_00551630`, stored at the member's `+0x48`).
 Any failure gives `1`/`1`.
@@ -179,14 +180,20 @@ destination at `+0x48`.
        non-zero, or the result is `1`/`0x18`. For a fleet that is
        `FUN_004fd900`, zero when a member capital ship has no hyperdrive
        (`build-delivery.md`): the fleet cannot enter hyperspace;
-     - a regiment (`0x10..0x13`) whose destination's side bits differ gets
+     - in different systems, and only if no refusal is set yet, a regiment
+       (`0x10..0x13`) whose destination's side bits differ from its own gets
        `1`/`0x28`; this does not apply to a fleet;
+     - in the same system neither check runs (`regiment-unload.md`);
      - any other failure gives `1`/`1`.
 - Execute, `+0x20` (`FUN_00578f30`): validate again, then `FUN_00515440` →
-  `FUN_00556390(object, destination, ctx)`. This finds the leg
+  `FUN_00556390(object, destination, ctx)`. For a deployed object
+  (slot `+0x38`, `+0x50` bit 16) it asks whether the leg stays in one system
   (`FUN_00555410`) and, unless the object is autorouting (`+0x50` bit
-  `0x800`), departs through `FUN_004f7640`, which sets the in-transit bit
-  (`+0x50` bit 5; `blockade-troop-withdrawal.md`, "Departure roll").
+  `0x800`), writes the in-transit bit (`+0x50` bit 5;
+  `blockade-troop-withdrawal.md`, "Departure roll") through `FUN_004f7640`:
+  set across systems, clear within one. Unless the object is destroyed
+  (`+0x50` bit 3) it then changes container at once (slot `+0xa8`). An
+  object that is not deployed changes container with no transit bit.
   Arrival follows the per-object transit in `build-delivery.md`.
 
 So a fleet in hyperspace cannot take a new Move: `FUN_004f9860` refuses an

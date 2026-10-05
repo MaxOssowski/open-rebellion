@@ -262,12 +262,15 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
   released on a Fleet window asks `+0x70` (`move-order.md` "The release") and
   issues `0x201` against that fleet or ship.
 - **The `0x201` path.** `0x204`'s group check (`FUN_0053d430`) allows an
-  all-regiment group only toward the order's side, or onto a system with
-  `+0x50` bit `0x40` and `+0x88` bit 1 clear (invasion). The command's check
+  all-regiment group only toward the order's side, or onto an existing
+  system (`+0x50` bit `0x40`) that is unpopulated (`+0x88` bit 0 clear;
+  corrected from "bit 1", `regiment-unload.md`). The command's check
   `FUN_00555920` refuses `1`/`0x18` across systems when the object's speed
-  slot `+0x34(1)` is 0, so a regiment loads only onto a fleet in its own
-  system (hyp: regiments have no speed). `0x28` refuses a regiment whose
-  destination's side differs.
+  slot `+0x34(1)` is 0. A regiment's speed (`FUN_004f63f0`) is
+  `DAT_006b9050`, GNPRTB 1 (100), while it exists (`build-delivery.md`), so
+  this never refuses a regiment: the earlier "regiments have no speed" was a
+  misreading (`regiment-unload.md`). Across systems only, `0x28` refuses a
+  regiment whose destination's side differs from its own.
 - **Capacity.** `FUN_00500b40`, a capital-ship vtable slot (in the vtables at
   `0x0065d6c8`, `0x0065d9a8`, `0x0065dc88`), reports a ship's room for a
   type range:
@@ -314,7 +317,8 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
   Move and Scrap are drawn disabled (port:). Targeting released on a Fleet
   window's fleet loads the regiment through F-007E's embark
   (`TroopTransportState::load`): `1`/`0x18` refuses a regiment released on
-  another system, and `FUN_00500b40`'s room refuses a full fleet ("troop
+  another system (a port rule: a regiment has speed, `regiment-unload.md`),
+  and `FUN_00500b40`'s room refuses a full fleet ("troop
   capacity exceeded"). A fleet's Move released on a Fleet window is refused
   ("joining fleets is not ported").
 - **The hold** (port:). The original keeps a loaded regiment in its ship's
