@@ -80,11 +80,11 @@ Finder control for both factions.
 |---|---|
 | Fleet Finder unit tests | 29 passed, 0 failed |
 | Interface fixture tests | 34 passed, 0 failed |
-| Workspace tests | 1,328 passed, 0 failed, 36 ignored |
+| Workspace tests | 1,328 passed, 0 failed, 39 ignored |
 | Stacking hand mutant | Foreground order caught; Tooltip order passes |
 | Browser matrix | 18/18 across both factions |
-| Browser artifact | `.artifacts/interface-parity/fleet-finder-2026-10-05T22-37-11-290Z-20507/` |
-| Fixture WASM SHA-256 | `2f8759784ca72552fb6b11cd9a306ae8e22fe45b57f361f31a59fbe435e5fbfa` |
+| Browser artifact | `.artifacts/interface-parity/fleet-finder-2026-10-05T23-24-38-163Z-83071/` |
+| Fixture WASM SHA-256 | `c3f50929ced3c628b1ee733c30c395f1407056a8c4f6a23ad8f5fea025a54296` |
 | Release WASM SHA-256 | `0b8ca1277f6f6c3fc6fb5692c10e7f11121052436ff37e6c8be00e10304beade` |
 | Browser errors | 0 console or page errors |
 | Audio | muted |
