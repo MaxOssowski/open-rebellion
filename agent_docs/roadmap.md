@@ -10,7 +10,7 @@ tags: [roadmap, planning, milestones, parity]
 # Roadmap
 
 <!-- interface-parity-status:start -->
-Required interface families: 43. Complete: 0. Partial: 9. Failing: 34. Blocked: 0. Strictly accepted cells: 0/564.
+Required interface families: 43. Complete: 0. Partial: 12. Failing: 31. Blocked: 0. Strictly accepted cells: 0/627.
 The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine additional native filter variants) and 152 faction/viewport executions. Its strict original-evidence and cross-browser gate remains open.
 <!-- interface-parity-status:end -->
 
@@ -1062,7 +1062,7 @@ would tune around known simulation feedback defects.
   native build; packaged browser and CI enforcement remain open.
 - [ ] Add at least 20 app/browser integration cases and promote long campaigns when stable.
 - [ ] Generate the complete bitmap resource ledger from the entity map; fail on unexplained misses. Fleet-list miniatures are verified in F-010B.
-- [x] Establish 564 stable required interface baseline cells, link all 43
+- [x] Establish 627 stable required interface baseline cells, link all 43
   required surface families to 27 bounded retrieval or removal packages, and
   explicitly cover 106 space-battle cells across `TAC-01` through `TAC-07`.
 - [ ] Close every required surface-state cell in the original-interface audit

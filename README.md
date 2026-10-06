@@ -254,6 +254,7 @@ This project exists because a small, stubborn community kept Rebellion alive for
 - **[swrebellion.net](https://swrebellion.net)**—The hub. Forums, mods, the [Mechanics Inside Rebellion](https://swrebellion.net/forums/topic/9639-mechanics-inside-rebellion-part-ii/) thread that documented game internals.
 - **[RebED](https://swrebellion.net/files/)**—240+ mod cards created by the community over two decades.
 - **[Metasharp's Editor](https://github.com/MetasharpNet/StarWarsRebellionEditor.NET)**—686 commits of .NET code reverse-engineering every binary format. Without this, Open Rebellion wouldn't exist.
+- **[Faction Wars](https://github.com/TeeJS/faction-wars)** by TeeJS. Its manual-driven audit informed Open Rebellion's [manual window cross-check](docs/qa/2026-09-10-interface-parity-audit/manual-window-checklists.md). Findings were independently paraphrased and checked against the manual and executable traces; no code or documentation was copied.
 - **[Prima Strategy Guide](https://archive.org/details/star-wars-rebellion-guide/mode/2up)**—276 pages, free on archive.org.
 
 We stand on their shoulders.

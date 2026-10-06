@@ -26,7 +26,15 @@
       "TAC-06",
       "TAC-07"
     ],
-    "expected_distribution": [13, 13, 20, 14, 23, 9, 14],
+    "expected_distribution": [
+      13,
+      13,
+      20,
+      14,
+      23,
+      9,
+      14
+    ],
     "required_cells": 106,
     "validator": "tools/interface-parity/validate-tactical-matrix.mjs",
     "a0_schema": "tools/interface-parity/schemas/tactical-a0-manifest.schema.json",
@@ -138,6 +146,7 @@
         "three difficulties",
         "three galaxy sizes",
         "two game types",
+        "Easy difficulty is the default",
         "Alliance start",
         "Empire start",
         "load/options",
@@ -210,6 +219,12 @@
         {
           "id": "PRE-02-C008",
           "requirement": "two game types",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "PRE-02-C015",
+          "requirement": "Easy difficulty is the default",
           "status": "pending",
           "counts_toward_parity": true
         },
@@ -669,7 +684,18 @@
         "all apertures populated",
         "first frame complete",
         "4:3",
-        "letterboxed widescreen"
+        "letterboxed widescreen",
+        "Alt+1 selects Popular Support",
+        "Alt+2 selects Uprisings",
+        "Alt+3 selects Idle Fleets",
+        "Alt+4 selects Fleets En Route",
+        "Alt+5 selects Idle Personnel",
+        "Alt+6 selects Active Personnel",
+        "Alt+7 selects Idle Shipyards",
+        "Alt+8 selects Idle Training Facilities",
+        "Alt+9 selects Idle Construction Yards",
+        "Alt+G toggles Manage Garrisons",
+        "Alt+U toggles Manage Production"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -727,6 +753,72 @@
           "requirement": "letterboxed widescreen",
           "status": "pending",
           "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C007",
+          "requirement": "Alt+1 selects Popular Support",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C008",
+          "requirement": "Alt+2 selects Uprisings",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C009",
+          "requirement": "Alt+3 selects Idle Fleets",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C010",
+          "requirement": "Alt+4 selects Fleets En Route",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C011",
+          "requirement": "Alt+5 selects Idle Personnel",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C012",
+          "requirement": "Alt+6 selects Active Personnel",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C013",
+          "requirement": "Alt+7 selects Idle Shipyards",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C014",
+          "requirement": "Alt+8 selects Idle Training Facilities",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C015",
+          "requirement": "Alt+9 selects Idle Construction Yards",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C016",
+          "requirement": "Alt+G toggles Manage Garrisons",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-01-C017",
+          "requirement": "Alt+U toggles Manage Production",
+          "status": "pending",
+          "counts_toward_parity": true
         }
       ]
     },
@@ -764,8 +856,8 @@
         "Death Star intelligence",
         "hover",
         "selection",
-        "pan",
-        "zoom"
+        "fixed-map right-drag no-op",
+        "fixed-map wheel no-op"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -788,7 +880,7 @@
         71,
         73
       ],
-      "current_implementation": "P47A and P47B restore original STRATEGY 902/903 Display Off and Popular Support backdrops, exact faction GID control pairs, compact 10168 legend, and supported marker families and thresholds. P48 adds a source-mapped code-built GID root and submenu with all 22 recovered commands, original faction menu icons, provisional non-support filter metrics, and a test-only 38-scenario browser matrix. P50 restores the STRATEGY 10100 through 10107 frame tiles to both menu layers and removes the invented fade. P51 removes an unsupported row-hover wash and checks source frame pixels that remain visible beneath a system window. The 152 muted faction/viewport probes are an implementation regression gate, not original acceptance. Unsupported special marker overlays and an invented expanded legend were withheld after independent review. Menu interior, original hover/focus states, typography, exact geometry, non-support predicates, mixed-fleet allegiance, type-specific idle facilities, original floating legend, HQ/blockade/mission/Death Star states, native equivalence, keyboard focus, and full A0 composition remain open.",
+      "current_implementation": "P47A and P47B restore original STRATEGY 902/903 Display Off and Popular Support backdrops, exact faction GID control pairs, compact 10168 legend, and supported marker families and thresholds. P48 adds a source-mapped code-built GID root and submenu with all 22 recovered commands, original faction menu icons, provisional non-support filter metrics, and a test-only 38-scenario browser matrix. P50 restores the STRATEGY 10100 through 10107 frame tiles to both menu layers and removes the invented fade. P51 removes an unsupported row-hover wash and checks source frame pixels that remain visible beneath a system window. Commit 3393d5c8 removes invented camera state and verifies the original fixed map by proving that right-drag and wheel input leave the rendered frame unchanged. The 152 muted faction/viewport probes are an implementation regression gate, not original acceptance. Unsupported special marker overlays and an invented expanded legend were withheld after independent review. Menu interior, original hover/focus states, typography, exact geometry, non-support predicates, mixed-fleet allegiance, type-specific idle facilities, original floating legend, HQ/blockade/mission/Death Star states, native equivalence, keyboard focus, and full A0 composition remain open.",
       "finding_ids": [
         "UIP-F-002",
         "UIP-F-012"
@@ -962,13 +1054,13 @@
         },
         {
           "id": "CMD-02-C028",
-          "requirement": "pan",
+          "requirement": "fixed-map right-drag no-op",
           "status": "pending",
           "counts_toward_parity": true
         },
         {
           "id": "CMD-02-C029",
-          "requirement": "zoom",
+          "requirement": "fixed-map wheel no-op",
           "status": "pending",
           "counts_toward_parity": true
         }
@@ -993,7 +1085,14 @@
         "HQ",
         "single select",
         "double-click object",
-        "multiple modeless windows"
+        "multiple modeless windows",
+        "quadrant icon visibility predicate",
+        "quadrant icon geometry",
+        "quadrant icon faction and state art",
+        "quadrant icon selection on left or right press",
+        "quadrant icon right-click menu",
+        "quadrant icon drag",
+        "quadrant icon destination window and selected object"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -1103,6 +1202,48 @@
           "requirement": "multiple modeless windows",
           "status": "pending",
           "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-03-C014",
+          "requirement": "quadrant icon visibility predicate",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-03-C015",
+          "requirement": "quadrant icon geometry",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-03-C016",
+          "requirement": "quadrant icon faction and state art",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-03-C017",
+          "requirement": "quadrant icon selection on left or right press",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-03-C018",
+          "requirement": "quadrant icon right-click menu",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-03-C019",
+          "requirement": "quadrant icon drag",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-03-C020",
+          "requirement": "quadrant icon destination window and selected object",
+          "status": "pending",
+          "counts_toward_parity": true
         }
       ]
     },
@@ -1120,7 +1261,19 @@
         "raised",
         "closed",
         "multiple system windows",
-        "single sector window"
+        "single sector window",
+        "sector windows have fixed positions",
+        "sector windows cannot minimize",
+        "no more than two sector windows",
+        "sector-window side flip",
+        "twelve-slot reference-rail capacity",
+        "reference-rail system name",
+        "reference-rail window-type icon",
+        "Status window is modal",
+        "Finder windows are modal",
+        "Battle Summary window is modal",
+        "Encyclopedia window is modal",
+        "Message windows are modal"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -1190,6 +1343,78 @@
           "requirement": "single sector window",
           "status": "pending",
           "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C009",
+          "requirement": "sector windows have fixed positions",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C010",
+          "requirement": "sector windows cannot minimize",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C011",
+          "requirement": "no more than two sector windows",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C012",
+          "requirement": "sector-window side flip",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C013",
+          "requirement": "twelve-slot reference-rail capacity",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C014",
+          "requirement": "reference-rail system name",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C015",
+          "requirement": "reference-rail window-type icon",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C016",
+          "requirement": "Status window is modal",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C017",
+          "requirement": "Finder windows are modal",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C018",
+          "requirement": "Battle Summary window is modal",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C019",
+          "requirement": "Encyclopedia window is modal",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-04-C020",
+          "requirement": "Message windows are modal",
+          "status": "pending",
+          "counts_toward_parity": true
         }
       ]
     },
@@ -1210,7 +1435,9 @@
         "hover",
         "pressed",
         "selected",
-        "disabled"
+        "disabled",
+        "campaign begins on day 0",
+        "briefing time bar remains blank"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -1296,6 +1523,18 @@
         {
           "id": "CMD-05-C011",
           "requirement": "disabled",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-05-C012",
+          "requirement": "campaign begins on day 0",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-05-C013",
+          "requirement": "briefing time bar remains blank",
           "status": "pending",
           "counts_toward_parity": true
         }
@@ -1515,7 +1754,14 @@
         "silent",
         "navigate to object",
         "clear",
-        "delete"
+        "delete",
+        "message row single-click selection",
+        "message row Ctrl-click toggle",
+        "message row Shift-click range selection",
+        "message row double-click opens message",
+        "Agent Advice defaults on for Easy",
+        "Agent Advice defaults off for Medium and Hard",
+        "Agent Advice menu toggle"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -1640,6 +1886,48 @@
         {
           "id": "CMD-08-C016",
           "requirement": "delete",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-08-C017",
+          "requirement": "message row single-click selection",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-08-C018",
+          "requirement": "message row Ctrl-click toggle",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-08-C019",
+          "requirement": "message row Shift-click range selection",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-08-C020",
+          "requirement": "message row double-click opens message",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-08-C021",
+          "requirement": "Agent Advice defaults on for Easy",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-08-C022",
+          "requirement": "Agent Advice defaults off for Medium and Hard",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "CMD-08-C023",
+          "requirement": "Agent Advice menu toggle",
           "status": "pending",
           "counts_toward_parity": true
         }
@@ -2197,7 +2485,11 @@
         "Force-aware",
         "Jedi",
         "status",
-        "item menu"
+        "item menu",
+        "distinct Character Finder view",
+        "distinct SpecForces Finder view",
+        "SpecForces Finder type-by-system grid",
+        "SpecForces Finder system-name search"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -2324,6 +2616,30 @@
           "requirement": "item menu",
           "status": "pending",
           "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-03-C016",
+          "requirement": "distinct Character Finder view",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-03-C017",
+          "requirement": "distinct SpecForces Finder view",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-03-C018",
+          "requirement": "SpecForces Finder type-by-system grid",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-03-C019",
+          "requirement": "SpecForces Finder system-name search",
+          "status": "pending",
+          "counts_toward_parity": true
         }
       ]
     },
@@ -2332,7 +2648,7 @@
       "phase": "object_management",
       "title": "Fleet, Ship, and Troop Finders",
       "required": true,
-      "status": "fail",
+      "status": "partial",
       "required_states": [
         "Fleet Finder",
         "Ship Finder",
@@ -2341,7 +2657,14 @@
         "empty",
         "populated",
         "selection",
-        "object navigation"
+        "object navigation",
+        "F4 opens Troop Finder",
+        "Troop Finder system-name search",
+        "Troop Finder faction tabs",
+        "Troop Finder Display opens System window",
+        "Fleet Finder Display opens Sector window",
+        "Fleet Finder Display opens Fleet window",
+        "Finder navigation preserves selected object"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -2362,7 +2685,7 @@
         131,
         132
       ],
-      "current_implementation": "Only an aggregate custom fleet panel exists.",
+      "current_implementation": "The original Fleet Finder shell, faction tabs, Fleet and Ship modes, filtering, selection, keyboard navigation, and Fleet-window routing work in bounded native and browser journeys. Troop Finder, strict modal behavior, original scrollbars, full hyperspace membership, and A0 comparison remain open.",
       "finding_ids": [
         "UIP-F-007"
       ],
@@ -2418,6 +2741,48 @@
           "requirement": "object navigation",
           "status": "pending",
           "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-04-C009",
+          "requirement": "F4 opens Troop Finder",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-04-C010",
+          "requirement": "Troop Finder system-name search",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-04-C011",
+          "requirement": "Troop Finder faction tabs",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-04-C012",
+          "requirement": "Troop Finder Display opens System window",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-04-C013",
+          "requirement": "Fleet Finder Display opens Sector window",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-04-C014",
+          "requirement": "Fleet Finder Display opens Fleet window",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-04-C015",
+          "requirement": "Finder navigation preserves selected object",
+          "status": "pending",
+          "counts_toward_parity": true
         }
       ]
     },
@@ -2426,7 +2791,7 @@
       "phase": "object_management",
       "title": "Fleet window and tabs",
       "required": true,
-      "status": "fail",
+      "status": "partial",
       "required_states": [
         "empty",
         "populated",
@@ -2442,7 +2807,9 @@
         "merge",
         "transfer",
         "commander",
-        "blockade"
+        "blockade",
+        "hyperspace moving-star or engine-glow indicator",
+        "orders disabled while in hyperspace"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -2476,7 +2843,7 @@
         119,
         120
       ],
-      "current_implementation": "Custom list and context menu. Miniature mapping is useful but layout and window behavior do not match.",
+      "current_implementation": "The original Fleet window shell, faction composition, tabs, fleet and ship rows, cargo counts, selection, item menus, move, confirmed move, split, merge, ship transfer, troop embarkation and landing, minimize, close, and system routing work in bounded native and browser journeys. Hyperspace presentation, complete item-menu commands, exact modal interactions, A0 comparison, and the full cell matrix remain open.",
       "finding_ids": [
         "UIP-F-007"
       ],
@@ -2572,6 +2939,18 @@
         {
           "id": "OBJ-05-C015",
           "requirement": "blockade",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-05-C016",
+          "requirement": "hyperspace moving-star or engine-glow indicator",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-05-C017",
+          "requirement": "orders disabled while in hyperspace",
           "status": "pending",
           "counts_toward_parity": true
         }
@@ -2737,7 +3116,13 @@
         "damaged",
         "blocked",
         "priority",
-        "cancel"
+        "cancel",
+        "destination stored per producer",
+        "destination targeting accepts galaxy system",
+        "destination targeting accepts Defense window",
+        "destination targeting accepts Manufacturing window",
+        "destination targeting accepts Fleet window",
+        "best time to completion is an absolute game day"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -2854,6 +3239,42 @@
         {
           "id": "OBJ-07-C014",
           "requirement": "cancel",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-07-C015",
+          "requirement": "destination stored per producer",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-07-C016",
+          "requirement": "destination targeting accepts galaxy system",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-07-C017",
+          "requirement": "destination targeting accepts Defense window",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-07-C018",
+          "requirement": "destination targeting accepts Manufacturing window",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-07-C019",
+          "requirement": "destination targeting accepts Fleet window",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-07-C020",
+          "requirement": "best time to completion is an absolute game day",
           "status": "pending",
           "counts_toward_parity": true
         }
@@ -3425,7 +3846,9 @@
         "continue",
         "cancel",
         "acknowledge",
-        "navigate to target"
+        "navigate to target",
+        "mission hyperspace moving-star indicator",
+        "mission orders disabled while in hyperspace"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -3550,6 +3973,18 @@
           "requirement": "navigate to target",
           "status": "pending",
           "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-12-C015",
+          "requirement": "mission hyperspace moving-star indicator",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-12-C016",
+          "requirement": "mission orders disabled while in hyperspace",
+          "status": "pending",
+          "counts_toward_parity": true
         }
       ]
     },
@@ -3647,7 +4082,7 @@
       "phase": "object_management",
       "title": "Original item-menu trees",
       "required": true,
-      "status": "fail",
+      "status": "partial",
       "required_states": [
         "system",
         "fleet",
@@ -3666,7 +4101,9 @@
         "status",
         "enabled",
         "disabled",
-        "nested submenu"
+        "nested submenu",
+        "fleet Rename command",
+        "ship Rename command"
       ],
       "authority_refs": [
         "REF-MANUAL",
@@ -3704,7 +4141,7 @@
         132,
         133
       ],
-      "current_implementation": "Custom quick-action egui windows do not reproduce the original per-object menu tree.",
+      "current_implementation": "Source-recovered item menus now open from sector quadrant icons and Fleet-window objects, with enabled routing for a bounded subset of Move, Confirmed Move, Create Fleet, Mission, Encyclopedia, Status, Scrap, and system-wide fleet movement paths. The complete per-object command trees, nested states, Rename, disabled-state matrix, and A0 comparison remain open.",
       "finding_ids": [
         "UIP-F-003",
         "UIP-F-007"
@@ -3819,6 +4256,18 @@
         {
           "id": "OBJ-14-C018",
           "requirement": "nested submenu",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-14-C019",
+          "requirement": "fleet Rename command",
+          "status": "pending",
+          "counts_toward_parity": true
+        },
+        {
+          "id": "OBJ-14-C020",
+          "requirement": "ship Rename command",
           "status": "pending",
           "counts_toward_parity": true
         }
@@ -5525,7 +5974,8 @@
         "command palette",
         "mod manager",
         "diagnostics",
-        "accessibility overlay"
+        "accessibility overlay",
+        "approved main-menu Fleet Registry"
       ],
       "authority_refs": [],
       "manual_pages": [],
@@ -5560,6 +6010,12 @@
         {
           "id": "EXT-02-C005",
           "requirement": "accessibility overlay",
+          "status": "excluded",
+          "counts_toward_parity": false
+        },
+        {
+          "id": "EXT-02-C006",
+          "requirement": "approved main-menu Fleet Registry",
           "status": "excluded",
           "counts_toward_parity": false
         }
@@ -5599,8 +6055,8 @@
   "acceptance_summary": {
     "surface_families": 44,
     "required_surface_families": 43,
-    "baseline_cells": 569,
-    "required_baseline_cells": 564,
+    "baseline_cells": 633,
+    "required_baseline_cells": 627,
     "excluded_baseline_cells": 5,
     "required_surfaces_with_retrieval_packages": 43
   }

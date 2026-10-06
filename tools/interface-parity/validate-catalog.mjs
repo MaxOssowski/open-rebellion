@@ -36,7 +36,7 @@ const expected = [
   "shipyards", "training", "construction", "defenses",
   "matching legend", "known", "unknown", "uninhabited", "HQ",
   "blockade", "mission", "fleet", "Death Star intelligence", "hover",
-  "selection", "pan", "zoom",
+  "selection", "fixed-map right-drag no-op", "fixed-map wheel no-op",
 ];
 if (JSON.stringify(requirements.slice(0, 29)) !== JSON.stringify(expected)) {
   throw new Error("catalog no longer matches the 29 canonical CMD-02 requirements");

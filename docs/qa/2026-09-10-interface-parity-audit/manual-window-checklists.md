@@ -1,0 +1,171 @@
+# Manual Window Cross-Check
+
+This checklist adds manual-facing behaviors that were missing or bundled too
+broadly in the interface ledger. Each row has its own stable acceptance cell.
+**Present**, **Partial**, **Missing**, and **Disabled** describe the current
+port only. They do not accept a cell. Every listed cell remains pending until
+it passes the audit's A0, native, browser, input, and transition gates.
+
+The original manual and `REBEXE.EXE` remain authoritative. Faction Wars is a
+research lead, not parity evidence. Manual cross-check research was informed by
+[Faction Wars by TeeJS](https://github.com/TeeJS/faction-wars). Findings were
+independently paraphrased and checked against the manual and `REBEXE.EXE`
+traces; no Faction Wars code or documentation was copied.
+
+## Status vocabulary
+
+| Status | Meaning |
+|---|---|
+| Present | The named element and its observable interaction exist in the port. |
+| Partial | Some required behavior exists, but the implementation materially differs or lacks a state. |
+| Missing | No matching production behavior exists. |
+| Disabled | Original control is shown but deliberately cannot act; its reason must be documented. |
+
+Original-behavior claims additionally follow the
+[manual cross-check workflow](../../../agent_docs/manual-cross-check.md):
+**Confirmed** requires a matching executable trace, **Contradicted** records a
+manual/executable disagreement, and **Unresolved** keeps implementation and
+acceptance open.
+
+## Setup and command-center input
+
+| Cell | Original behavior | Port | Original proof |
+|---|---|---|---|
+| `PRE-02-C015` | New-game difficulty initially selects Easy. | Present | Manual p. 21; executable-default trace still needs a dedicated note. |
+| `CMD-01-C007` | Alt+1 selects Popular Support. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C008` | Alt+2 selects Uprisings. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C009` | Alt+3 selects Idle Fleets. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C010` | Alt+4 selects Fleets En Route. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C011` | Alt+5 selects Idle Personnel. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C012` | Alt+6 selects Active Personnel. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C013` | Alt+7 selects Idle Shipyards. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C014` | Alt+8 selects Idle Training Facilities. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C015` | Alt+9 selects Idle Construction Yards. | Missing | Manual p. 24; executable accelerator trace open. |
+| `CMD-01-C016` | Alt+G toggles Manage Garrisons. | Missing | Manual pp. 64–66; executable accelerator trace open. |
+| `CMD-01-C017` | Alt+U toggles Manage Production. | Missing | Manual pp. 64–66; executable accelerator trace open. |
+| `CMD-02-C028` | Right-drag leaves the original fixed galaxy map unchanged. | Present | Confirmed by `FUN_00422ce0`, `ghidra/notes/galaxy-view-input.md`, and the deterministic no-op gate. |
+| `CMD-02-C029` | Mouse-wheel input leaves the original fixed galaxy map unchanged. | Present | Confirmed by `FUN_00422ce0`, `galaxy-view-input.md`, and the deterministic no-op gate. |
+
+Faction Wars independently identifies the nine GID accelerators and two
+management toggles in its manual digest:
+[GID accelerators](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L4067-L4079)
+and
+[management toggles](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L4051-L4061).
+
+## Sector icons and destination routing
+
+The former `CMD-03-C012` phrase, “double-click object,” was not precise enough
+to detect the earlier implementation that responded only to double-clicks.
+The following child cells now make every visible and interactive part explicit.
+
+| Cell | Observable behavior | Port | Original proof |
+|---|---|---|---|
+| `CMD-03-C014` | Each quadrant icon appears only when its original predicate is true. | Present | Confirmed by `ghidra/notes/sector-quadrants.md`. |
+| `CMD-03-C015` | Facilities, fleets, defenses, and missions occupy their original quadrants and rectangles. | Present | Confirmed by `sector-quadrants.md` and `sector-window-hit-test.md`. |
+| `CMD-03-C016` | Icon art reflects faction, intelligence, and state. | Partial | Base art and faction paths exist; the complete state matrix remains open. |
+| `CMD-03-C017` | Left or right press selects the icon before another action. | Present | Confirmed by `FUN_004593e0`, `FUN_0045cc10`, and `FUN_0045b1b0`. |
+| `CMD-03-C012` | A double-click on an icon opens its original destination. | Present | Confirmed by the `WM_LBUTTONDBLCLK` route in `sector-quadrants.md`. |
+| `CMD-03-C018` | Right release opens the icon's original item menu. | Partial | Menus open, but several commands remain disabled or unimplemented. |
+| `CMD-03-C019` | Dragging an icon begins the appropriate system-wide move. | Partial | Fleet-icon drag works; other icon families remain open. |
+| `CMD-03-C020` | The destination window opens on the correct system, tab, and selected object without a duplicate. | Partial | Bounded window routes work; every object/state combination is not covered. |
+
+The manual-derived behavior is also summarized in Faction Wars'
+[sector-window reading](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L400-L421).
+
+## Window manager and modal catalogue
+
+| Cell | Original behavior | Port | Original proof |
+|---|---|---|---|
+| `CMD-04-C009` | Sector windows stay at their fixed cockpit positions. | Present | Manual pp. 63–64; constructor/lifetime trace remains incomplete. |
+| `CMD-04-C010` | Sector windows have no minimize action. | Present | Manual pp. 63–64; current sector window exposes only flip and close. |
+| `CMD-04-C011` | At most two sector windows may be open. | Missing | Manual pp. 63–64; current state accepts more than two. |
+| `CMD-04-C012` | The side-flip control moves a sector window between the two original columns. | Present | Current fixed-column implementation; exact A0 state open. |
+| `CMD-04-C013` | The reference rail holds twelve minimized windows. | Present | Confirmed by `FUN_00421c70` and `REFERENCE_RAIL_SLOTS`. |
+| `CMD-04-C014` | A minimized entry retains the system name. | Present | Current rail renderer; original A0 comparison open. |
+| `CMD-04-C015` | A minimized entry identifies its window type. | Present | Source-specific System, Fleet, Defenses, and Missions rail resources are routed. |
+| `CMD-04-C016` | Status windows block underlying input. | Missing | Manual pp. 63–64; production Status family remains open. |
+| `CMD-04-C017` | Finder windows block underlying input. | Partial | Fleet Finder occludes pointer input but differs in z-order and keyboard ownership. |
+| `CMD-04-C018` | Battle Summary blocks underlying input. | Partial | Separate tactical result routing exists; the original modal matrix is open. |
+| `CMD-04-C019` | Encyclopedia blocks underlying input. | Partial | Recovered shells exist in bounded routes; production topic routing remains open. |
+| `CMD-04-C020` | Message windows block underlying input. | Partial | The shell blocks input in fixtures; populated production behavior is absent. |
+
+The sector constraints and rail semantics were located through Faction Wars'
+[window-behavior reading](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L3998-L4025).
+
+## Day, messages, and advice
+
+| Cell | Original behavior | Port | Original proof |
+|---|---|---|---|
+| `CMD-05-C012` | A new campaign displays day 0 before the first elapsed day. | Present | `GameClock::new()` and the cockpit day readout start at zero; dedicated original trace open. |
+| `CMD-05-C013` | The time bar is blank during the opening briefing. | Missing | Manual-derived lead; opening briefing parity is itself open. |
+| `CMD-08-C017` | A click selects one Message Index row. | Missing | Manual pp. 43, 78–80; row implementation open. |
+| `CMD-08-C018` | Ctrl-click toggles an individual Message Index row. | Missing | Manual pp. 43, 78–80; row implementation open. |
+| `CMD-08-C019` | Shift-click selects a contiguous Message Index range. | Missing | Manual pp. 43, 78–80; row implementation open. |
+| `CMD-08-C020` | Double-click opens or reads the selected message. | Missing | Manual pp. 43, 78–80; row implementation open. |
+| `CMD-08-C021` | Agent Advice starts enabled on Easy. | Missing | Manual p. 22; production advice behavior open. |
+| `CMD-08-C022` | Agent Advice starts disabled on Medium and Hard. | Missing | Manual p. 22; production advice behavior open. |
+| `CMD-08-C023` | The Agent menu toggles advice. | Missing | Manual p. 22; production advice behavior open. |
+
+See Faction Wars'
+[Message Index gesture reading](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L368-L380)
+and [Agent Advice reading](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L4423-L4432).
+
+## Personnel, fleet, ship, and troop Finders
+
+| Cell | Original behavior | Port | Original proof |
+|---|---|---|---|
+| `OBJ-03-C016` | Personnel Finder has a distinct Character Finder view. | Missing | Manual pp. 39, 98–100; executable trace open. |
+| `OBJ-03-C017` | Personnel Finder has a distinct SpecForces Finder view. | Missing | Manual pp. 39, 98–100; executable trace open. |
+| `OBJ-03-C018` | SpecForces Finder is a type-by-system count grid. | Missing | Manual pp. 98–100; executable trace open. |
+| `OBJ-03-C019` | Typing a system name moves the SpecForces grid to that system. | Missing | Manual pp. 98–100; executable trace open. |
+| `OBJ-04-C009` | F4 opens Troop Finder. | Partial | F4 reaches command `0x130`, but the production Troop Finder is absent. |
+| `OBJ-04-C010` | Troop Finder searches by system name. | Missing | Manual p. 132; executable trace open. |
+| `OBJ-04-C011` | Troop Finder has Alliance and Imperial tabs. | Missing | Manual p. 132; executable trace open. |
+| `OBJ-04-C012` | Display opens the selected troop's System window. | Missing | Manual p. 132; executable trace open. |
+| `OBJ-04-C013` | Fleet Finder navigation opens the selected fleet's Sector window. | Present | Confirmed in `ghidra/notes/fleet-finder.md` and the native journey. |
+| `OBJ-04-C014` | Fleet Finder navigation opens the matching Fleet window. | Present | Confirmed in `fleet-finder.md` and the native journey. |
+| `OBJ-04-C015` | The selected fleet or ship remains selected in the destination window. | Present | Confirmed in `fleet-finder.md`; complete state coverage open. |
+
+See Faction Wars'
+[Personnel Finder reading](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L1823-L1832)
+and [Troop Finder reading](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L3079-L3084).
+
+## Hyperspace presentation and input
+
+| Cell | Original behavior | Port | Original proof |
+|---|---|---|---|
+| `OBJ-05-C016` | An en-route fleet or ship receives its moving-star or engine-glow presentation. | Missing | Static overlay resource 10426 is traced; animation remains unresolved. |
+| `OBJ-05-C017` | A fleet or ship in hyperspace cannot receive orders. | Partial | Core movement refusals exist; the complete Fleet-window disabled-state matrix is open. |
+| `OBJ-12-C015` | A mission team in hyperspace receives its moving-star presentation. | Missing | Resource leads 11501/11502/11505 exist; production composition is absent. |
+| `OBJ-12-C016` | Mission controls that would issue orders are disabled in hyperspace. | Missing | Manual pp. 96–97, 112–113; production Mission Status behavior is absent. |
+
+See Faction Wars'
+[hyperspace reading](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L2097-L2110)
+and [fleet indicator table](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/GAMEPLAY.md#L2221-L2228).
+
+## Manufacturing destinations and item menus
+
+| Cell | Original behavior | Port | Original proof |
+|---|---|---|---|
+| `OBJ-07-C015` | Each production area retains its own Destination setting. | Missing | Current UI has one expanded-system selector; executable ownership trace open. |
+| `OBJ-07-C016` | Destination targeting accepts a galaxy-map system. | Missing | Current replacement UI uses a combo box. |
+| `OBJ-07-C017` | Destination targeting accepts another system's Defense window. | Missing | Manual pp. 44–45, 84; executable hit route open. |
+| `OBJ-07-C018` | Destination targeting accepts another system's Manufacturing window. | Missing | Manual pp. 44–45, 84; executable hit route open. |
+| `OBJ-07-C019` | Destination targeting accepts another system's Fleet window. | Missing | Manual pp. 44–45, 84; executable hit route open. |
+| `OBJ-07-C020` | Best Time to Completion is shown as an absolute game day. | Missing | Manual Fig. 3.58; reconcile with `ghidra/notes/build-delivery.md`. |
+| `OBJ-14-C019` | Fleet item menu exposes Rename. | Missing | Original command `0x203` is identified; port route is explicitly open. |
+| `OBJ-14-C020` | Ship item menu exposes Rename. | Missing | Manual pp. 116–125; executable menu trace needs completion. |
+
+Faction Wars records the per-producer Destination correction in
+[BACKLOG item 50](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/BACKLOG.md#L64)
+and production-window fields in its
+[window checklist](https://github.com/TeeJS/faction-wars/blob/626b9b2bd62e7a83a9938568321c59cf64616a19/docs/window-checklists.md#L184-L195).
+
+## Audit consequence
+
+This pass raises the canonical ledger from 564 to 627 required baseline cells.
+No new cell is accepted by documentation. The 63 additions expose requirements
+that previously could have been missed by a broad family-level pass. The
+[known-deviations register](known-deviations.md) distinguishes approved
+extensions from temporary or unapproved differences so an implementation gap
+cannot silently become policy.

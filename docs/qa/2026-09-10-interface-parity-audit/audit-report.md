@@ -3,7 +3,7 @@ title: "Original Interface Parity Audit Report"
 description: "Evidence-backed diagnosis and execution plan for complete bitmap-driven UI parity"
 category: qa
 created: 2026-09-10
-updated: 2026-09-28
+updated: 2026-10-06
 tags: [qa, interface, parity, bitmap, strategy, tactical, multiplayer]
 ---
 
@@ -17,8 +17,8 @@ tags: [qa, interface, parity, bitmap, strategy, tactical, multiplayer]
 | Practical interface scope remaining | approximately 75 to 80% |
 | Bounded practical space-battle launcher implementation | complete at P58-B22 |
 | Required surface families | 43 |
-| Family status | 0 complete, 9 partial, 34 fail |
-| Strictly accepted required cells | 0 of 564 |
+| Family status | 0 complete, 12 partial, 31 fail |
+| Strictly accepted required cells | 0 of 627 |
 
 The practical percentage measures scoped implementation work and guides the
 [current batched plan](../../plans/2026-09-11-feat-batched-interface-parity-plan.md).
@@ -101,6 +101,7 @@ The local source inspection establishes the implementation causes:
 | Bounded original encyclopedia-art transport | `crates/rebellion-render/src/encyclopedia.rs`, `scripts/build-runtime-pack.py`, `tools/interface-parity/encyclopedia-art.mjs` | Manual pp. 71–72, 187 owned original EDATA entries, and [P62 evidence](evidence/2026-09-28-encyclopedia-artwork-transport.md) |
 | Source-recovered Encyclopedia index, catalog, and topic bindings | `crates/rebellion-data/src/encyclopedia_catalog.rs`, `crates/rebellion-data/src/encyclopedia_topics.rs`, `crates/rebellion-render/src/encyclopedia.rs`, `tools/stage-ui-assets`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/encyclopedia-index-shell.mjs` | `FUN_00429f30`, `FUN_0045d400`, `FUN_0045ddc0`, `FUN_0045f100`, `FUN_0045fa60`, `FUN_0045f660`, 41 owned STRATEGY resources, the owned DAT/TEXTSTRA/ENCYTEXT/ENCYBMAP sources, [P64 shell evidence](evidence/2026-09-30-encyclopedia-index-shell.md), [P65 catalog evidence](evidence/2026-09-30-encyclopedia-index-catalog.md), and [P66A topic-source evidence](evidence/2026-10-01-encyclopedia-topic-source-bindings.md) |
 | Source-recovered Message Index shell | `crates/rebellion-render/src/message_index.rs`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/message-index-shell.mjs` | `FUN_0042a240`, `FUN_00466350`, `FUN_004665f0`, `FUN_00468fb0`, `FUN_004697b0`, 33 owned STRATEGY resources, and [corrected P63 evidence](evidence/2026-09-28-message-index-shell.md) |
+| Manual-facing window and interaction requirements | [Manual window matrix](manual-window-checklists.md) and [known-deviations register](known-deviations.md) | Official manual, existing `ghidra/notes/` traces, and commit-pinned Faction Wars research leads |
 | Incomplete browser asset pack | `scripts/build-runtime-pack.py` | Original ALSPRITE, EMSPRITE, EDATA, ALBRIEF, EMBRIEF, REBDLOG, advisor-control, and voice families |
 | Invented live ground-combat screen | `crates/rebellion-render/src/ground_combat.rs:202` | Manual pp. 119–121 assault summaries and reports |
 | The bounded practical tactical launcher is implementation-complete: original shell and controls, transported 3D corpus, exact resource joins, live forces, commands, combat, grouping, effects, results/options, Death Star paths, shared campaign return, one source-compatible tactical RNG stream, persisted power allocation, completion/destruction callbacks, and the timed trench-run producer use recovered source contracts. Native beam and playback comparison, whole-process RNG continuity, strategic commander binding, rare audio routes, and A0 acceptance remain open | `crates/rebellion-render/src/tactical_view.rs`, `crates/rebellion-render/src/tactical_resources.rs`, `crates/rebellion-render/src/tactical_assets.rs`, `crates/rebellion-core/src/combat.rs`, `tools/interface-parity` | Manual pp. 139–150, original TACTICAL resources, [P52 through P58-B22 evidence](evidence/README.md), and the [P58-B22 source-completion checkpoint](evidence/2026-09-28-tactical-source-completion.md) |
@@ -109,6 +110,11 @@ The original identity baseline comes from the locally preserved
 [official manual](../../reference/campaign-history/archive/star-wars-rebellion-manual.pdf),
 the [Steam product page](https://store.steampowered.com/app/441550/STAR_WARS_Rebellion/),
 and the cited galleries in the [reference ledger](reference-ledger.json).
+
+Manual cross-check research was informed by
+[Faction Wars by TeeJS](https://github.com/TeeJS/faction-wars). Findings were
+independently paraphrased and checked against the manual and `REBEXE.EXE`
+traces; no Faction Wars code or documentation was copied.
 
 The [reverse-engineering ledger](reverse-engineering-ledger.md) owns the
 executable-to-resource evidence queue. A read-only Ghidra pass recovered exact
@@ -226,12 +232,12 @@ acceptance.
 | ID | Severity | Finding | Status |
 |----|----------|---------|--------|
 | UIP-F-001 | P0 | The shell, viewport scaling, six primary controls, and first rail lifecycle pass scoped checkpoints; the full control matrix, exact rail thumbnails, and required aperture content remain incomplete. | partial |
-| UIP-F-002 | P0 | The original Display Off and active Popular Support backdrops, GID control, compact legend, marker families, and size thresholds render in native and WASM; the original menu, detailed legend, remaining modes and overlays, sector art, and exact map input remain incomplete. | partial |
+| UIP-F-002 | P0 | The original Display Off and active Popular Support backdrops, GID control, compact legend, marker families, size thresholds, and fixed-map no-op inputs render in native and WASM; the original menu, detailed legend, remaining modes and overlays, sector art, and remaining input states are incomplete. | partial |
 | UIP-F-003 | P0 | Original sector and detailed-system shells replace the invented sidebar; all six tabs have first-pass source-mapped items, while nested contents, commands, indicators, and uncommon states remain open. | partial |
 | UIP-F-004 | P0 | Authentic advisor idle runs render for both factions in the scaled apertures, but complete action, voice, and chrome behavior is absent. | partial |
 | UIP-F-005 | P0 | Runtime pack v3 includes ALSPRITE and EMSPRITE BMP/type-302 content plus all 187 original EDATA images; ALBRIEF, EMBRIEF, REBDLOG, action controls, and remaining voice resources remain omitted. | partial |
 | UIP-F-006 | P1 | Native and WASM EDATA transport, lazy decode, exact missing-asset logging, native-size browser display, authentic index shells, the 356-entry English catalog, and source bindings for 346 topics per faction work in bounded routes. Browser topic composition and navigation, production routing, A0, and the complete `OBJ-01` matrix remain open. | partial |
-| UIP-F-007 | P1 | Finders, production, missions, messages, options, and object status use replacement layouts or are absent. | fail |
+| UIP-F-007 | P1 | Fleet and Ship Finder, Fleet window, and bounded item-menu routes use source-recovered surfaces; Troop and Personnel Finders, production, missions, message content, options, and remaining object layouts are replaced or absent. | partial |
 | UIP-F-008 | P1 | Battle Alert, assault/bombardment reports, and battle-result routing are absent or bypassed. | fail |
 | UIP-F-009 | P1 | The bounded practical tactical launcher passes its implementation gates through P58-B22, including combat, commands, grouping, Death Star and result paths, shared campaign return, tactical RNG sequencing, power allocation, completion/destruction callbacks, and the timed trench-run producer. Original view acceptance, whole-process RNG continuity, strategic commander binding, exact planet framing, native beam/playback comparison, and rare audio paths stay open. | fail |
 | UIP-F-010 | P1 | The custom live ground-combat screen has no original counterpart. | fail |
@@ -260,7 +266,7 @@ non-original families across:
 7. extensions, which are excluded from the parity denominator and must not
    replace or obscure original paths.
 
-It now assigns 569 stable baseline cell IDs: 564 required cells and five
+It now assigns 633 stable baseline cell IDs: 627 required cells and six
 excluded extension cells. All required cells remain pending or open because
 P46A through P46D did not execute the complete native and browser matrix. All 43 required
 families link to at least one of 27

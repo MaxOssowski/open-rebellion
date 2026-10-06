@@ -3,7 +3,7 @@ title: "Batched Interface Parity Execution Plan"
 description: "Current plan for restoring the original bitmap interface in coherent, independently accepted browser bundles"
 category: plan
 created: 2026-09-11
-updated: 2026-09-28
+updated: 2026-10-06
 tags: [interface, parity, bitmap, browser, qa]
 status: active
 ---
@@ -24,7 +24,7 @@ one-commit family gates used to execute this plan more quickly.
 ## Progress snapshot
 
 <!-- interface-parity-status:start -->
-Required interface families: 43. Complete: 0. Partial: 9. Failing: 34. Blocked: 0. Strictly accepted cells: 0/564.
+Required interface families: 43. Complete: 0. Partial: 12. Failing: 31. Blocked: 0. Strictly accepted cells: 0/627.
 The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine additional native filter variants) and 152 faction/viewport executions. Its strict original-evidence and cross-browser gate remains open.
 <!-- interface-parity-status:end -->
 
@@ -34,8 +34,8 @@ The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine addi
 | Practical interface scope remaining | approximately 75 to 80% |
 | Bounded practical space-battle launcher implementation | complete at P58-B22 |
 | Required surface families | 43 |
-| Family status | 0 complete, 9 partial, 34 fail |
-| Strictly accepted required cells | 0 of 564 |
+| Family status | 0 complete, 12 partial, 31 fail |
+| Strictly accepted required cells | 0 of 627 |
 
 The practical percentage is a planning estimate based on scoped implementation
 checkpoints. It is not a release-parity score. A required cell passes only

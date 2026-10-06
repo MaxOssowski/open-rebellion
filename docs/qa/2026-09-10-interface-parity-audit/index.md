@@ -3,14 +3,14 @@ title: "Original Interface Parity Audit"
 description: "Authoritative screenshot corpus, surface ledger, findings, and acceptance gates for reproducing every visible Rebellion interface state"
 category: qa
 created: 2026-09-10
-updated: 2026-09-28
+updated: 2026-10-06
 tags: [qa, interface, parity, bitmap, screenshots, rebellion, supremacy]
 ---
 
 # Original Interface Parity Audit
 
 <!-- interface-parity-status:start -->
-Required interface families: 43. Complete: 0. Partial: 9. Failing: 34. Blocked: 0. Strictly accepted cells: 0/564.
+Required interface families: 43. Complete: 0. Partial: 12. Failing: 31. Blocked: 0. Strictly accepted cells: 0/627.
 The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine additional native filter variants) and 152 faction/viewport executions. Its strict original-evidence and cross-browser gate remains open.
 <!-- interface-parity-status:end -->
 
@@ -23,8 +23,8 @@ The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine addi
 | Bounded practical space-battle launcher implementation | complete at P58-B22 |
 | Strict tactical acceptance | 0 of 106 cells |
 | Required surface families | 43 |
-| Family status | 0 complete, 9 partial, 34 fail |
-| Strictly accepted required cells | 0 of 564 |
+| Family status | 0 complete, 12 partial, 31 fail |
+| Strictly accepted required cells | 0 of 627 |
 
 The practical percentage is an implementation-planning estimate. The strict
 cell count remains the release authority because each cell still needs its
@@ -62,7 +62,9 @@ navigation, animation, audio presentation, and the absence of invented UI.
 |------|---------|
 | [Audit report](audit-report.md) | Findings, acceptance rules, immediate implementation order, and the answer to why the current UI looks synthetic or blank. |
 | [Audit data](audit-report.json) | Machine-readable baseline, thresholds, findings, tranches, and release gates. |
-| [Surface ledger](surface-ledger.json) | Stable inventory of every known original surface family, 564 required cells plus five excluded extension cells, retrieval-package links, and the derived execution contract. |
+| [Surface ledger](surface-ledger.json) | Stable inventory of every known original surface family, 627 required cells plus six excluded extension cells, retrieval-package links, and the derived execution contract. |
+| [Manual window matrix](manual-window-checklists.md) | Present, Partial, Missing, and Disabled checks for manual-named controls, gestures, modal rules, keyboard routes, and split acceptance cells. |
+| [Known deviations](known-deviations.md) | Approved extensions, temporary port differences, unapproved divergences, affected cells, and change rules. |
 | [Screenshot ledger](screenshot-ledger.md) | Human-readable map of the 370 retained reference images and the still-missing owned-executable captures. |
 | [Reference ledger](reference-ledger.json) | Source URLs, provenance, confidence, locale, local paths, and coverage. |
 | [Reverse-engineering ledger](reverse-engineering-ledger.md) | Ghidra and original-resource findings, proof boundaries, and the implementation evidence queue. |
@@ -143,8 +145,8 @@ navigation, animation, audio presentation, and the absence of invented UI.
 | Gate | Result |
 |------|--------|
 | Original surface families inventoried | 44 |
-| Required baseline acceptance cells | 564 |
-| Required baseline cells pending or open | 564 |
+| Required baseline acceptance cells | 627 |
+| Required baseline cells pending or open | 627 |
 | Required families with retrieval packages | 43 of 43 |
 | Space-battle baseline cells | 106 across TAC-01 through TAC-07 |
 | Deterministic tactical A1 mappings | 106 of 106; 87 journeys and 19 snapshots |
@@ -187,7 +189,7 @@ Off and restores the default active Popular Support view with STRATEGY 903,
 the exact faction GID control, compact legend, native marker families, and
 support thresholds. Its
 [evidence record](evidence/2026-09-11-popular-support-gid.md) keeps the detailed
-legend, other modes and overlays, exact map input, and complete acceptance
+legend, other modes and overlays, remaining input states, and complete acceptance
 matrix open. PR #11 corrects `0x131` through `0x133`, F1/F7, and the GID
 control's same-button open and close path without introducing substitute
 windows. See the
@@ -326,7 +328,7 @@ a named recovery or removal path.
 ## What 100% means
 
 The denominator is required surface-state cells, not an estimated percentage.
-The ledger currently instantiates 564 required baseline cells and five excluded
+The ledger currently instantiates 627 required baseline cells and six excluded
 extension cells. P46A through P47B verify scoped Chromium checkpoints, but all
 baseline cells remain pending until their complete execution matrix passes.
 Compound requirements split into stable child cells before

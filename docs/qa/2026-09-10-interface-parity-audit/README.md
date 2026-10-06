@@ -43,6 +43,10 @@ and passes the complete comparison contract.
   generated summaries, and complete-family GID pilot.
 - Choose a bounded surface and state from the
   [machine-readable surface ledger](surface-ledger.json).
+- Check the [manual window matrix](manual-window-checklists.md) for named
+  controls, gestures, modal rules, keyboard routes, and newly split cells.
+- Record any deliberate departure in the
+  [known-deviations register](known-deviations.md) before implementation.
 - Use the [reverse-engineering ledger](reverse-engineering-ledger.md) to find
   its original resources, executable paths, and named `RE-*` work package.
 - Check the [screenshot ledger](screenshot-ledger.md) for available reference
@@ -275,15 +279,20 @@ stage them from a contributor-owned installation.
 ## Progress snapshot
 
 <!-- interface-parity-status:start -->
-Required interface families: 43. Complete: 0. Partial: 9. Failing: 34. Blocked: 0. Strictly accepted cells: 0/564.
+Required interface families: 43. Complete: 0. Partial: 12. Failing: 31. Blocked: 0. Strictly accepted cells: 0/627.
 The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine additional native filter variants) and 152 faction/viewport executions. Its strict original-evidence and cross-browser gate remains open.
 <!-- interface-parity-status:end -->
 
 The practical implementation estimate is approximately 20 to 25% tackled and
 75 to 80% remaining. Formally, the ledger has 43 required families: 0 complete,
-9 partial, and 34 failing. All 564 required cells remain pending until their
+12 partial, and 31 failing. All 627 required cells remain pending until their
 complete evidence and execution matrices pass. The practical estimate guides
 bundle planning; it does not replace strict acceptance.
+
+The manual cross-check added 63 previously absent or compound requirements
+without accepting any of them. Research leads came from the original manual
+and Faction Wars by TeeJS, then were independently restated and checked against
+Open Rebellion's executable traces. No Faction Wars code or prose was copied.
 
 Within that total, the bounded practical space-battle launcher implementation
 is complete at the P58-B22 checkpoint. Its formal acceptance remains 0 of 106

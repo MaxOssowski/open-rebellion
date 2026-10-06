@@ -52,18 +52,20 @@
   "summary": {
     "practical_scope_materially_tackled": "approximately_20_to_25_percent_planning_estimate",
     "practical_scope_remaining": "approximately_75_to_80_percent_planning_estimate",
-    "required_family_status": "0_complete_9_partial_34_fail",
-    "strictly_accepted_required_cells": "0_of_564",
+    "required_family_status": "0_complete_12_partial_31_fail",
+    "strictly_accepted_required_cells": "0_of_627",
     "current_execution_plan": "docs/plans/2026-09-11-feat-batched-interface-parity-plan.md",
     "main_menu_surface": "partial_complete_state_matrix_open",
     "campaign_interface": "fail",
     "strategy_cockpit": "partial_exact_shell_primary_and_gid_controls_authored_galaxy_default_popular_support_sector_system_shells_first_tab_item_compositions_coarse_intelligence_gating_and_rail_lifecycle_passed_message_index_rail_resting_bmps_source_exact_full_gid_nested_contents_exact_intelligence_commands_window_thumbnails_and_replacement_surfaces_open",
-    "galaxy_display": "partial_original_backdrops_and_gid_menu_22_commands_browser_matrix_passed_no_original_acceptance_provisional_metrics_special_overlays_expanded_legend_and_exact_input_open",
+    "galaxy_display": "partial_original_backdrops_gid_menu_22_commands_and_fixed_map_no_op_inputs_passed_no_original_acceptance_provisional_metrics_special_overlays_expanded_legend_and_remaining_input_open",
     "system_navigation": "partial_sector_system_shells_tabs_source_mapped_item_minis_bounded_scroll_coarse_intelligence_gating_and_rail_lifecycle_work_nested_compositions_exact_intelligence_commands_and_complete_matrix_open",
     "wasm_advisors": "partial_original_idle_runs_visible_in_scaled_apertures_actions_voice_and_chrome_open",
     "wasm_encyclopedia_art": "partial_original_edata_transport_cache_decode_and_exact_native_size_browser_display_pass_authentic_index_topic_windows_and_obj_01_acceptance_open",
     "tactical_interface": "fail_strict_acceptance_open_p58_b22_bounded_practical_launcher_complete_with_106_of_106_deterministic_A1_cells_source_tactical_rng_power_allocation_completion_destruction_callbacks_timed_trench_producer_and_shared_campaign_return_0_of_106_A0_accepted",
-    "required_baseline_cells": "564_pending_or_open",
+    "required_baseline_cells": "627_pending_or_open",
+    "manual_window_cross_check": "present_partial_missing_disabled_matrix_added_for_manual_discoveries_and_keyed_to_stable_surface_cells",
+    "known_interface_deviations": "central_register_added_with_approved_temporary_unapproved_and_planned_extension_states",
     "retrieval_package_coverage": "43_of_43_required_surface_families",
     "space_battle_scope": "106_baseline_cells_across_TAC-01_through_TAC-07",
     "tactical_matrix_contract": "pass_P58_B07_ledger_derived_106_cells_distribution_13_13_20_14_23_9_14_current_0_mapped_0_A0_0_accepted_missing_duplicate_unknown_unsafe_and_tracked_A0_fail_closed",
@@ -91,7 +93,7 @@
       "id": "UIP-F-002",
       "severity": "P0",
       "status": "partial",
-      "title": "Source-mapped GID commands, original tiled menu frames, and 152 muted browser probes extend the original backdrops and compact legend; menu interior, non-support metrics, rare overlays, expanded legend, and original capture acceptance remain open",
+      "title": "Source-mapped GID commands, original tiled menu frames, fixed-map no-op input, and 152 muted browser probes extend the original backdrops and compact legend; menu interior, non-support metrics, rare overlays, expanded legend, and original capture acceptance remain open",
       "evidence": [
         "crates/rebellion-render/src/bmp_cache.rs",
         "crates/rebellion-render/src/lib.rs",
@@ -100,7 +102,8 @@
         "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-popular-support-gid.md",
         "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-12-gid-browser-harness.md",
         "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-12-gid-menu-frame.md",
-        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-12-gid-hover-and-occlusion.md"
+        "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-12-gid-hover-and-occlusion.md",
+        "ghidra/notes/galaxy-view-input.md"
       ],
       "affected_surfaces": ["CMD-02", "CMD-09"]
     },
@@ -161,8 +164,8 @@
       "id": "UIP-F-007",
       "severity": "P1",
       "status": "partial",
-      "title": "The source-exact empty Message Index shell is reconstructed test-only, while production message content/routing and original object, finder, production, mission, and option layouts remain replaced or absent",
-      "evidence": ["crates/rebellion-render/src/panels", "crates/rebellion-render/src/message_log.rs", "crates/rebellion-render/src/message_index.rs", "tools/interface-parity/message-index-shell.mjs", "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md"],
+      "title": "Fleet and Ship Finder, Fleet window, and bounded item-menu routes now use source-recovered surfaces, while Troop and Personnel Finders, production, mission, message content, options, and remaining object layouts are replaced or absent",
+      "evidence": ["crates/rebellion-render/src/panels", "crates/rebellion-render/src/message_log.rs", "crates/rebellion-render/src/message_index.rs", "crates/rebellion-render/src/fleet_finder.rs", "crates/rebellion-render/src/fleet_window.rs", "crates/rebellion-render/src/object_menu.rs", "tools/interface-parity/message-index-shell.mjs", "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md", "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-05-f007c-native-interface-acceptance.md"],
       "affected_surfaces": ["PRE-03", "CMD-08", "CMD-10", "OBJ-02", "OBJ-03", "OBJ-04", "OBJ-05", "OBJ-06", "OBJ-07", "OBJ-08", "OBJ-09", "OBJ-10", "OBJ-11", "OBJ-12", "OBJ-13", "OBJ-14"]
     },
     {
@@ -302,6 +305,8 @@
   ],
   "evidence_files": {
     "surface_ledger": "surface-ledger.json",
+    "manual_window_checklists": "manual-window-checklists.md",
+    "known_interface_deviations": "known-deviations.md",
     "reference_ledger": "reference-ledger.json",
     "reverse_engineering_ledger": "reverse-engineering-ledger.json",
     "reverse_engineering_report": "reverse-engineering-ledger.md",
