@@ -499,7 +499,7 @@ impl PlayerAgent {
                                 value.is_alliance == player_is_alliance && !value.is_shipyard
                             })
                     })
-                    && mfg.queue(*key).is_none_or(|queue| queue.len() < 3)
+                    && mfg.queued_at(*key) < 3
             })
             .map(|(key, _)| key)?;
 
@@ -707,7 +707,7 @@ fn queued_for(
     let count = mfg
         .queues()
         .iter()
-        .flat_map(|(system, queue)| queue.items().iter().map(move |item| (*system, item)))
+        .flat_map(|((system, _), queue)| queue.items().iter().map(move |item| (*system, item)))
         .filter(|(system, item)| item.destination.unwrap_or(*system) == site && wanted(item.kind))
         .count();
     u32::try_from(count).unwrap_or(u32::MAX)
@@ -1312,7 +1312,7 @@ mod tests {
             &mut mfg,
         );
         let queued: Vec<_> = mfg
-            .queue(yard)
+            .queue(yard, crate::manufacturing::ProductionArea::TrainingFacility)
             .unwrap()
             .items()
             .iter()

@@ -47,7 +47,9 @@ use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
 use rebellion_core::jedi::{JediState, JediSystem};
-use rebellion_core::manufacturing::{ManufacturingState, ManufacturingSystem, QueueItem};
+use rebellion_core::manufacturing::{
+    ManufacturingState, ManufacturingSystem, ProductionArea, QueueItem,
+};
 use rebellion_core::missions::{
     MissionEffect, MissionFaction, MissionKind, MissionState, MissionSystem,
 };
@@ -6566,10 +6568,14 @@ fn apply_panel_action(
             mfg_state.enqueue(system, item);
         }
         PanelAction::CancelQueueItem { system, index } => {
-            mfg_state.queue_mut(system).cancel(index);
+            mfg_state
+                .queue_mut(system, ProductionArea::Shipyard)
+                .cancel(index);
         }
         PanelAction::PrioritizeQueueItem { system, index } => {
-            mfg_state.queue_mut(system).prioritize(index);
+            mfg_state
+                .queue_mut(system, ProductionArea::Shipyard)
+                .prioritize(index);
         }
         PanelAction::DispatchMission {
             kind,

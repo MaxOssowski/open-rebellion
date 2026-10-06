@@ -80,7 +80,9 @@ pub fn draw_manufacturing(
                         continue;
                     }
 
-                    let queue = mfg_state.queue(sys_key);
+                    // This panel builds ships and fighters only: the
+                    // system's shipyard area.
+                    let queue = mfg_state.queue(sys_key, ProductionArea::Shipyard);
                     let queue_len =
                         queue.map_or(0, rebellion_core::manufacturing::ProductionQueue::len);
                     let is_expanded = panel_state.expanded_system == Some(sys_key);

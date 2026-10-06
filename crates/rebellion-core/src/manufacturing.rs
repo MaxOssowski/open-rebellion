@@ -35,7 +35,7 @@
 //! // Handle completions: add ships to fleets, place facilities, etc.
 //! ```
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -286,19 +286,27 @@ impl ProductionArea {
     }
 }
 
-/// Per-system production queues for the entire galaxy.
+/// Every production area's queue in the galaxy.
 ///
-/// Systems with no active queue are not stored (lazy entry on first enqueue).
+/// The original keeps one manager per area at a system (`FUN_00509670`:
+/// ships 0, facilities 1, troops 2), and each builds its own units at once:
+/// the Manufacturing window's overview shows the three side by side
+/// (`FUN_00455060`, `FUN_00457c90`). Areas with nothing queued are not
+/// stored (lazy entry on first enqueue).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ManufacturingState {
     #[serde(
         serialize_with = "crate::serde_ordered::serialize_hash_map",
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
-    queues: HashMap<SystemKey, ProductionQueue>,
+    queues: HashMap<(SystemKey, ProductionArea), ProductionQueue>,
     /// Each production area's Destination (`0x214`) where it is not the
     /// area's own system.
-    destinations: BTreeMap<(SystemKey, ProductionArea), SystemKey>,
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    destinations: HashMap<(SystemKey, ProductionArea), SystemKey>,
 }
 
 impl ManufacturingState {
@@ -306,38 +314,63 @@ impl ManufacturingState {
     pub fn new() -> Self {
         ManufacturingState {
             queues: HashMap::new(),
-            destinations: BTreeMap::new(),
+            destinations: HashMap::new(),
         }
     }
 
-    /// Get the queue for a system, creating it if it doesn't exist.
-    pub fn queue_mut(&mut self, system: SystemKey) -> &mut ProductionQueue {
-        self.queues.entry(system).or_default()
+    /// The queue of `system`'s `area`, created when absent.
+    pub fn queue_mut(&mut self, system: SystemKey, area: ProductionArea) -> &mut ProductionQueue {
+        self.queues.entry((system, area)).or_default()
     }
 
-    /// Remove the production queue for a system (used when system is destroyed).
+    /// Remove every area's queue at a system (used when system is destroyed).
     pub fn clear_queue(&mut self, system: SystemKey) {
-        self.queues.remove(&system);
+        self.queues.retain(|(key, _), _| *key != system);
     }
 
-    /// Get the queue for a system (read-only). Returns `None` if empty.
+    /// The queue of `system`'s `area` (read-only); `None` when never used.
     #[must_use]
-    pub fn queue(&self, system: SystemKey) -> Option<&ProductionQueue> {
-        self.queues.get(&system)
+    pub fn queue(&self, system: SystemKey, area: ProductionArea) -> Option<&ProductionQueue> {
+        self.queues.get(&(system, area))
     }
 
-    /// Enqueue an item at a system's production queue. An item with no
+    /// Units queued in every area at `system`.
+    #[must_use]
+    pub fn queued_at(&self, system: SystemKey) -> usize {
+        ProductionArea::ALL
+            .iter()
+            .filter_map(|&area| self.queue(system, area))
+            .map(ProductionQueue::len)
+            .sum()
+    }
+
+    /// Enqueue an item on its area's queue at `system`. An item with no
     /// destination of its own takes its area's (hyp: a new product copies
     /// its manager's destination, `+0x74` → `+0x3c`; `build-delivery.md`).
     pub fn enqueue(&mut self, system: SystemKey, item: QueueItem) {
-        let item = match (
-            item.destination,
-            self.destination(system, ProductionArea::of(item.kind)),
-        ) {
+        let area = ProductionArea::of(item.kind);
+        let item = match (item.destination, self.destination(system, area)) {
             (None, Some(destination)) => item.delivered_to(destination),
             _ => item,
         };
-        self.queue_mut(system).enqueue(item);
+        self.queue_mut(system, area).enqueue(item);
+    }
+
+    /// Build: `count` units of `item` replace whatever `system`'s area of
+    /// that kind was building. Manual p. 84: "Starting a new project cancels
+    /// the current construction"; the units are built one after another
+    /// ("Number to build", Fig. 3.25).
+    pub fn build(&mut self, system: SystemKey, item: &QueueItem, count: u32) {
+        self.stop(system, ProductionArea::of(item.kind));
+        for _ in 0..count {
+            self.enqueue(system, item.clone());
+        }
+    }
+
+    /// Stop: `system`'s `area` drops every unit it was building (manual
+    /// p. 84, "Stopping Construction").
+    pub fn stop(&mut self, system: SystemKey, area: ProductionArea) {
+        self.queues.remove(&(system, area));
     }
 
     /// Where `system`'s `area` delivers what it builds, when not at home.
@@ -361,18 +394,16 @@ impl ManufacturingState {
             Some(destination) => self.destinations.insert((system, area), destination),
             None => self.destinations.remove(&(system, area)),
         };
-        if let Some(queue) = self.queues.get_mut(&system) {
+        if let Some(queue) = self.queues.get_mut(&(system, area)) {
             for item in &mut queue.items {
-                if ProductionArea::of(item.kind) == area {
-                    item.destination = target;
-                }
+                item.destination = target;
             }
         }
     }
 
     /// All system queues (including empty ones that were created lazily).
     #[must_use]
-    pub fn queues(&self) -> &HashMap<SystemKey, ProductionQueue> {
+    pub fn queues(&self) -> &HashMap<(SystemKey, ProductionArea), ProductionQueue> {
         &self.queues
     }
 }
@@ -506,11 +537,13 @@ impl ManufacturingSystem {
         let mut departures = Vec::new();
 
         // HashMap iteration order is randomized per process. Completion order
-        // mutates slotmaps downstream, so walk queues by stable system key.
-        let mut system_keys: Vec<_> = state.queues.keys().copied().collect();
-        system_keys.sort_unstable();
+        // mutates slotmaps downstream, so walk queues by stable key: each
+        // system's areas in `ProductionArea` order.
+        let mut queue_keys: Vec<_> = state.queues.keys().copied().collect();
+        queue_keys.sort_unstable();
 
-        for system_key in system_keys {
+        let mut pre_len = 0;
+        for (index, &(system_key, area)) in queue_keys.iter().enumerate() {
             // Skip blockaded systems — manufacturing halted and they can't
             // transition idle while blocked.
             if blocked_systems.contains(&system_key) {
@@ -518,11 +551,14 @@ impl ManufacturingSystem {
             }
             let queue = state
                 .queues
-                .get_mut(&system_key)
+                .get_mut(&(system_key, area))
                 .expect("manufacturing queue key collected from the same map");
-            let pre_len = queue.len();
+            pre_len += queue.len();
             for item in queue.advance_ticks(tick_count) {
-                match item.destination.filter(|&destination| destination != system_key) {
+                match item
+                    .destination
+                    .filter(|&destination| destination != system_key)
+                {
                     Some(destination) => departures.push(Departure {
                         origin: system_key,
                         destination,
@@ -536,8 +572,16 @@ impl ManufacturingSystem {
                     }),
                 }
             }
-            if pre_len > 0 && queue.is_empty() {
-                newly_idle.push(system_key);
+            // port: K6 stays per system: it fires once every area there has
+            // gone idle.
+            let last_of_system = queue_keys
+                .get(index + 1)
+                .is_none_or(|&(next, _)| next != system_key);
+            if last_of_system {
+                if pre_len > 0 && state.queued_at(system_key) == 0 {
+                    newly_idle.push(system_key);
+                }
+                pre_len = 0;
             }
         }
 
@@ -610,6 +654,108 @@ mod tests {
         assert_eq!(advance.completions[0].system, systems[2]);
     }
 
+    fn troop_item(ticks: u32) -> QueueItem {
+        QueueItem::new(BuildableKind::Troop(TroopKey::default()), ticks, ticks)
+    }
+
+    // FUN_00509670: a system has one manager per area (ships 0, facilities
+    // 1, troops 2) and the overview shows each one's product at once
+    // (FUN_00455060, FUN_00457c90).
+    #[test]
+    fn a_systems_shipyard_and_training_facility_build_at_the_same_time() {
+        let system = mock_system_key();
+        let mut state = ManufacturingState::new();
+        state.enqueue(system, cap_ship_item(2));
+        state.enqueue(system, troop_item(2));
+        assert_eq!(state.queued_at(system), 2);
+
+        let advance = ManufacturingSystem::advance_tracked(
+            &mut state,
+            &[TickEvent { tick: 1 }, TickEvent { tick: 2 }],
+            &HashSet::new(),
+        );
+
+        assert_eq!(advance.completions.len(), 2);
+        assert_eq!(advance.newly_idle, [system]);
+        assert_eq!(state.queued_at(system), 0);
+    }
+
+    // K6 waits for the last busy area at a system.
+    #[test]
+    fn a_system_goes_idle_only_when_every_area_has() {
+        let system = mock_system_key();
+        let mut state = ManufacturingState::new();
+        state.enqueue(system, cap_ship_item(1));
+        state.enqueue(system, troop_item(3));
+
+        let first = ManufacturingSystem::advance_tracked(
+            &mut state,
+            &[TickEvent { tick: 1 }],
+            &HashSet::new(),
+        );
+        assert_eq!(first.completions.len(), 1);
+        assert!(first.newly_idle.is_empty());
+
+        let second = ManufacturingSystem::advance_tracked(
+            &mut state,
+            &[TickEvent { tick: 2 }, TickEvent { tick: 3 }],
+            &HashSet::new(),
+        );
+        assert_eq!(second.completions.len(), 1);
+        assert_eq!(second.newly_idle, [system]);
+    }
+
+    // Manual p. 84: a new project cancels the current construction, and its
+    // Number to build units are built one after another (Fig. 3.25).
+    #[test]
+    fn building_replaces_only_that_areas_units() {
+        let system = mock_system_key();
+        let mut state = ManufacturingState::new();
+        state.enqueue(system, cap_ship_item(9));
+        state.enqueue(system, troop_item(4));
+
+        state.build(system, &cap_ship_item(2), 3);
+
+        let ships = state.queue(system, ProductionArea::Shipyard).unwrap();
+        assert_eq!(ships.len(), 3);
+        assert!(ships.items().iter().all(|item| item.ticks_remaining == 2));
+        assert_eq!(
+            state
+                .queue(system, ProductionArea::TrainingFacility)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    // Manual p. 84, "Stopping Construction".
+    #[test]
+    fn stopping_an_area_drops_its_units_and_keeps_the_others() {
+        let system = mock_system_key();
+        let mut state = ManufacturingState::new();
+        state.build(system, &cap_ship_item(2), 2);
+        state.enqueue(system, troop_item(4));
+
+        state.stop(system, ProductionArea::Shipyard);
+
+        assert!(state.queue(system, ProductionArea::Shipyard).is_none());
+        assert_eq!(state.queued_at(system), 1);
+    }
+
+    #[test]
+    fn clearing_a_system_drops_every_area() {
+        let keys = mock_system_keys(2);
+        let mut state = ManufacturingState::new();
+        state.enqueue(keys[0], cap_ship_item(2));
+        state.enqueue(keys[0], troop_item(2));
+        state.enqueue(keys[1], troop_item(2));
+
+        state.clear_queue(keys[0]);
+
+        assert_eq!(state.queued_at(keys[0]), 0);
+        assert_eq!(state.queued_at(keys[1]), 1);
+    }
+
     // --- ProductionQueue tests ---
 
     #[test]
@@ -637,12 +783,10 @@ mod tests {
 
         state.set_destination(home, ProductionArea::Shipyard, away);
         let destinations = |state: &ManufacturingState| {
-            state
-                .queue(home)
-                .unwrap()
-                .items()
+            ProductionArea::ALL
                 .iter()
-                .map(|item| item.destination)
+                .filter_map(|&area| state.queue(home, area))
+                .flat_map(|queue| queue.items().iter().map(|item| item.destination))
                 .collect::<Vec<_>>()
         };
         assert_eq!(destinations(&state), [Some(away), None]);
@@ -661,7 +805,7 @@ mod tests {
             home,
             QueueItem::new(BuildableKind::Troop(TroopKey::default()), 5, 5),
         );
-        assert_eq!(destinations(&state), [Some(away), None, Some(away), None]);
+        assert_eq!(destinations(&state), [Some(away), Some(away), None, None]);
 
         // Back at home clears it.
         state.set_destination(home, ProductionArea::Shipyard, home);
@@ -778,7 +922,7 @@ mod tests {
         assert!(completions.is_empty());
         assert_eq!(
             state
-                .queue(system)
+                .queue(system, ProductionArea::Shipyard)
                 .unwrap()
                 .active()
                 .unwrap()
@@ -804,7 +948,10 @@ mod tests {
         assert_eq!(completions.len(), 1);
         assert_eq!(completions[0].system, system);
         assert_eq!(completions[0].tick, 3); // last tick in the batch
-        assert!(state.queue(system).unwrap().is_empty());
+        assert!(state
+            .queue(system, ProductionArea::Shipyard)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -823,7 +970,7 @@ mod tests {
         assert_eq!(completions[0].system, sys_a);
         assert_eq!(
             state
-                .queue(sys_b)
+                .queue(sys_b, ProductionArea::Shipyard)
                 .unwrap()
                 .active()
                 .unwrap()

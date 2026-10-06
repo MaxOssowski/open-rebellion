@@ -1087,8 +1087,7 @@ impl AISystem {
                 continue;
             }
 
-            let queue = mfg_state.queue(sys_key);
-            let queue_len = queue.map_or(0, super::manufacturing::ProductionQueue::len);
+            let queue_len = mfg_state.queued_at(sys_key);
 
             // Allow up to 3 items in queue (don't just wait for empty).
             if queue_len >= 3 {

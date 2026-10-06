@@ -130,9 +130,9 @@ pub enum PanelAction {
         ticks: u32,
         destination: Option<SystemKey>,
     },
-    /// Cancel the queue item at `index` in a system's production queue.
+    /// Cancel the queue item at `index` in a system's shipyard queue.
     CancelQueueItem { system: SystemKey, index: usize },
-    /// Move queue item at `index` to the front (prioritize).
+    /// Move the shipyard queue item at `index` one place forward.
     PrioritizeQueueItem { system: SystemKey, index: usize },
 
     // ── Missions ──────────────────────────────────────────────────────────────
