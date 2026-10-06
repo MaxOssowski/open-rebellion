@@ -1484,6 +1484,18 @@ pub struct GameWorld {
 /// it is numbered, and the stem of its default name.
 pub const FLEET_RECORD_NAME: &str = "Fleet";
 
+/// How a game names its new fleets. It is chosen before the game starts and
+/// saved with it, so a loaded game never renames a fleet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FleetNaming {
+    /// "Fleet 1", "Fleet 2" (`FUN_00517760`).
+    #[default]
+    Original,
+    /// port: a name from the side's `fleet_name_bank`, then "Fleet N" once
+    /// every bank name is held.
+    Canonical,
+}
+
 /// Fleet names and the counters that number them (`ghidra/notes/fleet-names.md`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FleetNames {
@@ -1491,6 +1503,7 @@ pub struct FleetNames {
     /// Per side (Alliance, Empire): the last number given (the side's
     /// counter list, `DAT_006b2bb0 + 0xc4`/`+0xc8`, node `[8]`).
     last_numbers: [u32; 2],
+    mode: FleetNaming,
 }
 
 fn default_difficulty_index() -> u8 {
@@ -1537,8 +1550,98 @@ impl GameWorld {
         let side = usize::from(!value.is_alliance);
         let number = &mut self.fleet_names.last_numbers[side];
         *number += 1;
-        let name = format!("{FLEET_RECORD_NAME} {number}");
+        let numbered = format!("{FLEET_RECORD_NAME} {number}");
+        let name = match self.fleet_names.mode {
+            FleetNaming::Original => numbered,
+            FleetNaming::Canonical => self
+                .free_bank_name(fleet)
+                .map_or(numbered, str::to_owned),
+        };
         self.fleet_names.names.insert(fleet, name);
+    }
+
+    /// How this game names its fleets.
+    #[must_use]
+    pub const fn fleet_naming(&self) -> FleetNaming {
+        self.fleet_names.mode
+    }
+
+    /// Start a new game's fleet naming in `mode`. port: under Canonical, the
+    /// fleets seeded so far trade their numbers for bank names in slot
+    /// order; once the bank is spent the rest keep their "Fleet N".
+    pub fn start_fleet_naming(&mut self, mode: FleetNaming) {
+        self.fleet_names.mode = mode;
+        if mode == FleetNaming::Original {
+            return;
+        }
+        let fleets: Vec<FleetKey> = self.fleets.keys().collect();
+        for fleet in fleets {
+            if let Some(name) = self.free_bank_name(fleet) {
+                self.fleet_names.names.insert(fleet, name.to_owned());
+            }
+        }
+        self.name_flagship_fleets();
+    }
+
+    /// port: each signature name (`BankName::flagship`) no fleet holds goes
+    /// to its side's first fleet, in slot order, that holds a ship of the
+    /// flagship's class. That fleet's old name returns to the bank. Only
+    /// under Canonical naming.
+    pub fn name_flagship_fleets(&mut self) {
+        if self.fleet_names.mode != FleetNaming::Canonical {
+            return;
+        }
+        for is_alliance in [true, false] {
+            for entry in crate::fleet_name_bank::bank(is_alliance) {
+                let Some(class) = entry.flagship else {
+                    continue;
+                };
+                if self.bank_name_held(entry.name) {
+                    continue;
+                }
+                let flagship_fleet = self
+                    .fleets
+                    .iter()
+                    .find(|(_, fleet)| {
+                        fleet.is_alliance == is_alliance && self.holds_class(fleet, class)
+                    })
+                    .map(|(key, _)| key);
+                if let Some(fleet) = flagship_fleet {
+                    self.fleet_names.names.insert(fleet, entry.name.to_owned());
+                }
+            }
+        }
+    }
+
+    /// The first name in `fleet`'s side's bank that no fleet holds; a
+    /// signature name only when `fleet` holds its flagship's class.
+    fn free_bank_name(&self, fleet: FleetKey) -> Option<&'static str> {
+        let value = self.fleets.get(fleet)?;
+        crate::fleet_name_bank::bank(value.is_alliance)
+            .iter()
+            .filter(|entry| {
+                entry
+                    .flagship
+                    .is_none_or(|class| self.holds_class(value, class))
+            })
+            .map(|entry| entry.name)
+            .find(|name| !self.bank_name_held(name))
+    }
+
+    fn bank_name_held(&self, name: &str) -> bool {
+        self.fleets
+            .keys()
+            .any(|fleet| self.fleet_names.names.get(fleet).is_some_and(|held| held == name))
+    }
+
+    fn holds_class(&self, fleet: &Fleet, class: crate::ids::DatId) -> bool {
+        fleet.capital_ships.iter().any(|ship| {
+            ship.alive
+                && self
+                    .capital_ship_classes
+                    .get(ship.class)
+                    .is_some_and(|value| value.dat_id == class)
+        })
     }
 
     /// A fleet's name (`FUN_004f62d0`): its own, else the record's.
@@ -1627,6 +1730,159 @@ mod tests {
         let mut world = GameWorld::default();
         let fleet = world.fleets.insert(fleet(true));
         assert_eq!(world.fleet_name(fleet), Some("Fleet"));
+    }
+
+    fn canonical_world() -> GameWorld {
+        let mut world = GameWorld::default();
+        world.start_fleet_naming(FleetNaming::Canonical);
+        world
+    }
+
+    /// A fleet of `is_alliance`'s side holding one ship of class `dat_id`.
+    fn fleet_with(world: &mut GameWorld, is_alliance: bool, dat_id: DatId) -> Fleet {
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id,
+            ..CapitalShipClass::default()
+        });
+        Fleet {
+            capital_ships: vec![ShipInstance::new(class, 100, is_alliance)],
+            ..fleet(is_alliance)
+        }
+    }
+
+    #[test]
+    fn a_new_game_names_fleets_by_number_unless_canonical_names_are_chosen() {
+        let mut world = GameWorld::default();
+        assert_eq!(world.fleet_naming(), FleetNaming::Original);
+        let first = world.insert_fleet(fleet(false));
+        world.start_fleet_naming(FleetNaming::Original);
+        assert_eq!(world.fleet_name(first), Some("Fleet 1"));
+    }
+
+    #[test]
+    fn canonical_fleets_take_their_sides_first_free_name_skipping_the_signature() {
+        let mut world = canonical_world();
+        let imperial = world.insert_fleet(fleet(false));
+        let rebel = world.insert_fleet(fleet(true));
+        let second = world.insert_fleet(fleet(false));
+        assert_eq!(world.fleet_name(imperial), Some("Seventh Fleet"));
+        assert_eq!(world.fleet_name(second), Some("Third Fleet"));
+        assert_eq!(world.fleet_name(rebel), Some("Alpha Group"));
+    }
+
+    #[test]
+    fn a_living_fleets_name_is_not_given_again_but_a_gone_ones_is() {
+        let mut world = canonical_world();
+        let first = world.insert_fleet(fleet(true));
+        let second = world.insert_fleet(fleet(true));
+        assert_eq!(world.fleet_name(second), Some("Beta Group"));
+        world.fleets.remove(first);
+        let third = world.insert_fleet(fleet(true));
+        assert_eq!(world.fleet_name(third), Some("Alpha Group"));
+    }
+
+    #[test]
+    fn a_spent_bank_falls_back_to_the_sides_running_number() {
+        let mut world = canonical_world();
+        let bank = crate::fleet_name_bank::ALLIANCE.len();
+        for _ in 1..bank {
+            world.insert_fleet(fleet(true));
+        }
+        // The signature name is still free; every other name is held.
+        let next = world.insert_fleet(fleet(true));
+        assert_eq!(world.fleet_name(next).map(str::to_owned), Some(format!("Fleet {bank}")));
+    }
+
+    #[test]
+    fn a_new_fleet_with_the_flagship_takes_the_signature_name() {
+        let mut world = canonical_world();
+        let value = fleet_with(&mut world, false, crate::fleet_name_bank::SUPER_STAR_DESTROYER);
+        let squadron = world.insert_fleet(value);
+        assert_eq!(world.fleet_name(squadron), Some("Death Squadron"));
+    }
+
+    #[test]
+    fn a_fleet_gaining_the_flagship_is_renamed_and_frees_its_old_name() {
+        let mut world = canonical_world();
+        let alpha = world.insert_fleet(fleet(true));
+        let cruiser = fleet_with(&mut world, true, crate::fleet_name_bank::MON_CALAMARI_CRUISER);
+        world.fleets[alpha].capital_ships = cruiser.capital_ships;
+        world.name_flagship_fleets();
+        assert_eq!(world.fleet_name(alpha), Some("Rebel Command Fleet"));
+        let next = world.insert_fleet(fleet(true));
+        assert_eq!(world.fleet_name(next), Some("Alpha Group"));
+    }
+
+    #[test]
+    fn a_signature_name_held_by_one_fleet_is_not_given_to_another_flagship() {
+        let mut world = canonical_world();
+        let first = fleet_with(&mut world, false, crate::fleet_name_bank::SUPER_STAR_DESTROYER);
+        let first = world.insert_fleet(first);
+        let second = fleet_with(&mut world, false, crate::fleet_name_bank::SUPER_STAR_DESTROYER);
+        let second = world.insert_fleet(second);
+        world.name_flagship_fleets();
+        assert_eq!(world.fleet_name(first), Some("Death Squadron"));
+        assert_eq!(world.fleet_name(second), Some("Seventh Fleet"));
+    }
+
+    #[test]
+    fn a_signature_name_waits_for_a_flagship_of_its_own_side() {
+        let mut world = canonical_world();
+        let rebel = world.insert_fleet(fleet(true));
+        // An Imperial fleet holding a (captured) Mon Calamari cruiser.
+        let captor = fleet_with(&mut world, false, crate::fleet_name_bank::MON_CALAMARI_CRUISER);
+        let captor = world.insert_fleet(captor);
+        world.name_flagship_fleets();
+        assert_eq!(world.fleet_name(rebel), Some("Alpha Group"));
+        assert_eq!(world.fleet_name(captor), Some("Seventh Fleet"));
+    }
+
+    #[test]
+    fn a_destroyed_flagship_does_not_count() {
+        let mut world = canonical_world();
+        let mut value = fleet_with(&mut world, false, crate::fleet_name_bank::SUPER_STAR_DESTROYER);
+        value.capital_ships[0].alive = false;
+        let fleet = world.insert_fleet(value);
+        assert_eq!(world.fleet_name(fleet), Some("Seventh Fleet"));
+    }
+
+    #[test]
+    fn original_naming_never_renames_a_flagship_fleet() {
+        let mut world = GameWorld::default();
+        let value = fleet_with(&mut world, false, crate::fleet_name_bank::SUPER_STAR_DESTROYER);
+        let fleet = world.insert_fleet(value);
+        world.name_flagship_fleets();
+        assert_eq!(world.fleet_name(fleet), Some("Fleet 1"));
+    }
+
+    #[test]
+    fn starting_canonical_naming_renames_the_seeded_fleets_in_slot_order() {
+        let mut world = GameWorld::default();
+        let first = world.insert_fleet(fleet(false));
+        let value = fleet_with(&mut world, false, crate::fleet_name_bank::SUPER_STAR_DESTROYER);
+        let flagship = world.insert_fleet(value);
+        world.start_fleet_naming(FleetNaming::Canonical);
+        assert_eq!(world.fleet_naming(), FleetNaming::Canonical);
+        assert_eq!(world.fleet_name(first), Some("Seventh Fleet"));
+        assert_eq!(world.fleet_name(flagship), Some("Death Squadron"));
+    }
+
+    #[test]
+    fn seeded_fleets_past_the_bank_keep_their_own_numbers() {
+        let mut world = GameWorld::default();
+        let bank = crate::fleet_name_bank::ALLIANCE.len();
+        let fleets: Vec<FleetKey> = (0..=bank).map(|_| world.insert_fleet(fleet(true))).collect();
+        world.start_fleet_naming(FleetNaming::Canonical);
+        // Bank minus the signature name: the rest keep "Fleet N".
+        assert_eq!(world.fleet_name(fleets[bank - 2]), Some("Phoenix Cell"));
+        assert_eq!(
+            world.fleet_name(fleets[bank - 1]).map(str::to_owned),
+            Some(format!("Fleet {bank}"))
+        );
+        assert_eq!(
+            world.fleet_name(fleets[bank]).map(str::to_owned),
+            Some(format!("Fleet {}", bank + 1))
+        );
     }
 
     #[test]

@@ -265,6 +265,7 @@ pub fn merge_fleet_into(
     }
     target.has_death_star |= source.has_death_star;
     troop_transport.transfer_fleet(from, to);
+    world.name_flagship_fleets();
 }
 
 /// Move some of a fleet's ships into `to`, or the whole fleet when every
@@ -297,6 +298,7 @@ fn move_ships_into(
         world.fleets[to].has_death_star |= gained;
     }
     hand_over_excess_cargo(world, troop_transport, from, to);
+    world.name_flagship_fleets();
 }
 
 /// Whether one of `fleet`'s capital ships is a Death Star.
@@ -777,6 +779,28 @@ mod tests {
         assert!(world.fleets[target].has_death_star);
         assert_eq!(transport.cargo(target), [troop]);
         assert!(movement.is_empty());
+    }
+
+    // port: fleet_name_bank's signature names follow their flagship class.
+    #[test]
+    fn a_fleet_joined_by_its_sides_flagship_class_takes_the_signature_name() {
+        let mut setup = setup();
+        setup
+            .world
+            .start_fleet_naming(crate::world::FleetNaming::Canonical);
+        let here = setup.here;
+        let target = fleet(&mut setup, here, &[30], true);
+        let cruiser = setup.world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: crate::fleet_name_bank::MON_CALAMARI_CRUISER,
+            ..CapitalShipClass::default()
+        });
+        let mover = fleet(&mut setup, here, &[10], true);
+        setup.world.fleets[mover].capital_ships[0].class = cruiser;
+        let mut transport = TroopTransportState::default();
+
+        merge_fleet_into(&mut setup.world, &mut transport, mover, target);
+
+        assert_eq!(setup.world.fleet_name(target), Some("Rebel Command Fleet"));
     }
 
     // FUN_004feca0 moves ships one by one; port: the fighters and cargo stay

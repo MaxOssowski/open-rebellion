@@ -726,6 +726,10 @@ pub fn run_simulation_tick(
     let jedi_events = JediSystem::advance(&mut states.jedi, world, tick_events, &jedi_rolls);
     integrator.apply_jedi_events(world, &jedi_events, &mut states.jedi);
 
+    // port: a fleet that gained its side's flagship class this tick, by a
+    // build or a join on arrival, takes its signature name (fleet_name_bank).
+    world.name_flagship_fleets();
+
     // ── 14. Victory check ────────────────────────────────────────────────
     integrator.emit_victory_check(&states.victory);
     if let Some(outcome) = VictorySystem::check(
@@ -910,6 +914,20 @@ mod tests {
 
         assert!(states.troop_transport.cargo(fleet).is_empty());
         assert!(world.systems[system].ground_units.contains(&troop));
+    }
+
+    #[test]
+    fn a_day_names_a_fleet_that_gained_its_sides_flagship_class() {
+        // port: fleet_name_bank's signature names, under Canonical naming.
+        let (mut world, mut states, fleet, _) = world_with_loading_fleet();
+        world.start_fleet_naming(rebellion_core::world::FleetNaming::Canonical);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[class].dat_id =
+            rebellion_core::fleet_name_bank::MON_CALAMARI_CRUISER;
+
+        run_one_tick(&mut world, &mut states);
+
+        assert_eq!(world.fleet_name(fleet), Some("Rebel Command Fleet"));
     }
 
     #[test]
