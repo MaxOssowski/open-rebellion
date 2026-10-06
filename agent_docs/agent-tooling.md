@@ -32,9 +32,9 @@ a real campaign through the window and the screenshots are the evidence.
 
 Why cua-driver and not the earlier harnesses:
 
-- It posts CGEvents to the game's pid in the background. The hardware
-  pointer never moves and the window never comes to the front, so a run
-  doesn't disturb the desktop.
+- It posts clicks and keys to the game's pid as background CGEvents. The
+  hardware pointer never moves and the window never comes to the front, so
+  those steps don't disturb the desktop (drags are the exception, below).
 - It sends right clicks into the canvas. BackgroundComputerUse reports
   secondary clicks as unsupported, which left every pop-up menu journey
   (Move, Confirmed Move, Create Fleet, the F-019 Mission entry, the speed
@@ -49,7 +49,10 @@ Why cua-driver and not the earlier harnesses:
   (`com.trycua.driver`), not to the terminal.
 
 Proven on 2026-10-06: left and right clicks, letters, digits, space and F3.
-In-canvas drags with `drag` remain unproven; record the first result here.
+`drag` on a macOS window runs only with `delivery_mode:"foreground"`: it
+fronts the game for the gesture and moves the physical pointer, then
+restores the previous app. A zero-length foreground `drag` also gives a held
+press. Warn whoever is at the machine before running one.
 
 ### Install
 
@@ -69,8 +72,10 @@ checks for a newer release.
 ### Run a check
 
 1. Build `target/release/open-rebellion`, record its SHA-256 and the source
-   commit, and launch it with `data/base`. Click the main menu speaker to
-   mute before anything else.
+   commit, and launch it with `data/base`. Mute before anything else: the
+   main menu speaker mutes music only, so open the options screen from the
+   main menu and click the left end of both the music and the effects
+   sliders, then press Escape.
 2. Find the window with `cua-driver call list_windows` (app `open-rebellion`).
 3. Pass the same `"session":"<name>"` on every call, or captures come back
    `capture_not_found`.
