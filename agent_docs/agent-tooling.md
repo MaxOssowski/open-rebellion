@@ -3,8 +3,8 @@ title: "Agent Tooling"
 description: "Project-specific routing for the Claude Code Minoan and Codex skill toolbelt"
 category: "agent-docs"
 created: 2026-09-08
-updated: 2026-09-24
-tags: [agents, skills, codex, fable, ghidra, qa, research, gemini, audio]
+updated: 2026-10-06
+tags: [agents, skills, codex, fable, ghidra, qa, research, gemini, audio, native, cua-driver]
 ---
 
 # Agent Tooling for Open Rebellion
@@ -23,6 +23,69 @@ Claude Code Minoan skills link to their canonical definitions in
 |------|------------|--------------|
 | [`codex-orchestrator`](https://github.com/tdimino/claude-code-minoan/tree/main/skills/integration-automation/codex-orchestrator) | Risk-based independent review, architecture checks, debugging, and real-browser acceptance | Use Sol high or extra-high when consequential architecture, reverse-engineering ambiguity, persistence/network formats, security, or unusual diff risk warrants it; routine, well-tested slices need no separate Sol review. Use Astra only for live browser/computer-use acceptance: low for routine checks and medium for complex or release-significant journeys. Retain inspected screenshots, console/network logs, and artifact hashes. Run evidence agents from a dedicated `/tmp` workspace so the repository stays read-only. |
 | [`fable`](https://github.com/tdimino/claude-code-minoan/tree/main/skills/core-development/fable) | Deep cross-cutting parity audits, browser/multiplayer optimization, and synthesis across prior findings | Fable 5.1 is the default; `--naos` selects 5.0. Verify the reported `MODEL:` line and verdict trailer before trusting results, then weave accepted findings into the audit and roadmaps. Keep `.subdaimon-output/` local and untracked. |
+
+## Native GUI Acceptance
+
+Drive the native build with [`cua-driver`](https://github.com/trycua/cua/tree/main/libs/cua-driver)
+(trycua, MIT). Native builds have no fixture bridge, so a native check plays
+a real campaign through the window and the screenshots are the evidence.
+
+Why cua-driver and not the earlier harnesses:
+
+- It posts CGEvents to the game's pid in the background. The hardware
+  pointer never moves and the window never comes to the front, so a run
+  doesn't disturb the desktop.
+- It sends right clicks into the canvas. BackgroundComputerUse reports
+  secondary clicks as unsupported, which left every pop-up menu journey
+  (Move, Confirmed Move, Create Fleet, the F-019 Mission entry, the speed
+  menu) pending in the 2026-10-05 native run.
+- It presses function keys. BackgroundComputerUse rejects `f3`, so the
+  Finder's F3 path couldn't be checked; cua-driver opens it.
+- Its pixel input needs no Accessibility tree. Macroquad exposes none, and
+  Peekaboo's background drags reach only Accessibility elements, so they
+  can't move game objects. For the same reason cua-driver's own `type_text`
+  (an AX call) does nothing here; type with one `press_key` per character.
+- Accessibility and Screen Recording belong to the signed `CuaDriver.app`
+  (`com.trycua.driver`), not to the terminal.
+
+Proven on 2026-10-06: left and right clicks, letters, digits, space and F3.
+In-canvas drags with `drag` remain unproven; record the first result here.
+
+### Install
+
+```bash
+/bin/bash -c "$(curl -fsSL https://cua.ai/driver/install.sh)"  # checks SHA256SUMS
+cua-driver telemetry disable
+cua-driver permissions grant   # approve Accessibility, Screen Recording, direct capture
+cua-driver permissions status  # all three granted, Source: driver-daemon
+```
+
+The installer puts the app in `/Applications/CuaDriver.app` and the CLI in
+`~/.local/bin/cua-driver`. Add `--require-signature` if `cosign` is
+installed. Start the daemon with `open -n -g -a CuaDriver --args serve`;
+`status` reports `unknown` when it isn't running. `cua-driver update`
+checks for a newer release.
+
+### Run a check
+
+1. Build `target/release/open-rebellion`, record its SHA-256 and the source
+   commit, and launch it with `data/base`. Click the main menu speaker to
+   mute before anything else.
+2. Find the window with `cua-driver call list_windows` (app `open-rebellion`).
+3. Pass the same `"session":"<name>"` on every call, or captures come back
+   `capture_not_found`.
+4. Capture with `get_window_state` (`include_accessibility_tree:false`,
+   `screenshot_out_file`). Its `capture_id` is required by pixel clicks.
+5. Click at screenshot pixels: `click` with `x`, `y`, `capture_id`, and
+   `"button":"right"` for a right click (`right_click` rejects
+   `capture_id`). Keys use `press_key` without a `capture_id`.
+6. Capture again and inspect it. The driver reports background input as
+   `unverifiable`, so only the screenshot shows the result.
+
+Coordinates are in the returned screenshot's pixels (`screenshot_width`,
+`screenshot_scale`). The scale changes with the display the window sits on.
+Keep evidence under `.artifacts/native-checks/<date>-<slug>/` with the
+binary hash, and record each check as an agent check, never a human one.
 
 ## Reverse Engineering
 

@@ -25,6 +25,9 @@ functional. Do not repeat historical parity percentages as verified results.
 - Run browser acceptance yourself with `agent-browser`, or through
   `codex-orchestrator` with Astra at medium effort. Either way, retain
   screenshots, network logs, console logs, and artifact hashes.
+- Run native GUI acceptance with `cua-driver`, which sends background right
+  clicks and keys (F3) into the macroquad window. Install, permissions, and
+  call quirks are in `agent_docs/agent-tooling.md` ("Native GUI Acceptance").
 - v1.0 is the complete browser build deployed through password-protected
   Cloudflare Pages; credentials belong in encrypted secrets, never in Git.
 - GitHub Actions workflow definitions are intentionally local and untracked as
