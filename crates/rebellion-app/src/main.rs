@@ -93,6 +93,7 @@ use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::panels::research::{draw_research, ResearchPanelState};
+use rebellion_render::status_window::{draw_status_window, StatusWindowAction, StatusWindowState};
 use rebellion_render::system_window::fleet_label;
 use rebellion_render::targeting::{
     capture_pointer, draw_targeting_cursor, release_destination, ReleaseTarget, ReleaseWindows,
@@ -1007,6 +1008,7 @@ async fn main() {
     let mut mfg_panel_state = ManufacturingPanelState::default();
     let mut mission_dialog_state = MissionDialogState::default();
     let mut move_confirmation_state = MoveConfirmationState::default();
+    let mut status_window_state = StatusWindowState::default();
     let mut fleet_finder_state = FleetFinderState::default();
     let mut troop_finder_state = TroopFinderState::default();
     let mut personnel_finder_state = PersonnelFinderState::default();
@@ -1359,6 +1361,8 @@ async fn main() {
                     targeting = None;
                 } else if move_confirmation_state.is_open() {
                     // The window's own key slot answers Escape (FUN_0044f640).
+                } else if status_window_state.is_open() {
+                    // The Status window closes on Escape itself.
                 } else if fleet_finder_state.is_open() {
                     // The Fleet Finder's key slot closes it (FUN_00463360).
                 } else if troop_finder_state.is_open() || personnel_finder_state.is_open() {
@@ -3266,6 +3270,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     mfg_panel_state = ManufacturingPanelState::default();
                                     mission_dialog_state = MissionDialogState::default();
                                     move_confirmation_state = MoveConfirmationState::default();
+                                    status_window_state = StatusWindowState::default();
                                     fleet_finder_state = FleetFinderState::default();
                                     troop_finder_state = TroopFinderState::default();
                                     personnel_finder_state = PersonnelFinderState::default();
@@ -3479,6 +3484,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || fleet_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
+                    || status_window_state.contains_screen_point(cockpit_layout, pointer)
                     || fleet_finder_state.contains_screen_point(cockpit_layout, pointer)
                     || troop_finder_state.contains_screen_point(cockpit_layout, pointer)
                     || personnel_finder_state.contains_screen_point(cockpit_layout, pointer)
@@ -4383,6 +4389,23 @@ Some(RailAudience::side(*faction_is_alliance)),
                         strategic_input_enabled,
                     ) {
                         Some((ObjectMenuCommand::Encyclopedia, _)) => enc_state.open = true,
+                        // FUN_00486fb0 0x103 → FUN_0042a440: the Status
+                        // window (type 0x1a) for the selection.
+                        Some((
+                            ObjectMenuCommand::Status,
+                            Some(MenuObject::Character(character)),
+                        )) => {
+                            status_window_state.open_character(character);
+                            let rect = rebellion_render::status_window::window_rect(cockpit_layout);
+                            macroquad::logging::info!(
+                                "[interface] command=0x103 destination=status_window status=opened character={} rect={},{},{},{}",
+                                world.characters.get(character).map_or("", |c| c.name.as_str()),
+                                rect.min.x,
+                                rect.min.y,
+                                rect.width(),
+                                rect.height()
+                            );
+                        }
                         // FUN_00487c50 builds the order with the selection
                         // as its team; FUN_00429320 starts targeting.
                         Some((ObjectMenuCommand::Mission, Some(object))) => {
@@ -4624,23 +4647,33 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &mut bmp_cache,
                     )
                     .and_then(|action| match action {
-                        // FUN_00429440 family 0x30: a character aboard opens
-                        // its fleet's window; one at a system, the Defenses
-                        // window. port: the Personnel window (kind 11) for
-                        // a +0x5c character is not ported.
+                        // FUN_00429440 family 0x30 (character_target).
                         PersonnelFinderAction::OpenCharacter { character, system } => {
-                            match world
-                                .characters
-                                .get(character)
-                                .and_then(|c| c.current_fleet)
-                            {
-                                Some(fleet) => rebellion_core::movement::listed_location(
-                                    &movement_state,
-                                    &world,
-                                    fleet,
-                                )
-                                .map(|system| (system, FinderTarget::Fleet(fleet))),
-                                None => system.map(|system| (system, FinderTarget::Defenses)),
+                            use rebellion_render::personnel_finder::{
+                                character_target, CharacterTarget,
+                            };
+                            match world.characters.get(character).map(character_target) {
+                                Some(CharacterTarget::Fleet(fleet)) => {
+                                    rebellion_core::movement::listed_location(
+                                        &movement_state,
+                                        &world,
+                                        fleet,
+                                    )
+                                    .map(|system| (system, FinderTarget::Fleet(fleet)))
+                                }
+                                Some(CharacterTarget::Missions) => system.map(|system| {
+                                    (
+                                        system,
+                                        FinderTarget::Missions(
+                                            rebellion_core::missions::MissionMember::Character(
+                                                character,
+                                            ),
+                                        ),
+                                    )
+                                }),
+                                Some(CharacterTarget::Defenses) | None => {
+                                    system.map(|system| (system, FinderTarget::Defenses))
+                                }
                             }
                         }
                         PersonnelFinderAction::OpenSystem { system } => {
@@ -4671,6 +4704,31 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     );
                                 }
                             }
+                            // FUN_00429440 kind 11, then slot 27
+                            // (FUN_004a1e10) shows the member.
+                            FinderTarget::Missions(member) => {
+                                if let Some(point) = sector_window_state.quadrant_window_point(
+                                    &world,
+                                    cockpit_layout,
+                                    system,
+                                    rebellion_render::quadrant_icons::Quadrant::Missions,
+                                ) {
+                                    missions_window_state.open(
+                                        &world,
+                                        fog_state,
+                                        &mission_state,
+                                        system,
+                                        point,
+                                        cockpit_state.faction,
+                                        cockpit_layout,
+                                    );
+                                    missions_window_state.show_member(
+                                        &mission_state,
+                                        system,
+                                        member,
+                                    );
+                                }
+                            }
                             FinderTarget::Fleet(fleet) => {
                                 if let Some(point) = sector_window_state.fleet_window_point(
                                     &world,
@@ -4692,6 +4750,29 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     );
                                 }
                             }
+                        }
+                    }
+
+                    // FUN_004443a0: 0x66 closes the Status window and opens
+                    // the Encyclopedia; 0x65 closes it.
+                    if let Some(action) = draw_status_window(
+                        ctx,
+                        &world,
+                        mission_state.en_route(),
+                        &mut status_window_state,
+                        cockpit_state.faction,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        macroquad::logging::info!(
+                            "[interface] destination=status_window status=closed action={}",
+                            match action {
+                                StatusWindowAction::Encyclopedia => "encyclopedia",
+                                StatusWindowAction::Close => "close",
+                            }
+                        );
+                        if action == StatusWindowAction::Encyclopedia {
+                            enc_state.open = true;
                         }
                     }
 
@@ -5553,6 +5634,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             mfg_panel_state = ManufacturingPanelState::default();
                             mission_dialog_state = MissionDialogState::default();
                             move_confirmation_state = MoveConfirmationState::default();
+                            status_window_state = StatusWindowState::default();
                             fleet_finder_state = FleetFinderState::default();
                             troop_finder_state = TroopFinderState::default();
                             personnel_finder_state = PersonnelFinderState::default();
@@ -6136,6 +6218,8 @@ enum FinderTarget {
     Defenses,
     /// The Fleet window (kind 4) with the fleet selected.
     Fleet(rebellion_core::ids::FleetKey),
+    /// The Missions window (kind 11) showing the member's mission.
+    Missions(rebellion_core::missions::MissionMember),
 }
 
 /// Carry out what the Message Index asks: the Advice speed hold

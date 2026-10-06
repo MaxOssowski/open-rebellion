@@ -29,6 +29,7 @@ pub mod panels;
 pub mod personnel_finder;
 pub mod quadrant_icons;
 pub mod sector_window;
+pub mod status_window;
 pub mod system_window;
 mod tactical_asset_cache;
 mod tactical_assets;

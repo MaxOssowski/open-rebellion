@@ -174,8 +174,8 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   the menu in the galaxy view (`system_window.rs`, `object_menu.rs`). Rows
   follow the STRATEGY records; Mission follows
   `MissionState::mission_order_enabled` and Encyclopedia opens the
-  Encyclopedia. port: Move, Confirmed Move, Command, Status and Retire are
-  drawn disabled, the other tabs' classes open no menu, and the global gate
+  Encyclopedia. Status opens the Status window (`status-window.md`).
+  port: Move, Confirmed Move, Command and Retire are drawn disabled, the other tabs' classes open no menu, and the global gate
   `FUN_0051de80` is taken as clear.
 - 7c: Mission starts targeting (`targeting.rs`). The galaxy view takes the
   capture, so no window or cockpit control gets a press, and a press on the

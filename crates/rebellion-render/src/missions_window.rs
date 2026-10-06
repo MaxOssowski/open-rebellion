@@ -353,6 +353,38 @@ impl MissionsWindowState {
         }
     }
 
+    /// Show `member` in `system`'s open window (slot 27, `FUN_004a1e10`):
+    /// its mission's row is selected and its role bit 0 picks the tab, the
+    /// decoys' when set. port: the member row itself is not highlighted.
+    pub fn show_member(
+        &mut self,
+        missions: &MissionState,
+        system: SystemKey,
+        member: MissionMember,
+    ) -> bool {
+        let Some(window) = self
+            .windows
+            .iter_mut()
+            .find(|window| window.system == system)
+        else {
+            return false;
+        };
+        let Some(mission) = missions
+            .missions()
+            .iter()
+            .find(|mission| mission.team.contains(&member) || mission.decoys.contains(&member))
+        else {
+            return false;
+        };
+        window.selected = Some(mission.id);
+        window.tab = if mission.decoys.contains(&member) {
+            MissionsTab::Decoys
+        } else {
+            MissionsTab::Agents
+        };
+        true
+    }
+
     fn focus(&mut self, system: SystemKey) -> bool {
         let Some(index) = self
             .windows
@@ -1601,6 +1633,38 @@ mod tests {
         state.windows[0].tab = MissionsTab::Decoys;
         let report = state.report(&world, &fog, &missions, system).unwrap();
         assert_eq!(report.members, ["Decoy"]);
+    }
+
+    #[test]
+    fn showing_a_member_selects_its_mission_and_the_tab_its_role_picks() {
+        // FUN_004a1e10 (slot 27): the member's mission key selects its row;
+        // role bit 0 picks the decoys' tab. FUN_00429440 sends a character
+        // on a visible mission here (kind 11).
+        let (world, system, missions, [_, _, decoy, spy]) = busy();
+        let fog = unseen();
+        let mut state = MissionsWindowState::default();
+        assert!(!state.show_member(&missions, system, MissionMember::Character(spy)));
+        assert!(state.open(
+            &world,
+            &fog,
+            &missions,
+            system,
+            (20, 30),
+            CockpitFaction::Alliance,
+            scaled()
+        ));
+
+        assert!(state.show_member(&missions, system, MissionMember::Character(spy)));
+        assert_eq!(state.windows[0].selected, Some(1));
+        assert_eq!(state.windows[0].tab, MissionsTab::Agents);
+
+        assert!(state.show_member(&missions, system, MissionMember::Character(decoy)));
+        assert_eq!(state.windows[0].selected, Some(0));
+        assert_eq!(state.windows[0].tab, MissionsTab::Decoys);
+
+        let idle = CharacterKey::default();
+        assert!(!state.show_member(&missions, system, MissionMember::Character(idle)));
+        assert_eq!(state.windows[0].selected, Some(0));
     }
 
     #[test]

@@ -283,6 +283,30 @@ fn character_state(character: &rebellion_core::world::Character) -> Option<&'sta
     }
 }
 
+/// The window a character's Display opens (`FUN_00429440`, family `0x30`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CharacterTarget {
+    /// Aboard: its fleet's Fleet window (kind 4).
+    Fleet(FleetKey),
+    /// At a system on a mission that is not hidden (`FUN_00520b70` is 0):
+    /// the Missions window (kind 11).
+    Missions,
+    /// At a system otherwise: the Defenses window (kind 10).
+    Defenses,
+}
+
+/// Which window `character`'s Display opens (`FUN_00429440`): its mission
+/// key `+0x68` names a mission (`FUN_004f3000`); a hidden one opens the
+/// Defenses window, where its member still lists.
+#[must_use]
+pub fn character_target(character: &rebellion_core::world::Character) -> CharacterTarget {
+    match character.current_fleet {
+        Some(fleet) => CharacterTarget::Fleet(fleet),
+        None if character.on_mission && !character.on_hidden_mission => CharacterTarget::Missions,
+        None => CharacterTarget::Defenses,
+    }
+}
+
 /// A Characters row's text (`FUN_00465bb0`): the name, " - " (`0x1897`),
 /// then "Killed" for a destroyed character, else its container's name
 /// ("Location Unknown", `0x1895`, with none) and the state word in " ( " and
@@ -1116,6 +1140,24 @@ mod tests {
         let imperial = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial);
         assert_eq!(imperial.len(), 1);
         assert!(imperial[0].display_name().starts_with("Darth Vader"));
+    }
+
+    #[test]
+    fn display_opens_the_fleet_the_missions_or_the_defenses_window() {
+        // FUN_00429440 family 0x30: a fleet parent opens kind 4; at a
+        // system, a mission that is not hidden (FUN_00520b70 == 0) opens
+        // kind 11, anything else kind 10. Manual p. 100: "system defenses,
+        // fleet or mission".
+        let mut character = default_character();
+        assert_eq!(character_target(&character), CharacterTarget::Defenses);
+        character.on_mission = true;
+        assert_eq!(character_target(&character), CharacterTarget::Missions);
+        character.on_hidden_mission = true;
+        assert_eq!(character_target(&character), CharacterTarget::Defenses);
+        let fleet = FleetKey::default();
+        character.current_fleet = Some(fleet);
+        character.on_hidden_mission = false;
+        assert_eq!(character_target(&character), CharacterTarget::Fleet(fleet));
     }
 
     #[test]

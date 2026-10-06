@@ -30,6 +30,7 @@ node fleet-finder.mjs  # verify the Fleet and Ship Finder
 node fleet-finder.mjs --no-build --only=alliance/chrome  # one faction/case, reusing a build
 node fleet-registry.mjs  # verify the Fleet Registry, a port extension, from the main menu
 node audit-batch.mjs  # verify the Troop/Personnel Finders, Message Index, Alt keys and Agent menu
+node status-window.mjs  # verify a character's Status window from its pop-up menu
 ```
 
 Harness unit regressions can be run from the repository root with
@@ -100,6 +101,10 @@ F5 and compares their rails against STRATEGY.DLL, opens the Message Index
 with F6 and a rail light once each (a second F6 while open does nothing,
 Close closes it), selects a GID mode with Alt+digit, toggles Manage
 Garrisons with Alt+G, and opens the Agent menu from the droid.
+`status-window.mjs` right-clicks the agent in a system window, chooses
+Status, and compares the 379 by 272 window's STRATEGY background and buttons
+exactly, with the title, list, name and keyed portrait masked and checked for
+content; Close, Escape and the Encyclopedia button each close it.
 `--only=<faction>/<case>` runs named cases. Each gate writes `result.json` and its captures under
 `.artifacts/interface-parity/<gate>-<timestamp>/`; the native GUI checks of the
 same journeys are recorded separately in the audit.

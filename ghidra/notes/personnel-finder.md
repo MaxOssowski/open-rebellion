@@ -243,7 +243,7 @@ names (character names or system names with special force counts).
 | `0x20..0x2f` (facilities) | Walk up to system via `+0x1c` chain. If system container is not `0xf2`, open sector (`FUN_00429ce0`). If family `0x22..0x27` (shipyard-like), open Fleet window (kind 10); if `0x28..0x2f` (defense-like), open Defense window (kind 9). |
 | `0x14..0x1b` (capital ships) | Get fleet container (`+0x1c`). Check fleet's container is not `0xf2`. Get system. Open sector, then Fleet window (kind 4), and select the ship. |
 | `0x1c..0x1f` or `0x10..0x13` (fighters/regiments) | Get parent. If parent is a fleet (`0x14..0x1b`), get fleet's system. Else if parent is a system (`0x90..0x97`), use it directly. Open sector, then appropriate window (kind 10 for fleet-based, kind 4 for fleet). Select the entity. |
-| `0x30..0x3f` (characters/specforces) | Get parent. If parent is a fleet (`0x14..0x1b`), get fleet's system. If parent is a system (`0x90..0x97`), use system directly. For a fleet parent: get fleet's system, open sector and Fleet window (kind 4). For a system: check if it's a SpecForces (`0x98..0x9f`?). `FUN_00520b70` checks `+0x2c + 0x5c` (hyp: group mission field). If zero, opens Defense window (kind 10), else Personnel window (kind 11 = `0xb`). |
+| `0x30..0x3f` (characters/specforces) | Get parent. For a fleet parent (`0x14..0x1b`): the fleet's system, its sector and Fleet window (kind 4). For a system parent (`0x90..0x97`): the member's mission key `+0x68` (`FUN_0042d170`) finds its mission (`FUN_004f3000`); a mission that is not hidden (`FUN_00520b70` is 0) opens the Missions window (kind 11, `FUN_0049f130`), anything else the Defenses window (kind 10). |
 | `0x90..0x97` (systems) | Direct: open sector window, no sub-window. |
 | `0x08..0x0f` (characters, alternate range) | Get container, then system. Open sector and Fleet window (kind 4). |
 
@@ -251,12 +251,15 @@ hyp: for characters, `FUN_004f2ec0` is used instead of `FUN_004f2d10`. The
 former validates that the family is `0x30..0x3b` (character, not spec
 forces).
 
-### `FUN_00520b70` (group mission check)
+### `FUN_00520b70` (hidden mission)
 
-Returns `+0x2c + 0x5c` of the character, from its class record. hyp: this
-field distinguishes characters from special forces in the display target
-logic. If `+0x5c` is zero, the character opens a Defense window (kind 10);
-if non-zero, it opens a Personnel window (kind 11).
+Returns the mission class record's `+0x5c`, its hidden flag
+(`decoy-roll.md`). A character on a hidden mission still lists in the
+Defenses window, so Display opens that; one on a visible mission opens the
+Missions window. Manual p. 100: Display opens "the System Window—system
+defenses, fleet or mission—in which the character appears". There is no
+separate Personnel window; kind 11 is the Missions window
+(`sector-quadrants.md`).
 
 ## Port notes
 
@@ -271,7 +274,9 @@ if non-zero, it opens a Personnel window (kind 11).
 - Fleets containing special forces cause their system to be listed; the fleet
   itself is not a separate row.
 - Display opens the sector window and the appropriate sub-window based on the
-  selected entity's family.
+  selected entity's family. A character goes through
+  `personnel_finder::character_target`: its fleet, the Missions window
+  (showing its mission, slot 27 `FUN_004a1e10`), or the Defenses window.
 - port: the name box searches character names in Characters view, and system
   names in SpecForces view (hyp).
 - port: dead characters are listed; this differs from the Troop Finder which

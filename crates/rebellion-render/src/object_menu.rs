@@ -270,11 +270,13 @@ impl ObjectMenuRow {
 ///   `gates.ship_move` says so (its fleet is the player's and in orbit).
 ///   port: its Confirmed Move stays disabled.
 /// - Encyclopedia is enabled for a single selection.
+/// - Status is enabled for a character (`ghidra/notes/status-window.md`).
+///   In the original it is enabled for any single selection that is not a
+///   system; port: the other families' Status windows are not ported.
 /// - port: a character's or special force's Move and Confirmed Move,
-///   Command, Status, Retire and the other fleet orders stay disabled until
-///   their windows and orders are ported. In the original, Status is
-///   enabled for a single selection that is not a system, and Command is a
-///   submenu parent.
+///   Command, Retire and the other fleet orders stay disabled until their
+///   windows and orders are ported. In the original, Command is a submenu
+///   parent.
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
     // A fleet icon's Move rows act on the system's fleets of the player's
@@ -323,6 +325,9 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::Destination => gates.destination,
                 ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
+                // FUN_0051d990: a single selection that is not a system.
+                // port: only a character's Status window is ported.
+                ObjectMenuCommand::Status => matches!(selection, Some(MenuObject::Character(_))),
                 _ => false,
             },
         })
@@ -594,7 +599,7 @@ mod tests {
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, gates)),
-            ["Encyclopedia"]
+            ["Encyclopedia", "Status"]
         );
     }
 
@@ -867,12 +872,28 @@ mod tests {
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, MISSION_GATE)),
-            ["Mission", "Encyclopedia"]
+            ["Mission", "Encyclopedia", "Status"]
         );
         assert_eq!(
             enabled(&object_menu_rows(character, OrderGates::default())),
-            ["Encyclopedia"]
+            ["Encyclopedia", "Status"]
         );
+    }
+
+    #[test]
+    fn status_is_enabled_for_a_character_and_not_yet_for_other_objects() {
+        // FUN_0051d990 enables 0x103 for a single selection that is not a
+        // system; the port has only the character's window
+        // (FUN_004486f0, ghidra/notes/status-window.md).
+        let status = |selection| {
+            enabled(&object_menu_rows(Some(selection), OrderGates::default())).contains(&"Status")
+        };
+        assert!(status(MenuObject::Character(CharacterKey::default())));
+        assert!(!status(
+            MenuObject::SpecialForce(SpecialForceKey::default())
+        ));
+        assert!(!status(MenuObject::Fleet(FleetKey::default())));
+        assert!(!status(MenuObject::Troop(TroopKey::default())));
     }
 
     #[test]
