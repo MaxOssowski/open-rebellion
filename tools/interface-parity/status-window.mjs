@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // The Status window (window type 0x1a, FUN_00442d70; ghidra/notes/status-window.md)
-// reached as manual p. 101 says: right-click the agent in a system window and
-// choose Status. Its STRATEGY background and buttons are compared exactly; the
+// reached as manual p. 101 says: right-click the agent in a system window (the
+// System Defenses window's personnel page) and choose Status. Its STRATEGY background and buttons are compared exactly; the
 // title, list, name and portrait are masked and checked for content. Close,
 // Escape and the Encyclopedia button each close it. Both sides.
 
@@ -23,8 +23,8 @@ const site = path.join(root, ".artifacts/interface-parity/site");
 const browserManifest = JSON.parse(fs.readFileSync(path.join(here, "browser.json"), "utf8"));
 const noBuild = process.argv.includes("--no-build");
 const dimensions = { width: 379, height: 272 };
-// Fixture 45 (Scenario::MissionTargeting + 1) opens a system window with the
-// player's agent; `galaxy` is the galaxy view's top-left and width at 640 by
+// Fixture 45 (Scenario::MissionTargeting + 1) opens a Defenses window with the
+// player's agent first on its personnel page; `galaxy` is the galaxy view's top-left and width at 640 by
 // 480. FUN_00443130: an own-side character's background is 0x2d22 + its side,
 // plus 3 for a player not of side 1.
 const factions = [
@@ -228,10 +228,10 @@ async function inspect(server, source, faction, executable) {
     assert.equal(ready.status, "ready", JSON.stringify(ready));
     await page.evaluate(() => document.fonts.ready);
 
-    // The fixture's 231-pixel system window sits 5 pixels in from the galaxy
-    // view's top-right corner; its first item's picture is centred 40 by 88
+    // The fixture's 235-pixel Defenses window sits 5 pixels in from the
+    // galaxy view's top-right corner; the agent's cell is centred 42 by 116
     // into it (mission-dialog.mjs).
-    const agent = { x: faction.galaxy.x + faction.galaxy.width - 231 - 5 + 40, y: faction.galaxy.y + 5 + 88 };
+    const agent = { x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 };
     const openStatus = async () => {
       await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
       await click(page, agent, "right");

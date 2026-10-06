@@ -1234,6 +1234,8 @@ async fn main() {
             &mut blockade_state,
             &mut sector_window_state,
             &mut system_window_state,
+            &mut fleet_window_state,
+            &mut defenses_window_state,
             &mut troop_transport_state,
         );
         // The AI plays the other side, as a new game sets it.
@@ -4242,6 +4244,43 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 object_menu =
                                     Some(ObjectMenuState::new(Some(selection), gates, point));
                             }
+                            // FUN_00422ce0, window type 4: the fleet moves
+                            // with 0x201 against what +0x70 gives under the
+                            // point. port: Ctrl's 0x202 is not ported here.
+                            FleetWindowAction::DragFleet { fleet, point } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                if let Some(target) = release_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) {
+                                    issue_fleet_move(
+                                        &FleetMoveContext {
+                                            world: &world,
+                                            movement: &movement_state,
+                                            blockaded: blockade_state.blockaded_systems(),
+                                            faction: player_faction,
+                                            tick: clock.tick,
+                                        },
+                                        &[fleet],
+                                        false,
+                                        target,
+                                        &mut msg_log,
+                                        &mut move_confirmation_state,
+                                        &mut panel_actions,
+                                    );
+                                }
+                            }
                             // FUN_00422ce0: the ship moves with 0x201 against
                             // the window under the point
                             // (ghidra/notes/fleet-join-split.md).
@@ -4346,6 +4385,19 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 logical_position,
                             } => system_window_state
                                 .minimize_defenses_window(system, logical_position),
+                            DefensesWindowAction::OpenObjectMenu {
+                                selection, point, ..
+                            } => {
+                                let gates = order_gates(
+                                    selection,
+                                    &world,
+                                    &mission_state,
+                                    &movement_state,
+                                    &troop_transport_state,
+                                    player_faction,
+                                );
+                                object_menu = Some(ObjectMenuState::new(selection, gates, point));
+                            }
                         }
                     }
 
@@ -5919,13 +5971,13 @@ Some(RailAudience::side(*faction_is_alliance)),
                         request,
                         &world,
                         &sector_window_state,
-                        &system_window_state,
+                        &fleet_window_state,
                     );
                     interface_test_fixture::emit_fleet_load_setup(
                         request,
                         &world,
                         &sector_window_state,
-                        &system_window_state,
+                        &defenses_window_state,
                     );
                     interface_test_fixture::emit_quadrant_setup(
                         request,

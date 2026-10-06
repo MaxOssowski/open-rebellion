@@ -263,7 +263,10 @@ Missions window draws them (`FUN_004a0e10`).
 - **Drag source**: a drag out of either list posts `0x29a`. The galaxy view
   (`FUN_00422ce0`, `move-order.md` "A drag is a move") moves the whole
   selection against the drop window's `+0x70`, as `0x201` (`0x202` with
-  Ctrl), because the source is type 4.
+  Ctrl), because the source is type 4. port: `fleet_window.rs` drags a
+  left-list fleet or ship entry and a right-list regiment or ship; Ctrl's
+  `0x202` is not ported. A fleet's drop goes through the Move path
+  (`issue_fleet_move`): it joins a fleet under the point, else moves.
 - **Refresh**: object notifications (slots `+0x5c`/`+0x60`, `FUN_004a2e70`,
   `FUN_004a2d60`) set `+0x14c` bit `0x10000000` for ships and fighters
   (`0x14..0x1f`), fleets, regiments and characters or special forces. Slot

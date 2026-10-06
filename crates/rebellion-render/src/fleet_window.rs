@@ -192,8 +192,8 @@ enum RenameOutcome {
     Cancel,
 }
 
-/// A left press held on a Troops tab regiment until its release
-/// (`CoolDragList`, `FUN_006083c0`).
+/// A left press held on a list item until its release (`CoolDragList`,
+/// `FUN_006083c0`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ItemDrag {
     object: ItemObject,
@@ -201,10 +201,12 @@ struct ItemDrag {
     list: egui::Rect,
 }
 
-/// The object a right-list item stands for, which a drag carries and a
-/// right click opens a menu for.
+/// The object a list item stands for, which a drag carries and a right
+/// click opens a menu for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ItemObject {
+    /// A left-list fleet entry.
+    Fleet(FleetKey),
     Regiment(TroopKey),
     /// A capital ship, by its index in the fleet's `capital_ships` and the
     /// fleet's roster then (`fleet_join::roster`).
@@ -218,6 +220,7 @@ enum ItemObject {
 impl ItemObject {
     const fn menu_object(self) -> MenuObject {
         match self {
+            Self::Fleet(fleet) => MenuObject::Fleet(fleet),
             Self::Regiment(troop) => MenuObject::Troop(troop),
             Self::Ship {
                 fleet,
@@ -537,6 +540,7 @@ impl FleetWindowState {
             return None;
         }
         Some(match drag.object {
+            ItemObject::Fleet(fleet) => FleetWindowAction::DragFleet { fleet, point },
             ItemObject::Regiment(troop) => FleetWindowAction::DragRegiment { troop, point },
             ItemObject::Ship {
                 fleet,
@@ -612,6 +616,12 @@ pub enum FleetWindowAction {
     Minimize {
         system: SystemKey,
         logical_position: (i16, i16),
+    },
+    /// A left-list fleet dragged out of its list (`0x29a`): the galaxy view
+    /// hit-tests the screen point and issues `0x201` (`FUN_00422ce0`).
+    DragFleet {
+        fleet: FleetKey,
+        point: egui::Pos2,
     },
     /// A Troops tab regiment dragged out of its list (`0x29a`): the galaxy
     /// view hit-tests the screen point and issues `0x201` (`FUN_00422ce0`).
@@ -1516,19 +1526,35 @@ fn draw_fleet_window(
                         result.toggle = Some(*fleet);
                     }
                 }
+                let object = match *entry {
+                    FleetWindowEntry::Fleet(fleet) => ItemObject::Fleet(fleet),
+                    FleetWindowEntry::Ship { fleet, index } => ItemObject::Ship {
+                        fleet,
+                        index,
+                        roster: fleet_join::roster(world, fleet).unwrap_or_default(),
+                    },
+                };
                 if let (true, Some(point)) = (
                     response.secondary_clicked(),
                     response.interact_pointer_pos(),
                 ) {
-                    let selection = match *entry {
-                        FleetWindowEntry::Fleet(fleet) => MenuObject::Fleet(fleet),
-                        FleetWindowEntry::Ship { fleet, index } => MenuObject::Ship {
-                            fleet,
-                            index,
-                            roster: fleet_join::roster(world, fleet).unwrap_or_default(),
-                        },
-                    };
-                    result.object_menu = Some((selection, point));
+                    result.object_menu = Some((object.menu_object(), point));
+                }
+                // A drag out of either list posts 0x29a (FUN_006083c0).
+                if let Some(press) = ui.ctx().input(|input| {
+                    input
+                        .pointer
+                        .button_pressed(egui::PointerButton::Primary)
+                        .then(|| input.pointer.press_origin())
+                        .flatten()
+                }) {
+                    if response.is_pointer_button_down_on() {
+                        result.drag = Some(ItemDrag {
+                            object,
+                            press,
+                            list,
+                        });
+                    }
                 }
             }
             if let Some(edit) = &window.rename {
@@ -2864,6 +2890,47 @@ pub(crate) mod tests {
                 point: release,
             }]
         );
+    }
+
+    #[test]
+    fn a_fleet_dragged_out_of_the_left_list_drops_that_fleet_where_the_button_comes_up() {
+        // fleet-window.md: a drag out of either list posts 0x29a, and
+        // FUN_00422ce0 moves the type 4 selection with 0x201.
+        let (world, transport, system, fleet, _) = fleet_with_regiment();
+        let (actions, release, held) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::CapitalShips,
+            (40.0, 40.0),
+            (300.0, 200.0),
+        );
+        assert!(held);
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| matches!(action, FleetWindowAction::DragFleet { .. }))
+                .collect::<Vec<_>>(),
+            [&FleetWindowAction::DragFleet {
+                fleet,
+                point: release,
+            }]
+        );
+
+        // A release inside the list it left drops nothing.
+        let (inside, _, _) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::CapitalShips,
+            (40.0, 40.0),
+            (40.0, 200.0),
+        );
+        assert!(!inside
+            .iter()
+            .any(|action| matches!(action, FleetWindowAction::DragFleet { .. })));
     }
 
     #[test]

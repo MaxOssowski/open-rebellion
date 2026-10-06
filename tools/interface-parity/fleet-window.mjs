@@ -515,8 +515,9 @@ const cases = [
       const origin = { x: loaded.origin[0], y: loaded.origin[1] };
       await click(page, { x: origin.x + 218 + 7, y: origin.y + 3 + 7 });
       await until(page, "the close button closes the Fleet window", (o) => !o.window_open);
-      await click(page, point(setup.fleets_tab));
-      const menu = await openMenu(page, point(setup.troop_item), directory, "fleet");
+      // The sector window's fleet icon offers the system's fleets' Move
+      // (FUN_00507290 kind 0x10, sector-icon-menus.md).
+      const menu = await openMenu(page, point(setup.icon), directory, "fleet");
       await choose(page, menu, menu.move_row, "Move");
       await click(page, point(setup.target_planet));
       const departed = await until(page, "the fleet departs", (o) => o.in_transit);
@@ -532,13 +533,13 @@ const cases = [
   {
     name: "unload",
     code: FLEET_LOAD,
-    // A drag out of the Troops tab released on the system window (type 9,
-    // +0x70: its subject) issues 0x201; in its own system the regiment
+    // A drag out of the Troops tab released on the Defenses window (type
+    // 10, +0x70: its subject, FUN_004aa470) issues 0x201; in its own system the regiment
     // changes container at once (FUN_00556390, regiment-unload.md).
     async run(page, faction, setup, directory) {
       const { loaded } = await loadRegiment(page, setup, directory);
       const troops = await openTroopsTab(page, loaded);
-      await dragItem(page, point(troops.first_item), point(setup.fleets_tab));
+      await dragItem(page, point(troops.first_item), point(setup.defenses_window));
       const unloaded = await until(page, "the regiment lands on its planet",
         (o, primary) => !o.aboard && !o.held && !o.regiment_travelling && o.troop_system_dat_id === primary,
         setup.primary_dat_id);
@@ -584,7 +585,7 @@ const cases = [
     code: REGIMENT_UNLOAD_REFUSED,
     // FUN_0053d430: a regiment group's destination of another side, other
     // than an existing unpopulated system, is refused 1/0x28. The regiment
-    // starts aboard and held, and the system window shows the other side's
+    // starts aboard and held, and the Defenses window shows the other side's
     // populated target (the Fleet window covers its planet).
     async run(page, faction, setup, directory) {
       const opened = await openFleetWindow(page, setup);
@@ -592,7 +593,7 @@ const cases = [
       assert.ok(selected.aboard && selected.held, JSON.stringify(selected));
       assert.deepEqual(selected.enabled, [true, false, true, false], "the Troops tab lights with a regiment aboard");
       const troops = await openTroopsTab(page, selected);
-      await dragItem(page, point(troops.first_item), point(setup.fleets_tab));
+      await dragItem(page, point(troops.first_item), point(setup.defenses_window));
       const refusal = "Regiment move rejected: the destination belongs to another side";
       const refused = await until(page, "the other side's planet refuses the regiment",
         (o, text) => o.last_message === text, refusal);
@@ -694,12 +695,12 @@ const cases = [
   {
     name: "ship-to-system",
     code: FLEET_JOIN,
-    // A ship dragged onto its own system's window: a system holds no
+    // A ship dragged onto its own system's Defenses window: a system holds no
     // capital ships (FUN_00507750), so the ship forms a fleet of its own
     // there (FUN_005097d0).
     async run(page, faction, setup, directory) {
       const selected = await openJoining(page, setup);
-      await dragItem(page, point(selected.first_item), point(setup.fleets_tab));
+      await dragItem(page, point(selected.first_item), point(setup.defenses_window));
       const created = await until(page, "the ship forms a fleet of its own",
         (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,1,1]");
       assert.equal(created.entries, 3);
@@ -724,13 +725,13 @@ const cases = [
   {
     name: "ship-move-system",
     code: FLEET_JOIN,
-    // A ship's pop-up Move released on its own system's window forms a
+    // A ship's pop-up Move released on its own system's Defenses window forms a
     // fleet of its own there (FUN_00507750, FUN_005097d0).
     async run(page, faction, setup, directory) {
       const selected = await openJoining(page, setup);
       const menu = await openMenu(page, point(selected.first_item), directory, "ship");
       await choose(page, menu, menu.move_row, "Move");
-      await click(page, point(setup.fleets_tab));
+      await click(page, point(setup.defenses_window));
       const created = await until(page, "the ship's Move forms a fleet of its own",
         (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,1,1]");
       return { selected, menu, created };
