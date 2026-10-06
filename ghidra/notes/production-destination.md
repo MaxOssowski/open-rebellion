@@ -153,12 +153,16 @@ AI's Manage Production/Manage Garrisons agent skips reserved managers.
 
 ## Port notes
 
-- The Destination order acts on `0xa0..0xaf` manager objects, which the port
-  does not model. The port would need per-facility-type-per-system manager
-  entities to support Destination and Reserved.
-- The facility icon's menu already lists Destination and Reserved
-  (`sector-icon-menus.md`), but they are disabled because the port has no
-  `0xa0` family objects.
+- The Destination order acts on `0xa0..0xaf` manager objects. port: the
+  port keeps one destination per system and production area
+  (`ManufacturingState::set_destination`) in their place.
+- The facility icon's menu enables Destination when the system has a
+  manufacturing facility of the player's (port: its production areas). The
+  targeting release on a planet or a fleet sets every area's destination
+  (`PanelAction::SetDestination`), logged as `[interface] command=0x214
+  destination=production_destination status=set`. Reserved stays disabled.
+- Gate: `tools/interface-parity/fleet-window.mjs`, case `destination`
+  (fixture code 54, a player shipyard at the primary system), both sides.
 - Best Time to Deployment = Best Time to Completion + transit time, where
   transit time is the same formula as fleet/product travel
   (`build-delivery.md`).

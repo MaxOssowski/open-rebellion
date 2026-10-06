@@ -24,6 +24,7 @@ const FLEET_LOAD = 48;
 const FLEET_LOAD_FULL = 49;
 const REGIMENT_UNLOAD_REFUSED = 51;
 const FLEET_JOIN = 52;
+const PRODUCTION_DESTINATION = 54;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -257,6 +258,17 @@ async function click(page, point, button = "left") {
   await frames(page);
   await page.mouse.up({ button });
   await frames(page);
+}
+
+async function press(page, name) {
+  await page.keyboard.down(name);
+  await frames(page);
+  await page.keyboard.up(name);
+  await frames(page);
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Two clicks inside egui's double-click time.
@@ -780,6 +792,49 @@ const cases = [
       return { opened, menu, open, joined };
     },
   },
+  {
+    name: "rename",
+    code: FLEET_LOAD,
+    // Rename (0x203, FUN_00486fb0 -> FUN_0041d600 -> FUN_00429350) puts an
+    // edit over the fleet's name with the name selected. An empty name
+    // keeps it open (FUN_004ac950), so the name typed after it is the one
+    // Enter submits.
+    async run(page, faction, setup, directory, source, log) {
+      const opened = await openFleetWindow(page, setup);
+      const menu = await openMenu(page, point(opened.fleet_entry), directory, "fleet");
+      await choose(page, menu, menu.rename_row, "Rename");
+      await frames(page, 2);
+      await press(page, "Backspace");
+      await press(page, "Enter");
+      await page.waitForTimeout(300);
+      assert.equal(log.countOf(/command=0x203 destination=rename/), 0, "an empty name submits nothing");
+      await shot(page, directory, "rename-empty");
+      await page.keyboard.type("Rogue");
+      await frames(page, 2);
+      await press(page, "Enter");
+      const applied = await log.logged("Enter submits the typed name",
+        /command=0x203 destination=rename status=applied name=Rogue$/);
+      await shot(page, directory, "renamed");
+      return { opened, menu, applied };
+    },
+  },
+  {
+    name: "destination",
+    code: PRODUCTION_DESTINATION,
+    // The facility icon's Destination (0x214, TEXTSTRA 12290) released on a
+    // planet sends the system's production areas' output there
+    // (FUN_00512700 kind 4).
+    async run(page, faction, setup, directory, source, log) {
+      assert.ok(setup.system_icon, `the facility icon is shown: ${JSON.stringify(setup)}`);
+      const menu = await openMenu(page, point(setup.system_icon), directory, "facility");
+      await choose(page, menu, menu.destination_row, "Destination");
+      await click(page, point(setup.target_planet));
+      const set = await log.logged("the release sets the destination", new RegExp(
+        `command=0x214 destination=production_destination status=set areas=\\d+ to=${escapeRegExp(setup.target_name)}$`));
+      await shot(page, directory, "destination-set");
+      return { menu, set };
+    },
+  },
 ];
 
 async function inspect(server, source, faction, testCase, executable) {
@@ -847,7 +902,20 @@ async function inspect(server, source, faction, testCase, executable) {
     await page.evaluate(() => document.fonts.ready);
     const { bytes: _ready, ...before } = await shot(page, directory, "ready");
 
-    const checks = await testCase.run(page, faction, setup, directory, source);
+    // Wait for the `count`th console line matching `pattern`.
+    const log = {
+      countOf: (pattern) => consoleLines.filter((line) => pattern.test(line.text)).length,
+      async logged(description, pattern, count = 1, timeout = 10_000) {
+        const started = Date.now();
+        while (Date.now() - started < timeout) {
+          const lines = consoleLines.filter((line) => pattern.test(line.text));
+          if (lines.length >= count) return lines[count - 1].text;
+          await page.waitForTimeout(100);
+        }
+        throw new Error(`${description}: ${pattern} x${count} not logged; last lines ${JSON.stringify(consoleLines.slice(-6).map((line) => line.text))}`);
+      },
+    };
+    const checks = await testCase.run(page, faction, setup, directory, source, log);
     await page.mouse.move(2, 2);
     await frames(page);
     const { bytes: _final, ...after } = await shot(page, directory, "final");
@@ -935,7 +1003,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "fleet-window",
-    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), on both sides",
+    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), and the facility icon's Destination (0x214) released on a planet, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

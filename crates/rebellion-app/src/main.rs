@@ -6321,9 +6321,17 @@ fn apply_panel_action(
                 rebellion_core::manufacturing::ProductionArea::ALL.to_vec(),
                 |area| vec![area],
             );
-            for area in areas {
-                mfg_state.set_destination(system, area, destination);
+            for area in &areas {
+                mfg_state.set_destination(system, *area, destination);
             }
+            macroquad::logging::info!(
+                "[interface] command=0x214 destination=production_destination status=set areas={} to={}",
+                areas.len(),
+                world
+                    .systems
+                    .get(destination)
+                    .map_or("", |value| value.name.as_str())
+            );
         }
         PanelAction::Rename { fleet, ship, name } => {
             let renamed = match ship {

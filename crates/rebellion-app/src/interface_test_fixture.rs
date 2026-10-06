@@ -39,7 +39,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 53;
+const SCENARIO_COUNT: u8 = 54;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -109,6 +109,7 @@ pub enum Scenario {
     RegimentUnloadRefused = 50,
     FleetJoin = 51,
     FleetFinder = 52,
+    ProductionDestination = 53,
 }
 
 impl Scenario {
@@ -167,6 +168,7 @@ impl Scenario {
             50 => Self::RegimentUnloadRefused,
             51 => Self::FleetJoin,
             52 => Self::FleetFinder,
+            53 => Self::ProductionDestination,
             _ => return None,
         })
     }
@@ -179,7 +181,11 @@ impl Scenario {
     fn uses_the_fleet_window(self) -> bool {
         matches!(
             self,
-            Self::FleetLoad | Self::FleetLoadFull | Self::RegimentUnloadRefused | Self::FleetJoin
+            Self::FleetLoad
+                | Self::FleetLoadFull
+                | Self::RegimentUnloadRefused
+                | Self::FleetJoin
+                | Self::ProductionDestination
         )
     }
 
@@ -735,6 +741,20 @@ fn place_loading_fleet(
         world.systems[target].is_populated = true;
         let _ = troop_transport.load(world, fleet, &[troop]);
     }
+    // The destination variant: a shipyard of the player's, so the facility
+    // icon's menu offers Destination (0x214, FUN_00512700 kind 4).
+    if request.scenario == Scenario::ProductionDestination {
+        let shipyard = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+                is_alliance: player_is_alliance,
+                is_shipyard: true,
+            },
+        );
+        world.systems[primary]
+            .manufacturing_facilities
+            .push(shipyard);
+    }
     if request.scenario == Scenario::FleetLoadFull {
         let room = world.capital_ship_classes[carrier].troop_capacity;
         let aboard: Vec<_> = (0..room)
@@ -1003,6 +1023,8 @@ struct FixtureObjectMenu<'a> {
     move_row: Option<usize>,
     confirmed_move_row: Option<usize>,
     create_fleet_row: Option<usize>,
+    rename_row: Option<usize>,
+    destination_row: Option<usize>,
     target_dat_id: u32,
     target_name: &'a str,
     target_screen_x: f32,
@@ -1037,6 +1059,8 @@ fn object_menu_report<'a>(
         move_row: menu.row_of(ObjectMenuCommand::Move),
         confirmed_move_row: menu.row_of(ObjectMenuCommand::ConfirmedMove),
         create_fleet_row: menu.row_of(ObjectMenuCommand::CreateFleet),
+        rename_row: menu.row_of(ObjectMenuCommand::Rename),
+        destination_row: menu.row_of(ObjectMenuCommand::Destination),
         target_dat_id: target.dat_id.raw(),
         target_name: &target.name,
         target_screen_x,
@@ -1504,6 +1528,8 @@ struct FixtureFleetLoadSetup {
     target_dat_id: u32,
     target_name: String,
     icon: (f32, f32),
+    /// The primary system's facility (System quadrant) icon, when shown.
+    system_icon: Option<(f32, f32)>,
     troop_item: Option<(f32, f32)>,
     fleets_tab: (f32, f32),
     primary_planet: (f32, f32),
@@ -1534,6 +1560,9 @@ fn fleet_load_setup(
         target_dat_id: world.systems[target].dat_id.raw(),
         target_name: world.systems[target].name.clone(),
         icon: screen_center(sectors.fleet_icon_screen_rect(world, layout, primary)?),
+        system_icon: sectors
+            .quadrant_screen_rect(world, layout, primary, Quadrant::System)
+            .map(screen_center),
         troop_item: systems
             .first_item_screen_rect(layout, primary)
             .map(screen_center),
@@ -2638,6 +2667,49 @@ mod tests {
     }
 
     #[test]
+    fn the_destination_scenario_adds_a_player_shipyard_and_shows_its_facility_icon() {
+        // port: the fixture's own layout for the Destination gate
+        // (ghidra/notes/production-destination.md).
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let player_shipyards = |scenario| {
+                let applied = apply_to_loading_world(request(scenario, faction));
+                let world = &applied.world;
+                let primary = world.systems.keys().next().unwrap();
+                let setup = fleet_load_setup(
+                    request(scenario, faction),
+                    world,
+                    &applied.sectors,
+                    &applied.systems,
+                )
+                .unwrap();
+                let layout = CockpitState::new(faction).layout_for(640.0, 480.0);
+                if let Some(icon) = setup.system_icon {
+                    assert!(
+                        applied.sectors.contains_screen_point(layout, icon),
+                        "{faction:?}"
+                    );
+                }
+                let shipyards = world.systems[primary]
+                    .manufacturing_facilities
+                    .iter()
+                    .filter(|key| {
+                        let facility = &world.manufacturing_facilities[**key];
+                        facility.is_shipyard
+                            && facility.is_alliance == (faction == CockpitFaction::Alliance)
+                    })
+                    .count();
+                (shipyards, setup.system_icon.is_some())
+            };
+            let (before, _) = player_shipyards(Scenario::FleetLoad);
+            assert_eq!(
+                player_shipyards(Scenario::ProductionDestination),
+                (before + 1, true),
+                "{faction:?}"
+            );
+        }
+    }
+
+    #[test]
     fn the_joining_scenario_puts_a_player_fleet_of_one_ship_beside_one_of_two() {
         // port: the fixture's own layout for the join gate
         // (ghidra/notes/fleet-join-split.md).
@@ -3699,7 +3771,8 @@ mod tests {
                 Scenario::FleetLoad,
                 Scenario::FleetLoadFull,
                 Scenario::RegimentUnloadRefused,
-                Scenario::FleetJoin
+                Scenario::FleetJoin,
+                Scenario::ProductionDestination
             ]
         );
     }

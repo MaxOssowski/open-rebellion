@@ -182,6 +182,14 @@ Ships and fleets display their name via `FUN_004f6270`:
 In the fleet window, ship list items call `FUN_004f6270` to display the ship
 name. After a rename, the vtable `+0xec` notification triggers a redraw.
 
+## Port
+
+`FleetWindowState::begin_rename` opens the edit over the entry with the name
+selected; an emptied name keeps it open (`FUN_004ac950`), Enter submits
+(`PanelAction::Rename`, logged as `[interface] command=0x203
+destination=rename status=applied`). Gate: `tools/interface-parity/
+fleet-window.mjs`, case `rename` (fixture code 48), both sides.
+
 ## Cited decompiles
 
 - `FUN_00486fb0.c` — Command dispatcher (0x203/0x215 handler)

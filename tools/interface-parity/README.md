@@ -24,7 +24,7 @@ node encyclopedia-index-shell.mjs --no-build  # reuse a verified fixture build
 node mission-dialog.mjs  # verify the original mission dialog's chrome on both pages
 node mission-dialog.mjs --no-build  # reuse a verified fixture build
 node fleet-move.mjs  # verify fleet Move, Confirmed Move and the system window drag
-node fleet-window.mjs  # verify the Fleet window, regiments, and joining and splitting
+node fleet-window.mjs  # verify the Fleet window, regiments, joining and splitting, rename and destination
 node sector-quadrants.mjs  # verify the quadrant icons and the Defenses and Missions windows
 node fleet-finder.mjs  # verify the Fleet and Ship Finder
 node fleet-finder.mjs --no-build --only=alliance/chrome  # one faction/case, reusing a build
@@ -82,8 +82,10 @@ asserts. `fleet-move.mjs` covers the fleet pop-up menu, targeting, the
 Confirmed Move window and the system window drag. `fleet-window.mjs` opens the
 Fleet window from the sector window's fleet icon, compares its chrome against
 STRATEGY.DLL, and covers loading and holding regiments, landing, unloading by
-hand, a regiment travelling on its own, and joining and splitting fleets.
-`sector-quadrants.mjs` covers the quadrant icons and the System, System
+hand, a regiment travelling on its own, joining and splitting fleets, Rename
+(`0x203`: an emptied name keeps the edit open, Enter submits the typed one)
+and the facility icon's Destination (`0x214`, fixture code 54: the release on
+a planet sets it). `sector-quadrants.mjs` covers the quadrant icons and the System, System
 Defenses and Missions windows they open. `fleet-finder.mjs` opens the Finder
 from the cockpit control and F3, compares its chrome in both modes, and opens a
 chosen fleet or ship in its Fleet window; its tabs case checks that the map
