@@ -541,6 +541,69 @@ pub fn validate_fleet_dispatch(
     Ok(())
 }
 
+/// The fleets an order built on a sector window's fleet icon acts on: the
+/// system's fleets (`FUN_00512700`, kind `0x10` → `FUN_004ffe70`) of the
+/// order's side (`FUN_00553350`), in the system's order
+/// (`ghidra/notes/sector-icon-menus.md`).
+#[must_use]
+pub fn system_side_fleets(
+    world: &GameWorld,
+    system: SystemKey,
+    expected_is_alliance: bool,
+) -> Vec<FleetKey> {
+    world.systems.get(system).map_or_else(Vec::new, |value| {
+        value
+            .fleets
+            .iter()
+            .copied()
+            .filter(|fleet| {
+                world
+                    .fleets
+                    .get(*fleet)
+                    .is_some_and(|value| value.is_alliance == expected_is_alliance)
+            })
+            .collect()
+    })
+}
+
+/// Whether Move and Confirmed Move are enabled for a team of fleets:
+/// `FUN_0053c100` → `FUN_0053c4b0` refuses a team with no member (`1`/`0x16`),
+/// then asks every sub-order's `+0x18` ([`fleet_move_enabled`]).
+#[must_use]
+pub fn fleets_move_enabled(
+    state: &MovementState,
+    world: &GameWorld,
+    fleets: &[FleetKey],
+    expected_is_alliance: bool,
+) -> bool {
+    !fleets.is_empty()
+        && fleets
+            .iter()
+            .all(|fleet| fleet_move_enabled(state, world, *fleet, expected_is_alliance))
+}
+
+/// Validate a team of fleets' move with a destination: the move order's
+/// validator `FUN_0053c1a0` runs every sub-order's `+0x1c`, so one refusal
+/// refuses them all.
+///
+/// # Errors
+/// Returns [`FleetDispatchError::MissingFleet`] for an empty team, or the
+/// first error [`validate_fleet_dispatch`] returns for a member.
+pub fn validate_fleets_dispatch(
+    state: &MovementState,
+    world: &GameWorld,
+    fleets: &[FleetKey],
+    destination: SystemKey,
+    expected_is_alliance: bool,
+) -> Result<(), FleetDispatchError> {
+    if fleets.is_empty() {
+        return Err(FleetDispatchError::MissingFleet);
+    }
+    fleets.iter().try_for_each(|fleet| {
+        validate_fleet_dispatch(state, world, *fleet, destination, expected_is_alliance)
+    })
+}
+
 /// Validate the Destination order (`0x214`) a system window drag issues for
 /// a fleet: `FUN_00537180` (`ghidra/notes/move-order.md`, "Order 0x214").
 ///
@@ -1351,6 +1414,64 @@ mod tests {
         world.fleets.remove(fleet);
         let idle = MovementState::new();
         assert!(!fleet_move_enabled(&idle, &world, fleet, true));
+    }
+
+    #[test]
+    fn a_fleet_icons_team_is_the_systems_fleets_of_the_orders_side_in_order() {
+        // FUN_00512700, kind 0x10: FUN_004ffe70's walk of the system's
+        // fleets, kept to the order's side by FUN_00553350.
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let first = add_test_fleet(&mut world, origin, ship_key);
+        let enemy = add_test_fleet(&mut world, origin, ship_key);
+        world.fleets[enemy].is_alliance = false;
+        let second = add_test_fleet(&mut world, origin, ship_key);
+        add_test_fleet(&mut world, destination, ship_key);
+
+        assert_eq!(system_side_fleets(&world, origin, true), [first, second]);
+        assert_eq!(system_side_fleets(&world, origin, false), [enemy]);
+    }
+
+    #[test]
+    fn a_team_of_fleets_may_move_only_when_every_member_may() {
+        // FUN_0053c100 -> FUN_0053c4b0: an empty team is refused 1/0x16, and
+        // each sub-order's +0x18 must pass.
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let first = add_test_fleet(&mut world, origin, ship_key);
+        let second = add_test_fleet(&mut world, origin, ship_key);
+        let mut movement = MovementState::new();
+
+        assert!(fleets_move_enabled(&movement, &world, &[first, second], true));
+        assert!(!fleets_move_enabled(&movement, &world, &[], true));
+        begin_faction_fleet_transit(&mut movement, &mut world, second, destination, true)
+            .expect("the second fleet departs");
+        assert!(!fleets_move_enabled(&movement, &world, &[first, second], true));
+        assert!(fleets_move_enabled(&movement, &world, &[first], true));
+    }
+
+    #[test]
+    fn one_refused_fleet_refuses_the_whole_teams_move() {
+        // FUN_0053c1a0 runs every sub-order's validator +0x1c.
+        let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
+        let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
+        let first = add_test_fleet(&mut world, origin, ship_key);
+        let second = add_test_fleet(&mut world, origin, ship_key);
+        let movement = MovementState::new();
+
+        assert_eq!(
+            validate_fleets_dispatch(&movement, &world, &[first, second], destination, true),
+            Ok(())
+        );
+        world.fleets[second].capital_ships.clear();
+        assert_eq!(
+            validate_fleets_dispatch(&movement, &world, &[first, second], destination, true),
+            Err(FleetDispatchError::NoHyperdrive)
+        );
+        assert_eq!(
+            validate_fleets_dispatch(&movement, &world, &[], destination, true),
+            Err(FleetDispatchError::MissingFleet)
+        );
     }
 
     #[test]

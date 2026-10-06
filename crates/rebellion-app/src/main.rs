@@ -44,7 +44,7 @@ use rebellion_core::economy::{EconomyEvent, EconomyState, EconomySystem};
 use rebellion_core::events::{EventAction, EventState, EventSystem};
 use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::fog::{FogState, FogSystem};
-use rebellion_core::ids::{CharacterKey, SystemKey};
+use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
 use rebellion_core::jedi::{JediState, JediSystem};
 use rebellion_core::manufacturing::{ManufacturingState, ManufacturingSystem, QueueItem};
 use rebellion_core::missions::{
@@ -52,8 +52,9 @@ use rebellion_core::missions::{
 };
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms,
-    fleet_move_enabled, fleet_transit_ticks, reconcile_fleet_orbits, validate_fleet_destination,
-    validate_fleet_dispatch, MovementState, MovementSystem,
+    fleet_move_enabled, fleet_transit_ticks, fleets_move_enabled, reconcile_fleet_orbits,
+    system_side_fleets, validate_fleet_destination, validate_fleet_dispatch,
+    validate_fleets_dispatch, MovementState, MovementSystem,
 };
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
@@ -81,6 +82,7 @@ use rebellion_render::object_menu::{
     draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState, OrderGates,
 };
 use rebellion_render::panels::bombardment::{draw_bombardment, BombardmentPanelState};
+use rebellion_render::quadrant_icons::Quadrant;
 use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
@@ -3763,6 +3765,58 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
+                            // FUN_00422ce0, window type 1: the selection moves
+                            // against what +0x70 gives under the point, kind
+                            // 4 entries apart (0x214 against +0x68). port: only
+                            // the fleet icon's drop moves; its fleets are the
+                            // system's of the player's side (FUN_00512700).
+                            SectorWindowAction::DropSelection {
+                                selection:
+                                    MenuObject::SystemIcon {
+                                        system,
+                                        quadrant: Quadrant::Fleets,
+                                    },
+                                point,
+                                confirmed,
+                            } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                if let Some(target) = release_destination(
+                                    ctx,
+                                    &world,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) {
+                                    let fleets = system_side_fleets(
+                                        &world,
+                                        system,
+                                        player_faction == MissionFaction::Alliance,
+                                    );
+                                    issue_fleet_move(
+                                        &FleetMoveContext {
+                                            world: &world,
+                                            movement: &movement_state,
+                                            blockaded: blockade_state.blockaded_systems(),
+                                            faction: player_faction,
+                                            tick: clock.tick,
+                                        },
+                                        &fleets,
+                                        confirmed,
+                                        target,
+                                        &mut msg_log,
+                                        &mut move_confirmation_state,
+                                        &mut panel_actions,
+                                    );
+                                }
+                            }
+                            SectorWindowAction::DropSelection { .. } => {}
                         }
                     }
 
@@ -4105,7 +4159,25 @@ Some(RailAudience::side(*faction_is_alliance)),
                             Some(MenuObject::Fleet(fleet)),
                         )) => {
                             targeting = Some(Targeting::new(TargetOrder::FleetMove {
-                                fleet,
+                                fleets: vec![fleet],
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                            }));
+                        }
+                        // FUN_00512700, kind 0x10: the order's team is the
+                        // system's fleets of the player's side.
+                        Some((
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
+                            Some(MenuObject::SystemIcon {
+                                system,
+                                quadrant: Quadrant::Fleets,
+                            }),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::FleetMove {
+                                fleets: system_side_fleets(
+                                    &world,
+                                    system,
+                                    player_faction == MissionFaction::Alliance,
+                                ),
                                 confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
                         }
@@ -4224,7 +4296,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     // FUN_0044f5e0: the checkmark resubmits with force 1,
                     // which validates again and departs without asking.
                     if let Some(MoveConfirmationAction::Confirm {
-                        fleet,
+                        fleets,
                         destination,
                         join,
                     }) = draw_move_confirmation(
@@ -4233,7 +4305,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         cockpit_layout,
                         &mut bmp_cache,
                     ) {
-                        panel_actions.push(match join {
+                        panel_actions.extend(fleets.into_iter().map(|fleet| match join {
                             Some(target) => PanelAction::JoinFleet {
                                 mover: FleetMover::Fleet(fleet),
                                 target,
@@ -4243,7 +4315,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 destination,
                                 troops: Vec::new(),
                             },
-                        });
+                        }));
                     }
 
                     if targeting.is_some() {
@@ -4290,72 +4362,24 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     );
                                     mission_dialog_state.open(player_faction, system, team, kinds);
                                 }
-                                // A fleet's move onto a fleet joins it
-                                // (FUN_004ffc90, FUN_004feca0). It is
-                                // checked first, as a move to a system is
-                                // (FUN_00487740); Confirmed Move, or a
-                                // departure from a blockaded system, asks
-                                // (FUN_00487cc0).
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::FleetMove { fleet, confirmed },
-                                    target:
-                                        ReleaseTarget::Fleet {
-                                            fleet: target,
-                                            system,
-                                        },
-                                }) => {
-                                    let checked = rebellion_core::fleet_join::validate_join(
-                                        &world,
-                                        &movement_state,
-                                        &FleetMover::Fleet(fleet),
-                                        target,
-                                        player_faction == MissionFaction::Alliance,
-                                    );
-                                    if let Err(error) = checked {
-                                        msg_log.push(GameMessage::new(
-                                            clock.tick,
-                                            format!("Fleet move rejected: {error}"),
-                                            MessageCategory::Event,
-                                        ));
-                                    } else if rebellion_core::fleet_join::join_confirms(
-                                        &world,
-                                        blockade_state.blockaded_systems(),
-                                        fleet,
-                                        target,
-                                        confirmed,
-                                    ) {
-                                        let lines = world
-                                            .fleets
-                                            .get(fleet)
-                                            .and_then(|value| {
-                                                let days = if value.location == system {
-                                                    0
-                                                } else {
-                                                    fleet_transit_ticks(
-                                                        value,
-                                                        &world,
-                                                        value.location,
-                                                        system,
-                                                    )?
-                                                };
-                                                Some((fleet_label(&world, fleet)?, days))
-                                            })
-                                            .into_iter()
-                                            .collect();
-                                        move_confirmation_state.open(MoveConfirmation {
-                                            faction: player_faction,
-                                            fleet,
-                                            destination: system,
-                                            join: Some(target),
-                                            lines,
-                                        });
-                                    } else {
-                                        panel_actions.push(PanelAction::JoinFleet {
-                                            mover: FleetMover::Fleet(fleet),
-                                            target,
-                                        });
-                                    }
-                                }
+                                    order: TargetOrder::FleetMove { fleets, confirmed },
+                                    target,
+                                }) => issue_fleet_move(
+                                    &FleetMoveContext {
+                                        world: &world,
+                                        movement: &movement_state,
+                                        blockaded: blockade_state.blockaded_systems(),
+                                        faction: player_faction,
+                                        tick: clock.tick,
+                                    },
+                                    &fleets,
+                                    confirmed,
+                                    target,
+                                    &mut msg_log,
+                                    &mut move_confirmation_state,
+                                    &mut panel_actions,
+                                ),
                                 Some(TargetingEnd::Target {
                                     order:
                                         TargetOrder::ShipMove {
@@ -4403,62 +4427,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     troop,
                                     target: RegimentTarget::System(system),
                                 }),
-                                Some(TargetingEnd::Target {
-                                    order: TargetOrder::FleetMove { fleet, confirmed },
-                                    target: ReleaseTarget::System(system),
-                                }) => {
-                                    let is_alliance = player_faction == MissionFaction::Alliance;
-                                    if let Err(error) = validate_fleet_dispatch(
-                                        &movement_state,
-                                        &world,
-                                        fleet,
-                                        system,
-                                        is_alliance,
-                                    ) {
-                                        // port: FUN_00487c90 plays the side's
-                                        // advisor reaction; this line stands in.
-                                        msg_log.push(GameMessage::new(
-                                            clock.tick,
-                                            format!("Fleet move rejected: {error}"),
-                                            MessageCategory::Event,
-                                        ));
-                                    } else if fleet_move_confirms(
-                                        &world,
-                                        blockade_state.blockaded_systems(),
-                                        fleet,
-                                        confirmed,
-                                    ) {
-                                        // FUN_0048a340 → FUN_0049a350: one
-                                        // line, the fleet's name and days.
-                                        let lines = world
-                                            .fleets
-                                            .get(fleet)
-                                            .and_then(|value| {
-                                                let days = fleet_transit_ticks(
-                                                    value,
-                                                    &world,
-                                                    value.location,
-                                                    system,
-                                                )?;
-                                                Some((fleet_label(&world, fleet)?, days))
-                                            })
-                                            .into_iter()
-                                            .collect();
-                                        move_confirmation_state.open(MoveConfirmation {
-                                            faction: player_faction,
-                                            fleet,
-                                            destination: system,
-                                            join: None,
-                                            lines,
-                                        });
-                                    } else {
-                                        panel_actions.push(PanelAction::DispatchFleet {
-                                            fleet,
-                                            destination: system,
-                                            troops: Vec::new(),
-                                        });
-                                    }
-                                }
                                 Some(TargetingEnd::Dropped) | None => {}
                             }
                         }
@@ -5532,6 +5500,107 @@ Some(RailAudience::side(*faction_is_alliance)),
     }
 }
 
+/// What a fleet move needs to read when it lands.
+struct FleetMoveContext<'a> {
+    world: &'a GameWorld,
+    movement: &'a MovementState,
+    blockaded: &'a HashSet<SystemKey>,
+    faction: MissionFaction,
+    tick: u64,
+}
+
+/// A team of fleets' Move (`0x201`) or Confirmed Move (`0x202`) with its
+/// target set: `FUN_00486fb0` validates it (`FUN_00487740`; the move order's
+/// validator `FUN_0053c1a0` runs every member's, so one refusal refuses all),
+/// then asks first when `FUN_00487cc0` says so, listing one line per member
+/// (`FUN_0053c2e0`), or departs. A move onto a fleet joins it
+/// (`FUN_004ffc90`, `FUN_004feca0`).
+fn issue_fleet_move(
+    context: &FleetMoveContext<'_>,
+    fleets: &[FleetKey],
+    confirmed: bool,
+    target: ReleaseTarget,
+    msg_log: &mut MessageLog,
+    move_confirmation_state: &mut MoveConfirmationState,
+    panel_actions: &mut Vec<PanelAction>,
+) {
+    let world = context.world;
+    let is_alliance = context.faction == MissionFaction::Alliance;
+    let (destination, join) = match target {
+        ReleaseTarget::System(system) => (system, None),
+        ReleaseTarget::Fleet { fleet, system } => (system, Some(fleet)),
+    };
+    let checked = match join {
+        Some(target) if !fleets.is_empty() => fleets.iter().try_for_each(|fleet| {
+            rebellion_core::fleet_join::validate_join(
+                world,
+                context.movement,
+                &FleetMover::Fleet(*fleet),
+                target,
+                is_alliance,
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+        }),
+        _ => validate_fleets_dispatch(context.movement, world, fleets, destination, is_alliance)
+            .map_err(|error| error.to_string()),
+    };
+    if let Err(error) = checked {
+        // port: FUN_00487c90 plays the side's advisor reaction; this line
+        // stands in.
+        msg_log.push(GameMessage::new(
+            context.tick,
+            format!("Fleet move rejected: {error}"),
+            MessageCategory::Event,
+        ));
+        return;
+    }
+    let asks = fleets.iter().any(|fleet| match join {
+        Some(target) => rebellion_core::fleet_join::join_confirms(
+            world,
+            context.blockaded,
+            *fleet,
+            target,
+            confirmed,
+        ),
+        None => fleet_move_confirms(world, context.blockaded, *fleet, confirmed),
+    });
+    if !asks {
+        panel_actions.extend(fleets.iter().map(|fleet| match join {
+            Some(target) => PanelAction::JoinFleet {
+                mover: FleetMover::Fleet(*fleet),
+                target,
+            },
+            None => PanelAction::DispatchFleet {
+                fleet: *fleet,
+                destination,
+                troops: Vec::new(),
+            },
+        }));
+        return;
+    }
+    // FUN_0048a340 → FUN_0049a350: a line per member, its name and days.
+    let lines = fleets
+        .iter()
+        .filter_map(|fleet| {
+            let value = world.fleets.get(*fleet)?;
+            let days = if value.location == destination {
+                0
+            } else {
+                fleet_transit_ticks(value, world, value.location, destination)?
+            };
+            Some((fleet_label(world, *fleet)?, days))
+        })
+        .collect();
+    move_confirmation_state.open(MoveConfirmation {
+        faction: context.faction,
+        fleets: fleets.to_vec(),
+        destination,
+        join,
+        lines,
+    });
+}
+
 /// Whether each order of `selection`'s menu passes its own rule (`+0x18`).
 fn order_gates(
     selection: Option<MenuObject>,
@@ -5552,6 +5621,15 @@ fn order_gates(
             Some(MenuObject::Fleet(fleet)) => {
                 fleet_move_enabled(movement_state, world, fleet, is_alliance)
             }
+            Some(MenuObject::SystemIcon {
+                system,
+                quadrant: Quadrant::Fleets,
+            }) => fleets_move_enabled(
+                movement_state,
+                world,
+                &system_side_fleets(world, system, is_alliance),
+                is_alliance,
+            ),
             _ => false,
         },
         troop_move: match selection {
@@ -7306,5 +7384,238 @@ mod options_save_tests {
         assert_eq!(slots[0].name, "Unreadable save");
         assert_eq!(std::fs::read(&path).unwrap(), b"corrupt save fixture");
         std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod fleet_move_tests {
+    use super::*;
+    use rebellion_core::dat::{ExplorationStatus, SectorGroup};
+    use rebellion_core::ids::DatId;
+    use rebellion_core::world::{CapitalShipClass, ControlKind, Fleet, Sector, ShipInstance, System};
+
+    fn system(sector: rebellion_core::ids::SectorKey, x: u16) -> System {
+        System {
+            dat_id: DatId::new(0x9000_0000),
+            name: format!("Sys{x}"),
+            sector,
+            x,
+            y: 0,
+            exploration_status: ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Uncontrolled,
+        }
+    }
+
+    /// Two Alliance fleets at one system, and a second system 40 away.
+    fn world_with_two_fleets() -> (GameWorld, Vec<FleetKey>, SystemKey) {
+        let mut world = GameWorld::default();
+        let sector = world.sectors.insert(Sector {
+            dat_id: DatId::new(0x9200_0000),
+            name: "Test".into(),
+            group: SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let origin = world.systems.insert(system(sector, 0));
+        let destination = world.systems.insert(system(sector, 40));
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            name: "TestShip".into(),
+            is_alliance: true,
+            hull: 100,
+            hyperdrive: 80,
+            ..CapitalShipClass::default()
+        });
+        let fleets = (0..2)
+            .map(|_| {
+                let fleet = world.fleets.insert(Fleet {
+                    location: origin,
+                    capital_ships: vec![ShipInstance::new(class, 100, true)],
+                    fighters: vec![],
+                    characters: vec![],
+                    is_alliance: true,
+                    has_death_star: false,
+                });
+                world.systems[origin].fleets.push(fleet);
+                fleet
+            })
+            .collect();
+        (world, fleets, destination)
+    }
+
+    struct Issued {
+        actions: Vec<PanelAction>,
+        confirmation: MoveConfirmationState,
+        log: MessageLog,
+    }
+
+    fn issue(world: &GameWorld, fleets: &[FleetKey], confirmed: bool, to: SystemKey) -> Issued {
+        issue_onto(world, fleets, confirmed, ReleaseTarget::System(to))
+    }
+
+    fn issue_onto(
+        world: &GameWorld,
+        fleets: &[FleetKey],
+        confirmed: bool,
+        target: ReleaseTarget,
+    ) -> Issued {
+        let movement = MovementState::new();
+        let blockaded = HashSet::new();
+        let mut issued = Issued {
+            actions: Vec::new(),
+            confirmation: MoveConfirmationState::default(),
+            log: MessageLog::new(8),
+        };
+        issue_fleet_move(
+            &FleetMoveContext {
+                world,
+                movement: &movement,
+                blockaded: &blockaded,
+                faction: MissionFaction::Alliance,
+                tick: 0,
+            },
+            fleets,
+            confirmed,
+            target,
+            &mut issued.log,
+            &mut issued.confirmation,
+            &mut issued.actions,
+        );
+        issued
+    }
+
+    fn dispatched(actions: &[PanelAction]) -> Vec<FleetKey> {
+        actions
+            .iter()
+            .filter_map(|action| match action {
+                PanelAction::DispatchFleet { fleet, .. } => Some(*fleet),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_fleet_icons_move_departs_every_fleet_of_the_team() {
+        // FUN_00486fb0 -> FUN_00487740: a valid Move that need not ask
+        // submits the order, and every sub-order departs.
+        let (world, fleets, destination) = world_with_two_fleets();
+        let issued = issue(&world, &fleets, false, destination);
+        assert_eq!(dispatched(&issued.actions), fleets);
+        assert!(!issued.confirmation.is_open());
+    }
+
+    #[test]
+    fn a_fleet_icons_confirmed_move_asks_once_for_the_whole_team() {
+        // FUN_00487cc0 asks for 0x202; the window lists a line per member
+        // (FUN_0053c2e0) and departs nothing until the checkmark.
+        let (world, fleets, destination) = world_with_two_fleets();
+        let issued = issue(&world, &fleets, true, destination);
+        assert!(issued.actions.is_empty());
+        let window = issued.confirmation.confirmation().expect("the window opens");
+        assert_eq!(window.fleets, fleets);
+        assert_eq!(window.lines.len(), 2);
+        // FUN_0049a350: each line counts the member's days to go.
+        assert!(window.lines.iter().all(|(_, days)| *days > 0));
+    }
+
+    #[test]
+    fn a_fleet_icons_move_onto_a_fleet_in_its_own_system_joins_each_member() {
+        // FUN_00486fb0: a target fleet makes each sub-order a join
+        // (FUN_004ffc90), which needs no departure where the target lies.
+        let (mut world, fleets, _) = world_with_two_fleets();
+        let origin = world.fleets[fleets[0]].location;
+        let target = world.fleets.insert(world.fleets[fleets[0]].clone());
+        world.systems[origin].fleets.push(target);
+        let issued = issue_onto(
+            &world,
+            &fleets,
+            false,
+            ReleaseTarget::Fleet {
+                fleet: target,
+                system: origin,
+            },
+        );
+        let joined: Vec<FleetKey> = issued
+            .actions
+            .iter()
+            .filter_map(|action| match action {
+                PanelAction::JoinFleet {
+                    mover: FleetMover::Fleet(fleet),
+                    target: onto,
+                } if *onto == target => Some(*fleet),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(joined, fleets);
+        assert!(issued.log.messages().is_empty());
+    }
+
+    #[test]
+    fn an_empty_team_moving_onto_a_fleet_is_refused() {
+        // FUN_0053c4b0 refuses a move with no members (1/0x16) before any
+        // sub-order runs.
+        let (world, fleets, _) = world_with_two_fleets();
+        let origin = world.fleets[fleets[0]].location;
+        let issued = issue_onto(
+            &world,
+            &[],
+            false,
+            ReleaseTarget::Fleet {
+                fleet: fleets[0],
+                system: origin,
+            },
+        );
+        assert!(issued.actions.is_empty());
+        assert_eq!(issued.log.messages().len(), 1);
+    }
+
+    #[test]
+    fn a_fleet_icons_move_is_enabled_only_where_its_side_has_fleets() {
+        // FUN_0051d990 asks each order's +0x18; Move on the fleet icon
+        // (kind 0x10) needs a team (FUN_0053c4b0) that may all move.
+        let (world, fleets, destination) = world_with_two_fleets();
+        let origin = world.fleets[fleets[0]].location;
+        let gate = |system| {
+            order_gates(
+                Some(MenuObject::SystemIcon {
+                    system,
+                    quadrant: Quadrant::Fleets,
+                }),
+                &world,
+                &MissionState::new(),
+                &MovementState::new(),
+                &TroopTransportState::new(),
+                MissionFaction::Alliance,
+            )
+            .fleet_move
+        };
+        assert!(gate(origin));
+        assert!(!gate(destination));
+    }
+
+    #[test]
+    fn one_refused_fleet_keeps_the_whole_team_home() {
+        // FUN_0053c1a0 runs every sub-order's validator; FUN_00487c90 reports
+        // the refusal and nothing departs.
+        let (mut world, fleets, destination) = world_with_two_fleets();
+        world.fleets[fleets[1]].capital_ships.clear();
+        let issued = issue(&world, &fleets, false, destination);
+        assert!(issued.actions.is_empty());
+        assert!(!issued.confirmation.is_open());
+        assert_eq!(issued.log.messages().len(), 1);
     }
 }

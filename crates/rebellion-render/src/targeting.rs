@@ -30,9 +30,14 @@ const CAPTURE_ID: &str = "original_targeting_capture";
 pub enum TargetOrder {
     /// Mission: `FUN_0042a320` opens the mission dialog for the target.
     Mission(Vec<MissionMember>),
-    /// Move (`0x201`), or Confirmed Move (`0x202`) when `confirmed`, for one
-    /// fleet. port: a character's or special force's move is not ported.
-    FleetMove { fleet: FleetKey, confirmed: bool },
+    /// Move (`0x201`), or Confirmed Move (`0x202`) when `confirmed`, for a
+    /// team of fleets: one fleet's own, or a sector window's fleet icon's
+    /// (`FUN_00512700`, kind `0x10`). port: a character's or special force's
+    /// move is not ported.
+    FleetMove {
+        fleets: Vec<FleetKey>,
+        confirmed: bool,
+    },
     /// A regiment's Move (`0x201`). Released on a Fleet window it boards the
     /// fleet (`ghidra/notes/fleet-window.md`, "Loading a regiment onto a
     /// fleet").
@@ -282,7 +287,7 @@ mod tests {
         let system = SystemKey::default();
         for confirmed in [false, true] {
             let order = TargetOrder::FleetMove {
-                fleet: FleetKey::default(),
+                fleets: vec![FleetKey::default()],
                 confirmed,
             };
             let target = ReleaseTarget::System(system);
@@ -301,7 +306,7 @@ mod tests {
             TargetingEnd::Dropped
         );
         let order = TargetOrder::FleetMove {
-            fleet: FleetKey::default(),
+            fleets: vec![FleetKey::default()],
             confirmed: true,
         };
         assert_eq!(Targeting::new(order).release(None), TargetingEnd::Dropped);

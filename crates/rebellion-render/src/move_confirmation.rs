@@ -37,7 +37,8 @@ const TRANSIT_TIME: &str = "Transit time in days";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MoveConfirmation {
     pub faction: MissionFaction,
-    pub fleet: FleetKey,
+    /// The order's team: one fleet, or a fleet icon's fleets.
+    pub fleets: Vec<FleetKey>,
     pub destination: SystemKey,
     /// The fleet the move joins, when it was released on a Fleet window
     /// (`ghidra/notes/fleet-join-split.md`).
@@ -76,7 +77,7 @@ pub enum MoveConfirmationAction {
     /// The checkmark (control `0x14`) or Enter: `FUN_0041ce20(order, 1)`
     /// validates the order again and submits it without asking.
     Confirm {
-        fleet: FleetKey,
+        fleets: Vec<FleetKey>,
         destination: SystemKey,
         join: Option<FleetKey>,
     },
@@ -100,6 +101,12 @@ impl MoveConfirmationState {
         self.window.is_some()
     }
 
+    /// The open window's order, if one waits for an answer.
+    #[must_use]
+    pub fn confirmation(&self) -> Option<&MoveConfirmation> {
+        self.window.as_ref()
+    }
+
     /// Whether `point` falls on the open window, so the galaxy map under it
     /// takes no input.
     #[must_use]
@@ -112,7 +119,7 @@ impl MoveConfirmationState {
         let window = self.window.take()?;
         Some(if confirm {
             MoveConfirmationAction::Confirm {
-                fleet: window.fleet,
+                fleets: window.fleets,
                 destination: window.destination,
                 join: window.join,
             }
@@ -218,7 +225,7 @@ mod tests {
     fn confirmation(faction: MissionFaction) -> MoveConfirmation {
         MoveConfirmation {
             faction,
-            fleet: FleetKey::default(),
+            fleets: vec![FleetKey::default()],
             destination: SystemKey::default(),
             join: None,
             lines: vec![("Red Fleet".into(), 12)],
@@ -346,7 +353,7 @@ mod tests {
         assert_eq!(
             action,
             Some(MoveConfirmationAction::Confirm {
-                fleet: FleetKey::default(),
+                fleets: vec![FleetKey::default()],
                 destination: SystemKey::default(),
                 join: None,
             })
@@ -378,6 +385,40 @@ mod tests {
         assert!(matches!(
             action,
             Some(MoveConfirmationAction::Confirm { join: Some(fleet), .. }) if fleet == target
+        ));
+    }
+
+    #[test]
+    fn the_checkmark_carries_every_fleet_of_a_fleet_icons_team() {
+        // FUN_0044f5e0 resubmits the same order, whose team is the icon's
+        // fleets (FUN_00512700, kind 0x10); FUN_0053c2e0 lists one line each.
+        let mut world = rebellion_core::world::GameWorld::default();
+        let mut fleet = || {
+            world.fleets.insert(rebellion_core::world::Fleet {
+                location: SystemKey::default(),
+                capital_ships: Vec::new(),
+                fighters: Vec::new(),
+                characters: Vec::new(),
+                is_alliance: true,
+                has_death_star: false,
+            })
+        };
+        let team = vec![fleet(), fleet()];
+        let mut state = MoveConfirmationState::default();
+        state.open(MoveConfirmation {
+            fleets: team.clone(),
+            lines: vec![("Fleet 1".into(), 3), ("Fleet 2".into(), 4)],
+            ..confirmation(MissionFaction::Alliance)
+        });
+        assert!(state
+            .confirmation()
+            .is_some_and(|window| window.text().ends_with("Fleet 1:  3\nFleet 2:  4")));
+
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+
+        assert!(matches!(
+            action,
+            Some(MoveConfirmationAction::Confirm { fleets, .. }) if fleets == team
         ));
     }
 

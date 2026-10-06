@@ -252,8 +252,10 @@ impl ObjectMenuRow {
 /// kind (`FUN_00507290` → `FUN_0050f2e0`): facilities Destination, Reserved
 /// and Scrap; defenses Move, Confirmed Move and Scrap; fleets Move, Confirmed
 /// Move, the bombardments, Assault and Scrap; missions Abort. Its object is a
-/// system, so Status stays disabled. port: its orders stay disabled until
-/// their system-wide forms (`FUN_00512700`) are ported.
+/// system, so Status stays disabled. The fleet icon's Move and Confirmed Move
+/// follow `gates.fleet_move` for the system's fleets of the player's side.
+/// port: the icons' other orders stay disabled until their system-wide forms
+/// (`FUN_00512700`) are ported.
 /// An empty selection lists only Encyclopedia and Status, both disabled.
 ///
 /// - Mission is enabled when `gates.mission` says so
@@ -275,7 +277,18 @@ impl ObjectMenuRow {
 ///   submenu parent.
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
-    let fleet = matches!(selection, Some(MenuObject::Fleet(_)));
+    // A fleet icon's Move rows act on the system's fleets of the player's
+    // side (FUN_00512700, kind 0x10), under the same rule.
+    let fleet = matches!(
+        selection,
+        Some(
+            MenuObject::Fleet(_)
+                | MenuObject::SystemIcon {
+                    quadrant: Quadrant::Fleets,
+                    ..
+                }
+        )
+    );
     let troop = matches!(selection, Some(MenuObject::Troop(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
     let offered: &[ObjectMenuItem] = match selection {
@@ -637,6 +650,30 @@ mod tests {
         for quadrant in Quadrant::ALL {
             assert_eq!(
                 enabled(&object_menu_rows(icon(quadrant), OrderGates::default())),
+                ["Encyclopedia"],
+                "{quadrant:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_fleet_icons_move_rows_follow_its_fleets_move_rule() {
+        // FUN_0053c100 -> FUN_0053c4b0: the team is the system's fleets of
+        // the order's side (FUN_00512700, kind 0x10); the other icons' Move
+        // rows act on members whose moves are not ported.
+        let every_gate = OrderGates {
+            mission: true,
+            fleet_move: true,
+            troop_move: true,
+            ship_move: true,
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),
+            ["Move", "Confirmed Move", "Encyclopedia"]
+        );
+        for quadrant in [Quadrant::System, Quadrant::Defenses, Quadrant::Missions] {
+            assert_eq!(
+                enabled(&object_menu_rows(icon(quadrant), every_gate)),
                 ["Encyclopedia"],
                 "{quadrant:?}"
             );

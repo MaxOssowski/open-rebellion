@@ -72,6 +72,9 @@ struct OpenSectorWindow {
     /// The icon a left or right press chose last (`+0x184`,
     /// `FUN_0045b1b0`): its system and quadrant.
     selection: Option<(SystemKey, Quadrant)>,
+    /// Where a left press on an icon began a drag, as a canvas point
+    /// (`+0x14c`/`+0x150`, set by `FUN_004593e0` case `0x201`).
+    drag_from: Option<(i16, i16)>,
 }
 
 /// Mutable state for the modeless sector-window stack. The last entry is the
@@ -115,6 +118,7 @@ impl SectorWindowState {
             sector,
             column,
             selection: None,
+            drag_from: None,
         });
         true
     }
@@ -305,6 +309,15 @@ pub enum SectorWindowAction {
         selection: Option<MenuObject>,
         point: (i16, i16),
     },
+    /// A left release more than four pixels from the press that chose an
+    /// icon (`FUN_004593e0` case `0x202`) posts `0x29a`: the galaxy view
+    /// moves the selection to what lies under the screen `point`, as a
+    /// Confirmed Move when Ctrl is held (`FUN_00422ce0`).
+    DropSelection {
+        selection: MenuObject,
+        point: egui::Pos2,
+        confirmed: bool,
+    },
 }
 
 #[derive(Default)]
@@ -321,6 +334,11 @@ struct WindowDrawResult {
     icon_pressed: Option<(SystemKey, Quadrant)>,
     /// A right-button release in the window, as a canvas point.
     object_menu: Option<(i16, i16)>,
+    /// A left press on a shown icon, as a canvas point.
+    drag_from: Option<(i16, i16)>,
+    /// A left release ended the window's drag: where, and whether Ctrl was
+    /// held, when it went far enough to drop.
+    drag_end: Option<Option<(egui::Pos2, bool)>>,
 }
 
 /// Paint and operate all open sector windows using the recovered strategic
@@ -400,8 +418,19 @@ pub fn draw_sector_windows(
             });
         }
         let selection = result.icon_pressed.or(window.selection);
-        if result.icon_pressed.is_some() {
-            chosen.push((window.sector, selection));
+        // A press on an icon sets the selection and the drag; a release
+        // ends the drag.
+        if result.icon_pressed.is_some() || result.drag_end.is_some() {
+            chosen.push((window.sector, selection, result.drag_from));
+        }
+        if let (Some(Some((point, confirmed))), Some((system, quadrant))) =
+            (result.drag_end, selection)
+        {
+            actions.push(SectorWindowAction::DropSelection {
+                selection: MenuObject::SystemIcon { system, quadrant },
+                point,
+                confirmed,
+            });
         }
         if let Some(point) = result.object_menu {
             actions.push(SectorWindowAction::OpenObjectMenu {
@@ -412,13 +441,14 @@ pub fn draw_sector_windows(
         }
     }
 
-    for (sector, selection) in chosen {
+    for (sector, selection, drag_from) in chosen {
         if let Some(window) = state
             .windows
             .iter_mut()
             .find(|window| window.sector == sector)
         {
             window.selection = selection;
+            window.drag_from = drag_from;
         }
     }
 
@@ -472,17 +502,24 @@ fn draw_sector_window(
         .fixed_pos(screen_position)
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
-            let (pointer, primary_down, any_pressed, secondary_released) = ctx.input(|input| {
-                (
-                    input.pointer.interact_pos(),
-                    input.pointer.button_down(egui::PointerButton::Primary),
-                    input.pointer.button_pressed(egui::PointerButton::Primary)
-                        || input.pointer.button_pressed(egui::PointerButton::Secondary),
-                    input
-                        .pointer
-                        .button_released(egui::PointerButton::Secondary),
-                )
-            });
+            let (pointer, primary_down, primary_pressed, any_pressed, released, ctrl) =
+                ctx.input(|input| {
+                    (
+                        input.pointer.interact_pos(),
+                        input.pointer.button_down(egui::PointerButton::Primary),
+                        input.pointer.button_pressed(egui::PointerButton::Primary),
+                        input.pointer.button_pressed(egui::PointerButton::Primary)
+                            || input.pointer.button_pressed(egui::PointerButton::Secondary),
+                        (
+                            input.pointer.button_released(egui::PointerButton::Primary),
+                            input
+                                .pointer
+                                .button_released(egui::PointerButton::Secondary),
+                        ),
+                        input.modifiers.ctrl,
+                    )
+                });
+            let (primary_released, secondary_released) = released;
             let (window_rect, window_response) = ui.allocate_exact_size(size, egui::Sense::click());
             ui.painter()
                 .rect_filled(window_rect, 0.0, egui::Color32::from_rgb(42, 42, 42));
@@ -596,6 +633,9 @@ fn draw_sector_window(
                         .find(|(_, rect, _)| rect_contains(*rect, point))
                 }) {
                     result.icon_pressed = Some((*system_key, *quadrant));
+                    if primary_pressed {
+                        result.drag_from = press.map(|point| screen_to_logical(layout, point));
+                    }
                 }
                 let planet_double_clicked = planet_response.double_clicked()
                     && planet_clicked
@@ -669,6 +709,16 @@ fn draw_sector_window(
                 }
             }
 
+            // FUN_004593e0 case 0x202: the window holds the capture, so the
+            // release ends the drag wherever it lands; it drops only past
+            // four pixels from the press in x or y.
+            if let (true, Some(from)) = (primary_released, window.drag_from) {
+                result.drag_end = Some(pointer.and_then(|point| {
+                    let to = screen_to_logical(layout, point);
+                    ((to.0 - from.0).abs() > 4 || (to.1 - from.1).abs() > 4)
+                        .then_some((point, ctrl))
+                }));
+            }
             // WM_RBUTTONUP: slot 7, FUN_004ac5c0, opens the menu for the
             // window's selection, whatever lies under the cursor.
             if let Some(point) = secondary_released
@@ -1544,6 +1594,186 @@ mod tests {
             &world,
             system,
             &[(LEFT, (115.0, 90.0)), (RIGHT, (400.0, 200.0))]
+        ))
+        .is_empty());
+    }
+
+    /// Press the left button at canvas point `from`, move to `to` and
+    /// release there, with `modifiers` held.
+    fn drag_at(
+        world: &GameWorld,
+        system: SystemKey,
+        from: (f32, f32),
+        to: (f32, f32),
+        modifiers: egui::Modifiers,
+    ) -> Vec<SectorWindowAction> {
+        drags_at(world, system, &[(from, to)], modifiers)
+    }
+
+    /// A left-button drag's canvas points: where it presses, where it
+    /// releases.
+    type Drag = ((f32, f32), (f32, f32));
+
+    /// Each drag of `drags` in turn, in one window state.
+    fn drags_at(
+        world: &GameWorld,
+        system: SystemKey,
+        drags: &[Drag],
+        modifiers: egui::Modifiers,
+    ) -> Vec<SectorWindowAction> {
+        let layout = layout(1.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(world, system, CockpitFaction::Alliance);
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(system);
+        let missions = rebellion_core::missions::MissionState::new();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let at =
+            |point: (f32, f32)| egui::pos2(layout.canvas.x + point.0, layout.canvas.y + point.1);
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        };
+        let frames = drags.iter().flat_map(|&(from, to)| {
+            [
+                vec![egui::Event::PointerMoved(at(from))],
+                vec![button(at(from), true)],
+                vec![egui::Event::PointerMoved(at(to))],
+                vec![button(at(to), false)],
+                vec![],
+            ]
+        });
+        let mut actions = Vec::new();
+        for (index, events) in frames.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 520.0),
+                )),
+                time: Some(index as f64 * 0.05),
+                modifiers,
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                actions.extend(draw_sector_windows(
+                    ctx,
+                    world,
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                ));
+            });
+        }
+        actions
+    }
+
+    fn drops(actions: &[SectorWindowAction]) -> Vec<(MenuObject, (f32, f32), bool)> {
+        actions
+            .iter()
+            .filter_map(|action| match *action {
+                SectorWindowAction::DropSelection {
+                    selection,
+                    point,
+                    confirmed,
+                } => Some((selection, (point.x, point.y), confirmed)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_drag_from_the_fleet_icon_drops_its_selection_where_released() {
+        // FUN_004593e0: case 0x201 selects the icon and keeps the press
+        // point; case 0x202 past four pixels posts 0x29a with the cursor.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let fleets = MenuObject::SystemIcon {
+            system,
+            quadrant: Quadrant::Fleets,
+        };
+        // Released at (200, 250) on the canvas, which sits at (10, 20).
+        assert_eq!(
+            drops(&drag_at(
+                &world,
+                system,
+                (115.0, 90.0),
+                (200.0, 250.0),
+                egui::Modifiers::NONE
+            )),
+            [(fleets, (210.0, 270.0), false)]
+        );
+        // Ctrl held: FUN_00422ce0 issues 0x202 (GetAsyncKeyState(0x11)).
+        assert_eq!(
+            drops(&drag_at(
+                &world,
+                system,
+                (115.0, 90.0),
+                (200.0, 250.0),
+                egui::Modifiers::CTRL
+            )),
+            [(fleets, (210.0, 270.0), true)]
+        );
+    }
+
+    #[test]
+    fn a_release_within_four_pixels_of_the_press_drops_nothing() {
+        // FUN_004593e0 case 0x202: 4 < |dx| or 4 < |dy|.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let none = egui::Modifiers::NONE;
+        assert!(drops(&drag_at(&world, system, (110.0, 90.0), (114.0, 86.0), none)).is_empty());
+        assert_eq!(
+            drops(&drag_at(&world, system, (110.0, 90.0), (110.0, 95.0), none)).len(),
+            1
+        );
+        assert_eq!(
+            drops(&drag_at(&world, system, (110.0, 90.0), (115.0, 90.0), none)).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_dropped_selection_does_not_drop_again_on_the_next_release() {
+        // FUN_004593e0 case 0x202 ends the drag it posts 0x29a for; a later
+        // press off every icon (case 0x201 returns early) starts none.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        assert_eq!(
+            drops(&drags_at(
+                &world,
+                system,
+                &[
+                    ((115.0, 90.0), (200.0, 250.0)),
+                    ((200.0, 250.0), (150.0, 200.0))
+                ],
+                egui::Modifiers::NONE
+            ))
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_drag_that_starts_off_every_icon_drops_nothing() {
+        // FUN_004593e0 case 0x200 drags only an item the press chose
+        // (+0x1a0); (200, 250) is empty window space.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        assert!(drops(&drag_at(
+            &world,
+            system,
+            (200.0, 250.0),
+            (115.0, 90.0),
+            egui::Modifiers::NONE
         ))
         .is_empty());
     }

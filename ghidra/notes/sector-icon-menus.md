@@ -106,11 +106,27 @@ into sub-orders").
   right press on a shown icon sets it; a press anywhere else keeps it. A
   right release over the window opens the object menu for it
   (`SectorWindowAction::OpenObjectMenu`).
-- `object_menu.rs`: `MenuObject::SystemIcon` lists the rows above; only
-  Encyclopedia is enabled. port: the orders stay disabled until their
-  system-wide forms are ported; the selected icon's second bitmap is not
-  drawn; Ctrl's multiple selection is not ported.
-- Not yet: the icon drags.
+- `object_menu.rs`: `MenuObject::SystemIcon` lists the rows above.
+  Encyclopedia is enabled, and so are the fleet icon's Move and Confirmed
+  Move when the system has fleets of the player's side and every one may
+  move (`movement::fleets_move_enabled`: `FUN_0053c4b0` refuses an empty
+  team with `1`/`0x16`, then each sub-order's `+0x18`).
+- The fleet icon's Move targets with the system's fleets of the player's
+  side as its team (`movement::system_side_fleets`). `issue_fleet_move`
+  (`main.rs`) validates every member (`FUN_0053c1a0`: one refusal refuses
+  all), asks once when any member's `FUN_00487cc0` rule asks, listing a line
+  per fleet, or departs them all; onto a fleet, each joins it.
+- A left press on a shown icon keeps its canvas point; a left release more
+  than four pixels away in x or y (`FUN_004593e0` case `0x202`) drops the
+  selection (`SectorWindowAction::DropSelection`), a Confirmed Move with
+  Ctrl held. The fleet icon's drop moves its fleets against what the window
+  under the point gives (`+0x70`, `targeting::release_destination`).
+- port: the other icons' orders and drops do nothing until their
+  system-wide forms are ported (the defenses' include characters, whose
+  move is not ported; the facilities' `0x214` and `0x216` act on family
+  `0xa0` objects the port does not model). The selected icon's second
+  bitmap and the drag image are not drawn. Ctrl's multiple selection is not
+  ported.
 
 ## Supporting decompiles
 
