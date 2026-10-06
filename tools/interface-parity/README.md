@@ -29,6 +29,7 @@ node sector-quadrants.mjs  # verify the quadrant icons and the Defenses and Miss
 node fleet-finder.mjs  # verify the Fleet and Ship Finder
 node fleet-finder.mjs --no-build --only=alliance/chrome  # one faction/case, reusing a build
 node fleet-registry.mjs  # verify the Fleet Registry, a port extension, from the main menu
+node audit-batch.mjs  # verify the Troop/Personnel Finders, Message Index, Alt keys and Agent menu
 ```
 
 Harness unit regressions can be run from the repository root with
@@ -92,7 +93,12 @@ and a wheel leave the frame unchanged. `fleet-registry.mjs` drives the real
 main menu (no fixture): it opens the Fleet Registry from its chip, lights a
 naming mode, holds a hovered name's row to show its note, closes on Escape
 with the chip's lamp lit, and starts a game whose fleets take canonical
-names. `--only=<faction>/<case>` runs named cases. Each gate writes `result.json` and its captures under
+names. `audit-batch.mjs` opens the Troop and Personnel Finders with F4 and
+F5 and compares their rails against STRATEGY.DLL, opens the Message Index
+with F6 and a rail light once each (a second F6 while open does nothing,
+Close closes it), selects a GID mode with Alt+digit, toggles Manage
+Garrisons with Alt+G, and opens the Agent menu from the droid.
+`--only=<faction>/<case>` runs named cases. Each gate writes `result.json` and its captures under
 `.artifacts/interface-parity/<gate>-<timestamp>/`; the native GUI checks of the
 same journeys are recorded separately in the audit.
 

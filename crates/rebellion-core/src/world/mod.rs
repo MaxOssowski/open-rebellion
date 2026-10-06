@@ -915,6 +915,9 @@ pub struct ShipInstance {
     pub shield_weapon_packed: u8,
     /// True while `hull_current` > 0 and the ship has not been destroyed.
     pub alive: bool,
+    /// The name the player gave it (`+0x34`, order 0x203); `None` shows the
+    /// class's (`FUN_004f6270`).
+    pub name: Option<String>,
 }
 
 impl ShipInstance {
@@ -929,6 +932,7 @@ impl ShipInstance {
             // not yet been allocated.
             shield_weapon_packed: 0,
             alive: true,
+            name: None,
         }
     }
 
@@ -1504,6 +1508,8 @@ pub struct FleetNames {
     /// counter list, `DAT_006b2bb0 + 0xc4`/`+0xc8`, node `[8]`).
     last_numbers: [u32; 2],
     mode: FleetNaming,
+    /// Fleets the player renamed (order 0x203).
+    renamed: slotmap::SecondaryMap<FleetKey, ()>,
 }
 
 fn default_difficulty_index() -> u8 {
@@ -1560,6 +1566,47 @@ impl GameWorld {
         self.fleet_names.names.insert(fleet, name);
     }
 
+    /// Rename `fleet` (order 0x203): `FUN_004ac950` hands the edit's text to
+    /// the name setter `FUN_004f6e60` only when it is not empty, so an empty
+    /// name changes nothing. port: no signature name replaces a name the
+    /// player gave.
+    pub fn rename_fleet(&mut self, fleet: FleetKey, name: &str) -> bool {
+        if name.is_empty() || !self.fleets.contains_key(fleet) {
+            return false;
+        }
+        self.fleet_names.names.insert(fleet, name.to_owned());
+        self.fleet_names.renamed.insert(fleet, ());
+        true
+    }
+
+    /// Rename capital ship `index` of `fleet` (order 0x203, `FUN_004f6e60`).
+    /// The setter refuses an object that is destroyed (`FUN_0053a000`) and
+    /// `FUN_004ac950` an empty name.
+    pub fn rename_ship(&mut self, fleet: FleetKey, index: usize, name: &str) -> bool {
+        let Some(ship) = self
+            .fleets
+            .get_mut(fleet)
+            .and_then(|value| value.capital_ships.get_mut(index))
+            .filter(|ship| ship.alive && !name.is_empty())
+        else {
+            return false;
+        };
+        ship.name = Some(name.to_owned());
+        true
+    }
+
+    /// A capital ship's name (`FUN_004f6270`): its own (`+0x34`), else its
+    /// class's.
+    #[must_use]
+    pub fn ship_name(&self, fleet: FleetKey, index: usize) -> Option<&str> {
+        let ship = self.fleets.get(fleet)?.capital_ships.get(index)?;
+        ship.name.as_deref().or_else(|| {
+            self.capital_ship_classes
+                .get(ship.class)
+                .map(|class| class.name.as_str())
+        })
+    }
+
     /// How this game names its fleets.
     #[must_use]
     pub const fn fleet_naming(&self) -> FleetNaming {
@@ -1585,7 +1632,7 @@ impl GameWorld {
 
     /// port: each signature name (`BankName::flagship`) no fleet holds goes
     /// to its side's first fleet, in slot order, that holds a ship of the
-    /// flagship's class. That fleet's old name returns to the bank. Only
+    /// flagship's class and that the player has not renamed. That fleet's old name returns to the bank. Only
     /// under Canonical naming.
     pub fn name_flagship_fleets(&mut self) {
         if self.fleet_names.mode != FleetNaming::Canonical {
@@ -1602,8 +1649,10 @@ impl GameWorld {
                 let flagship_fleet = self
                     .fleets
                     .iter()
-                    .find(|(_, fleet)| {
-                        fleet.is_alliance == is_alliance && self.holds_class(fleet, class)
+                    .find(|(key, fleet)| {
+                        fleet.is_alliance == is_alliance
+                            && !self.fleet_names.renamed.contains_key(*key)
+                            && self.holds_class(fleet, class)
                     })
                     .map(|(key, _)| key);
                 if let Some(fleet) = flagship_fleet {
@@ -1809,6 +1858,62 @@ mod tests {
         world.fleets[alpha].capital_ships = cruiser.capital_ships;
         world.name_flagship_fleets();
         assert_eq!(world.fleet_name(alpha), Some("Rebel Command Fleet"));
+        let next = world.insert_fleet(fleet(true));
+        assert_eq!(world.fleet_name(next), Some("Alpha Group"));
+    }
+
+    #[test]
+    fn a_renamed_fleet_keeps_its_name_when_it_gains_the_flagship() {
+        // port: the player's name wins over a signature name; the next
+        // fleet holding the flagship's class takes it instead.
+        let mut world = canonical_world();
+        let alpha = world.insert_fleet(fleet(true));
+        assert!(world.rename_fleet(alpha, "Home One Group"));
+        let cruiser = fleet_with(
+            &mut world,
+            true,
+            crate::fleet_name_bank::MON_CALAMARI_CRUISER,
+        );
+        world.fleets[alpha].capital_ships = cruiser.capital_ships.clone();
+        world.name_flagship_fleets();
+        assert_eq!(world.fleet_name(alpha), Some("Home One Group"));
+        let second = world.insert_fleet(cruiser);
+        world.name_flagship_fleets();
+        assert_eq!(world.fleet_name(second), Some("Rebel Command Fleet"));
+    }
+
+    #[test]
+    fn a_renamed_ship_shows_its_own_name_and_a_destroyed_one_refuses() {
+        // FUN_004f6270: the object's +0x34, else its class's name;
+        // FUN_004f6e60 refuses a destroyed object (FUN_0053a000).
+        let mut world = canonical_world();
+        let value = fleet_with(
+            &mut world,
+            true,
+            crate::fleet_name_bank::MON_CALAMARI_CRUISER,
+        );
+        let fleet = world.insert_fleet(value);
+        let class_name = world.ship_name(fleet, 0).map(str::to_owned);
+        assert!(class_name.is_some());
+        assert!(!world.rename_ship(fleet, 0, ""));
+        assert!(world.rename_ship(fleet, 0, "Home One"));
+        assert_eq!(world.ship_name(fleet, 0), Some("Home One"));
+        world.fleets[fleet].capital_ships[0].alive = false;
+        assert!(!world.rename_ship(fleet, 0, "Wreck"));
+        assert_eq!(world.ship_name(fleet, 0), Some("Home One"));
+        assert!(!world.rename_ship(fleet, 9, "Nobody"));
+    }
+
+    #[test]
+    fn an_empty_name_leaves_the_fleet_as_it_was() {
+        // FUN_004ac950 commits the edit's text only when its length is not 0.
+        let mut world = canonical_world();
+        let alpha = world.insert_fleet(fleet(true));
+        assert!(!world.rename_fleet(alpha, ""));
+        assert_eq!(world.fleet_name(alpha), Some("Alpha Group"));
+        assert!(world.rename_fleet(alpha, "Renegade"));
+        assert_eq!(world.fleet_name(alpha), Some("Renegade"));
+        // The bank name it gave up is free again.
         let next = world.insert_fleet(fleet(true));
         assert_eq!(world.fleet_name(next), Some("Alpha Group"));
     }

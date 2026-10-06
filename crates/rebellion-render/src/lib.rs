@@ -1,6 +1,7 @@
 //! Galaxy map rendering and egui UI panels.
 
 pub mod advisor;
+pub mod agent_menu;
 pub mod audio;
 pub mod bmp_cache;
 pub mod cockpit;
@@ -25,6 +26,7 @@ pub mod missions_window;
 pub mod move_confirmation;
 pub mod object_menu;
 pub mod panels;
+pub mod personnel_finder;
 pub mod quadrant_icons;
 pub mod sector_window;
 pub mod system_window;
@@ -34,6 +36,7 @@ mod tactical_resources;
 pub mod tactical_view;
 pub mod targeting;
 pub mod theme;
+pub mod troop_finder;
 pub mod video_player;
 
 use egui_macroquad::egui;

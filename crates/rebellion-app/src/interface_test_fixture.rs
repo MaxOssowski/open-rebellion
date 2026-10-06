@@ -1621,7 +1621,7 @@ fn fleet_load_observation(
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
     let primary = world.systems.keys().next()?;
     let fleet = world.fleets.keys().next()?;
-    let report = fleets.report(world, fog, transport, primary);
+    let report = fleets.report(world, movement, fog, transport, primary);
     Some(FleetLoadObservation {
         status: "fleet-load",
         code: request.code,
@@ -1871,6 +1871,7 @@ fn finder_entry(
 
 pub struct FinderWindows<'a> {
     pub fog: &'a FogState,
+    pub movement: &'a MovementState,
     pub finder: &'a FleetFinderState,
     pub fleets: &'a FleetWindowState,
     pub sectors: &'a SectorWindowState,
@@ -1893,7 +1894,9 @@ fn fleet_finder_observation(
     } else {
         Faction::Empire
     };
-    let report = windows.finder.report(world, windows.fog, player);
+    let report = windows
+        .finder
+        .report(world, windows.movement, windows.fog, player);
     let rows = report.as_ref().map_or_else(Vec::new, |report| {
         report
             .rows
@@ -3396,7 +3399,15 @@ mod tests {
             };
             let fog = FogState::new(player);
             let side = |system, quadrant| {
-                quadrant_side(world, &fog, &applied.missions, player, system, quadrant)
+                quadrant_side(
+                    world,
+                    &fog,
+                    &applied.missions,
+                    &applied.movement,
+                    player,
+                    system,
+                    quadrant,
+                )
             };
             assert_eq!(side(primary, Quadrant::System), Some(own), "{faction:?}");
             assert_eq!(side(primary, Quadrant::Defenses), Some(own), "{faction:?}");
@@ -3708,6 +3719,7 @@ mod tests {
             &applied.world,
             &FinderWindows {
                 fog: &FogState::new(player),
+                movement: &applied.movement,
                 finder,
                 fleets: &FleetWindowState::default(),
                 sectors: &applied.sectors,
@@ -3802,6 +3814,7 @@ mod tests {
                 &applied.world,
                 &FinderWindows {
                     fog: &FogState::new(Faction::Alliance),
+                    movement: &applied.movement,
                     finder,
                     fleets: &fleets,
                     sectors: &applied.sectors,
@@ -3851,6 +3864,7 @@ mod tests {
                 &applied.world,
                 &FinderWindows {
                     fog: &fog,
+                    movement: &applied.movement,
                     finder,
                     fleets: &fleets,
                     sectors: &applied.sectors,

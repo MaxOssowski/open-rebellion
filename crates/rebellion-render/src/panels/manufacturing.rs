@@ -8,7 +8,7 @@
 
 use egui_macroquad::egui::{self, Color32, RichText, ScrollArea};
 use rebellion_core::ids::SystemKey;
-use rebellion_core::manufacturing::{BuildableKind, ManufacturingState};
+use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, ProductionArea};
 use rebellion_core::missions::MissionFaction;
 use rebellion_core::research::{ResearchState, ResearchSystem};
 use rebellion_core::world::GameWorld;
@@ -26,8 +26,6 @@ pub struct ManufacturingPanelState {
     pub expanded_system: Option<SystemKey>,
     /// Current selection in the "add to queue" combo for the expanded system.
     pub add_selection: AddSelection,
-    /// Where new builds for the expanded system go; `None` keeps them there.
-    pub destination: Option<SystemKey>,
 }
 
 /// What the player has selected to add to the production queue.
@@ -58,6 +56,7 @@ pub fn draw_manufacturing(
     panel_state: &mut ManufacturingPanelState,
     player_faction: MissionFaction,
     research_state: &ResearchState,
+    today: u64,
 ) -> Option<PanelAction> {
     let mut action = None;
 
@@ -93,7 +92,6 @@ pub fn draw_manufacturing(
                             panel_state.expanded_system =
                                 if is_expanded { None } else { Some(sys_key) };
                             panel_state.add_selection = AddSelection::None;
-                            panel_state.destination = None;
                         }
 
                         ui.label(RichText::new(&system.name).strong());
@@ -125,6 +123,7 @@ pub fn draw_manufacturing(
                             // ── Current queue ─────────────────────────────────
                             if let Some(q) = queue {
                                 let items: Vec<_> = q.items().iter().collect();
+                                let completion_days = q.completion_days(today);
                                 if items.is_empty() {
                                     ui.label(
                                         RichText::new("Queue empty.")
@@ -175,8 +174,8 @@ pub fn draw_manufacturing(
 
                                             ui.label(
                                                 RichText::new(format!(
-                                                    "{kind_label} ({} days left)",
-                                                    item.ticks_remaining
+                                                    "{kind_label} (day {})",
+                                                    completion_days[idx]
                                                 ))
                                                 .small(),
                                             );
@@ -222,28 +221,41 @@ pub fn draw_manufacturing(
                                     .color(Color32::from_gray(180)),
                             );
 
-                            // port: the original picks a destination by dropping the
-                            // order on a system; this combo lists the held systems.
+                            // port: the original sets an area's Destination
+                            // (0x214) by targeting a system; this combo sets
+                            // the shipyards', which build what this panel adds.
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new("Deliver to:").small());
                                 let name_of = |key: Option<SystemKey>| {
                                     key.and_then(|key| world.systems.get(key))
                                         .map_or("here", |s| s.name.as_str())
                                 };
+                                let current =
+                                    mfg_state.destination(sys_key, ProductionArea::Shipyard);
+                                let mut chosen = current;
                                 egui::ComboBox::from_id_salt(format!("dest_combo_{sys_key:?}"))
-                                    .selected_text(name_of(panel_state.destination))
+                                    .selected_text(name_of(current))
                                     .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut panel_state.destination, None, "here");
+                                        ui.selectable_value(&mut chosen, None, "here");
                                         for (key, other) in &world.systems {
-                                            if key != sys_key && faction_holds(other, player_faction) {
+                                            if key != sys_key
+                                                && faction_holds(other, player_faction)
+                                            {
                                                 ui.selectable_value(
-                                                    &mut panel_state.destination,
+                                                    &mut chosen,
                                                     Some(key),
                                                     &other.name,
                                                 );
                                             }
                                         }
                                     });
+                                if chosen != current {
+                                    action = Some(PanelAction::SetDestination {
+                                        system: sys_key,
+                                        area: Some(ProductionArea::Shipyard),
+                                        destination: chosen.unwrap_or(sys_key),
+                                    });
+                                }
                             });
 
                             // Collect the classes this faction has researched.
@@ -320,7 +332,7 @@ pub fn draw_manufacturing(
                                                     kind: BuildableKind::CapitalShip(*class_key),
                                                     cost: class.refined_material_cost,
                                                     ticks: class.research_difficulty.max(1),
-                                                    destination: panel_state.destination,
+                                                    destination: None,
                                                 });
                                             }
                                         }
@@ -374,7 +386,7 @@ pub fn draw_manufacturing(
                                                     // material cost / 5 + 5 as a build-time proxy.
                                                     ticks: (class.refined_material_cost / 5 + 5)
                                                         .max(1),
-                                                    destination: panel_state.destination,
+                                                    destination: None,
                                                 });
                                             }
                                         }

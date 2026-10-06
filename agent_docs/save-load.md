@@ -18,7 +18,7 @@ that loads.
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 26
+[version: u32 LE]             — SAVE_VERSION = 29
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
 [mod_count: u32 LE]
@@ -66,6 +66,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `campaign_config` | `CampaignConfig` |
 | `troop_transport` | `TroopTransportState` |
 | `deliveries` | `DeliveryState` |
+| `player_agent` | `PlayerAgent` |
 
 Loading restores the RNG, dual-AI state, repair episodes, and combat memory
 instead of reseeding or clearing them. `campaign_config` keeps the selected
@@ -74,7 +75,9 @@ keeps its original Game Speed and partial day, so a game saved while paused
 reloads paused. The save also holds blockade embarked-regiment tracking,
 the fleets holding regiments loaded through the Fleet window (v24),
 regiments travelling on their own (v25), the fleet a moving fleet joins on
-arrival (v26),
+arrival (v26), the fleet naming mode (v28), and the player's Manage
+Garrisons and Manage Production automation, the Agent Advice setting, renamed
+fleets and ships, and each production area's destination (v29),
 `UprisingState`, queue destinations and en-route deliveries, missions with
 their member lists, phase, and timer, members travelling to a mission
 target, and the MISSNSD and SPECFCSD records.

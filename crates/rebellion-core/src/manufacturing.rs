@@ -35,7 +35,7 @@
 //! // Handle completions: add ships to fleets, place facilities, etc.
 //! ```
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -197,6 +197,21 @@ impl ProductionQueue {
         &self.items
     }
 
+    /// The game day each item completes when the queue keeps building from
+    /// day `today`: each waits for those ahead of it, as only the active
+    /// item advances. The manual's Best Time to Completion is a day of the
+    /// game (Fig. 3.58).
+    #[must_use]
+    pub fn completion_days(&self, today: u64) -> Vec<u64> {
+        self.items
+            .iter()
+            .scan(today, |day, item| {
+                *day += u64::from(item.ticks_remaining);
+                Some(*day)
+            })
+            .collect()
+    }
+
     /// Total items, including the active one.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -237,6 +252,40 @@ impl ProductionQueue {
 // ManufacturingState
 // ---------------------------------------------------------------------------
 
+/// A system's production area: the kind of facility a product comes from.
+/// The original keeps one manager object per area at a system (families
+/// `0xa0..0xaf`, `FUN_0052c170`): the agent's Destination (`0x214`) and
+/// build orders act on construction managers (`0xa0..0xa1`) and training
+/// managers (`0xa4..0xa5`; `ghidra/notes/manage-automation.md`), and the
+/// manual gives each area its own Destination (p. 84, Fig. 3.75). hyp:
+/// shipyards are `0xa2..0xa3`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum ProductionArea {
+    Shipyard,
+    TrainingFacility,
+    ConstructionYard,
+}
+
+impl ProductionArea {
+    pub const ALL: [Self; 3] = [
+        Self::Shipyard,
+        Self::TrainingFacility,
+        Self::ConstructionYard,
+    ];
+
+    /// The area that builds `kind`.
+    #[must_use]
+    pub const fn of(kind: BuildableKind) -> Self {
+        match kind {
+            BuildableKind::CapitalShip(_) | BuildableKind::Fighter(_) => Self::Shipyard,
+            BuildableKind::Troop(_) => Self::TrainingFacility,
+            BuildableKind::DefenseFacility(_)
+            | BuildableKind::ManufacturingFacility(_)
+            | BuildableKind::ProductionFacility(_) => Self::ConstructionYard,
+        }
+    }
+}
+
 /// Per-system production queues for the entire galaxy.
 ///
 /// Systems with no active queue are not stored (lazy entry on first enqueue).
@@ -247,6 +296,9 @@ pub struct ManufacturingState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     queues: HashMap<SystemKey, ProductionQueue>,
+    /// Each production area's Destination (`0x214`) where it is not the
+    /// area's own system.
+    destinations: BTreeMap<(SystemKey, ProductionArea), SystemKey>,
 }
 
 impl ManufacturingState {
@@ -254,6 +306,7 @@ impl ManufacturingState {
     pub fn new() -> Self {
         ManufacturingState {
             queues: HashMap::new(),
+            destinations: BTreeMap::new(),
         }
     }
 
@@ -273,9 +326,48 @@ impl ManufacturingState {
         self.queues.get(&system)
     }
 
-    /// Enqueue an item at a system's production queue.
+    /// Enqueue an item at a system's production queue. An item with no
+    /// destination of its own takes its area's (hyp: a new product copies
+    /// its manager's destination, `+0x74` → `+0x3c`; `build-delivery.md`).
     pub fn enqueue(&mut self, system: SystemKey, item: QueueItem) {
+        let item = match (
+            item.destination,
+            self.destination(system, ProductionArea::of(item.kind)),
+        ) {
+            (None, Some(destination)) => item.delivered_to(destination),
+            _ => item,
+        };
         self.queue_mut(system).enqueue(item);
+    }
+
+    /// Where `system`'s `area` delivers what it builds, when not at home.
+    #[must_use]
+    pub fn destination(&self, system: SystemKey, area: ProductionArea) -> Option<SystemKey> {
+        self.destinations.get(&(system, area)).copied()
+    }
+
+    /// The Destination order (`0x214`) on `system`'s `area`: what it builds,
+    /// queued now or later, goes to `destination`; the area's own system
+    /// clears it. hyp: the order rewrites the queued products' destination
+    /// (`+0x3c`) too; its handler is untraced (`production-destination.md`).
+    pub fn set_destination(
+        &mut self,
+        system: SystemKey,
+        area: ProductionArea,
+        destination: SystemKey,
+    ) {
+        let target = (destination != system).then_some(destination);
+        match target {
+            Some(destination) => self.destinations.insert((system, area), destination),
+            None => self.destinations.remove(&(system, area)),
+        };
+        if let Some(queue) = self.queues.get_mut(&system) {
+            for item in &mut queue.items {
+                if ProductionArea::of(item.kind) == area {
+                    item.destination = target;
+                }
+            }
+        }
     }
 
     /// All system queues (including empty ones that were created lazily).
@@ -528,6 +620,65 @@ mod tests {
         q.enqueue(cap_ship_item(10));
         assert!(q.active().is_some());
         assert_eq!(q.active().unwrap().ticks_remaining, 10);
+    }
+
+    #[test]
+    fn each_production_area_keeps_its_own_destination() {
+        // Manual p. 84, Fig. 3.75: Destination per production area; the
+        // agent's 0x214 acts on one area's manager (manage-automation.md).
+        let mut systems: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
+        let (home, away) = (systems.insert(()), systems.insert(()));
+        let mut state = ManufacturingState::new();
+        state.enqueue(home, cap_ship_item(10));
+        state.enqueue(
+            home,
+            QueueItem::new(BuildableKind::Troop(TroopKey::default()), 5, 5),
+        );
+
+        state.set_destination(home, ProductionArea::Shipyard, away);
+        let destinations = |state: &ManufacturingState| {
+            state
+                .queue(home)
+                .unwrap()
+                .items()
+                .iter()
+                .map(|item| item.destination)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(destinations(&state), [Some(away), None]);
+        assert_eq!(
+            state.destination(home, ProductionArea::Shipyard),
+            Some(away)
+        );
+        assert_eq!(
+            state.destination(home, ProductionArea::TrainingFacility),
+            None
+        );
+
+        // A later product of that area takes it; another area's does not.
+        state.enqueue(home, cap_ship_item(3));
+        state.enqueue(
+            home,
+            QueueItem::new(BuildableKind::Troop(TroopKey::default()), 5, 5),
+        );
+        assert_eq!(destinations(&state), [Some(away), None, Some(away), None]);
+
+        // Back at home clears it.
+        state.set_destination(home, ProductionArea::Shipyard, home);
+        assert_eq!(destinations(&state), [None, None, None, None]);
+        assert_eq!(state.destination(home, ProductionArea::Shipyard), None);
+    }
+
+    #[test]
+    fn each_queued_item_completes_after_those_ahead_of_it() {
+        // Manual Fig. 3.58: completion is a game day; only the active item
+        // advances, so the rest wait their turn.
+        let mut q = ProductionQueue::new();
+        q.enqueue(cap_ship_item(10));
+        q.enqueue(cap_ship_item(4));
+        q.advance_ticks(3);
+        assert_eq!(q.completion_days(100), [107, 111]);
+        assert!(ProductionQueue::new().completion_days(5).is_empty());
     }
 
     #[test]

@@ -290,6 +290,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         )
     );
     let troop = matches!(selection, Some(MenuObject::Troop(_)));
+    let fleet_entry = matches!(selection, Some(MenuObject::Fleet(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
     let offered: &[ObjectMenuItem] = match selection {
         Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
@@ -318,6 +319,8 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         || (ship && gates.ship_move)
                 }
                 ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
+                ObjectMenuCommand::Rename => (fleet_entry || ship) && gates.rename,
+                ObjectMenuCommand::Destination => gates.destination,
                 ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 _ => false,
@@ -335,6 +338,12 @@ pub struct OrderGates {
     pub fleet_move: bool,
     pub troop_move: bool,
     pub ship_move: bool,
+    /// Rename (0x203): the selection is the player's and can take a name
+    /// (`FUN_004f6e60` refuses a destroyed object).
+    pub rename: bool,
+    /// Destination (0x214) on a facility icon: the system has production
+    /// areas of the player's (`FUN_00512700` kind 4).
+    pub destination: bool,
 }
 
 /// An open object pop-up menu.
@@ -438,6 +447,8 @@ mod tests {
         fleet_move: false,
         troop_move: false,
         ship_move: false,
+        rename: false,
+        destination: false,
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -568,6 +579,8 @@ mod tests {
             fleet_move: true,
             troop_move: true,
             ship_move: true,
+            rename: false,
+            destination: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -583,6 +596,46 @@ mod tests {
             enabled(&object_menu_rows(character, gates)),
             ["Encyclopedia"]
         );
+    }
+
+    #[test]
+    fn rename_is_enabled_for_a_fleet_or_ship_its_rule_allows() {
+        // 0x203 (TEXTSTRA 12291) on a fleet's and a ship's menu
+        // (FUN_00502bd0); a character's menu does not offer it.
+        let gates = OrderGates {
+            rename: true,
+            ..OrderGates::default()
+        };
+        let fleet = Some(MenuObject::Fleet(FleetKey::default()));
+        let ship = Some(MenuObject::Ship {
+            fleet: FleetKey::default(),
+            index: 0,
+            roster: 0,
+        });
+        for selection in [fleet, ship] {
+            assert!(enabled(&object_menu_rows(selection, gates)).contains(&"Rename"));
+            assert!(
+                !enabled(&object_menu_rows(selection, OrderGates::default())).contains(&"Rename")
+            );
+        }
+        let character = Some(MenuObject::Character(CharacterKey::default()));
+        assert!(!enabled(&object_menu_rows(character, gates)).contains(&"Rename"));
+    }
+
+    #[test]
+    fn a_facility_icons_destination_follows_its_rule() {
+        // sector-icon-menus.md: Destination (0x214, TEXTSTRA 12290) on the
+        // facility icon acts on the system's production areas.
+        let gates = OrderGates {
+            destination: true,
+            ..OrderGates::default()
+        };
+        assert!(enabled(&object_menu_rows(icon(Quadrant::System), gates)).contains(&"Destination"));
+        assert!(!enabled(&object_menu_rows(
+            icon(Quadrant::System),
+            OrderGates::default()
+        ))
+        .contains(&"Destination"));
     }
 
     fn icon(quadrant: Quadrant) -> Option<MenuObject> {
@@ -666,6 +719,8 @@ mod tests {
             fleet_move: true,
             troop_move: true,
             ship_move: true,
+            rename: false,
+            destination: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),

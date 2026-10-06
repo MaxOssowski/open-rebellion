@@ -78,7 +78,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 28;
+pub const SAVE_VERSION: u32 = 29;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -249,6 +249,9 @@ pub struct SaveState {
     // ── v16: en-route manufactured objects (F-030) ──────────────────────
     /// Manufactured objects travelling to their destination.
     pub deliveries: DeliveryState,
+    // ── v29: the player's agent (Manage Garrisons / Manage Production) ──
+    /// Saved with the game as the original saves its agent (`FUN_004397a0`).
+    pub player_agent: rebellion_core::agent_automation::PlayerAgent,
 }
 
 // ---------------------------------------------------------------------------
@@ -961,6 +964,7 @@ mod tests {
             campaign_config: CampaignConfig::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
+            player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
         }
     }
 

@@ -601,6 +601,7 @@ struct WindowDrawResult {
 pub fn draw_system_windows(
     ctx: &egui::Context,
     world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
     fog: &FogState,
     missions: &MissionState,
     state: &mut SystemWindowState,
@@ -609,7 +610,9 @@ pub fn draw_system_windows(
     cache: &mut BmpCache,
 ) -> Vec<SystemWindowAction> {
     state.prepare_faction(faction);
-    let restored = draw_reference_rail(ctx, world, fog, missions, state, faction, layout, cache);
+    let restored = draw_reference_rail(
+        ctx, world, movement, fog, missions, state, faction, layout, cache,
+    );
 
     let mut actions: Vec<SystemWindowAction> = restored
         .into_iter()
@@ -629,6 +632,7 @@ pub fn draw_system_windows(
         let result = draw_system_window(
             ctx,
             world,
+            movement,
             fog,
             window,
             focused_system == Some(window.system),
@@ -705,6 +709,7 @@ pub fn draw_system_windows(
 fn draw_reference_rail(
     ctx: &egui::Context,
     world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
     fog: &FogState,
     missions: &MissionState,
     state: &mut SystemWindowState,
@@ -756,6 +761,7 @@ fn draw_reference_rail(
                         ),
                         _ => crate::fleet_window::rail_icon(
                             world,
+                            movement,
                             fog,
                             cockpit_faction(faction),
                             entry.system(),
@@ -834,6 +840,7 @@ fn draw_reference_rail(
 fn draw_system_window(
     ctx: &egui::Context,
     world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
     fog: &FogState,
     window: OpenSystemWindow,
     focused: bool,
@@ -949,8 +956,14 @@ fn draw_system_window(
             );
 
             for tab in SystemWindowTab::ALL {
-                let available =
-                    tab_available(world, fog, cockpit_faction(faction), window.system, tab);
+                let available = tab_available(
+                    world,
+                    movement,
+                    fog,
+                    cockpit_faction(faction),
+                    window.system,
+                    tab,
+                );
                 let tab_rect =
                     logical_rect(local_window, layout.scale, 2.0 + tab.x(), 20.0, 36.0, 33.0);
                 let response = ui.interact(
@@ -983,6 +996,7 @@ fn draw_system_window(
                 ui,
                 cache,
                 world,
+                movement,
                 fog,
                 cockpit_faction(faction),
                 window,
@@ -1080,6 +1094,7 @@ fn paint_tab_content(
     ui: &mut egui::Ui,
     cache: &mut BmpCache,
     world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
     fog: &FogState,
     player_faction: Faction,
     window: OpenSystemWindow,
@@ -1151,7 +1166,14 @@ fn paint_tab_content(
         }
     }
 
-    let items = tab_visual_items(world, fog, player_faction, window.system, window.tab);
+    let items = tab_visual_items(
+        world,
+        movement,
+        fog,
+        player_faction,
+        window.system,
+        window.tab,
+    );
     if items.is_empty() {
         return result;
     }
@@ -1184,6 +1206,27 @@ fn paint_tab_content(
             egui::Sense::click(),
         );
         paint_gokres_resource(ui.painter(), ui.ctx(), cache, item.resource_id, image_rect);
+        // FUN_0042c3b0: an en route fleet's mini carries 10423 (side 2: 10473)
+        // at its origin.
+        if let SystemWindowItem::Fleet(fleet) = item.key {
+            if let Some(value) = world
+                .fleets
+                .get(fleet)
+                .filter(|_| movement.is_in_transit(fleet))
+            {
+                crate::fleet_window::paint_native(
+                    ui.painter(),
+                    ui.ctx(),
+                    cache,
+                    DllSource::Strategy,
+                    if value.is_alliance { 10423 } else { 10473 },
+                    image_rect,
+                    scale,
+                    0.0,
+                    0.0,
+                );
+            }
+        }
         let selected = window.selected_item == Some(item.key);
         if selected {
             ui.painter().rect_stroke(
@@ -1336,6 +1379,7 @@ struct TabVisualItem {
 )]
 fn tab_visual_items(
     world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
     fog: &FogState,
     player_faction: Faction,
     system_key: SystemKey,
@@ -1370,34 +1414,35 @@ fn tab_visual_items(
                 })
             })
             .collect(),
-        SystemWindowTab::Fleets => system
-            .fleets
-            .iter()
-            .filter_map(|key| {
-                let fleet = world.fleets.get(*key)?;
-                if !opposing_contents_visible && fleet.is_alliance != player_is_alliance {
-                    return None;
-                }
-                let resource_id = fleet
-                    .capital_ships
-                    .iter()
-                    .find_map(|ship| {
-                        let class = world.capital_ship_classes.get(ship.class)?;
-                        capital_ship_mini_id(class.dat_id)
-                    })
-                    .or_else(|| {
-                        fleet.fighters.iter().find_map(|fighter| {
-                            let class = world.fighter_classes.get(fighter.class)?;
-                            fighter_mini_id(class.dat_id)
+        SystemWindowTab::Fleets => {
+            rebellion_core::movement::listed_fleets(movement, world, system_key)
+                .iter()
+                .filter_map(|key| {
+                    let fleet = world.fleets.get(*key)?;
+                    if !opposing_contents_visible && fleet.is_alliance != player_is_alliance {
+                        return None;
+                    }
+                    let resource_id = fleet
+                        .capital_ships
+                        .iter()
+                        .find_map(|ship| {
+                            let class = world.capital_ship_classes.get(ship.class)?;
+                            capital_ship_mini_id(class.dat_id)
                         })
-                    })?;
-                Some(TabVisualItem {
-                    key: SystemWindowItem::Fleet(*key),
-                    resource_id,
-                    label: fleet_label(world, *key)?,
+                        .or_else(|| {
+                            fleet.fighters.iter().find_map(|fighter| {
+                                let class = world.fighter_classes.get(fighter.class)?;
+                                fighter_mini_id(class.dat_id)
+                            })
+                        })?;
+                    Some(TabVisualItem {
+                        key: SystemWindowItem::Fleet(*key),
+                        resource_id,
+                        label: fleet_label(world, *key)?,
+                    })
                 })
-            })
-            .collect(),
+                .collect()
+        }
         SystemWindowTab::Defense => system
             .defense_facilities
             .iter()
@@ -1590,6 +1635,7 @@ pub(crate) fn special_force_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
 
 fn tab_available(
     world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
     fog: &FogState,
     player_faction: Faction,
     system: SystemKey,
@@ -1598,7 +1644,7 @@ fn tab_available(
     if tab == SystemWindowTab::Personnel {
         return true;
     }
-    !tab_visual_items(world, fog, player_faction, system, tab).is_empty()
+    !tab_visual_items(world, movement, fog, player_faction, system, tab).is_empty()
 }
 
 fn tab_resource(
@@ -2185,6 +2231,7 @@ mod tests {
         let mut fog = FogState::new(Faction::Alliance);
         let hidden = tab_visual_items(
             &world,
+            &rebellion_core::movement::MovementState::default(),
             &fog,
             Faction::Alliance,
             system,
@@ -2196,6 +2243,7 @@ mod tests {
         fog.reveal(system);
         let revealed = tab_visual_items(
             &world,
+            &rebellion_core::movement::MovementState::default(),
             &fog,
             Faction::Alliance,
             system,
@@ -2206,6 +2254,7 @@ mod tests {
         fog.faction = Faction::Empire;
         let mismatched_fog = tab_visual_items(
             &world,
+            &rebellion_core::movement::MovementState::default(),
             &fog,
             Faction::Alliance,
             system,
@@ -2235,6 +2284,7 @@ mod tests {
 
         assert!(!tab_available(
             &world,
+            &rebellion_core::movement::MovementState::default(),
             &fog,
             Faction::Alliance,
             system,
@@ -2282,6 +2332,7 @@ mod tests {
             draw_system_windows(
                 ctx,
                 &world,
+                &rebellion_core::movement::MovementState::default(),
                 &fog,
                 &rebellion_core::missions::MissionState::new(),
                 &mut state,
@@ -2340,6 +2391,7 @@ mod tests {
                 actions.extend(draw_system_windows(
                     ctx,
                     world,
+                    &rebellion_core::movement::MovementState::default(),
                     &fog,
                     &rebellion_core::missions::MissionState::new(),
                     &mut state,
@@ -2410,6 +2462,7 @@ mod tests {
                 actions.extend(draw_system_windows(
                     ctx,
                     world,
+                    &rebellion_core::movement::MovementState::default(),
                     &fog,
                     &rebellion_core::missions::MissionState::new(),
                     &mut state,
@@ -2728,7 +2781,7 @@ mod tests {
 
     #[test]
     fn a_fleets_label_is_the_one_its_fleets_tab_shows() {
-        let (mut world, systems) = fixture_world(1);
+        let (mut world, systems) = fixture_world(2);
         let class = world
             .fighter_classes
             .insert(rebellion_core::world::FighterClass {
@@ -2752,6 +2805,7 @@ mod tests {
         let fog = FogState::new(Faction::Alliance);
         let items = tab_visual_items(
             &world,
+            &rebellion_core::movement::MovementState::default(),
             &fog,
             Faction::Alliance,
             systems[0],
@@ -2767,10 +2821,13 @@ mod tests {
         );
         assert_eq!(fleet_label(&world, fleets[1]).as_deref(), Some("Fleet 2"));
         // The name is the fleet's own (+0x34, FUN_004f6e60), so it keeps it
-        // when the fleet before it leaves the system.
+        // when the fleet before it reaches another system.
         world.systems[systems[0]].fleets.remove(0);
+        world.fleets[fleets[0]].location = systems[1];
+        world.systems[systems[1]].fleets.push(fleets[0]);
         let items = tab_visual_items(
             &world,
+            &rebellion_core::movement::MovementState::default(),
             &fog,
             Faction::Alliance,
             systems[0],
@@ -2893,6 +2950,21 @@ mod tests {
         state: &mut SystemWindowState,
         frames: Vec<Vec<egui::Event>>,
     ) -> (Vec<SystemWindowAction>, Vec<RailText>) {
+        run_rail_moving(
+            world,
+            &rebellion_core::movement::MovementState::default(),
+            state,
+            frames,
+        )
+    }
+
+    /// [`run_rail`] with fleets under `movement`'s orders.
+    fn run_rail_moving(
+        world: &GameWorld,
+        movement: &rebellion_core::movement::MovementState,
+        state: &mut SystemWindowState,
+        frames: Vec<Vec<egui::Event>>,
+    ) -> (Vec<SystemWindowAction>, Vec<RailText>) {
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let ctx = egui::Context::default();
         let mut cache = BmpCache::new();
@@ -2912,6 +2984,7 @@ mod tests {
                 actions.extend(draw_system_windows(
                     ctx,
                     world,
+                    movement,
                     &fog,
                     &rebellion_core::missions::MissionState::new(),
                     state,
@@ -2935,6 +3008,116 @@ mod tests {
                 .collect();
         }
         (actions, texts)
+    }
+
+    #[test]
+    fn the_fleets_tab_shows_the_other_sides_fleets_only_where_its_contents_show() {
+        // port: as the window's other tabs (opposing_contents_visible), the
+        // other side's fleets show at an own or revealed system.
+        let (mut world, systems) = fixture_world(1);
+        let class = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x1c00_0001),
+                ..Default::default()
+            });
+        let mut add = |is_alliance| {
+            world.insert_fleet(Fleet {
+                location: systems[0],
+                capital_ships: Vec::new(),
+                fighters: vec![rebellion_core::world::FighterEntry { class, count: 1 }],
+                characters: Vec::new(),
+                is_alliance,
+                has_death_star: false,
+            })
+        };
+        let own = add(true);
+        let enemy = add(false);
+        world.systems[systems[0]].fleets.extend([own, enemy]);
+        world.systems[systems[0]].control = ControlKind::Controlled(Faction::Empire);
+        let movement = rebellion_core::movement::MovementState::default();
+        let listed = |fog: &FogState| {
+            tab_visual_items(
+                &world,
+                &movement,
+                fog,
+                Faction::Alliance,
+                systems[0],
+                SystemWindowTab::Fleets,
+            )
+            .into_iter()
+            .map(|item| item.key)
+            .collect::<Vec<_>>()
+        };
+        let mut fog = FogState::new(Faction::Alliance);
+        assert_eq!(listed(&fog), [SystemWindowItem::Fleet(own)]);
+        fog.reveal(systems[0]);
+        assert_eq!(
+            listed(&fog),
+            [SystemWindowItem::Fleet(own), SystemWindowItem::Fleet(enemy)]
+        );
+        assert!(tab_available(
+            &world,
+            &movement,
+            &fog,
+            Faction::Alliance,
+            systems[0],
+            SystemWindowTab::Fleets
+        ));
+    }
+
+    #[test]
+    fn a_fleet_bound_for_a_system_shows_in_its_fleets_tab_with_its_overlay() {
+        // FUN_0042c3b0: an en route fleet (+0x50 bit 4) gets 10423 over its
+        // mini; move-order.md: it is its destination's child at once.
+        let (mut world, systems) = fixture_world(1);
+        let class = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x1c00_0001),
+                ..Default::default()
+            });
+        let fleet = world.insert_fleet(Fleet {
+            location: systems[0],
+            capital_ships: Vec::new(),
+            fighters: vec![rebellion_core::world::FighterEntry { class, count: 1 }],
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        assert!(state.open_tab(
+            &world,
+            systems[0],
+            SystemWindowTab::Fleets,
+            (100, 50),
+            CockpitFaction::Alliance,
+            layout,
+        ));
+        let mut movement = rebellion_core::movement::MovementState::default();
+        let overlays = |world: &GameWorld,
+                        movement: &rebellion_core::movement::MovementState,
+                        state: &mut SystemWindowState| {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            run_rail_moving(world, movement, state, vec![vec![], vec![]]);
+            crate::fleet_window::tests::PAINTED
+                .with(|painted| painted.take())
+                .into_iter()
+                .filter(|(id, _)| *id == 10423)
+                .count()
+        };
+
+        world.systems[systems[0]].fleets.push(fleet);
+        assert_eq!(overlays(&world, &movement, &mut state), 0);
+        world.systems[systems[0]].fleets.clear();
+        assert_eq!(
+            overlays(&world, &movement, &mut state),
+            0,
+            "gone, not bound here"
+        );
+        assert!(movement.order(fleet, systems[0], systems[0], 5));
+        assert!(overlays(&world, &movement, &mut state) > 0);
     }
 
     #[test]

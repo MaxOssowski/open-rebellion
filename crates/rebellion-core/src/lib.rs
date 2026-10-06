@@ -1,3 +1,4 @@
+pub mod agent_automation;
 pub mod ai;
 pub mod betrayal;
 pub mod blockade;

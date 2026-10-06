@@ -140,7 +140,14 @@ struct MemberRow {
     member: MissionMember,
     mini: Option<u32>,
     label: String,
+    /// En route to the mission's target (`+0x50` bit 4): the mini carries
+    /// [`EN_ROUTE_SMALL`].
+    en_route: bool,
 }
+
+/// `FUN_0042c3b0`'s small en route overlay for a character or special force
+/// (11501, `0x2ced`), drawn over its mini.
+const EN_ROUTE_SMALL: u32 = 11501;
 
 /// What the selected mission's details name (`+0x1c8`, `FUN_004a10a0`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -448,6 +455,59 @@ const fn side_faction(side: u8) -> MissionFaction {
 /// window shows them, as for the sector window's icons. hyp: the rows follow
 /// the mission keys' order, the map `FUN_004a1590` collects them in, which
 /// for the port's sequential ids is the order the missions began.
+/// The members the window lists at `system`: those there, then those on
+/// their way to it. A member's transit puts it in its target's container
+/// at once (`FUN_00556430` to `+0x74`; `mission-lifecycle.md`), so it is
+/// listed there, en route (`+0x50` bit 4), as a fleet is
+/// (`move-order.md`). Each carries its side, whether it is on a hidden
+/// mission, and whether it is en route.
+fn listed_members(
+    world: &GameWorld,
+    fog: &FogState,
+    transits: &[rebellion_core::missions::MemberTransit],
+    player: Faction,
+    system: SystemKey,
+) -> Vec<(MissionMember, u8, bool, bool)> {
+    let mut members: Vec<_> = visible_members(world, fog, player, system)
+        .into_iter()
+        .map(|(member, side, hidden)| (member, side, hidden, false))
+        .collect();
+    if world.systems.get(system).is_none_or(|value| {
+        value.exploration_status == rebellion_core::dat::ExplorationStatus::Unexplored
+    }) {
+        return members;
+    }
+    let opposing_visible =
+        crate::system_window::opposing_contents_visible(world, fog, player, system);
+    let own = crate::fleet_window::faction_side(player);
+    for transit in transits.iter().filter(|transit| transit.to == system) {
+        let (side, hidden) = match transit.member {
+            MissionMember::Character(key) => match world.characters.get(key) {
+                Some(character) if !character.is_killed => (
+                    if character.is_alliance {
+                        1
+                    } else if character.is_empire {
+                        2
+                    } else {
+                        0
+                    },
+                    character.on_hidden_mission,
+                ),
+                _ => continue,
+            },
+            MissionMember::SpecialForce(key) => match world.special_forces.get(key) {
+                Some(force) => (crate::fleet_window::fleet_side(force.is_alliance), false),
+                None => continue,
+            },
+        };
+        if (opposing_visible || side == own) && !members.iter().any(|(m, ..)| *m == transit.member)
+        {
+            members.push((transit.member, side, hidden, true));
+        }
+    }
+    members
+}
+
 fn mission_rows(
     world: &GameWorld,
     fog: &FogState,
@@ -457,7 +517,8 @@ fn mission_rows(
 ) -> Vec<MissionRow> {
     let keys = mission_keys(missions);
     let mut sides = BTreeMap::new();
-    for (member, side, hidden) in visible_members(world, fog, player, system) {
+    for (member, side, hidden, _) in listed_members(world, fog, missions.en_route(), player, system)
+    {
         if hidden {
             continue;
         }
@@ -496,19 +557,33 @@ fn member_rows(
         return Vec::new();
     };
     let keys = mission_keys(missions);
-    visible_members(world, fog, player, system)
+    listed_members(world, fog, missions.en_route(), player, system)
         .into_iter()
-        .filter(|(member, _, _)| keys.get(member) == Some(&id))
-        .filter(|(member, _, _)| value.decoys.contains(member) == (tab == MissionsTab::Decoys))
-        .filter_map(|(member, _, _)| {
+        .filter(|(member, ..)| keys.get(member) == Some(&id))
+        .filter(|(member, ..)| value.decoys.contains(member) == (tab == MissionsTab::Decoys))
+        .filter_map(|(member, _, _, en_route)| {
             let (mini, label) = member_mini(world, member)?;
             Some(MemberRow {
                 member,
                 mini,
                 label,
+                en_route: en_route && carries_en_route_overlay(world, member),
             })
         })
         .collect()
+}
+
+/// Whether `FUN_0042c3b0` draws [`EN_ROUTE_SMALL`] over `member`'s mini:
+/// every character, and every special force but classes `0x3c000003` and
+/// `0x3c000005`.
+fn carries_en_route_overlay(world: &GameWorld, member: MissionMember) -> bool {
+    match member {
+        MissionMember::Character(_) => true,
+        MissionMember::SpecialForce(key) => world
+            .special_forces
+            .get(key)
+            .is_some_and(|force| !matches!(force.class_dat_id.raw(), 0x3c00_0003 | 0x3c00_0005)),
+    }
 }
 
 /// A member's GOKRES mini and name (`FUN_0042c3b0(.., 0, 1)`,
@@ -1117,6 +1192,19 @@ fn draw_missions_window(
                             x,
                             y,
                         );
+                        if member.en_route {
+                            paint_native(
+                                &member_painter,
+                                ctx,
+                                cache,
+                                DllSource::Strategy,
+                                EN_ROUTE_SMALL,
+                                cell,
+                                scale,
+                                x,
+                                y,
+                            );
+                        }
                     }
                     // Format 0x21: one line, centred in the cell less 2 on
                     // each side, under the mini (item `+0x34`), font 10.
@@ -1285,6 +1373,105 @@ mod tests {
             None,
         );
         (world, system, missions, [first, second, decoy, spy])
+    }
+
+    #[test]
+    fn a_member_on_its_way_is_listed_at_its_target_with_the_en_route_mark() {
+        // FUN_00556430 puts a travelling member in its target's container at
+        // once (mission-lifecycle.md); FUN_0042c3b0 draws 11501 over the
+        // mini of an en route (+0x50 bit 4) character.
+        let (mut world, system, _, _) = busy();
+        let traveller = world.characters.insert(Character {
+            dat_id: DatId::new(832),
+            name: "Traveller".into(),
+            is_alliance: true,
+            current_system: None,
+            recruited: true,
+            ..Default::default()
+        });
+        let member = MissionMember::Character(traveller);
+        let transit = rebellion_core::missions::MemberTransit {
+            member,
+            mission_id: 0,
+            to: system,
+            arrival: 9,
+        };
+        let listed = |transits: &[rebellion_core::missions::MemberTransit]| {
+            listed_members(&world, &unseen(), transits, Faction::Alliance, system)
+        };
+        assert!(!listed(&[]).iter().any(|(m, ..)| *m == member));
+        let with = listed(&[transit]);
+        assert!(with.contains(&(member, 1, false, true)), "{with:?}");
+        assert!(carries_en_route_overlay(&world, member));
+    }
+
+    #[test]
+    fn a_killed_or_unseen_traveller_is_not_listed_and_two_force_classes_carry_no_mark() {
+        // port: a member bound for a system shows where the System window
+        // shows its side's members, and a killed one not at all.
+        // FUN_0042c3b0 skips the overlay for classes 0x3c000003/0x3c000005.
+        let (mut world, system, _, _) = busy();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let mut traveller = |name: &str, is_alliance: bool, is_killed: bool| {
+            MissionMember::Character(world.characters.insert(Character {
+                dat_id: DatId::new(832),
+                name: name.into(),
+                is_alliance,
+                is_empire: !is_alliance,
+                is_killed,
+                recruited: true,
+                ..Default::default()
+            }))
+        };
+        let own = traveller("Own", true, false);
+        let killed = traveller("Killed", true, true);
+        let enemy = traveller("Enemy", false, false);
+        let transits: Vec<_> = [own, killed, enemy]
+            .into_iter()
+            .map(|member| rebellion_core::missions::MemberTransit {
+                member,
+                mission_id: 0,
+                to: system,
+                arrival: 9,
+            })
+            .collect();
+        let listed = |fog: &FogState| {
+            listed_members(&world, fog, &transits, Faction::Alliance, system)
+                .into_iter()
+                .filter(|(.., en_route)| *en_route)
+                .map(|(member, ..)| member)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(listed(&unseen()), [own]);
+        let mut seen = unseen();
+        seen.reveal(system);
+        assert_eq!(listed(&seen), [own, enemy]);
+
+        let mut force = |class: u32| {
+            MissionMember::SpecialForce(world.special_forces.insert(
+                rebellion_core::world::SpecialForceUnit {
+                    class_dat_id: DatId::new(class),
+                    is_alliance: true,
+                    skills: [0; 8],
+                    on_mission: false,
+                },
+            ))
+        };
+        let forces: Vec<_> = [
+            (0x3c00_0001, true),
+            (0x3c00_0003, false),
+            (0x3c00_0005, false),
+        ]
+        .into_iter()
+        .map(|(class, marked)| (class, force(class), marked))
+        .collect();
+        for (class, member, marked) in forces {
+            assert_eq!(
+                carries_en_route_overlay(&world, member),
+                marked,
+                "0x{class:x}"
+            );
+        }
     }
 
     fn labels(rows: &[MissionRow]) -> Vec<(&'static str, u8, u32)> {
@@ -1548,6 +1735,10 @@ mod tests {
                 .map(|row| (row.mini, row.label.as_str()))
                 .collect::<Vec<_>>(),
             [(None, "Leia"), (Some(18_176 + 832), "Mon")]
+        );
+        assert!(
+            rows.iter().all(|row| !row.en_route),
+            "a member at the system is not en route"
         );
     }
 

@@ -50,6 +50,10 @@ pub enum TargetOrder {
         ships: Vec<usize>,
         roster: u64,
     },
+    /// A facility icon's Destination (`0x214`): its team is the system's
+    /// production areas (`FUN_00512700` kind 4 → `FUN_0052c170`), and the
+    /// target system becomes where they deliver.
+    Destination { system: SystemKey },
 }
 
 /// What a release lands on: a system, or a fleet a Fleet window gives
@@ -140,6 +144,7 @@ pub struct ReleaseWindows<'a> {
 pub fn release_destination(
     ctx: &egui::Context,
     world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
     fog: &FogState,
     layout: CockpitLayout,
     windows: ReleaseWindows<'_>,
@@ -157,7 +162,7 @@ pub fn release_destination(
     }
     if let Some(target) = windows
         .fleet
-        .release_target(world, fog, layout, layer, point)
+        .release_target(world, movement, fog, layout, layer, point)
     {
         return target;
     }
@@ -571,15 +576,32 @@ mod tests {
                 let _ = ctx.run(input, |ctx| {
                     let faction = CockpitFaction::Alliance;
                     let _ = draw_sector_windows(
-                        ctx, world, &fog, sectors, faction, layout, &mut cache, &uprisings,
+                        ctx,
+                        world,
+                        &rebellion_core::movement::MovementState::default(),
+                        &fog,
+                        sectors,
+                        faction,
+                        layout,
+                        &mut cache,
+                        &uprisings,
                         missions,
                     );
                     let _ = draw_system_windows(
-                        ctx, world, &fog, missions, systems, faction, layout, &mut cache,
+                        ctx,
+                        world,
+                        &rebellion_core::movement::MovementState::default(),
+                        &fog,
+                        missions,
+                        systems,
+                        faction,
+                        layout,
+                        &mut cache,
                     );
                     let _ = draw_fleet_windows(
                         ctx,
                         world,
+                        &rebellion_core::movement::MovementState::default(),
                         &fog,
                         &TroopTransportState::default(),
                         fleets,
@@ -619,7 +641,15 @@ mod tests {
                 defenses,
                 missions: missions_windows,
             };
-            release_destination(&ctx, world, &fog, layout, windows, point)
+            release_destination(
+                &ctx,
+                world,
+                &rebellion_core::movement::MovementState::default(),
+                &fog,
+                layout,
+                windows,
+                point,
+            )
         }
 
         /// The Alliance's first sector window sits at (60, 35).
