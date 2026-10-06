@@ -178,8 +178,8 @@ pub struct FinderRow {
 /// hyp: the side's objects (`FUN_0053ef50`) are its own and the other
 /// side's it can see; the port shows the other side's fleets where the
 /// Fleet window does (`opposing_contents_visible`). port: only fleets in
-/// orbit, which the port names ("Fleet N", `fleet_label`); a ship's name is
-/// its class's (`FUN_004f6270`).
+/// their system's list, so none in transit; a fleet's name is its own
+/// ("Fleet N", `fleet_label`), a ship's its class's (`FUN_004f6270`).
 #[must_use]
 pub fn rows(
     world: &GameWorld,
@@ -199,7 +199,11 @@ pub fn rows(
         {
             continue;
         }
-        let Some(label) = fleet_label(world, fleet) else {
+        let in_orbit = world
+            .systems
+            .get(value.location)
+            .is_some_and(|system| system.fleets.contains(&fleet));
+        let Some(label) = fleet_label(world, fleet).filter(|_| in_orbit) else {
             continue;
         };
         match mode {
@@ -838,7 +842,7 @@ mod tests {
                 ShipInstance::new(class, 100, true)
             })
             .collect();
-        let fleet = world.fleets.insert(Fleet {
+        let fleet = world.insert_fleet(Fleet {
             location: system,
             capital_ships,
             fighters: Vec::new(),
@@ -1027,7 +1031,7 @@ mod tests {
 
     #[test]
     fn a_fleet_in_transit_is_not_listed() {
-        // port: a fleet that has left its system's list has no label.
+        // port: a fleet that has left its system's list is in transit.
         let mut galaxy = galaxy();
         let home = galaxy.world.fleets[galaxy.own].location;
         galaxy.world.systems[home].fleets.clear();
@@ -1238,16 +1242,18 @@ mod tests {
         // +0x16c.
         let galaxy = galaxy();
         // The Empire lists its own two fleets; the Alliance its own and the
-        // one it sees. Both list the second Imperial fleet in row 1.
-        for (faction, second) in [
-            (CockpitFaction::Alliance, galaxy.seen),
-            (CockpitFaction::Empire, galaxy.unseen),
+        // one it sees. Each side numbers its own fleets (FUN_00517760), so
+        // the Alliance's row 1 is the Empire's Fleet 1, the Empire's its
+        // Fleet 2.
+        for (faction, second, name) in [
+            (CockpitFaction::Alliance, galaxy.seen, "Fleet 1"),
+            (CockpitFaction::Empire, galaxy.unseen, "Fleet 2"),
         ] {
             let mut state = opened(faction);
             assert_eq!(drive(&galaxy, &mut state, list_row(1), click()), None);
             let window = state.window.as_ref().unwrap();
             assert_eq!(window.chosen, Some(FleetWindowEntry::Fleet(second)));
-            assert_eq!(window.name, "Fleet 1");
+            assert_eq!(window.name, name);
 
             let display = CONTROLS[side(faction)].display.rect;
             let action = drive(&galaxy, &mut state, center(display), click());

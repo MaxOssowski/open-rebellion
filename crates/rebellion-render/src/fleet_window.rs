@@ -1688,7 +1688,7 @@ pub(crate) mod tests {
             hyperdrive: 1,
             ..CapitalShipClass::default()
         });
-        let fleet = world.fleets.insert(Fleet {
+        let fleet = world.insert_fleet(Fleet {
             location: system,
             capital_ships: vec![ShipInstance::new(class, 100, true)],
             fighters: Vec::new(),

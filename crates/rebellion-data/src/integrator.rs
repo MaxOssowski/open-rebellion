@@ -2697,6 +2697,42 @@ mod tests {
     }
 
     #[test]
+    fn a_craft_completed_where_its_side_has_no_fleet_starts_a_numbered_fleet() {
+        // FUN_00517760: each new fleet takes its side's next "Fleet N"
+        // (ghidra/notes/fleet-names.md).
+        let mut world = GameWorld::default();
+        let first = add_system(&mut world, "First");
+        let second = add_system(&mut world, "Second");
+        let ship = world.capital_ship_classes.insert(CapitalShipClass {
+            is_alliance: true,
+            hull: 100,
+            ..Default::default()
+        });
+        let fighter = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                is_alliance: true,
+                ..Default::default()
+            });
+        for (system, kind) in [
+            (first, BuildableKind::CapitalShip(ship)),
+            (second, BuildableKind::Fighter(fighter)),
+        ] {
+            apply_build_completion_inner(
+                &CompletionEvent {
+                    system,
+                    tick: 1,
+                    kind,
+                },
+                &mut world,
+            );
+        }
+        let name = |system: SystemKey| world.fleet_name(world.systems[system].fleets[0]);
+        assert_eq!(name(first), Some("Fleet 1"));
+        assert_eq!(name(second), Some("Fleet 2"));
+    }
+
+    #[test]
     fn a_completed_death_star_can_fire_from_its_new_fleet() {
         // CAPSHPSD.DAT record 136 is the Death Star (TEXTSTRA 10120).
         let mut world = GameWorld::default();
@@ -3470,7 +3506,7 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                     is_alliance,
                     has_death_star: is_death_star,
                 };
-                let fk = world.fleets.insert(fleet);
+                let fk = world.insert_fleet(fleet);
                 if let Some(sys) = world.systems.get_mut(sys_key) {
                     sys.fleets.push(fk);
                 }
@@ -3517,7 +3553,7 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                     is_alliance,
                     has_death_star: false,
                 };
-                let fk = world.fleets.insert(fleet);
+                let fk = world.insert_fleet(fleet);
                 if let Some(sys) = world.systems.get_mut(sys_key) {
                     sys.fleets.push(fk);
                 }

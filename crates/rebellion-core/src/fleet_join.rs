@@ -337,7 +337,7 @@ fn hand_over_excess_cargo(
 fn new_fleet(world: &mut GameWorld, like: FleetKey) -> FleetKey {
     let source = &world.fleets[like];
     let location = source.location;
-    let fleet = world.fleets.insert(Fleet {
+    let fleet = world.insert_fleet(Fleet {
         location,
         capital_ships: Vec::new(),
         fighters: Vec::new(),

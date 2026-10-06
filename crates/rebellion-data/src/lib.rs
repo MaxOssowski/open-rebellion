@@ -152,6 +152,7 @@ pub fn load_game_data_with_options(
         special_force_classes: std::collections::HashMap::new(),
         difficulty_index: seed_options.gnprtb_index(),
         recruit_pool_empty: [false; 2],
+        fleet_names: rebellion_core::world::FleetNames::default(),
     };
 
     // ── 1. Sectors ───────────────────────────────────────────────────────────

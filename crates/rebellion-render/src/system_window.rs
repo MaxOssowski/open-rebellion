@@ -1373,8 +1373,7 @@ fn tab_visual_items(
         SystemWindowTab::Fleets => system
             .fleets
             .iter()
-            .enumerate()
-            .filter_map(|(index, key)| {
+            .filter_map(|key| {
                 let fleet = world.fleets.get(*key)?;
                 if !opposing_contents_visible && fleet.is_alliance != player_is_alliance {
                     return None;
@@ -1395,7 +1394,7 @@ fn tab_visual_items(
                 Some(TabVisualItem {
                     key: SystemWindowItem::Fleet(*key),
                     resource_id,
-                    label: numbered_fleet(index),
+                    label: fleet_label(world, *key)?,
                 })
             })
             .collect(),
@@ -1493,23 +1492,11 @@ pub(crate) fn opposing_contents_visible(
         || (fog.faction == player && fog.is_visible(system))
 }
 
-/// A fleet's name, as its system window lists it. port: fleets carry no
-/// names yet (`FUN_004f6270`; Rename is not ported), so each is numbered by
-/// its place in its system's fleet list.
+/// A fleet's name, as its windows list it (`FUN_004f6270`): "Fleet N"
+/// from its side's counter (`GameWorld::fleet_name`). Rename is not ported.
 #[must_use]
 pub fn fleet_label(world: &GameWorld, fleet: FleetKey) -> Option<String> {
-    let location = world.fleets.get(fleet)?.location;
-    let index = world
-        .systems
-        .get(location)?
-        .fleets
-        .iter()
-        .position(|key| *key == fleet)?;
-    Some(numbered_fleet(index))
-}
-
-fn numbered_fleet(index: usize) -> String {
-    format!("Fleet {}", index + 1)
+    world.fleet_name(fleet).map(str::to_owned)
 }
 
 pub(crate) fn character_mini_resource_id(dat_id: DatId, is_major: bool) -> Option<u32> {
@@ -2750,7 +2737,7 @@ mod tests {
             });
         let fleets: Vec<FleetKey> = (0..2)
             .map(|_| {
-                let fleet = world.fleets.insert(Fleet {
+                let fleet = world.insert_fleet(Fleet {
                     location: systems[0],
                     capital_ships: Vec::new(),
                     fighters: vec![rebellion_core::world::FighterEntry { class, count: 1 }],
@@ -2779,7 +2766,18 @@ mod tests {
             ["Fleet 1", "Fleet 2"]
         );
         assert_eq!(fleet_label(&world, fleets[1]).as_deref(), Some("Fleet 2"));
-        world.systems[systems[0]].fleets.clear();
+        // The name is the fleet's own (+0x34, FUN_004f6e60), so it keeps it
+        // when the fleet before it leaves the system.
+        world.systems[systems[0]].fleets.remove(0);
+        let items = tab_visual_items(
+            &world,
+            &fog,
+            Faction::Alliance,
+            systems[0],
+            SystemWindowTab::Fleets,
+        );
+        assert_eq!(items[0].label, "Fleet 2");
+        world.fleets.remove(fleets[1]);
         assert_eq!(fleet_label(&world, fleets[1]), None);
     }
 

@@ -1476,6 +1476,21 @@ pub struct GameWorld {
     /// character (side `+0xb8`, set by `FUN_0052f590` from `FUN_0055fc80`).
     /// Recruitment then ends with code `0x10` (`FUN_0056b370`).
     pub recruit_pool_empty: [bool; 2],
+    /// Each fleet's name (`+0x34`) and each side's default-name counter.
+    pub fleet_names: FleetNames,
+}
+
+/// The fleet record's name (`+0x34`, TEXTSTRA 11523): a fleet's name until
+/// it is numbered, and the stem of its default name.
+pub const FLEET_RECORD_NAME: &str = "Fleet";
+
+/// Fleet names and the counters that number them (`ghidra/notes/fleet-names.md`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FleetNames {
+    names: slotmap::SecondaryMap<FleetKey, String>,
+    /// Per side (Alliance, Empire): the last number given (the side's
+    /// counter list, `DAT_006b2bb0 + 0xc4`/`+0xc8`, node `[8]`).
+    last_numbers: [u32; 2],
 }
 
 fn default_difficulty_index() -> u8 {
@@ -1498,6 +1513,46 @@ impl GameWorld {
         recruit_side_index(side).is_some_and(|index| self.recruit_pool_empty[index])
     }
 
+    /// Insert `fleet` and give it its side's next default name.
+    pub fn insert_fleet(&mut self, fleet: Fleet) -> FleetKey {
+        let key = self.fleets.insert(fleet);
+        self.name_new_fleet(key);
+        key
+    }
+
+    /// `FUN_00517760`: a fleet still bearing the record's name takes
+    /// "Fleet N", N being its side's counter plus one (`FUN_005302c0`). The
+    /// counter never goes down, so no number is given twice.
+    ///
+    /// hyp: the original runs this over every object at load
+    /// (`FUN_0051b7f0`); where a fleet made in play is first numbered is
+    /// untraced, so the port numbers each fleet as it is made.
+    pub fn name_new_fleet(&mut self, fleet: FleetKey) {
+        let Some(value) = self.fleets.get(fleet) else {
+            return;
+        };
+        if self.fleet_names.names.contains_key(fleet) {
+            return;
+        }
+        let side = usize::from(!value.is_alliance);
+        let number = &mut self.fleet_names.last_numbers[side];
+        *number += 1;
+        let name = format!("{FLEET_RECORD_NAME} {number}");
+        self.fleet_names.names.insert(fleet, name);
+    }
+
+    /// A fleet's name (`FUN_004f62d0`): its own, else the record's.
+    #[must_use]
+    pub fn fleet_name(&self, fleet: FleetKey) -> Option<&str> {
+        self.fleets.get(fleet)?;
+        Some(
+            self.fleet_names
+                .names
+                .get(fleet)
+                .map_or(FLEET_RECORD_NAME, String::as_str),
+        )
+    }
+
     /// Set `side`'s `+0xb8` (`FUN_0052f590(side, 1)`); Neutral has none
     /// (`FUN_0055fc80` takes only sides 1 and 2).
     pub fn set_recruit_pool_empty(&mut self, side: crate::dat::Faction) {
@@ -1518,6 +1573,61 @@ fn recruit_side_index(side: crate::dat::Faction) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fleet(is_alliance: bool) -> Fleet {
+        Fleet {
+            location: SystemKey::default(),
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance,
+            has_death_star: false,
+        }
+    }
+
+    #[test]
+    fn each_side_numbers_its_new_fleets_from_one() {
+        // FUN_00517760 → FUN_00518750: the counter is the fleet's side's
+        // (DAT_006b2bb0 + 0xc4 or + 0xc8), so the sides count apart.
+        let mut world = GameWorld::default();
+        let first = world.insert_fleet(fleet(true));
+        let imperial = world.insert_fleet(fleet(false));
+        let second = world.insert_fleet(fleet(true));
+        assert_eq!(world.fleet_name(first), Some("Fleet 1"));
+        assert_eq!(world.fleet_name(second), Some("Fleet 2"));
+        assert_eq!(world.fleet_name(imperial), Some("Fleet 1"));
+    }
+
+    #[test]
+    fn a_gone_fleets_number_is_not_given_again() {
+        // FUN_005302c0 only adds one to the counter's node; nothing lowers it.
+        let mut world = GameWorld::default();
+        let first = world.insert_fleet(fleet(true));
+        world.fleets.remove(first);
+        let next = world.insert_fleet(fleet(true));
+        assert_eq!(world.fleet_name(next), Some("Fleet 2"));
+        assert_eq!(world.fleet_name(first), None);
+    }
+
+    #[test]
+    fn a_numbered_fleet_keeps_its_name() {
+        // FUN_00517760 numbers only a fleet whose name is still the
+        // record's (FUN_005f3390 against record +0x34).
+        let mut world = GameWorld::default();
+        let first = world.insert_fleet(fleet(true));
+        world.name_new_fleet(first);
+        assert_eq!(world.fleet_name(first), Some("Fleet 1"));
+        let second = world.insert_fleet(fleet(true));
+        assert_eq!(world.fleet_name(second), Some("Fleet 2"));
+    }
+
+    #[test]
+    fn an_unnumbered_fleet_bears_the_records_name() {
+        // FUN_004f62d0 falls back to the record's +0x34.
+        let mut world = GameWorld::default();
+        let fleet = world.fleets.insert(fleet(true));
+        assert_eq!(world.fleet_name(fleet), Some("Fleet"));
+    }
 
     #[test]
     fn a_mission_record_is_found_by_its_id_not_its_family() {
