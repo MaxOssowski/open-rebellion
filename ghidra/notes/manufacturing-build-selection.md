@@ -76,13 +76,97 @@ or facility resource IDs:
 | 5 | 9018 (`0x233a`) | not observed |
 | 6 | 9026 (`0x2342`) | not observed |
 
-The state offset is 0 through 3. The exact meaning of each state offset still
-needs an original-runtime capture or a complete paint-path trace.
+The state offset is 0 through 3: see "Facility pages" below. The manual
+pictures the three looks (p. 84: completed, under construction, en route).
 
 `FUN_004534f0` owns page selection, overview producer selection, list/item
 selection, dragging, and release. Command `0x70` selects a page. The overview
 routes one of its three producer regions to its corresponding production page;
 non-overview pages route the pointer through the item list.
+
+### Window composition (2026-10-06, second pass)
+
+Recovered by Claude from `FUN_00455060` (slot 14, `WM_CREATE`),
+`FUN_00456230`, `FUN_00458080`, `FUN_00457c90`, `FUN_00457b40`,
+`FUN_00457f30`, `FUN_00458040` and `FUN_00453ee0`. Type 9 is the window the
+port calls the System window (`system_window.rs`); the manual names it the
+Manufacturing and Production window (pp. 82–86, Figs. 2.10, 3.24, 3.27).
+
+**Chrome.** Background 10297 (226 by 304). Title strip by the system's side
+(`+0x148`, its `+0x24` bits 6..7), focused or not: side 1 10299/10200, side 2
+10201/10302, otherwise 10303/10304 (`FUN_00456230`, the Fleet and Defenses
+windows' strips). Title text font 5 at (x, 2), x = the sector button's width
+plus 5, 179 by 16. Sector button 10209/10208 (`0xc9`) at (3, 3); minimize
+10253/10254 (100) and close 10108/10109 (`0x65`) right-aligned.
+
+**Tabs** (`FUN_0060d590` at (0, 20), 226 by 33, command `0x70`; 36 by 33
+buttons):
+
+| x | Page | Normal / pressed | Empty | Enabled when | Help |
+|---:|---|---|---|---|---|
+| 0 | `0x67` overview | side 1 10312/10311, side 2 10315/10314, other 10318/10317 | — | always | 6197 "Manufacturing" |
+| 39 | `0x68` shipyards | 10327/10326 | 10328 | `FUN_0052c8c0(system, side, 3)` != 0 | 6184 "Shipyards" |
+| 77 | `0x69` training | 10330/10329 | 10331 | `FUN_0052c5a0(.., 3)` != 0 | 6192 "Training Facilities" |
+| 115 | `0x6a` construction | 10333/10332 | 10334 | `FUN_0052c270(.., 3)` != 0 | 6194 "Construction Yards" |
+| 152 | `0x6b` refineries | 10324/10323 | 10325 | `FUN_0052d270` walk not empty | 6183 "Refineries" |
+| 190 | `0x6c` mines | 10321/10320 | 10322 | `FUN_0052d690` walk not empty | 6182 "Mines" |
+
+The empty art replaces the normal one when the count is zero; the creation
+code passes the empty id as the normal bitmap. Counts are of the shown side.
+
+**Overview** (page `0x67`, `FUN_00457690`):
+
+- The left column 10298 (46 by 226) at (6, 71): the three yard pictures.
+- Each yard count "N/M" (6181 "/") in font 10 at (6, 119), (6, 200),
+  (6, 280): N = `FUN_0052c8c0(system, side, 1)`, M = the same with 3
+  (ships, then `FUN_0052c5a0` troops, then `FUN_0052c270` facilities). The
+  manual: the first is the yards at the site, the second also counts those
+  being built or deployed there (Fig. 2.10, Fig. 3.24).
+- Three bands (`FUN_00458480`), 166 by 79: (55, 57), (55, 138), (55, 219).
+  Band n is manager `FUN_00509670(system, k)`, k = 0 ships, 2 troops,
+  1 facilities. Each band paints, into a copy of the background under it,
+  10290 keyed, then its title strip: 10291 selected / 10292 not (side 1),
+  10293/10294 (side 2), 10295/10296 (other). Then, font 10, white:
+  - title at (5, 1): 6185 "Ship Construction", 6193 "Troops in Training",
+    6195 "Facilities Under Construction";
+  - at (5, 16): the product's name, or 6198 "No Ships are being built",
+    6199 "No Troops in training", 6200 "No Facilities are being built";
+  - with a product: its GOKRES mini (class `+0x30 & 0xfff`) at (40, 15) and
+    6209 "Building: " (ships, facilities) or 6208 "Training: " with the
+    units left (`+0x58`) at (5, 47);
+  - at (5, 57): 6201 "Destination: " and the destination system's name.
+- A progress bar per band (`FUN_004acec0`, ids `0x6d..0x6f`) at (56, 127),
+  (56, 208), (56, 289), 160 by 4: position `+0x5c` of range `+0x68`.
+
+**Selection and menu.** A press in a band selects it (band `+0x30` bit 0;
+Ctrl toggles). The window's selection is the selected bands' managers
+(`FUN_00453ee0`), so a right release opens their menu (`FUN_004ac5c0`).
+The manager classes' order lists (vtable slot `+0x3c`; `FUN_0052ae30`,
+`FUN_0055b580`, `FUN_0055b900`, `FUN_0055bd30`), with Encyclopedia and
+Status from `FUN_0051d990`, in STRATEGY sort order:
+
+| Band | Orders |
+|---|---|
+| ships | Build (`0x211`), Stop (`0x213`), Destination (`0x214`), Rename (`0x215`), Encyclopedia, Status, Reserved (`0x216`) |
+| troops | Build (`0x212`), Stop, Destination, Encyclopedia, Status, Reserved |
+| facilities | Build (`0x210`), Stop, Destination, Encyclopedia, Status, Reserved |
+
+STRATEGY `RT_RCDATA`: `0x210..0x212` sort 100, TEXTSTRA 12288 "Build";
+`0x213` 110, 12289 "Stop"; `0x214` 120, 12290 "Destination"; `0x215` 500,
+12291 "Rename"; `0x216` 1002, 12294 "Reserved" (check mark 11902). A left
+release on a selected band's status text issues `0x215` there
+(`FUN_00528720`), the in-place rename the Fleet window uses.
+
+**Facility pages** (`0x68..0x6c`, `FUN_004568a0`). The list (`FUN_00607ea0`,
+id 2) at (8, 77), 222 by 225, 69 by 40 cells. Each page lists the shown
+side's facilities of its family that are not hidden (`+0x50` bit 3), in walk
+order. An item's picture is its type's base (`FUN_00458fe0`) plus a state:
+0 built, 1 under construction (2 when its side is 1), 3 en route
+(`+0x50` bits 2 and 4). Bases, families `0x28..0x2a` by type code 1..6:
+9006, 9014, 9022, 9010, 9018, 9026; mines and refineries (`0x2c..0x2f`):
+9001 and 9030. Its selected picture adds the side frame (`+0x15c`: 10262,
+10263, 10264) keyed. The mines page then adds one empty-slot picture 9005
+per raw-material deposit (system `+0x64`) beyond the mines it walked.
 
 ## Build Selection window
 
@@ -189,9 +273,10 @@ this family in parity mode.
 
 ## Open questions
 
-- Bind the exact TEXTSTRA strings and label purposes for `0x3810..0x3816`.
-- Recover the active and inactive window-shell resource IDs stored at object
-  offsets `+0x180` and `+0x184`.
+- Bind the label positions of TEXTSTRA `0x3810..0x3816` (14352 "Build
+  Selection", 14353 "Number to build:", 14354 "Best Time To Completion:",
+  14355 "Best Time To Deployment:", 14356 "Day ", 14357 " Days", 14358
+  "n/a"). The shell ids at `+0x180`/`+0x184` are the title strips above.
 - Trace the complete scroll and selection behavior of the drop-down list.
 - Name every producer-manager field used by availability and time calculation.
 - Recover the exact disabled reasons and any user-facing rejection message.
