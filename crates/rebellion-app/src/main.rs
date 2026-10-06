@@ -56,7 +56,7 @@ use rebellion_core::missions::{
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms,
     fleet_move_enabled, fleet_transit_ticks, fleets_move_enabled, reconcile_fleet_orbits,
-    system_side_fleets, validate_fleet_destination, validate_fleet_dispatch,
+    system_side_fleets, validate_fleet_dispatch,
     validate_fleets_dispatch, MovementState, MovementSystem,
 };
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
@@ -3484,7 +3484,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || fleet_window_state.contains_screen_point(cockpit_layout, pointer)
                     || defenses_window_state.contains_screen_point(cockpit_layout, pointer)
                     || missions_window_state.contains_screen_point(cockpit_layout, pointer)
-                    || system_window_state.is_dragging()
                     || fleet_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
@@ -4058,6 +4057,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &movement_state,
                         fog_state,
                         &mission_state,
+                        &mfg_state,
+                        &delivery_state,
                         &mut system_window_state,
                         cockpit_state.faction,
                         cockpit_layout,
@@ -4126,67 +4127,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
-                            // FUN_00422ce0: a drop from a system window issues
-                            // 0x214 against the window under the point, which
-                            // never confirms. port: only a fleet's drop moves.
-                            SystemWindowAction::DragItem {
-                                selection: MenuObject::Fleet(fleet),
-                                point,
-                                ..
-                            } => {
-                                let windows = ReleaseWindows {
-                                    sector: &sector_window_state,
-                                    system: &system_window_state,
-                                    fleet: &fleet_window_state,
-                                    defenses: &defenses_window_state,
-                                    missions: &missions_window_state,
-                                };
-                                let destination = match release_destination(
-                                    ctx,
-                                    &world,
-                                    &movement_state,
-                                    fog_state,
-                                    cockpit_layout,
-                                    windows,
-                                    point,
-                                ) {
-                                    Some(ReleaseTarget::System(system)) => system,
-                                    // port: joining a fleet is not ported.
-                                    Some(ReleaseTarget::Fleet { .. }) => {
-                                        msg_log.push(GameMessage::new(
-                                            clock.tick,
-                                            "Fleet move rejected: joining fleets is not ported"
-                                                .to_string(),
-                                            MessageCategory::Event,
-                                        ));
-                                        continue;
-                                    }
-                                    None => continue,
-                                };
-                                match validate_fleet_destination(
-                                    &movement_state,
-                                    &world,
-                                    blockade_state.blockaded_systems(),
-                                    fleet,
-                                    destination,
-                                    player_faction == MissionFaction::Alliance,
-                                ) {
-                                    Ok(()) => panel_actions.push(PanelAction::DispatchFleet {
-                                        fleet,
-                                        destination,
-                                        troops: Vec::new(),
-                                    }),
-                                    // port: FUN_00487c90's advisor reaction.
-                                    Err(error) => {
-                                        msg_log.push(GameMessage::new(
-                                            clock.tick,
-                                            format!("Fleet move rejected: {error}"),
-                                            MessageCategory::Event,
-                                        ));
-                                    }
-                                }
-                            }
-                            SystemWindowAction::DragItem { .. } => {}
                         }
                     }
 
@@ -5311,17 +5251,28 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     layout,
                                 );
                             }
+                            // port: the fleet's Fleet window with the fleet
+                            // selected, as the Fleet Finder opens it
+                            // (FUN_00429440).
                             if let Some(fleet) = requested_result_fleet {
                                 if let Some(value) = world.fleets.get(fleet) {
-                                    map_state.selected_system = Some(value.location);
+                                    let system = value.location;
+                                    map_state.selected_system = Some(system);
                                     let layout = cockpit_state.layout();
-                                    let _ = system_window_state.open_fleet(
+                                    if fleet_window_state.open(
                                         &world,
-                                        fleet,
+                                        system,
                                         (85, 55),
                                         cockpit_state.faction,
                                         layout,
-                                    );
+                                    ) {
+                                        fleet_window_state.select(
+                                            system,
+                                            rebellion_render::fleet_window::FleetWindowEntry::Fleet(
+                                                fleet,
+                                            ),
+                                        );
+                                    }
                                 }
                             }
                         }

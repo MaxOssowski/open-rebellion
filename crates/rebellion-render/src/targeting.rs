@@ -593,6 +593,8 @@ mod tests {
                         &rebellion_core::movement::MovementState::default(),
                         &fog,
                         missions,
+                        &rebellion_core::manufacturing::ManufacturingState::new(),
+                        &rebellion_core::delivery::DeliveryState::new(),
                         systems,
                         faction,
                         layout,

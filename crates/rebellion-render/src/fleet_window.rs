@@ -25,7 +25,7 @@ use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
 use crate::quadrant_icons::{quadrant_art, Quadrant};
 use crate::system_window::{
     canvas_point, character_mini_resource_id, clamp_window_to_galaxy, exact_clicked, fleet_label,
-    logical_rect, opposing_contents_visible, rect_contains, troop_mini, DRAG_DISTANCE_SQUARED,
+    logical_rect, opposing_contents_visible, rect_contains, troop_mini,
 };
 use crate::targeting::ReleaseTarget;
 
@@ -191,6 +191,10 @@ enum RenameOutcome {
     Commit(String),
     Cancel,
 }
+
+/// `CoolDragList` posts `0x29a` only when the release lies more than this
+/// squared distance, in list pixels, from the press (`FUN_006083c0`).
+const DRAG_DISTANCE_SQUARED: f32 = 24.0;
 
 /// A left press held on a list item until its release (`CoolDragList`,
 /// `FUN_006083c0`).

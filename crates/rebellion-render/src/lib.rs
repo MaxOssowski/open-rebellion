@@ -19,6 +19,7 @@ pub mod game_speed;
 pub mod ground_combat;
 pub mod main_menu;
 pub mod main_menu_destinations;
+pub mod manufacturing_window;
 pub mod message_index;
 pub mod message_log;
 pub mod mission_dialog;

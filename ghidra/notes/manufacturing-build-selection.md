@@ -117,7 +117,8 @@ code passes the empty id as the normal bitmap. Counts are of the shown side.
 **Overview** (page `0x67`, `FUN_00457690`):
 
 - The left column 10298 (46 by 226) at (6, 71): the three yard pictures.
-- Each yard count "N/M" (6181 "/") in font 10 at (6, 119), (6, 200),
+- Each yard count "N:M" (the executable's ":" at `DAT_006a872c`, read
+  from REBEXE.EXE) in font 10 at (6, 119), (6, 200),
   (6, 280): N = `FUN_0052c8c0(system, side, 1)`, M = the same with 3
   (ships, then `FUN_0052c5a0` troops, then `FUN_0052c270` facilities). The
   manual: the first is the yards at the site, the second also counts those
@@ -267,9 +268,36 @@ An authentic replacement for the current manufacturing panel must preserve:
   day presentation where required by the surrounding runtime contract; and
 - source-disabled Confirm behavior for an invalid order.
 
-The current System window's Personnel, Fleets, Defenses, and Troops tabs are
-not part of native window type 9. They must not be used as substitutes for
-this family in parity mode.
+The invented Personnel, Fleets, Defenses, and Troops tabs are gone
+(2026-10-06). Their characters, special forces and regiments open their
+menus from the Defenses window (type 10), and their fleets drag from the
+Fleet window (type 4), as the original's do.
+
+### Ported (2026-10-06)
+
+`system_window.rs` draws type 9 as traced: the 226 by 304 chrome with the
+side's title strip and buttons, the six tabs with their side, pressed and
+empty art, the overview's yard column, counts and three bands with their
+progress bars, and the five facility pages with their label, pictures and
+selected frame (`manufacturing_window.rs` models what they show). A press
+on a band selects it; a right release opens its manager's menu
+(`MenuObject::Producer`, `object_menu.rs`) with the traced orders, all
+disabled until the Build Selection window is ported.
+
+- port: an empty page's tab still opens its empty page, as type 10's do;
+  the original's empty art suggests a disabled tab (untraced).
+- port: one band at a time; Ctrl's toggle is not ported.
+- port: no scroll bar, so a page shows its first rows only.
+- port: a facility's own menu (Encyclopedia, Status, Scrap) and the
+  window's keys (`FUN_00458980`) are not ported; a facility list item is
+  not a drag source.
+- port: the in-place rename on a selected band's status text (`0x215`,
+  `FUN_00528720`) is not ported.
+- hyp: the other side's bands and pages show nothing unless the player sees
+  that side's objects there (`opposing_contents_visible`).
+- The counts' separator is ":" (`DAT_006a872c`), as manual Fig. 3.24
+  prints "0:0" and "1:2"; an earlier pass of this note named TEXTSTRA 6181
+  "/", which `FUN_00457690` does not load.
 
 ## Open questions
 
