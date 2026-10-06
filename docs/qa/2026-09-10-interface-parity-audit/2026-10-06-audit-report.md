@@ -1,6 +1,6 @@
 ---
 title: "Original Interface Parity Audit Report"
-description: "Evidence-backed diagnosis and execution plan for complete bitmap-driven UI parity"
+description: "Current evidence-backed diagnosis and execution plan for complete bitmap-driven UI parity"
 category: qa
 created: 2026-09-10
 updated: 2026-10-06
@@ -13,11 +13,11 @@ tags: [qa, interface, parity, bitmap, strategy, tactical, multiplayer]
 
 | Measure | Current position |
 |---|---:|
-| Practical interface scope materially tackled | approximately 20 to 25% |
-| Practical interface scope remaining | approximately 75 to 80% |
+| Practical interface scope materially tackled | approximately 25% |
+| Practical interface scope remaining | approximately 75% |
 | Bounded practical space-battle launcher implementation | complete at P58-B22 |
 | Required surface families | 43 |
-| Family status | 0 complete, 12 partial, 31 fail |
+| Family status | 0 complete, 15 partial, 28 fail |
 | Strictly accepted required cells | 0 of 627 |
 
 The practical percentage measures scoped implementation work and guides the
@@ -71,12 +71,21 @@ This explains the observed symptoms:
   P51 removes an unsupported hover wash and checks visible frame pixels under
   the detailed system window.
   Menu interior, typography, detailed legend, remaining modes and overlays,
-  and exact map interaction remain open.
+  and exact map interaction remain open. The cockpit also routes the recovered
+  Alt+1 through Alt+9 display accelerators and Alt+G/Alt+U management toggles,
+  and sector-window routing now enforces the original two-window cap.
 - Selecting a system now opens a recovered modeless sector shell. Double-click
   opens the original detailed-system shell and core bitmap tabs. Illustrated
   first-pass item contents, bounded scrollbar navigation, and selection work.
-  Nested contents, drag actions, complete state variants, and exact rail
-  thumbnails remain incomplete.
+  The source trace now establishes that native window type 9 is a facility-only
+  Manufacturing family, so the current Personnel, Fleets, Defenses, and Troops
+  tabs are documented unapproved substitutes. Nested contents, drag actions,
+  complete state variants, and exact rail thumbnails remain incomplete.
+- Bounded source-backed paths now cover Message Index rows and gestures,
+  Personnel and Troop Finders, per-production-area destinations, absolute
+  completion days, fleet and ship Rename, and en-route marks. The authentic
+  generic Status-window family, Manufacturing window, Build Selection child,
+  complete state matrices, and original-runtime comparisons remain open.
 - The four original advisor idle runs now follow the shared canvas transform in
   native and WASM. Original action, voice, and chrome behavior remains
   unimplemented.
@@ -101,7 +110,9 @@ The local source inspection establishes the implementation causes:
 | Bounded original encyclopedia-art transport | `crates/rebellion-render/src/encyclopedia.rs`, `scripts/build-runtime-pack.py`, `tools/interface-parity/encyclopedia-art.mjs` | Manual pp. 71–72, 187 owned original EDATA entries, and [P62 evidence](evidence/2026-09-28-encyclopedia-artwork-transport.md) |
 | Source-recovered Encyclopedia index, catalog, and topic bindings | `crates/rebellion-data/src/encyclopedia_catalog.rs`, `crates/rebellion-data/src/encyclopedia_topics.rs`, `crates/rebellion-render/src/encyclopedia.rs`, `tools/stage-ui-assets`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/encyclopedia-index-shell.mjs` | `FUN_00429f30`, `FUN_0045d400`, `FUN_0045ddc0`, `FUN_0045f100`, `FUN_0045fa60`, `FUN_0045f660`, 41 owned STRATEGY resources, the owned DAT/TEXTSTRA/ENCYTEXT/ENCYBMAP sources, [P64 shell evidence](evidence/2026-09-30-encyclopedia-index-shell.md), [P65 catalog evidence](evidence/2026-09-30-encyclopedia-index-catalog.md), and [P66A topic-source evidence](evidence/2026-10-01-encyclopedia-topic-source-bindings.md) |
 | Source-recovered Message Index shell | `crates/rebellion-render/src/message_index.rs`, `crates/rebellion-app/src/main.rs`, `tools/interface-parity/message-index-shell.mjs` | `FUN_0042a240`, `FUN_00466350`, `FUN_004665f0`, `FUN_00468fb0`, `FUN_004697b0`, 33 owned STRATEGY resources, and [corrected P63 evidence](evidence/2026-09-28-message-index-shell.md) |
-| Manual-facing window and interaction requirements | [Manual window matrix](manual-window-checklists.md) and [known-deviations register](known-deviations.md) | Official manual, existing `ghidra/notes/` traces, and commit-pinned Faction Wars research leads |
+| Bounded strategic interaction batch | `crates/rebellion-render/src/agent_menu.rs`, `crates/rebellion-render/src/message_index.rs`, `crates/rebellion-render/src/personnel_finder.rs`, `crates/rebellion-render/src/troop_finder.rs`, `crates/rebellion-render/src/fleet_window.rs`, `tools/interface-parity/audit-batch.mjs`, `tools/interface-parity/fleet-window.mjs` | Commits `8fc9d983`, `c60881b3`, `6409d9e0`, and `8b51ec9c`; source notes for accelerators, Finders, message rows, two-window placement, destination, Rename, and en-route marks; passing two-faction bounded browser gates |
+| Manufacturing and Build Selection recovery | [Ghidra note](../../../ghidra/notes/manufacturing-build-selection.md) | `FUN_00452fc0`, `FUN_004568a0`, `FUN_00458480`, `FUN_00437880`, `FUN_00438620`, `FUN_00438800`, `FUN_00439160`, `FUN_00537ff0`, STRATEGY 10800 and associated control resources, and the official manual |
+| Manual-facing window and interaction requirements | [Manual window matrix](2026-10-06-manual-window-checklists.md) and [known-deviations register](known-deviations.md) | Official manual, existing `ghidra/notes/` traces, and commit-pinned Faction Wars research leads |
 | Incomplete browser asset pack | `scripts/build-runtime-pack.py` | Original ALSPRITE, EMSPRITE, EDATA, ALBRIEF, EMBRIEF, REBDLOG, advisor-control, and voice families |
 | Invented live ground-combat screen | `crates/rebellion-render/src/ground_combat.rs:202` | Manual pp. 119–121 assault summaries and reports |
 | The bounded practical tactical launcher is implementation-complete: original shell and controls, transported 3D corpus, exact resource joins, live forces, commands, combat, grouping, effects, results/options, Death Star paths, shared campaign return, one source-compatible tactical RNG stream, persisted power allocation, completion/destruction callbacks, and the timed trench-run producer use recovered source contracts. Native beam and playback comparison, whole-process RNG continuity, strategic commander binding, rare audio routes, and A0 acceptance remain open | `crates/rebellion-render/src/tactical_view.rs`, `crates/rebellion-render/src/tactical_resources.rs`, `crates/rebellion-render/src/tactical_assets.rs`, `crates/rebellion-core/src/combat.rs`, `tools/interface-parity` | Manual pp. 139–150, original TACTICAL resources, [P52 through P58-B22 evidence](evidence/README.md), and the [P58-B22 source-completion checkpoint](evidence/2026-09-28-tactical-source-completion.md) |
@@ -231,13 +242,13 @@ acceptance.
 
 | ID | Severity | Finding | Status |
 |----|----------|---------|--------|
-| UIP-F-001 | P0 | The shell, viewport scaling, six primary controls, and first rail lifecycle pass scoped checkpoints; the full control matrix, exact rail thumbnails, and required aperture content remain incomplete. | partial |
+| UIP-F-001 | P0 | The shell, viewport scaling, six primary controls, native accelerators, two-sector-window cap, and first rail lifecycle pass have bounded checkpoints; the full control matrix, exact rail thumbnails, and required aperture content remain incomplete. | partial |
 | UIP-F-002 | P0 | The original Display Off and active Popular Support backdrops, GID control, compact legend, marker families, size thresholds, and fixed-map no-op inputs render in native and WASM; the original menu, detailed legend, remaining modes and overlays, sector art, and remaining input states are incomplete. | partial |
-| UIP-F-003 | P0 | Original sector and detailed-system shells replace the invented sidebar; all six tabs have first-pass source-mapped items, while nested contents, commands, indicators, and uncommon states remain open. | partial |
+| UIP-F-003 | P0 | Original sector and detailed-system shells replace the invented sidebar, but the System window still carries unapproved Personnel, Fleets, Defenses, and Troops tabs absent from native facility-only window type 9. | partial |
 | UIP-F-004 | P0 | Authentic advisor idle runs render for both factions in the scaled apertures, but complete action, voice, and chrome behavior is absent. | partial |
 | UIP-F-005 | P0 | Runtime pack v3 includes ALSPRITE and EMSPRITE BMP/type-302 content plus all 187 original EDATA images; ALBRIEF, EMBRIEF, REBDLOG, action controls, and remaining voice resources remain omitted. | partial |
 | UIP-F-006 | P1 | Native and WASM EDATA transport, lazy decode, exact missing-asset logging, native-size browser display, authentic index shells, the 356-entry English catalog, and source bindings for 346 topics per faction work in bounded routes. Browser topic composition and navigation, production routing, A0, and the complete `OBJ-01` matrix remain open. | partial |
-| UIP-F-007 | P1 | Fleet and Ship Finder, Fleet window, and bounded item-menu routes use source-recovered surfaces; Troop and Personnel Finders, production, missions, message content, options, and remaining object layouts are replaced or absent. | partial |
+| UIP-F-007 | P1 | Fleet, Ship, Troop, and Personnel Finders, Message Index rows, fleet destinations, Rename, and en-route marks have bounded source-backed paths; native Manufacturing, Build Selection, complete Status, mission, options, and remaining object layouts are replaced or absent. | partial |
 | UIP-F-008 | P1 | Battle Alert, assault/bombardment reports, and battle-result routing are absent or bypassed. | fail |
 | UIP-F-009 | P1 | The bounded practical tactical launcher passes its implementation gates through P58-B22, including combat, commands, grouping, Death Star and result paths, shared campaign return, tactical RNG sequencing, power allocation, completion/destruction callbacks, and the timed trench-run producer. Original view acceptance, whole-process RNG continuity, strategic commander binding, exact planet framing, native beam/playback comparison, and rare audio paths stay open. | fail |
 | UIP-F-010 | P1 | The custom live ground-combat screen has no original counterpart. | fail |
@@ -251,7 +262,7 @@ with correctly. This audit supersedes those checks only for visual-parity claims
 
 ## Surface coverage
 
-The [surface ledger](surface-ledger.json) covers 44 original or explicitly
+The [surface ledger](2026-10-06-surface-ledger.json) covers 44 original or explicitly
 non-original families across:
 
 1. boot, intro, shuttle, options, credits, briefings, and multiplayer setup;
@@ -285,7 +296,7 @@ and attack states, trench-run routing, battle results, and strategic return.
 report flow, which had no live tactical minigame.
 
 P58-B07 makes that denominator executable as a generated contract. The matrix
-validator derives all 106 rows from `surface-ledger.json`, enforces the exact
+validator derives all 106 rows from `2026-10-06-surface-ledger.json`, enforces the exact
 13/13/20/14/23/9/14 family distribution, rejects missing, duplicate, unknown,
 or non-counting mappings, and validates lossless A0 provenance without tracking
 original media. Its current report is deliberately 0 mapped, 0 A0, and 0
