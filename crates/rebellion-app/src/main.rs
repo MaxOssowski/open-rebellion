@@ -69,6 +69,9 @@ use rebellion_core::world::{
     CampaignConfig, GameWorld, MstbTable, SeedDifficulty, SeedOptions, VictoryConditions,
 };
 
+use rebellion_render::build_selection::{
+    draw_build_selection, BuildSelectionAction, BuildSelectionState,
+};
 use rebellion_render::fleet_finder::{draw_fleet_finder, FleetFinderAction, FleetFinderState};
 use rebellion_render::message_index::{MessageIndexAction, MessageIndexState};
 use rebellion_render::personnel_finder::{
@@ -106,19 +109,19 @@ use rebellion_render::{
     advisor_mission_result, advisor_uprising, draw_advisor, draw_audio_controls,
     draw_cockpit_background, draw_cockpit_chrome, draw_cockpit_egui_layer, draw_credits,
     draw_encyclopedia, draw_event_screen, draw_fleets, draw_galaxy_backdrop, draw_galaxy_map,
-    draw_game_options, draw_game_setup, draw_ground_combat, draw_main_menu, draw_manufacturing,
-    draw_missions, draw_multiplayer_setup, draw_officers, draw_save_load, draw_sector_windows,
+    draw_game_options, draw_game_setup, draw_ground_combat, draw_main_menu, draw_missions,
+    draw_multiplayer_setup, draw_officers, draw_save_load, draw_sector_windows,
     draw_system_windows, draw_tactical_view, handle_cockpit_egui_input, set_cockpit_viewport_clip,
     show_event_screen, update_event_screen, AdvisorFaction, AdvisorState, AssetRenderProfile,
     AudioVolumeState, BmpCache, CockpitButton, CockpitFaction, CockpitState, CreditsState,
     EncyclopediaState, EventScreenState, FleetsState, GalaxyMapState, GameMessage,
     GameOptionsAction, GameOptionsOrigin, GameOptionsState, GameSetupAction, GameSetupState,
-    GroundAction, GroundCombatState, MainMenuAction, MainMenuState, ManufacturingPanelState,
-    MenuDestinationAction, MessageCategory, MessageLog, MessageLogState, MessageRail,
-    MultiplayerSetupAction, MultiplayerSetupState, MusicContext, OfficersState,
-    OriginalEncyclopediaCatalog, OriginalEncyclopediaEntry, PanelAction, RailAudience,
-    SectorWindowAction, SectorWindowState, SfxKind, SystemWindowAction, SystemWindowState,
-    TacticalAction, TacticalState, TacticalTrenchRunOutcome, VideoError, VideoPlayer,
+    GroundAction, GroundCombatState, MainMenuAction, MainMenuState, MenuDestinationAction,
+    MessageCategory, MessageLog, MessageLogState, MessageRail, MultiplayerSetupAction,
+    MultiplayerSetupState, MusicContext, OfficersState, OriginalEncyclopediaCatalog,
+    OriginalEncyclopediaEntry, PanelAction, RailAudience, SectorWindowAction, SectorWindowState,
+    SfxKind, SystemWindowAction, SystemWindowState, TacticalAction, TacticalState,
+    TacticalTrenchRunOutcome, VideoError, VideoPlayer,
 };
 use rebellion_render::{draw_defenses_windows, DefensesWindowAction, DefensesWindowState};
 use rebellion_render::{draw_fleet_windows, FleetWindowAction, FleetWindowState};
@@ -1007,7 +1010,7 @@ async fn main() {
     let mut player_faction = MissionFaction::Alliance;
     let mut officers_state = OfficersState::default();
     let mut fleets_state = FleetsState::default();
-    let mut mfg_panel_state = ManufacturingPanelState::default();
+    let mut build_selection_state = BuildSelectionState::default();
     let mut mission_dialog_state = MissionDialogState::default();
     let mut move_confirmation_state = MoveConfirmationState::default();
     let mut status_window_state = StatusWindowState::default();
@@ -1038,7 +1041,6 @@ async fn main() {
     // Panel visibility (mutually exclusive left panels)
     let mut show_officers = false;
     let mut show_fleets = false;
-    let mut show_manufacturing = false;
     let mut show_missions = false;
     let mut show_research = false;
     let mut show_jedi = false;
@@ -1365,6 +1367,8 @@ async fn main() {
                     targeting = None;
                 } else if move_confirmation_state.is_open() {
                     // The window's own key slot answers Escape (FUN_0044f640).
+                } else if build_selection_state.is_open() {
+                    // Build Selection's key slot closes it (FUN_00438b60).
                 } else if status_window_state.is_open() {
                     // The Status window closes on Escape itself.
                 } else if fleet_finder_state.is_open() {
@@ -1398,7 +1402,6 @@ async fn main() {
                 } else {
                     show_officers = false;
                     show_fleets = false;
-                    show_manufacturing = false;
                     show_missions = false;
                     show_research = false;
                     show_jedi = false;
@@ -1512,7 +1515,6 @@ async fn main() {
                             &mut [
                                 &mut show_officers,
                                 &mut show_fleets,
-                                &mut show_manufacturing,
                                 &mut show_missions,
                                 &mut show_research,
                                 &mut show_jedi,
@@ -1527,13 +1529,12 @@ async fn main() {
             }
             toggle_panel!(KeyCode::O, 0);
             toggle_panel!(KeyCode::F, 1);
-            toggle_panel!(KeyCode::M, 2);
-            toggle_panel!(KeyCode::N, 3);
-            toggle_panel!(KeyCode::T, 4);
-            toggle_panel!(KeyCode::J, 5);
-            toggle_panel!(KeyCode::B, 6);
-            toggle_panel!(KeyCode::D, 7);
-            toggle_panel!(KeyCode::L, 8);
+            toggle_panel!(KeyCode::N, 2);
+            toggle_panel!(KeyCode::T, 3);
+            toggle_panel!(KeyCode::J, 4);
+            toggle_panel!(KeyCode::B, 5);
+            toggle_panel!(KeyCode::D, 6);
+            toggle_panel!(KeyCode::L, 7);
             if !alt_down
                 && is_key_pressed(KeyCode::S)
                 && !matches!(
@@ -3271,7 +3272,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     log_state = MessageLogState::default();
                                     officers_state = OfficersState::default();
                                     fleets_state = FleetsState::default();
-                                    mfg_panel_state = ManufacturingPanelState::default();
+                                    build_selection_state = BuildSelectionState::default();
                                     mission_dialog_state = MissionDialogState::default();
                                     move_confirmation_state = MoveConfirmationState::default();
                                     status_window_state = StatusWindowState::default();
@@ -3295,7 +3296,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     );
                                     show_officers = false;
                                     show_fleets = false;
-                                    show_manufacturing = false;
                                     show_missions = false;
                                     show_research = false;
                                     show_jedi = false;
@@ -3486,6 +3486,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || missions_window_state.contains_screen_point(cockpit_layout, pointer)
                     || fleet_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
+                    || build_selection_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
                     || status_window_state.contains_screen_point(cockpit_layout, pointer)
                     || fleet_finder_state.contains_screen_point(cockpit_layout, pointer)
@@ -3727,19 +3728,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                             &mut fleets_state,
                             player_faction,
                             &mut bmp_cache,
-                        ) {
-                            panel_actions.push(action);
-                        }
-                    }
-                    if show_manufacturing {
-                        if let Some(action) = draw_manufacturing(
-                            ctx,
-                            &world,
-                            &mfg_state,
-                            &mut mfg_panel_state,
-                            player_faction,
-                            &research_state,
-                            clock.tick,
                         ) {
                             panel_actions.push(action);
                         }
@@ -3992,6 +3980,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &movement_state,
                                     &troop_transport_state,
                                     &mfg_state,
+                                    &research_state,
                                     player_faction,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
@@ -4125,6 +4114,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &movement_state,
                                     &troop_transport_state,
                                     &mfg_state,
+                                    &research_state,
                                     player_faction,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
@@ -4182,6 +4172,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &movement_state,
                                     &troop_transport_state,
                                     &mfg_state,
+                                    &research_state,
                                     player_faction,
                                 );
                                 object_menu =
@@ -4338,6 +4329,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &movement_state,
                                     &troop_transport_state,
                                     &mfg_state,
+                                    &research_state,
                                     player_faction,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
@@ -4496,6 +4488,26 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 area: Some(area),
                             }));
                         }
+                        // Build (0x210..0x212): FUN_0041d640 opens Build
+                        // Selection on what the band's manager lists.
+                        Some((
+                            ObjectMenuCommand::Build,
+                            Some(MenuObject::Producer { system, area }),
+                        )) => {
+                            let is_alliance = player_faction == MissionFaction::Alliance;
+                            let kinds = rebellion_core::build_selection::listed_classes(
+                                &world,
+                                &research_state,
+                                area,
+                                is_alliance,
+                            );
+                            if build_selection_state.open(system, area, is_alliance, kinds) {
+                                macroquad::logging::info!(
+                                    "[interface] command=0x21x destination=build_selection status=opened area={area:?} system={}",
+                                    world.systems.get(system).map_or("", |value| value.name.as_str())
+                                );
+                            }
+                        }
                         // Stop (0x213) runs at once: the band's area drops
                         // what it was building (manual p. 84).
                         Some((
@@ -4594,6 +4606,39 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }),
                         Some(MissionDialogAction::Encyclopedia) => enc_state.open = true,
                         None => {}
+                    }
+
+                    match draw_build_selection(
+                        ctx,
+                        &world,
+                        &mfg_state,
+                        &mut build_selection_state,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        Some(BuildSelectionAction::Confirm {
+                            system,
+                            area,
+                            kind,
+                            count,
+                        }) => panel_actions.push(PanelAction::BuildProduction {
+                            system,
+                            area,
+                            kind,
+                            count,
+                        }),
+                        Some(BuildSelectionAction::Encyclopedia) => enc_state.open = true,
+                        None => {}
+                    }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let Some(request) = interface_fixture_request {
+                        interface_test_fixture::emit_production(
+                            request,
+                            &world,
+                            &mfg_state,
+                            &system_window_state,
+                            &build_selection_state,
+                        );
                     }
 
                     // FUN_00429440: the Finder's choice opens its system's
@@ -5662,7 +5707,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             targeting = None;
                             officers_state = OfficersState::default();
                             fleets_state = FleetsState::default();
-                            mfg_panel_state = ManufacturingPanelState::default();
+                            build_selection_state = BuildSelectionState::default();
                             mission_dialog_state = MissionDialogState::default();
                             move_confirmation_state = MoveConfirmationState::default();
                             status_window_state = StatusWindowState::default();
@@ -5686,7 +5731,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                             );
                             show_officers = false;
                             show_fleets = false;
-                            show_manufacturing = false;
                             show_missions = false;
                             show_research = false;
                             show_jedi = false;
@@ -6002,7 +6046,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                         map: &map_state,
                         left_panel_open: show_officers
                             || show_fleets
-                            || show_manufacturing
                             || show_missions
                             || show_research
                             || show_jedi
@@ -6158,6 +6201,7 @@ fn order_gates(
     movement_state: &MovementState,
     troop_transport_state: &TroopTransportState,
     manufacturing: &ManufacturingState,
+    research: &rebellion_core::research::ResearchState,
     player_faction: MissionFaction,
 ) -> OrderGates {
     let is_alliance = player_faction == MissionFaction::Alliance;
@@ -6228,6 +6272,21 @@ fn order_gates(
                 })
             }),
             Some(MenuObject::Producer { system, .. }) => holds(system),
+            _ => false,
+        },
+        // Build opens Build Selection on what the band's manager lists
+        // (FUN_0052e580).
+        build: match selection {
+            Some(MenuObject::Producer { system, area }) => {
+                holds(system)
+                    && !rebellion_core::build_selection::listed_classes(
+                        world,
+                        research,
+                        area,
+                        is_alliance,
+                    )
+                    .is_empty()
+            }
             _ => false,
         },
         // Stop clears a band that is building (manual p. 84).
@@ -6607,20 +6666,6 @@ fn apply_panel_action(
                 }
             }
         }
-        PanelAction::Enqueue {
-            system,
-            kind,
-            ticks,
-            destination,
-            ..
-        } => {
-            let item = QueueItem::new(kind, ticks, ticks);
-            let item = match destination {
-                Some(destination) => item.delivered_to(destination),
-                None => item,
-            };
-            mfg_state.enqueue(system, item);
-        }
         PanelAction::StopProduction { system, area } => {
             mfg_state.stop(system, area);
             macroquad::logging::info!(
@@ -6628,15 +6673,29 @@ fn apply_panel_action(
                 world.systems.get(system).map_or("", |value| value.name.as_str())
             );
         }
-        PanelAction::CancelQueueItem { system, index } => {
-            mfg_state
-                .queue_mut(system, ProductionArea::Shipyard)
-                .cancel(index);
-        }
-        PanelAction::PrioritizeQueueItem { system, index } => {
-            mfg_state
-                .queue_mut(system, ProductionArea::Shipyard)
-                .prioritize(index);
+        // FUN_00438980 -> FUN_0041ce20: the units replace what the band
+        // was building, each with its own build days.
+        PanelAction::BuildProduction {
+            system,
+            area,
+            kind,
+            count,
+        } => {
+            let is_alliance = *player_faction == MissionFaction::Alliance;
+            if let Some(items) = rebellion_core::build_selection::order_items(
+                world,
+                system,
+                area,
+                kind,
+                count,
+                is_alliance,
+            ) {
+                mfg_state.build_units(system, items);
+                macroquad::logging::info!(
+                    "[interface] command=0x21x destination=production_build status=queued area={area:?} count={count} system={}",
+                    world.systems.get(system).map_or("", |value| value.name.as_str())
+                );
+            }
         }
         PanelAction::DispatchMission {
             kind,
@@ -8334,27 +8393,33 @@ mod fleet_move_tests {
                 is_destroyed: false,
                 control,
             });
-            let class = world
-                .capital_ship_classes
-                .insert(rebellion_core::world::CapitalShipClass::default());
+            let class =
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        is_alliance: true,
+                        is_empire: true,
+                        ..rebellion_core::world::CapitalShipClass::default()
+                    });
             let mut manufacturing = ManufacturingState::new();
             let band = Some(MenuObject::Producer {
                 system,
                 area: ProductionArea::Shipyard,
             });
-            let gates = |manufacturing: &ManufacturingState, player| {
+            let gates = |world: &GameWorld, manufacturing: &ManufacturingState, player| {
                 order_gates(
                     band,
-                    &world,
+                    world,
                     &MissionState::new(),
                     &MovementState::new(),
                     &TroopTransportState::new(),
                     manufacturing,
+                    &rebellion_core::research::ResearchState::new(),
                     player,
                 )
             };
-            let idle = gates(&manufacturing, holder);
-            assert!(idle.destination && !idle.stop);
+            let idle = gates(&world, &manufacturing, holder);
+            assert!(idle.destination && idle.build && !idle.stop);
             manufacturing.build(
                 system,
                 &QueueItem::new(
@@ -8364,10 +8429,13 @@ mod fleet_move_tests {
                 ),
                 1,
             );
-            let building = gates(&manufacturing, holder);
+            let building = gates(&world, &manufacturing, holder);
             assert!(building.destination && building.stop);
-            let foreign = gates(&manufacturing, other);
-            assert!(!foreign.destination && !foreign.stop);
+            let foreign = gates(&world, &manufacturing, other);
+            assert!(!foreign.destination && !foreign.build && !foreign.stop);
+            // With nothing its side may build, Build stays off.
+            world.capital_ship_classes[class].research_order = 1;
+            assert!(!gates(&world, &manufacturing, holder).build);
         }
     }
 
@@ -8388,6 +8456,7 @@ mod fleet_move_tests {
                 &MovementState::new(),
                 &TroopTransportState::new(),
                 &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
                 MissionFaction::Alliance,
             )
             .fleet_move

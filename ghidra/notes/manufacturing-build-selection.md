@@ -253,6 +253,66 @@ updates the remembered selection for its producer category, and calls
 `FUN_0041ce20(target, 0)`. `FUN_00439160` disables Confirm when
 `FUN_00538220` reports that the order is not currently valid.
 
+### Fields, labels and pricing (2026-10-06, third pass)
+
+Recovered by Claude from `FUN_00437f80`, `FUN_00438500` (disassembled; the
+decompile drops the `DrawTextA` arguments), `FUN_00439160`, `FUN_00438dd0`,
+`FUN_00438f30`, `FUN_00538220`, `FUN_00528d30`, `FUN_00528b30`,
+`FUN_00528960`, `FUN_00520b70`, `FUN_0052e580` and the class accessors
+`FUN_0053b860`/`FUN_0053b870`.
+
+**Labels** (`FUN_00438500`, `FUN_00606b40(id, rect, font, color, flags)`),
+after the side's strip 10801 (side 1) or 10802 at (2, 2):
+
+| String | Rect | Font | Color | Flags |
+|---|---|---:|---|---|
+| 14352 "Build Selection" | (2,2)-(204,16) | 5 | `0x2000000` black | `0x21` centered |
+| 14353 "Number to build:" | (20,196)-(138,211) | 4 | `0x2f0fbff` | `0x22` right |
+| 14354 "Best Time To Completion:" | (10,145)-(135,160) | 10 | `0x2f0fbff` | `0x24` left, v-centered |
+| 14355 "Best Time To Deployment:" | (10,165)-(135,180) | 10 | `0x2f0fbff` | `0x24` |
+
+**Values** (`FUN_00437f80`, white `0x2ffffff`): `+0x134` at (36,110) and
+`+0x138` at (138,110), 64 by 23, font 4, flags `0x25` (centered);
+`+0x12c` at (140,145) and `+0x130` at (140,165), 60 by 15, font 10, flags
+`0x26` (right). `FUN_00439160` passes `FUN_00538220`'s outputs in this
+order: `+0x134` = refined material, `+0x138` = maintenance, `+0x12c` =
+completion, `+0x130` = deployment. The background's left cost box carries
+the refined-material picture and the right one the wrench.
+
+**Class records.** A class record in memory sits 0x28 bytes past its DAT
+record: troop detection at `+0x5c` is TROOPSD offset 0x34, special-force
+skills at `+0x58` are SPECFCSD 0x30, and a yard's `+0x5c` is MANFACSD
+`processing_rate` at 0x34. So `FUN_0053b860` (`+0x48`) is the refined
+material cost and `FUN_0053b870` (`+0x4c`) the maintenance cost.
+
+**Pricing** (`FUN_00538220`): each cost times the quantity (`+0x48` of the
+order). Times come from the manager:
+
+- `FUN_00528960` sums, over the manager's yards whose `+0x60` bit 0 is
+  clear, `FUN_0053e1b0(1, period)`; `FUN_00520b70(yard)` is the period, the
+  yard class's `+0x5c` (MANFACSD `processing_rate`: 4 for the standard
+  yards, 2 for the advanced ones).
+- `FUN_00528b30(days)` counts the progress `days / period` summed over the
+  same yards (with the active unit's credit when asked);
+  `FUN_00528d30` starts from `ceil(work * 100 / rate)` (`DAT_00661a88` =
+  100, `FUN_0053e160` the ceiling division) and steps to the least day
+  whose progress reaches the work, the class's `+0x48` times the quantity.
+  This is the "best case" of manual p. 84.
+- Deployment is the trip from the manager's system to its destination
+  (`FUN_00555f90` -> `FUN_00555d90` -> `FUN_00555b30`): ship speed
+  `+0x6c` for families `0x14..0x1f`, else `DAT_006b9050`.
+- Several managers keep the largest (`FUN_0053e130` is `max`).
+- An invalid order (`param_5 +4 != -1`) shows 14358 "n/a" in all four
+  fields and disables Confirm; times read "N" + 14357 " Days", capped at
+  9999.
+
+**List** (`FUN_0052e580`): the classes of the manager's production family
+(`0x28` ships, `0x29` regiments and special forces, `0x2a` facilities) that
+its side builds and has researched, the side's level at `+0x9c`, `+0xa0`,
+`+0xa4`. `FUN_00437f80` reopens on the class last confirmed by the same
+kind of manager (`DAT_006b289c` facilities, `DAT_006b28a0` troops,
+`DAT_006b28a4` ships), else the first.
+
 ## Port contract
 
 An authentic replacement for the current manufacturing panel must preserve:
@@ -304,12 +364,32 @@ that area alone (manual p. 83); Build waits on the Build Selection window.
   prints "0:0" and "1:2"; an earlier pass of this note named TEXTSTRA 6181
   "/", which `FUN_00457690` does not load.
 
+Build Selection (`build_selection.rs`, model in
+`rebellion-core/src/build_selection.rs`) draws the traced background,
+strip, labels, fields and controls; a band's Build opens it on the band's
+list, and Confirm replaces the band's units, each queued with its own
+days from the yards (`unit_build_days`). Orders now name classes
+(`BuildableKind::Troop(DatId)`, `SpecialForce`, and facility classes with
+their builder's side), from `GameWorld::buildable_classes`. The invented
+Manufacturing side panel (M) is gone.
+
+- port: the drop-down shows one class at a time and scrolls with the
+  wheel; its scroll bar (`0x299a`) is not drawn.
+- port: the close box sits 17 pixels in from the right, as the mission
+  dialog's; the source chrome's placement is untraced.
+- port: a disabled Confirm keeps its rest art.
+- port: every yard counts toward the times; the busy bit (`+0x60` bit 0)
+  is not modelled. A unit's days are fixed when queued, so yards built
+  or lost later do not change them.
+- port: maintenance is shown, not charged (manual p. 84 deducts it at the
+  order); refined material is not drawn down.
+- port: a built special force takes its class's base skills, without the
+  creation roll.
+- hyp: the list is in `DatId` order.
+
 ## Open questions
 
-- Bind the label positions of TEXTSTRA `0x3810..0x3816` (14352 "Build
-  Selection", 14353 "Number to build:", 14354 "Best Time To Completion:",
-  14355 "Best Time To Deployment:", 14356 "Day ", 14357 " Days", 14358
-  "n/a"). The shell ids at `+0x180`/`+0x184` are the title strips above.
+- Where 14356 "Day " is used (not by Build Selection's fields).
 - Trace the complete scroll and selection behavior of the drop-down list.
 - Name every producer-manager field used by availability and time calculation.
 - Recover the exact disabled reasons and any user-facing rejection message.

@@ -25,7 +25,6 @@ pub mod fleets;
 pub mod game_setup;
 pub mod jedi;
 pub mod loyalty;
-pub mod manufacturing;
 pub mod missions;
 pub mod mod_manager;
 pub mod officers;
@@ -36,7 +35,6 @@ pub mod save_load;
 pub mod command_palette;
 
 pub use fleets::{draw_fleets, FleetsState};
-pub use manufacturing::{draw_manufacturing, ManufacturingPanelState};
 pub use missions::draw_missions;
 pub use mod_manager::{draw_mod_manager, ModInfo, ModManagerAction, ModManagerState};
 pub use officers::{draw_officers, OfficersState};
@@ -121,25 +119,20 @@ pub enum PanelAction {
     },
 
     // ── Manufacturing ─────────────────────────────────────────────────────────
-    /// Add a buildable to the production queue at a system. With a
-    /// `destination`, the finished object travels there (F-030).
-    Enqueue {
-        system: SystemKey,
-        kind: BuildableKind,
-        cost: u32,
-        ticks: u32,
-        destination: Option<SystemKey>,
-    },
     /// Stop (`0x213`): `system`'s `area` drops every unit it was building
     /// (`ManufacturingState::stop`).
     StopProduction {
         system: SystemKey,
         area: rebellion_core::manufacturing::ProductionArea,
     },
-    /// Cancel the queue item at `index` in a system's shipyard queue.
-    CancelQueueItem { system: SystemKey, index: usize },
-    /// Move the shipyard queue item at `index` one place forward.
-    PrioritizeQueueItem { system: SystemKey, index: usize },
+    /// Build Selection's Confirm (`FUN_00438980`): `count` units of `kind`
+    /// replace what `system`'s `area` was building.
+    BuildProduction {
+        system: SystemKey,
+        area: rebellion_core::manufacturing::ProductionArea,
+        kind: BuildableKind,
+        count: u32,
+    },
 
     // ── Missions ──────────────────────────────────────────────────────────────
     /// Dispatch a mission ordered on day `tick` with its agents and decoys

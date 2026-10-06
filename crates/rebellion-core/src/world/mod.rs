@@ -1302,6 +1302,41 @@ pub struct SpecialForceUnit {
     pub on_mission: bool,
 }
 
+/// What one unit of a regiment, special-force or facility class costs to
+/// build and when it becomes available: the head that TROOPSD, SPECFCSD,
+/// DEFFACSD, MANFACSD and PROFACSD records share. A class record in memory
+/// sits 0x28 bytes past its DAT record (troop detection `+0x5c`,
+/// `decoy-roll.md`), so `FUN_0053b860`'s `+0x48` is the refined material
+/// cost and `FUN_0053b870`'s `+0x4c` the maintenance cost.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildableClass {
+    /// The class's TEXTSTRA name.
+    pub name: String,
+    pub is_alliance: bool,
+    pub is_empire: bool,
+    pub refined_material_cost: u32,
+    pub maintenance_cost: u32,
+    /// The research level that makes the class available.
+    pub research_order: u32,
+    pub research_difficulty: u32,
+    /// A yard's days per unit of build progress, class `+0x5c` that
+    /// `FUN_00520b70` reads: MANFACSD and PROFACSD `processing_rate`. Zero
+    /// for the other files.
+    pub processing_rate: u32,
+}
+
+impl BuildableClass {
+    /// Whether the side may build the class (`+0x18`/`+0x1c` of the record).
+    #[must_use]
+    pub const fn serves(&self, is_alliance: bool) -> bool {
+        if is_alliance {
+            self.is_alliance
+        } else {
+            self.is_empire
+        }
+    }
+}
+
 /// A defense facility instance on a system surface.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DefenseFacilityInstance {
@@ -1464,6 +1499,10 @@ pub struct GameWorld {
     /// Special-forces class definitions keyed by `DatId` (from SPECFCSD.DAT).
     /// Saved with the world.
     pub special_force_classes: HashMap<crate::ids::DatId, SpecialForceClassDef>,
+    /// Regiment, special-force and facility classes keyed by `DatId`, with
+    /// what each costs to build (TROOPSD, SPECFCSD, DEFFACSD, MANFACSD,
+    /// PROFACSD). Saved with the world.
+    pub buildable_classes: HashMap<crate::ids::DatId, BuildableClass>,
     /// Game-balance parameters from GNPRTB.DAT (combat formulas, bombardment divisors, etc.).
     pub gnprtb: GnprtbParams,
     /// Side-aware startup parameters from SDPRTB.DAT.

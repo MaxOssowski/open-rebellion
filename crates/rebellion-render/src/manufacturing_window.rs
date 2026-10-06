@@ -15,7 +15,7 @@ use crate::fleet_window::{control_side, fleet_side};
 use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
 use crate::system_window::{
     defense_facility_mini, manufacturing_facility_mini, opposing_contents_visible,
-    production_facility_mini, troop_mini,
+    production_facility_mini, special_force_mini, troop_mini,
 };
 
 /// The overview's bands, top to bottom: ships, troops, facilities
@@ -184,8 +184,8 @@ pub fn band(
     }
 }
 
-/// A product's name and GOKRES mini. port: the queue's facility and troop
-/// kinds name a template object, whose class gives both.
+/// A product's name and GOKRES mini: its class's (`FUN_00437880`, class
+/// `+0x30 & 0xfff`).
 #[must_use]
 pub fn product(world: &GameWorld, kind: BuildableKind) -> (String, Option<u32>) {
     match kind {
@@ -201,37 +201,27 @@ pub fn product(world: &GameWorld, kind: BuildableKind) -> (String, Option<u32>) 
             .map_or((String::new(), None), |class| {
                 (class.name.clone(), fighter_mini_id(class.dat_id))
             }),
-        BuildableKind::Troop(key) => named(
-            world
-                .troops
-                .get(key)
-                .and_then(|unit| troop_mini(unit.class_dat_id)),
-        ),
-        BuildableKind::DefenseFacility(key) => named(
-            world
-                .defense_facilities
-                .get(key)
-                .and_then(|value| defense_facility_mini(value.class_dat_id)),
-        ),
-        BuildableKind::ManufacturingFacility(key) => named(
-            world
-                .manufacturing_facilities
-                .get(key)
-                .and_then(|value| manufacturing_facility_mini(value.class_dat_id)),
-        ),
-        BuildableKind::ProductionFacility(key) => named(
-            world
-                .production_facilities
-                .get(key)
-                .and_then(|value| production_facility_mini(value.class_dat_id)),
-        ),
+        _ => kind.class_dat_id().map_or((String::new(), None), |class| {
+            let mini = class_mini(class);
+            let name = world
+                .buildable_classes
+                .get(&class)
+                .map(|value| value.name.clone())
+                .filter(|name| !name.is_empty())
+                .or_else(|| mini.map(|(_, label)| label.to_owned()))
+                .unwrap_or_default();
+            (name, mini.map(|(id, _)| id))
+        }),
     }
 }
 
-fn named(mini: Option<(u32, &'static str)>) -> (String, Option<u32>) {
-    mini.map_or((String::new(), None), |(id, label)| {
-        (label.into(), Some(id))
-    })
+/// A regiment, special-force or facility class's GOKRES mini and label.
+pub(crate) fn class_mini(class: DatId) -> Option<(u32, &'static str)> {
+    troop_mini(class)
+        .or_else(|| special_force_mini(class))
+        .or_else(|| defense_facility_mini(class))
+        .or_else(|| manufacturing_facility_mini(class))
+        .or_else(|| production_facility_mini(class))
 }
 
 /// The facility families each page lists (`FUN_004568a0`): shipyards
@@ -322,16 +312,11 @@ pub fn facility_picture(class: DatId, side: u8, state: FacilityState) -> Option<
 }
 
 /// A queued or delivered facility unit's class and side.
-fn pending_class(world: &GameWorld, kind: BuildableKind) -> Option<(DatId, u8)> {
+fn pending_class(kind: BuildableKind) -> Option<(DatId, u8)> {
     match kind {
-        BuildableKind::ManufacturingFacility(key) => world
-            .manufacturing_facilities
-            .get(key)
-            .map(|value| (value.class_dat_id, fleet_side(value.is_alliance))),
-        BuildableKind::ProductionFacility(key) => world
-            .production_facilities
-            .get(key)
-            .map(|value| (value.class_dat_id, fleet_side(value.is_alliance))),
+        BuildableKind::ManufacturingFacility(build) | BuildableKind::ProductionFacility(build) => {
+            Some((build.class, fleet_side(build.is_alliance)))
+        }
         _ => None,
     }
 }
@@ -407,7 +392,7 @@ pub fn page_cells(
                 .map(|delivery| (delivery.kind, FacilityState::EnRoute)),
         );
     for (index, (kind, state)) in queued.enumerate() {
-        let Some((class, owner)) = pending_class(world, kind) else {
+        let Some((class, owner)) = pending_class(kind) else {
             continue;
         };
         if wanted(class, owner) {
@@ -497,7 +482,7 @@ pub fn contents_visible(
 mod tests {
     use super::*;
     use rebellion_core::dat::{ExplorationStatus, Faction};
-    use rebellion_core::manufacturing::QueueItem;
+    use rebellion_core::manufacturing::{FacilityBuild, QueueItem};
     use rebellion_core::world::{
         CapitalShipClass, ControlKind, ManufacturingFacilityInstance, ProductionFacilityInstance,
         System,
@@ -559,6 +544,13 @@ mod tests {
     }
 
     const ALLIANCE: ControlKind = ControlKind::Controlled(Faction::Alliance);
+
+    fn alliance(class: u32) -> FacilityBuild {
+        FacilityBuild {
+            class: DatId::new(class),
+            is_alliance: true,
+        }
+    }
 
     // FUN_00458fe0: each type's base, then 0 built, 1 under construction (2
     // for side 1), 3 en route; mines and refineries 9001 and 9030.
@@ -700,15 +692,10 @@ mod tests {
     fn a_training_band_counts_its_units_as_training() {
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Bortras", ALLIANCE);
-        let template = world.troops.insert(rebellion_core::world::TroopUnit {
-            class_dat_id: DatId::new(0x1000_0002),
-            is_alliance: true,
-            regiment_strength: 100,
-        });
         let mut manufacturing = ManufacturingState::new();
         manufacturing.build(
             system,
-            &QueueItem::new(BuildableKind::Troop(template), 4, 4),
+            &QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0002)), 4, 4),
             2,
         );
         let shown = band(
@@ -733,8 +720,7 @@ mod tests {
         let built = yard(&mut world, system, 0x2800_0001, true);
         yard(&mut world, system, 0x2800_0004, false);
         yard(&mut world, system, 0x2900_0002, true);
-        let template = yard(&mut world, elsewhere, 0x2800_0004, true);
-        let stays = yard(&mut world, elsewhere, 0x2800_0001, true);
+        let template = alliance(0x2800_0004);
         let mut manufacturing = ManufacturingState::new();
         manufacturing.enqueue(
             elsewhere,
@@ -744,7 +730,11 @@ mod tests {
         // Built for its own system, this one is not listed here.
         manufacturing.enqueue(
             elsewhere,
-            QueueItem::new(BuildableKind::ManufacturingFacility(stays), 5, 5),
+            QueueItem::new(
+                BuildableKind::ManufacturingFacility(alliance(0x2800_0001)),
+                5,
+                5,
+            ),
         );
         let mut deliveries = DeliveryState::new();
         deliveries.depart(
@@ -854,13 +844,15 @@ mod tests {
     fn a_mine_being_built_shows_as_under_construction() {
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Bortras", ALLIANCE);
-        let elsewhere = add_system(&mut world, "Denab", ALLIANCE);
         world.systems[system].raw_materials = 2;
-        let template = production(&mut world, elsewhere, 0x2c00_0001);
         let mut manufacturing = ManufacturingState::new();
         manufacturing.enqueue(
             system,
-            QueueItem::new(BuildableKind::ProductionFacility(template), 5, 5),
+            QueueItem::new(
+                BuildableKind::ProductionFacility(alliance(0x2c00_0001)),
+                5,
+                5,
+            ),
         );
 
         let mines = page_cells(

@@ -4,6 +4,7 @@ pub mod advisor;
 pub mod agent_menu;
 pub mod audio;
 pub mod bmp_cache;
+pub mod build_selection;
 pub mod cockpit;
 pub mod defenses_window;
 pub mod encyclopedia;
@@ -114,9 +115,9 @@ pub use missions_window::{
 };
 pub use panels::game_setup::{draw_game_setup, Difficulty, GameSetupAction, GameSetupState};
 pub use panels::{
-    draw_fleets, draw_manufacturing, draw_missions, draw_mod_manager, draw_officers,
-    draw_save_load, FleetsState, ManufacturingPanelState, ModInfo, ModManagerAction,
-    ModManagerState, OfficersState, PanelAction, SaveLoadPanelState, SaveSlotInfo,
+    draw_fleets, draw_missions, draw_mod_manager, draw_officers, draw_save_load, FleetsState,
+    ModInfo, ModManagerAction, ModManagerState, OfficersState, PanelAction, SaveLoadPanelState,
+    SaveSlotInfo,
 };
 pub use sector_window::{
     draw_sector_windows, SectorWindowAction, SectorWindowState, SECTOR_WINDOW_HEIGHT,
@@ -1663,7 +1664,7 @@ mod interaction_tests {
             key,
             rebellion_core::manufacturing::QueueItem::new(
                 rebellion_core::manufacturing::BuildableKind::Troop(
-                    rebellion_core::ids::TroopKey::default(),
+                    rebellion_core::ids::DatId::new(0x1000_0001),
                 ),
                 5,
                 5,

@@ -41,34 +41,101 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::HashSet;
 
-use crate::ids::{
-    CapitalShipKey, DefenseFacilityKey, FighterKey, ManufacturingFacilityKey,
-    ProductionFacilityKey, SystemKey, TroopKey,
-};
+use crate::ids::{CapitalShipKey, DatId, FighterKey, SystemKey};
 use crate::tick::TickEvent;
 
 // ---------------------------------------------------------------------------
 // BuildableKind
 // ---------------------------------------------------------------------------
 
-/// The class template being produced.
-///
-/// Each variant wraps the slotmap key of the class definition stored in
-/// `GameWorld`. Instance creation happens when the queue item completes.
+/// The class being produced. The order names a class, as Build Selection
+/// lists them (`FUN_00537ff0` -> `FUN_0052e580`), and the instance is made
+/// when the unit completes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BuildableKind {
     /// A capital ship class (Star Destroyer, Mon Cal Cruiser, etc.)
     CapitalShip(CapitalShipKey),
     /// A fighter squadron class (X-Wing, TIE Fighter, etc.)
     Fighter(FighterKey),
-    /// A ground troop unit.
-    Troop(TroopKey),
-    /// A planetary defense installation.
-    DefenseFacility(DefenseFacilityKey),
-    /// A shipyard, training center, or other manufacturing facility.
-    ManufacturingFacility(ManufacturingFacilityKey),
-    /// A mine, refinery, or resource production facility.
-    ProductionFacility(ProductionFacilityKey),
+    /// A regiment class (TROOPSD, family `0x10`).
+    Troop(DatId),
+    /// A special-force class (SPECFCSD, family `0x3c`).
+    SpecialForce(DatId),
+    /// A planetary defense class (DEFFACSD, families `0x22..0x25`).
+    DefenseFacility(FacilityBuild),
+    /// A shipyard, training facility or construction yard class (MANFACSD,
+    /// families `0x28..0x2a`).
+    ManufacturingFacility(FacilityBuild),
+    /// A mine or refinery class (PROFACSD, families `0x2c..0x2d`).
+    ProductionFacility(FacilityBuild),
+}
+
+/// A facility class and the side it is built for: the facility files serve
+/// both sides, so the order carries its builder's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FacilityBuild {
+    pub class: DatId,
+    pub is_alliance: bool,
+}
+
+impl BuildableKind {
+    /// The `DatId` of a regiment, special-force or facility class; ships and
+    /// fighters are keyed by their class slots instead.
+    #[must_use]
+    pub const fn class_dat_id(self) -> Option<DatId> {
+        match self {
+            Self::Troop(class) | Self::SpecialForce(class) => Some(class),
+            Self::DefenseFacility(build)
+            | Self::ManufacturingFacility(build)
+            | Self::ProductionFacility(build) => Some(build.class),
+            Self::CapitalShip(_) | Self::Fighter(_) => None,
+        }
+    }
+}
+
+/// The first day by which `work` units of progress are done when each yard
+/// adds one unit every `period` days (`FUN_00528b30`: the sum over the
+/// manager's yards of `days / period`; `FUN_00528d30` searches the least
+/// such day). Yards with no period add nothing; `None` when none adds any.
+#[must_use]
+pub fn completion_day(periods: &[u32], work: u32) -> Option<u32> {
+    let periods: Vec<u32> = periods.iter().copied().filter(|&p| p > 0).collect();
+    if periods.is_empty() {
+        return None;
+    }
+    if work == 0 {
+        return Some(0);
+    }
+    let done = |days: u32| -> u64 { periods.iter().map(|&period| u64::from(days / period)).sum() };
+    // The slowest yard alone finishes by `work * max`, so the answer lies
+    // in (0, work * max].
+    let (mut low, mut high) = (0_u32, work.saturating_mul(*periods.iter().max()?));
+    while low + 1 < high {
+        let middle = low + (high - low) / 2;
+        if done(middle) >= u64::from(work) {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    Some(high)
+}
+
+/// Each of `count` units' build days when one unit's work is `cost`: the
+/// units share the yards one after another, so unit `k` ends on
+/// `completion_day(k * cost)` (`FUN_00528d30` multiplies the class cost by
+/// the quantity).
+#[must_use]
+pub fn unit_build_days(periods: &[u32], cost: u32, count: u32) -> Option<Vec<u32>> {
+    let mut previous = 0;
+    (1..=count)
+        .map(|unit| {
+            let day = completion_day(periods, cost.saturating_mul(unit))?;
+            let days = (day - previous).max(1);
+            previous = day;
+            Some(days)
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +345,7 @@ impl ProductionArea {
     pub const fn of(kind: BuildableKind) -> Self {
         match kind {
             BuildableKind::CapitalShip(_) | BuildableKind::Fighter(_) => Self::Shipyard,
-            BuildableKind::Troop(_) => Self::TrainingFacility,
+            BuildableKind::Troop(_) | BuildableKind::SpecialForce(_) => Self::TrainingFacility,
             BuildableKind::DefenseFacility(_)
             | BuildableKind::ManufacturingFacility(_)
             | BuildableKind::ProductionFacility(_) => Self::ConstructionYard,
@@ -364,6 +431,18 @@ impl ManufacturingState {
         self.stop(system, ProductionArea::of(item.kind));
         for _ in 0..count {
             self.enqueue(system, item.clone());
+        }
+    }
+
+    /// Build with each unit's own days (`unit_build_days`): `items` replace
+    /// what their area was building, in order.
+    pub fn build_units(&mut self, system: SystemKey, items: Vec<QueueItem>) {
+        let Some(first) = items.first() else {
+            return;
+        };
+        self.stop(system, ProductionArea::of(first.kind));
+        for item in items {
+            self.enqueue(system, item);
         }
     }
 
@@ -626,6 +705,52 @@ mod tests {
         QueueItem::new(BuildableKind::Fighter(key), ticks, ticks)
     }
 
+    // FUN_00528b30: each yard adds days / period units, and FUN_00528d30
+    // finds the least day whose sum reaches the work. MANFACSD gives a
+    // standard yard period 4 and an advanced one 2.
+    #[test]
+    fn a_build_ends_on_the_first_day_the_yards_progress_covers_its_work() {
+        assert_eq!(completion_day(&[4], 8), Some(32));
+        assert_eq!(completion_day(&[4, 2], 6), Some(8));
+        assert_eq!(completion_day(&[4, 4], 3), Some(8));
+        assert_eq!(completion_day(&[4, 0], 1), Some(4));
+        assert_eq!(completion_day(&[], 5), None);
+        assert_eq!(completion_day(&[0], 5), None);
+        assert_eq!(completion_day(&[4], 0), Some(0));
+    }
+
+    // FUN_00528d30 prices the whole order as cost * quantity; the units
+    // share the yards one after another.
+    #[test]
+    fn consecutive_units_take_the_days_between_their_shares_of_the_work() {
+        assert_eq!(unit_build_days(&[4], 8, 3), Some(vec![32, 32, 32]));
+        assert_eq!(unit_build_days(&[4, 4], 3, 2), Some(vec![8, 4]));
+        assert_eq!(unit_build_days(&[], 3, 2), None);
+        // A free unit still takes a day.
+        assert_eq!(unit_build_days(&[4], 0, 1), Some(vec![1]));
+    }
+
+    #[test]
+    fn build_units_replaces_the_areas_queue_with_the_units_in_order() {
+        let system = mock_system_key();
+        let mut state = ManufacturingState::new();
+        state.enqueue(system, cap_ship_item(9));
+        state.enqueue(system, fighter_item(9));
+        state.build_units(system, vec![cap_ship_item(8), cap_ship_item(4)]);
+        let queue = state.queue(system, ProductionArea::Shipyard).unwrap();
+        let days: Vec<u32> = queue
+            .items()
+            .iter()
+            .map(|item| item.ticks_remaining)
+            .collect();
+        assert_eq!(days, [8, 4]);
+        state.build_units(system, Vec::new());
+        assert_eq!(
+            state.queue(system, ProductionArea::Shipyard).unwrap().len(),
+            2
+        );
+    }
+
     // FUN_0052bee0: a product built for another system leaves its facility
     // en route on completion; one built for its own system completes there.
     #[test]
@@ -655,7 +780,7 @@ mod tests {
     }
 
     fn troop_item(ticks: u32) -> QueueItem {
-        QueueItem::new(BuildableKind::Troop(TroopKey::default()), ticks, ticks)
+        QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0001)), ticks, ticks)
     }
 
     // FUN_00509670: a system has one manager per area (ships 0, facilities
@@ -778,7 +903,7 @@ mod tests {
         state.enqueue(home, cap_ship_item(10));
         state.enqueue(
             home,
-            QueueItem::new(BuildableKind::Troop(TroopKey::default()), 5, 5),
+            QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0001)), 5, 5),
         );
 
         state.set_destination(home, ProductionArea::Shipyard, away);
@@ -803,7 +928,7 @@ mod tests {
         state.enqueue(home, cap_ship_item(3));
         state.enqueue(
             home,
-            QueueItem::new(BuildableKind::Troop(TroopKey::default()), 5, 5),
+            QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0001)), 5, 5),
         );
         assert_eq!(destinations(&state), [Some(away), Some(away), None, None]);
 

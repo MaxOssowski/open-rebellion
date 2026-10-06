@@ -41,7 +41,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 54;
+const SCENARIO_COUNT: u8 = 55;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -112,6 +112,7 @@ pub enum Scenario {
     FleetJoin = 51,
     FleetFinder = 52,
     ProductionDestination = 53,
+    BuildSelection = 54,
 }
 
 impl Scenario {
@@ -171,6 +172,7 @@ impl Scenario {
             51 => Self::FleetJoin,
             52 => Self::FleetFinder,
             53 => Self::ProductionDestination,
+            54 => Self::BuildSelection,
             _ => return None,
         })
     }
@@ -193,7 +195,10 @@ impl Scenario {
 
     /// The scenarios whose gate opens the object pop-up menu.
     fn reports_object_menu(self) -> bool {
-        self == Self::MissionTargeting || self.moves_a_fleet() || self.uses_the_fleet_window()
+        self == Self::MissionTargeting
+            || self == Self::BuildSelection
+            || self.moves_a_fleet()
+            || self.uses_the_fleet_window()
     }
 
     pub fn mode(self) -> GidMode {
@@ -397,7 +402,25 @@ pub fn apply(
     if request.scenario == Scenario::Sector {
         sectors.open_for_system(world, primary, request.faction);
     }
-    if request.scenario == Scenario::System {
+    // The Build Selection gate: a shipyard, a training facility and a
+    // construction yard of the player's at the primary system, whose
+    // Manufacturing window opens on its overview.
+    if request.scenario == Scenario::BuildSelection {
+        for class in [0x2800_0001, 0x2900_0002, 0x2a00_0003] {
+            let yard = world.manufacturing_facilities.insert(
+                rebellion_core::world::ManufacturingFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(class),
+                    is_alliance: player_is_alliance,
+                    is_shipyard: class == 0x2800_0001,
+                },
+            );
+            world.systems[primary].manufacturing_facilities.push(yard);
+        }
+    }
+    if matches!(
+        request.scenario,
+        Scenario::System | Scenario::BuildSelection
+    ) {
         systems.open(
             world,
             primary,
@@ -1032,6 +1055,8 @@ struct FixtureObjectMenu<'a> {
     rename_row: Option<usize>,
     destination_row: Option<usize>,
     status_window_row: Option<usize>,
+    build_row: Option<usize>,
+    stop_row: Option<usize>,
     target_dat_id: u32,
     target_name: &'a str,
     target_screen_x: f32,
@@ -1052,7 +1077,12 @@ fn object_menu_report<'a>(
     };
     let target = world.systems.get(key)?;
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
-    let planet = sectors.planet_screen_rect(world, layout, key)?.center();
+    // The Build Selection gate targets nothing; its menu reports anyway.
+    let planet = match sectors.planet_screen_rect(world, layout, key) {
+        Some(rect) => rect.center(),
+        None if request.scenario == Scenario::BuildSelection => egui_macroquad::egui::Pos2::ZERO,
+        None => return None,
+    };
     let (target_screen_x, target_screen_y) = (planet.x, planet.y);
     Some(FixtureObjectMenu {
         status: "object-menu",
@@ -1069,6 +1099,8 @@ fn object_menu_report<'a>(
         rename_row: menu.row_of(ObjectMenuCommand::Rename),
         destination_row: menu.row_of(ObjectMenuCommand::Destination),
         status_window_row: menu.row_of(ObjectMenuCommand::Status),
+        build_row: menu.row_of(ObjectMenuCommand::Build),
+        stop_row: menu.row_of(ObjectMenuCommand::Stop),
         target_dat_id: target.dat_id.raw(),
         target_name: &target.name,
         target_screen_x,
@@ -1090,6 +1122,90 @@ pub fn emit_object_menu(
         return;
     };
     let bytes = serde_json::to_vec(&report).expect("serialize the object menu report");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+}
+
+/// One Manufacturing window band as the Build Selection gate sees it.
+#[derive(Debug, Serialize, PartialEq)]
+struct FixtureBand {
+    area: &'static str,
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+    queued: usize,
+    product: String,
+}
+
+/// The primary system's bands and the Build Selection window, each frame.
+#[derive(Debug, Serialize, PartialEq)]
+struct FixtureProduction {
+    status: &'static str,
+    code: u32,
+    bands: Vec<FixtureBand>,
+    build_selection_open: bool,
+    build_selection_left: f32,
+    build_selection_top: f32,
+}
+
+fn production_report(
+    request: FixtureRequest,
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    systems: &SystemWindowState,
+    build_selection: &rebellion_render::build_selection::BuildSelectionState,
+) -> Option<FixtureProduction> {
+    let primary = world.systems.keys().next()?;
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let bands = rebellion_core::manufacturing::ProductionArea::ALL
+        .iter()
+        .filter_map(|&area| {
+            let rect = systems.band_screen_rect(layout, primary, area)?;
+            let queue = manufacturing.queue(primary, area);
+            Some(FixtureBand {
+                area: match area {
+                    rebellion_core::manufacturing::ProductionArea::Shipyard => "ships",
+                    rebellion_core::manufacturing::ProductionArea::TrainingFacility => "troops",
+                    rebellion_core::manufacturing::ProductionArea::ConstructionYard => "facilities",
+                },
+                left: rect.min.x,
+                top: rect.min.y,
+                width: rect.width(),
+                height: rect.height(),
+                queued: queue.map_or(0, rebellion_core::manufacturing::ProductionQueue::len),
+                product: queue
+                    .and_then(rebellion_core::manufacturing::ProductionQueue::active)
+                    .map(|item| rebellion_render::manufacturing_window::product(world, item.kind).0)
+                    .unwrap_or_default(),
+            })
+        })
+        .collect();
+    let window = rebellion_render::build_selection::window_rect(layout);
+    Some(FixtureProduction {
+        status: "production",
+        code: request.code,
+        bands,
+        build_selection_open: build_selection.is_open(),
+        build_selection_left: window.min.x,
+        build_selection_top: window.min.y,
+    })
+}
+
+pub fn emit_production(
+    request: FixtureRequest,
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    systems: &SystemWindowState,
+    build_selection: &rebellion_render::build_selection::BuildSelectionState,
+) {
+    if request.scenario != Scenario::BuildSelection {
+        return;
+    }
+    let Some(report) = production_report(request, world, manufacturing, systems, build_selection)
+    else {
+        return;
+    };
+    let bytes = serde_json::to_vec(&report).expect("serialize the production report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
@@ -3777,7 +3893,8 @@ mod tests {
                 Scenario::FleetLoadFull,
                 Scenario::RegimentUnloadRefused,
                 Scenario::FleetJoin,
-                Scenario::ProductionDestination
+                Scenario::ProductionDestination,
+                Scenario::BuildSelection
             ]
         );
     }

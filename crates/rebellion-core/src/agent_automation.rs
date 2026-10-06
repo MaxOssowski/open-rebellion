@@ -40,8 +40,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::economy::{EconomyState, SystemEconomy};
-use crate::ids::{ProductionFacilityKey, SystemKey, TroopKey};
-use crate::manufacturing::{BuildableKind, ManufacturingState};
+use crate::ids::{DatId, SystemKey};
+use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState};
 use crate::world::GameWorld;
 
 // -------------------------------------------------------------------------
@@ -463,9 +463,9 @@ impl PlayerAgent {
 
         // Find a production facility key to use as the class template.
         // port: pick the first owned production facility of the desired type.
-        let facility_key = find_production_facility_class(world, player_is_alliance, build_mine)?;
+        let facility = find_production_facility_class(world, player_is_alliance, build_mine)?;
 
-        let kind = BuildableKind::ProductionFacility(facility_key);
+        let kind = BuildableKind::ProductionFacility(facility);
 
         // The site (FUN_004c6f00's sorts 5..7, untraced): port: the first
         // owned system with room, under the economy's caps (energy slots for
@@ -580,8 +580,8 @@ impl PlayerAgent {
         }
 
         // Find a troop class to build.
-        let troop_key = find_troop_class(world, player_is_alliance)?;
-        let kind = BuildableKind::Troop(troop_key);
+        let troop_class = find_troop_class(world, player_is_alliance)?;
+        let kind = BuildableKind::Troop(troop_class);
 
         // port: ticks per regiment from the AI's default.
         let ticks_per_unit = 15_u32;
@@ -721,10 +721,7 @@ fn has_room(world: &GameWorld, mfg: &ManufacturingState, site: SystemKey, mine: 
         return false;
     };
     let is_mine = |kind: BuildableKind| match kind {
-        BuildableKind::ProductionFacility(key) => world
-            .production_facilities
-            .get(key)
-            .is_some_and(|value| value.is_mine),
+        BuildableKind::ProductionFacility(build) => build.class.family() == 0x2c,
         _ => false,
     };
     let facilities = system.production_facilities.len() as u32
@@ -843,12 +840,12 @@ fn find_training_system(
 /// its class as the template. The original uses entity type 0x29 queries.
 ///
 /// Evidence: `FUN_004c79e0.c` (entity type 0x29).
-fn find_troop_class(world: &GameWorld, player_is_alliance: bool) -> Option<TroopKey> {
+fn find_troop_class(world: &GameWorld, player_is_alliance: bool) -> Option<DatId> {
     world
         .troops
         .iter()
         .find(|(_, t)| t.is_alliance == player_is_alliance)
-        .map(|(key, _)| key)
+        .map(|(_, troop)| troop.class_dat_id)
 }
 
 /// Find a production facility key to use as a class template for building
@@ -863,12 +860,15 @@ fn find_production_facility_class(
     world: &GameWorld,
     player_is_alliance: bool,
     want_mine: bool,
-) -> Option<ProductionFacilityKey> {
+) -> Option<FacilityBuild> {
     world
         .production_facilities
         .iter()
         .find(|(_, f)| f.is_alliance == player_is_alliance && f.is_mine == want_mine)
-        .map(|(key, _)| key)
+        .map(|(_, facility)| FacilityBuild {
+            class: facility.class_dat_id,
+            is_alliance: player_is_alliance,
+        })
 }
 
 // =========================================================================
@@ -1014,18 +1014,14 @@ mod tests {
     }
 
     /// The facility a BuildFacility order builds, and where.
-    fn built(world: &GameWorld, orders: &[AgentOrder]) -> Option<(SystemKey, SystemKey, bool)> {
+    fn built(orders: &[AgentOrder]) -> Option<(SystemKey, SystemKey, bool)> {
         orders.iter().find_map(|order| match *order {
             AgentOrder::BuildFacility {
                 system,
                 destination,
-                kind: BuildableKind::ProductionFacility(key),
+                kind: BuildableKind::ProductionFacility(build),
                 ..
-            } => Some((
-                system,
-                destination,
-                world.production_facilities[key].is_mine,
-            )),
+            } => Some((system, destination, build.class.family() == 0x2c)),
             _ => None,
         })
     }
@@ -1217,9 +1213,12 @@ mod tests {
         assert_eq!(orders.len(), 1);
         match &orders[0] {
             AgentOrder::BuildFacility { kind, .. } => {
-                if let BuildableKind::ProductionFacility(pfk) = kind {
-                    let pf = world.production_facilities.get(*pfk).unwrap();
-                    assert!(pf.is_mine, "should build a mine when raw < refined");
+                if let BuildableKind::ProductionFacility(build) = kind {
+                    assert_eq!(
+                        build.class.family(),
+                        0x2c,
+                        "should build a mine when raw < refined"
+                    );
                 } else {
                     panic!("expected ProductionFacility");
                 }
@@ -1251,9 +1250,12 @@ mod tests {
         assert_eq!(orders.len(), 1);
         match &orders[0] {
             AgentOrder::BuildFacility { kind, .. } => {
-                if let BuildableKind::ProductionFacility(pfk) = kind {
-                    let pf = world.production_facilities.get(*pfk).unwrap();
-                    assert!(!pf.is_mine, "should build a refinery when raw >= refined");
+                if let BuildableKind::ProductionFacility(build) = kind {
+                    assert_eq!(
+                        build.class.family(),
+                        0x2d,
+                        "should build a refinery when raw >= refined"
+                    );
                 } else {
                     panic!("expected ProductionFacility");
                 }
@@ -1300,7 +1302,7 @@ mod tests {
         // FUN_004c7a90 (0x214) then FUN_004c7bd0 (0x212, quantity = count).
         let (mut world, yard, _, mut mfg) = minimal_world(true);
         let target = world.systems.insert(world.systems[yard].clone());
-        let kind = BuildableKind::Troop(TroopKey::default());
+        let kind = BuildableKind::Troop(DatId::new(0x1000_0001));
         apply_orders(
             &[AgentOrder::TrainTroops {
                 training_system: yard,
@@ -1355,8 +1357,12 @@ mod tests {
         for _ in 0..count {
             mfg.enqueue(
                 training_system,
-                crate::manufacturing::QueueItem::new(BuildableKind::Troop(troop), 15, 15)
-                    .delivered_to(target_system),
+                crate::manufacturing::QueueItem::new(
+                    BuildableKind::Troop(world.troops[troop].class_dat_id),
+                    15,
+                    15,
+                )
+                .delivered_to(target_system),
             );
         }
         assert!(agent.advance(&world, &mfg, &eco, true).is_empty());
@@ -1455,7 +1461,7 @@ mod tests {
             add_production_facility(&mut world, sys_key, true, mine);
         }
         let orders = producing().advance(&world, &mfg, &eco, true);
-        assert_eq!(built(&world, &orders), Some((sys_key, sys_key, false)));
+        assert_eq!(built(&orders), Some((sys_key, sys_key, false)));
     }
 
     /// port: the yard is the first owned system with a non-shipyard
@@ -1472,7 +1478,8 @@ mod tests {
         let open = add_system(&mut world, site);
         add_training_facility(&mut world, open, true);
         let troop = add_troop(&mut world, site, true);
-        let item = || crate::manufacturing::QueueItem::new(BuildableKind::Troop(troop), 15, 15);
+        let class = world.troops[troop].class_dat_id;
+        let item = || crate::manufacturing::QueueItem::new(BuildableKind::Troop(class), 15, 15);
         for _ in 0..3 {
             mfg.enqueue(full, item());
         }
@@ -1480,7 +1487,7 @@ mod tests {
             mfg.enqueue(open, item());
         }
         let orders = producing().advance(&world, &mfg, &eco, true);
-        assert_eq!(built(&world, &orders), Some((open, site, false)));
+        assert_eq!(built(&orders), Some((open, site, false)));
     }
 
     /// port: mines built and queued for a site fill its raw deposits
@@ -1496,12 +1503,19 @@ mod tests {
         world.systems[sys_key].raw_materials = 2;
         mfg.enqueue(
             sys_key,
-            crate::manufacturing::QueueItem::new(BuildableKind::ProductionFacility(mine), 30, 30),
+            crate::manufacturing::QueueItem::new(
+                BuildableKind::ProductionFacility(FacilityBuild {
+                    class: world.production_facilities[mine].class_dat_id,
+                    is_alliance: true,
+                }),
+                30,
+                30,
+            ),
         );
         assert!(producing().advance(&world, &mfg, &eco, true).is_empty());
         world.systems[sys_key].raw_materials = 3;
         assert_eq!(
-            built(&world, &producing().advance(&world, &mfg, &eco, true)),
+            built(&producing().advance(&world, &mfg, &eco, true)),
             Some((sys_key, sys_key, true))
         );
     }
@@ -1516,7 +1530,7 @@ mod tests {
         }
         world.systems[sys_key].raw_materials = 2;
         assert_eq!(
-            built(&world, &producing().advance(&world, &mfg, &eco, true)),
+            built(&producing().advance(&world, &mfg, &eco, true)),
             Some((sys_key, sys_key, false))
         );
     }
@@ -1532,9 +1546,13 @@ mod tests {
         let troop = add_troop(&mut world, sys_key, true);
         mfg.enqueue(
             sys_key,
-            crate::manufacturing::QueueItem::new(BuildableKind::Troop(troop), 15, 15),
+            crate::manufacturing::QueueItem::new(
+                BuildableKind::Troop(world.troops[troop].class_dat_id),
+                15,
+                15,
+            ),
         );
-        assert!(built(&world, &producing().advance(&world, &mfg, &eco, true)).is_some());
+        assert!(built(&producing().advance(&world, &mfg, &eco, true)).is_some());
     }
 
     /// FUN_004c7650 sorts by deficit: the larger wins wherever it is
@@ -1589,7 +1607,7 @@ mod tests {
             [AgentOrder::TrainTroops {
                 training_system: yard,
                 target_system: yard,
-                kind: BuildableKind::Troop(own),
+                kind: BuildableKind::Troop(world.troops[own].class_dat_id),
                 count: 2,
                 ticks_per_unit: 15,
             }]
