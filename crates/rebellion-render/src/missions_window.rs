@@ -21,7 +21,7 @@ use rebellion_core::world::GameWorld;
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::defenses_window::title_resource;
-use crate::fleet_window::{faction_side, paint_native};
+use crate::fleet_window::{en_route_mark, faction_side, paint_native, MiniObject};
 use crate::mission_dialog::{kind_icon, kind_name};
 use crate::panels::fleets::capital_ship_mini_id;
 use crate::quadrant_icons::{mission_keys, missions_side, visible_members};
@@ -140,14 +140,10 @@ struct MemberRow {
     member: MissionMember,
     mini: Option<u32>,
     label: String,
-    /// En route to the mission's target (`+0x50` bit 4): the mini carries
-    /// [`EN_ROUTE_SMALL`].
-    en_route: bool,
+    /// En route to the mission's target (`+0x50` bit 4): the mark drawn over
+    /// its mini (`en_route_mark`).
+    en_route: Option<(DllSource, u32)>,
 }
-
-/// `FUN_0042c3b0`'s small en route overlay for a character or special force
-/// (11501, `0x2ced`), drawn over its mini.
-const EN_ROUTE_SMALL: u32 = 11501;
 
 /// What the selected mission's details name (`+0x1c8`, `FUN_004a10a0`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -567,28 +563,30 @@ fn member_rows(
                 member,
                 mini,
                 label,
-                en_route: en_route && carries_en_route_overlay(world, member),
+                en_route: mini
+                    .filter(|_| en_route)
+                    .and_then(|mini| Some(en_route_mark(mini_object(world, member)?, mini))),
             })
         })
         .collect()
 }
 
-/// Whether `FUN_0042c3b0` draws [`EN_ROUTE_SMALL`] over `member`'s mini:
-/// every character, and every special force but classes `0x3c000003` and
-/// `0x3c000005`.
-fn carries_en_route_overlay(world: &GameWorld, member: MissionMember) -> bool {
+/// What `member`'s mini stands for, as `FUN_0042c3b0` picks its en route
+/// mark.
+fn mini_object(world: &GameWorld, member: MissionMember) -> Option<MiniObject> {
     match member {
-        MissionMember::Character(_) => true,
+        MissionMember::Character(_) => Some(MiniObject::Character),
         MissionMember::SpecialForce(key) => world
             .special_forces
             .get(key)
-            .is_some_and(|force| !matches!(force.class_dat_id.raw(), 0x3c00_0003 | 0x3c00_0005)),
+            .map(|force| MiniObject::SpecialForce(force.class_dat_id)),
     }
 }
 
 /// A member's GOKRES mini and name (`FUN_0042c3b0(.., 0, 1)`,
-/// `FUN_004f62d0`). port: the mini's status overlays are not drawn, as in
-/// the Mission dialog.
+/// `FUN_004f62d0`). port: of the mini's status overlays only the en route
+/// mark is drawn (`MemberRow::en_route`); the others are not, as in the
+/// Mission dialog.
 fn member_mini(world: &GameWorld, member: MissionMember) -> Option<(Option<u32>, String)> {
     match member {
         MissionMember::Character(key) => {
@@ -1192,13 +1190,13 @@ fn draw_missions_window(
                             x,
                             y,
                         );
-                        if member.en_route {
+                        if let Some((source, mark)) = member.en_route {
                             paint_native(
                                 &member_painter,
                                 ctx,
                                 cache,
-                                DllSource::Strategy,
-                                EN_ROUTE_SMALL,
+                                source,
+                                mark,
                                 cell,
                                 scale,
                                 x,
@@ -1402,14 +1400,18 @@ mod tests {
         assert!(!listed(&[]).iter().any(|(m, ..)| *m == member));
         let with = listed(&[transit]);
         assert!(with.contains(&(member, 1, false, true)), "{with:?}");
-        assert!(carries_en_route_overlay(&world, member));
+        assert_eq!(
+            mini_object(&world, member).map(|object| en_route_mark(object, 0)),
+            Some((DllSource::Strategy, 11_501))
+        );
     }
 
     #[test]
-    fn a_killed_or_unseen_traveller_is_not_listed_and_two_force_classes_carry_no_mark() {
+    fn a_killed_or_unseen_traveller_is_not_listed_and_two_force_classes_carry_their_own_mark() {
         // port: a member bound for a system shows where the System window
         // shows its side's members, and a killed one not at all.
-        // FUN_0042c3b0 skips the overlay for classes 0x3c000003/0x3c000005.
+        // FUN_0042c3b0 keeps the GOKRES default (class & 0xfff) + 0x5000 for
+        // classes 0x3c000003/0x3c000005 instead of 11501.
         let (mut world, system, _, _) = busy();
         world.systems[system].control = ControlKind::Controlled(Faction::Empire);
         let mut traveller = |name: &str, is_alliance: bool, is_killed: bool| {
@@ -1458,17 +1460,19 @@ mod tests {
             ))
         };
         let forces: Vec<_> = [
-            (0x3c00_0001, true),
-            (0x3c00_0003, false),
-            (0x3c00_0005, false),
+            (0x3c00_0001, (DllSource::Strategy, 11_501)),
+            (0x3c00_0003, (DllSource::Gokres, 21_826)),
+            (0x3c00_0005, (DllSource::Gokres, 21_888)),
         ]
         .into_iter()
-        .map(|(class, marked)| (class, force(class), marked))
+        .map(|(class, mark)| (class, force(class), mark))
         .collect();
-        for (class, member, marked) in forces {
+        for (class, member, mark) in forces {
+            let mini = member_mini(&world, member).and_then(|(mini, _)| mini);
             assert_eq!(
-                carries_en_route_overlay(&world, member),
-                marked,
+                mini.zip(mini_object(&world, member))
+                    .map(|(mini, object)| en_route_mark(object, mini)),
+                Some(mark),
                 "0x{class:x}"
             );
         }
@@ -1737,7 +1741,7 @@ mod tests {
             [(None, "Leia"), (Some(18_176 + 832), "Mon")]
         );
         assert!(
-            rows.iter().all(|row| !row.en_route),
+            rows.iter().all(|row| row.en_route.is_none()),
             "a member at the system is not en route"
         );
     }

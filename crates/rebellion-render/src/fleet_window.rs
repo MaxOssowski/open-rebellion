@@ -13,7 +13,7 @@ use egui_macroquad::egui;
 use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::fleet_join;
 use rebellion_core::fog::FogState;
-use rebellion_core::ids::{FleetKey, SystemKey, TroopKey};
+use rebellion_core::ids::{DatId, FleetKey, SystemKey, TroopKey};
 use rebellion_core::movement::MovementState;
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::world::{ControlKind, GameWorld};
@@ -52,6 +52,45 @@ const FLEET_PICTURE: u32 = 10425;
 const EN_ROUTE_ENTRY: u32 = 10423;
 const EN_ROUTE_PICTURE: u32 = 10426;
 const NO_HYPERDRIVE: u32 = 10430;
+/// STRATEGY 11501 (`0x2ced`): the en route mark of a character's mini.
+const EN_ROUTE_PERSONNEL: u32 = 11501;
+/// STRATEGY 11515 (`0x2cfb`): the en route mark of a regiment's mini.
+const EN_ROUTE_REGIMENT: u32 = 11515;
+
+/// What a mini stands for, as `FUN_0042c3b0` picks its en route mark.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MiniObject {
+    /// A capital ship or squadron.
+    Craft,
+    Regiment(DatId),
+    Character,
+    SpecialForce(DatId),
+}
+
+/// The mark `FUN_0042c3b0(.., 0, 1)` draws over an en route object's `mini`
+/// (`+0x50` bit 4 set, bit 3 clear), at the mini's origin. Its default is the
+/// object's own GOKRES mark `(class & 0xfff) + 0x5000`, the mini's id plus
+/// `0x1000`; it stays for craft, regiment classes `0x10000002` and
+/// `0x10000008`, and special force classes `0x3c000003` and `0x3c000005`.
+/// Other regiments take 11515, and characters and other special forces
+/// 11501. An object is en route while its container is (`FUN_004f8240`), so
+/// everything aboard a travelling fleet carries its mark.
+pub(crate) fn en_route_mark(object: MiniObject, mini: u32) -> (DllSource, u32) {
+    let own = (DllSource::Gokres, mini + 0x1000);
+    match object {
+        MiniObject::Craft => own,
+        MiniObject::Regiment(class) => match class.raw() {
+            0x1000_0002 | 0x1000_0008 => own,
+            _ => (DllSource::Strategy, EN_ROUTE_REGIMENT),
+        },
+        MiniObject::Character => (DllSource::Strategy, EN_ROUTE_PERSONNEL),
+        MiniObject::SpecialForce(class) => match class.raw() {
+            0x3c00_0003 | 0x3c00_0005 => own,
+            _ => (DllSource::Strategy, EN_ROUTE_PERSONNEL),
+        },
+    }
+}
+
 /// The galaxy view rail's icon for a minimized Fleet window (`FUN_004a76e0`).
 const RAIL_ICONS: [u32; 3] = [11536, 11537, 11538];
 
@@ -855,6 +894,8 @@ fn tab_enabled(
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RightItem {
     mini: Option<u32>,
+    /// What the mini stands for, for its en route mark.
+    kind: MiniObject,
     label: String,
     no_hyperdrive: bool,
     /// The regiment or ship the item stands for.
@@ -884,6 +925,7 @@ fn right_items(
             .filter_map(|(index, ship)| Some((index, world.capital_ship_classes.get(ship.class)?)))
             .map(|(index, class)| RightItem {
                 mini: capital_ship_mini_id(class.dat_id),
+                kind: MiniObject::Craft,
                 // FUN_004f6270: the ship's own name, else its class's.
                 label: world
                     .ship_name(fleet, index)
@@ -905,6 +947,7 @@ fn right_items(
             .flat_map(|(class, count)| {
                 (0..count).map(move |_| RightItem {
                     mini: fighter_mini_id(class.dat_id),
+                    kind: MiniObject::Craft,
                     label: class.name.clone(),
                     no_hyperdrive: false,
                     object: None,
@@ -915,9 +958,12 @@ fn right_items(
             .cargo(fleet)
             .iter()
             .filter_map(|&key| Some((key, world.troops.get(key)?)))
-            .filter_map(|(key, troop)| Some((key, troop_mini(troop.class_dat_id)?)))
-            .map(|(key, (mini, label))| RightItem {
+            .filter_map(|(key, troop)| {
+                Some((key, troop.class_dat_id, troop_mini(troop.class_dat_id)?))
+            })
+            .map(|(key, class, (mini, label))| RightItem {
                 mini: Some(mini),
+                kind: MiniObject::Regiment(class),
                 label: label.to_owned(),
                 no_hyperdrive: false,
                 object: Some(ItemObject::Regiment(key)),
@@ -929,6 +975,7 @@ fn right_items(
             .filter_map(|&character| world.characters.get(character))
             .map(|character| RightItem {
                 mini: character_mini_resource_id(character.dat_id, character.is_major),
+                kind: MiniObject::Character,
                 label: character.name.clone(),
                 no_hyperdrive: false,
                 object: None,
@@ -1412,6 +1459,20 @@ fn draw_fleet_window(
                                     5.0,
                                     15.0,
                                 );
+                                if movement.is_in_transit(fleet) {
+                                    let (source, mark) = en_route_mark(MiniObject::Craft, mini);
+                                    paint_native(
+                                        &list_painter,
+                                        ctx,
+                                        cache,
+                                        source,
+                                        mark,
+                                        item,
+                                        scale,
+                                        5.0,
+                                        15.0,
+                                    );
+                                }
                             }
                             if class.hyperdrive == 0 {
                                 paint_native(
@@ -1570,6 +1631,12 @@ fn draw_fleet_window(
                     RIGHT_LIST.3,
                 );
                 let right_painter = painter.with_clip_rect(right);
+                // Everything aboard a travelling fleet is en route
+                // (`FUN_004f8240`).
+                let travelling = matches!(
+                    selected,
+                    Some(FleetWindowEntry::Fleet(fleet)) if movement.is_in_transit(fleet)
+                );
                 for (row, item) in right_items(world, transport, selected, window.tab)
                     .iter()
                     .enumerate()
@@ -1605,6 +1672,20 @@ fn draw_fleet_window(
                             28.0,
                             4.0,
                         );
+                        if travelling {
+                            let (source, mark) = en_route_mark(item.kind, mini);
+                            paint_native(
+                                &right_painter,
+                                ctx,
+                                cache,
+                                source,
+                                mark,
+                                cell,
+                                scale,
+                                28.0,
+                                4.0,
+                            );
+                        }
                     }
                     if item.no_hyperdrive {
                         paint_native(
@@ -2127,6 +2208,7 @@ pub(crate) mod tests {
             right_items(&world, &transport, selected, FleetWindowTab::Troops),
             [RightItem {
                 mini: Some(17_472),
+                kind: MiniObject::Regiment(DatId::new(0x1000_0001)),
                 label: "Alliance Fleet Regiment".into(),
                 no_hyperdrive: false,
                 object: Some(ItemObject::Regiment(troop)),
@@ -3259,13 +3341,21 @@ pub(crate) mod tests {
     fn a_fleet_in_hyperspace_shows_its_overlays_where_it_is_bound() {
         // move-order.md: the fleet joins its destination at once; there
         // FUN_004a37c0 draws 10423 at the entry's (5, 5) on +0x50 bit 4 and
-        // FUN_004a5c00 10426 over the one selected fleet's picture.
+        // FUN_004a5c00 10426 over the one selected fleet's picture. Its ships
+        // are en route with it (FUN_004f8240), so FUN_0042c3b0 draws each
+        // mini's own mark (+0x1000) over the ship entry's mini at (5, 15)
+        // (FUN_004a3d40) and the right item's at (28, 4) (FUN_004a6e70).
         let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
         let fleet = add_fleet(&mut world, system, true, 0);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        // The MC80 Liberty cruiser's class.
+        world.capital_ship_classes[class].dat_id = DatId::new(0x1400_0040);
+        let mini = capital_ship_mini_id(world.capital_ship_classes[class].dat_id).unwrap();
         let transport = TroopTransportState::default();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
             window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.expanded.push(fleet);
         }
         let mut movement = MovementState::default();
         let paint = |state: &mut FleetWindowState, movement: &MovementState| {
@@ -3282,13 +3372,43 @@ pub(crate) mod tests {
 
         let orbiting = paint(&mut state, &movement);
         assert!(orbiting.contains(&(10400, at(9.0, 34.0))));
-        assert!(!orbiting.iter().any(|(id, _)| *id == 10423 || *id == 10426));
+        assert!(!orbiting
+            .iter()
+            .any(|(id, _)| *id == 10423 || *id == 10426 || *id == mini + 0x1000));
 
         // Bound here from elsewhere: out of the orbit index, under an order.
         assert!(movement.order(fleet, system, system, 5));
         let en_route = paint(&mut state, &movement);
         assert!(en_route.contains(&(10423, at(9.0, 34.0))), "{en_route:?}");
         assert!(en_route.contains(&(10426, at(100.0, 42.0))), "{en_route:?}");
+        assert!(
+            en_route.contains(&(mini + 0x1000, at(9.0, 94.0))),
+            "{en_route:?}"
+        );
+        assert!(
+            en_route.contains(&(mini + 0x1000, at(129.0, 131.0))),
+            "{en_route:?}"
+        );
+    }
+
+    #[test]
+    fn each_kind_of_mini_takes_its_own_en_route_mark() {
+        // FUN_0042c3b0: GOKRES (class & 0xfff) + 0x5000 by default, kept for
+        // craft, regiments 0x10000002/0x10000008 and special forces
+        // 0x3c000003/0x3c000005; 0x2cfb (11515) for other regiments and
+        // 0x2ced (11501) for characters and other special forces.
+        let mark = |object| en_route_mark(object, 17_473);
+        let own = (DllSource::Gokres, 21_569);
+        let regiment = |raw| MiniObject::Regiment(DatId::new(raw));
+        let force = |raw| MiniObject::SpecialForce(DatId::new(raw));
+        assert_eq!(mark(MiniObject::Craft), own);
+        assert_eq!(mark(regiment(0x1000_0002)), own);
+        assert_eq!(mark(regiment(0x1000_0008)), own);
+        assert_eq!(mark(regiment(0x1000_0001)), (DllSource::Strategy, 11_515));
+        assert_eq!(mark(MiniObject::Character), (DllSource::Strategy, 11_501));
+        assert_eq!(mark(force(0x3c00_0003)), own);
+        assert_eq!(mark(force(0x3c00_0005)), own);
+        assert_eq!(mark(force(0x3c00_0001)), (DllSource::Strategy, 11_501));
     }
 
     fn key(key: egui::Key) -> egui::Event {

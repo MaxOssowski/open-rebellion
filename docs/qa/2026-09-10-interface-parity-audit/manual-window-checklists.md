@@ -134,9 +134,9 @@ and [Troop Finder reading](https://github.com/TeeJS/faction-wars/blob/626b9b2bd6
 
 | Cell | Original behavior | Port | Original proof |
 |---|---|---|---|
-| `OBJ-05-C016` | An en-route fleet or ship receives its moving-star or engine-glow presentation. | Missing | Static overlay resource 10426 is traced; animation remains unresolved. |
+| `OBJ-05-C016` | An en-route fleet or ship receives its moving-star or engine-glow presentation. | Partial | `FUN_0042c3b0` draws static marks, with no animation: 10423/10426 on the fleet, and each mini's own GOKRES `+0x5000` engine glow on the ships of a travelling fleet (`FUN_004f8240`), in its ship entries and right-list items (`ghidra/notes/fleet-window.md`, "En route marks"). The one-ship portrait's mark is open, since the portrait is unmapped. |
 | `OBJ-05-C017` | A fleet or ship in hyperspace cannot receive orders. | Partial | Core movement refusals exist; the complete Fleet-window disabled-state matrix is open. |
-| `OBJ-12-C015` | A mission team in hyperspace receives its moving-star presentation. | Missing | Resource leads 11501/11502/11505 exist; production composition is absent. |
+| `OBJ-12-C015` | A mission team in hyperspace receives its moving-star presentation. | Present | The Missions window draws `FUN_0042c3b0`'s static starfield mark over a travelling member's mini: 11501 for characters and most special forces, and GOKRES 21826/21888 for classes `0x3c000003`/`0x3c000005` (`fleet-window.md`, "En route marks"). The System window does not yet list travellers. |
 | `OBJ-12-C016` | Mission controls that would issue orders are disabled in hyperspace. | Missing | Manual pp. 96–97, 112–113; production Mission Status behavior is absent. |
 
 See Faction Wars'
