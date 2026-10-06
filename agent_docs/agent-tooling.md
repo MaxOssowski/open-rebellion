@@ -51,8 +51,11 @@ Why cua-driver and not the earlier harnesses:
 Proven on 2026-10-06: left and right clicks, letters, digits, space and F3.
 `drag` on a macOS window runs only with `delivery_mode:"foreground"`: it
 fronts the game for the gesture and moves the physical pointer, then
-restores the previous app. A zero-length foreground `drag` also gives a held
-press. Warn whoever is at the machine before running one.
+restores the previous app. Front the game yourself first (`osascript -e 'tell
+application "System Events" to set frontmost of process "open-rebellion" to
+true'`), or macOS spends the press on activating the window and the game
+never sees it. Give focus back afterwards, and warn whoever is at the
+machine before running one.
 
 ### Install
 

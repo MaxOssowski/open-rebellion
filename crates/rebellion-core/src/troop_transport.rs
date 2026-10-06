@@ -235,8 +235,8 @@ impl TroopTransportState {
     /// player's side on a planet's surface. The move command's object check
     /// (`FUN_00578c00` → slot `+0x6c`, `FUN_00504350`) is `FUN_004f9860`;
     /// hyp: its side and en-route rules, the rest untraced for a regiment.
-    /// port: an embarked regiment moves only by a drag out of the Fleet
-    /// window's Troops tab, which has no pop-up menu.
+    /// port: an embarked regiment's pop-up Move stays disabled; it moves
+    /// only by a drag out of the Fleet window's Troops tab.
     #[must_use]
     pub fn regiment_move_enabled(
         &self,
