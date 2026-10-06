@@ -27,7 +27,7 @@ const factions = [
 ];
 const sectorWindow = { width: 235, height: 360 };
 // The map picks the system nearest the pointer within 8.5 pixels
-// (draw_galaxy_map's hover radius at zoom 1).
+// (draw_galaxy_map's hover radius; the map never zooms).
 const PICK_RADIUS = 8;
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 const FLEET_MOVE = 46;
@@ -377,7 +377,7 @@ const cases = [
     code: FLEET_MOVE,
     // A drop on no window has no destination; the list held the mouse, so the
     // map under the release selects nothing, and the wheel turned mid-drag
-    // does not zoom it (the control click would then miss the probe's system).
+    // changes nothing (the map never zooms, FUN_00422ce0).
     async run(page, faction, setup) {
       const point = probe(faction, setup);
       const held = await drag(page, fleetPoint(setup), point, { wheel: 6 });

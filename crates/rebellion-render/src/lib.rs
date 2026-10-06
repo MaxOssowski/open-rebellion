@@ -201,11 +201,31 @@ impl CameraView {
     }
 }
 
+/// The galaxy point the map centres on. The galaxy view (`FUN_00422ce0`)
+/// has no wheel case and no right-button drag, so the map neither zooms nor
+/// pans: every galaxy point keeps one place in the aperture. hyp: this
+/// centre and scale 1 give the original's framing (not traced).
+pub const GALAXY_CAMERA_CENTER: (f32, f32) = (450.0, 470.0);
+
+/// The galaxy map's one transform for `viewport` at `display_scale`.
+#[must_use]
+pub fn galaxy_camera(viewport: (f32, f32, f32, f32), display_scale: f32) -> CameraView {
+    let (viewport_x, viewport_y, viewport_width, viewport_height) = viewport;
+    CameraView {
+        cam_x: GALAXY_CAMERA_CENTER.0,
+        cam_y: GALAXY_CAMERA_CENTER.1,
+        zoom: display_scale,
+        logical_zoom: 1.0,
+        display_scale,
+        viewport_x,
+        viewport_y,
+        viewport_width,
+        viewport_height,
+    }
+}
+
 /// All mutable UI state for the galaxy map view.
 pub struct GalaxyMapState {
-    pub camera_x: f32,
-    pub camera_y: f32,
-    pub zoom: f32,
     pub selected_system: Option<SystemKey>,
     pub hovered_system: Option<SystemKey>,
     /// System activated by a primary press in the current frame.
@@ -217,22 +237,11 @@ pub struct GalaxyMapState {
     pub targeting: bool,
     pub show_sector_labels: bool,
     pub show_grid: bool,
-    /// Previous mouse position used for right-drag panning.
-    /// macroquad 0.4 has no `mouse_delta_position()`; we track it manually.
-    pub drag_start: Option<(f32, f32)>,
-    /// Tracks whether right-mouse dragged (to distinguish click from pan).
-    pub right_click_start: Option<(f32, f32)>,
     /// Cockpit viewport bounds for mouse input clamping.
     /// If set, mouse input outside this rect is ignored.
     pub viewport: Option<(f32, f32, f32, f32)>,
     /// Uniform scale of the original 640×480 strategic canvas.
     pub display_scale: f32,
-    /// Frame counter incremented while right-mouse is held.
-    /// Used as a WASM fallback: browsers swallow the mouseup on right-click
-    /// (context menu intercepts it), so `is_mouse_button_released` never fires.
-    /// When the button goes from held → not-held without a released event, we
-    /// detect it on the next frame via this counter (> 0 but button not down).
-    pub right_click_held_frames: u32,
 }
 
 /// Simulation views needed to reproduce the original GID filters.
@@ -252,9 +261,6 @@ pub struct GidOverlayContext<'a> {
 impl Default for GalaxyMapState {
     fn default() -> Self {
         Self {
-            camera_x: 450.0,
-            camera_y: 470.0,
-            zoom: 1.0,
             selected_system: None,
             hovered_system: None,
             activated_system: None,
@@ -262,11 +268,8 @@ impl Default for GalaxyMapState {
             targeting: false,
             show_sector_labels: true,
             show_grid: false,
-            drag_start: None,
-            right_click_start: None,
             viewport: None,
             display_scale: 1.0,
-            right_click_held_frames: 0,
         }
     }
 }
@@ -358,8 +361,8 @@ pub fn draw_galaxy_map(
 
     let sw = screen_width();
     let sh = screen_height();
-    let (viewport_x, viewport_y, viewport_width, viewport_height) =
-        state.viewport.unwrap_or((0.0, 0.0, sw, sh));
+    let viewport = state.viewport.unwrap_or((0.0, 0.0, sw, sh));
+    let (viewport_x, viewport_y, viewport_width, viewport_height) = viewport;
     let (mx, my) = mouse_position();
     let in_viewport = !state.pointer_blocked
         && mx >= viewport_x
@@ -367,52 +370,7 @@ pub fn draw_galaxy_map(
         && my >= viewport_y
         && my < viewport_y + viewport_height;
 
-    // ── Input: only when the cursor is in the map area ───────────────────────
-    if in_viewport {
-        // Zoom with scroll wheel (vertical component).
-        let wheel_y = mouse_wheel().1;
-        if wheel_y != 0.0 {
-            let factor = if wheel_y > 0.0 { 1.1_f32 } else { 1.0 / 1.1 };
-            state.zoom = (state.zoom * factor).clamp(0.3, 5.0);
-        }
-
-        // Pan with right-mouse drag.
-        // We store the position from last frame and compute the delta ourselves.
-        if is_mouse_button_pressed(MouseButton::Right) {
-            state.right_click_start = Some((mx, my));
-            state.right_click_held_frames = 0;
-        }
-        if is_mouse_button_down(MouseButton::Right) {
-            state.right_click_held_frames += 1;
-            if let Some((px, py)) = state.drag_start {
-                let dx = mx - px;
-                let dy = my - py;
-                let effective_zoom = state.zoom * state.display_scale;
-                state.camera_x -= dx / effective_zoom;
-                state.camera_y -= dy / effective_zoom;
-            }
-            state.drag_start = Some((mx, my));
-        } else {
-            state.drag_start = None;
-        }
-    } else {
-        // Cursor moved into the egui panel — release drag.
-        state.drag_start = None;
-    }
-
-    // Build the shared transform after input so wheel zoom and drag apply in
-    // the frame where they occur.
-    let cam = CameraView {
-        cam_x: state.camera_x,
-        cam_y: state.camera_y,
-        zoom: state.zoom * state.display_scale,
-        logical_zoom: state.zoom,
-        display_scale: state.display_scale,
-        viewport_x,
-        viewport_y,
-        viewport_width,
-        viewport_height,
-    };
+    let cam = galaxy_camera(viewport, state.display_scale);
 
     if gid_mode.is_active() {
         draw_gid_caption(cam, faction, gid_mode);
@@ -458,19 +416,6 @@ pub fn draw_galaxy_map(
     if is_mouse_button_pressed(MouseButton::Left) && in_viewport && map_press_selects(state) {
         state.selected_system = state.hovered_system;
         state.activated_system = state.hovered_system;
-    }
-
-    // End right-button capture after panning. The parity path intentionally
-    // does not create the replacement system or fleet context menus.
-    let right_released = is_mouse_button_released(MouseButton::Right);
-    // Browsers can swallow the release event after a context-menu gesture.
-    let right_released_wasm = !right_released
-        && state.right_click_held_frames >= 1
-        && !is_mouse_button_down(MouseButton::Right)
-        && state.right_click_start.is_some();
-    if right_released || right_released_wasm {
-        state.right_click_held_frames = 0;
-        state.right_click_start = None;
     }
 
     cam
@@ -1548,6 +1493,21 @@ mod interaction_tests {
                 .abs()
                 < 0.001
         );
+    }
+
+    #[test]
+    fn the_galaxy_map_keeps_one_framing_at_every_display_scale() {
+        // FUN_00422ce0 has no WM_MOUSEWHEEL case and no right-button drag:
+        // the map's centre and scale never change.
+        for scale in [1.0, 2.0] {
+            let camera = galaxy_camera((100.0, 40.0, 480.0 * scale, 355.0 * scale), scale);
+            let (x, y) = camera.to_screen(GALAXY_CAMERA_CENTER.0, GALAXY_CAMERA_CENTER.1);
+            assert!((x - (100.0 + 240.0 * scale)).abs() < 0.001);
+            assert!((y - (40.0 + 177.5 * scale)).abs() < 0.001);
+            let (east, _) = camera.to_screen(GALAXY_CAMERA_CENTER.0 + 10.0, 0.0);
+            assert!((east - x - 10.0 * scale).abs() < 0.001);
+            assert!((camera.logical_zoom - 1.0).abs() < f32::EPSILON);
+        }
     }
 
     #[test]

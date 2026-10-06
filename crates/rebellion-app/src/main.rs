@@ -688,38 +688,17 @@ async fn load_wasm_assets() -> std::collections::HashMap<String, Vec<u8>> {
 /// references the old texture. Pre-measuring the complete character set makes
 /// any resize happen at the safe start of the frame instead. Egui uses its own
 /// atlas and is unaffected.
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "Preserve the existing rounding and narrowing of bounded rendering font sizes."
-)]
 fn prewarm_galaxy_font_sizes(
     world: &GameWorld,
     map_state: &GalaxyMapState,
     warmed_sizes: &mut HashSet<u16>,
 ) {
+    // The map never zooms (rebellion_render::galaxy_camera), so its label
+    // sizes are those of scale 1.
     let mut sizes = vec![14, 18];
-    // draw_galaxy_map consumes the wheel after this warmup. Include the two
-    // possible one-frame zoom outcomes so the newly selected size is already
-    // cached before the map emits any text geometry.
-    let zooms = [
-        map_state.zoom,
-        (map_state.zoom * 1.1).clamp(0.3, 5.0),
-        (map_state.zoom / 1.1).clamp(0.3, 5.0),
-    ];
-    for zoom in zooms {
-        if map_state.show_sector_labels {
-            sizes.push((16.0 * zoom).clamp(10.0, 32.0) as u16);
-        }
-        if zoom > 0.8 {
-            sizes.push((14.0 * zoom).clamp(9.0, 20.0) as u16);
-        }
-        if zoom > 1.5 {
-            sizes.push((12.0 * zoom).min(18.0) as u16);
-        }
+    if map_state.show_sector_labels {
+        sizes.push(16);
     }
-    sizes.sort_unstable();
-    sizes.dedup();
 
     if sizes.iter().all(|size| warmed_sizes.contains(size)) {
         return;
@@ -5381,9 +5360,8 @@ Some(RailAudience::side(*faction_is_alliance)),
 
         // 7. Handle focus requests from message log + encyclopedia
         if let Some(focus_key) = log_state.focus_system.take() {
-            if let Some(system) = world.systems.get(focus_key) {
-                map_state.camera_x = f32::from(system.x);
-                map_state.camera_y = f32::from(system.y);
+            // The map does not pan (galaxy_camera): focusing only selects.
+            if world.systems.contains_key(focus_key) {
                 map_state.selected_system = Some(focus_key);
             }
         }
@@ -5397,7 +5375,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                     interface_test_fixture::emit_fleet_move_setup(
                         request,
                         &world,
-                        &map_state,
                         &sector_window_state,
                         &system_window_state,
                     );
@@ -5436,7 +5413,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                     &fleet_window_state,
                     move_confirmation_state.is_open(),
                     msg_log.messages(),
-                    map_state.zoom,
                 );
                 fleet_finder_watch.observe(
                     request,
@@ -5726,9 +5702,7 @@ fn apply_panel_action(
             }
         }
         PanelAction::FocusFleetSystem(sys_key) => {
-            if let Some(system) = world.systems.get(sys_key) {
-                map_state.camera_x = f32::from(system.x);
-                map_state.camera_y = f32::from(system.y);
+            if world.systems.contains_key(sys_key) {
                 map_state.selected_system = Some(sys_key);
             }
         }

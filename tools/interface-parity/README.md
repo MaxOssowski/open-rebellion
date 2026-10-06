@@ -85,7 +85,9 @@ hand, a regiment travelling on its own, and joining and splitting fleets.
 Defenses and Missions windows they open. `fleet-finder.mjs` opens the Finder
 from the cockpit control and F3, compares its chrome in both modes, and opens a
 chosen fleet or ship in its Fleet window; its tabs case checks that the map
-under the Finder takes neither click nor zoom. `--only=<faction>/<case>` runs
+under the Finder takes no click. The map never zooms or pans
+(`FUN_00422ce0`), and the `pan` and `zoom` scenarios check that a right-drag
+and a wheel leave the frame unchanged. `--only=<faction>/<case>` runs
 named cases. Each gate writes `result.json` and its captures under
 `.artifacts/interface-parity/<gate>-<timestamp>/`; the native GUI checks of the
 same journeys are recorded separately in the audit.

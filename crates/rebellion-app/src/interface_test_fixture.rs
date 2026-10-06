@@ -265,18 +265,6 @@ pub fn apply(
     cockpit.gid_ui.menu_open = false;
     cockpit.gid_ui.category = None;
 
-    map.camera_x = 450.0;
-    map.camera_y = 470.0;
-    map.zoom = if request.scenario == Scenario::Zoom {
-        1.65
-    } else {
-        1.0
-    };
-    if request.scenario == Scenario::Pan {
-        map.camera_x = 565.0;
-        map.camera_y = 390.0;
-    }
-
     let system_keys: Vec<_> = world.systems.keys().take(10).collect();
     let Some(&primary) = system_keys.first() else {
         return;
@@ -938,9 +926,6 @@ struct FixtureReady<'a> {
     probe_system_name: &'a str,
     probe_screen_x: f32,
     probe_screen_y: f32,
-    camera_x: f32,
-    camera_y: f32,
-    zoom: f32,
 }
 
 pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapState) {
@@ -948,14 +933,7 @@ pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapSta
         CockpitFaction::Alliance => "alliance",
         CockpitFaction::Empire => "empire",
     };
-    let fingerprint_input = serde_json::to_vec(&(
-        request.code,
-        world,
-        map.camera_x,
-        map.camera_y,
-        map.zoom,
-        map.selected_system,
-    ))
+    let fingerprint_input = serde_json::to_vec(&(request.code, world, map.selected_system))
     .expect("serialize deterministic interface fixture state");
     let aperture = CockpitState::new(request.faction)
         .layout_for(640.0, 480.0)
@@ -964,7 +942,7 @@ pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapSta
         .systems
         .iter()
         .map(|(_, system)| {
-            let (x, y) = screen_point(system, map, request.faction);
+            let (x, y) = screen_point(system, request.faction);
             (system, x, y)
         })
         .filter(|(_, x, y)| {
@@ -995,25 +973,19 @@ pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapSta
         probe_system_name: &probe.0.name,
         probe_screen_x: probe.1,
         probe_screen_y: probe.2,
-        camera_x: map.camera_x,
-        camera_y: map.camera_y,
-        zoom: map.zoom,
     };
     let bytes = serde_json::to_vec(&report).expect("serialize interface fixture report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
 /// Where `system` is drawn in the 640 by 480 fixture canvas.
-fn screen_point(
-    system: &rebellion_core::world::System,
-    map: &GalaxyMapState,
-    faction: CockpitFaction,
-) -> (f32, f32) {
+fn screen_point(system: &rebellion_core::world::System, faction: CockpitFaction) -> (f32, f32) {
     let aperture = CockpitState::new(faction).layout_for(640.0, 480.0).galaxy;
-    (
-        (f32::from(system.x) - map.camera_x) * map.zoom + aperture.x + aperture.width / 2.0,
-        (f32::from(system.y) - map.camera_y) * map.zoom + aperture.y + aperture.height / 2.0,
+    rebellion_render::galaxy_camera(
+        (aperture.x, aperture.y, aperture.width, aperture.height),
+        1.0,
     )
+    .to_screen(f32::from(system.x), f32::from(system.y))
 }
 
 /// The open object pop-up menu and the targeting scenario's target planet,
@@ -1114,7 +1086,6 @@ struct FixtureFleetMoveSetup {
 fn fleet_move_setup(
     request: FixtureRequest,
     world: &GameWorld,
-    map: &GalaxyMapState,
     sectors: &SectorWindowState,
     systems: &SystemWindowState,
 ) -> Option<FixtureFleetMoveSetup> {
@@ -1139,7 +1110,7 @@ fn fleet_move_setup(
             .systems
             .values()
             .map(|system| {
-                let (x, y) = screen_point(system, map, request.faction);
+                let (x, y) = screen_point(system, request.faction);
                 FixtureSystemPoint {
                     dat_id: system.dat_id.raw(),
                     x,
@@ -1153,11 +1124,10 @@ fn fleet_move_setup(
 pub fn emit_fleet_move_setup(
     request: FixtureRequest,
     world: &GameWorld,
-    map: &GalaxyMapState,
     sectors: &SectorWindowState,
     systems: &SystemWindowState,
 ) {
-    let Some(report) = fleet_move_setup(request, world, map, sectors, systems) else {
+    let Some(report) = fleet_move_setup(request, world, sectors, systems) else {
         return;
     };
     let bytes = serde_json::to_vec(&report).expect("serialize the fleet move setup");
@@ -1634,7 +1604,6 @@ struct FleetLoadObservation {
     confirmation_open: bool,
     last_message: Option<String>,
     last_regiment_message: Option<String>,
-    zoom: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1648,7 +1617,6 @@ fn fleet_load_observation(
     fleets: &FleetWindowState,
     confirmation_open: bool,
     messages: &[GameMessage],
-    zoom: f32,
 ) -> Option<FleetLoadObservation> {
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
     let primary = world.systems.keys().next()?;
@@ -1724,7 +1692,6 @@ fn fleet_load_observation(
             .rev()
             .find(|message| message.text.starts_with("Regiment "))
             .map(|message| message.text.clone()),
-        zoom,
     })
 }
 
@@ -1751,7 +1718,6 @@ impl FleetLoadWatch {
         fleets: &FleetWindowState,
         confirmation_open: bool,
         messages: &[GameMessage],
-        zoom: f32,
     ) -> Option<FleetLoadObservation> {
         if !request.scenario.uses_the_fleet_window() {
             return None;
@@ -1777,7 +1743,6 @@ impl FleetLoadWatch {
             fleets,
             confirmation_open,
             messages,
-            zoom,
         );
         if now.is_none() || now == self.last {
             return None;
@@ -1797,7 +1762,6 @@ impl FleetLoadWatch {
         fleets: &FleetWindowState,
         confirmation_open: bool,
         messages: &[GameMessage],
-        zoom: f32,
     ) {
         let Some(report) = self.next(
             request,
@@ -1808,7 +1772,6 @@ impl FleetLoadWatch {
             fleets,
             confirmation_open,
             messages,
-            zoom,
         ) else {
             return;
         };
@@ -1888,7 +1851,6 @@ struct FleetFinderObservation {
     sector_planets: Vec<FinderSectorPlanetObservation>,
     selected_system_dat_id: Option<u32>,
     left_panel_open: bool,
-    zoom: f32,
 }
 
 fn fleet_ordinal(world: &GameWorld, fleet: FleetKey) -> Option<usize> {
@@ -2048,7 +2010,6 @@ fn fleet_finder_observation(
             .and_then(|system| world.systems.get(system))
             .map(|system| system.dat_id.raw()),
         left_panel_open: windows.left_panel_open,
-        zoom: windows.map.zoom,
     })
 }
 
@@ -2727,7 +2688,6 @@ mod tests {
                 &fleets,
                 confirmation_open,
                 &[],
-                1.0,
             )
             .unwrap()
         };
@@ -2861,7 +2821,6 @@ mod tests {
                     &FleetWindowState::default(),
                     false,
                     &[],
-                    1.0,
                 )
                 .unwrap();
             assert!(start.aboard && start.held, "{faction:?}");
@@ -2955,7 +2914,6 @@ mod tests {
                 &fleets,
                 false,
                 &[],
-                1.0,
             )
             .unwrap()
         };
@@ -3006,7 +2964,6 @@ mod tests {
             &fleets,
             false,
             &messages,
-            1.0,
         )
         .unwrap();
         assert_eq!(
@@ -3028,7 +2985,7 @@ mod tests {
         let mut fleets = FleetWindowState::default();
         let mut watch = FleetLoadWatch::default();
         let layout = CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
-        let mut next = |applied: &Applied, fleets: &FleetWindowState, zoom| {
+        let mut next = |applied: &Applied, fleets: &FleetWindowState| {
             watch.next(
                 request,
                 &applied.world,
@@ -3038,19 +2995,17 @@ mod tests {
                 fleets,
                 false,
                 &[],
-                zoom,
             )
         };
 
-        let start = next(&applied, &fleets, 1.0).unwrap();
+        let start = next(&applied, &fleets).unwrap();
         assert_eq!(start.status, "fleet-load");
         assert!(!start.window_open && !start.aboard && !start.held);
         assert_eq!(
             start.troop_system_dat_id,
             Some(applied.world.systems[here].dat_id.raw())
         );
-        assert_eq!(next(&applied, &fleets, 1.0), None);
-        assert_eq!(next(&applied, &fleets, 2.0).unwrap().zoom, 2.0);
+        assert_eq!(next(&applied, &fleets), None);
 
         fleets.open(
             &applied.world,
@@ -3059,7 +3014,7 @@ mod tests {
             CockpitFaction::Alliance,
             layout,
         );
-        let opened = next(&applied, &fleets, 2.0).unwrap();
+        let opened = next(&applied, &fleets).unwrap();
         assert!(opened.window_open);
         assert_eq!((opened.origin, opened.entries), (Some((300, 80)), 1));
         assert_eq!(
@@ -3075,7 +3030,7 @@ mod tests {
             .transport
             .load(&mut applied.world, fleet, &[regiment])
             .unwrap();
-        let loaded = next(&applied, &fleets, 2.0).unwrap();
+        let loaded = next(&applied, &fleets).unwrap();
         assert!(loaded.aboard && loaded.held);
         assert_eq!((loaded.cargo, loaded.troop_system_dat_id), (1, None));
 
@@ -3093,7 +3048,6 @@ mod tests {
                 &fleets,
                 false,
                 &[],
-                1.0,
             ),
             None
         );
@@ -3231,7 +3185,6 @@ mod tests {
             let setup = fleet_move_setup(
                 request,
                 world,
-                &applied.map,
                 &applied.sectors,
                 &applied.systems,
             )
@@ -3350,7 +3303,6 @@ mod tests {
             fleet_move_setup(
                 request,
                 &applied.world,
-                &applied.map,
                 &applied.sectors,
                 &applied.systems
             ),
@@ -3941,26 +3893,22 @@ mod tests {
     }
 
     #[test]
-    fn a_system_point_scales_its_offset_from_the_camera_by_the_zoom() {
+    fn a_system_point_is_its_offset_from_the_fixed_map_centre() {
+        // FUN_00422ce0 neither zooms nor pans: the map keeps one framing.
         let world = diplomacy_world(Faction::Alliance);
         let mut system = world.systems.values().next().unwrap().clone();
-        system.x = 110;
-        system.y = 90;
-        let map = GalaxyMapState {
-            camera_x: 100.0,
-            camera_y: 100.0,
-            zoom: 2.0,
-            ..GalaxyMapState::default()
-        };
+        let (centre_x, centre_y) = rebellion_render::GALAXY_CAMERA_CENTER;
+        system.x = centre_x as u16 + 10;
+        system.y = centre_y as u16 - 10;
         let galaxy = CockpitState::new(CockpitFaction::Empire)
             .layout_for(640.0, 480.0)
             .galaxy;
 
         assert_eq!(
-            screen_point(&system, &map, CockpitFaction::Empire),
+            screen_point(&system, CockpitFaction::Empire),
             (
-                galaxy.x + galaxy.width / 2.0 + 20.0,
-                galaxy.y + galaxy.height / 2.0 - 20.0
+                galaxy.x + galaxy.width / 2.0 + 10.0,
+                galaxy.y + galaxy.height / 2.0 - 10.0
             )
         );
     }

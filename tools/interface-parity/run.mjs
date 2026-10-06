@@ -593,8 +593,11 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     }
     await page.waitForTimeout(100);
     const after = await page.screenshot({ path: path.join(folder, `${scenario.slug}-interaction.png`), animations: "disabled" });
-    assert.notEqual(sha256(before), sha256(after), `${scenario.slug} did not redraw`);
-    probes.push({ type: scenario.slug, before_sha256: sha256(before), after_sha256: sha256(after) });
+    // FUN_00422ce0 has no wheel case and no right-button drag: the map
+    // neither zooms nor pans, so the frame is unchanged.
+    assert.equal(sha256(before), sha256(after), `${scenario.slug} moved the map`);
+    probes.push({ type: scenario.slug, before_sha256: sha256(before), after_sha256: sha256(after),
+      unchanged: true });
   }
 
   return probes;

@@ -418,33 +418,6 @@ async function openTroopsTab(page, loaded) {
   return troops;
 }
 
-async function wheelAt(page, at) {
-  await page.mouse.move(at.x, at.y);
-  await frames(page);
-  for (let notch = 0; notch < 3; notch += 1) {
-    await page.mouse.wheel(0, -100);
-    await frames(page);
-  }
-  return (await settle(page)).zoom;
-}
-
-// A wheel over the Fleet window must not zoom the map (pointer_blocked); the
-// control, the same wheel over the bare map between the sector columns, does.
-// Only a strip of the window clear of the sector window behind it tells the
-// two apart, which the Empire's layout does not have.
-async function wheelOverWindow(page, faction, origin) {
-  const right = faction.sectors[1] + 235;
-  const strip = { x: origin.x + windowSize.width - 2, y: origin.y + 150 };
-  if (strip.x < right) return { checked: false, reason: "the window lies inside the sector window" };
-  const gap = { x: faction.sectors[0] + 235 + 2, y: origin.y + 150 };
-  const before = (await settle(page)).zoom;
-  const over = await wheelAt(page, strip);
-  assert.equal(over, before, "a wheel over the Fleet window zoomed the map");
-  const control = await wheelAt(page, gap);
-  assert.notEqual(control, before, `the control wheel at ${JSON.stringify(gap)} did not zoom the map`);
-  return { checked: true, strip, gap, before, over, control };
-}
-
 function ships(observed) {
   return observed.fleets.map((fleet) => fleet.ships);
 }
@@ -486,7 +459,6 @@ const cases = [
       const selectedCheck = compare(await stableWindow(page, origin, directory, "selected"),
         composeExpected(source, faction, { selected: true, enabled: selected.enabled, tab: 0 }),
         [...masks.open, ...masks.selected], "selected", directory);
-      const wheel = await wheelOverWindow(page, faction, origin);
       // 0x280d minimizes the window to the rail (FUN_004a76e0); the rail
       // entry restores it where it was.
       await click(page, { x: origin.x + 204 + 7, y: origin.y + 3 + 7 });
@@ -498,7 +470,7 @@ const cases = [
       for (const check of [openCheck, selectedCheck]) {
         assert.equal(check.different_pixels, 0, `${check.label}: ${check.different_pixels} of ${check.pixels_checked} pixels differ`);
       }
-      return { opened, selected, compares: [openCheck, selectedCheck], wheel, minimized, restored };
+      return { opened, selected, compares: [openCheck, selectedCheck], minimized, restored };
     },
   },
   {
@@ -568,15 +540,14 @@ const cases = [
     name: "drag-wheel",
     code: FLEET_LOAD,
     // While a regiment drags out of the Troops tab the list holds the mouse
-    // (CoolDragList, FUN_006083c0): a wheel over the bare map mid-drag does
-    // not zoom it, and a release back inside the list drops nothing. The
-    // control, the same wheel with no drag, zooms the map.
+    // (CoolDragList, FUN_006083c0): a wheel over the bare map mid-drag
+    // changes nothing (the map never zooms, FUN_00422ce0), and a release back
+    // inside the list drops nothing.
     async run(page, faction, setup, directory) {
       const { loaded } = await loadRegiment(page, setup, directory);
       const troops = await openTroopsTab(page, loaded);
       const gap = { x: faction.sectors[0] + 235 + 2, y: troops.origin[1] + 150 };
       const from = point(troops.first_item);
-      const before = troops.zoom;
       await page.mouse.move(from.x, from.y);
       await frames(page);
       await page.mouse.down();
@@ -592,11 +563,8 @@ const cases = [
       await page.mouse.up();
       await frames(page);
       const held = await settle(page);
-      assert.equal(held.zoom, before, "a wheel mid-drag zoomed the map");
       assert.ok(held.aboard && held.held, JSON.stringify(held));
-      const control = await wheelAt(page, gap);
-      assert.notEqual(control, before, `the control wheel at ${JSON.stringify(gap)} did not zoom the map`);
-      return { loaded, gap, held, control };
+      return { loaded, gap, held };
     },
   },
   {

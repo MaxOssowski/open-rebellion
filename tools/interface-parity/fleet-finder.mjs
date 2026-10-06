@@ -299,16 +299,6 @@ async function settle(page) {
   return latest(page);
 }
 
-async function wheelAt(page, at) {
-  await page.mouse.move(at.x, at.y);
-  await frames(page);
-  for (let notch = 0; notch < 3; notch += 1) {
-    await page.mouse.wheel(0, -100);
-    await frames(page);
-  }
-  return (await settle(page)).zoom;
-}
-
 function point([x, y]) {
   return { x: Math.round(x), y: Math.round(y) };
 }
@@ -441,18 +431,7 @@ const cases = [
       // of its clicks.
       assert.equal(imperial.selected_system_dat_id, selectedBefore);
       assert.deepEqual(imperial.sector_open, sectorBefore);
-      // Nor its wheel (pointer_blocked): a wheel over the title leaves the
-      // map's zoom; the control, the same wheel over the strip of map right of
-      // the Finder, zooms it. The right strip stays clear of the sector window
-      // deliberately present under this fixture.
-      const origin = { x: opened.controls.origin[0], y: opened.controls.origin[1] };
-      const before = imperial.zoom;
-      const over = await wheelAt(page, { x: origin.x + 200, y: origin.y + 20 });
-      assert.equal(over, before, "a wheel over the Fleet Finder zoomed the map");
-      const gap = { x: origin.x + windowSize.width + 3, y: origin.y + 150 };
-      const control = await wheelAt(page, gap);
-      assert.notEqual(control, before, `the control wheel at ${JSON.stringify(gap)} did not zoom the map`);
-      return { opened, chosen, alliance, imperial, wheel: { before, over, control, gap } };
+      return { opened, chosen, alliance, imperial };
     },
   },
   {
