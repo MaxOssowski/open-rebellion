@@ -91,6 +91,18 @@ pub(crate) fn en_route_mark(object: MiniObject, mini: u32) -> (DllSource, u32) {
     }
 }
 
+/// A craft's GOKRES portrait (`FUN_0042c3b0(.., 1, ..)`: `class & 0xfff`),
+/// its mini less `0x4000`.
+const fn ship_portrait(mini: u32) -> u32 {
+    mini - 0x4000
+}
+
+/// The en route mark `FUN_0042c3b0(.., 1, 1)` draws over a craft's
+/// portrait: its own GOKRES mark, `(class & 0xfff) + 0x1000`.
+const fn en_route_portrait_mark(portrait: u32) -> u32 {
+    portrait + 0x1000
+}
+
 /// The galaxy view rail's icon for a minimized Fleet window (`FUN_004a76e0`).
 const RAIL_ICONS: [u32; 3] = [11536, 11537, 11538];
 
@@ -1525,15 +1537,14 @@ fn draw_fleet_window(
             }
 
             if let Some(side) = selected_side {
-                // The picture: one fleet's 10425 centered, or a ship's
-                // portrait. port: the ship portrait (`FUN_0042c3b0(.., 1,
-                // 1)`) is not mapped.
+                // The picture: one fleet's 10425 centered, keyed over the
+                // en route mark 10426 drawn first at the same left edge; or
+                // one ship's portrait at the panel's origin (`FUN_004a5c00`).
                 if let Some(FleetWindowEntry::Fleet(fleet)) = selected {
                     let picture = side_art(FLEET_PICTURE, side);
                     let width = cache
                         .original_resource_size(DllSource::Strategy, picture)
                         .map_or(PICTURE_PANEL.2, |size| size[0] as f32);
-                    paint(cache, picture, picture_x(width), PICTURE_PANEL.1);
                     if movement.is_in_transit(fleet) {
                         paint(
                             cache,
@@ -1542,6 +1553,7 @@ fn draw_fleet_window(
                             PICTURE_PANEL.1,
                         );
                     }
+                    paint(cache, picture, picture_x(width), PICTURE_PANEL.1);
                     if let Some(label) = fleet_label(world, fleet) {
                         painter.text(
                             logical_rect(local, scale, 164.0, 29.0, 0.0, 0.0).min,
@@ -1550,6 +1562,44 @@ fn draw_fleet_window(
                             egui::FontId::proportional((10.0 * scale).max(7.0)),
                             label_color(viewer),
                         );
+                    }
+                }
+                if let Some(FleetWindowEntry::Ship { fleet, index }) = selected {
+                    let mini = world
+                        .fleets
+                        .get(fleet)
+                        .and_then(|value| value.capital_ships.get(index))
+                        .and_then(|ship| world.capital_ship_classes.get(ship.class))
+                        .and_then(|class| capital_ship_mini_id(class.dat_id));
+                    if let Some(mini) = mini {
+                        let portrait = ship_portrait(mini);
+                        let mut layers = vec![portrait];
+                        if movement.is_in_transit(fleet) {
+                            layers.push(en_route_portrait_mark(portrait));
+                        }
+                        // The panel is a 125 by 49 bitmap; the 50-row
+                        // portrait loses its last row.
+                        let panel = painter.with_clip_rect(logical_rect(
+                            local,
+                            scale,
+                            PICTURE_PANEL.0,
+                            PICTURE_PANEL.1,
+                            PICTURE_PANEL.2,
+                            PICTURE_PANEL.3,
+                        ));
+                        for id in layers {
+                            paint_native(
+                                &panel,
+                                ctx,
+                                cache,
+                                DllSource::Gokres,
+                                id,
+                                local,
+                                scale,
+                                PICTURE_PANEL.0,
+                                PICTURE_PANEL.1,
+                            );
+                        }
                     }
                 }
                 if let Some((aboard, capacity)) = tab_counts(world, transport, selected, window.tab)
@@ -3389,6 +3439,29 @@ pub(crate) mod tests {
             en_route.contains(&(mini + 0x1000, at(129.0, 131.0))),
             "{en_route:?}"
         );
+        // FUN_004a5c00 blits 10426 into the panel first, then the picture
+        // keyed over it.
+        let order = |painted: &[(u32, egui::Pos2)], id| painted.iter().position(|(x, _)| *x == id);
+        assert!(
+            order(&en_route, 10426) < order(&en_route, 10425),
+            "{en_route:?}"
+        );
+
+        // One ship selected: its portrait (FUN_0042c3b0(.., 1, 1), the mini
+        // less 0x4000) at the panel's origin, and its own mark (+0x1000)
+        // over it while en route.
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Ship { fleet, index: 0 });
+        }
+        let portrait = mini - 0x4000;
+        let ship = paint(&mut state, &movement);
+        let panel = at(100.0, 42.0);
+        assert!(ship.contains(&(portrait, panel)), "{ship:?}");
+        assert!(ship.contains(&(portrait + 0x1000, panel)), "{ship:?}");
+        assert!(order(&ship, portrait) < order(&ship, portrait + 0x1000));
+        let orbiting = paint(&mut state, &MovementState::default());
+        assert!(orbiting.contains(&(portrait, panel)), "{orbiting:?}");
+        assert!(!orbiting.iter().any(|(id, _)| *id == portrait + 0x1000));
     }
 
     #[test]

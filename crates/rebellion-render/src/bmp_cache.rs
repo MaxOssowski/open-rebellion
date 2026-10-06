@@ -1788,13 +1788,19 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 11533..=11541
                 | 11560..=11569
         ),
-        // The minis, their en route marks (`0x5000..0x57ff`), which
-        // `FUN_0042c3b0` blits keyed over them (`FUN_005fd0f0`), and the
-        // Empire's mission minis (`0x5c00..`), which the Missions window's
-        // list blits keyed (`FUN_00609960`).
-        DllSource::Gokres => {
-            matches!(resource_id, 16_000..=19_999 | 20_480..=22_527 | 23_552..=23_807)
-        }
+        // The craft portraits (`0x640..0x78f`) and their en route marks
+        // (`+0x1000`), the minis and their marks (`0x5000..0x57ff`), which
+        // `FUN_0042c3b0` composes and its callers blit keyed
+        // (`FUN_005fd0f0`), and the Empire's mission minis (`0x5c00..`),
+        // which the Missions window's list blits keyed (`FUN_00609960`).
+        DllSource::Gokres => matches!(
+            resource_id,
+            1_600..=1_935
+                | 5_696..=6_031
+                | 16_000..=19_999
+                | 20_480..=22_527
+                | 23_552..=23_807
+        ),
         DllSource::Common => matches!(
             resource_id,
             10001..=10003
@@ -2473,10 +2479,12 @@ mod tests {
                 "{resource_id}"
             );
         }
-        for resource_id in [20_480, 21_569, 22_336, 22_527, 23_552, 23_568, 23_807] {
+        for resource_id in [
+            1_600, 1_935, 5_696, 6_031, 20_480, 21_569, 22_336, 22_527, 23_552, 23_568, 23_807,
+        ] {
             assert_eq!(alpha(DllSource::Gokres, resource_id), 0, "{resource_id}");
         }
-        for resource_id in [22_528, 23_551, 23_808] {
+        for resource_id in [1_599, 1_936, 5_695, 6_032, 22_528, 23_551, 23_808] {
             assert_eq!(alpha(DllSource::Gokres, resource_id), 255, "{resource_id}");
         }
     }

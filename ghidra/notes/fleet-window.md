@@ -222,6 +222,21 @@ its mark. The manual's "blue engine glow" (Fleet window, pp. 112-113) and
 "starfield behind the portrait" (hyperspace, pp. 96-97) are these static
 bitmaps; nothing animates them.
 
+In the picture panel (`FUN_004a5c00`), a fleet's 10426 (and 10427 on
+`+0x200`) is blitted first, then the picture 10425 keyed over it at the
+same centered left edge, so the glow shows behind the ships. One selected
+ship's portrait, with its mark already drawn in, is blitted keyed at the
+panel's (0, 0); the craft portraits are GOKRES `0x640..0x78f` (122 by 50)
+and their marks `0x1640..0x178f`.
+
+Where travelling mission members show: their target's container holds them
+at once (`FUN_00556430`), but the System Defenses window's personnel page
+lists only personnel not on a visible mission (`sector-quadrants.md`), and
+the System window (type 9) builds only facility pages (`FUN_004568a0`,
+pages `0x67..0x6c`, items from `FUN_00458fe0`, families `0x28..0x2f`; its
+object-added slot `FUN_00454160` at vtable `0x00659ec4`). So only the
+Missions window draws them (`FUN_004a0e10`).
+
 ## Input
 
 `FUN_004a29c0` (slot `+0x14`, the window procedure) and `FUN_004a6390`
@@ -372,9 +387,11 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
   `production-destination.md`) released on a planet sets it.
 - **En route marks.** The ship entries and right-list items of a travelling
   fleet draw the marks above (`fleet_window::en_route_mark`), as the
-  Missions window's members do. port: the one-ship portrait is not mapped,
-  so its mark is not drawn; nor are the other status marks (`+0x200`,
-  `+0x50` bit 2, GOKRES `+0x7000`).
+  Missions window's members do, and one selected ship's portrait (its mini
+  less `0x4000`) carries its mark. port: the other status marks (`+0x200`,
+  `+0x50` bit 2, GOKRES `+0x7000`) are not drawn. The port's System window
+  lists personnel, fleets, defenses and troops, which the original's type 9
+  window does not (see above); that deviation is open.
 - The port's capacity rules (F-007E: 0/0, 2/2, 3/3 by class) stand in for
   `FUN_00500b40`'s `+0x270`/`+0x26c`. Check them against the capital ships'
   DAT capacities.
