@@ -130,6 +130,12 @@ pub enum PanelAction {
         ticks: u32,
         destination: Option<SystemKey>,
     },
+    /// Stop (`0x213`): `system`'s `area` drops every unit it was building
+    /// (`ManufacturingState::stop`).
+    StopProduction {
+        system: SystemKey,
+        area: rebellion_core::manufacturing::ProductionArea,
+    },
     /// Cancel the queue item at `index` in a system's shipyard queue.
     CancelQueueItem { system: SystemKey, index: usize },
     /// Move the shipyard queue item at `index` one place forward.

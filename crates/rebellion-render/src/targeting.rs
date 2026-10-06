@@ -50,10 +50,14 @@ pub enum TargetOrder {
         ships: Vec<usize>,
         roster: u64,
     },
-    /// A facility icon's Destination (`0x214`): its team is the system's
-    /// production areas (`FUN_00512700` kind 4 → `FUN_0052c170`), and the
-    /// target system becomes where they deliver.
-    Destination { system: SystemKey },
+    /// Destination (`0x214`): the target system becomes where production
+    /// delivers. A facility icon's team is every production area of the
+    /// system (`FUN_00512700` kind 4 → `FUN_0052c170`); a Manufacturing
+    /// window band's is its own manager's `area`.
+    Destination {
+        system: SystemKey,
+        area: Option<rebellion_core::manufacturing::ProductionArea>,
+    },
 }
 
 /// What a release lands on: a system, or a fleet a Fleet window gives

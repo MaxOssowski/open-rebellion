@@ -292,8 +292,10 @@ impl ObjectMenuRow {
 /// (`FUN_00512700`) are ported.
 /// A Manufacturing window band offers its manager class's orders
 /// (`FUN_0052ae30`, `FUN_0055b580`, `FUN_0055b900`, `FUN_0055bd30`): Build,
-/// Stop, Destination and Reserved, and for ships Rename. port: they stay
-/// disabled until the Build Selection window and the band orders are ported.
+/// Stop, Destination and Reserved, and for ships Rename. Stop and Destination
+/// follow `gates.stop` and `gates.destination`; port: Build, Rename and
+/// Reserved stay disabled until the Build Selection window, the band's
+/// in-place rename and the reserve bit are ported.
 /// An empty selection lists only Encyclopedia and Status, both disabled.
 ///
 /// - Mission is enabled when `gates.mission` says so
@@ -368,7 +370,8 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 }
                 ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
                 ObjectMenuCommand::Rename => (fleet_entry || ship) && gates.rename,
-                ObjectMenuCommand::Destination => !producer && gates.destination,
+                ObjectMenuCommand::Destination => gates.destination,
+                ObjectMenuCommand::Stop => producer && gates.stop,
                 ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 // FUN_0051d990: a single selection that is not a system.
@@ -393,8 +396,12 @@ pub struct OrderGates {
     /// (`FUN_004f6e60` refuses a destroyed object).
     pub rename: bool,
     /// Destination (0x214) on a facility icon: the system has production
-    /// areas of the player's (`FUN_00512700` kind 4).
+    /// areas of the player's (`FUN_00512700` kind 4); on a band, the band's
+    /// area is the player's.
     pub destination: bool,
+    /// Stop (0x213) on a band: the band's area is the player's and is
+    /// building something.
+    pub stop: bool,
 }
 
 /// An open object pop-up menu.
@@ -500,6 +507,7 @@ mod tests {
         ship_move: false,
         rename: false,
         destination: false,
+        stop: false,
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -632,6 +640,7 @@ mod tests {
             ship_move: true,
             rename: false,
             destination: false,
+            stop: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -687,6 +696,36 @@ mod tests {
             OrderGates::default()
         ))
         .contains(&"Destination"));
+    }
+
+    #[test]
+    fn a_bands_stop_and_destination_follow_their_rules() {
+        // manufacturing-build-selection.md, "Selection and menu": a band's
+        // manager offers Build (0x210..0x212), Stop (0x213), Destination
+        // (0x214) and Reserved (0x216), and for ships Rename (0x215).
+        let band = |area| {
+            Some(MenuObject::Producer {
+                system: SystemKey::default(),
+                area,
+            })
+        };
+        let gates = OrderGates {
+            destination: true,
+            stop: true,
+            ..OrderGates::default()
+        };
+        for area in ProductionArea::ALL {
+            assert_eq!(
+                enabled(&object_menu_rows(band(area), gates)),
+                ["Stop", "Destination", "Encyclopedia"]
+            );
+            assert_eq!(
+                enabled(&object_menu_rows(band(area), OrderGates::default())),
+                ["Encyclopedia"]
+            );
+        }
+        // Stop belongs to the bands alone.
+        assert!(!enabled(&object_menu_rows(icon(Quadrant::System), gates)).contains(&"Stop"));
     }
 
     fn icon(quadrant: Quadrant) -> Option<MenuObject> {
@@ -772,6 +811,7 @@ mod tests {
             ship_move: true,
             rename: false,
             destination: false,
+            stop: true,
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),

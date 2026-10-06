@@ -281,8 +281,13 @@ empty art, the overview's yard column, counts and three bands with their
 progress bars, and the five facility pages with their label, pictures and
 selected frame (`manufacturing_window.rs` models what they show). A press
 on a band selects it; a right release opens its manager's menu
-(`MenuObject::Producer`, `object_menu.rs`) with the traced orders, all
-disabled until the Build Selection window is ported.
+(`MenuObject::Producer`, `object_menu.rs`) with the traced orders. Stop
+clears the band's area (manual p. 84) and Destination targets a system for
+that area alone (manual p. 83); Build waits on the Build Selection window.
+
+- port: Stop and Destination are enabled on the bands of a system the
+  player holds, Stop only while the band builds; the orders' own `+0x18`
+  rules are untraced.
 
 - port: an empty page's tab still opens its empty page, as type 10's do;
   the original's empty art suggests a disabled tab (untraced).

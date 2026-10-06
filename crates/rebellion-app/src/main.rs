@@ -3991,6 +3991,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &mfg_state,
                                     player_faction,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
@@ -4123,6 +4124,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &mfg_state,
                                     player_faction,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
@@ -4179,6 +4181,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &mfg_state,
                                     player_faction,
                                 );
                                 object_menu =
@@ -4334,6 +4337,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &mfg_state,
                                     player_faction,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
@@ -4475,8 +4479,29 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 quadrant: Quadrant::System,
                             }),
                         )) => {
-                            targeting = Some(Targeting::new(TargetOrder::Destination { system }));
+                            targeting = Some(Targeting::new(TargetOrder::Destination {
+                                system,
+                                area: None,
+                            }));
                         }
+                        // A band's manager takes the order for its own area
+                        // (manual p. 83, "select Destination from this menu
+                        // and then click the targeting cross hairs").
+                        Some((
+                            ObjectMenuCommand::Destination,
+                            Some(MenuObject::Producer { system, area }),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::Destination {
+                                system,
+                                area: Some(area),
+                            }));
+                        }
+                        // Stop (0x213) runs at once: the band's area drops
+                        // what it was building (manual p. 84).
+                        Some((
+                            ObjectMenuCommand::Stop,
+                            Some(MenuObject::Producer { system, area }),
+                        )) => panel_actions.push(PanelAction::StopProduction { system, area }),
                         // FUN_00486fb0 0x203 → FUN_0041d600 → FUN_00429350:
                         // the edit opens in the window that lists the object.
                         // port: with no Fleet window open there, one opens.
@@ -4906,9 +4931,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     target: RegimentTarget::System(system),
                                 }),
                                 // FUN_00512700 kind 4: the order's team is
-                                // every production area of the system.
+                                // every production area of the system, or
+                                // a band's own area.
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::Destination { system },
+                                    order: TargetOrder::Destination { system, area },
                                     target:
                                         ReleaseTarget::System(destination)
                                         | ReleaseTarget::Fleet {
@@ -4917,7 +4943,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                         },
                                 }) => panel_actions.push(PanelAction::SetDestination {
                                     system,
-                                    area: None,
+                                    area,
                                     destination,
                                 }),
                                 Some(TargetingEnd::Dropped) | None => {}
@@ -6131,9 +6157,23 @@ fn order_gates(
     mission_state: &MissionState,
     movement_state: &MovementState,
     troop_transport_state: &TroopTransportState,
+    manufacturing: &ManufacturingState,
     player_faction: MissionFaction,
 ) -> OrderGates {
     let is_alliance = player_faction == MissionFaction::Alliance;
+    let side = if is_alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    // port: a band's manager is its system's holder's; the orders' own
+    // +0x18 rules (FUN_0052ae30's class) are untraced.
+    let holds = |system| {
+        world
+            .systems
+            .get(system)
+            .is_some_and(|value| value.control.is_controlled_by(side))
+    };
     OrderGates {
         mission: selection
             .and_then(MenuObject::mission_member)
@@ -6187,6 +6227,17 @@ fn order_gates(
                         .is_some_and(|facility| facility.is_alliance == is_alliance)
                 })
             }),
+            Some(MenuObject::Producer { system, .. }) => holds(system),
+            _ => false,
+        },
+        // Stop clears a band that is building (manual p. 84).
+        stop: match selection {
+            Some(MenuObject::Producer { system, area }) => {
+                holds(system)
+                    && manufacturing
+                        .queue(system, area)
+                        .is_some_and(|queue| !queue.is_empty())
+            }
             _ => false,
         },
         // port: the player names its own fleets and ships; FUN_004f6e60
@@ -6569,6 +6620,13 @@ fn apply_panel_action(
                 None => item,
             };
             mfg_state.enqueue(system, item);
+        }
+        PanelAction::StopProduction { system, area } => {
+            mfg_state.stop(system, area);
+            macroquad::logging::info!(
+                "[interface] command=0x213 destination=production_stop status=stopped area={area:?} system={}",
+                world.systems.get(system).map_or("", |value| value.name.as_str())
+            );
         }
         PanelAction::CancelQueueItem { system, index } => {
             mfg_state
@@ -8240,6 +8298,80 @@ mod fleet_move_tests {
     }
 
     #[test]
+    fn a_bands_stop_and_destination_belong_to_its_systems_holder() {
+        // Manual p. 83-84: a construction yard's band takes Destination and
+        // Stop; Stop clears what the band is building. Either side holds
+        // its own bands.
+        for (holder, other) in [
+            (MissionFaction::Alliance, MissionFaction::Empire),
+            (MissionFaction::Empire, MissionFaction::Alliance),
+        ] {
+            let mut world = GameWorld::default();
+            let control = rebellion_core::world::ControlKind::Controlled(match holder {
+                MissionFaction::Alliance => Faction::Alliance,
+                MissionFaction::Empire => Faction::Empire,
+            });
+            let system = world.systems.insert(rebellion_core::world::System {
+                dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+                name: "Bortras".into(),
+                sector: rebellion_core::ids::SectorKey::default(),
+                x: 0,
+                y: 0,
+                exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+                popularity_alliance: 0.5,
+                popularity_empire: 0.5,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                is_headquarters: false,
+                is_destroyed: false,
+                control,
+            });
+            let class = world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass::default());
+            let mut manufacturing = ManufacturingState::new();
+            let band = Some(MenuObject::Producer {
+                system,
+                area: ProductionArea::Shipyard,
+            });
+            let gates = |manufacturing: &ManufacturingState, player| {
+                order_gates(
+                    band,
+                    &world,
+                    &MissionState::new(),
+                    &MovementState::new(),
+                    &TroopTransportState::new(),
+                    manufacturing,
+                    player,
+                )
+            };
+            let idle = gates(&manufacturing, holder);
+            assert!(idle.destination && !idle.stop);
+            manufacturing.build(
+                system,
+                &QueueItem::new(
+                    rebellion_core::manufacturing::BuildableKind::CapitalShip(class),
+                    10,
+                    10,
+                ),
+                1,
+            );
+            let building = gates(&manufacturing, holder);
+            assert!(building.destination && building.stop);
+            let foreign = gates(&manufacturing, other);
+            assert!(!foreign.destination && !foreign.stop);
+        }
+    }
+
+    #[test]
     fn a_fleet_icons_move_is_enabled_only_where_its_side_has_fleets() {
         // FUN_0051d990 asks each order's +0x18; Move on the fleet icon
         // (kind 0x10) needs a team (FUN_0053c4b0) that may all move.
@@ -8255,6 +8387,7 @@ mod fleet_move_tests {
                 &MissionState::new(),
                 &MovementState::new(),
                 &TroopTransportState::new(),
+                &ManufacturingState::new(),
                 MissionFaction::Alliance,
             )
             .fleet_move
