@@ -196,6 +196,9 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   Diplomat and Send Spy buttons (`PanelAction::OpenMissionTo`) and the
   missions panel's Dispatch tab (`PanelAction::OpenMissionDialog`). The
   missions panel lists active missions only.
+- A sector window's quadrant icons are selected by a left or right press
+  and open this menu on a right release, with their kind's orders
+  (`sector-icon-menus.md`).
 
 ## Supporting decompiles
 

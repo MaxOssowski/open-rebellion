@@ -10,12 +10,13 @@
 //! submenu (word 1) and its sort key (word 2).
 
 use egui_macroquad::egui;
-use rebellion_core::ids::{CharacterKey, FleetKey, SpecialForceKey, TroopKey};
+use rebellion_core::ids::{CharacterKey, FleetKey, SpecialForceKey, SystemKey, TroopKey};
 use rebellion_core::missions::MissionMember;
 
 use crate::bmp_cache::BmpCache;
 use crate::cockpit::{CockpitFaction, CockpitLayout, CockpitViewport};
 use crate::game_menu::{draw_game_menu, GameMenuEntry, GameMenuPlacement, GameMenuResponse};
+use crate::quadrant_icons::Quadrant;
 
 /// What an item does when chosen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +34,12 @@ pub enum ObjectMenuCommand {
     Scrap,
     /// A capital ship's Create Fleet (`0x270`).
     CreateFleet,
+    /// A facility's Destination (`0x214`).
+    Destination,
+    /// A facility's Reserved (`0x216`).
+    Reserved,
+    /// A mission's Abort (`0x250`).
+    Abort,
 }
 
 /// The object a menu opens for.
@@ -51,6 +58,12 @@ pub enum MenuObject {
         index: usize,
         roster: u64,
     },
+    /// A sector window's quadrant icon: its system, with the icon's kind
+    /// (`FUN_004f5b10`: item `+0x68` and `flag >> 16`).
+    SystemIcon {
+        system: SystemKey,
+        quadrant: Quadrant,
+    },
 }
 
 impl MenuObject {
@@ -60,7 +73,7 @@ impl MenuObject {
         match self {
             Self::Character(key) => Some(MissionMember::Character(key)),
             Self::SpecialForce(key) => Some(MissionMember::SpecialForce(key)),
-            Self::Fleet(_) | Self::Troop(_) | Self::Ship { .. } => None,
+            Self::Fleet(_) | Self::Troop(_) | Self::Ship { .. } | Self::SystemIcon { .. } => None,
         }
     }
 }
@@ -184,6 +197,24 @@ const CREATE_FLEET: ObjectMenuItem = item(
     "Create Fleet",
     false,
 );
+/// STRATEGY records 532, 534 and 592.
+const DESTINATION: ObjectMenuItem = item(
+    0x214,
+    ObjectMenuCommand::Destination,
+    120,
+    12290,
+    "Destination",
+    false,
+);
+const RESERVED: ObjectMenuItem = item(
+    0x216,
+    ObjectMenuCommand::Reserved,
+    1002,
+    12294,
+    "Reserved",
+    false,
+);
+const ABORT: ObjectMenuItem = item(0x250, ObjectMenuCommand::Abort, 2003, 12362, "Abort", false);
 
 /// One row of an open object menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +248,12 @@ impl ObjectMenuRow {
 /// Create Fleet (`FUN_00502bd0`).
 /// Kinds `0x204`, `0x241` and `0x268` are offered too but have no STRATEGY
 /// record, so they never show.
+/// A sector window's icon offers what its system's class gives the icon's
+/// kind (`FUN_00507290` → `FUN_0050f2e0`): facilities Destination, Reserved
+/// and Scrap; defenses Move, Confirmed Move and Scrap; fleets Move, Confirmed
+/// Move, the bombardments, Assault and Scrap; missions Abort. Its object is a
+/// system, so Status stays disabled. port: its orders stay disabled until
+/// their system-wide forms (`FUN_00512700`) are ported.
 /// An empty selection lists only Encyclopedia and Status, both disabled.
 ///
 /// - Mission is enabled when `gates.mission` says so
@@ -247,6 +284,12 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         Some(MenuObject::Fleet(_)) => &[MOVE, CONFIRMED_MOVE, BOMBARDMENT, ASSAULT, RENAME, SCRAP],
         Some(MenuObject::Troop(_)) => &[MOVE, CONFIRMED_MOVE, SCRAP],
         Some(MenuObject::Ship { .. }) => &[MOVE, CONFIRMED_MOVE, SCRAP, RENAME, CREATE_FLEET],
+        Some(MenuObject::SystemIcon { quadrant, .. }) => match quadrant {
+            Quadrant::System => &[SCRAP, DESTINATION, RESERVED],
+            Quadrant::Defenses => &[MOVE, CONFIRMED_MOVE, SCRAP],
+            Quadrant::Fleets => &[MOVE, CONFIRMED_MOVE, SCRAP, BOMBARDMENT, ASSAULT],
+            Quadrant::Missions => &[ABORT],
+        },
         None => &[],
     };
     let mut rows: Vec<ObjectMenuRow> = offered
@@ -375,6 +418,7 @@ pub fn draw_object_menu(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rebellion_core::ids::SystemKey;
 
     const MISSION_GATE: OrderGates = OrderGates {
         mission: true,
@@ -526,6 +570,77 @@ mod tests {
             enabled(&object_menu_rows(character, gates)),
             ["Encyclopedia"]
         );
+    }
+
+    fn icon(quadrant: Quadrant) -> Option<MenuObject> {
+        Some(MenuObject::SystemIcon {
+            system: SystemKey::default(),
+            quadrant,
+        })
+    }
+
+    #[test]
+    fn each_sector_icons_menu_lists_its_kinds_orders() {
+        // FUN_0051d990 asks the system (vtable 0x0065e640, +0x3c
+        // FUN_00507290) for the orders of the selection's kind;
+        // FUN_0050f2e0 gives kind 4 0x200, 0x214, 0x216; kind 8 0x201, 0x202,
+        // 0x200; kind 0x10 0x201, 0x202, 0x200, 0x220..0x223, 0x234; kind
+        // 0x40 0x250. STRATEGY RT_RCDATA words 2 and 5 sort and name them;
+        // manual Fig. 3.50 shows the mission icon's Encyclopedia, Status,
+        // Abort.
+        let kinds = |quadrant| -> Vec<u16> {
+            object_menu_rows(icon(quadrant), OrderGates::default())
+                .iter()
+                .map(|row| row.item.kind)
+                .collect()
+        };
+        assert_eq!(
+            kinds(Quadrant::Fleets),
+            [0x201, 0x202, 0x120, 0x234, 0x100, 0x103, 0x200]
+        );
+        assert_eq!(
+            kinds(Quadrant::Defenses),
+            [0x201, 0x202, 0x100, 0x103, 0x200]
+        );
+        assert_eq!(kinds(Quadrant::System), [0x214, 0x100, 0x103, 0x216, 0x200]);
+        assert_eq!(kinds(Quadrant::Missions), [0x100, 0x103, 0x250]);
+
+        let rows = object_menu_rows(icon(Quadrant::System), OrderGates::default());
+        assert_eq!(
+            labels(&rows),
+            ["Destination", "Encyclopedia", "Status", "Reserved", "Scrap"]
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|row| (row.item.sort_key, row.item.label_string_id))
+                .collect::<Vec<_>>(),
+            [
+                (120, 12290),
+                (1000, 12292),
+                (1001, 12293),
+                (1002, 12294),
+                (2000, 12295)
+            ]
+        );
+        let abort = object_menu_rows(icon(Quadrant::Missions), OrderGates::default())[2].item;
+        assert_eq!(
+            (abort.label, abort.sort_key, abort.label_string_id),
+            ("Abort", 2003, 12362)
+        );
+    }
+
+    #[test]
+    fn a_sector_icons_status_stays_disabled_because_its_object_is_a_system() {
+        // FUN_0051d990: Encyclopedia is enabled for a single selection;
+        // Status only when that object is not a system (0x90..0x97). An
+        // icon's selection is its system (item +0x68, FUN_004f5b10).
+        for quadrant in Quadrant::ALL {
+            assert_eq!(
+                enabled(&object_menu_rows(icon(quadrant), OrderGates::default())),
+                ["Encyclopedia"],
+                "{quadrant:?}"
+            );
+        }
     }
 
     #[test]

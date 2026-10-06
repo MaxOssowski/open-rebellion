@@ -16,6 +16,7 @@ use rebellion_core::world::{ControlKind, GameWorld};
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::paint_native;
+use crate::object_menu::MenuObject;
 use crate::quadrant_icons::{quadrant_icon, Quadrant};
 
 pub const SECTOR_WINDOW_WIDTH: f32 = 235.0;
@@ -68,6 +69,9 @@ impl WindowColumn {
 struct OpenSectorWindow {
     sector: SectorKey,
     column: WindowColumn,
+    /// The icon a left or right press chose last (`+0x184`,
+    /// `FUN_0045b1b0`): its system and quadrant.
+    selection: Option<(SystemKey, Quadrant)>,
 }
 
 /// Mutable state for the modeless sector-window stack. The last entry is the
@@ -107,7 +111,11 @@ impl SectorWindowState {
             .windows
             .last()
             .map_or(WindowColumn::Primary, |window| window.column.opposite());
-        self.windows.push(OpenSectorWindow { sector, column });
+        self.windows.push(OpenSectorWindow {
+            sector,
+            column,
+            selection: None,
+        });
         true
     }
 
@@ -290,6 +298,13 @@ pub enum SectorWindowAction {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A right-button release opens the object pop-up menu (slot 7,
+    /// `FUN_004ac5c0`) for the window's selection, at a 640 by 480 canvas
+    /// point.
+    OpenObjectMenu {
+        selection: Option<MenuObject>,
+        point: (i16, i16),
+    },
 }
 
 #[derive(Default)]
@@ -302,6 +317,10 @@ struct WindowDrawResult {
     opened_fleet: Option<(SystemKey, (i16, i16))>,
     opened_defenses: Option<(SystemKey, (i16, i16))>,
     opened_missions: Option<(SystemKey, (i16, i16))>,
+    /// A left or right press on a shown icon.
+    icon_pressed: Option<(SystemKey, Quadrant)>,
+    /// A right-button release in the window, as a canvas point.
+    object_menu: Option<(i16, i16)>,
 }
 
 /// Paint and operate all open sector windows using the recovered strategic
@@ -328,6 +347,7 @@ pub fn draw_sector_windows(
     let mut focused = None;
     let mut closed = None;
     let mut switched = None;
+    let mut chosen = Vec::new();
 
     let focused_sector = windows.last().map(|window| window.sector);
     for window in windows {
@@ -378,6 +398,27 @@ pub fn draw_sector_windows(
                 system,
                 logical_position,
             });
+        }
+        let selection = result.icon_pressed.or(window.selection);
+        if result.icon_pressed.is_some() {
+            chosen.push((window.sector, selection));
+        }
+        if let Some(point) = result.object_menu {
+            actions.push(SectorWindowAction::OpenObjectMenu {
+                selection: selection
+                    .map(|(system, quadrant)| MenuObject::SystemIcon { system, quadrant }),
+                point,
+            });
+        }
+    }
+
+    for (sector, selection) in chosen {
+        if let Some(window) = state
+            .windows
+            .iter_mut()
+            .find(|window| window.sector == sector)
+        {
+            window.selection = selection;
         }
     }
 
@@ -431,10 +472,15 @@ fn draw_sector_window(
         .fixed_pos(screen_position)
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
-            let (pointer, primary_down) = ctx.input(|input| {
+            let (pointer, primary_down, any_pressed, secondary_released) = ctx.input(|input| {
                 (
                     input.pointer.interact_pos(),
                     input.pointer.button_down(egui::PointerButton::Primary),
+                    input.pointer.button_pressed(egui::PointerButton::Primary)
+                        || input.pointer.button_pressed(egui::PointerButton::Secondary),
+                    input
+                        .pointer
+                        .button_released(egui::PointerButton::Secondary),
                 )
             });
             let (window_rect, window_response) = ui.allocate_exact_size(size, egui::Sense::click());
@@ -503,6 +549,12 @@ fn draw_sector_window(
                 .then_some(pointer)
                 .flatten()
                 .filter(|point| ctx.layer_id_at(*point) == Some(layer));
+            // The window's area is exactly its rect, so its layer under the
+            // point also says no other window covers it.
+            let on_window = |point: &egui::Pos2| ctx.layer_id_at(*point) == Some(layer);
+            // FUN_004593e0 cases 0x201 and 0x204 hit-test the overlays
+            // (FUN_0045cc10); a press that finds none keeps the selection.
+            let press = any_pressed.then_some(pointer).flatten().filter(on_window);
             for system_key in &sector.systems {
                 let Some(system) = world.systems.get(*system_key) else {
                     continue;
@@ -538,6 +590,13 @@ fn draw_sector_window(
                         .find(|(_, rect, _)| rect_contains(*rect, point))
                         .map(|(quadrant, rect, _)| (*quadrant, *rect))
                 });
+                if let Some((quadrant, _, _)) = press.and_then(|point| {
+                    icons
+                        .iter()
+                        .find(|(_, rect, _)| rect_contains(*rect, point))
+                }) {
+                    result.icon_pressed = Some((*system_key, *quadrant));
+                }
                 let planet_double_clicked = planet_response.double_clicked()
                     && planet_clicked
                     && icon_double_clicked.is_none();
@@ -610,6 +669,16 @@ fn draw_sector_window(
                 }
             }
 
+            // WM_RBUTTONUP: slot 7, FUN_004ac5c0, opens the menu for the
+            // window's selection, whatever lies under the cursor.
+            if let Some(point) = secondary_released
+                .then_some(pointer)
+                .flatten()
+                .filter(on_window)
+            {
+                result.object_menu = Some(screen_to_logical(layout, point));
+                result.focus = true;
+            }
             if window_response.clicked() || switch_clicked || close_clicked {
                 result.focus = true;
             }
@@ -1313,6 +1382,181 @@ mod tests {
             });
         }
         actions
+    }
+
+    /// Draw `system`'s sector window and click each `(button, point)` in
+    /// turn, a press and a release apiece, in one window state.
+    fn clicks_at(
+        world: &GameWorld,
+        system: SystemKey,
+        clicks: &[(egui::PointerButton, (f32, f32))],
+    ) -> Vec<SectorWindowAction> {
+        let layout = layout(1.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(world, system, CockpitFaction::Alliance);
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(system);
+        let missions = rebellion_core::missions::MissionState::new();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let mut frames = Vec::new();
+        for &(button, at) in clicks {
+            let pos = egui::pos2(layout.canvas.x + at.0, layout.canvas.y + at.1);
+            let event = |pressed| egui::Event::PointerButton {
+                pos,
+                button,
+                pressed,
+                modifiers: egui::Modifiers::default(),
+            };
+            frames.push(vec![egui::Event::PointerMoved(pos)]);
+            frames.push(vec![event(true)]);
+            frames.push(vec![event(false)]);
+            frames.push(vec![]);
+        }
+        let mut actions = Vec::new();
+        for (index, events) in frames.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 520.0),
+                )),
+                // Far enough apart that no two clicks make a double click.
+                time: Some(index as f64 * 0.5),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                actions.extend(draw_sector_windows(
+                    ctx,
+                    world,
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                ));
+            });
+        }
+        actions
+    }
+
+    fn menus(actions: &[SectorWindowAction]) -> Vec<(Option<MenuObject>, (i16, i16))> {
+        actions
+            .iter()
+            .filter_map(|action| match *action {
+                SectorWindowAction::OpenObjectMenu { selection, point } => Some((selection, point)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    const RIGHT: egui::PointerButton = egui::PointerButton::Secondary;
+    const LEFT: egui::PointerButton = egui::PointerButton::Primary;
+
+    #[test]
+    fn a_right_click_on_the_fleet_icon_opens_its_menu_at_the_cursor() {
+        // FUN_004593e0 case 0x204: FUN_0045cc10 finds the shown overlay and
+        // FUN_0045b1b0 makes it the window's selection (FUN_004f5b10: the
+        // system and the kind). WM_RBUTTONUP reaches slot 7, FUN_004ac5c0,
+        // with the cursor. (115, 90) is on the icon, past the planet.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let fleets = Some(MenuObject::SystemIcon {
+            system,
+            quadrant: Quadrant::Fleets,
+        });
+        assert_eq!(
+            menus(&clicks_at(&world, system, &[(RIGHT, (115.0, 90.0))])),
+            [(fleets, (115, 90))]
+        );
+        // On the planet's own picture, where the icon overlaps it.
+        assert_eq!(
+            menus(&clicks_at(&world, system, &[(RIGHT, (100.0, 85.0))])),
+            [(fleets, (100, 85))]
+        );
+    }
+
+    #[test]
+    fn each_shown_icon_is_its_own_selection() {
+        // FUN_00459e30 gives each quadrant its own item and kind.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        add_mine(&mut world, system);
+        let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0002),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+        for (quadrant, at) in [
+            (Quadrant::System, (66.0, 80.0)),
+            (Quadrant::Defenses, (66.0, 110.0)),
+            (Quadrant::Fleets, (115.0, 80.0)),
+        ] {
+            assert_eq!(
+                menus(&clicks_at(&world, system, &[(RIGHT, at)])),
+                [(
+                    Some(MenuObject::SystemIcon { system, quadrant }),
+                    (at.0 as i16, at.1 as i16)
+                )],
+                "{quadrant:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_press_off_every_icon_keeps_the_windows_selection() {
+        // FUN_004593e0 cases 0x201 and 0x204 return before FUN_0045afc0 when
+        // FUN_0045cc10 finds nothing, so the last icon chosen stays selected
+        // and the next right release (FUN_004ac5c0) opens its menu.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let fleets = Some(MenuObject::SystemIcon {
+            system,
+            quadrant: Quadrant::Fleets,
+        });
+        // (200, 250) is empty window space, far from any planet.
+        assert_eq!(
+            menus(&clicks_at(
+                &world,
+                system,
+                &[(LEFT, (115.0, 90.0)), (RIGHT, (200.0, 250.0))]
+            )),
+            [(fleets, (200, 250))]
+        );
+        // With nothing chosen yet, the menu opens for an empty selection.
+        assert_eq!(
+            menus(&clicks_at(&world, system, &[(RIGHT, (200.0, 250.0))])),
+            [(None, (200, 250))]
+        );
+    }
+
+    #[test]
+    fn a_right_release_outside_the_window_opens_no_menu() {
+        // WM_RBUTTONUP reaches the window under the cursor; the galaxy view
+        // beyond the window's right edge (60 + 235) is not this window.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        assert!(menus(&clicks_at(
+            &world,
+            system,
+            &[(LEFT, (115.0, 90.0)), (RIGHT, (400.0, 200.0))]
+        ))
+        .is_empty());
+    }
+
+    #[test]
+    fn a_hidden_icons_corner_selects_nothing() {
+        // FUN_0045d140 removes an item with nothing to show, so a press on
+        // its corner finds no overlay.
+        let (world, system, _) = fixture_world();
+        assert_eq!(
+            menus(&clicks_at(&world, system, &[(RIGHT, (115.0, 90.0))])),
+            [(None, (115, 90))]
+        );
     }
 
     fn opened(actions: &[SectorWindowAction]) -> Vec<SectorWindowAction> {

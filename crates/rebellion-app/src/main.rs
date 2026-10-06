@@ -3752,6 +3752,17 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     cockpit_layout,
                                 );
                             }
+                            SectorWindowAction::OpenObjectMenu { selection, point } => {
+                                let gates = order_gates(
+                                    selection,
+                                    &world,
+                                    &mission_state,
+                                    &movement_state,
+                                    &troop_transport_state,
+                                    player_faction,
+                                );
+                                object_menu = Some(ObjectMenuState::new(selection, gates, point));
+                            }
                         }
                     }
 
