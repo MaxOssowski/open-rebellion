@@ -117,6 +117,17 @@ treatment to the speaker projection, and required identical painted and hit
 bounds. This extension is vector-drawn because no original bitmap exists for
 it; it must never be represented as original-game parity.
 
+A second extension follows it. `Fleet registry` occupies logical rect
+`(558,10,30,22)`, left of the music toggle and outside every original
+hotspot, in the same housing with a three-line glyph and a lamp lit amber
+while canonical names are chosen. It opens the Fleet Registry
+(`crates/rebellion-render/src/fleet_registry.rs`), a readout drawn over the
+cockpit in the green monospace of the game-type readout. The cockpit beneath
+takes no input until Return or Escape closes it. The choice sets how the next
+new game names its fleets (`docs/mechanics/fleet-names.md`); it defaults to
+the original numbering and is not persisted across launches. Like the music
+toggle, it must never be represented as original-game parity.
+
 ## Defaults and transitions
 
 | Setting | Original field | Default | Open Rebellion mapping |

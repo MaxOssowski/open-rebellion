@@ -1369,6 +1369,8 @@ async fn main() {
                         campaign_generation
                     );
                 }
+            } else if game_mode == GameMode::MainMenu && main_menu_state.registry_open() {
+                // The Fleet Registry answers Escape by closing itself.
             } else {
                 quit_requested = true;
             }
@@ -3102,6 +3104,12 @@ Some(RailAudience::side(*faction_is_alliance)),
                                             error
                                         );
                                     }
+                                    // The Fleet Registry's choice (a port extension).
+                                    w.start_fleet_naming(main_menu_state.fleet_naming);
+                                    macroquad::logging::info!(
+                                        "[campaign] fleet_naming={:?}",
+                                        main_menu_state.fleet_naming
+                                    );
                                     world = w;
                                     campaign_generation += 1;
                                     sim_rng = Xoshiro256PlusPlus::seed_from_u64(

@@ -41,6 +41,7 @@ Complete reference for all 19 game mechanics documents in Open Rebellion.
 | Document | System | Description |
 |----------|--------|-------------|
 | [fleet-movement.md](fleet-movement.md) | `fleet-movement` | Hyperdrive speed, Han Solo bonus, MovementOrder lifecycle |
+| [fleet-names.md](fleet-names.md) | `fleet-names` | Per-side Fleet N numbering; the canonical name bank and its signature names (port extension) |
 | [fog-of-war.md](fog-of-war.md) | `fog-of-war` | Fleet-presence visibility, sensor radius, advance intel |
 | [diplomacy.md](diplomacy.md) | `diplomacy` | Diplomacy missions, loyalty shifts, faction influence |
 | [missions.md](missions.md) | `missions` | 9 mission types, MSTB probability tables, mission effects |

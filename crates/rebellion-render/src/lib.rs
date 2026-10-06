@@ -9,6 +9,7 @@ pub mod encyclopedia;
 pub mod event_screen;
 pub mod fleet_finder;
 pub mod fleet_movement;
+pub mod fleet_registry;
 pub mod fleet_window;
 pub mod fog;
 pub mod game_menu;

@@ -11,15 +11,19 @@ use egui_macroquad::egui::{
 };
 use rebellion_core::dat::GalaxySize;
 use rebellion_core::missions::MissionFaction;
+use rebellion_core::world::FleetNaming;
 
 use crate::audio::SfxKind;
 use crate::bmp_cache::{resources, BmpCache, DllSource};
+use crate::fleet_registry::{draw_fleet_registry, FleetRegistryState, RegistryOutcome};
 use crate::panels::game_setup::Difficulty;
 
 pub const LOGICAL_WIDTH: f32 = 640.0;
 pub const LOGICAL_HEIGHT: f32 = 480.0;
 pub const ORIGINAL_CONTROL_COUNT: usize = 14;
 pub const MUSIC_TOGGLE_RECT: LogicalRect = LogicalRect::new(594.0, 10.0, 30.0, 22.0);
+/// The Fleet Registry chip, a port extension, left of the music toggle.
+pub const FLEET_REGISTRY_RECT: LogicalRect = LogicalRect::new(558.0, 10.0, 30.0, 22.0);
 const ANIMATION_FPS: f64 = 15.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +45,9 @@ pub enum MainMenuControl {
     Quit,
     /// Open Rebellion convenience extension; not present in the 1998 cockpit.
     MusicToggle,
+    /// Open Rebellion extension: opens the Fleet Registry
+    /// (`crate::fleet_registry`); not present in the 1998 cockpit.
+    FleetRegistry,
 }
 
 impl MainMenuControl {
@@ -75,6 +82,7 @@ impl MainMenuControl {
             Self::Multiplayer => "Multiplayer",
             Self::Quit => "Quit",
             Self::MusicToggle => "Menu music",
+            Self::FleetRegistry => "Fleet registry",
         }
     }
 }
@@ -88,7 +96,7 @@ pub struct LogicalRect {
 }
 
 impl LogicalRect {
-    const fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
+    pub const fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
         Self {
             x,
             y,
@@ -163,6 +171,7 @@ pub const CONTROL_RECTS: &[(MainMenuControl, LogicalRect)] = &[
         LogicalRect::new(536.0, 393.0, 63.0, 64.0),
     ),
     (MainMenuControl::MusicToggle, MUSIC_TOGGLE_RECT),
+    (MainMenuControl::FleetRegistry, FLEET_REGISTRY_RECT),
 ];
 
 /// Persistent selections and animation state for the cockpit menu.
@@ -171,6 +180,9 @@ pub struct MainMenuState {
     pub difficulty: Difficulty,
     pub galaxy_size: GalaxySize,
     pub headquarters_only: bool,
+    /// How the next new game names its fleets, set in the Fleet Registry.
+    pub fleet_naming: FleetNaming,
+    registry: Option<FleetRegistryState>,
     hovered: Option<MainMenuControl>,
     hover_started_at: f64,
     keyboard_focus: Option<MainMenuControl>,
@@ -184,6 +196,8 @@ impl Default for MainMenuState {
             difficulty: Difficulty::Easy,
             galaxy_size: GalaxySize::Standard,
             headquarters_only: false,
+            fleet_naming: FleetNaming::Original,
+            registry: None,
             hovered: None,
             hover_started_at: 0.0,
             keyboard_focus: None,
@@ -215,9 +229,19 @@ impl MainMenuState {
 
     /// Route assistive-technology activation through the exact pointer and
     /// canvas-keyboard behavior, including the recovered COMMON.DLL effect.
+    /// The open Fleet Registry holds the cockpit beneath it still.
     pub fn activate_control(&mut self, control: MainMenuControl) -> Option<MainMenuAction> {
+        if self.registry_open() {
+            return None;
+        }
         self.pending_sfx = Some(sfx_for(control));
         activate(control, self)
+    }
+
+    /// Whether the Fleet Registry is open over the cockpit.
+    #[must_use]
+    pub const fn registry_open(&self) -> bool {
+        self.registry.is_some()
     }
 }
 
@@ -258,7 +282,17 @@ pub fn control_rect(canvas: Rect, logical: LogicalRect) -> Rect {
 /// Device-pixel-aligned bounds shared by the extension's paint and hit paths.
 #[must_use]
 pub fn music_toggle_rect(canvas: Rect) -> Rect {
-    let rect = control_rect(canvas, MUSIC_TOGGLE_RECT);
+    extension_rect(canvas, MUSIC_TOGGLE_RECT)
+}
+
+/// The Fleet Registry chip's device-pixel-aligned bounds.
+#[must_use]
+pub fn fleet_registry_rect(canvas: Rect) -> Rect {
+    extension_rect(canvas, FLEET_REGISTRY_RECT)
+}
+
+fn extension_rect(canvas: Rect, logical: LogicalRect) -> Rect {
+    let rect = control_rect(canvas, logical);
     Rect::from_min_max(
         Pos2::new(rect.min.x.round(), rect.min.y.round()),
         Pos2::new(rect.max.x.round(), rect.max.y.round()),
@@ -280,6 +314,9 @@ fn logical_pointer(canvas: Rect, pointer: Pos2) -> Option<Pos2> {
 pub fn hit_test(canvas: Rect, pointer: Pos2) -> Option<MainMenuControl> {
     if music_toggle_rect(canvas).contains(pointer) {
         return Some(MainMenuControl::MusicToggle);
+    }
+    if fleet_registry_rect(canvas).contains(pointer) {
+        return Some(MainMenuControl::FleetRegistry);
     }
     let logical = logical_pointer(canvas, pointer)?;
     CONTROL_RECTS[..ORIGINAL_CONTROL_COUNT]
@@ -392,8 +429,8 @@ fn texture_for(
                 10011
             }
         }
-        MainMenuControl::MusicToggle => {
-            unreachable!("the Open Rebellion music toggle uses vector cockpit chrome")
+        MainMenuControl::MusicToggle | MainMenuControl::FleetRegistry => {
+            unreachable!("the Open Rebellion extension chips use vector cockpit chrome")
         }
     }
 }
@@ -448,6 +485,7 @@ fn activate(control: MainMenuControl, state: &mut MainMenuState) -> Option<MainM
         MainMenuControl::Multiplayer => return Some(MainMenuAction::Multiplayer),
         MainMenuControl::Quit => return Some(MainMenuAction::Quit),
         MainMenuControl::MusicToggle => return Some(MainMenuAction::ToggleMusic),
+        MainMenuControl::FleetRegistry => state.registry = Some(FleetRegistryState::new()),
     }
     None
 }
@@ -664,13 +702,14 @@ pub fn draw_main_menu(
                     None
                 }
             });
-            if let Some(backwards) = focus_direction {
+            if let Some(backwards) = focus_direction.filter(|_| !state.registry_open()) {
                 let focused = adjacent_control(state.keyboard_focus, backwards);
                 state.keyboard_focus = Some(focused);
                 ui.memory_mut(|memory| memory.request_focus(ui.id().with(focused as u8)));
             }
             let hovered = ctx
                 .input(|input| input.pointer.hover_pos())
+                .filter(|_| !state.registry_open())
                 .and_then(|pointer| hit_test(canvas, pointer));
             if hovered != state.hovered {
                 state.hovered = hovered;
@@ -704,10 +743,10 @@ pub fn draw_main_menu(
                         | MainMenuControl::MediumGalaxy
                         | MainMenuControl::LargeGalaxy
                 ) || *control == galaxy_indicator;
-                let rect = if *control == MainMenuControl::MusicToggle {
-                    music_toggle_rect(canvas)
-                } else {
-                    control_rect(canvas, *logical)
+                let rect = match control {
+                    MainMenuControl::MusicToggle => music_toggle_rect(canvas),
+                    MainMenuControl::FleetRegistry => fleet_registry_rect(canvas),
+                    _ => control_rect(canvas, *logical),
                 };
                 let response = ui.interact(rect, ui.id().with(*control as u8), Sense::click());
                 response.widget_info(|| {
@@ -739,6 +778,14 @@ pub fn draw_main_menu(
                         state.hovered == Some(*control),
                         response.is_pointer_button_down_on(),
                         hover_elapsed,
+                    );
+                } else if *control == MainMenuControl::FleetRegistry {
+                    draw_registry_chip(
+                        ui.painter(),
+                        rect,
+                        state.fleet_naming == FleetNaming::Canonical,
+                        state.hovered == Some(*control),
+                        response.is_pointer_button_down_on(),
                     );
                 } else if draw_control {
                     let resource_id = texture_for(
@@ -784,7 +831,86 @@ pub fn draw_main_menu(
                 Color32::from_rgb(80, 255, 80),
             );
         });
+    if let Some(registry) = state.registry.as_mut() {
+        let canvas = main_menu_canvas_rect(ctx.screen_rect());
+        let emblems = [MainMenuControl::Empire, MainMenuControl::Alliance].map(|control| {
+            let resource_id = texture_for(control, &MainMenuState::default(), false, 0.0);
+            cache
+                .get(ctx, DllSource::Common, resource_id)
+                .map(|texture| texture.id())
+        });
+        if draw_fleet_registry(ctx, canvas, registry, &mut state.fleet_naming, emblems)
+            == RegistryOutcome::Close
+        {
+            state.registry = None;
+            state.pending_sfx = Some(SfxKind::MenuSelect);
+        }
+    }
     action
+}
+
+/// The Fleet Registry chip: the music toggle's housing, a three-line
+/// registry glyph, and a lamp lit while canonical names are chosen.
+fn draw_registry_chip(
+    painter: &egui::Painter,
+    rect: Rect,
+    canonical: bool,
+    hovered: bool,
+    pressed: bool,
+) {
+    let painter = painter.with_clip_rect(rect);
+    let scale = rect.width() / 30.0;
+    let stroke = scale.max(1.0);
+    painter.rect_filled(rect, scale, Color32::from_rgb(166, 180, 176));
+    painter.add(Shape::line(
+        vec![rect.left_bottom(), rect.left_top(), rect.right_top()],
+        Stroke::new(stroke, Color32::from_rgb(214, 226, 222)),
+    ));
+    painter.add(Shape::line(
+        vec![rect.left_bottom(), rect.right_bottom(), rect.right_top()],
+        Stroke::new(stroke, Color32::from_rgb(92, 104, 104)),
+    ));
+    let aperture = rect.shrink(3.0 * scale);
+    painter.rect_filled(aperture, 0.5 * scale, Color32::from_rgb(8, 10, 14));
+    let offset = if pressed { scale } else { 0.0 };
+    let alpha = if pressed {
+        90
+    } else if hovered {
+        255
+    } else {
+        200
+    };
+    let glyph = Color32::from_rgba_unmultiplied(80, 255, 80, alpha);
+    for (row, width) in [(-4.0, 11.0), (0.0, 8.0), (4.0, 10.0)] {
+        let y = rect.center().y + (row * scale) + offset;
+        let x = rect.left() + 6.0 * scale + offset;
+        painter.rect_filled(
+            Rect::from_min_size(Pos2::new(x, y - scale), Vec2::splat(2.0 * scale)),
+            0.0,
+            glyph,
+        );
+        painter.line_segment(
+            [
+                Pos2::new(x + 4.0 * scale, y),
+                Pos2::new(x + (4.0 + width) * scale, y),
+            ],
+            Stroke::new((1.5 * scale).max(1.0), glyph),
+        );
+    }
+    let lamp = Rect::from_min_size(
+        Pos2::new(rect.right() - 9.0 * scale, rect.top() + 3.0 * scale),
+        Vec2::new(6.0 * scale, 5.0 * scale),
+    );
+    painter.rect_filled(lamp, 0.0, Color32::from_rgb(24, 30, 32));
+    painter.rect_filled(
+        lamp.shrink(scale),
+        0.0,
+        if canonical {
+            Color32::from_rgb(255, 190, 60)
+        } else {
+            Color32::from_rgb(40, 52, 44)
+        },
+    );
 }
 
 #[cfg(test)]
@@ -946,7 +1072,7 @@ mod tests {
         assert_eq!(adjacent_control(None, false), MainMenuControl::Easy);
         assert_eq!(
             adjacent_control(Some(MainMenuControl::Easy), true),
-            MainMenuControl::MusicToggle
+            MainMenuControl::FleetRegistry
         );
         assert_eq!(
             adjacent_control(Some(MainMenuControl::Quit), false),
@@ -954,6 +1080,10 @@ mod tests {
         );
         assert_eq!(
             adjacent_control(Some(MainMenuControl::MusicToggle), false),
+            MainMenuControl::FleetRegistry
+        );
+        assert_eq!(
+            adjacent_control(Some(MainMenuControl::FleetRegistry), false),
             MainMenuControl::Easy
         );
         assert_eq!(
@@ -967,10 +1097,10 @@ mod tests {
         clippy::cast_possible_truncation,
         reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
     )]
-    fn semantic_indices_cover_original_controls_and_music_extension() {
+    fn semantic_indices_cover_original_controls_and_both_extensions() {
         // Source: COMMON.DLL 14 original bitmap controls (agent_docs/main-menu-parity.md).
         assert_eq!(ORIGINAL_CONTROL_COUNT, 14);
-        assert_eq!(CONTROL_RECTS.len(), ORIGINAL_CONTROL_COUNT + 1);
+        assert_eq!(CONTROL_RECTS.len(), ORIGINAL_CONTROL_COUNT + 2);
         for (index, (control, _)) in CONTROL_RECTS.iter().enumerate() {
             assert_eq!(control.index(), index);
             assert_eq!(MainMenuControl::from_index(index as u32), Some(*control));
@@ -980,7 +1110,13 @@ mod tests {
             CONTROL_RECTS[ORIGINAL_CONTROL_COUNT].0,
             MainMenuControl::MusicToggle
         );
-        assert_eq!(MainMenuControl::from_index(15), None);
+        assert_eq!(
+            CONTROL_RECTS[ORIGINAL_CONTROL_COUNT + 1].0,
+            MainMenuControl::FleetRegistry
+        );
+        assert_eq!(MainMenuControl::from_index(16), None);
+        // web/index.html names data-menu-index 15 the same.
+        assert_eq!(MainMenuControl::FleetRegistry.label(), "Fleet registry");
     }
 
     #[test]
@@ -1046,6 +1182,101 @@ mod tests {
         );
         assert_eq!(narrow.width(), 15.0);
         assert_eq!(narrow.height(), 11.0);
+    }
+
+    #[test]
+    fn the_registry_chip_sits_left_of_the_music_toggle_clear_of_every_control() {
+        let canvas = Rect::from_min_size(Pos2::ZERO, Vec2::new(640.0, 480.0));
+        assert_eq!(
+            hit_test(canvas, Pos2::new(573.0, 21.0)),
+            Some(MainMenuControl::FleetRegistry)
+        );
+        assert_eq!(hit_test(canvas, Pos2::new(557.9, 21.0)), None);
+        assert_eq!(hit_test(canvas, Pos2::new(591.0, 21.0)), None);
+        for (control, other) in &CONTROL_RECTS[..=ORIGINAL_CONTROL_COUNT] {
+            let chip = FLEET_REGISTRY_RECT;
+            let separated = chip.x + chip.width < other.x
+                || other.x + other.width < chip.x
+                || chip.y + chip.height < other.y
+                || other.y + other.height < chip.y;
+            assert!(separated, "the registry chip overlaps {control:?}");
+        }
+    }
+
+    #[test]
+    fn the_registry_chip_opens_the_registry_which_holds_the_cockpit_still() {
+        let mut state = MainMenuState::default();
+        assert_eq!(state.fleet_naming, FleetNaming::Original);
+        assert!(!state.registry_open());
+        assert_eq!(state.activate_control(MainMenuControl::FleetRegistry), None);
+        assert!(state.registry_open());
+        assert_eq!(state.take_sfx(), Some(SfxKind::MenuSelect));
+        assert_eq!(state.activate_control(MainMenuControl::Empire), None);
+        assert_eq!(state.activate_control(MainMenuControl::Expert), None);
+        assert_eq!(state.difficulty, Difficulty::Easy);
+        assert_eq!(state.take_sfx(), None);
+    }
+
+    /// Run the cockpit at 640x480, a frame per event list; returns the
+    /// actions the frames produced.
+    fn run_menu(state: &mut MainMenuState, frames: Vec<Vec<egui::Event>>) -> Vec<MainMenuAction> {
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let mut actions = Vec::new();
+        for events in [vec![], vec![]].into_iter().chain(frames) {
+            let input = egui::RawInput {
+                screen_rect: Some(viewport(640.0, 480.0)),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                actions.extend(draw_main_menu(ctx, &mut cache, state, true));
+            });
+        }
+        actions
+    }
+
+    fn click_at(x: f32, y: f32) -> Vec<Vec<egui::Event>> {
+        let pos = Pos2::new(x, y);
+        let press = |pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        vec![vec![egui::Event::PointerMoved(pos)], vec![press(true)], vec![press(false)]]
+    }
+
+    #[test]
+    fn the_open_registry_holds_the_cockpit_until_escape_closes_it() {
+        let mut state = MainMenuState::default();
+        let empire = (184.0, 335.0);
+        assert!(run_menu(&mut state, click_at(573.0, 21.0)).is_empty());
+        assert!(state.registry_open());
+        assert!(run_menu(&mut state, click_at(empire.0, empire.1)).is_empty());
+        assert!(state.registry_open());
+        let arrow = egui::Event::Key {
+            key: egui::Key::ArrowRight,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        };
+        run_menu(&mut state, vec![vec![arrow]]);
+        assert_eq!(state.keyboard_focus, None);
+
+        let escape = egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        };
+        assert!(run_menu(&mut state, vec![vec![escape]]).is_empty());
+        assert!(!state.registry_open());
+        assert_eq!(state.take_sfx(), Some(SfxKind::MenuSelect));
+        let started = run_menu(&mut state, click_at(empire.0, empire.1));
+        assert!(matches!(started.as_slice(), [MainMenuAction::StartGame { .. }]));
     }
 
     #[test]

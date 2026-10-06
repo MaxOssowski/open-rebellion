@@ -28,6 +28,7 @@ node fleet-window.mjs  # verify the Fleet window, regiments, and joining and spl
 node sector-quadrants.mjs  # verify the quadrant icons and the Defenses and Missions windows
 node fleet-finder.mjs  # verify the Fleet and Ship Finder
 node fleet-finder.mjs --no-build --only=alliance/chrome  # one faction/case, reusing a build
+node fleet-registry.mjs  # verify the Fleet Registry, a port extension, from the main menu
 ```
 
 Harness unit regressions can be run from the repository root with
@@ -87,8 +88,11 @@ from the cockpit control and F3, compares its chrome in both modes, and opens a
 chosen fleet or ship in its Fleet window; its tabs case checks that the map
 under the Finder takes no click. The map never zooms or pans
 (`FUN_00422ce0`), and the `pan` and `zoom` scenarios check that a right-drag
-and a wheel leave the frame unchanged. `--only=<faction>/<case>` runs
-named cases. Each gate writes `result.json` and its captures under
+and a wheel leave the frame unchanged. `fleet-registry.mjs` drives the real
+main menu (no fixture): it opens the Fleet Registry from its chip, lights a
+naming mode, holds a hovered name's row to show its note, closes on Escape
+with the chip's lamp lit, and starts a game whose fleets take canonical
+names. `--only=<faction>/<case>` runs named cases. Each gate writes `result.json` and its captures under
 `.artifacts/interface-parity/<gate>-<timestamp>/`; the native GUI checks of the
 same journeys are recorded separately in the audit.
 
