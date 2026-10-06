@@ -28,6 +28,7 @@ Reference documentation for AI agents working on the Open Rebellion codebase. Re
 | [game-domain.md](game-domain.md) | Galaxy, factions, units, missions, combat — game mechanics overview |
 | [dat-formats.md](dat-formats.md) | DAT binary format reference, 3 structural patterns, 51 files |
 | [ghidra-re.md](ghidra-re.md) | Ghidra RE summary: 5,207 decompiled functions, combat formulas, GNPRTB params |
+| [manual-cross-check.md](manual-cross-check.md) | Reading the manual before and after each interface feature; settling its claims against the trace |
 | [main-menu-parity.md](main-menu-parity.md) | Original shuttle-cockpit geometry, resources, settings, actions, and browser acceptance matrix |
 
 ## Subsystems

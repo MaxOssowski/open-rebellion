@@ -103,6 +103,8 @@ green until their dedicated findings close.
 
 - `docs/qa/2026-09-08-full-functionality-audit/index.md` — audit entry point,
   evidence contract, feature ledger, and definition of done. Read for all work.
+- `agent_docs/manual-cross-check.md` — read the manual before and after each
+  interface feature and settle its claims against the trace. Read for UI work.
 - `agent_docs/roadmap.md` — active milestones and v1.0 release sequence. Read when
   choosing or checking off work.
 - `agent_docs/architecture.md` — crate graph and data flow. Read before structural
