@@ -98,6 +98,7 @@ use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::panels::research::{draw_research, ResearchPanelState};
+use rebellion_render::status_rows::StatusSources;
 use rebellion_render::status_window::{draw_status_window, StatusWindowAction, StatusWindowState};
 use rebellion_render::system_window::fleet_label;
 use rebellion_render::targeting::{
@@ -4391,15 +4392,17 @@ Some(RailAudience::side(*faction_is_alliance)),
                         Some((ObjectMenuCommand::Encyclopedia, _)) => enc_state.open = true,
                         // FUN_00486fb0 0x103 → FUN_0042a440: the Status
                         // window (type 0x1a) for the selection.
-                        Some((
-                            ObjectMenuCommand::Status,
-                            Some(MenuObject::Character(character)),
-                        )) => {
-                            status_window_state.open_character(character);
+                        Some((ObjectMenuCommand::Status, Some(selection)))
+                            if selection.status_object().is_some() =>
+                        {
+                            let object = selection
+                                .status_object()
+                                .expect("the guard saw a Status object");
+                            status_window_state.open(object);
                             let rect = rebellion_render::status_window::window_rect(cockpit_layout);
                             macroquad::logging::info!(
-                                "[interface] command=0x103 destination=status_window status=opened character={} rect={},{},{},{}",
-                                world.characters.get(character).map_or("", |c| c.name.as_str()),
+                                "[interface] command=0x103 destination=status_window status=opened object={:?} rect={},{},{},{}",
+                                object,
                                 rect.min.x,
                                 rect.min.y,
                                 rect.width(),
@@ -4831,8 +4834,14 @@ Some(RailAudience::side(*faction_is_alliance)),
                     // the Encyclopedia; 0x65 closes it.
                     if let Some(action) = draw_status_window(
                         ctx,
-                        &world,
-                        mission_state.en_route(),
+                        StatusSources {
+                            world: &world,
+                            missions: &mission_state,
+                            movement: &movement_state,
+                            transport: &troop_transport_state,
+                            manufacturing: &mfg_state,
+                            today: clock.tick,
+                        },
                         &mut status_window_state,
                         cockpit_state.faction,
                         cockpit_layout,
