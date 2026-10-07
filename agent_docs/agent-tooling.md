@@ -74,12 +74,19 @@ checks for a newer release.
 
 ### Run a check
 
-1. Build `target/release/open-rebellion`, record its SHA-256 and the source
-   commit, and launch it with `data/base`. Mute before anything else: the
-   main menu speaker mutes music only, so open the options screen from the
-   main menu and click the left end of both the music and the effects
-   sliders, then press Escape.
-2. Find the window with `cua-driver call list_windows` (app `open-rebellion`).
+1. Launch with `scripts/launch-native.sh --build --evidence
+   .artifacts/native-checks/<date>-<slug>`. It builds
+   `target/release/open-rebellion` and starts it with `data/base` and
+   `OPEN_REBELLION_MUTE=1`, which silences music, effects and cutscenes from
+   launch, so no options-screen clicks are needed. It then prints, and writes
+   to `binary.txt`, the SHA-256, the source commit, the pid and the window
+   id. Pass game arguments after `--`. The variable accepts 1, true, yes or
+   on, in any case; set it yourself when launching another way. Without it,
+   mute by hand: the main menu speaker mutes music only, so open the options
+   screen from the main menu, click the left end of both the music and the
+   effects sliders, then press Escape.
+2. The script prints the window id. Otherwise, find the window with
+   `cua-driver call list_windows` (app `open-rebellion`).
 3. Pass the same `"session":"<name>"` on every call, or captures come back
    `capture_not_found`.
 4. Capture with `get_window_state` (`include_accessibility_tree:false`,
@@ -194,6 +201,19 @@ stand-in with the finding that replaces it.
 `proptest` is deferred until economy or combat math has edge cases the replay
 goldens do not pin. Adding it needs approval as a dev dependency. Formal
 verification (`kani`) is out of scope for now.
+
+### Build Cache
+
+Cargo never prunes `target/`. Each change to a crate's code, flags or
+features writes a new hashed copy of its outputs and test binaries, and the
+old copies stay. Mutants runs leave
+`cargo-mutants-*` scratch copies in `$TMPDIR` when interrupted.
+`scripts/check-build-cache.sh` reports `target/`, `.artifacts/` and those
+copies, and warns once `target/` passes `OPEN_REBELLION_TARGET_LIMIT_GB`
+(default 20). A local Claude Code SessionStart hook (`.claude/settings.json`,
+untracked) runs it. On a warning, run it with `--prune` once no build, test or
+mutants run is in flight: it runs `cargo clean` and removes the copies. Remove
+scratch worktrees and their target directories when a split or check ends.
 
 ## Voice Resource Identification
 

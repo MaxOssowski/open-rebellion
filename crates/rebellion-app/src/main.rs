@@ -48,7 +48,7 @@ use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
 use rebellion_core::jedi::{JediState, JediSystem};
 use rebellion_core::manufacturing::{
-    ManufacturingState, ManufacturingSystem, ProductionArea, QueueItem,
+    ManufacturingState, ManufacturingSystem, QueueItem,
 };
 use rebellion_core::missions::{
     MissionEffect, MissionFaction, MissionKind, MissionState, MissionSystem,
@@ -1114,6 +1114,14 @@ async fn main() {
 
     // ── Audio state ─────────────────────────────────────────────────────────
     let mut audio_vol = AudioVolumeState::default();
+    // OPEN_REBELLION_MUTE silences music, effects and cutscenes from launch,
+    // for native acceptance runs (scripts/launch-native.sh).
+    #[cfg(not(target_arch = "wasm32"))]
+    if std::env::var("OPEN_REBELLION_MUTE").is_ok_and(|value| launch_muted(&value)) {
+        audio_vol.muted = true;
+        audio_vol.music_muted = true;
+        audio_vol.dirty = true;
+    }
     let mut game_options_state = GameOptionsState::default();
     let mut quit_requested = false;
     let sounds_dir = PathBuf::from("data/sounds");
@@ -1203,6 +1211,7 @@ async fn main() {
 
     let mut cutscene_player = open_cutscene(
         Path::new(INTRO_CUTSCENE),
+        audio_vol.cutscene_volume(),
         &mut msg_log,
         clock.tick,
         #[cfg(not(target_arch = "wasm32"))]
@@ -2359,6 +2368,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     let path_str = story_cutscene_path(number);
                     cutscene_player = open_cutscene(
                         Path::new(&path_str),
+                        audio_vol.cutscene_volume(),
                         &mut msg_log,
                         current_tick,
                         #[cfg(not(target_arch = "wasm32"))]
@@ -5424,6 +5434,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     if let Some(outcome) = tactical_state.take_pending_trench_run_cinematic() {
                         cutscene_player = open_cutscene(
                             Path::new(trench_run_cutscene_path(outcome)),
+                            audio_vol.cutscene_volume(),
                             &mut msg_log,
                             clock.tick,
                             #[cfg(not(target_arch = "wasm32"))]
@@ -7679,8 +7690,18 @@ const fn trench_run_cutscene_path(outcome: TacticalTrenchRunOutcome) -> &'static
     }
 }
 
+/// Whether an `OPEN_REBELLION_MUTE` value turns muting on: 1, true, yes or
+/// on, in any case.
+#[cfg(not(target_arch = "wasm32"))]
+fn launch_muted(value: &str) -> bool {
+    ["1", "true", "yes", "on"]
+        .iter()
+        .any(|on| value.trim().eq_ignore_ascii_case(on))
+}
+
 fn open_cutscene(
     path: &Path,
+    volume: f32,
     msg_log: &mut MessageLog,
     tick: u64,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
@@ -7688,7 +7709,7 @@ fn open_cutscene(
     #[cfg(not(target_arch = "wasm32"))]
     audio_engine.stop_music();
 
-    match VideoPlayer::open(path) {
+    match VideoPlayer::open(path, volume) {
         Ok(player) => {
             macroquad::logging::info!("[cutscene] opened path={}", path.display());
             Some(player)
@@ -8404,7 +8425,7 @@ mod fleet_move_tests {
             let mut manufacturing = ManufacturingState::new();
             let band = Some(MenuObject::Producer {
                 system,
-                area: ProductionArea::Shipyard,
+                area: rebellion_core::manufacturing::ProductionArea::Shipyard,
             });
             let gates = |world: &GameWorld, manufacturing: &ManufacturingState, player| {
                 order_gates(
@@ -8475,5 +8496,20 @@ mod fleet_move_tests {
         assert!(issued.actions.is_empty());
         assert!(!issued.confirmation.is_open());
         assert_eq!(issued.log.messages().len(), 1);
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod launch_mute_tests {
+    use super::launch_muted;
+
+    #[test]
+    fn the_mute_variable_takes_common_true_words_in_any_case() {
+        for on in ["1", "true", "TRUE", "Yes", "on", " on\n"] {
+            assert!(launch_muted(on), "{on:?}");
+        }
+        for off in ["", "0", "false", "no", "off", "muted"] {
+            assert!(!launch_muted(off), "{off:?}");
+        }
     }
 }
