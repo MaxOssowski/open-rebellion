@@ -6279,7 +6279,9 @@ fn order_gates(
                     world
                         .manufacturing_facilities
                         .get(*key)
-                        .is_some_and(|facility| facility.is_alliance == is_alliance)
+                        .is_some_and(|facility| {
+                            facility.side == rebellion_core::dat::Faction::of_alliance(is_alliance)
+                        })
                 })
             }),
             Some(MenuObject::Producer { system, .. }) => holds(system),

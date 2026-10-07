@@ -549,7 +549,7 @@ fn page_rows(
                 } else {
                     matches!(family, 0x22 | 0x23)
                 };
-                if !wanted || fleet_side(facility.is_alliance) != side {
+                if !wanted || crate::fleet_window::faction_side(facility.side) != side {
                     return None;
                 }
                 let (mini, label) = defense_facility_mini(facility.class_dat_id)?;
@@ -1067,7 +1067,7 @@ mod tests {
     fn add_defense(world: &mut GameWorld, system: SystemKey, dat_id: u32, is_alliance: bool) {
         let key = world.defense_facilities.insert(DefenseFacilityInstance {
             class_dat_id: DatId::new(dat_id),
-            is_alliance,
+            side: rebellion_core::dat::Faction::of_alliance(is_alliance),
         });
         world.systems[system].defense_facilities.push(key);
     }

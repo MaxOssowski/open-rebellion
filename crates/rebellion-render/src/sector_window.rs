@@ -2056,7 +2056,7 @@ mod tests {
                 .production_facilities
                 .insert(rebellion_core::world::ProductionFacilityInstance {
                     class_dat_id: DatId::new(0x2c00_0001),
-                    is_alliance: true,
+                    side: rebellion_core::dat::Faction::Alliance,
                     is_mine: true,
                 });
         world.systems[system].production_facilities.push(mine);
