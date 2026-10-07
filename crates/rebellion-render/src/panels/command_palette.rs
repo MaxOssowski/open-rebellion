@@ -83,12 +83,10 @@ fn interface_item(label: String, description: &str, command: InterfaceCommand) -
     }
 }
 
-/// The interface commands for `world`: a start for each side, then for
-/// each system, by name, its sector window, its four quadrant windows and
-/// its four icon menus.
-#[must_use]
-pub fn interface_commands(world: &GameWorld) -> Vec<CommandItem> {
-    let mut items = vec![
+/// A start for each side. Only a script runs one, from the main menu; the
+/// palette draws in the galaxy, where neither can start.
+fn start_commands() -> Vec<CommandItem> {
+    vec![
         interface_item(
             "Start game: Alliance".to_string(),
             "Start a new campaign as the Alliance",
@@ -99,7 +97,14 @@ pub fn interface_commands(world: &GameWorld) -> Vec<CommandItem> {
             "Start a new campaign as the Empire",
             InterfaceCommand::StartGame(MissionFaction::Empire),
         ),
-    ];
+    ]
+}
+
+/// The interface commands for `world`: for each system, by name, its
+/// sector window, its four quadrant windows and its four icon menus.
+#[must_use]
+pub fn interface_commands(world: &GameWorld) -> Vec<CommandItem> {
+    let mut items = Vec::new();
     let mut systems: Vec<(SystemKey, &str)> = world
         .systems
         .iter()
@@ -196,9 +201,21 @@ impl CommandPaletteState {
     /// Replace the interface commands with `world`'s, keeping the shared
     /// simulation commands, and reset the filter.
     pub fn refresh_interface(&mut self, world: &GameWorld) {
+        self.replace_interface(interface_commands(world));
+    }
+
+    /// As [`Self::refresh_interface`], with the two starts a script can
+    /// run from the main menu.
+    pub fn refresh_script(&mut self, world: &GameWorld) {
+        let mut commands = start_commands();
+        commands.extend(interface_commands(world));
+        self.replace_interface(commands);
+    }
+
+    fn replace_interface(&mut self, commands: Vec<CommandItem>) {
         self.commands
             .retain(|command| !matches!(command.action, PaletteAction::Interface(_)));
-        self.commands.extend(interface_commands(world));
+        self.commands.extend(commands);
         self.update_filter();
     }
 

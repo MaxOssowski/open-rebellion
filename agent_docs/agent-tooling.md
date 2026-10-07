@@ -110,7 +110,6 @@ state under test. It is on in debug builds and, in release builds, when
 compile it. Beside the simulation commands (advance days, game speed, reveal
 all), it lists for every system by name:
 
-- `Start game: Alliance` and `Start game: Empire`;
 - `Open sector window: <system>`;
 - `Open System|Defenses|Fleet|Missions window: <system>`, which opens the
   window at its icon, as a double click there does;
@@ -122,16 +121,21 @@ A window or menu behind a hidden icon is refused. Only the System window
 opens without one, as a double click on the planet opens it.
 
 For a native run, write the commands one per line (`#` starts a comment)
-and pass the file with `scripts/launch-native.sh --commands FILE`. The
-script sets `OPEN_REBELLION_COMMANDS` and `OPEN_REBELLION_DEV=1`. The game
-runs one line per frame, once it reaches the main menu or the galaxy, and
-waits in between while a start is setting up. Each line logs
+and pass the file with `scripts/launch-native.sh --commands FILE`. A script
+also takes `Start game: Alliance` or `Start game: Empire`, which runs from
+the main menu through the menu's own faction control; the palette lists no
+start, since it draws only in the galaxy. The launcher sets
+`OPEN_REBELLION_COMMANDS` and `OPEN_REBELLION_DEV=1`; without the dev switch
+a release build ignores the script. The game runs one line per frame, once
+it reaches the main menu or the galaxy and the last line's commands have
+run, and waits in between while a start is setting up. Each line logs
 `[dev-command] sent` or `unknown` to `game.log`; a `refused: <why>` line
 belongs to the command sent just before it, and a sent line with no refusal
-after it ran.
+after it ran. `[dev-command] done` follows once the last command has run.
 Every new campaign takes a fresh random seed. Add `--seed N`
-(`OPEN_REBELLION_SEED`) so the script meets the same galaxy each run, and
-record the seed with the evidence.
+(`OPEN_REBELLION_SEED`, which also needs the dev switch; the launcher sets
+it) so the script meets the same galaxy each run, and record the seed with
+the evidence.
 
 cua-driver's `press_key` cannot send the backtick (it takes letters, digits
 and named keys; "`" arrives as another key), so drive the palette itself by

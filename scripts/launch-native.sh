@@ -11,7 +11,8 @@
 #                  the command palette (OPEN_REBELLION_COMMANDS,
 #                  OPEN_REBELLION_DEV=1); each logs [dev-command] to game.log
 # --seed N         seed every new campaign with N (OPEN_REBELLION_SEED), so
-#                  a script meets the same galaxy each run
+#                  a script meets the same galaxy each run; the seed, like a
+#                  script, needs OPEN_REBELLION_DEV=1, which this sets
 #
 # OPEN_REBELLION_MUTE=1 silences music, effects and cutscenes from launch,
 # so the options-screen sliders need no clicks. Prints the pid and, when
@@ -55,7 +56,7 @@ fi
 cd "$repo"
 dev_env=()
 [ -n "$commands" ] && dev_env=(OPEN_REBELLION_DEV=1 OPEN_REBELLION_COMMANDS="$commands")
-[ -n "$seed" ] && dev_env+=(OPEN_REBELLION_SEED="$seed")
+[ -n "$seed" ] && dev_env+=(OPEN_REBELLION_DEV=1 OPEN_REBELLION_SEED="$seed")
 env OPEN_REBELLION_MUTE=1 ${dev_env[@]+"${dev_env[@]}"} nohup "$binary" "${game_args[@]}" >"$log" 2>&1 &
 pid=$!
 

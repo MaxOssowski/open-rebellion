@@ -1036,8 +1036,6 @@ async fn main() {
     // Palette and script commands waiting for the frame that can run them.
     #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
     let mut pending_interface: Vec<rebellion_render::InterfaceCommand> = Vec::new();
-    #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
-    let mut scripted_panel_actions: Vec<PanelAction> = Vec::new();
     #[cfg(not(target_arch = "wasm32"))]
     let mut command_script = dev_commands::CommandScript::from_env();
     enc_state.set_edata_path(configured_edata_path(&gdata_path));
@@ -2894,22 +2892,24 @@ Some(RailAudience::side(*faction_is_alliance)),
 
         // ── Developer commands ───────────────────────────────────────────────
 
+        let mut panel_actions: Vec<PanelAction> = Vec::new();
         // A command script runs one line a frame from the main menu or the
         // galaxy, once the last line's commands have run.
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(script) = command_script.as_mut() {
-            if matches!(game_mode, GameMode::MainMenu | GameMode::Galaxy)
-                && pending_interface.is_empty()
-            {
-                if let Some(line) = script.next_line() {
-                    command_palette_state.refresh_interface(&world);
+            let ready = matches!(game_mode, GameMode::MainMenu | GameMode::Galaxy)
+                && pending_interface.is_empty();
+            match script.step(ready) {
+                dev_commands::ScriptStep::Wait => {}
+                dev_commands::ScriptStep::Run(line) => {
+                    command_palette_state.refresh_script(&world);
                     match command_palette_state
                         .command_named(&line)
                         .map(|command| command.action.clone())
                     {
                         Some(rebellion_render::PaletteAction::Panel(action)) => {
                             eprintln!("[dev-command] sent {line:?}");
-                            scripted_panel_actions.push(action);
+                            panel_actions.push(action);
                         }
                         Some(rebellion_render::PaletteAction::Interface(command)) => {
                             eprintln!("[dev-command] sent {line:?}");
@@ -2918,14 +2918,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                         None => eprintln!("[dev-command] unknown {line:?}"),
                     }
                 }
-                if script.is_done() {
+                dev_commands::ScriptStep::Done => {
                     eprintln!("[dev-command] done");
                     command_script = None;
                 }
             }
         }
-        // A start runs from the main menu, as its faction choice does
-        // (MainMenuAction::StartGame); everything else waits for the galaxy.
+        // A start runs from the main menu as its faction control does;
+        // everything else waits for the galaxy.
+        #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+        let mut scripted_menu_action = None;
         #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
         if !matches!(game_mode, GameMode::Galaxy) {
             for command in std::mem::take(&mut pending_interface) {
@@ -2933,22 +2935,13 @@ Some(RailAudience::side(*faction_is_alliance)),
                     rebellion_render::InterfaceCommand::StartGame(faction)
                         if matches!(game_mode, GameMode::MainMenu) =>
                     {
-                        // The main menu's own settings, as its faction
-                        // controls send them.
-                        game_setup_state.difficulty = main_menu_state.difficulty;
-                        game_setup_state.faction = Some(faction);
-                        game_setup_state.galaxy_size = main_menu_state.galaxy_size;
-                        pending_victory_conditions = if main_menu_state.headquarters_only {
-                            VictoryConditions::HeadquartersOnly
-                        } else {
-                            VictoryConditions::Standard
-                        };
-                        pending_cockpit_start = Some(GameSetupAction::StartGame {
-                            difficulty: main_menu_state.difficulty,
-                            faction,
-                            galaxy_size: main_menu_state.galaxy_size,
-                        });
-                        game_mode = GameMode::GameSetup;
+                        scripted_menu_action = main_menu_state.activate_control(
+                            if faction == MissionFaction::Alliance {
+                                rebellion_render::MainMenuControl::Alliance
+                            } else {
+                                rebellion_render::MainMenuControl::Empire
+                            },
+                        );
                     }
                     _ => eprintln!("[dev-command] refused: the galaxy is not showing"),
                 }
@@ -2956,10 +2949,6 @@ Some(RailAudience::side(*faction_is_alliance)),
         }
 
         // ── Rendering (mode-specific) ────────────────────────────────────────
-
-        let mut panel_actions: Vec<PanelAction> = Vec::new();
-        #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
-        panel_actions.append(&mut scripted_panel_actions);
 
         match game_mode {
             GameMode::Cutscene { ref kind } => {
@@ -3038,6 +3027,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                     }
                 });
                 egui_macroquad::draw();
+                #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+                if menu_action.is_none() {
+                    menu_action = scripted_menu_action.take();
+                }
 
                 if let Some(sfx) = main_menu_state.take_sfx() {
                     #[cfg(not(target_arch = "wasm32"))]
@@ -3989,17 +3982,16 @@ Some(RailAudience::side(*faction_is_alliance)),
 
                     // Developer command palette: its commands take the
                     // paths the clicks they replace would.
-                    #[cfg_attr(
-                        all(not(debug_assertions), target_arch = "wasm32"),
-                        expect(unused_mut, reason = "release browser builds have no palette")
-                    )]
-                    let mut commanded_sector_actions = Vec::new();
+                    #[cfg(not(any(debug_assertions, not(target_arch = "wasm32"))))]
+                    let commanded_sector_actions = Vec::new();
                     #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
-                    {
+                    let commanded_sector_actions = {
+                        let mut commanded = Vec::new();
                         if palette_enabled {
-                            for action in
-                                rebellion_render::draw_command_palette(ctx, &mut command_palette_state)
-                            {
+                            for action in rebellion_render::draw_command_palette(
+                                ctx,
+                                &mut command_palette_state,
+                            ) {
                                 match action {
                                     rebellion_render::PaletteAction::Panel(action) => {
                                         panel_actions.push(action);
@@ -4020,11 +4012,12 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 cockpit_layout,
                                 command,
                             ) {
-                                Ok(actions) => commanded_sector_actions.extend(actions),
+                                Ok(actions) => commanded.extend(actions),
                                 Err(why) => eprintln!("[dev-command] refused: {why}"),
                             }
                         }
-                    }
+                        commanded
+                    };
 
                     for action in draw_sector_windows(
                         ctx,
