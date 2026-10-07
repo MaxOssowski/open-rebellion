@@ -1,4 +1,6 @@
 mod audio;
+#[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+mod dev_commands;
 #[cfg(any(test, all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
 #[cfg_attr(
     all(test, not(target_arch = "wasm32")),
@@ -1027,8 +1029,17 @@ async fn main() {
     let mut jedi_panel_state = JediPanelState::default();
     let mut bombardment_panel_state = BombardmentPanelState::default();
     let mut mod_manager_state = rebellion_render::ModManagerState::default();
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
     let mut command_palette_state = rebellion_render::CommandPaletteState::new();
+    #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+    let palette_enabled = dev_commands::palette_enabled();
+    // Palette and script commands waiting for the frame that can run them.
+    #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+    let mut pending_interface: Vec<rebellion_render::InterfaceCommand> = Vec::new();
+    #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+    let mut scripted_panel_actions: Vec<PanelAction> = Vec::new();
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut command_script = dev_commands::CommandScript::from_env();
     enc_state.set_edata_path(configured_edata_path(&gdata_path));
     enc_state.set_asset_profile(asset_render_profile);
     // HD upscaled PNGs live as a sibling of the base data directory.
@@ -1118,7 +1129,7 @@ async fn main() {
     // OPEN_REBELLION_MUTE silences music, effects and cutscenes from launch,
     // for native acceptance runs (scripts/launch-native.sh).
     #[cfg(not(target_arch = "wasm32"))]
-    if std::env::var("OPEN_REBELLION_MUTE").is_ok_and(|value| launch_muted(&value)) {
+    if std::env::var("OPEN_REBELLION_MUTE").is_ok_and(|value| env_flag_on(&value)) {
         audio_vol.muted = true;
         audio_vol.music_muted = true;
         audio_vol.dirty = true;
@@ -1564,9 +1575,12 @@ async fn main() {
             if is_key_pressed(KeyCode::Tab) {
                 mod_manager_state.open = !mod_manager_state.open;
             }
-            #[cfg(debug_assertions)]
-            if is_key_pressed(KeyCode::GraveAccent) {
-                command_palette_state.open = !command_palette_state.open;
+            #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+            if palette_enabled && is_key_pressed(KeyCode::GraveAccent) {
+                command_palette_state.toggle();
+                if command_palette_state.open {
+                    command_palette_state.refresh_interface(&world);
+                }
             }
         }
 
@@ -2878,9 +2892,74 @@ Some(RailAudience::side(*faction_is_alliance)),
             }
         }
 
+        // ── Developer commands ───────────────────────────────────────────────
+
+        // A command script runs one line a frame from the main menu or the
+        // galaxy, once the last line's commands have run.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(script) = command_script.as_mut() {
+            if matches!(game_mode, GameMode::MainMenu | GameMode::Galaxy)
+                && pending_interface.is_empty()
+            {
+                if let Some(line) = script.next_line() {
+                    command_palette_state.refresh_interface(&world);
+                    match command_palette_state
+                        .command_named(&line)
+                        .map(|command| command.action.clone())
+                    {
+                        Some(rebellion_render::PaletteAction::Panel(action)) => {
+                            eprintln!("[dev-command] sent {line:?}");
+                            scripted_panel_actions.push(action);
+                        }
+                        Some(rebellion_render::PaletteAction::Interface(command)) => {
+                            eprintln!("[dev-command] sent {line:?}");
+                            pending_interface.push(command);
+                        }
+                        None => eprintln!("[dev-command] unknown {line:?}"),
+                    }
+                }
+                if script.is_done() {
+                    eprintln!("[dev-command] done");
+                    command_script = None;
+                }
+            }
+        }
+        // A start runs from the main menu, as its faction choice does
+        // (MainMenuAction::StartGame); everything else waits for the galaxy.
+        #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+        if !matches!(game_mode, GameMode::Galaxy) {
+            for command in std::mem::take(&mut pending_interface) {
+                match command {
+                    rebellion_render::InterfaceCommand::StartGame(faction)
+                        if matches!(game_mode, GameMode::MainMenu) =>
+                    {
+                        // The main menu's own settings, as its faction
+                        // controls send them.
+                        game_setup_state.difficulty = main_menu_state.difficulty;
+                        game_setup_state.faction = Some(faction);
+                        game_setup_state.galaxy_size = main_menu_state.galaxy_size;
+                        pending_victory_conditions = if main_menu_state.headquarters_only {
+                            VictoryConditions::HeadquartersOnly
+                        } else {
+                            VictoryConditions::Standard
+                        };
+                        pending_cockpit_start = Some(GameSetupAction::StartGame {
+                            difficulty: main_menu_state.difficulty,
+                            faction,
+                            galaxy_size: main_menu_state.galaxy_size,
+                        });
+                        game_mode = GameMode::GameSetup;
+                    }
+                    _ => eprintln!("[dev-command] refused: the galaxy is not showing"),
+                }
+            }
+        }
+
         // ── Rendering (mode-specific) ────────────────────────────────────────
 
         let mut panel_actions: Vec<PanelAction> = Vec::new();
+        #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+        panel_actions.append(&mut scripted_panel_actions);
 
         match game_mode {
             GameMode::Cutscene { ref kind } => {
@@ -3221,7 +3300,12 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 galaxy_size,
                                 difficulty: seed_difficulty,
                                 player_faction: dat_faction_for_seed,
-                                rng_seed: None, // Fresh random seed each game
+                                // Fresh random seed each game, unless
+                                // OPEN_REBELLION_SEED fixes it.
+                                #[cfg(not(target_arch = "wasm32"))]
+                                rng_seed: dev_commands::campaign_seed(),
+                                #[cfg(target_arch = "wasm32")]
+                                rng_seed: None,
                             };
                             campaign_config = CampaignConfig::from_seed_options(
                                 seed_options,
@@ -3903,13 +3987,42 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                     }
 
-                    // Command palette (debug only)
-                    #[cfg(debug_assertions)]
+                    // Developer command palette: its commands take the
+                    // paths the clicks they replace would.
+                    #[cfg_attr(
+                        all(not(debug_assertions), target_arch = "wasm32"),
+                        expect(unused_mut, reason = "release browser builds have no palette")
+                    )]
+                    let mut commanded_sector_actions = Vec::new();
+                    #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
                     {
-                        let palette_actions =
-                            rebellion_render::draw_command_palette(ctx, &mut command_palette_state);
-                        for action in palette_actions {
-                            panel_actions.push(action);
+                        if palette_enabled {
+                            for action in
+                                rebellion_render::draw_command_palette(ctx, &mut command_palette_state)
+                            {
+                                match action {
+                                    rebellion_render::PaletteAction::Panel(action) => {
+                                        panel_actions.push(action);
+                                    }
+                                    rebellion_render::PaletteAction::Interface(command) => {
+                                        pending_interface.push(command);
+                                    }
+                                }
+                            }
+                        }
+                        for command in std::mem::take(&mut pending_interface) {
+                            match sector_window_state.command_actions(
+                                &world,
+                                fog_state,
+                                &mission_state,
+                                &movement_state,
+                                cockpit_state.faction,
+                                cockpit_layout,
+                                command,
+                            ) {
+                                Ok(actions) => commanded_sector_actions.extend(actions),
+                                Err(why) => eprintln!("[dev-command] refused: {why}"),
+                            }
                         }
                     }
 
@@ -3924,7 +4037,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &mut bmp_cache,
                         &uprising_state,
                         &mission_state,
-                    ) {
+                    )
+                    .into_iter()
+                    .chain(commanded_sector_actions)
+                    {
                         match action {
                             SectorWindowAction::SelectSystem(system) => {
                                 map_state.selected_system = Some(system);
@@ -7701,10 +7817,10 @@ const fn trench_run_cutscene_path(outcome: TacticalTrenchRunOutcome) -> &'static
     }
 }
 
-/// Whether an `OPEN_REBELLION_MUTE` value turns muting on: 1, true, yes or
-/// on, in any case.
+/// Whether an `OPEN_REBELLION_MUTE` or `OPEN_REBELLION_DEV` value turns its
+/// switch on: 1, true, yes or on, in any case.
 #[cfg(not(target_arch = "wasm32"))]
-fn launch_muted(value: &str) -> bool {
+fn env_flag_on(value: &str) -> bool {
     ["1", "true", "yes", "on"]
         .iter()
         .any(|on| value.trim().eq_ignore_ascii_case(on))
@@ -8512,15 +8628,15 @@ mod fleet_move_tests {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod launch_mute_tests {
-    use super::launch_muted;
+    use super::env_flag_on;
 
     #[test]
     fn the_mute_variable_takes_common_true_words_in_any_case() {
         for on in ["1", "true", "TRUE", "Yes", "on", " on\n"] {
-            assert!(launch_muted(on), "{on:?}");
+            assert!(env_flag_on(on), "{on:?}");
         }
         for off in ["", "0", "false", "no", "off", "muted"] {
-            assert!(!launch_muted(off), "{off:?}");
+            assert!(!env_flag_on(off), "{off:?}");
         }
     }
 }

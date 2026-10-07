@@ -146,8 +146,10 @@ pub use tactical_view::{
 };
 pub use video_player::{VideoError, VideoPlayer};
 
-#[cfg(debug_assertions)]
-pub use panels::command_palette::{draw_command_palette, CommandPaletteState};
+#[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
+pub use panels::command_palette::{
+    draw_command_palette, CommandPaletteState, InterfaceCommand, PaletteAction,
+};
 
 /// Computed camera parameters for overlay rendering.
 ///
