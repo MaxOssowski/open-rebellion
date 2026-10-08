@@ -1784,6 +1784,14 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10550..=10576
                 | 10578..=10579
                 | 10771..=10790
+                // The System window's facility cell frames (`FUN_004568a0`),
+                // construction band frame and title strips (`FUN_00458080`,
+                // `FUN_00456230`) and yard column (`FUN_00457690`): frames
+                // 0560 (failed multiplayer recording) and pravus 0385 show
+                // the page scene, not blue, through them.
+                | 10262..=10264
+                | 10290..=10296
+                | 10298
                 | 11127..=11128
                 | 11533..=11541
                 | 11560..=11569
@@ -2359,6 +2367,36 @@ mod tests {
         for opaque in [262, 263, 264] {
             assert_eq!(alpha(opaque), 255, "{opaque}");
         }
+    }
+
+    #[test]
+    fn system_window_frames_show_the_page_scene_through_their_blue_matte() {
+        // Frames 0560 (failed multiplayer recording) and pravus 0385: the
+        // construction bands, their strips, the yard column and the facility
+        // cells show STRATEGY 10297's scene where they carry the blue key;
+        // the scene itself stays opaque.
+        let mut image = image::RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        image.put_pixel(1, 0, image::Rgba([131, 131, 131, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let alpha = |resource_id| {
+            decode_color_image(&encoded, DllSource::Strategy, resource_id)
+                .unwrap()
+                .pixels
+                .iter()
+                .map(|pixel| pixel.a())
+                .collect::<Vec<_>>()
+        };
+        for keyed in [10262, 10263, 10264, 10290, 10291, 10296, 10298] {
+            assert_eq!(alpha(keyed), [0, 255], "{keyed}");
+        }
+        assert_eq!(alpha(10297), [255, 255]);
     }
 
     #[test]
