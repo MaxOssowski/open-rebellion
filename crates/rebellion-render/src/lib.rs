@@ -435,10 +435,6 @@ pub fn draw_galaxy_map(
 
     let cam = galaxy_camera(viewport, state.display_scale, faction);
 
-    if gid_mode.is_active() {
-        draw_gid_caption(cam, faction, gid_mode);
-    }
-
     // ── Find hovered system (reset each frame) ────────────────────────────────
     state.hovered_system = None;
     let hover_radius = cam.scale_pixels(8.5);
@@ -484,34 +480,51 @@ pub fn draw_galaxy_map(
     cam
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "Preserve existing font-size rounding and narrowing for rendering."
-)]
-fn draw_gid_caption(cam: CameraView, faction: CockpitFaction, mode: GidMode) {
-    // Squakenet frames 0129 and 0712 show the original caption about 15 px
-    // tall and heavy; the default font is thin, so a second pass one canvas
-    // pixel to the right thickens it.
-    let caption = mode.label();
-    let font_size = cam.scale_pixels(GID_CAPTION_FONT_SIZE);
-    let text_width = measure_text(caption, None, font_size.round() as u16, 1.0).width;
+/// Paint the active GID filter's caption, bold and in the faction text color,
+/// centred across the top of the map aperture.
+///
+/// Drawn in the egui pass, after the macroquad map, with the proportional
+/// font the day readout uses. Squakenet frames 0119 and 0712 show the caption
+/// in a heavy proportional face, its capitals about 11 canvas pixels tall.
+pub fn draw_gid_caption(
+    ctx: &egui::Context,
+    cam: CameraView,
+    faction: CockpitFaction,
+    mode: GidMode,
+) {
+    if !mode.is_active() {
+        return;
+    }
     let color = match faction {
-        CockpitFaction::Alliance => Color::new(0.78, 0.16, 0.16, 1.0),
-        CockpitFaction::Empire => Color::new(0.16, 0.65, 0.20, 1.0),
+        CockpitFaction::Alliance => egui::Color32::from_rgb(199, 41, 41),
+        CockpitFaction::Empire => egui::Color32::from_rgb(41, 166, 51),
     };
-    let x = cam.viewport_x + (cam.viewport_width - text_width) / 2.0;
-    let baseline = cam.viewport_y + cam.scale_pixels(GID_CAPTION_BASELINE);
+    let centre = gid_caption_centre(cam);
+    let painter = ctx.layer_painter(egui::LayerId::background());
     for offset in [0.0, cam.scale_pixels(GID_CAPTION_BOLD_OFFSET)] {
-        draw_text(caption, x + offset, baseline, font_size, color);
+        painter.text(
+            centre + egui::vec2(offset, 0.0),
+            egui::Align2::CENTER_CENTER,
+            mode.label(),
+            egui::FontId::proportional(cam.scale_pixels(GID_CAPTION_FONT_HEIGHT)),
+            color,
+        );
     }
 }
 
-/// GID caption size, baseline below the aperture top, and bold-pass offset,
-/// in canvas pixels.
-const GID_CAPTION_FONT_SIZE: f32 = 15.0;
-const GID_CAPTION_BASELINE: f32 = 15.0;
-const GID_CAPTION_BOLD_OFFSET: f32 = 0.7;
+/// Screen point the caption's text box is centred on.
+fn gid_caption_centre(cam: CameraView) -> egui::Pos2 {
+    egui::pos2(
+        cam.viewport_x + cam.viewport_width / 2.0,
+        cam.viewport_y + cam.scale_pixels(GID_CAPTION_CENTRE_Y),
+    )
+}
+
+/// GID caption font height, text-box centre below the aperture top, and
+/// bold-pass offset, in canvas pixels.
+const GID_CAPTION_FONT_HEIGHT: f32 = 15.0;
+const GID_CAPTION_CENTRE_Y: f32 = 8.5;
+const GID_CAPTION_BOLD_OFFSET: f32 = 0.6;
 
 #[expect(
     clippy::too_many_arguments,
@@ -1595,6 +1608,31 @@ mod interaction_tests {
                 .abs()
                 < 0.001
         );
+    }
+
+    #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "The caption anchor is an exact sum of copied canvas offsets."
+    )]
+    fn the_gid_caption_centres_where_the_original_frames_draw_it() {
+        // Squakenet frames 0119 (Alliance) and 0712 (Empire), resampled to
+        // 1280x960: the caption's capitals span y 86..107, centred on canvas
+        // x 298.75 and 361.25. Its text box centres 8.5 px below the
+        // aperture top at canvas y 40.
+        for (faction, centre_x) in [
+            (CockpitFaction::Alliance, 298.75),
+            (CockpitFaction::Empire, 361.25),
+        ] {
+            let (x, y, w, h) = cockpit::galaxy_aperture(faction);
+            let camera = galaxy_camera((x * 2.0, y * 2.0, w * 2.0, h * 2.0), 2.0, faction);
+            let centre = gid_caption_centre(camera);
+            assert!(
+                (centre.x / 2.0 - centre_x).abs() < 1.5,
+                "{faction:?} {centre:?}"
+            );
+            assert_eq!(centre.y, 97.0);
+        }
     }
 
     #[test]

@@ -112,8 +112,8 @@ use rebellion_render::{
     advisor_mission_result, advisor_uprising, draw_advisor, draw_audio_controls,
     draw_cockpit_background, draw_cockpit_chrome, draw_cockpit_egui_layer, draw_credits,
     draw_encyclopedia, draw_event_screen, draw_fleets, draw_galaxy_backdrop, draw_galaxy_map,
-    draw_game_options, draw_game_setup, draw_ground_combat, draw_main_menu, draw_missions,
-    draw_multiplayer_setup, draw_officers, draw_save_load, draw_sector_windows,
+    draw_game_options, draw_game_setup, draw_gid_caption, draw_ground_combat, draw_main_menu,
+    draw_missions, draw_multiplayer_setup, draw_officers, draw_save_load, draw_sector_windows,
     draw_system_windows, draw_tactical_view, handle_cockpit_egui_input, set_cockpit_viewport_clip,
     show_event_screen, update_event_screen, AdvisorFaction, AdvisorState, AssetRenderProfile,
     AudioVolumeState, BmpCache, CockpitButton, CockpitFaction, CockpitState, CreditsState,
@@ -3608,7 +3608,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 // 2. Recovered GID baseline. Replacement fog, fleet, sector,
                 // facility, and blockade primitives stay off the parity surface
                 // until their original GID modes are reconstructed.
-                draw_galaxy_map(
+                let galaxy_camera = draw_galaxy_map(
                     &world,
                     &mut map_state,
                     &mut bmp_cache,
@@ -3664,6 +3664,12 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                     }
 
+                    draw_gid_caption(
+                        ctx,
+                        galaxy_camera,
+                        cockpit_state.faction,
+                        cockpit_state.gid_mode,
+                    );
                     // The day readout is the Game Speed control; a right
                     // click on it opens the original speed menu.
                     draw_day_readout(ctx, cockpit_layout, cockpit_state.faction, clock.tick);
