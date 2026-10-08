@@ -539,21 +539,28 @@ pub fn draw_galaxy_map(
     reason = "Preserve existing font-size rounding and narrowing for rendering."
 )]
 fn draw_gid_caption(cam: CameraView, faction: CockpitFaction, mode: GidMode) {
+    // Squakenet frames 0129 and 0712 show the original caption about 15 px
+    // tall and heavy; the default font is thin, so a second pass one canvas
+    // pixel to the right thickens it.
     let caption = mode.label();
-    let font_size = cam.scale_pixels(11.0);
+    let font_size = cam.scale_pixels(GID_CAPTION_FONT_SIZE);
     let text_width = measure_text(caption, None, font_size.round() as u16, 1.0).width;
     let color = match faction {
         CockpitFaction::Alliance => Color::new(0.78, 0.16, 0.16, 1.0),
         CockpitFaction::Empire => Color::new(0.16, 0.65, 0.20, 1.0),
     };
-    draw_text(
-        caption,
-        cam.viewport_x + (cam.viewport_width - text_width) / 2.0,
-        cam.viewport_y + cam.scale_pixels(13.0),
-        font_size,
-        color,
-    );
+    let x = cam.viewport_x + (cam.viewport_width - text_width) / 2.0;
+    let baseline = cam.viewport_y + cam.scale_pixels(GID_CAPTION_BASELINE);
+    for offset in [0.0, cam.scale_pixels(GID_CAPTION_BOLD_OFFSET)] {
+        draw_text(caption, x + offset, baseline, font_size, color);
+    }
 }
+
+/// GID caption size, baseline below the aperture top, and bold-pass offset,
+/// in canvas pixels.
+const GID_CAPTION_FONT_SIZE: f32 = 15.0;
+const GID_CAPTION_BASELINE: f32 = 15.0;
+const GID_CAPTION_BOLD_OFFSET: f32 = 0.7;
 
 #[expect(
     clippy::too_many_arguments,
