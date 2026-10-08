@@ -321,45 +321,106 @@ impl Default for GalaxyMapState {
     }
 }
 
-/// Paint the original bright STRATEGY galaxy at the strategic canvas origin.
+/// Paint the original STRATEGY galaxy starfield behind the command-center shell.
 ///
 /// The 607x437 bitmap is not fitted to either faction aperture. The original
-/// command-center shells reveal different source-aligned crops through their
-/// transparent openings. A dark fill remains underneath as a fail-closed
-/// fallback when the original resource is unavailable.
+/// shells reveal it through every transparent opening, not only the map
+/// aperture: the reference frames (squakenet 0129 and 0712, pravus 0121) show
+/// starfield above, beside and below the map. It is painted across the whole
+/// canvas except the droid apertures, whose frames treat palette index 0 as
+/// transparent. A dark fill remains underneath as a fail-closed fallback when
+/// the original resource is unavailable. The scissor is cleared on return.
 pub fn draw_galaxy_backdrop(
     layout: CockpitLayout,
     faction: CockpitFaction,
     cache: &mut BmpCache,
     gid_mode: GidMode,
 ) -> bool {
-    let viewport = layout.galaxy;
-    draw_rectangle(
-        viewport.x,
-        viewport.y,
-        viewport.width,
-        viewport.height,
-        Color::new(0.02, 0.02, 0.08, 1.0),
-    );
+    let regions = galaxy_backdrop_regions(layout, faction);
+    for region in &regions {
+        set_cockpit_viewport_clip(Some(*region));
+        draw_rectangle(
+            region.x,
+            region.y,
+            region.width,
+            region.height,
+            Color::new(0.02, 0.02, 0.08, 1.0),
+        );
+    }
 
     let Some(texture) =
         cache.get_macroquad_original(DllSource::Strategy, gid_backdrop_resource(gid_mode))
     else {
+        set_cockpit_viewport_clip(None);
         return false;
     };
     let destination =
         galaxy_backdrop_destination(layout, faction, texture.width(), texture.height());
-    draw_texture_ex(
-        texture,
-        destination.x,
-        destination.y,
-        WHITE,
-        DrawTextureParams {
-            dest_size: Some(vec2(destination.width, destination.height)),
-            ..Default::default()
-        },
-    );
+    for region in &regions {
+        set_cockpit_viewport_clip(Some(*region));
+        draw_texture_ex(
+            texture,
+            destination.x,
+            destination.y,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(destination.width, destination.height)),
+                ..Default::default()
+            },
+        );
+    }
+    set_cockpit_viewport_clip(None);
     true
+}
+
+/// The canvas minus both droid apertures, as non-overlapping rectangles.
+fn galaxy_backdrop_regions(layout: CockpitLayout, faction: CockpitFaction) -> Vec<CockpitViewport> {
+    let mut regions = vec![(0.0_f32, 0.0_f32, 640.0_f32, 480.0_f32)];
+    for hole in advisor::droid_apertures(faction) {
+        regions = regions
+            .into_iter()
+            .flat_map(|region| subtract_rect(region, hole))
+            .collect();
+    }
+    regions
+        .into_iter()
+        .map(|(x, y, width, height)| CockpitViewport {
+            x: layout.canvas.x + x * layout.scale,
+            y: layout.canvas.y + y * layout.scale,
+            width: width * layout.scale,
+            height: height * layout.scale,
+        })
+        .collect()
+}
+
+/// `region` minus `hole`, as up to four rectangles `(x, y, width, height)`.
+fn subtract_rect(
+    region: (f32, f32, f32, f32),
+    hole: (f32, f32, f32, f32),
+) -> Vec<(f32, f32, f32, f32)> {
+    let (rx, ry, rw, rh) = region;
+    let (r_right, r_bottom) = (rx + rw, ry + rh);
+    let hx0 = hole.0.max(rx);
+    let hy0 = hole.1.max(ry);
+    let hx1 = (hole.0 + hole.2).min(r_right);
+    let hy1 = (hole.1 + hole.3).min(r_bottom);
+    if hx0 >= hx1 || hy0 >= hy1 {
+        return vec![region];
+    }
+    let mut pieces = Vec::with_capacity(4);
+    if hy0 > ry {
+        pieces.push((rx, ry, rw, hy0 - ry));
+    }
+    if r_bottom > hy1 {
+        pieces.push((rx, hy1, rw, r_bottom - hy1));
+    }
+    if hx0 > rx {
+        pieces.push((rx, hy0, hx0 - rx, hy1 - hy0));
+    }
+    if r_right > hx1 {
+        pieces.push((hx1, hy0, r_right - hx1, hy1 - hy0));
+    }
+    pieces
 }
 
 /// True for a system in revolt. `UprisingState` records a real revolt
@@ -1453,6 +1514,34 @@ mod interaction_tests {
         assert_eq!(destination.height, 874.0);
         assert_eq!(empire.galaxy.x, 240.0);
         assert_eq!(empire.galaxy.y, 80.0);
+    }
+
+    #[test]
+    fn the_starfield_covers_the_canvas_except_the_droid_apertures() {
+        // Squakenet frames 0129 and 0712 show starfield through the shell
+        // above, beside and below the map aperture; FUN_0042adb0 droid frames
+        // keep their own apertures.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let layout = CockpitState::new(faction).layout_for(640.0, 480.0);
+            let regions = galaxy_backdrop_regions(layout, faction);
+            let droids = advisor::droid_apertures(faction);
+            let area: f32 = regions.iter().map(|r| r.width * r.height).sum();
+            let droid_area: f32 = droids.iter().map(|d| d.2 * d.3).sum();
+            assert!((area - (640.0 * 480.0 - droid_area)).abs() < 0.5);
+            let inside = |x: f32, y: f32| {
+                regions
+                    .iter()
+                    .any(|r| x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height)
+            };
+            for (x, y, w, h) in droids {
+                assert!(!inside(x + w / 2.0, y + h / 2.0));
+            }
+            // Above, beside and below the map aperture.
+            let (ax, ay, aw, ah) = cockpit::galaxy_aperture(faction);
+            assert!(inside(ax + aw / 2.0, ay / 2.0));
+            assert!(inside(ax - 1.0, ay + ah / 2.0));
+            assert!(inside(ax + aw / 2.0, ay + ah + 1.0));
+        }
     }
 
     #[test]

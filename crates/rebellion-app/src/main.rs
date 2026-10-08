@@ -3592,19 +3592,22 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || event_screen_state.is_active();
                 map_state.targeting = targeting.is_some();
 
-                // Keep every macroquad map layer inside the shell's transparent
-                // galaxy aperture. The clip is cleared before the egui pass.
-                set_cockpit_viewport_clip(Some(cockpit_vp));
-
-                // 2. Recovered GID baseline. Replacement fog, fleet, sector,
-                // facility, and blockade primitives stay off the parity surface
-                // until their original GID modes are reconstructed.
+                // The starfield shows through every transparent part of the
+                // shell, so it manages its own clip regions.
                 draw_galaxy_backdrop(
                     cockpit_layout,
                     cockpit_state.faction,
                     &mut bmp_cache,
                     cockpit_state.gid_mode,
                 );
+
+                // Keep every other macroquad map layer inside the shell's
+                // galaxy aperture. The clip is cleared before the egui pass.
+                set_cockpit_viewport_clip(Some(cockpit_vp));
+
+                // 2. Recovered GID baseline. Replacement fog, fleet, sector,
+                // facility, and blockade primitives stay off the parity surface
+                // until their original GID modes are reconstructed.
                 draw_galaxy_map(
                     &world,
                     &mut map_state,
