@@ -372,6 +372,93 @@ pub fn draw_day_readout(
     }
 }
 
+/// The time bar's speed index (`FUN_0042d230`'s `+0x114`): 0 paused, then
+/// Very Slow 1 to Fast 4.
+///
+/// port: a held or pending pause shows 0, though the clock keeps its speed.
+/// Alt+P (`FUN_00422ce0` command `0xbbc`) acts only while the field is not 0,
+/// which suggests the original zeroes it while paused (inference).
+#[must_use]
+pub const fn time_bar_index(clock: &GameClock) -> u8 {
+    if clock.pause_requested() {
+        return 0;
+    }
+    match clock.speed {
+        GameSpeed::Paused => 0,
+        GameSpeed::VerySlow => 1,
+        GameSpeed::Slow => 2,
+        GameSpeed::Medium => 3,
+        GameSpeed::Fast => 4,
+    }
+}
+
+/// The time bar's STRATEGY bitmap for a speed index (`FUN_0042d230`):
+/// Alliance `0x2d3c + index` and `0x2d44` at Fast, Empire four later and
+/// `0x2d45`. Each is 16 by 10, three bars lit by speed.
+#[must_use]
+pub const fn time_bar_resource(faction: CockpitFaction, index: u8) -> Option<u32> {
+    let empire = matches!(faction, CockpitFaction::Empire);
+    match index {
+        0..=3 => Some(0x2d3c + index as u32 + if empire { 4 } else { 0 }),
+        4 => Some(if empire { 0x2d45 } else { 0x2d44 }),
+        _ => None,
+    }
+}
+
+/// The time bar's canvas origin (`FUN_0042d230`: `SetRect` from x `0xa7` or
+/// `0x231`, y `0x14`), just right of the day readout's field.
+#[must_use]
+pub const fn time_bar_origin(faction: CockpitFaction) -> (f32, f32) {
+    match faction {
+        CockpitFaction::Alliance => (167.0, 20.0),
+        CockpitFaction::Empire => (561.0, 20.0),
+    }
+}
+
+/// The time bar's bitmap for `clock`, or `None` while the box is blank.
+///
+/// Like the day number, it is blank on day 0: squakenet frames 0119-0149
+/// and 0712-0732 and pravus 0121 show the box empty on the opening day, and
+/// pravus frames from 0157 on show the bar.
+#[must_use]
+pub const fn time_bar_shown(faction: CockpitFaction, clock: &GameClock) -> Option<u32> {
+    if clock.tick == 0 {
+        return None;
+    }
+    time_bar_resource(faction, time_bar_index(clock))
+}
+
+/// Paint the time bar beside the day readout.
+pub fn draw_time_bar(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    layout: CockpitLayout,
+    faction: CockpitFaction,
+    clock: &GameClock,
+) {
+    let Some(resource) = time_bar_shown(faction, clock) else {
+        return;
+    };
+    let Some(texture) = cache.get(ctx, DllSource::Strategy, resource) else {
+        return;
+    };
+    let (x, y) = time_bar_origin(faction);
+    let size = texture.size_vec2();
+    let rect = egui::Rect::from_min_size(
+        egui::pos2(
+            layout.canvas.x + x * layout.scale,
+            layout.canvas.y + y * layout.scale,
+        ),
+        size * layout.scale,
+    );
+    ctx.layer_painter(egui::LayerId::background()).image(
+        texture.id(),
+        rect,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+}
+
 /// Open the menu on a right-button release inside the day readout.
 ///
 /// Returns true when the menu opened this frame.
@@ -961,6 +1048,53 @@ mod tests {
             .memory(|memory| memory.area_rect(egui::Id::new("original_pause_alert")))
             .expect("the alert is laid out");
         assert_eq!(rect.size(), egui::vec2(ALERT_WIDTH, ALERT_HEIGHT) * 2.0);
+    }
+
+    #[test]
+    fn the_time_bar_shows_each_speed_in_its_sides_bitmap_beside_the_day() {
+        // FUN_0042d230: STRATEGY 0x2d3c + speed (Empire + 4) for speeds
+        // 0..3, 0x2d44 / 0x2d45 at Fast, at (0xa7, 0x14) or (0x231, 0x14).
+        use CockpitFaction::{Alliance, Empire};
+        let alliance: Vec<_> = (0..=4).map(|i| time_bar_resource(Alliance, i)).collect();
+        let empire: Vec<_> = (0..=4).map(|i| time_bar_resource(Empire, i)).collect();
+        assert_eq!(
+            alliance,
+            [11580, 11581, 11582, 11583, 11588].map(Some).to_vec()
+        );
+        assert_eq!(
+            empire,
+            [11584, 11585, 11586, 11587, 11589].map(Some).to_vec()
+        );
+        assert_eq!(time_bar_resource(Alliance, 5), None);
+        assert_eq!(time_bar_origin(Alliance), (167.0, 20.0));
+        assert_eq!(time_bar_origin(Empire), (561.0, 20.0));
+
+        let mut clock = GameClock::new();
+        let indices: Vec<u8> = GameSpeed::ALL
+            .into_iter()
+            .map(|speed| {
+                clock.set_speed(speed);
+                time_bar_index(&clock)
+            })
+            .collect();
+        assert_eq!(indices, [0, 1, 2, 3, 4]);
+        clock.set_speed(GameSpeed::Fast);
+        assert!(clock.pause());
+        assert_eq!(time_bar_index(&clock), 0);
+    }
+
+    #[test]
+    fn the_time_bar_is_blank_on_the_opening_day() {
+        // Squakenet 0119-0149 and 0712-0732 and pravus 0121 (day 0) show the
+        // box empty; pravus 0157 (day 2) shows the bar.
+        let mut clock = GameClock::new();
+        clock.set_speed(GameSpeed::Medium);
+        assert_eq!(time_bar_shown(CockpitFaction::Alliance, &clock), None);
+        clock.tick = 2;
+        assert_eq!(
+            time_bar_shown(CockpitFaction::Alliance, &clock),
+            Some(11583)
+        );
     }
 
     #[test]

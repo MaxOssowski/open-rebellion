@@ -81,7 +81,7 @@ use rebellion_render::personnel_finder::{
 };
 use rebellion_render::troop_finder::{draw_troop_finder, TroopFinderAction, TroopFinderState};
 use rebellion_render::game_speed::{
-    choose_game_speed, draw_day_readout, draw_game_speed_menu, draw_pause_alert,
+    choose_game_speed, draw_day_readout, draw_game_speed_menu, draw_pause_alert, draw_time_bar,
     open_game_speed_menu_on_right_click, pause_alert_contains_screen_point, stepped_game_speed,
     GameSpeedUiState,
 };
@@ -3673,6 +3673,13 @@ Some(RailAudience::side(*faction_is_alliance)),
                     // The day readout is the Game Speed control; a right
                     // click on it opens the original speed menu.
                     draw_day_readout(ctx, cockpit_layout, cockpit_state.faction, clock.tick);
+                    draw_time_bar(
+                        ctx,
+                        &mut bmp_cache,
+                        cockpit_layout,
+                        cockpit_state.faction,
+                        &clock,
+                    );
                     let speed_input = strategic_input_enabled;
                     if speed_input {
                         open_game_speed_menu_on_right_click(
