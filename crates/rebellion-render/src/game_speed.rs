@@ -341,12 +341,20 @@ pub fn draw_pause_alert(
 
 /// Paint the day readout transparent, bold and in the faction text color,
 /// centred in its black field.
+///
+/// The field stays empty on day 0. `FUN_00422ce0` creates the day text object
+/// without text, and squakenet frames 0119-0149 and 0712-0732 and pravus
+/// frame 0121, all taken on the opening day, show it blank while the resource
+/// monitors already read; pravus frames from 0157 on show a number.
 pub fn draw_day_readout(
     ctx: &egui::Context,
     layout: CockpitLayout,
     faction: CockpitFaction,
     day: u64,
 ) {
+    if day == 0 {
+        return;
+    }
     let field = day_field_rect(faction);
     let centre = egui::pos2(
         layout.canvas.x + (field.x + field.width / 2.0) * layout.scale,
@@ -953,6 +961,25 @@ mod tests {
             .memory(|memory| memory.area_rect(egui::Id::new("original_pause_alert")))
             .expect("the alert is laid out");
         assert_eq!(rect.size(), egui::vec2(ALERT_WIDTH, ALERT_HEIGHT) * 2.0);
+    }
+
+    #[test]
+    fn the_day_readout_is_blank_on_the_opening_day() {
+        // Squakenet frames 0119-0149 (Alliance) and 0712-0732 (Empire) and
+        // pravus frame 0121, all on day 0, show the day field empty.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let layout = crate::cockpit::CockpitState::new(faction).layout_for(1280.0, 960.0);
+            let ctx = egui::Context::default();
+            let shapes = frame(&ctx, egui::Pos2::ZERO, vec![], |ctx| {
+                draw_day_readout(ctx, layout, faction, 0);
+            });
+            assert!(
+                !shapes
+                    .iter()
+                    .any(|clipped| matches!(clipped.shape, egui::Shape::Text(_))),
+                "{faction:?}"
+            );
+        }
     }
 
     #[test]
