@@ -795,19 +795,25 @@ fn draw_sector_window(
                     planet_resource_id(system.dat_id),
                     planet_rect,
                 );
-                paint_status_tracks(
-                    ui.painter(),
-                    window_rect,
-                    layout.scale,
+                for ((x, y, width, height), color) in status_tracks(
                     planet_x,
                     planet_y,
-                    system.popularity_alliance,
-                    system.popularity_empire,
-                    system.total_energy,
-                    system.raw_materials,
-                );
+                    &StatusTrackValues::of(world, system, player),
+                    player,
+                ) {
+                    ui.painter().rect_filled(
+                        logical_rect(window_rect, layout.scale, x, y, width, height),
+                        0.0,
+                        color,
+                    );
+                }
                 ui.painter().text(
-                    logical_point(window_rect, layout.scale, planet_x + 18.5, planet_y + 37.0),
+                    logical_point(
+                        window_rect,
+                        layout.scale,
+                        planet_x + 18.5,
+                        planet_y + NAME_OFFSET,
+                    ),
                     egui::Align2::CENTER_TOP,
                     &system.name,
                     egui::FontId::proportional((10.0 * layout.scale).max(7.0)),
@@ -1021,17 +1027,27 @@ fn rect_contains(rect: egui::Rect, point: egui::Pos2) -> bool {
     point.x >= rect.min.x && point.x < rect.max.x && point.y >= rect.min.y && point.y < rect.max.y
 }
 
+/// A planet's position in its sector window (`FUN_00459e30` at
+/// `0x45a3d4`): the system's offset from its sector (`FUN_00509620`,
+/// `FUN_00526560`) over 1024, times 13 by the window's 235-pixel width
+/// across and 10 by its 360-pixel height down, truncated (`__ftol`).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "__ftol truncates toward zero, as the cast does."
+)]
 fn sector_planet_position(
     sector_x: u16,
     sector_y: u16,
     system_x: u16,
     system_y: u16,
 ) -> (f32, f32) {
-    let relative_x = f32::from(system_x.saturating_sub(sector_x));
-    let relative_y = f32::from(system_y.saturating_sub(sector_y));
+    let scaled = |system: u16, sector: u16, factor: f64, extent: f32| {
+        let offset = f64::from(i32::from(system) - i32::from(sector));
+        (offset / 1024.0 * factor * f64::from(extent)) as i32 as f32
+    };
     (
-        (relative_x / 13.0 * 37.0).round(),
-        (relative_y / 10.0 * 37.0).round(),
+        scaled(system_x, sector_x, 13.0, SECTOR_WINDOW_WIDTH),
+        scaled(system_y, sector_y, 10.0, SECTOR_WINDOW_HEIGHT),
     )
 }
 
@@ -1281,67 +1297,102 @@ fn paint_tiled_vertical(
     painter.add(mesh);
 }
 
-#[allow(clippy::too_many_arguments)]
-fn paint_status_tracks(
-    painter: &egui::Painter,
-    parent: egui::Rect,
-    scale: f32,
+/// A system's three status tracks under its planet (`FUN_00459e30`), as
+/// `FUN_0045b770` fills them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct StatusTrackValues {
+    /// Energy slots (`+0x5c`) and those in use (`+0x60`): one per facility
+    /// (manual p. 33, Fig. 2.18).
+    energy: (u32, u32),
+    /// Raw material slots (`+0x64`) and those mined (`+0x68`).
+    raw_materials: (u32, u32),
+    /// The player's popular support out of 100 (`FUN_00507270`).
+    support: u32,
+}
+
+impl StatusTrackValues {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "Support is a clamped fraction of 100 and facility counts are small."
+    )]
+    fn of(world: &GameWorld, system: &rebellion_core::world::System, player: Faction) -> Self {
+        let mines = system
+            .production_facilities
+            .iter()
+            .filter(|key| {
+                world
+                    .production_facilities
+                    .get(**key)
+                    .is_some_and(|facility| facility.is_mine)
+            })
+            .count() as u32;
+        let facilities = system.defense_facilities.len()
+            + system.manufacturing_facilities.len()
+            + system.production_facilities.len();
+        let support = if player == Faction::Alliance {
+            system.popularity_alliance
+        } else {
+            system.popularity_empire
+        };
+        Self {
+            energy: (u32::from(system.total_energy), facilities as u32),
+            raw_materials: (u32::from(system.raw_materials), mines),
+            support: (support.clamp(0.0, 1.0) * 100.0).round() as u32,
+        }
+    }
+}
+
+/// Where a planet's name starts below its top (the label item's `+0x34`,
+/// set to the bitmap height plus 11 in `FUN_00459e30`).
+const NAME_OFFSET: f32 = 48.0;
+
+/// The status tracks' filled rectangles, in window pixels from a planet at
+/// (`x`, `y`) (`FUN_00459e30`, `FUN_004acec0`). Each track is 3 pixels
+/// tall: the first 2 below the 37 by 37 planet, each next 1 below the last.
+/// Energy (white in use, blue free) and raw materials (yellow mined,
+/// orange free) are resized to 3 pixels per slot (`FUN_0045c240`,
+/// `FUN_0045c450`); frame 0480 of the failed multiplayer recording shows
+/// each slot as a 2-pixel block after a 1-pixel gap. Popular support spans
+/// the planet's 37 pixels, the player's side's color first (Alliance red
+/// `0x0000ff`, Empire green `0x00ff00`, `COLORREF`).
+fn status_tracks(
     x: f32,
     y: f32,
-    alliance: f32,
-    empire: f32,
-    energy: u8,
-    raw_materials: u8,
-) {
-    let track_width = 37.0;
-    let alliance_width = track_width * alliance.clamp(0.0, 1.0);
-    let empire_width = track_width * empire.clamp(0.0, 1.0);
-    painter.rect_filled(
-        logical_rect(parent, scale, x, y + 48.0, track_width, 3.0),
-        0.0,
-        egui::Color32::from_rgb(22, 22, 22),
-    );
-    painter.rect_filled(
-        logical_rect(parent, scale, x, y + 48.0, alliance_width, 3.0),
-        0.0,
-        egui::Color32::from_rgb(32, 112, 255),
-    );
-    painter.rect_filled(
-        logical_rect(
-            parent,
-            scale,
-            x + track_width - empire_width,
-            y + 48.0,
-            empire_width,
-            3.0,
-        ),
-        0.0,
-        egui::Color32::from_rgb(255, 32, 32),
-    );
-    painter.rect_filled(
-        logical_rect(
-            parent,
-            scale,
-            x,
-            y + 52.0,
-            track_width * (f32::from(energy) / 14.0).clamp(0.0, 1.0),
-            3.0,
-        ),
-        0.0,
-        egui::Color32::from_rgb(255, 220, 0),
-    );
-    painter.rect_filled(
-        logical_rect(
-            parent,
-            scale,
-            x,
-            y + 56.0,
-            track_width * (f32::from(raw_materials) / 14.0).clamp(0.0, 1.0),
-            3.0,
-        ),
-        0.0,
-        egui::Color32::from_rgb(0, 240, 240),
-    );
+    values: &StatusTrackValues,
+    player: Faction,
+) -> Vec<((f32, f32, f32, f32), egui::Color32)> {
+    const WHITE: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
+    const BLUE: egui::Color32 = egui::Color32::from_rgb(0, 0, 255);
+    const YELLOW: egui::Color32 = egui::Color32::from_rgb(255, 255, 0);
+    const ORANGE: egui::Color32 = egui::Color32::from_rgb(0xf9, 0x5c, 0x0f);
+    const RED: egui::Color32 = egui::Color32::from_rgb(255, 0, 0);
+    const GREEN: egui::Color32 = egui::Color32::from_rgb(0, 255, 0);
+    let mut rects = Vec::new();
+    let mut slots = |row: f32, (total, used): (u32, u32), full, empty| {
+        for slot in 0..total {
+            let color = if slot < used { full } else { empty };
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "Slot counts are far below f32's integer range."
+            )]
+            let left = x + 3.0 * slot as f32 + 1.0;
+            rects.push(((left, row, 2.0, 3.0), color));
+        }
+    };
+    slots(y + 39.0, values.energy, WHITE, BLUE);
+    slots(y + 43.0, values.raw_materials, YELLOW, ORANGE);
+    let (own, other) = if player == Faction::Alliance {
+        (RED, GREEN)
+    } else {
+        (GREEN, RED)
+    };
+    #[expect(clippy::cast_precision_loss, reason = "Support is at most 100.")]
+    let filled = (37.0 * values.support.min(100) as f32 / 100.0).round();
+    rects.push(((x, y + 47.0, filled, 3.0), own));
+    rects.push(((x + filled, y + 47.0, 37.0 - filled, 3.0), other));
+    rects.retain(|((_, _, width, _), _)| *width > 0.0);
+    rects
 }
 
 fn paint_selection_brackets(painter: &egui::Painter, rect: egui::Rect, scale: f32) {
@@ -1496,11 +1547,113 @@ mod tests {
     }
 
     #[test]
-    fn sector_relative_coordinates_scale_x_by_37_over_13_and_y_by_37_over_10() {
-        // No recovered source: the 13, 10 and 37 scale constants, kept as a regression pin.
-        assert_eq!(sector_planet_position(317, 248, 322, 260), (14.0, 44.0));
-        assert_eq!(sector_planet_position(317, 248, 373, 272), (159.0, 89.0));
-        assert_eq!(sector_planet_position(317, 248, 322, 333), (14.0, 315.0));
+    fn the_status_tracks_stack_energy_raw_and_support_under_the_planet() {
+        // FUN_00459e30: tracks 3 tall at the planet's bottom + 2, then 1
+        // apart; FUN_0045c240 / FUN_0045c450 size energy and raw to 3 per
+        // slot; manual p. 33 (Fig. 2.18): white energy in use, blue free,
+        // yellow mined, red-orange unmined. Frame 0480 shows each slot as
+        // a 2-pixel block after a 1-pixel gap and Vagran's support bar
+        // 15 green and 22 red for the Empire player.
+        let values = StatusTrackValues {
+            energy: (3, 1),
+            raw_materials: (2, 2),
+            support: 40,
+        };
+        let white = egui::Color32::from_rgb(255, 255, 255);
+        let blue = egui::Color32::from_rgb(0, 0, 255);
+        let yellow = egui::Color32::from_rgb(255, 255, 0);
+        let green = egui::Color32::from_rgb(0, 255, 0);
+        let red = egui::Color32::from_rgb(255, 0, 0);
+        assert_eq!(
+            status_tracks(10.0, 100.0, &values, Faction::Empire),
+            [
+                ((11.0, 139.0, 2.0, 3.0), white),
+                ((14.0, 139.0, 2.0, 3.0), blue),
+                ((17.0, 139.0, 2.0, 3.0), blue),
+                ((11.0, 143.0, 2.0, 3.0), yellow),
+                ((14.0, 143.0, 2.0, 3.0), yellow),
+                ((10.0, 147.0, 15.0, 3.0), green),
+                ((25.0, 147.0, 22.0, 3.0), red),
+            ]
+        );
+        let alliance = status_tracks(10.0, 100.0, &values, Faction::Alliance);
+        assert_eq!(alliance[5], ((10.0, 147.0, 15.0, 3.0), red));
+        assert_eq!(alliance[6], ((25.0, 147.0, 22.0, 3.0), green));
+        // The name starts below the tracks, at the label item's offset.
+        assert_eq!(NAME_OFFSET, 37.0 + 11.0);
+    }
+
+    #[test]
+    fn the_tracks_count_facilities_as_energy_mines_as_raw_and_the_players_support() {
+        // Manual p. 33 (Fig. 2.18): one energy slot per facility; mines take
+        // the raw-material slots. FUN_0045b770 passes the player's support.
+        use rebellion_core::world::{
+            DefenseFacilityInstance, ManufacturingFacilityInstance, ProductionFacilityInstance,
+        };
+        let (mut world, system, _) = fixture_world();
+        add_mine(&mut world, system);
+        add_mine(&mut world, system);
+        let refinery = world
+            .production_facilities
+            .insert(ProductionFacilityInstance {
+                class_dat_id: DatId::new(0x2d00_0001),
+                side: Faction::Alliance,
+                is_mine: false,
+            });
+        world.systems[system].production_facilities.push(refinery);
+        let yard = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2800_0001),
+                side: Faction::Alliance,
+                is_shipyard: true,
+            });
+        world.systems[system].manufacturing_facilities.push(yard);
+        let shield = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2200_0001),
+            side: Faction::Alliance,
+        });
+        world.systems[system].defense_facilities.push(shield);
+        world.systems[system].popularity_alliance = 0.75;
+        world.systems[system].popularity_empire = 0.25;
+
+        let of = |player| StatusTrackValues::of(&world, &world.systems[system], player);
+        assert_eq!(
+            of(Faction::Alliance),
+            StatusTrackValues {
+                energy: (8, 5),
+                raw_materials: (6, 2),
+                support: 75,
+            }
+        );
+        assert_eq!(of(Faction::Empire).support, 25);
+
+        // Full support leaves no empty share to draw.
+        let full = StatusTrackValues {
+            energy: (0, 0),
+            raw_materials: (0, 0),
+            support: 100,
+        };
+        assert_eq!(
+            status_tracks(0.0, 0.0, &full, Faction::Empire),
+            [((0.0, 47.0, 37.0, 3.0), egui::Color32::from_rgb(0, 255, 0))]
+        );
+    }
+
+    #[test]
+    fn a_planet_sits_at_its_sector_offset_scaled_to_the_window() {
+        // FUN_00459e30 at 0x45a3d4: offset / 1024 * 13 * 235 across and
+        // offset / 1024 * 10 * 360 down, truncated. The Corellian sector at
+        // SECTORSD (258, 394) in frame 0480 of the failed multiplayer
+        // recording places Xyquine, Corellia, Corfai, Tralus and Vagran at
+        // these points, one pixel left of and two below the window's frame
+        // line (Tralus three below).
+        let at = |x, y| sector_planet_position(258, 394, x, y);
+        assert_eq!(at(272, 401), (41.0, 24.0));
+        assert_eq!(at(314, 419), (167.0, 87.0));
+        assert_eq!(at(270, 466), (35.0, 253.0));
+        assert_eq!(at(307, 471), (146.0, 270.0));
+        assert_eq!(at(287, 478), (86.0, 295.0));
     }
 
     #[test]
@@ -2106,7 +2259,7 @@ mod tests {
     #[test]
     fn the_fleet_window_opens_from_the_fleet_icons_point() {
         // FUN_0045c8e0 opens the Fleet window at the sector item's stored
-        // point; port: the center of the icon at (93, 78) to (121, 97).
+        // point; port: the center of the icon at (93, 76) to (121, 95).
         let (world, system, _) = fixture_world();
         let mut state = SectorWindowState::default();
         assert_eq!(state.fleet_window_point(&world, layout(1.0), system), None);
@@ -2114,11 +2267,11 @@ mod tests {
 
         assert_eq!(
             state.fleet_window_point(&world, layout(1.0), system),
-            Some((107, 88))
+            Some((107, 86))
         );
         assert_eq!(
             state.fleet_window_point(&world, layout(2.0), system),
-            Some((107, 88))
+            Some((107, 86))
         );
     }
 
@@ -2146,7 +2299,7 @@ mod tests {
         assert_eq!(
             state.fleet_icon_screen_rect(&world, layout, system),
             Some(egui::Rect::from_min_size(
-                egui::pos2(10.0 + 93.0, 20.0 + 78.0),
+                egui::pos2(10.0 + 93.0, 20.0 + 76.0),
                 egui::vec2(28.0, 19.0)
             ))
         );
@@ -2158,7 +2311,7 @@ mod tests {
         assert_eq!(
             state.fleet_icon_screen_rect(&world, doubled, system),
             Some(egui::Rect::from_min_size(
-                egui::pos2(10.0 + 93.0 * 2.0, 20.0 + 78.0 * 2.0),
+                egui::pos2(10.0 + 93.0 * 2.0, 20.0 + 76.0 * 2.0),
                 egui::vec2(56.0, 38.0)
             ))
         );
@@ -2174,10 +2327,10 @@ mod tests {
         let mut state = SectorWindowState::default();
         state.open_for_system(&world, system, CockpitFaction::Alliance);
         let corners = [
-            (Quadrant::System, (64.0, 78.0)),
-            (Quadrant::Defenses, (64.0, 98.0)),
-            (Quadrant::Fleets, (93.0, 78.0)),
-            (Quadrant::Missions, (93.0, 98.0)),
+            (Quadrant::System, (64.0, 76.0)),
+            (Quadrant::Defenses, (64.0, 96.0)),
+            (Quadrant::Fleets, (93.0, 76.0)),
+            (Quadrant::Missions, (93.0, 96.0)),
         ];
         for scale in [1.0, 2.0] {
             for (quadrant, (x, y)) in corners {
@@ -2444,10 +2597,10 @@ mod tests {
         assert_eq!(
             painted_quadrant_icons(&world, system, &missions, 2.0),
             [
-                (10771, at(64.0, 78.0)),
-                (10773, at(64.0, 98.0)),
-                (10775, at(93.0, 78.0)),
-                (10777, at(93.0, 98.0)),
+                (10771, at(64.0, 76.0)),
+                (10773, at(64.0, 96.0)),
+                (10775, at(93.0, 76.0)),
+                (10777, at(93.0, 96.0)),
             ]
         );
     }

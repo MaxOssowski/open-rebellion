@@ -698,9 +698,11 @@ mod tests {
             let rect = sectors
                 .planet_screen_rect(&world, layout, second)
                 .expect("the sector's window is open");
+            // The planet at sector offset (56, 24): FUN_00459e30 at
+            // 0x45a3d4 scales it to (167, 84) in the window.
             let min = egui::pos2(
-                layout.canvas.x + 60.0 + 159.0,
-                layout.canvas.y + 35.0 + 89.0,
+                layout.canvas.x + 60.0 + 167.0,
+                layout.canvas.y + 35.0 + 84.0,
             );
             assert_eq!(rect, egui::Rect::from_min_size(min, egui::vec2(37.0, 37.0)));
             let center = rect.center();

@@ -188,28 +188,35 @@ let planet_rect = logical_rect(window_rect, layout.scale, planet_x, planet_y, 37
 **Hit rect size matches.** Both use 37x37. The port's `rect_contains` check
 on `planet_rect` is equivalent to the original's `PtInRect` on item `+0x40`.
 
-**Position computation matches.** Port `sector_planet_position`:
-```rust
-((relative_x / 13.0 * 37.0).round(), (relative_y / 10.0 * 37.0).round())
+**Position computation (corrected 2026-10-09).** `FUN_00459e30` at
+`0x45a3d4..0x45a44c` computes, from the system's packed position
+(`FUN_00509620`, class `+0x4c`) and its sector's (`FUN_00526560`, class
+`+0x48`):
+
+```text
+x = ftol((system.x - sector.x) / (1023 - -1.0) * 13.0 * window width)   // 235
+y = ftol((system.y - sector.y) / 1024.0      * 10.0 * window height)  // 360
 ```
-The original scales through FPU in `FUN_00459e30` using `FUN_00509620` to get
-sector-relative coordinates, then `__ftol()` to truncate. The scale constants
-(13, 10, 37) are consistent with the 37x37 grid.
 
-**Layout differences (not hit-test-relevant):**
+(`0x659ef8` holds 1023 as a short, `0x659f00` -1.0, `0x659f08` 13.0,
+`0x659f10` 10.0; `[ESI+0x30]`/`[ESI+0x34]` are the window size.) The port's
+earlier `relative / 13 * 37` and `relative / 10 * 37` were a guess that put
+the bottom planets about 14 pixels too low. Frame 0480 of the failed
+multiplayer recording (Corellian sector) confirms the recovered values
+to within the capture's 1-2 pixels.
 
-| Element | Original | Port |
-|---|---|---|
-| Planet bitmap | y to y + 37 | y to y + 37 |
-| Status tracks | y + 37 to y + 41 (4px, inside composite) | y + 48 to y + 59 (3 tracks x 3px each) |
-| Label text | y + 48 (top of 30px label) | y + 37 (CENTER_TOP anchor) |
+**Status tracks and name (implemented 2026-10-09).** Three gauges
+(`FUN_004acec0`), each 3 pixels tall: at the planet's bottom + 2, then each
+1 below the last. `FUN_0045b770` fills them:
 
-The original embeds status tracks at the bottom of a 37+4=41 pixel composite
-bitmap (`FUN_0045bbb0`: `FUN_005fbda0` with height `planet_h + 4`), then
-places the label 7 pixels below the composite. The port draws the label
-immediately below the planet and puts status tracks below the label. The
-visual stacking order is reversed but the hit rect (37x37 from the planet
-origin) is the same in both.
+| Track | Tooltip | Value / maximum | Colors (`COLORREF`) | Width |
+|---|---|---|---|---|
+| Energy | 6178 "Energy Consumption" | `+0x60` / `+0x5c` (`FUN_0045c240`) | used `0xffffff`, free `0xff0000` (blue) | 3 per slot |
+| Raw materials | 6179 "Raw Materials" | `+0x68` / `+0x64` (`FUN_0045c450`) | mined `0x00ffff` (yellow), free `0x0f5cf9` | 3 per slot |
+| Popular support | 6177 "Popular Support" | player's support / 100 (`FUN_0045baf0`) | player's side first: Alliance `0x0000ff`, Empire `0x00ff00` | 37 |
+
+Frame 0480 shows each slot as a 2-pixel block after a 1-pixel gap. The
+name label starts at the planet's top + 48 (`+0x34` = bitmap height + 11).
 
 ## Functions cited
 

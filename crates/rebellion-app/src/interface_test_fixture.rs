@@ -2588,9 +2588,10 @@ mod tests {
             (0x9000_0002, "Target")
         );
         // The Alliance's first sector window sits at (60, 35); the target's
-        // planet at (74, 74) in it is 37 by 37.
+        // planet, at sector offset (26, 20), sits at (77, 70) in it
+        // (FUN_00459e30 at 0x45a3d4) and is 37 by 37.
         let target = (report.target_screen_x, report.target_screen_y);
-        assert_eq!(target, (60.0 + 74.0 + 18.5, 35.0 + 74.0 + 18.5));
+        assert_eq!(target, (60.0 + 77.0 + 18.5, 35.0 + 70.0 + 18.5));
         assert!(sectors.contains_screen_point(layout, target));
         assert!(!defenses.contains_screen_point(layout, target));
     }
