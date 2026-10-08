@@ -225,19 +225,20 @@ impl CameraView {
 pub const GALAXY_MAP_SCALE: (f32, f32) = (0.5946, 0.4286);
 
 /// Canvas position of DAT (0, 0) relative to the map content origin.
-/// Measured from the same frames as [`GALAXY_MAP_SCALE`].
-pub const GALAXY_MAP_OFFSET: (f32, f32) = (28.7, 31.7);
+/// Measured from the same frames as [`GALAXY_MAP_SCALE`]: markers sit at
+/// canvas (28.7, 31.7) in the Alliance cockpit, (7.7, 6.7) past its origin.
+pub const GALAXY_MAP_OFFSET: (f32, f32) = (7.7, 6.7);
 
 /// Canvas origin of the galaxy map content (starfield and markers).
 ///
 /// `FUN_00425d00` offsets GID markers by (21, 25) in the Alliance cockpit and
-/// (84, 27) in the Imperial one. Squakenet frames 0129 and 0712 show the
-/// starfield and every marker shifted by that same (63, 2) between cockpits.
+/// (84, 27) in the Imperial one. Registering the starfield against squakenet
+/// frames 0129 and 0712 puts its top-left corner at those same points.
 #[must_use]
 pub const fn galaxy_content_origin(faction: CockpitFaction) -> (f32, f32) {
     match faction {
-        CockpitFaction::Alliance => (0.0, 0.0),
-        CockpitFaction::Empire => (63.0, 2.0),
+        CockpitFaction::Alliance => (21.0, 25.0),
+        CockpitFaction::Empire => (84.0, 27.0),
     }
 }
 
@@ -1449,14 +1450,15 @@ mod interaction_tests {
     )]
     fn galaxy_backdrop_follows_each_cockpits_content_origin_at_native_size() {
         // Source: FUN_00421c70 canvas origin, STRATEGY.DLL 607x437 galaxy backdrop.
-        // The Imperial starfield sits (63, 2) further in: FUN_00425d00 marker
-        // offsets (21, 25) vs (84, 27), and squakenet frames 0129 and 0712
-        // register the starfield shift at (63, 2) with correlation 0.996.
+        // FUN_00425d00 offsets the GID content by (21, 25) in the Alliance
+        // cockpit and (84, 27) in the Imperial one. Registering the starfield
+        // against squakenet frames 0129 and 0712 at 1280x960 measured it
+        // (42, 51) and (39, 50) px from a (0, 0) and (63, 2) origin.
         let alliance = CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
         let destination =
             galaxy_backdrop_destination(alliance, CockpitFaction::Alliance, 607.0, 437.0);
-        assert_eq!(destination.x, 0.0);
-        assert_eq!(destination.y, 0.0);
+        assert_eq!(destination.x, 21.0);
+        assert_eq!(destination.y, 25.0);
         assert_eq!(destination.width, 607.0);
         assert_eq!(destination.height, 437.0);
         assert_eq!(alliance.galaxy.x, 55.0);
@@ -1464,8 +1466,8 @@ mod interaction_tests {
 
         let empire = CockpitState::new(CockpitFaction::Empire).layout_for(1280.0, 960.0);
         let destination = galaxy_backdrop_destination(empire, CockpitFaction::Empire, 607.0, 437.0);
-        assert_eq!(destination.x, 126.0);
-        assert_eq!(destination.y, 4.0);
+        assert_eq!(destination.x, 168.0);
+        assert_eq!(destination.y, 54.0);
         assert_eq!(destination.width, 1214.0);
         assert_eq!(destination.height, 874.0);
         assert_eq!(empire.galaxy.x, 240.0);
