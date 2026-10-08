@@ -139,6 +139,38 @@ record (the message object).
 - The message is marked read: `*(param_1 + 0x38) = 10` (font 10, the read
   font).
 
+## Message artwork (recovered 2026-10-09)
+
+`FUN_00469de0` passes the message's `+0x2c` and `+0x2e` shorts to
+`FUN_0046a320`, which composes the picture shown above the text:
+
+1. `+0x2e` is the background. `FUN_0046a280` loads it from the window's
+   module (`+0x120`, falling back to `+0x124`) with flag 2.
+2. `+0x2c` is the foreground, blitted keyed (`FUN_005fd0f0`) centred on the
+   background: offset ((background width - foreground width) / 2,
+   (background height - foreground height) / 2).
+3. The composite is drawn at (12, 33) in the window (`FUN_006073d0(0xc,
+   0x21, ...)`), and (0, 0)-(412, 331) is invalidated.
+
+The STRATEGY 6208-6268 character portraits carry the blue key, so they are
+foregrounds; message constructors set backgrounds from STRATEGY 1005-1072
+(`0x3ed`-`0x430`) and 11160-11164 (`0x2b98`-`0x2b9c`). For example the
+message class with vtable `0x0065b188` (`FUN_0048b2e0`) sets background
+`0x42f` (Alliance) or `0x430` (Empire) and sound `+0x30` = `0x461` / `0x462`.
+
+`+0x30` and `+0x32` are media, not pictures: `FUN_00469de0` starts them with
+`FUN_00610c30` from modules 7 (STRATEGY) and 9.
+
+Launchbox "event-imperial-future-jedi" and jodocast 02 show the result: the
+picture across the window's top, the text below it, the prev/next arrows
+top right and the right rail.
+
+Open: where story-event messages set `+0x2c`, which category bits
+(`+0x34`, from `FUN_0048b450` / `FUN_006158b0`) they carry, and what the
+owner's slot `+0x14` does with `+0x28` in `FUN_0048a060` (an alert or an
+automatic opening). The manual describes no automatic opening (pp. 33-34,
+79-80).
+
 ## Navigate (0x90, 0x96, 0x9a)
 
 | Button | Position | Bitmaps | TEXTSTRA | Visible in mode |
