@@ -30,6 +30,7 @@ node fleet-finder.mjs  # verify the Fleet and Ship Finder
 node fleet-finder.mjs --no-build --only=alliance/chrome  # one faction/case, reusing a build
 node fleet-registry.mjs  # verify the Fleet Registry, a port extension, from the main menu
 node audit-batch.mjs  # verify the Troop/Personnel Finders, Message Index, Alt keys and Agent menu
+node galaxy-map-visual-check.mjs  # production build: opening galaxy map vs squakenet 0129/0712, side by side
 node status-window.mjs  # verify a character's Status window from its pop-up menu
 ```
 

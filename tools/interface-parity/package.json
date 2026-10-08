@@ -13,6 +13,7 @@
     "test:encyclopedia-art:no-build": "node encyclopedia-art.mjs --no-build",
     "test:message-index-shell": "node message-index-shell.mjs",
     "test:message-index-shell:no-build": "node message-index-shell.mjs --no-build",
+    "visual:galaxy-map": "node galaxy-map-visual-check.mjs",
     "check": "node validate-catalog.mjs && node validate-tactical-matrix.mjs && node verify-tactical-a0-exclusion.mjs && node verify-production-exclusion.mjs"
   },
   "dependencies": {
