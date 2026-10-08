@@ -103,6 +103,65 @@ the port's seeded Empire forces or facilities, is wrong somewhere, so the
 Maintenance Monitor stays blank until the open items below close. The raw
 and refined monitors stay blank too: the port has no per-side stockpiles.
 
+## Diagnosis of the Empire result (2026-10-08)
+
+Standard galaxy, Medium, side as player, seeds 1-3. Upkeep is the class
+maintenance cost (`+0x4c`) per object, as `FUN_004f2990` reads it.
+
+| | Empire 1 | Empire 2 | Empire 3 | Alliance 1 | Alliance 2 | Alliance 3 |
+|---|---|---|---|---|---|---|
+| Systems held | 4 | 4 | 4 | 7 | 7 | 7 |
+| Mines / refineries | 10 / 12 | 14 / 10 | 7 / 17 | 14 / 31 | 18 / 21 | 22 / 28 |
+| Capacity (50 x pairs) | 500 | 500 | 350 | 700 | 900 | 1100 |
+| Orbital shipyards (13 each) | 20 = 260 | 19 = 247 | 14 = 182 | 22 = 286 | 26 = 338 | 15 = 195 |
+| Other manufacturing | 30 | 20 | 30 | 20 | 20 | 10 |
+| Defences | 30 | 21 | 31 | 26 | 54 | 86 |
+| Capital ships | 71 (ISD) | 71 | 95 | 35 | 35 | 35 |
+| Fighters | 30 | 27 | 18 | 8 | 8 | 8 |
+| Regiments | 110 | 119 | 101 | 39 | 39 | 51 |
+| Special forces | 14 | 13 | 5 | 6 | 6 | 4 |
+| Death Star / HQ facility | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Upkeep | 545 | 518 | 462 | 420 | 500 | 389 |
+| Available | -45 | -18 | -112 | 280 | 400 | 711 |
+
+Mines and refineries cost no upkeep (PROFACSD maintenance 0). No Death
+Star exists on day 0, the Alliance Headquarters facility costs 0, and
+Coruscant carries no separate HQ facility.
+
+**What the upkeep sum counts.** `FUN_0052fff0` walks the global object
+registry over families `0x10..0x3f` (`FUN_00505340`, `FUN_004f6010`, which
+reach `FUN_0053f090`) and adds `FUN_004f2990` for every object of the side
+with `+0x50` bit 6 set. Bit 6 is "existing", created and not destroyed
+(`object-state-flags.md`), so objects still under construction count.
+`FUN_004f2990` returns 0 when the object has no class (`+0x2c`). The range
+covers regiments `0x10`, capital ships `0x14`, fighters `0x1c`, the Alliance
+HQ `0x20`, defences `0x22..0x25`, manufacturing `0x28..0x2a`, mines and
+refineries `0x2c..0x2d`, the Death Star `0x34` and special forces `0x3c`;
+characters have no class cost. Nothing the port counts is exempt, and
+nothing it skips is charged.
+
+**Seeding.** The original facility seeder `FUN_00566de0` runs one
+`FUN_00559850` decision per energy slot (`system+0x5c`): a mine with chance
+`(raw - mines) x DAT_006bb4bc`, otherwise a 0-99 roll on SYFCCRTB/SYFCRMTB.
+The loop stops only when a lookup or a creation fails, and a roll of 0 (no
+facility) does not stop it. SYFCCRTB gives a non-mine core slot a 43%
+chance of an Orbital Shipyard (`0x28000001`), so 6-7 shipyards on a
+12-energy core system is what the original generates; they carry about
+half of each side's upkeep. Squakenet 0714 and 0726 show the original
+Empire holding 3 loyal systems and 1 under military control, like the
+port's 4.
+
+**Verdict.** The evidence fits a different capacity rule, not wrong
+seeding or exempt units. Matching the originals needs about 62-89 capacity
+per Empire mine/refinery pair but only 31-51 per Alliance pair (taking
+upkeep + 162 and upkeep + 296 over min(mines, refineries)), so no constant
+per-pair value can fit both sides. The mine and refinery constructor
+`FUN_0055a100` zeroes the `+0x64` pair, and none of its direct writers
+(`FUN_0055a6e0` from `FUN_0055a820`, `FUN_0055a960`, `FUN_0055ab60`,
+`FUN_0055b010`) sets the total, so the total comes through a virtual slot
+(`+0x214`/`+0x218` are candidates) that is not traced. Unknown difficulty in
+the two recordings and untraced callers of `FUN_00566de0` remain caveats.
+
 ## Open
 
 1. **A mine's or refinery's own capacity total** (facility `+0x64`, set
