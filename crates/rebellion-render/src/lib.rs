@@ -221,10 +221,66 @@ pub const GALAXY_CAMERA_CENTER: (f32, f32) = (450.0, 470.0);
 #[must_use]
 pub fn galaxy_camera(viewport: (f32, f32, f32, f32), display_scale: f32) -> CameraView {
     let (viewport_x, viewport_y, viewport_width, viewport_height) = viewport;
+    // DAT system coordinates span roughly x 118..791, y 103..839; fit them with a margin.
+    const MIN: (f32, f32) = (90.0, 80.0);
+    const MAX: (f32, f32) = (820.0, 865.0);
+    let zoom = (viewport_width / (MAX.0 - MIN.0)).min(viewport_height / (MAX.1 - MIN.1));
     CameraView {
-        cam_x: GALAXY_CAMERA_CENTER.0,
-        cam_y: GALAXY_CAMERA_CENTER.1,
-        zoom: display_scale,
+        cam_x: (MIN.0 + MAX.0) / 2.0,
+        cam_y: (MIN.1 + MAX.1) / 2.0,
+        zoom,
+        logical_zoom: 1.0,
+        display_scale,
+        viewport_x,
+        viewport_y,
+        viewport_width,
+        viewport_height,
+    }
+}
+
+/// DAT-space box that holds every system (SYSTEMSD spans about x 118..791,
+/// y 103..839), with a small margin.
+pub const GALAXY_DAT_MIN: (f32, f32) = (90.0, 80.0);
+/// See [`GALAXY_DAT_MIN`].
+pub const GALAXY_DAT_MAX: (f32, f32) = (820.0, 865.0);
+
+/// The galaxy map transform anchored to the 640×480 canvas, not the aperture.
+///
+/// The starfield backdrop is drawn once across the whole canvas and each
+/// faction's cockpit shows it through a differently placed aperture. Fitting
+/// the systems to the canvas (inside the Alliance aperture, which also fits
+/// within the Empire one) keeps them at the same place over the backdrop in
+/// both cockpits.
+#[must_use]
+pub fn galaxy_camera_for_faction(
+    viewport: (f32, f32, f32, f32),
+    display_scale: f32,
+    faction: CockpitFaction,
+) -> CameraView {
+    let (viewport_x, viewport_y, viewport_width, viewport_height) = viewport;
+    let (aperture_x, aperture_y, _, _) = cockpit::galaxy_aperture(faction);
+    let canvas_x = viewport_x - aperture_x * display_scale;
+    let canvas_y = viewport_y - aperture_y * display_scale;
+
+    let (frame_x, frame_y, frame_width, frame_height) =
+        cockpit::galaxy_aperture(CockpitFaction::Alliance);
+    let canvas_zoom = (frame_width / (GALAXY_DAT_MAX.0 - GALAXY_DAT_MIN.0))
+        .min(frame_height / (GALAXY_DAT_MAX.1 - GALAXY_DAT_MIN.1));
+    let zoom = canvas_zoom * display_scale;
+
+    // Screen point the DAT box centre must land on, and the viewport centre
+    // that `CameraView::to_screen` measures from.
+    let target_x = canvas_x + (frame_x + frame_width / 2.0) * display_scale;
+    let target_y = canvas_y + (frame_y + frame_height / 2.0) * display_scale;
+    let centre_x = viewport_x + viewport_width / 2.0;
+    let centre_y = viewport_y + viewport_height / 2.0;
+    let dat_centre_x = (GALAXY_DAT_MIN.0 + GALAXY_DAT_MAX.0) / 2.0;
+    let dat_centre_y = (GALAXY_DAT_MIN.1 + GALAXY_DAT_MAX.1) / 2.0;
+
+    CameraView {
+        cam_x: dat_centre_x - (target_x - centre_x) / zoom,
+        cam_y: dat_centre_y - (target_y - centre_y) / zoom,
+        zoom,
         logical_zoom: 1.0,
         display_scale,
         viewport_x,
@@ -380,7 +436,7 @@ pub fn draw_galaxy_map(
         && my >= viewport_y
         && my < viewport_y + viewport_height;
 
-    let cam = galaxy_camera(viewport, state.display_scale);
+    let cam = galaxy_camera_for_faction(viewport, state.display_scale, faction);
 
     if gid_mode.is_active() {
         draw_gid_caption(cam, faction, gid_mode);
@@ -1518,17 +1574,31 @@ mod interaction_tests {
     }
 
     #[test]
-    fn the_galaxy_map_keeps_one_framing_at_every_display_scale() {
-        // FUN_00422ce0 has no WM_MOUSEWHEEL case and no right-button drag:
-        // the map's centre and scale never change.
-        for scale in [1.0, 2.0] {
-            let camera = galaxy_camera((100.0, 40.0, 480.0 * scale, 355.0 * scale), scale);
-            let (x, y) = camera.to_screen(GALAXY_CAMERA_CENTER.0, GALAXY_CAMERA_CENTER.1);
-            assert!((x - (100.0 + 240.0 * scale)).abs() < 0.001);
-            assert!((y - (40.0 + 177.5 * scale)).abs() < 0.001);
-            let (east, _) = camera.to_screen(GALAXY_CAMERA_CENTER.0 + 10.0, 0.0);
-            assert!((east - x - 10.0 * scale).abs() < 0.001);
-            assert!((camera.logical_zoom - 1.0).abs() < f32::EPSILON);
+    fn both_cockpits_place_systems_at_the_same_canvas_point() {
+        for scale in [1.0_f32, 2.0] {
+            let camera_for = |faction| {
+                let (x, y, w, h) = cockpit::galaxy_aperture(faction);
+                galaxy_camera_for_faction((x * scale, y * scale, w * scale, h * scale), scale, faction)
+            };
+            let alliance = camera_for(CockpitFaction::Alliance);
+            let empire = camera_for(CockpitFaction::Empire);
+            for point in [GALAXY_DAT_MIN, GALAXY_DAT_MAX, (450.0, 470.0)] {
+                let a = alliance.to_screen(point.0, point.1);
+                let e = empire.to_screen(point.0, point.1);
+                assert!((a.0 - e.0).abs() < 0.01 && (a.1 - e.1).abs() < 0.01);
+            }
+        }
+    }
+
+    #[test]
+    fn every_system_fits_inside_both_apertures() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let (x, y, w, h) = cockpit::galaxy_aperture(faction);
+            let camera = galaxy_camera_for_faction((x, y, w, h), 1.0, faction);
+            for point in [GALAXY_DAT_MIN, GALAXY_DAT_MAX] {
+                let (sx, sy) = camera.to_screen(point.0, point.1);
+                assert!(camera.contains(sx, sy) || (sx - (x + w)).abs() < 0.01 || (sy - (y + h)).abs() < 0.01);
+            }
         }
     }
 

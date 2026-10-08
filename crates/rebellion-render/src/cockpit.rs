@@ -586,6 +586,19 @@ pub fn message_index_command_at(faction: CockpitFaction, point: (f32, f32)) -> O
         .map(|control| control.command_id)
 }
 
+/// The faction's galaxy aperture in original 640×480 canvas pixels, as
+/// `(x, y, width, height)`.
+///
+/// FUN_00421c70 constructs these exact client rectangles. The right and
+/// bottom values are exclusive in the original Win32 RECT contract.
+#[must_use]
+pub const fn galaxy_aperture(faction: CockpitFaction) -> (f32, f32, f32, f32) {
+    match faction {
+        CockpitFaction::Alliance => (55.0, 40.0, 485.0, 350.0),
+        CockpitFaction::Empire => (120.0, 40.0, 480.0, 355.0),
+    }
+}
+
 /// Uniformly scaled strategic canvas and its transparent galaxy aperture.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CockpitLayout {
@@ -675,10 +688,7 @@ impl CockpitState {
 
         // FUN_00421c70 constructs these exact client rectangles. The right and
         // bottom values are exclusive in the original Win32 RECT contract.
-        let (x, y, width, height) = match self.faction {
-            CockpitFaction::Alliance => (55.0, 40.0, 485.0, 350.0),
-            CockpitFaction::Empire => (120.0, 40.0, 480.0, 355.0),
-        };
+        let (x, y, width, height) = galaxy_aperture(self.faction);
         let galaxy = CockpitViewport {
             x: canvas.x + x * scale,
             y: canvas.y + y * scale,
