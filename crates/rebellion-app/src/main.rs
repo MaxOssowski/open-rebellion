@@ -3599,7 +3599,12 @@ Some(RailAudience::side(*faction_is_alliance)),
                 // 2. Recovered GID baseline. Replacement fog, fleet, sector,
                 // facility, and blockade primitives stay off the parity surface
                 // until their original GID modes are reconstructed.
-                draw_galaxy_backdrop(cockpit_layout, &mut bmp_cache, cockpit_state.gid_mode);
+                draw_galaxy_backdrop(
+                    cockpit_layout,
+                    cockpit_state.faction,
+                    &mut bmp_cache,
+                    cockpit_state.gid_mode,
+                );
                 draw_galaxy_map(
                     &world,
                     &mut map_state,

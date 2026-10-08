@@ -1033,6 +1033,7 @@ fn screen_point(system: &rebellion_core::world::System, faction: CockpitFaction)
     rebellion_render::galaxy_camera(
         (aperture.x, aperture.y, aperture.width, aperture.height),
         1.0,
+        faction,
     )
     .to_screen(f32::from(system.x), f32::from(system.y))
 }
@@ -4103,24 +4104,18 @@ mod tests {
     }
 
     #[test]
-    fn a_system_point_is_its_offset_from_the_fixed_map_centre() {
+    fn a_system_point_matches_the_original_imperial_frame() {
         // FUN_00422ce0 neither zooms nor pans: the map keeps one framing.
+        // Squakenet frame 0712 (Imperial cockpit) shows system 0x121,
+        // DAT (747, 490), at canvas (535.5, 244.5) within 2 px.
         let world = diplomacy_world(Faction::Alliance);
         let mut system = world.systems.values().next().unwrap().clone();
-        let (centre_x, centre_y) = rebellion_render::GALAXY_CAMERA_CENTER;
-        system.x = centre_x as u16 + 10;
-        system.y = centre_y as u16 - 10;
-        let galaxy = CockpitState::new(CockpitFaction::Empire)
-            .layout_for(640.0, 480.0)
-            .galaxy;
+        system.x = 747;
+        system.y = 490;
 
-        assert_eq!(
-            screen_point(&system, CockpitFaction::Empire),
-            (
-                galaxy.x + galaxy.width / 2.0 + 10.0,
-                galaxy.y + galaxy.height / 2.0 - 10.0
-            )
-        );
+        let (x, y) = screen_point(&system, CockpitFaction::Empire);
+        assert!((x - 535.5).abs() < 2.0, "x = {x}");
+        assert!((y - 244.5).abs() < 2.0, "y = {y}");
     }
 
     #[test]
