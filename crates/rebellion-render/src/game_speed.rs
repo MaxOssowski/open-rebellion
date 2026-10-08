@@ -30,7 +30,10 @@ use crate::game_menu::{
 ///
 /// Arial is not redistributable in the browser build, so text uses egui's
 /// proportional face at the recovered height.
-const DAY_FONT_HEIGHT: f32 = 14.0;
+const DAY_FONT_HEIGHT: f32 = 12.0;
+/// Horizontal offset, in canvas pixels, of the second pass that thickens the
+/// day digits. The original readout is bold; egui's default font is not.
+const DAY_BOLD_OFFSET: f32 = 0.6;
 
 /// One record of the original speed menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +86,30 @@ pub fn game_speed_menu_items(faction: CockpitFaction) -> &'static [GameSpeedMenu
     match faction {
         CockpitFaction::Alliance => &ALLIANCE_ITEMS,
         CockpitFaction::Empire => &EMPIRE_ITEMS,
+    }
+}
+
+/// The black field the day number sits in, in 640x480 canvas pixels.
+///
+/// Measured from the STRATEGY 900 and 901 shell art: the wider left box of the
+/// readout. Pravus frame 0157 shows the original day digit centred in this
+/// box (glyph centre x ~136 against the box centre 133.75), not across the
+/// whole right-click rectangle.
+#[must_use]
+pub const fn day_field_rect(faction: CockpitFaction) -> CockpitViewport {
+    match faction {
+        CockpitFaction::Alliance => CockpitViewport {
+            x: 102.4,
+            y: 18.3,
+            width: 62.7,
+            height: 11.8,
+        },
+        CockpitFaction::Empire => CockpitViewport {
+            x: 500.8,
+            y: 17.7,
+            width: 59.3,
+            height: 10.7,
+        },
     }
 }
 
@@ -312,27 +339,29 @@ pub fn draw_pause_alert(
     clicked || enter
 }
 
-/// Paint the day readout as `FUN_00601ce0` draws it: centered, transparent,
-/// in the faction text color.
+/// Paint the day readout transparent, bold and in the faction text color,
+/// centred in its black field.
 pub fn draw_day_readout(
     ctx: &egui::Context,
     layout: CockpitLayout,
     faction: CockpitFaction,
     day: u64,
 ) {
-    let (x, y) = day_text_origin(faction);
-    let hit = day_readout_rect(faction);
-    let center_x = x + (hit.x + hit.width - x) / 2.0;
-    ctx.layer_painter(egui::LayerId::background()).text(
-        egui::pos2(
-            layout.canvas.x + center_x * layout.scale,
-            layout.canvas.y + y * layout.scale,
-        ),
-        egui::Align2::CENTER_TOP,
-        day.to_string(),
-        egui::FontId::proportional(DAY_FONT_HEIGHT * layout.scale),
-        faction_text_color(faction),
+    let field = day_field_rect(faction);
+    let centre = egui::pos2(
+        layout.canvas.x + (field.x + field.width / 2.0) * layout.scale,
+        layout.canvas.y + (field.y + field.height / 2.0) * layout.scale,
     );
+    let painter = ctx.layer_painter(egui::LayerId::background());
+    for offset in [0.0, DAY_BOLD_OFFSET * layout.scale] {
+        painter.text(
+            centre + egui::vec2(offset, 0.0),
+            egui::Align2::CENTER_CENTER,
+            day.to_string(),
+            egui::FontId::proportional(DAY_FONT_HEIGHT * layout.scale),
+            faction_text_color(faction),
+        );
+    }
 }
 
 /// Open the menu on a right-button release inside the day readout.
@@ -927,42 +956,40 @@ mod tests {
     }
 
     #[test]
-    fn the_day_readout_is_centred_between_its_anchor_and_the_hit_rectangle() {
-        // FUN_00601ce0 centres the text from FUN_00601b30's anchor to the
-        // right edge of the readout.
+    fn the_day_readout_is_bold_and_centred_in_its_field() {
+        // Pravus frame 0157 shows the original day digit centred in the wide
+        // left box of the readout; see `day_field_rect`.
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let layout = crate::cockpit::CockpitState::new(faction).layout_for(1280.0, 960.0);
             let ctx = egui::Context::default();
             let shapes = frame(&ctx, egui::Pos2::ZERO, vec![], |ctx| {
                 draw_day_readout(ctx, layout, faction, 42);
             });
-            let text = shapes
+            let texts: Vec<_> = shapes
                 .into_iter()
-                .find_map(|clipped| match clipped.shape {
+                .filter_map(|clipped| match clipped.shape {
                     egui::Shape::Text(text) => Some(text),
                     _ => None,
                 })
-                .expect("the day is painted");
+                .collect();
+            assert_eq!(texts.len(), 2, "two passes make the digits bold");
+            let field = day_field_rect(faction);
+            let centre = screen(
+                layout,
+                (field.x + field.width / 2.0, field.y + field.height / 2.0),
+            );
+            let text = &texts[0];
             assert_eq!(text.galley.text(), "42");
-            let (x, y) = day_text_origin(faction);
-            let hit = day_readout_rect(faction);
-            let centre = screen(layout, ((x + hit.x + hit.width) / 2.0, y));
+            assert!((text.pos.x + text.galley.size().x / 2.0 - centre.x).abs() < 0.01);
+            assert!((text.pos.y + text.galley.size().y / 2.0 - centre.y).abs() < 0.01);
+            assert!(texts[1].pos.x > text.pos.x);
+            assert_eq!(text.fallback_color, faction_text_color(faction));
+            // The digits fit inside the field.
+            let glyph_height = text.galley.size().y;
             assert!(
-                (text.pos.x + text.galley.size().x / 2.0 - centre.x).abs() < 0.01,
+                glyph_height <= (field.height + 6.0) * layout.scale,
                 "{faction:?}"
             );
-            assert_eq!(text.pos.y, centre.y, "{faction:?}");
-            assert_eq!(text.fallback_color, faction_text_color(faction));
-            let expected = ctx.fonts(|fonts| {
-                fonts
-                    .layout_no_wrap(
-                        "42".to_owned(),
-                        egui::FontId::proportional(DAY_FONT_HEIGHT * layout.scale),
-                        faction_text_color(faction),
-                    )
-                    .size()
-            });
-            assert_eq!(text.galley.size(), expected, "{faction:?}");
         }
     }
 }
