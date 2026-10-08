@@ -155,20 +155,53 @@ port's 4.
 seeding or exempt units. Matching the originals needs about 62-89 capacity
 per Empire mine/refinery pair but only 31-51 per Alliance pair (taking
 upkeep + 162 and upkeep + 296 over min(mines, refineries)), so no constant
-per-pair value can fit both sides. The mine and refinery constructor
-`FUN_0055a100` zeroes the `+0x64` pair, and none of its direct writers
-(`FUN_0055a6e0` from `FUN_0055a820`, `FUN_0055a960`, `FUN_0055ab60`,
-`FUN_0055b010`) sets the total, so the total comes through a virtual slot
-(`+0x214`/`+0x218` are candidates) that is not traced. Unknown difficulty in
-the two recordings and untraced callers of `FUN_00566de0` remain caveats.
+per-pair value can fit both sides. Unknown difficulty in the two
+recordings and untraced callers of `FUN_00566de0` remain caveats.
+
+## Parameter scan and the facility pair (2026-10-08)
+
+A side- and difficulty-dependent parameter could explain the 2:1 ratio, so
+every GNPRTB (213) and SDPRTB (35) entry was scanned for a value of 62..89
+for the Empire and 31..51 for the Alliance at the same difficulty, or an
+Empire:Alliance ratio of 1.6..2.4. GNPRTB columns were compared player
+Alliance against player Empire. SDPRTB was compared within each player and
+difficulty column set, and also across them (Alliance player's Alliance
+value against Empire player's Empire value, since each recording measures
+the player's side).
+
+- No entry falls in both ranges.
+- SDPRTB 5168..5170, the seeding maintenance budget, are percentages
+  (15..38) with at most a 38:25 side ratio.
+- Only three entries reach about 2:1 in some column: SDPRTB 5139 (player
+  side always 400, AI side 100..200; loaded into `DAT_006bb640` and read
+  only by `FUN_0055d5e0`, which returns it beside the constant `0x54`),
+  SDPRTB 5170 (Huge galaxy only) and SDPRTB 7680 (control-bucket percentage,
+  read by `FUN_00558bb0` in seeding). None can make the player's own side
+  differ between the two recordings, and none is read near the facility
+  pair.
+
+Correction to the earlier reading: vtable `0x00662760` (constructor
+`FUN_0055a100`) is the processing-facility class. Slots `+0x200..+0x218` are
+its `ProcFacil` notifiers: `ProcFacilState`, `ETC`, `Suspended`,
+`PointPresent`, `PointProcessed`, `Processing` and `OnStartupCycle`
+(`FUN_0053b3e0`..`FUN_0053b610`), which only log. The `+0x64` pair that
+`FUN_0055a6e0` sets notifies through `+0x204`, the ETC notifier, so it holds
+the facility's processing points (present, processed) rather than a fixed
+capacity. Its writers are the side's rebalancers `FUN_0055a820` and
+`FUN_0055a960`, plus `FUN_0055ab60` and `FUN_0055b010`, which zero the second
+half. The side's maintenance capacity (`+0x58`, the element-wise minimum of
+the mine and refinery point sums) therefore depends on how processing is
+allocated, not on a per-facility constant. That fits a side-dependent
+result. The Maintenance Monitor stays blank.
 
 ## Open
 
-1. **A mine's or refinery's own capacity total** (facility `+0x64`, set
-   through `FUN_0055a6e0`). The manual (p. 81) says each mine/refinery pair
-   adds 50; no GNPRTB entry of 50 is read near this code, PROFACSD carries no
-   50, and the day-0 survey above does not reproduce the Empire's opening
-   value with it.
+1. **How a mine's or refinery's processing points (`+0x64` pair) are
+   seeded and grow**, and so how they add up to maintenance capacity. The
+   manual (p. 81) gives 50 per mine/refinery pair; no GNPRTB or SDPRTB entry
+   fits the day-0 values (scan above), and the next step is the
+   `ProcFacil` point cycle (`FUN_0055a820`, `FUN_0055a960` and the
+   `FUN_00578a40` timer).
 2. **The facility production cycle length**: the timer whose handler
    `FUN_00578a40` drives `FUN_00516360`'s state changes.
 3. **`DAT_006b90e0`**, the switch without which `FUN_0052fb30` lets a
