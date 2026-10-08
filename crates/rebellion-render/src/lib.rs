@@ -8,7 +8,6 @@ pub mod build_selection;
 pub mod cockpit;
 pub mod defenses_window;
 pub mod encyclopedia;
-pub mod event_screen;
 pub mod fleet_finder;
 pub mod fleet_movement;
 pub mod fleet_registry;
@@ -33,6 +32,7 @@ pub mod quadrant_icons;
 pub mod sector_window;
 pub mod status_rows;
 pub mod status_window;
+pub mod story_messages;
 pub mod system_window;
 mod tactical_asset_cache;
 mod tactical_assets;
@@ -86,10 +86,6 @@ pub use encyclopedia::{
 pub use encyclopedia::{
     draw_encyclopedia_artwork_fixture, draw_encyclopedia_index_catalog_fixture,
     draw_encyclopedia_index_fixture,
-};
-pub use event_screen::{
-    draw_event_screen, show_event_screen, show_event_screen_raw, update_event_screen,
-    EventScreenState,
 };
 pub use fleet_movement::{draw_fleet_overlays, hovered_fleet};
 pub use fleet_window::{

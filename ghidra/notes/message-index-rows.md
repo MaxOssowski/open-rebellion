@@ -165,11 +165,25 @@ Launchbox "event-imperial-future-jedi" and jodocast 02 show the result: the
 picture across the window's top, the text below it, the prev/next arrows
 top right and the right rail.
 
-Open: where story-event messages set `+0x2c`, which category bits
-(`+0x34`, from `FUN_0048b450` / `FUN_006158b0`) they carry, and what the
-owner's slot `+0x14` does with `+0x28` in `FUN_0048a060` (an alert or an
-automatic opening). The manual describes no automatic opening (pp. 33-34,
-79-80).
+Story message classes (recovered 2026-10-09). Each builds its message in
+vtable slot `+0x14` for one notification id and sets its category bits in
+its constructor:
+
+| Notification | Builder | Constructor (category) | Background `+0x2e` | Foreground `+0x2c` | Title (TEXTSTRA RCDATA) |
+|---|---|---|---|---|---|
+| `0x221` | `FUN_0048d190` | `FUN_0048d070` (`0x10`) | `0x421` | — | `0x71b8` "Luke Goes to Dagobah" |
+| `0x1e1` | `FUN_0048ed80` | `FUN_0048ed00` (`0x10`) | side `0x412`/`0x413` | the character | `0x7180` "\| Force Growth" |
+| `0x362` | `FUN_0048f1e0` | `FUN_0048f0e0` (`0x10`) | side `0x412`/`0x413` | the teacher, or Leia (`0x71d8`) | `0x7178` "Future Jedi Discovered" |
+| `0x200` | `FUN_0048c4c0` | `FUN_0048c320` | side `0x412`/`0x413` | set | `0x71ea` (Han captured) |
+| `0x1e0` | `FUN_00490340` | `FUN_00490250` (`0x10`) | side `0x412`/`0x413` or `0x429` | — | `0x7156` "Jabba Captures \|" |
+
+`FUN_0048af30` returns `0x10`, the Mission category. A character's
+foreground is `FUN_004c5000`: its class picture (`+0x30 & 0xfff`) plus
+`0x1000`, so STRATEGY 6208-6273 (major) and 6720-6811 (minor). Titles and
+bodies are TEXTSTRA `RT_RCDATA` records with `|`-marked substitutions.
+`+0x28` (`0x15`..`0x1b` in `FUN_0048f1e0`, by character) goes to the
+owner's slot `+0x14` in `FUN_0048a060`; what it does is untraced (the
+manual, pp. 33-34 and 79-80, describes no automatic opening).
 
 ## Navigate (0x90, 0x96, 0x9a)
 

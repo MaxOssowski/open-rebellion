@@ -1792,6 +1792,11 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10262..=10264
                 | 10290..=10296
                 | 10298
+                // Story portraits, the foregrounds the Message window
+                // blits keyed over a message's background (`FUN_0046a320`
+                // via `FUN_005fd0f0`).
+                | 6208..=6273
+                | 6720..=6811
                 | 11127..=11128
                 | 11533..=11541
                 | 11560..=11569
@@ -2397,6 +2402,33 @@ mod tests {
             assert_eq!(alpha(keyed), [0, 255], "{keyed}");
         }
         assert_eq!(alpha(10297), [255, 255]);
+    }
+
+    #[test]
+    fn story_portraits_key_out_their_blue_matte_but_backgrounds_stay_opaque() {
+        // FUN_0046a320 blits a message's foreground (STRATEGY 6208.. and
+        // 6720..) keyed over its background (1042, 1057, ...).
+        let mut image = image::RgbaImage::new(1, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let alpha = |resource_id| {
+            decode_color_image(&encoded, DllSource::Strategy, resource_id)
+                .unwrap()
+                .pixels[0]
+                .a()
+        };
+        for keyed in [6208, 6210, 6273, 6720, 6811] {
+            assert_eq!(alpha(keyed), 0, "{keyed}");
+        }
+        for opaque in [1042, 1043, 1057] {
+            assert_eq!(alpha(opaque), 255, "{opaque}");
+        }
     }
 
     #[test]

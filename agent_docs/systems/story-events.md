@@ -27,7 +27,7 @@ Events are registered in `EventState` by `define_story_events(&mut state, &world
 ### Chain 2: Final Battle
 `0x393` (Vader dispatched) → `0x394` (Vader en route) / `0x395` (alt: reports to Emperor) → `0x396` (Final Battle Imminent, **flips heritage_known**) → `EVT_FINAL_BATTLE` (0x220)
 
-Heritage gate (#R4): `0x396` action includes `SetHeritageKnown { character: luke }`. The render layer (`event_screen.rs`) branches on `heritage_known` to pick the correct BMP for 0x220 (Vader vs Student Luke or Emperor & Vader vs Knight Luke).
+Heritage gate (#R4): `0x396` action includes `SetHeritageKnown { character: luke }`. Story messages are read in the Message window (`story_messages.rs`); the original's Final Battle message class picks its own picture, which is not yet recovered.
 
 ### Chain 3: Bounty Hunters → Jabba's Palace
 `0x397` (gate) → `EVT_BOUNTY_ATTACK` (0x212, **SpawnSpecialForce + CharacterAssignedToFleet**) → `0x398` (carbonite)

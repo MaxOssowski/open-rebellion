@@ -170,6 +170,14 @@ impl RailAudience {
 // GameMessage
 // ---------------------------------------------------------------------------
 
+/// A message's picture (`FUN_0046a320`): STRATEGY bitmaps, the background
+/// (`+0x2e`) with the foreground (`+0x2c`) blitted keyed and centred on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MessagePicture {
+    pub background: u32,
+    pub foreground: Option<u32>,
+}
+
 /// One entry in the message log.
 #[derive(Debug, Clone, Serialize)]
 pub struct GameMessage {
@@ -200,6 +208,9 @@ pub struct GameMessage {
     /// The unread bit (`0x10` at `+0x24`), set when the message is posted.
     #[serde(skip)]
     pub unread: bool,
+    /// The picture shown above the text in the Message window.
+    #[serde(skip)]
+    pub picture: Option<MessagePicture>,
 }
 
 impl GameMessage {
@@ -215,6 +226,7 @@ impl GameMessage {
             rail: None,
             audience: RailAudience::Both,
             unread: false,
+            picture: None,
         }
     }
 
@@ -235,6 +247,7 @@ impl GameMessage {
             rail: None,
             audience: RailAudience::Both,
             unread: false,
+            picture: None,
         }
     }
 
@@ -245,6 +258,13 @@ impl GameMessage {
         self.rail = Some(rail);
         self.audience = audience;
         self.unread = true;
+        self
+    }
+
+    /// Show `picture` above the message's text.
+    #[must_use]
+    pub fn with_picture(mut self, picture: MessagePicture) -> Self {
+        self.picture = Some(picture);
         self
     }
 }

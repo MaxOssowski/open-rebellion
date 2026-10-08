@@ -11,7 +11,7 @@ use egui_macroquad::egui::{self, Color32};
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
-use crate::message_log::{GameMessage, MessageId, MessageLog, MessageRail};
+use crate::message_log::{GameMessage, MessageId, MessageLog, MessagePicture, MessageRail};
 
 // ---------------------------------------------------------------------------
 // Shell constants (unchanged)
@@ -777,6 +777,7 @@ pub fn draw_message_index(
     // each frame, as the Finders do; its own layers keep their order.
     for id in [
         "original-message-index-shell",
+        "message-index-single-picture",
         "message-index-list",
         "message-index-single-text",
         "original-message-index-buttons",
@@ -813,7 +814,7 @@ pub fn draw_message_index(
             actions.extend(list_actions);
         }
         IndexMode::SingleMessage => {
-            draw_single_message(ctx, origin, scale, &rows, state);
+            draw_single_message(ctx, cache, origin, scale, &rows, state);
         }
     }
 
@@ -1005,6 +1006,7 @@ fn apply_click(
 /// Draw the single-message text in mode 2.
 fn draw_single_message(
     ctx: &egui::Context,
+    cache: &mut BmpCache,
     origin: egui::Pos2,
     scale: f32,
     rows: &[&GameMessage],
@@ -1016,6 +1018,10 @@ fn draw_single_message(
     let Some(msg) = rows.iter().find(|m| m.id == id) else {
         return;
     };
+
+    if let Some(picture) = msg.picture {
+        draw_message_picture(ctx, cache, origin, scale, picture);
+    }
 
     let text_id = egui::Id::new("message-index-single-text");
     egui::Area::new(text_id)
@@ -1040,6 +1046,64 @@ fn draw_single_message(
         });
 }
 
+/// Where a message's picture sits in the window (`FUN_0046a320`:
+/// `FUN_006073d0(0xc, 0x21, ..)`), above the text area.
+const PICTURE_ORIGIN: (f32, f32) = (12.0, 33.0);
+
+/// The rectangles of a message's background and its foreground, centred
+/// on it (`FUN_0046a320`: `FUN_005fd0f0` at the halved size differences),
+/// in window pixels.
+fn message_picture_rects(
+    background: egui::Vec2,
+    foreground: Option<egui::Vec2>,
+) -> (egui::Rect, Option<egui::Rect>) {
+    let origin = egui::pos2(PICTURE_ORIGIN.0, PICTURE_ORIGIN.1);
+    let back = egui::Rect::from_min_size(origin, background);
+    let front = foreground.map(|size| {
+        let offset = ((background - size) / 2.0).floor();
+        egui::Rect::from_min_size(origin + offset, size)
+    });
+    (back, front)
+}
+
+/// Paint a message's picture: its background, then its foreground keyed
+/// over it (the blue matte is transparent, `bmp_cache`).
+fn draw_message_picture(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    origin: egui::Pos2,
+    scale: f32,
+    picture: MessagePicture,
+) {
+    let Some(background) = cache
+        .get(ctx, DllSource::Strategy, picture.background)
+        .cloned()
+    else {
+        return;
+    };
+    let foreground = picture
+        .foreground
+        .and_then(|id| cache.get(ctx, DllSource::Strategy, id).cloned());
+    let (back, front) = message_picture_rects(
+        background.size_vec2(),
+        foreground.as_ref().map(|texture| texture.size_vec2()),
+    );
+    let screen = |rect: egui::Rect| {
+        egui::Rect::from_min_size(origin + rect.min.to_vec2() * scale, rect.size() * scale)
+    };
+    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    egui::Area::new(egui::Id::new("message-index-single-picture"))
+        .fixed_pos(origin)
+        .order(egui::Order::Tooltip)
+        .show(ctx, |ui| {
+            let painter = ui.painter();
+            painter.image(background.id(), screen(back), uv, Color32::WHITE);
+            if let (Some(texture), Some(rect)) = (foreground, front) {
+                painter.image(texture.id(), screen(rect), uv, Color32::WHITE);
+            }
+        });
+}
+
 // ---------------------------------------------------------------------------
 // Fixture adapter (preserved)
 // ---------------------------------------------------------------------------
@@ -1060,6 +1124,27 @@ pub fn draw_message_index_fixture(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_message_picture_sits_at_12_33_with_its_foreground_centred() {
+        // FUN_0046a320: the background at (0xc, 0x21); the foreground
+        // offset by half the size difference on each axis.
+        let (back, front) =
+            message_picture_rects(egui::vec2(400.0, 200.0), Some(egui::vec2(300.0, 151.0)));
+        assert_eq!(
+            back,
+            egui::Rect::from_min_size(egui::pos2(12.0, 33.0), egui::vec2(400.0, 200.0))
+        );
+        assert_eq!(
+            front,
+            Some(egui::Rect::from_min_size(
+                egui::pos2(62.0, 57.0),
+                egui::vec2(300.0, 151.0)
+            ))
+        );
+        // The text area starts right below the picture.
+        assert_eq!(back.max.y + 1.0, TEXT_AREA_Y);
+    }
     use super::*;
     use crate::message_log::{MessageCategory, RailAudience};
 

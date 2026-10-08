@@ -337,9 +337,7 @@ pub enum EventAction {
     ///
     /// Applied by `0x396 "Final Battle Imminent"` — the event whose
     /// narration already introduces the Luke–Vader paternity reveal ("father
-    /// and son"). Triggers the `EVENT_EMPEROR_AND_VADER_VS_KNIGHT_LUKE` BMP
-    /// branch in `event_screen::event_id_to_resource` on subsequent
-    /// Final Battle overlays (see `#R4` in the Knesset Shamash-Bet plan).
+    /// and son").
     ///
     /// Does NOT create a new story event — this replaces the deleted
     /// `0x222 EVT_FINAL_BATTLE_KNOWN` split per SIMP-H5 + ARCH-#9 + SF-#11.

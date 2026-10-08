@@ -111,20 +111,19 @@ use rebellion_render::{
     advisor_combat_result, advisor_death_star, advisor_greet, advisor_manufacturing_complete,
     advisor_mission_result, advisor_uprising, draw_advisor, draw_audio_controls,
     draw_cockpit_background, draw_cockpit_chrome, draw_cockpit_egui_layer, draw_credits,
-    draw_encyclopedia, draw_event_screen, draw_fleets, draw_galaxy_backdrop, draw_galaxy_map,
-    draw_game_options, draw_game_setup, draw_gid_caption, draw_ground_combat, draw_main_menu,
-    draw_missions, draw_multiplayer_setup, draw_officers, draw_save_load, draw_sector_windows,
+    draw_encyclopedia, draw_fleets, draw_galaxy_backdrop, draw_galaxy_map, draw_game_options,
+    draw_game_setup, draw_gid_caption, draw_ground_combat, draw_main_menu, draw_missions,
+    draw_multiplayer_setup, draw_officers, draw_save_load, draw_sector_windows,
     draw_system_windows, draw_tactical_view, handle_cockpit_egui_input, set_cockpit_viewport_clip,
-    show_event_screen, update_event_screen, AdvisorFaction, AdvisorState, AssetRenderProfile,
-    AudioVolumeState, BmpCache, CockpitButton, CockpitFaction, CockpitState, CreditsState,
-    EncyclopediaState, EventScreenState, FleetsState, GalaxyMapState, GameMessage,
-    GameOptionsAction, GameOptionsOrigin, GameOptionsState, GameSetupAction, GameSetupState,
-    GroundAction, GroundCombatState, MainMenuAction, MainMenuState, MenuDestinationAction,
-    MessageCategory, MessageLog, MessageLogState, MessageRail, MultiplayerSetupAction,
-    MultiplayerSetupState, MusicContext, OfficersState, OriginalEncyclopediaCatalog,
-    OriginalEncyclopediaEntry, PanelAction, RailAudience, SectorWindowAction, SectorWindowState,
-    SfxKind, SystemWindowAction, SystemWindowState, TacticalAction, TacticalState,
-    TacticalTrenchRunOutcome, VideoError, VideoPlayer,
+    AdvisorFaction, AdvisorState, AssetRenderProfile, AudioVolumeState, BmpCache, CockpitButton,
+    CockpitFaction, CockpitState, CreditsState, EncyclopediaState, FleetsState, GalaxyMapState,
+    GameMessage, GameOptionsAction, GameOptionsOrigin, GameOptionsState, GameSetupAction,
+    GameSetupState, GroundAction, GroundCombatState, MainMenuAction, MainMenuState,
+    MenuDestinationAction, MessageCategory, MessageLog, MessageLogState, MessageRail,
+    MultiplayerSetupAction, MultiplayerSetupState, MusicContext, OfficersState,
+    OriginalEncyclopediaCatalog, OriginalEncyclopediaEntry, PanelAction, RailAudience,
+    SectorWindowAction, SectorWindowState, SfxKind, SystemWindowAction, SystemWindowState,
+    TacticalAction, TacticalState, TacticalTrenchRunOutcome, VideoError, VideoPlayer,
 };
 use rebellion_render::{draw_defenses_windows, DefensesWindowAction, DefensesWindowState};
 use rebellion_render::{draw_fleet_windows, FleetWindowAction, FleetWindowState};
@@ -287,6 +286,24 @@ fn configured_asset_render_profile() -> AssetRenderProfile {
     {
         AssetRenderProfile::OriginalParity
     }
+}
+
+/// The character a story message pictures, where the port's event names
+/// one: its Force Growth (`0x1e1`) milestone is Luke's, as
+/// `story_events::register_story_events` defines it.
+fn story_subject(
+    world: &rebellion_core::world::GameWorld,
+    event_id: u32,
+) -> Option<(rebellion_core::ids::DatId, bool)> {
+    (event_id == rebellion_core::events::EVT_CHARACTER_FORCE)
+        .then(|| {
+            world
+                .characters
+                .values()
+                .find(|character| character.name.to_lowercase().contains("luke"))
+                .map(|character| (character.dat_id, character.is_major))
+        })
+        .flatten()
 }
 
 fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
@@ -1062,9 +1079,6 @@ async fn main() {
     let saves_dir = rebellion_data::save::default_saves_dir();
     let mut save_slots = read_save_slots(&saves_dir);
 
-    // ── Event screen overlay ─────────────────────────────────────────────────
-    let mut event_screen_state = EventScreenState::new();
-
     // ── Tactical combat state ────────────────────────────────────────────────
     let mut tactical_state = TacticalState::new();
     let mut ground_combat_state: Option<GroundCombatState> = None;
@@ -1352,9 +1366,6 @@ async fn main() {
             advisor_state.update(dt);
         }
 
-        // ── Event screen overlay timer ────────────────────────────────────
-        update_event_screen(&mut event_screen_state, dt);
-
         // ── Global keyboard shortcuts ───────────────────────────────────────
         if matches!(game_mode, GameMode::Cutscene { .. }) {
             if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Space) {
@@ -1362,7 +1373,7 @@ async fn main() {
                     player.stop();
                 }
             }
-        } else if is_key_pressed(KeyCode::Escape) && !event_screen_state.is_active() {
+        } else if is_key_pressed(KeyCode::Escape) {
             if let GameMode::GameOptions { origin } = game_mode.clone() {
                 if game_options_state.suspended {
                     save_load_panel_state.close();
@@ -1446,7 +1457,6 @@ async fn main() {
         // The open Fleet Finder takes the keys for its name box, and a
         // rename edit for the name it holds.
         if game_mode == GameMode::Galaxy
-            && !event_screen_state.is_active()
             && !show_save_load
             && !fleet_finder_state.is_open()
             && !troop_finder_state.is_open()
@@ -2252,8 +2262,8 @@ Some(RailAudience::side(*faction_is_alliance)),
             // `SpawnSpecialForce` resolves via `current_system` + fallback
             // to `MovementState::orders()`. The effect buffer drains into
             // `msg_log` immediately below.
-            let mut story_effects_out: Vec<rebellion_core::effects::GameEffect> = Vec::new();
             for fired in &fired_events {
+                let mut story_effects_out: Vec<rebellion_core::effects::GameEffect> = Vec::new();
                 rebellion_data::integrator::apply_event_action_to_world(
                     &fired.actions,
                     &mut world,
@@ -2261,33 +2271,49 @@ Some(RailAudience::side(*faction_is_alliance)),
                     fired.tick,
                     &movement_state,
                 );
-            }
-            // Drain StoryMessageDisplayed + SpecialForceSpawned effects into
-            // the interactive message log. SpecialForceUnit arena wiring is
-            // handled in apply_event_action_to_world; here we just log.
-            for eff in story_effects_out {
-                use rebellion_core::effects::GameEffect;
-                match eff {
-                    GameEffect::StoryMessageDisplayed { text, .. } => {
-                        msg_log.push(GameMessage::new(current_tick, text, MessageCategory::Event));
-                    }
-                    GameEffect::SpecialForceSpawned {
-                        at_system,
-                        is_alliance,
-                    } => {
-                        let name = world
-                            .systems
-                            .get(at_system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        let side = if is_alliance { "Alliance" } else { "Imperial" };
-                        msg_log.push(GameMessage::at_system(
-                            current_tick,
-                            format!("{side} special force lands at {name}"),
-                            MessageCategory::Event,
+                // Drain StoryMessageDisplayed + SpecialForceSpawned effects into
+                // the interactive message log. SpecialForceUnit arena wiring is
+                // handled in apply_event_action_to_world; here we just log.
+                for eff in story_effects_out {
+                    use rebellion_core::effects::GameEffect;
+                    match eff {
+                        GameEffect::StoryMessageDisplayed { text, .. } => {
+                            // A story event is a message the player reads in
+                            // the Message window (DEV-UI-019 retired).
+                            let mut message =
+                                GameMessage::new(current_tick, text, MessageCategory::Event)
+                                    .on_rail(
+                                        rebellion_render::story_messages::STORY_RAIL,
+                                        RailAudience::Both,
+                                    );
+                            let subject = story_subject(&world, fired.event_id);
+                            if let Some(picture) = rebellion_render::story_messages::story_picture(
+                                fired.event_id,
+                                cockpit_state.faction,
+                                subject,
+                            ) {
+                                message = message.with_picture(picture);
+                            }
+                            msg_log.push(message);
+                        }
+                        GameEffect::SpecialForceSpawned {
                             at_system,
-                        ));
+                            is_alliance,
+                        } => {
+                            let name = world
+                                .systems
+                                .get(at_system)
+                                .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                            let side = if is_alliance { "Alliance" } else { "Imperial" };
+                            msg_log.push(GameMessage::at_system(
+                                current_tick,
+                                format!("{side} special force lands at {name}"),
+                                MessageCategory::Event,
+                                at_system,
+                            ));
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
 
@@ -2299,75 +2325,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                         if let Some(c) = world.characters.get(*character) {
                             jedi_state.start_training(*character, c.is_alliance, current_tick);
                         }
-                    }
-                }
-            }
-
-            // ── Story event screens ──────────────────────────────────────────
-            // Show a full-screen BMP overlay for scripted story moments.
-            // Only trigger if no overlay is already active (highest-priority event wins).
-            if !event_screen_state.is_active() {
-                // #R4: resolve Luke's heritage_known for render-layer BMP branching
-                let heritage_known = world
-                    .characters
-                    .values()
-                    .find(|c| c.name.contains("Luke"))
-                    .is_some_and(|c| c.heritage_known);
-
-                for fired in &fired_events {
-                    use rebellion_core::events::{
-                        EVT_BOUNTY_ATTACK, EVT_CHARACTER_FORCE, EVT_DAGOBAH_COMPLETED,
-                        EVT_FINAL_BATTLE, EVT_FORCE_TRAINING, EVT_LUKE_DAGOBAH,
-                    };
-                    // Build a human-readable title + description for each story beat.
-                    let screen = match fired.event_id {
-                        EVT_CHARACTER_FORCE => Some((
-                            "The Force Awakens",
-                            "A disturbance in the Force... Luke Skywalker's potential has been noticed.",
-                        )),
-                        EVT_FORCE_TRAINING => Some((
-                            "Jedi Training Begins",
-                            "Luke Skywalker begins his path in the ways of the Force.",
-                        )),
-                        EVT_LUKE_DAGOBAH => Some((
-                            "The Path to Dagobah",
-                            "Luke has departed for the Dagobah system to seek out Yoda.",
-                        )),
-                        EVT_DAGOBAH_COMPLETED => Some((
-                            "Training Complete",
-                            "Luke Skywalker has completed his Jedi training on Dagobah.",
-                        )),
-                        EVT_FINAL_BATTLE => Some((
-                            "The Final Battle",
-                            "The Emperor has mobilized the full might of the Empire. The fate of the galaxy will be decided now.",
-                        )),
-                        EVT_BOUNTY_ATTACK => Some((
-                            "A Trap is Sprung",
-                            "Bounty hunters strike! Han Solo has been captured and frozen in carbonite.",
-                        )),
-                        0x380 => Some(("Jabba's Demand", "Jabba the Hutt demands the return of Solo. A debt must be paid.")),
-                        0x381 => Some(("The Rescue Plan", "Princess Leia has devised a plan to rescue Han Solo from Jabba's palace.")),
-                        0x382 => Some(("Into Jabba's Palace", "Alliance agents infiltrate Jabba's fortress. The rescue is underway.")),
-                        0x383 => Some(("Jabba Defeated", "Jabba the Hutt is dead. Han Solo is free.")),
-                        0x390 => Some(("The Empire Strikes", "Darth Vader has launched a devastating offensive.")),
-                        0x391 => Some(("Vader's Ultimatum", "Darth Vader delivers an ultimatum to Alliance command.")),
-                        0x393 => Some(("The Emperor Watches", "The Emperor himself turns his attention to the conflict.")),
-                        0x394 => Some(("Imperial Intervention", "The Emperor has intervened directly in the war.")),
-                        0x397 => Some(("Hunters Dispatched", "Bounty hunters have been unleashed across the galaxy.")),
-                        0x398 => Some(("Closing In", "The bounty hunters are closing in on their quarry.")),
-                        0x399 => Some(("Alliance Mobilizes", "Mon Mothma has ordered a full mobilization of Alliance forces.")),
-                        0x39A => Some(("The Final Stand", "The Alliance makes its final stand against the Empire.")),
-                        _ => None,
-                    };
-                    if let Some((title, description)) = screen {
-                        show_event_screen(
-                            &mut event_screen_state,
-                            fired.event_id,
-                            title,
-                            description,
-                            heritage_known,
-                        );
-                        break; // One overlay at a time
                     }
                 }
             }
@@ -3394,7 +3351,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     save_load_panel_state =
                                         rebellion_render::SaveLoadPanelState::default();
                                     save_slots = read_save_slots(&saves_dir);
-                                    event_screen_state = EventScreenState::new();
                                     tactical_state = TacticalState::new();
                                     ground_combat_state = None;
 
@@ -3588,8 +3544,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     || original_modal_fixture_open
                     || game_speed_ui.menu_anchor.is_some()
                     || object_menu.is_some()
-                    || pause_alert_contains_screen_point(&clock, cockpit_layout, pointer)
-                    || event_screen_state.is_active();
+                    || pause_alert_contains_screen_point(&clock, cockpit_layout, pointer);
                 map_state.targeting = targeting.is_some();
 
                 // The starfield shows through every transparent part of the
@@ -3640,8 +3595,7 @@ Some(RailAudience::side(*faction_is_alliance)),
 
                 // 4. All egui panels in a single ui() + draw() pass
                 egui_macroquad::ui(|ctx| {
-                    let strategic_input_enabled =
-                        !event_screen_state.is_active() && !original_modal_fixture_open;
+                    let strategic_input_enabled = !original_modal_fixture_open;
                     // Register the cockpit background before panels so the
                     // opaque chrome never covers their content or artwork.
                     draw_cockpit_background(ctx, &cockpit_state, &mut bmp_cache);
@@ -5153,18 +5107,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                     // Droid advisor (floating window, bottom-right)
                     draw_advisor(ctx, &mut advisor_state);
 
-                    // Story event screen overlay (top-most, including the advisor). Preserve
-                    // the pre-draw state so the click that dismisses an event cannot also
-                    // activate a cockpit control underneath it in the same frame.
-                    let event_screen_was_active = event_screen_state.is_active();
-                    draw_event_screen(ctx, &mut event_screen_state, &mut bmp_cache);
-
                     // The galaxy view holds the capture while targeting.
-                    let cockpit_command = (!original_modal_fixture_open
-                        && targeting.is_none()
-                        && !event_screen_was_active
-                        && !event_screen_state.is_active())
-                    .then(|| handle_cockpit_egui_input(ctx, &mut cockpit_state, &mut bmp_cache));
+                    let cockpit_command = (!original_modal_fixture_open && targeting.is_none())
+                        .then(|| {
+                            handle_cockpit_egui_input(ctx, &mut cockpit_state, &mut bmp_cache)
+                        });
                     if let Some(btn) = cockpit_command.flatten() {
                         let (command, destination) = match btn {
                             CockpitButton::SystemFinder => (0x12d, "system_finder"),
@@ -5889,7 +5836,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                             show_loyalty = false;
                             show_save_load = false;
                             save_load_panel_state.close();
-                            event_screen_state = EventScreenState::new();
                             tactical_state = TacticalState::new();
                             ground_combat_state = None;
                             dual_ai_mode = secondary_ai_state.is_some();
