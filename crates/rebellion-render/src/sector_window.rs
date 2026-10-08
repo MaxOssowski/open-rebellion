@@ -642,6 +642,9 @@ fn draw_sector_window(
                 });
             let (primary_released, secondary_released) = released;
             let (window_rect, window_response) = ui.allocate_exact_size(size, egui::Sense::click());
+            // The original is a child window (FUN_00459e30 places its items
+            // in it), so a planet near its bottom edge is cut off there.
+            ui.set_clip_rect(window_rect);
             ui.painter()
                 .rect_filled(window_rect, 0.0, egui::Color32::from_rgb(42, 42, 42));
             paint_window_border(ui.painter(), ctx, cache, window_rect, layout.scale);
@@ -2333,6 +2336,73 @@ mod tests {
             .into_iter()
             .filter(|(id, _)| (10771..=10790).contains(id))
             .collect()
+    }
+
+    #[test]
+    fn a_planet_near_the_bottom_paints_nothing_outside_its_sector_window() {
+        // The original sector window is a child window (FUN_00459e30 places
+        // its items in it), so nothing it holds paints past its frame.
+        // A system 88 DAT units below its sector's origin sits at y 326; its
+        // label and status tracks reach past the window's 360 rows.
+        let (mut world, system, _) = fixture_world();
+        let sector = world.systems[system].sector;
+        world.systems[system].y = world.sectors[sector].y + 88;
+        let layout = layout(2.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        let window = window_screen_rect(CockpitFaction::Alliance, state.windows[0].column, layout);
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(system);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        // egui hides a new area on its first frame while it sizes it.
+        let mut frame = || {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1400.0, 1040.0),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_sector_windows(
+                        ctx,
+                        &world,
+                        &rebellion_core::movement::MovementState::default(),
+                        &fog,
+                        &mut state,
+                        CockpitFaction::Alliance,
+                        layout,
+                        &mut cache,
+                        &uprisings,
+                        &missions,
+                    );
+                },
+            )
+        };
+        let _ = frame();
+        let output = frame();
+        let visible: Vec<egui::Rect> = output
+            .shapes
+            .iter()
+            .map(|clipped| {
+                clipped
+                    .shape
+                    .visual_bounding_rect()
+                    .intersect(clipped.clip_rect)
+            })
+            .filter(egui::Rect::is_positive)
+            .collect();
+        assert!(visible.iter().any(|rect| rect.max.y > window.max.y - 60.0));
+        for rect in visible {
+            assert!(
+                window.expand(0.5).contains_rect(rect),
+                "{rect:?} outside {window:?}"
+            );
+        }
     }
 
     #[test]
