@@ -96,7 +96,7 @@ The sector constraints and rail semantics were located through Faction Wars'
 
 | Cell | Original behavior | Port | Original proof |
 |---|---|---|---|
-| `CMD-05-C012` | A new campaign displays day 0 before the first elapsed day. | Present | `GameClock::new()` and the cockpit day readout start at zero; dedicated original trace open. |
+| `CMD-05-C012` | A new campaign leaves the day field and time bar blank before the first elapsed day. | Present | Squakenet 0119–0149 and 0712–0732 and pravus 0121 show both blank on day 0; `FUN_00422ce0` creates the day text empty. `draw_day_readout` and `draw_time_bar` (`FUN_0042d230`) draw from day 1. |
 | `CMD-05-C013` | The time bar is blank during the opening briefing. | Missing | Manual-derived lead; opening briefing parity is itself open. |
 | `CMD-08-C017` | A click selects one Message Index row. | Present | `FUN_004665f0`; bounded row-gesture tests in `message_index.rs`. |
 | `CMD-08-C018` | Ctrl-click toggles an individual Message Index row. | Present | `FUN_004665f0`; bounded row-gesture tests in `message_index.rs`. |
