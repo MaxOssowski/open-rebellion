@@ -1791,6 +1791,10 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // the page scene, not blue, through them.
                 | 10262..=10264
                 | 10290..=10296
+                // The Message window's mode-2 scroll buttons (`0x96`,
+                // `0x9a`), button art blitted keyed like the others.
+                | 10919..=10920
+                | 10948..=10949
                 | 10298
                 // Story portraits, the foregrounds the Message window
                 // blits keyed over a message's background (`FUN_0046a320`

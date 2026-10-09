@@ -33,6 +33,15 @@ const INDEX_BASE_EMPIRE: u32 = 10_336;
 const INDEX_RAIL_ALLIANCE: u32 = 10_820;
 const INDEX_RAIL_EMPIRE: u32 = 10_821;
 const INDEX_CONTENT: u32 = 10_822;
+/// Pane `0x34` (`FUN_004665f0`): the black title strip `0x2ab5` at
+/// (12, 14) and the black text area `0x2ab4` at (12, 232), which mode 2
+/// shows instead of the list pane `0x32`.
+const MESSAGE_TITLE_STRIP: (u32, (f32, f32, f32, f32)) = (10_933, (12.0, 14.0, 400.0, 18.0));
+const MESSAGE_TEXT_PANE: (u32, (f32, f32, f32, f32)) = (10_932, (12.0, 232.0, 400.0, 87.0));
+/// Where a message's title starts in the title strip (launchbox frame
+/// "event-imperial-future-jedi": the title begins 41 pixels into the
+/// window). port: the emblem drawn left of it is not recovered.
+const MESSAGE_TITLE_X: f32 = 40.0;
 
 // ---------------------------------------------------------------------------
 // List geometry (FUN_004665f0, FUN_006082c0 in FUN_00468ab0)
@@ -212,8 +221,9 @@ pub struct WindowButtonSpec {
 /// Close (`0x28`, `0x2882`/`0x2888`) and Display Message (`0x65`,
 /// `0x2884`/`0x288a`) on the right rail, and Delete (`0x91`, `0x2a96`) under
 /// the category row, as `FUN_004665f0` builds them. Delete shows in mode 1
-/// only (`FUN_00468fb0`). port: Navigate (`0x90`) and the mode-2 scroll,
-/// Encyclopedia and Detail buttons are not drawn.
+/// only (`FUN_00468fb0`), the scroll buttons (`0x96`, `0x9a`) in mode 2.
+/// port: Navigate (`0x90`) and the mode-2 Encyclopedia and Detail buttons
+/// are not drawn.
 #[must_use]
 pub fn window_button_specs(faction: CockpitFaction, mode: IndexMode) -> Vec<WindowButtonSpec> {
     let (x, size, close, display) = match faction {
@@ -230,6 +240,21 @@ pub fn window_button_specs(faction: CockpitFaction, mode: IndexMode) -> Vec<Wind
         pressed_resource: normal + 1,
     };
     let mut buttons = vec![rail(0x28, close), rail(0x65, display)];
+    if mode == IndexMode::SingleMessage {
+        // FUN_004665f0 / FUN_00468fb0: the scroll buttons, 19 by 15 in the
+        // title strip, shown in mode 2.
+        for (command_id, x, normal) in [(0x96, 390, 10_919), (0x9a, 367, 10_948)] {
+            buttons.push(WindowButtonSpec {
+                command_id,
+                x,
+                y: 15,
+                width: 19,
+                height: 15,
+                normal_resource: normal,
+                pressed_resource: normal + 1,
+            });
+        }
+    }
     if mode == IndexMode::List {
         buttons.push(WindowButtonSpec {
             command_id: 0x91,
@@ -320,6 +345,47 @@ pub fn draw_message_index_shell(
     origin: egui::Pos2,
     scale: f32,
 ) -> Option<u16> {
+    draw_shell(ctx, cache, faction, origin, scale, IndexMode::List)
+}
+
+/// The window's background layers, resource and window rectangle: the
+/// side's base and rail, then the list pane `0x32` in mode 1 or the
+/// message pane `0x34` in mode 2 (`FUN_004665f0`, `FUN_00468fb0`'s
+/// `FUN_006075e0(0x32 | 0x34)`).
+fn shell_layers(faction: CockpitFaction, mode: IndexMode) -> Vec<(u32, (f32, f32, f32, f32))> {
+    let (base, rail) = match faction {
+        CockpitFaction::Alliance => (INDEX_BASE_ALLIANCE, INDEX_RAIL_ALLIANCE),
+        CockpitFaction::Empire => (INDEX_BASE_EMPIRE, INDEX_RAIL_EMPIRE),
+    };
+    let mut layers = vec![
+        (base, (0.0, 0.0, MESSAGE_INDEX_WIDTH, MESSAGE_INDEX_HEIGHT)),
+        (rail, (412.0, 0.0, 58.0, 330.0)),
+    ];
+    match mode {
+        IndexMode::List => layers.push((
+            INDEX_CONTENT,
+            (
+                INDEX_CONTENT_X,
+                INDEX_CONTENT_Y,
+                INDEX_CONTENT_WIDTH,
+                INDEX_CONTENT_HEIGHT,
+            ),
+        )),
+        IndexMode::SingleMessage => layers.extend([MESSAGE_TITLE_STRIP, MESSAGE_TEXT_PANE]),
+    }
+    layers
+}
+
+/// Paint the shell for `mode`; the category controls show in mode 1 only
+/// (`FUN_00468fb0` hides the list and its controls for a message).
+fn draw_shell(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    faction: CockpitFaction,
+    origin: egui::Pos2,
+    scale: f32,
+    mode: IndexMode,
+) -> Option<u16> {
     if scale <= 0.0 {
         return None;
     }
@@ -330,32 +396,18 @@ pub fn draw_message_index_shell(
         .show(ctx, |ui| {
             let size = egui::vec2(MESSAGE_INDEX_WIDTH * scale, MESSAGE_INDEX_HEIGHT * scale);
             let (window_rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-            let (base, rail) = match faction {
-                CockpitFaction::Alliance => (INDEX_BASE_ALLIANCE, INDEX_RAIL_ALLIANCE),
-                CockpitFaction::Empire => (INDEX_BASE_EMPIRE, INDEX_RAIL_EMPIRE),
-            };
-            paint_strategy_resource(ui.painter(), ctx, cache, base, window_rect);
-            paint_strategy_resource(
-                ui.painter(),
-                ctx,
-                cache,
-                rail,
-                message_index_rect(window_rect, scale, 412.0, 0.0, 58.0, 330.0),
-            );
-            paint_strategy_resource(
-                ui.painter(),
-                ctx,
-                cache,
-                INDEX_CONTENT,
-                message_index_rect(
-                    window_rect,
-                    scale,
-                    INDEX_CONTENT_X,
-                    INDEX_CONTENT_Y,
-                    INDEX_CONTENT_WIDTH,
-                    INDEX_CONTENT_HEIGHT,
-                ),
-            );
+            for (resource, (x, y, width, height)) in shell_layers(faction, mode) {
+                paint_strategy_resource(
+                    ui.painter(),
+                    ctx,
+                    cache,
+                    resource,
+                    message_index_rect(window_rect, scale, x, y, width, height),
+                );
+            }
+            if mode != IndexMode::List {
+                return;
+            }
 
             let (pointer, primary_down) = ctx.input(|input| {
                 (
@@ -620,6 +672,27 @@ impl MessageIndexState {
         }
     }
 
+    /// Mode 2's scroll buttons: show the neighbouring message in the
+    /// category's list (`FUN_0046a200` enables each only while it has a
+    /// neighbour). port: `0x9a` at x 367 is drawn as the up arrow (10948)
+    /// and `0x96` at x 390 as the down arrow (10919), so `0x9a` goes to the
+    /// earlier message and `0x96` to the later one (inferred from the art).
+    pub fn view_adjacent(
+        &mut self,
+        rows: &[MessageId],
+        forward: bool,
+    ) -> Option<MessageIndexAction> {
+        let current = rows.iter().position(|id| Some(*id) == self.viewing)?;
+        let next = if forward {
+            current.checked_add(1)?
+        } else {
+            current.checked_sub(1)?
+        };
+        let id = *rows.get(next)?;
+        self.viewing = Some(id);
+        Some(MessageIndexAction::MessageDisplayed(id))
+    }
+
     /// Return to mode 1 (list) from mode 2 (single message).
     pub fn return_to_list(&mut self) {
         self.mode = IndexMode::List;
@@ -778,6 +851,7 @@ pub fn draw_message_index(
     for id in [
         "original-message-index-shell",
         "message-index-single-picture",
+        "message-index-single-title",
         "message-index-list",
         "message-index-single-text",
         "original-message-index-buttons",
@@ -786,7 +860,7 @@ pub fn draw_message_index(
     }
 
     // Paint the shell and handle category clicks.
-    if let Some(command) = draw_message_index_shell(ctx, cache, faction, origin, scale) {
+    if let Some(command) = draw_shell(ctx, cache, faction, origin, scale, state.mode) {
         actions.extend(state.set_category(command));
     }
 
@@ -822,6 +896,10 @@ pub fn draw_message_index(
         Some(0x28) => actions.push(MessageIndexAction::Close),
         Some(0x65) => actions.extend(state.toggle_display()),
         Some(0x91) => actions.extend(state.delete_selected()),
+        Some(command @ (0x96 | 0x9a)) => {
+            let ids: Vec<MessageId> = rows.iter().map(|message| message.id).collect();
+            actions.extend(state.view_adjacent(&ids, command == 0x96));
+        }
         _ => {}
     }
 
@@ -1022,6 +1100,9 @@ fn draw_single_message(
     if let Some(picture) = msg.picture {
         draw_message_picture(ctx, cache, origin, scale, picture);
     }
+    if let Some(title) = &msg.title {
+        draw_message_title(ctx, origin, scale, title);
+    }
 
     let text_id = egui::Id::new("message-index-single-text");
     egui::Area::new(text_id)
@@ -1048,6 +1129,27 @@ fn draw_single_message(
             painter.galley(
                 area_rect.left_top() + egui::vec2(2.0 * scale, 2.0 * scale),
                 galley,
+                Color32::WHITE,
+            );
+        });
+}
+
+/// Paint a message's title in white across the title strip.
+fn draw_message_title(ctx: &egui::Context, origin: egui::Pos2, scale: f32, title: &str) {
+    let (_, (_, strip_y, strip_width, strip_height)) = MESSAGE_TITLE_STRIP;
+    egui::Area::new(egui::Id::new("message-index-single-title"))
+        .fixed_pos(origin)
+        .order(egui::Order::Tooltip)
+        .show(ctx, |ui| {
+            let clip = egui::Rect::from_min_size(
+                origin + egui::vec2(MESSAGE_TITLE_X, strip_y) * scale,
+                egui::vec2(strip_width - MESSAGE_TITLE_X, strip_height) * scale,
+            );
+            ui.painter().with_clip_rect(clip).text(
+                egui::pos2(clip.min.x, clip.center().y),
+                egui::Align2::LEFT_CENTER,
+                title,
+                egui::FontId::proportional((11.0 * scale).max(7.0)),
                 Color32::WHITE,
             );
         });
@@ -1650,8 +1752,73 @@ mod tests {
                     button.pressed_resource
                 ))
                 .collect::<Vec<_>>(),
-            [(0x28, 0x1aa, 0x2c, 0x2889), (0x65, 0x1aa, 0x2c, 0x288b)]
+            [
+                (0x28, 0x1aa, 0x2c, 0x2889),
+                (0x65, 0x1aa, 0x2c, 0x288b),
+                // FUN_00468fb0 shows the scroll buttons in mode 2.
+                (0x96, 390, 19, 10_920),
+                (0x9a, 367, 19, 10_949)
+            ]
         );
+    }
+
+    #[test]
+    fn mode_two_shows_the_message_pane_without_the_list_or_its_controls() {
+        // FUN_004665f0 panes: 0x32 holds the list content 10822; 0x34 the
+        // title strip 0x2ab5 at (12, 14) and the text area 0x2ab4 at
+        // (12, 232). FUN_00468fb0 selects 0x34 for a message.
+        let ids = |mode| {
+            shell_layers(CockpitFaction::Alliance, mode)
+                .into_iter()
+                .map(|(resource, (x, y, _, _))| (resource, x, y))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ids(IndexMode::List),
+            [
+                (10_335, 0.0, 0.0),
+                (10_820, 412.0, 0.0),
+                (10_822, 12.0, 13.0)
+            ]
+        );
+        assert_eq!(
+            ids(IndexMode::SingleMessage),
+            [
+                (10_335, 0.0, 0.0),
+                (10_820, 412.0, 0.0),
+                (10_933, 12.0, 14.0),
+                (10_932, 12.0, 232.0)
+            ]
+        );
+        // The text area sits inside the black pane.
+        let (_, (x, y, width, height)) = MESSAGE_TEXT_PANE;
+        assert!(TEXT_AREA_X >= x && TEXT_AREA_Y >= y);
+        assert!(TEXT_AREA_X + TEXT_AREA_WIDTH <= x + width);
+        assert!(TEXT_AREA_Y + TEXT_AREA_HEIGHT <= y + height);
+    }
+
+    #[test]
+    fn the_scroll_buttons_step_through_the_categorys_messages() {
+        // FUN_0046a200 enables each scroll button only with a neighbour;
+        // forward is the down arrow (0x96), back the up arrow (0x9a).
+        let mut state = MessageIndexState::new();
+        state.mode = IndexMode::SingleMessage;
+        state.viewing = Some(2);
+        let rows = [1, 2, 3];
+        assert_eq!(
+            state.view_adjacent(&rows, true),
+            Some(MessageIndexAction::MessageDisplayed(3))
+        );
+        assert_eq!(state.view_adjacent(&rows, true), None);
+        assert_eq!(state.viewing, Some(3));
+        assert_eq!(
+            state.view_adjacent(&rows, false),
+            Some(MessageIndexAction::MessageDisplayed(2))
+        );
+        state.viewing = Some(1);
+        assert_eq!(state.view_adjacent(&rows, false), None);
+        state.viewing = Some(9);
+        assert_eq!(state.view_adjacent(&rows, true), None);
     }
 
     // ── Category switch state reset ─────────────────────────────────────

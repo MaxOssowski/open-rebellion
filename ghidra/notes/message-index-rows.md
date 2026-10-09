@@ -212,8 +212,10 @@ manual, pp. 33-34 and 79-80, describes no automatic opening).
 | `0x99` detail | (355, 281) | 10938 / 10939 | — | 2 (type 5) |
 
 In mode 2, scroll up/down navigate through the filtered message list. In mode
-1, navigate (`0x90`) advances to the next message. hyp: `0x96` and `0x9a`
-are the list view's scroll arrows, reused in mode 2 as prev/next.
+1, navigate (`0x90`) advances to the next message. The art settles the
+directions: `0x9a` (x 367, 10948) is drawn as an up arrow and `0x96` (x 390,
+10919) as a down arrow, the launchbox frame's order; the port steps to the
+earlier and later message with them.
 
 ## Close (0x28) and Display Message (0x65)
 
