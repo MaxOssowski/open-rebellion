@@ -211,6 +211,10 @@ pub struct GameMessage {
     /// The picture shown above the text in the Message window.
     #[serde(skip)]
     pub picture: Option<MessagePicture>,
+    /// The original message's title (`+0x44`), where its text comes from
+    /// the player's TEXTSTRA message texts; the index lists it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 impl GameMessage {
@@ -227,6 +231,7 @@ impl GameMessage {
             audience: RailAudience::Both,
             unread: false,
             picture: None,
+            title: None,
         }
     }
 
@@ -248,6 +253,7 @@ impl GameMessage {
             audience: RailAudience::Both,
             unread: false,
             picture: None,
+            title: None,
         }
     }
 
@@ -258,6 +264,13 @@ impl GameMessage {
         self.rail = Some(rail);
         self.audience = audience;
         self.unread = true;
+        self
+    }
+
+    /// Title the message (`+0x44`); the index lists the title.
+    #[must_use]
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
         self
     }
 

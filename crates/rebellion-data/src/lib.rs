@@ -925,6 +925,39 @@ pub fn set_file_cache(files: std::collections::HashMap<String, Vec<u8>>) {
     *WASM_FILE_CACHE.lock().unwrap() = files;
 }
 
+/// TEXTSTRA's message texts (`RT_RCDATA`): the titles and bodies of the
+/// original messages, with substitutions kept as `{parameter:kind}`
+/// (`dat_dumper::types::textstra::decode_message_text`). Native builds read
+/// the player's TEXTSTRA.DLL; browser builds use the table extracted from
+/// it at build time (`textstra-messages.json`). Empty when neither exists.
+#[must_use]
+pub fn message_texts(gdata_path: &Path) -> HashMap<u16, String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let dll = gdata_path.join("TEXTSTRA.DLL");
+        if dll.exists() {
+            textstra::load_message_texts(&dll).unwrap_or_default()
+        } else {
+            HashMap::new()
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = gdata_path;
+        WASM_MESSAGE_TEXTS.lock().unwrap().clone()
+    }
+}
+
+/// Pre-load TEXTSTRA's message texts for WASM.
+#[cfg(target_arch = "wasm32")]
+pub fn set_message_texts(texts: HashMap<u16, String>) {
+    *WASM_MESSAGE_TEXTS.lock().unwrap() = texts;
+}
+
+#[cfg(target_arch = "wasm32")]
+static WASM_MESSAGE_TEXTS: std::sync::LazyLock<std::sync::Mutex<HashMap<u16, String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
 /// Pre-load TEXTSTRA string table for WASM. Call before `load_game_data()`.
 /// The HashMap maps string resource IDs to their display names.
 #[cfg(target_arch = "wasm32")]

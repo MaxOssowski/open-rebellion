@@ -639,7 +639,7 @@ impl MessageIndexState {
                 .iter()
                 .map(|msg| MessageIndexRow {
                     id: msg.id,
-                    text: msg.text.clone(),
+                    text: msg.title.clone().unwrap_or_else(|| msg.text.clone()),
                     rail: msg
                         .rail
                         .expect("filtered_messages only returns rail messages"),
@@ -896,7 +896,7 @@ fn draw_list_rows(
                 painter.text(
                     text_pos,
                     egui::Align2::LEFT_CENTER,
-                    &msg.text,
+                    msg.title.as_deref().unwrap_or(&msg.text),
                     font,
                     Color32::WHITE,
                 );
@@ -1036,11 +1036,18 @@ fn draw_single_message(
 
             // hyp: font 10 (read) for the display; unmapped.
             let font = egui::FontId::proportional((9.0 * scale).max(6.0));
-            ui.painter().with_clip_rect(area_rect).text(
-                area_rect.left_top() + egui::vec2(2.0 * scale, 2.0 * scale),
-                egui::Align2::LEFT_TOP,
-                &msg.text,
+            // The text control wraps at its width (launchbox frame
+            // "event-imperial-future-jedi" shows three wrapped lines).
+            let painter = ui.painter().with_clip_rect(area_rect);
+            let galley = painter.layout(
+                msg.text.clone(),
                 font,
+                Color32::WHITE,
+                area_rect.width() - 4.0 * scale,
+            );
+            painter.galley(
+                area_rect.left_top() + egui::vec2(2.0 * scale, 2.0 * scale),
+                galley,
                 Color32::WHITE,
             );
         });

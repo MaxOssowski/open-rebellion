@@ -294,14 +294,13 @@ fn configured_asset_render_profile() -> AssetRenderProfile {
 fn story_subject(
     world: &rebellion_core::world::GameWorld,
     event_id: u32,
-) -> Option<(rebellion_core::ids::DatId, bool)> {
+) -> Option<&rebellion_core::world::Character> {
     (event_id == rebellion_core::events::EVT_CHARACTER_FORCE)
         .then(|| {
             world
                 .characters
                 .values()
                 .find(|character| character.name.to_lowercase().contains("luke"))
-                .map(|character| (character.dat_id, character.is_major))
         })
         .flatten()
 }
@@ -567,6 +566,11 @@ fn install_runtime_pack(
         .remove("textstra.json")
         .and_then(|data| serde_json::from_slice(&data).ok())
         .unwrap_or_default();
+    let message_texts: std::collections::HashMap<u16, String> = pack
+        .game_files
+        .remove("textstra-messages.json")
+        .and_then(|data| serde_json::from_slice(&data).ok())
+        .unwrap_or_default();
     let bitmap_count = pack.bitmaps.len();
     let audio_file_count = pack.audio_files.len();
     let advisor_frame_count = pack.advisor_frames.len();
@@ -583,6 +587,7 @@ fn install_runtime_pack(
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
 
+    rebellion_data::set_message_texts(message_texts);
     rebellion_data::set_string_table(string_table);
     rebellion_render::set_encyclopedia_asset_cache(encyclopedia_assets);
     rebellion_data::set_file_cache(pack.game_files);
@@ -640,6 +645,12 @@ async fn load_legacy_wasm_assets() {
             Err(_) => HashMap::new(),
         };
     rebellion_data::set_string_table(string_table);
+    let message_texts: HashMap<u16, String> =
+        match macroquad::file::load_file("data/base/textstra-messages.json").await {
+            Ok(data) => serde_json::from_slice(&data).unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        };
+    rebellion_data::set_message_texts(message_texts);
     rebellion_data::set_file_cache(files);
 
     #[derive(serde::Deserialize)]
@@ -867,6 +878,10 @@ async fn main() {
         world.fighter_classes.len(),
         world.characters.len(),
     );
+
+    // The original message titles and bodies, from the player's own
+    // TEXTSTRA.DLL (or the table extracted from it for the browser).
+    let message_texts = rebellion_data::message_texts(&gdata_path);
 
     // The Galactic Encyclopedia is immutable reference data, not campaign
     // state. Rebuild it from the installed DAT/TEXTSTRA source so opening the
@@ -2287,10 +2302,31 @@ Some(RailAudience::side(*faction_is_alliance)),
                                         RailAudience::Both,
                                     );
                             let subject = story_subject(&world, fired.event_id);
+                            if let Some((title, body)) =
+                                rebellion_render::story_messages::story_text(
+                                    fired.event_id,
+                                    &message_texts,
+                                    &subject
+                                        .map(|character| {
+                                            rebellion_render::story_messages::MessageParameter::Character {
+                                                name: &character.name,
+                                                force_ranking:
+                                                    rebellion_render::status_window::force_ranking(
+                                                        character.jedi_level.base,
+                                                    ),
+                                            }
+                                        })
+                                        .into_iter()
+                                        .collect::<Vec<_>>(),
+                                )
+                            {
+                                message.text = body;
+                                message = message.with_title(title);
+                            }
                             if let Some(picture) = rebellion_render::story_messages::story_picture(
                                 fired.event_id,
                                 cockpit_state.faction,
-                                subject,
+                                subject.map(|character| (character.dat_id, character.is_major)),
                             ) {
                                 message = message.with_picture(picture);
                             }

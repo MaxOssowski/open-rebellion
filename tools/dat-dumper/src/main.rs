@@ -77,6 +77,15 @@ fn main() -> anyhow::Result<()> {
                     out_path.display(),
                     strings.len()
                 );
+                // The message titles and bodies (RT_RCDATA), from the same DLL.
+                let messages = types::textstra::load_message_texts(&dll_path)?;
+                let messages_path = out_dir.join("textstra-messages.json");
+                std::fs::write(&messages_path, serde_json::to_string_pretty(&messages)?)?;
+                eprintln!(
+                    "OK   TEXTSTRA.DLL -> {} ({} message texts)",
+                    messages_path.display(),
+                    messages.len()
+                );
             }
             None => {
                 println!("{json}");

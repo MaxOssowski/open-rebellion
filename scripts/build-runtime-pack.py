@@ -32,6 +32,10 @@ class Entry:
     expected_sha256: str | None = None
 
 
+# TEXTSTRA string table and message texts, extracted from the player's own
+# TEXTSTRA.DLL by dat-dumper --extract-strings; key order is normalised.
+TEXT_TABLES = ("textstra.json", "textstra-messages.json")
+
 def validate_options_resources(ui_dir: Path) -> None:
     """Refuse stale UI staging that would omit the original confirmation controls."""
     for resource, width, height in [(10623, 412, 176), (10624, 57, 28),
@@ -64,9 +68,10 @@ def collect_entries(
         for path in sorted(base_dir.glob("*.DAT"), key=lambda item: item.name)
     ]
 
-    textstra = base_dir / "textstra.json"
-    if textstra.is_file():
-        entries.append(Entry(KIND_GAME_DATA, textstra.name, textstra))
+    for name in TEXT_TABLES:
+        table = base_dir / name
+        if table.is_file():
+            entries.append(Entry(KIND_GAME_DATA, table.name, table))
 
     for dll_dir in sorted(ui_dir.iterdir(), key=lambda item: item.name):
         bmp_dir = dll_dir / "BMP"
@@ -286,7 +291,7 @@ def entry_bytes(entry: Entry) -> bytes:
         raise ValueError(
             f"runtime pack source changed after validation: {entry.key}"
         )
-    if entry.kind == KIND_GAME_DATA and entry.key == "textstra.json":
+    if entry.kind == KIND_GAME_DATA and entry.key in TEXT_TABLES:
         parsed = json.loads(data)
         return json.dumps(
             parsed, ensure_ascii=False, sort_keys=True, separators=(",", ":")

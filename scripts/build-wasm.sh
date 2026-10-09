@@ -85,6 +85,7 @@ if [ -f "$GDATA/TEXTSTRA.DLL" ]; then
     "$DAT_DUMPER" --gdata "$GDATA" --extract-strings --output "$WEB_DATA"
 else
     echo "{}" > "$WEB_DATA/textstra.json"
+    echo "{}" > "$WEB_DATA/textstra-messages.json"
     echo "WARNING: TEXTSTRA.DLL not found. Entity names will use fallback format."
 fi
 

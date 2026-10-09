@@ -89,6 +89,31 @@ class RuntimePackBuilderTests(unittest.TestCase):
             self.assertEqual(first.read_bytes(), second.read_bytes())
             PACKER.verify_pack(second, entries)
 
+    def test_message_texts_are_packed_independent_of_key_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base"
+            bmp = root / "ui" / "strategy-dll" / "BMP"
+            base.mkdir()
+            bmp.mkdir(parents=True)
+            (base / "SYSTEMSD.DAT").write_bytes(b"systems")
+            (bmp / "900.bmp").write_bytes(b"bitmap")
+            messages = base / "textstra-messages.json"
+
+            messages.write_text('{"29057":"body","29056":"{1:1} title"}', encoding="utf-8")
+            entries = PACKER.collect_entries(base, root / "ui")
+            self.assertIn("textstra-messages.json", [entry.key for entry in entries])
+            first = root / "first.orpk"
+            PACKER.write_pack(entries, first)
+
+            messages.write_text('{"29056":"{1:1} title","29057":"body"}', encoding="utf-8")
+            entries = PACKER.collect_entries(base, root / "ui")
+            second = root / "second.orpk"
+            PACKER.write_pack(entries, second)
+
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+            PACKER.verify_pack(second, entries)
+
     def test_optional_audio_uses_relative_runtime_keys(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
