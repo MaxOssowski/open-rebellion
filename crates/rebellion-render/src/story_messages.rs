@@ -8,11 +8,14 @@
 
 use std::collections::HashMap;
 
-use rebellion_core::events::{EVT_CHARACTER_FORCE, EVT_LUKE_DAGOBAH};
-use rebellion_core::ids::DatId;
+use rebellion_core::events::{
+    EventAction, EVT_CHARACTER_FORCE, EVT_JABBA_CAPTURES_CHEWIE, EVT_LEIA_FORCE, EVT_LUKE_DAGOBAH,
+};
+use rebellion_core::ids::{CharacterKey, DatId};
+use rebellion_core::world::GameWorld;
 
 use crate::cockpit::CockpitFaction;
-use crate::message_log::{MessagePicture, MessageRail};
+use crate::message_log::{GameMessage, MessageCategory, MessagePicture, MessageRail, RailAudience};
 use crate::system_window::character_mini_resource_id;
 
 /// The category story messages are filed under: the Mission rail, bit
@@ -23,46 +26,150 @@ use crate::system_window::character_mini_resource_id;
 /// port: story events without a recovered message class use the same bit.
 pub const STORY_RAIL: MessageRail = MessageRail::Mission;
 
-/// The STRATEGY picture a story message carries, where its class is
-/// recovered.
+/// The original message class a port story event is posted as, where the
+/// class is recovered and the port's event means the same thing
+/// (`ghidra/notes/message-index-rows.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoryClass {
+    /// Notification `0x221`, `FUN_0048d190`.
+    LukeGoesToDagobah,
+    /// Notification `0x1e1`, `FUN_0048ed80`.
+    ForceGrowth,
+    /// Notification `0x362` for Leia, `FUN_0048f1e0`'s `0x71d8` branch.
+    LeiaUsesForce,
+    /// Notification `0x1e0` case 5, `FUN_00490340`: a character taken at
+    /// Jabba's palace.
+    JabbaCaptures,
+}
+
+impl StoryClass {
+    /// The title and body, TEXTSTRA `RT_RCDATA` ids.
+    #[must_use]
+    pub const fn text_ids(self) -> (u16, u16) {
+        match self {
+            Self::LukeGoesToDagobah => (0x71b8, 0x71b9),
+            Self::ForceGrowth => (0x7180, 0x7181),
+            Self::LeiaUsesForce => (0x71d8, 0x71d9),
+            Self::JabbaCaptures => (0x7156, 0x7157),
+        }
+    }
+
+    /// The STRATEGY picture: the class's background, and the subject's
+    /// portrait where the class shows one.
+    #[must_use]
+    pub fn picture(self, side: CockpitFaction, subject: Option<(DatId, bool)>) -> MessagePicture {
+        let portrait = subject.and_then(|(dat_id, major)| character_portrait(dat_id, major));
+        match self {
+            Self::LukeGoesToDagobah => MessagePicture {
+                background: 0x421,
+                foreground: None,
+            },
+            Self::ForceGrowth | Self::LeiaUsesForce => MessagePicture {
+                background: side_background(side),
+                foreground: portrait,
+            },
+            Self::JabbaCaptures => MessagePicture {
+                background: 0x429,
+                foreground: None,
+            },
+        }
+    }
+}
+
+/// The message class a fired port story event is posted as.
 ///
-/// - `0x221` Luke Goes to Dagobah (`FUN_0048d190`): background `0x421`.
-/// - `0x1e1` Force Growth (`FUN_0048ed80`): the side's background
-///   (`0x412` Alliance, `0x413` Empire) with the character's portrait.
-///
-/// `subject` is the event's character (its DAT id and whether it is a
-/// major character).
+/// `0x221` and `0x1e1` share the original's ids. The port's Leia Force
+/// discovery (`0x363`) is the original's `0x362` for Leia. Its `0x387`
+/// is the original's Jabba capture only where the event captures someone:
+/// the port also uses that id for Han's rescue. The port's Final Battle
+/// (`0x220`) fires as the battle begins and the original's message
+/// (`FUN_0048e3c0`) reports its outcome, so it has no class.
 #[must_use]
-pub fn story_picture(
-    event_id: u32,
-    side: CockpitFaction,
-    subject: Option<(DatId, bool)>,
-) -> Option<MessagePicture> {
+pub fn story_class(event_id: u32, actions: &[EventAction]) -> Option<StoryClass> {
     match event_id {
-        EVT_LUKE_DAGOBAH => Some(MessagePicture {
-            background: 0x421,
-            foreground: None,
-        }),
-        EVT_CHARACTER_FORCE => Some(MessagePicture {
-            background: side_background(side),
-            foreground: subject.and_then(|(dat_id, major)| character_portrait(dat_id, major)),
-        }),
+        EVT_LUKE_DAGOBAH => Some(StoryClass::LukeGoesToDagobah),
+        EVT_CHARACTER_FORCE => Some(StoryClass::ForceGrowth),
+        EVT_LEIA_FORCE => Some(StoryClass::LeiaUsesForce),
+        EVT_JABBA_CAPTURES_CHEWIE
+            if actions
+                .iter()
+                .any(|action| matches!(action, EventAction::CaptureCharacter { .. })) =>
+        {
+            Some(StoryClass::JabbaCaptures)
+        }
         _ => None,
     }
 }
 
-/// A story message's original title and body, TEXTSTRA `RT_RCDATA` ids.
-///
-/// - `0x221` Luke Goes to Dagobah (`FUN_0048d190`): `0x71b8`, `0x71b9`.
-/// - `0x1e1` Force Growth (`FUN_0048ed80`): `0x7180`, `0x7181`, the
-///   character's name as parameter 1.
+/// The character a story message is about: the first one its event's
+/// actions name. The port's Force Growth milestone names none and is
+/// Luke's (`story_events::define_story_events`).
 #[must_use]
-pub const fn story_text_ids(event_id: u32) -> Option<(u16, u16)> {
-    match event_id {
-        EVT_LUKE_DAGOBAH => Some((0x71b8, 0x71b9)),
-        EVT_CHARACTER_FORCE => Some((0x7180, 0x7181)),
-        _ => None,
+pub fn story_subject(
+    world: &GameWorld,
+    class: StoryClass,
+    actions: &[EventAction],
+) -> Option<CharacterKey> {
+    actions
+        .iter()
+        .find_map(|action| match action {
+            EventAction::ModifyForceTier { character, .. }
+            | EventAction::CaptureCharacter { character, .. }
+            | EventAction::StartJediTraining { character } => Some(*character),
+            _ => None,
+        })
+        .or_else(|| {
+            (class == StoryClass::ForceGrowth)
+                .then(|| {
+                    world
+                        .characters
+                        .iter()
+                        .find(|(_, character)| character.name.to_lowercase().contains("luke"))
+                        .map(|(key, _)| key)
+                })
+                .flatten()
+        })
+}
+
+/// The message a fired story event posts: filed under [`STORY_RAIL`] for
+/// both sides and, where its class is recovered, titled, worded and
+/// pictured as the original's (`port_text` stays otherwise).
+#[must_use]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The event, the world it names, the player's side and the text table are all inputs."
+)]
+pub fn story_message(
+    world: &GameWorld,
+    event_id: u32,
+    actions: &[EventAction],
+    port_text: String,
+    tick: u64,
+    side: CockpitFaction,
+    texts: &HashMap<u16, String>,
+    category: MessageCategory,
+) -> GameMessage {
+    let mut message =
+        GameMessage::new(tick, port_text, category).on_rail(STORY_RAIL, RailAudience::Both);
+    let Some(class) = story_class(event_id, actions) else {
+        return message;
+    };
+    let subject = story_subject(world, class, actions).and_then(|key| world.characters.get(key));
+    let parameters: Vec<MessageParameter<'_>> = subject
+        .map(|character| MessageParameter::Character {
+            name: &character.name,
+            force_ranking: crate::status_window::force_ranking(character.jedi_level.base),
+        })
+        .into_iter()
+        .collect();
+    if let Some((title, body)) = story_text(class, texts, &parameters) {
+        message.text = body;
+        message = message.with_title(title);
     }
+    message.with_picture(class.picture(
+        side,
+        subject.map(|character| (character.dat_id, character.is_major)),
+    ))
 }
 
 /// One of a message's four parameters (`FUN_0060b9d0`): an object whose
@@ -91,15 +198,14 @@ impl MessageParameter<'_> {
 
 /// The story message's title and body from the player's TEXTSTRA
 /// message texts, its substitutions filled from `parameters`
-/// (`FUN_0060b9d0`'s four), or `None` when the class or the texts are
-/// missing.
+/// (`FUN_0060b9d0`'s four), or `None` when the texts are missing.
 #[must_use]
 pub fn story_text(
-    event_id: u32,
+    class: StoryClass,
     texts: &HashMap<u16, String>,
     parameters: &[MessageParameter<'_>],
 ) -> Option<(String, String)> {
-    let (title, body) = story_text_ids(event_id)?;
+    let (title, body) = class.text_ids();
     Some((
         fill_message_text(texts.get(&title)?, parameters),
         fill_message_text(texts.get(&body)?, parameters),
@@ -175,19 +281,21 @@ mod tests {
             force_ranking: "Trainee",
         };
         assert_eq!(
-            story_text(EVT_CHARACTER_FORCE, &texts, &[luke]),
+            story_text(StoryClass::ForceGrowth, &texts, &[luke]),
             Some((
                 "Luke Skywalker Force Growth".to_owned(),
                 "New insights.  My ranking is Trainee.".to_owned()
             ))
         );
         assert_eq!(
-            story_text(EVT_LUKE_DAGOBAH, &texts, &[]).map(|(title, _)| title),
+            story_text(StoryClass::LukeGoesToDagobah, &texts, &[]).map(|(title, _)| title),
             Some("Luke Goes to Dagobah".to_owned())
         );
-        // No texts (no TEXTSTRA.DLL) or no recovered class: none.
-        assert_eq!(story_text(EVT_LUKE_DAGOBAH, &HashMap::new(), &[]), None);
-        assert_eq!(story_text(0x399, &texts, &[]), None);
+        // No texts (no TEXTSTRA.DLL): none.
+        assert_eq!(
+            story_text(StoryClass::LukeGoesToDagobah, &HashMap::new(), &[]),
+            None
+        );
     }
 
     #[test]
@@ -220,31 +328,161 @@ mod tests {
     }
 
     #[test]
-    fn recovered_story_messages_carry_their_classes_pictures() {
-        // FUN_0048d190: Luke Goes to Dagobah, background 0x421.
-        assert_eq!(
-            story_picture(EVT_LUKE_DAGOBAH, CockpitFaction::Empire, None),
-            Some(MessagePicture {
-                background: 1057,
-                foreground: None
-            })
-        );
-        // FUN_0048ed80: Force Growth, the side's background and the
-        // character's portrait.
+    fn each_class_carries_its_recovered_texts_and_picture() {
+        // FUN_0048d190, FUN_0048ed80, FUN_0048f1e0 (Leia), FUN_00490340
+        // case 5: titles, bodies and backgrounds; the side's background is
+        // (side != 1) + 0x412.
         let luke = Some((DatId::new(578), true));
+        let leia = Some((DatId::new(577), true));
+        let expect = |class: StoryClass, side, subject, ids, background, foreground| {
+            assert_eq!(class.text_ids(), ids, "{class:?}");
+            assert_eq!(
+                class.picture(side, subject),
+                MessagePicture {
+                    background,
+                    foreground
+                },
+                "{class:?}"
+            );
+        };
+        use CockpitFaction::{Alliance, Empire};
+        expect(
+            StoryClass::LukeGoesToDagobah,
+            Empire,
+            luke,
+            (0x71b8, 0x71b9),
+            1057,
+            None,
+        );
+        expect(
+            StoryClass::ForceGrowth,
+            Alliance,
+            luke,
+            (0x7180, 0x7181),
+            1042,
+            Some(6210),
+        );
+        expect(
+            StoryClass::ForceGrowth,
+            Empire,
+            luke,
+            (0x7180, 0x7181),
+            1043,
+            Some(6210),
+        );
+        expect(
+            StoryClass::LeiaUsesForce,
+            Alliance,
+            leia,
+            (0x71d8, 0x71d9),
+            1042,
+            Some(6209),
+        );
+        expect(
+            StoryClass::JabbaCaptures,
+            Alliance,
+            None,
+            (0x7156, 0x7157),
+            1065,
+            None,
+        );
+    }
+
+    #[test]
+    fn port_story_events_map_to_their_original_classes_where_they_mean_the_same() {
+        // ghidra/notes/message-index-rows.md: 0x221 and 0x1e1 share the
+        // original's ids; the port's 0x363 is the original's 0x362 for
+        // Leia; 0x387 is Jabba's capture only when it captures someone;
+        // the Final Battle (0x220) and the gates have no class.
+        let (mut world, character) = (GameWorld::default(), CharacterKey::default());
+        let capture = [EventAction::CaptureCharacter {
+            character,
+            captor_faction: rebellion_core::dat::Faction::Empire,
+        }];
+        assert_eq!(story_class(0x221, &[]), Some(StoryClass::LukeGoesToDagobah));
+        assert_eq!(story_class(0x1e1, &[]), Some(StoryClass::ForceGrowth));
+        assert_eq!(story_class(0x363, &[]), Some(StoryClass::LeiaUsesForce));
         assert_eq!(
-            story_picture(EVT_CHARACTER_FORCE, CockpitFaction::Alliance, luke),
+            story_class(0x387, &capture),
+            Some(StoryClass::JabbaCaptures)
+        );
+        assert_eq!(story_class(0x387, &[]), None);
+        for unmapped in [0x220, 0x200, 0x212, 0x362, 0x399] {
+            assert_eq!(story_class(unmapped, &[]), None, "{unmapped:#x}");
+        }
+
+        // The subject is the character the actions name, else Luke for
+        // Force Growth.
+        assert_eq!(
+            story_subject(&world, StoryClass::JabbaCaptures, &capture),
+            Some(character)
+        );
+        assert_eq!(story_subject(&world, StoryClass::ForceGrowth, &[]), None);
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            name: "Luke Skywalker".into(),
+            ..Default::default()
+        });
+        assert_eq!(
+            story_subject(&world, StoryClass::ForceGrowth, &[]),
+            Some(luke)
+        );
+        assert_eq!(story_subject(&world, StoryClass::LeiaUsesForce, &[]), None);
+    }
+
+    #[test]
+    fn a_story_event_posts_its_classes_message_or_keeps_the_port_text() {
+        // FUN_0048f1e0's Leia branch: TEXTSTRA 0x71d8 / 0x71d9 over the
+        // side's background with her portrait, filed under bit 0x10.
+        let mut world = GameWorld::default();
+        let leia = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(577),
+            name: "Leia Organa".into(),
+            is_major: true,
+            ..Default::default()
+        });
+        let texts = HashMap::from([
+            (0x71d8, "Leia Uses Force".to_owned()),
+            (0x71d9, "My heritage gives me the Force.".to_owned()),
+        ]);
+        let actions = [EventAction::ModifyForceTier {
+            character: leia,
+            new_tier: rebellion_core::world::ForceTier::Aware,
+        }];
+        let message = story_message(
+            &world,
+            0x363,
+            &actions,
+            "port text".into(),
+            40,
+            CockpitFaction::Empire,
+            &texts,
+            MessageCategory::Event,
+        );
+        assert_eq!(message.title.as_deref(), Some("Leia Uses Force"));
+        assert_eq!(message.text, "My heritage gives me the Force.");
+        assert_eq!(
+            message.picture,
             Some(MessagePicture {
-                background: 1042,
-                foreground: Some(6210)
+                background: 1043,
+                foreground: Some(6209)
             })
         );
-        assert_eq!(
-            story_picture(EVT_CHARACTER_FORCE, CockpitFaction::Empire, luke)
-                .map(|picture| picture.background),
-            Some(1043)
+        assert_eq!(message.rail, Some(STORY_RAIL));
+
+        let gate = story_message(
+            &world,
+            0x399,
+            &[],
+            "port text".into(),
+            40,
+            CockpitFaction::Empire,
+            &texts,
+            MessageCategory::Event,
         );
-        // No recovered class: no picture.
-        assert_eq!(story_picture(0x399, CockpitFaction::Alliance, None), None);
+        assert_eq!(
+            (gate.text.as_str(), gate.title, gate.picture),
+            ("port text", None, None)
+        );
+        assert_eq!(gate.rail, Some(STORY_RAIL));
     }
 }

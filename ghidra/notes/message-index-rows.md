@@ -177,6 +177,20 @@ its constructor:
 | `0x200` | `FUN_0048c4c0` | `FUN_0048c320` | side `0x412`/`0x413` | set | `0x71ea` (Han captured) |
 | `0x1e0` | `FUN_00490340` | `FUN_00490250` (`0x10`) | side `0x412`/`0x413` or `0x429` | — | `0x7156` "Jabba Captures \|" |
 
+Port mapping (2026-10-09, `story_messages::story_class`): the port's
+`0x221` and `0x1e1` share the original's ids; its `0x363` (Leia's Force
+discovery) is the original's `0x362` Leia branch (`0x71d8`/`0x71d9`, her
+portrait); its `0x387` is `FUN_00490340` case 5 (`0x7156`/`0x7157`,
+background `0x429`, no portrait) only when the event captures someone,
+since the port also uses that id for Han's rescue. Unmapped: the Final
+Battle (`FUN_0048e3c0`, background `0x427`/`0x428`, body `0x71e1` or
+`0x71e2` by Luke's fate) reports the battle's outcome while the port's
+`0x220` fires as it begins; `0x200` (`FUN_0048c4c0`, a character leaving
+to rescue Han) has no port counterpart; nor do Luke's heritage
+(`FUN_0048dc50`, background `0x422`) and the generic Future Jedi.
+The Final Battle class (dispatcher `0x48d7f0`) accumulates notifications
+`0x211` (bit 0) and `0x220` (bit 4) and builds on notification 2.
+
 `FUN_0048af30` returns `0x10`, the Mission category. A character's
 foreground is `FUN_004c5000`: its class picture (`+0x30 & 0xfff`) plus
 `0x1000`, so STRATEGY 6208-6273 (major) and 6720-6811 (minor). Titles and

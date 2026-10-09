@@ -288,23 +288,6 @@ fn configured_asset_render_profile() -> AssetRenderProfile {
     }
 }
 
-/// The character a story message pictures, where the port's event names
-/// one: its Force Growth (`0x1e1`) milestone is Luke's, as
-/// `story_events::register_story_events` defines it.
-fn story_subject(
-    world: &rebellion_core::world::GameWorld,
-    event_id: u32,
-) -> Option<&rebellion_core::world::Character> {
-    (event_id == rebellion_core::events::EVT_CHARACTER_FORCE)
-        .then(|| {
-            world
-                .characters
-                .values()
-                .find(|character| character.name.to_lowercase().contains("luke"))
-        })
-        .flatten()
-}
-
 fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
     let mut slots: Vec<_> = rebellion_data::save::list_saves(saves_dir)
         .into_iter()
@@ -2295,42 +2278,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                         GameEffect::StoryMessageDisplayed { text, .. } => {
                             // A story event is a message the player reads in
                             // the Message window (DEV-UI-019 retired).
-                            let mut message =
-                                GameMessage::new(current_tick, text, MessageCategory::Event)
-                                    .on_rail(
-                                        rebellion_render::story_messages::STORY_RAIL,
-                                        RailAudience::Both,
-                                    );
-                            let subject = story_subject(&world, fired.event_id);
-                            if let Some((title, body)) =
-                                rebellion_render::story_messages::story_text(
-                                    fired.event_id,
-                                    &message_texts,
-                                    &subject
-                                        .map(|character| {
-                                            rebellion_render::story_messages::MessageParameter::Character {
-                                                name: &character.name,
-                                                force_ranking:
-                                                    rebellion_render::status_window::force_ranking(
-                                                        character.jedi_level.base,
-                                                    ),
-                                            }
-                                        })
-                                        .into_iter()
-                                        .collect::<Vec<_>>(),
-                                )
-                            {
-                                message.text = body;
-                                message = message.with_title(title);
-                            }
-                            if let Some(picture) = rebellion_render::story_messages::story_picture(
+                            msg_log.push(rebellion_render::story_messages::story_message(
+                                &world,
                                 fired.event_id,
+                                &fired.actions,
+                                text,
+                                current_tick,
                                 cockpit_state.faction,
-                                subject.map(|character| (character.dat_id, character.is_major)),
-                            ) {
-                                message = message.with_picture(picture);
-                            }
-                            msg_log.push(message);
+                                &message_texts,
+                                MessageCategory::Event,
+                            ));
                         }
                         GameEffect::SpecialForceSpawned {
                             at_system,
