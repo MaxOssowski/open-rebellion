@@ -76,6 +76,7 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | [build-delivery.md](build-delivery.md) | Build queue products, completion, per-object transit time `max(1, isqrt(d^2) / GNPRTB 5120 * speed / 100)`, arrival event 0x387; corrects the bombardment misread | FUN_0052b960, FUN_0052bee0, FUN_00514a60, FUN_00556430, FUN_0055d8c0, FUN_0057be20, FUN_004fb520 |
 | [timer-scheduler.md](timer-scheduler.md) | Frame loop and setup sequence, the day scheduler, timers 0x380 to 0x394 with their handlers; refutes the 0x1f0 master-tick claim | FUN_0040a050, FUN_005136d0, FUN_0041dff0, FUN_0051df30, FUN_00586130, FUN_005862a0 |
 | [side-resource-monitors.md](side-resource-monitors.md) | The Raw Materials, Refined Materials and Maintenance monitors: side-object fields, setters, mine/refinery production hooks, a day-0 maintenance survey, and three unrecovered values | FUN_00422620, FUN_00429200, FUN_0052fff0, FUN_005323c0, FUN_00516360, FUN_0052fb30 |
+| [manufacturing-manager.md](manufacturing-manager.md) | The production manager end to end: queue membership, build points from yard cycles, the current product, completion and overflow, the five commands, and the port's differences | FUN_0052a710, FUN_00529dd0, FUN_0052a430, FUN_0052b960, FUN_00529d70, FUN_0052a140 |
 | [community-address-remap.md](community-address-remap.md) | The community disassembly is a different REBEXE build; region shifts and 43 remapped functions | FUN_00508250, FUN_0050b310, FUN_00559fe0, FUN_0055e410 |
 
 ## Decompiled Functions (5,408 files)
