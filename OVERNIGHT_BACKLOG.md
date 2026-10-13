@@ -54,7 +54,7 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
    changing an expectation with evidence it was wrong. I would not do this
    unattended without your sign-off.
 
-7. `[todo]` **Stop keying Death Star combat checks on family `0x34` (F-025).**
+7. `[blocked]` **Stop keying Death Star combat checks on family `0x34` (F-025).** NEEDS YOUR CALL.
    `combat.rs` (:347, :1346) treats family `0x34` as the Death Star; that family
    is the Empire major characters. `CapitalShipClass::is_death_star` already
    accepts CAPSHPSD record 136.
@@ -63,20 +63,62 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
    Caveat from F-017: extending shield absorption to record 136 would make the
    seeded Death Star unkillable in auto-resolve, so keep absorption out of this
    slice and say so in the commit.
+   Blocked (session B): both halves of "done when" contradict existing
+   assertions. `entity_kind_classifies_family_bytes_correctly` asserts
+   `from_family_byte(0x34) == DeathStar`; `ds_shield_blocks_hull_damage` builds
+   its Death Star with family `0x34`; and
+   `the_seeded_death_star_takes_hull_damage_while_nothing_can_drop_its_shield`
+   asserts that record 136 is NOT shield-absorbed, which is exactly what
+   "`is_death_star` uses the class identity" would undo. Doing this means
+   rewriting those expectations, which the overnight rules forbid unattended.
+   `CombatEntityKind` has no caller outside `combat.rs` tests, so nothing in
+   play depends on the answer. Nothing was changed.
 
-8. `[todo]` **Resource incident on its recovered timer (F-029, first half).**
+8. `[blocked]` **Resource incident on its recovered timer (F-029, first half).** NEEDS YOUR CALL.
    `economy.rs:1018 evaluate_incident_flags` raises the resource flag from
    overcapped energy or raw materials. Original: event `0x390` every 1 to 500
    ticks (GNPRTB 7719/7720) through `FUN_00556be0` and RESRCTB.
    Done when: the resource incident fires from that timer with a
    failing-without test. Check first whether the timer needs a save field; if
    it does, stop and split (save-format changes need your approval).
+   Blocked (session B): the timer needs a persisted "next resource incident
+   tick" (like `UprisingState::next_disaster_tick`). The save is a fixed
+   layout: any new field bumps `SAVE_VERSION` (34) and rejects older saves.
+   Split, nothing implemented:
+   - 8a. `[todo]` Approve the save bump (one `Option<u64>`; item 9 would add a
+     per-system timer in the same bump).
+   - 8b. `[todo]` Port the resolver. Recovered tonight from the `.c` files, so
+     this needs no new Ghidra work:
+     - `FUN_00556fa0`: delay = GNPRTB 7719 (`DAT_006bb4b8`) + rand(0..=GNPRTB
+       7720 (`DAT_006bb4a8`)).
+     - `FUN_00556be0`: pick one system uniformly among those with `+0x50`
+       bit 6 (existing); none, no incident.
+     - `FUN_0050cc70`: raw = `+0x64`, energy = `+0x5c`; has_mine = the
+       holder's walk of families `0x2c..0x2d` is not empty (`FUN_0052d690`);
+       has_facility = the holder's walk of families `0x20..0x30` is not empty
+       (`FUN_00539df0`). Pulse incident bit 19 and store the values only if
+       one changed.
+     - `FUN_00559ee0`: code = RESRCTB step lookup of a `0..=99` draw
+       (`FUN_0053e2e0`). 1: has_mine and raw > G7711, raw - 1. 2: has_facility
+       and energy > G7713, energy - 1. 3: raw < G7712 and raw < energy,
+       raw + 1. 4: energy < G7714, energy + 1.
+     - GNPRTB ids come from the loader `FUN_00558bb0`: `0x1e1f` to
+       `DAT_006bb4b4`, `0x1e20` to `DAT_006bb40c`, `0x1e21` to `DAT_006bb3e0`,
+       `0x1e22` to `DAT_006bb488`.
+     - Not yet read: whether the family ranges are inclusive at the top, and
+       what the setters `FUN_00509dc0` (raw) and `FUN_00509cc0` (energy) do
+       beyond storing (they may clamp or evict facilities).
+   - 8c. `[todo]` Drop the invented `resource` trigger from
+     `evaluate_incident_flags`.
 
-9. `[todo]` **Informant incident on its recovered timer (F-029, second half).**
+9. `[blocked]` **Informant incident on its recovered timer (F-029, second half).** NEEDS YOUR CALL.
    Per-system timer (`+0x40`, GNPRTB 7703/7704) that rolls support in
    `FUN_0050cbe0` before INFORMTB (`FUN_0050d510`).
    Done when: as item 8, and `evaluate_incident_flags` has no invented trigger
    left. Same save-format caution.
+   Blocked (session B): needs a per-system timer in the save, so it waits on
+   the same approval as 8a. `timer-scheduler.md` also lists this timer's
+   record delay as "not traced", so it needs Ghidra work as well. Not started.
 
 10. `[done]` **Load `research_order` for troop and facility classes (F-018).**
     The audit says only capital ships and fighters gate on research; verify

@@ -1,5 +1,69 @@
 # Overnight log, session B (2026-10-14)
 
+## Summary
+
+Session B of two (see the note below the summary for why there are two).
+Branch `overnight/2026-10-14-b`, worktree `.claude/worktrees/overnight-b`.
+Nothing was pushed. `main` is untouched. Session A's results are in
+`OVERNIGHT_LOG.md` on `overnight/2026-10-14`.
+
+Of my six items, three are done and three are blocked on decisions only you
+can make. Every commit passed build, the full test suite, clippy with no new
+warnings, the provenance scan, and the release WASM compile. No browser or
+native GUI check was run for anything.
+
+### Features completed
+
+| Item | Commit | What |
+|---|---|---|
+| 12 | `78c39acd` | "Advance N ticks" now runs N real simulated days instead of skipping them |
+| 11 | `5413b35f` | F-005 re-checked: the victory modal is reachable; audit and roadmap updated (docs only) |
+| 10 | `5d163de0`, `f78ad68d` | The AI no longer orders regiment or facility classes its side has not researched; F-018 updated |
+
+### Features blocked and why
+
+| Item | Why |
+|---|---|
+| 7 (Death Star family `0x34`) | Its "done when" contradicts three existing test assertions, one of them deliberately. Needs your decision on shield absorption. |
+| 8 (resource incident timer) | Needs a save-version bump that rejects existing saves. The rule is fully written up in backlog item 8b, ready to port once you approve. |
+| 9 (informant incident timer) | Same save bump, plus the timer's delay is not yet traced in Ghidra. |
+
+### Assumptions about original-game behavior to verify
+
+- **AI research gate (item 10).** The gate itself, "a class is buildable when
+  its DAT `research_order` is at or below the side's level", is a hypothesis
+  for the player too; the audit says no recovered code shows it. I made the
+  AI consistent with the player, nothing more.
+- **Uncatalogued classes are not gated** (`// ASSUMPTION:` in
+  `AISystem::catalog_class_is_researched`). Only matters for test worlds.
+- **Advance-ticks pacing (item 12).** One queued day per frame is my choice;
+  it is a play-test tool with no original counterpart.
+- **Resource incident rule in backlog 8b** is my reading of four decompiled
+  functions. Nothing is implemented from it; check it before anyone ports it.
+
+### Things you should check by hand
+
+- Pause a game, run "advance 10 ticks" from the command palette, and confirm
+  ten days of events arrive. The one-line call in `main.rs` has no test.
+- The seed-42 replay golden already fails at the snapshot commit, so I could
+  not measure whether item 10 changes it.
+- `web/open-rebellion.wasm` in the main checkout was rebuilt by my baseline
+  run while session A was mid-edit. Session A said it would rebuild it before
+  committing; if it is dirty in the morning, rebuild rather than trust it.
+
+### Suggested next items
+
+1. Decide the save bump, then do 8b and 8c (small once approved).
+2. Decide item 7's shield question.
+3. Backlog 11a to 11d: victory cutscene policy, defeat wording,
+   `ForceVictoryCheck`, and a browser pass of the win flow.
+4. Fix or re-baseline the seed-42 golden. While it fails, no simulation
+   change can be checked against it.
+5. Merge this branch into `overnight/2026-10-14`. Only `OVERNIGHT_BACKLOG.md`
+   is edited on both sides, on different items.
+
+## Why there are two sessions
+
 Two sessions were started with the same overnight prompt in the same checkout.
 This is the second one's log. To keep the two from overwriting each other,
 this session works in its own worktree (`.claude/worktrees/overnight-b`) on
@@ -105,3 +169,34 @@ native GUI acceptance was run for anything below.
   unit of an unresearched class.
 - F-018 in `audit-report.md` updated; the JSON entry's status
   (`partially_remediated`) still holds, so it is unchanged.
+
+### Item 7: Death Star checks on family `0x34` — blocked, needs your call
+
+- Not attempted in code. Both "done when" conditions contradict assertions in
+  existing tests (`entity_kind_classifies_family_bytes_correctly`,
+  `ds_shield_blocks_hull_damage`, and
+  `the_seeded_death_star_takes_hull_damage_while_nothing_can_drop_its_shield`).
+  The last one pins the opposite of the requested change on purpose: with no
+  way to drop the shield generator, a class-identity check would make the
+  real Death Star unkillable in auto-resolve.
+- The decision you need to make: either keep absorption off until the shield
+  generator can be destroyed (then F-025 is only a rename of the test fixture
+  and the enum variant), or accept an unkillable Death Star for now.
+
+### Items 8 and 9: resource and informant incident timers — blocked, need your call
+
+- Both need new persisted timer fields. The save layout is fixed, so that is
+  a `SAVE_VERSION` bump (34 to 35) that rejects existing saves. The backlog
+  said to stop and split in that case; I did.
+- Item 8 is otherwise ready: I read the decompiles and wrote the full rule
+  into backlog item 8b, including the four GNPRTB ids (7711 to 7714) that the
+  notes did not have. Two details are still unread and listed there.
+- Item 9 additionally needs Ghidra work on the per-system timer's delay.
+- No code changed for either.
+
+### Mutant left alive
+
+- `tick.rs:239`, "replace match guard `self.tick + ticks_elapsed >= day` with
+  true". It predates this session. Through the public API it cannot be
+  observed: `pause()` always sets the stop to the next day, so whenever a day
+  completes the guard is already true. Left as is.
