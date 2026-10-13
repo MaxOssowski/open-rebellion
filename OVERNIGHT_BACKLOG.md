@@ -78,7 +78,7 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
    Done when: as item 8, and `evaluate_incident_flags` has no invented trigger
    left. Same save-format caution.
 
-10. `[todo]` **Load `research_order` for troop and facility classes (F-018).**
+10. `[done]` **Load `research_order` for troop and facility classes (F-018).**
     The audit says only capital ships and fighters gate on research; verify
     against `world/mod.rs:1320` first, since the field may already be loaded.
     Done when: both class kinds load the DAT `research_order`, build lists gate

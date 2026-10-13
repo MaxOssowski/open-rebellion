@@ -802,9 +802,20 @@ cross-runtime proof remain open
   Ship level. Fighters use their own FIGHTSD.DAT order. Three tests fail
   without the gate, scoped `cargo mutants` catches all 13 gate mutants, and
   the seed-42 golden changes from tick 10 for this cause.
-- Open: troop and facility classes do not load `research_order` yet. The
-  `<=` comparison and the level-0 start rest on the `rebellion2` prototype
-  and the DAT data.
+- Open: the `<=` comparison and the level-0 start rest on the `rebellion2`
+  prototype and the DAT data.
+- Fix (2026-10-14): the "troop and facility classes do not load
+  `research_order`" gap is closed. `BuildableClass` carries the order from
+  TROOPSD, SPECFCSD, DEFFACSD, MANFACSD, and PROFACSD, and
+  `build_selection::listed_classes` already gates the Training Facility list
+  on the Troop tree and the Construction Yard list on the Facility tree for
+  both sides. The AI was the remaining hole: it ordered a regiment, defense,
+  or yard class by copying one it owned, without the gate. It now skips a
+  class its side has not researched on that class's tree
+  (`AISystem::catalog_class_is_researched`), with a test over both sides that
+  fails without the gate; scoped `cargo mutants` catches all 12 viable
+  mutants. The seed-42 golden already failed before this change (the default
+  galaxy loads 100 systems), so its effect on the golden is unmeasured.
 - Correction (2026-09-26): `FUN_0052e4f0` and `FUN_0052e510` are not empty and
   are not buildability checks. Each returns `FUN_005839e0(this+0x88 / +0x8c,
   key)`, a count of matching list entries. Their only caller, `FUN_005330b0`,

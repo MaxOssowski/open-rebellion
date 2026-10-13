@@ -79,3 +79,29 @@ native GUI acceptance was run for anything below.
   roadmap line notes the same. No code changed.
 - This is a code reading, not an acceptance pass. I did not win a game in the
   browser. Open gaps are backlog sub-items 11a to 11d.
+
+### Item 10: research gate for troop and facility classes — done
+
+- Finding: the backlog premise was half stale. `BuildableClass` already loads
+  `research_order` for regiments, special forces and all facility files, and
+  the player's Build Selection lists already gate on the Troop and Facility
+  trees, with an existing test covering both sides.
+- The real gap was the AI: `find_troop_class`, `find_defense_facility_class`
+  and `find_manufacturing_facility_class` copied the class of any unit the
+  side owned, researched or not. They now skip classes the side has not
+  researched on that class's tree.
+- Test: `the_ai_orders_no_regiment_or_facility_class_its_side_has_not_researched`
+  runs both sides and checks the trees are independent and the other side's
+  levels do not count. Shown failing with the gate stubbed to `true`.
+  `cargo mutants` on the four functions: 12 caught, 3 unviable, 0 missed.
+- ASSUMPTION (in code): a class missing from the catalog is not gated. Real
+  data always has the catalog; this keeps catalog-less test worlds working.
+- Caveat to verify: the research-order gate itself is a hypothesis for the
+  player too (audit F-018: "No recovered code gates research"). This change
+  makes the AI consistent with the player; it does not add evidence for the
+  gate.
+- Golden: the seed-42 replay test already fails at baseline, so I could not
+  measure whether this moves it. AI production can differ once a side owns a
+  unit of an unresearched class.
+- F-018 in `audit-report.md` updated; the JSON entry's status
+  (`partially_remediated`) still holds, so it is unchanged.

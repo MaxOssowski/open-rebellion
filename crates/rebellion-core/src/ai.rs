@@ -1162,7 +1162,7 @@ impl AISystem {
                 })
                 .count();
             if training && friendly_troops < 2 {
-                if let Some(troop_key) = Self::find_troop_class(world, faction) {
+                if let Some(troop_key) = Self::find_troop_class(world, research_state, faction) {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
                         kind: BuildableKind::Troop(troop_key),
@@ -1184,7 +1184,9 @@ impl AISystem {
                 })
                 .count();
             if construction && friendly_defenses < 2 {
-                if let Some(def_key) = Self::find_defense_facility_class(world, faction) {
+                if let Some(def_key) =
+                    Self::find_defense_facility_class(world, research_state, faction)
+                {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
                         kind: BuildableKind::DefenseFacility(def_key),
@@ -1197,7 +1199,9 @@ impl AISystem {
             // Build more construction yards if below cap.
             let yard_count = system.manufacturing_facilities.len();
             if construction && yard_count < config.ai.max_construction_yards {
-                if let Some(mfg_key) = Self::find_manufacturing_facility_class(world, faction) {
+                if let Some(mfg_key) =
+                    Self::find_manufacturing_facility_class(world, research_state, faction)
+                {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
                         kind: BuildableKind::ManufacturingFacility(mfg_key),
@@ -1255,17 +1259,50 @@ impl AISystem {
             .max_by_key(|(_, cs)| cs.hull)
     }
 
+    /// Whether a side has researched catalog class `class` on tree `tech`:
+    /// the same test Build Selection applies to a player's list
+    /// (`build_selection::listed_classes`), so the AI cannot order a regiment
+    /// or facility class the player could not.
+    ///
+    /// hyp: the research-order gate itself rests on the DAT `research_order`
+    /// field and the `rebellion2` prototype; recovered by the function that
+    /// fills the manager lists `FUN_0052e580` reads (F-018).
+    /// ASSUMPTION: a class the catalog does not hold has no order to wait on.
+    fn catalog_class_is_researched(
+        world: &GameWorld,
+        research_state: &ResearchState,
+        is_alliance: bool,
+        class: DatId,
+        tech: TechType,
+    ) -> bool {
+        world
+            .buildable_classes
+            .get(&class)
+            .is_none_or(|c| research_state.is_unlocked(is_alliance, c.research_order, tech))
+    }
+
     /// Find a manufacturing facility key to use as a class reference for facility construction.
     ///
     /// In Living Galaxy scope we just pick any existing faction-owned facility
-    /// as the template for "build another like this".
+    /// of a researched class as the template for "build another like this".
     fn find_manufacturing_facility_class(
         world: &GameWorld,
+        research_state: &ResearchState,
         faction: AiFaction,
     ) -> Option<FacilityBuild> {
+        let is_alliance = matches!(faction, AiFaction::Alliance);
         world
             .manufacturing_facilities
             .iter()
+            .filter(|(_, f)| {
+                Self::catalog_class_is_researched(
+                    world,
+                    research_state,
+                    is_alliance,
+                    f.class_dat_id,
+                    TechType::Facility,
+                )
+            })
             .find(|(_, f)| match faction {
                 AiFaction::Alliance => f.side == crate::dat::Faction::Alliance,
                 AiFaction::Empire => f.side == crate::dat::Faction::Empire,
@@ -1277,10 +1314,24 @@ impl AISystem {
     }
 
     /// Find a troop unit key to use as a class reference for troop production.
-    fn find_troop_class(world: &GameWorld, faction: AiFaction) -> Option<DatId> {
+    fn find_troop_class(
+        world: &GameWorld,
+        research_state: &ResearchState,
+        faction: AiFaction,
+    ) -> Option<DatId> {
+        let is_alliance = matches!(faction, AiFaction::Alliance);
         world
             .troops
             .iter()
+            .filter(|(_, t)| {
+                Self::catalog_class_is_researched(
+                    world,
+                    research_state,
+                    is_alliance,
+                    t.class_dat_id,
+                    TechType::Troop,
+                )
+            })
             .find(|(_, t)| match faction {
                 AiFaction::Alliance => t.is_alliance,
                 AiFaction::Empire => !t.is_alliance,
@@ -1289,10 +1340,24 @@ impl AISystem {
     }
 
     /// Find a defense facility key to use as a class reference for defense construction.
-    fn find_defense_facility_class(world: &GameWorld, faction: AiFaction) -> Option<FacilityBuild> {
+    fn find_defense_facility_class(
+        world: &GameWorld,
+        research_state: &ResearchState,
+        faction: AiFaction,
+    ) -> Option<FacilityBuild> {
+        let is_alliance = matches!(faction, AiFaction::Alliance);
         world
             .defense_facilities
             .iter()
+            .filter(|(_, d)| {
+                Self::catalog_class_is_researched(
+                    world,
+                    research_state,
+                    is_alliance,
+                    d.class_dat_id,
+                    TechType::Facility,
+                )
+            })
             .find(|(_, d)| match faction {
                 AiFaction::Alliance => d.side == crate::dat::Faction::Alliance,
                 AiFaction::Empire => d.side == crate::dat::Faction::Empire,
@@ -2553,6 +2618,148 @@ mod tests {
             ordered(&world),
             Some(BuildableKind::ManufacturingFacility(empire(0x2a00_0003)))
         );
+    }
+
+    /// What a side's AI orders at its one system, which has a construction
+    /// yard and a training facility (both research order 1 on the Facility
+    /// tree), a regiment of a Troop-order-2 class and a defense of a
+    /// Facility-order-3 class, at the given research levels. The other side
+    /// has researched everything.
+    fn ground_order_at_levels(
+        is_alliance: bool,
+        troop: u32,
+        facility: u32,
+    ) -> Option<BuildableKind> {
+        use crate::world::BuildableClass;
+        let side = crate::dat::Faction::of_alliance(is_alliance);
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let mut catalog = |id: u32, order: u32| {
+            world.buildable_classes.insert(
+                DatId(id),
+                BuildableClass {
+                    is_alliance: true,
+                    is_empire: true,
+                    research_order: order,
+                    ..BuildableClass::default()
+                },
+            );
+        };
+        catalog(0x2a00_0003, 1);
+        catalog(0x2900_0002, 1);
+        catalog(0x1000_0002, 2);
+        catalog(0x2200_0001, 3);
+        let facility_of = |world: &mut GameWorld, class| {
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: DatId(class),
+                    side,
+                    is_shipyard: false,
+                })
+        };
+        let yard = facility_of(&mut world, 0x2a00_0003);
+        let training = facility_of(&mut world, 0x2900_0002);
+        let sys_key = world.systems.insert(System {
+            dat_id: DatId(0),
+            name: "Home".into(),
+            sector,
+            x: 0,
+            y: 0,
+            exploration_status: crate::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![yard, training],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(side),
+        });
+        world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId(0x1000_0002),
+            is_alliance,
+            regiment_strength: 100,
+        });
+        world
+            .defense_facilities
+            .insert(crate::world::DefenseFacilityInstance {
+                class_dat_id: DatId(0x2200_0001),
+                side,
+            });
+        let mut research = crate::research::ResearchState::new();
+        let all = crate::research::ResearchLevels {
+            ship: 9,
+            troop: 9,
+            facility: 9,
+        };
+        let own = crate::research::ResearchLevels {
+            ship: 0,
+            troop,
+            facility,
+        };
+        (research.alliance, research.empire) = if is_alliance { (own, all) } else { (all, own) };
+        let faction = if is_alliance {
+            AiFaction::Alliance
+        } else {
+            AiFaction::Empire
+        };
+        AISystem::advance(
+            &mut AIState::new(faction),
+            &world,
+            &ManufacturingState::new(),
+            &MissionState::new(),
+            &crate::movement::MovementState::new(),
+            &ticks(7),
+            &GameConfig::default(),
+            &research,
+        )
+        .into_iter()
+        .find_map(|action| match action {
+            AIAction::EnqueueProduction { system, kind, .. } if system == sys_key => Some(kind),
+            _ => None,
+        })
+    }
+
+    /// hyp: the AI waits on the same DAT `research_order` gate Build Selection
+    /// applies to the player's lists (F-018), each class on its own tree.
+    #[test]
+    fn the_ai_orders_no_regiment_or_facility_class_its_side_has_not_researched() {
+        for is_alliance in [true, false] {
+            let build = |class| FacilityBuild {
+                class: DatId(class),
+                is_alliance,
+            };
+            // Nothing researched: the other side's levels do not count.
+            assert_eq!(ground_order_at_levels(is_alliance, 0, 0), None);
+            // The regiment class waits on the Troop tree alone.
+            assert_eq!(ground_order_at_levels(is_alliance, 1, 0), None);
+            assert_eq!(
+                ground_order_at_levels(is_alliance, 2, 0),
+                Some(BuildableKind::Troop(DatId(0x1000_0002)))
+            );
+            // The defense class waits on the Facility tree alone; below its
+            // order the yard class, already researched, is ordered instead.
+            assert_eq!(
+                ground_order_at_levels(is_alliance, 0, 3),
+                Some(BuildableKind::DefenseFacility(build(0x2200_0001)))
+            );
+            assert_eq!(
+                ground_order_at_levels(is_alliance, 0, 2),
+                Some(BuildableKind::ManufacturingFacility(build(0x2a00_0003)))
+            );
+            assert_eq!(
+                ground_order_at_levels(is_alliance, 0, 1),
+                Some(BuildableKind::ManufacturingFacility(build(0x2a00_0003)))
+            );
+        }
     }
 
     fn ticks(n: u64) -> Vec<TickEvent> {
