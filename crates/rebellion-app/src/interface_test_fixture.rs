@@ -41,7 +41,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 55;
+const SCENARIO_COUNT: u8 = 56;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -113,6 +113,9 @@ pub enum Scenario {
     FleetFinder = 52,
     ProductionDestination = 53,
     BuildSelection = 54,
+    /// Two story messages wait in the Mission category: Leia Uses Force and
+    /// Jabba Captures Chewbacca (`story_messages`).
+    StoryMessages = 55,
 }
 
 impl Scenario {
@@ -173,6 +176,7 @@ impl Scenario {
             52 => Self::FleetFinder,
             53 => Self::ProductionDestination,
             54 => Self::BuildSelection,
+            55 => Self::StoryMessages,
             _ => return None,
         })
     }
@@ -1207,6 +1211,147 @@ pub fn emit_production(
         return;
     };
     let bytes = serde_json::to_vec(&report).expect("serialize the production report");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+}
+
+/// The story-message scenario's two messages, posted as the game posts
+/// them (`story_messages::story_message`): Leia's Force discovery (port
+/// `0x363`, the original's `0x362` Leia branch) and Chewbacca taken at
+/// Jabba's palace (port `0x387` with a capture, the original's `0x1e0`
+/// case 5). They are filed unread under the Mission rail.
+pub fn post_story_messages(
+    request: FixtureRequest,
+    world: &GameWorld,
+    log: &mut rebellion_render::MessageLog,
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    if request.scenario != Scenario::StoryMessages {
+        return;
+    }
+    use rebellion_core::events::{EventAction, EVT_JABBA_CAPTURES_CHEWIE, EVT_LEIA_FORCE};
+    let named = |needle: &str| {
+        world
+            .characters
+            .iter()
+            .find(|(_, character)| character.name.to_lowercase().contains(needle))
+            .map(|(key, _)| key)
+    };
+    let (Some(leia), Some(chewbacca)) = (named("leia"), named("chewbacca")) else {
+        return;
+    };
+    let posts = [
+        (
+            EVT_LEIA_FORCE,
+            vec![EventAction::ModifyForceTier {
+                character: leia,
+                new_tier: rebellion_core::world::ForceTier::Aware,
+            }],
+            "Princess Leia has discovered her connection to the Force!",
+        ),
+        (
+            EVT_JABBA_CAPTURES_CHEWIE,
+            vec![EventAction::CaptureCharacter {
+                character: chewbacca,
+                captor_faction: Faction::Empire,
+            }],
+            "Chewbacca has been captured by Jabba's guards!",
+        ),
+    ];
+    for (event_id, actions, port_text) in posts {
+        log.push(rebellion_render::story_messages::story_message(
+            world,
+            event_id,
+            &actions,
+            port_text.to_owned(),
+            0,
+            request.faction,
+            texts,
+            rebellion_render::MessageCategory::Event,
+        ));
+    }
+}
+
+/// The story-message gate's view: where the Mission rail button is, where
+/// the Message window opens, and what it shows.
+#[derive(Debug, Serialize, PartialEq)]
+struct FixtureStoryMessages {
+    status: &'static str,
+    code: u32,
+    rail_x: f32,
+    rail_y: f32,
+    window_left: f32,
+    window_top: f32,
+    index_open: bool,
+    mode: &'static str,
+    rows: Vec<String>,
+    viewing_title: Option<String>,
+    viewing_text: Option<String>,
+    viewing_background: Option<u32>,
+    viewing_foreground: Option<u32>,
+}
+
+fn story_messages_report(
+    request: FixtureRequest,
+    log: &rebellion_render::MessageLog,
+    index: Option<&rebellion_render::message_index::MessageIndexState>,
+    player_is_alliance: bool,
+) -> Option<FixtureStoryMessages> {
+    if request.scenario != Scenario::StoryMessages {
+        return None;
+    }
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let rail = rebellion_render::cockpit::strategic_message_index_controls(request.faction)
+        .iter()
+        .zip(rebellion_render::MessageRail::RAIL_ORDER)
+        .find(|(_, rail)| *rail == rebellion_render::story_messages::STORY_RAIL)
+        .map(|(control, _)| {
+            let rect = control.rect;
+            egui_macroquad::egui::pos2(
+                layout.canvas.x + (rect.x + rect.width / 2.0) * layout.scale,
+                layout.canvas.y + (rect.y + rect.height / 2.0) * layout.scale,
+            )
+        })?;
+    let window = rebellion_render::message_index::window_rect(layout).min;
+    let report = index.map(|index| index.report(log, player_is_alliance));
+    let viewing = report
+        .as_ref()
+        .and_then(|report| report.viewing)
+        .and_then(|id| log.messages().iter().find(|message| message.id == id));
+    Some(FixtureStoryMessages {
+        status: "story-messages",
+        code: request.code,
+        rail_x: rail.x,
+        rail_y: rail.y,
+        window_left: window.x,
+        window_top: window.y,
+        index_open: report.is_some(),
+        mode: match report.as_ref().map(|report| report.mode) {
+            Some(rebellion_render::message_index::IndexMode::SingleMessage) => "single",
+            Some(rebellion_render::message_index::IndexMode::List) => "list",
+            None => "closed",
+        },
+        rows: report
+            .map(|report| report.rows.into_iter().map(|row| row.text).collect())
+            .unwrap_or_default(),
+        viewing_title: viewing.and_then(|message| message.title.clone()),
+        viewing_text: viewing.map(|message| message.text.clone()),
+        viewing_background: viewing.and_then(|message| message.picture).map(|picture| picture.background),
+        viewing_foreground: viewing
+            .and_then(|message| message.picture)
+            .and_then(|picture| picture.foreground),
+    })
+}
+
+pub fn emit_story_messages(
+    request: FixtureRequest,
+    log: &rebellion_render::MessageLog,
+    index: Option<&rebellion_render::message_index::MessageIndexState>,
+    player_is_alliance: bool,
+) {
+    let Some(report) = story_messages_report(request, log, index, player_is_alliance) else {
+        return;
+    };
+    let bytes = serde_json::to_vec(&report).expect("serialize the story-message report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 

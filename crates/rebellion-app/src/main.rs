@@ -1279,6 +1279,7 @@ async fn main() {
             &mut defenses_window_state,
             &mut troop_transport_state,
         );
+        interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
         // The AI plays the other side, as a new game sets it.
         ai_state = AIState::new(if player_faction == MissionFaction::Empire {
             AiFaction::Alliance
@@ -3789,6 +3790,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 &mut advice_saved_speed,
                             );
                         }
+                    }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let Some(request) = interface_fixture_request {
+                        interface_test_fixture::emit_story_messages(
+                            request,
+                            &msg_log,
+                            message_index.as_ref(),
+                            player_faction == MissionFaction::Alliance,
+                        );
                     }
                     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
                     if let Some(request) = interface_fixture_request {
