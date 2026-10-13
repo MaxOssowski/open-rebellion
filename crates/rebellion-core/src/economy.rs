@@ -2,8 +2,9 @@
 //!
 //! Implements the 18 sub-functions from the original `FUN_00508250`
 //! (the community dump calls it `FUN_005073d0_adjust_and_deploy_each_system`).
-//! Runs every tick for every system. Governs popular support drift, collection rates,
-//! garrison requirements, and resource allocation.
+//! The port runs it every tick for every system; the original runs it once at
+//! setup (`ghidra/notes/timer-scheduler.md`). Governs popular support drift,
+//! collection rates, garrison requirements, and resource allocation.
 //!
 //! Open Souls mapping: this is a "cognitive step" — a pure function that transforms
 //! economy state + read-only `GameWorld` into a Vec of effects.

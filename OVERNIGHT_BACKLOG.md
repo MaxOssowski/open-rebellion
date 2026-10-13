@@ -48,14 +48,15 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
    `cargo run -q -p provenance-scan -- check` passes, and
    `scripts/provenance-baseline.json` shrinks.
 
-5. `[todo]` **Correct the false claims in the Ghidra notes and agent docs (F-039).**
+5. `[done]` **Correct the false claims in the Ghidra notes and agent docs (F-039).**
    `agent_docs/ghidra-re.md:155` and `agent_docs/systems/ai-parity-tracker.md`
    (:52, :92, :123) call `FUN_004927c0` the master tick and `0x1f0` the daily AI
    trigger; `FUN_00508250` is described as per tick.
    Done when: each claim is corrected at its source, citing
    `ghidra/notes/timer-scheduler.md`. Docs only, no build impact.
 
-6. `[todo]` **Remove the Emperor's 1.5x battle bonus (F-024).** NEEDS YOUR CALL.
+6. `[blocked]` **Remove the Emperor's 1.5x battle bonus (F-024).** NEEDS YOUR CALL.
+   Blocked 2026-10-14, nothing changed, for the reason below.
    `combat.rs:237-261` multiplies Empire damage by 1.5 and the code itself says
    the bonus has no recovered source.
    Done when: the bonus is removed and the golden change is named.

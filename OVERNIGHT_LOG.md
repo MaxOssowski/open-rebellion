@@ -113,6 +113,31 @@ Ignored tests that fail before any change of mine:
 - The audit JSON and Markdown for F-031 are untouched; the finding stays open
   and its counts (135 items) were already stale.
 
+### 5. Correct the false claims in the agent docs (F-039) — done (docs only)
+
+- `agent_docs/ghidra-re.md` and `agent_docs/systems/ai-parity-tracker.md` no
+  longer call `FUN_004927c0` master turn processing or `0x1f0` a daily AI
+  trigger. The tracker row is marked REFUTED and the "evaluation frequency"
+  rows now say the original cadence is not recovered (F-036).
+- `FUN_00508250` is described as a one-time setup pass in those two files, in
+  `agent_docs/simulation.md`, `agent_docs/architecture.md`, and the
+  `economy.rs` module comment (which now says the port runs it every tick
+  while the original does not).
+- `ghidra/notes/timer-scheduler.md` notes the correction.
+- Audit JSON and Markdown: F-039 moves to "partially remediated" (the
+  community-address citations and `entity-system.md:383` remain); F-028 records
+  items 1 and 2 and stays "partially remediated" because the golden change is
+  unnamed.
+- Left alone: `ai-parity-tracker.md` still describes `FUN_00508250` as "18
+  AND-chained dispatch validators" while `economy.rs` calls the same function
+  an "18-function strategic state rebuild". Both cannot be right; the timer
+  note only settles when it runs, so I did not pick one.
+
+### 6. Remove the Emperor's 1.5x battle bonus (F-024) — blocked, nothing changed
+
+- Removing the bonus means deleting or rewriting the tests that assert it,
+  which the overnight rules forbid without your sign-off.
+
 ## Earlier attempt (2026-10-14, read-only session)
 
 Kept for the record; superseded by the entries above.

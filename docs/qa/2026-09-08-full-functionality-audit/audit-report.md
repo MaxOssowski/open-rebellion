@@ -1415,9 +1415,14 @@ cross-runtime proof remain open
 - Fix (2026-09-26): `MstbTable::step_lookup` implements the step lookup, and
   the uprising incident uses it for UPRIS1TB and UPRIS2TB, with a test that
   fails under interpolation.
-- Open: every other table consumer (missions, betrayal, escape) still calls
-  the interpolating `lookup`; switching them changes their outcomes and the
-  seed-42 golden, so it is a separate change.
+- Fix (2026-10-14): betrayal and the captive escape check use `step_lookup`,
+  each with a test that fails under interpolation, and the interpolating
+  `MstbTable::lookup` is removed. Every table lookup now follows
+  `FUN_00595090`.
+- Open: the golden change is not named. On the tree the fix was made on, the
+  seed-42 replay test already fails before the change (the fixture loads 100
+  systems, and a 200-system galaxy does not match the reviewed initial
+  fingerprint), so the golden was not regenerated.
 - Acceptance: every table lookup follows `FUN_00595090`, with any golden
   change named.
 
@@ -1633,7 +1638,7 @@ cross-runtime proof remain open
 ### F-039: Ghidra notes and agent docs repeat unverified claims
 
 - Severity: P2
-- Status: open
+- Status: partially remediated
 - Evidence:
   - FUN_004927c0 is called the master tick and 0x1f0 the daily AI trigger
     (agent_docs/ghidra-re.md:155, ai-parity-tracker.md:52,92,123);
@@ -1644,6 +1649,13 @@ cross-runtime proof remain open
     different functions in our build (ghidra/notes/community-address-remap.md)
   - entity-system.md:383 conflicts with two iterator recoveries on the fleet
     type range
+- Fix (2026-10-14): `agent_docs/ghidra-re.md`,
+  `agent_docs/systems/ai-parity-tracker.md`, `agent_docs/simulation.md` and
+  `agent_docs/architecture.md` no longer call FUN_004927c0 the master tick,
+  0x1f0 a daily AI trigger, or FUN_00508250 a per-tick pass; each cites
+  `ghidra/notes/timer-scheduler.md`.
+- Open: the community-address citations in reviews and notes, and the
+  entity-system.md:383 fleet type range.
 - Acceptance: Each false claim is corrected at its source and every note
   citation resolves to a .c line in our build.
 

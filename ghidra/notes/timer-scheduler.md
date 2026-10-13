@@ -182,8 +182,8 @@ which contradict both iterator recoveries.
   registered only as a UI factory, `FUN_0051f770(0x1f0, FUN_0043c9f0)`
   (`FUN_0041e580.c:58`).
 - **Where the misread sits:** `agent_docs/ghidra-re.md:155` and
-  `agent_docs/systems/ai-parity-tracker.md:52,92,123` call it a day tick that
-  drives the AI. Nothing supports that.
+  `agent_docs/systems/ai-parity-tracker.md:52,92,123` called it a day tick
+  that drives the AI. Nothing supports that; both were corrected 2026-10-14.
 
 ## Notification and event senders
 

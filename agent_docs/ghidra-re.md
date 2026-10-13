@@ -176,10 +176,10 @@ Decompiled via `curl -X POST http://127.0.0.1:8080/decompile -d "FUN_ADDR"` with
 |----------|-------|---------|
 | `FUN_0052e970` | 53 | **Not a scoring function** — binary capacity check. Checks if entity (family 0x10-0x3f) fits deployment budget at `this+0x58 - this+0x5c`. Our 4-factor model is strictly superior. |
 | `FUN_00506ea0` | 13 | Faction-specific evaluator pointer: Alliance at `DAT_006b2bb0+0xc4`, Empire at `+0xc8`. Different deployment budgets per faction. |
-| `FUN_004927c0` | 2098 | Master turn processing. The **event 0x1f0** day-tick reading is refuted; see `ghidra/notes/timer-scheduler.md`. |
+| `FUN_004927c0` | 2098 | **Not a master tick and does not run the AI.** It handles notification `0x1f0` by picking and loading message strings. `0x1f0` is sent only from the mission-object code (`FUN_00525040`); it is not a day tick. See `ghidra/notes/timer-scheduler.md`. |
 | `FUN_00520580` | 9 | 2-field struct setter (`*(this) = cmd; *(this+4) = param`). Not a transit calculator. |
 | `FUN_0053b870` | 7 | Entity capacity reader: returns `*(entity + 0x4c)`. |
-| `FUN_00508250` | 139 | **All 18 validator sub-functions decoded.** 2 are no-ops (FUN_0051ebb0 always returns 1). 4 match our existing checks. 12 are new capacity/composition/status checks. |
+| `FUN_00508250` | 139 | **All 18 validator sub-functions decoded.** 2 are no-ops (FUN_0051ebb0 always returns 1). 4 match our existing checks. 12 are new capacity/composition/status checks. It is the system's vtable slot `+0xc0` and runs once, in setup stage `0x17`, not per tick (`ghidra/notes/timer-scheduler.md`). |
 
 ### Mission Probability Formulas (from TheArchitect2018 wiki)
 
