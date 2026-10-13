@@ -115,6 +115,14 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
     Why it needs you: it adds a persisted character field, so it is a
     save-format bump (v27), which CLAUDE.md says to ask about first.
 
+14. `[done]` **Record two audit bullets that are already ported (F-034, F-037).**
+    Added 2026-10-14 by the main-checkout session after items 1 to 6.
+    The audit still lists the `FUN_00559be0` support divisor and the
+    `FUN_00520cd0` leadership average as missing; both are in `uprising.rs`
+    with cited tests.
+    Done when: the audit JSON and Markdown carry a dated re-check note for each,
+    with statuses unchanged. Docs only.
+
 ## Deliberately left out
 
 Too large or not possible unattended: the F-033 combat slot handlers and the

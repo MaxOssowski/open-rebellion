@@ -1553,6 +1553,10 @@ cross-runtime proof remain open
     decoy, and captured member; the incite effect skips the support machine
     FUN_0050c9f0
   - evidence/invention-review-r1/missions.md
+- Re-check (2026-10-14): the leadership average over every team, decoy, and
+  captured member (`FUN_00520cd0`) is ported as `uprising.rs`
+  `uprising_mission_terms` with three tests. The other bullets were not
+  re-checked.
 - Acceptance: Detection, escape, and effects follow their decompiles with
   failing-without tests; mission members become a roster (with F-019).
 
@@ -1613,6 +1617,11 @@ cross-runtime proof remain open
   - research.rs is taken from rebellion2 and cites nothing in REBEXE.EXE
   - evidence/invention-review-r1/economy.md (row 9 on Empire doubling is
     excluded; see the README)
+- Re-check (2026-10-14): the `FUN_00559be0` divisor (GNPRTB 7681) and the
+  `FUN_0050c9f0` add-then-clamp are ported as `uprising.rs` `support_change`
+  and `apply_support_change`, which mission and uprising support shifts go
+  through, with tests citing both. The economy's per-tick `SupportDrifted`
+  path does not use them, so the cadence bullet stands.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

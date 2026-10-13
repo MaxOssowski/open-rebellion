@@ -138,6 +138,19 @@ Ignored tests that fail before any change of mine:
 - Removing the bonus means deleting or rewriting the tests that assert it,
   which the overnight rules forbid without your sign-off.
 
+### 14. Record two audit bullets that are already ported (F-034, F-037) — done (docs only)
+
+- Looking for more work after items 1 to 6, I found the audit lists two rules
+  as missing that the code already has: the `FUN_00559be0` support divisor
+  with the `FUN_0050c9f0` clamp (`uprising.rs` `support_change`,
+  `apply_support_change`) and the `FUN_00520cd0` leadership average
+  (`uprising_mission_terms`). Both have tests citing their functions.
+- The audit JSON and Markdown get a dated re-check note under F-037 and F-034.
+  Statuses are unchanged; I did not re-check their other bullets.
+- I found no further item that is small, has its evidence in the repo, and
+  needs neither a save-format change, a deleted test, a new decompile, nor a
+  GUI pass. See "Suggested next items" in the summary.
+
 ## Earlier attempt (2026-10-14, read-only session)
 
 Kept for the record; superseded by the entries above.
