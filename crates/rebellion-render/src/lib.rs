@@ -1848,7 +1848,6 @@ mod interaction_tests {
                     rebellion_core::ids::DatId::new(0x1000_0001),
                 ),
                 5,
-                5,
             ),
         );
         let economy = rebellion_core::economy::EconomyState::default();

@@ -11,14 +11,14 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v33, and it is the only one
+serializable snapshot. The current format is v34, and it is the only one
 that loads.
 
-## Native format (v33)
+## Native format (v34)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 33
+[version: u32 LE]             — SAVE_VERSION = 34
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
 [mod_count: u32 LE]
@@ -43,7 +43,7 @@ Every mutable campaign subsystem required by the app is serialized:
 |-------|------|
 | `world` | `GameWorld` |
 | `clock` | `GameClock` |
-| `manufacturing` | `ManufacturingState`: one queue and one Destination per system and production area (v30) |
+| `manufacturing` | `ManufacturingState`: one queue and one Destination per system and production area (v30); a queue keeps its build points and each unit its cost in points (v34) |
 | `missions` | `MissionState` |
 | `events` | `EventState` |
 | `ai` | `AIState` |
@@ -61,7 +61,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `sim_rng` | `Xoshiro256PlusPlus` |
 | `ai2` | `Option<AIState>` |
 | `repair` | `RepairState` |
-| `production` | `ProductionState`: each side's raw and refined stockpiles, the refineries waiting for raw material, and every mine's and refinery's cycle and upkeep allocation (v33) |
+| `production` | `ProductionState`: each side's raw and refined stockpiles, the refineries waiting for raw material, and every mine's and refinery's cycle and upkeep allocation (v33); the yards waiting for refined material and every yard's cycle (v34) |
 | `combat_cooldowns` | `HashMap<SystemKey, u64>` |
 | `game_config` | `GameConfig` |
 | `campaign_config` | `CampaignConfig` |

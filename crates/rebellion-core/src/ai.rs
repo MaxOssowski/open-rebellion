@@ -243,8 +243,9 @@ pub enum AIAction {
     EnqueueProduction {
         system: SystemKey,
         kind: BuildableKind,
-        /// Suggested tick cost for the `QueueItem`.
-        ticks: u32,
+        /// The build points the unit needs: its class refined material
+        /// cost.
+        cost: u32,
     },
 
     /// Move a fleet to a target system (attack or reinforce).
@@ -1102,6 +1103,12 @@ impl AISystem {
             let training = has_yard(ProductionArea::TrainingFacility);
             let construction = has_yard(ProductionArea::ConstructionYard);
 
+            // A unit needs its class refined cost in build points
+            // (FUN_0052a8f0).
+            let class_cost = |kind: BuildableKind| {
+                crate::build_selection::unit_costs(world, kind).map_or(0, |(refined, _)| refined)
+            };
+
             let queue_len = mfg_state.queued_at(sys_key);
 
             // Allow up to 3 items in queue (don't just wait for empty).
@@ -1114,11 +1121,11 @@ impl AISystem {
             // Capital ships are the bottleneck — without them, no fleets.
             if ships && our_capship_count < config.production.capship_threshold {
                 if let Some((capship_key, capship_class)) = best_capship {
-                    let ticks = capship_class.refined_material_cost.max(20);
+                    let cost = capship_class.refined_material_cost;
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
                         kind: BuildableKind::CapitalShip(capship_key),
-                        ticks,
+                        cost,
                     });
                     continue;
                 }
@@ -1133,11 +1140,11 @@ impl AISystem {
             };
             if ships && needs_fighters {
                 if let Some((fighter_key, fighter_class)) = best_fighter {
-                    let ticks = fighter_class.refined_material_cost.max(5);
+                    let cost = fighter_class.refined_material_cost;
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
                         kind: BuildableKind::Fighter(fighter_key),
-                        ticks,
+                        cost,
                     });
                     continue;
                 }
@@ -1159,7 +1166,7 @@ impl AISystem {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
                         kind: BuildableKind::Troop(troop_key),
-                        ticks: 15,
+                        cost: class_cost(BuildableKind::Troop(troop_key)),
                     });
                     continue;
                 }
@@ -1181,7 +1188,7 @@ impl AISystem {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
                         kind: BuildableKind::DefenseFacility(def_key),
-                        ticks: 25,
+                        cost: class_cost(BuildableKind::DefenseFacility(def_key)),
                     });
                     continue;
                 }
@@ -1194,7 +1201,7 @@ impl AISystem {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
                         kind: BuildableKind::ManufacturingFacility(mfg_key),
-                        ticks: 30,
+                        cost: class_cost(BuildableKind::ManufacturingFacility(mfg_key)),
                     });
                     continue;
                 }
@@ -1205,11 +1212,11 @@ impl AISystem {
                 continue;
             }
             if let Some((capship_key, capship_class)) = best_capship {
-                let ticks = capship_class.refined_material_cost.max(20);
+                let cost = capship_class.refined_material_cost;
                 actions.push(AIAction::EnqueueProduction {
                     system: sys_key,
                     kind: BuildableKind::CapitalShip(capship_key),
-                    ticks,
+                    cost,
                 });
             }
         }

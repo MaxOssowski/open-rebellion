@@ -120,22 +120,27 @@ Reserved; one that stops existing also takes side 3.
 
 ## The port
 
-`rebellion-core/src/manufacturing.rs` keeps a queue per system and area and
-counts days per unit, computed at the order from the yards' rates
-(`completion_day`, `unit_build_days`).
+`rebellion-core/src/manufacturing.rs` keeps a queue per system and area
+with the two point counts; `production_cycle::advance_yards` runs the yards
+that feed it.
 
 | Original | Port |
 |---|---|
-| Build replaces the queue; Stop empties it | Same (`build`, `stop`). |
-| A unit costs its class refined cost in points | Same total, as days: `unit_build_days` spreads `k x cost` over the yards. |
-| One refined material per yard cycle start; a yard without one waits | Approximated per day and per area (`production_cycle::supply_yards`). |
-| Overflow carries to the next product; lost when the queue empties | Within one order the cumulative day count has the same effect; nothing carries past an order, which is also the original's case once the queue empties. |
-| No more yards run than points are needed | Every yard counts to the end, so the last points of an order can finish up to a cycle early. |
-| Suspended yards (system in uprising or blockaded) do not count | Same: both stop the system's queues (`production_cycle::suspended_systems`). |
+| Build replaces the queue; Stop empties it | Same (`build`, `build_units`, `stop`). |
+| A unit costs its class refined cost in points | Same (`QueueItem::cost`, `ProductionQueue::add_point`). |
+| A point goes to the current product, or to the overflow once its cost is met | Same. |
+| Completion at non-zero points that reach the cost; the next product starts with `min(cost, overflow)` | Same, chained. |
+| An emptied queue clears both counts | Same. |
+| One refined material per yard cycle start; a yard without one queues and is served first come first served | Same (`SideStock::refined_requests`), with the cycle counter check. |
+| A yard's cycle is its class rate | Same; a yard whose class has no rate is left out. |
+| No more yards run than points are needed; wake fastest first, stop slowest first and state 1 before 2 before 3 | Same (`YardDay::regulate`). |
+| Each event acts as it happens | The managers are walked once a day. Every cycle of a manager that ends on a day adds its point before the yards are set, so an order ends on Build Selection's day (`FUN_00528d30`); the original's order among timers of one day is not traced. A yard woken by an order counts its cycle from the day before, when the order was given. |
+| Suspended yards (system in uprising or blockaded) do not count | They are put to state 4 and lose the cycle they were in (`production_cycle::suspended_systems`). Whether a suspended yard's running cycle still ends in the original is not traced. |
 | A manager with no yard scraps its queue | Same (`production_cycle::scrap_yardless_queues`); the queued units are dropped, not destroyed as objects. |
-| Build is refused without a usable yard of the area | The AI orders only what a system's own yards build (`ai.rs`); before, any manufacturing facility let it order ships. |
-| Days are fixed at the order | Same; a yard gained or lost mid-build does not change them, where the original's point rate follows the yards. |
+| Build is refused without a usable yard of the area | `build_selection::order_items` gives no order, and the AI orders only what a system's own yards build (`ai.rs`). |
 | Products exist, and cost upkeep, from the order | Upkeep counts queued units (`side_resources.rs`); the objects are created at completion. |
+| A yard stopped in a cycle | Its refined material is spent; whether the original returns it is not traced. |
+| No order to remove or reorder one unit | `cancel` and `prioritize` remain as port helpers with no caller; they leave the points as they are. |
 
 ## Open
 

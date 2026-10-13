@@ -180,7 +180,7 @@ pub fn band(
         mini,
         units: Some(format!("{verb}: {}", queue.len())),
         destination,
-        progress: Some(active.progress_fraction()),
+        progress: Some(queue.progress_fraction()),
     }
 }
 
@@ -658,7 +658,7 @@ mod tests {
         manufacturing.set_destination(system, ProductionArea::Shipyard, away);
         manufacturing.build(
             system,
-            &QueueItem::new(BuildableKind::CapitalShip(class), 10, 10),
+            &QueueItem::new(BuildableKind::CapitalShip(class), 10),
             3,
         );
 
@@ -695,7 +695,7 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         manufacturing.build(
             system,
-            &QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0002)), 4, 4),
+            &QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0002)), 4),
             2,
         );
         let shown = band(
@@ -724,15 +724,13 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         manufacturing.enqueue(
             elsewhere,
-            QueueItem::new(BuildableKind::ManufacturingFacility(template), 5, 5)
-                .delivered_to(system),
+            QueueItem::new(BuildableKind::ManufacturingFacility(template), 5).delivered_to(system),
         );
         // Built for its own system, this one is not listed here.
         manufacturing.enqueue(
             elsewhere,
             QueueItem::new(
                 BuildableKind::ManufacturingFacility(alliance(0x2800_0001)),
-                5,
                 5,
             ),
         );
@@ -848,11 +846,7 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         manufacturing.enqueue(
             system,
-            QueueItem::new(
-                BuildableKind::ProductionFacility(alliance(0x2c00_0001)),
-                5,
-                5,
-            ),
+            QueueItem::new(BuildableKind::ProductionFacility(alliance(0x2c00_0001)), 5),
         );
 
         let mines = page_cells(

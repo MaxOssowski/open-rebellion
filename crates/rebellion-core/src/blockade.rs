@@ -7,7 +7,7 @@
 //! 1. **Determines blockaded systems** each tick from fleet disposition.
 //! 2. **Emits `BlockadeEvent`s** when blockade state changes (enter/exit).
 //! 3. **Halts manufacturing** — `BlockadeState::is_blockaded()` is consulted
-//!    by `ManufacturingSystem::advance` to skip queue advancement at blocked systems.
+//!    by `production_cycle::advance_yards` to suspend the yards of blocked systems.
 //! 4. **Destroys regiments running the blockade** — a regiment carried into a
 //!    blockaded system takes that system's withdraw percent, and rolls against
 //!    it when its fleet leaves. Surface garrisons and landed regiments are
@@ -143,7 +143,7 @@ impl BlockadeEvent {
 /// Per-system blockade status, maintained across ticks.
 ///
 /// `BlockadeSystem::advance` updates this state and emits change events.
-/// `ManufacturingSystem::advance` calls `is_blockaded(system)` to skip
+/// `production_cycle::advance_yards` asks `is_blockaded(system)` to skip
 /// queue advancement at blocked systems.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BlockadeState {
@@ -205,7 +205,7 @@ impl BlockadeState {
 
     /// Returns `true` if `system` is currently blockaded.
     ///
-    /// Called by `ManufacturingSystem::advance` to halt production.
+    /// Asked by `production_cycle::advance_yards` to halt production.
     #[must_use]
     pub fn is_blockaded(&self, system: SystemKey) -> bool {
         self.blockaded.contains(&system)

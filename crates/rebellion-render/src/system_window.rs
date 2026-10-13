@@ -1962,7 +1962,7 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         manufacturing.build(
             systems[0],
-            &QueueItem::new(BuildableKind::CapitalShip(class), 10, 10),
+            &QueueItem::new(BuildableKind::CapitalShip(class), 10),
             2,
         );
         let mut state = opened(&world, systems[0]);
@@ -2151,7 +2151,7 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         manufacturing.build(
             systems[0],
-            &QueueItem::new(BuildableKind::CapitalShip(class), 10, 10),
+            &QueueItem::new(BuildableKind::CapitalShip(class), 10),
             1,
         );
         let mut state = opened(&world, systems[0]);

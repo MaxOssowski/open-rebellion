@@ -6,6 +6,11 @@
 //! refined material. The cycle lengthens as the side's upkeep is allocated
 //! to the facility.
 //!
+//! A yard starts its cycle by taking one refined material and ends it with
+//! one build point for its production manager, which keeps no more yards
+//! running than it has points left to make
+//! (`ghidra/notes/manufacturing-manager.md`).
+//!
 //! Randomness comes from caller-supplied `[0, 1)` rolls consumed in order.
 //!
 //! port: the original runs on per-facility timers and change events; this
@@ -17,10 +22,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
 
 use crate::blockade::BlockadeState;
-use crate::build_selection::{area_family, yard_periods};
+use crate::build_selection::area_family;
 use crate::dat::Faction;
-use crate::ids::{ProductionFacilityKey, SystemKey};
-use crate::manufacturing::{ManufacturingState, ProductionArea};
+use crate::ids::{ManufacturingFacilityKey, ProductionFacilityKey, SystemKey};
+use crate::manufacturing::{ManufacturingAdvance, ManufacturingState, ProductionArea};
 use crate::side_resources::{maintenance_totals, FACILITY_CAPACITY};
 use crate::tick::TickEvent;
 use crate::uprising::UprisingState;
@@ -35,8 +40,9 @@ pub const CYCLE_STEP_PERCENT_PARAM: u16 = 0x1000;
 /// port: nothing changes it yet (`FUN_0055a7a0`'s callers are not traced).
 const PRODUCTION_MODIFIER: i32 = 100;
 
-/// One side's stockpiles (side `+0x78`, `+0x7c`) and the refineries
-/// waiting for raw material (side `+0x88`, counted in `+0x80`).
+/// One side's stockpiles (side `+0x78`, `+0x7c`), the refineries waiting
+/// for raw material (side `+0x88`, counted in `+0x80`) and the yards
+/// waiting for refined material (side `+0x8c`, counted in `+0x84`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SideStock {
     /// Raw materials on hand, the Raw Materials monitor's value.
@@ -44,6 +50,7 @@ pub struct SideStock {
     /// Refined materials on hand, the Refined Materials monitor's value.
     pub refined: i32,
     raw_requests: VecDeque<RawRequest>,
+    refined_requests: VecDeque<RefinedRequest>,
 }
 
 impl SideStock {
@@ -52,6 +59,27 @@ impl SideStock {
     pub fn waiting_for_raw(&self) -> usize {
         self.raw_requests.len()
     }
+
+    /// Side `+0x84`: yards waiting for refined material.
+    #[must_use]
+    pub fn waiting_for_refined(&self) -> usize {
+        self.refined_requests.len()
+    }
+}
+
+/// A queued request (`FUN_00533610`): the yard and its cycle counter when
+/// it asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+struct RefinedRequest {
+    yard: ManufacturingFacilityKey,
+    cycle: u32,
+}
+
+/// A yard's state and cycle counter, as a mine's or refinery's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct YardCycle {
+    phase: Phase,
+    cycle: u32,
 }
 
 /// A queued request (`FUN_005306b0`): the refinery and its cycle counter
@@ -95,6 +123,11 @@ pub struct ProductionState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     facilities: HashMap<ProductionFacilityKey, FacilityCycle>,
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    yards: HashMap<ManufacturingFacilityKey, YardCycle>,
     /// World construction has finished (`DAT_006b90e0`, mode `0x1a`).
     started: bool,
 }
@@ -115,7 +148,8 @@ impl ProductionState {
         }
     }
 
-    fn stock_mut(&mut self, side: Faction) -> Option<&mut SideStock> {
+    /// `side`'s stockpiles, to change them.
+    pub fn stock_mut(&mut self, side: Faction) -> Option<&mut SideStock> {
         match side {
             Faction::Alliance => Some(&mut self.alliance),
             Faction::Empire => Some(&mut self.empire),
@@ -129,6 +163,21 @@ impl ProductionState {
         self.facilities
             .get(&facility)
             .map_or(0, |value| value.allocated)
+    }
+
+    /// True while the yard is in a cycle.
+    #[must_use]
+    pub fn yard_is_processing(&self, yard: ManufacturingFacilityKey) -> bool {
+        matches!(
+            self.yards.get(&yard).map(|value| value.phase),
+            Some(Phase::Processing { .. })
+        )
+    }
+
+    /// True while the yard waits for refined material to start a cycle.
+    #[must_use]
+    pub fn yard_is_waiting(&self, yard: ManufacturingFacilityKey) -> bool {
+        self.yards.get(&yard).map(|value| value.phase) == Some(Phase::Idle)
     }
 
     /// True while the facility is in a cycle (`+0x60` bit 1).
@@ -494,67 +543,252 @@ pub fn scrap_yardless_queues(
     areas
 }
 
-/// Draw the refined material the yards of each working production area
-/// start their cycles with, and return the areas that found none.
-///
-/// A yard takes one refined material at each cycle start (`FUN_00530820`,
-/// `FUN_0052fb80`) and adds one unit of progress to its manager at the end
-/// (`FUN_00530950`, `FUN_0052a430`). Its cycle is the class rate
-/// (`FUN_0052cc90`), and the manager keeps no more yards running than it
-/// has work left (`FUN_00529dd0`).
-///
-/// port: the build queue counts days, not units, so a yard of period `p`
-/// draws on every day divisible by `p` while its area has an item, and an
-/// area that cannot draw all of a day's units stalls for that day and
-/// draws none. The original lets the yards that did get material go on
-/// and queues the rest (`FUN_0052fd30`), and credits progress made past an
-/// item's cost to the next (`FUN_00529d70`).
-pub fn supply_yards(
-    state: &mut ProductionState,
-    world: &GameWorld,
-    manufacturing: &ManufacturingState,
-    blocked: impl Fn(SystemKey) -> bool,
-    tick_events: &[TickEvent],
-) -> HashSet<(SystemKey, ProductionArea)> {
-    let mut starved = HashSet::new();
-    // The order `ManufacturingSystem` walks the queues in.
-    let mut areas: Vec<_> = manufacturing
-        .queues()
-        .iter()
-        .filter(|(_, queue)| !queue.is_empty())
-        .map(|(&key, _)| key)
-        .collect();
-    areas.sort_unstable();
+/// One manager's yard: its key and class rate (`FUN_0052cc90`).
+#[derive(Clone, Copy)]
+struct Yard {
+    key: ManufacturingFacilityKey,
+    rate: u32,
+}
 
-    for tick_event in tick_events {
-        for &(system, area) in &areas {
-            if starved.contains(&(system, area)) || blocked(system) {
-                continue;
+/// The yards of a side and their refined material, for one day.
+struct YardDay<'a> {
+    yards: &'a mut HashMap<ManufacturingFacilityKey, YardCycle>,
+    stock: &'a mut SideStock,
+    tick: u64,
+}
+
+impl YardDay<'_> {
+    fn phase(&self, key: ManufacturingFacilityKey) -> Phase {
+        self.yards
+            .get(&key)
+            .map_or(Phase::Inactive, |yard| yard.phase)
+    }
+
+    /// `FUN_0053a860(1)`: start a cycle of the class rate from day `from`.
+    fn begin(yard: &mut YardCycle, rate: u32, from: u64) {
+        yard.cycle += 1;
+        yard.phase = Phase::Processing {
+            done_tick: from + u64::from(rate),
+        };
+    }
+
+    /// State 1 and its cycle-start hook (`FUN_00530820`): take one refined
+    /// material (`FUN_0052fb80`) or queue a request (`FUN_00533610`).
+    fn enter_idle(&mut self, yard: Yard, from: u64) {
+        let cycle = self.yards.entry(yard.key).or_default();
+        cycle.phase = Phase::Idle;
+        cycle.cycle += 1;
+        if self.stock.refined > 0 {
+            self.stock.refined -= 1;
+            Self::begin(cycle, yard.rate, from);
+        } else {
+            self.stock.refined_requests.push_back(RefinedRequest {
+                yard: yard.key,
+                cycle: cycle.cycle,
+            });
+        }
+    }
+
+    /// State 4. A yard put there in a cycle does not get its refined
+    /// material back.
+    fn sleep(&mut self, key: ManufacturingFacilityKey) {
+        if let Some(yard) = self.yards.get_mut(&key) {
+            if yard.phase == Phase::Idle {
+                yard.cycle += 1;
             }
-            let Some(side) = world
-                .systems
-                .get(system)
-                .and_then(|value| GameWorld::facility_holder(value.control))
-            else {
-                continue;
-            };
-            let Some(stock) = state.stock_mut(side) else {
-                continue;
-            };
-            let periods = yard_periods(world, system, area, side == Faction::Alliance);
-            let starting = periods
+            yard.phase = Phase::Inactive;
+        }
+    }
+
+    /// `FUN_00529dd0`: keep as many yards out of state 4 as the manager
+    /// has points left to make. Inactive yards wake fastest first
+    /// (`FUN_0053aac0`); running ones stop slowest first, a waiting yard
+    /// before one in a cycle before one of `ending`, whose cycle has just
+    /// ended (`FUN_0053ab10`). A woken yard counts its cycle from day
+    /// `from`.
+    fn regulate(
+        &mut self,
+        yards: &[Yard],
+        needed: u32,
+        ending: &[ManufacturingFacilityKey],
+        from: u64,
+    ) {
+        let needed = usize::try_from(needed).unwrap_or(usize::MAX);
+        loop {
+            let active = yards
                 .iter()
-                .filter(|&&period| period > 0 && tick_event.tick % u64::from(period) == 0)
+                .filter(|yard| self.phase(yard.key) != Phase::Inactive)
                 .count();
-            let starting = i32::try_from(starting).unwrap_or(i32::MAX);
-            if starting <= stock.refined {
-                stock.refined -= starting;
+            if active < needed {
+                let Some(&fastest) = yards
+                    .iter()
+                    .filter(|yard| self.phase(yard.key) == Phase::Inactive)
+                    .min_by_key(|yard| yard.rate)
+                else {
+                    return;
+                };
+                self.enter_idle(fastest, from);
+            } else if active > needed {
+                let Some(&slowest) = yards
+                    .iter()
+                    .filter(|yard| self.phase(yard.key) != Phase::Inactive)
+                    .min_by_key(|yard| {
+                        let state = if ending.contains(&yard.key) {
+                            2
+                        } else {
+                            u8::from(self.phase(yard.key) != Phase::Idle)
+                        };
+                        (state, std::cmp::Reverse(yard.rate))
+                    })
+                else {
+                    return;
+                };
+                self.sleep(slowest.key);
             } else {
-                starved.insert((system, area));
+                return;
             }
         }
     }
-    starved
+
+    /// `FUN_0052fd30`: hand refined material to the waiting yards, first
+    /// come first served. A request whose yard has left the state it asked
+    /// in is dropped.
+    fn serve_requests(&mut self, world: &GameWorld) {
+        while self.stock.refined > 0 {
+            let Some(request) = self.stock.refined_requests.pop_front() else {
+                break;
+            };
+            let Some(cycle) = self.yards.get_mut(&request.yard) else {
+                continue;
+            };
+            if cycle.phase == Phase::Idle && cycle.cycle == request.cycle {
+                self.stock.refined -= 1;
+                Self::begin(cycle, yard_rate(world, request.yard), self.tick);
+            }
+        }
+    }
+}
+
+/// A yard's class rate (`FUN_00520b70`); 0 without a class record.
+fn yard_rate(world: &GameWorld, key: ManufacturingFacilityKey) -> u32 {
+    world
+        .manufacturing_facilities
+        .get(key)
+        .and_then(|yard| world.buildable_classes.get(&yard.class_dat_id))
+        .map_or(0, |class| class.processing_rate)
+}
+
+/// Run the yards for one day per tick event and return what they
+/// complete.
+///
+/// A yard takes one refined material at each cycle start (`FUN_00530820`)
+/// and adds one build point to its manager at the end (`FUN_00530950`,
+/// `FUN_0052a430`). Its cycle is the class rate (`FUN_0052cc90`). After
+/// every point and every order the manager sets how many yards run
+/// (`FUN_00529dd0`). The yards of a `blocked` system are Suspended and do
+/// not run (`FUN_0050bbb0`).
+///
+/// port: the original acts on each event as it happens; this walks the
+/// managers once a day, in system then area order. Every cycle of a
+/// manager that ends on a day adds its point before the manager sets its
+/// yards, which keeps Build Selection's completion day (`FUN_00528d30`);
+/// the original's order among timers of one day is not traced. A yard
+/// woken by an order counts its cycle from the day before, when the order
+/// was given. A yard whose class has no rate never ends a cycle, so it is
+/// left out.
+pub fn advance_yards(
+    state: &mut ProductionState,
+    world: &GameWorld,
+    manufacturing: &mut ManufacturingState,
+    blocked: impl Fn(SystemKey) -> bool,
+    tick_events: &[TickEvent],
+) -> ManufacturingAdvance {
+    let mut advance = ManufacturingAdvance::default();
+    state
+        .yards
+        .retain(|key, _| world.manufacturing_facilities.contains_key(*key));
+    let mut busy: Vec<SystemKey> = manufacturing
+        .queues()
+        .iter()
+        .filter(|(_, queue)| !queue.is_empty())
+        .map(|(&(system, _), _)| system)
+        .collect();
+    busy.sort_unstable();
+    busy.dedup();
+
+    for tick_event in tick_events {
+        let tick = tick_event.tick;
+        for (side, stock) in [
+            (Faction::Alliance, &mut state.alliance),
+            (Faction::Empire, &mut state.empire),
+        ] {
+            let mut day = YardDay {
+                yards: &mut state.yards,
+                stock,
+                tick,
+            };
+            day.serve_requests(world);
+
+            for (system, value) in &world.systems {
+                for area in ProductionArea::ALL {
+                    // While contested the yards keep their last holder's
+                    // side, and so does the manager.
+                    let yards: Vec<Yard> = value
+                        .manufacturing_facilities
+                        .iter()
+                        .filter_map(|&key| Some((key, world.manufacturing_facilities.get(key)?)))
+                        .filter(|(_, yard)| {
+                            yard.side == side && yard.class_dat_id.family() == area_family(area)
+                        })
+                        .map(|(key, _)| Yard {
+                            key,
+                            rate: yard_rate(world, key),
+                        })
+                        .filter(|yard| yard.rate > 0)
+                        .collect();
+                    if GameWorld::facility_holder(value.control)
+                        .is_some_and(|holder| holder != side)
+                        || blocked(system)
+                    {
+                        for yard in &yards {
+                            day.sleep(yard.key);
+                        }
+                        continue;
+                    }
+                    let ending: Vec<Yard> = yards
+                        .iter()
+                        .copied()
+                        .filter(|yard| {
+                            matches!(
+                                day.phase(yard.key),
+                                Phase::Processing { done_tick } if tick >= done_tick
+                            )
+                        })
+                        .collect();
+                    for _ in &ending {
+                        let (completions, departures) = manufacturing.add_point(system, area, tick);
+                        advance.completions.extend(completions);
+                        advance.departures.extend(departures);
+                    }
+                    let needed = manufacturing
+                        .queue(system, area)
+                        .map_or(0, crate::manufacturing::ProductionQueue::points_needed);
+                    let ended: Vec<_> = ending.iter().map(|yard| yard.key).collect();
+                    day.regulate(&yards, needed, &ended, tick.saturating_sub(1));
+                    for yard in ending {
+                        if day.phase(yard.key) != Phase::Inactive {
+                            day.enter_idle(yard, tick);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    advance.newly_idle = busy
+        .into_iter()
+        .filter(|&system| manufacturing.queued_at(system) == 0)
+        .collect();
+    advance
 }
 
 #[cfg(test)]
@@ -1049,47 +1283,73 @@ mod tests {
         assert_eq!([state.allocated(full), state.allocated(fresh)], [10, 0]);
     }
 
-    /// One shipyard (rate 4) and one advanced shipyard (rate 2) at a new
-    /// Alliance system, with a ship queued there.
-    fn shipyard_system(world: &mut GameWorld) -> (SystemKey, ManufacturingState) {
-        use crate::manufacturing::{BuildableKind, QueueItem};
-        use crate::world::{CapitalShipClass, ManufacturingFacilityInstance};
-        let here = system(world);
-        for (id, rate) in [(0x2800_0001, 4), (0x2800_0004, 2)] {
-            world.buildable_classes.insert(
-                DatId::new(id),
-                BuildableClass {
-                    processing_rate: rate,
-                    ..BuildableClass::default()
-                },
-            );
-            let key = world
-                .manufacturing_facilities
-                .insert(ManufacturingFacilityInstance {
-                    class_dat_id: DatId::new(id),
-                    side: Faction::Alliance,
-                    is_shipyard: true,
-                });
-            world.systems[here].manufacturing_facilities.push(key);
-        }
-        let ship = world
-            .capital_ship_classes
-            .insert(CapitalShipClass::default());
-        let mut manufacturing = ManufacturingState::new();
-        manufacturing.enqueue(
-            here,
-            QueueItem::new(BuildableKind::CapitalShip(ship), 20, 20),
+    const SHIPYARD: u32 = 0x2800_0001;
+    const ADVANCED_SHIPYARD: u32 = 0x2800_0004;
+    const TRAINING_FACILITY: u32 = 0x2900_0001;
+
+    /// Add an Alliance yard of class `id` and cycle `rate` at `here`.
+    fn yard(
+        world: &mut GameWorld,
+        here: SystemKey,
+        id: u32,
+        rate: u32,
+    ) -> ManufacturingFacilityKey {
+        use crate::world::ManufacturingFacilityInstance;
+        world.buildable_classes.insert(
+            DatId::new(id),
+            BuildableClass {
+                processing_rate: rate,
+                ..BuildableClass::default()
+            },
         );
-        (here, manufacturing)
+        let key = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(id),
+                side: Faction::Alliance,
+                is_shipyard: id >> 24 == 0x28,
+            });
+        world.systems[here].manufacturing_facilities.push(key);
+        key
     }
 
-    fn supply(
+    /// A ship needing `cost` build points.
+    fn ship(world: &mut GameWorld, cost: u32) -> crate::manufacturing::QueueItem {
+        use crate::manufacturing::{BuildableKind, QueueItem};
+        use crate::world::CapitalShipClass;
+        let class = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        QueueItem::new(BuildableKind::CapitalShip(class), cost)
+    }
+
+    /// A new Alliance system with a shipyard (MANFACSD rate 4) and an
+    /// advanced shipyard (rate 2), and a ship of `cost` points ordered
+    /// there. Returns the system, the queues, and the slow and fast yards.
+    fn shipyard_system(
+        world: &mut GameWorld,
+        cost: u32,
+    ) -> (
+        SystemKey,
+        ManufacturingState,
+        ManufacturingFacilityKey,
+        ManufacturingFacilityKey,
+    ) {
+        let here = system(world);
+        let slow = yard(world, here, SHIPYARD, 4);
+        let fast = yard(world, here, ADVANCED_SHIPYARD, 2);
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(here, ship(world, cost));
+        (here, manufacturing, slow, fast)
+    }
+
+    fn yards_day(
         state: &mut ProductionState,
         world: &GameWorld,
-        manufacturing: &ManufacturingState,
+        manufacturing: &mut ManufacturingState,
         tick: u64,
-    ) -> HashSet<(SystemKey, ProductionArea)> {
-        supply_yards(
+    ) -> ManufacturingAdvance {
+        advance_yards(
             state,
             world,
             manufacturing,
@@ -1098,82 +1358,307 @@ mod tests {
         )
     }
 
-    #[test]
-    fn a_yard_takes_one_refined_material_each_time_its_cycle_starts() {
-        // FUN_00530820 takes one refined (FUN_0052fb80) at the cycle start;
-        // FUN_0052cc90 sets the cycle to the class rate, here 4 and 2 days.
-        let mut world = world();
-        let (here, manufacturing) = shipyard_system(&mut world);
+    fn stocked(refined: i32) -> ProductionState {
         let mut state = ProductionState::new();
-        state.alliance.refined = 10;
-
-        let mut left = Vec::new();
-        for tick in 1..=8 {
-            assert!(supply(&mut state, &world, &manufacturing, tick).is_empty());
-            left.push(alliance(&state).1);
-        }
-        // Days 2 and 6 start the fast yard; days 4 and 8 start both.
-        assert_eq!(left, [10, 9, 9, 7, 7, 6, 6, 4]);
-        let _ = here;
+        state.alliance.refined = refined;
+        state
     }
 
     #[test]
-    fn an_area_without_enough_refined_material_stalls_and_draws_none() {
-        // FUN_00530820: no refined, no cycle start.
+    fn a_yard_takes_one_refined_material_each_time_its_cycle_starts() {
+        // FUN_00530820 takes one refined (FUN_0052fb80) at the cycle start;
+        // FUN_0052cc90 sets the cycle to the class rate, here 4 and 2 days;
+        // FUN_00530950 ends it with one point for the manager.
         let mut world = world();
-        let (here, manufacturing) = shipyard_system(&mut world);
-        let mut state = ProductionState::new();
-        state.alliance.refined = 1;
+        let (here, mut manufacturing, _, _) = shipyard_system(&mut world, 20);
+        let mut state = stocked(10);
 
-        // Day 4 needs two units; one is not enough, and it stays.
-        let starved = supply(&mut state, &world, &manufacturing, 4);
-        assert_eq!(starved, HashSet::from([(here, ProductionArea::Shipyard)]));
-        assert_eq!(alliance(&state), (0, 1));
-        // Day 5 starts no yard, so nothing is needed.
-        assert!(supply(&mut state, &world, &manufacturing, 5).is_empty());
-        // Day 6 needs one and takes it.
-        assert!(supply(&mut state, &world, &manufacturing, 6).is_empty());
+        let mut left = Vec::new();
+        for tick in 1..=8 {
+            let advance = yards_day(&mut state, &world, &mut manufacturing, tick);
+            assert_eq!(advance, ManufacturingAdvance::default());
+            left.push(alliance(&state).1);
+        }
+        // Both start with the order; the fast yard starts again on days 2,
+        // 4, 6 and 8, the slow one on days 4 and 8.
+        assert_eq!(left, [8, 7, 7, 5, 5, 4, 4, 2]);
+        // Cycles ended: the fast yard's on days 2, 4, 6 and 8, the slow
+        // one's on days 4 and 8.
+        let queue = manufacturing.queue(here, ProductionArea::Shipyard);
+        assert_eq!(queue.map(|queue| queue.completed_points()), Some(6));
+    }
+
+    #[test]
+    fn an_order_completes_on_its_best_day_for_its_cost_in_refined_material() {
+        // FUN_00528d30: two yards of periods 4 and 2 make 6 points by day
+        // 8. FUN_00529dd0 stops the yards once no point is needed, so the
+        // order draws its refined cost and no more.
+        use crate::manufacturing::completion_day;
+        let mut world = world();
+        let (here, mut manufacturing, slow, fast) = shipyard_system(&mut world, 6);
+        let mut state = stocked(10);
+        assert_eq!(completion_day(&[4, 2], 6), Some(8));
+
+        for tick in 1..=7 {
+            let advance = yards_day(&mut state, &world, &mut manufacturing, tick);
+            assert_eq!(advance, ManufacturingAdvance::default(), "day {tick}");
+        }
+        let advance = yards_day(&mut state, &world, &mut manufacturing, 8);
+
+        assert_eq!(advance.completions.len(), 1);
+        assert_eq!(advance.completions[0].system, here);
+        assert_eq!(advance.completions[0].tick, 8);
+        assert_eq!(advance.newly_idle, [here]);
+        assert_eq!(alliance(&state), (0, 4));
+        for key in [slow, fast] {
+            assert!(!state.yard_is_processing(key) && !state.yard_is_waiting(key));
+        }
+        // Nothing queued: nothing starts, and the system is not idle anew.
+        let after = yards_day(&mut state, &world, &mut manufacturing, 9);
+        assert_eq!(after, ManufacturingAdvance::default());
+        assert_eq!(alliance(&state), (0, 4));
+    }
+
+    #[test]
+    fn a_manager_wakes_no_more_yards_than_it_needs_points_fastest_first() {
+        // FUN_00529dd0 wakes yards while fewer run than points are needed;
+        // FUN_0053aac0 picks the fastest class rate.
+        let mut world = world();
+        let (here, mut manufacturing, slow, fast) = shipyard_system(&mut world, 1);
+        let mut state = stocked(10);
+
+        let advance = advance_yards(
+            &mut state,
+            &world,
+            &mut manufacturing,
+            |_| false,
+            &[TickEvent { tick: 1 }],
+        );
+        assert!(advance.completions.is_empty());
+        assert!(state.yard_is_processing(fast));
+        assert!(!state.yard_is_processing(slow) && !state.yard_is_waiting(slow));
+        assert_eq!(alliance(&state), (0, 9));
+
+        // The order was given on day 0, so the 2-day cycle ends on day 2.
+        let advance = yards_day(&mut state, &world, &mut manufacturing, 2);
+        assert_eq!(advance.completions.len(), 1);
+        assert_eq!(advance.completions[0].tick, 2);
+        assert_eq!(manufacturing.queued_at(here), 0);
+    }
+
+    #[test]
+    fn several_days_in_one_call_run_one_after_another() {
+        let mut world = world();
+        let (_, mut manufacturing, _, _) = shipyard_system(&mut world, 1);
+        let mut state = stocked(10);
+
+        let advance = advance_yards(
+            &mut state,
+            &world,
+            &mut manufacturing,
+            |_| false,
+            &[TickEvent { tick: 1 }, TickEvent { tick: 2 }],
+        );
+
+        assert_eq!(advance.completions.len(), 1);
+        assert_eq!(advance.completions[0].tick, 2);
+    }
+
+    #[test]
+    fn a_surplus_yard_stops_slowest_first() {
+        // FUN_00529dd0 and FUN_0053ab10: with more yards running than
+        // points needed, the slowest stops. Four points: the fast yard
+        // makes one on day 2, both make one on day 4, and one is left.
+        let mut world = world();
+        let (_, mut manufacturing, slow, fast) = shipyard_system(&mut world, 4);
+        let mut state = stocked(10);
+
+        for tick in 1..=4 {
+            yards_day(&mut state, &world, &mut manufacturing, tick);
+        }
+        assert!(state.yard_is_processing(fast));
+        assert!(!state.yard_is_processing(slow) && !state.yard_is_waiting(slow));
+
+        assert!(yards_day(&mut state, &world, &mut manufacturing, 5)
+            .completions
+            .is_empty());
+        let advance = yards_day(&mut state, &world, &mut manufacturing, 6);
+        assert_eq!(advance.completions.len(), 1);
+        assert_eq!(alliance(&state), (0, 6));
+    }
+
+    #[test]
+    fn a_waiting_yard_stops_before_one_that_has_just_ended_its_cycle() {
+        // FUN_0053ab10 stops a yard in state 1 before one in state 2 or 3.
+        // FUN_00533610 queues a yard that finds no refined material, and
+        // FUN_0052fd30 serves the queue, dropping a request whose yard has
+        // left the state it asked in.
+        let mut world = world();
+        let (_, mut manufacturing, slow, fast) = shipyard_system(&mut world, 2);
+        let mut state = stocked(1);
+
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        assert!(state.yard_is_processing(fast));
+        assert!(state.yard_is_waiting(slow));
+        assert_eq!(state.alliance.waiting_for_refined(), 1);
         assert_eq!(alliance(&state), (0, 0));
+
+        // Day 2: one point made, one needed, two yards awake.
+        yards_day(&mut state, &world, &mut manufacturing, 2);
+        assert!(!state.yard_is_waiting(slow) && !state.yard_is_processing(slow));
+        assert!(state.yard_is_waiting(fast));
+
+        // One refined material arrives: the slow yard's request is dropped
+        // and the fast yard's is served.
+        state.alliance.refined = 1;
+        yards_day(&mut state, &world, &mut manufacturing, 3);
+        assert!(state.yard_is_processing(fast));
+        assert!(!state.yard_is_processing(slow));
+        assert_eq!(alliance(&state), (0, 0));
+        assert_eq!(state.alliance.waiting_for_refined(), 0);
+        assert!(yards_day(&mut state, &world, &mut manufacturing, 4)
+            .completions
+            .is_empty());
+        let advance = yards_day(&mut state, &world, &mut manufacturing, 5);
+        assert_eq!(advance.completions.len(), 1);
+    }
+
+    #[test]
+    fn a_waiting_yard_stops_before_one_in_its_cycle() {
+        // FUN_0053ab10 stops a yard in state 1 before one in state 2,
+        // whatever their rates.
+        let mut world = world();
+        let (here, mut manufacturing, slow, fast) = shipyard_system(&mut world, 2);
+        manufacturing.enqueue(here, ship(&mut world, 1));
+        let mut state = stocked(2);
+
+        // Both start; on day 2 the fast yard ends its cycle and finds no
+        // refined material for the next, while the slow one runs to day 4.
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        yards_day(&mut state, &world, &mut manufacturing, 2);
+        assert!(state.yard_is_waiting(fast));
+        assert!(state.yard_is_processing(slow));
+
+        // The second ship is dropped: one point is needed, two yards are
+        // awake.
+        manufacturing
+            .queue_mut(here, ProductionArea::Shipyard)
+            .cancel(1);
+        yards_day(&mut state, &world, &mut manufacturing, 3);
+
+        assert!(!state.yard_is_waiting(fast) && !state.yard_is_processing(fast));
+        assert!(state.yard_is_processing(slow));
+        let advance = yards_day(&mut state, &world, &mut manufacturing, 4);
+        assert_eq!(advance.completions.len(), 1);
+    }
+
+    #[test]
+    fn a_running_yard_stops_before_one_that_has_just_ended_its_cycle() {
+        // FUN_0053ab10 stops a yard in state 2 before one in state 3. Two
+        // points: the fast yard makes one on day 2 while the slow one is
+        // in its cycle; the fast yard goes on and the slow one stops.
+        let mut world = world();
+        let (_, mut manufacturing, slow, fast) = shipyard_system(&mut world, 2);
+        let mut state = stocked(10);
+
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        assert!(state.yard_is_processing(slow) && state.yard_is_processing(fast));
+        yards_day(&mut state, &world, &mut manufacturing, 2);
+
+        assert!(!state.yard_is_processing(slow));
+        assert!(state.yard_is_processing(fast));
+        // The slow yard's refined material is spent.
+        assert_eq!(alliance(&state), (0, 7));
+        let advance = yards_day(&mut state, &world, &mut manufacturing, 4);
+        assert_eq!(advance.completions.len(), 1);
+    }
+
+    #[test]
+    fn a_request_from_an_earlier_wait_is_dropped() {
+        // FUN_0052fd30 serves a request only while the yard's cycle counter
+        // (FUN_0053a6e0) is the one it asked with.
+        let mut world = world();
+        let (here, mut manufacturing, _, fast) = shipyard_system(&mut world, 1);
+        let mut state = stocked(0);
+
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        assert!(state.yard_is_waiting(fast));
+        // Stop: the yard goes to sleep. A new order wakes it to wait again.
+        manufacturing.stop(here, ProductionArea::Shipyard);
+        yards_day(&mut state, &world, &mut manufacturing, 2);
+        assert!(!state.yard_is_waiting(fast));
+        manufacturing.enqueue(here, ship(&mut world, 1));
+        yards_day(&mut state, &world, &mut manufacturing, 3);
+        assert!(state.yard_is_waiting(fast));
+        assert_eq!(state.alliance.waiting_for_refined(), 2);
+
+        state.alliance.refined = 1;
+        yards_day(&mut state, &world, &mut manufacturing, 4);
+
+        // The first request is dropped without taking the unit, and the
+        // second takes it.
+        assert!(state.yard_is_processing(fast));
+        assert_eq!(alliance(&state), (0, 0));
+        assert_eq!(state.alliance.waiting_for_refined(), 0);
     }
 
     #[test]
     fn yards_with_nothing_queued_or_in_a_blocked_system_draw_nothing() {
         // FUN_00529dd0 keeps no more yards running than the manager has
-        // work left; a blockaded system's queue does not advance.
+        // points to make; FUN_0050bbb0 suspends a blocked system's yards.
         let mut world = world();
-        let (here, manufacturing) = shipyard_system(&mut world);
-        let mut state = ProductionState::new();
-        state.alliance.refined = 10;
+        let (here, mut manufacturing, slow, fast) = shipyard_system(&mut world, 20);
+        let mut state = stocked(10);
 
-        let idle = ManufacturingState::new();
-        assert!(supply(&mut state, &world, &idle, 4).is_empty());
+        let mut idle = ManufacturingState::new();
+        yards_day(&mut state, &world, &mut idle, 1);
         assert_eq!(alliance(&state), (0, 10));
 
-        let starved = supply_yards(
-            &mut state,
-            &world,
-            &manufacturing,
-            |system| system == here,
-            &[TickEvent { tick: 4 }],
-        );
-        assert!(starved.is_empty());
+        let blocked =
+            |state: &mut ProductionState, manufacturing: &mut ManufacturingState, tick| {
+                advance_yards(
+                    state,
+                    &world,
+                    manufacturing,
+                    |system| system == here,
+                    &[TickEvent { tick }],
+                )
+            };
+        blocked(&mut state, &mut manufacturing, 1);
         assert_eq!(alliance(&state), (0, 10));
+
+        // Blocked in mid-cycle, the yards stop and their cycles make no
+        // point.
+        yards_day(&mut state, &world, &mut manufacturing, 2);
+        assert!(state.yard_is_processing(slow) && state.yard_is_processing(fast));
+        assert_eq!(alliance(&state), (0, 8));
+        for tick in 3..=6 {
+            let advance = blocked(&mut state, &mut manufacturing, tick);
+            assert_eq!(advance, ManufacturingAdvance::default());
+        }
+        assert!(!state.yard_is_processing(slow) && !state.yard_is_processing(fast));
+        assert_eq!(alliance(&state), (0, 8));
+        let queue = manufacturing.queue(here, ProductionArea::Shipyard);
+        assert_eq!(queue.map(|queue| queue.completed_points()), Some(0));
+
+        // Free again, they start over.
+        yards_day(&mut state, &world, &mut manufacturing, 7);
+        assert_eq!(alliance(&state), (0, 6));
     }
 
     #[test]
     fn the_holders_stockpile_pays_for_the_area() {
         // FUN_00530820 runs on the yard's side object (FUN_00516360).
         let mut world = world();
-        let (here, manufacturing) = shipyard_system(&mut world);
+        let (here, mut manufacturing, _, _) = shipyard_system(&mut world, 20);
         world.systems[here].control = ControlKind::Controlled(Faction::Empire);
         for yard in world.manufacturing_facilities.values_mut() {
             yard.side = Faction::Empire;
         }
-        let mut state = ProductionState::new();
-        state.alliance.refined = 10;
+        let mut state = stocked(10);
         state.empire.refined = 10;
 
-        assert!(supply(&mut state, &world, &manufacturing, 4).is_empty());
+        yards_day(&mut state, &world, &mut manufacturing, 1);
         assert_eq!(alliance(&state), (0, 10));
         assert_eq!(
             state.stock(Faction::Empire).map(|stock| stock.refined),
@@ -1182,21 +1667,136 @@ mod tests {
     }
 
     #[test]
+    fn a_contested_systems_yards_build_for_their_last_holder() {
+        // facility-ownership.md: while contested the yards keep their last
+        // holder's side; a yard that is not its system's holder's does not
+        // run.
+        let mut world = world();
+        let (here, mut manufacturing, _, _) = shipyard_system(&mut world, 20);
+        let mut state = stocked(10);
+        state.empire.refined = 10;
+
+        world.systems[here].control = ControlKind::Controlled(Faction::Empire);
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        assert_eq!(alliance(&state), (0, 10));
+
+        world.systems[here].control = ControlKind::Contested;
+        yards_day(&mut state, &world, &mut manufacturing, 2);
+        assert_eq!(alliance(&state), (0, 8));
+        assert_eq!(
+            state.stock(Faction::Empire).map(|stock| stock.refined),
+            Some(10)
+        );
+    }
+
+    #[test]
     fn a_yard_whose_class_has_no_rate_draws_nothing() {
         // FUN_00520b70 returns 0 for a yard without a class record; such a
         // yard never fires its cycle timer.
         let mut world = world();
-        let (_, manufacturing) = shipyard_system(&mut world);
+        let (_, mut manufacturing, _, _) = shipyard_system(&mut world, 20);
         for class in world.buildable_classes.values_mut() {
             class.processing_rate = 0;
         }
-        let mut state = ProductionState::new();
-        state.alliance.refined = 10;
+        let mut state = stocked(10);
 
         for tick in 1..=8 {
-            assert!(supply(&mut state, &world, &manufacturing, tick).is_empty());
+            let advance = yards_day(&mut state, &world, &mut manufacturing, tick);
+            assert_eq!(advance, ManufacturingAdvance::default());
         }
         assert_eq!(alliance(&state), (0, 10));
+    }
+
+    #[test]
+    fn a_system_goes_idle_once_when_its_last_area_finishes() {
+        // FUN_00509670: one manager per area, each with its own yards. K6
+        // waits for the last busy area and fires once.
+        use crate::manufacturing::{BuildableKind, QueueItem};
+        let mut world = world();
+        let (here, mut manufacturing, _, _) = shipyard_system(&mut world, 2);
+        yard(&mut world, here, TRAINING_FACILITY, 2);
+        let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+        manufacturing.enqueue(here, QueueItem::new(regiment, 1));
+        let mut state = stocked(10);
+
+        // Day 1 starts both shipyards and the training facility.
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        assert_eq!(alliance(&state), (0, 7));
+
+        let second = yards_day(&mut state, &world, &mut manufacturing, 2);
+        assert_eq!(second.completions.len(), 1);
+        assert_eq!(second.completions[0].kind, regiment);
+        assert!(second.newly_idle.is_empty());
+
+        yards_day(&mut state, &world, &mut manufacturing, 3);
+        let fourth = yards_day(&mut state, &world, &mut manufacturing, 4);
+        assert_eq!(fourth.completions.len(), 1);
+        assert_eq!(fourth.newly_idle, [here]);
+
+        let fifth = yards_day(&mut state, &world, &mut manufacturing, 5);
+        assert!(fifth.newly_idle.is_empty());
+    }
+
+    #[test]
+    fn a_product_for_another_system_departs_when_its_points_are_made() {
+        // FUN_0052bee0: EnrouteActive when the deployment location is not
+        // where the product stands.
+        let mut world = world();
+        let (here, mut manufacturing, _, _) = shipyard_system(&mut world, 20);
+        let away = system(&mut world);
+        manufacturing.stop(here, ProductionArea::Shipyard);
+        let bound = ship(&mut world, 1).delivered_to(away);
+        manufacturing.enqueue(here, bound.clone());
+        let mut state = stocked(10);
+
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        let advance = yards_day(&mut state, &world, &mut manufacturing, 2);
+
+        assert!(advance.completions.is_empty());
+        assert_eq!(
+            advance.departures,
+            vec![crate::manufacturing::Departure {
+                origin: here,
+                destination: away,
+                tick: 2,
+                kind: bound.kind,
+            }]
+        );
+        assert_eq!(advance.newly_idle, [here]);
+    }
+
+    #[test]
+    fn completions_come_in_system_order() {
+        let mut world = world();
+        let (first, mut manufacturing, _, _) = shipyard_system(&mut world, 1);
+        let second = system(&mut world);
+        yard(&mut world, second, ADVANCED_SHIPYARD, 2);
+        manufacturing.enqueue(second, ship(&mut world, 1));
+        let mut state = stocked(10);
+
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        let advance = yards_day(&mut state, &world, &mut manufacturing, 2);
+
+        let systems: Vec<_> = advance.completions.iter().map(|done| done.system).collect();
+        assert_eq!(systems, [first, second]);
+        assert_eq!(advance.newly_idle, [first, second]);
+    }
+
+    #[test]
+    fn a_removed_yard_is_forgotten() {
+        let mut world = world();
+        let (here, mut manufacturing, _, fast) = shipyard_system(&mut world, 20);
+        let mut state = stocked(10);
+        yards_day(&mut state, &world, &mut manufacturing, 1);
+        assert!(state.yard_is_processing(fast));
+
+        world.manufacturing_facilities.remove(fast);
+        world.systems[here]
+            .manufacturing_facilities
+            .retain(|&key| key != fast);
+        yards_day(&mut state, &world, &mut manufacturing, 2);
+
+        assert!(!state.yards.contains_key(&fast));
     }
 
     #[test]
@@ -1205,9 +1805,9 @@ mod tests {
         // FUN_0052a2c0 scraps everything queued.
         use crate::manufacturing::{BuildableKind, QueueItem};
         let mut world = world();
-        let (here, mut manufacturing) = shipyard_system(&mut world);
+        let (here, mut manufacturing, _, _) = shipyard_system(&mut world, 20);
         let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
-        manufacturing.enqueue(here, QueueItem::new(regiment, 5, 5));
+        manufacturing.enqueue(here, QueueItem::new(regiment, 5));
 
         // The system has shipyards and no training facility.
         assert_eq!(
@@ -1239,7 +1839,7 @@ mod tests {
         // facility-ownership.md: while contested the yards keep their last
         // holder's side, so the manager still has them.
         let mut world = world();
-        let (here, mut manufacturing) = shipyard_system(&mut world);
+        let (here, mut manufacturing, _, _) = shipyard_system(&mut world, 20);
         world.systems[here].control = ControlKind::Contested;
         for yard in world.manufacturing_facilities.values_mut() {
             yard.side = Faction::Empire;

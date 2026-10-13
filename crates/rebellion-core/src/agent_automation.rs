@@ -165,10 +165,9 @@ pub enum AgentOrder {
         destination: SystemKey,
         /// What to build.
         kind: BuildableKind,
-        /// Construction time in game-days. port: derived from the facility
-        /// class's `refined_material_cost` via the AI path; the original
-        /// used the construction yard's rate.
-        ticks: u32,
+        /// The build points it needs: its class refined material cost
+        /// (`FUN_0052a8f0`).
+        cost: u32,
     },
     /// Train troops and deliver them to a target system.
     /// Original orders: 0x214 (set destination) then 0x212 (train-troops,
@@ -182,9 +181,9 @@ pub enum AgentOrder {
         kind: BuildableKind,
         /// How many regiments to train.
         count: u32,
-        /// Ticks per regiment. port: uses the AI's default troop build time
-        /// since the original reads from the construction yard.
-        ticks_per_unit: u32,
+        /// The build points a regiment needs: its class refined material
+        /// cost (`FUN_0052a8f0`).
+        cost_per_unit: u32,
     },
 }
 
@@ -503,15 +502,13 @@ impl PlayerAgent {
             })
             .map(|(key, _)| key)?;
 
-        // port: ticks derived from the AI's default facility build time.
-        // The original reads from the construction yard's processing rate.
-        let ticks = 30_u32;
+        let (cost, _) = crate::build_selection::unit_costs(world, kind)?;
 
         Some(AgentOrder::BuildFacility {
             system: target_system,
             destination: site,
             kind,
-            ticks,
+            cost,
         })
     }
 
@@ -583,15 +580,14 @@ impl PlayerAgent {
         let troop_class = find_troop_class(world, player_is_alliance)?;
         let kind = BuildableKind::Troop(troop_class);
 
-        // port: ticks per regiment from the AI's default.
-        let ticks_per_unit = 15_u32;
+        let (cost_per_unit, _) = crate::build_selection::unit_costs(world, kind)?;
 
         Some(AgentOrder::TrainTroops {
             training_system,
             target_system,
             kind,
             count,
-            ticks_per_unit,
+            cost_per_unit,
         })
     }
 
@@ -626,24 +622,21 @@ pub fn apply_orders(orders: &[AgentOrder], mfg: &mut ManufacturingState) {
                 system,
                 destination,
                 kind,
-                ticks,
+                cost,
             } => {
                 mfg.set_destination(system, ProductionArea::of(kind), destination);
-                mfg.enqueue(system, QueueItem::new(kind, ticks, ticks));
+                mfg.enqueue(system, QueueItem::new(kind, cost));
             }
             AgentOrder::TrainTroops {
                 training_system,
                 target_system,
                 kind,
                 count,
-                ticks_per_unit,
+                cost_per_unit,
             } => {
                 mfg.set_destination(training_system, ProductionArea::of(kind), target_system);
                 for _ in 0..count {
-                    mfg.enqueue(
-                        training_system,
-                        QueueItem::new(kind, ticks_per_unit, ticks_per_unit),
-                    );
+                    mfg.enqueue(training_system, QueueItem::new(kind, cost_per_unit));
                 }
             }
         }
@@ -932,16 +925,35 @@ mod tests {
     }
 
     /// Add a production facility (mine or refinery) to a system.
+    /// The refined cost of the test world's regiment and facility classes.
+    const TROOP_COST: u32 = 15;
+    const FACILITY_COST: u32 = 30;
+
+    /// Give class `id` a record with a refined cost, as the DAT files do.
+    fn class_record(world: &mut GameWorld, id: u32, cost: u32) -> crate::ids::DatId {
+        let id = crate::ids::DatId(id);
+        world.buildable_classes.insert(
+            id,
+            crate::world::BuildableClass {
+                refined_material_cost: cost,
+                ..crate::world::BuildableClass::default()
+            },
+        );
+        id
+    }
+
     fn add_production_facility(
         world: &mut GameWorld,
         sys_key: SystemKey,
         is_alliance: bool,
         is_mine: bool,
     ) -> ProductionFacilityKey {
+        let class = if is_mine { 0x2c00_0001 } else { 0x2d00_0001 };
+        let class_dat_id = class_record(world, class, FACILITY_COST);
         let pfk = world
             .production_facilities
             .insert(ProductionFacilityInstance {
-                class_dat_id: crate::ids::DatId(if is_mine { 0x2c00_0001 } else { 0x2d00_0001 }),
+                class_dat_id,
                 side: crate::dat::Faction::of_alliance(is_alliance),
                 is_mine,
             });
@@ -978,8 +990,9 @@ mod tests {
 
     /// Add a troop unit to a system.
     fn add_troop(world: &mut GameWorld, sys_key: SystemKey, is_alliance: bool) -> TroopKey {
+        let class_dat_id = class_record(world, 0x2900_0001, TROOP_COST);
         let tk = world.troops.insert(TroopUnit {
-            class_dat_id: crate::ids::DatId(0x2900_0001),
+            class_dat_id,
             is_alliance,
             regiment_strength: 100,
         });
@@ -1282,16 +1295,13 @@ mod tests {
             system,
             destination,
             kind,
-            ticks,
+            cost,
         } = orders[0].clone()
         else {
             panic!("expected BuildFacility order");
         };
         assert_eq!((system, destination), (sys_key, sys_key));
-        mfg.enqueue(
-            system,
-            crate::manufacturing::QueueItem::new(kind, ticks, ticks),
-        );
+        mfg.enqueue(system, crate::manufacturing::QueueItem::new(kind, cost));
 
         // Three facilities, built or queued, fill the three energy slots.
         assert!(agent.advance(&world, &mfg, &eco, true).is_empty());
@@ -1309,7 +1319,7 @@ mod tests {
                 target_system: target,
                 kind,
                 count: 2,
-                ticks_per_unit: 15,
+                cost_per_unit: 15,
             }],
             &mut mfg,
         );
@@ -1359,7 +1369,6 @@ mod tests {
                 training_system,
                 crate::manufacturing::QueueItem::new(
                     BuildableKind::Troop(world.troops[troop].class_dat_id),
-                    15,
                     15,
                 )
                 .delivered_to(target_system),
@@ -1479,7 +1488,7 @@ mod tests {
         add_training_facility(&mut world, open, true);
         let troop = add_troop(&mut world, site, true);
         let class = world.troops[troop].class_dat_id;
-        let item = || crate::manufacturing::QueueItem::new(BuildableKind::Troop(class), 15, 15);
+        let item = || crate::manufacturing::QueueItem::new(BuildableKind::Troop(class), 15);
         for _ in 0..3 {
             mfg.enqueue(full, item());
         }
@@ -1508,7 +1517,6 @@ mod tests {
                     class: world.production_facilities[mine].class_dat_id,
                     is_alliance: true,
                 }),
-                30,
                 30,
             ),
         );
@@ -1548,7 +1556,6 @@ mod tests {
             sys_key,
             crate::manufacturing::QueueItem::new(
                 BuildableKind::Troop(world.troops[troop].class_dat_id),
-                15,
                 15,
             ),
         );
@@ -1609,7 +1616,7 @@ mod tests {
                 target_system: yard,
                 kind: BuildableKind::Troop(world.troops[own].class_dat_id),
                 count: 2,
-                ticks_per_unit: 15,
+                cost_per_unit: TROOP_COST,
             }]
         );
     }

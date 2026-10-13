@@ -400,12 +400,9 @@ mod tests {
                 is_alliance: true,
             }),
         ] {
-            manufacturing.enqueue(here, QueueItem::new(kind, 10, 10));
+            manufacturing.enqueue(here, QueueItem::new(kind, 10));
         }
-        manufacturing.enqueue(
-            there,
-            QueueItem::new(BuildableKind::Troop(regiment), 10, 10),
-        );
+        manufacturing.enqueue(there, QueueItem::new(BuildableKind::Troop(regiment), 10));
 
         let alliance = maintenance_totals(&world, &manufacturing, Faction::Alliance, |_| false);
         assert_eq!(alliance.upkeep, 20 + 4 + 2 + 7);

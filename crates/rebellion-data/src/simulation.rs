@@ -23,11 +23,11 @@ use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::game_events::GameEventRecord;
 use rebellion_core::ids::SystemKey;
 use rebellion_core::jedi::{JediState, JediSystem};
-use rebellion_core::manufacturing::{ManufacturingState, ManufacturingSystem};
+use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::{MissionState, MissionSystem};
 use rebellion_core::movement::{reconcile_fleet_orbits, MovementState, MovementSystem};
 use rebellion_core::production_cycle::{
-    scrap_yardless_queues, supply_yards, suspended_systems, ProductionState, ProductionSystem,
+    advance_yards, scrap_yardless_queues, suspended_systems, ProductionState, ProductionSystem,
 };
 use rebellion_core::repair::{RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
@@ -141,25 +141,20 @@ pub fn run_simulation_tick(
     integrator.apply_economy_events(world, &economy_events);
 
     // ── 1. Manufacturing ─────────────────────────────────────────────────
-    // Use advance_tracked so the K6 EVT_MANUFACTURING_IDLE telemetry is
-    // emitted for any system whose queue transitioned empty this tick.
+    // `newly_idle` feeds the K6 EVT_MANUFACTURING_IDLE telemetry for any
+    // system whose queue transitioned empty this tick.
     // A manager with no yard left scraps its queue; yards in a system in
     // uprising or under blockade are suspended (FUN_00529dd0, FUN_0050bbb0).
     scrap_yardless_queues(world, &mut states.manufacturing);
     let suspended = suspended_systems(&states.blockade, &states.uprising);
-    // Yards draw refined material first; an area that finds none stalls.
-    let starved = supply_yards(
+    // Each yard cycle takes one refined material and ends with one build
+    // point for its manager (FUN_00530820, FUN_0052a430).
+    let mfg_advance = advance_yards(
         &mut states.production,
         world,
-        &states.manufacturing,
+        &mut states.manufacturing,
         |system| suspended.contains(&system),
         tick_events,
-    );
-    let mfg_advance = ManufacturingSystem::advance_supplied(
-        &mut states.manufacturing,
-        tick_events,
-        &suspended,
-        &starved,
     );
     integrator.apply_build_completions(world, &mfg_advance.completions);
     integrator.apply_manufacturing_idle(world, &mfg_advance.newly_idle);
@@ -947,74 +942,24 @@ mod tests {
         assert!(world.systems[system].ground_units.contains(&troop));
     }
 
-    #[test]
-    fn a_shipyard_without_refined_material_does_not_advance_its_build() {
-        // FUN_00530820: a yard takes one refined material to start a cycle
-        // and waits when the side has none.
+    /// The first system, Alliance-held, with one yard of `yard_class`
+    /// (cycle 2 days, as MANFACSD's advanced yards) and a three-point ship
+    /// ordered; the points done on it after `days`, or `None` once
+    /// nothing is queued. The Alliance starts with `refined` material, and the
+    /// system is in uprising when asked.
+    fn ship_points_after(yard_class: u32, refined: i32, uprising: bool, days: u64) -> Option<u32> {
         use rebellion_core::manufacturing::{BuildableKind, ProductionArea, QueueItem};
         use rebellion_core::world::{BuildableClass, ManufacturingFacilityInstance};
 
-        let build = |with_rate: bool| {
-            let (mut world, mut states, _, _) = world_with_loading_fleet();
-            let system = world.systems.keys().next().unwrap();
-            let yard_class = DatId::new(0x2800_0001);
-            if with_rate {
-                world.buildable_classes.insert(
-                    yard_class,
-                    BuildableClass {
-                        processing_rate: 1,
-                        ..BuildableClass::default()
-                    },
-                );
-            }
-            let yard = world
-                .manufacturing_facilities
-                .insert(ManufacturingFacilityInstance {
-                    class_dat_id: yard_class,
-                    side: Faction::Alliance,
-                    is_shipyard: true,
-                });
-            world.systems[system].manufacturing_facilities.push(yard);
-            let ship = world
-                .capital_ship_classes
-                .insert(CapitalShipClass::default());
-            states.manufacturing.enqueue(
-                system,
-                QueueItem::new(BuildableKind::CapitalShip(ship), 3, 3),
-            );
-            for tick in 1..=5 {
-                run_simulation_tick(
-                    &mut world,
-                    &mut states,
-                    &[TickEvent { tick }],
-                    &[0.99; 2048],
-                    10,
-                    &rebellion_core::tuning::GameConfig::default(),
-                );
-            }
-            states
-                .manufacturing
-                .queue(system, ProductionArea::Shipyard)
-                .and_then(|queue| queue.active().map(|item| item.ticks_remaining))
-        };
-
-        // The yard starts a cycle every day and the Alliance has no refined
-        // material: the three-day build has not moved after five days.
-        assert_eq!(build(true), Some(3));
-        // The control: a yard with no cycle draws nothing, and the same
-        // build is finished.
-        assert_eq!(build(false), None);
-    }
-
-    /// The first system, Alliance-held, with one yard of `yard_class` and a
-    /// three-day ship queued; the queue's remaining days after `days`, with
-    /// the system in uprising when asked.
-    fn ship_build_after(yard_class: u32, uprising: bool, days: u64) -> Option<u32> {
-        use rebellion_core::manufacturing::{BuildableKind, ProductionArea, QueueItem};
-        use rebellion_core::world::ManufacturingFacilityInstance;
-
         let (mut world, mut states, _, _) = world_with_loading_fleet();
         let system = world.systems.keys().next().unwrap();
+        world.buildable_classes.insert(
+            DatId::new(yard_class),
+            BuildableClass {
+                processing_rate: 2,
+                ..BuildableClass::default()
+            },
+        );
         let yard = world
             .manufacturing_facilities
             .insert(ManufacturingFacilityInstance {
@@ -1026,10 +971,14 @@ mod tests {
         let ship = world
             .capital_ship_classes
             .insert(CapitalShipClass::default());
-        states.manufacturing.enqueue(
-            system,
-            QueueItem::new(BuildableKind::CapitalShip(ship), 3, 3),
-        );
+        states
+            .manufacturing
+            .enqueue(system, QueueItem::new(BuildableKind::CapitalShip(ship), 3));
+        states
+            .production
+            .stock_mut(Faction::Alliance)
+            .expect("the Alliance keeps a stockpile")
+            .refined = refined;
         if uprising {
             states.uprising.active_uprisings.insert(
                 system,
@@ -1052,23 +1001,41 @@ mod tests {
         states
             .manufacturing
             .queue(system, ProductionArea::Shipyard)
-            .and_then(|queue| queue.active().map(|item| item.ticks_remaining))
+            .filter(|queue| !queue.is_empty())
+            .map(rebellion_core::manufacturing::ProductionQueue::completed_points)
+    }
+
+    #[test]
+    fn a_shipyard_without_refined_material_does_not_advance_its_build() {
+        // FUN_00530820: a yard takes one refined material to start a cycle
+        // and waits when the side has none.
+        assert_eq!(ship_points_after(0x2800_0004, 0, false, 5), Some(0));
+        // The control: supplied, its 2-day cycles end on days 2 and 4
+        // (FUN_0052cc90), each with a point (FUN_0052a430).
+        assert_eq!(ship_points_after(0x2800_0004, 5, false, 5), Some(2));
+    }
+
+    #[test]
+    fn a_ship_completes_when_its_yard_has_made_its_cost_in_points() {
+        // FUN_0052b960: three points for a three-point ship, on day 6.
+        assert_eq!(ship_points_after(0x2800_0004, 5, false, 5), Some(2));
+        assert_eq!(ship_points_after(0x2800_0004, 5, false, 6), None);
     }
 
     #[test]
     fn a_shipyard_in_an_uprising_does_not_advance_its_build() {
         // FUN_0050bbb0 suspends a system's yards while it is in uprising
         // (+0x88 bit 2), and FUN_00529dd0 counts no suspended yard.
-        assert_eq!(ship_build_after(0x2800_0001, false, 2), Some(1));
-        assert_eq!(ship_build_after(0x2800_0001, true, 2), Some(3));
+        assert_eq!(ship_points_after(0x2800_0004, 5, false, 2), Some(1));
+        assert_eq!(ship_points_after(0x2800_0004, 5, true, 2), Some(0));
     }
 
     #[test]
     fn a_ship_queue_with_no_shipyard_is_scrapped() {
         // FUN_00529dd0: a manager with no yard of its area scraps its queue
         // (FUN_0052a2c0). A construction yard is not a shipyard.
-        assert_eq!(ship_build_after(0x2800_0001, false, 1), Some(2));
-        assert_eq!(ship_build_after(0x2a00_0003, false, 1), None);
+        assert_eq!(ship_points_after(0x2800_0004, 5, false, 1), Some(0));
+        assert_eq!(ship_points_after(0x2a00_0006, 5, false, 1), None);
     }
 
     #[test]

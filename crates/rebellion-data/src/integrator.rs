@@ -144,16 +144,12 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "decoys": member_names(world, decoys),
             })
         }
-        AIAction::EnqueueProduction {
-            system,
-            kind,
-            ticks,
-        } => {
+        AIAction::EnqueueProduction { system, kind, cost } => {
             serde_json::json!({
                 "type": "EnqueueProduction",
                 "system": sys_name(world, *system),
                 "kind": format!("{:?}", kind),
-                "ticks": ticks,
+                "cost": cost,
             })
         }
         AIAction::DispatchResearch {
@@ -577,7 +573,7 @@ impl PerceptionIntegrator {
 
     /// Emit `EVT_MANUFACTURING_IDLE` (0x160, K6) for systems whose queue
     /// transitioned from non-empty to empty this tick. No world mutation —
-    /// the queue is already drained by `ManufacturingSystem::advance_tracked`.
+    /// the queue is already drained by `production_cycle::advance_yards`.
     pub fn apply_manufacturing_idle(
         &mut self,
         world: &GameWorld,
@@ -2047,12 +2043,8 @@ fn apply_ai_actions_inner(
                 }
                 dispatched
             }
-            AIAction::EnqueueProduction {
-                system,
-                kind,
-                ticks,
-            } => {
-                mfg_state.enqueue(*system, QueueItem::new(*kind, *ticks, *ticks));
+            AIAction::EnqueueProduction { system, kind, cost } => {
+                mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
                 true
             }
             AIAction::DispatchResearch {

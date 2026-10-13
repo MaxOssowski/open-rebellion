@@ -31,7 +31,7 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | # | System | File | Signature | Key Gotcha |
 |---|--------|------|-----------|------------|
 | 1 | **Tick** | `tick.rs` | `clock.advance(dt) -> Vec<TickEvent>` | `TICK_DURATION = 1.0s` at Normal speed |
-| 2 | **Manufacturing** | `manufacturing.rs` | `advance_with_blockade(state, ticks, blocked)` | Blockaded systems skip production |
+| 2 | **Manufacturing** | `manufacturing.rs`, `production_cycle.rs` | `advance_yards(production, world, manufacturing, blocked, ticks)` | A queue counts build points, one per yard cycle; a cycle start takes one refined material. Yards of a system in uprising or blockaded do not run |
 | 3 | **Missions** | `missions.rs` | `advance(state, world, ticks, rolls)` | 9 kinds, MSTB tables, `target_character` for assassination/abduction/rescue |
 | 4 | **Events** | `events.rs` | `advance(state, world, ticks, rolls)` | `EventFired` chaining within same call |
 | 5 | **AI** | `ai.rs` | `advance(state, world, mfg, missions, movement, ticks)` | Per-fleet targeting, deconfliction, battle penalty. Re-evaluates every 7 ticks. |
@@ -79,7 +79,7 @@ Probability: MSTB table lookup (piecewise-linear) with quadratic fallback. Combi
 run_simulation_tick():
   integrator = PerceptionIntegrator::new(tick, wall_ms)
   0. economy_events  = EconomySystem::advance()       → integrator.apply_economy_events()
-  1. completions     = ManufacturingSystem::advance()  → integrator.apply_build_completions()
+  1. completions     = production_cycle::advance_yards() → integrator.apply_build_completions()
   2. arrivals        = MovementSystem::advance()       → integrator.apply_arrivals()
   3. combat triggers → CombatSystem::resolve_*()       → integrator.apply_space_combat() / apply_ground_combat()
   4. reveals         = FogSystem::advance()             → integrator.emit_fog_reveals()
@@ -136,7 +136,7 @@ All simulation states are created in `main.rs` and included in `SaveState` (`reb
 | State | Mutated By |
 |-------|------------|
 | `GameClock` | `clock.advance(dt)` |
-| `ManufacturingState` | `ManufacturingSystem::advance_with_blockade`, AI |
+| `ManufacturingState` | `production_cycle::advance_yards`, AI |
 | `MissionState` | `MissionSystem::advance`, AI |
 | `EventState` | `EventSystem::advance` |
 | `AIState` | `AISystem::advance`, mission callbacks |

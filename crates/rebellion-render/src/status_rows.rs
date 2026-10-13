@@ -738,12 +738,13 @@ pub fn producer_rows(
     let world = sources.world;
     let value = world.systems.get(system)?;
     let (_, family, busy) = manager(area);
-    let yards = value
+    let facilities: Vec<_> = value
         .manufacturing_facilities
         .iter()
         .filter_map(|key| world.manufacturing_facilities.get(*key))
         .filter(|facility| facility.class_dat_id.family() == family)
-        .count();
+        .collect();
+    let yards = facilities.len();
     let queue = sources
         .manufacturing
         .queue(system, area)
@@ -759,7 +760,15 @@ pub fn producer_rows(
     ];
     if let (true, Some(queue)) = (yards > 0, queue) {
         rows.push(row("Items to Build:", queue.len().to_string()));
-        if let Some(day) = queue.completion_days(sources.today).last() {
+        let periods = facilities.first().map_or_else(Vec::new, |facility| {
+            rebellion_core::build_selection::yard_periods(
+                world,
+                system,
+                area,
+                facility.side == rebellion_core::dat::Faction::Alliance,
+            )
+        });
+        if let Some(day) = queue.completion_days(sources.today, &periods).last() {
             rows.push(row("Estimated Day of Completion:", day.to_string()));
         }
     }
@@ -1387,10 +1396,19 @@ mod tests {
 
         assert_eq!(status(&world, &states)[1], pair("Status:", "No Facilities"));
 
+        let class_dat_id = catalog(
+            &mut world,
+            0x2900_0001,
+            "Training Facility",
+            BuildableClass {
+                processing_rate: 2,
+                ..BuildableClass::default()
+            },
+        );
         let yard = world
             .manufacturing_facilities
             .insert(ManufacturingFacilityInstance {
-                class_dat_id: DatId::new(0x2900_0001),
+                class_dat_id,
                 side: Faction::Alliance,
                 is_shipyard: false,
             });
@@ -1399,11 +1417,13 @@ mod tests {
 
         states.manufacturing.enqueue(
             here,
-            QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0002)), 4, 9),
+            QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0002)), 9),
         );
         let rows = status(&world, &states);
         assert_eq!(rows[1], pair("Status:", "Training"));
         assert_eq!(rows[2], pair("Items to Build:", "1"));
+        // FUN_00528d30: nine points at one every two days, from day 7.
+        assert_eq!(rows[3], pair("Estimated Day of Completion:", "25"));
         assert_eq!(rows.len(), 4);
     }
 
@@ -1619,7 +1639,7 @@ mod tests {
         let mut states = States::new();
         states.manufacturing.enqueue(
             here,
-            QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0002)), 4, 9),
+            QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0002)), 9),
         );
 
         let rows =

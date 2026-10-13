@@ -367,8 +367,8 @@ that area alone (manual p. 83); Build waits on the Build Selection window.
 Build Selection (`build_selection.rs`, model in
 `rebellion-core/src/build_selection.rs`) draws the traced background,
 strip, labels, fields and controls; a band's Build opens it on the band's
-list, and Confirm replaces the band's units, each queued with its own
-days from the yards (`unit_build_days`). Orders now name classes
+list, and Confirm replaces the band's units, each queued at its class
+refined cost in build points (`order_items`, `manufacturing-manager.md`). Orders now name classes
 (`BuildableKind::Troop(DatId)`, `SpecialForce`, and facility classes with
 their builder's side), from `GameWorld::buildable_classes`. The invented
 Manufacturing side panel (M) is gone.

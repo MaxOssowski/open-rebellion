@@ -50,7 +50,7 @@ use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
 use rebellion_core::jedi::{JediState, JediSystem};
 use rebellion_core::manufacturing::{
-    ManufacturingState, ManufacturingSystem, QueueItem,
+    ManufacturingState, QueueItem,
 };
 use rebellion_core::missions::{
     MissionEffect, MissionFaction, MissionKind, MissionState, MissionSystem,
@@ -62,7 +62,7 @@ use rebellion_core::movement::{
     validate_fleets_dispatch, MovementState, MovementSystem,
 };
 use rebellion_core::production_cycle::{
-    scrap_yardless_queues, supply_yards, suspended_systems, ProductionState, ProductionSystem,
+    advance_yards, scrap_yardless_queues, suspended_systems, ProductionState, ProductionSystem,
 };
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
@@ -1769,25 +1769,20 @@ Some(RailAudience::side(*faction_is_alliance)),
             }
 
             // ── Manufacturing (blockaded systems are skipped) ─────────────────
-            // Use advance_tracked so we also pick up K6 EVT_MANUFACTURING_IDLE
-            // transitions for the interactive message log.
+            // `newly_idle` carries the K6 EVT_MANUFACTURING_IDLE transitions
+            // for the interactive message log.
             // A manager with no yard left scraps its queue; yards in a
             // system in uprising or under blockade are suspended.
             scrap_yardless_queues(&world, &mut mfg_state);
             let suspended = suspended_systems(&blockade_state, &uprising_state);
-            // Yards draw refined material first; an area that finds none stalls.
-            let starved_areas = supply_yards(
+            // Each yard cycle takes one refined material and ends with one
+            // build point for its manager.
+            let mfg_advance = advance_yards(
                 &mut production_state,
                 &world,
-                &mfg_state,
+                &mut mfg_state,
                 |system| suspended.contains(&system),
                 &tick_events,
-            );
-            let mfg_advance = ManufacturingSystem::advance_supplied(
-                &mut mfg_state,
-                &tick_events,
-                &suspended,
-                &starved_areas,
             );
             for completion in &mfg_advance.completions {
                 // Apply the built item to the game world (ships, facilities, troops).
@@ -6911,7 +6906,7 @@ fn apply_panel_action(
             );
         }
         // FUN_00438980 -> FUN_0041ce20: the units replace what the band
-        // was building, each with its own build days.
+        // was building, each at its class cost in build points.
         PanelAction::BuildProduction {
             system,
             area,
@@ -7756,12 +7751,8 @@ fn apply_ai_actions(
                     *target_system,
                 ));
             }
-            AIAction::EnqueueProduction {
-                system,
-                kind,
-                ticks,
-            } => {
-                mfg_state.enqueue(*system, QueueItem::new(*kind, *ticks, *ticks));
+            AIAction::EnqueueProduction { system, kind, cost } => {
+                mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
             }
             AIAction::MoveFleet {
                 fleet,
@@ -8671,7 +8662,6 @@ mod fleet_move_tests {
                 system,
                 &QueueItem::new(
                     rebellion_core::manufacturing::BuildableKind::CapitalShip(class),
-                    10,
                     10,
                 ),
                 1,

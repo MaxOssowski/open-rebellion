@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 33;
+pub const SAVE_VERSION: u32 = 34;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -235,7 +235,8 @@ pub struct SaveState {
     /// Optional AI controlling the player's nominal faction in dual-AI mode.
     pub ai2: Option<AIState>,
     pub repair: RepairState,
-    /// Mines, refineries and each side's raw and refined stockpiles (v33).
+    /// Mines, refineries, yards and each side's raw and refined stockpiles
+    /// (v33; yard cycles and build points in the queues, v34).
     pub production: ProductionState,
     /// Last automatic-combat tick per system.
     #[serde(
@@ -1369,7 +1370,7 @@ mod tests {
         let kind = rebellion_core::manufacturing::BuildableKind::CapitalShip(class);
         state.manufacturing.enqueue(
             origin,
-            rebellion_core::manufacturing::QueueItem::new(kind, 5, 10).delivered_to(destination),
+            rebellion_core::manufacturing::QueueItem::new(kind, 10).delivered_to(destination),
         );
         state.deliveries.depart(
             &state.world,
@@ -1420,7 +1421,6 @@ mod tests {
                 rebellion_core::manufacturing::BuildableKind::Troop(
                     rebellion_core::ids::DatId::new(0x1000_0001),
                 ),
-                4,
                 4,
             ),
         );

@@ -528,12 +528,10 @@ yard cycle, and idle yards neither run nor draw.
   ProductionModifier stays 100.
 - `rebellion-render/src/resource_monitors.rs`: the three monitors. Browser captures of day 0 are in
   `docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-maintenance-monitor/`.
-- `production_cycle::supply_yards` and
-  `ManufacturingSystem::advance_supplied`: the yards' refined intake. The
-  build queue counts days, so a yard of period `p` draws one unit on each day
-  divisible by `p` while its area has an item, and an area that cannot draw
-  all of a day's units stalls for that day. The request queue, the surplus
-  and the scrapping of a yardless queue are not ported.
+- `production_cycle::advance_yards`: each yard's cycle, its refined intake
+  and request queue, the build point at the cycle's end and the manager's
+  regulation of its yards; the queue counts points
+  (`manufacturing-manager.md`, "The port").
 - All three monitors read; the day-0 capture is
   `browser-alliance-day0-three-monitors.png` in the same folder.
 - Not ported: the refund on destruction (`FUN_00530270`); the over-limit
