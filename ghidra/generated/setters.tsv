@@ -88,7 +88,7 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 00504470	TroopReg_SetWithdrawPercent	setter	TroopRegWithdrawPercentNotif	0x60		0x1f4	unit
 00504850	SyncTroopRegDestroyedRunningBlockade	sync	TroopRegDestroyedRunningBlockadeNotif	0x5c	0x1	0x1f0	unit
 005048e0	TroopReg_SyncWithdrawPercent	sync	TroopRegWithdrawPercentNotif	0x60		0x1f4	unit
-00509c30		setter		0x58		0x1d0	none
+00509c30	System_SetLoyalty	setter	SystemLoyaltyNotif	0x58		0x1d0	unit
 00509cc0	System_SetSystemEnergy	setter	SystemSystemEnergyNotif	0x5c		0x1d4	unit
 00509d40		setter		0x60		0x1d8	folded
 00509dc0	System_SetSystemRawMaterial	setter	SystemSystemRawMaterialNotif	0x64		0x1dc	unit
@@ -99,7 +99,7 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 0050a040	System_SetControlKindBattleWon	setter	SystemControlKindBattleWonNotif			0x1f0	unit
 0050a230	System_SetTroopRegSurplus	setter	SystemTroopRegSurplusNotif	0x7c		0x200	unit
 0050a290	System_SetTroopRegRequired	setter	SystemTroopRegRequiredNotif	0x80		0x204	unit
-0050a300		setter				0x208	none
+0050a300	System_SetControlData	setter	SystemControlDataNotif			0x208	unit
 0050a3c0	System_SetPopulated	setter	SystemPopulatedNotif	0x88	0x1	0x20c	unit
 0050a430	System_SetExplored	setter	SystemExploredNotif	0x88	0x2	0x210	unit
 0050a4a0	System_SetUprising	setter	SystemUprisingNotif	0x88	0x4	0x214	unit
@@ -120,6 +120,7 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 0050ab30	System_SetDisasterIncident	setter	SystemDisasterIncidentNotif	0x88	0x40000	0x250	unit
 0050aba0	System_SetResourceIncident	setter	SystemResourceIncidentNotif	0x88	0x80000	0x254	unit
 0050ac10	System_SetBlockadeAndBattlePendingManagementRequired	setter	SystemBlockadeAndBattlePendingManagementRequiredNotif	0x88	0x100000	0x258	unit
+0050f390	System_SyncLoyalty	sync	SystemLoyaltyNotif	0x58		0x1d0	unit
 0050f410	System_SyncSystemEnergy	sync	SystemSystemEnergyNotif	0x5c		0x1d4	unit
 0050f490	System_SyncSystemRawMaterial	sync	SystemSystemRawMaterialNotif	0x64		0x1dc	unit
 0050f510	System_SyncSystemRawMaterialAllocated	sync	SystemSystemRawMaterialAllocatedNotif	0x68		0x1e0	unit
@@ -129,6 +130,7 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 0050f710	System_SyncControlKindBattleWon	sync	SystemControlKindBattleWonNotif			0x1f0	unit
 0050f980	System_SyncTroopRegSurplus	sync	SystemTroopRegSurplusNotif	0x7c		0x200	unit
 0050fa00	System_SyncTroopRegRequired	sync	SystemTroopRegRequiredNotif	0x80		0x204	unit
+0050fa90	System_SyncControlData	sync	SystemControlDataNotif			0x208	unit
 0050fbf0	System_SyncPopulated	sync	SystemPopulatedNotif	0x88	0x1	0x20c	unit
 0050fc80	System_SyncExplored	sync	SystemExploredNotif	0x88	0x2	0x210	unit
 0050fd10	System_SyncUprising	sync	SystemUprisingNotif	0x88	0x4	0x214	unit
@@ -159,10 +161,10 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 00521c10	SetMissionTargetLocationKey	setter	MissionTargetLocationKeyNotif			0x204	unit
 00521cc0	SetMissionLeaderKey	setter	MissionLeaderKeyNotif			0x208	unit
 00521d70	SetMissionLeaderSeedKey	setter	MissionLeaderSeedKeyNotif			0x20c	unit
-00521e30		setter				0x210	none
-00521ef0		setter				0x214	none
-00521fb0		setter				0x218	none
-00522070		setter				0x21c	none
+00521e30	SetMissionTeamSelectList	setter	MissionTeamSelectListNotif			0x210	unit
+00521ef0	SetMissionDecoySelectList	setter	MissionDecoySelectListNotif			0x214	unit
+00521fb0	SetMissionCapturedSelectList	setter	MissionCapturedSelectListNotif			0x218	unit
+00522070	SetMissionMissionMemberFinishedMissionSelectList	setter	MissionMissionMemberFinishedMissionSelectListNotif			0x21c	unit
 00522130	Mission_SetReadyForNextPhase	setter	MissionReadyForNextPhaseNotif	0xa4	0x1	0x220	unit
 005221a0	Mission_SetImpliedTeam	setter	MissionImpliedTeamNotif	0xa4	0x2	0x224	unit
 00522210	Mission_SetMandatory	setter	MissionMandatoryNotif	0xa4	0x4	0x228	unit
@@ -174,6 +176,10 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 00524290	SyncMissionTargetLocationKey	sync	MissionTargetLocationKeyNotif			0x204	unit
 00524370	SyncMissionLeaderKey	sync	MissionLeaderKeyNotif			0x208	unit
 00524450	SyncMissionLeaderSeedKey	sync	MissionLeaderSeedKeyNotif			0x20c	unit
+00524530	SyncMissionTeamSelectList	sync	MissionTeamSelectListNotif			0x210	unit
+00524610	SyncMissionDecoySelectList	sync	MissionDecoySelectListNotif			0x214	unit
+005246f0	SyncMissionCapturedSelectList	sync	MissionCapturedSelectListNotif			0x218	unit
+005247d0	SyncMissionMissionMemberFinishedMissionSelectList	sync	MissionMissionMemberFinishedMissionSelectListNotif			0x21c	unit
 005248b0	Mission_SyncReadyForNextPhase	sync	MissionReadyForNextPhaseNotif	0xa4	0x1	0x220	unit
 00524940	Mission_SyncImpliedTeam	sync	MissionImpliedTeamNotif	0xa4	0x2	0x224	unit
 005249d0	Mission_SyncMandatory	sync	MissionMandatoryNotif	0xa4	0x4	0x228	unit
@@ -199,7 +205,7 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 0052b410	ManuMgr_SyncDeploymentKey	sync	ManuMgrDeploymentKeyNotif			0x224	unit
 0052b530	ManuMgr_SyncTargetKey	sync	ManuMgrTargetKeyNotif			0x228	unit
 0052b650	ManuMgr_SyncProductName	sync	ManuMgrProductNameNotif			0x22c	unit
-0052ec90		setter		0x58		0x1bc	none
+0052ec90	SetSideMaintState	setter	SideMaintStateNotif	0x58		0x1bc	unit
 0052ed50		setter		0x60		0x1c0	none
 0052ee10		setter		0x68		0x1c4	none
 0052eed0	SetSideMaintRequired	setter	SideMaintRequiredNotif	0x70		0x1c8	unit
@@ -219,7 +225,8 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 0052f4b0	Side_SetTrainingFacilRdDone	setter	SideTrainingFacilRdDoneNotif	0xb0		0x200	unit
 0052f520	Side_SetConstructionYardRdDone	setter	SideConstructionYardRdDoneNotif	0xb4		0x204	unit
 0052f590	Side_SetRecruitmentDone	setter	SideRecruitmentDoneNotif	0xb8		0x208	unit
-0052f600		setter		0xbc		0x20c	none
+0052f600	Side_SetVictoryConditions	setter	SideVictoryConditionsNotif	0xbc		0x20c	unit
+005315e0	SyncSideMaintState	sync	SideMaintStateNotif	0x58		0x1bc	unit
 00531970	SyncSideMaintRequired	sync	SideMaintRequiredNotif	0x70		0x1c8	unit
 00531e40	Side_SyncShipyardRdOrder	sync	SideShipyardRdOrderNotif	0x9c		0x1ec	unit
 00531ed0	Side_SyncTrainingFacilRdOrder	sync	SideTrainingFacilRdOrderNotif	0xa0		0x1f0	unit
@@ -228,6 +235,7 @@ function	name	kind	notifier	field_offset	mask	master_slot	confidence
 00532110	Side_SyncTrainingFacilRdDone	sync	SideTrainingFacilRdDoneNotif	0xb0		0x200	unit
 005321a0	Side_SyncConstructionYardRdDone	sync	SideConstructionYardRdDoneNotif	0xb4		0x204	unit
 00532230	Side_SyncRecruitmentDone	sync	SideRecruitmentDoneNotif	0xb8		0x208	unit
+005322c0	Side_SyncVictoryConditions	sync	SideVictoryConditionsNotif	0xbc		0x20c	unit
 00534230	SetRoleMissionKey	setter	RoleMissionKeyNotif			0x23c	unit
 005342e0	SetRoleMissionSeedKey	setter	RoleMissionSeedKeyNotif			0x240	unit
 00534390	SetRoleParentAtMissionCompletionKey	setter	RoleParentAtMissionCompletionKeyNotif			0x244	unit

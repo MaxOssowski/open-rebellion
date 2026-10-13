@@ -471,8 +471,14 @@ The rest are `<Parent>_<vtable>` or `Class_<vtable>`. A function that one
 class introduces and that had no name is named `<Class>_vt<slot>` in the
 saved project (2,406 functions).
 
-Coverage after this pass, from `function-ranges.tsv`: of 22,407 functions,
+`DefineSlotFunctions.java` then defined a function at each of the 1,736
+slot targets Ghidra had left undefined (small virtual methods nothing
+calls directly), and the naming passes were run again over them: 9 more
+notifiers, 8 more setters and their sync routines, one more named event,
+and 1,397 of the new functions named `<Class>_vt<slot>`. The decompiled
+corpus in `~/Games/rebexe-decompile/decompiled` gained their 1,698 files.
+
+Coverage after this pass, from `function-ranges.tsv`: of 24,166 functions,
 11,352 are exception-unwind funclets (`Unwind@...`) and about 40 are
-imports or runtime. Of the roughly 11,000 game functions, 7,826 still
-have a default name; 1,737 vtable slots point at small stubs Ghidra has
-not defined as functions.
+imports or runtime. Of the roughly 12,800 game functions, 8,156 still
+have a default name. No vtable slot points at undefined code any more.
