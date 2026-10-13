@@ -247,3 +247,19 @@ the code that raises or arms it.
 
 `FUN_0053fe40` is the notify helper, not a raise: the ids it passes
 (`FUN_004fc080`'s `0x302`, `0x303`) are in another id space.
+
+## Generated parameter map (2026-10-13)
+
+`ghidra/generated/parameters.tsv` (`ghidra/scripts/derive_parameter_map.py`)
+ties each GNPRTB and SDPRTB entry to its global and its readers.
+`FUN_0053e390(id, &global)` loads a GNPRTB entry (table `0x3c`) and
+`FUN_0053e3e0(id, side, &global)` an SDPRTB entry for side 1 or 2 (table
+`0x3d`). All 213 GNPRTB entries and all 35 SDPRTB entries (70 loads) are
+loaded, each into its own global, and every global is read somewhere.
+Readers are code sites holding the global's address; 26 are accessors of
+at most 32 bytes, whose callers the table lists as users. The globals are
+labelled `Gnprtb_<id>` / `Sdprtb_<id>_<side>` in the saved project.
+
+GNPRTB 7694, which the port's `economy.rs` uses as a maintenance-check
+period, is read by `FUN_0050e200` and `FUN_005109f0` (the period of timer
+`0x386`); GNPRTB 7168 is read by `FUN_00532350`, which arms timer `0x381`.
