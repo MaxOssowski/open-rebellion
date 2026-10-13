@@ -22,6 +22,17 @@ the `+0x50` bits (setters `FUN_004f7720`..`FUN_004f7a30`, `FUN_004f7aa0`):
 | 15 | `0x8000` | `GameObjConstructedNotif` |
 | 16 | `0x10000` | `GameObjDeployedNotif` (`FUN_004f7aa0`, slot `+0x1b8` `FUN_004fc570`) |
 
+**Correction (2026-10-13).** The table above assumed slot `+0x178 + 4 * bit`
+for every bit. `ghidra/generated/setters.tsv`, read from each setter's sync
+routine and the string in the notifier it calls, shows that holds only up
+to bit 9: bit 10 (`0x400`) has no named view slot, and from there each name
+sits one bit higher. `0x800` HyperdriveActive (`FUN_004f7870`), `0x1000`
+Autorouting (`FUN_004f78e0`), `0x2000` AutoscrapRequest (`FUN_004f7950`),
+`0x4000` Locked (`FUN_004f79c0`), `0x8000` ReadyForDelete (`FUN_004f7a30`),
+`0x10000` Constructed (`FUN_004f7aa0`), `0x20000` Deployed (`FUN_004f7b10`).
+Where this note says a function sets Deployed through `FUN_004f7aa0`, it
+sets Constructed; the mechanics described are unchanged.
+
 En route (bit 4) is recomputed by `FUN_004f8240`:
 
 ```c

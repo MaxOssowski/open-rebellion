@@ -540,10 +540,34 @@ yard cycle, and idle yards neither run nor draw.
   lock (timer `0x382`); and the cycle-end roll's random draw. `economy.rs`
   still runs its own maintenance-shortfall cooldown.
 
+## Names recovered from the notifier strings (2026-10-13)
+
+`ghidra/generated/notifier-slots.tsv` and `setters.tsv` (scripts
+`NameNotifiers.java`, `derive_setter_names.py`, `ApplyNames.java`) name the
+setters used above. What that changes here:
+
+- **The over-limit penalty is an autoscrap request.** `FUN_004f7950`, which
+  timer `0x382` calls on one random eligible object, is
+  `GameObj_SetAutoscrapRequest` (`+0x50` `0x2000`), not Locked (`0x4000`,
+  `FUN_004f79c0`). This is the manual's scrapping (p. 81).
+- **Facility `+0x60`:** `0x1` Suspended (the "blocked" bit), `0x2`
+  PointPresent, `0x4` PointProcessed, `0x8` Processing, `0x10`
+  OnStartupCycle (the bit that randomises the first cycle). The cycle-start
+  hooks set PointPresent through `FUN_0053a860`, not a "processing" bit.
+- **Manager:** `+0x58` RemainingGameObjCount, `+0x5c` CompletedPointCount,
+  `+0x60` OverflowPointCount (the "surplus"), `+0x68` RequiredPointCount,
+  `+0x6c` TotalRequiredPointCount.
+- **System:** `+0x6c` is SmugglingPercent (`FUN_00509ec0`) and `+0x70`
+  ProductionModifier (`FUN_00509f40`); `economy-systems.md` has them one
+  field early. The discarded cycle-end roll (`FUN_005166a0`) is therefore
+  against the system's smuggling percent.
+- **Side:** `+0x70` is MaintRequired. The raw, refined, capacity-pair and
+  waiting-count setters have no string notifier and stay unnamed.
+
 ## Open
 
 1. **The remaining negative openings** (1 seed in 12): whether the
    original can also open below zero, or the port's upkeep or seeded forces
    still differ.
-2. **The effect of Locked** (object slot `+0xe0`), its release, and the
-   `0x382` period.
+2. **What an autoscrap request does next**: who reads `+0x50` `0x2000` and
+   scraps the object, and the `0x382` period.

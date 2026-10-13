@@ -1,0 +1,331 @@
+function	name	kind	notifier	field_offset	mask	master_slot	confidence
+004ee500	SetCharacterEncounterKey	setter	CharacterEncounterKeyNotif			0x33c	unit
+004ee5c0	SetCharacterTraitorDiscoveredKey	setter	CharacterTraitorDiscoveredKeyNotif			0x340	unit
+004ee680	SetCharacterForceUserDiscoveredKey	setter	CharacterForceUserDiscoveredKeyNotif			0x344	unit
+004ee740	SetCharacterCommandingKey	setter	CharacterCommandingKeyNotif			0x348	unit
+004ee800	Character_SetCaptured	setter	CharacterCapturedNotif	0xac	0x1	0x34c	unit
+004ee870	Character_SetCanHeal	setter	CharacterCanHealNotif	0xac	0x2	0x350	unit
+004ee8e0	Character_SetFastHeal	setter	CharacterFastHealNotif	0xac	0x4	0x354	unit
+004ee950	Character_SetForceAware	setter	CharacterForceAwareNotif	0xac	0x10	0x358	unit
+004ee9c0	Character_SetForcePotential	setter	CharacterForcePotentialNotif	0xac	0x20	0x35c	unit
+004eea30	Character_SetHealing	setter	CharacterHealingNotif	0xac	0x40	0x360	unit
+004eeaa0	Character_SetDiscoveringForceUser	setter	CharacterDiscoveringForceUserNotif	0xac	0x80	0x364	unit
+004eeb10	Character_SetCanEscape	setter	CharacterCanEscapeNotif	0xac	0x100	0x368	unit
+004eeb80	Character_SetEscapeRequest	setter	CharacterEscapeRequestNotif	0xac	0x200	0x36c	unit
+004eebf0	Character_SetEscapeAttempt	setter	CharacterEscapeAttemptNotif	0xac	0x400	0x370	unit
+004f06a0	SyncCharacterEncounterKey	sync	CharacterEncounterKeyNotif			0x33c	unit
+004f07f0	SyncCharacterTraitorDiscoveredKey	sync	CharacterTraitorDiscoveredKeyNotif			0x340	unit
+004f0940	SyncCharacterForceUserDiscoveredKey	sync	CharacterForceUserDiscoveredKeyNotif			0x344	unit
+004f0a90	SyncCharacterCommandingKey	sync	CharacterCommandingKeyNotif			0x348	unit
+004f0be0	Character_SyncCaptured	sync	CharacterCapturedNotif	0xac	0x1	0x34c	unit
+004f0c70	Character_SyncCanHeal	sync	CharacterCanHealNotif	0xac	0x2	0x350	unit
+004f0d00	Character_SyncFastHeal	sync	CharacterFastHealNotif	0xac	0x4	0x354	unit
+004f0d90	Character_SyncForceAware	sync	CharacterForceAwareNotif	0xac	0x10	0x358	unit
+004f0e20	Character_SyncForcePotential	sync	CharacterForcePotentialNotif	0xac	0x20	0x35c	unit
+004f0eb0	Character_SyncHealing	sync	CharacterHealingNotif	0xac	0x40	0x360	unit
+004f0f40	Character_SyncDiscoveringForceUser	sync	CharacterDiscoveringForceUserNotif	0xac	0x80	0x364	unit
+004f0fe0	Character_SyncCanEscape	sync	CharacterCanEscapeNotif	0xac	0x100	0x368	unit
+004f1080	Character_SyncEscapeRequest	sync	CharacterEscapeRequestNotif	0xac	0x200	0x36c	unit
+004f1120	Character_SyncEscapeAttempt	sync	CharacterEscapeAttemptNotif	0xac	0x400	0x370	unit
+004f6fd0		setter				0xf4	none
+004f7070	SetGameObjBuilderKey	setter	GameObjBuilderKeyNotif			0xf8	unit
+004f7120	SetGameObjDestinationLocationAtDepartureKey	setter	GameObjDestinationLocationAtDepartureKeyNotif			0xfc	unit
+004f71d0	GameObj_SetDestroyedReason	setter	GameObjDestroyedReasonNotif			0x100	unit
+004f7390	SetGameObjETA	setter	GameObjETANotif	0x44		0x10c	unit
+004f7410	GameObj_SetUsable	setter	GameObjUsableNotif	0x50	0x1	0x110	unit
+004f7480	GameObj_SetCreated	setter	GameObjCreatedNotif	0x50	0x2	0x114	unit
+004f74f0	GameObj_SetCompleted	setter	GameObjCompletedNotif	0x50	0x4	0x118	unit
+004f7560		setter		0x50	0x8	0x11c	none
+004f75d0	GameObj_SetEnroute	setter	GameObjEnrouteNotif	0x50	0x10	0x120	unit
+004f7640	GameObj_SetEnrouteActive	setter	GameObjEnrouteActiveNotif	0x50	0x20	0x124	unit
+004f76b0	GameObj_SetExisting	setter	GameObjExistingNotif	0x50	0x40	0x128	unit
+004f7720		setter		0x50	0x80	0x12c	none
+004f7790		setter		0x50	0x100	0x130	none
+004f7800	GameObj_SetDamaged	setter	GameObjDamagedNotif	0x50	0x200	0x134	unit
+004f7870	GameObj_SetHyperdriveActive	setter	GameObjHyperdriveActiveNotif	0x50	0x800	0x138	unit
+004f78e0	GameObj_SetAutorouting	setter	GameObjAutoroutingNotif	0x50	0x1000	0x13c	unit
+004f7950	GameObj_SetAutoscrapRequest	setter	GameObjAutoscrapRequestNotif	0x50	0x2000	0x140	unit
+004f79c0	GameObj_SetLocked	setter	GameObjLockedNotif	0x50	0x4000	0x144	unit
+004f7a30	GameObj_SetReadyForDelete	setter	GameObjReadyForDeleteNotif	0x50	0x8000	0x148	unit
+004f7aa0	GameObj_SetConstructed	setter	GameObjConstructedNotif	0x50	0x10000	0x14c	unit
+004f7b10	GameObj_SetDeployed	setter	GameObjDeployedNotif	0x50	0x20000	0x150	unit
+004f9f10	SyncGameObjBuilderKey	sync	GameObjBuilderKeyNotif			0xf8	unit
+004fa030	SyncGameObjDestinationLocationAtDepartureKey	sync	GameObjDestinationLocationAtDepartureKeyNotif			0xfc	unit
+004fa170	GameObj_SyncDestroyedReason	sync	GameObjDestroyedReasonNotif			0x100	unit
+004fa350	SyncGameObjETA	sync	GameObjETANotif	0x44		0x10c	unit
+004fa3d0	GameObj_SyncUsable	sync	GameObjUsableNotif	0x50	0x1	0x110	unit
+004fa460	GameObj_SyncCreated	sync	GameObjCreatedNotif	0x50	0x2	0x114	unit
+004fa4f0	GameObj_SyncCompleted	sync	GameObjCompletedNotif	0x50	0x4	0x118	unit
+004fa620	GameObj_SyncEnroute	sync	GameObjEnrouteNotif	0x50	0x10	0x120	unit
+004fa6b0	GameObj_SyncEnrouteActive	sync	GameObjEnrouteActiveNotif	0x50	0x20	0x124	unit
+004fa740	GameObj_SyncExisting	sync	GameObjExistingNotif	0x50	0x40	0x128	unit
+004fa8f0	GameObj_SyncDamaged	sync	GameObjDamagedNotif	0x50	0x200	0x134	unit
+004fa980	GameObj_SyncHyperdriveActive	sync	GameObjHyperdriveActiveNotif	0x50	0x800	0x138	unit
+004faa10	GameObj_SyncAutorouting	sync	GameObjAutoroutingNotif	0x50	0x1000	0x13c	unit
+004faaa0	GameObj_SyncAutoscrapRequest	sync	GameObjAutoscrapRequestNotif	0x50	0x2000	0x140	unit
+004fab30	GameObj_SyncLocked	sync	GameObjLockedNotif	0x50	0x4000	0x144	unit
+004fabc0	GameObj_SyncReadyForDelete	sync	GameObjReadyForDeleteNotif	0x50	0x8000	0x148	unit
+004fac50	GameObj_SyncConstructed	sync	GameObjConstructedNotif	0x50	0x10000	0x14c	unit
+004face0	GameObj_SyncDeployed	sync	GameObjDeployedNotif	0x50	0x20000	0x150	unit
+004fe230		setter		0x58	0x1	0x1d8	none
+004fe2a0		setter		0x58	0x2	0x1dc	none
+004fe310		setter		0x58	0x4	0x1e0	none
+004fe380	Fleet_SetBattle	setter	FleetBattleNotif	0x58	0x10	0x1e4	unit
+004fe3f0	Fleet_SetBlockade	setter	FleetBlockadeNotif	0x58	0x20	0x1e8	unit
+004fe460	Fleet_SetBombard	setter	FleetBombardNotif	0x58	0x40	0x1ec	unit
+004fe4d0	Fleet_SetAssault	setter	FleetAssaultNotif	0x58	0x80	0x1f0	unit
+004ff330	Fleet_SyncBattle	sync	FleetBattleNotif	0x58	0x10	0x1e4	unit
+004ff3c0	Fleet_SyncBlockade	sync	FleetBlockadeNotif	0x58	0x20	0x1e8	unit
+004ff450	Fleet_SyncBombard	sync	FleetBombardNotif	0x58	0x40	0x1ec	unit
+004ff4e0	Fleet_SyncAssault	sync	FleetAssaultNotif	0x58	0x80	0x1f0	unit
+00501490	CapShip_SetHullValueDamage	setter	CapShipHullValueDamageNotif	0x60			unit
+00501510	CapShip_SetShieldRechargeRateCHAllocated	setter	CapShipShieldRechargeRateCHAllocatedNotif			0x2a0	unit
+005023b0	CapShip_SyncHullValueDamage	sync	CapShipHullValueDamageNotif	0x60			unit
+00502430	CapShip_SyncShieldRechargeRateCHAllocated	sync	CapShipShieldRechargeRateCHAllocatedNotif			0x2a0	unit
+005032c0	FightSquad_SetSquadSizeDamage	setter	FightSquadSquadSizeDamageNotif	0x60			unit
+005037f0	FightSquad_SyncSquadSizeDamage	sync	FightSquadSquadSizeDamageNotif	0x60			unit
+00504400	SetTroopRegDestroyedRunningBlockade	setter	TroopRegDestroyedRunningBlockadeNotif	0x5c	0x1	0x1f0	unit
+00504470	TroopReg_SetWithdrawPercent	setter	TroopRegWithdrawPercentNotif	0x60		0x1f4	unit
+00504850	SyncTroopRegDestroyedRunningBlockade	sync	TroopRegDestroyedRunningBlockadeNotif	0x5c	0x1	0x1f0	unit
+005048e0	TroopReg_SyncWithdrawPercent	sync	TroopRegWithdrawPercentNotif	0x60		0x1f4	unit
+00509c30		setter		0x58		0x1d0	none
+00509cc0	System_SetSystemEnergy	setter	SystemSystemEnergyNotif	0x5c		0x1d4	unit
+00509d40		setter		0x60		0x1d8	folded
+00509dc0	System_SetSystemRawMaterial	setter	SystemSystemRawMaterialNotif	0x64		0x1dc	unit
+00509e40	System_SetSystemRawMaterialAllocated	setter	SystemSystemRawMaterialAllocatedNotif	0x68		0x1e0	unit
+00509ec0	System_SetSmugglingPercent	setter	SystemSmugglingPercentNotif	0x6c		0x1e4	unit
+00509f40	System_SetProductionModifier	setter	SystemProductionModifierNotif	0x70		0x1e8	unit
+00509fc0	System_SetTroopRegWithdrawPercent	setter	SystemTroopRegWithdrawPercentNotif	0x74		0x1ec	unit
+0050a040	System_SetControlKindBattleWon	setter	SystemControlKindBattleWonNotif			0x1f0	unit
+0050a230	System_SetTroopRegSurplus	setter	SystemTroopRegSurplusNotif	0x7c		0x200	unit
+0050a290	System_SetTroopRegRequired	setter	SystemTroopRegRequiredNotif	0x80		0x204	unit
+0050a300		setter				0x208	none
+0050a3c0	System_SetPopulated	setter	SystemPopulatedNotif	0x88	0x1	0x20c	unit
+0050a430	System_SetExplored	setter	SystemExploredNotif	0x88	0x2	0x210	unit
+0050a4a0	System_SetUprising	setter	SystemUprisingNotif	0x88	0x4	0x214	unit
+0050a510	System_SetNeverBeenControlled	setter	SystemNeverBeenControlledNotif	0x88	0x8	0x218	unit
+0050a580	System_SetBattle	setter	SystemBattleNotif	0x88	0x10	0x21c	unit
+0050a5f0	System_SetBlockade	setter	SystemBlockadeNotif	0x88	0x20	0x220	unit
+0050a660	System_SetBombard	setter	SystemBombardNotif	0x88	0x40	0x224	unit
+0050a6d0	System_SetAssault	setter	SystemAssaultNotif	0x88	0x80	0x228	unit
+0050a740	System_SetGarrisoned	setter	SystemGarrisonedNotif	0x88	0x100	0x22c	unit
+0050a7b0	System_SetSuppressing	setter	SystemSuppressingNotif	0x88	0x200	0x230	unit
+0050a820	System_SetCombatUnitFastRepair	setter	SystemCombatUnitFastRepairNotif	0x88	0x400	0x234	unit
+0050a890	System_SetDeathStarNearby	setter	SystemDeathStarNearbyNotif	0x88	0x800	0x238	unit
+0050a900	System_SetBattlePending	setter	SystemBattlePendingNotif	0x88	0x1000	0x23c	unit
+0050a970	System_SetLoyaltyCausedCurrentControlKind	setter	SystemLoyaltyCausedCurrentControlKindNotif	0x88	0x2000	0x240	unit
+0050a9e0		setter		0x88	0x4000	0x244	none
+0050aa50	System_SetUprisingIncident	setter	SystemUprisingIncidentNotif	0x88	0x10000	0x248	unit
+0050aac0	System_SetInformantIncident	setter	SystemInformantIncidentNotif	0x88	0x20000	0x24c	unit
+0050ab30	System_SetDisasterIncident	setter	SystemDisasterIncidentNotif	0x88	0x40000	0x250	unit
+0050aba0	System_SetResourceIncident	setter	SystemResourceIncidentNotif	0x88	0x80000	0x254	unit
+0050ac10	System_SetBlockadeAndBattlePendingManagementRequired	setter	SystemBlockadeAndBattlePendingManagementRequiredNotif	0x88	0x100000	0x258	unit
+0050f410	System_SyncSystemEnergy	sync	SystemSystemEnergyNotif	0x5c		0x1d4	unit
+0050f490	System_SyncSystemRawMaterial	sync	SystemSystemRawMaterialNotif	0x64		0x1dc	unit
+0050f510	System_SyncSystemRawMaterialAllocated	sync	SystemSystemRawMaterialAllocatedNotif	0x68		0x1e0	unit
+0050f590	System_SyncSmugglingPercent	sync	SystemSmugglingPercentNotif	0x6c		0x1e4	unit
+0050f610	System_SyncTroopRegWithdrawPercent	sync	SystemTroopRegWithdrawPercentNotif	0x74		0x1ec	unit
+0050f690	System_SyncProductionModifier	sync	SystemProductionModifierNotif	0x70		0x1e8	unit
+0050f710	System_SyncControlKindBattleWon	sync	SystemControlKindBattleWonNotif			0x1f0	unit
+0050f980	System_SyncTroopRegSurplus	sync	SystemTroopRegSurplusNotif	0x7c		0x200	unit
+0050fa00	System_SyncTroopRegRequired	sync	SystemTroopRegRequiredNotif	0x80		0x204	unit
+0050fbf0	System_SyncPopulated	sync	SystemPopulatedNotif	0x88	0x1	0x20c	unit
+0050fc80	System_SyncExplored	sync	SystemExploredNotif	0x88	0x2	0x210	unit
+0050fd10	System_SyncUprising	sync	SystemUprisingNotif	0x88	0x4	0x214	unit
+0050fda0	System_SyncNeverBeenControlled	sync	SystemNeverBeenControlledNotif	0x88	0x8	0x218	unit
+0050fe30	System_SyncBattle	sync	SystemBattleNotif	0x88	0x10	0x21c	unit
+0050fec0	System_SyncBlockade	sync	SystemBlockadeNotif	0x88	0x20	0x220	unit
+0050ff50	System_SyncBombard	sync	SystemBombardNotif	0x88	0x40	0x224	unit
+0050ffe0	System_SyncAssault	sync	SystemAssaultNotif	0x88	0x80	0x228	unit
+00510080	System_SyncGarrisoned	sync	SystemGarrisonedNotif	0x88	0x100	0x22c	unit
+00510120	System_SyncSuppressing	sync	SystemSuppressingNotif	0x88	0x200	0x230	unit
+005101c0	System_SyncCombatUnitFastRepair	sync	SystemCombatUnitFastRepairNotif	0x88	0x400	0x234	unit
+00510260	System_SyncDeathStarNearby	sync	SystemDeathStarNearbyNotif	0x88	0x800	0x238	unit
+00510300	System_SyncBattlePending	sync	SystemBattlePendingNotif	0x88	0x1000	0x23c	unit
+005103a0	System_SyncLoyaltyCausedCurrentControlKind	sync	SystemLoyaltyCausedCurrentControlKindNotif	0x88	0x2000	0x240	unit
+005104e0	System_SyncUprisingIncident	sync	SystemUprisingIncidentNotif	0x88	0x10000	0x248	unit
+00510580	System_SyncInformantIncident	sync	SystemInformantIncidentNotif	0x88	0x20000	0x24c	unit
+00510620	System_SyncDisasterIncident	sync	SystemDisasterIncidentNotif	0x88	0x40000	0x250	unit
+005106c0	System_SyncResourceIncident	sync	SystemResourceIncidentNotif	0x88	0x80000	0x254	unit
+00510760	System_SyncBlockadeAndBattlePendingManagementRequired	sync	SystemBlockadeAndBattlePendingManagementRequiredNotif	0x88	0x100000	0x258	unit
+00521780	Mission_SetUserID	setter	MissionUserIDNotif	0x58		0x1e4	unit
+00521800	Mission_SetUserID2	setter	MissionUserID2Notif	0x5c		0x1e8	unit
+00521880		setter		0x60		0x1ec	none
+00521900		setter		0x64		0x1f0	none
+00521980		setter		0x68		0x1f4	none
+00521a00	SetMissionOriginLocationKey	setter	MissionOriginLocationKeyNotif			0x1f8	unit
+00521ab0	SetMissionObjectiveKey	setter	MissionObjectiveKeyNotif			0x1fc	unit
+00521b60	SetMissionTargetKey	setter	MissionTargetKeyNotif			0x200	unit
+00521c10	SetMissionTargetLocationKey	setter	MissionTargetLocationKeyNotif			0x204	unit
+00521cc0	SetMissionLeaderKey	setter	MissionLeaderKeyNotif			0x208	unit
+00521d70	SetMissionLeaderSeedKey	setter	MissionLeaderSeedKeyNotif			0x20c	unit
+00521e30		setter				0x210	none
+00521ef0		setter				0x214	none
+00521fb0		setter				0x218	none
+00522070		setter				0x21c	none
+00522130	Mission_SetReadyForNextPhase	setter	MissionReadyForNextPhaseNotif	0xa4	0x1	0x220	unit
+005221a0	Mission_SetImpliedTeam	setter	MissionImpliedTeamNotif	0xa4	0x2	0x224	unit
+00522210	Mission_SetMandatory	setter	MissionMandatoryNotif	0xa4	0x4	0x228	unit
+00523d70	Mission_SyncUserID	sync	MissionUserIDNotif	0x58		0x1e4	unit
+00523df0	Mission_SyncUserID2	sync	MissionUserID2Notif	0x5c		0x1e8	unit
+00523ff0	SyncMissionOriginLocationKey	sync	MissionOriginLocationKeyNotif			0x1f8	unit
+005240d0	SyncMissionObjectiveKey	sync	MissionObjectiveKeyNotif			0x1fc	unit
+005241b0	SyncMissionTargetKey	sync	MissionTargetKeyNotif			0x200	unit
+00524290	SyncMissionTargetLocationKey	sync	MissionTargetLocationKeyNotif			0x204	unit
+00524370	SyncMissionLeaderKey	sync	MissionLeaderKeyNotif			0x208	unit
+00524450	SyncMissionLeaderSeedKey	sync	MissionLeaderSeedKeyNotif			0x20c	unit
+005248b0	Mission_SyncReadyForNextPhase	sync	MissionReadyForNextPhaseNotif	0xa4	0x1	0x220	unit
+00524940	Mission_SyncImpliedTeam	sync	MissionImpliedTeamNotif	0xa4	0x2	0x224	unit
+005249d0	Mission_SyncMandatory	sync	MissionMandatoryNotif	0xa4	0x4	0x228	unit
+00529480	ManuMgr_SetRemainingGameObjCount	setter	ManuMgrRemainingGameObjCountNotif	0x58		0x204	unit
+005294e0	ManuMgr_SetCompletedPointCount	setter	ManuMgrCompletedPointCountNotif	0x5c		0x208	unit
+00529540	ManuMgr_SetOverflowPointCount	setter	ManuMgrOverflowPointCountNotif	0x60		0x20c	unit
+005295a0	ManuMgr_SetSeedKey	setter	ManuMgrSeedKeyNotif			0x210	unit
+00529650	ManuMgr_SetRequiredPointCount	setter	ManuMgrRequiredPointCountNotif	0x68		0x214	unit
+005296b0	ManuMgr_SetTotalRequiredPointCount	setter	ManuMgrTotalRequiredPointCountNotif	0x6c		0x218	unit
+00529710	ManuMgr_SetReserved	setter	ManuMgrReservedNotif	0x70		0x21c	unit
+00529770	ManuMgr_SetProductKey	setter	ManuMgrProductKeyNotif			0x220	unit
+00529820	ManuMgr_SetDeploymentKey	setter	ManuMgrDeploymentKeyNotif			0x224	unit
+005298d0	ManuMgr_SetTargetKey	setter	ManuMgrTargetKeyNotif			0x228	unit
+00529980	ManuMgr_SetProductName	setter	ManuMgrProductNameNotif			0x22c	unit
+0052aed0	ManuMgr_SyncRemainingGameObjCount	sync	ManuMgrRemainingGameObjCountNotif	0x58		0x204	unit
+0052af50	ManuMgr_SyncCompletedPointCount	sync	ManuMgrCompletedPointCountNotif	0x5c		0x208	unit
+0052afd0	ManuMgr_SyncOverflowPointCount	sync	ManuMgrOverflowPointCountNotif	0x60		0x20c	unit
+0052b050	ManuMgr_SyncSeedKey	sync	ManuMgrSeedKeyNotif			0x210	unit
+0052b170	ManuMgr_SyncRequiredPointCount	sync	ManuMgrRequiredPointCountNotif	0x68		0x214	unit
+0052b1f0	ManuMgr_SyncTotalRequiredPointCount	sync	ManuMgrTotalRequiredPointCountNotif	0x6c		0x218	unit
+0052b270	ManuMgr_SyncReserved	sync	ManuMgrReservedNotif	0x70		0x21c	unit
+0052b2f0	ManuMgr_SyncProductKey	sync	ManuMgrProductKeyNotif			0x220	unit
+0052b410	ManuMgr_SyncDeploymentKey	sync	ManuMgrDeploymentKeyNotif			0x224	unit
+0052b530	ManuMgr_SyncTargetKey	sync	ManuMgrTargetKeyNotif			0x228	unit
+0052b650	ManuMgr_SyncProductName	sync	ManuMgrProductNameNotif			0x22c	unit
+0052ec90		setter		0x58		0x1bc	none
+0052ed50		setter		0x60		0x1c0	none
+0052ee10		setter		0x68		0x1c4	none
+0052eed0	SetSideMaintRequired	setter	SideMaintRequiredNotif	0x70		0x1c8	unit
+0052ef30		setter		0x74		0x1cc	none
+0052ef90		setter		0x78		0x1d0	none
+0052eff0		setter		0x7c		0x1d4	none
+0052f050		setter		0x80		0x1d8	none
+0052f0c0		setter		0x84		0x1dc	none
+0052f130		setter		0x90		0x1e0	none
+0052f1a0		setter		0x94		0x1e4	none
+0052f210		setter		0x98		0x1e8	none
+0052f280	Side_SetShipyardRdOrder	setter	SideShipyardRdOrderNotif	0x9c		0x1ec	unit
+0052f2f0	Side_SetTrainingFacilRdOrder	setter	SideTrainingFacilRdOrderNotif	0xa0		0x1f0	unit
+0052f360	Side_SetConstructionYardRdOrder	setter	SideConstructionYardRdOrderNotif	0xa4		0x1f4	unit
+0052f3d0		setter		0xa8		0x1f8	none
+0052f440	Side_SetShipyardRdDone	setter	SideShipyardRdDoneNotif	0xac		0x1fc	unit
+0052f4b0	Side_SetTrainingFacilRdDone	setter	SideTrainingFacilRdDoneNotif	0xb0		0x200	unit
+0052f520	Side_SetConstructionYardRdDone	setter	SideConstructionYardRdDoneNotif	0xb4		0x204	unit
+0052f590	Side_SetRecruitmentDone	setter	SideRecruitmentDoneNotif	0xb8		0x208	unit
+0052f600		setter		0xbc		0x20c	none
+00531970	SyncSideMaintRequired	sync	SideMaintRequiredNotif	0x70		0x1c8	unit
+00531e40	Side_SyncShipyardRdOrder	sync	SideShipyardRdOrderNotif	0x9c		0x1ec	unit
+00531ed0	Side_SyncTrainingFacilRdOrder	sync	SideTrainingFacilRdOrderNotif	0xa0		0x1f0	unit
+00531f60	Side_SyncConstructionYardRdOrder	sync	SideConstructionYardRdOrderNotif	0xa4		0x1f4	unit
+00532080	Side_SyncShipyardRdDone	sync	SideShipyardRdDoneNotif	0xac		0x1fc	unit
+00532110	Side_SyncTrainingFacilRdDone	sync	SideTrainingFacilRdDoneNotif	0xb0		0x200	unit
+005321a0	Side_SyncConstructionYardRdDone	sync	SideConstructionYardRdDoneNotif	0xb4		0x204	unit
+00532230	Side_SyncRecruitmentDone	sync	SideRecruitmentDoneNotif	0xb8		0x208	unit
+00534230	SetRoleMissionKey	setter	RoleMissionKeyNotif			0x23c	unit
+005342e0	SetRoleMissionSeedKey	setter	RoleMissionSeedKeyNotif			0x240	unit
+00534390	SetRoleParentAtMissionCompletionKey	setter	RoleParentAtMissionCompletionKeyNotif			0x244	unit
+00534440	SetRoleLocationAtMissionCompletionKey	setter	RoleLocationAtMissionCompletionKeyNotif			0x248	unit
+005344f0	Role_SetDecoy	setter	RoleDecoyNotif	0x78	0x1	0x24c	unit
+00534560	Role_SetMovingBetweenMissions	setter	RoleMovingBetweenMissionsNotif	0x78	0x2	0x250	unit
+005345d0	Role_SetMissionRemoveRequest	setter	RoleMissionRemoveRequestNotif	0x78	0x4	0x254	unit
+00534640	Role_SetMissionResignRequest	setter	RoleMissionResignRequestNotif	0x78	0x8	0x258	unit
+005346b0	Role_SetCanResignFromMission	setter	RoleCanResignFromMissionNotif	0x78	0x10	0x25c	unit
+00534720	Role_SetIsDecoying	setter	RoleIsDecoyingNotif	0x78	0x20	0x260	unit
+00534790	Role_SetAdrift	setter	RoleAdriftNotif	0x78	0x40	0x264	unit
+00534800	Role_SetOnMission	setter	RoleOnMissionNotif	0x78	0x80	0x268	unit
+00534870	Role_SetOnHiddenMission	setter	RoleOnHiddenMissionNotif	0x78	0x100	0x26c	unit
+005348e0	Role_SetOnMandatoryMission	setter	RoleOnMandatoryMissionNotif	0x78	0x200	0x270	unit
+00535400	SyncRoleMissionKey	sync	RoleMissionKeyNotif			0x23c	unit
+00535520	SyncRoleMissionSeedKey	sync	RoleMissionSeedKeyNotif			0x240	unit
+00535640	SyncRoleParentAtMissionCompletionKey	sync	RoleParentAtMissionCompletionKeyNotif			0x244	unit
+00535780	SyncRoleLocationAtMissionCompletionKey	sync	RoleLocationAtMissionCompletionKeyNotif			0x248	unit
+005358a0	Role_SyncDecoy	sync	RoleDecoyNotif	0x78	0x1	0x24c	unit
+00535930	Role_SyncMovingBetweenMissions	sync	RoleMovingBetweenMissionsNotif	0x78	0x2	0x250	unit
+005359c0	Role_SyncMissionRemoveRequest	sync	RoleMissionRemoveRequestNotif	0x78	0x4	0x254	unit
+00535a50	Role_SyncMissionResignRequest	sync	RoleMissionResignRequestNotif	0x78	0x8	0x258	unit
+00535ae0	Role_SyncCanResignFromMission	sync	RoleCanResignFromMissionNotif	0x78	0x10	0x25c	unit
+00535b70	Role_SyncIsDecoying	sync	RoleIsDecoyingNotif	0x78	0x20	0x260	unit
+00535c00	Role_SyncAdrift	sync	RoleAdriftNotif	0x78	0x40	0x264	unit
+00535c90	Role_SyncOnMission	sync	RoleOnMissionNotif	0x78	0x80	0x268	unit
+00535d20	Role_SyncOnHiddenMission	sync	RoleOnHiddenMissionNotif	0x78	0x100	0x26c	unit
+00535db0	Role_SyncOnMandatoryMission	sync	RoleOnMandatoryMissionNotif	0x78	0x200	0x270	unit
+0053a6f0	SetProcFacilProcFacilState	setter	ProcFacilProcFacilStateNotif	0x58		0x1cc	unit
+0053a770	SetProcFacilETC	setter	ProcFacilETCNotif	0x5c		0x1d0	unit
+0053a7f0	ProcFacil_SetSuspended	setter	ProcFacilSuspendedNotif	0x60	0x1	0x1d4	unit
+0053a860	ProcFacil_SetPointPresent	setter	ProcFacilPointPresentNotif	0x60	0x2	0x1d8	unit
+0053a8d0	ProcFacil_SetPointProcessed	setter	ProcFacilPointProcessedNotif	0x60	0x4	0x1dc	unit
+0053a940	ProcFacil_SetProcessing	setter	ProcFacilProcessingNotif	0x60	0x8	0x1e0	unit
+0053a9b0	ProcFacil_SetOnStartupCycle	setter	ProcFacilOnStartupCycleNotif	0x60	0x10	0x1e4	unit
+0053ad20	ProcFacil_SyncSuspended	sync	ProcFacilSuspendedNotif	0x60	0x1	0x1d4	unit
+0053adb0	ProcFacil_SyncPointPresent	sync	ProcFacilPointPresentNotif	0x60	0x2	0x1d8	unit
+0053ae40	ProcFacil_SyncPointProcessed	sync	ProcFacilPointProcessedNotif	0x60	0x4	0x1dc	unit
+0053aed0	ProcFacil_SyncProcessing	sync	ProcFacilProcessingNotif	0x60	0x8	0x1e0	unit
+0053af60	ProcFacil_SyncOnStartupCycle	sync	ProcFacilOnStartupCycleNotif	0x60	0x10	0x1e4	unit
+0053aff0	SyncProcFacilProcFacilState	sync	ProcFacilProcFacilStateNotif	0x58		0x1cc	unit
+0053b070	SyncProcFacilETC	sync	ProcFacilETCNotif	0x5c		0x1d0	unit
+00543af0	MissionMgr_SetLukeDagobahRequired	setter	MissionMgrLukeDagobahRequiredNotif	0x58	0x1	0x1c0	unit
+00543b60	MissionMgr_SetLukeDagobah	setter	MissionMgrLukeDagobahNotif	0x58	0x4	0x1c4	unit
+00543bd0	MissionMgr_SetLukePalace	setter	MissionMgrLukePalaceNotif	0x58	0x20	0x1c8	unit
+00543c40	MissionMgr_SetHanCapturedAtPalace	setter	MissionMgrHanCapturedAtPalaceNotif	0x58	0x40	0x1cc	unit
+00543cb0	MissionMgr_SetLeiaPalace	setter	MissionMgrLeiaPalaceNotif	0x58	0x80	0x1d0	unit
+00543d20	MissionMgr_SetChewbaccaPalace	setter	MissionMgrChewbaccaPalaceNotif	0x58	0x100	0x1d4	unit
+00543d90	MissionMgr_SetDarthPickup	setter	MissionMgrDarthPickupNotif	0x58	0x200	0x1d8	unit
+00543e00	MissionMgr_SetDarthToLukeFinalBattle	setter	MissionMgrDarthToLukeFinalBattleNotif	0x58	0x400	0x1dc	unit
+00543e70	MissionMgr_SetDarthToEmperorFinalBattle	setter	MissionMgrDarthToEmperorFinalBattleNotif	0x58	0x800	0x1e0	unit
+00543ee0	MissionMgr_SetFinalBattleReady	setter	MissionMgrFinalBattleReadyNotif	0x58	0x1000	0x1e4	unit
+00543f50	MissionMgr_SetFinalBattle	setter	MissionMgrFinalBattleNotif	0x58	0x2000	0x1e8	unit
+00543fc0	MissionMgr_SetBountyHuntersActive	setter	MissionMgrBountyHuntersActiveNotif	0x58	0x4000	0x1ec	unit
+0054a140	MissionMgr_SyncLukeDagobahRequired	sync	MissionMgrLukeDagobahRequiredNotif	0x58	0x1	0x1c0	unit
+0054a1d0	MissionMgr_SyncLukeDagobah	sync	MissionMgrLukeDagobahNotif	0x58	0x4	0x1c4	unit
+0054a260	MissionMgr_SyncLukePalace	sync	MissionMgrLukePalaceNotif	0x58	0x20	0x1c8	unit
+0054a2f0	MissionMgr_SyncHanCapturedAtPalace	sync	MissionMgrHanCapturedAtPalaceNotif	0x58	0x40	0x1cc	unit
+0054a380	MissionMgr_SyncLeiaPalace	sync	MissionMgrLeiaPalaceNotif	0x58	0x80	0x1d0	unit
+0054a410	MissionMgr_SyncChewbaccaPalace	sync	MissionMgrChewbaccaPalaceNotif	0x58	0x100	0x1d4	unit
+0054a4a0	MissionMgr_SyncDarthPickup	sync	MissionMgrDarthPickupNotif	0x58	0x200	0x1d8	unit
+0054a530	MissionMgr_SyncDarthToLukeFinalBattle	sync	MissionMgrDarthToLukeFinalBattleNotif	0x58	0x400	0x1dc	unit
+0054a5c0	MissionMgr_SyncDarthToEmperorFinalBattle	sync	MissionMgrDarthToEmperorFinalBattleNotif	0x58	0x800	0x1e0	unit
+0054a650	MissionMgr_SyncFinalBattleReady	sync	MissionMgrFinalBattleReadyNotif	0x58	0x1000	0x1e4	unit
+0054a6e0	MissionMgr_SyncFinalBattle	sync	MissionMgrFinalBattleNotif	0x58	0x2000	0x1e8	unit
+0054a770	MissionMgr_SyncBountyHuntersActive	sync	MissionMgrBountyHuntersActiveNotif	0x58	0x4000	0x1ec	unit
+005577f0	CombatUnit_SetUnderRepair	setter	CombatUnitUnderRepairNotif	0x5c	0x1	0x22c	unit
+00557860	CombatUnit_SetFastRepair	setter	CombatUnitFastRepairNotif	0x5c	0x2	0x230	unit
+00557a20	CombatUnit_SyncUnderRepair	sync	CombatUnitUnderRepairNotif	0x5c	0x1	0x22c	unit
+00557ab0	CombatUnit_SyncFastRepair	sync	CombatUnitFastRepairNotif	0x5c	0x2	0x230	unit
+00558070	Detector_SetIsDecoyed	setter	DetectorIsDecoyedNotif	0x58	0x1	0x1d0	unit
+005581e0	Detector_SyncIsDecoyed	sync	DetectorIsDecoyedNotif	0x58	0x1	0x1d0	unit
+0055a6e0		setter		0x64		0x204	none
+0055a7a0	ProcFacil_SetProductionModifier	setter	ProcFacilProductionModifierNotif	0x6c		0x208	unit
+0055af90	ProcFacil_SyncProductionModifier	sync	ProcFacilProductionModifierNotif	0x6c		0x208	unit
+0055f650	CharacterMgr_SetSeatOfPower	setter	CharacterMgrSeatOfPowerNotif	0x58	0x1	0x1d8	unit
+0055f6c0	CharacterMgr_SetPickupInProgress	setter	CharacterMgrPickupInProgressNotif	0x58	0x2	0x1dc	unit
+005622e0	CharacterMgr_SyncSeatOfPower	sync	CharacterMgrSeatOfPowerNotif	0x58	0x1	0x1d8	unit
+00562370	CharacterMgr_SyncPickupInProgress	sync	CharacterMgrPickupInProgressNotif	0x58	0x2	0x1dc	unit
+0056b1a0	SetMissionRecruitRecruitedCharacterKey	setter	MissionRecruitRecruitedCharacterKeyNotif			0x288	unit
+0056b860	SyncMissionRecruitRecruitedCharacterKey	sync	MissionRecruitRecruitedCharacterKeyNotif			0x288	unit
+0056c240	SetRdPoints	setter	RdPointsNotif	0xa8		0x288	unit
+0056c2b0	SetRdOrders	setter	RdOrdersNotif	0xac		0x28c	unit
+0056cc50	SyncRdPoints	sync	RdPointsNotif	0xa8		0x288	unit
+0056cce0	SyncRdOrders	sync	RdOrdersNotif	0xac		0x28c	unit
+0056f650	Luke_SetKnowsHeritage	setter	LukeKnowsHeritageNotif	0xb0	0x1	0x3ec	unit
+0056f6c0	Luke_SetFinalBattleReady	setter	LukeFinalBattleReadyNotif	0xb0	0x2	0x3f0	unit
+0056f730	Luke_SetDagobahCompleted	setter	LukeDagobahCompletedNotif	0xb0	0x8	0x3f4	unit
+0056f9d0	Luke_SyncKnowsHeritage	sync	LukeKnowsHeritageNotif	0xb0	0x1	0x3ec	unit
+0056fa60	Luke_SyncFinalBattleReady	sync	LukeFinalBattleReadyNotif	0xb0	0x2	0x3f0	unit
+0056faf0	Luke_SyncDagobahCompleted	sync	LukeDagobahCompletedNotif	0xb0	0x8	0x3f4	unit
+0056fe90	Leia_SetKnowsHeritage	setter	LeiaKnowsHeritageNotif	0xb0	0x1	0x3ec	unit
+00570080	Leia_SyncKnowsHeritage	sync	LeiaKnowsHeritageNotif	0xb0	0x1	0x3ec	unit
+005703b0		setter				0x288	ambiguous
+00572690	Han_SetBountyAttack	setter	HanBountyAttackNotif	0xb0	0x1	0x3ec	unit
+00572700	Han_SetCapturedByBountyHunters	setter	HanCapturedByBountyHuntersNotif	0xb0	0x2	0x3f0	unit
+00572950	Han_SyncBountyAttack	sync	HanBountyAttackNotif	0xb0	0x1	0x3ec	unit
+005729e0	Han_SyncCapturedByBountyHunters	sync	HanCapturedByBountyHuntersNotif	0xb0	0x2	0x3f0	unit
+00572e30		setter				0x288	ambiguous
+00574960	DagobahMission_SetFirstTrainingDay	setter	DagobahMissionFirstTrainingDayNotif	0xa8		0x288	unit
+00575140	DagobahMission_SyncFirstTrainingDay	sync	DagobahMissionFirstTrainingDayNotif	0xa8		0x288	unit
