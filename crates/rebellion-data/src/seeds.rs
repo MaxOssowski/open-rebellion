@@ -1548,15 +1548,15 @@ fn initialize_energy_and_raw_materials<R: Rng + ?Sized>(
     }
 }
 
-/// Weighted facility entry parsed from SYFCCRTB/SYFCRMTB.
+/// One row of SYFCCRTB/SYFCRMTB.
 struct FacilityWeight {
-    /// Cumulative weight threshold (0-99 range).
-    cumulative_weight: u32,
-    /// Packed facility id: `(family_byte << 24) | index`.
+    /// Lowest roll that selects this row.
+    threshold: u32,
+    /// Packed facility id: `(family_byte << 24) | index`; 0 seeds nothing.
     facility_id: u32,
 }
 
-/// Parse SYFC table entries into a sorted list of (`cumulative_weight`, `facility_id`).
+/// Parse SYFC table rows, in file order, into (`threshold`, `facility_id`).
 fn parse_facility_weights(table: Option<&SyfcTableFile>) -> Vec<FacilityWeight> {
     let Some(table) = table else {
         return Vec::new();
@@ -1564,30 +1564,28 @@ fn parse_facility_weights(table: Option<&SyfcTableFile>) -> Vec<FacilityWeight> 
     table
         .entries
         .iter()
-        .filter(|e| e.facility != 0) // Skip null entry
         .map(|e| FacilityWeight {
-            // The system_id field is actually the cumulative weight percentage.
-            cumulative_weight: e.system_id,
+            // The system_id field is the row's roll threshold.
+            threshold: e.system_id,
             facility_id: e.facility,
         })
         .collect()
 }
 
-/// Pick a weighted random facility from the weight table.
+/// Roll a facility class from a seed table. `Some(0)` leaves the slot empty.
 fn pick_weighted_facility<R: Rng + ?Sized>(weights: &[FacilityWeight], rng: &mut R) -> Option<u32> {
-    if weights.is_empty() {
-        return None;
-    }
-    let max_weight = weights.last().map_or(100, |w| w.cumulative_weight);
-    if max_weight == 0 {
-        return None;
-    }
-    let roll = rng.gen_range(0..max_weight);
-    // Find the first entry whose cumulative weight exceeds the roll.
-    weights
-        .iter()
-        .find(|w| roll < w.cumulative_weight)
-        .map(|w| w.facility_id)
+    // FUN_00559850 rolls FUN_0053e290(100): 0..=100.
+    facility_for_roll(weights, rng.gen_range(0u32..=100))
+}
+
+/// `FUN_00595090`: the row before the first whose threshold exceeds the roll,
+/// or the last row when none does.
+fn facility_for_roll(weights: &[FacilityWeight], roll: u32) -> Option<u32> {
+    let row = match weights.iter().position(|w| roll < w.threshold) {
+        Some(above) => weights.get(above.saturating_sub(1)),
+        None => weights.last(),
+    };
+    row.map(|w| w.facility_id)
 }
 
 /// Generate procedural facilities for all populated systems based on energy slots.
@@ -1596,7 +1594,8 @@ fn pick_weighted_facility<R: Rng + ?Sized>(weights: &[FacilityWeight], rng: &mut
 /// 1. Compute mine chance: `(total_raw - current_mines) * mine_multiplier`
 ///    where `mine_multiplier` is GNPRTB 7766 (core=4) or 7767 (rim=2).
 /// 2. If random(0..100) < `mine_chance`, place a mine (production facility).
-/// 3. Otherwise, pick a weighted random facility from SYFCCRTB (core) or SYFCRMTB (rim).
+/// 3. Otherwise, roll a row of SYFCCRTB (core) or SYFCRMTB (rim); its class-0
+///    row leaves the slot empty.
 /// 4. Post-adjust: ensure energy >= `used_energy`, raw >= `mine_count`.
 #[expect(
     clippy::cast_sign_loss,
@@ -1671,8 +1670,10 @@ fn generate_procedural_facilities<R: Rng + ?Sized>(
                 }
                 mine_count += 1;
             } else if let Some(facility_id) = pick_weighted_facility(weights, rng) {
-                // Place the weighted facility
-                dispatch_facility_item(facility_id, key, false, world);
+                // FUN_00566de0 creates nothing for the class-0 row.
+                if facility_id != 0 {
+                    dispatch_facility_item(facility_id, key, false, world);
+                }
             }
         }
     }
@@ -2970,6 +2971,161 @@ mod tests {
             populated_count, populated_with_energy,
             "All populated systems should have energy"
         );
+    }
+
+    /// The eight SYFCCRTB.DAT rows and seven SYFCRMTB.DAT rows as
+    /// (threshold, class), in file order.
+    const SYFCCRTB_ROWS: [(u32, u32); 8] = [
+        (0, 0),
+        (36, 0x2d00_0002),
+        (79, 0x2800_0001),
+        (82, 0x2900_0002),
+        (85, 0x2a00_0003),
+        (88, 0x2400_0003),
+        (96, 0x2300_0002),
+        (99, 0x2200_0001),
+    ];
+    const SYFCRMTB_ROWS: [(u32, u32); 7] = [
+        (0, 0),
+        (91, 0x2d00_0002),
+        (96, 0x2800_0001),
+        (97, 0x2900_0002),
+        (98, 0x2a00_0003),
+        (99, 0x2400_0003),
+        (100, 0x2300_0002),
+    ];
+
+    fn syfc_table(rows: &[(u32, u32)]) -> SyfcTableFile {
+        SyfcTableFile {
+            field1: 1,
+            info: "SeedTableEntry".to_string(),
+            entries: (1u32..)
+                .zip(rows)
+                .map(
+                    |(id, &(threshold, facility))| dat_dumper::types::syfc_table::SyfcEntry {
+                        id,
+                        field2: 1,
+                        system_id: threshold,
+                        facility,
+                    },
+                )
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_core_seed_roll_selects_the_last_row_at_or_below_it() {
+        // FUN_00595090: walk the rows to the first whose threshold exceeds the
+        // roll and return its predecessor (FUN_005f5c60), so each threshold is
+        // a lower bound. The class-0 first row means "no facility".
+        let table = syfc_table(&SYFCCRTB_ROWS);
+        let weights = parse_facility_weights(Some(&table));
+        let expected = [
+            (0, 0),
+            (35, 0),
+            (36, 0x2d00_0002),
+            (78, 0x2d00_0002),
+            (79, 0x2800_0001),
+            (81, 0x2800_0001),
+            (82, 0x2900_0002),
+            (85, 0x2a00_0003),
+            (88, 0x2400_0003),
+            (95, 0x2400_0003),
+            (96, 0x2300_0002),
+            (98, 0x2300_0002),
+            (99, 0x2200_0001),
+            (100, 0x2200_0001),
+        ];
+        for (roll, class) in expected {
+            assert_eq!(
+                facility_for_roll(&weights, roll),
+                Some(class),
+                "roll {roll}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rim_seed_roll_leaves_the_slot_empty_below_91() {
+        // FUN_00595090 over SYFCRMTB.DAT, as above.
+        let table = syfc_table(&SYFCRMTB_ROWS);
+        let weights = parse_facility_weights(Some(&table));
+        let expected = [
+            (0, 0),
+            (90, 0),
+            (91, 0x2d00_0002),
+            (95, 0x2d00_0002),
+            (96, 0x2800_0001),
+            (97, 0x2900_0002),
+            (98, 0x2a00_0003),
+            (99, 0x2400_0003),
+            (100, 0x2300_0002),
+        ];
+        for (roll, class) in expected {
+            assert_eq!(
+                facility_for_roll(&weights, roll),
+                Some(class),
+                "roll {roll}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_class_0_seed_roll_spends_the_energy_slot_without_a_facility() {
+        // FUN_00566de0 / FUN_0056a6f0: one FUN_00559850 roll per energy slot;
+        // the class-0 row creates nothing and the loop goes on. With no raw
+        // materials no slot becomes a mine, and a system outside any sector
+        // reads the rim table.
+        let core = syfc_table(&SYFCCRTB_ROWS);
+        let rim = syfc_table(&SYFCRMTB_ROWS);
+        let mut world = GameWorld::default();
+        let system = bare_system(&mut world, ControlKind::Uncontrolled);
+        world.systems[system].total_energy = 200;
+        world.systems[system].raw_materials = 0;
+
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(11);
+        generate_procedural_facilities(
+            &mut world,
+            &SeedOptions::default(),
+            Some(&core),
+            Some(&rim),
+            &mut rng,
+        );
+
+        let weights = parse_facility_weights(Some(&rim));
+        let mut rolls = Xoshiro256PlusPlus::seed_from_u64(11);
+        let expected = (0..200)
+            .filter(|_| pick_weighted_facility(&weights, &mut rolls) != Some(0))
+            .count();
+        let here = &world.systems[system];
+        let seeded = here.defense_facilities.len()
+            + here.manufacturing_facilities.len()
+            + here.production_facilities.len();
+        assert_eq!(seeded, expected);
+        assert!((1..100).contains(&seeded), "seeded {seeded}");
+    }
+
+    #[test]
+    fn a_seed_table_without_rows_selects_nothing() {
+        assert_eq!(facility_for_roll(&parse_facility_weights(None), 50), None);
+    }
+
+    #[test]
+    fn seed_rolls_cover_0_through_100() {
+        // FUN_00559850 rolls FUN_0053e290(100), which is FUN_005f5700(101):
+        // 0..=100. Roll 100 is the only one that reaches the last rim row.
+        let table = syfc_table(&SYFCRMTB_ROWS);
+        let weights = parse_facility_weights(Some(&table));
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..20_000 {
+            seen.insert(pick_weighted_facility(&weights, &mut rng));
+        }
+        let expected: std::collections::BTreeSet<_> = SYFCRMTB_ROWS
+            .iter()
+            .map(|&(_, class)| Some(class))
+            .collect();
+        assert_eq!(seen, expected);
     }
 
     #[test]
