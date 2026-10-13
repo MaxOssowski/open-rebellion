@@ -485,6 +485,38 @@ completed, of the side, and has a non-zero class upkeep. The Locked notifier
 recomputes, how a lock clears and the period of timer `0x382` (GNPRTB 7168
 = 10 is an inference in `timer-scheduler.md`) are not traced.
 
+## Yards and refined material (2026-10-13)
+
+Third REA session. A yard is a facility of type `0x28..0x2b`; its manager is
+the one its system keeps for the yard's production area
+(`FUN_0052eb60`: facility slot `+0x204` into `FUN_00509670`).
+
+- **Cycle start** (`FUN_00530820`): in state 1 and not already processing,
+  the yard takes one refined material (`FUN_0052fb80`); with none it queues
+  a request on side `+0x8c` (`FUN_00533610`, counted in `+0x84`) and waits.
+  `FUN_0052fd30` serves those requests first come first served, as for raw.
+- **Cycle length** (`FUN_0052cc90`): the class rate `+0x5c` as it is, 4 or 2
+  days in MANFACSD. No allocation term and no randomising.
+- **Cycle end** (`FUN_00530950`): with `+0x60` bit 2 set, the manager gets
+  one unit through `FUN_0052a430`: progress `+0x5c` while it is below the
+  current product's cost `+0x68`, otherwise the surplus `+0x60`.
+- **A new current product** (`FUN_00529d70`) starts with progress
+  `min(cost, surplus)` and the surplus is reduced by that.
+- **How many yards run** (`FUN_00529dd0`, after every unit): the manager's
+  yards are those of its area and side with `+0x50` bit 0 (`FUN_0052bde0`),
+  less the blocked ones. With `needed = +0x6c - +0x60 - +0x5c`, where `+0x6c`
+  is the summed refined cost of everything queued (`FUN_0052a9c0`), it
+  wakes inactive yards (fastest first, `FUN_0053aac0`) while fewer than
+  `needed` are in states 1..3, and puts running yards to state 4 (slowest
+  first, state 1 before 2 before 3, `FUN_0053ab10`) while more are. A
+  manager with no yard at all scraps its queue (`FUN_0052a2c0`, slot `+0xac`
+  with cause `0x16`).
+- **Completion** (`FUN_0052b960`): the product is done when progress is
+  non-zero and at least the cost.
+
+So a product costs its class refined cost in refined material, one unit per
+yard cycle, and idle yards neither run nor draw.
+
 ## Port status (2026-10-13)
 
 - `rebellion-core/src/side_resources.rs`: capacity, upkeep and the
@@ -494,14 +526,19 @@ recomputes, how a lock clears and the period of timer `0x382` (GNPRTB 7168
   allocation, the mine and refinery cycles and the raw request queue,
   advanced once per day. A cycle's length is fixed when it starts, and the
   ProductionModifier stays 100.
-- `rebellion-render/src/resource_monitors.rs`: the Raw Materials and
-  Maintenance monitors. Browser captures of day 0 are in
+- `rebellion-render/src/resource_monitors.rs`: the three monitors. Browser captures of day 0 are in
   `docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-maintenance-monitor/`.
-- Not ported: the yards' refined intake and banked progress (`FUN_00530820`,
-  `FUN_00530950`, `FUN_0052a430`), so the Refined Materials monitor stays
-  blank; the refund on destruction (`FUN_00530270`); the over-limit lock
-  (timer `0x382`); and the cycle-end roll's random draw. `economy.rs` still
-  runs its own maintenance-shortfall cooldown.
+- `production_cycle::supply_yards` and
+  `ManufacturingSystem::advance_supplied`: the yards' refined intake. The
+  build queue counts days, so a yard of period `p` draws one unit on each day
+  divisible by `p` while its area has an item, and an area that cannot draw
+  all of a day's units stalls for that day. The request queue, the surplus
+  and the scrapping of a yardless queue are not ported.
+- All three monitors read; the day-0 capture is
+  `browser-alliance-day0-three-monitors.png` in the same folder.
+- Not ported: the refund on destruction (`FUN_00530270`); the over-limit
+  lock (timer `0x382`); and the cycle-end roll's random draw. `economy.rs`
+  still runs its own maintenance-shortfall cooldown.
 
 ## Open
 

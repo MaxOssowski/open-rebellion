@@ -61,7 +61,7 @@ use rebellion_core::movement::{
     system_side_fleets, validate_fleet_dispatch,
     validate_fleets_dispatch, MovementState, MovementSystem,
 };
-use rebellion_core::production_cycle::{ProductionState, ProductionSystem};
+use rebellion_core::production_cycle::{supply_yards, ProductionState, ProductionSystem};
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
 use rebellion_core::tick::{GameClock, GameSpeed};
@@ -87,7 +87,7 @@ use rebellion_render::game_speed::{
     GameSpeedUiState,
 };
 use rebellion_render::resource_monitors::{
-    draw_maintenance_monitor, draw_raw_materials_monitor, maintenance_available,
+    draw_maintenance_monitor, draw_material_monitors, maintenance_available,
 };
 use rebellion_render::mission_dialog::{
     draw_mission_dialog, MissionDialogAction, MissionDialogState,
@@ -1769,10 +1769,19 @@ Some(RailAudience::side(*faction_is_alliance)),
             // ── Manufacturing (blockaded systems are skipped) ─────────────────
             // Use advance_tracked so we also pick up K6 EVT_MANUFACTURING_IDLE
             // transitions for the interactive message log.
-            let mfg_advance = ManufacturingSystem::advance_tracked(
+            // Yards draw refined material first; an area that finds none stalls.
+            let starved_areas = supply_yards(
+                &mut production_state,
+                &world,
+                &mfg_state,
+                |system| blockade_state.is_blockaded(system),
+                &tick_events,
+            );
+            let mfg_advance = ManufacturingSystem::advance_supplied(
                 &mut mfg_state,
                 &tick_events,
                 blockade_state.blockaded_systems(),
+                &starved_areas,
             );
             for completion in &mfg_advance.completions {
                 // Apply the built item to the game world (ships, facilities, troops).
@@ -3722,7 +3731,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     // The day readout is the Game Speed control; a right
                     // click on it opens the original speed menu.
                     draw_day_readout(ctx, cockpit_layout, cockpit_state.faction, clock.tick);
-                    draw_raw_materials_monitor(
+                    draw_material_monitors(
                         ctx,
                         cockpit_layout,
                         cockpit_state.faction,

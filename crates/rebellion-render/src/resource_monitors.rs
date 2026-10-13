@@ -125,13 +125,10 @@ pub fn draw_maintenance_monitor(
     );
 }
 
-/// Paint the Raw Materials monitor with the cockpit side's stockpile
-/// (`FUN_00422620`: side `+0x78`, command `0x14c`).
-///
-/// port: the Refined Materials monitor (side `+0x7c`, command `0x14d`) stays
-/// blank. Refineries fill that stockpile, but the yards do not draw on it
-/// yet (`FUN_00530820`), so its value would only climb.
-pub fn draw_raw_materials_monitor(
+/// Paint the Raw and Refined Materials monitors with the cockpit side's
+/// stockpiles (`FUN_00422620`: side `+0x78` and `+0x7c`, commands `0x14c`
+/// and `0x14d`).
+pub fn draw_material_monitors(
     ctx: &egui::Context,
     layout: CockpitLayout,
     faction: CockpitFaction,
@@ -141,14 +138,14 @@ pub fn draw_raw_materials_monitor(
         CockpitFaction::Alliance => Faction::Alliance,
         CockpitFaction::Empire => Faction::Empire,
     };
-    if let Some(stock) = production.stock(side) {
-        draw_monitor(
-            ctx,
-            layout,
-            faction,
-            ResourceMonitor::RawMaterials,
-            stock.raw.to_string(),
-        );
+    let Some(stock) = production.stock(side) else {
+        return;
+    };
+    for (monitor, value) in [
+        (ResourceMonitor::RawMaterials, stock.raw),
+        (ResourceMonitor::RefinedMaterials, stock.refined),
+    ] {
+        draw_monitor(ctx, layout, faction, monitor, value.to_string());
     }
 }
 
@@ -336,9 +333,10 @@ mod tests {
     }
 
     #[test]
-    fn the_raw_materials_monitor_reads_0_on_the_opening_day() {
-        // FUN_00422620 writes side +0x78 with command 0x14c; squakenet
-        // frames 0119-0149 show it reading 0 on the opening day.
+    fn the_material_monitors_read_0_on_the_opening_day() {
+        // FUN_00422620 writes side +0x78 with command 0x14c and +0x7c with
+        // 0x14d; squakenet frames 0119-0149 show both reading 0 on the
+        // opening day.
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let layout = crate::cockpit::CockpitState::new(faction).layout_for(1280.0, 960.0);
             let ctx = egui::Context::default();
@@ -352,26 +350,29 @@ mod tests {
             let production = ProductionState::new();
             let shapes = ctx
                 .run(input, |ctx| {
-                    draw_raw_materials_monitor(ctx, layout, faction, &production);
+                    draw_material_monitors(ctx, layout, faction, &production);
                 })
                 .shapes;
-            let drawn: Vec<_> = shapes
+            let mut drawn: Vec<_> = shapes
                 .into_iter()
                 .filter_map(|clipped| match clipped.shape {
                     egui::Shape::Text(text) => Some(text),
                     _ => None,
                 })
                 .collect();
-            assert_eq!(drawn.len(), 1, "{faction:?}");
-            assert_eq!(drawn[0].galley.text(), "0");
-            let rect = logical_rect_to_screen(
-                layout,
-                monitor_rect(faction, ResourceMonitor::RawMaterials),
-            );
-            assert!(
-                rect.contains_rect(drawn[0].visual_bounding_rect()),
-                "{faction:?}"
-            );
+            drawn.sort_by(|a, b| a.pos.x.total_cmp(&b.pos.x));
+            assert_eq!(drawn.len(), 2, "{faction:?}");
+            for (text, monitor) in drawn.iter().zip([
+                ResourceMonitor::RawMaterials,
+                ResourceMonitor::RefinedMaterials,
+            ]) {
+                assert_eq!(text.galley.text(), "0");
+                let rect = logical_rect_to_screen(layout, monitor_rect(faction, monitor));
+                assert!(
+                    rect.contains_rect(text.visual_bounding_rect()),
+                    "{faction:?} {monitor:?}"
+                );
+            }
         }
     }
 }

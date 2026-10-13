@@ -26,7 +26,7 @@ use rebellion_core::jedi::{JediState, JediSystem};
 use rebellion_core::manufacturing::{ManufacturingState, ManufacturingSystem};
 use rebellion_core::missions::{MissionState, MissionSystem};
 use rebellion_core::movement::{reconcile_fleet_orbits, MovementState, MovementSystem};
-use rebellion_core::production_cycle::{ProductionState, ProductionSystem};
+use rebellion_core::production_cycle::{supply_yards, ProductionState, ProductionSystem};
 use rebellion_core::repair::{RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
 use rebellion_core::tick::{GameClock, TickEvent};
@@ -141,10 +141,19 @@ pub fn run_simulation_tick(
     // ── 1. Manufacturing ─────────────────────────────────────────────────
     // Use advance_tracked so the K6 EVT_MANUFACTURING_IDLE telemetry is
     // emitted for any system whose queue transitioned empty this tick.
-    let mfg_advance = ManufacturingSystem::advance_tracked(
+    // Yards draw refined material first; an area that finds none stalls.
+    let starved = supply_yards(
+        &mut states.production,
+        world,
+        &states.manufacturing,
+        |system| states.blockade.is_blockaded(system),
+        tick_events,
+    );
+    let mfg_advance = ManufacturingSystem::advance_supplied(
         &mut states.manufacturing,
         tick_events,
         states.blockade.blockaded_systems(),
+        &starved,
     );
     integrator.apply_build_completions(world, &mfg_advance.completions);
     integrator.apply_manufacturing_idle(world, &mfg_advance.newly_idle);
@@ -930,6 +939,65 @@ mod tests {
 
         assert!(states.troop_transport.cargo(fleet).is_empty());
         assert!(world.systems[system].ground_units.contains(&troop));
+    }
+
+    #[test]
+    fn a_shipyard_without_refined_material_does_not_advance_its_build() {
+        // FUN_00530820: a yard takes one refined material to start a cycle
+        // and waits when the side has none.
+        use rebellion_core::manufacturing::{BuildableKind, ProductionArea, QueueItem};
+        use rebellion_core::world::{BuildableClass, ManufacturingFacilityInstance};
+
+        let build = |with_rate: bool| {
+            let (mut world, mut states, _, _) = world_with_loading_fleet();
+            let system = world.systems.keys().next().unwrap();
+            let yard_class = DatId::new(0x2800_0001);
+            if with_rate {
+                world.buildable_classes.insert(
+                    yard_class,
+                    BuildableClass {
+                        processing_rate: 1,
+                        ..BuildableClass::default()
+                    },
+                );
+            }
+            let yard = world
+                .manufacturing_facilities
+                .insert(ManufacturingFacilityInstance {
+                    class_dat_id: yard_class,
+                    side: Faction::Alliance,
+                    is_shipyard: true,
+                });
+            world.systems[system].manufacturing_facilities.push(yard);
+            let ship = world
+                .capital_ship_classes
+                .insert(CapitalShipClass::default());
+            states.manufacturing.enqueue(
+                system,
+                QueueItem::new(BuildableKind::CapitalShip(ship), 3, 3),
+            );
+            for tick in 1..=5 {
+                run_simulation_tick(
+                    &mut world,
+                    &mut states,
+                    &[TickEvent { tick }],
+                    &[0.99; 2048],
+                    10,
+                    &rebellion_core::tuning::GameConfig::default(),
+                );
+            }
+            states
+                .manufacturing
+                .queue(system, ProductionArea::Shipyard)
+                .and_then(|queue| queue.active().map(|item| item.ticks_remaining))
+        };
+
+        // The yard starts a cycle every day and the Alliance has no refined
+        // material: the three-day build has not moved after five days.
+        assert_eq!(build(true), Some(3));
+        // The control: a yard with no cycle draws nothing, and the same
+        // build is finished.
+        assert_eq!(build(false), None);
     }
 
     #[test]

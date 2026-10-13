@@ -12,13 +12,14 @@
 //! advances once per day, in system then facility order, and fixes a
 //! cycle's length when it starts.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
+use crate::build_selection::yard_periods;
 use crate::dat::Faction;
 use crate::ids::{ProductionFacilityKey, SystemKey};
-use crate::manufacturing::ManufacturingState;
+use crate::manufacturing::{ManufacturingState, ProductionArea};
 use crate::side_resources::{maintenance_totals, FACILITY_CAPACITY};
 use crate::tick::TickEvent;
 use crate::world::GameWorld;
@@ -438,6 +439,69 @@ impl ProductionSystem {
         }
         events
     }
+}
+
+/// Draw the refined material the yards of each working production area
+/// start their cycles with, and return the areas that found none.
+///
+/// A yard takes one refined material at each cycle start (`FUN_00530820`,
+/// `FUN_0052fb80`) and adds one unit of progress to its manager at the end
+/// (`FUN_00530950`, `FUN_0052a430`). Its cycle is the class rate
+/// (`FUN_0052cc90`), and the manager keeps no more yards running than it
+/// has work left (`FUN_00529dd0`).
+///
+/// port: the build queue counts days, not units, so a yard of period `p`
+/// draws on every day divisible by `p` while its area has an item, and an
+/// area that cannot draw all of a day's units stalls for that day and
+/// draws none. The original lets the yards that did get material go on
+/// and queues the rest (`FUN_0052fd30`), and credits progress made past an
+/// item's cost to the next (`FUN_00529d70`).
+pub fn supply_yards(
+    state: &mut ProductionState,
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    blocked: impl Fn(SystemKey) -> bool,
+    tick_events: &[TickEvent],
+) -> HashSet<(SystemKey, ProductionArea)> {
+    let mut starved = HashSet::new();
+    // The order `ManufacturingSystem` walks the queues in.
+    let mut areas: Vec<_> = manufacturing
+        .queues()
+        .iter()
+        .filter(|(_, queue)| !queue.is_empty())
+        .map(|(&key, _)| key)
+        .collect();
+    areas.sort_unstable();
+
+    for tick_event in tick_events {
+        for &(system, area) in &areas {
+            if starved.contains(&(system, area)) || blocked(system) {
+                continue;
+            }
+            let Some(side) = world
+                .systems
+                .get(system)
+                .and_then(|value| GameWorld::facility_holder(value.control))
+            else {
+                continue;
+            };
+            let Some(stock) = state.stock_mut(side) else {
+                continue;
+            };
+            let periods = yard_periods(world, system, area, side == Faction::Alliance);
+            let starting = periods
+                .iter()
+                .filter(|&&period| period > 0 && tick_event.tick % u64::from(period) == 0)
+                .count();
+            let starting = i32::try_from(starting).unwrap_or(i32::MAX);
+            if starting <= stock.refined {
+                stock.refined -= starting;
+            } else {
+                starved.insert((system, area));
+            }
+        }
+    }
+    starved
 }
 
 #[cfg(test)]
@@ -930,5 +994,155 @@ mod tests {
         upkeep(&mut world, 10);
         run(&mut state, &world, 3..=3, 0.5);
         assert_eq!([state.allocated(full), state.allocated(fresh)], [10, 0]);
+    }
+
+    /// One shipyard (rate 4) and one advanced shipyard (rate 2) at a new
+    /// Alliance system, with a ship queued there.
+    fn shipyard_system(world: &mut GameWorld) -> (SystemKey, ManufacturingState) {
+        use crate::manufacturing::{BuildableKind, QueueItem};
+        use crate::world::{CapitalShipClass, ManufacturingFacilityInstance};
+        let here = system(world);
+        for (id, rate) in [(0x2800_0001, 4), (0x2800_0004, 2)] {
+            world.buildable_classes.insert(
+                DatId::new(id),
+                BuildableClass {
+                    processing_rate: rate,
+                    ..BuildableClass::default()
+                },
+            );
+            let key = world
+                .manufacturing_facilities
+                .insert(ManufacturingFacilityInstance {
+                    class_dat_id: DatId::new(id),
+                    side: Faction::Alliance,
+                    is_shipyard: true,
+                });
+            world.systems[here].manufacturing_facilities.push(key);
+        }
+        let ship = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(
+            here,
+            QueueItem::new(BuildableKind::CapitalShip(ship), 20, 20),
+        );
+        (here, manufacturing)
+    }
+
+    fn supply(
+        state: &mut ProductionState,
+        world: &GameWorld,
+        manufacturing: &ManufacturingState,
+        tick: u64,
+    ) -> HashSet<(SystemKey, ProductionArea)> {
+        supply_yards(
+            state,
+            world,
+            manufacturing,
+            |_| false,
+            &[TickEvent { tick }],
+        )
+    }
+
+    #[test]
+    fn a_yard_takes_one_refined_material_each_time_its_cycle_starts() {
+        // FUN_00530820 takes one refined (FUN_0052fb80) at the cycle start;
+        // FUN_0052cc90 sets the cycle to the class rate, here 4 and 2 days.
+        let mut world = world();
+        let (here, manufacturing) = shipyard_system(&mut world);
+        let mut state = ProductionState::new();
+        state.alliance.refined = 10;
+
+        let mut left = Vec::new();
+        for tick in 1..=8 {
+            assert!(supply(&mut state, &world, &manufacturing, tick).is_empty());
+            left.push(alliance(&state).1);
+        }
+        // Days 2 and 6 start the fast yard; days 4 and 8 start both.
+        assert_eq!(left, [10, 9, 9, 7, 7, 6, 6, 4]);
+        let _ = here;
+    }
+
+    #[test]
+    fn an_area_without_enough_refined_material_stalls_and_draws_none() {
+        // FUN_00530820: no refined, no cycle start.
+        let mut world = world();
+        let (here, manufacturing) = shipyard_system(&mut world);
+        let mut state = ProductionState::new();
+        state.alliance.refined = 1;
+
+        // Day 4 needs two units; one is not enough, and it stays.
+        let starved = supply(&mut state, &world, &manufacturing, 4);
+        assert_eq!(starved, HashSet::from([(here, ProductionArea::Shipyard)]));
+        assert_eq!(alliance(&state), (0, 1));
+        // Day 5 starts no yard, so nothing is needed.
+        assert!(supply(&mut state, &world, &manufacturing, 5).is_empty());
+        // Day 6 needs one and takes it.
+        assert!(supply(&mut state, &world, &manufacturing, 6).is_empty());
+        assert_eq!(alliance(&state), (0, 0));
+    }
+
+    #[test]
+    fn yards_with_nothing_queued_or_in_a_blocked_system_draw_nothing() {
+        // FUN_00529dd0 keeps no more yards running than the manager has
+        // work left; a blockaded system's queue does not advance.
+        let mut world = world();
+        let (here, manufacturing) = shipyard_system(&mut world);
+        let mut state = ProductionState::new();
+        state.alliance.refined = 10;
+
+        let idle = ManufacturingState::new();
+        assert!(supply(&mut state, &world, &idle, 4).is_empty());
+        assert_eq!(alliance(&state), (0, 10));
+
+        let starved = supply_yards(
+            &mut state,
+            &world,
+            &manufacturing,
+            |system| system == here,
+            &[TickEvent { tick: 4 }],
+        );
+        assert!(starved.is_empty());
+        assert_eq!(alliance(&state), (0, 10));
+    }
+
+    #[test]
+    fn the_holders_stockpile_pays_for_the_area() {
+        // FUN_00530820 runs on the yard's side object (FUN_00516360).
+        let mut world = world();
+        let (here, manufacturing) = shipyard_system(&mut world);
+        world.systems[here].control = ControlKind::Controlled(Faction::Empire);
+        for yard in world.manufacturing_facilities.values_mut() {
+            yard.side = Faction::Empire;
+        }
+        let mut state = ProductionState::new();
+        state.alliance.refined = 10;
+        state.empire.refined = 10;
+
+        assert!(supply(&mut state, &world, &manufacturing, 4).is_empty());
+        assert_eq!(alliance(&state), (0, 10));
+        assert_eq!(
+            state.stock(Faction::Empire).map(|stock| stock.refined),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn a_yard_whose_class_has_no_rate_draws_nothing() {
+        // FUN_00520b70 returns 0 for a yard without a class record; such a
+        // yard never fires its cycle timer.
+        let mut world = world();
+        let (_, manufacturing) = shipyard_system(&mut world);
+        for class in world.buildable_classes.values_mut() {
+            class.processing_rate = 0;
+        }
+        let mut state = ProductionState::new();
+        state.alliance.refined = 10;
+
+        for tick in 1..=8 {
+            assert!(supply(&mut state, &world, &manufacturing, tick).is_empty());
+        }
+        assert_eq!(alliance(&state), (0, 10));
     }
 }

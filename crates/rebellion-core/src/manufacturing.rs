@@ -587,6 +587,17 @@ impl ManufacturingSystem {
     /// advance). Detection is purely intra-tick — pre/post length compare
     /// against a local snapshot. No persistent `was_empty` bit on world
     /// state (SIMP-H4).
+    pub fn advance_tracked(
+        state: &mut ManufacturingState,
+        tick_events: &[TickEvent],
+        blocked_systems: &HashSet<SystemKey>,
+    ) -> ManufacturingAdvance {
+        Self::advance_supplied(state, tick_events, blocked_systems, &HashSet::new())
+    }
+
+    /// Like [`advance_tracked`], but the queues in `starved` do not advance:
+    /// their yards found no refined material to start a cycle with
+    /// (`FUN_00530820`; `crate::production_cycle::supply_yards`).
     #[expect(
         clippy::cast_possible_truncation,
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
@@ -594,10 +605,11 @@ impl ManufacturingSystem {
     ///
     /// # Panics
     /// Panics if a queue key collected for this batch is absent when its queue is advanced.
-    pub fn advance_tracked(
+    pub fn advance_supplied(
         state: &mut ManufacturingState,
         tick_events: &[TickEvent],
         blocked_systems: &HashSet<SystemKey>,
+        starved: &HashSet<(SystemKey, ProductionArea)>,
     ) -> ManufacturingAdvance {
         let Some(last_tick_event) = tick_events.last() else {
             return ManufacturingAdvance::default();
@@ -633,7 +645,13 @@ impl ManufacturingSystem {
                 .get_mut(&(system_key, area))
                 .expect("manufacturing queue key collected from the same map");
             pre_len += queue.len();
-            for item in queue.advance_ticks(tick_count) {
+            // A starved area keeps its items and its place.
+            let done = if starved.contains(&(system_key, area)) {
+                Vec::new()
+            } else {
+                queue.advance_ticks(tick_count)
+            };
+            for item in done {
                 match item
                     .destination
                     .filter(|&destination| destination != system_key)
@@ -1205,5 +1223,49 @@ mod tests {
 
         assert_eq!(completion_systems, keys);
         assert_eq!(advance.newly_idle, keys);
+    }
+
+    #[test]
+    fn a_starved_area_does_not_advance_while_the_others_do() {
+        // FUN_00530820: a yard that finds no refined material does not
+        // start its cycle, so its manager gains no progress.
+        let system = mock_system_key();
+        let mut state = ManufacturingState::new();
+        state.enqueue(system, cap_ship_item(2));
+        let regiment = QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0001)), 2, 2);
+        state.enqueue(system, regiment);
+        let starved: HashSet<_> = [(system, ProductionArea::Shipyard)].into();
+
+        let day = |state: &mut ManufacturingState, tick| {
+            ManufacturingSystem::advance_supplied(
+                state,
+                &[TickEvent { tick }],
+                &HashSet::new(),
+                &starved,
+            )
+        };
+        assert!(day(&mut state, 1).completions.is_empty());
+        let second = day(&mut state, 2);
+        assert_eq!(second.completions.len(), 1);
+        assert!(matches!(
+            second.completions[0].kind,
+            BuildableKind::Troop(_)
+        ));
+        // The shipyard still holds its item at full length, so the system
+        // is not idle.
+        assert!(second.newly_idle.is_empty());
+        let ships = state
+            .queue(system, ProductionArea::Shipyard)
+            .expect("shipyard queue");
+        assert_eq!(ships.active().map(|item| item.ticks_remaining), Some(2));
+
+        // Supplied again, it resumes.
+        let resumed = ManufacturingSystem::advance_tracked(
+            &mut state,
+            &[TickEvent { tick: 3 }, TickEvent { tick: 4 }],
+            &HashSet::new(),
+        );
+        assert_eq!(resumed.completions.len(), 1);
+        assert_eq!(resumed.newly_idle, vec![system]);
     }
 }
