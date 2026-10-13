@@ -165,6 +165,9 @@ Launchbox "event-imperial-future-jedi" and jodocast 02 show the result: the
 picture across the window's top, the text below it, the prev/next arrows
 top right and the right rail.
 
+The full list of story and special-event classes is in
+`story-message-classes.md` (2026-10-13).
+
 Story message classes (recovered 2026-10-09). Each builds its message in
 vtable slot `+0x14` for one notification id and sets its category bits in
 its constructor:
