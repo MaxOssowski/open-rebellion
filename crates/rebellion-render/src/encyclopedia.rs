@@ -1362,33 +1362,40 @@ fn show_edata_image(
     edata_n: u16,
     state: &mut EncyclopediaState,
 ) {
-    // Lazy-load the texture if not yet cached. HD is an explicit enhancement
-    // profile; original parity never probes the HD tree.
-    if !state.textures.contains_key(&edata_n) {
-        let handle = load_edata_texture(
-            ctx,
-            edata_n,
-            state.hd_path.as_deref(),
-            state.edata_path.as_deref(),
-            state.asset_profile,
-            state
-                .approved_hd_assets
-                .get(&format!("edata/EDATA_{edata_n:03}")),
-        );
-        if handle.is_none() {
-            eprintln!(
-                "[encyclopedia] original artwork unavailable asset={}",
-                edata_filename(edata_n)
-            );
-        }
-        state.textures.insert(edata_n, handle);
-    }
-
-    if let Some(Some(handle)) = state.textures.get(&edata_n) {
+    if let Some(handle) = state.artwork_texture(ctx, edata_n) {
         let size = egui::vec2(400.0, 200.0);
         ui.add(egui::Image::from_texture((handle.id(), size)));
     } else {
         show_placeholder_image(ui);
+    }
+}
+
+impl EncyclopediaState {
+    /// The texture of `EDATA.NNN`, loaded on first use and kept. The
+    /// Message window shows the same artwork for a message about an
+    /// object (`FUN_0045f970`).
+    pub fn artwork_texture(&mut self, ctx: &egui::Context, edata_n: u16) -> Option<TextureHandle> {
+        // Lazy-load the texture if not yet cached. HD is an explicit
+        // enhancement profile; original parity never probes the HD tree.
+        if !self.textures.contains_key(&edata_n) {
+            let handle = load_edata_texture(
+                ctx,
+                edata_n,
+                self.hd_path.as_deref(),
+                self.edata_path.as_deref(),
+                self.asset_profile,
+                self.approved_hd_assets
+                    .get(&format!("edata/EDATA_{edata_n:03}")),
+            );
+            if handle.is_none() {
+                eprintln!(
+                    "[encyclopedia] original artwork unavailable asset={}",
+                    edata_filename(edata_n)
+                );
+            }
+            self.textures.insert(edata_n, handle);
+        }
+        self.textures.get(&edata_n).cloned().flatten()
     }
 }
 

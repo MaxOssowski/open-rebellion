@@ -79,6 +79,7 @@ use rebellion_render::build_selection::{
 };
 use rebellion_render::fleet_finder::{draw_fleet_finder, FleetFinderAction, FleetFinderState};
 use rebellion_render::message_index::{MessageIndexAction, MessageIndexState};
+use rebellion_render::message_pictures as pictures;
 use rebellion_render::personnel_finder::{
     draw_personnel_finder, PersonnelFinderAction, PersonnelFinderState,
 };
@@ -1357,6 +1358,7 @@ async fn main() {
             &mut troop_transport_state,
         );
         interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
+        interface_test_fixture::post_event_messages(request, &world, &mut msg_log);
         // The AI plays the other side, as a new game sets it.
         ai_state = AIState::new(if player_faction == MissionFaction::Empire {
             AiFaction::Alliance
@@ -1737,7 +1739,8 @@ async fn main() {
                                 format!("New resources discovered at {name} ({new_output} units)"),
                                 MessageCategory::Event,
                                 *system,
-                            ),
+                            )
+                            .with_picture_if(Some(pictures::system_incident(false))),
                             MessageRail::Resource,
                             system_audience(&world, *system),
                         ));
@@ -1759,7 +1762,10 @@ GameMessage::new(
                                 "{faction_str} reports maintenance shortfall across {deficit_system_count} systems"
                             ),
                             MessageCategory::Event,
-                        ),
+                        )
+                        .with_picture_if(Some(pictures::units_destroyed(
+                            pictures::reader(*faction_is_alliance),
+                        ))),
 MessageRail::Manufacturing,
 Some(RailAudience::side(*faction_is_alliance)),
 ));
@@ -1798,7 +1804,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                         format!("Construction complete at {sys_name}"),
                         MessageCategory::Manufacturing,
                         completion.system,
-                    ),
+                    )
+                    .with_picture_if(pictures::deployed(&world, completion.kind)),
                     MessageRail::Manufacturing,
                     system_audience(&world, completion.system),
                 ));
@@ -1843,7 +1850,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                         format!("Unit arrived at {}", system_name(&world, completion.system)),
                         MessageCategory::Manufacturing,
                         completion.system,
-                    ),
+                    )
+                    .with_picture_if(pictures::deployed(&world, completion.kind)),
                     MessageRail::Manufacturing,
                     system_audience(&world, completion.system),
                 ));
@@ -1867,12 +1875,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                     .systems
                     .get(system)
                     .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                msg_log.push(GameMessage::at_system(
-                    economy_tick,
-                    format!("Manufacturing queue idle at {sys_name_str}"),
-                    MessageCategory::Manufacturing,
-                    system,
-                ));
+                msg_log.push(
+                    GameMessage::at_system(
+                        economy_tick,
+                        format!("Manufacturing queue idle at {sys_name_str}"),
+                        MessageCategory::Manufacturing,
+                        system,
+                    )
+                    .with_picture_if(pictures::idle_yard(&world, system)),
+                );
             }
 
             // ── Movement ────────────────────────────────────────────────────
@@ -1897,7 +1908,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                         format!("Fleet arrived at {sys_name}"),
                         MessageCategory::Mission,
                         arrival.system,
-                    ),
+                    )
+                    .with_picture_if(pictures::arrival(
+                        pictures::Arrival::Fleet,
+                        pictures::reader(applied.is_alliance),
+                    )),
                     MessageRail::Fleet,
                     Some(RailAudience::side(applied.is_alliance)),
                 ));
@@ -1928,7 +1943,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                         format!("Regiment arrived at {name}"),
                         MessageCategory::Mission,
                         system,
-                    ),
+                    )
+                    .with_picture_if(world.troops.get(transit.troop).and_then(
+                        |troop| {
+                            pictures::arrival(
+                                pictures::Arrival::Units,
+                                pictures::reader(troop.is_alliance),
+                            )
+                        },
+                    )),
                     MessageRail::Fleet,
                     audience,
                 ));
@@ -2295,7 +2318,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 format!("Uprising subdued at {name}"),
                                 MessageCategory::Diplomacy,
                                 system,
-                            ),
+                            )
+                            .with_picture_if(pictures::uprising_ends(
+                                pictures::system_side(&world, system),
+                            )),
                             MessageRail::PopularSupport,
                             system_audience(&world, system),
                         ));
@@ -2336,11 +2362,14 @@ Some(RailAudience::side(*faction_is_alliance)),
                         .characters
                         .get(*character)
                         .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                    msg_log.push(GameMessage::new(
-                        current_tick,
-                        format!("{name} has escaped captivity!"),
-                        MessageCategory::Event,
-                    ));
+                    msg_log.push(
+                        GameMessage::new(
+                            current_tick,
+                            format!("{name} has escaped captivity!"),
+                            MessageCategory::Event,
+                        )
+                        .with_picture(pictures::escaped()),
+                    );
                 }
             }
 
@@ -2549,7 +2578,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 format!("Blockade established at {name}"),
                                 MessageCategory::Combat,
                                 *system,
-                            ),
+                            )
+                            .with_picture_if(pictures::blockade(
+                                pictures::system_side(&world, *system),
+                            )),
                             MessageRail::Conflict,
                             Some(RailAudience::Both),
                         ));
@@ -2589,7 +2621,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 format!("Troops destroyed by blockade at {name}"),
                                 MessageCategory::Combat,
                                 *system,
-                            ),
+                            )
+                            .with_picture_if(Some(
+                                pictures::evacuation_losses(cockpit_state.faction),
+                            )),
                             MessageRail::Conflict,
                             Some(RailAudience::Both),
                         ));
@@ -2682,9 +2717,18 @@ Some(RailAudience::side(*faction_is_alliance)),
                         MessageCategory::Event,
                     ),
                 };
+                // FUN_00499460 and FUN_0048e940; an incident has no class.
+                let picture = match evt {
+                    UprisingEvent::UprisingBegan { .. } => Some(pictures::uprising_begins()),
+                    UprisingEvent::UprisingEnded { .. } => {
+                        pictures::uprising_ends(pictures::system_side(&world, system))
+                    }
+                    UprisingEvent::UprisingIncident { .. } => None,
+                    UprisingEvent::Disaster { .. } => Some(pictures::system_incident(true)),
+                };
                 // Notification 3, Uprising Message.
                 msg_log.push(filed(
-                    GameMessage::at_system(tick, text, category, system),
+                    GameMessage::at_system(tick, text, category, system).with_picture_if(picture),
                     MessageRail::PopularSupport,
                     system_audience(&world, system),
                 ));
@@ -2828,7 +2872,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                         current_tick,
                         format!("{faction_name} {tech_name} tech advanced to level {new_level}"),
                         MessageCategory::Event,
-                    ),
+                    )
+                    .with_picture_if(Some(pictures::research())),
                     MessageRail::Manufacturing,
                     Some(RailAudience::side(*faction_is_alliance)),
                 ));
@@ -2889,7 +2934,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 current_tick,
                                 format!("{name} has reached {tier_str} tier"),
                                 MessageCategory::Event,
-                            ),
+                            )
+                            .with_picture_if(Some(pictures::side(
+                                cockpit_state.faction,
+                                pictures::portrait_key(&world, *character),
+                            ))),
                             MessageRail::Mission,
                             character_audience(&world, *character),
                         ));
@@ -3853,6 +3902,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         let actions = rebellion_render::message_index::draw_message_index(
                             ctx,
                             &mut bmp_cache,
+                            &mut enc_state,
                             cockpit_state.faction,
                             rebellion_render::message_index::window_rect(cockpit_layout).min,
                             cockpit_layout.scale,
@@ -7128,7 +7178,10 @@ fn apply_panel_action(
                                     clock.tick,
                                     format!("{} has been killed.", c.name),
                                     MessageCategory::Event,
-                                ),
+                                )
+                                .with_picture_if(Some(
+                                    pictures::killed(pictures::character_side(world, character)),
+                                )),
                                 MessageRail::Mission,
                                 character_audience(&world, character),
                             ));
@@ -7494,6 +7547,24 @@ fn apply_mission_result(
         | MissionKind::DeathStarSabotage
         | MissionKind::Autoscrap => MessageCategory::Mission,
     };
+    // FUN_004927c0: the mission type's picture and the leader's portrait.
+    let picture = {
+        use pictures::ReportedMission;
+        pictures::mission_report(
+            match result.kind {
+                MissionKind::Diplomacy => ReportedMission::Diplomacy,
+                MissionKind::Espionage => ReportedMission::Espionage,
+                MissionKind::InciteUprising => ReportedMission::InciteUprising,
+                MissionKind::SubdueUprising => ReportedMission::SubdueUprising,
+                _ => ReportedMission::Other,
+            },
+            result.outcome == rebellion_core::missions::MissionOutcome::Success,
+            pictures::reader(result.faction == MissionFaction::Alliance),
+            result
+                .character
+                .and_then(|character| pictures::portrait_key(world, character)),
+        )
+    };
     // Notifications 0x16 and 0x17, Mission Report and Mission Failed.
     log.push(filed(
         GameMessage::at_system(
@@ -7501,7 +7572,8 @@ fn apply_mission_result(
             format!("{faction_name} {kind_name} mission at {sys_name} {outcome_str}"),
             category,
             result.target_system,
-        ),
+        )
+        .with_picture(picture),
         MessageRail::Mission,
         Some(RailAudience::side(
             result.faction == MissionFaction::Alliance,
@@ -7646,11 +7718,14 @@ fn apply_mission_result(
                     .characters
                     .get(*character)
                     .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                log.push(GameMessage::new(
-                    result.tick,
-                    format!("{name} has escaped captivity!"),
-                    MessageCategory::Event,
-                ));
+                log.push(
+                    GameMessage::new(
+                        result.tick,
+                        format!("{name} has escaped captivity!"),
+                        MessageCategory::Event,
+                    )
+                    .with_picture(pictures::escaped()),
+                );
             }
             MissionEffect::UprisingSubdued {
                 system,

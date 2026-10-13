@@ -22,6 +22,7 @@ pub mod main_menu_destinations;
 pub mod manufacturing_window;
 pub mod message_index;
 pub mod message_log;
+pub mod message_pictures;
 pub mod mission_dialog;
 pub mod missions_window;
 pub mod move_confirmation;

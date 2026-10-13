@@ -11,6 +11,7 @@ use egui_macroquad::egui::{self, Color32};
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
+use crate::encyclopedia::EncyclopediaState;
 use crate::message_log::{GameMessage, MessageId, MessageLog, MessagePicture, MessageRail};
 
 // ---------------------------------------------------------------------------
@@ -832,11 +833,12 @@ pub fn filtered_messages(
 /// message displayed).
 #[expect(
     clippy::too_many_arguments,
-    reason = "The window needs context, cache, faction, origin, scale, log, state, and side."
+    reason = "The window needs context, both picture sources, faction, origin, scale, log, state, and side."
 )]
 pub fn draw_message_index(
     ctx: &egui::Context,
     cache: &mut BmpCache,
+    artwork: &mut EncyclopediaState,
     faction: CockpitFaction,
     origin: egui::Pos2,
     scale: f32,
@@ -888,7 +890,7 @@ pub fn draw_message_index(
             actions.extend(list_actions);
         }
         IndexMode::SingleMessage => {
-            draw_single_message(ctx, cache, origin, scale, &rows, state);
+            draw_single_message(ctx, cache, artwork, origin, scale, &rows, state);
         }
     }
 
@@ -1085,6 +1087,7 @@ fn apply_click(
 fn draw_single_message(
     ctx: &egui::Context,
     cache: &mut BmpCache,
+    artwork: &mut EncyclopediaState,
     origin: egui::Pos2,
     scale: f32,
     rows: &[&GameMessage],
@@ -1098,7 +1101,7 @@ fn draw_single_message(
     };
 
     if let Some(picture) = msg.picture {
-        draw_message_picture(ctx, cache, origin, scale, picture);
+        draw_message_picture(ctx, cache, artwork, origin, scale, picture);
     }
     if let Some(title) = &msg.title {
         draw_message_title(ctx, origin, scale, title);
@@ -1177,9 +1180,13 @@ fn message_picture_rects(
 
 /// Paint a message's picture: its background, then its foreground keyed
 /// over it (the blue matte is transparent, `bmp_cache`).
+///
+/// `FUN_0046a280`: the background is a STRATEGY bitmap, or the object's
+/// Encyclopedia artwork where STRATEGY has none (`FUN_0045f970`).
 fn draw_message_picture(
     ctx: &egui::Context,
     cache: &mut BmpCache,
+    artwork: &mut EncyclopediaState,
     origin: egui::Pos2,
     scale: f32,
     picture: MessagePicture,
@@ -1187,6 +1194,10 @@ fn draw_message_picture(
     let Some(background) = cache
         .get(ctx, DllSource::Strategy, picture.background)
         .cloned()
+        .or_else(|| {
+            crate::message_pictures::artwork_edata(picture.background)
+                .and_then(|file| artwork.artwork_texture(ctx, file))
+        })
     else {
         return;
     };
@@ -1965,6 +1976,7 @@ mod tests {
                 let actions = draw_message_index(
                     ctx,
                     &mut cache,
+                    &mut EncyclopediaState::new(),
                     CockpitFaction::Alliance,
                     origin,
                     scale,

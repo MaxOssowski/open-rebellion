@@ -41,7 +41,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 56;
+const SCENARIO_COUNT: u8 = 57;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -116,6 +116,9 @@ pub enum Scenario {
     /// Two story messages wait in the Mission category: Leia Uses Force and
     /// Jabba Captures Chewbacca (`story_messages`).
     StoryMessages = 55,
+    /// One message of each pictured report class waits in the Mission
+    /// category (`message_pictures`).
+    EventMessages = 56,
 }
 
 impl Scenario {
@@ -177,6 +180,7 @@ impl Scenario {
             53 => Self::ProductionDestination,
             54 => Self::BuildSelection,
             55 => Self::StoryMessages,
+            56 => Self::EventMessages,
             _ => return None,
         })
     }
@@ -1271,6 +1275,89 @@ pub fn post_story_messages(
     }
 }
 
+/// The event-message scenario's messages: one per report class whose
+/// picture the port attaches (`message_pictures`), titled by its class and
+/// filed under the Mission rail so one category lists them all.
+pub fn post_event_messages(
+    request: FixtureRequest,
+    world: &GameWorld,
+    log: &mut rebellion_render::MessageLog,
+) {
+    if request.scenario != Scenario::EventMessages {
+        return;
+    }
+    use rebellion_core::manufacturing::BuildableKind;
+    use rebellion_render::message_pictures::{self as pictures, Arrival, ReportedMission};
+    let leia = world
+        .characters
+        .iter()
+        .find(|(_, character)| character.name.to_lowercase().contains("leia"))
+        .map(|(_, character)| (character.dat_id, character.is_major));
+    let reader = request.faction;
+    let side = match reader {
+        CockpitFaction::Alliance => Faction::Alliance,
+        CockpitFaction::Empire => Faction::Empire,
+    };
+    let posts = [
+        (
+            "Mission Report",
+            Some(pictures::mission_report(
+                ReportedMission::Diplomacy,
+                true,
+                reader,
+                leia,
+            )),
+        ),
+        ("Uprising Begins", Some(pictures::uprising_begins())),
+        ("Uprising Ends", pictures::uprising_ends(side)),
+        ("Blockade", pictures::blockade(side)),
+        ("Fleet Arrives", pictures::arrival(Arrival::Fleet, reader)),
+        ("Units Arrive", pictures::arrival(Arrival::Units, reader)),
+        (
+            "Shipyard Deployed",
+            pictures::deployed(
+                world,
+                BuildableKind::ManufacturingFacility(
+                    rebellion_core::manufacturing::FacilityBuild {
+                        class: rebellion_core::ids::DatId::new(0x2800_0001),
+                        is_alliance: reader == CockpitFaction::Alliance,
+                    },
+                ),
+            ),
+        ),
+        (
+            "Regiment Deployed",
+            pictures::deployed(
+                world,
+                BuildableKind::Troop(rebellion_core::ids::DatId::new(
+                    if reader == CockpitFaction::Alliance {
+                        0x1000_0002
+                    } else {
+                        0x1000_0006
+                    },
+                )),
+            ),
+        ),
+        ("Character Killed", Some(pictures::killed(side))),
+        ("Research Complete", Some(pictures::research())),
+    ];
+    for (title, picture) in posts {
+        log.push(
+            rebellion_render::GameMessage::new(
+                0,
+                format!("{title}."),
+                rebellion_render::MessageCategory::Event,
+            )
+            .with_title(title)
+            .with_picture_if(picture)
+            .on_rail(
+                rebellion_render::story_messages::STORY_RAIL,
+                rebellion_render::message_log::RailAudience::Both,
+            ),
+        );
+    }
+}
+
 /// The story-message gate's view: where the Mission rail button is, where
 /// the Message window opens, and what it shows.
 #[derive(Debug, Serialize, PartialEq)]
@@ -1296,7 +1383,10 @@ fn story_messages_report(
     index: Option<&rebellion_render::message_index::MessageIndexState>,
     player_is_alliance: bool,
 ) -> Option<FixtureStoryMessages> {
-    if request.scenario != Scenario::StoryMessages {
+    if !matches!(
+        request.scenario,
+        Scenario::StoryMessages | Scenario::EventMessages
+    ) {
         return None;
     }
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);

@@ -280,6 +280,13 @@ impl GameMessage {
         self.picture = Some(picture);
         self
     }
+
+    /// Show `picture`, when the message's class has one.
+    #[must_use]
+    pub fn with_picture_if(mut self, picture: Option<MessagePicture>) -> Self {
+        self.picture = picture;
+        self
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -655,6 +662,20 @@ fn category_toggle(ui: &mut egui::Ui, label: &str, category: MessageCategory, en
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_message_takes_a_picture_only_when_its_class_has_one() {
+        let message = GameMessage::new(1, "text", MessageCategory::Event);
+        assert_eq!(message.clone().with_picture_if(None).picture, None);
+        let picture = MessagePicture {
+            background: 0x3f2,
+            foreground: None,
+        };
+        assert_eq!(
+            message.with_picture_if(Some(picture)).picture,
+            Some(picture)
+        );
+    }
 
     #[test]
     fn rail_masks_match_the_recovered_class_getters() {
