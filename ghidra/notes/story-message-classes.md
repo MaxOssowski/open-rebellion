@@ -10,7 +10,8 @@ tags: [story-events, special-events, messages, notifications, textstra]
 # Story and special-event message classes
 
 Extends the "Story message classes" table in `message-index-rows.md`, which
-listed five builders. This note lists all of them.
+listed five builders. This note lists all of them. The pictures of the
+ordinary reports are in `message-pictures.md`.
 
 ## Method
 
@@ -121,8 +122,8 @@ Notes on the rows:
 | Character Killed | `0x106`, dead | `FUN_0048fdf0` | `0x42e`, or `0x433` | `0x7164` / `0x7365` |
 | Captured / Escaped | `0x1e0` | `FUN_00490340` (`0x65b638`) | `0x418`/`0x419`, `0x405`, side | `0x7158`-`0x715f` |
 | Informants Provide Information | `0x153` | `FUN_00491060` (`0x65b680`) | `0x3e8` | `0x7150` / `0x7151` |
-| Saboteurs Strike | `0x305` | `FUN_0048b9a0` (`0x65b218`) | — | `0x7083` / `0x7084`, `0x7085` |
-| Maintenance Shortfall | `0x304` | `FUN_00498970` | — | `0x7080` / `0x7081`, `0x7082` |
+| Saboteurs Strike | `0x305` | `FUN_0048b9a0` (`0x65b218`) | `0x3f5`/`0x3f6`, set in slot `+0x40` `FUN_0048bbf0` | `0x7083` / `0x7084`, `0x7085` |
+| Maintenance Shortfall | `0x304` | `FUN_00498970` | `0x3f5`/`0x3f6`, set in slot `+0x40` `FUN_0048bbf0` | `0x7080` / `0x7081`, `0x7082` |
 | Recruitment Done | `0x12c` | `FUN_0048ae40` (`0x65b0f8`) | side `0x412`/`0x413` | `0x7210` / `0x7211` |
 | Research Exhausted | `0x129`, `0x12a`, `0x12b` | `FUN_0048abc0` (`0x65b0b0`) | `0x3f9` | `0x7218` / `0x7219`, `0x721a`, `0x721b` |
 | Facility Idle | `0x160` | `FUN_0048be60` (`0x65b260`) | by facility | `0x71f8`-`0x71fd` |
