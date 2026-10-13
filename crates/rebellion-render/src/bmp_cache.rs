@@ -1791,6 +1791,12 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // the page scene, not blue, through them.
                 | 10262..=10264
                 | 10290..=10296
+                // The facility pages' pictures (`FUN_00458fe0`, 9001..9033,
+                // 67 by 35 in a 69 by 40 cell), which carry the same blue
+                // matte around the building and sit on the page scene
+                // 10297. hyp: the list `FUN_00607ea0` blits them keyed, as
+                // it does the frame it lays over the selected one.
+                | 9001..=9033
                 // The Message window's mode-2 scroll buttons (`0x96`,
                 // `0x9a`), button art blitted keyed like the others.
                 | 10919..=10920
@@ -2406,6 +2412,37 @@ mod tests {
             assert_eq!(alpha(keyed), [0, 255], "{keyed}");
         }
         assert_eq!(alpha(10297), [255, 255]);
+    }
+
+    #[test]
+    fn facility_page_pictures_show_the_page_scene_through_their_blue_matte() {
+        // STRATEGY 9001..9033 (FUN_00458fe0's facility pictures) carry a
+        // pure-blue matte around the building; hyp: the facility list blits
+        // them keyed over the page scene 10297.
+        let mut image = image::RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        image.put_pixel(1, 0, image::Rgba([131, 131, 131, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let alpha = |resource_id| {
+            decode_color_image(&encoded, DllSource::Strategy, resource_id)
+                .unwrap()
+                .pixels
+                .iter()
+                .map(|pixel| pixel.a())
+                .collect::<Vec<_>>()
+        };
+        for keyed in [9001, 9005, 9006, 9030, 9033] {
+            assert_eq!(alpha(keyed), [0, 255], "{keyed}");
+        }
+        for opaque in [9000, 9034] {
+            assert_eq!(alpha(opaque), [255, 255], "{opaque}");
+        }
     }
 
     #[test]

@@ -849,7 +849,10 @@ fn draw_system_window(
             });
             let (local, window_response) =
                 ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
-            let painter = ui.painter().clone();
+            // The window clips its children: the 231-wide title strip the
+            // 235-wide Fleet, Defenses and Missions windows share ends at
+            // this window's 226.
+            let painter = ui.painter().with_clip_rect(local);
             let paint = |cache: &mut BmpCache, source: DllSource, id: u32, x: f32, y: f32| {
                 paint_native(&painter, ctx, cache, source, id, local, scale, x, y);
             };
@@ -1529,6 +1532,8 @@ mod tests {
         actions: Vec<SystemWindowAction>,
         texts: Vec<RailText>,
         painted: Vec<(u32, egui::Pos2)>,
+        /// Each text's clip rectangle, by its string.
+        clips: Vec<(String, egui::Rect)>,
     }
 
     /// Draw the windows and rail on the Alliance's layout at scale 2, one
@@ -1571,6 +1576,16 @@ mod tests {
                 ));
             });
             run.painted = PAINTED.with(|painted| painted.take());
+            run.clips = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text) => {
+                        Some((text.galley.text().to_owned(), clipped.clip_rect))
+                    }
+                    _ => None,
+                })
+                .collect();
             run.texts = output
                 .shapes
                 .into_iter()
@@ -2018,6 +2033,32 @@ mod tests {
             ),
             Some(egui::Rect::from_min_max(at(55.0, 57.0), at(221.0, 136.0)))
         );
+    }
+
+    #[test]
+    fn the_window_clips_its_title_strip_to_its_own_width() {
+        // FUN_0045aac0 creates type 9 at 226 by 304, and its title strip
+        // (STRATEGY 10299.., 231 wide at x 2) is the one the 235-wide Fleet,
+        // Defenses and Missions windows use, so the window must cut it off.
+        let (world, systems) = fixture_world(1);
+        let mut state = opened(&world, systems[0]);
+        let run = run_with(
+            &world,
+            &ManufacturingState::new(),
+            &mut state,
+            hover(at(150.0, 10.0)),
+        );
+        let name = &world.systems[systems[0]].name;
+        let clip = run
+            .clips
+            .iter()
+            .find(|(text, _)| text == name)
+            .map(|(_, clip)| *clip)
+            .expect("the title is drawn");
+        let window =
+            egui::Rect::from_min_max(at(0.0, 0.0), at(SYSTEM_WINDOW_WIDTH, SYSTEM_WINDOW_HEIGHT));
+        assert!(window.contains_rect(clip), "{clip:?} in {window:?}");
+        assert!((clip.right() - window.right()).abs() < 0.01, "{clip:?}");
     }
 
     #[test]
