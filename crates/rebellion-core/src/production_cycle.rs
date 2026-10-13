@@ -16,12 +16,14 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::build_selection::yard_periods;
+use crate::blockade::BlockadeState;
+use crate::build_selection::{area_family, yard_periods};
 use crate::dat::Faction;
 use crate::ids::{ProductionFacilityKey, SystemKey};
 use crate::manufacturing::{ManufacturingState, ProductionArea};
 use crate::side_resources::{maintenance_totals, FACILITY_CAPACITY};
 use crate::tick::TickEvent;
+use crate::uprising::UprisingState;
 use crate::world::GameWorld;
 
 /// GNPRTB `parameter_id` `0x1000` (`DAT_006bb700`, loaded by
@@ -439,6 +441,57 @@ impl ProductionSystem {
         }
         events
     }
+}
+
+/// The systems whose yards, mines and refineries are Suspended:
+/// `FUN_0050bbb0` sets the bit from system `+0x88 & 0x24`, uprising or
+/// blockade.
+#[must_use]
+pub fn suspended_systems(blockade: &BlockadeState, uprising: &UprisingState) -> HashSet<SystemKey> {
+    blockade
+        .blockaded_systems()
+        .iter()
+        .chain(uprising.active_uprisings.keys())
+        .copied()
+        .collect()
+}
+
+/// `FUN_00529dd0`: a manager with no yard of its area and side scraps its
+/// queue (`FUN_0052a2c0`). A Suspended yard still counts as one. Returns
+/// the areas scrapped.
+///
+/// port: the queued units are dropped; the original destroys each product
+/// object with cause `0x16`.
+pub fn scrap_yardless_queues(
+    world: &GameWorld,
+    manufacturing: &mut ManufacturingState,
+) -> Vec<(SystemKey, ProductionArea)> {
+    let mut areas: Vec<_> = manufacturing
+        .queues()
+        .iter()
+        .filter(|(_, queue)| !queue.is_empty())
+        .map(|(&key, _)| key)
+        .collect();
+    areas.sort_unstable();
+    areas.retain(|&(system, area)| {
+        let Some(value) = world.systems.get(system) else {
+            return true;
+        };
+        // While contested the yards keep their last holder's side, and so
+        // does the manager.
+        let Some(side) = GameWorld::facility_holder(value.control) else {
+            return false;
+        };
+        !value
+            .manufacturing_facilities
+            .iter()
+            .filter_map(|&key| world.manufacturing_facilities.get(key))
+            .any(|yard| yard.side == side && yard.class_dat_id.family() == area_family(area))
+    });
+    for &(system, area) in &areas {
+        manufacturing.stop(system, area);
+    }
+    areas
 }
 
 /// Draw the refined material the yards of each working production area
@@ -1144,5 +1197,76 @@ mod tests {
             assert!(supply(&mut state, &world, &manufacturing, tick).is_empty());
         }
         assert_eq!(alliance(&state), (0, 10));
+    }
+
+    #[test]
+    fn a_manager_with_no_yard_scraps_its_queue() {
+        // FUN_00529dd0: with no yard of the manager's area and side,
+        // FUN_0052a2c0 scraps everything queued.
+        use crate::manufacturing::{BuildableKind, QueueItem};
+        let mut world = world();
+        let (here, mut manufacturing) = shipyard_system(&mut world);
+        let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+        manufacturing.enqueue(here, QueueItem::new(regiment, 5, 5));
+
+        // The system has shipyards and no training facility.
+        assert_eq!(
+            scrap_yardless_queues(&world, &mut manufacturing),
+            vec![(here, ProductionArea::TrainingFacility)]
+        );
+        assert!(manufacturing
+            .queue(here, ProductionArea::TrainingFacility)
+            .is_none());
+        assert_eq!(
+            manufacturing
+                .queue(here, ProductionArea::Shipyard)
+                .map(|queue| queue.len()),
+            Some(1)
+        );
+
+        // A yard of the other side is not the manager's.
+        for yard in world.manufacturing_facilities.values_mut() {
+            yard.side = Faction::Empire;
+        }
+        assert_eq!(
+            scrap_yardless_queues(&world, &mut manufacturing),
+            vec![(here, ProductionArea::Shipyard)]
+        );
+    }
+
+    #[test]
+    fn a_contested_systems_queue_is_kept() {
+        // facility-ownership.md: while contested the yards keep their last
+        // holder's side, so the manager still has them.
+        let mut world = world();
+        let (here, mut manufacturing) = shipyard_system(&mut world);
+        world.systems[here].control = ControlKind::Contested;
+        for yard in world.manufacturing_facilities.values_mut() {
+            yard.side = Faction::Empire;
+        }
+        assert!(scrap_yardless_queues(&world, &mut manufacturing).is_empty());
+        assert!(manufacturing
+            .queue(here, ProductionArea::Shipyard)
+            .is_some());
+    }
+
+    #[test]
+    fn uprising_and_blockade_both_suspend_a_system() {
+        // FUN_0050bbb0: Suspended = system +0x88 & 0x24 != 0.
+        use crate::uprising::ActiveUprising;
+        let mut world = world();
+        let restless = system(&mut world);
+        let calm = system(&mut world);
+        let mut uprising = UprisingState::new();
+        uprising.active_uprisings.insert(
+            restless,
+            ActiveUprising {
+                started_tick: 1,
+                next_incident_tick: None,
+            },
+        );
+        let suspended = suspended_systems(&BlockadeState::new(), &uprising);
+        assert!(suspended.contains(&restless));
+        assert!(!suspended.contains(&calm));
     }
 }

@@ -35,7 +35,7 @@ use crate::ids::{
     CapitalShipKey, CharacterKey, DatId, FighterKey, FleetKey, ManufacturingFacilityKey, SystemKey,
     TroopKey,
 };
-use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState};
+use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState, ProductionArea};
 use crate::mission_planning::Planner;
 use crate::missions::{MissionFaction, MissionKind, MissionState};
 use crate::research::{ResearchState, ResearchSystem, TechType};
@@ -1087,6 +1087,21 @@ impl AISystem {
                 continue;
             }
 
+            // A Build order needs a yard of its own area: FUN_00527d00
+            // refuses one whose manager has none, and FUN_00529dd0 scraps a
+            // queue left without one.
+            let has_yard = |area: ProductionArea| {
+                system.manufacturing_facilities.iter().any(|mfk| {
+                    world.manufacturing_facilities.get(*mfk).is_some_and(|f| {
+                        f.side == crate::dat::Faction::of_alliance(is_alliance)
+                            && f.class_dat_id.family() == crate::build_selection::area_family(area)
+                    })
+                })
+            };
+            let ships = has_yard(ProductionArea::Shipyard);
+            let training = has_yard(ProductionArea::TrainingFacility);
+            let construction = has_yard(ProductionArea::ConstructionYard);
+
             let queue_len = mfg_state.queued_at(sys_key);
 
             // Allow up to 3 items in queue (don't just wait for empty).
@@ -1097,7 +1112,7 @@ impl AISystem {
             // Production priority: capital ships first (they create fleets),
             // then fighters (fill carrier slots), then construction yards.
             // Capital ships are the bottleneck — without them, no fleets.
-            if our_capship_count < config.production.capship_threshold {
+            if ships && our_capship_count < config.production.capship_threshold {
                 if let Some((capship_key, capship_class)) = best_capship {
                     let ticks = capship_class.refined_material_cost.max(20);
                     actions.push(AIAction::EnqueueProduction {
@@ -1116,7 +1131,7 @@ impl AISystem {
             } else {
                 true // no capships available, fighters are our only option
             };
-            if needs_fighters {
+            if ships && needs_fighters {
                 if let Some((fighter_key, fighter_class)) = best_fighter {
                     let ticks = fighter_class.refined_material_cost.max(5);
                     actions.push(AIAction::EnqueueProduction {
@@ -1139,7 +1154,7 @@ impl AISystem {
                         .is_some_and(|t| t.is_alliance == is_alliance)
                 })
                 .count();
-            if friendly_troops < 2 {
+            if training && friendly_troops < 2 {
                 if let Some(troop_key) = Self::find_troop_class(world, faction) {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
@@ -1161,7 +1176,7 @@ impl AISystem {
                         .is_some_and(|d| d.side == crate::dat::Faction::of_alliance(is_alliance))
                 })
                 .count();
-            if friendly_defenses < 2 {
+            if construction && friendly_defenses < 2 {
                 if let Some(def_key) = Self::find_defense_facility_class(world, faction) {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
@@ -1174,7 +1189,7 @@ impl AISystem {
 
             // Build more construction yards if below cap.
             let yard_count = system.manufacturing_facilities.len();
-            if yard_count < config.ai.max_construction_yards {
+            if construction && yard_count < config.ai.max_construction_yards {
                 if let Some(mfg_key) = Self::find_manufacturing_facility_class(world, faction) {
                     actions.push(AIAction::EnqueueProduction {
                         system: sys_key,
@@ -1186,6 +1201,9 @@ impl AISystem {
             }
 
             // Default: build more capital ships.
+            if !ships {
+                continue;
+            }
             if let Some((capship_key, capship_class)) = best_capship {
                 let ticks = capship_class.refined_material_cost.max(20);
                 actions.push(AIAction::EnqueueProduction {
@@ -2431,6 +2449,16 @@ mod tests {
                     side: crate::dat::Faction::Empire,
                     is_shipyard: false,
                 });
+        // Regiments are a training facility's product (FUN_00527d00 refuses
+        // a Build with no yard of its area).
+        let training =
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: DatId(0x2900_0002),
+                    side: crate::dat::Faction::Empire,
+                    is_shipyard: false,
+                });
         let sys_key = world.systems.insert(System {
             dat_id: DatId(0),
             name: "Coruscant".into(),
@@ -2448,7 +2476,7 @@ mod tests {
             ground_units: vec![],
             special_forces: vec![],
             defense_facilities: vec![],
-            manufacturing_facilities: vec![yard],
+            manufacturing_facilities: vec![yard, training],
             production_facilities: vec![],
             is_headquarters: false,
             is_destroyed: false,
@@ -2725,9 +2753,11 @@ mod tests {
             world
                 .manufacturing_facilities
                 .insert(crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(1),
+                    // A shipyard: fighters are a shipyard's product, and
+                    // FUN_00527d00 refuses a Build with no yard of its area.
+                    class_dat_id: DatId(0x2800_0001),
                     side: crate::dat::Faction::Empire, // empire
-                    is_shipyard: false,
+                    is_shipyard: true,
                 });
 
         let sys_key = world.systems.insert(System {
@@ -2797,6 +2827,93 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_system_without_a_shipyard_is_given_no_ship_or_fighter_order() {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+
+        // Add an empire manufacturing facility
+        let mfg_key =
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    // A construction yard only: FUN_00527d00 refuses a Build
+                    // whose manager has no yard of its area.
+                    class_dat_id: DatId(0x2a00_0003),
+                    side: crate::dat::Faction::Empire, // empire
+                    is_shipyard: false,
+                });
+
+        let sys_key = world.systems.insert(System {
+            dat_id: DatId(0),
+            name: "Coruscant".into(),
+            sector,
+            x: 0,
+            y: 0,
+            exploration_status: crate::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.1,
+            popularity_empire: 0.9,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![mfg_key],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(crate::dat::Faction::Empire),
+        });
+
+        // Add a TIE fighter class
+        let _ = world.fighter_classes.insert(FighterClass {
+            dat_id: DatId(10),
+            name: "TIE Fighter".into(),
+            is_alliance: false,
+            is_empire: true,
+            refined_material_cost: 20,
+            maintenance_cost: 2,
+            squadron_size: 6,
+            torpedoes: 0,
+            overall_attack_strength: 10,
+            bombardment_defense: 0,
+            ..FighterClass::default()
+        });
+
+        let mut state = AIState::new(AiFaction::Empire);
+        let mfg = ManufacturingState::new(); // empty queue
+        let missions = MissionState::new();
+
+        let actions = AISystem::advance(
+            &mut state,
+            &world,
+            &mfg,
+            &missions,
+            &crate::movement::MovementState::new(),
+            &ticks(7),
+            &GameConfig::default(),
+            &crate::research::ResearchState::new(),
+        );
+
+        let ship_orders = actions
+            .iter()
+            .filter(|a| {
+                matches!(
+                    a,
+                    AIAction::EnqueueProduction {
+                        system,
+                        kind: BuildableKind::Fighter(_) | BuildableKind::CapitalShip(_),
+                        ..
+                    } if *system == sys_key
+                )
+            })
+            .count();
+        assert_eq!(ship_orders, 0);
+    }
+
     /// Fighter the Empire AI enqueues at an idle shipyard system holding a
     /// researched TIE Fighter (order 0) and a TIE Defender (FIGHTSD.DAT
     /// research_order 8) at the given Ship research level.
@@ -2807,9 +2924,9 @@ mod tests {
             world
                 .manufacturing_facilities
                 .insert(crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(1),
+                    class_dat_id: DatId(0x2800_0001),
                     side: crate::dat::Faction::Empire,
-                    is_shipyard: false,
+                    is_shipyard: true,
                 });
         world.systems.insert(System {
             dat_id: DatId(0),
