@@ -137,6 +137,9 @@ impl FogSystem {
         world: &GameWorld,
         movement_state: &MovementState,
     ) -> Vec<RevealEvent> {
+        // port: the whole visibility model is ours (see the module docs); the
+        // original's detection rule is not recovered. The sensor reach per
+        // detection point and the half-way reveal below are tuning values.
         const SENSOR_MULTIPLIER: f32 = 15.0; // coordinate units per detection point
 
         let is_alliance = fog.faction == Faction::Alliance;

@@ -111,8 +111,9 @@ impl BetrayalSystem {
                 continue;
             }
 
-            // Look up betrayal probability from the table.
-            let prob = f64::from(loyalty_table.lookup(loyalty_score)) / 100.0;
+            // Look up betrayal probability from the table. Tables step between
+            // rows; see `MstbTable::step_lookup` for the source.
+            let prob = f64::from(loyalty_table.step_lookup(loyalty_score)) / 100.0;
 
             // Consume a roll. If exhausted, default to 1.0 (no betrayal) — safe conservative fallback.
             let roll = roll_iter.next().unwrap_or(1.0);
@@ -215,6 +216,43 @@ mod tests {
                 assert!(!defected_to_alliance);
             }
         }
+    }
+
+    #[test]
+    fn betrayal_chance_steps_between_table_rows_instead_of_interpolating() {
+        // FUN_00595090: the row with the largest threshold at or below the
+        // score applies unchanged until the next row is reached.
+        let mut state = BetrayalState::new();
+        let mut world = GameWorld::default();
+        // Loyalty 20 → score -30, halfway between the -40 and -20 rows.
+        world
+            .characters
+            .insert(default_test_character("Wavering", 20));
+        let table = MstbTable::new(vec![
+            MstbEntry {
+                threshold: -40,
+                value: 80,
+            },
+            MstbEntry {
+                threshold: -20,
+                value: 0,
+            },
+        ]);
+        // The -40 row gives 80%; interpolation would give 40% and miss on 0.5.
+        let events = BetrayalSystem::advance(&mut state, &world, &ticks(1), &[0.5], &table);
+        assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn a_roll_equal_to_the_betrayal_chance_does_not_betray() {
+        let mut state = BetrayalState::new();
+        let mut world = GameWorld::default();
+        world
+            .characters
+            .insert(default_test_character("Wavering", 10));
+        let table = test_loyalty_table();
+        let events = BetrayalSystem::advance(&mut state, &world, &ticks(1), &[0.8], &table);
+        assert!(events.is_empty());
     }
 
     #[test]

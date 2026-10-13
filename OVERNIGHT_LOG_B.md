@@ -12,6 +12,17 @@ can make. Every commit passed build, the full test suite, clippy with no new
 warnings, the provenance scan, and the release WASM compile. No browser or
 native GUI check was run for anything.
 
+### Merged result
+
+After session A finished I merged its branch into this one (merge commit at
+the head of `overnight/2026-10-14-b`). The merge was automatic, with no
+conflicts. On the merged tree: build ok, all tests pass (core 741), clippy
+warnings unchanged from baseline, provenance check ok at 108, release WASM
+compile ok. `web/open-rebellion.wasm` is rebuilt from the merged source
+(unoptimized, no `wasm-opt` here). `overnight/2026-10-14` itself is left
+exactly as session A committed it; it can fast-forward to this branch:
+`git switch overnight/2026-10-14 && git merge --ff-only overnight/2026-10-14-b`.
+
 ### Features completed
 
 | Item | Commit | What |
@@ -59,8 +70,7 @@ native GUI check was run for anything.
    `ForceVictoryCheck`, and a browser pass of the win flow.
 4. Fix or re-baseline the seed-42 golden. While it fails, no simulation
    change can be checked against it.
-5. Merge this branch into `overnight/2026-10-14`. Only `OVERNIGHT_BACKLOG.md`
-   is edited on both sides, on different items.
+5. Fast-forward `overnight/2026-10-14` to this branch (see "Merged result").
 
 ## Why there are two sessions
 

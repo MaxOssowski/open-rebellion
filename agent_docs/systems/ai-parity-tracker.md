@@ -49,7 +49,7 @@ campaign balance open even where an individual function mapping is complete.
 | `FUN_00506ea0` | 13 | Faction-specific evaluator pointer | `AiConfig::{alliance_deploy_budget, empire_deploy_budget}` + `evaluate_fleet_deployment()` | DONE | Returns evaluator from global `DAT_006b2bb0`: Alliance at +0xc4, Empire at +0xc8. Rust now mirrors this with faction-specific deployment budgets. |
 | `FUN_00508660` | 304 | Entity dispatch (10+ type handlers) | `evaluate_officers()` + `evaluate_production()` + `evaluate_research()` | DONE | Routes by family byte: fleets (0x08-0x0f), troops (0x10), capital ships (0x14, Death Star 0x18), fighters (0x1c), defense facilities (0x22-0x25), characters (0x30-0x38), special forces (0x3c). Our split into 3 functions is cleaner. |
 | `FUN_005202d0` | 39 | System pre-validation wrapper | `can_dispatch()` | DONE | Exception-handling wrapper around FUN_00520580 + FUN_0051fcb0. |
-| `FUN_004927c0` | 2098 | Master turn processing | `AISystem::advance()` | DONE | **Event-driven via message 0x1f0 (day tick).** AI evaluates every game-day, not on an interval. Our AI_TICK_INTERVAL=7 is an augmentation. |
+| `FUN_004927c0` | 2098 | Notification `0x1f0` text handler (loads message strings) | None; it is not AI code | REFUTED | Earlier read as master turn processing driven by a `0x1f0` day tick. It is neither: `0x1f0` is a mission notification with a UI factory only (`ghidra/notes/timer-scheduler.md`). `AISystem::advance()` has no recovered counterpart; the original AI cadence is open (audit F-036). |
 | `FUN_0051ab20` | — | Uprising prevention / endangered-system stabilization | `evaluate_uprising_prevention()` | AUGMENTED | Cross-reference gap is now closed. Rust sends diplomats to low-support controlled systems instead of waiting for an uprising flip. |
 | `FUN_0053b870` | 7 | Entity capacity reader | Not separate — inlined | DONE | Returns `*(entity + 0x4c)` — the entity's capacity/count field. |
 | `FUN_0050ac80` | 49 | Character placement handler | Part of `evaluate_officers()` | DONE | Faction-conditioned placement with priority checking. |
@@ -60,6 +60,8 @@ campaign balance open even where an individual function mapping is complete.
 ## Dispatch Validators — FUN_00508250 (18 AND-Chained Checks)
 
 All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; all must pass (AND chain).
+
+`FUN_00508250` is the system's vtable slot `+0xc0`. It runs once per system in setup stage `0x17`, not on every tick or dispatch (`ghidra/notes/timer-scheduler.md`).
 
 | # | Address | Lines | Decoded Purpose | Our Status |
 |---|---------|-------|----------------|------------|
@@ -89,7 +91,7 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | Property | Original (Decoded) | Ours | Status | Decision |
 |---|---|---|---|---|
 | Map visibility | Omniscient (no fog param in any AI fn) | Omniscient (no FogState param) | FAITHFUL | — |
-| Evaluation frequency | **Every game-day** (event 0x1f0 triggers per-day) | Every 7 ticks (`AI_TICK_INTERVAL`) | AUGMENTED | Keep throttled — per-tick with 200 systems is expensive. Config flag `ai.tick_interval` exists. |
+| Evaluation frequency | **Not recovered.** The original has no daily AI tick; it is driven by notifications and timers (`ghidra/notes/timer-scheduler.md`, audit F-036). The earlier "every game-day via 0x1f0" reading is refuted. | Every 7 ticks (`AI_TICK_INTERVAL`) | INVENTED | Config flag `ai.tick_interval` exists. |
 | Target selection scope | **Binary capacity check** (FUN_0052e970: fits budget?) | Per-fleet scoring (4 weighted factors) | AUGMENTED | **Our model is superior.** Original has no scoring — just checks if entity fits deployment budget. Keep our 4-factor model. |
 | Deployment passes | Two-pass with faction-specific budgets | Two-pass with aggression scaling and faction-specific budgets | AUGMENTED | Rust now mirrors the original Alliance/Empire budget split while keeping the stronger aggression model. |
 | Garrison scoring inputs | Ships + troops + facilities via vtable dispatch | Ships + troops + facilities (simplified) | DONE | — |
@@ -120,7 +122,7 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | Per-fleet targeting | Per-system iteration | Per-fleet scoring with deconfliction | Prevents fleet piling | `ai.per_fleet_targeting` |
 | Battle repeat penalty | Not in original | Freshness curve prevents stagnation | Better gameplay | `augmentation.battle_repeat_penalty` |
 | Target deconfliction | Not in original | Pile count tracking | Territorial spread | `augmentation.target_deconfliction` |
-| Throttled AI evaluation | Every game-day (event 0x1f0) | Every 7 ticks | Performance optimization | `ai.tick_interval` |
+| Polled AI evaluation | Not recovered; no daily AI tick exists (`ghidra/notes/timer-scheduler.md`) | Every 7 ticks | Port design; the original cadence is open (audit F-036) | `ai.tick_interval` |
 | Role-based character AI | Family-byte type routing | Skill-based dispatch (diplomacy/espionage/combat) | More strategic | Always on |
 | Faction-asymmetric doctrine | Different evaluator objects (budget only) | Empire→HQ strike, Alliance→guerrilla | Clearer doctrinal difference | `ai.faction_asymmetry` |
 | Composite mission inputs | wiki: sub_55ae50 etc. (popularity + skill) | Same formulas ported | Faithful to original | N/A (parity) |
