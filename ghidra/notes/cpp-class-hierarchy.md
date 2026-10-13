@@ -451,3 +451,28 @@ Key support functions used across all class setters.
 and is itself a polymorphic object whose dispatch method is a separate call (e.g., `FUN_005023b0`
 for hull notifications, `FUN_00502430` for shield, `FUN_005024c0` for weapon, `FUN_005037f0` for
 squad, `FUN_004f04f0` for regiment strength).
+
+## Generated class map (2026-10-13)
+
+`ghidra/generated/classes.tsv` and `class-slots.tsv`
+(`ghidra/scripts/derive_class_map.py`) list every vtable a constructor or
+destructor stores (`mov dword ptr [reg], imm32` into `.rdata`): 1,001
+vtables, 882 with a parent, 21,367 slots (14,025 inherited, 5,362
+overridden, 1,980 new). A class's parent is the class whose vtable its
+constructor's or destructor's callee stores.
+
+Names: 24 classes from the notifier strings and by hand (`GameObj`,
+`System` with `CoreSystem` and `RimSystem`, `Side`, `Mission`,
+`MissionMgr`, `ManuMgr`, `ProcFacil` with `Mine` and `Refinery`, `Role`,
+`Character` with `Luke`, `Leia` and `Han`, `Detector`, `CombatUnit` with
+`CapShip` and `FightSquad`, `TroopReg`, `Fleet`, `CharacterMgr`,
+`DagobahMission`) and the 73 event and timer classes from `events.tsv`.
+The rest are `<Parent>_<vtable>` or `Class_<vtable>`. A function that one
+class introduces and that had no name is named `<Class>_vt<slot>` in the
+saved project (2,406 functions).
+
+Coverage after this pass, from `function-ranges.tsv`: of 22,407 functions,
+11,352 are exception-unwind funclets (`Unwind@...`) and about 40 are
+imports or runtime. Of the roughly 11,000 game functions, 7,826 still
+have a default name; 1,737 vtable slots point at small stubs Ghidra has
+not defined as functions.
