@@ -216,3 +216,20 @@ The event factories' fire slots are not decompiled.
   `FUN_0050b230` -> `FUN_00559c40`, so support is recomputed when an input
   changes, not on a clock.
 - The queue `+0xb0` producers, and the message that sends frame case 9.
+
+## Generated event table (2026-10-13)
+
+`ghidra/generated/events.tsv` (`ghidra/scripts/derive_event_table.py`) lists
+all 73 ids `FUN_0051ef80` registers: 53 events and 20 timers, each with its
+factory, constructor, class vtable, fire or expiry function, handler, and
+the functions that raise or arm it. An event's fire function is vtable slot
+`+0x20`; a timer keeps the shared `FUN_005862a0` there and its own expiry
+function in slot `+0x30`. The handler is the fire function's last call and
+is marked certain when it is the only one. Where the sender is the change
+notifier of a named setter (`setters.tsv`), the event takes that name: 14
+events, among them `0x300` Existing, `0x301` Usable, `0x303` Uprising,
+`0x304` BattlePending, `0x305` Blockade, `0x306` HyperdriveActive, `0x307`
+Autorouting, `0x308` Completed and `0x315` ProcFacilState.
+
+`FUN_0053fe40` is the notify helper, not a raise: the ids it passes
+(`FUN_004fc080`'s `0x302`, `0x303`) are in another id space.
