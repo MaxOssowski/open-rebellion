@@ -111,8 +111,8 @@ impl BetrayalSystem {
                 continue;
             }
 
-            // Look up betrayal probability from the table. The original table
-            // lookup is a step function (`FUN_00595090`), not an interpolation.
+            // Look up betrayal probability from the table. Tables step between
+            // rows; see `MstbTable::step_lookup` for the source.
             let prob = f64::from(loyalty_table.step_lookup(loyalty_score)) / 100.0;
 
             // Consume a roll. If exhausted, default to 1.0 (no betrayal) — safe conservative fallback.
