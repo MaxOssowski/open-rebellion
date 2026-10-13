@@ -27,7 +27,13 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
    `MstbTable::lookup` has no production caller left (remove it only if nothing
    else uses it). Depends on 1 only for the shared golden regeneration.
 
-3. `[todo]` **Drop the KDY "production modifier" from the economy (F-023).**
+3. `[blocked]` **Drop the KDY "production modifier" from the economy (F-023).** NEEDS YOUR CALL.
+   Blocked 2026-10-14, nothing changed: (a) `SystemEconomy.production_modifier`
+   is a positional bincode field of the save, so removing it is a save-format
+   break; (b) two tests assert the invented value
+   (`kdy_production_modifier_reduces_with_ships`, `..._floors_at_zero`) and
+   would have to be deleted. Keeping the field but no longer computing it
+   still fails those tests. Both need your sign-off.
    `economy.rs` (const at :53, step 4 near :478) applies the blockade
    troop-withdraw formula as a production modifier; the audit shows it feeds
    only telemetry and the real rule already lives in
@@ -35,7 +41,7 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
    Done when: the modifier and its constant are gone or re-sourced, telemetry
    consumers still build, and the golden is regenerated only if it moves.
 
-4. `[todo]` **Tag `SupportTier` thresholds and `fog.rs` for provenance (F-031, F-032).**
+4. `[done]` **Tag `SupportTier` thresholds and `fog.rs` for provenance (F-031, F-032).**
    `SupportTier::from_support_int` splits at 20/30/40/60 with no source;
    `fog.rs` is port-owned but untagged.
    Done when: each carries a `port:` or `hyp:` tag with a reason,

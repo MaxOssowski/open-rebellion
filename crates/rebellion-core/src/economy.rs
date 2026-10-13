@@ -155,6 +155,11 @@ pub enum SupportTier {
 
 impl SupportTier {
     /// Compute the tier from integer support (0-100).
+    ///
+    /// hyp: the band edges are the stock values of the drift and garrison
+    /// thresholds listed on the type, hard-coded here; no recovered function
+    /// shows the original announcing a support change at these edges (audit
+    /// F-031).
     #[must_use]
     pub fn from_support_int(support_int: i32) -> Self {
         if support_int <= 20 {

@@ -1,6 +1,5 @@
 {
   "items": {
-    "crates/rebellion-core/src/ai.rs::AISystem::evaluate_production": 9,
     "crates/rebellion-core/src/ai.rs::AISystem::evaluate_research": 4,
     "crates/rebellion-core/src/ai.rs::AISystem::evaluate_troop_deployment": 4,
     "crates/rebellion-core/src/ai.rs::AISystem::find_incite_target": 1,
@@ -45,7 +44,6 @@
     "crates/rebellion-core/src/economy.rs::GNPRTB_MAINTENANCE_RATE_CONTROLLED": 1,
     "crates/rebellion-core/src/economy.rs::GNPRTB_TROOP_INFLUENCE": 1,
     "crates/rebellion-core/src/economy.rs::GNPRTB_UPRISING_GARRISON_MULT": 1,
-    "crates/rebellion-core/src/economy.rs::SupportTier::from_support_int": 4,
     "crates/rebellion-core/src/events.rs::EVT_BOUNTY_ATTACK": 1,
     "crates/rebellion-core/src/events.rs::EVT_CHARACTER_FORCE": 1,
     "crates/rebellion-core/src/events.rs::EVT_CHARACTER_HEALTH": 1,
@@ -85,7 +83,6 @@
     "crates/rebellion-core/src/events.rs::EVT_UNITS_DEPLOYED": 1,
     "crates/rebellion-core/src/events.rs::EVT_UPRISING_INCIDENT": 1,
     "crates/rebellion-core/src/events.rs::evaluate_condition": 1,
-    "crates/rebellion-core/src/fog.rs::FogSystem::advance": 1,
     "crates/rebellion-core/src/ids.rs::DatId::family": 1,
     "crates/rebellion-core/src/ids.rs::DatId::index": 1,
     "crates/rebellion-core/src/jedi.rs::DETECTION_CHECK_INTERVAL": 1,
@@ -109,9 +106,7 @@
     "crates/rebellion-core/src/world/mod.rs::ShipInstance::weapon_nibble": 2,
     "crates/rebellion-core/src/world/mod.rs::default_difficulty_index": 1,
     "crates/rebellion-data/src/integrator.rs::MAX_SYSTEM_COMBAT_ROUNDS": 1,
-    "crates/rebellion-data/src/integrator.rs::apply_build_completion_inner": 3,
     "crates/rebellion-data/src/simulation.rs::COMBAT_RETRY_TICKS": 1,
-    "crates/rebellion-data/src/simulation.rs::MAX_SYSTEM_GROUND_COMBAT_ROUNDS": 1,
-    "crates/rebellion-data/src/simulation.rs::run_simulation_tick": 5
+    "crates/rebellion-data/src/simulation.rs::MAX_SYSTEM_GROUND_COMBAT_ROUNDS": 1
   }
 }

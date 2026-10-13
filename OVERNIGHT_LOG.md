@@ -80,6 +80,39 @@ Ignored tests that fail before any change of mine:
 - F-028's audit status is left as "partially remediated": its acceptance asks
   for a named golden change, which this tree cannot produce (see baseline).
 
+### 3. Drop the KDY "production modifier" (F-023) — blocked, nothing changed
+
+- `SystemEconomy.production_modifier` is a positional bincode field in the
+  save, so removing it breaks the save format.
+- `kdy_production_modifier_reduces_with_ships` and
+  `kdy_production_modifier_floors_at_zero` assert the invented value. Any
+  version of this change (remove the field, or keep it and stop computing it)
+  needs those two tests deleted.
+- Both are yours to approve. The survey that wrote the backlog missed this.
+
+### 4. Provenance tags for `SupportTier` and `fog.rs` (F-031) — done
+
+- `SupportTier::from_support_int` is tagged `hyp:` (band edges are hard-coded
+  stock threshold values; no recovered function announces a support change at
+  them). `FogSystem::advance` is tagged `port:` (the visibility model is ours).
+  Comments only, no behavior change.
+- `scripts/provenance-baseline.json`: 113 entries to 108. Two are these tags;
+  three (`ai.rs evaluate_production`, `integrator.rs
+  apply_build_completion_inner`, `simulation.rs run_simulation_tick`) were
+  already cleared by earlier commits and only dropped out when the baseline was
+  rewritten.
+- A mistake of mine, fixed in its own commit: the comment I added for item 1
+  named `FUN_00595090` inside `BetrayalSystem::advance`, and the scanner then
+  counted the whole betrayal rule as cited. The comment now points at
+  `MstbTable::step_lookup`, and betrayal stays in the baseline.
+- Not done, for you to decide: 18 `GNPRTB_*` constants in `economy.rs` are
+  "uncited" only because their notes are trailing comments the scanner does not
+  read. Moving the notes above each constant would clear them mechanically; I
+  left them because that would shrink the count without anyone checking the
+  parameter meanings (two of them are the F-023 pair).
+- The audit JSON and Markdown for F-031 are untouched; the finding stays open
+  and its counts (135 items) were already stale.
+
 ## Earlier attempt (2026-10-14, read-only session)
 
 Kept for the record; superseded by the entries above.
