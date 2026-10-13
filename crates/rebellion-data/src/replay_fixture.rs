@@ -15,6 +15,7 @@ use rebellion_core::jedi::JediState;
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::MissionState;
 use rebellion_core::movement::MovementState;
+use rebellion_core::production_cycle::ProductionState;
 use rebellion_core::repair::RepairState;
 use rebellion_core::research::ResearchState;
 use rebellion_core::tick::{GameClock, GameSpeed};
@@ -188,6 +189,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         sim_rng: Xoshiro256PlusPlus::seed_from_u64(SEED42_SEED),
         ai2: None,
         repair: RepairState::default(),
+        production: ProductionState::new(),
         combat_cooldowns: std::collections::HashMap::new(),
         game_config: GameConfig::default(),
         campaign_config: CampaignConfig::from_seed_options(options, VictoryConditions::Standard),

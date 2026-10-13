@@ -61,6 +61,7 @@ use rebellion_core::movement::{
     system_side_fleets, validate_fleet_dispatch,
     validate_fleets_dispatch, MovementState, MovementSystem,
 };
+use rebellion_core::production_cycle::{ProductionState, ProductionSystem};
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
 use rebellion_core::tick::{GameClock, GameSpeed};
@@ -84,6 +85,9 @@ use rebellion_render::game_speed::{
     choose_game_speed, draw_day_readout, draw_game_speed_menu, draw_pause_alert, draw_time_bar,
     open_game_speed_menu_on_right_click, pause_alert_contains_screen_point, stepped_game_speed,
     GameSpeedUiState,
+};
+use rebellion_render::resource_monitors::{
+    draw_maintenance_monitor, draw_raw_materials_monitor, maintenance_available,
 };
 use rebellion_render::mission_dialog::{
     draw_mission_dialog, MissionDialogAction, MissionDialogState,
@@ -343,6 +347,7 @@ struct LiveCampaign<'a> {
     sim_rng: &'a mut Xoshiro256PlusPlus,
     ai2: &'a mut Option<AIState>,
     repair: &'a mut RepairState,
+    production: &'a mut ProductionState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -375,6 +380,7 @@ impl LiveCampaign<'_> {
             sim_rng: self.sim_rng.clone(),
             ai2: self.ai2.clone(),
             repair: self.repair.clone(),
+            production: self.production.clone(),
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -410,6 +416,7 @@ impl LiveCampaign<'_> {
         *self.sim_rng = state.sim_rng;
         *self.ai2 = state.ai2;
         *self.repair = state.repair;
+        *self.production = state.production;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -983,6 +990,7 @@ async fn main() {
     let mut jedi_state = JediState::new();
     let mut betrayal_state = BetrayalState::new();
     let mut repair_state = RepairState::default();
+    let mut production_state = ProductionState::new();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -2503,6 +2511,19 @@ Some(RailAudience::side(*faction_is_alliance)),
                 }
             }
 
+            // ── Mines, refineries and the side stockpiles ───────────────────
+            let production_rolls: Vec<f64> = (0..world.production_facilities.len())
+                .map(|_| sim_rng.gen::<f64>())
+                .collect();
+            ProductionSystem::advance(
+                &mut production_state,
+                &world,
+                &mfg_state,
+                |system| blockade_state.is_blockaded(system) || uprising_state.is_uprising(system),
+                &tick_events,
+                &production_rolls,
+            );
+
             // ── Repair ──────────────────────────────────────────────────────
             let repair_events = RepairSystem::advance(&mut repair_state, &world, &tick_events);
             for evt in &repair_events {
@@ -3295,6 +3316,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     jedi_state = JediState::new();
                                     betrayal_state = BetrayalState::new();
                                     repair_state = RepairState::default();
+                                    production_state = ProductionState::new();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -3620,6 +3642,24 @@ Some(RailAudience::side(*faction_is_alliance)),
                     // The day readout is the Game Speed control; a right
                     // click on it opens the original speed menu.
                     draw_day_readout(ctx, cockpit_layout, cockpit_state.faction, clock.tick);
+                    draw_raw_materials_monitor(
+                        ctx,
+                        cockpit_layout,
+                        cockpit_state.faction,
+                        &production_state,
+                    );
+                    draw_maintenance_monitor(
+                        ctx,
+                        cockpit_layout,
+                        cockpit_state.faction,
+                        maintenance_available(
+                            &world,
+                            &mfg_state,
+                            &blockade_state,
+                            &uprising_state,
+                            cockpit_state.faction,
+                        ),
+                    );
                     draw_time_bar(
                         ctx,
                         &mut bmp_cache,
@@ -5692,6 +5732,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         sim_rng: &mut sim_rng,
                         ai2: &mut secondary_ai_state,
                         repair: &mut repair_state,
+                        production: &mut production_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -5762,6 +5803,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 sim_rng: &mut sim_rng,
                                 ai2: &mut secondary_ai_state,
                                 repair: &mut repair_state,
+                                production: &mut production_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,

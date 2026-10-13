@@ -60,6 +60,7 @@ use rebellion_core::delivery::DeliveryState;
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::MissionState;
 use rebellion_core::movement::MovementState;
+use rebellion_core::production_cycle::ProductionState;
 use rebellion_core::repair::RepairState;
 use rebellion_core::research::ResearchState;
 use rebellion_core::tick::GameClock;
@@ -78,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 32;
+pub const SAVE_VERSION: u32 = 33;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -234,6 +235,8 @@ pub struct SaveState {
     /// Optional AI controlling the player's nominal faction in dual-AI mode.
     pub ai2: Option<AIState>,
     pub repair: RepairState,
+    /// Mines, refineries and each side's raw and refined stockpiles (v33).
+    pub production: ProductionState,
     /// Last automatic-combat tick per system.
     #[serde(
         serialize_with = "rebellion_core::serde_ordered::serialize_hash_map",
@@ -959,6 +962,7 @@ mod tests {
             sim_rng: Xoshiro256PlusPlus::seed_from_u64(42),
             ai2: None,
             repair: RepairState::default(),
+            production: ProductionState::new(),
             combat_cooldowns: std::collections::HashMap::new(),
             game_config: GameConfig::default(),
             campaign_config: CampaignConfig::default(),

@@ -26,6 +26,7 @@ use rebellion_core::jedi::{JediState, JediSystem};
 use rebellion_core::manufacturing::{ManufacturingState, ManufacturingSystem};
 use rebellion_core::missions::{MissionState, MissionSystem};
 use rebellion_core::movement::{reconcile_fleet_orbits, MovementState, MovementSystem};
+use rebellion_core::production_cycle::{ProductionState, ProductionSystem};
 use rebellion_core::repair::{RepairState, RepairSystem};
 use rebellion_core::research::{ResearchState, ResearchSystem};
 use rebellion_core::tick::{GameClock, TickEvent};
@@ -65,6 +66,8 @@ pub struct SimulationStates {
     pub betrayal: BetrayalState,
     pub economy: EconomyState,
     pub repair: RepairState,
+    /// Mines, refineries and each side's stockpiles.
+    pub production: ProductionState,
     pub troop_transport: TroopTransportState,
     /// Manufactured objects travelling to their destination (F-030).
     pub deliveries: DeliveryState,
@@ -726,6 +729,18 @@ pub fn run_simulation_tick(
     let jedi_events = JediSystem::advance(&mut states.jedi, world, tick_events, &jedi_rolls);
     integrator.apply_jedi_events(world, &jedi_events, &mut states.jedi);
 
+    // ── 13b. Mines, refineries and the side stockpiles ───────────────────
+    // After the other consumers so their rolls keep their positions.
+    let production_rolls = take_rolls(world.production_facilities.len());
+    ProductionSystem::advance(
+        &mut states.production,
+        world,
+        &states.manufacturing,
+        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
+        tick_events,
+        &production_rolls,
+    );
+
     // port: a fleet that gained its side's flagship class this tick, by a
     // build or a join on arrival, takes its signature name (fleet_name_bank).
     world.name_flagship_fleets();
@@ -835,6 +850,7 @@ mod tests {
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
+            production: ProductionState::new(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1047,6 +1063,7 @@ mod tests {
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
+            production: ProductionState::new(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1192,6 +1209,7 @@ mod tests {
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
+            production: ProductionState::new(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1323,6 +1341,7 @@ mod tests {
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
+            production: ProductionState::new(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1472,6 +1491,7 @@ mod tests {
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
+            production: ProductionState::new(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),

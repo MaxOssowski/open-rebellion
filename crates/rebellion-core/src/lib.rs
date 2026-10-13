@@ -24,10 +24,12 @@ mod mission_planning;
 pub mod missions;
 pub mod movement;
 pub mod net_protocol;
+pub mod production_cycle;
 pub mod repair;
 pub mod research;
 #[doc(hidden)]
 pub mod serde_ordered;
+pub mod side_resources;
 pub mod story_events;
 pub mod tick;
 pub mod troop_transport;

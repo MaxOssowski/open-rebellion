@@ -47,6 +47,7 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | 15 | **Betrayal** | `betrayal.rs` | `advance(state, world, ticks, rolls, loyalty_tb)` | `is_unable_to_betray` immunity; 50-tick cooldown |
 | 16 | **Economy** | `economy.rs` | `advance(state, world, ticks, difficulty)` | Full 18-function strategic state rebuild (FUN_00508250). Runs BEFORE manufacturing (position 0). Resource caps, support drift, collection rate, KDY modifier, side resolution (GNPRTB[7760] energy threshold), garrison, troop/fleet summary, incident generation (state-transition-driven, 4 flags). 17 GNPRTB indices. 30 tests. |
 | 17 | **Repair** | `repair.rs` | `advance(state, world, ticks)` | Damaged ships at shipyards auto-repair using class `damage_control`. `RepairCheckPerformed` marks the start of a continuous repair episode; `ShipRepaired` records each hull step. Active episodes persist in save v13. |
+| 18 | **Production cycle** | `production_cycle.rs` | `advance(state, world, mfg, blocked, ticks, rolls)` | Mines add raw material, refineries turn raw into refined; upkeep allocation lengthens a cycle from 5 to 10 days. Owns the per-side stockpiles the monitors read (`ghidra/notes/side-resource-monitors.md`). Runs after Jedi so earlier rolls keep their positions. |
 
 Per-system detail docs: `agent_docs/systems/{combat,blockade,uprising,death-star,research,jedi,victory,betrayal,story-events}.md`
 

@@ -29,6 +29,7 @@ pub mod object_menu;
 pub mod panels;
 pub mod personnel_finder;
 pub mod quadrant_icons;
+pub mod resource_monitors;
 pub mod sector_window;
 pub mod status_rows;
 pub mod status_window;
