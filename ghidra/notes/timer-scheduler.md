@@ -222,14 +222,28 @@ The event factories' fire slots are not decompiled.
 `ghidra/generated/events.tsv` (`ghidra/scripts/derive_event_table.py`) lists
 all 73 ids `FUN_0051ef80` registers: 53 events and 20 timers, each with its
 factory, constructor, class vtable, fire or expiry function, handler, and
-the functions that raise or arm it. An event's fire function is vtable slot
-`+0x20`; a timer keeps the shared `FUN_005862a0` there and its own expiry
-function in slot `+0x30`. The handler is the fire function's last call and
-is marked certain when it is the only one. Where the sender is the change
-notifier of a named setter (`setters.tsv`), the event takes that name: 14
-events, among them `0x300` Existing, `0x301` Usable, `0x303` Uprising,
-`0x304` BattlePending, `0x305` Blockade, `0x306` HyperdriveActive, `0x307`
-Autorouting, `0x308` Completed and `0x315` ProcFacilState.
+the code that raises or arms it.
+
+- **Fire.** An event's fire function is vtable slot `+0x20`; a timer keeps
+  the shared `FUN_005862a0` there and its own expiry function in slot
+  `+0x30`.
+- **Handler.** The fire function opens a 28-byte context (`FUN_004fd450`)
+  and passes it to the handler. 54 ids have exactly one such call and are
+  marked certain; the rest (most of `0x200..0x250`, `0x31a`, `0x321`,
+  `0x372`, `0x380`) show the last call as a guess.
+- **Senders.** Found by scanning the code for an id pushed before a call
+  to `FUN_0053f950` / `FUN_0053f9c0` / `FUN_0053fbd0` (raise) or
+  `FUN_0053fa60` / `FUN_0053fab0` / `FUN_0053fb00` (arm, period), attributed
+  through `function-ranges.tsv`, and as callers of an event's constructor
+  outside its own class code (`0x370`, `0x371` and the `0x2xx` orders are
+  built and posted directly). A `*` marks a vtable stub Ghidra leaves
+  undefined. `0x320`, `0x321` and `0x3f0` have no sender found.
+- **Names.** Where the sender is the change notifier of a named setter
+  (`setters.tsv`), the event takes that name: 23 events, among them `0x300`
+  Existing, `0x301` Usable, `0x303` Uprising, `0x304` BattlePending, `0x305`
+  Blockade, `0x306` HyperdriveActive, `0x307` Autorouting, `0x308`
+  Completed, `0x309` Battle, `0x30f` Assault, `0x310` Bombard, `0x315`
+  ProcFacilState, `0x316` Locked and `0x31a` ReadyForDelete.
 
 `FUN_0053fe40` is the notify helper, not a raise: the ids it passes
 (`FUN_004fc080`'s `0x302`, `0x303`) are in another id space.
