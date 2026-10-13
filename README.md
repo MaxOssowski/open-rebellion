@@ -61,6 +61,7 @@ Major implemented areas (each remains subject to the linked acceptance audit):
 - **AI Behavior Coverage** — Config-driven AI (16 tunable params), 18/18 dispatch validators, troop deployment, Death Star multi-target, reconnaissance
 - **UI Reconstruction** — Original shuttle menu verified; campaign and tactical replacements are cataloged for bitmap-driven reconstruction
 - **Story and Runtime Integration** — Cutscene state machine, Emperor combat modifier, original type-302 advisor idle frames, mission telemetry
+- **Side Resources** — Maintenance capacity (50 per mine and refinery pair) and upkeep, raw and refined material stockpiles, and the mine and refinery cycle recovered from REBEXE.EXE; the cockpit's Raw Materials and Maintenance monitors read them. Yards do not draw on refined material yet, so the Refined Materials monitor stays blank, and the over-limit penalty is not ported
 - **Ghidra RE corpus** — [5,127 functions decompiled](https://tdimino.github.io/open-rebellion/) from REBEXE.EXE, 111 GNPRTB parameters mapped, C++ class hierarchy reconstructed
 
 ## You Will Need
