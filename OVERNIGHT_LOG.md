@@ -1,5 +1,91 @@
 # Overnight log
 
+## Summary (2026-10-14, main checkout, branch `overnight/2026-10-14`)
+
+Two behavior fixes and three documentation changes are committed; two items
+are blocked on decisions only you can make. Nothing was pushed and `main` is
+untouched. Gates at the branch head match the baseline: build ok, all
+non-ignored tests pass (core 737, up 3), clippy warning counts unchanged, the
+105 pre-existing `cargo fmt` diffs unchanged (touched files add none), the
+provenance check passes, and `./scripts/build-wasm.sh` succeeds.
+
+**A second session ran this same prompt in parallel.** It took backlog items 7
+to 12 on branch `overnight/2026-10-14-b` in `.claude/worktrees/overnight-b`
+and reports in `OVERNIGHT_LOG_B.md` there. This summary covers items 1 to 6
+and 14 only. The two branches both start at `03cb5d1d` and are not merged.
+
+### Features completed
+
+| Item | Commit | What |
+|---|---|---|
+| 1 | `fb89f98a` | Betrayal reads its table with the original step lookup (F-028) |
+| 1 follow-up | `90324942` | Reworded my own comment so the betrayal rule stays counted as uncited |
+| 2 | `d6adacfe` | Captive escape reads ESCAPETB with the step lookup; the unused interpolating lookup is removed (F-028) |
+| 4 | `1151da6f` | Provenance tags for the support bands (`hyp:`) and the fog model (`port:`); baseline 113 to 108 (F-031) |
+| 5 | `ea49ca22` | Agent docs no longer call `FUN_004927c0` the master tick, `0x1f0` a daily AI trigger, or `FUN_00508250` per-tick (F-039) |
+| 14 | `8d370254` | Audit notes for two rules it lists as missing but the code has (F-034, F-037) |
+| build | `95ec4717` | Rebuilt the tracked `web/open-rebellion.wasm` (unoptimized: `wasm-opt` is not installed here) |
+
+### Features blocked
+
+- **3, KDY production modifier (F-023).** Removing it drops a positional field
+  from the save format and needs two tests deleted.
+- **6, Emperor's 1.5x bonus (F-024).** Removing it needs the tests that assert
+  it deleted or rewritten.
+- **13, injury timer (F-038).** Not attempted by either session: save-format
+  bump.
+
+### Things that did not go to plan
+
+- **The seed-42 replay golden cannot be checked on this tree.** The test fails
+  before any change of mine, and still fails with a 200-system galaxy forced.
+  Items 1 and 2 change betrayal and escape odds, so they almost certainly move
+  the golden, but I could not measure or regenerate it. F-028 therefore stays
+  "partially remediated".
+- **Three other data-dependent tests fail at baseline** (fleet seeding, repair
+  telemetry, tactical asset manifest). Details under "Baseline".
+- **This session finished its share in about 20 minutes.** I looked for more
+  work and found only the item 14 docs sync; see the next section for why.
+
+### Assumptions about original-game behavior to verify
+
+No `// ASSUMPTION:` comment was added: both code changes follow
+`FUN_00595090`, already ported and tested as `MstbTable::step_lookup`. What I
+tagged or noticed instead:
+
+- `SupportTier::from_support_int` is now marked `hyp:`. Its 20/30/40/60 edges
+  are a guess about when the original announces a support change.
+- Betrayal still reads **UPRIS1TB** as a loyalty-to-percent table. The
+  uprising code reads the same table as incident codes. The audit says the
+  original runs betrayal only in mission phase 9, so the standalone
+  `BetrayalSystem` is probably invented as a whole.
+- Escape still uses loyalty alone and rolls **every tick for every captive**.
+  From the saved decompiles (`FUN_00561990`, `FUN_0055e7e0`) the original
+  input is: captive slot `+0x1f0` plus slot `+0x1e0` (espionage), minus the
+  average slot `+0x1f0` of the characters (types `0x30..0x3c`) at the
+  captive's container whose slot `+0x1d4` returns 0, minus the count of
+  regiments (`0x10..0x14`) there. Slot `+0x1f0` is combat if the skill slots
+  run in field order, which I did not confirm. Not ported, because three
+  things are unrecovered: what triggers `FUN_0057d670` (the cadence), what
+  slot `+0x1d4` filters, and whose side `+0x24` bits 6-7 select. The port
+  also has no location for a captive.
+- `ai-parity-tracker.md` calls `FUN_00508250` 18 dispatch validators while
+  `economy.rs` calls it an 18-function state rebuild. One of them is wrong.
+
+### Suggested next items
+
+1. Decide items 3, 6, and 13 (save-format bump and test deletions).
+2. Find out why the seed-42 fixture loads 100 systems and why its initial
+   fingerprint no longer matches, then regenerate the golden once, naming
+   items 1 and 2 among the causes.
+3. Recover the three open points of the escape roll above; with them it is a
+   small port and closes an F-034 bullet.
+4. The 18 `GNPRTB_*` constants in `economy.rs` count as uncited only because
+   their notes are trailing comments. Check each parameter's meaning, then
+   move the notes above the constants.
+5. Review and merge `overnight/2026-10-14-b`. Expect conflicts in
+   `OVERNIGHT_BACKLOG.md` and possibly the audit JSON and Markdown.
+
 ## Session notes (2026-10-14)
 
 ### Decisions
