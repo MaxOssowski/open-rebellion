@@ -48,7 +48,9 @@ Each seeder repeats its roll once per energy unit (`+0x5c`):
    - a mine, `0x2c000001`, with chance `(raw +0x64 − mines of the system's
      side) × multiplier`; the multiplier is `DAT_006bb4bc` for core and
      `DAT_006bb45c` for rim (GNPRTB 7766 and 7767);
-   - otherwise the table entry at `rand(100)`.
+   - otherwise the table entry at `rand(100)`. The lookup `FUN_00595090`
+     treats thresholds as lower bounds and the class-0 first entry as "no
+     facility" (`side-resource-monitors.md`, 2026-10-13).
 2. `FUN_004f7d50(system, &class, system +0x24 >> 6 & 3, ctx, 1, 1)` creates
    it.
 
