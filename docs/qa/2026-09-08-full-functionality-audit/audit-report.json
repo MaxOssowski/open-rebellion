@@ -267,11 +267,11 @@
     {
       "id": "F-005",
       "severity": "P1",
-      "status": "confirmed",
+      "status": "partially_remediated",
       "title": "Victory modal is unreachable in normal play",
       "evidence": [
-        "crates/rebellion-app/src/main.rs:73",
-        "crates/rebellion-app/src/main.rs:1714"
+        "crates/rebellion-app/src/main.rs:2993",
+        "crates/rebellion-app/src/main.rs:5791"
       ],
       "acceptance": "Every win/loss route reaches the accepted result UI and clean transition sequence."
     },

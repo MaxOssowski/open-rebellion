@@ -84,12 +84,18 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
     Done when: both class kinds load the DAT `research_order`, build lists gate
     on the Troop and Facility trees, and three-way tests cover both factions.
 
-11. `[todo]` **Re-check F-005 "victory modal is unreachable".**
+11. `[done]` **Re-check F-005 "victory modal is unreachable".**
     `main.rs:2993` now sets `GameMode::VictoryModal`, so the finding may be
     stale (its evidence lines :73 and :1714 no longer match).
     Done when: either the route is shown reachable and the audit JSON, Markdown,
     and roadmap are updated together, or the remaining gap is written down as a
     concrete sub-item. Needs a browser pass to close fully.
+    Result: reachable by code reading; audit JSON, Markdown and roadmap updated.
+    Remaining gaps, each needing a decision or a browser pass, not started:
+    - 11a. `[todo]` Decide the victory/defeat cutscene policy and wire it.
+    - 11b. `[todo]` Word the result for the player's side (defeat wording).
+    - 11c. `[todo]` Make `ForceVictoryCheck` resolve the game or rename it.
+    - 11d. `[todo]` Browser pass: win, modal, Continue, clean New Game.
 
 12. `[done]` **Remove `PanelAction::AdvanceTicks` or make it run the real tick (M2).**
     `main.rs:7240`.

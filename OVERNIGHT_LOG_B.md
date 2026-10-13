@@ -66,3 +66,16 @@ native GUI acceptance was run for anything below.
   test that reaches it, and I could not drive the GUI. Worth one manual check:
   pause, run "advance 10 ticks", watch ten days of events arrive. The roadmap
   box under M2 is left unticked for that reason.
+
+### Item 11: F-005 "victory modal is unreachable" re-check — done (docs only)
+
+- Finding: the audit's evidence is stale. The app's one victory route (the
+  `VictorySystem::check` call closing the tick block in `main.rs`) sets
+  `GameMode::VictoryModal`; the clock only runs in `GameMode::Galaxy`, so play
+  freezes; Continue returns to the main menu. Clippy no longer reports the
+  variant as never constructed.
+- Changed: F-005 in `audit-report.md` and `audit-report.json` moves from
+  "confirmed" to "partially remediated" with the open gaps listed; the M2
+  roadmap line notes the same. No code changed.
+- This is a code reading, not an acceptance pass. I did not win a game in the
+  browser. Open gaps are backlog sub-items 11a to 11d.

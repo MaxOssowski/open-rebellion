@@ -610,7 +610,7 @@ would tune around known simulation feedback defects.
 - [ ] Move the panel-action handling out of `rebellion-app/src/main.rs` into
   modules native tests reach; every mutation run leaves survivors there.
 - [ ] Make automatic, tactical, and ground combat share resumable core state and calculations. Tactical ground damage and occupation capture now persist.
-- [ ] Construct the victory modal and unify win/loss transitions.
+- [ ] Construct the victory modal and unify win/loss transitions. The tick-loop victory check now opens the modal (F-005 re-check, 2026-10-14); cutscene policy, defeat wording, and a browser pass remain.
 - [ ] Remove `AdvanceTicks` or make it execute the real simulation.
 - [ ] Prove identical fingerprints for the same seed and command stream across app/playtest, native/WASM, and auto/tactical paths.
 

@@ -237,9 +237,26 @@ cross-runtime proof remain open
 ### F-005: Victory modal is unreachable in normal play
 
 - Severity: P1
-- Status: confirmed
+- Status: partially remediated; cutscene policy, loss wording, and browser pass remain
 - Evidence: normal victory handling transitions directly to a cutscene or main
   menu; the compiler reports `VictoryModal` is never constructed.
+- Re-check (2026-10-14, code reading only): the original evidence is stale.
+  The one victory route in the app, the `VictorySystem::check` call at the
+  end of the tick block in `crates/rebellion-app/src/main.rs`, now sets
+  `GameMode::VictoryModal`, and the build no longer warns that the variant is
+  never constructed. The clock only advances in `GameMode::Galaxy`, so the
+  modal freezes play; its Continue button sets `GameMode::MainMenu`.
+- Open:
+  - No victory or defeat cutscene plays. `CutsceneKind` has `Intro`,
+    `TrenchRun`, and `Story` only, and none chains into or out of the modal,
+    so the "accepted cutscene policy" is neither decided nor implemented.
+  - The modal words every result from the winner's side ("Alliance Victory!",
+    "Imperial Victory!"); a player who lost sees no defeat wording.
+  - The modal is port-owned egui, not an original result screen.
+  - `PanelAction::ForceVictoryCheck` reports an outcome to the message log
+    without resolving the game or opening the modal.
+  - Whether Continue leaves a clean menu (no stale campaign state on the next
+    New Game) is untested, and no browser or native pass has run.
 - Acceptance: every win and loss route reaches the result UI, freezes play,
   follows the accepted cutscene policy, and returns cleanly to the menu.
 
