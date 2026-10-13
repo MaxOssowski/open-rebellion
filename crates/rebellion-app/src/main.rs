@@ -221,6 +221,29 @@ fn original_game_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("../star-wars-rebellion"))
 }
 
+/// An original DLL's path: in the original installation when it is there,
+/// otherwise beside the DAT files, where a staged `GData` directory keeps it.
+#[cfg(not(target_arch = "wasm32"))]
+fn original_dll_path(game_dir: &Path, gdata_path: &Path, name: &str) -> PathBuf {
+    let installed = game_dir.join(name);
+    if installed.exists() {
+        installed
+    } else {
+        gdata_path.join(name)
+    }
+}
+
+/// The score the mode a finished cutscene returns to plays. Opening a
+/// cutscene stops the music, so its end has to start this again.
+#[cfg(not(target_arch = "wasm32"))]
+fn music_context_after_cutscene(kind: &CutsceneKind) -> MusicContext {
+    match kind {
+        CutsceneKind::Intro => MusicContext::MainMenu,
+        CutsceneKind::TrenchRun(_) => MusicContext::Combat,
+        CutsceneKind::Story(_) => MusicContext::GalaxyMap,
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn common_edata_sibling(gdata_path: &Path) -> Option<PathBuf> {
     gdata_path
@@ -252,6 +275,57 @@ fn configured_edata_path(gdata_path: &Path) -> PathBuf {
     #[cfg(target_arch = "wasm32")]
     {
         gdata_path.join("EData")
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod audio_source_tests {
+    use super::*;
+
+    #[test]
+    fn an_original_dll_is_read_from_the_installation_before_the_gdata_directory() {
+        let root =
+            std::env::temp_dir().join(format!("open-rebellion-dll-path-{}", std::process::id()));
+        let game_dir = root.join("install");
+        let gdata_path = root.join("gdata");
+        std::fs::create_dir_all(&game_dir).expect("create install dir");
+        std::fs::create_dir_all(&gdata_path).expect("create gdata dir");
+
+        // Staged beside the DAT files only: the GData copy is the source.
+        std::fs::write(gdata_path.join("TACTICAL.DLL"), b"gdata").expect("write gdata dll");
+        assert_eq!(
+            original_dll_path(&game_dir, &gdata_path, "TACTICAL.DLL"),
+            gdata_path.join("TACTICAL.DLL")
+        );
+
+        std::fs::write(game_dir.join("TACTICAL.DLL"), b"install").expect("write installed dll");
+        assert_eq!(
+            original_dll_path(&game_dir, &gdata_path, "TACTICAL.DLL"),
+            game_dir.join("TACTICAL.DLL")
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_finished_cutscene_restarts_the_score_of_the_mode_it_returns_to() {
+        assert_eq!(
+            music_context_after_cutscene(&CutsceneKind::Intro),
+            MusicContext::MainMenu
+        );
+        assert_eq!(
+            music_context_after_cutscene(&CutsceneKind::Story(101)),
+            MusicContext::GalaxyMap
+        );
+        for outcome in [
+            TacticalTrenchRunOutcome::Success,
+            TacticalTrenchRunOutcome::Failure,
+        ] {
+            assert_eq!(
+                music_context_after_cutscene(&CutsceneKind::TrenchRun(outcome)),
+                MusicContext::Combat
+            );
+        }
     }
 }
 
@@ -1162,17 +1236,18 @@ async fn main() {
         if sounds_dir.exists() {
             engine.load_all(&sounds_dir);
         }
-        let common_dll = original_game_dir().join("COMMON.DLL");
+        let game_dir = original_game_dir();
+        let common_dll = original_dll_path(&game_dir, &gdata_path, "COMMON.DLL");
         if common_dll.exists() {
             engine.load_original_menu_sfx(&common_dll);
         }
-        let tactical_dll = original_game_dir().join("TACTICAL.DLL");
+        let tactical_dll = original_dll_path(&game_dir, &gdata_path, "TACTICAL.DLL");
         if tactical_dll.exists() {
             engine.load_original_tactical_sfx(&tactical_dll);
         }
         engine.load_original_tactical_voice(
-            &original_game_dir().join("VOICEFXA.DLL"),
-            &original_game_dir().join("VOICEFXE.DLL"),
+            &original_dll_path(&game_dir, &gdata_path, "VOICEFXA.DLL"),
+            &original_dll_path(&game_dir, &gdata_path, "VOICEFXE.DLL"),
         );
         audio_vol.backend_available = engine.is_available();
         engine
@@ -2931,6 +3006,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                     CutsceneKind::TrenchRun(_) => GameMode::TacticalCombat,
                     CutsceneKind::Story(_) => GameMode::Galaxy,
                 };
+                #[cfg(not(target_arch = "wasm32"))]
+                let next_music = music_context_after_cutscene(kind);
 
                 if let Some(player) = cutscene_player.as_mut() {
                     player.advance(dt);
@@ -2951,6 +3028,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                     if player.is_finished() {
                         cutscene_player = None;
                         game_mode = next_mode;
+                        #[cfg(not(target_arch = "wasm32"))]
+                        audio_engine.play_music_for_context(next_music, &sounds_dir, &audio_vol);
                     }
                 } else {
                     game_mode = next_mode;
