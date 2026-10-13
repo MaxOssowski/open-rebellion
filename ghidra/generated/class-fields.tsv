@@ -1,0 +1,1565 @@
+class	vtable	offset	size	name	mask	declared_in	source
+Class_00664db8	00664db8	0xa8	4	RdPoints		Class_00664db8	0056c240
+Class_00664db8	00664db8	0xac	4	RdOrders		Class_00664db8	0056c2b0
+GameObj	0065d260	0x24	4	KeyAndSide		GameObj	seed
+GameObj	0065d260	0x2c	4	ClassRecord		GameObj	seed
+GameObj	0065d260	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj	0065d260	0x50	4	Created	0x2	GameObj	004f7480
+GameObj	0065d260	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj	0065d260	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj	0065d260	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj	0065d260	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj	0065d260	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj	0065d260	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj	0065d260	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj	0065d260	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj	0065d260	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj	0065d260	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj	0065d260	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj	0065d260	0x50	4	Deployed	0x20000	GameObj	004f7b10
+GameObj_0065ce68	0065ce68	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065ce68	0065ce68	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065ce68	0065ce68	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065ce68	0065ce68	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065ce68	0065ce68	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065ce68	0065ce68	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065ce68	0065ce68	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065ce68	0065ce68	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065ce68	0065ce68	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065ce68	0065ce68	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065ce68	0065ce68	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065ce68	0065ce68	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065ce68	0065ce68	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065ce68	0065ce68	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065ce68	0065ce68	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065ce68	0065ce68	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Fleet	0065d438	0x24	4	KeyAndSide		GameObj	seed
+Fleet	0065d438	0x2c	4	ClassRecord		GameObj	seed
+Fleet	0065d438	0x50	4	Usable	0x1	GameObj	004f7410
+Fleet	0065d438	0x50	4	Created	0x2	GameObj	004f7480
+Fleet	0065d438	0x50	4	Completed	0x4	GameObj	004f74f0
+Fleet	0065d438	0x50	4	Enroute	0x10	GameObj	004f75d0
+Fleet	0065d438	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Fleet	0065d438	0x50	4	Existing	0x40	GameObj	004f76b0
+Fleet	0065d438	0x50	4	Damaged	0x200	GameObj	004f7800
+Fleet	0065d438	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Fleet	0065d438	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Fleet	0065d438	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Fleet	0065d438	0x50	4	Locked	0x4000	GameObj	004f79c0
+Fleet	0065d438	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Fleet	0065d438	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Fleet	0065d438	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Fleet	0065d438	0x58	4	Battle	0x10	Fleet	004fe380
+Fleet	0065d438	0x58	4	Blockade	0x20	Fleet	004fe3f0
+Fleet	0065d438	0x58	4	Bombard	0x40	Fleet	004fe460
+Fleet	0065d438	0x58	4	Assault	0x80	Fleet	004fe4d0
+System	0065e640	0x24	4	KeyAndSide		GameObj	seed
+System	0065e640	0x2c	4	ClassRecord		GameObj	seed
+System	0065e640	0x50	4	Usable	0x1	GameObj	004f7410
+System	0065e640	0x50	4	Created	0x2	GameObj	004f7480
+System	0065e640	0x50	4	Completed	0x4	GameObj	004f74f0
+System	0065e640	0x50	4	Enroute	0x10	GameObj	004f75d0
+System	0065e640	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+System	0065e640	0x50	4	Existing	0x40	GameObj	004f76b0
+System	0065e640	0x50	4	Damaged	0x200	GameObj	004f7800
+System	0065e640	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+System	0065e640	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+System	0065e640	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+System	0065e640	0x50	4	Locked	0x4000	GameObj	004f79c0
+System	0065e640	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+System	0065e640	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+System	0065e640	0x50	4	Deployed	0x20000	GameObj	004f7b10
+System	0065e640	0x58	4	Loyalty		System	00509c30
+System	0065e640	0x5c	4	SystemEnergy		System	00509cc0
+System	0065e640	0x64	4	SystemRawMaterial		System	00509dc0
+System	0065e640	0x68	4	SystemRawMaterialAllocated		System	00509e40
+System	0065e640	0x6c	4	SmugglingPercent		System	00509ec0
+System	0065e640	0x70	4	ProductionModifier		System	00509f40
+System	0065e640	0x74	4	TroopRegWithdrawPercent		System	00509fc0
+System	0065e640	0x7c	4	TroopRegSurplus		System	0050a230
+System	0065e640	0x80	4	TroopRegRequired		System	0050a290
+System	0065e640	0x88	4	Populated	0x1	System	0050a3c0
+System	0065e640	0x88	4	Explored	0x2	System	0050a430
+System	0065e640	0x88	4	Uprising	0x4	System	0050a4a0
+System	0065e640	0x88	4	NeverBeenControlled	0x8	System	0050a510
+System	0065e640	0x88	4	Battle	0x10	System	0050a580
+System	0065e640	0x88	4	Blockade	0x20	System	0050a5f0
+System	0065e640	0x88	4	Bombard	0x40	System	0050a660
+System	0065e640	0x88	4	Assault	0x80	System	0050a6d0
+System	0065e640	0x88	4	Garrisoned	0x100	System	0050a740
+System	0065e640	0x88	4	Suppressing	0x200	System	0050a7b0
+System	0065e640	0x88	4	CombatUnitFastRepair	0x400	System	0050a820
+System	0065e640	0x88	4	DeathStarNearby	0x800	System	0050a890
+System	0065e640	0x88	4	BattlePending	0x1000	System	0050a900
+System	0065e640	0x88	4	LoyaltyCausedCurrentControlKind	0x2000	System	0050a970
+System	0065e640	0x88	4	UprisingIncident	0x10000	System	0050aa50
+System	0065e640	0x88	4	InformantIncident	0x20000	System	0050aac0
+System	0065e640	0x88	4	DisasterIncident	0x40000	System	0050ab30
+System	0065e640	0x88	4	ResourceIncident	0x80000	System	0050aba0
+System	0065e640	0x88	4	BlockadeAndBattlePendingManagementRequired	0x100000	System	0050ac10
+GameObj_0065e938	0065e938	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065e938	0065e938	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065e938	0065e938	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065e938	0065e938	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065e938	0065e938	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065e938	0065e938	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065e938	0065e938	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065e938	0065e938	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065e938	0065e938	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065e938	0065e938	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065e938	0065e938	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065e938	0065e938	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065e938	0065e938	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065e938	0065e938	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065e938	0065e938	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065e938	0065e938	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission	0065edf8	0x24	4	KeyAndSide		GameObj	seed
+Mission	0065edf8	0x2c	4	ClassRecord		GameObj	seed
+Mission	0065edf8	0x50	4	Usable	0x1	GameObj	004f7410
+Mission	0065edf8	0x50	4	Created	0x2	GameObj	004f7480
+Mission	0065edf8	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission	0065edf8	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission	0065edf8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission	0065edf8	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission	0065edf8	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission	0065edf8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission	0065edf8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission	0065edf8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission	0065edf8	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission	0065edf8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission	0065edf8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission	0065edf8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission	0065edf8	0x58	4	UserID		Mission	00521780
+Mission	0065edf8	0x5c	4	UserID2		Mission	00521800
+Mission	0065edf8	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission	0065edf8	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission	0065edf8	0xa4	4	Mandatory	0x4	Mission	00522210
+GameObj_0065f0b0	0065f0b0	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065f0b0	0065f0b0	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065f0b0	0065f0b0	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065f0b0	0065f0b0	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065f0b0	0065f0b0	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065f0b0	0065f0b0	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065f0b0	0065f0b0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065f0b0	0065f0b0	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065f0b0	0065f0b0	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065f0b0	0065f0b0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065f0b0	0065f0b0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065f0b0	0065f0b0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065f0b0	0065f0b0	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065f0b0	0065f0b0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065f0b0	0065f0b0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065f0b0	0065f0b0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ManuMgr	0065fbf8	0x24	4	KeyAndSide		GameObj	seed
+ManuMgr	0065fbf8	0x2c	4	ClassRecord		GameObj	seed
+ManuMgr	0065fbf8	0x50	4	Usable	0x1	GameObj	004f7410
+ManuMgr	0065fbf8	0x50	4	Created	0x2	GameObj	004f7480
+ManuMgr	0065fbf8	0x50	4	Completed	0x4	GameObj	004f74f0
+ManuMgr	0065fbf8	0x50	4	Enroute	0x10	GameObj	004f75d0
+ManuMgr	0065fbf8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ManuMgr	0065fbf8	0x50	4	Existing	0x40	GameObj	004f76b0
+ManuMgr	0065fbf8	0x50	4	Damaged	0x200	GameObj	004f7800
+ManuMgr	0065fbf8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ManuMgr	0065fbf8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ManuMgr	0065fbf8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ManuMgr	0065fbf8	0x50	4	Locked	0x4000	GameObj	004f79c0
+ManuMgr	0065fbf8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ManuMgr	0065fbf8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ManuMgr	0065fbf8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ManuMgr	0065fbf8	0x58	4	RemainingGameObjCount		ManuMgr	00529480
+ManuMgr	0065fbf8	0x5c	4	CompletedPointCount		ManuMgr	005294e0
+ManuMgr	0065fbf8	0x60	4	OverflowPointCount		ManuMgr	00529540
+ManuMgr	0065fbf8	0x68	4	RequiredPointCount		ManuMgr	00529650
+ManuMgr	0065fbf8	0x6c	4	TotalRequiredPointCount		ManuMgr	005296b0
+ManuMgr	0065fbf8	0x70	4	Reserved		ManuMgr	00529710
+Side	00660af8	0x24	4	KeyAndSide		GameObj	seed
+Side	00660af8	0x2c	4	ClassRecord		GameObj	seed
+Side	00660af8	0x50	4	Usable	0x1	GameObj	004f7410
+Side	00660af8	0x50	4	Created	0x2	GameObj	004f7480
+Side	00660af8	0x50	4	Completed	0x4	GameObj	004f74f0
+Side	00660af8	0x50	4	Enroute	0x10	GameObj	004f75d0
+Side	00660af8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Side	00660af8	0x50	4	Existing	0x40	GameObj	004f76b0
+Side	00660af8	0x50	4	Damaged	0x200	GameObj	004f7800
+Side	00660af8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Side	00660af8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Side	00660af8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Side	00660af8	0x50	4	Locked	0x4000	GameObj	004f79c0
+Side	00660af8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Side	00660af8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Side	00660af8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Side	00660af8	0x58	4	SideMaintState		Side	0052ec90
+Side	00660af8	0x5c	4	MaintCapacityAllocated		Side	seed
+Side	00660af8	0x60	4	MinePool		Side	seed
+Side	00660af8	0x64	4	MinePoolAllocated		Side	seed
+Side	00660af8	0x68	4	RefineryPool		Side	seed
+Side	00660af8	0x6c	4	RefineryPoolAllocated		Side	seed
+Side	00660af8	0x70	4	SideMaintRequired		Side	0052eed0
+Side	00660af8	0x74	4	MaintUsed		Side	seed
+Side	00660af8	0x78	4	RawMaterials		Side	seed
+Side	00660af8	0x7c	4	RefinedMaterials		Side	seed
+Side	00660af8	0x80	4	RawRequestCount		Side	seed
+Side	00660af8	0x84	4	RefinedRequestCount		Side	seed
+Side	00660af8	0x88	4	RawRequests		Side	seed
+Side	00660af8	0x8c	4	RefinedRequests		Side	seed
+Side	00660af8	0x9c	4	ShipyardRdOrder		Side	0052f280
+Side	00660af8	0xa0	4	TrainingFacilRdOrder		Side	0052f2f0
+Side	00660af8	0xa4	4	ConstructionYardRdOrder		Side	0052f360
+Side	00660af8	0xa8	4	OverLimit		Side	seed
+Side	00660af8	0xac	4	ShipyardRdDone		Side	0052f440
+Side	00660af8	0xb0	4	TrainingFacilRdDone		Side	0052f4b0
+Side	00660af8	0xb4	4	ConstructionYardRdDone		Side	0052f520
+Side	00660af8	0xb8	4	RecruitmentDone		Side	0052f590
+Side	00660af8	0xbc	4	VictoryConditions		Side	0052f600
+MissionMgr	00661c08	0x24	4	KeyAndSide		GameObj	seed
+MissionMgr	00661c08	0x2c	4	ClassRecord		GameObj	seed
+MissionMgr	00661c08	0x50	4	Usable	0x1	GameObj	004f7410
+MissionMgr	00661c08	0x50	4	Created	0x2	GameObj	004f7480
+MissionMgr	00661c08	0x50	4	Completed	0x4	GameObj	004f74f0
+MissionMgr	00661c08	0x50	4	Enroute	0x10	GameObj	004f75d0
+MissionMgr	00661c08	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+MissionMgr	00661c08	0x50	4	Existing	0x40	GameObj	004f76b0
+MissionMgr	00661c08	0x50	4	Damaged	0x200	GameObj	004f7800
+MissionMgr	00661c08	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+MissionMgr	00661c08	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+MissionMgr	00661c08	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+MissionMgr	00661c08	0x50	4	Locked	0x4000	GameObj	004f79c0
+MissionMgr	00661c08	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+MissionMgr	00661c08	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+MissionMgr	00661c08	0x50	4	Deployed	0x20000	GameObj	004f7b10
+MissionMgr	00661c08	0x58	4	LukeDagobahRequired	0x1	MissionMgr	00543af0
+MissionMgr	00661c08	0x58	4	LukeDagobah	0x4	MissionMgr	00543b60
+MissionMgr	00661c08	0x58	4	LukePalace	0x20	MissionMgr	00543bd0
+MissionMgr	00661c08	0x58	4	HanCapturedAtPalace	0x40	MissionMgr	00543c40
+MissionMgr	00661c08	0x58	4	LeiaPalace	0x80	MissionMgr	00543cb0
+MissionMgr	00661c08	0x58	4	ChewbaccaPalace	0x100	MissionMgr	00543d20
+MissionMgr	00661c08	0x58	4	DarthPickup	0x200	MissionMgr	00543d90
+MissionMgr	00661c08	0x58	4	DarthToLukeFinalBattle	0x400	MissionMgr	00543e00
+MissionMgr	00661c08	0x58	4	DarthToEmperorFinalBattle	0x800	MissionMgr	00543e70
+MissionMgr	00661c08	0x58	4	FinalBattleReady	0x1000	MissionMgr	00543ee0
+MissionMgr	00661c08	0x58	4	FinalBattle	0x2000	MissionMgr	00543f50
+MissionMgr	00661c08	0x58	4	BountyHuntersActive	0x4000	MissionMgr	00543fc0
+GameObj_00662158	00662158	0x24	4	KeyAndSide		GameObj	seed
+GameObj_00662158	00662158	0x2c	4	ClassRecord		GameObj	seed
+GameObj_00662158	00662158	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_00662158	00662158	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_00662158	00662158	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_00662158	00662158	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_00662158	00662158	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_00662158	00662158	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_00662158	00662158	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_00662158	00662158	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_00662158	00662158	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_00662158	00662158	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_00662158	00662158	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_00662158	00662158	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_00662158	00662158	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_00662158	00662158	0x50	4	Deployed	0x20000	GameObj	004f7b10
+CharacterMgr	006630c0	0x24	4	KeyAndSide		GameObj	seed
+CharacterMgr	006630c0	0x2c	4	ClassRecord		GameObj	seed
+CharacterMgr	006630c0	0x50	4	Usable	0x1	GameObj	004f7410
+CharacterMgr	006630c0	0x50	4	Created	0x2	GameObj	004f7480
+CharacterMgr	006630c0	0x50	4	Completed	0x4	GameObj	004f74f0
+CharacterMgr	006630c0	0x50	4	Enroute	0x10	GameObj	004f75d0
+CharacterMgr	006630c0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+CharacterMgr	006630c0	0x50	4	Existing	0x40	GameObj	004f76b0
+CharacterMgr	006630c0	0x50	4	Damaged	0x200	GameObj	004f7800
+CharacterMgr	006630c0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+CharacterMgr	006630c0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+CharacterMgr	006630c0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+CharacterMgr	006630c0	0x50	4	Locked	0x4000	GameObj	004f79c0
+CharacterMgr	006630c0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+CharacterMgr	006630c0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+CharacterMgr	006630c0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+CharacterMgr	006630c0	0x58	4	SeatOfPower	0x1	CharacterMgr	0055f650
+CharacterMgr	006630c0	0x58	4	PickupInProgress	0x2	CharacterMgr	0055f6c0
+GameObj_006639b8	006639b8	0x24	4	KeyAndSide		GameObj	seed
+GameObj_006639b8	006639b8	0x2c	4	ClassRecord		GameObj	seed
+GameObj_006639b8	006639b8	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_006639b8	006639b8	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_006639b8	006639b8	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_006639b8	006639b8	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_006639b8	006639b8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_006639b8	006639b8	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_006639b8	006639b8	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_006639b8	006639b8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_006639b8	006639b8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_006639b8	006639b8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_006639b8	006639b8	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_006639b8	006639b8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_006639b8	006639b8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_006639b8	006639b8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+GameObj_00669260	00669260	0x24	4	KeyAndSide		GameObj	seed
+GameObj_00669260	00669260	0x2c	4	ClassRecord		GameObj	seed
+GameObj_00669260	00669260	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_00669260	00669260	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_00669260	00669260	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_00669260	00669260	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_00669260	00669260	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_00669260	00669260	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_00669260	00669260	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_00669260	00669260	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_00669260	00669260	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_00669260	00669260	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_00669260	00669260	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_00669260	00669260	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_00669260	00669260	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_00669260	00669260	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Role	00660d60	0x24	4	KeyAndSide		GameObj	seed
+Role	00660d60	0x2c	4	ClassRecord		GameObj	seed
+Role	00660d60	0x50	4	Usable	0x1	GameObj	004f7410
+Role	00660d60	0x50	4	Created	0x2	GameObj	004f7480
+Role	00660d60	0x50	4	Completed	0x4	GameObj	004f74f0
+Role	00660d60	0x50	4	Enroute	0x10	GameObj	004f75d0
+Role	00660d60	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Role	00660d60	0x50	4	Existing	0x40	GameObj	004f76b0
+Role	00660d60	0x50	4	Damaged	0x200	GameObj	004f7800
+Role	00660d60	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Role	00660d60	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Role	00660d60	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Role	00660d60	0x50	4	Locked	0x4000	GameObj	004f79c0
+Role	00660d60	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Role	00660d60	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Role	00660d60	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Role	00660d60	0x78	4	Decoy	0x1	Role	005344f0
+Role	00660d60	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Role	00660d60	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Role	00660d60	0x78	4	MissionResignRequest	0x8	Role	00534640
+Role	00660d60	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Role	00660d60	0x78	4	IsDecoying	0x20	Role	00534720
+Role	00660d60	0x78	4	Adrift	0x40	Role	00534790
+Role	00660d60	0x78	4	OnMission	0x80	Role	00534800
+Role	00660d60	0x78	4	OnHiddenMission	0x100	Role	00534870
+Role	00660d60	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+GameObj_006613a8	006613a8	0x24	4	KeyAndSide		GameObj	seed
+GameObj_006613a8	006613a8	0x2c	4	ClassRecord		GameObj	seed
+GameObj_006613a8	006613a8	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_006613a8	006613a8	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_006613a8	006613a8	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_006613a8	006613a8	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_006613a8	006613a8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_006613a8	006613a8	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_006613a8	006613a8	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_006613a8	006613a8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_006613a8	006613a8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_006613a8	006613a8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_006613a8	006613a8	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_006613a8	006613a8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_006613a8	006613a8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_006613a8	006613a8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Detector	00662558	0x24	4	KeyAndSide		GameObj	seed
+Detector	00662558	0x2c	4	ClassRecord		GameObj	seed
+Detector	00662558	0x50	4	Usable	0x1	GameObj	004f7410
+Detector	00662558	0x50	4	Created	0x2	GameObj	004f7480
+Detector	00662558	0x50	4	Completed	0x4	GameObj	004f74f0
+Detector	00662558	0x50	4	Enroute	0x10	GameObj	004f75d0
+Detector	00662558	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Detector	00662558	0x50	4	Existing	0x40	GameObj	004f76b0
+Detector	00662558	0x50	4	Damaged	0x200	GameObj	004f7800
+Detector	00662558	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Detector	00662558	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Detector	00662558	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Detector	00662558	0x50	4	Locked	0x4000	GameObj	004f79c0
+Detector	00662558	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Detector	00662558	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Detector	00662558	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Detector	00662558	0x58	4	IsDecoyed	0x1	Detector	00558070
+ManuMgr_006629a0	006629a0	0x24	4	KeyAndSide		GameObj	seed
+ManuMgr_006629a0	006629a0	0x2c	4	ClassRecord		GameObj	seed
+ManuMgr_006629a0	006629a0	0x50	4	Usable	0x1	GameObj	004f7410
+ManuMgr_006629a0	006629a0	0x50	4	Created	0x2	GameObj	004f7480
+ManuMgr_006629a0	006629a0	0x50	4	Completed	0x4	GameObj	004f74f0
+ManuMgr_006629a0	006629a0	0x50	4	Enroute	0x10	GameObj	004f75d0
+ManuMgr_006629a0	006629a0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ManuMgr_006629a0	006629a0	0x50	4	Existing	0x40	GameObj	004f76b0
+ManuMgr_006629a0	006629a0	0x50	4	Damaged	0x200	GameObj	004f7800
+ManuMgr_006629a0	006629a0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ManuMgr_006629a0	006629a0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ManuMgr_006629a0	006629a0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ManuMgr_006629a0	006629a0	0x50	4	Locked	0x4000	GameObj	004f79c0
+ManuMgr_006629a0	006629a0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ManuMgr_006629a0	006629a0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ManuMgr_006629a0	006629a0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ManuMgr_006629a0	006629a0	0x58	4	RemainingGameObjCount		ManuMgr	00529480
+ManuMgr_006629a0	006629a0	0x5c	4	CompletedPointCount		ManuMgr	005294e0
+ManuMgr_006629a0	006629a0	0x60	4	OverflowPointCount		ManuMgr	00529540
+ManuMgr_006629a0	006629a0	0x68	4	RequiredPointCount		ManuMgr	00529650
+ManuMgr_006629a0	006629a0	0x6c	4	TotalRequiredPointCount		ManuMgr	005296b0
+ManuMgr_006629a0	006629a0	0x70	4	Reserved		ManuMgr	00529710
+ManuMgr_00662c00	00662c00	0x24	4	KeyAndSide		GameObj	seed
+ManuMgr_00662c00	00662c00	0x2c	4	ClassRecord		GameObj	seed
+ManuMgr_00662c00	00662c00	0x50	4	Usable	0x1	GameObj	004f7410
+ManuMgr_00662c00	00662c00	0x50	4	Created	0x2	GameObj	004f7480
+ManuMgr_00662c00	00662c00	0x50	4	Completed	0x4	GameObj	004f74f0
+ManuMgr_00662c00	00662c00	0x50	4	Enroute	0x10	GameObj	004f75d0
+ManuMgr_00662c00	00662c00	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ManuMgr_00662c00	00662c00	0x50	4	Existing	0x40	GameObj	004f76b0
+ManuMgr_00662c00	00662c00	0x50	4	Damaged	0x200	GameObj	004f7800
+ManuMgr_00662c00	00662c00	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ManuMgr_00662c00	00662c00	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ManuMgr_00662c00	00662c00	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ManuMgr_00662c00	00662c00	0x50	4	Locked	0x4000	GameObj	004f79c0
+ManuMgr_00662c00	00662c00	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ManuMgr_00662c00	00662c00	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ManuMgr_00662c00	00662c00	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ManuMgr_00662c00	00662c00	0x58	4	RemainingGameObjCount		ManuMgr	00529480
+ManuMgr_00662c00	00662c00	0x5c	4	CompletedPointCount		ManuMgr	005294e0
+ManuMgr_00662c00	00662c00	0x60	4	OverflowPointCount		ManuMgr	00529540
+ManuMgr_00662c00	00662c00	0x68	4	RequiredPointCount		ManuMgr	00529650
+ManuMgr_00662c00	00662c00	0x6c	4	TotalRequiredPointCount		ManuMgr	005296b0
+ManuMgr_00662c00	00662c00	0x70	4	Reserved		ManuMgr	00529710
+ManuMgr_00662e60	00662e60	0x24	4	KeyAndSide		GameObj	seed
+ManuMgr_00662e60	00662e60	0x2c	4	ClassRecord		GameObj	seed
+ManuMgr_00662e60	00662e60	0x50	4	Usable	0x1	GameObj	004f7410
+ManuMgr_00662e60	00662e60	0x50	4	Created	0x2	GameObj	004f7480
+ManuMgr_00662e60	00662e60	0x50	4	Completed	0x4	GameObj	004f74f0
+ManuMgr_00662e60	00662e60	0x50	4	Enroute	0x10	GameObj	004f75d0
+ManuMgr_00662e60	00662e60	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ManuMgr_00662e60	00662e60	0x50	4	Existing	0x40	GameObj	004f76b0
+ManuMgr_00662e60	00662e60	0x50	4	Damaged	0x200	GameObj	004f7800
+ManuMgr_00662e60	00662e60	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ManuMgr_00662e60	00662e60	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ManuMgr_00662e60	00662e60	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ManuMgr_00662e60	00662e60	0x50	4	Locked	0x4000	GameObj	004f79c0
+ManuMgr_00662e60	00662e60	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ManuMgr_00662e60	00662e60	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ManuMgr_00662e60	00662e60	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ManuMgr_00662e60	00662e60	0x58	4	RemainingGameObjCount		ManuMgr	00529480
+ManuMgr_00662e60	00662e60	0x5c	4	CompletedPointCount		ManuMgr	005294e0
+ManuMgr_00662e60	00662e60	0x60	4	OverflowPointCount		ManuMgr	00529540
+ManuMgr_00662e60	00662e60	0x68	4	RequiredPointCount		ManuMgr	00529650
+ManuMgr_00662e60	00662e60	0x6c	4	TotalRequiredPointCount		ManuMgr	005296b0
+ManuMgr_00662e60	00662e60	0x70	4	Reserved		ManuMgr	00529710
+CoreSystem	00663698	0x24	4	KeyAndSide		GameObj	seed
+CoreSystem	00663698	0x2c	4	ClassRecord		GameObj	seed
+CoreSystem	00663698	0x50	4	Usable	0x1	GameObj	004f7410
+CoreSystem	00663698	0x50	4	Created	0x2	GameObj	004f7480
+CoreSystem	00663698	0x50	4	Completed	0x4	GameObj	004f74f0
+CoreSystem	00663698	0x50	4	Enroute	0x10	GameObj	004f75d0
+CoreSystem	00663698	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+CoreSystem	00663698	0x50	4	Existing	0x40	GameObj	004f76b0
+CoreSystem	00663698	0x50	4	Damaged	0x200	GameObj	004f7800
+CoreSystem	00663698	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+CoreSystem	00663698	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+CoreSystem	00663698	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+CoreSystem	00663698	0x50	4	Locked	0x4000	GameObj	004f79c0
+CoreSystem	00663698	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+CoreSystem	00663698	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+CoreSystem	00663698	0x50	4	Deployed	0x20000	GameObj	004f7b10
+CoreSystem	00663698	0x58	4	Loyalty		System	00509c30
+CoreSystem	00663698	0x5c	4	SystemEnergy		System	00509cc0
+CoreSystem	00663698	0x64	4	SystemRawMaterial		System	00509dc0
+CoreSystem	00663698	0x68	4	SystemRawMaterialAllocated		System	00509e40
+CoreSystem	00663698	0x6c	4	SmugglingPercent		System	00509ec0
+CoreSystem	00663698	0x70	4	ProductionModifier		System	00509f40
+CoreSystem	00663698	0x74	4	TroopRegWithdrawPercent		System	00509fc0
+CoreSystem	00663698	0x7c	4	TroopRegSurplus		System	0050a230
+CoreSystem	00663698	0x80	4	TroopRegRequired		System	0050a290
+CoreSystem	00663698	0x88	4	Populated	0x1	System	0050a3c0
+CoreSystem	00663698	0x88	4	Explored	0x2	System	0050a430
+CoreSystem	00663698	0x88	4	Uprising	0x4	System	0050a4a0
+CoreSystem	00663698	0x88	4	NeverBeenControlled	0x8	System	0050a510
+CoreSystem	00663698	0x88	4	Battle	0x10	System	0050a580
+CoreSystem	00663698	0x88	4	Blockade	0x20	System	0050a5f0
+CoreSystem	00663698	0x88	4	Bombard	0x40	System	0050a660
+CoreSystem	00663698	0x88	4	Assault	0x80	System	0050a6d0
+CoreSystem	00663698	0x88	4	Garrisoned	0x100	System	0050a740
+CoreSystem	00663698	0x88	4	Suppressing	0x200	System	0050a7b0
+CoreSystem	00663698	0x88	4	CombatUnitFastRepair	0x400	System	0050a820
+CoreSystem	00663698	0x88	4	DeathStarNearby	0x800	System	0050a890
+CoreSystem	00663698	0x88	4	BattlePending	0x1000	System	0050a900
+CoreSystem	00663698	0x88	4	LoyaltyCausedCurrentControlKind	0x2000	System	0050a970
+CoreSystem	00663698	0x88	4	UprisingIncident	0x10000	System	0050aa50
+CoreSystem	00663698	0x88	4	InformantIncident	0x20000	System	0050aac0
+CoreSystem	00663698	0x88	4	DisasterIncident	0x40000	System	0050ab30
+CoreSystem	00663698	0x88	4	ResourceIncident	0x80000	System	0050aba0
+CoreSystem	00663698	0x88	4	BlockadeAndBattlePendingManagementRequired	0x100000	System	0050ac10
+RimSystem	00664098	0x24	4	KeyAndSide		GameObj	seed
+RimSystem	00664098	0x2c	4	ClassRecord		GameObj	seed
+RimSystem	00664098	0x50	4	Usable	0x1	GameObj	004f7410
+RimSystem	00664098	0x50	4	Created	0x2	GameObj	004f7480
+RimSystem	00664098	0x50	4	Completed	0x4	GameObj	004f74f0
+RimSystem	00664098	0x50	4	Enroute	0x10	GameObj	004f75d0
+RimSystem	00664098	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+RimSystem	00664098	0x50	4	Existing	0x40	GameObj	004f76b0
+RimSystem	00664098	0x50	4	Damaged	0x200	GameObj	004f7800
+RimSystem	00664098	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+RimSystem	00664098	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+RimSystem	00664098	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+RimSystem	00664098	0x50	4	Locked	0x4000	GameObj	004f79c0
+RimSystem	00664098	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+RimSystem	00664098	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+RimSystem	00664098	0x50	4	Deployed	0x20000	GameObj	004f7b10
+RimSystem	00664098	0x58	4	Loyalty		System	00509c30
+RimSystem	00664098	0x5c	4	SystemEnergy		System	00509cc0
+RimSystem	00664098	0x64	4	SystemRawMaterial		System	00509dc0
+RimSystem	00664098	0x68	4	SystemRawMaterialAllocated		System	00509e40
+RimSystem	00664098	0x6c	4	SmugglingPercent		System	00509ec0
+RimSystem	00664098	0x70	4	ProductionModifier		System	00509f40
+RimSystem	00664098	0x74	4	TroopRegWithdrawPercent		System	00509fc0
+RimSystem	00664098	0x7c	4	TroopRegSurplus		System	0050a230
+RimSystem	00664098	0x80	4	TroopRegRequired		System	0050a290
+RimSystem	00664098	0x88	4	Populated	0x1	System	0050a3c0
+RimSystem	00664098	0x88	4	Explored	0x2	System	0050a430
+RimSystem	00664098	0x88	4	Uprising	0x4	System	0050a4a0
+RimSystem	00664098	0x88	4	NeverBeenControlled	0x8	System	0050a510
+RimSystem	00664098	0x88	4	Battle	0x10	System	0050a580
+RimSystem	00664098	0x88	4	Blockade	0x20	System	0050a5f0
+RimSystem	00664098	0x88	4	Bombard	0x40	System	0050a660
+RimSystem	00664098	0x88	4	Assault	0x80	System	0050a6d0
+RimSystem	00664098	0x88	4	Garrisoned	0x100	System	0050a740
+RimSystem	00664098	0x88	4	Suppressing	0x200	System	0050a7b0
+RimSystem	00664098	0x88	4	CombatUnitFastRepair	0x400	System	0050a820
+RimSystem	00664098	0x88	4	DeathStarNearby	0x800	System	0050a890
+RimSystem	00664098	0x88	4	BattlePending	0x1000	System	0050a900
+RimSystem	00664098	0x88	4	LoyaltyCausedCurrentControlKind	0x2000	System	0050a970
+RimSystem	00664098	0x88	4	UprisingIncident	0x10000	System	0050aa50
+RimSystem	00664098	0x88	4	InformantIncident	0x20000	System	0050aac0
+RimSystem	00664098	0x88	4	DisasterIncident	0x40000	System	0050ab30
+RimSystem	00664098	0x88	4	ResourceIncident	0x80000	System	0050aba0
+RimSystem	00664098	0x88	4	BlockadeAndBattlePendingManagementRequired	0x100000	System	0050ac10
+Mission_0066abc0	0066abc0	0x24	4	KeyAndSide		GameObj	seed
+Mission_0066abc0	0066abc0	0x2c	4	ClassRecord		GameObj	seed
+Mission_0066abc0	0066abc0	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_0066abc0	0066abc0	0x50	4	Created	0x2	GameObj	004f7480
+Mission_0066abc0	0066abc0	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_0066abc0	0066abc0	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_0066abc0	0066abc0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_0066abc0	0066abc0	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_0066abc0	0066abc0	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_0066abc0	0066abc0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_0066abc0	0066abc0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_0066abc0	0066abc0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_0066abc0	0066abc0	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_0066abc0	0066abc0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_0066abc0	0066abc0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_0066abc0	0066abc0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_0066abc0	0066abc0	0x58	4	UserID		Mission	00521780
+Mission_0066abc0	0066abc0	0x5c	4	UserID2		Mission	00521800
+Mission_0066abc0	0066abc0	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_0066abc0	0066abc0	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_0066abc0	0066abc0	0xa4	4	Mandatory	0x4	Mission	00522210
+Mission_0066b0e0	0066b0e0	0x24	4	KeyAndSide		GameObj	seed
+Mission_0066b0e0	0066b0e0	0x2c	4	ClassRecord		GameObj	seed
+Mission_0066b0e0	0066b0e0	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_0066b0e0	0066b0e0	0x50	4	Created	0x2	GameObj	004f7480
+Mission_0066b0e0	0066b0e0	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_0066b0e0	0066b0e0	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_0066b0e0	0066b0e0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_0066b0e0	0066b0e0	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_0066b0e0	0066b0e0	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_0066b0e0	0066b0e0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_0066b0e0	0066b0e0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_0066b0e0	0066b0e0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_0066b0e0	0066b0e0	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_0066b0e0	0066b0e0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_0066b0e0	0066b0e0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_0066b0e0	0066b0e0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_0066b0e0	0066b0e0	0x58	4	UserID		Mission	00521780
+Mission_0066b0e0	0066b0e0	0x5c	4	UserID2		Mission	00521800
+Mission_0066b0e0	0066b0e0	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_0066b0e0	0066b0e0	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_0066b0e0	0066b0e0	0xa4	4	Mandatory	0x4	Mission	00522210
+Character	0065ca70	0x24	4	KeyAndSide		GameObj	seed
+Character	0065ca70	0x2c	4	ClassRecord		GameObj	seed
+Character	0065ca70	0x50	4	Usable	0x1	GameObj	004f7410
+Character	0065ca70	0x50	4	Created	0x2	GameObj	004f7480
+Character	0065ca70	0x50	4	Completed	0x4	GameObj	004f74f0
+Character	0065ca70	0x50	4	Enroute	0x10	GameObj	004f75d0
+Character	0065ca70	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Character	0065ca70	0x50	4	Existing	0x40	GameObj	004f76b0
+Character	0065ca70	0x50	4	Damaged	0x200	GameObj	004f7800
+Character	0065ca70	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Character	0065ca70	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Character	0065ca70	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Character	0065ca70	0x50	4	Locked	0x4000	GameObj	004f79c0
+Character	0065ca70	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Character	0065ca70	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Character	0065ca70	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Character	0065ca70	0x78	4	Decoy	0x1	Role	005344f0
+Character	0065ca70	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Character	0065ca70	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Character	0065ca70	0x78	4	MissionResignRequest	0x8	Role	00534640
+Character	0065ca70	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Character	0065ca70	0x78	4	IsDecoying	0x20	Role	00534720
+Character	0065ca70	0x78	4	Adrift	0x40	Role	00534790
+Character	0065ca70	0x78	4	OnMission	0x80	Role	00534800
+Character	0065ca70	0x78	4	OnHiddenMission	0x100	Role	00534870
+Character	0065ca70	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Character	0065ca70	0xac	4	Captured	0x1	Character	004ee800
+Character	0065ca70	0xac	4	CanHeal	0x2	Character	004ee870
+Character	0065ca70	0xac	4	FastHeal	0x4	Character	004ee8e0
+Character	0065ca70	0xac	4	ForceAware	0x10	Character	004ee950
+Character	0065ca70	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Character	0065ca70	0xac	4	Healing	0x40	Character	004eea30
+Character	0065ca70	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Character	0065ca70	0xac	4	CanEscape	0x100	Character	004eeb10
+Character	0065ca70	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Character	0065ca70	0xac	4	EscapeAttempt	0x400	Character	004eebf0
+Role_0065e160	0065e160	0x24	4	KeyAndSide		GameObj	seed
+Role_0065e160	0065e160	0x2c	4	ClassRecord		GameObj	seed
+Role_0065e160	0065e160	0x50	4	Usable	0x1	GameObj	004f7410
+Role_0065e160	0065e160	0x50	4	Created	0x2	GameObj	004f7480
+Role_0065e160	0065e160	0x50	4	Completed	0x4	GameObj	004f74f0
+Role_0065e160	0065e160	0x50	4	Enroute	0x10	GameObj	004f75d0
+Role_0065e160	0065e160	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Role_0065e160	0065e160	0x50	4	Existing	0x40	GameObj	004f76b0
+Role_0065e160	0065e160	0x50	4	Damaged	0x200	GameObj	004f7800
+Role_0065e160	0065e160	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Role_0065e160	0065e160	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Role_0065e160	0065e160	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Role_0065e160	0065e160	0x50	4	Locked	0x4000	GameObj	004f79c0
+Role_0065e160	0065e160	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Role_0065e160	0065e160	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Role_0065e160	0065e160	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Role_0065e160	0065e160	0x78	4	Decoy	0x1	Role	005344f0
+Role_0065e160	0065e160	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Role_0065e160	0065e160	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Role_0065e160	0065e160	0x78	4	MissionResignRequest	0x8	Role	00534640
+Role_0065e160	0065e160	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Role_0065e160	0065e160	0x78	4	IsDecoying	0x20	Role	00534720
+Role_0065e160	0065e160	0x78	4	Adrift	0x40	Role	00534790
+Role_0065e160	0065e160	0x78	4	OnMission	0x80	Role	00534800
+Role_0065e160	0065e160	0x78	4	OnHiddenMission	0x100	Role	00534870
+Role_0065e160	0065e160	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+TroopReg	0065e438	0x24	4	KeyAndSide		GameObj	seed
+TroopReg	0065e438	0x2c	4	ClassRecord		GameObj	seed
+TroopReg	0065e438	0x50	4	Usable	0x1	GameObj	004f7410
+TroopReg	0065e438	0x50	4	Created	0x2	GameObj	004f7480
+TroopReg	0065e438	0x50	4	Completed	0x4	GameObj	004f74f0
+TroopReg	0065e438	0x50	4	Enroute	0x10	GameObj	004f75d0
+TroopReg	0065e438	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+TroopReg	0065e438	0x50	4	Existing	0x40	GameObj	004f76b0
+TroopReg	0065e438	0x50	4	Damaged	0x200	GameObj	004f7800
+TroopReg	0065e438	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+TroopReg	0065e438	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+TroopReg	0065e438	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+TroopReg	0065e438	0x50	4	Locked	0x4000	GameObj	004f79c0
+TroopReg	0065e438	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+TroopReg	0065e438	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+TroopReg	0065e438	0x50	4	Deployed	0x20000	GameObj	004f7b10
+TroopReg	0065e438	0x58	4	IsDecoyed	0x1	Detector	00558070
+TroopReg	0065e438	0x5c	4	TroopRegDestroyedRunningBlockade	0x1	TroopReg	00504400
+TroopReg	0065e438	0x60	4	WithdrawPercent		TroopReg	00504470
+GameObj_0065f280	0065f280	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065f280	0065f280	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065f280	0065f280	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065f280	0065f280	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065f280	0065f280	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065f280	0065f280	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065f280	0065f280	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065f280	0065f280	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065f280	0065f280	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065f280	0065f280	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065f280	0065f280	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065f280	0065f280	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065f280	0065f280	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065f280	0065f280	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065f280	0065f280	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065f280	0065f280	0x50	4	Deployed	0x20000	GameObj	004f7b10
+GameObj_0065f458	0065f458	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065f458	0065f458	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065f458	0065f458	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065f458	0065f458	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065f458	0065f458	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065f458	0065f458	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065f458	0065f458	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065f458	0065f458	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065f458	0065f458	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065f458	0065f458	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065f458	0065f458	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065f458	0065f458	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065f458	0065f458	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065f458	0065f458	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065f458	0065f458	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065f458	0065f458	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ProcFacil	006615b0	0x24	4	KeyAndSide		GameObj	seed
+ProcFacil	006615b0	0x2c	4	ClassRecord		GameObj	seed
+ProcFacil	006615b0	0x50	4	Usable	0x1	GameObj	004f7410
+ProcFacil	006615b0	0x50	4	Created	0x2	GameObj	004f7480
+ProcFacil	006615b0	0x50	4	Completed	0x4	GameObj	004f74f0
+ProcFacil	006615b0	0x50	4	Enroute	0x10	GameObj	004f75d0
+ProcFacil	006615b0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ProcFacil	006615b0	0x50	4	Existing	0x40	GameObj	004f76b0
+ProcFacil	006615b0	0x50	4	Damaged	0x200	GameObj	004f7800
+ProcFacil	006615b0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ProcFacil	006615b0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ProcFacil	006615b0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ProcFacil	006615b0	0x50	4	Locked	0x4000	GameObj	004f79c0
+ProcFacil	006615b0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ProcFacil	006615b0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ProcFacil	006615b0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ProcFacil	006615b0	0x54	4	CycleTimer		ProcFacil	seed
+ProcFacil	006615b0	0x58	4	ProcFacilProcFacilState		ProcFacil	0053a6f0
+ProcFacil	006615b0	0x5c	4	ProcFacilETC		ProcFacil	0053a770
+ProcFacil	006615b0	0x60	4	Suspended	0x1	ProcFacil	0053a7f0
+ProcFacil	006615b0	0x60	4	PointPresent	0x2	ProcFacil	0053a860
+ProcFacil	006615b0	0x60	4	PointProcessed	0x4	ProcFacil	0053a8d0
+ProcFacil	006615b0	0x60	4	Processing	0x8	ProcFacil	0053a940
+ProcFacil	006615b0	0x60	4	OnStartupCycle	0x10	ProcFacil	0053a9b0
+CombatUnit	00662318	0x24	4	KeyAndSide		GameObj	seed
+CombatUnit	00662318	0x2c	4	ClassRecord		GameObj	seed
+CombatUnit	00662318	0x50	4	Usable	0x1	GameObj	004f7410
+CombatUnit	00662318	0x50	4	Created	0x2	GameObj	004f7480
+CombatUnit	00662318	0x50	4	Completed	0x4	GameObj	004f74f0
+CombatUnit	00662318	0x50	4	Enroute	0x10	GameObj	004f75d0
+CombatUnit	00662318	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+CombatUnit	00662318	0x50	4	Existing	0x40	GameObj	004f76b0
+CombatUnit	00662318	0x50	4	Damaged	0x200	GameObj	004f7800
+CombatUnit	00662318	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+CombatUnit	00662318	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+CombatUnit	00662318	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+CombatUnit	00662318	0x50	4	Locked	0x4000	GameObj	004f79c0
+CombatUnit	00662318	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+CombatUnit	00662318	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+CombatUnit	00662318	0x50	4	Deployed	0x20000	GameObj	004f7b10
+CombatUnit	00662318	0x58	4	IsDecoyed	0x1	Detector	00558070
+CombatUnit	00662318	0x5c	4	UnderRepair	0x1	CombatUnit	005577f0
+CombatUnit	00662318	0x5c	4	FastRepair	0x2	CombatUnit	00557860
+Mission_00664388	00664388	0x24	4	KeyAndSide		GameObj	seed
+Mission_00664388	00664388	0x2c	4	ClassRecord		GameObj	seed
+Mission_00664388	00664388	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_00664388	00664388	0x50	4	Created	0x2	GameObj	004f7480
+Mission_00664388	00664388	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_00664388	00664388	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_00664388	00664388	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_00664388	00664388	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_00664388	00664388	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_00664388	00664388	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_00664388	00664388	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_00664388	00664388	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_00664388	00664388	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_00664388	00664388	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_00664388	00664388	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_00664388	00664388	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_00664388	00664388	0x58	4	UserID		Mission	00521780
+Mission_00664388	00664388	0x5c	4	UserID2		Mission	00521800
+Mission_00664388	00664388	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_00664388	00664388	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_00664388	00664388	0xa4	4	Mandatory	0x4	Mission	00522210
+Mission_00665578	00665578	0x24	4	KeyAndSide		GameObj	seed
+Mission_00665578	00665578	0x2c	4	ClassRecord		GameObj	seed
+Mission_00665578	00665578	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_00665578	00665578	0x50	4	Created	0x2	GameObj	004f7480
+Mission_00665578	00665578	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_00665578	00665578	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_00665578	00665578	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_00665578	00665578	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_00665578	00665578	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_00665578	00665578	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_00665578	00665578	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_00665578	00665578	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_00665578	00665578	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_00665578	00665578	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_00665578	00665578	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_00665578	00665578	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_00665578	00665578	0x58	4	UserID		Mission	00521780
+Mission_00665578	00665578	0x5c	4	UserID2		Mission	00521800
+Mission_00665578	00665578	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_00665578	00665578	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_00665578	00665578	0xa4	4	Mandatory	0x4	Mission	00522210
+Mission_00668850	00668850	0x24	4	KeyAndSide		GameObj	seed
+Mission_00668850	00668850	0x2c	4	ClassRecord		GameObj	seed
+Mission_00668850	00668850	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_00668850	00668850	0x50	4	Created	0x2	GameObj	004f7480
+Mission_00668850	00668850	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_00668850	00668850	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_00668850	00668850	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_00668850	00668850	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_00668850	00668850	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_00668850	00668850	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_00668850	00668850	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_00668850	00668850	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_00668850	00668850	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_00668850	00668850	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_00668850	00668850	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_00668850	00668850	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_00668850	00668850	0x58	4	UserID		Mission	00521780
+Mission_00668850	00668850	0x5c	4	UserID2		Mission	00521800
+Mission_00668850	00668850	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_00668850	00668850	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_00668850	00668850	0xa4	4	Mandatory	0x4	Mission	00522210
+Mission_00668d58	00668d58	0x24	4	KeyAndSide		GameObj	seed
+Mission_00668d58	00668d58	0x2c	4	ClassRecord		GameObj	seed
+Mission_00668d58	00668d58	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_00668d58	00668d58	0x50	4	Created	0x2	GameObj	004f7480
+Mission_00668d58	00668d58	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_00668d58	00668d58	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_00668d58	00668d58	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_00668d58	00668d58	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_00668d58	00668d58	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_00668d58	00668d58	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_00668d58	00668d58	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_00668d58	00668d58	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_00668d58	00668d58	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_00668d58	00668d58	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_00668d58	00668d58	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_00668d58	00668d58	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_00668d58	00668d58	0x58	4	UserID		Mission	00521780
+Mission_00668d58	00668d58	0x5c	4	UserID2		Mission	00521800
+Mission_00668d58	00668d58	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_00668d58	00668d58	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_00668d58	00668d58	0xa4	4	Mandatory	0x4	Mission	00522210
+Mission_0066ae50	0066ae50	0x24	4	KeyAndSide		GameObj	seed
+Mission_0066ae50	0066ae50	0x2c	4	ClassRecord		GameObj	seed
+Mission_0066ae50	0066ae50	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_0066ae50	0066ae50	0x50	4	Created	0x2	GameObj	004f7480
+Mission_0066ae50	0066ae50	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_0066ae50	0066ae50	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_0066ae50	0066ae50	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_0066ae50	0066ae50	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_0066ae50	0066ae50	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_0066ae50	0066ae50	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_0066ae50	0066ae50	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_0066ae50	0066ae50	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_0066ae50	0066ae50	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_0066ae50	0066ae50	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_0066ae50	0066ae50	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_0066ae50	0066ae50	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_0066ae50	0066ae50	0x58	4	UserID		Mission	00521780
+Mission_0066ae50	0066ae50	0x5c	4	UserID2		Mission	00521800
+Mission_0066ae50	0066ae50	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_0066ae50	0066ae50	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_0066ae50	0066ae50	0xa4	4	Mandatory	0x4	Mission	00522210
+Mission_0066b378	0066b378	0x24	4	KeyAndSide		GameObj	seed
+Mission_0066b378	0066b378	0x2c	4	ClassRecord		GameObj	seed
+Mission_0066b378	0066b378	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_0066b378	0066b378	0x50	4	Created	0x2	GameObj	004f7480
+Mission_0066b378	0066b378	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_0066b378	0066b378	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_0066b378	0066b378	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_0066b378	0066b378	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_0066b378	0066b378	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_0066b378	0066b378	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_0066b378	0066b378	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_0066b378	0066b378	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_0066b378	0066b378	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_0066b378	0066b378	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_0066b378	0066b378	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_0066b378	0066b378	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_0066b378	0066b378	0x58	4	UserID		Mission	00521780
+Mission_0066b378	0066b378	0x5c	4	UserID2		Mission	00521800
+Mission_0066b378	0066b378	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_0066b378	0066b378	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_0066b378	0066b378	0xa4	4	Mandatory	0x4	Mission	00522210
+CapShip	0065dc10	0x24	4	KeyAndSide		GameObj	seed
+CapShip	0065dc10	0x2c	4	ClassRecord		GameObj	seed
+CapShip	0065dc10	0x50	4	Usable	0x1	GameObj	004f7410
+CapShip	0065dc10	0x50	4	Created	0x2	GameObj	004f7480
+CapShip	0065dc10	0x50	4	Completed	0x4	GameObj	004f74f0
+CapShip	0065dc10	0x50	4	Enroute	0x10	GameObj	004f75d0
+CapShip	0065dc10	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+CapShip	0065dc10	0x50	4	Existing	0x40	GameObj	004f76b0
+CapShip	0065dc10	0x50	4	Damaged	0x200	GameObj	004f7800
+CapShip	0065dc10	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+CapShip	0065dc10	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+CapShip	0065dc10	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+CapShip	0065dc10	0x50	4	Locked	0x4000	GameObj	004f79c0
+CapShip	0065dc10	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+CapShip	0065dc10	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+CapShip	0065dc10	0x50	4	Deployed	0x20000	GameObj	004f7b10
+CapShip	0065dc10	0x58	4	IsDecoyed	0x1	Detector	00558070
+CapShip	0065dc10	0x5c	4	UnderRepair	0x1	CombatUnit	005577f0
+CapShip	0065dc10	0x5c	4	FastRepair	0x2	CombatUnit	00557860
+CapShip	0065dc10	0x60	4	HullValueDamage		CapShip	00501490
+FightSquad	0065def0	0x24	4	KeyAndSide		GameObj	seed
+FightSquad	0065def0	0x2c	4	ClassRecord		GameObj	seed
+FightSquad	0065def0	0x50	4	Usable	0x1	GameObj	004f7410
+FightSquad	0065def0	0x50	4	Created	0x2	GameObj	004f7480
+FightSquad	0065def0	0x50	4	Completed	0x4	GameObj	004f74f0
+FightSquad	0065def0	0x50	4	Enroute	0x10	GameObj	004f75d0
+FightSquad	0065def0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+FightSquad	0065def0	0x50	4	Existing	0x40	GameObj	004f76b0
+FightSquad	0065def0	0x50	4	Damaged	0x200	GameObj	004f7800
+FightSquad	0065def0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+FightSquad	0065def0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+FightSquad	0065def0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+FightSquad	0065def0	0x50	4	Locked	0x4000	GameObj	004f79c0
+FightSquad	0065def0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+FightSquad	0065def0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+FightSquad	0065def0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+FightSquad	0065def0	0x58	4	IsDecoyed	0x1	Detector	00558070
+FightSquad	0065def0	0x5c	4	UnderRepair	0x1	CombatUnit	005577f0
+FightSquad	0065def0	0x5c	4	FastRepair	0x2	CombatUnit	00557860
+FightSquad	0065def0	0x60	4	SquadSizeDamage		FightSquad	005032c0
+GameObj_0065eaf8	0065eaf8	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065eaf8	0065eaf8	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065eaf8	0065eaf8	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065eaf8	0065eaf8	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065eaf8	0065eaf8	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065eaf8	0065eaf8	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065eaf8	0065eaf8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065eaf8	0065eaf8	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065eaf8	0065eaf8	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065eaf8	0065eaf8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065eaf8	0065eaf8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065eaf8	0065eaf8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065eaf8	0065eaf8	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065eaf8	0065eaf8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065eaf8	0065eaf8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065eaf8	0065eaf8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+GameObj_0065f640	0065f640	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065f640	0065f640	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065f640	0065f640	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065f640	0065f640	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065f640	0065f640	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065f640	0065f640	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065f640	0065f640	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065f640	0065f640	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065f640	0065f640	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065f640	0065f640	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065f640	0065f640	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065f640	0065f640	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065f640	0065f640	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065f640	0065f640	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065f640	0065f640	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065f640	0065f640	0x50	4	Deployed	0x20000	GameObj	004f7b10
+GameObj_0065f828	0065f828	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065f828	0065f828	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065f828	0065f828	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065f828	0065f828	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065f828	0065f828	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065f828	0065f828	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065f828	0065f828	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065f828	0065f828	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065f828	0065f828	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065f828	0065f828	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065f828	0065f828	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065f828	0065f828	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065f828	0065f828	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065f828	0065f828	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065f828	0065f828	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065f828	0065f828	0x50	4	Deployed	0x20000	GameObj	004f7b10
+GameObj_0065fa10	0065fa10	0x24	4	KeyAndSide		GameObj	seed
+GameObj_0065fa10	0065fa10	0x2c	4	ClassRecord		GameObj	seed
+GameObj_0065fa10	0065fa10	0x50	4	Usable	0x1	GameObj	004f7410
+GameObj_0065fa10	0065fa10	0x50	4	Created	0x2	GameObj	004f7480
+GameObj_0065fa10	0065fa10	0x50	4	Completed	0x4	GameObj	004f74f0
+GameObj_0065fa10	0065fa10	0x50	4	Enroute	0x10	GameObj	004f75d0
+GameObj_0065fa10	0065fa10	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+GameObj_0065fa10	0065fa10	0x50	4	Existing	0x40	GameObj	004f76b0
+GameObj_0065fa10	0065fa10	0x50	4	Damaged	0x200	GameObj	004f7800
+GameObj_0065fa10	0065fa10	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+GameObj_0065fa10	0065fa10	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+GameObj_0065fa10	0065fa10	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+GameObj_0065fa10	0065fa10	0x50	4	Locked	0x4000	GameObj	004f79c0
+GameObj_0065fa10	0065fa10	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+GameObj_0065fa10	0065fa10	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+GameObj_0065fa10	0065fa10	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ProcFacil_00660490	00660490	0x24	4	KeyAndSide		GameObj	seed
+ProcFacil_00660490	00660490	0x2c	4	ClassRecord		GameObj	seed
+ProcFacil_00660490	00660490	0x50	4	Usable	0x1	GameObj	004f7410
+ProcFacil_00660490	00660490	0x50	4	Created	0x2	GameObj	004f7480
+ProcFacil_00660490	00660490	0x50	4	Completed	0x4	GameObj	004f74f0
+ProcFacil_00660490	00660490	0x50	4	Enroute	0x10	GameObj	004f75d0
+ProcFacil_00660490	00660490	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ProcFacil_00660490	00660490	0x50	4	Existing	0x40	GameObj	004f76b0
+ProcFacil_00660490	00660490	0x50	4	Damaged	0x200	GameObj	004f7800
+ProcFacil_00660490	00660490	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ProcFacil_00660490	00660490	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ProcFacil_00660490	00660490	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ProcFacil_00660490	00660490	0x50	4	Locked	0x4000	GameObj	004f79c0
+ProcFacil_00660490	00660490	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ProcFacil_00660490	00660490	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ProcFacil_00660490	00660490	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ProcFacil_00660490	00660490	0x54	4	CycleTimer		ProcFacil	seed
+ProcFacil_00660490	00660490	0x58	4	ProcFacilProcFacilState		ProcFacil	0053a6f0
+ProcFacil_00660490	00660490	0x5c	4	ProcFacilETC		ProcFacil	0053a770
+ProcFacil_00660490	00660490	0x60	4	Suspended	0x1	ProcFacil	0053a7f0
+ProcFacil_00660490	00660490	0x60	4	PointPresent	0x2	ProcFacil	0053a860
+ProcFacil_00660490	00660490	0x60	4	PointProcessed	0x4	ProcFacil	0053a8d0
+ProcFacil_00660490	00660490	0x60	4	Processing	0x8	ProcFacil	0053a940
+ProcFacil_00660490	00660490	0x60	4	OnStartupCycle	0x10	ProcFacil	0053a9b0
+ProcFacil_00662778	00662778	0x24	4	KeyAndSide		GameObj	seed
+ProcFacil_00662778	00662778	0x2c	4	ClassRecord		GameObj	seed
+ProcFacil_00662778	00662778	0x50	4	Usable	0x1	GameObj	004f7410
+ProcFacil_00662778	00662778	0x50	4	Created	0x2	GameObj	004f7480
+ProcFacil_00662778	00662778	0x50	4	Completed	0x4	GameObj	004f74f0
+ProcFacil_00662778	00662778	0x50	4	Enroute	0x10	GameObj	004f75d0
+ProcFacil_00662778	00662778	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ProcFacil_00662778	00662778	0x50	4	Existing	0x40	GameObj	004f76b0
+ProcFacil_00662778	00662778	0x50	4	Damaged	0x200	GameObj	004f7800
+ProcFacil_00662778	00662778	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ProcFacil_00662778	00662778	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ProcFacil_00662778	00662778	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ProcFacil_00662778	00662778	0x50	4	Locked	0x4000	GameObj	004f79c0
+ProcFacil_00662778	00662778	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ProcFacil_00662778	00662778	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ProcFacil_00662778	00662778	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ProcFacil_00662778	00662778	0x54	4	CycleTimer		ProcFacil	seed
+ProcFacil_00662778	00662778	0x58	4	ProcFacilProcFacilState		ProcFacil	0053a6f0
+ProcFacil_00662778	00662778	0x5c	4	ProcFacilETC		ProcFacil	0053a770
+ProcFacil_00662778	00662778	0x60	4	Suspended	0x1	ProcFacil	0053a7f0
+ProcFacil_00662778	00662778	0x60	4	PointPresent	0x2	ProcFacil	0053a860
+ProcFacil_00662778	00662778	0x60	4	PointProcessed	0x4	ProcFacil	0053a8d0
+ProcFacil_00662778	00662778	0x60	4	Processing	0x8	ProcFacil	0053a940
+ProcFacil_00662778	00662778	0x60	4	OnStartupCycle	0x10	ProcFacil	0053a9b0
+ProcFacil_00662778	00662778	0x64	4	Capacity		ProcFacil_00662778	seed
+ProcFacil_00662778	00662778	0x68	4	CapacityAllocated		ProcFacil_00662778	seed
+ProcFacil_00662778	00662778	0x6c	4	ProductionModifier		ProcFacil_00662778	0055a7a0
+Mission_00663e08	00663e08	0x24	4	KeyAndSide		GameObj	seed
+Mission_00663e08	00663e08	0x2c	4	ClassRecord		GameObj	seed
+Mission_00663e08	00663e08	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_00663e08	00663e08	0x50	4	Created	0x2	GameObj	004f7480
+Mission_00663e08	00663e08	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_00663e08	00663e08	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_00663e08	00663e08	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_00663e08	00663e08	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_00663e08	00663e08	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_00663e08	00663e08	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_00663e08	00663e08	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_00663e08	00663e08	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_00663e08	00663e08	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_00663e08	00663e08	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_00663e08	00663e08	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_00663e08	00663e08	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_00663e08	00663e08	0x58	4	UserID		Mission	00521780
+Mission_00663e08	00663e08	0x5c	4	UserID2		Mission	00521800
+Mission_00663e08	00663e08	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_00663e08	00663e08	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_00663e08	00663e08	0xa4	4	Mandatory	0x4	Mission	00522210
+Mission_00665058	00665058	0x24	4	KeyAndSide		GameObj	seed
+Mission_00665058	00665058	0x2c	4	ClassRecord		GameObj	seed
+Mission_00665058	00665058	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_00665058	00665058	0x50	4	Created	0x2	GameObj	004f7480
+Mission_00665058	00665058	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_00665058	00665058	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_00665058	00665058	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_00665058	00665058	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_00665058	00665058	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_00665058	00665058	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_00665058	00665058	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_00665058	00665058	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_00665058	00665058	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_00665058	00665058	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_00665058	00665058	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_00665058	00665058	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_00665058	00665058	0x58	4	UserID		Mission	00521780
+Mission_00665058	00665058	0x5c	4	UserID2		Mission	00521800
+Mission_00665058	00665058	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_00665058	00665058	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_00665058	00665058	0xa4	4	Mandatory	0x4	Mission	00522210
+Character_00665be0	00665be0	0x24	4	KeyAndSide		GameObj	seed
+Character_00665be0	00665be0	0x2c	4	ClassRecord		GameObj	seed
+Character_00665be0	00665be0	0x50	4	Usable	0x1	GameObj	004f7410
+Character_00665be0	00665be0	0x50	4	Created	0x2	GameObj	004f7480
+Character_00665be0	00665be0	0x50	4	Completed	0x4	GameObj	004f74f0
+Character_00665be0	00665be0	0x50	4	Enroute	0x10	GameObj	004f75d0
+Character_00665be0	00665be0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Character_00665be0	00665be0	0x50	4	Existing	0x40	GameObj	004f76b0
+Character_00665be0	00665be0	0x50	4	Damaged	0x200	GameObj	004f7800
+Character_00665be0	00665be0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Character_00665be0	00665be0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Character_00665be0	00665be0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Character_00665be0	00665be0	0x50	4	Locked	0x4000	GameObj	004f79c0
+Character_00665be0	00665be0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Character_00665be0	00665be0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Character_00665be0	00665be0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Character_00665be0	00665be0	0x78	4	Decoy	0x1	Role	005344f0
+Character_00665be0	00665be0	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Character_00665be0	00665be0	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Character_00665be0	00665be0	0x78	4	MissionResignRequest	0x8	Role	00534640
+Character_00665be0	00665be0	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Character_00665be0	00665be0	0x78	4	IsDecoying	0x20	Role	00534720
+Character_00665be0	00665be0	0x78	4	Adrift	0x40	Role	00534790
+Character_00665be0	00665be0	0x78	4	OnMission	0x80	Role	00534800
+Character_00665be0	00665be0	0x78	4	OnHiddenMission	0x100	Role	00534870
+Character_00665be0	00665be0	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Character_00665be0	00665be0	0xac	4	Captured	0x1	Character	004ee800
+Character_00665be0	00665be0	0xac	4	CanHeal	0x2	Character	004ee870
+Character_00665be0	00665be0	0xac	4	FastHeal	0x4	Character	004ee8e0
+Character_00665be0	00665be0	0xac	4	ForceAware	0x10	Character	004ee950
+Character_00665be0	00665be0	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Character_00665be0	00665be0	0xac	4	Healing	0x40	Character	004eea30
+Character_00665be0	00665be0	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Character_00665be0	00665be0	0xac	4	CanEscape	0x100	Character	004eeb10
+Character_00665be0	00665be0	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Character_00665be0	00665be0	0xac	4	EscapeAttempt	0x400	Character	004eebf0
+Mission_00666d00	00666d00	0x24	4	KeyAndSide		GameObj	seed
+Mission_00666d00	00666d00	0x2c	4	ClassRecord		GameObj	seed
+Mission_00666d00	00666d00	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_00666d00	00666d00	0x50	4	Created	0x2	GameObj	004f7480
+Mission_00666d00	00666d00	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_00666d00	00666d00	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_00666d00	00666d00	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_00666d00	00666d00	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_00666d00	00666d00	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_00666d00	00666d00	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_00666d00	00666d00	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_00666d00	00666d00	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_00666d00	00666d00	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_00666d00	00666d00	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_00666d00	00666d00	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_00666d00	00666d00	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_00666d00	00666d00	0x58	4	UserID		Mission	00521780
+Mission_00666d00	00666d00	0x5c	4	UserID2		Mission	00521800
+Mission_00666d00	00666d00	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_00666d00	00666d00	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_00666d00	00666d00	0xa4	4	Mandatory	0x4	Mission	00522210
+Mission_00667ca8	00667ca8	0x24	4	KeyAndSide		GameObj	seed
+Mission_00667ca8	00667ca8	0x2c	4	ClassRecord		GameObj	seed
+Mission_00667ca8	00667ca8	0x50	4	Usable	0x1	GameObj	004f7410
+Mission_00667ca8	00667ca8	0x50	4	Created	0x2	GameObj	004f7480
+Mission_00667ca8	00667ca8	0x50	4	Completed	0x4	GameObj	004f74f0
+Mission_00667ca8	00667ca8	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mission_00667ca8	00667ca8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mission_00667ca8	00667ca8	0x50	4	Existing	0x40	GameObj	004f76b0
+Mission_00667ca8	00667ca8	0x50	4	Damaged	0x200	GameObj	004f7800
+Mission_00667ca8	00667ca8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mission_00667ca8	00667ca8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mission_00667ca8	00667ca8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mission_00667ca8	00667ca8	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mission_00667ca8	00667ca8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mission_00667ca8	00667ca8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mission_00667ca8	00667ca8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mission_00667ca8	00667ca8	0x58	4	UserID		Mission	00521780
+Mission_00667ca8	00667ca8	0x5c	4	UserID2		Mission	00521800
+Mission_00667ca8	00667ca8	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+Mission_00667ca8	00667ca8	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+Mission_00667ca8	00667ca8	0xa4	4	Mandatory	0x4	Mission	00522210
+DagobahMission	00667f38	0x24	4	KeyAndSide		GameObj	seed
+DagobahMission	00667f38	0x2c	4	ClassRecord		GameObj	seed
+DagobahMission	00667f38	0x50	4	Usable	0x1	GameObj	004f7410
+DagobahMission	00667f38	0x50	4	Created	0x2	GameObj	004f7480
+DagobahMission	00667f38	0x50	4	Completed	0x4	GameObj	004f74f0
+DagobahMission	00667f38	0x50	4	Enroute	0x10	GameObj	004f75d0
+DagobahMission	00667f38	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+DagobahMission	00667f38	0x50	4	Existing	0x40	GameObj	004f76b0
+DagobahMission	00667f38	0x50	4	Damaged	0x200	GameObj	004f7800
+DagobahMission	00667f38	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+DagobahMission	00667f38	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+DagobahMission	00667f38	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+DagobahMission	00667f38	0x50	4	Locked	0x4000	GameObj	004f79c0
+DagobahMission	00667f38	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+DagobahMission	00667f38	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+DagobahMission	00667f38	0x50	4	Deployed	0x20000	GameObj	004f7b10
+DagobahMission	00667f38	0x58	4	UserID		Mission	00521780
+DagobahMission	00667f38	0x5c	4	UserID2		Mission	00521800
+DagobahMission	00667f38	0xa4	4	ReadyForNextPhase	0x1	Mission	00522130
+DagobahMission	00667f38	0xa4	4	ImpliedTeam	0x2	Mission	005221a0
+DagobahMission	00667f38	0xa4	4	Mandatory	0x4	Mission	00522210
+DagobahMission	00667f38	0xa8	4	FirstTrainingDay		DagobahMission	00574960
+Character_0066b608	0066b608	0x24	4	KeyAndSide		GameObj	seed
+Character_0066b608	0066b608	0x2c	4	ClassRecord		GameObj	seed
+Character_0066b608	0066b608	0x50	4	Usable	0x1	GameObj	004f7410
+Character_0066b608	0066b608	0x50	4	Created	0x2	GameObj	004f7480
+Character_0066b608	0066b608	0x50	4	Completed	0x4	GameObj	004f74f0
+Character_0066b608	0066b608	0x50	4	Enroute	0x10	GameObj	004f75d0
+Character_0066b608	0066b608	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Character_0066b608	0066b608	0x50	4	Existing	0x40	GameObj	004f76b0
+Character_0066b608	0066b608	0x50	4	Damaged	0x200	GameObj	004f7800
+Character_0066b608	0066b608	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Character_0066b608	0066b608	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Character_0066b608	0066b608	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Character_0066b608	0066b608	0x50	4	Locked	0x4000	GameObj	004f79c0
+Character_0066b608	0066b608	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Character_0066b608	0066b608	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Character_0066b608	0066b608	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Character_0066b608	0066b608	0x78	4	Decoy	0x1	Role	005344f0
+Character_0066b608	0066b608	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Character_0066b608	0066b608	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Character_0066b608	0066b608	0x78	4	MissionResignRequest	0x8	Role	00534640
+Character_0066b608	0066b608	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Character_0066b608	0066b608	0x78	4	IsDecoying	0x20	Role	00534720
+Character_0066b608	0066b608	0x78	4	Adrift	0x40	Role	00534790
+Character_0066b608	0066b608	0x78	4	OnMission	0x80	Role	00534800
+Character_0066b608	0066b608	0x78	4	OnHiddenMission	0x100	Role	00534870
+Character_0066b608	0066b608	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Character_0066b608	0066b608	0xac	4	Captured	0x1	Character	004ee800
+Character_0066b608	0066b608	0xac	4	CanHeal	0x2	Character	004ee870
+Character_0066b608	0066b608	0xac	4	FastHeal	0x4	Character	004ee8e0
+Character_0066b608	0066b608	0xac	4	ForceAware	0x10	Character	004ee950
+Character_0066b608	0066b608	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Character_0066b608	0066b608	0xac	4	Healing	0x40	Character	004eea30
+Character_0066b608	0066b608	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Character_0066b608	0066b608	0xac	4	CanEscape	0x100	Character	004eeb10
+Character_0066b608	0066b608	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Character_0066b608	0066b608	0xac	4	EscapeAttempt	0x400	Character	004eebf0
+CapShip_0065d650	0065d650	0x24	4	KeyAndSide		GameObj	seed
+CapShip_0065d650	0065d650	0x2c	4	ClassRecord		GameObj	seed
+CapShip_0065d650	0065d650	0x50	4	Usable	0x1	GameObj	004f7410
+CapShip_0065d650	0065d650	0x50	4	Created	0x2	GameObj	004f7480
+CapShip_0065d650	0065d650	0x50	4	Completed	0x4	GameObj	004f74f0
+CapShip_0065d650	0065d650	0x50	4	Enroute	0x10	GameObj	004f75d0
+CapShip_0065d650	0065d650	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+CapShip_0065d650	0065d650	0x50	4	Existing	0x40	GameObj	004f76b0
+CapShip_0065d650	0065d650	0x50	4	Damaged	0x200	GameObj	004f7800
+CapShip_0065d650	0065d650	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+CapShip_0065d650	0065d650	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+CapShip_0065d650	0065d650	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+CapShip_0065d650	0065d650	0x50	4	Locked	0x4000	GameObj	004f79c0
+CapShip_0065d650	0065d650	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+CapShip_0065d650	0065d650	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+CapShip_0065d650	0065d650	0x50	4	Deployed	0x20000	GameObj	004f7b10
+CapShip_0065d650	0065d650	0x58	4	IsDecoyed	0x1	Detector	00558070
+CapShip_0065d650	0065d650	0x5c	4	UnderRepair	0x1	CombatUnit	005577f0
+CapShip_0065d650	0065d650	0x5c	4	FastRepair	0x2	CombatUnit	00557860
+CapShip_0065d650	0065d650	0x60	4	HullValueDamage		CapShip	00501490
+CapShip_0065d930	0065d930	0x24	4	KeyAndSide		GameObj	seed
+CapShip_0065d930	0065d930	0x2c	4	ClassRecord		GameObj	seed
+CapShip_0065d930	0065d930	0x50	4	Usable	0x1	GameObj	004f7410
+CapShip_0065d930	0065d930	0x50	4	Created	0x2	GameObj	004f7480
+CapShip_0065d930	0065d930	0x50	4	Completed	0x4	GameObj	004f74f0
+CapShip_0065d930	0065d930	0x50	4	Enroute	0x10	GameObj	004f75d0
+CapShip_0065d930	0065d930	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+CapShip_0065d930	0065d930	0x50	4	Existing	0x40	GameObj	004f76b0
+CapShip_0065d930	0065d930	0x50	4	Damaged	0x200	GameObj	004f7800
+CapShip_0065d930	0065d930	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+CapShip_0065d930	0065d930	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+CapShip_0065d930	0065d930	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+CapShip_0065d930	0065d930	0x50	4	Locked	0x4000	GameObj	004f79c0
+CapShip_0065d930	0065d930	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+CapShip_0065d930	0065d930	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+CapShip_0065d930	0065d930	0x50	4	Deployed	0x20000	GameObj	004f7b10
+CapShip_0065d930	0065d930	0x58	4	IsDecoyed	0x1	Detector	00558070
+CapShip_0065d930	0065d930	0x5c	4	UnderRepair	0x1	CombatUnit	005577f0
+CapShip_0065d930	0065d930	0x5c	4	FastRepair	0x2	CombatUnit	00557860
+CapShip_0065d930	0065d930	0x60	4	HullValueDamage		CapShip	00501490
+ProcFacil_0065fe60	0065fe60	0x24	4	KeyAndSide		GameObj	seed
+ProcFacil_0065fe60	0065fe60	0x2c	4	ClassRecord		GameObj	seed
+ProcFacil_0065fe60	0065fe60	0x50	4	Usable	0x1	GameObj	004f7410
+ProcFacil_0065fe60	0065fe60	0x50	4	Created	0x2	GameObj	004f7480
+ProcFacil_0065fe60	0065fe60	0x50	4	Completed	0x4	GameObj	004f74f0
+ProcFacil_0065fe60	0065fe60	0x50	4	Enroute	0x10	GameObj	004f75d0
+ProcFacil_0065fe60	0065fe60	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ProcFacil_0065fe60	0065fe60	0x50	4	Existing	0x40	GameObj	004f76b0
+ProcFacil_0065fe60	0065fe60	0x50	4	Damaged	0x200	GameObj	004f7800
+ProcFacil_0065fe60	0065fe60	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ProcFacil_0065fe60	0065fe60	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ProcFacil_0065fe60	0065fe60	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ProcFacil_0065fe60	0065fe60	0x50	4	Locked	0x4000	GameObj	004f79c0
+ProcFacil_0065fe60	0065fe60	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ProcFacil_0065fe60	0065fe60	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ProcFacil_0065fe60	0065fe60	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ProcFacil_0065fe60	0065fe60	0x54	4	CycleTimer		ProcFacil	seed
+ProcFacil_0065fe60	0065fe60	0x58	4	ProcFacilProcFacilState		ProcFacil	0053a6f0
+ProcFacil_0065fe60	0065fe60	0x5c	4	ProcFacilETC		ProcFacil	0053a770
+ProcFacil_0065fe60	0065fe60	0x60	4	Suspended	0x1	ProcFacil	0053a7f0
+ProcFacil_0065fe60	0065fe60	0x60	4	PointPresent	0x2	ProcFacil	0053a860
+ProcFacil_0065fe60	0065fe60	0x60	4	PointProcessed	0x4	ProcFacil	0053a8d0
+ProcFacil_0065fe60	0065fe60	0x60	4	Processing	0x8	ProcFacil	0053a940
+ProcFacil_0065fe60	0065fe60	0x60	4	OnStartupCycle	0x10	ProcFacil	0053a9b0
+ProcFacil_00660070	00660070	0x24	4	KeyAndSide		GameObj	seed
+ProcFacil_00660070	00660070	0x2c	4	ClassRecord		GameObj	seed
+ProcFacil_00660070	00660070	0x50	4	Usable	0x1	GameObj	004f7410
+ProcFacil_00660070	00660070	0x50	4	Created	0x2	GameObj	004f7480
+ProcFacil_00660070	00660070	0x50	4	Completed	0x4	GameObj	004f74f0
+ProcFacil_00660070	00660070	0x50	4	Enroute	0x10	GameObj	004f75d0
+ProcFacil_00660070	00660070	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ProcFacil_00660070	00660070	0x50	4	Existing	0x40	GameObj	004f76b0
+ProcFacil_00660070	00660070	0x50	4	Damaged	0x200	GameObj	004f7800
+ProcFacil_00660070	00660070	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ProcFacil_00660070	00660070	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ProcFacil_00660070	00660070	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ProcFacil_00660070	00660070	0x50	4	Locked	0x4000	GameObj	004f79c0
+ProcFacil_00660070	00660070	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ProcFacil_00660070	00660070	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ProcFacil_00660070	00660070	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ProcFacil_00660070	00660070	0x54	4	CycleTimer		ProcFacil	seed
+ProcFacil_00660070	00660070	0x58	4	ProcFacilProcFacilState		ProcFacil	0053a6f0
+ProcFacil_00660070	00660070	0x5c	4	ProcFacilETC		ProcFacil	0053a770
+ProcFacil_00660070	00660070	0x60	4	Suspended	0x1	ProcFacil	0053a7f0
+ProcFacil_00660070	00660070	0x60	4	PointPresent	0x2	ProcFacil	0053a860
+ProcFacil_00660070	00660070	0x60	4	PointProcessed	0x4	ProcFacil	0053a8d0
+ProcFacil_00660070	00660070	0x60	4	Processing	0x8	ProcFacil	0053a940
+ProcFacil_00660070	00660070	0x60	4	OnStartupCycle	0x10	ProcFacil	0053a9b0
+ProcFacil_00660280	00660280	0x24	4	KeyAndSide		GameObj	seed
+ProcFacil_00660280	00660280	0x2c	4	ClassRecord		GameObj	seed
+ProcFacil_00660280	00660280	0x50	4	Usable	0x1	GameObj	004f7410
+ProcFacil_00660280	00660280	0x50	4	Created	0x2	GameObj	004f7480
+ProcFacil_00660280	00660280	0x50	4	Completed	0x4	GameObj	004f74f0
+ProcFacil_00660280	00660280	0x50	4	Enroute	0x10	GameObj	004f75d0
+ProcFacil_00660280	00660280	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+ProcFacil_00660280	00660280	0x50	4	Existing	0x40	GameObj	004f76b0
+ProcFacil_00660280	00660280	0x50	4	Damaged	0x200	GameObj	004f7800
+ProcFacil_00660280	00660280	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+ProcFacil_00660280	00660280	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+ProcFacil_00660280	00660280	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+ProcFacil_00660280	00660280	0x50	4	Locked	0x4000	GameObj	004f79c0
+ProcFacil_00660280	00660280	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+ProcFacil_00660280	00660280	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+ProcFacil_00660280	00660280	0x50	4	Deployed	0x20000	GameObj	004f7b10
+ProcFacil_00660280	00660280	0x54	4	CycleTimer		ProcFacil	seed
+ProcFacil_00660280	00660280	0x58	4	ProcFacilProcFacilState		ProcFacil	0053a6f0
+ProcFacil_00660280	00660280	0x5c	4	ProcFacilETC		ProcFacil	0053a770
+ProcFacil_00660280	00660280	0x60	4	Suspended	0x1	ProcFacil	0053a7f0
+ProcFacil_00660280	00660280	0x60	4	PointPresent	0x2	ProcFacil	0053a860
+ProcFacil_00660280	00660280	0x60	4	PointProcessed	0x4	ProcFacil	0053a8d0
+ProcFacil_00660280	00660280	0x60	4	Processing	0x8	ProcFacil	0053a940
+ProcFacil_00660280	00660280	0x60	4	OnStartupCycle	0x10	ProcFacil	0053a9b0
+Mine	006606a0	0x24	4	KeyAndSide		GameObj	seed
+Mine	006606a0	0x2c	4	ClassRecord		GameObj	seed
+Mine	006606a0	0x50	4	Usable	0x1	GameObj	004f7410
+Mine	006606a0	0x50	4	Created	0x2	GameObj	004f7480
+Mine	006606a0	0x50	4	Completed	0x4	GameObj	004f74f0
+Mine	006606a0	0x50	4	Enroute	0x10	GameObj	004f75d0
+Mine	006606a0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Mine	006606a0	0x50	4	Existing	0x40	GameObj	004f76b0
+Mine	006606a0	0x50	4	Damaged	0x200	GameObj	004f7800
+Mine	006606a0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Mine	006606a0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Mine	006606a0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Mine	006606a0	0x50	4	Locked	0x4000	GameObj	004f79c0
+Mine	006606a0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Mine	006606a0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Mine	006606a0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Mine	006606a0	0x54	4	CycleTimer		ProcFacil	seed
+Mine	006606a0	0x58	4	ProcFacilProcFacilState		ProcFacil	0053a6f0
+Mine	006606a0	0x5c	4	ProcFacilETC		ProcFacil	0053a770
+Mine	006606a0	0x60	4	Suspended	0x1	ProcFacil	0053a7f0
+Mine	006606a0	0x60	4	PointPresent	0x2	ProcFacil	0053a860
+Mine	006606a0	0x60	4	PointProcessed	0x4	ProcFacil	0053a8d0
+Mine	006606a0	0x60	4	Processing	0x8	ProcFacil	0053a940
+Mine	006606a0	0x60	4	OnStartupCycle	0x10	ProcFacil	0053a9b0
+Mine	006606a0	0x64	4	Capacity		ProcFacil_00662778	seed
+Mine	006606a0	0x68	4	CapacityAllocated		ProcFacil_00662778	seed
+Mine	006606a0	0x6c	4	ProductionModifier		ProcFacil_00662778	0055a7a0
+Refinery	006608c8	0x24	4	KeyAndSide		GameObj	seed
+Refinery	006608c8	0x2c	4	ClassRecord		GameObj	seed
+Refinery	006608c8	0x50	4	Usable	0x1	GameObj	004f7410
+Refinery	006608c8	0x50	4	Created	0x2	GameObj	004f7480
+Refinery	006608c8	0x50	4	Completed	0x4	GameObj	004f74f0
+Refinery	006608c8	0x50	4	Enroute	0x10	GameObj	004f75d0
+Refinery	006608c8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Refinery	006608c8	0x50	4	Existing	0x40	GameObj	004f76b0
+Refinery	006608c8	0x50	4	Damaged	0x200	GameObj	004f7800
+Refinery	006608c8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Refinery	006608c8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Refinery	006608c8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Refinery	006608c8	0x50	4	Locked	0x4000	GameObj	004f79c0
+Refinery	006608c8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Refinery	006608c8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Refinery	006608c8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Refinery	006608c8	0x54	4	CycleTimer		ProcFacil	seed
+Refinery	006608c8	0x58	4	ProcFacilProcFacilState		ProcFacil	0053a6f0
+Refinery	006608c8	0x5c	4	ProcFacilETC		ProcFacil	0053a770
+Refinery	006608c8	0x60	4	Suspended	0x1	ProcFacil	0053a7f0
+Refinery	006608c8	0x60	4	PointPresent	0x2	ProcFacil	0053a860
+Refinery	006608c8	0x60	4	PointProcessed	0x4	ProcFacil	0053a8d0
+Refinery	006608c8	0x60	4	Processing	0x8	ProcFacil	0053a940
+Refinery	006608c8	0x60	4	OnStartupCycle	0x10	ProcFacil	0053a9b0
+Refinery	006608c8	0x64	4	Capacity		ProcFacil_00662778	seed
+Refinery	006608c8	0x68	4	CapacityAllocated		ProcFacil_00662778	seed
+Refinery	006608c8	0x6c	4	ProductionModifier		ProcFacil_00662778	0055a7a0
+Character_006657f0	006657f0	0x24	4	KeyAndSide		GameObj	seed
+Character_006657f0	006657f0	0x2c	4	ClassRecord		GameObj	seed
+Character_006657f0	006657f0	0x50	4	Usable	0x1	GameObj	004f7410
+Character_006657f0	006657f0	0x50	4	Created	0x2	GameObj	004f7480
+Character_006657f0	006657f0	0x50	4	Completed	0x4	GameObj	004f74f0
+Character_006657f0	006657f0	0x50	4	Enroute	0x10	GameObj	004f75d0
+Character_006657f0	006657f0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Character_006657f0	006657f0	0x50	4	Existing	0x40	GameObj	004f76b0
+Character_006657f0	006657f0	0x50	4	Damaged	0x200	GameObj	004f7800
+Character_006657f0	006657f0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Character_006657f0	006657f0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Character_006657f0	006657f0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Character_006657f0	006657f0	0x50	4	Locked	0x4000	GameObj	004f79c0
+Character_006657f0	006657f0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Character_006657f0	006657f0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Character_006657f0	006657f0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Character_006657f0	006657f0	0x78	4	Decoy	0x1	Role	005344f0
+Character_006657f0	006657f0	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Character_006657f0	006657f0	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Character_006657f0	006657f0	0x78	4	MissionResignRequest	0x8	Role	00534640
+Character_006657f0	006657f0	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Character_006657f0	006657f0	0x78	4	IsDecoying	0x20	Role	00534720
+Character_006657f0	006657f0	0x78	4	Adrift	0x40	Role	00534790
+Character_006657f0	006657f0	0x78	4	OnMission	0x80	Role	00534800
+Character_006657f0	006657f0	0x78	4	OnHiddenMission	0x100	Role	00534870
+Character_006657f0	006657f0	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Character_006657f0	006657f0	0xac	4	Captured	0x1	Character	004ee800
+Character_006657f0	006657f0	0xac	4	CanHeal	0x2	Character	004ee870
+Character_006657f0	006657f0	0xac	4	FastHeal	0x4	Character	004ee8e0
+Character_006657f0	006657f0	0xac	4	ForceAware	0x10	Character	004ee950
+Character_006657f0	006657f0	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Character_006657f0	006657f0	0xac	4	Healing	0x40	Character	004eea30
+Character_006657f0	006657f0	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Character_006657f0	006657f0	0xac	4	CanEscape	0x100	Character	004eeb10
+Character_006657f0	006657f0	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Character_006657f0	006657f0	0xac	4	EscapeAttempt	0x400	Character	004eebf0
+Luke	00665fd8	0x24	4	KeyAndSide		GameObj	seed
+Luke	00665fd8	0x2c	4	ClassRecord		GameObj	seed
+Luke	00665fd8	0x50	4	Usable	0x1	GameObj	004f7410
+Luke	00665fd8	0x50	4	Created	0x2	GameObj	004f7480
+Luke	00665fd8	0x50	4	Completed	0x4	GameObj	004f74f0
+Luke	00665fd8	0x50	4	Enroute	0x10	GameObj	004f75d0
+Luke	00665fd8	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Luke	00665fd8	0x50	4	Existing	0x40	GameObj	004f76b0
+Luke	00665fd8	0x50	4	Damaged	0x200	GameObj	004f7800
+Luke	00665fd8	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Luke	00665fd8	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Luke	00665fd8	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Luke	00665fd8	0x50	4	Locked	0x4000	GameObj	004f79c0
+Luke	00665fd8	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Luke	00665fd8	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Luke	00665fd8	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Luke	00665fd8	0x78	4	Decoy	0x1	Role	005344f0
+Luke	00665fd8	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Luke	00665fd8	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Luke	00665fd8	0x78	4	MissionResignRequest	0x8	Role	00534640
+Luke	00665fd8	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Luke	00665fd8	0x78	4	IsDecoying	0x20	Role	00534720
+Luke	00665fd8	0x78	4	Adrift	0x40	Role	00534790
+Luke	00665fd8	0x78	4	OnMission	0x80	Role	00534800
+Luke	00665fd8	0x78	4	OnHiddenMission	0x100	Role	00534870
+Luke	00665fd8	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Luke	00665fd8	0xac	4	Captured	0x1	Character	004ee800
+Luke	00665fd8	0xac	4	CanHeal	0x2	Character	004ee870
+Luke	00665fd8	0xac	4	FastHeal	0x4	Character	004ee8e0
+Luke	00665fd8	0xac	4	ForceAware	0x10	Character	004ee950
+Luke	00665fd8	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Luke	00665fd8	0xac	4	Healing	0x40	Character	004eea30
+Luke	00665fd8	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Luke	00665fd8	0xac	4	CanEscape	0x100	Character	004eeb10
+Luke	00665fd8	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Luke	00665fd8	0xac	4	EscapeAttempt	0x400	Character	004eebf0
+Luke	00665fd8	0xb0	4	KnowsHeritage	0x1	Luke	0056f650
+Luke	00665fd8	0xb0	4	FinalBattleReady	0x2	Luke	0056f6c0
+Luke	00665fd8	0xb0	4	DagobahCompleted	0x8	Luke	0056f730
+Leia	006663e0	0x24	4	KeyAndSide		GameObj	seed
+Leia	006663e0	0x2c	4	ClassRecord		GameObj	seed
+Leia	006663e0	0x50	4	Usable	0x1	GameObj	004f7410
+Leia	006663e0	0x50	4	Created	0x2	GameObj	004f7480
+Leia	006663e0	0x50	4	Completed	0x4	GameObj	004f74f0
+Leia	006663e0	0x50	4	Enroute	0x10	GameObj	004f75d0
+Leia	006663e0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Leia	006663e0	0x50	4	Existing	0x40	GameObj	004f76b0
+Leia	006663e0	0x50	4	Damaged	0x200	GameObj	004f7800
+Leia	006663e0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Leia	006663e0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Leia	006663e0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Leia	006663e0	0x50	4	Locked	0x4000	GameObj	004f79c0
+Leia	006663e0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Leia	006663e0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Leia	006663e0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Leia	006663e0	0x78	4	Decoy	0x1	Role	005344f0
+Leia	006663e0	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Leia	006663e0	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Leia	006663e0	0x78	4	MissionResignRequest	0x8	Role	00534640
+Leia	006663e0	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Leia	006663e0	0x78	4	IsDecoying	0x20	Role	00534720
+Leia	006663e0	0x78	4	Adrift	0x40	Role	00534790
+Leia	006663e0	0x78	4	OnMission	0x80	Role	00534800
+Leia	006663e0	0x78	4	OnHiddenMission	0x100	Role	00534870
+Leia	006663e0	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Leia	006663e0	0xac	4	Captured	0x1	Character	004ee800
+Leia	006663e0	0xac	4	CanHeal	0x2	Character	004ee870
+Leia	006663e0	0xac	4	FastHeal	0x4	Character	004ee8e0
+Leia	006663e0	0xac	4	ForceAware	0x10	Character	004ee950
+Leia	006663e0	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Leia	006663e0	0xac	4	Healing	0x40	Character	004eea30
+Leia	006663e0	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Leia	006663e0	0xac	4	CanEscape	0x100	Character	004eeb10
+Leia	006663e0	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Leia	006663e0	0xac	4	EscapeAttempt	0x400	Character	004eebf0
+Leia	006663e0	0xb0	4	KnowsHeritage	0x1	Leia	0056fe90
+Han	00666f90	0x24	4	KeyAndSide		GameObj	seed
+Han	00666f90	0x2c	4	ClassRecord		GameObj	seed
+Han	00666f90	0x50	4	Usable	0x1	GameObj	004f7410
+Han	00666f90	0x50	4	Created	0x2	GameObj	004f7480
+Han	00666f90	0x50	4	Completed	0x4	GameObj	004f74f0
+Han	00666f90	0x50	4	Enroute	0x10	GameObj	004f75d0
+Han	00666f90	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Han	00666f90	0x50	4	Existing	0x40	GameObj	004f76b0
+Han	00666f90	0x50	4	Damaged	0x200	GameObj	004f7800
+Han	00666f90	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Han	00666f90	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Han	00666f90	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Han	00666f90	0x50	4	Locked	0x4000	GameObj	004f79c0
+Han	00666f90	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Han	00666f90	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Han	00666f90	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Han	00666f90	0x78	4	Decoy	0x1	Role	005344f0
+Han	00666f90	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Han	00666f90	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Han	00666f90	0x78	4	MissionResignRequest	0x8	Role	00534640
+Han	00666f90	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Han	00666f90	0x78	4	IsDecoying	0x20	Role	00534720
+Han	00666f90	0x78	4	Adrift	0x40	Role	00534790
+Han	00666f90	0x78	4	OnMission	0x80	Role	00534800
+Han	00666f90	0x78	4	OnHiddenMission	0x100	Role	00534870
+Han	00666f90	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Han	00666f90	0xac	4	Captured	0x1	Character	004ee800
+Han	00666f90	0xac	4	CanHeal	0x2	Character	004ee870
+Han	00666f90	0xac	4	FastHeal	0x4	Character	004ee8e0
+Han	00666f90	0xac	4	ForceAware	0x10	Character	004ee950
+Han	00666f90	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Han	00666f90	0xac	4	Healing	0x40	Character	004eea30
+Han	00666f90	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Han	00666f90	0xac	4	CanEscape	0x100	Character	004eeb10
+Han	00666f90	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Han	00666f90	0xac	4	EscapeAttempt	0x400	Character	004eebf0
+Han	00666f90	0xb0	4	BountyAttack	0x1	Han	00572690
+Han	00666f90	0xb0	4	CapturedByBountyHunters	0x2	Han	00572700
+Character_00667628	00667628	0x24	4	KeyAndSide		GameObj	seed
+Character_00667628	00667628	0x2c	4	ClassRecord		GameObj	seed
+Character_00667628	00667628	0x50	4	Usable	0x1	GameObj	004f7410
+Character_00667628	00667628	0x50	4	Created	0x2	GameObj	004f7480
+Character_00667628	00667628	0x50	4	Completed	0x4	GameObj	004f74f0
+Character_00667628	00667628	0x50	4	Enroute	0x10	GameObj	004f75d0
+Character_00667628	00667628	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Character_00667628	00667628	0x50	4	Existing	0x40	GameObj	004f76b0
+Character_00667628	00667628	0x50	4	Damaged	0x200	GameObj	004f7800
+Character_00667628	00667628	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Character_00667628	00667628	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Character_00667628	00667628	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Character_00667628	00667628	0x50	4	Locked	0x4000	GameObj	004f79c0
+Character_00667628	00667628	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Character_00667628	00667628	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Character_00667628	00667628	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Character_00667628	00667628	0x78	4	Decoy	0x1	Role	005344f0
+Character_00667628	00667628	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Character_00667628	00667628	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Character_00667628	00667628	0x78	4	MissionResignRequest	0x8	Role	00534640
+Character_00667628	00667628	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Character_00667628	00667628	0x78	4	IsDecoying	0x20	Role	00534720
+Character_00667628	00667628	0x78	4	Adrift	0x40	Role	00534790
+Character_00667628	00667628	0x78	4	OnMission	0x80	Role	00534800
+Character_00667628	00667628	0x78	4	OnHiddenMission	0x100	Role	00534870
+Character_00667628	00667628	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Character_00667628	00667628	0xac	4	Captured	0x1	Character	004ee800
+Character_00667628	00667628	0xac	4	CanHeal	0x2	Character	004ee870
+Character_00667628	00667628	0xac	4	FastHeal	0x4	Character	004ee8e0
+Character_00667628	00667628	0xac	4	ForceAware	0x10	Character	004ee950
+Character_00667628	00667628	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Character_00667628	00667628	0xac	4	Healing	0x40	Character	004eea30
+Character_00667628	00667628	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Character_00667628	00667628	0xac	4	CanEscape	0x100	Character	004eeb10
+Character_00667628	00667628	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Character_00667628	00667628	0xac	4	EscapeAttempt	0x400	Character	004eebf0
+Character_006681d0	006681d0	0x24	4	KeyAndSide		GameObj	seed
+Character_006681d0	006681d0	0x2c	4	ClassRecord		GameObj	seed
+Character_006681d0	006681d0	0x50	4	Usable	0x1	GameObj	004f7410
+Character_006681d0	006681d0	0x50	4	Created	0x2	GameObj	004f7480
+Character_006681d0	006681d0	0x50	4	Completed	0x4	GameObj	004f74f0
+Character_006681d0	006681d0	0x50	4	Enroute	0x10	GameObj	004f75d0
+Character_006681d0	006681d0	0x50	4	EnrouteActive	0x20	GameObj	004f7640
+Character_006681d0	006681d0	0x50	4	Existing	0x40	GameObj	004f76b0
+Character_006681d0	006681d0	0x50	4	Damaged	0x200	GameObj	004f7800
+Character_006681d0	006681d0	0x50	4	HyperdriveActive	0x800	GameObj	004f7870
+Character_006681d0	006681d0	0x50	4	Autorouting	0x1000	GameObj	004f78e0
+Character_006681d0	006681d0	0x50	4	AutoscrapRequest	0x2000	GameObj	004f7950
+Character_006681d0	006681d0	0x50	4	Locked	0x4000	GameObj	004f79c0
+Character_006681d0	006681d0	0x50	4	ReadyForDelete	0x8000	GameObj	004f7a30
+Character_006681d0	006681d0	0x50	4	Constructed	0x10000	GameObj	004f7aa0
+Character_006681d0	006681d0	0x50	4	Deployed	0x20000	GameObj	004f7b10
+Character_006681d0	006681d0	0x78	4	Decoy	0x1	Role	005344f0
+Character_006681d0	006681d0	0x78	4	MovingBetweenMissions	0x2	Role	00534560
+Character_006681d0	006681d0	0x78	4	MissionRemoveRequest	0x4	Role	005345d0
+Character_006681d0	006681d0	0x78	4	MissionResignRequest	0x8	Role	00534640
+Character_006681d0	006681d0	0x78	4	CanResignFromMission	0x10	Role	005346b0
+Character_006681d0	006681d0	0x78	4	IsDecoying	0x20	Role	00534720
+Character_006681d0	006681d0	0x78	4	Adrift	0x40	Role	00534790
+Character_006681d0	006681d0	0x78	4	OnMission	0x80	Role	00534800
+Character_006681d0	006681d0	0x78	4	OnHiddenMission	0x100	Role	00534870
+Character_006681d0	006681d0	0x78	4	OnMandatoryMission	0x200	Role	005348e0
+Character_006681d0	006681d0	0xac	4	Captured	0x1	Character	004ee800
+Character_006681d0	006681d0	0xac	4	CanHeal	0x2	Character	004ee870
+Character_006681d0	006681d0	0xac	4	FastHeal	0x4	Character	004ee8e0
+Character_006681d0	006681d0	0xac	4	ForceAware	0x10	Character	004ee950
+Character_006681d0	006681d0	0xac	4	ForcePotential	0x20	Character	004ee9c0
+Character_006681d0	006681d0	0xac	4	Healing	0x40	Character	004eea30
+Character_006681d0	006681d0	0xac	4	DiscoveringForceUser	0x80	Character	004eeaa0
+Character_006681d0	006681d0	0xac	4	CanEscape	0x100	Character	004eeb10
+Character_006681d0	006681d0	0xac	4	EscapeRequest	0x200	Character	004eeb80
+Character_006681d0	006681d0	0xac	4	EscapeAttempt	0x400	Character	004eebf0

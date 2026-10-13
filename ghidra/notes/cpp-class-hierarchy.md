@@ -482,3 +482,34 @@ Coverage after this pass, from `function-ranges.tsv`: of 24,166 functions,
 11,352 are exception-unwind funclets (`Unwind@...`) and about 40 are
 imports or runtime. Of the roughly 12,800 game functions, 8,156 still
 have a default name. No vtable slot points at undefined code any more.
+
+## Generated class structures (2026-10-13)
+
+`ghidra/generated/class-fields.tsv` and `class-methods.tsv`
+(`ghidra/scripts/derive_class_fields.py`) give each class its fields: every
+named setter's offset, name and flag mask (`setters.tsv`), assigned to the
+class that introduces the setter's notifier, plus 21 fields traced by hand
+(`SEEDS`: the side's pools and stockpiles, the facility's state and
+capacity). 22 classes declare 143 fields; with inheritance 66 classes have
+a layout.
+
+`ApplyClassTypes.java` creates a structure and a class namespace per
+class in the saved project, with each flags word typed as an enum of its
+bits, and moves the class's 1,185 methods (the functions its vtable
+introduces, its setters and its sync routines) into the namespace as
+`__thiscall`, so `this` takes the structure. Their typed decompilation is
+in `~/Games/rebexe-decompile/decompiled-typed`; 459 of them use a named
+field. The untyped corpus in `decompiled` is unchanged, because the
+derivation scripts match its `param_1[n]` form.
+
+Every field is typed as a 4-byte integer; pairs, keys and shorter fields
+are not distinguished yet, and 13 setters whose notifier several unrelated
+classes carry have no owner.
+
+`SetReturnTypes.java` with `ghidra/scripts/lookup-types.tsv` then gives ten
+lookup functions a class pointer return type (the side, system, object,
+facility and manager lookups and the registry walks), each with the
+evidence for its class. `decompiled-typed` now holds all 12,681 game
+functions as `FUN_<address>.c`; 479 of them use a named field, up from 431
+before the lookups were typed. `FUN_0052fff0` reads
+`(object->Flags50 & Existing)` and `object->KeyAndSide ^ side->KeyAndSide`.

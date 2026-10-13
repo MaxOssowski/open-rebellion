@@ -1,0 +1,11 @@
+function	returns	evidence
+00506f30	Side	FUN_00516360 passes its result to the mine and refinery hooks as the side
+004f3dd0	Side	FUN_00422620 reads +0x78, +0x7c and +0x74 from its result
+00505f60	System	FUN_005185c0 reads the system's +0x6c from its result
+00504dc0	GameObj	FUN_005140c0 reads +0x50 state flags from its result
+00505b20	ProcFacil	FUN_00516360 passes its result to the cycle hooks, which read +0x58 and +0x60
+00509670	ManuMgr	FUN_0052eb60 returns it as the facility's manager
+00505340	GameObj	FUN_0052fff0 walks every object from it, reading +0x50 and +0x24
+004f6010	GameObj	FUN_0052fff0 advances the same walk with it
+00506630	ProcFacil_00662778	FUN_0052f6b0 walks the side's mines from it, reading +0x64 and +0x68
+00506960	ProcFacil_00662778	FUN_0052f8f0 walks the side's refineries from it
