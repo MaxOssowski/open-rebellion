@@ -1,9 +1,13 @@
 # Overnight backlog
 
 Written 2026-10-14 from a read-only survey (roadmap, the 2026-09-08 audit
-ledger, `hyp:`/TODO markers, and greps against the current code). Nothing here
-has been started: the session could not branch, build, or commit (see
-`OVERNIGHT_LOG.md`).
+ledger, `hyp:`/TODO markers, and greps against the current code).
+
+Two sessions ran this prompt at once on 2026-10-14 and split the list: the main
+checkout (branch `overnight/2026-10-14`, `OVERNIGHT_LOG.md`) takes items 1 to 6;
+the other works items 7 to 12 in `.claude/worktrees/overnight-b` (branch
+`overnight/2026-10-14-b`, `OVERNIGHT_LOG_B.md`). Statuses for 7 to 12 are kept
+on that branch.
 
 Ordered by dependency, then value. Every item completes an existing system and
 has its evidence already in the repo. Audit ids refer to
@@ -11,7 +15,7 @@ has its evidence already in the repo. Audit ids refer to
 
 Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
 
-1. `[todo]` **Betrayal reads its table with the step lookup (F-028).**
+1. `[done]` **Betrayal reads its table with the step lookup (F-028).**
    `betrayal.rs:115` still calls the interpolating `MstbTable::lookup`; the
    original lookup is `FUN_00595090` (`MstbTable::step_lookup`, already ported).
    Done when: betrayal uses `step_lookup`, a test fails under interpolation,

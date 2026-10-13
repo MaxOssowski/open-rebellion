@@ -1,6 +1,72 @@
 # Overnight log
 
-## Summary (2026-10-14)
+## Session notes (2026-10-14)
+
+### Decisions
+
+- **Two sessions ran this prompt at the same time.** The other one created the
+  branch and the `wip: pre-overnight snapshot` commit (`03cb5d1d`), then moved
+  to its own worktree (`.claude/worktrees/overnight-b`, branch
+  `overnight/2026-10-14-b`, log `OVERNIGHT_LOG_B.md`) for backlog items 7 to 12.
+  This session keeps the main checkout and items 1 to 6. Item 13 is left for
+  you (save-format bump). The two branches are not merged; that is yours to do.
+- **Prompt over CLAUDE.md where they conflict:** branch-only, no push.
+- **`cargo fmt` is run per touched file** (`rustfmt --check <file>`), because
+  the workspace already has 105 formatting diffs and a workspace-wide format
+  would rewrite unrelated code.
+- **WASM gate per feature is `cargo check -p rebellion-app --target
+  wasm32-unknown-unknown`** (the command `agent_docs/deterministic-replay.md`
+  lists). The full `./scripts/build-wasm.sh` rewrites the tracked
+  `web/open-rebellion.wasm`, so it runs once at the end.
+- **CLAUDE.md gates are applied too:** failing-without tests, `cargo mutants`
+  on touched files, and `provenance-scan -- check` for simulation code.
+
+### Baseline at `03cb5d1d`
+
+| Gate | Result |
+|---|---|
+| `cargo build --workspace` | ok |
+| `cargo test --workspace` | ok: core 734, render 733, data 125 (13 ignored), app 72 |
+| `cargo clippy --workspace --all-targets` | exit 0 with existing warnings: core 5 (8 with tests), render 12 (24), app 6 |
+| `cargo fmt --all -- --check` | **fails already**: 105 diffs (status_rows.rs 32, main.rs 13, world/mod.rs 12, movement.rs 12, ...) |
+| `provenance-scan -- check` | ok, 109 uncited |
+| `cargo test --workspace -- --ignored` (needs `data/base`) | **4 tests fail already**, listed below |
+
+Ignored tests that fail before any change of mine:
+
+- `rebellion-data --test replay_manifest original_campaign_replay_matches_after_save_reload`:
+  "seed-42 fixture requires 200 systems, loaded 100". Forcing a 200-system
+  galaxy in a throwaway experiment still fails: "initial fingerprint does not
+  match the reviewed golden". **The seed-42 golden does not reproduce on this
+  tree, so no item tonight can confirm or regenerate a golden change.** I did
+  not regenerate it.
+- `seeds::tests::fixed_fleet_tables_only_target_special_systems`: Empire fleets
+  at 4 systems, expected at most 3.
+- `telemetry_coverage_all_sys_constants_emit`: `repair` emits no events.
+- `tactical_assets::tests::owned_native_complete_corpus_installs_with_exact_counts`:
+  `data/base/ui/tactical-dll/TACTICAL3D/runtime/manifest.json` is missing.
+- The `--ignored` doctests (14) are illustrative snippets and fail to compile.
+
+## Feature entries
+
+### 1. Betrayal reads its table with the step lookup (F-028) — done
+
+- `betrayal.rs` now calls `MstbTable::step_lookup` (`FUN_00595090`).
+- Tests: `betrayal_chance_steps_between_table_rows_instead_of_interpolating`
+  (shown failing with the old call), and
+  `a_roll_equal_to_the_betrayal_chance_does_not_betray`, which closes the one
+  surviving mutant (`<` to `<=` on the roll). Mutants: 12 caught, 1 unviable,
+  0 missed after that test.
+- Golden: not measurable, see baseline.
+- Worth knowing, not changed: both callers pass **UPRIS1TB** as the "loyalty
+  table" (`simulation.rs:671`, `main.rs:2743`). The uprising code reads that
+  same table as incident codes, not percentages, so the betrayal rule as a
+  whole has no recovered source. The step lookup only fixes how the table is
+  read.
+
+## Earlier attempt (2026-10-14, read-only session)
+
+Kept for the record; superseded by the entries above.
 
 **No features were implemented and nothing was committed.** The session's
 permission mode only allowed read-only commands. Every command that writes was
