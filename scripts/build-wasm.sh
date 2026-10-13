@@ -10,6 +10,28 @@ WEB_AUDIO="$ROOT/web/data/sounds"
 MDATA_DIR="${REBELLION_MDATA_DIR:-$ROOT/../star-wars-rebellion/MDATA}"
 ORIGINAL_GAME_DIR="${REBELLION_GAME_DIR:-$(dirname "$MDATA_DIR")}"
 EDATA_DIR="${REBELLION_EDATA_DIR:-$ORIGINAL_GAME_DIR/EData}"
+# Audio already staged for the native build by tools/stage-ui-assets.
+STAGED_AUDIO="$ROOT/data/sounds"
+
+# Print the directory holding an original DLL: the original installation, or
+# the GData directory when the installation's DLLs were copied beside the DATs.
+original_dll_dir() {
+    if [ -f "$ORIGINAL_GAME_DIR/$1" ]; then
+        echo "$ORIGINAL_GAME_DIR"
+    elif [ -f "$GDATA/$1" ]; then
+        echo "$GDATA"
+    fi
+}
+
+# Print the source of a soundtrack cue: the original MDATA file, or the copy
+# tools/stage-ui-assets staged byte for byte under data/sounds/music.
+music_source() {
+    if [ -f "$MDATA_DIR/$1" ]; then
+        echo "$MDATA_DIR/$1"
+    elif [ -f "$STAGED_AUDIO/music/$2" ]; then
+        echo "$STAGED_AUDIO/music/$2"
+    fi
+}
 
 # Refuse stale UI staging before compilation; the runtime pack builder repeats this gate.
 python3 "$ROOT/scripts/build-runtime-pack.py" --ui "$GDATA/ui" --validate-ui-only
@@ -95,34 +117,38 @@ echo "Staged $DAT_COUNT DAT files + textstra.json in web/data/base/"
 # Stage licensed music without adding it to version control.
 # REBELLION_MDATA_DIR may point at an original installation's MDATA directory.
 mkdir -p "$WEB_AUDIO/music"
-if [ -f "$MDATA_DIR/MDATA.300" ]; then
-    cp "$MDATA_DIR/MDATA.300" "$WEB_AUDIO/music/main_theme.wav"
-    echo "Staged MDATA.300 (Return of the Jedi/Battle of Endor cue) as the shuttle-cockpit main theme."
+MAIN_THEME_SRC="$(music_source MDATA.300 main_theme.wav)"
+if [ -n "$MAIN_THEME_SRC" ]; then
+    cp "$MAIN_THEME_SRC" "$WEB_AUDIO/music/main_theme.wav"
+    echo "Staged MDATA.300 (Return of the Jedi/Battle of Endor cue) as the shuttle-cockpit main theme from $MAIN_THEME_SRC."
 else
     rm -f "$WEB_AUDIO/music/main_theme.wav"
-    echo "WARNING: MDATA.300 not found in $MDATA_DIR; the menu will remain silent."
+    echo "WARNING: MDATA.300 not found in $MDATA_DIR or $STAGED_AUDIO/music; the menu will remain silent."
 fi
-if [ -f "$MDATA_DIR/MDATA.307" ]; then
-    cp "$MDATA_DIR/MDATA.307" "$WEB_AUDIO/music/battle.wav"
-    echo "Staged MDATA.307 as the tactical battle score."
+BATTLE_THEME_SRC="$(music_source MDATA.307 battle.wav)"
+if [ -n "$BATTLE_THEME_SRC" ]; then
+    cp "$BATTLE_THEME_SRC" "$WEB_AUDIO/music/battle.wav"
+    echo "Staged MDATA.307 as the tactical battle score from $BATTLE_THEME_SRC."
 else
     rm -f "$WEB_AUDIO/music/battle.wav"
-    echo "WARNING: MDATA.307 not found in $MDATA_DIR; tactical battles will remain silent."
+    echo "WARNING: MDATA.307 not found in $MDATA_DIR or $STAGED_AUDIO/music; tactical battles will remain silent."
 fi
 
 mkdir -p "$WEB_AUDIO/sfx"
-if [ -f "$ORIGINAL_GAME_DIR/COMMON.DLL" ]; then
-    "$DAT_DUMPER" --gdata "$ORIGINAL_GAME_DIR" --extract-menu-sfx --output "$WEB_AUDIO/sfx"
+COMMON_DLL_DIR="$(original_dll_dir COMMON.DLL)"
+if [ -n "$COMMON_DLL_DIR" ]; then
+    "$DAT_DUMPER" --gdata "$COMMON_DLL_DIR" --extract-menu-sfx --output "$WEB_AUDIO/sfx"
 else
     rm -f "$WEB_AUDIO/sfx/menu_galaxy_size.wav" \
         "$WEB_AUDIO/sfx/menu_load_options.wav" \
         "$WEB_AUDIO/sfx/menu_quit.wav" \
         "$WEB_AUDIO/sfx/menu_select.wav"
-    echo "WARNING: COMMON.DLL not found in $ORIGINAL_GAME_DIR; cockpit SFX will remain silent."
+    echo "WARNING: COMMON.DLL not found in $ORIGINAL_GAME_DIR or $GDATA; cockpit SFX will remain silent."
 fi
-if [ -f "$ORIGINAL_GAME_DIR/TACTICAL.DLL" ]; then
+TACTICAL_DLL_DIR="$(original_dll_dir TACTICAL.DLL)"
+if [ -n "$TACTICAL_DLL_DIR" ]; then
     rm -f "$WEB_AUDIO/sfx/tactical_ship_destroyed.wav"
-    "$DAT_DUMPER" --gdata "$ORIGINAL_GAME_DIR" --extract-tactical-sfx --output "$WEB_AUDIO/sfx"
+    "$DAT_DUMPER" --gdata "$TACTICAL_DLL_DIR" --extract-tactical-sfx --output "$WEB_AUDIO/sfx"
 else
     rm -f "$WEB_AUDIO/sfx/tactical_ship_destroyed.wav" \
         "$WEB_AUDIO/sfx/tactical_event_0d_0.wav" \
@@ -147,16 +173,17 @@ else
         "$WEB_AUDIO/sfx/tactical_event_13_1.wav" \
         "$WEB_AUDIO/sfx/tactical_event_13_2.wav" \
         "$WEB_AUDIO/sfx/tactical_event_14_0.wav"
-    echo "WARNING: TACTICAL.DLL not found in $ORIGINAL_GAME_DIR; tactical event cues will remain silent."
+    echo "WARNING: TACTICAL.DLL not found in $ORIGINAL_GAME_DIR or $GDATA; tactical event cues will remain silent."
 fi
 
 mkdir -p "$WEB_AUDIO/voice/alliance" "$WEB_AUDIO/voice/empire"
 rm -f "$WEB_AUDIO/voice/alliance"/*.wav "$WEB_AUDIO/voice/empire"/*.wav
-if [ -f "$ORIGINAL_GAME_DIR/VOICEFXA.DLL" ] && [ -f "$ORIGINAL_GAME_DIR/VOICEFXE.DLL" ]; then
-    "$DAT_DUMPER" --gdata "$ORIGINAL_GAME_DIR" --extract-tactical-voice \
+VOICE_DLL_DIR="$(original_dll_dir VOICEFXA.DLL)"
+if [ -n "$VOICE_DLL_DIR" ] && [ -f "$VOICE_DLL_DIR/VOICEFXE.DLL" ]; then
+    "$DAT_DUMPER" --gdata "$VOICE_DLL_DIR" --extract-tactical-voice \
         --output "$WEB_AUDIO/voice"
 else
-    echo "WARNING: VOICEFXA.DLL or VOICEFXE.DLL not found in $ORIGINAL_GAME_DIR; tactical voices will remain silent."
+    echo "WARNING: VOICEFXA.DLL or VOICEFXE.DLL not found in $ORIGINAL_GAME_DIR or $GDATA; tactical voices will remain silent."
 fi
 
 # ── Stage UI resources into web/data/ui/ ────────────────────────────────────
