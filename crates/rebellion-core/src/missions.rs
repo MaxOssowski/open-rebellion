@@ -2,7 +2,7 @@
 //!
 //! Missions are assigned to characters and execute over multiple game-days.
 //! When a mission completes, success is determined either by a quadratic
-//! probability formula (fallback) or by a piecewise-linear MSTB table lookup
+//! probability formula (fallback) or by a stepped MSTB table lookup
 //! when `world.mission_tables` is populated by rebellion-data.
 //!
 //! # Design
@@ -19,7 +19,7 @@
 //!
 //! Two paths, in priority order:
 //! 1. **MSTB lookup**: if `world.mission_tables` contains an entry for this mission kind,
-//!    use `MstbTable::lookup(skill_score)` (piecewise-linear over `IntTableEntry` thresholds).
+//!    use `MstbTable::step_lookup(skill_score)` (the row at or below the score, `FUN_00595090`).
 //! 2. **Quadratic fallback**: `clamp(a·score² + b·score + c, min%, max%)` — same as
 //!    rebellion2's Mission.cs coefficients. Used when MSTB tables are not yet loaded.
 //!
@@ -2530,7 +2530,8 @@ impl MissionSystem {
             let roll = roll_iter.next().unwrap_or(1.0); // 1.0 = no escape (safe default)
                                                         // Use loyalty as the skill score for escape probability
             let skill_score = character.loyalty.base.cast_signed();
-            let escape_prob = f64::from(table.lookup(skill_score)) / 100.0;
+            // The original table lookup is a step function (`FUN_00595090`).
+            let escape_prob = f64::from(table.step_lookup(skill_score)) / 100.0;
             if roll < escape_prob {
                 // Character escapes back to their home faction.
                 // is_alliance reflects original allegiance — capture tracks captor,
@@ -2955,6 +2956,42 @@ mod tests {
             }
             other => panic!("expected CharacterEscaped, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn escape_chance_steps_between_table_rows_instead_of_interpolating() {
+        use crate::dat::Faction;
+        use crate::world::{MstbEntry, MstbTable};
+
+        // FUN_00595090: the row with the largest threshold at or below the
+        // score applies unchanged until the next row is reached.
+        let mut world = minimal_world();
+        world.characters.insert(Character {
+            name: "Captive".into(),
+            is_alliance: true,
+            loyalty: skill_pair(75), // halfway between the 50 and 100 rows
+            captured_by: Some(Faction::Empire),
+            capture_tick: Some(10),
+            is_captive: true,
+            ..Default::default()
+        });
+        let table = MstbTable::new(vec![
+            MstbEntry {
+                threshold: 50,
+                value: 80,
+            },
+            MstbEntry {
+                threshold: 100,
+                value: 95,
+            },
+        ]);
+        world.mission_tables.insert("ESCAPETB".to_string(), table);
+
+        // The 50 row gives 80%; interpolation would give 88% and escape on 0.85.
+        assert!(MissionSystem::check_escapes(&world, &[0.85]).is_empty());
+        // A roll equal to the chance does not escape.
+        assert!(MissionSystem::check_escapes(&world, &[0.80]).is_empty());
+        assert_eq!(MissionSystem::check_escapes(&world, &[0.79]).len(), 1);
     }
 
     #[test]

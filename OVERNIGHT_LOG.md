@@ -64,6 +64,22 @@ Ignored tests that fail before any change of mine:
   whole has no recovered source. The step lookup only fixes how the table is
   read.
 
+### 2. Escape reads ESCAPETB with the step lookup (F-028) — done
+
+- `MissionSystem::check_escapes` now calls `step_lookup`.
+- `MstbTable::lookup` (the interpolating one) had no caller left in `crates/`
+  or `tools/` and no test of its own, so it is removed. The module docs in
+  `missions.rs`, `world/mod.rs`, and `agent_docs/simulation.md` no longer
+  describe a piecewise-linear lookup.
+- Test: `escape_chance_steps_between_table_rows_instead_of_interpolating`
+  (shown failing with the old call; also pins the roll-equals-chance boundary,
+  which closes the one surviving mutant). Mutants on `check_escapes`: 8 caught,
+  1 unviable, 0 missed after the boundary assertion.
+- Not changed: the escape rule itself (loyalty as the ESCAPETB input, one roll
+  per captive per call) has no cited source in the code.
+- F-028's audit status is left as "partially remediated": its acceptance asks
+  for a named golden change, which this tree cannot produce (see baseline).
+
 ## Earlier attempt (2026-10-14, read-only session)
 
 Kept for the record; superseded by the entries above.

@@ -71,7 +71,7 @@ Additional per-tick effects (not mission-driven):
 - `CharacterAvailable` → clear `on_mission`, `on_hidden_mission`
 - `DecoyTriggered` → log message, no world mutation
 
-Probability: MSTB table lookup (piecewise-linear) with quadratic fallback. Combined: `total_prob = agent_prob · (1 − foil_prob)`.
+Probability: MSTB table lookup (a step function, `FUN_00595090`) with quadratic fallback. Combined: `total_prob = agent_prob · (1 − foil_prob)`.
 
 ## Integration Order (simulation.rs → integrator.rs)
 

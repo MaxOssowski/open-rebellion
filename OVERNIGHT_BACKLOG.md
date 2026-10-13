@@ -21,7 +21,7 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
    Done when: betrayal uses `step_lookup`, a test fails under interpolation,
    and any seed-42 golden change is named for this cause.
 
-2. `[todo]` **Escape reads ESCAPETB with the step lookup (F-028).**
+2. `[done]` **Escape reads ESCAPETB with the step lookup (F-028).**
    `missions.rs:2533` is the last other interpolating caller.
    Done when: escape uses `step_lookup` with a failing-without test, and
    `MstbTable::lookup` has no production caller left (remove it only if nothing
@@ -95,7 +95,7 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
     and roadmap are updated together, or the remaining gap is written down as a
     concrete sub-item. Needs a browser pass to close fully.
 
-12. `[todo]` **Remove `PanelAction::AdvanceTicks` or make it run the real tick (M2).**
+12. `[done]` **Remove `PanelAction::AdvanceTicks` or make it run the real tick (M2).**
     `main.rs:7240`.
     Done when: the action either calls the authoritative simulation step or is
     deleted with its dev-command caller, with a test for whichever is kept.

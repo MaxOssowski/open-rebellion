@@ -1197,10 +1197,8 @@ pub struct MissionTargetRules {
 ///
 /// Each table is a sorted list of `(threshold, value)` pairs where `threshold`
 /// is a signed skill delta (negative = below average, 0 = average, positive =
-/// above average). `lookup()` performs linear interpolation between the two
-/// bracketing entries. The original lookup (`FUN_00595090`) is a step
-/// function, which `step_lookup()` reproduces; moving the mission tables onto
-/// it is audit finding F-028.
+/// above average). The original lookup (`FUN_00595090`) is a step function,
+/// which `step_lookup()` reproduces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MstbTable {
     /// Entries sorted ascending by threshold.
@@ -1233,47 +1231,6 @@ impl MstbTable {
             .last()
             .or_else(|| self.entries.first())
             .map_or(0, |e| e.value)
-    }
-
-    /// Look up the value for `skill_score` using linear interpolation.
-    ///
-    /// - If `skill_score` is below the lowest threshold, returns the lowest value.
-    /// - If `skill_score` is above the highest threshold, returns the highest value.
-    /// - Otherwise interpolates between the two bracketing entries.
-    #[must_use]
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
-    )]
-    pub fn lookup(&self, skill_score: i32) -> u32 {
-        let Some(last) = self.entries.last() else {
-            return 0;
-        };
-        // Below minimum
-        if skill_score <= self.entries[0].threshold {
-            return self.entries[0].value;
-        }
-        // Above maximum
-        if skill_score >= last.threshold {
-            return last.value;
-        }
-        // Find bracketing pair
-        for i in 0..self.entries.len() - 1 {
-            let lo = &self.entries[i];
-            let hi = &self.entries[i + 1];
-            if skill_score >= lo.threshold && skill_score < hi.threshold {
-                let span = hi.threshold - lo.threshold;
-                if span == 0 {
-                    return lo.value;
-                }
-                let frac = f64::from(skill_score - lo.threshold) / f64::from(span);
-                let interpolated =
-                    f64::from(lo.value) + frac * (f64::from(hi.value) - f64::from(lo.value));
-                return interpolated.round().max(0.0) as u32;
-            }
-        }
-        last.value
     }
 }
 
