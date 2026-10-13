@@ -127,6 +127,10 @@ pub struct GameClock {
     /// Day the clock holds at after a pause, as `DAT_006b1218+0x10` does.
     /// The speed is kept, so resuming continues at it.
     stop_day: Option<u64>,
+    /// Whole days a play-test command asked for and `advance` still owes.
+    /// Never saved: a loaded game starts with none.
+    #[serde(skip)]
+    queued_days: u64,
 }
 
 impl GameClock {
@@ -138,6 +142,7 @@ impl GameClock {
             speed: GameSpeed::Paused,
             accumulator: 0.0,
             stop_day: None,
+            queued_days: 0,
         }
     }
 
@@ -172,6 +177,23 @@ impl GameClock {
         self.stop_day.is_some()
     }
 
+    /// Ask for `days` more game-days regardless of speed or pause.
+    ///
+    /// port: the command palette's "advance N ticks" play-test commands; the
+    /// original has no such control. Each later [`advance`](Self::advance)
+    /// call completes one queued day, so every day runs through the same
+    /// simulation step as a day of normal play (F-012).
+    pub fn queue_days(&mut self, days: u64) {
+        self.queued_days = self.queued_days.saturating_add(days);
+    }
+
+    /// Days [`queue_days`](Self::queue_days) asked for that have not run yet.
+    /// port: play-test tooling, as `queue_days` (F-012).
+    #[must_use]
+    pub const fn queued_days(&self) -> u64 {
+        self.queued_days
+    }
+
     /// Advance the clock by `dt` real seconds.
     ///
     /// Returns a `Vec<TickEvent>` — one entry per game-day that completed
@@ -183,6 +205,8 @@ impl GameClock {
     ///
     /// - `dt` should be the real elapsed frame time (e.g. `macroquad::time::get_frame_time()`).
     /// - Negative or zero `dt` is a no-op.
+    /// - A queued day ([`queue_days`](Self::queue_days)) completes first, one
+    ///   per call, and that call spends no real time.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
@@ -190,6 +214,11 @@ impl GameClock {
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
     )]
     pub fn advance(&mut self, dt: f32) -> Vec<TickEvent> {
+        if self.queued_days > 0 {
+            self.queued_days -= 1;
+            self.tick += 1;
+            return vec![TickEvent { tick: self.tick }];
+        }
         let Some(seconds_per_day) = self.speed.seconds_per_day() else {
             return Vec::new();
         };
@@ -309,6 +338,45 @@ mod tests {
         let mut clock = GameClock::new();
         assert!(!clock.pause());
         assert!(!clock.pause_requested());
+    }
+
+    #[test]
+    fn queued_days_run_one_per_call_even_while_paused() {
+        let mut clock = GameClock::new();
+        // The clock starts at Paused speed; real time alone never ticks it.
+        clock.queue_days(3);
+        assert_eq!(clock.tick, 0, "queueing runs no day by itself");
+        assert_eq!(clock.advance(0.0), vec![TickEvent { tick: 1 }]);
+        assert_eq!(clock.advance(100.0), vec![TickEvent { tick: 2 }]);
+        assert_eq!(clock.queued_days(), 1);
+        assert_eq!(clock.advance(-1.0), vec![TickEvent { tick: 3 }]);
+        assert!(clock.advance(100.0).is_empty());
+        assert_eq!(clock.tick, 3);
+    }
+
+    #[test]
+    fn a_queued_day_spends_no_real_time_and_passes_a_pause() {
+        let mut clock = GameClock::new();
+        clock.set_speed(GameSpeed::Medium);
+        assert!(clock.advance(0.6).is_empty());
+        clock.pause();
+        clock.queue_days(2);
+        clock.queue_days(u64::MAX);
+        assert_eq!(clock.queued_days(), u64::MAX, "the queue saturates");
+        // Half a day was banked; the queued days leave it alone.
+        assert_eq!(clock.advance(0.6), vec![TickEvent { tick: 1 }]);
+        assert_eq!(clock.advance(0.6), vec![TickEvent { tick: 2 }]);
+        assert_eq!(clock.tick, 2);
+    }
+
+    #[test]
+    fn queued_days_are_not_saved() {
+        let mut clock = GameClock::new();
+        clock.queue_days(5);
+        let saved = serde_json::to_string(&clock).unwrap();
+        assert!(!saved.contains("queued_days"));
+        let loaded: GameClock = serde_json::from_str(&saved).unwrap();
+        assert_eq!(loaded.queued_days(), 0);
     }
 
     #[test]

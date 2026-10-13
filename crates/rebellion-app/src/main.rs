@@ -7238,13 +7238,9 @@ fn apply_panel_action(
             }
         }
         PanelAction::AdvanceTicks(n) => {
-            // Force-advance N ticks synchronously.
-            // NOTE: This only advances the clock counter. Full simulation tick
-            // execution requires run_simulation_tick() which needs &mut access to
-            // all states — not available inside apply_panel_action(). The actual
-            // simulation will catch up on the next frame when clock.advance(dt)
-            // emits the pending TickEvents. For instant effect, set speed to Faster.
-            clock.tick += n;
+            // The clock owes N days; the frame loop runs each through the
+            // same simulation step as a day of normal play.
+            clock.queue_days(n);
         }
         // The caller routes speed through the clock's pause stop.
         PanelAction::SetGameSpeed(_) => {}

@@ -91,7 +91,7 @@ Statuses: `[todo]`, `[in progress]`, `[done]`, `[blocked]`.
     and roadmap are updated together, or the remaining gap is written down as a
     concrete sub-item. Needs a browser pass to close fully.
 
-12. `[todo]` **Remove `PanelAction::AdvanceTicks` or make it run the real tick (M2).**
+12. `[done]` **Remove `PanelAction::AdvanceTicks` or make it run the real tick (M2).**
     `main.rs:7240`.
     Done when: the action either calls the authoritative simulation step or is
     deleted with its dev-command caller, with a test for whichever is kept.
