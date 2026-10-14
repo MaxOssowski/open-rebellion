@@ -1102,10 +1102,11 @@ impl AISystem {
     /// - State 5 ([`research_site_choice`]): the site.
     /// - State 6 (`FUN_004bd0a0`): the previous target while it is the
     ///   side's and not blockaded, else the site when it is.
-    /// - States 7 and 8 (`FUN_004bd570`, `FUN_0047b360`): the order, unless
-    ///   the member is on a mission or travelling.
-    ///
-    /// port: the mission's own travel stands for state 7's move order.
+    /// - State 7 (`FUN_004bd570`): a free member away from the target
+    ///   (record `+0x38`, a fleet or another system) gets a Move order
+    ///   `0x201` to it, the Move pseudo-mission `0x241`.
+    /// - State 8 (`FUN_0047b360`): once the member stands there, the
+    ///   research order. A member on a mission or travelling gets neither.
     fn research_cycle(
         p: &mut ResearchPlanner,
         planner: &mut Planner<'_>,
@@ -1148,10 +1149,12 @@ impl AISystem {
         let Some(target) = target else {
             return;
         };
-        if planner.sendable(MissionMember::Character(member)) {
+        let member = MissionMember::Character(member);
+        if planner.sendable(member) {
+            let there = crate::mission_planning::standing_system(world, member) == Some(target);
             actions.push(AIAction::DispatchMission {
-                kind,
-                team: vec![MissionMember::Character(member)],
+                kind: if there { kind } else { MissionKind::Move },
+                team: vec![member],
                 decoys: Vec::new(),
                 target_system: target,
                 target_character: None,
@@ -5564,15 +5567,16 @@ mod tests {
             7,
         );
 
+        // FUN_004bd570: each designer stands away from its site, so its
+        // first order is the Move there.
         assert_eq!(
-            orders(&actions, MissionKind::ShipDesignResearch),
-            vec![(vec![ship], shipyard, None), (vec![weak], shipyard, None)]
+            orders(&actions, MissionKind::Move),
+            vec![
+                (vec![ship], shipyard, None),
+                (vec![weak], shipyard, None),
+                (vec![troop], training, None)
+            ]
         );
-        assert_eq!(
-            orders(&actions, MissionKind::TroopTrainingResearch),
-            vec![(vec![troop], training, None)]
-        );
-        assert!(orders(&actions, MissionKind::FacilityDesignResearch).is_empty());
         let techs: Vec<_> = state
             .research_planners
             .iter()
@@ -5599,11 +5603,12 @@ mod tests {
         let _ = yard_system(&mut world, sector, 0x28);
         let _ = designer(&mut world, TechType::Ship, 9);
         let actions = research_orders(&world, &MissionState::new(), &ResearchState::new());
-        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
+        assert!(orders(&actions, MissionKind::Move).is_empty());
 
         let ten = designer(&mut world, TechType::Ship, 10);
         let actions = research_orders(&world, &MissionState::new(), &ResearchState::new());
-        let sent: Vec<_> = orders(&actions, MissionKind::ShipDesignResearch)
+        // FUN_004bd570: away from the site, the order is the Move there.
+        let sent: Vec<_> = orders(&actions, MissionKind::Move)
             .into_iter()
             .map(|(team, _, _)| team)
             .collect();
@@ -5635,8 +5640,9 @@ mod tests {
 
         let actions = research_pass(&mut state, &world, &missions, &ResearchState::new(), 14);
 
+        // FUN_004bd570: the second stands away from the site.
         assert_eq!(
-            orders(&actions, MissionKind::ShipDesignResearch),
+            orders(&actions, MissionKind::Move),
             vec![(vec![second], shipyard, None)]
         );
         assert_eq!(state.research_planners[0].member, best.character());
@@ -6098,8 +6104,9 @@ mod tests {
             &ResearchState::new(),
             14,
         );
+        // FUN_004bd570: the designer stands at neither, so it moves first.
         assert_eq!(
-            orders(&actions, MissionKind::ShipDesignResearch),
+            orders(&actions, MissionKind::Move),
             vec![(vec![ship], old, None)]
         );
 
@@ -6111,6 +6118,49 @@ mod tests {
             &ResearchState::new(),
             21,
         );
+        assert_eq!(
+            orders(&actions, MissionKind::Move),
+            vec![(vec![ship], shipyard, None)]
+        );
+    }
+
+    #[test]
+    fn a_designer_away_from_the_site_is_moved_there_before_its_research() {
+        // FUN_004bd570 (planner state 7): a free member whose location
+        // (+0x38) is not the target gets a Move order 0x201 to it (the Move
+        // pseudo-mission 0x241, MISSNSD 0x41000001); state 8
+        // (FUN_0047b360) orders the research once it stands there.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let elsewhere = add_system(&mut world, sector, 0.5, 0.5);
+        let ship = designer(&mut world, TechType::Ship, 50);
+        let key = ship.character().unwrap();
+        world.characters[key].current_system = Some(elsewhere);
+        let mut state = AIState::new(AiFaction::Alliance);
+
+        let actions = research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            7,
+        );
+        assert_eq!(
+            orders(&actions, MissionKind::Move),
+            vec![(vec![ship], shipyard, None)]
+        );
+        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
+
+        world.characters[key].current_system = Some(shipyard);
+        let actions = research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            14,
+        );
+        assert!(orders(&actions, MissionKind::Move).is_empty());
         assert_eq!(
             orders(&actions, MissionKind::ShipDesignResearch),
             vec![(vec![ship], shipyard, None)]
@@ -6137,6 +6187,8 @@ mod tests {
             target_object: None,
             tick: 1,
         });
+
+        world.characters[ship.character().unwrap()].current_system = Some(shipyard);
 
         let actions = research_orders(&world, &missions, &ResearchState::new());
 

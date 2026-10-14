@@ -7038,6 +7038,7 @@ fn apply_panel_action(
                 MissionKind::FacilityDesignResearch => "Facility Design Research",
                 MissionKind::TroopTrainingResearch => "Troop Training Research",
                 MissionKind::Autoscrap => "Autoscrap",
+                MissionKind::Move => "Move",
             };
             msg_log.push(GameMessage::at_system(
                 clock.tick,
@@ -7462,6 +7463,7 @@ fn apply_mission_result(
         MissionKind::FacilityDesignResearch => "Facility Design Research",
         MissionKind::TroopTrainingResearch => "Troop Training Research",
         MissionKind::Autoscrap => "Autoscrap",
+        MissionKind::Move => "Move",
     };
     let sys_name = world
         .systems
@@ -7487,7 +7489,8 @@ fn apply_mission_result(
         | MissionKind::ShipDesignResearch
         | MissionKind::FacilityDesignResearch
         | MissionKind::TroopTrainingResearch
-        | MissionKind::Autoscrap => MessageCategory::Mission,
+        | MissionKind::Autoscrap
+        | MissionKind::Move => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.
     let picture = {

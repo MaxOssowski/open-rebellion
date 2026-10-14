@@ -1870,6 +1870,15 @@ cross-runtime proof remain open
   over candidates at blockaded systems (`FUN_0047ba90`). Golden
   `v1:a6ee248d7d0194dc` -> `v1:68580f6dd8f9f6b0`
   (`evidence/2026-10-14-research-planners/`).
+- Move (2026-10-14): `MissionKind::Move` runs the lifecycle on record
+  `0x41000001` (hidden, timer 0, detection on, own-side target only) with
+  the base phase handler `FUN_00524b70`, which rolls no one in phase 10,
+  and the base rules `FUN_00523450`. The research planner orders it first
+  while its designer stands away from the target (state 7,
+  `FUN_004bd570`), then the research. Seed-2 dual-AI playtest: Crix Madine
+  moves to Umgul on day 28 and researches there from day 70; the seed-42
+  golden is unchanged (`evidence/2026-10-14-move-mission/`). Open: Return,
+  Autorouting and Adrift (`0x42..0x44`) and the player's character moves.
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

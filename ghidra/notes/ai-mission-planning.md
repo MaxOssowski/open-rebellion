@@ -495,13 +495,21 @@ flips. The port takes the first of equal entries.
   the target a Move order `0x201` to it (team list `+0x24`, target
   `+0x38`); a member already there sets flag 8, and state 8 orders the
   mission only once all are there. `0x201` expands to a `0x241` order for
-  characters (`move-order.md`), the Move pseudo-mission (family `0x41`),
-  which has no MISSNSD record and so runs no detection. The research
-  mission therefore starts at its site (origin = target: phases 5 and 6
-  do nothing, and its detection runs at the AI's own unblockaded system).
-  The port's research mission travels by itself, so its detection runs at
-  wherever the designer stood. Porting the Move pseudo-mission (F-040)
-  removes the difference.
+  characters (`move-order.md`), the Move pseudo-mission (family `0x41`).
+  The research mission therefore starts at its site (origin = target:
+  phases 5 and 6 do nothing, and its detection runs at the AI's own
+  unblockaded system). Correction (2026-10-14): Move does have a MISSNSD
+  record, `0x41000001` (TEXTSTRA 11265): both sides, special forces
+  `0xf0f`, characters `0x10000`, timer 0 + rand(0..=0), hidden (`+0x5c`),
+  detection on, no resigning, and only an own-side target (`+0x7c`). Its
+  class (vtable `0x665578`, `FUN_0056ebc0` = `0x41`) keeps the base phase
+  handler `FUN_00524b70` (slot `+0x1f4`), so phase 10 rolls no one, and the
+  base rules (slot `+0x1bc` = `FUN_005215e0` -> `FUN_00523670`,
+  `FUN_00523450`). So the trip runs the detection manager, as any
+  mission does. Ported 2026-10-14: `MissionKind::Move`, and the research planner
+  orders it while its designer stands away from the target (a fleet or
+  another system); a designer on the Move is busy, and the next cycle
+  after it ends orders the research.
 - *Cadence.* The AI player's tick (`FUN_00485b40`) runs once per frame in
   frame-loop phase 8 until it returns 1, and its phase 3 steps the current
   module until it completes (`+0x20`), then the next ready one

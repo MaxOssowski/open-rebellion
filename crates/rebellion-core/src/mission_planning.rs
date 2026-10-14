@@ -80,7 +80,9 @@ fn capability(kind: MissionKind) -> Option<u32> {
         MissionKind::ShipDesignResearch => 0x800,
         MissionKind::TroopTrainingResearch => 0x1000,
         MissionKind::FacilityDesignResearch => 0x2000,
-        MissionKind::Autoscrap => return None,
+        // No planner sends these: Autoscrap is the Autoscrap planner's, and
+        // Move is the trip an AI planner orders before its mission (FUN_004bd570).
+        MissionKind::Autoscrap | MissionKind::Move => return None,
     })
 }
 
@@ -235,6 +237,8 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         // port: the Recon planners (FUN_0047f790 for subtype 5, else
         // FUN_0047f320 and FUN_0047f500) are not ported, so the AI sends none.
         MissionKind::Autoscrap | MissionKind::Reconnaissance => return None,
+        // The Move pseudo-mission has no selectors (FUN_004bd570 builds it).
+        MissionKind::Move => return None,
         // FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900: Recruitment's selector
         // shape, with no decoy selector.
         MissionKind::ShipDesignResearch => (SHIP_RESEARCH, 1, None),
@@ -609,7 +613,7 @@ fn records(
 
 /// The system an object stands at, when its location (`+0x38`) is a
 /// system rather than a fleet.
-fn standing_system(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {
+pub(crate) fn standing_system(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {
     match member {
         MissionMember::Character(key) => {
             let c = world.characters.get(key)?;

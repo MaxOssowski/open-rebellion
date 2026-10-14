@@ -161,5 +161,6 @@ fn mission_kind_display(kind: MissionKind) -> (&'static str, Color32) {
         | MissionKind::FacilityDesignResearch
         | MissionKind::TroopTrainingResearch => ("[RSCH]", Color32::from_rgb(120, 220, 120)),
         MissionKind::Autoscrap => ("[AUTO]", Color32::from_rgb(120, 120, 120)),
+        MissionKind::Move => ("[MOVE]", Color32::from_rgb(180, 180, 200)),
     }
 }

@@ -352,6 +352,7 @@ const fn kind_text_id(kind: MissionKind) -> u16 {
         MissionKind::ShipDesignResearch => 11296,
         MissionKind::FacilityDesignResearch => 11297,
         MissionKind::TroopTrainingResearch => 11298,
+        MissionKind::Move => 11265,
         MissionKind::Autoscrap => 0,
     }
 }
@@ -374,6 +375,7 @@ pub const fn kind_name(kind: MissionKind) -> &'static str {
         MissionKind::ShipDesignResearch => "Ship Design Research",
         MissionKind::FacilityDesignResearch => "Facility Design Research",
         MissionKind::TroopTrainingResearch => "Troop Training Research",
+        MissionKind::Move => "Move",
         MissionKind::Autoscrap => "",
     }
 }

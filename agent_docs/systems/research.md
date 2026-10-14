@@ -65,6 +65,9 @@ their missions run on (`FUN_004e5710`, `FUN_0047aff0`). Each planner holds
 its designer, remembers its site and previous target
 (`research_site_choice`, `FUN_0047be50`), and after each Mission Report
 aborts its mission when the site is lost (`AIAction::AbortMission`, end
-code 2). A research site is an own system in no uprising or blockade with
+code 2). A designer standing away from the target is first sent there
+on the hidden Move pseudo-mission (`MissionKind::Move`, MISSNSD
+`0x41000001`, planner state 7 `FUN_004bd570`); the research order follows
+once it stands there. A research site is an own system in no uprising or blockade with
 a yard of the area and a garrison (`ai_research_site`, `FUN_00433e40`). See `ghidra/notes/ai-mission-planning.md`,
 "The strategic choice of mission".

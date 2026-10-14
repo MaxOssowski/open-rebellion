@@ -1,0 +1,12 @@
+{"tick":28,"wall_ms":3,"system":"ai","event_type":"ai_action","details":{"decoys":[],"dual_ai":true,"kind":"Move","target":"Umgul","team":["Crix Madine"],"type":"DispatchMission"}}
+{"tick":28,"wall_ms":3,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Alliance","kind":"Move","target_system":"Umgul","team":["Crix Madine"]}}
+{"tick":63,"wall_ms":6,"system":"ai","event_type":"ai_action","details":{"decoys":[],"kind":"TroopTrainingResearch","target":"Coruscant","team":["Covell"],"type":"DispatchMission"}}
+{"tick":63,"wall_ms":6,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Empire","kind":"TroopTrainingResearch","target_system":"Coruscant","team":["Covell"]}}
+{"tick":70,"wall_ms":7,"system":"ai","event_type":"ai_action","details":{"decoys":[],"dual_ai":true,"kind":"TroopTrainingResearch","target":"Umgul","team":["Crix Madine"],"type":"DispatchMission"}}
+{"tick":70,"wall_ms":7,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Alliance","kind":"TroopTrainingResearch","target_system":"Umgul","team":["Crix Madine"]}}
+{"tick":140,"wall_ms":13,"system":"ai","event_type":"ai_action","details":{"decoys":[],"kind":"FacilityDesignResearch","target":"Coruscant","team":["Orlok"],"type":"DispatchMission"}}
+{"tick":140,"wall_ms":13,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Empire","kind":"FacilityDesignResearch","target_system":"Coruscant","team":["Orlok"]}}
+{"tick":399,"wall_ms":37,"system":"ai","event_type":"ai_action","details":{"decoys":[],"kind":"FacilityDesignResearch","target":"Coruscant","team":["Villar"],"type":"DispatchMission"}}
+{"tick":399,"wall_ms":37,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Empire","kind":"FacilityDesignResearch","target_system":"Coruscant","team":["Villar"]}}
+{"tick":413,"wall_ms":38,"system":"ai","event_type":"ai_action","details":{"decoys":[],"kind":"TroopTrainingResearch","target":"Coruscant","team":["Veers"],"type":"DispatchMission"}}
+{"tick":413,"wall_ms":38,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Empire","kind":"TroopTrainingResearch","target_system":"Coruscant","team":["Veers"]}}

@@ -130,6 +130,16 @@ pub enum MissionKind {
     /// Research the next troop level at an own system with a training
     /// facility (MISSNSD `0x53000022`, type 2). Skill: troop training.
     TroopTrainingResearch,
+
+    /// The Move pseudo-mission (MISSNSD `0x41000001`, TEXTSTRA 11265): a
+    /// character's or special force's own trip to a system of its side,
+    /// which a Move order `0x201` builds as order `0x241` (`move-order.md`).
+    /// Its record is hidden, times 0 + rand(0..=0) days, runs detection
+    /// without resigning, and takes only own-side targets; the class uses
+    /// the base phase handler `FUN_00524b70` (slot `+0x1f4`), so phase 10
+    /// rolls no one, and the base rules `FUN_00523450` (slot `+0x1bc`,
+    /// `FUN_005215e0`).
+    Move,
 }
 
 impl MissionKind {
@@ -153,7 +163,8 @@ impl MissionKind {
             | MissionKind::Reconnaissance
             | MissionKind::ShipDesignResearch
             | MissionKind::FacilityDesignResearch
-            | MissionKind::TroopTrainingResearch => None,
+            | MissionKind::TroopTrainingResearch
+            | MissionKind::Move => None,
         }
     }
 
@@ -192,6 +203,8 @@ impl MissionKind {
             MissionKind::ShipDesignResearch
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch => (10, 20),
+            // The shipped record's 0 + rand(0..=0).
+            MissionKind::Move => (0, 0),
         }
     }
 }
@@ -1008,6 +1021,8 @@ pub fn member_chance(
         MissionKind::ShipDesignResearch
         | MissionKind::FacilityDesignResearch
         | MissionKind::TroopTrainingResearch => return 0,
+        // The base class has no slot +0x274 roll; phase 10 rolls no one.
+        MissionKind::Move => return 0,
     };
     let (Some(input), Some(table)) = (
         input,
@@ -1383,8 +1398,21 @@ impl MissionState {
                 return Err(MissionRefusal::MembersNotAllowed);
             }
         }
+        // FUN_00520b70 reads the record's hidden flag (+0x5c) for a
+        // member's status: a Move is not shown as a mission.
+        let hidden = request
+            .kind
+            .record_id()
+            .and_then(|id| world.mission_record(id))
+            .is_some_and(|record| record.hidden);
         for member in team.iter().chain(&decoys).chain(&captured) {
             set_on_mission(world, *member, true);
+            if let Some(c) = member
+                .character()
+                .and_then(|key| world.characters.get_mut(key))
+            {
+                c.on_hidden_mission = hidden;
+            }
         }
         let id = self.dispatch(MissionRequest {
             team,
@@ -1747,6 +1775,8 @@ pub(crate) enum TargetRules {
     Character,
     /// `FUN_00593500`: the base rules only, while running.
     Object,
+    /// `FUN_00523450`: the base rules only, at a system target (Move).
+    Place,
 }
 
 impl MissionKind {
@@ -1770,6 +1800,7 @@ impl MissionKind {
             MissionKind::ShipDesignResearch => 0x5300_0020,
             MissionKind::FacilityDesignResearch => 0x5300_0021,
             MissionKind::TroopTrainingResearch => 0x5300_0022,
+            MissionKind::Move => 0x4100_0001,
             MissionKind::Autoscrap => return None,
         };
         Some(crate::ids::DatId::new(raw))
@@ -1794,6 +1825,8 @@ impl MissionKind {
             | MissionKind::ShipDesignResearch
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch => TargetRules::System,
+            // FUN_005215e0: the base rules alone, at a system target.
+            MissionKind::Move => TargetRules::Place,
         }
     }
 }
@@ -1871,7 +1904,7 @@ fn target_view(
                 prisoner: false,
             })
         }
-        TargetRules::System => {
+        TargetRules::System | TargetRules::Place => {
             let sys = world.systems.get(mission.target_system)?;
             Some(TargetView {
                 side: crate::uprising::holder(sys),
@@ -2007,7 +2040,7 @@ pub(crate) fn running_end_code(
                 return 6;
             }
         }
-        TargetRules::Object => {}
+        TargetRules::Object | TargetRules::Place => {}
     }
     // FUN_00573ee0: Diplomacy stops at full support.
     if mission.kind == MissionKind::Diplomacy
@@ -2435,6 +2468,8 @@ impl MissionSystem {
                 mission.wait_start = now;
                 mission.timer_due = Some(now + delay);
             }
+            // The Move class's base handler FUN_00524b70 runs nothing here.
+            PHASE_OUTCOME if mission.kind == MissionKind::Move => {}
             PHASE_OUTCOME => {
                 let result = Self::roll_members(mission, ctx, now, &mut draws.stream, &out.results);
                 out.results.push(result);
@@ -2770,6 +2805,8 @@ impl MissionSystem {
                     effects.extend(raise(Skill::Combat, GNPRTB_DS_SABOTAGE_COMBAT_RAISE));
                 }
                 MissionKind::Autoscrap => result = 3,
+                // Never reached: phase 10 skips Move (FUN_00524b70).
+                MissionKind::Move => {}
                 // FUN_0056bec0: 3, with no skill raise.
                 MissionKind::Reconnaissance => result = 3,
                 // FUN_0056cdb0: GNPRTB 6171 + rand(0..=6172) points
@@ -5659,6 +5696,114 @@ mod tests {
         let mission = &state.missions()[0];
         assert_eq!(mission.phase, PHASE_TIMER);
         assert_eq!(mission.timer_due, Some(28));
+    }
+
+    /// MISSNSD `0x41000001` (Move) as shipped: both sides, special forces
+    /// `0xf0f`, characters `0x10000`, timer 0 + rand(0..=0), hidden,
+    /// detection on, no resigning; only an own-side target, ended by the
+    /// container's or the target's loss.
+    fn move_record() -> crate::world::MissionRecord {
+        crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x4100_0001),
+            timer_min_days: 0,
+            timer_spread_days: 0,
+            repeats: false,
+            hidden: true,
+            detection_phases: true,
+            can_resign: false,
+            rules: crate::world::MissionTargetRules {
+                container_loss_ends: true,
+                target_loss_ends: true,
+                own_side_target: true,
+                ..Default::default()
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0xf0f,
+                character_mask: 0x1_0000,
+            },
+        }
+    }
+
+    #[test]
+    fn a_move_takes_its_member_to_the_target_and_ends_with_no_result() {
+        // The Move class (vtable 0x665578, FUN_0056ebc0 = 0x41) steps
+        // phases with the base handler FUN_00524b70, which rolls no one in
+        // phase 10; its record's timer is 0 days. The member stays where
+        // the trip took it (FUN_00556390).
+        let mut world = minimal_world();
+        world.mission_records = vec![move_record()];
+        let from = system_at(&mut world, 0);
+        let to = system_at(&mut world, 100);
+        world.systems[to].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let traveller = agent_at(&mut world, from, true);
+        let mut state = MissionState::new();
+        state
+            .dispatch_guarded(
+                MissionRequest::single(
+                    MissionKind::Move,
+                    MissionFaction::Alliance,
+                    traveller,
+                    to,
+                    None,
+                    0,
+                ),
+                &mut world,
+            )
+            .expect("a free traveller");
+        assert!(world.characters[traveller].on_hidden_mission);
+        step(&mut state, &world, 1, &[]);
+
+        let advance = step(&mut state, &world, 20, &[0.5]);
+        assert_eq!(
+            advance.effects,
+            vec![MissionEffect::MemberMoved {
+                member: MissionMember::Character(traveller),
+                to: Some(to)
+            }]
+        );
+        // FUN_00586130 makes the 0-day timer at least one tick.
+        assert_eq!(state.missions()[0].timer_due, Some(21));
+
+        let advance = step(&mut state, &world, 21, &[0.0]);
+        assert!(advance.results.is_empty());
+        assert_eq!(advance.ended.len(), 1);
+        assert_eq!(advance.ended[0].end_code, 1);
+        assert!(advance.effects.contains(&MissionEffect::MemberAvailable {
+            member: MissionMember::Character(traveller)
+        }));
+    }
+
+    #[test]
+    fn a_move_to_a_system_of_another_side_ends_with_code_eight() {
+        // FUN_00523450 (Move's slot +0x1bc, FUN_005215e0): a target not on
+        // the mission's side fails record +0x7c, end 8.
+        let mut world = minimal_world();
+        world.mission_records = vec![move_record()];
+        let here = system_at(&mut world, 0);
+        let enemy = system_at(&mut world, 0);
+        world.systems[enemy].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        let mission = ActiveMission::new(
+            0,
+            MissionKind::Move,
+            MissionFaction::Alliance,
+            vec![MissionMember::Character(agent_at(&mut world, here, true))],
+            enemy,
+            0,
+        );
+
+        let code = running_end_code(
+            &mission,
+            &world,
+            &crate::uprising::UprisingState::default(),
+            &ResearchState::new(),
+            &[],
+        );
+
+        assert_eq!(code, 8);
     }
 
     #[test]
