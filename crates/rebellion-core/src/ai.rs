@@ -1,14 +1,15 @@
 //! Rule-based AI manager for the computer-controlled faction.
 //!
-//! The AI evaluates the game state each `AI_TICK_INTERVAL` game-days and
-//! produces a list of `AIAction` recommendations. The caller applies those
-//! actions to `ManufacturingState`, `MissionState`, and `GameWorld`.
+//! The AI makes [`passes_per_day`] passes a game-day and each pass produces
+//! a list of `AIAction` recommendations. The caller applies those actions to
+//! `ManufacturingState`, `MissionState`, and `GameWorld` before the next
+//! pass.
 //!
 //! # Design
 //!
 //! Follows the same stateless pattern as manufacturing and mission systems:
 //! - `AIState` holds per-faction persistent data (cooldowns, assignments)
-//! - `AISystem::advance(state, world, mfg, missions, tick_events) -> Vec<AIAction>`
+//! - `AISystem::pass(state, world, mfg, missions, ..) -> Vec<AIAction>`
 //! - Actions are recommendations only — the caller decides whether to apply them
 //!
 //! # Heuristics (ported from rebellion2's AIManager.cs)
@@ -21,10 +22,15 @@
 //! 3. **Production — facilities**: if a system has fewer than `MAX_CONSTRUCTION_YARDS`
 //!    construction yards and has free slots, enqueue another
 //!
-//! # AI tick gating
+//! # Cadence
 //!
-//! The AI only re-evaluates every `AI_TICK_INTERVAL` game-days. This prevents
-//! thrashing and is consistent with the original game's turn-based cadence.
+//! The AI player's tick (`FUN_00485b40`) runs once a sub-tick, and a day has
+//! as many sub-ticks as the game speed's rate (`FUN_0051dea0`, side
+//! `+0xc4`, set by the speed order `0x280`): 600 Very Slow, 60 Slow, 12
+//! Medium, 4 Fast. Each pass refreshes the records, readies every module,
+//! and runs the modules in turn until one issues orders, no module is ready,
+//! or the day's [`ORDERS_PER_DAY`] are spent ([`AISystem::pass`],
+//! `ghidra/notes/ai-mission-planning.md`, "Cadence").
 
 use std::collections::{HashMap, HashSet};
 
@@ -39,7 +45,6 @@ use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState, Pro
 use crate::mission_planning::Planner;
 use crate::missions::{MissionFaction, MissionKind, MissionState};
 use crate::research::{ResearchState, ResearchSystem, TechType};
-use crate::tick::TickEvent;
 use crate::tuning::GameConfig;
 use crate::world::{Character, ControlKind, GameWorld};
 
@@ -47,8 +52,25 @@ use crate::world::{Character, ControlKind, GameWorld};
 // Constants
 // ---------------------------------------------------------------------------
 
-/// How many game-days between full AI re-evaluations.
-pub const AI_TICK_INTERVAL: u64 = 5;
+/// The orders an AI may issue a day (`+0x428`, set to 10 by
+/// `FUN_00485a50`; `FUN_00485b40` counts every order but a Rename `0x203`).
+pub const ORDERS_PER_DAY: u32 = 10;
+
+/// The port's AI modules, in the order the scheduler takes them.
+///
+/// port: the heuristics that stand in for the original's fourteen modules
+/// (`FUN_004bea20`); see [`AISystem::pass`].
+const MODULES: usize = 10;
+
+/// The AI passes in a game-day at `speed`: the speed's rate, one AI tick
+/// per sub-tick (`FUN_00485b40`, `FUN_0051dea0`).
+///
+/// port: a Paused clock runs days only for the play-test commands; they
+/// take Fast's 4.
+#[must_use]
+pub fn passes_per_day(speed: crate::tick::GameSpeed) -> u32 {
+    speed.original_rate().map_or(4, u32::from)
+}
 
 /// Diplomacy skill threshold above which a minor character is considered a
 /// viable diplomat (rebellion2: `officer.GetSkillValue(Diplomacy) > 60`).
@@ -144,16 +166,23 @@ impl AiFaction {
 // AIState
 // ---------------------------------------------------------------------------
 
-/// Persistent AI state for one controlled faction.
+/// Persistent AI state for one controlled faction (the AI player, vtable
+/// `0x0065abf0`).
 ///
-/// Tracks which characters are currently on missions and the tick of the last
-/// full evaluation, so the AI doesn't re-evaluate every single day.
+/// Tracks which characters are currently on missions, the day's order
+/// count, and where the module and research planner rounds stand.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AIState {
     /// Which faction this AI controls.
     pub faction: Option<AiFaction>,
-    /// Game-day of the last full evaluation pass.
-    pub last_eval_tick: u64,
+    /// Orders issued today (`+0x420`), against [`ORDERS_PER_DAY`].
+    pub orders_today: u32,
+    /// The module last run (`+0x84 -> +0x10`, `FUN_004be980`), an index
+    /// into the port's modules.
+    pub module_cursor: Option<usize>,
+    /// The research planner the next mission-module step starts at
+    /// (`+0x4c`, `FUN_004d2730`): the one after the planner last run.
+    pub research_next: Option<u64>,
     /// Characters currently dispatched on missions (not available for re-dispatch).
     #[serde(
         serialize_with = "crate::serde_ordered::serialize_hash_set",
@@ -203,7 +232,9 @@ impl AIState {
     pub fn new(faction: AiFaction) -> Self {
         AIState {
             faction: Some(faction),
-            last_eval_tick: 0,
+            orders_today: 0,
+            module_cursor: None,
+            research_next: None,
             busy_characters: HashSet::new(),
             battle_cooldowns: HashMap::new(),
             research_planners: Vec::new(),
@@ -241,10 +272,11 @@ impl AIState {
         }
     }
 
-    /// Returns true if enough ticks have elapsed since the last evaluation.
-    #[must_use]
-    pub fn should_evaluate(&self, current_tick: u64, tick_interval: u64) -> bool {
-        current_tick == 0 || current_tick.saturating_sub(self.last_eval_tick) >= tick_interval
+    /// A new day clears the order count (`FUN_00485de0`, slot `+0x54`, from
+    /// `FUN_0041e500` at the day boundary: its window `+0x424` stays 0, so
+    /// every call clears `+0x420`).
+    pub fn begin_day(&mut self) {
+        self.orders_today = 0;
     }
 
     /// Mark a character as busy (on a mission).
@@ -338,96 +370,166 @@ pub enum FleetMoveReason {
 // AISystem
 // ---------------------------------------------------------------------------
 
+/// What a module step reads.
+#[derive(Clone, Copy)]
+struct ModuleInputs<'a> {
+    world: &'a GameWorld,
+    mfg_state: &'a ManufacturingState,
+    mission_state: &'a MissionState,
+    movement: &'a crate::movement::MovementState,
+    tick: u64,
+    config: &'a GameConfig,
+    research_state: &'a ResearchState,
+    uprisings: &'a crate::uprising::UprisingState,
+    faction: AiFaction,
+}
+
 /// Stateless AI evaluation system.
 pub struct AISystem;
 
 impl AISystem {
-    /// Evaluate the AI faction's situation and return recommended actions.
-    ///
-    /// Returns an empty vec if no ticks elapsed or the AI interval hasn't
-    /// elapsed yet. The caller should apply each `AIAction` in order.
+    /// One AI pass, the AI player's tick for one sub-tick (`FUN_00485b40`):
+    /// phase 4 refreshes the records ([`Planner::new`], `FUN_00418500`),
+    /// phase 5 readies every module (slot `+0x10`, `FUN_004cc990`), and
+    /// phase 3 runs the next ready module after the one last run
+    /// (`FUN_004be980`), then the next, until one issues orders, none is
+    /// ready, or the day's [`ORDERS_PER_DAY`] are spent. The caller applies
+    /// the actions before the next pass, and calls [`AIState::begin_day`]
+    /// before a day's first.
     ///
     /// After applying `DispatchMission` actions, the caller must also call
     /// `state.mark_busy(character)` for each dispatched character member, and
     /// `state.mark_available(character)` when the corresponding
     /// `MissionResult` arrives.
+    ///
+    /// port: the original's fourteen modules (`FUN_004bea20`, added by
+    /// `FUN_00485a50` in the order `0xd`, 2, 1, 3, 6, 7, 4, 5, 8 to `0xc`,
+    /// `0xe`) are not yet identified, and their priorities (`+0x34`,
+    /// `FUN_004bede0`) are not ported; the port's heuristics stand in as
+    /// modules, the research strategy and planners first ([`Self::run_module`]).
+    /// Each finishes in one step, and orders past the day's budget are
+    /// dropped, where the original's step returns one order at a time.
     #[expect(
         clippy::too_many_arguments,
         reason = "Keep the existing explicit simulation inputs; grouping them changes the API."
     )]
-    pub fn advance(
+    pub fn pass(
         state: &mut AIState,
         world: &GameWorld,
         mfg_state: &ManufacturingState,
         mission_state: &MissionState,
         movement: &crate::movement::MovementState,
-        tick_events: &[TickEvent],
+        tick: u64,
         config: &GameConfig,
         research_state: &ResearchState,
         uprisings: &crate::uprising::UprisingState,
     ) -> Vec<AIAction> {
-        let Some(last_tick_event) = tick_events.last() else {
-            return Vec::new();
-        };
-
-        let current_tick = last_tick_event.tick;
-
-        if !state.should_evaluate(current_tick, config.ai.tick_interval) {
-            return Vec::new();
-        }
-
-        state.last_eval_tick = current_tick;
-
         let Some(faction) = state.faction else {
             return Vec::new();
         };
-
-        let mut actions = Vec::new();
+        let mut out = Vec::new();
+        if state.orders_today >= ORDERS_PER_DAY {
+            return out;
+        }
         let mut planner = Planner::new(
             world,
             mission_state,
             &state.busy_characters,
             matches!(faction, AiFaction::Alliance),
-            current_tick,
+            tick,
         );
+        let mut ready = [true; MODULES];
+        // Only a module that issues orders spends the budget, and it ends
+        // the pass, so the budget check above holds for the whole loop.
+        loop {
+            let next = state.module_cursor.map_or(0, |last| last + 1);
+            let Some(module) = (next..next + MODULES)
+                .map(|m| m % MODULES)
+                .find(|&m| ready[m])
+            else {
+                break;
+            };
+            ready[module] = false;
+            state.module_cursor = Some(module);
+            let mut actions = Vec::new();
+            let ctx = ModuleInputs {
+                world,
+                mfg_state,
+                mission_state,
+                movement,
+                tick,
+                config,
+                research_state,
+                uprisings,
+                faction,
+            };
+            Self::run_module(module, state, &mut planner, &ctx, true, &mut actions);
+            let room = (ORDERS_PER_DAY - state.orders_today) as usize;
+            actions.truncate(room);
+            state.orders_today += actions.len() as u32;
+            let issued = !actions.is_empty();
+            out.extend(actions);
+            if issued {
+                break;
+            }
+        }
+        out
+    }
 
-        // Run each heuristic module.
-        Self::evaluate_officers(&mut planner, world, faction, config, &mut actions);
-        Self::evaluate_espionage(&mut planner, world, faction, config, &mut actions);
-        Self::evaluate_rescue(&mut planner, world, faction, &mut actions);
-        Self::evaluate_reconnaissance(&mut planner, world, faction, config, &mut actions);
-        Self::evaluate_research(
-            state,
-            &mut planner,
+    /// One step of the port's module `module`. With `next_only`, the
+    /// research module runs one planner, as the mission module's step does
+    /// (`FUN_004d2490`); without, every planner.
+    fn run_module(
+        module: usize,
+        state: &mut AIState,
+        planner: &mut Planner<'_>,
+        ctx: &ModuleInputs<'_>,
+        next_only: bool,
+        actions: &mut Vec<AIAction>,
+    ) {
+        let ModuleInputs {
             world,
+            mfg_state,
             mission_state,
+            movement,
+            tick,
+            config,
             research_state,
             uprisings,
             faction,
-            &mut actions,
-        );
-        Self::evaluate_production(
-            world,
-            mfg_state,
-            research_state,
-            faction,
-            config,
-            &mut actions,
-        );
-        Self::evaluate_uprising_prevention(&mut planner, world, faction, &mut actions);
-        Self::evaluate_ds_escort(world, movement, faction, config, &mut actions);
-        Self::evaluate_fleet_deployment(
-            state,
-            world,
-            movement,
-            faction,
-            current_tick,
-            config,
-            &mut actions,
-        );
-        Self::evaluate_troop_deployment(world, movement, faction, config, &mut actions);
-
-        actions
+        } = *ctx;
+        match module {
+            0 => Self::evaluate_research(
+                state,
+                planner,
+                world,
+                mission_state,
+                research_state,
+                uprisings,
+                faction,
+                next_only,
+                actions,
+            ),
+            1 => Self::evaluate_officers(planner, world, uprisings, faction, config, actions),
+            2 => Self::evaluate_espionage(planner, world, faction, config, actions),
+            3 => Self::evaluate_rescue(planner, world, faction, actions),
+            4 => Self::evaluate_reconnaissance(planner, world, faction, config, actions),
+            5 => Self::evaluate_production(
+                world,
+                mfg_state,
+                research_state,
+                faction,
+                config,
+                actions,
+            ),
+            6 => Self::evaluate_uprising_prevention(planner, world, faction, actions),
+            7 => Self::evaluate_ds_escort(world, movement, faction, config, actions),
+            8 => Self::evaluate_fleet_deployment(
+                state, world, movement, faction, tick, config, actions,
+            ),
+            9 => Self::evaluate_troop_deployment(world, movement, faction, config, actions),
+            _ => unreachable!("the port has {MODULES} AI modules"),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -565,16 +667,34 @@ impl AISystem {
     /// - Incite: the enemy system where the enemy is most popular.
     /// - Diplomacy: each system below the popularity cap, least popular
     ///   first, while the planner finds a diplomat.
+    ///
+    /// Both take only a system their record admits
+    /// ([`crate::missions::record_admits_system`]): the planner rows of
+    /// `FUN_004e8290` count only neutral and own systems for Diplomacy, and
+    /// a refused target would end its mission at once and be ordered again
+    /// each pass.
     /// - Recruitment: the side's most popular system, while its recruit pool
     ///   holds anyone and the planner finds a recruiter.
     fn evaluate_officers(
         planner: &mut Planner<'_>,
         world: &GameWorld,
+        uprisings: &crate::uprising::UprisingState,
         faction: AiFaction,
         config: &GameConfig,
         actions: &mut Vec<AIAction>,
     ) {
-        if let Some(target) = Self::find_incite_target(world, faction) {
+        let admits = |kind: MissionKind, system: SystemKey| {
+            crate::missions::record_admits_system(
+                world,
+                uprisings,
+                kind,
+                faction.as_mission_faction(),
+                system,
+            )
+        };
+        if let Some(target) = Self::find_incite_target(world, faction)
+            .filter(|&target| admits(MissionKind::InciteUprising, target))
+        {
             Self::dispatch_planned(
                 planner,
                 MissionKind::InciteUprising,
@@ -589,7 +709,7 @@ impl AISystem {
             .systems
             .iter()
             .map(|(key, system)| (key, faction.system_popularity(system)))
-            .filter(|&(_, popularity)| popularity < cap)
+            .filter(|&(key, popularity)| popularity < cap && admits(MissionKind::Diplomacy, key))
             .collect();
         diplomacy_targets
             .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -953,8 +1073,8 @@ impl AISystem {
     /// and adds planners while there are fewer (`FUN_004d2580`). Last each
     /// planner runs one cycle (`FUN_004bced0`, [`AISystem::research_cycle`]).
     ///
-    /// port: a tree's cancellations and additions happen within one AI
-    /// evaluation; the original makes one per strategy pass, several a day.
+    /// port: a tree's cancellations and additions all happen within one AI
+    /// pass; the original makes one per strategy step.
     #[expect(
         clippy::too_many_arguments,
         reason = "The planners read the same state the AI evaluation does."
@@ -967,6 +1087,7 @@ impl AISystem {
         research_state: &ResearchState,
         uprisings: &crate::uprising::UprisingState,
         faction: AiFaction,
+        next_only: bool,
         actions: &mut Vec<AIAction>,
     ) {
         let is_alliance = matches!(faction, AiFaction::Alliance);
@@ -1080,7 +1201,22 @@ impl AISystem {
                 planner.hold(crate::missions::MissionMember::Character(c));
             }
         }
-        for at in 0..state.research_planners.len() {
+        let runs: Vec<usize> = if next_only {
+            // FUN_004d2730: the planner +0x4c names, else the first; then
+            // +0x4c takes the one after it.
+            let at = state
+                .research_planners
+                .iter()
+                .position(|p| Some(p.id) == state.research_next)
+                .or_else(|| (!state.research_planners.is_empty()).then_some(0));
+            state.research_next = at
+                .and_then(|at| state.research_planners.get(at + 1))
+                .map(|p| p.id);
+            at.into_iter().collect()
+        } else {
+            (0..state.research_planners.len()).collect()
+        };
+        for at in runs {
             Self::research_cycle(
                 &mut state.research_planners[at],
                 planner,
@@ -2909,7 +3045,7 @@ mod tests {
                 side: crate::dat::Faction::Empire,
             });
         let ordered = |world: &GameWorld| {
-            AISystem::advance(
+            evaluate(
                 &mut AIState::new(AiFaction::Empire),
                 world,
                 &ManufacturingState::new(),
@@ -3049,7 +3185,7 @@ mod tests {
         } else {
             AiFaction::Empire
         };
-        AISystem::advance(
+        evaluate(
             &mut AIState::new(faction),
             &world,
             &ManufacturingState::new(),
@@ -3105,31 +3241,52 @@ mod tests {
         (1..=n).map(|t| TickEvent { tick: t }).collect()
     }
 
+    /// Every module once and every research planner, with no order budget:
+    /// the heuristics as one evaluation on the last of `tick_events`.
+    #[expect(clippy::too_many_arguments, reason = "The inputs of a pass.")]
+    fn evaluate(
+        state: &mut AIState,
+        world: &GameWorld,
+        mfg_state: &ManufacturingState,
+        mission_state: &MissionState,
+        movement: &crate::movement::MovementState,
+        tick_events: &[TickEvent],
+        config: &GameConfig,
+        research_state: &ResearchState,
+        uprisings: &crate::uprising::UprisingState,
+    ) -> Vec<AIAction> {
+        let (Some(last), Some(faction)) = (tick_events.last(), state.faction) else {
+            return Vec::new();
+        };
+        let busy = state.busy_characters.clone();
+        let mut planner = Planner::new(
+            world,
+            mission_state,
+            &busy,
+            matches!(faction, AiFaction::Alliance),
+            last.tick,
+        );
+        let ctx = ModuleInputs {
+            world,
+            mfg_state,
+            mission_state,
+            movement,
+            tick: last.tick,
+            config,
+            research_state,
+            uprisings,
+            faction,
+        };
+        let mut actions = Vec::new();
+        for module in 0..MODULES {
+            AISystem::run_module(module, state, &mut planner, &ctx, false, &mut actions);
+        }
+        actions
+    }
+
     // -----------------------------------------------------------------------
     // AIState tests
     // -----------------------------------------------------------------------
-
-    #[test]
-    fn should_evaluate_at_tick_zero() {
-        let state = AIState::new(AiFaction::Empire);
-        assert!(state.should_evaluate(0, AI_TICK_INTERVAL));
-    }
-
-    #[test]
-    fn should_not_evaluate_before_interval() {
-        let mut state = AIState::new(AiFaction::Empire);
-        state.last_eval_tick = 0;
-        // 3 days elapsed — interval is 5
-        assert!(!state.should_evaluate(3, AI_TICK_INTERVAL));
-    }
-
-    #[test]
-    fn should_evaluate_after_interval() {
-        let mut state = AIState::new(AiFaction::Empire);
-        state.last_eval_tick = 0;
-        assert!(state.should_evaluate(5, AI_TICK_INTERVAL));
-        assert!(state.should_evaluate(10, AI_TICK_INTERVAL));
-    }
 
     #[test]
     fn busy_character_can_be_marked_and_cleared() {
@@ -3166,7 +3323,7 @@ mod tests {
     }
 
     fn advance_once(state: &mut AIState, world: &GameWorld) -> Vec<AIAction> {
-        AISystem::advance(
+        evaluate(
             state,
             world,
             &ManufacturingState::new(),
@@ -3233,6 +3390,50 @@ mod tests {
     }
 
     #[test]
+    fn a_diplomat_is_sent_only_where_the_diplomacy_record_admits_the_target() {
+        // MISSNSD Diplomacy (cols 15..17): own and third-side targets, no
+        // opponent's (FUN_00523450 rule 3, end 8); the planner rows of
+        // FUN_004e8290 count only neutral and own systems. The opponent's
+        // system is the least popular, yet the neutral one is the target.
+        let mut world = empty_world();
+        world.mission_records = vec![crate::world::MissionRecord {
+            dat_id: MissionKind::Diplomacy.record_id().unwrap(),
+            timer_min_days: 5,
+            timer_spread_days: 10,
+            repeats: true,
+            hidden: false,
+            detection_phases: true,
+            can_resign: true,
+            rules: crate::world::MissionTargetRules {
+                own_side_target: true,
+                other_side_target: true,
+                calm_target: true,
+                ..Default::default()
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0,
+                character_mask: 0x1_0000,
+            },
+        }];
+        let sector = add_sector(&mut world);
+        let rebel = add_system(&mut world, sector, 0.9, 0.1);
+        world.systems[rebel].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let neutral = add_system(&mut world, sector, 0.5, 0.3);
+        let _ = add_character(&mut world, false, false, 90);
+        let mut state = AIState::new(AiFaction::Empire);
+
+        let actions = advance_once(&mut state, &world);
+
+        let targets: Vec<_> = orders(&actions, MissionKind::Diplomacy)
+            .into_iter()
+            .map(|(_, target, _)| target)
+            .collect();
+        assert_eq!(targets, vec![neutral]);
+    }
+
+    #[test]
     fn low_diplomacy_minor_not_dispatched() {
         let mut world = empty_world();
         let sector = add_sector(&mut world);
@@ -3245,7 +3446,7 @@ mod tests {
         let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -3277,7 +3478,7 @@ mod tests {
         let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -3359,7 +3560,7 @@ mod tests {
         let mfg = ManufacturingState::new(); // empty queue
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -3444,7 +3645,7 @@ mod tests {
         let mfg = ManufacturingState::new(); // empty queue
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -3523,7 +3724,7 @@ mod tests {
         let mut research = crate::research::ResearchState::new();
         research.empire.ship = ship_level;
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut AIState::new(AiFaction::Empire),
             &world,
             &ManufacturingState::new(),
@@ -3605,7 +3806,7 @@ mod tests {
         });
 
         let mut state = AIState::new(AiFaction::Empire);
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &ManufacturingState::new(),
@@ -3656,7 +3857,7 @@ mod tests {
         let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -3713,7 +3914,7 @@ mod tests {
         world.systems[target_sys].fleets.push(alliance_fleet);
 
         let mut state = AIState::new(AiFaction::Empire);
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &ManufacturingState::new(),
@@ -3775,7 +3976,7 @@ mod tests {
         world.systems[strong_target].fleets.push(alliance_fleet);
 
         let mut state = AIState::new(AiFaction::Empire);
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &ManufacturingState::new(),
@@ -3826,7 +4027,7 @@ mod tests {
         world.systems[blockaded_sys].fleets.push(blockader);
 
         let mut state = AIState::new(AiFaction::Empire);
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &ManufacturingState::new(),
@@ -3878,7 +4079,7 @@ mod tests {
         world.systems[staging_sys].fleets.push(attacker);
 
         let mut state = AIState::new(AiFaction::Empire);
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &ManufacturingState::new(),
@@ -3928,7 +4129,7 @@ mod tests {
         world.systems[hq_sys].fleets.push(wave);
 
         let mut state = AIState::new(AiFaction::Alliance);
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &ManufacturingState::new(),
@@ -3979,7 +4180,7 @@ mod tests {
         let before = movement.get(fleet_key).unwrap().clone();
 
         let mut state = AIState::new(AiFaction::Empire);
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &ManufacturingState::new(),
@@ -4033,7 +4234,7 @@ mod tests {
         world.systems[staging_sys].fleets.push(escort);
 
         let mut state = AIState::new(AiFaction::Empire);
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &ManufacturingState::new(),
@@ -4182,7 +4383,7 @@ mod tests {
         let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -4271,7 +4472,7 @@ mod tests {
         let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -4340,7 +4541,7 @@ mod tests {
         let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -4422,7 +4623,7 @@ mod tests {
         let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
-        let actions = AISystem::advance(
+        let actions = evaluate(
             &mut state,
             &world,
             &mfg,
@@ -4453,64 +4654,6 @@ mod tests {
             covert_count <= MAX_COVERT_OPS_PER_EVAL,
             "expected at most {MAX_COVERT_OPS_PER_EVAL} covert ops, got {covert_count}",
         );
-    }
-
-    #[test]
-    fn interval_gates_repeated_evaluation() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let _ = add_system(&mut world, sector, 0.5, 0.5);
-
-        let mut state = AIState::new(AiFaction::Alliance);
-        let mfg = ManufacturingState::new();
-        let missions = MissionState::new();
-
-        // First evaluation at tick 7
-        let _first = AISystem::advance(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
-            &crate::movement::MovementState::new(),
-            &[TickEvent { tick: 7 }],
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        );
-        assert_eq!(state.last_eval_tick, 7);
-
-        // Tick 10 — only 3 days elapsed, should skip
-        let second = AISystem::advance(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
-            &crate::movement::MovementState::new(),
-            &[TickEvent { tick: 10 }],
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        );
-        assert!(
-            second.is_empty(),
-            "expected no actions before interval elapses"
-        );
-        assert_eq!(state.last_eval_tick, 7); // unchanged
-
-        // Tick 14 — 7 days elapsed, should evaluate again
-        let third = AISystem::advance(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
-            &crate::movement::MovementState::new(),
-            &[TickEvent { tick: 14 }],
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        );
-        assert_eq!(state.last_eval_tick, 14);
-        let _ = third; // just checking it ran
     }
 
     // -----------------------------------------------------------------------
@@ -5061,6 +5204,7 @@ mod tests {
         AISystem::evaluate_officers(
             &mut planner,
             &world,
+            &crate::uprising::UprisingState::default(),
             AiFaction::Empire,
             &GameConfig::default(),
             &mut actions,
@@ -5097,6 +5241,7 @@ mod tests {
             AISystem::evaluate_officers(
                 &mut planner,
                 world,
+                &crate::uprising::UprisingState::default(),
                 AiFaction::Empire,
                 &GameConfig::default(),
                 &mut actions,
@@ -5470,6 +5615,7 @@ mod tests {
             research,
             &crate::uprising::UprisingState::default(),
             AiFaction::Alliance,
+            false,
             &mut actions,
         );
         actions
@@ -6165,6 +6311,173 @@ mod tests {
             orders(&actions, MissionKind::ShipDesignResearch),
             vec![(vec![ship], shipyard, None)]
         );
+    }
+
+    /// An Alliance shipyard site with a designer away from it, and
+    /// `fleets` Alliance fleets there facing an Empire system: the research
+    /// module (0) orders a Move, the fleet module (8) attacks.
+    fn cadence_world(fleets: usize) -> (GameWorld, MissionMember) {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let target = add_system(&mut world, sector, 0.15, 0.6);
+        world.systems[target].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let class_key = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        for _ in 0..fleets {
+            let _ = world.fleets.insert(Fleet {
+                location: shipyard,
+                capital_ships: ShipInstance::make(class_key, 100, true, 1),
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: true,
+                has_death_star: false,
+            });
+        }
+        let ship = designer(&mut world, TechType::Ship, 50);
+        (world, ship)
+    }
+
+    fn cadence_pass(state: &mut AIState, world: &GameWorld) -> Vec<AIAction> {
+        AISystem::pass(
+            state,
+            world,
+            &ManufacturingState::new(),
+            &MissionState::new(),
+            &crate::movement::MovementState::new(),
+            7,
+            &GameConfig::default(),
+            &ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
+        )
+    }
+
+    fn kinds(actions: &[AIAction]) -> Vec<&'static str> {
+        actions
+            .iter()
+            .map(|a| match a {
+                AIAction::DispatchMission {
+                    kind: MissionKind::Move,
+                    ..
+                } => "move",
+                AIAction::MoveFleet { .. } => "fleet",
+                _ => "other",
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_pass_ends_at_the_first_module_that_orders_and_the_next_goes_on_after_it() {
+        // FUN_00485b40 phase 3: a module that completes with an order ends
+        // the tick (phase 4, return 1); FUN_004be980 then takes the next
+        // ready module after the one last run (+0x10), wrapping.
+        let (world, ship) = cadence_world(1);
+        let mut state = AIState::new(AiFaction::Alliance);
+
+        assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["move"]);
+        assert_eq!(state.module_cursor, Some(0));
+        // The caller applies the Move: the designer is busy.
+        state.mark_busy(ship.character().unwrap());
+        assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["fleet"]);
+        assert_eq!(state.module_cursor, Some(8));
+        // From module 9 round to 8 again: the rest order nothing.
+        assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["fleet"]);
+        assert_eq!(state.module_cursor, Some(8));
+        assert_eq!(state.orders_today, 3);
+    }
+
+    #[test]
+    fn a_pass_starts_after_the_module_last_run_and_wraps_round_to_it() {
+        // FUN_004be980 steps +0x10 to the next module before it looks for a
+        // ready one, and goes round the list back to where it began.
+        // Module 0 orders the Move, 1 (officers) an Incite with the free
+        // designer, 8 the attack.
+        let (world, _) = cadence_world(1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module_cursor = Some(1);
+        assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["fleet"]);
+        state.module_cursor = Some(5);
+        assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["fleet"]);
+
+        let (world, _) = cadence_world(0);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module_cursor = Some(1);
+        assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["move"]);
+        assert_eq!(state.module_cursor, Some(0));
+    }
+
+    #[test]
+    fn the_day_s_tenth_order_ends_the_ai_s_orders_until_the_next_day() {
+        // FUN_00485a50 sets the budget +0x428 to 10; phase 3 runs no module
+        // once the count +0x420 reaches it, and FUN_00485de0 clears the
+        // count at the day boundary.
+        let (world, ship) = cadence_world(2);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.mark_busy(ship.character().unwrap());
+        state.module_cursor = Some(7);
+        state.orders_today = ORDERS_PER_DAY - 1;
+
+        assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["fleet"]);
+        assert_eq!(state.orders_today, ORDERS_PER_DAY);
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.module_cursor, Some(8));
+
+        state.begin_day();
+        assert_eq!(state.orders_today, 0);
+        assert_eq!(
+            kinds(&cadence_pass(&mut state, &world)),
+            vec!["fleet", "fleet"]
+        );
+    }
+
+    #[test]
+    fn a_research_step_runs_one_planner_and_the_next_step_the_one_after() {
+        // FUN_004d2490 state 5 (FUN_004d2730) takes the planner +0x4c names,
+        // else the first, and stores the one after it; state 6 runs it.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let first = designer(&mut world, TechType::Ship, 60);
+        let second = designer(&mut world, TechType::Ship, 40);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let step = |state: &mut AIState| {
+            let busy = state.busy_characters.clone();
+            let missions = MissionState::new();
+            let mut planner = Planner::new(&world, &missions, &busy, true, 7);
+            let mut actions = Vec::new();
+            AISystem::evaluate_research(
+                state,
+                &mut planner,
+                &world,
+                &missions,
+                &ResearchState::new(),
+                &crate::uprising::UprisingState::default(),
+                AiFaction::Alliance,
+                true,
+                &mut actions,
+            );
+            orders(&actions, MissionKind::Move)
+        };
+
+        assert_eq!(step(&mut state), vec![(vec![first], shipyard, None)]);
+        assert_eq!(state.research_next, Some(state.research_planners[1].id));
+        assert_eq!(step(&mut state), vec![(vec![second], shipyard, None)]);
+        assert_eq!(state.research_next, None);
+        assert_eq!(step(&mut state), vec![(vec![first], shipyard, None)]);
+    }
+
+    #[test]
+    fn a_day_has_as_many_ai_passes_as_the_speed_s_rate() {
+        // FUN_0051dea0: sub-ticks a day = side +0xc4, which the speed order
+        // 0x280 sets to the rate (FUN_00628ff0): 600, 60, 12, 4.
+        use crate::tick::GameSpeed;
+        assert_eq!(passes_per_day(GameSpeed::VerySlow), 600);
+        assert_eq!(passes_per_day(GameSpeed::Slow), 60);
+        assert_eq!(passes_per_day(GameSpeed::Medium), 12);
+        assert_eq!(passes_per_day(GameSpeed::Fast), 4);
+        // port: play-test days while Paused.
+        assert_eq!(passes_per_day(GameSpeed::Paused), 4);
     }
 
     #[test]

@@ -54,7 +54,6 @@ IMPROVEMENT_THRESHOLD = 0.01
 # Default tunable parameters with (min, max, step) bounds
 DEFAULT_CONFIG = {
     "ai": {
-        "tick_interval": {"value": 7, "min": 3, "max": 21, "step": 2},
         "diplomacy_skill_threshold": {"value": 60, "min": 30, "max": 90, "step": 10},
         "espionage_skill_threshold": {"value": 50, "min": 30, "max": 80, "step": 10},
         "max_construction_yards": {"value": 5, "min": 2, "max": 10, "step": 1},

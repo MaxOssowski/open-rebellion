@@ -1705,13 +1705,13 @@
     },
     "ai": {
       "original_tick_interval_days": 1,
-      "current_tick_interval_days": 7,
+      "current_tick_interval_days": 1,
       "original_trigger_event_id": 496,
       "strategic_bucket_count": 7,
       "pipeline_function_count": 6,
       "validator_subfunction_count": 18,
       "original_system_count": 200,
-      "description": "Original AI evaluates every game-day (event 0x1f0); current implementation is throttled to AiConfig::default() tick_interval = 7."
+      "description": "The original AI player ticks once a sub-tick (FUN_00485b40, 600/60/12/4 a day by speed) with 10 orders a day; the port makes the same passes (ai::passes_per_day). 0x1f0 is the Mission Report, not an AI trigger (ghidra/notes/ai-mission-planning.md, Cadence)."
     },
     "movement": {
       "current_distance_scale": 2,

@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 37;
+pub const SAVE_VERSION: u32 = 38;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1013,10 +1013,10 @@ mod tests {
         let mut state = minimal_save_state();
         state.sim_rng = Xoshiro256PlusPlus::seed_from_u64(0x5eed);
         state.ai2 = Some(AIState::new(AiFaction::Alliance));
-        state.ai2.as_mut().unwrap().last_eval_tick = 77;
+        state.ai2.as_mut().unwrap().orders_today = 7;
         let system = state.world.systems.keys().next().unwrap();
         state.combat_cooldowns.insert(system, 61);
-        state.game_config.ai.tick_interval = 13;
+        state.game_config.ai.max_attack_fronts = 13;
         state.campaign_config.galaxy_size = rebellion_core::dat::GalaxySize::Huge;
         state.campaign_config.difficulty = rebellion_core::world::SeedDifficulty::Hard;
         state.campaign_config.victory_conditions =
@@ -1084,9 +1084,9 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(loaded_rolls, expected_rolls);
-        assert_eq!(loaded.ai2.as_ref().unwrap().last_eval_tick, 77);
+        assert_eq!(loaded.ai2.as_ref().unwrap().orders_today, 7);
         assert_eq!(loaded.combat_cooldowns.get(&system), Some(&61));
-        assert_eq!(loaded.game_config.ai.tick_interval, 13);
+        assert_eq!(loaded.game_config.ai.max_attack_fronts, 13);
         assert_eq!(loaded.campaign_config, state.campaign_config);
         assert!(loaded.repair.is_repairing(fleet));
         assert_eq!(loaded.troop_transport.cargo(fleet), &[troop]);
@@ -1145,7 +1145,7 @@ mod tests {
         let mut rng_changed = original.clone();
         rng_changed.sim_rng.next_u64();
         let mut config_changed = original.clone();
-        config_changed.game_config.ai.tick_interval += 1;
+        config_changed.game_config.ai.max_attack_fronts += 1;
         let mut campaign_changed = original.clone();
         campaign_changed.campaign_config.victory_conditions =
             rebellion_core::world::VictoryConditions::HeadquartersOnly;
@@ -1650,6 +1650,27 @@ mod tests {
 
         assert_eq!(loaded.ai.research_planners, state.ai.research_planners);
         assert_eq!(loaded.ai.next_planner_id, 4);
+    }
+
+    #[test]
+    fn a_round_trip_keeps_the_ai_s_day_and_module_rounds() {
+        // v38: the day's order count (+0x420), the module last run
+        // (+0x84 -> +0x10) and the next research planner (+0x4c).
+        use rebellion_core::ai::{AIState, AiFaction};
+        let saves_dir = tmp_dir("v38_ai_cadence_round_trip");
+        let mut state = minimal_save_state();
+        let mut ai = AIState::new(AiFaction::Empire);
+        ai.orders_today = 6;
+        ai.module_cursor = Some(8);
+        ai.research_next = Some(2);
+        state.ai = ai;
+        save_slot(&saves_dir, 0, "V38 Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(loaded.ai.orders_today, 6);
+        assert_eq!(loaded.ai.module_cursor, Some(8));
+        assert_eq!(loaded.ai.research_next, Some(2));
     }
 
     #[test]

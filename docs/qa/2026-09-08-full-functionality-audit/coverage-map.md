@@ -58,7 +58,7 @@ with a fresh delay, and dies when its target's state record changes
 | event `0x306` | `FUN_004fba10` | route cancel | `events.rs:98` names `0x306` `EVT_CHARACTER_KILLED` | id collision |
 | event `0x321` | deployment key (`build-delivery.md`) | build destination change | none | missing (F-030) |
 | events `0x300..0x31d` (others) | `FUN_0053f9c0` senders in `timer-scheduler.md` | fire slots not decompiled | not mapped | open |
-| notification `0x1f0` | `FUN_00525040` -> UI `FUN_0043c9f0`, formatter `FUN_004927c0` | mission message text | `ai.rs:194` `should_evaluate` with `ai.tick_interval` (7); `ai-parity-tracker.md:92` says this throttles a "0x1f0 daily AI tick" | port-invented rationale: no original AI day tick is recovered, and the AI trigger is unrecovered |
+| notification `0x1f0` | `FUN_00525040` -> UI `FUN_0043c9f0`, formatter `FUN_004927c0` | mission message text | `ai.rs` `AISystem::pass`, `passes_per_day` | resolved 2026-10-14: the AI ticks once a sub-tick from frame-loop phase 8 (`FUN_00485b40`, `FUN_0041dff0`), not on `0x1f0` |
 | message 9 | `FUN_0041e270` -> `FUN_0051ddf0` -> `FUN_00516ef0`, `FUN_00517270` | per-location fleet passes | `simulation.rs` combat after movement arrivals | open (sender and meaning unread) |
 
 ## Port tick entry points

@@ -34,7 +34,7 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | 2 | **Manufacturing** | `manufacturing.rs`, `production_cycle.rs` | `advance_yards(production, world, manufacturing, blocked, ticks)` | A queue counts build points, one per yard cycle; a cycle start takes one refined material. Yards of a system in uprising or blockaded do not run |
 | 3 | **Missions** | `missions.rs` | `advance(state, world, ticks, rolls)` | 9 kinds, MSTB tables, `target_character` for assassination/abduction/rescue |
 | 4 | **Events** | `events.rs` | `advance(state, world, ticks, rolls)` | `EventFired` chaining within same call |
-| 5 | **AI** | `ai.rs` | `advance(state, world, mfg, missions, movement, ticks)` | Per-fleet targeting, deconfliction, battle penalty. Re-evaluates every 7 ticks. |
+| 5 | **AI** | `ai.rs` | `pass(state, world, mfg, missions, movement, tick, ..)` | Per-fleet targeting, deconfliction, battle penalty. `passes_per_day(speed)` passes a day, each applied before the next, one side then the other; 10 orders a day. |
 | 6 | **Movement** | `movement.rs` | `advance(state, ticks) -> Vec<ArrivalEvent>` | Caller must update `fleet.location` + `system.fleets` |
 | 7 | **Fog** | `fog.rs` | `advance(state, world, movement)` | Fleet presence + sensor radius (detection * 15.0); monotonic |
 | 8 | **Combat** | `combat.rs` | `resolve_space()` / `resolve_ground()` | Phase gate: `ACTIVE && !PHASES_ENABLED` (inverted) |

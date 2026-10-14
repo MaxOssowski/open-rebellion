@@ -2485,33 +2485,74 @@ Some(RailAudience::side(*faction_is_alliance)),
                 }
             }
 
-            // ── AI ──────────────────────────────────────────────────────────
-            let ai_actions = AISystem::advance(
-                &mut ai_state,
-                &world,
-                &mfg_state,
-                &mission_state,
-                &movement_state,
-                &tick_events,
-                &game_config,
-                &research_state,
-                &uprising_state,
-            );
-            apply_ai_actions(
-                &ai_actions,
-                &mut ai_state,
-                &mut mission_state,
-                &mut mfg_state,
-                &mut movement_state,
-                &mut troop_transport_state,
-                &mut world,
-                &mut msg_log,
-                tick_events.last().map_or(0, |e| e.tick),
-                #[cfg(not(target_arch = "wasm32"))]
-                &mut audio_engine,
-                #[cfg(not(target_arch = "wasm32"))]
-                &audio_vol,
-            );
+            // ── AI: each day, as many passes as the speed has sub-ticks, one
+            // side then the other (FUN_0041cf20 -> FUN_004361a0); each
+            // pass's orders apply before the next, and a new day clears each
+            // side's order count (FUN_00485de0).
+            let ai_passes = rebellion_core::ai::passes_per_day(clock.speed);
+            for event in &tick_events {
+                ai_state.begin_day();
+                if let Some(ref mut second_ai) = secondary_ai_state {
+                    second_ai.begin_day();
+                }
+                for _ in 0..ai_passes {
+                    let ai_actions = AISystem::pass(
+                        &mut ai_state,
+                        &world,
+                        &mfg_state,
+                        &mission_state,
+                        &movement_state,
+                        event.tick,
+                        &game_config,
+                        &research_state,
+                        &uprising_state,
+                    );
+                    apply_ai_actions(
+                        &ai_actions,
+                        &mut ai_state,
+                        &mut mission_state,
+                        &mut mfg_state,
+                        &mut movement_state,
+                        &mut troop_transport_state,
+                        &mut world,
+                        &mut msg_log,
+                        event.tick,
+                        #[cfg(not(target_arch = "wasm32"))]
+                        &mut audio_engine,
+                        #[cfg(not(target_arch = "wasm32"))]
+                        &audio_vol,
+                    );
+                    // ── Dual AI (second faction)
+                    if let Some(ref mut second_ai) = secondary_ai_state {
+                        let second_actions = AISystem::pass(
+                            second_ai,
+                            &world,
+                            &mfg_state,
+                            &mission_state,
+                            &movement_state,
+                            event.tick,
+                            &game_config,
+                            &research_state,
+                            &uprising_state,
+                        );
+                        apply_ai_actions(
+                            &second_actions,
+                            second_ai,
+                            &mut mission_state,
+                            &mut mfg_state,
+                            &mut movement_state,
+                            &mut troop_transport_state,
+                            &mut world,
+                            &mut msg_log,
+                            event.tick,
+                            #[cfg(not(target_arch = "wasm32"))]
+                            &mut audio_engine,
+                            #[cfg(not(target_arch = "wasm32"))]
+                            &audio_vol,
+                        );
+                    }
+                }
+            }
 
             // ── The player's agent (FUN_00439a10): once a day, its running
             // modules issue Destination and build orders. Not in dual-AI
@@ -2529,36 +2570,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                     }
                     rebellion_core::agent_automation::apply_orders(&orders, &mut mfg_state);
                 }
-            }
-
-            // ── Dual AI (second faction) ────────────────────────────────────
-            if let Some(ref mut second_ai) = secondary_ai_state {
-                let second_actions = AISystem::advance(
-                    second_ai,
-                    &world,
-                    &mfg_state,
-                    &mission_state,
-                    &movement_state,
-                    &tick_events,
-                    &game_config,
-                    &research_state,
-                    &uprising_state,
-                );
-                apply_ai_actions(
-                    &second_actions,
-                    second_ai,
-                    &mut mission_state,
-                    &mut mfg_state,
-                    &mut movement_state,
-                    &mut troop_transport_state,
-                    &mut world,
-                    &mut msg_log,
-                    tick_events.last().map_or(0, |e| e.tick),
-                    #[cfg(not(target_arch = "wasm32"))]
-                    &mut audio_engine,
-                    #[cfg(not(target_arch = "wasm32"))]
-                    &audio_vol,
-                );
             }
 
             // ── Blockade ─────────────────────────────────────────────────────

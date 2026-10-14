@@ -1,0 +1,139 @@
+{
+ "fast": {
+  "orders": 144,
+  "max_orders_per_side_per_day": 10,
+  "days_with_orders": 65,
+  "orders_by_kind": {
+   "DispatchMission:Recruitment": 40,
+   "EnqueueProduction": 32,
+   "DispatchMission:Sabotage": 30,
+   "DispatchMission:Diplomacy": 11,
+   "DispatchMission:InciteUprising": 7,
+   "DispatchMission:Assassination": 6,
+   "DispatchMission:Espionage": 6,
+   "DispatchMission:FacilityDesignResearch": 4,
+   "MoveFleet": 3,
+   "DispatchMission:ShipDesignResearch": 2,
+   "DispatchMission:Abduction": 1,
+   "DispatchMission:Move": 1,
+   "AbortMission": 1
+  },
+  "missions_resolved": {
+   "Diplomacy:Failure": 135,
+   "Diplomacy:Success": 93,
+   "FacilityDesignResearch:Success": 83,
+   "ShipDesignResearch:Success": 43,
+   "Recruitment:Success": 30,
+   "FacilityDesignResearch:Failure": 21,
+   "ShipDesignResearch:Failure": 15,
+   "Recruitment:Failure": 10,
+   "Espionage:Failure": 5,
+   "Assassination:Failure": 4,
+   "Espionage:Success": 2,
+   "Abduction:Success": 1
+  }
+ },
+ "medium": {
+  "orders": 139,
+  "max_orders_per_side_per_day": 10,
+  "days_with_orders": 60,
+  "orders_by_kind": {
+   "DispatchMission:Recruitment": 40,
+   "EnqueueProduction": 32,
+   "DispatchMission:Diplomacy": 18,
+   "DispatchMission:Sabotage": 13,
+   "DispatchMission:Espionage": 13,
+   "DispatchMission:InciteUprising": 7,
+   "DispatchMission:Assassination": 6,
+   "MoveFleet": 3,
+   "DispatchMission:FacilityDesignResearch": 3,
+   "DispatchMission:ShipDesignResearch": 2,
+   "DispatchMission:Abduction": 1,
+   "DispatchMission:Move": 1
+  },
+  "missions_resolved": {
+   "Diplomacy:Failure": 128,
+   "Diplomacy:Success": 125,
+   "FacilityDesignResearch:Success": 73,
+   "ShipDesignResearch:Success": 48,
+   "Recruitment:Success": 30,
+   "ShipDesignResearch:Failure": 18,
+   "FacilityDesignResearch:Failure": 17,
+   "Recruitment:Failure": 10,
+   "Espionage:Success": 6,
+   "Espionage:Failure": 4,
+   "Assassination:Failure": 3,
+   "Abduction:Success": 1
+  }
+ },
+ "slow": {
+  "orders": 133,
+  "max_orders_per_side_per_day": 10,
+  "days_with_orders": 60,
+  "orders_by_kind": {
+   "DispatchMission:Recruitment": 44,
+   "EnqueueProduction": 32,
+   "DispatchMission:Diplomacy": 11,
+   "DispatchMission:Sabotage": 11,
+   "DispatchMission:InciteUprising": 9,
+   "DispatchMission:Espionage": 7,
+   "DispatchMission:Assassination": 6,
+   "DispatchMission:FacilityDesignResearch": 4,
+   "MoveFleet": 3,
+   "DispatchMission:ShipDesignResearch": 3,
+   "DispatchMission:Abduction": 1,
+   "DispatchMission:Move": 1,
+   "AbortMission": 1
+  },
+  "missions_resolved": {
+   "Diplomacy:Failure": 143,
+   "Diplomacy:Success": 94,
+   "FacilityDesignResearch:Success": 81,
+   "ShipDesignResearch:Success": 48,
+   "Recruitment:Success": 30,
+   "ShipDesignResearch:Failure": 23,
+   "FacilityDesignResearch:Failure": 20,
+   "Recruitment:Failure": 14,
+   "Espionage:Failure": 4,
+   "Espionage:Success": 3,
+   "Assassination:Failure": 3,
+   "Sabotage:Success": 1,
+   "Abduction:Success": 1
+  }
+ },
+ "very-slow": {
+  "orders": 133,
+  "max_orders_per_side_per_day": 10,
+  "days_with_orders": 60,
+  "orders_by_kind": {
+   "DispatchMission:Recruitment": 44,
+   "EnqueueProduction": 32,
+   "DispatchMission:Diplomacy": 11,
+   "DispatchMission:Sabotage": 11,
+   "DispatchMission:InciteUprising": 9,
+   "DispatchMission:Espionage": 7,
+   "DispatchMission:Assassination": 6,
+   "DispatchMission:FacilityDesignResearch": 4,
+   "MoveFleet": 3,
+   "DispatchMission:ShipDesignResearch": 3,
+   "DispatchMission:Abduction": 1,
+   "DispatchMission:Move": 1,
+   "AbortMission": 1
+  },
+  "missions_resolved": {
+   "Diplomacy:Failure": 143,
+   "Diplomacy:Success": 94,
+   "FacilityDesignResearch:Success": 81,
+   "ShipDesignResearch:Success": 48,
+   "Recruitment:Success": 30,
+   "ShipDesignResearch:Failure": 23,
+   "FacilityDesignResearch:Failure": 20,
+   "Recruitment:Failure": 14,
+   "Espionage:Failure": 4,
+   "Espionage:Success": 3,
+   "Assassination:Failure": 3,
+   "Sabotage:Success": 1,
+   "Abduction:Success": 1
+  }
+ }
+}

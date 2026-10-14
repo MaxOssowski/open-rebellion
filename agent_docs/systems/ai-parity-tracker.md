@@ -91,7 +91,7 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | Property | Original (Decoded) | Ours | Status | Decision |
 |---|---|---|---|---|
 | Map visibility | Omniscient (no fog param in any AI fn) | Omniscient (no FogState param) | FAITHFUL | — |
-| Evaluation frequency | **Not recovered.** The original has no daily AI tick; it is driven by notifications and timers (`ghidra/notes/timer-scheduler.md`, audit F-036). The earlier "every game-day via 0x1f0" reading is refuted. | Every 7 ticks (`AI_TICK_INTERVAL`) | INVENTED | Config flag `ai.tick_interval` exists. |
+| Evaluation frequency | The AI player ticks once a sub-tick (`FUN_00485b40` from frame-loop phase 8, `FUN_0041dff0`): 600/60/12/4 passes a day by speed, 10 orders a day (`+0x428`, `FUN_00485a50`), cleared at the day boundary (`FUN_00485de0`). `0x1f0` is the Mission Report, not a trigger (`ghidra/notes/ai-mission-planning.md`, "Cadence"). | `ai::passes_per_day` passes of `AISystem::pass` a day, 10 orders a day | FAITHFUL (cadence); module scheduler partial | Speed-dependent, as the original. |
 | Target selection scope | **Binary capacity check** (FUN_0052e970: fits budget?) | Per-fleet scoring (4 weighted factors) | AUGMENTED | **Our model is superior.** Original has no scoring — just checks if entity fits deployment budget. Keep our 4-factor model. |
 | Deployment passes | Two-pass with faction-specific budgets | Two-pass with aggression scaling and faction-specific budgets | AUGMENTED | Rust now mirrors the original Alliance/Empire budget split while keeping the stronger aggression model. |
 | Garrison scoring inputs | Ships + troops + facilities via vtable dispatch | Ships + troops + facilities (simplified) | DONE | — |
@@ -122,7 +122,7 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | Per-fleet targeting | Per-system iteration | Per-fleet scoring with deconfliction | Prevents fleet piling | `ai.per_fleet_targeting` |
 | Battle repeat penalty | Not in original | Freshness curve prevents stagnation | Better gameplay | `augmentation.battle_repeat_penalty` |
 | Target deconfliction | Not in original | Pile count tracking | Territorial spread | `augmentation.target_deconfliction` |
-| Polled AI evaluation | Not recovered; no daily AI tick exists (`ghidra/notes/timer-scheduler.md`) | Every 7 ticks | Port design; the original cadence is open (audit F-036) | `ai.tick_interval` |
+| Module scheduler | Fourteen modules (`FUN_004bea20`), highest priority `+0x34` first, else round robin (`FUN_004be980`); one order per step | The port's heuristics as ten modules in round robin, each one step | Port design until the modules are identified (audit F-036) | — |
 | Role-based character AI | Family-byte type routing | Skill-based dispatch (diplomacy/espionage/combat) | More strategic | Always on |
 | Faction-asymmetric doctrine | Different evaluator objects (budget only) | Empire→HQ strike, Alliance→guerrilla | Clearer doctrinal difference | `ai.faction_asymmetry` |
 | Composite mission inputs | wiki: sub_55ae50 etc. (popularity + skill) | Same formulas ported | Faithful to original | N/A (parity) |

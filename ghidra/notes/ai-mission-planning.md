@@ -523,9 +523,22 @@ flips. The port takes the first of equal entries.
   sides' `+0xc4` (`FUN_0051dea0`), which the speed order `0x280` sets
   (`FUN_00628ff0`, its slot `+0x20`) to the speed's rate: 600 Very Slow, 60
   Slow, 12 Medium, 4 Fast. The AI thus makes 4 to 600 strategy passes and
-  planner cycles a day, capped at 10 orders. The port evaluates once every
-  7 days (`GameConfig.ai.tick_interval`) and then runs every planner's
-  cycle; this holds for every AI module, not only research.
+  planner cycles a day, capped at 10 orders. The frame loop that calls the
+  tick is `FUN_0041dff0`, one phase a call, 0 to `0xd` and round again:
+  phase 2 (`FUN_0041e300`) holds until the scheduler's sub-tick count
+  (`+0xc`, `FUN_0041e1b0`) moves past the one stored at `+0x10`, phase 8
+  (`FUN_0041cf20` -> `FUN_004361a0`) ticks the two players in turn until
+  both return 1, and phase `0xd` (`FUN_0041e500`) at a day boundary
+  (scheduler `+0x24`) calls `FUN_0041d050` -> `FUN_00436530`, which clears
+  the order count. So the loop turns once a sub-tick.
+  Ported 2026-10-14 (stage 1, save v38): `ai::passes_per_day` gives the
+  speed's rate, and the simulation and the app run that many
+  `AISystem::pass` a day, one side then the other, applying each pass's
+  orders before the next (`AIState::begin_day` clears `orders_today`).
+  The port's heuristics stand in for the fourteen modules in a round robin
+  (`module_cursor`), the research strategy and planners first, one planner
+  a step (`research_next`); module identities, priorities (`+0x34`,
+  `FUN_004bede0`) and one-order steps are open.
 - *Yard marks.* As above: every cycle of the ship, troop and facility
   production modules claims one more system, so with several cycles a day
   every own yard system is marked almost at once.

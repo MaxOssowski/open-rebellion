@@ -24,9 +24,6 @@ pub struct GameConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AiConfig {
-    /// Game-days between AI re-evaluations. **Augmentation** (original unknown).
-    pub tick_interval: u64,
-
     /// Maximum popularity at which AI still sends diplomacy missions. **Augmentation.**
     pub diplomacy_target_popularity_cap: f32,
 
@@ -88,7 +85,6 @@ pub struct AiConfig {
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
-            tick_interval: 7,
             diplomacy_target_popularity_cap: 0.8,
             max_covert_ops_per_eval: 3,
             max_construction_yards: 5,

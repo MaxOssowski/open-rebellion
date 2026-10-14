@@ -61,6 +61,11 @@ struct Args {
     #[arg(long)]
     summary: bool,
 
+    /// Game speed, which sets the AI's passes a day (`ai::passes_per_day`):
+    /// "very-slow", "slow", "medium" or "fast"
+    #[arg(long, default_value = "fast")]
+    speed: String,
+
     /// AI faction: "empire" or "alliance" (default: empire)
     #[arg(long, default_value = "empire")]
     ai_faction: String,
@@ -374,8 +379,14 @@ fn main() -> anyhow::Result<()> {
     // Register story events
     rebellion_core::story_events::define_story_events(&mut states.events, &world);
 
-    // Set clock to maximum speed for headless
-    states.clock.set_speed(GameSpeed::Fast);
+    // The speed only sets the AI's passes a day; headless days run at once.
+    states.clock.set_speed(match args.speed.as_str() {
+        "very-slow" => GameSpeed::VerySlow,
+        "slow" => GameSpeed::Slow,
+        "medium" => GameSpeed::Medium,
+        "fast" => GameSpeed::Fast,
+        other => anyhow::bail!("unknown --speed {other}: very-slow, slow, medium or fast"),
+    });
 
     let mut logger = EventLogger::new();
     let mut victory_reached = false;

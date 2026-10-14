@@ -589,53 +589,64 @@ pub fn run_simulation_tick(
     );
 
     // ── 7. AI ────────────────────────────────────────────────────────────
-    let ai_actions = AISystem::advance(
-        &mut states.ai,
-        world,
-        &states.manufacturing,
-        &states.missions,
-        &states.movement,
-        tick_events,
-        config,
-        &states.research,
-        &states.uprising,
-    );
-    integrator.apply_ai_actions(
-        &ai_actions,
-        &mut states.ai,
-        &mut states.missions,
-        &mut states.manufacturing,
-        &mut states.movement,
-        &mut states.troop_transport,
-        world,
-        current_tick,
-        false,
-    );
-
-    // ── 7b. AI (second faction, dual-AI mode) ───────────────────────────
-    if let Some(ref mut ai2) = states.ai2 {
-        let secondary_actions = AISystem::advance(
-            ai2,
-            world,
-            &states.manufacturing,
-            &states.missions,
-            &states.movement,
-            tick_events,
-            config,
-            &states.research,
-            &states.uprising,
-        );
-        integrator.apply_ai_actions(
-            &secondary_actions,
-            ai2,
-            &mut states.missions,
-            &mut states.manufacturing,
-            &mut states.movement,
-            &mut states.troop_transport,
-            world,
-            current_tick,
-            true,
-        );
+    // Each day, as many passes as the speed has sub-ticks, one side then the
+    // other (FUN_0041cf20 -> FUN_004361a0); each pass's orders apply before
+    // the next. A new day clears each side's order count (FUN_00485de0).
+    let passes = rebellion_core::ai::passes_per_day(states.clock.speed);
+    for event in tick_events {
+        states.ai.begin_day();
+        if let Some(ref mut ai2) = states.ai2 {
+            ai2.begin_day();
+        }
+        for _ in 0..passes {
+            let ai_actions = AISystem::pass(
+                &mut states.ai,
+                world,
+                &states.manufacturing,
+                &states.missions,
+                &states.movement,
+                event.tick,
+                config,
+                &states.research,
+                &states.uprising,
+            );
+            integrator.apply_ai_actions(
+                &ai_actions,
+                &mut states.ai,
+                &mut states.missions,
+                &mut states.manufacturing,
+                &mut states.movement,
+                &mut states.troop_transport,
+                world,
+                event.tick,
+                false,
+            );
+            // ── 7b. AI (second faction, dual-AI mode) ────────────────────
+            if let Some(ref mut ai2) = states.ai2 {
+                let secondary_actions = AISystem::pass(
+                    ai2,
+                    world,
+                    &states.manufacturing,
+                    &states.missions,
+                    &states.movement,
+                    event.tick,
+                    config,
+                    &states.research,
+                    &states.uprising,
+                );
+                integrator.apply_ai_actions(
+                    &secondary_actions,
+                    ai2,
+                    &mut states.missions,
+                    &mut states.manufacturing,
+                    &mut states.movement,
+                    &mut states.troop_transport,
+                    world,
+                    event.tick,
+                    true,
+                );
+            }
+        }
     }
 
     // ── 8. Blockade ──────────────────────────────────────────────────────

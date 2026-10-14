@@ -1932,6 +1932,41 @@ fn target_view(
     }
 }
 
+/// Whether `kind`'s record admits `system` as a system target of `faction`
+/// by the checks that read only the target (`FUN_00523450` rules 2, 3, 4
+/// and 7; `FUN_005868c0`, cols 18 and 19). A kind with no record admits any.
+pub(crate) fn record_admits_system(
+    world: &GameWorld,
+    uprisings: &crate::uprising::UprisingState,
+    kind: MissionKind,
+    faction: MissionFaction,
+    system: SystemKey,
+) -> bool {
+    use crate::dat::Faction;
+    let Some(sys) = world.systems.get(system) else {
+        return false;
+    };
+    let Some(record) = kind.record_id().and_then(|id| world.mission_record(id)) else {
+        return true;
+    };
+    let rules = record.rules;
+    let side_allowed = match crate::uprising::holder(sys) {
+        Some(s) if s == Faction::from(faction) => rules.own_side_target,
+        // holder() names only the Alliance or the Empire.
+        Some(_) => rules.opponent_target,
+        None => rules.other_side_target,
+    };
+    let calm_allowed = if uprisings.active_uprisings.contains_key(&system) {
+        rules.revolting_target
+    } else {
+        rules.calm_target
+    };
+    side_allowed
+        && calm_allowed
+        && !(sys.is_destroyed && (rules.container_loss_ends || rules.target_loss_ends))
+        && !(rules.needs_populated_container && !sys.is_populated)
+}
+
 /// The validator `FUN_00522480` over the running checks: the end code the
 /// first failing rule sets, or 0 (`ghidra/notes/mission-lifecycle.md`, "The
 /// validator and the end codes").
@@ -5774,6 +5809,111 @@ mod tests {
         assert!(advance.effects.contains(&MissionEffect::MemberAvailable {
             member: MissionMember::Character(traveller)
         }));
+    }
+
+    #[test]
+    fn a_record_admits_a_system_target_by_its_side_uprising_and_state() {
+        // FUN_00523450 rule 3 (cols 15..17: own, third, opponent side),
+        // rules 2 and 4 (a destroyed container or target), rule 7 (col 13,
+        // a populated container), and FUN_005868c0 (cols 18, 19).
+        use crate::dat::Faction;
+        use crate::world::{ControlKind, MissionTargetRules};
+        let mut world = minimal_world();
+        let own = system_at(&mut world, 0);
+        world.systems[own].control = ControlKind::Controlled(Faction::Alliance);
+        let enemy = system_at(&mut world, 0);
+        world.systems[enemy].control = ControlKind::Controlled(Faction::Empire);
+        let neutral = system_at(&mut world, 0);
+        let calm = crate::uprising::UprisingState::default();
+        let admits = |world: &GameWorld, uprisings, rules, system| {
+            let mut record = diplomacy_record();
+            record.rules = rules;
+            let world = GameWorld {
+                mission_records: vec![record],
+                ..world.clone()
+            };
+            record_admits_system(
+                &world,
+                uprisings,
+                MissionKind::Diplomacy,
+                MissionFaction::Alliance,
+                system,
+            )
+        };
+        let base = MissionTargetRules {
+            calm_target: true,
+            ..Default::default()
+        };
+        let sides = |own_side_target, other_side_target, opponent_target| MissionTargetRules {
+            own_side_target,
+            other_side_target,
+            opponent_target,
+            ..base
+        };
+
+        for (rules, wanted) in [
+            (sides(true, false, false), [true, false, false]),
+            (sides(false, true, false), [false, true, false]),
+            (sides(false, false, true), [false, false, true]),
+        ] {
+            let got = [own, neutral, enemy].map(|system| admits(&world, &calm, rules, system));
+            assert_eq!(got, wanted, "{rules:?}");
+        }
+
+        let any_side = sides(true, true, true);
+        let mut revolting = crate::uprising::UprisingState::default();
+        revolting.active_uprisings.insert(
+            own,
+            crate::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+            },
+        );
+        assert!(!admits(&world, &revolting, any_side, own));
+        let both = MissionTargetRules {
+            revolting_target: true,
+            ..any_side
+        };
+        assert!(admits(&world, &revolting, both, own));
+        let only_revolting = MissionTargetRules {
+            calm_target: false,
+            ..both
+        };
+        assert!(!admits(&world, &calm, only_revolting, own));
+
+        world.systems[own].is_populated = false;
+        let populated = MissionTargetRules {
+            needs_populated_container: true,
+            ..any_side
+        };
+        assert!(admits(&world, &calm, any_side, own));
+        assert!(!admits(&world, &calm, populated, own));
+
+        world.systems[own].is_destroyed = true;
+        assert!(admits(&world, &calm, any_side, own));
+        for lost in [
+            MissionTargetRules {
+                container_loss_ends: true,
+                ..any_side
+            },
+            MissionTargetRules {
+                target_loss_ends: true,
+                ..any_side
+            },
+        ] {
+            assert!(!admits(&world, &calm, lost, own));
+        }
+
+        // A kind with no record admits any system.
+        let mut bare = world.clone();
+        bare.mission_records.clear();
+        assert!(record_admits_system(
+            &bare,
+            &calm,
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            enemy
+        ));
     }
 
     #[test]

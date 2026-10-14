@@ -89,7 +89,7 @@ See `agent_docs/simulation.md` for full API reference on all 15 systems.
 - **Tick system** (`tick.rs`): Frame-independent GameClock, GameSpeed (Paused/Normal/Fast/Faster), TickEvent markers
 - **Manufacturing** (`manufacturing.rs`): Per-system production queues with overflow propagation; blockade-aware (`advance_with_blockade`)
 - **Events** (`events.rs`): Conditional triggers (TickReached, CharacterAtSystem, Random, EventFired), event chaining
-- **AI** (`ai.rs`): Rule-based opponent — officer assignment, production priority, fleet deployment, espionage dispatch. Re-evaluates every 7 ticks.
+- **AI** (`ai.rs`): Rule-based opponent — officer assignment, production priority, fleet deployment, espionage dispatch. Makes one pass a sub-tick: 600/60/12/4 a day by speed, at most 10 orders a day.
 - **Movement** (`movement.rs`): Fleet hyperspace transit with speed from slowest hyperdrive rating
 - **Fog of war** (`fog.rs`): Per-faction monotonic visibility with advance intel at 50% transit
 - **Mod loader** (`rebellion-data/src/mods.rs`): TOML manifests, RFC 7396 merge patch, semver, hot reload

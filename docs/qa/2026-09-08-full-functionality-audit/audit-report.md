@@ -1730,6 +1730,22 @@ cross-runtime proof remain open
   - The aggression curve cites FUN_0053e190 but is linear; system_strength
     weights facilities by 10 where FUN_00502020 does not
   - evidence/invention-review-r1/ai.md
+- Cadence (2026-10-14, stage 1, save v38): the first bullet is corrected.
+  The AI player's tick `FUN_00485b40` runs once a sub-tick from frame-loop
+  phase 8 (`FUN_0041dff0` -> `FUN_0041cf20` -> `FUN_004361a0`; phase 2,
+  `FUN_0041e300`, waits for the next sub-tick). A day therefore holds
+  600/60/12/4 AI passes by speed (`FUN_0051dea0`), with 10 orders a day
+  (`+0x428`, `FUN_00485a50`) cleared at the day boundary (`FUN_00485de0`).
+  Ported as `ai::passes_per_day` and `AISystem::pass`, applied pass by pass,
+  one side then the other; the port's heuristics run as modules in round
+  robin (`FUN_004be980`) and the research planners one per step
+  (`FUN_004d2730`). `AI_TICK_INTERVAL` and `ai.tick_interval` are removed.
+  The officers module now targets only systems the Diplomacy and Incite
+  records admit (`FUN_00523450` rule 3, `FUN_005868c0`), because a refused
+  target was ordered again on every pass. Golden `v1:eb82b46bf03b0753` ->
+  `v1:4225657ae5e05393` (`evidence/2026-10-14-ai-cadence/`). Open: the
+  fourteen modules' identities, their priorities (`+0x34`, `FUN_004bede0`)
+  and one-order steps.
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.
