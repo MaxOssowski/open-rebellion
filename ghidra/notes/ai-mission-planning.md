@@ -469,8 +469,9 @@ count, holds every planner's designer out of the other queries
 every selector passes over a candidate at a blockaded system
 (`FUN_0047ba90`). port: the mission's own travel stands for state 7's move
 order; a tree's cancellations and additions happen within one AI
-evaluation; the production AI's yard marks are not kept (they cover every
-own yard system within the first days); the distance keys read the map
+evaluation; the production AI's yard marks are kept (`AIState::yard_marks`,
+save v40) but no module sets them yet, so the research site needs none (they
+cover every own yard system within the first days); the distance keys read the map
 position (hyp).
 
 ### The port's simplifications checked (2026-10-14)

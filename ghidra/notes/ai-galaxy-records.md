@@ -166,7 +166,9 @@ Refresh: return unless `+0x24` (dirty) is set; zero `v[0..0x3c]`, keep
   squadrons.
 
 Ported 2026-10-14 as `ai_records::SystemRecord` (with `FleetRecord` and
-`ClassRecords`); the port's assumptions are in its doc comment.
+`ClassRecords`); the port's assumptions are in its doc comment. The
+yard marks live in `AIState::yard_marks` (save v40) and reach the record
+through `Galaxy::build`.
 
 Opponent and neutral systems get their own support term and `+0x2c` bits.
 

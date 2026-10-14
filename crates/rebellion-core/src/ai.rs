@@ -255,7 +255,34 @@ pub struct AIState {
     pub research_planners: Vec<ResearchPlanner>,
     /// The id the next research planner takes.
     pub next_planner_id: u64,
+    /// The yard marks the modules keep on the side's system records
+    /// (`+0x28 & 0x3e00000`, [`YARD_MARKS`]). The record refresh
+    /// (`FUN_00433e40`) keeps them; only the modules set and clear them.
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub yard_marks: HashMap<SystemKey, u32>,
 }
+
+/// A system record's yard marks (`+0x28 & 0x3e00000`), which
+/// `FUN_00433e40` keeps across refreshes.
+pub const YARD_MARKS: u32 = 0x3e0_0000;
+/// Mark `0x200000`: a shipyard site (modules 7, `0xa` and `0xb`;
+/// `FUN_004c8d20`, `FUN_004cacc0`).
+pub const MARK_SHIPYARD: u32 = 0x20_0000;
+/// Mark `0x400000`: a training facility site (modules 5 and 6;
+/// `FUN_004d0860`).
+pub const MARK_TRAINING: u32 = 0x40_0000;
+/// Mark `0x800000`: a construction yard site for mines and refineries
+/// (module 1; `FUN_004daf10`, `FUN_004db510`).
+pub const MARK_MINES: u32 = 0x80_0000;
+/// Mark `0x1000000`: a construction yard site for facilities (module 2,
+/// step `FUN_004e2120`).
+pub const MARK_FACILITIES: u32 = 0x100_0000;
+/// Mark `0x2000000`: a construction yard site for the facility balance
+/// (module 3, step `FUN_004d6d30`).
+pub const MARK_BALANCE: u32 = 0x200_0000;
 
 /// A research planner (`FUN_0047bba0`, `FUN_0047c170`, `FUN_0047c750`) and
 /// what it keeps between cycles.
@@ -295,6 +322,32 @@ impl AIState {
             battle_cooldowns: HashMap::new(),
             research_planners: Vec::new(),
             next_planner_id: 0,
+            yard_marks: HashMap::new(),
+        }
+    }
+
+    /// `system`'s yard marks (record `+0x28 & 0x3e00000`).
+    #[must_use]
+    pub fn yard_marks(&self, system: SystemKey) -> u32 {
+        self.yard_marks.get(&system).copied().unwrap_or(0)
+    }
+
+    /// Set `marks` on `system`'s record; bits outside [`YARD_MARKS`] are
+    /// not marks and are ignored.
+    pub fn set_yard_marks(&mut self, system: SystemKey, marks: u32) {
+        if marks & YARD_MARKS != 0 {
+            *self.yard_marks.entry(system).or_default() |= marks & YARD_MARKS;
+        }
+    }
+
+    /// Clear `marks` from `system`'s record (`FUN_004daca0` drops a lost
+    /// site's `0x800000`); a system left with none is forgotten.
+    pub fn clear_yard_marks(&mut self, system: SystemKey, marks: u32) {
+        if let Some(value) = self.yard_marks.get_mut(&system) {
+            *value &= !marks;
+            if *value == 0 {
+                self.yard_marks.remove(&system);
+            }
         }
     }
 
@@ -2881,8 +2934,9 @@ pub(crate) fn ai_research_done(
 ///
 /// port: the original also needs the production AI's mark for a yard of
 /// the area there (`+0x28` bits `0x200000`, `0x400000`, `0x3800000`, set by
-/// `FUN_004cacc0` and its siblings when they order one); the port keeps no
-/// marks, so every yard of the side counts.
+/// `FUN_004cacc0` and its siblings when they order one). The port keeps the
+/// marks ([`AIState::yard_marks`]) but no module sets them yet, so every
+/// yard of the side counts.
 fn ai_research_site(
     world: &GameWorld,
     uprisings: &crate::uprising::UprisingState,
@@ -6793,6 +6847,49 @@ mod tests {
         // search began, one past module 2.
         assert!(cadence_pass(&mut state, &world).is_empty());
         assert_eq!(state.module_cursor, Some(3));
+    }
+
+    #[test]
+    fn yard_marks_stay_until_a_module_clears_them() {
+        // FUN_00433e40 keeps +0x28 & 0x3e00000 across refreshes; module 1
+        // sets 0x800000 (FUN_004daf10) and drops it (FUN_004daca0).
+        let mut systems = slotmap::SlotMap::<SystemKey, ()>::with_key();
+        let (a, b) = (systems.insert(()), systems.insert(()));
+        let mut state = AIState::new(AiFaction::Empire);
+
+        state.set_yard_marks(a, MARK_MINES);
+        state.set_yard_marks(a, MARK_SHIPYARD | 0x4000);
+        state.set_yard_marks(b, 0x4000);
+
+        assert_eq!(state.yard_marks(a), MARK_MINES | MARK_SHIPYARD);
+        assert_eq!(state.yard_marks(b), 0);
+        assert!(!state.yard_marks.contains_key(&b));
+        state.begin_day();
+        assert_eq!(state.yard_marks(a), MARK_MINES | MARK_SHIPYARD);
+
+        state.clear_yard_marks(a, MARK_MINES);
+        assert_eq!(state.yard_marks(a), MARK_SHIPYARD);
+        state.clear_yard_marks(a, MARK_SHIPYARD);
+        assert!(state.yard_marks.is_empty());
+        state.clear_yard_marks(b, MARK_MINES);
+        assert!(state.yard_marks.is_empty());
+    }
+
+    #[test]
+    fn the_five_yard_marks_fill_the_kept_mask() {
+        // FUN_00433e40's kept mask 0x3e00000 is the five marks:
+        // 0x200000 ships, 0x400000 troops, 0x800000/0x1000000/0x2000000
+        // construction yards (FUN_00432350 reads 0x3800000 as one).
+        let all = [
+            MARK_SHIPYARD,
+            MARK_TRAINING,
+            MARK_MINES,
+            MARK_FACILITIES,
+            MARK_BALANCE,
+        ];
+        assert_eq!(all.iter().fold(0, |m, b| m | b), YARD_MARKS);
+        assert_eq!(MARK_MINES | MARK_FACILITIES | MARK_BALANCE, 0x380_0000);
+        assert_eq!(all.iter().map(|b| b.count_ones()).sum::<u32>(), 5);
     }
 
     #[test]

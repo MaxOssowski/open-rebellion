@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 39;
+pub const SAVE_VERSION: u32 = 40;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1657,7 +1657,7 @@ mod tests {
         // v38: the day's order count (+0x420) and the round robin's module
         // (+0x84 -> +0x10). v39: the priority scan's cursor (+0x14), each
         // module's priority (+0x34) and undecided orders, and the mission
-        // module's next entry (+0x4c).
+        // module's next entry (+0x4c). v40: the yard marks.
         use rebellion_core::ai::{AIAction, AIState, AiFaction, MissionEntry};
         let saves_dir = tmp_dir("v39_ai_modules_round_trip");
         let mut state = minimal_save_state();
@@ -1674,8 +1674,10 @@ mod tests {
             ),
         }];
         ai.mission_next = Some(MissionEntry::Group(2));
+        // v40: the yard marks the modules keep (record +0x28 & 0x3e00000).
+        ai.set_yard_marks(Default::default(), rebellion_core::ai::MARK_MINES);
         state.ai = ai;
-        save_slot(&saves_dir, 0, "V39 Save", &state, &[]).unwrap();
+        save_slot(&saves_dir, 0, "V40 Save", &state, &[]).unwrap();
 
         let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
 
@@ -1685,6 +1687,8 @@ mod tests {
         assert_eq!(loaded.ai.module_priority, state.ai.module_priority);
         assert_eq!(loaded.ai.module_pending, state.ai.module_pending);
         assert_eq!(loaded.ai.mission_next, Some(MissionEntry::Group(2)));
+        assert_eq!(loaded.ai.yard_marks, state.ai.yard_marks);
+        assert_eq!(loaded.ai.yard_marks.len(), 1);
     }
 
     #[test]

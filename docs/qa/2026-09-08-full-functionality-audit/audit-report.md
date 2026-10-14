@@ -1776,6 +1776,11 @@ cross-runtime proof remain open
   (`FUN_00530270`, reasons `0x14..0x16`). `AIAction::Scrap` applies it. No
   module issues it yet; the golden is unchanged
   (`ghidra/notes/scrap-order.md`, `evidence/2026-10-14-scrap-order/`).
+- Yard marks (2026-10-14): the system records' marks `+0x28 & 0x3e00000`,
+  which `FUN_00433e40` keeps across refreshes, are kept in
+  `AIState::yard_marks` (save v40) and feed `Galaxy::build`. Golden
+  `v1:e271a795cd483ebe` -> `v1:e187411365b9f348` for the save layout only
+  (`evidence/2026-10-14-ai-yard-marks/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.
