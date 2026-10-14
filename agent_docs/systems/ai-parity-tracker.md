@@ -122,7 +122,7 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | Per-fleet targeting | Per-system iteration | Per-fleet scoring with deconfliction | Prevents fleet piling | `ai.per_fleet_targeting` |
 | Battle repeat penalty | Not in original | Freshness curve prevents stagnation | Better gameplay | `augmentation.battle_repeat_penalty` |
 | Target deconfliction | Not in original | Pile count tracking | Territorial spread | `augmentation.target_deconfliction` |
-| Module scheduler | Fourteen modules (`FUN_004bea20`), highest priority `+0x34` first, else round robin (`FUN_004be980`); one order per step | The port's heuristics as ten modules in round robin, each one step | Port design until the modules are identified (audit F-036) | — |
+| Module scheduler | Fourteen modules (`FUN_004bea20`) in the order `0xd`, 2, 1, 3, 6, 7, 4, 5, 8, 9, `0xa`, `0xb`, `0xc`, `0xe`; the highest priority `+0x34` first (`FUN_004bede0`), else round robin (`FUN_004be980`); one order a step, which ends the tick | `MODULE_IDS`, `next_module`, `step_module`: the same order, priorities and one order a pass; the port's heuristics assigned to modules 0xd, 4, 2, 3, 5, 8, 0xb, 0xc (first read), the rest order nothing | FAITHFUL (scheduler); module contents are the port's heuristics | — |
 | Role-based character AI | Family-byte type routing | Skill-based dispatch (diplomacy/espionage/combat) | More strategic | Always on |
 | Faction-asymmetric doctrine | Different evaluator objects (budget only) | Empire→HQ strike, Alliance→guerrilla | Clearer doctrinal difference | `ai.faction_asymmetry` |
 | Composite mission inputs | wiki: sub_55ae50 etc. (popularity + skill) | Same formulas ported | Faithful to original | N/A (parity) |

@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 38;
+pub const SAVE_VERSION: u32 = 39;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1654,23 +1654,31 @@ mod tests {
 
     #[test]
     fn a_round_trip_keeps_the_ai_s_day_and_module_rounds() {
-        // v38: the day's order count (+0x420), the module last run
-        // (+0x84 -> +0x10) and the next research planner (+0x4c).
-        use rebellion_core::ai::{AIState, AiFaction};
-        let saves_dir = tmp_dir("v38_ai_cadence_round_trip");
+        // v38: the day's order count (+0x420) and the round robin's module
+        // (+0x84 -> +0x10). v39: the priority scan's cursor (+0x14), each
+        // module's priority (+0x34) and undecided orders, and the mission
+        // module's next entry (+0x4c).
+        use rebellion_core::ai::{AIAction, AIState, AiFaction, MissionEntry};
+        let saves_dir = tmp_dir("v39_ai_modules_round_trip");
         let mut state = minimal_save_state();
         let mut ai = AIState::new(AiFaction::Empire);
         ai.orders_today = 6;
         ai.module_cursor = Some(8);
-        ai.research_next = Some(2);
+        ai.priority_cursor = Some(3);
+        ai.module_priority[8] = 1;
+        ai.module_pending[8] = vec![AIAction::AbortMission { mission_id: 4 }];
+        ai.mission_next = Some(MissionEntry::Group(2));
         state.ai = ai;
-        save_slot(&saves_dir, 0, "V38 Save", &state, &[]).unwrap();
+        save_slot(&saves_dir, 0, "V39 Save", &state, &[]).unwrap();
 
         let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
 
         assert_eq!(loaded.ai.orders_today, 6);
         assert_eq!(loaded.ai.module_cursor, Some(8));
-        assert_eq!(loaded.ai.research_next, Some(2));
+        assert_eq!(loaded.ai.priority_cursor, Some(3));
+        assert_eq!(loaded.ai.module_priority, state.ai.module_priority);
+        assert_eq!(loaded.ai.module_pending, state.ai.module_pending);
+        assert_eq!(loaded.ai.mission_next, Some(MissionEntry::Group(2)));
     }
 
     #[test]

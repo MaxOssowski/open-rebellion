@@ -387,6 +387,52 @@ each step advances one planner by one state, `FUN_004d2730` and
 `FUN_004d27b0`). Planners and requests therefore advance a few states per
 game day, not once a week.
 
+**The fourteen modules (read 2026-10-14).** `FUN_00485a50` adds the modules
+to the scheduler list in the order `0xd`, 2, 1, 3, 6, 7, 4, 5, 8, 9, `0xa`,
+`0xb`, `0xc`, `0xe`; `FUN_004bea20` builds each. All but `0xe` share the
+ready slot `+0x10` (`FUN_004cc990`) and slot `+0x18` (`FUN_004dd810`); the
+step is slot `+0x14`. The orders each tree builds (`FUN_004f5cd0`) and the
+record bits it reads or marks identify the module; the names are first
+reads.
+
+| Id | Ctor, vtable | Step | Orders | Reads, marks | Module |
+|----|--------------|------|--------|--------------|--------|
+| `0xd` | `004bf0d0`, `0x65c480` | `004bf320` | Move `0x201` | strategy `FUN_004e5440`, sets the requests `+0x318`, `+0x354`/`+0x358` (`FUN_004e57e0`) | strategy |
+| 1 | `004da950`, `0x65c7f8` | `004dabe0` | Build `0x210`, Destination `0x214` | sector bit `0x2000` (an idle construction yard, system `+0x28` bit `0x800`); marks `0x800000`; classes `0x2c`/`0x2d` | mines and refineries |
+| 2 | `004e1e50`, `0x65c838` | `004e2120` | `0x210`, `0x214` | sector bits `0xe0` (yard candidates); marks `0x1000000` | facility placement |
+| 3 | `004d6b20`, `0x65c7d8` | `004d6d30` | Scrap `0x200`, `0x210`, `0x214` | sector bits `0x10000`/`0x4000` (system `[0x25]` above or below 0); marks `0x2000000` | facility balance |
+| 4 | `004d2220`, `0x65c778` | `004d2460` -> `FUN_004d2490` | through its planners (`0x240`, `0x250`, `0x201`) | requests `+0x314`/`+0x318`/`+0x31c` | missions |
+| 5 | `004cfb20`, `0x65c758` | `004cfed0` | troops `0x212`, Retire `0x242`, `0x210`, `0x214` | sector bit `0x40`; marks `0x400000` (`FUN_004d0860`) | troop production |
+| 6 | `004dd460`, `0x65c818` | `004dd7a0` | `0x200`, `0x212`, `0x210`, `0x214` | marks `0x400000` | garrison balance |
+| 7 | `004d2ef0`, `0x65c7b8` | `004d3100` | `0x200`, `0x201`, ships `0x211`, `0x210`, `0x214` | marks `0x200000` | ship balance |
+| 8 | `004cf410`, `0x65c738` | `004cf600` -> `FUN_004cf630` | through its planners (`0x201`) | side `+0x204`; one planner per sector (`FUN_004762b0`, vtable `0x65a3b0`) | sector fleet planners |
+| 9 | `004cf0a0`, `0x65c718` | `004cf290` -> `FUN_004cf2c0` | through its planners | fleets `0x08..0x0f` | fleet planners |
+| `0xa` | `004cc6b0`, `0x65c6f8` | `004cc9c0` | `0x200`, `0x211`, `0x210`, `0x214` | sector bit `0x20`; marks `0x200000`; managers `0xa0..0xaf` | shipyard placement |
+| `0xb` | `004c8820`, `0x65c6d8` | `004c8b30` | `0x200`, `0x211`, `0x210`, `0x214` | marks `0x200000` (`FUN_004c8d20`, `FUN_004cacc0`) | ship production |
+| `0xc` | `004c8260`, `0x65c6b8` | `004c84a0` -> `FUN_004c84d0` | through its planners (`0x201`) | requests `+0x354`/`+0x358`; planner types 1, 3, 4, 5, 6 (`FUN_0042efe0`: `0047a430`, `0047a3c0`, `0047a000`, `00479f70`, `00479a60`) | movement planners |
+| `0xe` | `004d2810`, `0x65c798` | `004d29b0` | Rename `0x203` | capital ships `0x14..0x1b` with `+0x24` bit `0x4000`, up to 10 | ship names |
+
+Runtime type codes: fleets `0x08..0x0f`, capital ships `0x14..0x1b`,
+sectors `0x80..0x8f`, systems `0x90..0x97`, production managers
+`0xa0..0xaf`. System record `+0x28` bits `0x200`, `0x400`, `0x800` mark an
+idle shipyard, training facility and construction yard (`FUN_00433e40`);
+sector `+0x24` bits `0x20`, `0x40`, `0x80` a candidate system for each
+yard, `0x2000` an unmarked idle construction yard (`FUN_00432350`).
+
+**One order a module step.** A module step that builds an order completes
+the module (`+0x20` = 1) and raises its priority `+0x34` by one while its
+cycle goes on: the build modules' state functions (`FUN_004db2f0`,
+`FUN_004d0010`, `FUN_004d3350`, `FUN_004c8ba0`, `FUN_004dda00`, ...) and
+the planner modules when the planner's cycle continues (`FUN_004d2490`
+state 6, `FUN_004c84d0`, `FUN_004cf630`, `FUN_004cf2c0`). `FUN_00485b40`
+zeroes `+0x34` before each step and ends the tick when a step completes
+the module with an order, so the AI issues at most one order a sub-tick:
+4 a day at Fast, so the day's 10 bind only from Medium. `FUN_004be980`
+then takes the ready module with the highest `+0x34` above 0, scanning
+from a cursor `+0x14` that moves on one module each call (`FUN_004bede0`,
+the first on a tie), else the round robin `+0x10`. A module left current
+(`+0x80`) when the budget runs out continues at the next tick.
+
 **The other rows of `FUN_004e8290`.** The wanted counts come from the side
 tallies of phase 4:
 - Recruitment: `S+0xa4` is the count of the side's MNCHARSD classes
@@ -535,10 +581,14 @@ flips. The port takes the first of equal entries.
   speed's rate, and the simulation and the app run that many
   `AISystem::pass` a day, one side then the other, applying each pass's
   orders before the next (`AIState::begin_day` clears `orders_today`).
-  The port's heuristics stand in for the fourteen modules in a round robin
-  (`module_cursor`), the research strategy and planners first, one planner
-  a step (`research_next`); module identities, priorities (`+0x34`,
-  `FUN_004bede0`) and one-order steps are open.
+  Stage 2 and 3 (2026-10-14, save v39): the modules are identified above
+  ("The fourteen modules"), and the port runs them in `MODULE_IDS` order
+  with priorities (`module_priority`, `priority_cursor`), one order a
+  step (`step_module`, `module_pending`), and the mission module one entry
+  a step (`mission_next`). The port's heuristics stand in: research
+  strategy for `0xd`; the research planners and the mission heuristics for
+  4; production split by kind for 2, 3, 5, `0xb`; fleets for 8; troop
+  moves for `0xc`. Modules 1, 6, 7, 9, `0xa` and `0xe` order nothing.
 - *Yard marks.* As above: every cycle of the ship, troop and facility
   production modules claims one more system, so with several cycles a day
   every own yard system is marked almost at once.

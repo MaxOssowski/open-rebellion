@@ -1,0 +1,76 @@
+{
+ "fast": {
+  "orders": 151,
+  "max_orders_per_side_per_day": 4,
+  "days_with_orders": 98,
+  "orders_by_kind": {
+   "DispatchMission:Recruitment": 38,
+   "EnqueueProduction": 32,
+   "DispatchMission:Sabotage": 27,
+   "DispatchMission:Espionage": 23,
+   "DispatchMission:Diplomacy": 11,
+   "DispatchMission:InciteUprising": 8,
+   "MoveFleet": 3,
+   "DispatchMission:ShipDesignResearch": 3,
+   "DispatchMission:Assassination": 2,
+   "DispatchMission:Abduction": 2,
+   "DispatchMission:FacilityDesignResearch": 2
+  }
+ },
+ "medium": {
+  "orders": 128,
+  "max_orders_per_side_per_day": 10,
+  "days_with_orders": 75,
+  "orders_by_kind": {
+   "DispatchMission:Recruitment": 37,
+   "EnqueueProduction": 32,
+   "DispatchMission:InciteUprising": 14,
+   "DispatchMission:Diplomacy": 10,
+   "DispatchMission:Sabotage": 9,
+   "DispatchMission:Espionage": 9,
+   "DispatchMission:Assassination": 5,
+   "MoveFleet": 3,
+   "DispatchMission:ShipDesignResearch": 3,
+   "DispatchMission:FacilityDesignResearch": 3,
+   "DispatchMission:Abduction": 2,
+   "AbortMission": 1
+  }
+ },
+ "slow": {
+  "orders": 184,
+  "max_orders_per_side_per_day": 10,
+  "days_with_orders": 96,
+  "orders_by_kind": {
+   "DispatchMission:Recruitment": 39,
+   "DispatchMission:InciteUprising": 35,
+   "EnqueueProduction": 32,
+   "DispatchMission:Sabotage": 28,
+   "DispatchMission:Espionage": 22,
+   "DispatchMission:Diplomacy": 11,
+   "DispatchMission:Assassination": 8,
+   "MoveFleet": 3,
+   "DispatchMission:ShipDesignResearch": 3,
+   "DispatchMission:FacilityDesignResearch": 2,
+   "DispatchMission:Abduction": 1
+  }
+ },
+ "very-slow": {
+  "orders": 160,
+  "max_orders_per_side_per_day": 10,
+  "days_with_orders": 82,
+  "orders_by_kind": {
+   "DispatchMission:Recruitment": 37,
+   "DispatchMission:Espionage": 33,
+   "EnqueueProduction": 32,
+   "DispatchMission:InciteUprising": 17,
+   "DispatchMission:Diplomacy": 13,
+   "DispatchMission:Sabotage": 10,
+   "DispatchMission:Assassination": 8,
+   "MoveFleet": 3,
+   "DispatchMission:FacilityDesignResearch": 3,
+   "DispatchMission:ShipDesignResearch": 2,
+   "DispatchMission:Abduction": 1,
+   "AbortMission": 1
+  }
+ }
+}

@@ -65,7 +65,8 @@ their missions run on (`FUN_004e5710`, `FUN_0047aff0`). Each planner holds
 its designer, remembers its site and previous target
 (`research_site_choice`, `FUN_0047be50`), and after each Mission Report
 aborts its mission when the site is lost (`AIAction::AbortMission`, end
-code 2). A designer standing away from the target is first sent there
+code 2). The strategy part runs as module `0xd` and the planners one a step in
+the mission module (4). A designer standing away from the target is first sent there
 on the hidden Move pseudo-mission (`MissionKind::Move`, MISSNSD
 `0x41000001`, planner state 7 `FUN_004bd570`); the research order follows
 once it stands there. A research site is an own system in no uprising or blockade with

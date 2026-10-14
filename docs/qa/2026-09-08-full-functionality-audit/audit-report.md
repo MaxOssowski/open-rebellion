@@ -1752,6 +1752,15 @@ cross-runtime proof remain open
   are detected missions retried, as the original planner does up to 1000
   failures (`FUN_00480df0`) (`evidence/2026-10-14-ai-cadence-game-loop/`).
   Native GUI not run.
+- Modules (2026-10-14, stages 2 and 3, save v39): the fourteen modules are
+  identified by their orders and record marks (`ghidra/notes/ai-mission-
+  planning.md`, "The fourteen modules"), and the port runs them in the
+  original order with priorities (`FUN_004bede0`), one order a sub-tick
+  (`FUN_00485b40`), and the mission module one entry a step
+  (`FUN_004d2730`). The port's heuristics stand in for the modules' contents;
+  modules 1, 6, 7, 9, `0xa` and `0xe` order nothing. Golden
+  `v1:e271a795cd483ebe` -> `v1:33233aedba63db5c`
+  (`evidence/2026-10-14-ai-modules/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.
