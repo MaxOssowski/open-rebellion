@@ -6,7 +6,7 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use rebellion_core::ai::{AIState, AiFaction};
 use rebellion_core::betrayal::BetrayalState;
 use rebellion_core::blockade::BlockadeState;
-use rebellion_core::dat::Faction;
+use rebellion_core::dat::{Faction, GalaxySize};
 use rebellion_core::death_star::DeathStarState;
 use rebellion_core::economy::EconomyState;
 use rebellion_core::events::EventState;
@@ -36,23 +36,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:def9666124cd1433";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:a079b9347c1c574e";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:24c73c2d80dea3f6";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:01685e44ab44b004";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:fdc87843c2cbdc9f"),
-    (2, 0, "v1:9f2ea58d12454c91"),
-    (3, 5, "v1:032faa23588252e9"),
-    (4, 10, "v1:50dccbfcface8261"),
-    (5, 15, "v1:fc679e07cd76bfd4"),
-    (6, 20, "v1:b405f1d46c212dc8"),
-    (7, 25, "v1:2cef66eb7402e1dc"),
-    (8, 25, "v1:a079b9347c1c574e"),
-    (9, 25, "v1:a079b9347c1c574e"),
+    (1, 0, "v1:9076a4409f7968b2"),
+    (2, 0, "v1:31a6b56fdcf78de8"),
+    (3, 5, "v1:6e34f44a460d1286"),
+    (4, 10, "v1:6e4c590beb6ca5d6"),
+    (5, 15, "v1:715ddc4701b02454"),
+    (6, 20, "v1:85bdc71ddfecfa98"),
+    (7, 25, "v1:9780643aed76c0f5"),
+    (8, 25, "v1:01685e44ab44b004"),
+    (9, 25, "v1:01685e44ab44b004"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,6 +100,19 @@ impl ReplayGateReport {
     #[must_use]
     pub fn passed(&self) -> bool {
         self.status == "passed"
+    }
+}
+
+/// Seed options every seed-42 runner loads the campaign with.
+///
+/// The fixture covers the whole 200-system galaxy, which since the loader
+/// honours the chosen size means the largest setting.
+#[must_use]
+pub fn seed42_seed_options() -> SeedOptions {
+    SeedOptions {
+        galaxy_size: GalaxySize::Huge,
+        rng_seed: Some(SEED42_SEED),
+        ..SeedOptions::default()
     }
 }
 
@@ -162,10 +175,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
     FogSystem::seed(&mut fog_empire, &world);
     let mut events = EventState::new();
     rebellion_core::story_events::define_story_events(&mut events, &world);
-    let options = SeedOptions {
-        rng_seed: Some(SEED42_SEED),
-        ..SeedOptions::default()
-    };
+    let options = seed42_seed_options();
 
     Ok(SaveState {
         world,
@@ -362,6 +372,13 @@ mod tests {
     fn committed_artifact_is_complete_and_reviewed() {
         let manifest = ReplayManifest::from_json(SEED42_ARTIFACT_BYTES).unwrap();
         validate_seed42_artifact(&manifest).unwrap();
+    }
+
+    #[test]
+    fn seed42_runners_load_the_full_galaxy_with_the_fixture_seed() {
+        let options = seed42_seed_options();
+        assert_eq!(options.galaxy_size, GalaxySize::Huge);
+        assert_eq!(options.rng_seed, Some(SEED42_SEED));
     }
 
     #[test]

@@ -3,7 +3,7 @@ title: "Deterministic Replay Contract"
 description: "Versioned command streams, simulation-data identity, checkpoints, and remaining cross-runtime gates"
 category: agent-docs
 created: 2026-09-09
-updated: 2026-09-10
+updated: 2026-10-14
 tags: [determinism, replay, wasm, multiplayer, testing]
 ---
 
@@ -93,7 +93,7 @@ aggregate fingerprint is `5facb1c7ba0e81ad`.
 `crates/rebellion-data/tests/fixtures/replay_seed42_v1.json` is the single
 reviewed artifact used by both runtimes. It contains nine commands and nine
 checkpoints through tick 25. Native `replay-gate` and the query-gated WASM
-runner both embed and decode those exact 13,480 bytes, rebuild the seed-42
+runner both embed and decode those exact 13,479 bytes, rebuild the seed-42
 campaign independently, and echo the original text into their reports.
 
 The browser gate runs only at `?replay-check=seed42-v1`. It strictly loads
@@ -112,10 +112,12 @@ python3 scripts/check-replay-equivalence.py --skip-build --json
 ```
 
 The ignored fixture test requires the locally supplied original `.DAT` files.
-It records a nine-command, 25-tick, 200-system campaign, reloads its initial
-state through the current save format, and checks every command-prefix
+It records a nine-command, 25-tick campaign on the full 200-system galaxy
+(`seed42_seed_options()` selects `GalaxySize::Huge`; every seed-42 runner
+must load through it), reloads its initial state through the current save
+format, and checks every command-prefix
 fingerprint against a cross-process golden, which currently runs
-`v1:def9666124cd1433` -> `v1:a079b9347c1c574e`. Any save layout or
+`v1:24c73c2d80dea3f6` -> `v1:01685e44ab44b004`. Any save layout or
 simulation change moves every fingerprint; regenerate the golden only for a
 named cause and name it in the commit. The v13 goldens did not reproduce
 even at their own commit `e8d4945`; that cause remains open. The unit tests use

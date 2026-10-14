@@ -7,9 +7,9 @@ use rebellion_data::replay::{
     ReplayManifest,
 };
 use rebellion_data::replay_fixture::{
-    seed42_commands, seed42_initial_state, validate_seed42_artifact, SEED42_ARTIFACT_BYTES,
-    SEED42_ENGINE_VERSION, SEED42_FINAL_FINGERPRINT, SEED42_FINAL_TICK, SEED42_INITIAL_FINGERPRINT,
-    SEED42_SEED,
+    seed42_commands, seed42_initial_state, seed42_seed_options, validate_seed42_artifact,
+    SEED42_ARTIFACT_BYTES, SEED42_ENGINE_VERSION, SEED42_FINAL_FINGERPRINT, SEED42_FINAL_TICK,
+    SEED42_INITIAL_FINGERPRINT, SEED42_SEED,
 };
 use rebellion_data::save::{compute_state_fingerprint, load_slot, save_slot};
 
@@ -46,14 +46,8 @@ fn original_campaign_replay_matches_after_save_reload() {
         seed,
         data: &data,
     };
-    let world = rebellion_data::load_game_data_with_options(
-        &data_dir(),
-        &rebellion_core::world::SeedOptions {
-            rng_seed: Some(seed),
-            ..rebellion_core::world::SeedOptions::default()
-        },
-    )
-    .expect("load original campaign data");
+    let world = rebellion_data::load_game_data_with_options(&data_dir(), &seed42_seed_options())
+        .expect("load original campaign data");
     let initial = seed42_initial_state(world).expect("build seed-42 initial state");
     let initial_fingerprint = compute_state_fingerprint(&initial).unwrap();
     let recording =
@@ -94,15 +88,15 @@ fn original_campaign_replay_matches_after_save_reload() {
     assert_eq!(
         observed_fingerprints,
         vec![
-            (1, 0, "v1:fdc87843c2cbdc9f".into()),
-            (2, 0, "v1:9f2ea58d12454c91".into()),
-            (3, 5, "v1:032faa23588252e9".into()),
-            (4, 10, "v1:50dccbfcface8261".into()),
-            (5, 15, "v1:fc679e07cd76bfd4".into()),
-            (6, 20, "v1:b405f1d46c212dc8".into()),
-            (7, 25, "v1:2cef66eb7402e1dc".into()),
-            (8, 25, "v1:a079b9347c1c574e".into()),
-            (9, 25, "v1:a079b9347c1c574e".into()),
+            (1, 0, "v1:9076a4409f7968b2".into()),
+            (2, 0, "v1:31a6b56fdcf78de8".into()),
+            (3, 5, "v1:6e34f44a460d1286".into()),
+            (4, 10, "v1:6e4c590beb6ca5d6".into()),
+            (5, 15, "v1:715ddc4701b02454".into()),
+            (6, 20, "v1:85bdc71ddfecfa98".into()),
+            (7, 25, "v1:9780643aed76c0f5".into()),
+            (8, 25, "v1:01685e44ab44b004".into()),
+            (9, 25, "v1:01685e44ab44b004".into()),
         ]
     );
     assert_eq!(executed_fingerprint.to_string(), SEED42_FINAL_FINGERPRINT);

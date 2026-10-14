@@ -1019,7 +1019,8 @@
         "state-affecting manufacturing, movement, blockade, and AI tie iteration is now stable",
         "headless and app paths consume random values differently",
         "interactive seeds are wall-clock-derived",
-        "automatic-combat, tactical, and interactive-app checkpoint equivalence remain absent"
+        "automatic-combat, tactical, and interactive-app checkpoint equivalence remain absent",
+        "2026-10-14 golden restored: the fixture loads the full 200-system galaxy through replay_fixture::seed42_seed_options (GalaxySize::Huge) after 7b34b8c1 made the loader honour galaxy size, and the golden is regenerated for that cause plus the simulation and save-v33 changes since e7808e5f: v1:24c73c2d80dea3f6 -> v1:01685e44ab44b004. Native replay-gate and the browser ?replay-check=seed42-v1 runner match on all nine checkpoints; the invalid-query, missing-pack and normal-startup browser cases were not rerun. Evidence: evidence/2026-10-14-seed42-golden/README.md"
       ],
       "verified_tranches": [
         {

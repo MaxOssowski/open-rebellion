@@ -1,0 +1,9 @@
+aba9befb787d32bd0c51832ff4427037e2eb2e160371fb3c0229098aaea3d839  web/open-rebellion.wasm
+2de177d821fc814f574ab42164221ee4f85e4d9dd609d0ef41ec404874575676  web/data/runtime.orpk
+c305d41da0f04feae037ba92fae5333ba79df54afbb1f5464f575a1698c19c5d  crates/rebellion-data/tests/fixtures/replay_seed42_v1.json
+c5db9f346a54c03eb65414a521247268b626283be64d24dc4fd17410c7c0c504  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-seed42-golden/browser-console.log
+13497b0c3dbb9c9462d8268c82852502bb8f9e739fd08bbee84d6b4ed95bd598  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-seed42-golden/browser-network.json
+0a9e2c8b340c2aed7f4ade1faacbdae830fc31429035f430c165ce751416eaf4  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-seed42-golden/browser-replay.png
+fa3e950ec51b88b3b479bcaa6bd41b4f05c38626f8c9a19e40cc14e4b3504650  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-seed42-golden/browser-report.json
+3bf793d999c5901e12a8a783ce908a62f0db66680e3516f99c2f3e2014ed298a  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-seed42-golden/native-report.json
+f776ef5b2921e539c32e67fce29ac321c7fad3d4e7a315bdb5c0493956e06d9d  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-seed42-golden/cdp-replay.mjs

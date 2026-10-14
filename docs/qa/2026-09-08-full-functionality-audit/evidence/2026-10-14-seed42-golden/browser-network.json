@@ -1,0 +1,18 @@
+[
+  {
+    "url": "http://127.0.0.1:8766/?replay-check=seed42-v1",
+    "status": 200
+  },
+  {
+    "url": "http://127.0.0.1:8766/gl.js",
+    "status": 200
+  },
+  {
+    "url": "http://127.0.0.1:8766/open-rebellion.wasm",
+    "status": 200
+  },
+  {
+    "url": "http://127.0.0.1:8766/data/runtime.orpk",
+    "status": 200
+  }
+]

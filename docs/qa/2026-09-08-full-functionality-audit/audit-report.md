@@ -629,6 +629,16 @@ cross-runtime proof remain open
   bitmap menu. Astra medium independently passed the gate with zero browser
   errors. The F-007B revalidation passes all 530 workspace unit tests. Evidence
   is retained in `evidence/2026-09-09-replay-wasm-equivalence.md`.
+- 2026-10-14 golden restored: after `7b34b8c1` made the loader honour the
+  chosen galaxy size, the fixture loaded 100 systems and failed its own
+  guard. `replay_fixture::seed42_seed_options()` now selects the full
+  200-system galaxy for the native test, `replay-gate`, and the browser
+  runner. The golden is regenerated for that cause and for the simulation
+  and save-v33 changes since `e7808e5f`: `v1:24c73c2d80dea3f6` ->
+  `v1:01685e44ab44b004`. Native and browser reports match on all nine
+  checkpoints; the invalid-query, missing-pack, and normal-startup browser
+  cases were not rerun. Evidence is retained in
+  `evidence/2026-10-14-seed42-golden/README.md`.
 - Acceptance: repeated native runs and native-versus-WASM runs produce the same
   versioned state fingerprints for the same seed and command stream, including
   after save/load.
