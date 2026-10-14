@@ -13,7 +13,8 @@ use egui_macroquad::egui;
 use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::fleet_join;
 use rebellion_core::fog::FogState;
-use rebellion_core::ids::{DatId, FleetKey, SystemKey, TroopKey};
+use rebellion_core::ids::{CharacterKey, DatId, FleetKey, SystemKey, TroopKey};
+use rebellion_core::missions::{MissionTarget, MissionTargetPick};
 use rebellion_core::movement::MovementState;
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::world::{ControlKind, GameWorld};
@@ -507,6 +508,70 @@ impl FleetWindowState {
         Some(drop_target(world, player, window, &entries, local))
     }
 
+    /// What a Mission released at `point` takes from the Fleet window egui
+    /// draws as `layer` (`+0x68`, `FUN_004a2f80`), or `None` when `layer` is
+    /// none of them. The left list (4..95, 29..295) gives the entry under
+    /// the point; the right list (101..234, 127..291) the item under the
+    /// point, else its selected item; anywhere else, or over the lists'
+    /// empty space, the window's subject.
+    ///
+    /// port: a fleet, a squadron, and a capital ship other than the Death
+    /// Star are not mission targets in the port, so they answer the system.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The lists read the world, the player's view and the fleets' cargo."
+    )]
+    #[must_use]
+    pub fn mission_target(
+        &self,
+        world: &GameWorld,
+        movement: &MovementState,
+        fog: &FogState,
+        transport: &TroopTransportState,
+        layout: CockpitLayout,
+        layer: egui::LayerId,
+        point: egui::Pos2,
+    ) -> Option<MissionTargetPick> {
+        let window = self
+            .windows
+            .iter()
+            .find(|window| area_id(window.system) == layer.id)?;
+        let rect = window_screen_rect(window, layout);
+        let scale = layout.scale.max(f32::EPSILON);
+        let local = (
+            (point.x - rect.min.x) / scale,
+            (point.y - rect.min.y) / scale,
+        );
+        let mut pick = MissionTargetPick::from(window.system);
+        let target = if in_rect(LEFT_LIST, local) {
+            let row = ((local.1 - LEFT_LIST.1) / LEFT_ITEM_HEIGHT) as usize;
+            let player = cockpit_faction(self.faction);
+            match left_entries(world, movement, fog, player, window).get(row) {
+                Some(FleetWindowEntry::Ship { fleet, index }) => {
+                    death_star(world, *fleet, *index).map(ItemTarget::Object)
+                }
+                Some(FleetWindowEntry::Fleet(_)) | None => None,
+            }
+        } else if in_rect(RIGHT_LIST, local) {
+            let row = ((local.1 - RIGHT_LIST.1) / RIGHT_ITEM_HEIGHT) as usize;
+            right_target(world, transport, window, row)
+                .or_else(|| {
+                    window
+                        .selected_item
+                        .and_then(|index| right_target(world, transport, window, index))
+                })
+                .flatten()
+        } else {
+            None
+        };
+        match target {
+            Some(ItemTarget::Character(key)) => pick.character = Some(key),
+            Some(ItemTarget::Object(object)) => pick.object = Some(object),
+            None => {}
+        }
+        Some(pick)
+    }
+
     pub fn clear(&mut self) {
         self.windows.clear();
         self.drag = None;
@@ -931,6 +996,58 @@ struct RightItem {
     no_hyperdrive: bool,
     /// The regiment or ship the item stands for.
     object: Option<ItemObject>,
+}
+
+/// A Fleet window item a mission can target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ItemTarget {
+    Character(CharacterKey),
+    Object(MissionTarget),
+}
+
+/// The Death Star hull (`CapitalShipClass::is_death_star`) as a mission
+/// target, `None` for any other ship.
+fn death_star(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<MissionTarget> {
+    let ship = world.fleets.get(fleet)?.capital_ships.get(index)?;
+    world
+        .capital_ship_classes
+        .get(ship.class)
+        .is_some_and(rebellion_core::world::CapitalShipClass::is_death_star)
+        .then_some(MissionTarget::DeathStar(fleet))
+}
+
+/// The right list's `index`th item as a mission target: `None` when there
+/// is no such item, `Some(None)` for an item the port cannot target.
+fn right_target(
+    world: &GameWorld,
+    transport: &TroopTransportState,
+    window: &OpenFleetWindow,
+    index: usize,
+) -> Option<Option<ItemTarget>> {
+    if window.tab == FleetWindowTab::Personnel {
+        let Some(FleetWindowEntry::Fleet(fleet)) = window.selected else {
+            return None;
+        };
+        let character = world
+            .fleets
+            .get(fleet)?
+            .characters
+            .iter()
+            .copied()
+            .filter(|key| world.characters.contains_key(*key))
+            .nth(index)?;
+        return Some(Some(ItemTarget::Character(character)));
+    }
+    let item = right_items(world, transport, window.selected, window.tab)
+        .into_iter()
+        .nth(index)?;
+    Some(match item.object {
+        Some(ItemObject::Regiment(key)) => Some(ItemTarget::Object(MissionTarget::Troop(key))),
+        Some(ItemObject::Ship { fleet, index, .. }) => {
+            death_star(world, fleet, index).map(ItemTarget::Object)
+        }
+        Some(ItemObject::Fighter { .. } | ItemObject::Fleet(_)) | None => None,
+    })
 }
 
 /// The current tab's objects aboard the selected fleet (`FUN_004a6be0`).
@@ -2702,6 +2819,82 @@ pub(crate) mod tests {
             vec![],
         ]);
         frames
+    }
+
+    #[test]
+    fn a_mission_released_on_a_fleet_windows_lists_targets_the_object_under_the_point() {
+        // +0x68 is FUN_004a2f80: the left list's entry under the point, the
+        // right list's item under the point or else its selection, and the
+        // subject elsewhere. Only the Death Star hull and a character are
+        // mission targets among them in the port.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let fleet = add_fleet(&mut world, system, false, 0);
+        let death_star = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x3400_0001),
+            name: "Death Star".into(),
+            hull: 100,
+            ..CapitalShipClass::default()
+        });
+        world.fleets[fleet]
+            .capital_ships
+            .insert(0, ShipInstance::new(death_star, 100, true));
+        let officer = world.characters.insert(rebellion_core::world::Character {
+            name: "Tarkin".into(),
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(officer);
+        let fog = fog(system);
+        let mut state = opened(&world, system);
+        state.windows[0].expanded = vec![fleet];
+        let layer = egui::LayerId::new(egui::Order::Foreground, area_id(system));
+        let pick = |state: &FleetWindowState, point| {
+            state
+                .mission_target(
+                    &world,
+                    &MovementState::default(),
+                    &fog,
+                    &TroopTransportState::default(),
+                    scaled(),
+                    layer,
+                    point,
+                )
+                .unwrap()
+        };
+        let here = MissionTargetPick::from(system);
+        let star = Some(MissionTarget::DeathStar(fleet));
+        let left = |row: f32| at(50.0, 29.0 + 25.0 + 50.0 * row);
+        let right = |row: f32| at(160.0, 127.0 + 25.0 + 50.0 * row);
+
+        // Left: the fleet, its Death Star, its other ship, then nothing.
+        assert_eq!(pick(&state, left(0.0)), here);
+        assert_eq!(pick(&state, left(1.0)).object, star);
+        assert_eq!(pick(&state, left(2.0)), here);
+        assert_eq!(pick(&state, left(3.0)), here);
+        // Right, with the fleet selected: its ships, then the selection.
+        state.windows[0].selected = Some(FleetWindowEntry::Fleet(fleet));
+        assert_eq!(pick(&state, right(0.0)).object, star);
+        assert_eq!(pick(&state, right(1.0)), here);
+        assert_eq!(pick(&state, right(2.0)), here);
+        state.windows[0].selected_item = Some(0);
+        assert_eq!(pick(&state, right(2.0)).object, star);
+        state.windows[0].tab = FleetWindowTab::Personnel;
+        state.windows[0].selected_item = None;
+        assert_eq!(pick(&state, right(0.0)).character, Some(officer));
+        // Outside both lists: the subject.
+        assert_eq!(pick(&state, at(150.0, 40.0)), here);
+        let elsewhere = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("elsewhere"));
+        assert_eq!(
+            state.mission_target(
+                &world,
+                &MovementState::default(),
+                &fog,
+                &TroopTransportState::default(),
+                scaled(),
+                elsewhere,
+                left(0.0),
+            ),
+            None
+        );
     }
 
     fn opened(world: &GameWorld, system: SystemKey) -> FleetWindowState {

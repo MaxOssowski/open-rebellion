@@ -220,7 +220,7 @@ point in its client coordinates: `+0x68` (the object under the point) and
 |---|---|---|---|---|
 | 1 | Sector window, `FUN_004591d0` (opened by `FUN_00429ce0` from a click on a sector) | `0x00659f18` | `FUN_0045c830`: the item in list `+0x164` whose rectangle (`+0x40`) holds the point (`FUN_0045c660`), else no id | `FUN_0045c6b0`: the same item, or the overlay item in list `+0x174` (flag `0x10000`) whose bitmap pixel is hit (`FUN_005fca00`) |
 | 9 | System window, `FUN_00452fc0` | `0x00659e68` | `FUN_004aa470`: the window's system (`+0x144`) wherever the point is | `FUN_00458b80`: the list item under the point (list `+0x174`, offset (8, 77)), else the system; on page `0x67` always the system |
-| 4 | hyp: fleet window, `FUN_004a2630`, 235 by 304 | `0x0065bda0` | `FUN_004a3130`: the item under the point in the left list (4..95, 29..295, list `+0x160`) or, when `+0x194` is `0x66`, the right list (101..234, 127..291, list `+0x164`); elsewhere the window's subject `+0x144`, or the single selected item | `FUN_004a2f80` (not read) |
+| 4 | hyp: fleet window, `FUN_004a2630`, 235 by 304 | `0x0065bda0` | `FUN_004a3130`: the item under the point in the left list (4..95, 29..295, list `+0x160`) or, when `+0x194` is `0x66`, the right list (101..234, 127..291, list `+0x164`); elsewhere the window's subject `+0x144`, or the single selected item | `FUN_004a2f80`: the left list's item under the point (4..95, 29..295); the right list's item under the point (101..234, 127..291), else its first selected item (`FUN_00609410`, `FUN_0060a860`); otherwise the subject `+0x144` (read 2026-10-14) |
 | 10 | `FUN_004a7790` | `0x0065be30` | `FUN_004aa470`: the window's subject `+0x144` | `FUN_004aa380`: the item under the point (list `+0x164`, offset (7, 81)), else the subject |
 | 11 | `FUN_0049f130`, 235 by 304 | `0x0065bd10` | `FUN_004aa470`: the subject | `FUN_004a09a0`: the picture at (108, 37) gives `+0x1c8`, the list `+0x1c0` gives the item under the point, else the subject |
 
@@ -578,9 +578,8 @@ straight to `FUN_00487740(order, 0)`.
 
 ## Still open
 
-- The names of window types 4, 10 and 11, and `FUN_004a2f80` (type 4's
-  `+0x68`); type 4 is read as the fleet window from its size and its opening
-  for item kind `0x10`.
+- The names of window types 4, 10 and 11; type 4 is read as the fleet
+  window from its size and its opening for item kind `0x10`.
 - Families `0x20..0x21` (ALLFACSD) and `0x98..0x9f`.
 - The leg builders `FUN_005529a0`, `FUN_00552000`, `FUN_00552300` and
   `FUN_00552dd0`.

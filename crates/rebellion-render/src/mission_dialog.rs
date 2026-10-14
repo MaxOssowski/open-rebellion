@@ -288,11 +288,39 @@ fn object_target_name(world: &GameWorld, target: MissionTargetPick) -> Option<St
         MissionTarget::DefenseFacility(key) => {
             defense_facility_mini(world.defense_facilities.get(key)?.class_dat_id)?.1
         }
-        MissionTarget::ManufacturingFacility(_)
-        | MissionTarget::ProductionFacility(_)
-        | MissionTarget::DeathStar(_) => return None,
+        // A facility reads as its class (`FUN_00437880`), as the System
+        // window's product names do.
+        MissionTarget::ManufacturingFacility(key) => {
+            return facility_name(world, world.manufacturing_facilities.get(key)?.class_dat_id);
+        }
+        MissionTarget::ProductionFacility(key) => {
+            return facility_name(world, world.production_facilities.get(key)?.class_dat_id);
+        }
+        MissionTarget::DeathStar(fleet) => {
+            return world
+                .fleets
+                .get(fleet)?
+                .capital_ships
+                .iter()
+                .filter(|ship| ship.alive)
+                .filter_map(|ship| world.capital_ship_classes.get(ship.class))
+                .find(|class| class.is_death_star())
+                .map(|class| class.name.clone());
+        }
     };
     Some(label.to_owned())
+}
+
+/// A facility class's name: its TEXTSTRA name, else its mini's label.
+fn facility_name(world: &GameWorld, class: rebellion_core::ids::DatId) -> Option<String> {
+    world
+        .buildable_classes
+        .get(&class)
+        .map(|value| value.name.clone())
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            crate::manufacturing_window::class_mini(class).map(|(_, label)| label.to_owned())
+        })
 }
 
 /// A kind's MISSNSD TEXTSTRA id: its name, and the source of its GOKRES icon.
@@ -983,6 +1011,80 @@ mod tests {
                 decoys: Vec::new(),
                 target,
             })
+        );
+    }
+
+    #[test]
+    fn a_facility_or_death_star_target_is_named_by_its_class() {
+        // FUN_00437880 names a product by its class; the Death Star hull by
+        // its capital ship class.
+        use rebellion_core::ids::DatId;
+        let mut world = GameWorld::default();
+        let yard = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2800_0001),
+                side: rebellion_core::dat::Faction::Empire,
+                is_shipyard: true,
+            },
+        );
+        let mine =
+            world
+                .production_facilities
+                .insert(rebellion_core::world::ProductionFacilityInstance {
+                    class_dat_id: DatId::new(0x2c00_0001),
+                    side: rebellion_core::dat::Faction::Empire,
+                    is_mine: true,
+                });
+        world.buildable_classes.insert(
+            DatId::new(0x2800_0001),
+            rebellion_core::world::BuildableClass::default(),
+        );
+        world.buildable_classes.insert(
+            DatId::new(0x2c00_0001),
+            rebellion_core::world::BuildableClass {
+                name: "Mine".into(),
+                ..Default::default()
+            },
+        );
+        let class = world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass {
+                dat_id: DatId::new(0x3400_0001),
+                name: "Death Star".into(),
+                ..Default::default()
+            });
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: SystemKey::default(),
+            capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, true)],
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: false,
+            has_death_star: true,
+        });
+        let name = |object| {
+            object_target_name(
+                &world,
+                MissionTargetPick {
+                    system: SystemKey::default(),
+                    character: None,
+                    object: Some(object),
+                },
+            )
+        };
+
+        assert_eq!(
+            name(MissionTarget::ProductionFacility(mine)).as_deref(),
+            Some("Mine")
+        );
+        // A class with an empty name falls back to its mini's label.
+        assert_eq!(
+            name(MissionTarget::ManufacturingFacility(yard)).as_deref(),
+            crate::manufacturing_window::class_mini(DatId::new(0x2800_0001))
+                .map(|(_, label)| label)
+        );
+        assert_eq!(
+            name(MissionTarget::DeathStar(fleet)).as_deref(),
+            Some("Death Star")
         );
     }
 

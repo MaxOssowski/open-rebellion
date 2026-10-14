@@ -1270,8 +1270,32 @@ cross-runtime proof remain open
     prisoner, and an active Rescue after Begin Mission; 4 of 4 requests,
     0 console errors. Evidence:
     `evidence/2026-10-14-rescue-targeting/README.md`.
-  - Open: the System, Fleet and sector windows' `+0x68`, the object
-    portrait, and a native check (`cua-driver` is not available here).
+- Phase 7h (2026-10-14): the System and Fleet windows' targets.
+  - The System window answers the facility in a facility page's cell
+    (`FUN_00458b80`); the Fleet window its left entry, its right item, or
+    else the right list's selection (`FUN_004a2f80`, now read). The port
+    can target a facility and the Death Star hull there; a fleet, a
+    squadron, any other ship, a queued unit and an empty deposit answer
+    their system (port). The sector window's `+0x68` (`FUN_0045c6b0`)
+    answers the planet's system, as no icon over it is a port target.
+  - Fix: the dialog listed both Sabotage and Death Star Sabotage for any
+    object, because only the dispatch ran the class creation checks
+    (`FUN_0056a110`, `FUN_005744c0`). `FUN_0054c590` builds the dialog's
+    trial mission through the class factory, so `available_kinds` now runs
+    them too; a test fails without it.
+  - The dialog names a facility or the Death Star by its class.
+  - Tests: 4 new (System window, Fleet window, the Death Star dialog list,
+    target names). Scoped `cargo mutants`: 13 core, 28 render and 7 dialog
+    caught, the last after one added case; 0 missed.
+  - Browser: fixture scenarios `SabotageTargeting` (code 59, both sides)
+    and `DeathStarTargeting` (code 60, Alliance; only the Alliance has the
+    mission) run the whole flow with `agent-browser`: Sabotage alone for an
+    enemy Orbital Shipyard, Death Star Sabotage alone for the Death Star,
+    and the mission active after Begin Mission; `RescueTargeting` reruns
+    on both sides. 0 console errors and no failed request in any run.
+    Evidence: `evidence/2026-10-14-object-targeting/README.md`.
+  - Open: the object portrait, and a native check (`cua-driver` is not
+    available here).
 
 ### F-020: A mod with a missing dependency fails silently
 

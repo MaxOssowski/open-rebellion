@@ -17,7 +17,7 @@ use rebellion_core::delivery::DeliveryState;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{DatId, FleetKey, SystemKey};
 use rebellion_core::manufacturing::{ManufacturingState, ProductionArea};
-use rebellion_core::missions::MissionState;
+use rebellion_core::missions::{MissionState, MissionTarget, MissionTargetPick};
 use rebellion_core::world::{ControlKind, GameWorld};
 
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -372,6 +372,66 @@ impl SystemWindowState {
             .iter()
             .find(|window| window.system == system)
             .map(|window| (window.tab, window.selected_band))
+    }
+
+    /// What a Mission released over the window egui draws as `layer`
+    /// targets (`+0x68`, `FUN_00458b80`): on a facility page, the facility
+    /// in the list cell under `point` (list `+0x174` at (8, 77)); on the
+    /// overview (page `0x67`) or anywhere else, the window's system. `None`
+    /// when `layer` is none of these windows.
+    ///
+    /// port: a queued unit's cell and an empty deposit's cell answer the
+    /// system; the port keeps no object for either.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The page's cells read the world, the player's view and production."
+    )]
+    #[must_use]
+    pub fn mission_target(
+        &self,
+        world: &GameWorld,
+        fog: &FogState,
+        manufacturing: &ManufacturingState,
+        deliveries: &DeliveryState,
+        layout: CockpitLayout,
+        layer: egui::LayerId,
+        point: egui::Pos2,
+    ) -> Option<MissionTargetPick> {
+        let window = self
+            .windows
+            .iter()
+            .find(|window| area_id(window.system) == layer.id)?;
+        let mut pick = MissionTargetPick::from(window.system);
+        let Some(page) = window.tab.page() else {
+            return Some(pick);
+        };
+        let screen = window_screen_rect(*window, layout);
+        let list = logical_rect(screen, layout.scale, LIST.0, LIST.1, LIST.2, LIST.3);
+        if !rect_contains(list, point) {
+            return Some(pick);
+        }
+        let player = cockpit_faction(self.faction);
+        let visible = contents_visible(world, fog, player, window.system);
+        let item = page_cells(
+            world,
+            manufacturing,
+            deliveries,
+            visible,
+            window.system,
+            page,
+        )
+        .into_iter()
+        .enumerate()
+        .find(|(index, _)| rect_contains(cell_rect(screen, layout.scale, *index), point))
+        .map(|(_, cell)| cell.item);
+        pick.object = match item {
+            Some(FacilityItem::Manufacturing(key)) => {
+                Some(MissionTarget::ManufacturingFacility(key))
+            }
+            Some(FacilityItem::Production(key)) => Some(MissionTarget::ProductionFacility(key)),
+            Some(FacilityItem::Pending(_) | FacilityItem::Deposit(_)) | None => None,
+        };
+        Some(pick)
     }
 
     /// The destination a targeting release takes from the system window
@@ -1635,6 +1695,87 @@ mod tests {
             layout(CockpitFaction::Alliance, 2.0)
         ));
         state
+    }
+
+    #[test]
+    fn a_mission_released_on_a_facility_page_targets_the_facility_under_the_point() {
+        // +0x68 is FUN_00458b80: unless the page is the overview (0x67), the
+        // item in list +0x174 at (8, 77) under the point, else the system.
+        let (mut world, systems) = fixture_world(1);
+        let system = systems[0];
+        let yard = add_yard(&mut world, system, 0x2800_0001);
+        let mine = add_mine(&mut world, system);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        assert!(state.open_tab(
+            &world,
+            system,
+            SystemWindowTab::Shipyards,
+            ORIGIN,
+            CockpitFaction::Alliance,
+            layout,
+        ));
+        let fog = FogState::new(Faction::Alliance);
+        let layer = egui::LayerId::new(egui::Order::Foreground, area_id(system));
+        let pick = |state: &SystemWindowState, point| {
+            state.mission_target(
+                &world,
+                &fog,
+                &ManufacturingState::new(),
+                &DeliveryState::new(),
+                layout,
+                layer,
+                point,
+            )
+        };
+        let cell = |state: &SystemWindowState, index| {
+            state
+                .cell_screen_rect(layout, system, index)
+                .unwrap()
+                .center()
+        };
+        let FacilityItem::Manufacturing(yard) = yard else {
+            unreachable!()
+        };
+        let FacilityItem::Production(mine) = mine else {
+            unreachable!()
+        };
+
+        assert_eq!(
+            pick(&state, cell(&state, 0)).unwrap().object,
+            Some(MissionTarget::ManufacturingFacility(yard))
+        );
+        // The empty cell next to it, and the window's frame, give the system.
+        assert_eq!(
+            pick(&state, cell(&state, 1)),
+            Some(MissionTargetPick::from(system))
+        );
+        let frame = state.cell_screen_rect(layout, system, 0).unwrap().min - egui::vec2(4.0, 4.0);
+        assert_eq!(pick(&state, frame), Some(MissionTargetPick::from(system)));
+        state.select_tab(system, SystemWindowTab::Mines);
+        assert_eq!(
+            pick(&state, cell(&state, 0)).unwrap().object,
+            Some(MissionTarget::ProductionFacility(mine))
+        );
+        // The overview is page 0x67: always the system.
+        state.select_tab(system, SystemWindowTab::Overview);
+        assert_eq!(
+            pick(&state, cell(&state, 0)),
+            Some(MissionTargetPick::from(system))
+        );
+        let elsewhere = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("elsewhere"));
+        assert_eq!(
+            state.mission_target(
+                &world,
+                &fog,
+                &ManufacturingState::new(),
+                &DeliveryState::new(),
+                layout,
+                elsewhere,
+                cell(&state, 0),
+            ),
+            None
+        );
     }
 
     fn hover(point: egui::Pos2) -> Vec<Vec<egui::Event>> {

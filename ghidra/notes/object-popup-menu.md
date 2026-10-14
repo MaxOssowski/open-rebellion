@@ -194,10 +194,15 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   system window gives its system, a sector window the planet under the
   point, and the bare map nothing. Since 2026-10-14 a Mission asks
   `+0x68` (`targeting::mission_release_target`): a Defenses window answers
-  the object in the cell under the point (`FUN_004aa380`), and a team
-  member answers as its system. port: the System, Fleet and sector windows'
-  `+0x68` answers still reduce to their system, Shift's pass-through click
-  is not ported, and Escape cancels as `0x15e` does.
+  the object in the cell under the point (`FUN_004aa380`), a System window
+  the facility in a facility page's cell (`FUN_00458b80`), a Fleet window
+  its list entry or item, else the right list's selection (`FUN_004a2f80`),
+  and a team member answers as its system. port: a fleet, a squadron, a
+  capital ship other than the Death Star, a queued unit and an empty
+  deposit have no mission target in the port and answer their system; the
+  sector window's `+0x68` (`FUN_0045c6b0`, an icon over a planet) answers
+  the planet's system; Shift's pass-through click is not ported, and Escape
+  cancels as `0x15e` does.
 - 7d: the stand-in entry points are gone: the system context menu's Send
   Diplomat and Send Spy buttons (`PanelAction::OpenMissionTo`) and the
   missions panel's Dispatch tab (`PanelAction::OpenMissionDialog`). The

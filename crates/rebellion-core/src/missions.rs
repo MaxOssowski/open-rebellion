@@ -681,6 +681,22 @@ pub fn members_allowed(
         && (!empire || rules.empire)
 }
 
+/// The class creation checks of `FUN_0056a110` (Sabotage) and
+/// `FUN_005744c0` (Death Star Sabotage), which read the target object's
+/// family (slot `+4`): Sabotage refuses the Death Star (families
+/// `0x18..0x1c`), Death Star Sabotage every other object. Both the dispatch
+/// and the dialog's list run them, since `FUN_0054c590` builds the mission
+/// through its class factory. port: a missing object is refused, because
+/// every original order names one.
+fn creation_target_ok(kind: MissionKind, object: Option<MissionTarget>) -> bool {
+    let death_star = object.map(|target| matches!(target, MissionTarget::DeathStar(_)));
+    match kind {
+        MissionKind::Sabotage => death_star == Some(false),
+        MissionKind::DeathStarSabotage => death_star == Some(true),
+        _ => true,
+    }
+}
+
 /// What a Mission order targets: the object the release window answered
 /// (`+0x68`, `ghidra/notes/move-order.md`, "Hit tests") and its system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -747,6 +763,7 @@ pub fn available_kinds(
                 .map(|kind| (kind, record))
         })
         .filter(|(kind, _)| kind.target_rules() == target.rules())
+        .filter(|(kind, _)| creation_target_ok(*kind, target.object))
         .filter(|(_, record)| {
             members_allowed(world, record.members, team.iter().chain(decoys).copied())
         })
@@ -1163,18 +1180,7 @@ impl MissionState {
         world: &mut GameWorld,
     ) -> Result<u64, MissionRefusal> {
         let side_is_alliance = request.faction == MissionFaction::Alliance;
-        // The creation checks of FUN_0056a110 and FUN_005744c0 read the
-        // target object's family (slot +4). port: a missing object is
-        // refused, because every original order names one.
-        let death_star = request
-            .target_object
-            .map(|target| matches!(target, MissionTarget::DeathStar(_)));
-        let target_ok = match request.kind {
-            MissionKind::Sabotage => death_star == Some(false),
-            MissionKind::DeathStarSabotage => death_star == Some(true),
-            _ => true,
-        };
-        if !target_ok {
+        if !creation_target_ok(request.kind, request.target_object) {
             return Err(MissionRefusal::TargetUnavailable);
         }
         // FUN_0054bb90 moves every prisoner out of the team and decoy lists
@@ -6758,6 +6764,39 @@ mod tests {
         );
 
         assert_eq!(kinds, vec![MissionKind::Sabotage]);
+    }
+
+    #[test]
+    fn a_dialog_dropped_on_the_death_star_lists_ds_sabotage_and_on_a_yard_sabotage() {
+        // FUN_0054c590 builds the mission through its class factory, whose
+        // creation checks split the two (FUN_0056a110, FUN_005744c0).
+        let ds_record = crate::world::MissionRecord {
+            dat_id: MissionKind::DeathStarSabotage.record_id().unwrap(),
+            ..sabotage_record()
+        };
+        let (mut world, here, envoy) = dialog_world(vec![sabotage_record(), ds_record]);
+        world.systems[here].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        let yard = MissionTarget::ManufacturingFacility(enemy_yard(&mut world, here));
+        let death_star = MissionTarget::DeathStar(death_star_fleet(&mut world, here));
+        let uprisings = UprisingState::default();
+        let list = |object| {
+            available_kinds(
+                &world,
+                &uprisings,
+                MissionFaction::Alliance,
+                &[envoy],
+                &[],
+                MissionTargetPick {
+                    system: here,
+                    character: None,
+                    object: Some(object),
+                },
+            )
+        };
+
+        assert_eq!(list(death_star), vec![MissionKind::DeathStarSabotage]);
+        assert_eq!(list(yard), vec![MissionKind::Sabotage]);
     }
 
     #[test]

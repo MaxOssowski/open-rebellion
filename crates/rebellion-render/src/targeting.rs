@@ -177,36 +177,74 @@ pub fn release_destination(
         .map(ReleaseTarget::System)
 }
 
+/// The state a Mission release reads besides the windows.
+#[derive(Clone, Copy)]
+pub struct MissionReleaseSources<'a> {
+    pub world: &'a GameWorld,
+    pub movement: &'a rebellion_core::movement::MovementState,
+    pub fog: &'a FogState,
+    pub missions: &'a rebellion_core::missions::MissionState,
+    pub manufacturing: &'a rebellion_core::manufacturing::ManufacturingState,
+    pub deliveries: &'a rebellion_core::delivery::DeliveryState,
+    pub transport: &'a rebellion_core::troop_transport::TroopTransportState,
+}
+
 /// What a Mission released at `point` targets (`FUN_00422ce0` asks the
-/// window's `+0x68`, the object under the point). A Defenses window gives
-/// the character, special force, regiment or defense facility in the cell
-/// under the point, else its system (`FUN_004aa380`). A team member answers
-/// as the first system up its parents, so it targets its system. Every
-/// other window gives the system its `+0x70` gives.
+/// window's `+0x68`, the object under the point; `move-order.md`, "Hit
+/// tests"):
 ///
-/// port: the System window's (`FUN_00458b80`), Fleet window's
-/// (`FUN_004a2f80`) and sector window's (`FUN_0045c6b0`) objects are not
-/// answered yet; they reduce to their system.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "The release reads the windows, the world, and the player's view, as release_destination does."
-)]
+/// - a Defenses window (type 10, `FUN_004aa380`): the character, special
+///   force, regiment or defense facility in the cell under the point;
+/// - a System window (type 9, `FUN_00458b80`): on a facility page, the
+///   facility in the cell under the point;
+/// - a Fleet window (type 4, `FUN_004a2f80`): the left list's entry or the
+///   right list's item under the point, else the right list's selection;
+///
+/// each else its system. A team member answers as the first system up its
+/// parents, so it targets its system. A sector window gives the system its
+/// `+0x70` gives.
+///
+/// port: the sector window's `+0x68` (`FUN_0045c6b0`) may answer an icon
+/// over a planet, such as a fleet's; the port has no mission target for a
+/// fleet, so it answers the planet's system as `+0x70` does.
 #[must_use]
 pub fn mission_release_target(
     ctx: &egui::Context,
-    world: &GameWorld,
-    movement: &rebellion_core::movement::MovementState,
-    fog: &FogState,
-    missions: &rebellion_core::missions::MissionState,
+    sources: MissionReleaseSources<'_>,
     layout: CockpitLayout,
     windows: ReleaseWindows<'_>,
     team: &[MissionMember],
     point: egui::Pos2,
 ) -> Option<rebellion_core::missions::MissionTargetPick> {
+    let MissionReleaseSources {
+        world,
+        movement,
+        fog,
+        missions,
+        manufacturing,
+        deliveries,
+        transport,
+    } = sources;
     let picked = window_layer_at(ctx, point).and_then(|layer| {
         windows
             .defenses
             .mission_target(world, fog, missions, layout, layer, point)
+            .or_else(|| {
+                windows.system.mission_target(
+                    world,
+                    fog,
+                    manufacturing,
+                    deliveries,
+                    layout,
+                    layer,
+                    point,
+                )
+            })
+            .or_else(|| {
+                windows
+                    .fleet
+                    .mission_target(world, movement, fog, transport, layout, layer, point)
+            })
     });
     let Some(mut pick) = picked else {
         return release_destination(ctx, world, movement, fog, layout, windows, point)
@@ -1020,10 +1058,16 @@ mod tests {
                     |ctx, windows, fog, layout, point| {
                         mission_release_target(
                             ctx,
-                            &world,
-                            &rebellion_core::movement::MovementState::default(),
-                            fog,
-                            &MissionState::new(),
+                            MissionReleaseSources {
+                                world: &world,
+                                movement: &rebellion_core::movement::MovementState::default(),
+                                fog,
+                                missions: &MissionState::new(),
+                                manufacturing:
+                                    &rebellion_core::manufacturing::ManufacturingState::new(),
+                                deliveries: &rebellion_core::delivery::DeliveryState::new(),
+                                transport: &TroopTransportState::default(),
+                            },
                             layout,
                             windows,
                             &team,

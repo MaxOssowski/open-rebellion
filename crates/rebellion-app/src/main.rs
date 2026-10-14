@@ -112,7 +112,7 @@ use rebellion_render::status_window::{draw_status_window, StatusWindowAction, St
 use rebellion_render::system_window::fleet_label;
 use rebellion_render::targeting::{
     capture_pointer, draw_targeting_cursor, mission_release_target, release_destination,
-    ReleaseTarget, ReleaseWindows,
+    MissionReleaseSources, ReleaseTarget, ReleaseWindows,
     TargetOrder, Targeting, TargetingEnd,
 };
 use rebellion_render::{
@@ -4873,7 +4873,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                             menu,
                             &world,
                             &sector_window_state,
-                            &defenses_window_state,
+                            (
+                                &defenses_window_state,
+                                &system_window_state,
+                                &fleet_window_state,
+                            ),
                         );
                     }
                     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
@@ -5205,10 +5209,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 targeting = None;
                                 if let Some(target) = mission_release_target(
                                     ctx,
-                                    &world,
-                                    &movement_state,
-                                    fog_state,
-                                    &mission_state,
+                                    MissionReleaseSources {
+                                        world: &world,
+                                        movement: &movement_state,
+                                        fog: fog_state,
+                                        missions: &mission_state,
+                                        manufacturing: &mfg_state,
+                                        deliveries: &delivery_state,
+                                        transport: &troop_transport_state,
+                                    },
                                     cockpit_layout,
                                     windows,
                                     &team,

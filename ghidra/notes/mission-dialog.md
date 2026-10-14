@@ -170,9 +170,12 @@ Port decisions:
   targeting cursor (`object-popup-menu.md`, phase 7c). Phase 7d removed the
   missions panel's character and target pickers that stood in for them.
 - The target is the object the release window answered (`+0x68`), and a
-  kind lists only for the target its class takes (2026-10-14). port: only
-  the Defenses window answers objects yet (`object-popup-menu.md`,
-  "Ported"), and an object target shows its name without its portrait.
+  kind lists only for the target its class takes and its class factory's
+  creation check passes, so a Death Star lists Death Star Sabotage and any
+  other object Sabotage (`FUN_0054c590`, `FUN_0056a110`, `FUN_005744c0`;
+  2026-10-14). The Defenses, System and Fleet windows answer objects
+  (`object-popup-menu.md`, "Ported"). port: an object target shows its name
+  (a facility's or ship's class) without its portrait.
 - hyp: `FUN_00606980` places the window in the galaxy view's rectangle; the port
   centers it there, rounded to whole pixels (both 640 by 480 galaxy views put
   the center on a half pixel).
