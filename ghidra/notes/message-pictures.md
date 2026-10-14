@@ -119,7 +119,8 @@ when the unit's location is a system (class `0x90`-`0x97`), otherwise into
 | Escaped | `0x1e0` | `FUN_00490340` | `0x405` | — |
 | Jabba Captures | `0x1e0` case 5 | `FUN_00490340` | `0x429` | — |
 
-hyp: `FUN_004edc80` is the character's side: `0x42e` is a coffin under the
+`FUN_004edc80` is the character's home side (confirmed in
+`captive-escape.md` from the DAT `is_alliance`/`is_empire` fields): `0x42e` is a coffin under the
 Alliance flag and `0x433` one under the Empire's; `0x418` shows stormtroopers
 holding Alliance prisoners and `0x419` the reverse. Its `this` is lost in
 the decompilation.

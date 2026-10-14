@@ -115,10 +115,11 @@ all characters via `FUN_004f3d50(side, {0x30, 0x3c}, 0)`:
   `{0x30, 0x3c}` restricts to characters only.
 - Each character's name is taken from `character->+0x2c + 0x34`
   (`FUN_00583c40`), its record's name field.
-- `FUN_004edc80(character)` returns the character's rank: 0 = no rank,
-  1 = General (has `+0x40`, no `+0x44`), 2 = Admiral (has `+0x44`, no
-  `+0x40`). hyp: `+0x2c` is the class record, `+0x40`/`+0x44` are command
-  rank flags in the class data.
+- `FUN_004edc80(character)` returns the character's home side: 1 =
+  Alliance (class `+0x40`, no `+0x44`), 2 = Empire (`+0x44`, no `+0x40`),
+  0 otherwise. `+0x40`/`+0x44` are the DAT `is_alliance`/`is_empire`
+  fields; see `captive-escape.md` (corrected 2026-10-14; this note first
+  read them as command ranks).
 - Each character is inserted into `+0x174` (the character sorted list) with
   name and rank stored in the row at `+0x54`.
 

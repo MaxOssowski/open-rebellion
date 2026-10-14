@@ -1595,6 +1595,13 @@ cross-runtime proof remain open
   captured member (`FUN_00520cd0`) is ported as `uprising.rs`
   `uprising_mission_terms` with three tests. The other bullets were not
   re-checked.
+- Research (2026-10-14): the escape original is recovered in
+  `ghidra/notes/captive-escape.md`. Timer `0x38a` rolls each captive every
+  GNPRTB 2584 + rand(0..=2585) after capture; the ESCAPETB input is
+  espionage + combat minus the average combat of the captor's free
+  characters and the count of the captor's usable regiments at the
+  captive's location; success clears Captured and restores the home side.
+  Not ported yet.
 - Acceptance: Detection, escape, and effects follow their decompiles with
   failing-without tests; mission members become a roster (with F-019).
 
