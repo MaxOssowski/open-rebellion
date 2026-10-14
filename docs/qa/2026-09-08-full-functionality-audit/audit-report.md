@@ -1761,6 +1761,15 @@ cross-runtime proof remain open
   modules 1, 6, 7, 9, `0xa` and `0xe` order nothing. Golden
   `v1:e271a795cd483ebe` -> `v1:33233aedba63db5c`
   (`evidence/2026-10-14-ai-modules/`).
+- World model (2026-10-14): the AI's records the production modules query
+  are ported in `ai_records.rs`. That covers class records (`FUN_0042dd00`), fleet records
+  (`FUN_00433620` over `FUN_00484630`, `FUN_00433780`), system records
+  (`FUN_00433e40`), sector records (`FUN_004321e0`, `FUN_00432350`) and the
+  sector and system queries (`FUN_00419a00`, `FUN_00431830`, `FUN_004357b0`)
+  (`ghidra/notes/ai-galaxy-records.md`). Nothing reads them yet; the golden
+  is unchanged (`evidence/2026-10-14-ai-galaxy-records/`). Module 1's first
+  read is in `ghidra/notes/ai-production-modules.md`; it needs the Scrap
+  order, which the port lacks.
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

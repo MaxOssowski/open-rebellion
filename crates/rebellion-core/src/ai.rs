@@ -2849,7 +2849,7 @@ fn ai_research_goal(world: &GameWorld, is_alliance: bool, tech: TechType) -> u32
 /// port: the bit is read as the level having reached a nonzero goal; the
 /// notification fires only on a change of level, so a goal of 0 never sets
 /// it.
-fn ai_research_done(
+pub(crate) fn ai_research_done(
     world: &GameWorld,
     research: &ResearchState,
     is_alliance: bool,

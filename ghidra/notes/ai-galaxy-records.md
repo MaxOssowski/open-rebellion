@@ -87,8 +87,9 @@ Refresh: return unless `+0x24` (dirty) is set; zero `v[0..0x3c]`, keep
 - 0x8 and 0x28: the system is populated (`+0x88` bit 0).
 - 0x80: an active `0x25` defense.
 - 0x100: more than one `0x24` defense.
-- 0x200: an own fleet of the side here (fleet record `+0x38` bit `0x4000`,
-  not bit 1); 0x400 with fleet bit `0x10`.
+- 0x200: another side's fleet here with a standing, active ship (fleet
+  record `+0x38` bit `0x4000`, bit 1 clear: bit 1 marks the record side's
+  own fleet, `FUN_00432e40`/`FUN_00433620`); 0x400 with fleet bit `0x10`.
 - 0x800: a yard, mine, refinery or defense, but no `0x22`/`0x23` defense.
 - 0x1000, 0x3000: a character with officer rank (`0x7000000`, `0x2000000`).
 - 0x4000, 0x8000: own regiments whose class has bit `0x1000`/`0x2000`.
@@ -134,20 +135,20 @@ Refresh: return unless `+0x24` (dirty) is set; zero `v[0..0x3c]`, keep
 | 13 | `+0x7c` | the `0x22`/`0x23` goal |
 | 14 | `+0x80` | system `+0x64` - `+0x68` (free raw) |
 | 15 | `+0x84` | system `+0x5c` - `+0x60` (free energy) |
-| 16 | `+0x88` | fleets |
-| 17 | `+0x8c` | own fleets counted toward the goal |
-| 18 | `+0x90` | active fleets |
+| 16 | `+0x88` | regiments (`FUN_00504c40`, `0x10..0x13`) |
+| 17 | `+0x8c` | regiments counted toward the garrison goal |
+| 18 | `+0x90` | active regiments |
 | 19..21 | `+0x94..+0x9c` | garrison surplus, -, deficit |
 | 20 | `+0x98` | the support term, at most 6 (doubled in an uprising) |
 | 22 | `+0xa0` | the garrison goal |
-| 23..25 | `+0xa4..+0xac` | regiments, own, active |
-| 26..28 | `+0xb0..+0xb8` | regiment strengths (`FUN_00473610..630`) |
-| 29 | `+0xbc` | fleet record `+0xa4` + `v[18]` + `v[25]` |
-| 30, 31, 32 | `+0xc0..+0xc8` | maintenance of fleets, defenses, regiments |
+| 23..25 | `+0xa4..+0xac` | squadrons on the planet (`FUN_005039d0`, `0x1c..0x1f`): all, counted, active |
+| 26..28 | `+0xb0..+0xb8` | their strengths (`FUN_00473610..630`) |
+| 29 | `+0xbc` | foreign fleet records' `+0xa4`, and for an opponent's system `v[18]` + `v[25]` |
+| 30, 31, 32 | `+0xc0..+0xc8` | maintenance of regiments, defenses, squadrons |
 | 33..36 | `+0xcc..+0xd8` | maintenance of yards: all, shipyards, training, construction |
 | 37 | `+0xdc` | the defense balance |
 | 38 | `+0xe0` | regiments against the goal |
-| 39..44 | `+0xe4..+0xf4` | from fleet records |
+| 39..43 | `+0xe4..+0xf4` | foreign fleets' records `+0xb4`, `+0xb8`, `+0x60`, -, `+0x70` |
 | 44..48 | `+0xf8..+0x108` | characters |
 | 50 | `+0x110` | the headquarters counts |
 | 51 | `+0x114` | free facility slots: energy - (marked yards + max(`0x24`, goal) + max(`0x22`, goal) + HQ) |
@@ -160,7 +161,12 @@ Refresh: return unless `+0x24` (dirty) is set; zero `v[0..0x3c]`, keep
   `+0x364..+0x378` by HQ, marks, and energy;
 - the garrison goal `v[22]` is side `+0x37c` (unmarked), `+0x380`
   (marked), `+0x384` (HQ), raised to `v[20]`;
-- regiments against the goal `v[38]` subtract `+0x388`/`+0x38c`/`+0x390`.
+- squadrons against the goal `v[38]`, `v[53]` subtract `+0x388`/`+0x38c`/
+  `+0x390`; an unmarked system with no counted regiment takes all its
+  squadrons.
+
+Ported 2026-10-14 as `ai_records::SystemRecord` (with `FleetRecord` and
+`ClassRecords`); the port's assumptions are in its doc comment.
 
 Opponent and neutral systems get their own support term and `+0x2c` bits.
 
@@ -228,6 +234,9 @@ Opponent systems (`+0x30` bit 4) set `+0x2c` bit 8. Neutral systems set bit
 | `0xc000` | `+0x180` | `0x4000` |
 | `0x1000000` | `+0x184` | `0x8000` |
 
+Ported 2026-10-14 as `ai_records::SectorRecord` (the sector's own system
+count stands for the original's fixed 10).
+
 ## Queries
 
 `FUN_00419a00(req24, req28, req2c, forbid24, forbid28, forbid2c, key,
@@ -241,14 +250,24 @@ same way over `+0x28`, `+0x2c`, `+0x30`, keyed by `v[key]`.
 Order 1 sorts ascending, order 2 descending, with a coin flip on equal
 keys (`FUN_0041c250`). `FUN_0041c230` ranks from 1, and `FUN_004357b0`
 takes the highest rank sum over all the lists it merges
-(`ai-mission-planning.md`, "Picking").
+(`ai-mission-planning.md`, "Picking"). Ported as `ai_records::Galaxy::{sector_query,
+system_query}`, `ranked` and `pick`.
+
+## Fleet records (`FUN_00432e40`, `FUN_00433620`, `FUN_00433780`)
+
+The constructor stores the record's side at `+0x20`, the fleet's owner at
+`+0x24`, and `+0x38` bit 4. A refresh keeps `+0x38 & 0xf000000c` and zeroes
+`+0x50..+0xc4`. It sets bit 1 when the owner is the record's side and bit 2
+when the fleet travels. Then it adds in each capital ship's record
+(`FUN_00484630`): hull, attack (class `+0x30` scaled by the weapon recharge
+left, `FUN_004738d0`), shields, fighters, regiments and people aboard.
+Fleet bits `0x4000` (a standing active ship), `0x8000`, `0x20000`/`0x40000`
+(fighters/regiments aboard), and counts at `+0x50..+0xbc`; `0x80000`/
+`0x100000` when troop or hangar room is left. Ported as
+`ai_records::FleetRecord`.
 
 ## Open
 
-- The fleet record (`FUN_00419e40` -> `FUN_004f5940`): its `+0x38` bits
-  (1, `0x10`, `0x4000`, `0x200000`, `0x400000`, `0x1000000`, `0x2000000`)
-  and values `+0x60`, `+0x70`, `+0xa4`, `+0xb4`, `+0xb8`.
-- The regiment strength helpers `FUN_00473620`/`FUN_00473630` (`00473610`:
-  class `+0x30` × strength / class `+0x4c`).
-- The battery and shield goal arithmetic in full, and the opponent branch's
-  support term.
+- The thresholds the system record reads through `+0x40` (the
+  controller's `+0x138` object, `+0x24`/`+0x28`); no writer is found.
+- System object `+0x50` bit 3, and the ship slot `+0x34(1)` test.

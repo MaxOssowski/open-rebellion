@@ -1,0 +1,13 @@
+crates/rebellion-core/src/ai_records.rs:1063:33: replace > with >= in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1069:28: replace & with | in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1069:28: replace & with ^ in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1085:36: replace + with - in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1133:33: replace < with <= in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1094:32: replace > with < in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1172:28: replace == with != in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1172:24: replace & with | in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1172:24: replace & with ^ in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1194:33: replace < with == in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1194:33: replace < with > in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1194:33: replace < with <= in SystemRecord::build
+crates/rebellion-core/src/ai_records.rs:1199:25: replace < with <= in SystemRecord::build

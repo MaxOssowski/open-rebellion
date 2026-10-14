@@ -306,6 +306,17 @@ impl<'a> Planner<'a> {
         })
     }
 
+    /// The flags (`+0x30`) of `member`'s record, which the fleet records
+    /// read for the people aboard (`FUN_00484630`).
+    // port: the AI pass reads it once the modules use the galaxy records.
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) fn flags(&self, member: MissionMember) -> Option<u32> {
+        self.records
+            .iter()
+            .find(|r| r.member == member)
+            .map(|r| r.flags)
+    }
+
     /// Whether `FUN_0047b360` would send `member`: its record has none of
     /// `0x74000f1` (on a mission, en route, ...).
     pub(crate) fn sendable(&self, member: MissionMember) -> bool {
@@ -985,6 +996,22 @@ mod tests {
         let plan = planner(&world).plan(MissionKind::Rescue);
 
         assert_eq!(plan, Some((vec![first], vec![])));
+    }
+
+    #[test]
+    fn a_record_s_flags_are_found_by_its_member() {
+        // FUN_00401d20: an own unrecruited character carries 0x2 and 0x1.
+        let mut world = world();
+        let key = agent(&mut world, 1, |c| c.recruited = false);
+        let planner = planner(&world);
+
+        let flags = planner.flags(key).unwrap();
+
+        assert_eq!(flags & (OWN_SIDE | INACTIVE), OWN_SIDE | INACTIVE);
+        assert_eq!(
+            planner.flags(MissionMember::Character(CharacterKey::default())),
+            None
+        );
     }
 
     #[test]
