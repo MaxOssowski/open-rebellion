@@ -668,6 +668,14 @@ fn target_name(world: &GameWorld, mission: &rebellion_core::missions::ActiveMiss
                 .get(key)
                 .map(|value| class_name(world, value.class_dat_id)),
             MissionTarget::DeathStar(fleet) => fleet_label(world, fleet),
+            MissionTarget::CapitalShip { class, .. } => world
+                .capital_ship_classes
+                .get(class)
+                .map(|value| value.name.clone()),
+            MissionTarget::Fighter { class, .. } => world
+                .fighter_classes
+                .get(class)
+                .map(|value| value.name.clone()),
         })
     });
     object

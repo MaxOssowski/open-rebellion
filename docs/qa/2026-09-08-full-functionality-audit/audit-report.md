@@ -1301,7 +1301,28 @@ cross-runtime proof remain open
     each target offered Rescue, Sabotage or Death Star Sabotage alone, named
     the target, and Begin Mission took the agent off its personnel page.
     Evidence: `evidence/2026-10-14-native-mission-targets/README.md`.
-  - Open: the object portrait.
+- Phase 7i (2026-10-14): the targets the port used to reduce to a system.
+  - The creation checks are read (`FUN_005868c0`, `FUN_00586e20`,
+    `FUN_00593500`, `FUN_0056a110`, `FUN_005744c0`): no class takes a fleet
+    or an unfinished object, and Sabotage takes an ordinary capital ship or
+    a fighter squadron. A Fleet window now answers a ship
+    (`MissionTarget::CapitalShip`) or squadron (`MissionTarget::Fighter`) as
+    a Sabotage target, which destroys one hull or squadron of that class;
+    a fleet entry, and a System window's queued unit or empty deposit, drop
+    the order, so no dialog opens, where the port used to open one for the
+    system. port: a ship or squadron names its class aboard the fleet, as
+    the port keeps no per-hull or per-squadron identity.
+  - Tests: 2 new core tests and the Fleet and System window tests rewritten
+    to the recovered rules (they asserted the system before). Scoped
+    `cargo mutants`: core 35 caught after one added case, render 33
+    caught; 0 missed.
+  - Browser: fixture scenarios `ShipTargeting` (code 61) and
+    `FleetTargeting` (code 62), both sides, plus reruns of codes 58 to 60:
+    a ship offers Sabotage alone ("Strike Cruiser"); a fleet opens no
+    dialog and dispatches nothing. Evidence:
+    `evidence/2026-10-14-ship-and-fleet-targets/README.md`.
+  - Open: the object portrait, and a native rerun of the ship and fleet
+    cases.
 
 ### F-020: A mod with a missing dependency fails silently
 

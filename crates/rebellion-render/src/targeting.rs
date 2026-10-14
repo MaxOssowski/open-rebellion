@@ -200,13 +200,15 @@ pub struct MissionReleaseSources<'a> {
 /// - a Fleet window (type 4, `FUN_004a2f80`): the left list's entry or the
 ///   right list's item under the point, else the right list's selection;
 ///
-/// each else its system. A team member answers as the first system up its
-/// parents, so it targets its system. A sector window gives the system its
-/// `+0x70` gives.
+/// each else its system. An object no mission takes (a fleet, a unit not
+/// completed or en route) drops the order, as no dialog would open for it. A
+/// team member answers as the first system up its parents, so it targets its
+/// system. A sector window gives the system its `+0x70` gives.
 ///
-/// port: the sector window's `+0x68` (`FUN_0045c6b0`) may answer an icon
-/// over a planet, such as a fleet's; the port has no mission target for a
-/// fleet, so it answers the planet's system as `+0x70` does.
+/// hyp: the sector window's `+0x68` (`FUN_0045c6b0`) answers a planet or a
+/// quadrant icon over it, and an icon belongs to its system (the window it
+/// opens is keyed by the system's index, `sector-quadrants.md`), so both
+/// answer the system as `+0x70` does.
 #[must_use]
 pub fn mission_release_target(
     ctx: &egui::Context,
@@ -229,6 +231,7 @@ pub fn mission_release_target(
         windows
             .defenses
             .mission_target(world, fog, missions, layout, layer, point)
+            .map(Some)
             .or_else(|| {
                 windows.system.mission_target(
                     world,
@@ -246,9 +249,14 @@ pub fn mission_release_target(
                     .mission_target(world, movement, fog, transport, layout, layer, point)
             })
     });
-    let Some(mut pick) = picked else {
-        return release_destination(ctx, world, movement, fog, layout, windows, point)
-            .map(|target| target.system().into());
+    let mut pick = match picked {
+        Some(Some(pick)) => pick,
+        // An object no mission takes: the order is dropped.
+        Some(None) => return None,
+        None => {
+            return release_destination(ctx, world, movement, fog, layout, windows, point)
+                .map(|target| target.system().into());
+        }
     };
     if pick
         .character

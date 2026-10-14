@@ -378,12 +378,16 @@ impl ActiveMission {
 // Target objects
 // ---------------------------------------------------------------------------
 
-/// The object a Sabotage or DS Sabotage mission names. Sabotage refuses the
-/// Death Star (families `0x18..0x1c`) and characters (`0x30..0x3c`,
-/// `FUN_0056a110`); DS Sabotage needs the Death Star (`FUN_005744c0`).
+/// The object a Sabotage or DS Sabotage mission names. The object rules
+/// take families `0x10..0x40` that are completed (`FUN_00593500`); Sabotage
+/// refuses the Death Star (families `0x18..0x1c`) and characters
+/// (`0x30..0x3c`, `FUN_0056a110`); DS Sabotage needs the Death Star
+/// (`FUN_005744c0`).
 ///
-/// port: capital ships other than the Death Star and fighter squadrons have
-/// no identity in the port, so they cannot be named yet.
+/// port: the port keeps no identity for one capital ship or one fighter
+/// squadron, so a ship or squadron target names its class aboard a fleet, as
+/// the Death Star target names its fleet; any hull or squadron of that class
+/// there stands for it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MissionTarget {
     DefenseFacility(crate::ids::DefenseFacilityKey),
@@ -393,6 +397,17 @@ pub enum MissionTarget {
     SpecialForce(crate::ids::SpecialForceKey),
     /// The Death Star hull (class `0x88`, family `0x18`) in this fleet.
     DeathStar(crate::ids::FleetKey),
+    /// A capital ship of `class` other than the Death Star aboard `fleet`
+    /// (families `0x14..0x18`).
+    CapitalShip {
+        fleet: crate::ids::FleetKey,
+        class: crate::ids::CapitalShipKey,
+    },
+    /// A fighter squadron of `class` aboard `fleet` (families `0x1c..0x20`).
+    Fighter {
+        fleet: crate::ids::FleetKey,
+        class: crate::ids::FighterKey,
+    },
 }
 
 /// What the validator reads about a target object.
@@ -443,6 +458,22 @@ impl MissionTarget {
                             .get(ship.class)
                             .is_some_and(crate::world::CapitalShipClass::is_death_star)
                 })?;
+                (faction_of(fleet.is_alliance), Some(fleet.location))
+            }
+            MissionTarget::CapitalShip { fleet, class } => {
+                let fleet = world.fleets.get(fleet)?;
+                fleet
+                    .capital_ships
+                    .iter()
+                    .find(|ship| ship.alive && ship.class == class)?;
+                (faction_of(fleet.is_alliance), Some(fleet.location))
+            }
+            MissionTarget::Fighter { fleet, class } => {
+                let fleet = world.fleets.get(fleet)?;
+                fleet
+                    .fighters
+                    .iter()
+                    .find(|entry| entry.class == class && entry.count > 0)?;
                 (faction_of(fleet.is_alliance), Some(fleet.location))
             }
         };
@@ -498,6 +529,30 @@ pub fn destroy_target(world: &mut GameWorld, target: MissionTarget) {
                 }
                 fleet.capital_ships.retain(|ship| ship.alive);
                 fleet.has_death_star = false;
+            }
+        }
+        MissionTarget::CapitalShip { fleet, class } => {
+            if let Some(fleet) = world.fleets.get_mut(fleet) {
+                if let Some(hull) = fleet
+                    .capital_ships
+                    .iter_mut()
+                    .find(|ship| ship.alive && ship.class == class)
+                {
+                    hull.alive = false;
+                }
+                fleet.capital_ships.retain(|ship| ship.alive);
+            }
+        }
+        MissionTarget::Fighter { fleet, class } => {
+            if let Some(fleet) = world.fleets.get_mut(fleet) {
+                if let Some(entry) = fleet
+                    .fighters
+                    .iter_mut()
+                    .find(|entry| entry.class == class && entry.count > 0)
+                {
+                    entry.count -= 1;
+                }
+                fleet.fighters.retain(|entry| entry.count > 0);
             }
         }
     }
@@ -6797,6 +6852,146 @@ mod tests {
 
         assert_eq!(list(death_star), vec![MissionKind::DeathStarSabotage]);
         assert_eq!(list(yard), vec![MissionKind::Sabotage]);
+    }
+
+    #[test]
+    fn a_dialog_dropped_on_an_enemy_ship_or_squadron_lists_sabotage_which_destroys_one() {
+        // FUN_0056a110 refuses only the Death Star (0x18..0x1c) and
+        // characters, so a capital ship (0x14..0x18) or a squadron
+        // (0x1c..0x20) is a Sabotage target; the success destroys it
+        // (slot +0xac(6), FUN_005746e0).
+        let ds_record = crate::world::MissionRecord {
+            dat_id: MissionKind::DeathStarSabotage.record_id().unwrap(),
+            ..sabotage_record()
+        };
+        let (mut world, here, envoy) = dialog_world(vec![sabotage_record(), ds_record]);
+        world.systems[here].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        let destroyer = world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass::default());
+        let tie = world
+            .fighter_classes
+            .insert(crate::world::FighterClass::default());
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: here,
+            capital_ships: vec![
+                crate::world::ShipInstance::new(destroyer, 100, false),
+                crate::world::ShipInstance::new(destroyer, 100, false),
+            ],
+            fighters: vec![crate::world::FighterEntry {
+                class: tie,
+                count: 1,
+            }],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[here].fleets.push(fleet);
+        let ship = MissionTarget::CapitalShip {
+            fleet,
+            class: destroyer,
+        };
+        let squadron = MissionTarget::Fighter { fleet, class: tie };
+        let uprisings = UprisingState::default();
+        let list = |world: &GameWorld, object| {
+            available_kinds(
+                world,
+                &uprisings,
+                MissionFaction::Alliance,
+                &[envoy],
+                &[],
+                MissionTargetPick {
+                    system: here,
+                    character: None,
+                    object: Some(object),
+                },
+            )
+        };
+
+        assert_eq!(list(&world, ship), vec![MissionKind::Sabotage]);
+        assert_eq!(list(&world, squadron), vec![MissionKind::Sabotage]);
+        destroy_target(&mut world, ship);
+        assert_eq!(world.fleets[fleet].capital_ships.len(), 1);
+        destroy_target(&mut world, squadron);
+        assert!(world.fleets[fleet].fighters.is_empty());
+        // The last squadron gone, the target is missing (rule 1).
+        assert!(list(&world, squadron).is_empty());
+    }
+
+    #[test]
+    fn a_ship_or_squadron_target_is_a_living_hull_or_manned_squadron_of_its_class() {
+        // The target names its class aboard a fleet (port:); a dead hull or
+        // an empty squadron entry of that class does not stand for it, and
+        // the destroy takes that class's, not another's.
+        use crate::world::{CapitalShipClass, FighterClass, FighterEntry, ShipInstance};
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let (wanted, other) = (
+            world
+                .capital_ship_classes
+                .insert(CapitalShipClass::default()),
+            world
+                .capital_ship_classes
+                .insert(CapitalShipClass::default()),
+        );
+        let (tie, bomber) = (
+            world.fighter_classes.insert(FighterClass::default()),
+            world.fighter_classes.insert(FighterClass::default()),
+        );
+        let mut dead = ShipInstance::new(wanted, 100, false);
+        dead.alive = false;
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: here,
+            capital_ships: vec![ShipInstance::new(other, 100, false), dead],
+            fighters: vec![
+                FighterEntry {
+                    class: bomber,
+                    count: 1,
+                },
+                FighterEntry {
+                    class: tie,
+                    count: 0,
+                },
+            ],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        let ship = MissionTarget::CapitalShip {
+            fleet,
+            class: wanted,
+        };
+        let squadron = MissionTarget::Fighter { fleet, class: tie };
+        assert!(ship.state(&world).is_none());
+        assert!(squadron.state(&world).is_none());
+
+        world.fleets[fleet].capital_ships[1].alive = true;
+        world.fleets[fleet].fighters.push(FighterEntry {
+            class: tie,
+            count: 1,
+        });
+        assert!(ship.state(&world).is_some());
+        assert!(squadron.state(&world).is_some());
+        destroy_target(&mut world, ship);
+        destroy_target(&mut world, squadron);
+        let value = &world.fleets[fleet];
+        assert_eq!(
+            value
+                .capital_ships
+                .iter()
+                .map(|s| s.class)
+                .collect::<Vec<_>>(),
+            vec![other]
+        );
+        assert_eq!(
+            value
+                .fighters
+                .iter()
+                .map(|e| (e.class, e.count))
+                .collect::<Vec<_>>(),
+            vec![(bomber, 1)]
+        );
     }
 
     #[test]

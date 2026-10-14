@@ -296,6 +296,18 @@ fn object_target_name(world: &GameWorld, target: MissionTargetPick) -> Option<St
         MissionTarget::ProductionFacility(key) => {
             return facility_name(world, world.production_facilities.get(key)?.class_dat_id);
         }
+        MissionTarget::CapitalShip { class, .. } => {
+            return world
+                .capital_ship_classes
+                .get(class)
+                .map(|class| class.name.clone());
+        }
+        MissionTarget::Fighter { class, .. } => {
+            return world
+                .fighter_classes
+                .get(class)
+                .map(|class| class.name.clone());
+        }
         MissionTarget::DeathStar(fleet) => {
             return world
                 .fleets

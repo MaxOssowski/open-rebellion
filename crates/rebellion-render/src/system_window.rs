@@ -380,8 +380,12 @@ impl SystemWindowState {
     /// overview (page `0x67`) or anywhere else, the window's system. `None`
     /// when `layer` is none of these windows.
     ///
-    /// port: a queued unit's cell and an empty deposit's cell answer the
-    /// system; the port keeps no object for either.
+    /// The inner `None` is a cell no mission takes, so the order is dropped:
+    /// a unit queued or under construction is not completed, which the
+    /// object rules refuse (`FUN_00593500`, `+0x50` bit 2), and one
+    /// travelling is en route (rule 5); hyp: an empty deposit's item names no
+    /// object. port: the order is dropped at once instead of being handed
+    /// back (`FUN_0041ce20`).
     #[expect(
         clippy::too_many_arguments,
         reason = "The page's cells read the world, the player's view and production."
@@ -396,19 +400,19 @@ impl SystemWindowState {
         layout: CockpitLayout,
         layer: egui::LayerId,
         point: egui::Pos2,
-    ) -> Option<MissionTargetPick> {
+    ) -> Option<Option<MissionTargetPick>> {
         let window = self
             .windows
             .iter()
             .find(|window| area_id(window.system) == layer.id)?;
         let mut pick = MissionTargetPick::from(window.system);
         let Some(page) = window.tab.page() else {
-            return Some(pick);
+            return Some(Some(pick));
         };
         let screen = window_screen_rect(*window, layout);
         let list = logical_rect(screen, layout.scale, LIST.0, LIST.1, LIST.2, LIST.3);
         if !rect_contains(list, point) {
-            return Some(pick);
+            return Some(Some(pick));
         }
         let player = cockpit_faction(self.faction);
         let visible = contents_visible(world, fog, player, window.system);
@@ -429,9 +433,10 @@ impl SystemWindowState {
                 Some(MissionTarget::ManufacturingFacility(key))
             }
             Some(FacilityItem::Production(key)) => Some(MissionTarget::ProductionFacility(key)),
-            Some(FacilityItem::Pending(_) | FacilityItem::Deposit(_)) | None => None,
+            Some(FacilityItem::Pending(_) | FacilityItem::Deposit(_)) => return Some(None),
+            None => None,
         };
-        Some(pick)
+        Some(Some(pick))
     }
 
     /// The destination a targeting release takes from the system window
@@ -1742,26 +1747,31 @@ mod tests {
         };
 
         assert_eq!(
-            pick(&state, cell(&state, 0)).unwrap().object,
+            pick(&state, cell(&state, 0)).unwrap().unwrap().object,
             Some(MissionTarget::ManufacturingFacility(yard))
         );
         // The empty cell next to it, and the window's frame, give the system.
         assert_eq!(
             pick(&state, cell(&state, 1)),
-            Some(MissionTargetPick::from(system))
+            Some(Some(MissionTargetPick::from(system)))
         );
         let frame = state.cell_screen_rect(layout, system, 0).unwrap().min - egui::vec2(4.0, 4.0);
-        assert_eq!(pick(&state, frame), Some(MissionTargetPick::from(system)));
+        assert_eq!(
+            pick(&state, frame),
+            Some(Some(MissionTargetPick::from(system)))
+        );
         state.select_tab(system, SystemWindowTab::Mines);
         assert_eq!(
-            pick(&state, cell(&state, 0)).unwrap().object,
+            pick(&state, cell(&state, 0)).unwrap().unwrap().object,
             Some(MissionTarget::ProductionFacility(mine))
         );
+        // An empty deposit's cell drops the order (hyp: no object).
+        assert_eq!(pick(&state, cell(&state, 1)), Some(None));
         // The overview is page 0x67: always the system.
         state.select_tab(system, SystemWindowTab::Overview);
         assert_eq!(
             pick(&state, cell(&state, 0)),
-            Some(MissionTargetPick::from(system))
+            Some(Some(MissionTargetPick::from(system)))
         );
         let elsewhere = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("elsewhere"));
         assert_eq!(

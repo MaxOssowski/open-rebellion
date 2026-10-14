@@ -197,12 +197,14 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   the object in the cell under the point (`FUN_004aa380`), a System window
   the facility in a facility page's cell (`FUN_00458b80`), a Fleet window
   its list entry or item, else the right list's selection (`FUN_004a2f80`),
-  and a team member answers as its system. port: a fleet, a squadron, a
-  capital ship other than the Death Star, a queued unit and an empty
-  deposit have no mission target in the port and answer their system; the
-  sector window's `+0x68` (`FUN_0045c6b0`, an icon over a planet) answers
-  the planet's system; Shift's pass-through click is not ported, and Escape
-  cancels as `0x15e` does.
+  and a team member answers as its system. A ship or a squadron is a
+  Sabotage target; a fleet, a queued or travelling unit and an empty deposit
+  drop the order, as no class takes them (`mission-lifecycle.md`, creation
+  checks). hyp: the sector window's `+0x68` (`FUN_0045c6b0`) answers a
+  planet or a quadrant icon, and an icon belongs to its system. port: a ship
+  or squadron target names its class aboard the fleet; a dropped order is
+  not handed back to the advisor (`FUN_0041ce20`); Shift's pass-through
+  click is not ported, and Escape cancels as `0x15e` does.
 - 7d: the stand-in entry points are gone: the system context menu's Send
   Diplomat and Send Spy buttons (`PanelAction::OpenMissionTo`) and the
   missions panel's Dispatch tab (`PanelAction::OpenMissionDialog`). The

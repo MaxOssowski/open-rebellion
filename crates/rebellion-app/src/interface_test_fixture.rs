@@ -41,7 +41,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 60;
+const SCENARIO_COUNT: u8 = 62;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -129,6 +129,12 @@ pub enum Scenario {
     /// The agent as in `RescueTargeting`, and an enemy fleet carrying the
     /// Death Star at the secondary system, selected in its Fleet window.
     DeathStarTargeting = 59,
+    /// As `DeathStarTargeting` with an ordinary enemy capital ship instead,
+    /// the fleet alone at the system: a Mission on the ship offers Sabotage.
+    ShipTargeting = 60,
+    /// The `ShipTargeting` fleet, targeted by its left-list entry: no
+    /// mission takes a fleet, so no dialog opens.
+    FleetTargeting = 61,
 }
 
 impl Scenario {
@@ -194,6 +200,8 @@ impl Scenario {
             57 => Self::RescueTargeting,
             58 => Self::SabotageTargeting,
             59 => Self::DeathStarTargeting,
+            60 => Self::ShipTargeting,
+            61 => Self::FleetTargeting,
             _ => return None,
         })
     }
@@ -227,7 +235,11 @@ impl Scenario {
     fn targets_an_object(self) -> bool {
         matches!(
             self,
-            Self::RescueTargeting | Self::SabotageTargeting | Self::DeathStarTargeting
+            Self::RescueTargeting
+                | Self::SabotageTargeting
+                | Self::DeathStarTargeting
+                | Self::ShipTargeting
+                | Self::FleetTargeting
         )
     }
 
@@ -500,7 +512,10 @@ pub fn apply(
     }
     if matches!(
         request.scenario,
-        Scenario::SabotageTargeting | Scenario::DeathStarTargeting
+        Scenario::SabotageTargeting
+            | Scenario::DeathStarTargeting
+            | Scenario::ShipTargeting
+            | Scenario::FleetTargeting
     ) {
         place_sabotage_targets(
             request, world, defenses, systems, fleets, cockpit, primary, secondary,
@@ -653,10 +668,14 @@ fn place_sabotage_targets(
         );
         return;
     }
+    let wants_death_star = request.scenario == Scenario::DeathStarTargeting;
     let Some(class) = world
         .capital_ship_classes
         .iter()
-        .find(|(_, class)| class.is_death_star())
+        .find(|(_, class)| {
+            class.is_death_star() == wants_death_star
+                && (wants_death_star || class.is_alliance == (enemy == Faction::Alliance))
+        })
         .map(|(key, _)| key)
     else {
         return;
@@ -667,9 +686,13 @@ fn place_sabotage_targets(
         fighters: Vec::new(),
         characters: Vec::new(),
         is_alliance: enemy == Faction::Alliance,
-        has_death_star: true,
+        has_death_star: wants_death_star,
     });
-    world.systems[secondary].fleets.push(fleet);
+    if wants_death_star {
+        world.systems[secondary].fleets.push(fleet);
+    } else {
+        world.systems[secondary].fleets = vec![fleet];
+    }
     fleets.open(world, secondary, left, request.faction, layout);
     fleets.select(secondary, FleetWindowEntry::Fleet(fleet));
 }
@@ -718,7 +741,7 @@ pub fn emit_mission_flow(
     let name = |key| world.characters.get(key).map(|c| c.name.clone());
     let variant = |object: rebellion_core::missions::MissionTarget| {
         format!("{object:?}")
-            .split('(')
+            .split(['(', ' '])
             .next()
             .unwrap_or_default()
             .to_owned()
@@ -1349,7 +1372,10 @@ fn object_menu_report<'a>(
     let prison_cell = match request.scenario {
         Scenario::RescueTargeting => defenses.cell_screen_rect(layout, key, 0),
         Scenario::SabotageTargeting => systems.cell_screen_rect(layout, key, 0),
-        Scenario::DeathStarTargeting => fleets.item_screen_rect(layout, key, 0),
+        Scenario::DeathStarTargeting | Scenario::ShipTargeting => {
+            fleets.item_screen_rect(layout, key, 0)
+        }
+        Scenario::FleetTargeting => fleets.entry_screen_rect(layout, key, 0),
         _ => None,
     };
     let planet = match prison_cell.or_else(|| sectors.planet_screen_rect(world, layout, key)) {
@@ -4507,7 +4533,9 @@ mod tests {
                 Scenario::BuildSelection,
                 Scenario::RescueTargeting,
                 Scenario::SabotageTargeting,
-                Scenario::DeathStarTargeting
+                Scenario::DeathStarTargeting,
+                Scenario::ShipTargeting,
+                Scenario::FleetTargeting
             ]
         );
     }

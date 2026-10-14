@@ -515,8 +515,13 @@ impl FleetWindowState {
     /// point, else its selected item; anywhere else, or over the lists'
     /// empty space, the window's subject.
     ///
-    /// port: a fleet, a squadron, and a capital ship other than the Death
-    /// Star are not mission targets in the port, so they answer the system.
+    /// The inner `None` is an object no mission takes, so the order is
+    /// dropped: a fleet (family `0x08..0x10`) fails every class's target
+    /// family (the system rules want `0x90..0x98`, the character rules
+    /// `0x30..0x3c`, the object rules `0x10..0x40`; `FUN_005868c0`,
+    /// `FUN_00586e20`, `FUN_00593500`), so `FUN_005422f0` lists nothing and
+    /// no dialog opens. port: the order is dropped at once instead of being
+    /// handed back (`FUN_0041ce20`).
     #[expect(
         clippy::too_many_arguments,
         reason = "The lists read the world, the player's view and the fleets' cargo."
@@ -531,7 +536,7 @@ impl FleetWindowState {
         layout: CockpitLayout,
         layer: egui::LayerId,
         point: egui::Pos2,
-    ) -> Option<MissionTargetPick> {
+    ) -> Option<Option<MissionTargetPick>> {
         let window = self
             .windows
             .iter()
@@ -542,34 +547,34 @@ impl FleetWindowState {
             (point.x - rect.min.x) / scale,
             (point.y - rect.min.y) / scale,
         );
-        let mut pick = MissionTargetPick::from(window.system);
         let target = if in_rect(LEFT_LIST, local) {
             let row = ((local.1 - LEFT_LIST.1) / LEFT_ITEM_HEIGHT) as usize;
             let player = cockpit_faction(self.faction);
             match left_entries(world, movement, fog, player, window).get(row) {
                 Some(FleetWindowEntry::Ship { fleet, index }) => {
-                    death_star(world, *fleet, *index).map(ItemTarget::Object)
+                    Some(ship_target(world, *fleet, *index).map(ItemTarget::Object))
                 }
-                Some(FleetWindowEntry::Fleet(_)) | None => None,
+                Some(FleetWindowEntry::Fleet(_)) => Some(None),
+                None => None,
             }
         } else if in_rect(RIGHT_LIST, local) {
             let row = ((local.1 - RIGHT_LIST.1) / RIGHT_ITEM_HEIGHT) as usize;
-            right_target(world, transport, window, row)
-                .or_else(|| {
-                    window
-                        .selected_item
-                        .and_then(|index| right_target(world, transport, window, index))
-                })
-                .flatten()
+            right_target(world, transport, window, row).or_else(|| {
+                window
+                    .selected_item
+                    .and_then(|index| right_target(world, transport, window, index))
+            })
         } else {
             None
         };
+        let mut pick = MissionTargetPick::from(window.system);
         match target {
-            Some(ItemTarget::Character(key)) => pick.character = Some(key),
-            Some(ItemTarget::Object(object)) => pick.object = Some(object),
             None => {}
+            Some(None) => return Some(None),
+            Some(Some(ItemTarget::Character(key))) => pick.character = Some(key),
+            Some(Some(ItemTarget::Object(object))) => pick.object = Some(object),
         }
-        Some(pick)
+        Some(Some(pick))
     }
 
     pub fn clear(&mut self) {
@@ -1005,19 +1010,24 @@ enum ItemTarget {
     Object(MissionTarget),
 }
 
-/// The Death Star hull (`CapitalShipClass::is_death_star`) as a mission
-/// target, `None` for any other ship.
-fn death_star(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<MissionTarget> {
+/// A living capital ship as a mission target: the Death Star hull
+/// (`CapitalShipClass::is_death_star`) by its fleet, any other by its class
+/// aboard the fleet.
+fn ship_target(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<MissionTarget> {
     let ship = world.fleets.get(fleet)?.capital_ships.get(index)?;
-    world
-        .capital_ship_classes
-        .get(ship.class)
-        .is_some_and(rebellion_core::world::CapitalShipClass::is_death_star)
-        .then_some(MissionTarget::DeathStar(fleet))
+    let class = world.capital_ship_classes.get(ship.class)?;
+    Some(if class.is_death_star() {
+        MissionTarget::DeathStar(fleet)
+    } else {
+        MissionTarget::CapitalShip {
+            fleet,
+            class: ship.class,
+        }
+    })
 }
 
 /// The right list's `index`th item as a mission target: `None` when there
-/// is no such item, `Some(None)` for an item the port cannot target.
+/// is no such item, `Some(None)` for an item no mission takes.
 fn right_target(
     world: &GameWorld,
     transport: &TroopTransportState,
@@ -1044,9 +1054,19 @@ fn right_target(
     Some(match item.object {
         Some(ItemObject::Regiment(key)) => Some(ItemTarget::Object(MissionTarget::Troop(key))),
         Some(ItemObject::Ship { fleet, index, .. }) => {
-            death_star(world, fleet, index).map(ItemTarget::Object)
+            ship_target(world, fleet, index).map(ItemTarget::Object)
         }
-        Some(ItemObject::Fighter { .. } | ItemObject::Fleet(_)) | None => None,
+        Some(ItemObject::Fighter { fleet, index }) => world
+            .fleets
+            .get(fleet)
+            .and_then(|value| value.fighters.get(index))
+            .map(|entry| {
+                ItemTarget::Object(MissionTarget::Fighter {
+                    fleet,
+                    class: entry.class,
+                })
+            }),
+        Some(ItemObject::Fleet(_)) | None => None,
     })
 }
 
@@ -2825,10 +2845,12 @@ pub(crate) mod tests {
     fn a_mission_released_on_a_fleet_windows_lists_targets_the_object_under_the_point() {
         // +0x68 is FUN_004a2f80: the left list's entry under the point, the
         // right list's item under the point or else its selection, and the
-        // subject elsewhere. Only the Death Star hull and a character are
-        // mission targets among them in the port.
+        // subject elsewhere. A fleet (0x08..0x10) fits no class's target
+        // family (FUN_005868c0, FUN_00586e20, FUN_00593500), so it drops the
+        // order (inner None); a ship or squadron is an object target.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
         let fleet = add_fleet(&mut world, system, false, 0);
+        let transport_class = world.fleets[fleet].capital_ships[0].class;
         let death_star = world.capital_ship_classes.insert(CapitalShipClass {
             dat_id: DatId::new(0x3400_0001),
             name: "Death Star".into(),
@@ -2838,6 +2860,18 @@ pub(crate) mod tests {
         world.fleets[fleet]
             .capital_ships
             .insert(0, ShipInstance::new(death_star, 100, true));
+        let tie = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                name: "TIE".into(),
+                ..Default::default()
+            });
+        world.fleets[fleet]
+            .fighters
+            .push(rebellion_core::world::FighterEntry {
+                class: tie,
+                count: 2,
+            });
         let officer = world.characters.insert(rebellion_core::world::Character {
             name: "Tarkin".into(),
             ..Default::default()
@@ -2860,26 +2894,37 @@ pub(crate) mod tests {
                 )
                 .unwrap()
         };
-        let here = MissionTargetPick::from(system);
+        let object = |state: &FleetWindowState, point| pick(state, point).unwrap().object;
+        let here = Some(MissionTargetPick::from(system));
         let star = Some(MissionTarget::DeathStar(fleet));
+        let transport = Some(MissionTarget::CapitalShip {
+            fleet,
+            class: transport_class,
+        });
         let left = |row: f32| at(50.0, 29.0 + 25.0 + 50.0 * row);
         let right = |row: f32| at(160.0, 127.0 + 25.0 + 50.0 * row);
 
-        // Left: the fleet, its Death Star, its other ship, then nothing.
-        assert_eq!(pick(&state, left(0.0)), here);
-        assert_eq!(pick(&state, left(1.0)).object, star);
-        assert_eq!(pick(&state, left(2.0)), here);
+        // Left: the fleet drops the order; its ships are objects; past them
+        // lies the subject.
+        assert_eq!(pick(&state, left(0.0)), None);
+        assert_eq!(object(&state, left(1.0)), star);
+        assert_eq!(object(&state, left(2.0)), transport);
         assert_eq!(pick(&state, left(3.0)), here);
         // Right, with the fleet selected: its ships, then the selection.
         state.windows[0].selected = Some(FleetWindowEntry::Fleet(fleet));
-        assert_eq!(pick(&state, right(0.0)).object, star);
-        assert_eq!(pick(&state, right(1.0)), here);
+        assert_eq!(object(&state, right(0.0)), star);
+        assert_eq!(object(&state, right(1.0)), transport);
         assert_eq!(pick(&state, right(2.0)), here);
         state.windows[0].selected_item = Some(0);
-        assert_eq!(pick(&state, right(2.0)).object, star);
-        state.windows[0].tab = FleetWindowTab::Personnel;
+        assert_eq!(object(&state, right(2.0)), star);
+        state.windows[0].tab = FleetWindowTab::Fighters;
         state.windows[0].selected_item = None;
-        assert_eq!(pick(&state, right(0.0)).character, Some(officer));
+        assert_eq!(
+            object(&state, right(1.0)),
+            Some(MissionTarget::Fighter { fleet, class: tie })
+        );
+        state.windows[0].tab = FleetWindowTab::Personnel;
+        assert_eq!(pick(&state, right(0.0)).unwrap().character, Some(officer));
         // Outside both lists: the subject.
         assert_eq!(pick(&state, at(150.0, 40.0)), here);
         let elsewhere = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("elsewhere"));

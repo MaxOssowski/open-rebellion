@@ -465,6 +465,21 @@ prisoner target (`+0xac` bit 0) needs `R +0x90` (col 20) and a free one
 
 Object rules (`FUN_00593500`): the base rules only, while running.
 
+The creation-only checks (checker `+4` and `+0xc` set; read 2026-10-14)
+refuse a target outside the family each rule set takes, before any status:
+
+- System rules (`FUN_005868c0`): a system, `0x90..0x98` (`0x40`/`0x24`).
+- Character rules (`FUN_00586e20`): a character, `0x30..0x3c`
+  (`0x40`/`0x26`).
+- Object rules (`FUN_00593500`): families `0x10..0x40` (`0x40`/`0x27`), and
+  the object completed, `+0x50` bit 2 (`0x40`/`0x34`).
+- Sabotage (`FUN_0056a110`) then refuses `0x18..0x1c` and `0x30..0x3c`; DS
+  Sabotage (`FUN_005744c0`) anything outside `0x18..0x1c`.
+
+So no class takes a fleet (`0x08..0x10`) or an unfinished object, and only
+Sabotage takes an ordinary capital ship (`0x14..0x18`) or a fighter squadron
+(`0x1c..0x20`). The dialog lists nothing for those and does not open.
+
 The shipped columns for the port's kinds:
 
 | Family | c11 | c13 | c14 | c15 own | c16 other | c17 opp | c18 | c19 | c20 | c21 |
@@ -489,7 +504,6 @@ its holder. Neither is traced to a writer.
 
 ## Still open
 
-- The creation-only checks (checker `+4` = 1) that refuse a new mission.
 - Which object a character mission stores as its target `+0x70` and
   container `+0x74` (the per-class slot `+0x1bc` init is not a defined
   function in the database); Sabotage's is its order's object (`+0x4c`).

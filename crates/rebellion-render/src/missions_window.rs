@@ -725,6 +725,23 @@ fn target_view(world: &GameWorld, target: Target) -> Option<(DllSource, Option<u
                 class.name.clone(),
             ))
         }
+        Target::Object(MissionTarget::CapitalShip { class, .. }) => {
+            let class = world.capital_ship_classes.get(class)?;
+            Some((
+                DllSource::Gokres,
+                capital_ship_mini_id(class.dat_id).map(|mini| mini - MISSION_MINI_BASE),
+                class.name.clone(),
+            ))
+        }
+        Target::Object(MissionTarget::Fighter { class, .. }) => {
+            let class = world.fighter_classes.get(class)?;
+            Some((
+                DllSource::Gokres,
+                crate::panels::fleets::fighter_mini_id(class.dat_id)
+                    .map(|mini| mini - MISSION_MINI_BASE),
+                class.name.clone(),
+            ))
+        }
     }
 }
 
