@@ -566,9 +566,10 @@ member of skill 10 or more.
 Ported 2026-10-14 (`MissionKind::ShipDesignResearch`,
 `FacilityDesignResearch`, `TroopTrainingResearch`; `research.rs`). port:
 Suspended is the port's blockade or uprising; the AI's choice of tree and
-target (side `+0x318`/`+0x31c`) stays untraced, so the port orders a tree
-while none of the side's research in it runs, at its first system with a
-yard of the area.
+target was untraced at the port, so the port orders a tree while none of
+the side's research in it runs, at its first system with a yard of the
+area. The original choice is now read (2026-10-14): see
+`ai-mission-planning.md`, "The strategic choice of mission".
 
 ## Still open
 

@@ -75,7 +75,8 @@ Each side keeps mission requests at side `+0xd8` and planners at side
 2. `FUN_004d2610` and `FUN_004d2690` handle secondary requests.
 3. `FUN_004d27b0` ticks the planner through its slot `+0x2c`.
 
-What sets side `+0x318` (the strategic choice of mission) is not traced.
+Side `+0x318`/`+0x31c` are set by the strategy; see "The strategic choice
+of mission" below.
 
 `FUN_0042f830` builds a planner by kind and subtype. Constructor and slot
 addresses are first read; the kind switch is re-read (`FUN_0042f830.c:13-198`).
@@ -231,6 +232,93 @@ selected member on a mission (`0x80`) or en route (`0x20`) is dropped.
 The state machine advances every state unconditionally, so a planner whose
 decoy list is short still emits. State 7 moves every member to the target,
 and state 8 emits once the team and decoys are all there.
+
+## The strategic choice of mission (read 2026-10-14)
+
+The side's strategy object steps `FUN_004e5440` (driven by `FUN_004bf390`;
+its cadence is not traced): state 1 `FUN_004e5530`, 2 `FUN_004e5560`, 3
+`FUN_004e5710`, 4 `FUN_004e57e0`, 5 slot `+0x20`, 6 `FUN_004e5870`.
+
+**State 3, `FUN_004e5710`** (re-read in assembly: the decompile loses the
+outputs). It calls the strategy's slot `+0x18` with four outputs
+`(kind, subtype, cancel_kind, cancel_subtype)`. A nonzero kind goes to side
+`+0x318` and the subtype to `+0x31c`. A nonzero cancel kind picks, among
+the side's planners (`+0xa8`) of that family (`+0x2c >> 24`) whose slot
+`+0x14` equals the cancel subtype and whose `+0x20` lacks `0x10000000`,
+the one with the least slot `+0x18`, and stores it at side `+0x314`.
+
+**Slot `+0x18` is `FUN_004e8290` in all seven strategy classes** (vtables
+`0x0065c8c0` to `0x0065c9e0`, stride `0x30`). It yields at most one request
+and one cancellation per pass; the first rule whose request test holds
+wins, in this order (`S` is the side controller, `F` its flag word `+4`,
+`FUN_005f4960`):
+
+| Order | Kind | Request when | Cancel when |
+|---|---|---|---|
+| 1 | Recruitment `0x55`/0 | `S+0x320 < 2` and `S+0xa4 > 0` | `S+0x320 > 2`, or `S+0xa4 == 0` and `S+0x320 > 0` |
+| 2 | Research `0x53`/1 (ships) | `F & 0x2000000` clear and `S+0x324 < S+0x2cc` | `S+0x324 > S+0x2cc`, or the flag set and `S+0x324 > 0` |
+| 3 | Research `0x53`/2 (troops) | `F & 0x4000000` clear and `S+0x328 < S+0x2d0` | likewise with `0x4000000` |
+| 4 | Research `0x53`/3 (facilities) | `F & 0x8000000` clear and `S+0x32c < S+0x2c8` | likewise with `0x8000000` |
+| 5 | Diplomacy `0x51`/0 | `S+0x34c < S+0x214` | `S+0x34c > S+0x214` |
+| 6 | Subdue `0x57`/0 | `F & 0x100` and `S+0x330 < S+0x21c + 1` | |
+| 7 | Incite `0x56`/0 | `S+0x350 < S+0x218` | |
+| 8 | DS Sabotage `0x6a`/0 | strategy `+4 == 1`, `S+0x334 < 1`, `F & 4` | |
+| 9 | Abduction `0x62`/0 | `S+0x338 < 1` | `S+0x338 > 1` |
+| 10 | Rescue `0x61`/0 | `F & 0x200` and `S+0x340 < 1` | |
+| 11 | Recon `0x54`/5 | `S+0x344 <` the strategy's count `FUN_005f50e0` | |
+| 12 | Espionage `0x52`/6 | `S+0x348 < S+0x1bc -` that count | |
+
+(The cancel tests of rows 6 to 12 follow the same pattern; only the
+research rows were checked term by term.)
+
+**The live-planner counts `S+0x320..`.** `FUN_004d2580` builds the planner
+of `+0x318`/`+0x31c` (`FUN_0042f640` -> `FUN_0042f830`) and, when its slot
+`+0x10` returns 2, `FUN_0041b570` adds one to `S[+0x320 + 4 * slot+0x40]`;
+`FUN_0042f690` (a cancellation) flags the planner `0x10000000` and
+`FUN_0041b5a0` takes one off. The research planners' slot `+0x40` returns
+1, 2, 3 (`FUN_00479ac0`, `FUN_0047c200`, `FUN_0047c7e0`), so `+0x324`,
+`+0x328`, `+0x32c` count the live ship, troop and facility planners. Their
+slot `+0x14` returns the subtype (`FUN_0040f340`, `FUN_0043c1f0`,
+`FUN_00526f00`), and slot `+0x18` (`FUN_0047bc30` and siblings) sums the
+team's skill in the tree (record `+0x48` for ships), so a cancellation
+drops the planner with the weakest team.
+
+**The wanted counts.** `FUN_0041bc10` tallies the side's records: each
+character on the side (`+0x30` bits 2 and `0x20000000`) adds one to
+`S+0x2cc` with capability `0x800` (Ship Design Research legal),
+`S+0x2d0` with `0x1000` (Troop Training) and `S+0x2c8` with `0x2000`
+(Facility Design). Legality runs the class creation check, so a character
+counts when its skill in the tree is nonzero (`FUN_0056c820`). The AI thus
+keeps one research planner per character able to research the tree.
+
+**The Done bits.** `FUN_0042dd00` fills the controller's sub-object at
+`+0x138` (vtable `0x00658c40`): `+0x140` is the highest research order of
+the side's own capital ship and fighter classes (families `0x14..0x1f`,
+class wrapper `+0x24` = class `+0x50`, `+0x28` the side: 1 Alliance only,
+2 Empire only, 0 both, so shared classes do not count), `+0x144` the
+highest of its regiment classes (`0x10..0x13`), and `+0x148` the highest of
+all facility classes (`0x22..0x2b`, any side). The side's research-order
+notifications (`FUN_00485f20`, `FUN_00485f00`, `FUN_00485ee0`) call
+`FUN_004198a0`, `FUN_00419870`, `FUN_004197b0` with the new level; a level
+equal to the target sets `F` bit `0x2000000`, `0x4000000` or `0x8000000`.
+From then on the tree takes no request and its planners are cancelled.
+
+**The target.** The research planners leave `+0x34` and `+0x38` empty
+(constructors `FUN_0047bba0`, `FUN_0047c170`, `FUN_0047c750` set only the
+record id `0x53000020`, `0x53000022`, `0x53000021`). State 6
+(`FUN_004bd0a0`) then walks the team: a member's location (`+0x38` of its
+record), climbed through its containers (`+0x1c`) to a system, becomes the
+target when that system's record has `+0x30` bit 0 and not `+0x28` bit
+`0x2`. `FUN_00433e40` refreshes those bits: `+0x30` bit 0 when the system
+is the record side's (bit 2 another side's, bit 1 neutral), and `+0x28`
+bit `0x2` when the system is blockaded (`+0x88` bit `0x20`, read only when
+`+0x88` bit `0x2` is set). So the AI researches where its chosen designer
+already stands, at one of its own unblockaded systems; it does not check
+for a yard, which the mission validator then requires (`FUN_0056c510`).
+
+Open: the cadence of `FUN_004bf390`; what state 6 does when no member
+stands at a suitable system; whether a planner ends after its order, other
+than by cancellation.
 
 ## The AI records (re-read 2026-09-28, 2026-09-30)
 
@@ -405,7 +493,8 @@ original as follows:
 
 ## Still open
 
-- What sets side `+0x318`/`+0x31c`, the strategic choice of mission.
+- The strategy's cadence (`FUN_004bf390`) and the non-research rows of
+  `FUN_004e8290` term by term.
 - The posture (`FUN_00478000`, `FUN_004b7150`) and its sector bits.
 - When the controller's research bits (`FUN_004198a0`, `FUN_00419870`,
   `FUN_004197b0`) and leader bit (`FUN_004182a0`) are set.
