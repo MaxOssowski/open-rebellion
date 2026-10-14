@@ -154,12 +154,13 @@ A team gives a Scrap order `0x200` for the side.
 
 **State 4 (`FUN_004dbd60`)**: `+0x4c = 0`; no target system gives 0.
 `w` = `FUN_004dd050`:
-- `w < 0`: 5;
-- `w == 0`: 6;
 - `w > 0`: `FUN_0041b230(&+0x48, 0x2a, 0x10000, 0x4000, 2)` chooses a
   construction yard class into `+0x48` and returns its maintenance `m`;
   `+0x4c = w / m`, capped by `min(+0x50, v[15])` and `+0x54`: 8, or 6
-  when that is 0.
+  when that is 0;
+- otherwise 6. The code stores 5 for `w < 0`, but then finds `+0x4c == 0`
+  and stores 6 over it (`0x4dbe48` falls into `0x4dbe50`), so state 5 is
+  never reached.
 
 **`FUN_004dd050`**: the maintenance the side wants in construction yards
 less what its sites hold. That is `+0x24 * capacity / 100 - Σ v[36]` over
@@ -168,8 +169,11 @@ when `capacity - requirement` is below it.
 
 **`FUN_0041b230` → `FUN_0042e3c0`**: the side's buildable classes of the
 family (`FUN_0052e580`) whose class record has the flag bits (`0x10000`,
-a construction yard), ranked by a key and picked in the order; it
-returns the class record's maintenance (`+0x20`) and writes the class.
+a construction yard), ranked by the key the record's slot `+4` gives for
+`0x4000` (`FUN_00473060`: `+0x30`, the yard's processing rate, class
+`+0x5c`) and picked in the order: order 2 gives the lowest rate, the
+fastest yard. It writes the class and returns its maintenance (`+0x20`),
+0 with none.
 
 **State 5 (`FUN_004dbe70`)** walks `+0x58`:
 - a site with no construction yard (`v[6] < 1`) leaves, dropping its
@@ -241,8 +245,30 @@ steps, and give an order, within one tick.
 from the first list, dropping the entries missing from another list;
 calling it again gives the next best.
 
-### Ported so far
+### Ported (2026-10-15)
 
-- The Scrap order (`scrap-order.md`) for facilities and regiments.
-- The yard marks in `AIState::yard_marks` (save v40), the records
-  (`Galaxy`) each pass, and the distance queries.
+`crates/rebellion-core/src/ai_module1.rs`, save v41:
+- `Module1` holds `+0x38..+0x60`, with `step` (`FUN_004dabe0`) and every
+  cycle state; `Controller` holds the yard token (`+8`, `+0xc`, `+0x10`;
+  `FUN_004199b0`) and `+4`'s `0x40`; `Tallies` reads the mines and
+  refineries from the sector records and the maintenance capacity and
+  requirement from `side_resources::maintenance_totals`.
+- The orders are `AIAction::Scrap { team }`, `SetDestination` and
+  `Build { count }`. `ai::accepts` validates them (slot `+0x1c`); a
+  refusal runs `Module1::refused` (`FUN_004dd810`).
+- The scheduler steps a module until it completes (`FUN_00485b40`).
+- The record `+0x30` bits a refresh keeps (`KEPT_KIND`) live in
+  `AIState::record_kinds`; module 1's claim `0x10000000` is one.
+
+port:
+- A construction manager stands while the side has a construction yard
+  in the system (hyp, `has_construction_yard`).
+- Only module 1 of the eight modules that share the yard token is ported,
+  so a pass hands on the yards that an unported module holds.
+- The ranked lists' coin draws from the planner's generator.
+
+On the seed-42 campaign (dual AI, 600 days) each side orders
+construction yards on day 1 (Destination, then Build). From then on its
+sites' yards stay busy with the heuristics' queues or blockaded, so no
+site is idle and the cycle waits. The original waits under the same
+conditions.

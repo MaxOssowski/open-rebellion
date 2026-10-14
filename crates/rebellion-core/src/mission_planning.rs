@@ -306,6 +306,12 @@ impl<'a> Planner<'a> {
         })
     }
 
+    /// `FUN_0041cd80(10) < 5`: a coin from the planner's draws, for the
+    /// ranked lists of the modules.
+    pub(crate) fn coin(&mut self) -> bool {
+        self.rng.draw(9) < 5
+    }
+
     /// The flags (`+0x30`) of `member`'s record, which the fleet records
     /// read for the people aboard (`FUN_00484630`).
     pub(crate) fn flags(&self, member: MissionMember) -> Option<u32> {
@@ -767,6 +773,19 @@ mod tests {
 
     fn planner(world: &GameWorld) -> Planner<'_> {
         Planner::new(world, &MissionState::new(), &HashSet::new(), true, 1)
+    }
+
+    #[test]
+    fn the_planner_s_coin_is_a_draw_below_five_of_ten() {
+        // FUN_0041cd80(10) < 5, from the planner's generator (seeded by the
+        // tick and side): heads and tails both come up, in its order.
+        let world = GameWorld::default();
+        let mut p = planner(&world);
+        let mut rng = MissionRng::seeded(0.0, 2 + 1);
+        let coins: Vec<bool> = (0..40).map(|_| p.coin()).collect();
+        let draws: Vec<bool> = (0..40).map(|_| rng.draw(9) < 5).collect();
+        assert_eq!(coins, draws);
+        assert!(coins.contains(&true) && coins.contains(&false));
     }
 
     #[test]

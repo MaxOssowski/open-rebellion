@@ -151,10 +151,36 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "mission_id": mission_id,
             })
         }
-        AIAction::Scrap { target } => {
+        AIAction::Scrap { team } => {
             serde_json::json!({
                 "type": "Scrap",
-                "target": format!("{target:?}"),
+                "team": team.iter().map(|t| format!("{t:?}")).collect::<Vec<_>>(),
+            })
+        }
+        AIAction::SetDestination {
+            system,
+            area,
+            destination,
+        } => {
+            serde_json::json!({
+                "type": "SetDestination",
+                "system": sys_name(world, *system),
+                "area": format!("{area:?}"),
+                "destination": sys_name(world, *destination),
+            })
+        }
+        AIAction::Build {
+            system,
+            kind,
+            cost,
+            count,
+        } => {
+            serde_json::json!({
+                "type": "Build",
+                "system": sys_name(world, *system),
+                "kind": format!("{kind:?}"),
+                "cost": cost,
+                "count": count,
             })
         }
         AIAction::EnqueueProduction { system, kind, cost } => {
@@ -2046,9 +2072,29 @@ fn apply_ai_actions_inner(
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
                 true
             }
-            AIAction::Scrap { target } => ai_state.faction.is_some_and(|side| {
-                rebellion_core::scrap::scrap(world, production, side.as_faction(), *target).is_ok()
+            AIAction::Scrap { team } => ai_state.faction.is_some_and(|side| {
+                rebellion_core::scrap::scrap_team(world, production, side.as_faction(), team)
+                    .is_ok()
             }),
+            AIAction::SetDestination {
+                system,
+                area,
+                destination,
+            } => {
+                mfg_state.set_destination(*system, *area, *destination);
+                true
+            }
+            AIAction::Build {
+                system,
+                kind,
+                cost,
+                count,
+            } => {
+                for _ in 0..*count {
+                    mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
+                }
+                *count > 0
+            }
             AIAction::MoveFleet {
                 fleet,
                 to_system,
@@ -2644,8 +2690,8 @@ mod tests {
 
         integrator.apply_ai_actions(
             &[
-                AIAction::Scrap { target: own },
-                AIAction::Scrap { target: theirs },
+                AIAction::Scrap { team: vec![own] },
+                AIAction::Scrap { team: vec![theirs] },
             ],
             &mut AIState::new(AiFaction::Empire),
             &mut MissionState::new(),
@@ -2665,6 +2711,88 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, EVT_AI_ACTION);
         assert_eq!(events[0].details["type"], "Scrap");
+    }
+
+    #[test]
+    fn module_one_s_destination_and_build_reach_the_manager() {
+        // FUN_004dc9f0 (0x214) sets the area's destination; FUN_004dcb30
+        // (0x210) builds +0x4c units; a count of 0 builds nothing and is
+        // not reported.
+        let mut world = GameWorld::default();
+        let site = add_system(&mut world, "Kuat");
+        let target = add_system(&mut world, "Fondor");
+        let kind = rebellion_core::manufacturing::BuildableKind::ProductionFacility(
+            rebellion_core::manufacturing::FacilityBuild {
+                class: DatId(0x2c00_0001),
+                is_alliance: false,
+            },
+        );
+        let area = rebellion_core::manufacturing::ProductionArea::ConstructionYard;
+        let mut manufacturing = ManufacturingState::new();
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+
+        integrator.apply_ai_actions(
+            &[
+                AIAction::SetDestination {
+                    system: site,
+                    area,
+                    destination: target,
+                },
+                AIAction::Build {
+                    system: site,
+                    kind,
+                    cost: 20,
+                    count: 2,
+                },
+                AIAction::Build {
+                    system: site,
+                    kind,
+                    cost: 20,
+                    count: 0,
+                },
+            ],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut manufacturing,
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            false,
+        );
+
+        assert_eq!(manufacturing.destination(site, area), Some(target));
+        let queue = manufacturing.queue(site, area).unwrap();
+        assert_eq!(queue.len(), 2);
+        assert!(queue
+            .items()
+            .iter()
+            .all(|item| item.destination == Some(target) && item.cost == 20));
+        let types: Vec<_> = integrator
+            .finish()
+            .iter()
+            .map(|e| e.details["type"].clone())
+            .collect();
+        assert_eq!(types, ["SetDestination", "Build"]);
+        // A Build of none is not applied, so it is not reported.
+        let applied = apply_ai_actions_inner(
+            &[AIAction::Build {
+                system: site,
+                kind,
+                cost: 20,
+                count: 0,
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut manufacturing,
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+        );
+        assert_eq!(applied, [false]);
     }
 
     /// Apply `actions` for the Empire AI and return the telemetry.

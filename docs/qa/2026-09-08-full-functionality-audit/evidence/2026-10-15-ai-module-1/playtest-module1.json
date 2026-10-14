@@ -1,0 +1,51 @@
+{
+  "command": "rebellion-playtest data/base --seed 42 --ticks 600 --dual-ai",
+  "orders_by_side_and_type": {
+    "Alliance Build": 1,
+    "Alliance DispatchMission": 23,
+    "Alliance EnqueueProduction": 15,
+    "Alliance MoveFleet": 1,
+    "Alliance SetDestination": 1,
+    "Empire Build": 1,
+    "Empire DispatchMission": 73,
+    "Empire EnqueueProduction": 15,
+    "Empire MoveFleet": 2,
+    "Empire SetDestination": 1
+  },
+  "module1_orders": [
+    {
+      "tick": 1,
+      "side": "Empire",
+      "area": "ConstructionYard",
+      "destination": "Bothawui",
+      "system": "Bothawui",
+      "type": "SetDestination"
+    },
+    {
+      "tick": 1,
+      "side": "Alliance",
+      "area": "ConstructionYard",
+      "destination": "Hoth",
+      "system": "Hoth",
+      "type": "SetDestination"
+    },
+    {
+      "tick": 1,
+      "side": "Empire",
+      "cost": 10,
+      "count": 2,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(704643075), is_alliance: false })",
+      "system": "Bothawui",
+      "type": "Build"
+    },
+    {
+      "tick": 1,
+      "side": "Alliance",
+      "cost": 10,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(704643075), is_alliance: true })",
+      "system": "Hoth",
+      "type": "Build"
+    }
+  ]
+}

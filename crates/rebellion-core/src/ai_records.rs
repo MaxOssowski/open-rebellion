@@ -760,9 +760,27 @@ fn side_number(side: Option<crate::dat::Faction>) -> u32 {
     }
 }
 
+/// The system record bits a refresh keeps (`FUN_00433e40`): `+0x28 &
+/// 0x3e00000`, the yard marks, and `+0x30 & 0x35ff0000`, such as a
+/// module's claim `0x10000000` (`FUN_004dd120`). Only the modules set them.
+pub const KEPT_STATE: u32 = 0x3e0_0000;
+/// See [`KEPT_STATE`] (`FUN_00433e40`).
+pub const KEPT_KIND: u32 = 0x35ff_0000;
+
 impl SystemRecord {
+    /// [`Self::build_kept`] with the yard marks `marks` and no kept `+0x30`
+    /// bits.
+    #[must_use]
+    pub fn build(
+        inputs: &SystemInputs<'_>,
+        system: crate::ids::SystemKey,
+        marks: u32,
+    ) -> Option<Self> {
+        Self::build_kept(inputs, system, marks, 0)
+    }
+
     /// `FUN_00433e40` for `system`, keeping the yard marks `marks`
-    /// (`+0x28 & 0x3e00000`).
+    /// (`+0x28 & 0x3e00000`) and the `+0x30` bits `kind & 0x35ff0000`.
     ///
     /// port: every unit and facility in the port is active (object `+0x50`
     /// bit 0); the side's view of the system is the world's (the port's AI
@@ -777,10 +795,11 @@ impl SystemRecord {
         clippy::too_many_lines,
         reason = "One refresh, in the decompile's order."
     )]
-    pub fn build(
+    pub fn build_kept(
         inputs: &SystemInputs<'_>,
         system: crate::ids::SystemKey,
         marks: u32,
+        kind: u32,
     ) -> Option<Self> {
         use crate::manufacturing::ProductionArea;
         use side_constants::*;
@@ -789,9 +808,9 @@ impl SystemRecord {
         let side: u32 = if inputs.is_alliance { 1 } else { 2 };
         let opponent: u32 = 3 - side;
         let holder = side_number(crate::uprising::holder(sys));
-        let mut f28 = marks & 0x3e0_0000;
+        let mut f28 = marks & KEPT_STATE;
         let mut f2c = 0;
-        let mut f30 = 0;
+        let mut f30 = kind & KEPT_KIND;
         let mut v = [0i32; 60];
         if (0x92..=0x93).contains(&sys.dat_id.family()) {
             f30 |= 0x40;
@@ -1287,7 +1306,7 @@ impl SystemRecord {
 
 /// The index of a sector record's word at `offset` (from `+0x70`, the
 /// keys of `FUN_00419a00`).
-const fn sector_at(offset: usize) -> usize {
+pub(crate) const fn sector_at(offset: usize) -> usize {
     (offset - 0x70) / 4
 }
 
@@ -1691,6 +1710,18 @@ pub fn ranked<T: Copy>(
     list.into_iter().map(|(item, _)| item).collect()
 }
 
+/// `FUN_004357b0` called until it gives nothing: each call takes the best
+/// entry ([`pick`]) and removes it from the first list, so this is the
+/// order the calls give.
+pub fn picks<T: Copy + PartialEq>(mut lists: Vec<Vec<T>>) -> Vec<T> {
+    let mut out = Vec::new();
+    while let Some(best) = pick(&lists) {
+        lists[0].retain(|&x| x != best);
+        out.push(best);
+    }
+    out
+}
+
 /// `FUN_004357b0` over lists merged by `FUN_00435790`: an entry of the
 /// first list that every list holds, with the highest sum of its places
 /// (`FUN_0041c230` ranks from 1), the earliest on a tie.
@@ -1725,7 +1756,8 @@ pub struct Galaxy {
 
 impl Galaxy {
     /// Build every record. `marks` holds each system's yard marks
-    /// (`+0x28 & 0x3e00000`), which only the production modules change.
+    /// (`+0x28 & 0x3e00000`) and `kinds` its kept `+0x30` bits
+    /// ([`KEPT_KIND`]), which only the production modules change.
     ///
     /// port: the original refreshes the sectors (with their systems)
     /// before the fleets, so a system reads the previous refresh's fleet
@@ -1736,6 +1768,7 @@ impl Galaxy {
         movement: &crate::movement::MovementState,
         transport: &crate::troop_transport::TroopTransportState,
         marks: &HashMap<crate::ids::SystemKey, u32>,
+        kinds: &HashMap<crate::ids::SystemKey, u32>,
     ) -> Self {
         let world = inputs.world;
         let classes = inputs.classes.clone();
@@ -1768,7 +1801,8 @@ impl Galaxy {
                     .iter()
                     .filter(|(_, sys)| sys.sector == sector)
                     .filter_map(|(key, _)| {
-                        SystemRecord::build(&inputs, key, marks.get(&key).copied().unwrap_or(0))
+                        let kept = |map: &HashMap<_, u32>| map.get(&key).copied().unwrap_or(0);
+                        SystemRecord::build_kept(&inputs, key, kept(marks), kept(kinds))
                     })
                     .collect();
                 let position = world
@@ -1898,6 +1932,35 @@ impl Galaxy {
             order,
             coin,
         )
+    }
+
+    /// Set and clear bits of `system`'s record state `+0x28` (a module's
+    /// marks, seen at once; the sector records wait for the next refresh,
+    /// `FUN_00433e30` only marks the record dirty).
+    pub fn update_state(&mut self, system: crate::ids::SystemKey, set: u32, clear: u32) {
+        if let Some(r) = self.system_mut(system) {
+            r.state = (r.state & !clear) | set;
+        }
+    }
+
+    /// Set and clear bits of `system`'s record `+0x30`.
+    pub fn update_kind(&mut self, system: crate::ids::SystemKey, set: u32, clear: u32) {
+        if let Some(r) = self.system_mut(system) {
+            r.kind = (r.kind & !clear) | set;
+        }
+    }
+
+    fn system_mut(&mut self, system: crate::ids::SystemKey) -> Option<&mut SystemRecord> {
+        self.sectors
+            .iter_mut()
+            .flat_map(|s| &mut s.systems)
+            .find(|r| r.system == system)
+    }
+
+    /// A sector's record.
+    #[must_use]
+    pub fn sector(&self, sector: crate::ids::SectorKey) -> Option<&SectorRecord> {
+        self.sectors.iter().find(|s| s.sector == sector)
     }
 
     /// A system's record.
@@ -2890,6 +2953,39 @@ mod tests {
     }
 
     #[test]
+    fn repeated_picks_give_the_best_then_the_next() {
+        // FUN_004357b0 removes what it takes from the first list, so
+        // calling it again gives the next best; an entry missing from
+        // another list is never taken.
+        assert_eq!(picks(vec![vec![1, 2, 3, 4], vec![2, 3, 4]]), vec![4, 3, 2]);
+        assert_eq!(picks(vec![vec![7, 7]]), vec![7]);
+        assert!(picks::<u8>(vec![vec![]]).is_empty());
+    }
+
+    #[test]
+    fn a_module_s_bits_change_one_record_and_its_sector_is_found() {
+        // FUN_004daf10 sets 0x800000 and clears 0x3800000 on the record;
+        // FUN_004dd120 sets and clears +0x30 0x10000000.
+        let (mut galaxy, sectors, systems) = spread_galaxy(&[(0, 0), (9, 9)], &[(1, (1, 1), true)]);
+        let before = *galaxy.system(systems[1]).unwrap();
+        galaxy.update_state(systems[0], 0x80_0000, 0x380_0000);
+        galaxy.update_state(systems[0], 0x100_0000, 0);
+        galaxy.update_state(systems[0], 0, 0x100_0000);
+        galaxy.update_kind(systems[0], 0x1000_0000 | 0x4_0000, 0);
+        galaxy.update_kind(systems[0], 0, 0x4_0000);
+        let r = galaxy.system(systems[0]).unwrap();
+        assert_eq!(r.state & KEPT_STATE, 0x80_0000);
+        assert_eq!(r.kind & KEPT_KIND, 0x1000_0000);
+        assert_ne!(r.kind & 1, 0);
+        assert_eq!(*galaxy.system(systems[1]).unwrap(), before);
+        assert_eq!(galaxy.sector(sectors[1]).unwrap().sector, sectors[1]);
+        assert_eq!(galaxy.sector(sectors[1]).unwrap().systems.len(), 1);
+        let mut nowhere = slotmap::SlotMap::<crate::ids::SectorKey, ()>::with_key();
+        let missing = (0..5).map(|_| nowhere.insert(())).last().unwrap();
+        assert!(galaxy.sector(missing).is_none());
+    }
+
+    #[test]
     fn a_ranked_list_breaks_ties_by_coin_and_the_pick_needs_every_list() {
         // FUN_005f59f0 / FUN_0041c250 and FUN_004357b0.
         let mut heads = || true;
@@ -2976,6 +3072,7 @@ mod tests {
             &inputs,
             &crate::movement::MovementState::new(),
             &crate::troop_transport::TroopTransportState::new(),
+            &HashMap::new(),
             &HashMap::new(),
         );
         (galaxy, keys, placed)
@@ -3132,6 +3229,7 @@ mod tests {
             &crate::movement::MovementState::new(),
             &crate::troop_transport::TroopTransportState::new(),
             &marks,
+            &HashMap::new(),
         );
         let mut coin = || false;
 

@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v40, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v41, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-14
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v40, and it is the only one
+serializable snapshot. The current format is v41, and it is the only one
 that loads.
 
-## Native format (v40)
+## Native format (v41)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -46,7 +46,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `manufacturing` | `ManufacturingState`: one queue and one Destination per system and production area (v30); a queue keeps its build points and each unit its cost in points (v34) |
 | `missions` | `MissionState`: missions, travelling members, and each captive's escape timer and escaped characters on the road (v35) |
 | `events` | `EventState` |
-| `ai` | `AIState`: busy characters, battle cooldowns, the strategy's research planners with their held designer, site, target, mission, unread report and failures (v37), the day's order count and the round robin's module (v38; the evaluation tick is gone), the priority scan's cursor, each module's priority and undecided orders, and the mission module's next entry (v39), and the yard marks the modules keep on system records (v40) |
+| `ai` | `AIState`: busy characters, battle cooldowns, the strategy's research planners with their held designer, site, target, mission, unread report and failures (v37), the day's order count and the round robin's module (v38; the evaluation tick is gone), the priority scan's cursor, each module's priority and undecided orders, and the mission module's next entry (v39), the yard marks the modules keep on system records (v40), and the kept record `+0x30` bits, the controller's yard token and module 1's fields and sites (v41) |
 | `movement` | `MovementState` |
 | `fog_alliance`, `fog_empire` | `FogState` |
 | `player_is_alliance` | `bool` |

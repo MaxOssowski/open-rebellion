@@ -1792,6 +1792,14 @@ cross-runtime proof remain open
   marks, the planner's person flags and side `+0xa4`, and hands them to
   the modules. Golden unchanged; in the browser, Very Slow's longest frame
   was 2.6 ms and Fast's 1.6 ms (`evidence/2026-10-14-ai-records-pass/`).
+- Module 1 (2026-10-15): the construction yard, mine and refinery module
+  (`FUN_004da950`, step `FUN_004dabe0`, cycle `FUN_004db2f0`) is ported in
+  `ai_module1.rs`, with the yard token (`FUN_004199b0`), the Scrap team,
+  Destination and Build orders, their validation and refusal
+  (`FUN_004dd810`), and the scheduler's completion rule (`FUN_00485b40`).
+  Save v41; golden `v1:e187411365b9f348` -> `v1:ada51196c4d497ba`. port:
+  the seven other yard-token modules are not ported, so their turns pass
+  at once (`evidence/2026-10-15-ai-module-1/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

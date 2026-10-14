@@ -64,6 +64,83 @@ pub const MODULE_IDS: [u8; MODULES] = [0xd, 2, 1, 3, 6, 7, 4, 5, 8, 9, 0xa, 0xb,
 /// How many modules the AI player has (`FUN_004bea20` ids 1 to `0xe`).
 const MODULES: usize = 14;
 
+/// port: the most module steps one pass takes (`FUN_00485b40` has no
+/// bound; a module that never completes would hang the original).
+const MAX_STEPS: usize = 256;
+
+/// The controller's tallies for module 1 (`FUN_0041b7e0`, `FUN_004182a0`):
+/// the side's mines and refineries from its records, and its maintenance
+/// capacity and requirement, without the mines and refineries of a
+/// suspended system (uprising or blockade, `FUN_0050bbb0`).
+fn side_tallies(
+    world: &GameWorld,
+    mfg_state: &ManufacturingState,
+    uprisings: &crate::uprising::UprisingState,
+    faction: AiFaction,
+    galaxy: &crate::ai_records::Galaxy,
+) -> crate::ai_module1::Tallies {
+    let blocked = |s| {
+        uprisings.is_uprising(s)
+            || world
+                .systems
+                .get(s)
+                .is_some_and(|sys| crate::blockade::BlockadeSystem::system_is_blockaded(world, sys))
+    };
+    let totals =
+        crate::side_resources::maintenance_totals(world, mfg_state, faction.as_faction(), blocked);
+    crate::ai_module1::Tallies::of(galaxy, totals.capacity(), totals.upkeep)
+}
+
+/// The order's validation (slot `+0x1c`) for the orders module 1 gives:
+/// every Scrap member passes [`crate::scrap::check`]; Destination and
+/// Build need the side's construction manager there (hyp: a construction
+/// yard of the side), Build a class the manager lists
+/// ([`crate::build_selection::listed_classes`]) and a count.
+///
+/// port: the heuristics' other orders are checked when applied.
+fn accepts(
+    order: &AIAction,
+    world: &GameWorld,
+    research: &ResearchState,
+    faction: AiFaction,
+) -> bool {
+    let side = faction.as_faction();
+    let is_alliance = matches!(faction, AiFaction::Alliance);
+    match order {
+        AIAction::Scrap { team } => {
+            !team.is_empty()
+                && team
+                    .iter()
+                    .all(|&t| crate::scrap::check(world, side, t).is_ok())
+        }
+        AIAction::SetDestination {
+            system,
+            destination,
+            ..
+        } => {
+            crate::ai_module1::has_construction_yard(world, side, *system)
+                && world.systems.contains_key(*destination)
+        }
+        AIAction::Build {
+            system,
+            kind,
+            count,
+            ..
+        } => {
+            *count > 0
+                && crate::ai_module1::has_construction_yard(world, side, *system)
+                && crate::build_selection::listed_classes(
+                    world,
+                    research,
+                    ProductionArea::of(*kind),
+                    is_alliance,
+                )
+                .contains(kind)
+        }
+        _ => true,
+    }
+}
+
 /// The mission module's groups of port heuristics, after its research
 /// planners: officers, espionage, rescue, reconnaissance, uprisings.
 ///
@@ -263,6 +340,17 @@ pub struct AIState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub yard_marks: HashMap<SystemKey, u32>,
+    /// The record `+0x30` bits the modules keep on the side's system
+    /// records ([`crate::ai_records::KEPT_KIND`]), such as module 1's claim.
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub record_kinds: HashMap<SystemKey, u32>,
+    /// The controller words the modules share (`FUN_004178f0`).
+    pub controller: crate::ai_module1::Controller,
+    /// Module 1's fields (`FUN_004da950`).
+    pub module1: crate::ai_module1::Module1,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -323,6 +411,9 @@ impl AIState {
             research_planners: Vec::new(),
             next_planner_id: 0,
             yard_marks: HashMap::new(),
+            record_kinds: HashMap::new(),
+            controller: crate::ai_module1::Controller::default(),
+            module1: crate::ai_module1::Module1::default(),
         }
     }
 
@@ -465,10 +556,29 @@ pub enum AIAction {
         troops: Vec<TroopKey>,
     },
 
-    /// Scrap one of the side's facilities or regiments: the order `0x200`
-    /// (`FUN_0053dd20`) that modules 1, 3, 6, 7 and `0xa` build
+    /// Scrap a team of the side's facilities or regiments: the order
+    /// `0x200` (`FUN_0053dd20`) that modules 1, 3, 6, 7 and `0xa` build
     /// (`ghidra/notes/ai-production-modules.md`).
-    Scrap { target: crate::scrap::ScrapTarget },
+    Scrap {
+        team: Vec<crate::scrap::ScrapTarget>,
+    },
+
+    /// Destination (`0x214`) on `system`'s `area` manager: what it builds
+    /// goes to `destination` (`FUN_004dc9f0`).
+    SetDestination {
+        system: SystemKey,
+        area: crate::manufacturing::ProductionArea,
+        destination: SystemKey,
+    },
+
+    /// Build (`0x210`) `count` units of `kind` on `system`'s manager
+    /// (`FUN_004dcb30`, count `+0x4c`), each `cost` build points.
+    Build {
+        system: SystemKey,
+        kind: BuildableKind,
+        cost: u32,
+        count: i32,
+    },
 }
 
 /// Why the AI is moving a fleet.
@@ -496,9 +606,6 @@ struct ModuleInputs<'a> {
     research_state: &'a ResearchState,
     uprisings: &'a crate::uprising::UprisingState,
     faction: AiFaction,
-    /// The side's records of the galaxy, refreshed for this pass.
-    #[expect(dead_code, reason = "module 1 is the first reader; it is ported next")]
-    galaxy: &'a crate::ai_records::Galaxy,
 }
 
 /// What phase 4 reads to refresh the side's records ([`AISystem::records`]).
@@ -588,7 +695,7 @@ impl AISystem {
                 planner.hold(crate::missions::MissionMember::Character(c));
             }
         }
-        let galaxy = Self::records(
+        let mut galaxy = Self::records(
             state,
             &planner,
             &RecordInputs {
@@ -611,19 +718,65 @@ impl AISystem {
             research_state,
             uprisings,
             faction,
-            galaxy: &galaxy,
         };
+        let tallies = side_tallies(world, mfg_state, uprisings, faction, &galaxy);
+        // port: eight modules share the construction yards through the
+        // controller's token (FUN_004199b0: 0x80 module 1, 0x40 module 2,
+        // 0x20 module 6, 0x10 module 0xa, 8 module 7, 4 module 5, 2 module
+        // 0xb, 1 module 3), each passing it on once its own work allows.
+        // Only module 1 is ported, so a pass hands on the yards that an
+        // unported module holds.
+        if state.controller.yard_holder != crate::ai_module1::YARD_TOKEN {
+            state.controller.pass_yards();
+        }
         let mut ready = [true; MODULES];
-        while let Some(module) = Self::next_module(state, &ready) {
-            ready[module] = false;
+        let mut current = None;
+        let mut orders = Vec::new();
+        // port: a guard against a module that never completes; module 1
+        // takes at most a dozen steps a tick.
+        for _ in 0..MAX_STEPS {
+            if state.orders_today >= ORDERS_PER_DAY {
+                break;
+            }
+            let module = match current {
+                Some(module) => module,
+                None => match Self::next_module(state, &ready) {
+                    Some(module) => module,
+                    None => break,
+                },
+            };
+            current = Some(module);
             // FUN_00485b40 zeroes the priority before the step.
             state.module_priority[module] = 0;
-            if let Some(order) = Self::step_module(module, state, &mut planner, &ctx) {
-                state.orders_today += 1;
-                return vec![order];
+            let step = Self::step_module(module, state, &mut planner, &ctx, &mut galaxy, tallies);
+            if step.raise {
+                state.module_priority[module] += 1;
+            }
+            let gave = step.order.is_some();
+            let mut complete = step.complete;
+            if let Some(order) = step.order {
+                if accepts(&order, world, research_state, faction) {
+                    state.orders_today += 1;
+                    orders.push(order);
+                } else {
+                    // The module's slot +0x18 (module 1: FUN_004dd810).
+                    if MODULE_IDS[module] == 1 {
+                        state.module1.refused();
+                    }
+                    state.module_priority[module] = 0;
+                    complete = true;
+                }
+            }
+            if !complete {
+                continue;
+            }
+            ready[module] = false;
+            current = None;
+            if gave {
+                break;
             }
         }
-        Vec::new()
+        orders
     }
 
     /// Phase 4's refresh of the side's records (`FUN_00418500`): the class,
@@ -661,6 +814,7 @@ impl AISystem {
             inputs.movement,
             inputs.transport,
             &state.yard_marks,
+            &state.record_kinds,
         )
     }
 
@@ -704,20 +858,36 @@ impl AISystem {
         state: &mut AIState,
         planner: &mut Planner<'_>,
         ctx: &ModuleInputs<'_>,
-    ) -> Option<AIAction> {
+        galaxy: &mut crate::ai_records::Galaxy,
+        tallies: crate::ai_module1::Tallies,
+    ) -> crate::ai_module1::Step {
+        if MODULE_IDS[module] == 1 {
+            let mut coin = || planner.coin();
+            let mut io = crate::ai_module1::Inputs {
+                world: ctx.world,
+                research: ctx.research_state,
+                galaxy,
+                controller: &mut state.controller,
+                marks: &mut state.yard_marks,
+                kinds: &mut state.record_kinds,
+                tallies,
+                is_alliance: matches!(ctx.faction, AiFaction::Alliance),
+                coin: &mut coin,
+            };
+            return state.module1.step(&mut io);
+        }
         if state.module_pending[module].is_empty() {
             let mut decided = Vec::new();
             Self::run_module(MODULE_IDS[module], state, planner, ctx, &mut decided);
             state.module_pending[module] = decided;
         }
-        if state.module_pending[module].is_empty() {
-            return None;
+        let order = (!state.module_pending[module].is_empty())
+            .then(|| state.module_pending[module].remove(0));
+        crate::ai_module1::Step {
+            raise: !state.module_pending[module].is_empty(),
+            order,
+            complete: true,
         }
-        let order = state.module_pending[module].remove(0);
-        if !state.module_pending[module].is_empty() {
-            state.module_priority[module] += 1;
-        }
-        Some(order)
     }
 
     /// The port's work for the original module `id`.
@@ -749,7 +919,6 @@ impl AISystem {
             research_state,
             uprisings,
             faction,
-            galaxy: _,
         } = *ctx;
         let production = |actions: &mut Vec<AIAction>| {
             let mut all = Vec::new();
@@ -3546,7 +3715,6 @@ mod tests {
             matches!(faction, AiFaction::Alliance),
             last.tick,
         );
-        let galaxy = crate::ai_records::Galaxy::default();
         let ctx = ModuleInputs {
             world,
             mfg_state,
@@ -3557,7 +3725,6 @@ mod tests {
             research_state,
             uprisings,
             faction,
-            galaxy: &galaxy,
         };
         let mut actions = Vec::new();
         research_all(state, &mut planner, &ctx, &mut actions);
@@ -3642,7 +3809,6 @@ mod tests {
             research_state: research,
             uprisings,
             faction: AiFaction::Alliance,
-            galaxy: Box::leak(Box::default()),
         }
     }
 
@@ -6928,21 +7094,241 @@ mod tests {
     }
 
     #[test]
+    fn a_module_that_has_not_completed_steps_again_in_the_same_pass() {
+        // FUN_00485b40: a module that leaves +0x20 clear stays current, so
+        // module 1 runs its site search and cycle states 1 to 8 within one
+        // tick; the Destination it gives (FUN_004dc9f0) passes the
+        // validator (a construction yard of the side) and ends the tick.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let own = |world: &mut GameWorld| {
+            let sys = add_system(world, sector, 0.9, 0.1);
+            world.systems[sys].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+            world.systems[sys].total_energy = 10;
+            world.systems[sys].raw_materials = 5;
+            sys
+        };
+        let site = own(&mut world);
+        let empty = own(&mut world);
+        let class = |world: &mut GameWorld, raw: u32| {
+            let id = DatId(raw);
+            world.buildable_classes.insert(
+                id,
+                crate::world::BuildableClass {
+                    is_alliance: true,
+                    is_empire: true,
+                    maintenance_cost: 10,
+                    refined_material_cost: 10,
+                    ..Default::default()
+                },
+            );
+            id
+        };
+        let yard = class(&mut world, 0x2a00_0003);
+        let key =
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: yard,
+                    side: crate::dat::Faction::Alliance,
+                    is_shipyard: false,
+                });
+        world.systems[site].manufacturing_facilities.push(key);
+        for (raw, is_mine) in [(0x2c00_0001, true), (0x2d00_0002, false)] {
+            let class_dat_id = class(&mut world, raw);
+            let key =
+                world
+                    .production_facilities
+                    .insert(crate::world::ProductionFacilityInstance {
+                        class_dat_id,
+                        side: crate::dat::Faction::Alliance,
+                        is_mine,
+                    });
+            world.systems[site].production_facilities.push(key);
+        }
+        let mut state = AIState::new(AiFaction::Alliance);
+        // Module 1 (index 2) first, by priority (FUN_004bede0).
+        state.module_priority[2] = 1;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert_eq!(
+            orders,
+            vec![AIAction::SetDestination {
+                system: site,
+                area: ProductionArea::ConstructionYard,
+                destination: empty,
+            }]
+        );
+        assert_eq!(state.module1.state, 9);
+        assert_eq!(state.orders_today, 1);
+        // The Destination step raised module 1's priority (+0x34).
+        assert_eq!(state.module_priority[2], 1);
+    }
+
+    #[test]
+    fn the_validator_checks_module_one_s_orders() {
+        // Slot +0x1c: every Scrap member's FUN_004f9860; Destination and
+        // Build on the side's construction manager (hyp: a yard of the
+        // side); Build of a listed class (FUN_0052e580) with a count.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let elsewhere = add_system(&mut world, sector, 0.9, 0.1);
+        let yard = DatId(0x2a00_0003);
+        world.buildable_classes.insert(
+            yard,
+            crate::world::BuildableClass {
+                is_alliance: true,
+                is_empire: true,
+                ..Default::default()
+            },
+        );
+        let key =
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: yard,
+                    side: crate::dat::Faction::Alliance,
+                    is_shipyard: false,
+                });
+        world.systems[site].manufacturing_facilities.push(key);
+        let research = ResearchState::new();
+        let ok = |order: &AIAction| accepts(order, &world, &research, AiFaction::Alliance);
+        let own =
+            crate::scrap::ScrapTarget::Facility(crate::world::FacilityRef::Manufacturing(key));
+        assert!(ok(&AIAction::Scrap { team: vec![own] }));
+        assert!(!ok(&AIAction::Scrap { team: vec![] }));
+        assert!(!accepts(
+            &AIAction::Scrap { team: vec![own] },
+            &world,
+            &research,
+            AiFaction::Empire
+        ));
+        let destination = |system, destination| AIAction::SetDestination {
+            system,
+            area: ProductionArea::ConstructionYard,
+            destination,
+        };
+        assert!(ok(&destination(site, elsewhere)));
+        assert!(!ok(&destination(elsewhere, site)));
+        let mut gone = world.clone();
+        gone.systems.remove(elsewhere);
+        assert!(!accepts(
+            &destination(site, elsewhere),
+            &gone,
+            &research,
+            AiFaction::Alliance
+        ));
+        let build = |system, class: u32, count| AIAction::Build {
+            system,
+            kind: BuildableKind::ManufacturingFacility(FacilityBuild {
+                class: DatId(class),
+                is_alliance: true,
+            }),
+            cost: 10,
+            count,
+        };
+        assert!(ok(&build(site, 0x2a00_0003, 1)));
+        assert!(!ok(&build(site, 0x2a00_0003, 0)));
+        assert!(!ok(&build(elsewhere, 0x2a00_0003, 1)));
+        assert!(!ok(&build(site, 0x2a00_0009, 1)));
+        // Other orders are checked when applied.
+        assert!(ok(&AIAction::AbortMission { mission_id: 1 }));
+    }
+
+    #[test]
+    fn the_side_s_maintenance_leaves_out_suspended_systems() {
+        // FUN_004182a0 (+0x184 = side +0x58): a mine and a refinery give
+        // 50 (FUN_005323c0) unless their system is in an uprising or
+        // blockaded (FUN_0050bbb0 suspends them).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        world.systems[site].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        for (raw, is_mine) in [(0x2c00_0001, true), (0x2d00_0002, false)] {
+            let key =
+                world
+                    .production_facilities
+                    .insert(crate::world::ProductionFacilityInstance {
+                        class_dat_id: DatId(raw),
+                        side: crate::dat::Faction::Alliance,
+                        is_mine,
+                    });
+            world.systems[site].production_facilities.push(key);
+        }
+        let galaxy = crate::ai_records::Galaxy::default();
+        let mfg = ManufacturingState::new();
+        let mut uprisings = crate::uprising::UprisingState::default();
+        let capacity = |world: &GameWorld, uprisings: &crate::uprising::UprisingState| {
+            side_tallies(world, &mfg, uprisings, AiFaction::Alliance, &galaxy).capacity
+        };
+        assert_eq!(capacity(&world, &uprisings), 50);
+        uprisings.active_uprisings.insert(
+            site,
+            crate::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+            },
+        );
+        assert_eq!(capacity(&world, &uprisings), 0);
+        uprisings.active_uprisings.clear();
+        let raider = world.fleets.insert(crate::world::Fleet {
+            location: site,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[site].fleets.push(raider);
+        assert_eq!(capacity(&world, &uprisings), 0);
+    }
+
+    #[test]
+    fn a_refused_module_one_order_ends_its_cycle_and_the_tick() {
+        // FUN_00485b40: a refused order (slot +0x1c) goes to slot +0x18,
+        // FUN_004dd810 (complete, +0x38 = +0x3c = +0x34 = 0), and since
+        // the step gave an order the tick ends.
+        // State 8's Destination on a manager the side lacks: refused.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module1.phase = crate::ai_module1::CYCLE;
+        state.module1.state = 8;
+        state.module1.target = crate::ai_module1::Target::System(site);
+        state.module1.yard = crate::ai_module1::Yard::Manager(site);
+        state.module_priority[2] = 5;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert!(orders.is_empty());
+        assert_eq!((state.module1.phase, state.module1.state), (0, 0));
+        assert_eq!(state.module_priority[2], 0);
+        assert_eq!(state.orders_today, 0);
+        // Only module 1 was stepped: the round robin did not move.
+        assert_eq!(state.module_cursor, None);
+    }
+
+    #[test]
     fn the_round_robin_wraps_round_the_list_to_a_module_with_orders() {
         // FUN_004be980: +0x10 steps to the next module and goes round the
         // list back to where it began.
         let world = empty_world();
+        // Index 3 (module 3): index 2 is module 1, which runs its own
+        // cycle rather than a list of decided orders.
         let order = AIAction::AbortMission { mission_id: 7 };
         let mut state = AIState::new(AiFaction::Alliance);
-        state.module_pending[2] = vec![order.clone()];
+        state.module_pending[3] = vec![order.clone()];
         state.module_cursor = Some(MODULES - 2);
 
         assert_eq!(cadence_pass(&mut state, &world), vec![order]);
-        assert_eq!(state.module_cursor, Some(2));
-        // Every module runs and orders nothing; +0x10 stops where the last
-        // search began, one past module 2.
-        assert!(cadence_pass(&mut state, &world).is_empty());
         assert_eq!(state.module_cursor, Some(3));
+        // Every module runs and orders nothing; +0x10 stops where the last
+        // search began, one past module 3.
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.module_cursor, Some(4));
     }
 
     #[test]

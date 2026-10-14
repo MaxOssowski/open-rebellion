@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 40;
+pub const SAVE_VERSION: u32 = 41;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1669,9 +1669,9 @@ mod tests {
         ai.module_pending[8] = vec![AIAction::AbortMission { mission_id: 4 }];
         // A pending Scrap (0x200) keeps its target.
         ai.module_pending[1] = vec![AIAction::Scrap {
-            target: rebellion_core::scrap::ScrapTarget::Facility(
+            team: vec![rebellion_core::scrap::ScrapTarget::Facility(
                 rebellion_core::world::FacilityRef::Production(Default::default()),
-            ),
+            )],
         }];
         ai.mission_next = Some(MissionEntry::Group(2));
         // v40: the yard marks the modules keep (record +0x28 & 0x3e00000).

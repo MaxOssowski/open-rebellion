@@ -7832,29 +7832,48 @@ fn apply_ai_actions(
             AIAction::EnqueueProduction { system, kind, cost } => {
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
             }
-            AIAction::Scrap { target } => {
+            AIAction::Scrap { team } => {
                 let Some(side) = ai_state.faction else {
                     continue;
                 };
-                if let Ok(done) = rebellion_core::scrap::scrap(
+                if let Ok(done) = rebellion_core::scrap::scrap_team(
                     world,
                     production_state,
                     side.as_faction(),
-                    *target,
+                    team,
                 ) {
-                    log.push(GameMessage::at_system(
-                        tick,
-                        format!(
-                            "{} scrapped a unit (refund {})",
-                            match side {
-                                AiFaction::Alliance => "Alliance",
-                                AiFaction::Empire => "Empire",
-                            },
-                            done.refund
-                        ),
-                        MessageCategory::Ai,
-                        done.system,
-                    ));
+                    for unit in done {
+                        log.push(GameMessage::at_system(
+                            tick,
+                            format!(
+                                "{} scrapped a unit (refund {})",
+                                match side {
+                                    AiFaction::Alliance => "Alliance",
+                                    AiFaction::Empire => "Empire",
+                                },
+                                unit.refund
+                            ),
+                            MessageCategory::Ai,
+                            unit.system,
+                        ));
+                    }
+                }
+            }
+            AIAction::SetDestination {
+                system,
+                area,
+                destination,
+            } => {
+                mfg_state.set_destination(*system, *area, *destination);
+            }
+            AIAction::Build {
+                system,
+                kind,
+                cost,
+                count,
+            } => {
+                for _ in 0..*count {
+                    mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
                 }
             }
             AIAction::MoveFleet {

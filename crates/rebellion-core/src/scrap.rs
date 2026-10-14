@@ -177,6 +177,27 @@ pub fn scrap(
     Ok(Scrapped { system, refund })
 }
 
+/// A Scrap order's team: the validator (`FUN_0051ff30`) checks every
+/// member's command before the order executes them all (`FUN_005539f0`),
+/// so one refusal keeps every member.
+///
+/// # Errors
+///
+/// The first member's refusal of [`check`].
+pub fn scrap_team(
+    world: &mut GameWorld,
+    production: &mut ProductionState,
+    side: Faction,
+    team: &[ScrapTarget],
+) -> Result<Vec<Scrapped>, ScrapRefusal> {
+    for &target in team {
+        check(world, side, target)?;
+    }
+    team.iter()
+        .map(|&target| scrap(world, production, side, target))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,6 +413,32 @@ mod tests {
             Err(ScrapRefusal::NotAccepted)
         );
         assert_eq!(ScrapRefusal::NotAccepted.code(), 0x17);
+    }
+
+    #[test]
+    fn one_refused_member_keeps_the_whole_team() {
+        // FUN_0051ff30 validates every command before FUN_005539f0 runs
+        // them: the Empire's mine refuses, so the Alliance's stays too.
+        let mut f = fixture();
+        let own = ScrapTarget::Facility(mine(&mut f, Faction::Alliance, 6));
+        let theirs = ScrapTarget::Facility(mine(&mut f, Faction::Empire, 6));
+        let mut production = ProductionState::new();
+
+        assert_eq!(
+            scrap_team(
+                &mut f.world,
+                &mut production,
+                Faction::Alliance,
+                &[own, theirs]
+            ),
+            Err(ScrapRefusal::NotOwnSide)
+        );
+        assert_eq!(f.world.production_facilities.len(), 2);
+
+        let done = scrap_team(&mut f.world, &mut production, Faction::Alliance, &[own]).unwrap();
+        assert_eq!(done.len(), 1);
+        assert_eq!(f.world.production_facilities.len(), 1);
+        assert_eq!(production.stock(Faction::Alliance).unwrap().refined, 3);
     }
 
     #[test]
