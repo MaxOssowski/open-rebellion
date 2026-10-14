@@ -16,7 +16,7 @@ use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::economy::EconomyState;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{CharacterKey, DefenseFacilityKey, SpecialForceKey, SystemKey, TroopKey};
-use rebellion_core::missions::{MissionMember, MissionState};
+use rebellion_core::missions::{MissionMember, MissionState, MissionTarget, MissionTargetPick};
 use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -330,6 +330,47 @@ impl DefensesWindowState {
             selected,
             garrison: garrison_line(world, economy, player, system, window.page),
         })
+    }
+
+    /// What a Mission released over the Defenses window egui draws as
+    /// `layer` targets (`+0x68`, `FUN_004aa380`): the object in the list
+    /// cell under `point`, else the window's system. `None` when `layer` is
+    /// none of them.
+    #[must_use]
+    pub fn mission_target(
+        &self,
+        world: &GameWorld,
+        fog: &FogState,
+        missions: &MissionState,
+        layout: CockpitLayout,
+        layer: egui::LayerId,
+        point: egui::Pos2,
+    ) -> Option<MissionTargetPick> {
+        let window = self
+            .windows
+            .iter()
+            .find(|window| area_id(window.system) == layer.id)?;
+        let player = cockpit_faction(self.faction);
+        let screen = window_screen_rect(window, layout);
+        let item = page_rows(world, fog, missions, player, window.system, window.page)
+            .into_iter()
+            .take(COLUMNS * VISIBLE_ROWS)
+            .enumerate()
+            .find(|(index, _)| rect_contains(cell_rect(screen, layout.scale, *index), point))
+            .map(|(_, row)| row.item);
+        let mut pick = MissionTargetPick::from(window.system);
+        match item {
+            Some(DefensesItem::Character(key)) => pick.character = Some(key),
+            Some(DefensesItem::SpecialForce(key)) => {
+                pick.object = Some(MissionTarget::SpecialForce(key));
+            }
+            Some(DefensesItem::Troop(key)) => pick.object = Some(MissionTarget::Troop(key)),
+            Some(DefensesItem::Defense(key)) => {
+                pick.object = Some(MissionTarget::DefenseFacility(key));
+            }
+            None => {}
+        }
+        Some(pick)
     }
 
     /// The system a move released over the Defenses window egui draws as
@@ -1301,6 +1342,64 @@ mod tests {
             )
             .as_deref(),
             Some("Garrison Requirement: 0")
+        );
+    }
+
+    #[test]
+    fn a_mission_released_on_a_listed_object_targets_it_else_the_window_system() {
+        // +0x68 is FUN_004aa380: the item in list +0x164 under the point,
+        // else the window's subject. A prisoner lists with its captor's
+        // personnel, since it carries the captor's side (FUN_004eec60).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let guard = add_character(&mut world, system, "Guard", false);
+        let prisoner = add_character(&mut world, system, "Prisoner", true);
+        world.characters[prisoner].is_captive = true;
+        world.characters[prisoner].captured_by = Some(Faction::Empire);
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+        let extras: Vec<_> = (0..5)
+            .map(|_| add_character(&mut world, system, "Officer", false))
+            .collect();
+        let missions = MissionState::new();
+        let fog = seen(system);
+        let mut state = opened(&world, system);
+        let layer = egui::LayerId::new(egui::Order::Foreground, area_id(system));
+        let cell = |state: &DefensesWindowState, index| {
+            state
+                .cell_screen_rect(scaled(), system, index)
+                .unwrap()
+                .center()
+        };
+        let pick = |state: &DefensesWindowState, layer, point| {
+            state.mission_target(&world, &fog, &missions, scaled(), layer, point)
+        };
+
+        let first = pick(&state, layer, cell(&state, 0)).unwrap();
+        assert_eq!((first.system, first.character), (system, Some(guard)));
+        assert_eq!(
+            pick(&state, layer, cell(&state, 1)).unwrap().character,
+            Some(prisoner)
+        );
+        // The seventh cell, on the third row of three, holds the last officer.
+        assert_eq!(
+            pick(&state, layer, cell(&state, 6)).unwrap().character,
+            Some(extras[4])
+        );
+        assert_eq!(
+            pick(&state, layer, cell(&state, 7)),
+            Some(MissionTargetPick::from(system))
+        );
+        let elsewhere = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("elsewhere"));
+        assert_eq!(pick(&state, elsewhere, cell(&state, 0)), None);
+
+        assert!(state.show_page(system, DefensesPage::Regiments));
+        assert_eq!(
+            pick(&state, layer, cell(&state, 0)).unwrap().object,
+            Some(MissionTarget::Troop(troop))
         );
     }
 

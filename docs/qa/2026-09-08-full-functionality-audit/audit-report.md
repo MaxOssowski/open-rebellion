@@ -1243,6 +1243,29 @@ cross-runtime proof remain open
     character and object targets
     (Rescue, Assassination, and Abduction need them); the advisor's refusal
     reactions (P34).
+- Phase 7g (2026-10-14): character and object targets from the Defenses
+  window.
+  - A Mission release asks the window's `+0x68`. The Defenses window answers
+    the character, special force, regiment or defense facility in the list
+    cell under the point, else its system (`FUN_004aa380`). A team member
+    answers as its system. `available_kinds` lists a kind only for the
+    target its class takes, so a prisoner lists Rescue and an enemy
+    regiment Sabotage, and the dispatch carries the target.
+  - A prisoner now lists with its captor's personnel, as it carries the
+    captor's side (`FUN_004eec60`); before, it was listed with its home
+    side, so no Rescue target was visible.
+  - Tests: 5 new tests (core 2, Defenses window 1, targeting 1, dialog 1).
+    The Defenses test fails without the prisoner-side change; the others
+    call API that did not exist before. Scoped `cargo mutants`: core 8
+    caught, 4 unviable; render 14 caught and 2 missed, both caught after two
+    added cases.
+  - port: the dialog names an object target but does not draw its portrait
+    (`FUN_0042c3b0(.., 1, 1)`). The System, Fleet and sector windows still
+    reduce their objects to the system, so manufacturing and production
+    facilities and the Death Star are not yet targetable by the player.
+  - Open: those three windows' `+0x68`, and a browser and native check of
+    the flow: `agent-browser` and `cua-driver` are not available on this
+    machine, so no interactive acceptance was run.
 
 ### F-020: A mod with a missing dependency fails silently
 

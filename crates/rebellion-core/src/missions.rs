@@ -681,16 +681,51 @@ pub fn members_allowed(
         && (!empire || rules.empire)
 }
 
-/// The missions the player's dialog lists for a team, decoys, and target
-/// system, in MISSNSD order (`FUN_004f5380` -> `FUN_005422f0`): every record
-/// that is not hidden, whose member rules admit the members, and whose class
-/// validator passes on a mission built from them (`FUN_0054c590` runs it on
-/// a temporary mission, `FUN_00582b90`).
+/// What a Mission order targets: the object the release window answered
+/// (`+0x68`, `ghidra/notes/move-order.md`, "Hit tests") and its system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MissionTargetPick {
+    pub system: SystemKey,
+    /// A character under the point.
+    pub character: Option<CharacterKey>,
+    /// Any other object under the point.
+    pub object: Option<MissionTarget>,
+}
+
+impl From<SystemKey> for MissionTargetPick {
+    fn from(system: SystemKey) -> Self {
+        Self {
+            system,
+            character: None,
+            object: None,
+        }
+    }
+}
+
+impl MissionTargetPick {
+    /// The rules a kind needs to accept this target: the system's, a
+    /// character's (`FUN_00586e20`) or an object's (`FUN_00593500`).
+    const fn rules(&self) -> TargetRules {
+        if self.character.is_some() {
+            TargetRules::Character
+        } else if self.object.is_some() {
+            TargetRules::Object
+        } else {
+            TargetRules::System
+        }
+    }
+}
+
+/// The missions the player's dialog lists for a team, decoys, and target,
+/// in MISSNSD order (`FUN_004f5380` -> `FUN_005422f0`): every record that is
+/// not hidden, whose member rules admit the members, and whose class
+/// validator passes on a mission built from them and the target
+/// (`FUN_0054c590` runs it on a temporary mission, `FUN_00582b90`). A kind
+/// lists only for the target its class takes: a system, a character, or
+/// another object.
 ///
 /// port: records outside the port's kinds are skipped (Recon, Research, and
-/// Jedi Training are a separate finding), and so are kinds that need a
-/// character or object target, since this target is a system; the dialog's
-/// drop onto a character or object is F-019 phase 7.
+/// Jedi Training are a separate finding).
 #[must_use]
 pub fn available_kinds(
     world: &GameWorld,
@@ -698,8 +733,9 @@ pub fn available_kinds(
     faction: MissionFaction,
     team: &[MissionMember],
     decoys: &[MissionMember],
-    target_system: SystemKey,
+    target: impl Into<MissionTargetPick>,
 ) -> Vec<MissionKind> {
+    let target = target.into();
     world
         .mission_records
         .iter()
@@ -710,14 +746,16 @@ pub fn available_kinds(
                 .find(|kind| kind.record_id() == Some(record.dat_id))
                 .map(|kind| (kind, record))
         })
-        .filter(|(kind, _)| kind.target_rules() == TargetRules::System)
+        .filter(|(kind, _)| kind.target_rules() == target.rules())
         .filter(|(_, record)| {
             members_allowed(world, record.members, team.iter().chain(decoys).copied())
         })
         .filter(|(kind, _)| {
             let mut mission =
-                ActiveMission::new(0, *kind, faction, team.to_vec(), target_system, 0);
+                ActiveMission::new(0, *kind, faction, team.to_vec(), target.system, 0);
             mission.decoys = decoys.to_vec();
+            mission.target_character = target.character;
+            mission.target_object = target.object;
             running_end_code(&mission, world, uprisings, &[]) == 0
         })
         .map(|(kind, _)| kind)
@@ -1594,9 +1632,12 @@ fn member_location(world: &GameWorld, member: MissionMember) -> Option<SystemKey
     }
 }
 
-/// The side a character reads as. Inference: a prisoner reads as its
-/// captor's side (`ghidra/notes/mission-lifecycle.md`, "The running checks").
-fn character_side(character: &Character) -> Option<crate::dat::Faction> {
+/// The side a character reads as (`+0x24` bits 6..7). A prisoner carries
+/// its captor's side: every Captured change sets it to the other side of
+/// the character's home side, or back home on release (`FUN_004eec60`,
+/// `ghidra/notes/captive-escape.md`).
+#[must_use]
+pub fn character_side(character: &Character) -> Option<crate::dat::Faction> {
     use crate::dat::Faction;
     if character.is_captive {
         character.captured_by
@@ -6619,7 +6660,7 @@ mod tests {
     #[test]
     fn the_dialog_lists_the_records_the_team_may_undertake_in_missnsd_order() {
         // FUN_005422f0 walks the records in table order. Rescue names a
-        // character, so a system target leaves it out (port:).
+        // character, so a system target leaves it out.
         let (world, here, envoy) = dialog_world(vec![
             recruitment_record(),
             rescue_record(),
@@ -6639,6 +6680,84 @@ mod tests {
             kinds,
             vec![MissionKind::Recruitment, MissionKind::Diplomacy]
         );
+    }
+
+    #[test]
+    fn a_dialog_dropped_on_a_held_prisoner_lists_rescue_alone() {
+        // The release asks the window's +0x68, the object under the point;
+        // FUN_00586e20 checks Rescue's prisoner and opponent columns. The
+        // prisoner reads as the Empire's (FUN_004eec60). System kinds
+        // take no character target.
+        let (mut world, here, envoy) = dialog_world(vec![
+            recruitment_record(),
+            rescue_record(),
+            diplomacy_record(),
+        ]);
+        let prisoner = agent_at(&mut world, here, true);
+        world.characters[prisoner].is_captive = true;
+        world.characters[prisoner].captured_by = Some(crate::dat::Faction::Empire);
+        let target = MissionTargetPick {
+            system: here,
+            character: Some(prisoner),
+            object: None,
+        };
+        let uprisings = UprisingState::default();
+        let list = |target| {
+            available_kinds(
+                &world,
+                &uprisings,
+                MissionFaction::Alliance,
+                &[envoy],
+                &[],
+                target,
+            )
+        };
+
+        assert_eq!(list(target), vec![MissionKind::Rescue]);
+        // A free friend is no prisoner of the other side.
+        world.characters[prisoner].is_captive = false;
+        world.characters[prisoner].captured_by = None;
+        let list = |target| {
+            available_kinds(
+                &world,
+                &uprisings,
+                MissionFaction::Alliance,
+                &[envoy],
+                &[],
+                target,
+            )
+        };
+        assert!(list(target).is_empty());
+    }
+
+    #[test]
+    fn a_dialog_dropped_on_an_enemy_object_lists_the_object_kinds() {
+        // FUN_00593500, the base rules, for Sabotage's object target.
+        let (mut world, here, envoy) = dialog_world(vec![diplomacy_record(), sabotage_record()]);
+        world.systems[here].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: crate::ids::DatId::new(0x1400_0000),
+            is_alliance: false,
+            regiment_strength: 1,
+        });
+        world.systems[here].ground_units.push(troop);
+        let target = MissionTargetPick {
+            system: here,
+            character: None,
+            object: Some(MissionTarget::Troop(troop)),
+        };
+
+        let kinds = available_kinds(
+            &world,
+            &UprisingState::default(),
+            MissionFaction::Alliance,
+            &[envoy],
+            &[],
+            target,
+        );
+
+        assert_eq!(kinds, vec![MissionKind::Sabotage]);
     }
 
     #[test]

@@ -111,7 +111,8 @@ use rebellion_render::status_rows::StatusSources;
 use rebellion_render::status_window::{draw_status_window, StatusWindowAction, StatusWindowState};
 use rebellion_render::system_window::fleet_label;
 use rebellion_render::targeting::{
-    capture_pointer, draw_targeting_cursor, release_destination, ReleaseTarget, ReleaseWindows,
+    capture_pointer, draw_targeting_cursor, mission_release_target, release_destination,
+    ReleaseTarget, ReleaseWindows,
     TargetOrder, Targeting, TargetingEnd,
 };
 use rebellion_render::{
@@ -4887,8 +4888,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                             faction,
                             team,
                             decoys,
-                            target,
-                            target_character: None,
+                            target: target.system,
+                            target_character: target.character,
+                            target_object: target.object,
                             tick: clock.tick,
                         }),
                         Some(MissionDialogAction::Encyclopedia) => enc_state.open = true,
@@ -5178,6 +5180,35 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 defenses: &defenses_window_state,
                                 missions: &missions_window_state,
                             };
+                            // A Mission asks the window's +0x68, the object
+                            // under the point; every other order its +0x70.
+                            if let Some(TargetOrder::Mission(team)) =
+                                targeting.as_ref().map(Targeting::order)
+                            {
+                                let team = team.clone();
+                                targeting = None;
+                                if let Some(target) = mission_release_target(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    &mission_state,
+                                    cockpit_layout,
+                                    windows,
+                                    &team,
+                                    pointer,
+                                ) {
+                                    let kinds = rebellion_core::missions::available_kinds(
+                                        &world,
+                                        &uprising_state,
+                                        player_faction,
+                                        &team,
+                                        &[],
+                                        target,
+                                    );
+                                    mission_dialog_state.open(player_faction, target, team, kinds);
+                                }
+                            }
                             let destination = release_destination(
                                 ctx,
                                 &world,
@@ -5189,20 +5220,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                             );
                             match targeting.take().map(|order| order.release(destination)) {
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::Mission(team),
-                                    target,
-                                }) => {
-                                    let system = target.system();
-                                    let kinds = rebellion_core::missions::available_kinds(
-                                        &world,
-                                        &uprising_state,
-                                        player_faction,
-                                        &team,
-                                        &[],
-                                        system,
-                                    );
-                                    mission_dialog_state.open(player_faction, system, team, kinds);
-                                }
+                                    order: TargetOrder::Mission(_),
+                                    ..
+                                }) => {}
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::FleetMove { fleets, confirmed },
                                     target,
@@ -6994,6 +7014,7 @@ fn apply_panel_action(
             decoys,
             target,
             target_character,
+            target_object,
             tick,
         } => {
             // The first agent names the order in its messages.
@@ -7009,7 +7030,7 @@ fn apply_panel_action(
                 decoys,
                 target_system: target,
                 target_character,
-                target_object: None,
+                target_object,
                 tick,
             };
             if let Err(refusal) = mission_state.dispatch_guarded(request, world) {

@@ -9,8 +9,9 @@
 //! Encyclopedia.
 
 use egui_macroquad::egui;
-use rebellion_core::ids::SystemKey;
-use rebellion_core::missions::{MissionFaction, MissionKind, MissionMember};
+use rebellion_core::missions::{
+    MissionFaction, MissionKind, MissionMember, MissionTarget, MissionTargetPick,
+};
 use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -78,7 +79,8 @@ pub enum MissionDialogPage {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissionDialog {
     faction: MissionFaction,
-    target: SystemKey,
+    /// The object the order's release targeted, and its system.
+    target: MissionTargetPick,
     /// The kinds `FUN_004f5380` listed when the dialog was built.
     kinds: Vec<MissionKind>,
     kind: usize,
@@ -179,10 +181,11 @@ impl MissionDialogState {
     pub fn open(
         &mut self,
         faction: MissionFaction,
-        target: SystemKey,
+        target: impl Into<MissionTargetPick>,
         team: Vec<MissionMember>,
         kinds: Vec<MissionKind>,
     ) -> bool {
+        let target = target.into();
         if kinds.is_empty() || team.is_empty() {
             return false;
         }
@@ -251,12 +254,33 @@ pub enum MissionDialogAction {
         faction: MissionFaction,
         team: Vec<MissionMember>,
         decoys: Vec<MissionMember>,
-        target: SystemKey,
+        target: MissionTargetPick,
     },
     /// "Encylopedia" (`0x67` -> `FUN_00429f30`, window `0x19`). port: it opens
     /// the Encyclopedia; the entry for the selected kind is not bound yet
     /// (`encyclopedia-window.md`).
     Encyclopedia,
+}
+
+/// The name of an object target, `None` for a system target.
+fn object_target_name(world: &GameWorld, target: MissionTargetPick) -> Option<String> {
+    use crate::system_window::{defense_facility_mini, special_force_mini, troop_mini};
+    if let Some(character) = target.character {
+        return world.characters.get(character).map(|c| c.name.clone());
+    }
+    let label = match target.object? {
+        MissionTarget::SpecialForce(key) => {
+            special_force_mini(world.special_forces.get(key)?.class_dat_id)?.1
+        }
+        MissionTarget::Troop(key) => troop_mini(world.troops.get(key)?.class_dat_id)?.1,
+        MissionTarget::DefenseFacility(key) => {
+            defense_facility_mini(world.defense_facilities.get(key)?.class_dat_id)?.1
+        }
+        MissionTarget::ManufacturingFacility(_)
+        | MissionTarget::ProductionFacility(_)
+        | MissionTarget::DeathStar(_) => return None,
+    };
+    Some(label.to_owned())
 }
 
 /// A kind's MISSNSD TEXTSTRA id: its name, and the source of its GOKRES icon.
@@ -570,7 +594,18 @@ pub fn draw_mission_dialog(
                         scale,
                         &small,
                     );
-                    if let Some(system) = world.systems.get(dialog.target) {
+                    // An object target shows its name; port: its portrait
+                    // (FUN_0042c3b0(.., 1, 1)) is not drawn.
+                    if let Some(name) = object_target_name(world, dialog.target) {
+                        let (x, y, w) = TARGET_NAME;
+                        painter.text(
+                            at(x + w / 2.0, y, 0.0, 0.0).min,
+                            egui::Align2::CENTER_TOP,
+                            name,
+                            font.clone(),
+                            egui::Color32::WHITE,
+                        );
+                    } else if let Some(system) = world.systems.get(dialog.target.system) {
                         let (x, y, w, h) = TARGET_BOX;
                         paint_centered(
                             &painter,
@@ -875,6 +910,7 @@ fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rebellion_core::ids::SystemKey;
     use rebellion_core::world::Character;
 
     fn members(n: usize) -> Vec<MissionMember> {
@@ -893,6 +929,49 @@ mod tests {
             vec![MissionKind::Diplomacy, MissionKind::Espionage],
         ));
         state
+    }
+
+    #[test]
+    fn a_dialog_opened_on_a_prisoner_submits_it_as_the_target_and_names_it() {
+        // The order keeps the target its release set (vtable +0x2c), and
+        // the first page names it under the art (37, 294).
+        let mut world = GameWorld::default();
+        let prisoner = world.characters.insert(Character {
+            name: "Han Solo".into(),
+            ..Default::default()
+        });
+        let target = MissionTargetPick {
+            system: SystemKey::default(),
+            character: Some(prisoner),
+            object: None,
+        };
+        let team = members(1);
+        let mut state = MissionDialogState::default();
+        assert!(state.open(
+            MissionFaction::Alliance,
+            target,
+            team.clone(),
+            vec![MissionKind::Rescue],
+        ));
+
+        assert_eq!(
+            object_target_name(&world, target).as_deref(),
+            Some("Han Solo")
+        );
+        assert_eq!(
+            object_target_name(&world, SystemKey::default().into()),
+            None
+        );
+        assert_eq!(
+            state.begin(),
+            Some(MissionDialogAction::Begin {
+                kind: MissionKind::Rescue,
+                faction: MissionFaction::Alliance,
+                team,
+                decoys: Vec::new(),
+                target,
+            })
+        );
     }
 
     #[test]

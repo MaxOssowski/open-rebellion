@@ -169,9 +169,10 @@ Port decisions:
 - The dialog opens from the object pop-up menu's Mission item and the
   targeting cursor (`object-popup-menu.md`, phase 7c). Phase 7d removed the
   missions panel's character and target pickers that stood in for them.
-- port: the target is a system, so only kinds with a system target are
-  listed; targeting a character or object is not ported
-  (`object-popup-menu.md`, "Ported").
+- The target is the object the release window answered (`+0x68`), and a
+  kind lists only for the target its class takes (2026-10-14). port: only
+  the Defenses window answers objects yet (`object-popup-menu.md`,
+  "Ported"), and an object target shows its name without its portrait.
 - hyp: `FUN_00606980` places the window in the galaxy view's rectangle; the port
   centers it there, rounded to whole pixels (both 640 by 480 galaxy views put
   the center on a half pixel).

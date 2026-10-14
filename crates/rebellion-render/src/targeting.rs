@@ -177,6 +177,56 @@ pub fn release_destination(
         .map(ReleaseTarget::System)
 }
 
+/// What a Mission released at `point` targets (`FUN_00422ce0` asks the
+/// window's `+0x68`, the object under the point). A Defenses window gives
+/// the character, special force, regiment or defense facility in the cell
+/// under the point, else its system (`FUN_004aa380`). A team member answers
+/// as the first system up its parents, so it targets its system. Every
+/// other window gives the system its `+0x70` gives.
+///
+/// port: the System window's (`FUN_00458b80`), Fleet window's
+/// (`FUN_004a2f80`) and sector window's (`FUN_0045c6b0`) objects are not
+/// answered yet; they reduce to their system.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The release reads the windows, the world, and the player's view, as release_destination does."
+)]
+#[must_use]
+pub fn mission_release_target(
+    ctx: &egui::Context,
+    world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
+    fog: &FogState,
+    missions: &rebellion_core::missions::MissionState,
+    layout: CockpitLayout,
+    windows: ReleaseWindows<'_>,
+    team: &[MissionMember],
+    point: egui::Pos2,
+) -> Option<rebellion_core::missions::MissionTargetPick> {
+    let picked = window_layer_at(ctx, point).and_then(|layer| {
+        windows
+            .defenses
+            .mission_target(world, fog, missions, layout, layer, point)
+    });
+    let Some(mut pick) = picked else {
+        return release_destination(ctx, world, movement, fog, layout, windows, point)
+            .map(|target| target.system().into());
+    };
+    if pick
+        .character
+        .is_some_and(|key| team.contains(&MissionMember::Character(key)))
+        || pick.object.is_some_and(|object| match object {
+            rebellion_core::missions::MissionTarget::SpecialForce(key) => {
+                team.contains(&MissionMember::SpecialForce(key))
+            }
+            _ => false,
+        })
+    {
+        pick = pick.system.into();
+    }
+    Some(pick)
+}
+
 /// The topmost visible area holding `point`, passing over the capture,
 /// which covers the screen while targeting.
 fn window_layer_at(ctx: &egui::Context, point: egui::Pos2) -> Option<egui::LayerId> {
@@ -564,6 +614,47 @@ mod tests {
             (missions_windows, missions): (&mut MissionsWindowState, &MissionState),
             at: (f32, f32),
         ) -> Option<ReleaseTarget> {
+            drawn(
+                world,
+                sectors,
+                systems,
+                fleets,
+                defenses,
+                (missions_windows, missions),
+                at,
+                |ctx, windows, fog, layout, point| {
+                    release_destination(
+                        ctx,
+                        world,
+                        &rebellion_core::movement::MovementState::default(),
+                        fog,
+                        layout,
+                        windows,
+                        point,
+                    )
+                },
+            )
+        }
+
+        /// Draw the windows and the capture twice, so every area is laid
+        /// out and visible, then ask `query` about the canvas point `at`.
+        #[expect(clippy::too_many_arguments, reason = "Test harness over every window.")]
+        fn drawn<R>(
+            world: &GameWorld,
+            sectors: &mut SectorWindowState,
+            systems: &mut SystemWindowState,
+            fleets: &mut FleetWindowState,
+            defenses: &mut DefensesWindowState,
+            (missions_windows, missions): (&mut MissionsWindowState, &MissionState),
+            at: (f32, f32),
+            query: impl FnOnce(
+                &egui::Context,
+                ReleaseWindows<'_>,
+                &FogState,
+                CockpitLayout,
+                egui::Pos2,
+            ) -> R,
+        ) -> R {
             let layout = layout(1.0);
             let ctx = egui::Context::default();
             let mut cache = BmpCache::new();
@@ -647,15 +738,7 @@ mod tests {
                 defenses,
                 missions: missions_windows,
             };
-            release_destination(
-                &ctx,
-                world,
-                &rebellion_core::movement::MovementState::default(),
-                &fog,
-                layout,
-                windows,
-                point,
-            )
+            query(&ctx, windows, &fog, layout, point)
         }
 
         /// The Alliance's first sector window sits at (60, 35).
@@ -884,6 +967,82 @@ mod tests {
                     "{at:?}"
                 );
             }
+        }
+
+        #[test]
+        fn a_mission_released_on_a_defenses_row_targets_that_object_unless_it_is_on_the_team() {
+            // FUN_00422ce0 asks +0x68 for a Mission (FUN_004aa380: the item
+            // under the point, else the subject); a team member answers as
+            // the first system up its parents.
+            let (mut world, first, _) = world();
+            world.systems[first].control = ControlKind::Controlled(Faction::Alliance);
+            let character = |world: &mut GameWorld| {
+                world.characters.insert(rebellion_core::world::Character {
+                    dat_id: rebellion_core::ids::DatId::new(832),
+                    is_alliance: true,
+                    current_system: Some(first),
+                    recruited: true,
+                    ..Default::default()
+                })
+            };
+            let agent = character(&mut world);
+            let friend = character(&mut world);
+            let commandos = world
+                .special_forces
+                .insert(rebellion_core::world::SpecialForceUnit {
+                    class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0001),
+                    is_alliance: true,
+                    skills: [0; 8],
+                    on_mission: false,
+                });
+            world.systems[first].special_forces.push(commandos);
+            let mut defenses = DefensesWindowState::default();
+            defenses.open(
+                &world,
+                first,
+                (40, 50),
+                CockpitFaction::Alliance,
+                layout(1.0),
+            );
+            let team = [
+                MissionMember::Character(agent),
+                MissionMember::SpecialForce(commandos),
+            ];
+            let mut pick = |at| {
+                drawn(
+                    &world,
+                    &mut SectorWindowState::default(),
+                    &mut SystemWindowState::default(),
+                    &mut FleetWindowState::default(),
+                    &mut defenses,
+                    (&mut MissionsWindowState::default(), &MissionState::new()),
+                    at,
+                    |ctx, windows, fog, layout, point| {
+                        mission_release_target(
+                            ctx,
+                            &world,
+                            &rebellion_core::movement::MovementState::default(),
+                            fog,
+                            &MissionState::new(),
+                            layout,
+                            windows,
+                            &team,
+                            point,
+                        )
+                    },
+                )
+            };
+
+            // Cells start at (7, 81) and are 70 wide.
+            let system = rebellion_core::missions::MissionTargetPick::from(first);
+            assert_eq!(pick((40.0 + 40.0, 50.0 + 115.0)), Some(system));
+            let second = pick((40.0 + 110.0, 50.0 + 115.0)).unwrap();
+            assert_eq!(second.character, Some(friend));
+            // The team's special force, in the third cell, is a member too.
+            assert_eq!(pick((40.0 + 180.0, 50.0 + 115.0)), Some(system));
+            assert_eq!(pick((40.0 + 150.0, 50.0 + 40.0)), Some(system));
+            // Over the bare map there is nothing to target.
+            assert_eq!(pick((600.0, 500.0)), None);
         }
 
         #[test]

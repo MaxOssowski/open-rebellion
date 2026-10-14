@@ -244,12 +244,11 @@ pub(crate) fn system_members(
             !character.is_killed && character.current_system == Some(system)
         })
         .map(|(key, character)| {
-            let side = if character.is_alliance {
-                1
-            } else if character.is_empire {
-                2
-            } else {
-                0
+            // A prisoner carries its captor's side (FUN_004eec60).
+            let side = match rebellion_core::missions::character_side(character) {
+                Some(rebellion_core::dat::Faction::Alliance) => 1,
+                Some(rebellion_core::dat::Faction::Empire) => 2,
+                _ => 0,
             };
             (
                 MissionMember::Character(key),

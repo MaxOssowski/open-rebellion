@@ -144,6 +144,8 @@ pub enum PanelAction {
         decoys: Vec<MissionMember>,
         target: SystemKey,
         target_character: Option<CharacterKey>,
+        /// The object the release targeted (`+0x68`), if not a character.
+        target_object: Option<rebellion_core::missions::MissionTarget>,
         tick: u64,
     },
     /// Cancel a mission that is currently in progress.
