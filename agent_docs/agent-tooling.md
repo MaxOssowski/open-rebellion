@@ -72,6 +72,30 @@ installed. Start the daemon with `open -n -g -a CuaDriver --args serve`;
 `status` reports `unknown` when it isn't running. `cua-driver update`
 checks for a newer release.
 
+### Linux (proven 2026-10-14)
+
+`cua-driver` also ships an x86_64 Linux build that drives the native window
+through X11, including XWayland under a Wayland compositor (Hyprland here).
+
+```bash
+CUA_DRIVER_RS_VERSION=0.31.0 bash install.sh --no-modify-path  # the installer above, pinned
+cua-driver telemetry disable
+cua-driver doctor              # display server, X11 connection, AT-SPI
+cua-driver serve &             # standard permission mode
+```
+
+- Every call needs the daemon; without it `launch-native.sh` prints
+  `window_id=unknown`.
+- A click must name the capture its coordinates come from: call
+  `get_window_state` and `click` with the same `"session"` label and pass the
+  capture's `capture_id`, or the click is refused (`screenshot_context_missing`,
+  `capture_not_found`).
+- Left, right and double clicks (`count: 2`) and keys work in the background
+  (`XSendEvent`). `mouse_drag` moved no game window.
+- The window is 950 by 514 for a 640 by 480 canvas: window = (132.5 + 1.0708 x,
+  1.0708 y). `evidence/2026-10-14-native-mission-targets/nat.sh` wraps this.
+- Wait about 15 seconds after launch before the first menu click.
+
 ### Run a check
 
 1. Launch with `scripts/launch-native.sh --build --evidence

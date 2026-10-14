@@ -1294,8 +1294,14 @@ cross-runtime proof remain open
     and the mission active after Begin Mission; `RescueTargeting` reruns
     on both sides. 0 console errors and no failed request in any run.
     Evidence: `evidence/2026-10-14-object-targeting/README.md`.
-  - Open: the object portrait, and a native check (`cua-driver` is not
-    available here).
+  - Native (2026-10-14): `cua-driver` 0.31.0 on Linux (X11 through
+    XWayland) drove the release build through a save with a prisoner, an
+    enemy Orbital Shipyard and the Death Star at one enemy system. From the
+    galaxy map, quadrant icons, the agent's menu and Mission, a click on
+    each target offered Rescue, Sabotage or Death Star Sabotage alone, named
+    the target, and Begin Mission took the agent off its personnel page.
+    Evidence: `evidence/2026-10-14-native-mission-targets/README.md`.
+  - Open: the object portrait.
 
 ### F-020: A mod with a missing dependency fails silently
 
