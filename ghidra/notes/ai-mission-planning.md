@@ -409,16 +409,23 @@ tallies of phase 4:
 - Espionage: fewer planners than the sectors holding an opponent system
   (sector `+0x2c` bit 8, `S+0x1bc`) minus those requests.
 
-**Ported (2026-10-14)** in `ai.rs` `evaluate_research`: the wanted count
-(`Planner::able`, with the creation check in the capability probe), the
-AI's Done level (`ai_research_goal`, `ai_research_done`), the research
-site (`ai_research_site`), the first-cycle target (`research_target`), the
-weakest-first cancellation and the abort, both as
-`AIAction::CancelMission`. port: live research missions stand for the
-planners; a tree's orders and cancellations happen within one AI
-evaluation; the abort is checked at each evaluation; the production AI's
-yard marks are not kept, so any yard of the side counts; ties take the
-first sector and system in the port's order.
+**Ported (2026-10-14, save v37)** in `ai.rs`: `AIState.research_planners`
+keeps each research planner (`ResearchPlanner`: held designer, site,
+previous target, mission, unread Mission Report, failures).
+`evaluate_research` reads the reports (`FUN_0047c890`, `FUN_0047b250`,
+abort by `AIAction::AbortMission` = `MissionState::abort`, end code 2),
+cancels the weakest surplus or Done planners without touching their
+missions (`FUN_004e5710`, `FUN_0047aff0`), adds planners up to the able
+count, holds every planner's designer out of the other queries
+(`Planner::hold`), and runs each planner's cycle (`research_cycle`:
+`FUN_0047ba40`, `Planner::pick`, `research_site_choice`, `FUN_004bd0a0`,
+`FUN_0047b360`). Equal keys fall to coin flips (`Planner::pick_ranked`), and
+every selector passes over a candidate at a blockaded system
+(`FUN_0047ba90`). port: the mission's own travel stands for state 7's move
+order; a tree's cancellations and additions happen within one AI
+evaluation; the production AI's yard marks are not kept (they cover every
+own yard system within the first days); the distance keys read the map
+position (hyp).
 
 ### The port's simplifications checked (2026-10-14)
 
@@ -475,7 +482,7 @@ flips. The port takes the first of equal entries.
 
 **Also found.** `FUN_0047ba90` rejects a candidate standing (not en route,
 record `+0x30` bit `0x20`) at a system whose record has `+0x28` bit `0x2`,
-the blockade bit, for every mission kind; the port reads that bit as clear.
+the blockade bit, for every mission kind (ported 2026-10-14).
 
 ## The AI records (re-read 2026-09-28, 2026-09-30)
 

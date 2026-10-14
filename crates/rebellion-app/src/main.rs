@@ -2290,6 +2290,10 @@ Some(RailAudience::side(*faction_is_alliance)),
             if let Some(second_ai) = secondary_ai_state.as_mut() {
                 second_ai.free_mission_members(&mission_advance.effects);
             }
+            ai_state.note_mission_results(&mission_advance.results);
+            if let Some(second_ai) = secondary_ai_state.as_mut() {
+                second_ai.note_mission_results(&mission_advance.results);
+            }
 
             for result in &mission_advance.results {
                 apply_mission_result(
@@ -7771,11 +7775,14 @@ fn apply_ai_actions(
                     target_object: *target_object,
                     tick,
                 };
-                if mission_state.dispatch_guarded(request, world).is_err() {
+                let Ok(id) = mission_state.dispatch_guarded(request, world) else {
                     continue;
-                }
+                };
                 for character in team.iter().chain(decoys).filter_map(|m| m.character()) {
                     ai_state.mark_busy(character);
+                }
+                if let Some(lead) = team.first().and_then(|m| m.character()) {
+                    ai_state.bind_mission(*kind, lead, id);
                 }
                 let faction_name = match ai_faction {
                     AiFaction::Alliance => "Alliance",
@@ -7788,15 +7795,8 @@ fn apply_ai_actions(
                     *target_system,
                 ));
             }
-            AIAction::CancelMission { mission_id } => {
-                if let Some(mission) = mission_state.release(*mission_id, world) {
-                    for character in mission
-                        .members()
-                        .filter_map(rebellion_core::missions::MissionMember::character)
-                    {
-                        ai_state.mark_available(character);
-                    }
-                }
+            AIAction::AbortMission { mission_id } => {
+                mission_state.abort(*mission_id);
             }
             AIAction::EnqueueProduction { system, kind, cost } => {
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));

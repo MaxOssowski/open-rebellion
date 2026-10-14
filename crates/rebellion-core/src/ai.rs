@@ -168,6 +168,34 @@ pub struct AIState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub battle_cooldowns: HashMap<SystemKey, u64>,
+    /// The research planners the strategy keeps (side `+0xa8`, built by
+    /// `FUN_0042f830` from subtypes 1 to 3), in creation order.
+    pub research_planners: Vec<ResearchPlanner>,
+    /// The id the next research planner takes.
+    pub next_planner_id: u64,
+}
+
+/// A research planner (`FUN_0047bba0`, `FUN_0047c170`, `FUN_0047c750`) and
+/// what it keeps between cycles.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResearchPlanner {
+    /// Its id (planner `+0x18`), which a held record names (`+0x24`).
+    pub id: u64,
+    pub tech: TechType,
+    /// The designer it holds (team list `+0x3c`).
+    pub member: Option<CharacterKey>,
+    /// The research site it remembers (`+0x34`).
+    pub site: Option<SystemKey>,
+    /// The previous cycle's target (`+0x38`).
+    pub target: Option<SystemKey>,
+    /// The mission its last order created (`+0x28`).
+    pub mission: Option<u64>,
+    /// The result of that mission's last Mission Report (`0x1f0`) not yet
+    /// read (flags `0x40000000`/`0x20000000` from `FUN_0047c890`).
+    pub report: Option<crate::missions::MissionOutcome>,
+    /// Failed results counted against slot `+0x24` (`FUN_0047ae20`,
+    /// planner `+0x6c`).
+    pub failures: u32,
 }
 
 impl AIState {
@@ -178,6 +206,38 @@ impl AIState {
             last_eval_tick: 0,
             busy_characters: HashSet::new(),
             battle_cooldowns: HashMap::new(),
+            research_planners: Vec::new(),
+            next_planner_id: 0,
+        }
+    }
+
+    /// Mission Report `0x1f0` (`FUN_00525040`, from `FUN_00523e70` on a
+    /// change of result) reaches the planner whose mission it is
+    /// (`FUN_00485f60` -> `FUN_004195f0` -> `FUN_0042f7f0` -> slot `+0x30`).
+    /// The port hears each phase 10 result.
+    pub fn note_mission_results(&mut self, results: &[crate::missions::MissionResult]) {
+        for result in results {
+            for p in &mut self.research_planners {
+                if p.mission == Some(result.mission_id) {
+                    p.report = Some(result.outcome);
+                }
+            }
+        }
+    }
+
+    /// An applied research order binds its mission to the planner that
+    /// sent it (`FUN_0047b360` stores the order in planner `+0x28`).
+    pub fn bind_mission(&mut self, kind: MissionKind, member: CharacterKey, mission_id: u64) {
+        let Some(tech) = kind.research_tech() else {
+            return;
+        };
+        if let Some(p) = self
+            .research_planners
+            .iter_mut()
+            .find(|p| p.tech == tech && p.member == Some(member))
+        {
+            p.mission = Some(mission_id);
+            p.report = None;
         }
     }
 
@@ -239,13 +299,10 @@ pub enum AIAction {
         target_object: Option<crate::missions::MissionTarget>,
     },
 
-    /// Cancel one of the side's missions and free its members: the
-    /// strategy's cancellation of a planner (`FUN_004e5710` -> side `+0x314`
-    /// -> `FUN_0042f690`) or a planner's order `0x250` on its mission
-    /// (`FUN_0047b250`).
-    ///
-    /// hyp: order `0x250` aborts the mission; its handler is not read.
-    CancelMission { mission_id: u64 },
+    /// Abort one of the side's missions: a planner's order `0x250` on its
+    /// mission (`FUN_0047b250`), which ends it with code 2
+    /// ([`MissionState::abort`]).
+    AbortMission { mission_id: u64 },
 
     /// Enqueue a unit or facility for construction at a system.
     EnqueueProduction {
@@ -340,6 +397,7 @@ impl AISystem {
         Self::evaluate_rescue(&mut planner, world, faction, &mut actions);
         Self::evaluate_reconnaissance(&mut planner, world, faction, config, &mut actions);
         Self::evaluate_research(
+            state,
             &mut planner,
             world,
             mission_state,
@@ -881,24 +939,28 @@ impl AISystem {
     // Research heuristics
     // -----------------------------------------------------------------------
 
-    /// Research orders and cancellations, per tree in the order of the
-    /// strategy's list (`FUN_004e8290`: ships, troops, facilities).
+    /// The research part of the strategy (`FUN_004e8290`) and its planners.
     ///
-    /// The strategy wants one research planner per character of the side
-    /// able to research the tree (`FUN_0041bc10`, [`Planner::able`]) while
-    /// the tree is not Done for the AI ([`ai_research_done`]); it cancels
-    /// the weakest surplus planner, and every one once the tree is Done
-    /// (`FUN_004e5710`). Each planner's team is one member of skill 10 or
-    /// more (`FUN_0047bcd0` and siblings), and its target the AI's research
-    /// site chosen by [`research_target`]. A planner aborts its mission once
-    /// that system is no longer a site (`FUN_0047c110` and siblings,
-    /// `FUN_0047b250`).
+    /// Per tree (ships, troops, facilities): first each planner reads its
+    /// Mission Report (`FUN_0047c890`, `FUN_0047b250`): a success clears its
+    /// failures, a failure counts one, past slot `+0x24` (1000) the planner
+    /// aborts its mission, and either result aborts the mission when the
+    /// remembered site lost its site bit (`FUN_0047c110` and siblings).
+    /// Then the strategy cancels the weakest surplus planner while there
+    /// are more than characters able to research the tree, or every one
+    /// once the tree is Done for the AI (`FUN_004e5710` -> `FUN_0042f690` ->
+    /// `FUN_0047aff0`: the planner and its hold go, its mission runs on),
+    /// and adds planners while there are fewer (`FUN_004d2580`). Last each
+    /// planner runs one cycle (`FUN_004bced0`, [`AISystem::research_cycle`]).
     ///
-    /// port: the port keeps no planners. Its live research missions stand
-    /// for them, a tree's orders and cancellations happen within one
-    /// evaluation rather than one per strategy pass, and the abort is
-    /// checked at each evaluation rather than at each Mission Report.
+    /// port: a tree's cancellations and additions happen within one AI
+    /// evaluation; the original makes one per strategy pass, several a day.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The planners read the same state the AI evaluation does."
+    )]
     fn evaluate_research(
+        state: &mut AIState,
         planner: &mut Planner<'_>,
         world: &GameWorld,
         mission_state: &MissionState,
@@ -908,64 +970,193 @@ impl AISystem {
         actions: &mut Vec<AIAction>,
     ) {
         let is_alliance = matches!(faction, AiFaction::Alliance);
+        let running = |id: Option<u64>| {
+            id.and_then(|id| mission_state.missions().iter().find(|m| m.id == id))
+                .filter(|m| m.end_code == 0)
+        };
+        // A planner whose mission has ended no longer tracks it.
+        for p in &mut state.research_planners {
+            if running(p.mission).is_none() {
+                p.mission = None;
+                p.report = None;
+            }
+        }
         for tech in TechType::ALL {
             let kind = match tech {
                 TechType::Ship => MissionKind::ShipDesignResearch,
                 TechType::Troop => MissionKind::TroopTrainingResearch,
                 TechType::Facility => MissionKind::FacilityDesignResearch,
             };
-            let site = |system| {
+            let site = |system: SystemKey| {
                 ai_research_site(world, uprisings, research_state, is_alliance, tech, system)
             };
-            let mut running: Vec<&crate::missions::ActiveMission> = mission_state
-                .missions()
-                .iter()
-                .filter(|m| m.kind == kind && m.faction == faction.as_mission_faction())
-                .collect();
-            running.retain(|m| {
-                let keep = site(m.target_system);
-                if !keep {
-                    actions.push(AIAction::CancelMission { mission_id: m.id });
+            for p in state
+                .research_planners
+                .iter_mut()
+                .filter(|p| p.tech == tech)
+            {
+                let Some(outcome) = p.report.take() else {
+                    continue;
+                };
+                let give_up = match outcome {
+                    crate::missions::MissionOutcome::Success => {
+                        p.failures = 0;
+                        false
+                    }
+                    crate::missions::MissionOutcome::Failure => {
+                        p.failures += 1;
+                        p.failures > RESEARCH_PLANNER_FAILURES
+                    }
+                };
+                if give_up {
+                    p.failures = 0;
                 }
-                keep
-            });
+                if let Some(mission) = running(p.mission) {
+                    if give_up || !p.site.is_some_and(site) {
+                        actions.push(AIAction::AbortMission {
+                            mission_id: mission.id,
+                        });
+                    }
+                }
+            }
             let wanted = planner.able(kind);
             let done = ai_research_done(world, research_state, is_alliance, tech);
-            let surplus = if done {
-                running.len()
-            } else {
-                running.len().saturating_sub(wanted)
-            };
-            // FUN_004e5710: the least team skill in the tree (slot +0x18,
-            // FUN_0047bc30), the earlier planner on a tie.
-            running.sort_by_key(|m| {
-                let skill: u32 = m
-                    .team
-                    .iter()
-                    .filter_map(|&member| {
-                        crate::missions::member_skill(world, member, tech.skill())
-                    })
-                    .sum();
-                (skill, m.id)
-            });
-            for m in running.drain(..surplus) {
-                actions.push(AIAction::CancelMission { mission_id: m.id });
-            }
-            if done {
-                continue;
-            }
-            let mut active = running.len();
-            while active < wanted {
-                let Some(target) =
-                    research_target(world, uprisings, research_state, is_alliance, tech)
-                else {
-                    break;
+            let limit = if done { 0 } else { wanted };
+            while state
+                .research_planners
+                .iter()
+                .filter(|p| p.tech == tech)
+                .count()
+                > limit
+            {
+                // FUN_004e5710: the least team skill (slot +0x18,
+                // FUN_0047bc30), the earlier planner on a tie.
+                let skill = |p: &ResearchPlanner| {
+                    p.member
+                        .and_then(|c| {
+                            crate::missions::member_skill(
+                                world,
+                                crate::missions::MissionMember::Character(c),
+                                tech.skill(),
+                            )
+                        })
+                        .unwrap_or(0)
                 };
-                if !Self::dispatch_planned(planner, kind, (target, None), None, actions) {
-                    break;
+                let weakest = state
+                    .research_planners
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.tech == tech)
+                    .min_by_key(|&(at, p)| (skill(p), at))
+                    .map(|(at, _)| at);
+                if let Some(at) = weakest {
+                    state.research_planners.remove(at);
                 }
-                active += 1;
             }
+            while state
+                .research_planners
+                .iter()
+                .filter(|p| p.tech == tech)
+                .count()
+                < limit
+            {
+                let id = state.next_planner_id;
+                state.next_planner_id += 1;
+                state.research_planners.push(ResearchPlanner {
+                    id,
+                    tech,
+                    member: None,
+                    site: None,
+                    target: None,
+                    mission: None,
+                    report: None,
+                    failures: 0,
+                });
+            }
+        }
+        // Every held designer is out of every other query (FUN_0047b610).
+        for p in &state.research_planners {
+            if let Some(c) = p.member {
+                planner.hold(crate::missions::MissionMember::Character(c));
+            }
+        }
+        for at in 0..state.research_planners.len() {
+            Self::research_cycle(
+                &mut state.research_planners[at],
+                planner,
+                world,
+                research_state,
+                uprisings,
+                is_alliance,
+                actions,
+            );
+        }
+    }
+
+    /// One cycle of a research planner (`FUN_004bced0`).
+    ///
+    /// - State 2 (`FUN_0047b110` -> `FUN_0047ba40`): the planner drops a
+    ///   member it can no longer keep.
+    /// - State 3 (`FUN_0047bcd0` and siblings): without one it takes the
+    ///   best candidate.
+    /// - State 5 ([`research_site_choice`]): the site.
+    /// - State 6 (`FUN_004bd0a0`): the previous target while it is the
+    ///   side's and not blockaded, else the site when it is.
+    /// - States 7 and 8 (`FUN_004bd570`, `FUN_0047b360`): the order, unless
+    ///   the member is on a mission or travelling.
+    ///
+    /// port: the mission's own travel stands for state 7's move order.
+    fn research_cycle(
+        p: &mut ResearchPlanner,
+        planner: &mut Planner<'_>,
+        world: &GameWorld,
+        research: &ResearchState,
+        uprisings: &crate::uprising::UprisingState,
+        is_alliance: bool,
+        actions: &mut Vec<AIAction>,
+    ) {
+        use crate::missions::MissionMember;
+        let kind = match p.tech {
+            TechType::Ship => MissionKind::ShipDesignResearch,
+            TechType::Troop => MissionKind::TroopTrainingResearch,
+            TechType::Facility => MissionKind::FacilityDesignResearch,
+        };
+        if let Some(c) = p.member {
+            if !planner.keeps(MissionMember::Character(c)) {
+                p.member = None;
+            }
+        }
+        if p.member.is_none() {
+            p.member = planner.pick(kind).and_then(MissionMember::character);
+        }
+        let Some(member) = p.member else {
+            return;
+        };
+        p.site = research_site_choice(planner, world, uprisings, research, is_alliance, p);
+        let usable = |system: SystemKey| {
+            let side = crate::dat::Faction::of_alliance(is_alliance);
+            world.systems.get(system).is_some_and(|sys| {
+                GameWorld::facility_holder(sys.control) == Some(side)
+                    && !crate::blockade::BlockadeSystem::system_is_blockaded(world, sys)
+            })
+        };
+        let target = p
+            .target
+            .filter(|&t| usable(t))
+            .or(p.site.filter(|&s| usable(s)));
+        p.target = target;
+        let Some(target) = target else {
+            return;
+        };
+        if planner.sendable(MissionMember::Character(member)) {
+            actions.push(AIAction::DispatchMission {
+                kind,
+                team: vec![MissionMember::Character(member)],
+                decoys: Vec::new(),
+                target_system: target,
+                target_character: None,
+                target_object: None,
+            });
         }
     }
 
@@ -2337,6 +2528,10 @@ impl AISystem {
 // Tests
 // ---------------------------------------------------------------------------
 
+/// Slot `+0x24` of the research planners (`FUN_00480df0`): the failed
+/// results a planner bears before it aborts its mission.
+const RESEARCH_PLANNER_FAILURES: u32 = 1000;
+
 /// `FUN_0042dd00`: the research level at which the AI counts a tree Done
 /// (controller `+0x140` ships, `+0x144` troops, `+0x148` facilities): the
 /// highest research order of the side's own capital ship and fighter
@@ -2437,57 +2632,94 @@ fn ai_research_site(
         && !ai_research_done(world, research, is_alliance, tech)
 }
 
-/// A new research planner's target (`FUN_0047be50`, `FUN_0047c430`,
-/// `FUN_0047ca80`, first cycle): the sector with the most research sites of
-/// the tree (`FUN_00419a00`, sector `+0x154`, `+0x158`, `+0x15c`), then
-/// its site with the highest support of the side (`FUN_00431830`, system
-/// record `+0x48`: `FUN_00507270`, or 100 for an unpopulated system).
+/// Slot `+0x50` of a research planner (`FUN_0047be50` ships,
+/// `FUN_0047c430` troops, `FUN_0047ca80` facilities): the research site the
+/// planner works towards (`+0x34`).
 ///
-/// port: equal counts and supports go to the first sector and system in
-/// the port's order; the original's order of equal keys is untraced. A
-/// later cycle of an original planner prefers the site nearest its
-/// previous target; the port keeps no planners.
-fn research_target(
+/// 1. The remembered site while it still has the tree's site bit.
+/// 2. With a previous target (`+0x38`): the nearest sector holding a site
+///    (`FUN_00419b80`, sector `+0x28` bit 1, 2 or 4, by the squared distance
+///    from the target's sector, order 2), then its site nearest the target
+///    (`FUN_0041a400` -> `FUN_00431c00`, order 2).
+/// 3. Else the sector with the most sites (`FUN_00419a00`, sector `+0x154`,
+///    `+0x158`, `+0x15c`, order 1), then its site with the highest support
+///    (`FUN_0041a340` -> `FUN_00431830`, system record `+0x48`: the side's
+///    support, `FUN_00507270`, or 100 unpopulated; order 1).
+///
+/// Ties fall to [`Planner::pick_ranked`]. hyp: the records' `+0x40` place
+/// that the distance keys read is the sector's and system's map position.
+fn research_site_choice(
+    planner: &mut Planner<'_>,
     world: &GameWorld,
     uprisings: &crate::uprising::UprisingState,
     research: &ResearchState,
     is_alliance: bool,
-    tech: TechType,
+    p: &ResearchPlanner,
 ) -> Option<SystemKey> {
-    let side = crate::dat::Faction::of_alliance(is_alliance);
-    let sites = |sector: crate::ids::SectorKey| -> Vec<SystemKey> {
+    let tech = p.tech;
+    let site =
+        |system: SystemKey| ai_research_site(world, uprisings, research, is_alliance, tech, system);
+    if let Some(s) = p.site.filter(|&s| site(s)) {
+        return Some(s);
+    }
+    let sites_in = |sector: crate::ids::SectorKey| -> Vec<SystemKey> {
         world
             .systems
             .iter()
-            .filter(|(_, sys)| sys.sector == sector)
+            .filter(|(key, sys)| sys.sector == sector && site(*key))
             .map(|(key, _)| key)
-            .filter(|&system| {
-                ai_research_site(world, uprisings, research, is_alliance, tech, system)
-            })
             .collect()
     };
-    let mut best: Option<Vec<SystemKey>> = None;
-    for sector in world.sectors.keys() {
-        let here = sites(sector);
-        if !here.is_empty() && best.as_ref().is_none_or(|b| here.len() > b.len()) {
-            best = Some(here);
-        }
-    }
-    let support = |system: SystemKey| {
-        let sys = &world.systems[system];
-        if sys.is_populated {
-            crate::uprising::support_points(sys, side)
-        } else {
-            100
-        }
+    let squared = |a: (u16, u16), b: (u16, u16)| {
+        let dx = i64::from(a.0) - i64::from(b.0);
+        let dy = i64::from(a.1) - i64::from(b.1);
+        dx * dx + dy * dy
     };
-    let mut chosen: Option<SystemKey> = None;
-    for system in best? {
-        if chosen.is_none_or(|c| support(system) > support(c)) {
-            chosen = Some(system);
-        }
+    let sectors: Vec<(crate::ids::SectorKey, Vec<SystemKey>)> = world
+        .sectors
+        .keys()
+        .map(|sector| (sector, sites_in(sector)))
+        .filter(|(_, sites)| !sites.is_empty())
+        .collect();
+    if let Some(from) = p.target.and_then(|t| world.systems.get(t)) {
+        let here = world.sectors.get(from.sector).map(|s| (s.x, s.y))?;
+        let sector = planner.pick_ranked(
+            sectors.iter().map(|(sector, _)| {
+                let at = world.sectors.get(*sector).map_or((0, 0), |s| (s.x, s.y));
+                (*sector, squared(here, at))
+            }),
+            false,
+        )?;
+        let sites = sectors.into_iter().find(|(s, _)| *s == sector)?.1;
+        planner.pick_ranked(
+            sites.into_iter().map(|system| {
+                let sys = &world.systems[system];
+                (system, squared((from.x, from.y), (sys.x, sys.y)))
+            }),
+            false,
+        )
+    } else {
+        let sector = planner.pick_ranked(
+            sectors
+                .iter()
+                .map(|(sector, sites)| (*sector, i64::try_from(sites.len()).unwrap_or(0))),
+            true,
+        )?;
+        let side = crate::dat::Faction::of_alliance(is_alliance);
+        let sites = sectors.into_iter().find(|(s, _)| *s == sector)?.1;
+        planner.pick_ranked(
+            sites.into_iter().map(|system| {
+                let sys = &world.systems[system];
+                let support = if sys.is_populated {
+                    crate::uprising::support_points(sys, side)
+                } else {
+                    100
+                };
+                (system, i64::from(support))
+            }),
+            true,
+        )
     }
-    chosen
 }
 
 #[cfg(test)]
@@ -5217,14 +5449,18 @@ mod tests {
         MissionMember::Character(key)
     }
 
-    fn research_orders(
+    /// One AI evaluation's research part for the Alliance at `tick`.
+    fn research_pass(
+        state: &mut AIState,
         world: &GameWorld,
         missions: &MissionState,
         research: &ResearchState,
+        tick: u64,
     ) -> Vec<AIAction> {
-        let mut planner = Planner::new(world, missions, &HashSet::new(), true, 7);
+        let mut planner = Planner::new(world, missions, &state.busy_characters.clone(), true, tick);
         let mut actions = Vec::new();
         AISystem::evaluate_research(
+            state,
             &mut planner,
             world,
             missions,
@@ -5236,36 +5472,74 @@ mod tests {
         actions
     }
 
-    fn research_mission(
+    fn research_orders(
+        world: &GameWorld,
+        missions: &MissionState,
+        research: &ResearchState,
+    ) -> Vec<AIAction> {
+        research_pass(
+            &mut AIState::new(AiFaction::Alliance),
+            world,
+            missions,
+            research,
+            7,
+        )
+    }
+
+    /// Dispatch `member`'s research the way the integrator applies an
+    /// order, binding it to its planner.
+    fn apply_order(
+        state: &mut AIState,
+        world: &mut GameWorld,
         missions: &mut MissionState,
         kind: MissionKind,
         member: MissionMember,
         system: SystemKey,
     ) -> u64 {
-        missions.dispatch(crate::missions::MissionRequest {
-            kind,
-            faction: crate::missions::MissionFaction::Alliance,
-            team: vec![member],
-            decoys: vec![],
-            target_system: system,
-            target_character: None,
-            target_object: None,
-            tick: 1,
-        })
+        let id = missions
+            .dispatch_guarded(
+                crate::missions::MissionRequest {
+                    kind,
+                    faction: crate::missions::MissionFaction::Alliance,
+                    team: vec![member],
+                    decoys: vec![],
+                    target_system: system,
+                    target_character: None,
+                    target_object: None,
+                    tick: 1,
+                },
+                world,
+            )
+            .unwrap();
+        state.bind_mission(kind, member.character().unwrap(), id);
+        id
     }
 
-    fn cancelled(actions: &[AIAction]) -> Vec<u64> {
+    fn aborted(actions: &[AIAction]) -> Vec<u64> {
         actions
             .iter()
             .filter_map(|a| match a {
-                AIAction::CancelMission { mission_id } => Some(*mission_id),
+                AIAction::AbortMission { mission_id } => Some(*mission_id),
                 _ => None,
             })
             .collect()
     }
 
+    fn result(id: u64, outcome: crate::missions::MissionOutcome) -> crate::missions::MissionResult {
+        crate::missions::MissionResult {
+            mission_id: id,
+            tick: 9,
+            kind: MissionKind::ShipDesignResearch,
+            faction: crate::missions::MissionFaction::Alliance,
+            character: None,
+            target_system: SystemKey::default(),
+            outcome,
+            effects: vec![],
+        }
+    }
+
     #[test]
-    fn each_tree_wants_a_planner_for_every_character_able_to_research_it() {
+    fn each_tree_keeps_a_planner_for_every_character_able_to_research_it() {
         // FUN_004e8290 requests a research subtype while its live planners
         // (+0x324/+0x328/+0x32c) are fewer than the side's characters with
         // the tree's capability (FUN_0041bc10: +0x2cc, +0x2d0, +0x2c8); each
@@ -5280,8 +5554,15 @@ mod tests {
         let ship = designer(&mut world, TechType::Ship, 60);
         let troop = designer(&mut world, TechType::Troop, 30);
         let _facility = designer(&mut world, TechType::Facility, 70);
+        let mut state = AIState::new(AiFaction::Alliance);
 
-        let actions = research_orders(&world, &MissionState::new(), &ResearchState::new());
+        let actions = research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            7,
+        );
 
         assert_eq!(
             orders(&actions, MissionKind::ShipDesignResearch),
@@ -5292,7 +5573,21 @@ mod tests {
             vec![(vec![troop], training, None)]
         );
         assert!(orders(&actions, MissionKind::FacilityDesignResearch).is_empty());
-        assert!(cancelled(&actions).is_empty());
+        let techs: Vec<_> = state
+            .research_planners
+            .iter()
+            .map(|p| (p.id, p.tech))
+            .collect();
+        assert_eq!(
+            techs,
+            vec![
+                (0, TechType::Ship),
+                (1, TechType::Ship),
+                (2, TechType::Troop),
+                (3, TechType::Facility)
+            ]
+        );
+        assert_eq!(state.next_planner_id, 4);
     }
 
     #[test]
@@ -5313,6 +5608,39 @@ mod tests {
             .map(|(team, _, _)| team)
             .collect();
         assert_eq!(sent, vec![vec![ten]]);
+    }
+
+    #[test]
+    fn a_planner_holds_its_designer_while_he_researches() {
+        // FUN_0047b610 marks the record held (+0x24, priority +0x2c = 0)
+        // and FUN_004035d0 (threshold 0) skips it for every other planner;
+        // FUN_0047ba40 keeps a member on a mission (0x80 is not in
+        // 0x7400051). So a second designer, not the busy first, is sent.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let best = designer(&mut world, TechType::Ship, 60);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let mut missions = MissionState::new();
+        research_pass(&mut state, &world, &missions, &ResearchState::new(), 7);
+        apply_order(
+            &mut state,
+            &mut world,
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            best,
+            shipyard,
+        );
+        let second = designer(&mut world, TechType::Ship, 40);
+
+        let actions = research_pass(&mut state, &world, &missions, &ResearchState::new(), 14);
+
+        assert_eq!(
+            orders(&actions, MissionKind::ShipDesignResearch),
+            vec![(vec![second], shipyard, None)]
+        );
+        assert_eq!(state.research_planners[0].member, best.character());
+        assert_eq!(state.research_planners[1].member, second.character());
     }
 
     #[test]
@@ -5362,11 +5690,37 @@ mod tests {
         assert!(!site(&world, &revolt));
     }
 
+    fn fresh_planner(tech: TechType) -> ResearchPlanner {
+        ResearchPlanner {
+            id: 0,
+            tech,
+            member: None,
+            site: None,
+            target: None,
+            mission: None,
+            report: None,
+            failures: 0,
+        }
+    }
+
+    fn choose(world: &GameWorld, p: &ResearchPlanner) -> Option<SystemKey> {
+        let mut planner = Planner::new(world, &MissionState::new(), &HashSet::new(), true, 7);
+        research_site_choice(
+            &mut planner,
+            world,
+            &crate::uprising::UprisingState::default(),
+            &ResearchState::new(),
+            true,
+            p,
+        )
+    }
+
     #[test]
-    fn the_target_is_the_best_supported_site_in_the_sector_with_most_sites() {
-        // FUN_0047be50 first cycle: FUN_00419a00 keys the sectors by their
-        // site count (+0x154), then FUN_00431830 keys the sector's sites by
-        // the side's support (system record +0x48, FUN_00507270).
+    fn a_new_planner_takes_the_best_supported_site_of_the_sector_with_most_sites() {
+        // FUN_0047be50 with no previous target: FUN_00419a00 keys the
+        // sectors by their site count (+0x154, order 1), then FUN_00431830
+        // keys the sector's sites by the side's support (system record
+        // +0x48, FUN_00507270, order 1); FUN_004357b0 takes the last.
         let mut world = empty_world();
         let lone = add_sector(&mut world);
         let busy = add_sector(&mut world);
@@ -5376,43 +5730,114 @@ mod tests {
         world.systems[middling].popularity_alliance = 0.6;
         let best = yard_system(&mut world, busy, 0x28);
         world.systems[best].popularity_alliance = 0.8;
-        let research = ResearchState::new();
 
-        assert_eq!(
-            research_target(
-                &world,
-                &crate::uprising::UprisingState::default(),
-                &research,
-                true,
-                TechType::Ship
-            ),
-            Some(best)
-        );
+        assert_eq!(choose(&world, &fresh_planner(TechType::Ship)), Some(best));
     }
 
     #[test]
-    fn equal_sectors_and_supports_go_to_the_first_in_order() {
-        // port: the original's order of equal keys (FUN_0041be80 lists) is
-        // untraced; the port keeps the first sector and system.
+    fn a_later_cycle_takes_the_site_nearest_its_previous_target() {
+        // FUN_0047be50 with +0x38 a system: FUN_00419b80 keys the sectors by
+        // the squared distance from its sector (order 2), then
+        // FUN_00431c00 the sector's sites by the distance from it (order 2).
         let mut world = empty_world();
-        let first_sector = add_sector(&mut world);
-        let second_sector = add_sector(&mut world);
-        let first = yard_system(&mut world, first_sector, 0x28);
-        let tied = yard_system(&mut world, first_sector, 0x28);
-        let _other = yard_system(&mut world, second_sector, 0x28);
-        let _other_tied = yard_system(&mut world, second_sector, 0x28);
-        world.systems[tied].popularity_alliance = world.systems[first].popularity_alliance;
+        let near = add_sector(&mut world);
+        let far = add_sector(&mut world);
+        world.sectors[far].x = 500;
+        let crowded_a = yard_system(&mut world, far, 0x28);
+        let _crowded_b = yard_system(&mut world, far, 0x28);
+        world.systems[crowded_a].x = 500;
+        let close = yard_system(&mut world, near, 0x28);
+        world.systems[close].x = 40;
+        let closer = yard_system(&mut world, near, 0x28);
+        world.systems[closer].x = 12;
+        let from = add_system(&mut world, near, 0.5, 0.5);
+        world.systems[from].x = 10;
+        let mut p = fresh_planner(TechType::Ship);
+        p.target = Some(from);
 
+        assert_eq!(choose(&world, &p), Some(closer));
+        p.site = Some(close);
+        assert_eq!(choose(&world, &p), Some(close));
+    }
+
+    #[test]
+    fn the_nearest_site_is_measured_by_squared_map_distance() {
+        // FUN_00431c00 keys a sector's sites by the squared difference of
+        // the records' places (FUN_0041b7b0) from the previous target.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let place = |world: &mut GameWorld, x, y| {
+            let system = yard_system(world, sector, 0x28);
+            world.systems[system].x = x;
+            world.systems[system].y = y;
+            system
+        };
+        let east = place(&mut world, 120, 100);
+        let _south = place(&mut world, 100, 70);
+        let _west = place(&mut world, 10, 100);
+        let from = add_system(&mut world, sector, 0.5, 0.5);
+        world.systems[from].x = 100;
+        world.systems[from].y = 100;
+        let mut p = fresh_planner(TechType::Ship);
+        p.target = Some(from);
+
+        assert_eq!(choose(&world, &p), Some(east));
+    }
+
+    #[test]
+    fn a_research_order_binds_to_the_planner_of_its_tree_and_designer() {
+        // FUN_0047b360 stores the emitted order on the planner that built
+        // it (+0x28); FUN_0042f7f0 then routes the mission's reports there.
+        let mut world = empty_world();
+        let a = add_character(&mut world, true, false, 0);
+        let b = add_character(&mut world, true, false, 0);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let mut troop = fresh_planner(TechType::Troop);
+        troop.member = Some(a);
+        let mut ship = fresh_planner(TechType::Ship);
+        ship.member = Some(b);
+        state.research_planners = vec![troop, ship];
+
+        state.bind_mission(MissionKind::ShipDesignResearch, a, 7);
+        assert!(state.research_planners.iter().all(|p| p.mission.is_none()));
+        state.bind_mission(MissionKind::Diplomacy, b, 7);
+        assert!(state.research_planners.iter().all(|p| p.mission.is_none()));
+        state.bind_mission(MissionKind::ShipDesignResearch, b, 7);
+        assert_eq!(state.research_planners[1].mission, Some(7));
+        assert_eq!(state.research_planners[0].mission, None);
+
+        state.note_mission_results(&[result(7, crate::missions::MissionOutcome::Failure)]);
         assert_eq!(
-            research_target(
-                &world,
-                &crate::uprising::UprisingState::default(),
-                &ResearchState::new(),
-                true,
-                TechType::Ship
-            ),
-            Some(first)
+            state.research_planners[1].report,
+            Some(crate::missions::MissionOutcome::Failure)
         );
+        assert_eq!(state.research_planners[0].report, None);
+    }
+
+    #[test]
+    fn equal_keys_are_ordered_by_coin_flips_and_the_last_wins() {
+        // FUN_005f59f0 inserts before the first entry FUN_0041c250 puts the
+        // new one ahead of; equal keys go ahead on FUN_0041cd80(10) < 5.
+        // FUN_004357b0 takes the last of the list (rank FUN_0041c230).
+        let world = empty_world();
+        let mut wins = [0; 2];
+        for tick in 0..200 {
+            let mut planner =
+                Planner::new(&world, &MissionState::new(), &HashSet::new(), true, tick);
+            assert_eq!(planner.pick_ranked([(0, 1), (1, 5), (2, 3)], true), Some(1));
+            assert_eq!(
+                planner.pick_ranked([(0, 1), (1, 5), (2, 3)], false),
+                Some(0)
+            );
+        }
+        // Two equal keys: the second goes ahead of the first on a draw
+        // below 5 of 0..=9, so either wins half the time.
+        for tick in 0..4000 {
+            let mut planner =
+                Planner::new(&world, &MissionState::new(), &HashSet::new(), true, tick);
+            wins[planner.pick_ranked([(0, 4), (1, 4)], true).unwrap()] += 1;
+        }
+        assert!((1800..=2200).contains(&wins[0]), "{wins:?}");
     }
 
     #[test]
@@ -5477,37 +5902,52 @@ mod tests {
     }
 
     #[test]
-    fn orders_stop_at_the_wanted_count() {
-        // FUN_004e8290: a request only while the live planners are fewer
-        // than the able characters; a running mission whose member is not
-        // able still counts as a planner.
+    fn a_cancelled_planner_leaves_its_mission_running() {
+        // FUN_004e5710 picks the planner with the least team skill
+        // (FUN_0047bc30); FUN_0047aff0 releases its hold and removes it, but
+        // issues no order on its mission.
         let mut world = empty_world();
         let sector = add_sector(&mut world);
         let shipyard = yard_system(&mut world, sector, 0x28);
-        let unable = designer(&mut world, TechType::Troop, 50);
-        let best = designer(&mut world, TechType::Ship, 60);
-        let _second = designer(&mut world, TechType::Ship, 40);
+        let strong = designer(&mut world, TechType::Ship, 60);
+        let weak = designer(&mut world, TechType::Ship, 30);
+        let mut state = AIState::new(AiFaction::Alliance);
         let mut missions = MissionState::new();
-        research_mission(
+        research_pass(&mut state, &world, &missions, &ResearchState::new(), 7);
+        apply_order(
+            &mut state,
+            &mut world,
             &mut missions,
             MissionKind::ShipDesignResearch,
-            unable,
+            strong,
             shipyard,
         );
-
-        let actions = research_orders(&world, &missions, &ResearchState::new());
-
-        assert_eq!(
-            orders(&actions, MissionKind::ShipDesignResearch),
-            vec![(vec![best], shipyard, None)]
+        apply_order(
+            &mut state,
+            &mut world,
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            weak,
+            shipyard,
         );
-        assert!(cancelled(&actions).is_empty());
+        // The weaker designer can no longer research ships.
+        world.characters[weak.character().unwrap()].ship_design = SkillPair {
+            base: 0,
+            variance: 0,
+        };
+
+        let actions = research_pass(&mut state, &world, &missions, &ResearchState::new(), 14);
+
+        assert!(aborted(&actions).is_empty());
+        let members: Vec<_> = state.research_planners.iter().map(|p| p.member).collect();
+        assert_eq!(members, vec![strong.character()]);
+        assert_eq!(missions.len(), 2);
     }
 
     #[test]
-    fn a_done_tree_cancels_its_research_and_orders_none() {
+    fn a_done_tree_drops_its_planners_and_orders_none() {
         // FUN_004e8290: with the Done bit set the subtype takes no request
-        // and its live planners are cancelled.
+        // and its planners are cancelled; their missions run on.
         let mut world = empty_world();
         let sector = add_sector(&mut world);
         let shipyard = yard_system(&mut world, sector, 0x28);
@@ -5519,9 +5959,12 @@ mod tests {
                 ..Default::default()
             });
         let running = designer(&mut world, TechType::Ship, 50);
-        let _ = designer(&mut world, TechType::Ship, 40);
+        let mut state = AIState::new(AiFaction::Alliance);
         let mut missions = MissionState::new();
-        let id = research_mission(
+        research_pass(&mut state, &world, &missions, &ResearchState::new(), 7);
+        apply_order(
+            &mut state,
+            &mut world,
             &mut missions,
             MissionKind::ShipDesignResearch,
             running,
@@ -5530,63 +5973,147 @@ mod tests {
         let mut research = ResearchState::new();
         research.alliance.ship = 2;
 
-        let actions = research_orders(&world, &missions, &research);
+        let actions = research_pass(&mut state, &world, &missions, &research, 14);
 
         assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
-        assert_eq!(cancelled(&actions), vec![id]);
+        assert!(aborted(&actions).is_empty());
+        assert!(state
+            .research_planners
+            .iter()
+            .all(|p| p.tech != TechType::Ship));
     }
 
     #[test]
-    fn surplus_research_cancels_the_weakest_team_first() {
-        // FUN_004e5710 cancels, among the subtype's planners, the one with
-        // the least team skill in the tree (FUN_0047bc30 sums record +0x48).
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let shipyard = yard_system(&mut world, sector, 0x28);
-        let strong = designer(&mut world, TechType::Ship, 50);
-        let unable = designer(&mut world, TechType::Troop, 50);
-        let mut missions = MissionState::new();
-        let _keep = research_mission(
-            &mut missions,
-            MissionKind::ShipDesignResearch,
-            strong,
-            shipyard,
-        );
-        let drop = research_mission(
-            &mut missions,
-            MissionKind::ShipDesignResearch,
-            unable,
-            shipyard,
-        );
-
-        let actions = research_orders(&world, &missions, &ResearchState::new());
-
-        assert_eq!(cancelled(&actions), vec![drop]);
-        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
-    }
-
-    #[test]
-    fn research_at_a_system_that_is_no_longer_a_site_is_aborted() {
-        // FUN_0047c890 -> FUN_0047b250: once the mission's system loses the
-        // site bit (FUN_0047c110), the planner orders 0x250 on its mission.
+    fn a_reported_result_aborts_research_where_the_site_is_lost() {
+        // FUN_0047c890: a result of 2 or 3 flags the planner; at its next
+        // state 1 FUN_0047b250 asks FUN_0047c110 for the site bit and,
+        // without it, orders 0x250 on the mission. No report, no check.
         let mut world = empty_world();
         let sector = add_sector(&mut world);
         let shipyard = yard_system(&mut world, sector, 0x28);
         let ship = designer(&mut world, TechType::Ship, 50);
+        let mut state = AIState::new(AiFaction::Alliance);
         let mut missions = MissionState::new();
-        let id = research_mission(
+        research_pass(&mut state, &world, &missions, &ResearchState::new(), 7);
+        let id = apply_order(
+            &mut state,
+            &mut world,
             &mut missions,
             MissionKind::ShipDesignResearch,
             ship,
             shipyard,
         );
-        assert!(cancelled(&research_orders(&world, &missions, &ResearchState::new())).is_empty());
-
         world.systems[shipyard].ground_units.clear();
 
+        let quiet = research_pass(&mut state, &world, &missions, &ResearchState::new(), 14);
+        assert!(aborted(&quiet).is_empty());
+
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Success)]);
+        let actions = research_pass(&mut state, &world, &missions, &ResearchState::new(), 21);
+        assert_eq!(aborted(&actions), vec![id]);
+        assert!(state.research_planners[0].report.is_none());
+    }
+
+    #[test]
+    fn a_planner_aborts_after_more_than_a_thousand_failures() {
+        // FUN_0047ae20 counts failed results (+0x6c) against slot +0x24
+        // (FUN_00480df0, 1000); past it the planner sets 0x20000000 and
+        // FUN_0047b250 orders 0x250. A success clears the count.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let ship = designer(&mut world, TechType::Ship, 50);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let mut missions = MissionState::new();
+        research_pass(&mut state, &world, &missions, &ResearchState::new(), 7);
+        let id = apply_order(
+            &mut state,
+            &mut world,
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            ship,
+            shipyard,
+        );
+        state.research_planners[0].failures = 1000;
+
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Success)]);
+        assert!(aborted(&research_pass(
+            &mut state,
+            &world,
+            &missions,
+            &ResearchState::new(),
+            14
+        ))
+        .is_empty());
+        assert_eq!(state.research_planners[0].failures, 0);
+
+        state.research_planners[0].failures = 999;
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Failure)]);
+        assert!(aborted(&research_pass(
+            &mut state,
+            &world,
+            &missions,
+            &ResearchState::new(),
+            21
+        ))
+        .is_empty());
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Failure)]);
         assert_eq!(
-            cancelled(&research_orders(&world, &missions, &ResearchState::new())),
+            aborted(&research_pass(
+                &mut state,
+                &world,
+                &missions,
+                &ResearchState::new(),
+                28
+            )),
             vec![id]
+        );
+        assert_eq!(state.research_planners[0].failures, 0);
+    }
+
+    #[test]
+    fn the_previous_target_stays_while_it_is_the_side_s_and_unblockaded() {
+        // FUN_004bd0a0 keeps +0x38 when its record has +0x30 bit 0 and not
+        // +0x28 bit 0x2, before it looks at the site +0x34.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let old = add_system(&mut world, sector, 0.5, 0.5);
+        world.systems[old].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let ship = designer(&mut world, TechType::Ship, 50);
+        let mut state = AIState::new(AiFaction::Alliance);
+        research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            7,
+        );
+        state.research_planners[0].target = Some(old);
+
+        let actions = research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            14,
+        );
+        assert_eq!(
+            orders(&actions, MissionKind::ShipDesignResearch),
+            vec![(vec![ship], old, None)]
+        );
+
+        world.systems[old].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let actions = research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            21,
+        );
+        assert_eq!(
+            orders(&actions, MissionKind::ShipDesignResearch),
+            vec![(vec![ship], shipyard, None)]
         );
     }
 
@@ -5599,7 +6126,6 @@ mod tests {
         let shipyard = yard_system(&mut world, sector, 0x28);
         let ship = designer(&mut world, TechType::Ship, 50);
         let enemy = add_character(&mut world, false, false, 0);
-        let trainer = designer(&mut world, TechType::Troop, 30);
         let mut missions = MissionState::new();
         missions.dispatch(crate::missions::MissionRequest {
             kind: MissionKind::ShipDesignResearch,
@@ -5611,12 +6137,6 @@ mod tests {
             target_object: None,
             tick: 1,
         });
-        research_mission(
-            &mut missions,
-            MissionKind::TroopTrainingResearch,
-            trainer,
-            shipyard,
-        );
 
         let actions = research_orders(&world, &missions, &ResearchState::new());
 

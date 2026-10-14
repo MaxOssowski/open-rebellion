@@ -1862,6 +1862,14 @@ cross-runtime proof remain open
   sector with the most sites (`AIAction::CancelMission`). A seed-42
   dual-AI playtest has the Empire run two ship research missions and reach
   Ship level 6 in 600 days.
+- Research planners (2026-10-14, save v37): the port's simplifications were
+  checked against the original and fixed. Persistent research planners hold
+  their designer, a strategy cancellation leaves the mission running, the
+  abort (order `0x250`, end code 2) follows each Mission Report, equal keys
+  fall to coin flips (`FUN_005f59f0`, `FUN_0041c250`), and selectors pass
+  over candidates at blockaded systems (`FUN_0047ba90`). Golden
+  `v1:a6ee248d7d0194dc` -> `v1:68580f6dd8f9f6b0`
+  (`evidence/2026-10-14-research-planners/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

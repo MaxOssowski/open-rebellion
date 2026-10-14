@@ -1460,6 +1460,22 @@ impl MissionState {
         self.missions.push_back(mission);
     }
 
+    /// End a running mission as its owner's abort does: order `0x250`
+    /// (`FUN_00580580`, executed by `FUN_0054e310`) calls the mission's slot
+    /// `+0x1d4` -> `+0x1d8` (`FUN_005233a0`) -> `+0x1dc(2)`, end code 2 while
+    /// the mission runs, so its next step goes to phase `0xb`. Returns
+    /// whether the mission ran.
+    pub fn abort(&mut self, id: u64) -> bool {
+        match self.missions.iter_mut().find(|m| m.id == id) {
+            Some(mission) if mission.end_code == 0 => {
+                mission.end_code = 2;
+                mission.ready = true;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Cancel a mission by id and free its members for another assignment.
     pub fn release(&mut self, id: u64, world: &mut GameWorld) -> Option<ActiveMission> {
         let mission = self.cancel(id)?;
@@ -4779,6 +4795,36 @@ mod tests {
                     is_shipyard: family == 0x28,
                 });
         world.systems[system].manufacturing_facilities.push(yard);
+    }
+
+    #[test]
+    fn an_aborted_mission_ends_on_its_next_step_and_frees_its_members() {
+        // Order 0x250: mission slot +0x1dc(2) sets end code 2, and the
+        // stepper FUN_005227d0 sends any end code to phase 0xb.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let agent = MissionMember::Character(agent_at(&mut world, here, true));
+        let mut state = MissionState::new();
+        state.push_timed(ActiveMission::timed(
+            0,
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            vec![agent],
+            here,
+            5,
+        ));
+        assert!(state.abort(0));
+        assert!(!state.abort(0));
+
+        let advance = step(&mut state, &world, 1, &[]);
+
+        assert!(state.is_empty());
+        assert_eq!(advance.ended.len(), 1);
+        assert_eq!(advance.ended[0].end_code, 2);
+        assert!(advance
+            .effects
+            .contains(&MissionEffect::MemberAvailable { member: agent }));
+        assert!(!state.abort(0));
     }
 
     #[test]

@@ -478,6 +478,10 @@ pub fn run_simulation_tick(
     if let Some(ref mut ai2) = states.ai2 {
         ai2.free_mission_members(&mission_advance.effects);
     }
+    states.ai.note_mission_results(&mission_advance.results);
+    if let Some(ai2) = states.ai2.as_mut() {
+        ai2.note_mission_results(&mission_advance.results);
+    }
     for result in &mission_advance.results {
         integrator.apply_mission_result(world, result, &mut states.uprising, &mut states.research);
         // Knesset Shamash-Bet #R11: emit `EVT_CHARACTER_KILLED` telemetry for

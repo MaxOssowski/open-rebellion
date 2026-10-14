@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v36, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v37, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-14
@@ -11,14 +11,14 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v36, and it is the only one
+serializable snapshot. The current format is v37, and it is the only one
 that loads.
 
-## Native format (v36)
+## Native format (v37)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 36
+[version: u32 LE]             — SAVE_VERSION = 37
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
 [mod_count: u32 LE]
@@ -46,7 +46,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `manufacturing` | `ManufacturingState`: one queue and one Destination per system and production area (v30); a queue keeps its build points and each unit its cost in points (v34) |
 | `missions` | `MissionState`: missions, travelling members, and each captive's escape timer and escaped characters on the road (v35) |
 | `events` | `EventState` |
-| `ai` | `AIState` |
+| `ai` | `AIState`: busy characters, battle cooldowns, and the strategy's research planners with their held designer, site, target, mission, unread report and failures (v37) |
 | `movement` | `MovementState` |
 | `fog_alliance`, `fog_empire` | `FogState` |
 | `player_is_alliance` | `bool` |

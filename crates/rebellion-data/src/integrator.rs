@@ -144,9 +144,9 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "decoys": member_names(world, decoys),
             })
         }
-        AIAction::CancelMission { mission_id } => {
+        AIAction::AbortMission { mission_id } => {
             serde_json::json!({
-                "type": "CancelMission",
+                "type": "AbortMission",
                 "mission_id": mission_id,
             })
         }
@@ -2008,39 +2008,30 @@ fn apply_ai_actions_inner(
                 target_character,
                 target_object,
             } => {
-                let dispatched = mission_state
-                    .dispatch_guarded(
-                        MissionRequest {
-                            kind: *kind,
-                            faction: mission_faction,
-                            team: team.clone(),
-                            decoys: decoys.clone(),
-                            target_system: *target_system,
-                            target_character: *target_character,
-                            target_object: *target_object,
-                            tick,
-                        },
-                        world,
-                    )
-                    .is_ok();
-                if dispatched {
+                let dispatched = mission_state.dispatch_guarded(
+                    MissionRequest {
+                        kind: *kind,
+                        faction: mission_faction,
+                        team: team.clone(),
+                        decoys: decoys.clone(),
+                        target_system: *target_system,
+                        target_character: *target_character,
+                        target_object: *target_object,
+                        tick,
+                    },
+                    world,
+                );
+                if let Ok(id) = dispatched {
                     for character in team.iter().chain(decoys).filter_map(|m| m.character()) {
                         ai_state.mark_busy(character);
                     }
-                }
-                dispatched
-            }
-            AIAction::CancelMission { mission_id } => {
-                match mission_state.release(*mission_id, world) {
-                    Some(mission) => {
-                        for character in mission.members().filter_map(MissionMember::character) {
-                            ai_state.mark_available(character);
-                        }
-                        true
+                    if let Some(lead) = team.first().and_then(|m| m.character()) {
+                        ai_state.bind_mission(*kind, lead, id);
                     }
-                    None => false,
                 }
+                dispatched.is_ok()
             }
+            AIAction::AbortMission { mission_id } => mission_state.abort(*mission_id),
             AIAction::EnqueueProduction { system, kind, cost } => {
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
                 true
@@ -2631,39 +2622,57 @@ mod tests {
     }
 
     #[test]
-    fn a_cancelled_ai_mission_frees_its_members_and_is_reported() {
-        // FUN_0042f690 (the strategy's cancellation) or order 0x250
-        // (FUN_0047b250) ends the planner's mission; its members are free.
+    fn an_ai_abort_ends_the_mission_with_code_2_and_a_research_order_binds_its_planner() {
+        // Order 0x250 (FUN_0054e310 -> mission slot +0x1dc(2)) sets end code
+        // 2, so the next step ends the mission (phase 0xb); FUN_0047b360
+        // stores an emitted order on its planner (+0x28).
         let mut world = GameWorld::default();
         let target = add_system(&mut world, "Kuat");
         let designer = imperial_at(&mut world, target, "Designer");
         let MissionMember::Character(key) = designer else {
             unreachable!()
         };
+        // FUN_0056c820: a research member needs the tree's skill.
+        world.characters[key].ship_design.base = 40;
         let mut ai = AIState::new(AiFaction::Empire);
+        ai.research_planners
+            .push(rebellion_core::ai::ResearchPlanner {
+                id: 0,
+                tech: rebellion_core::research::TechType::Ship,
+                member: Some(key),
+                site: Some(target),
+                target: Some(target),
+                mission: None,
+                report: None,
+                failures: 0,
+            });
         let mut missions = MissionState::new();
-        let id = missions
-            .dispatch_guarded(
-                MissionRequest {
-                    kind: MissionKind::Diplomacy,
-                    faction: MissionFaction::Empire,
-                    team: vec![designer],
-                    decoys: vec![],
-                    target_system: target,
-                    target_character: None,
-                    target_object: None,
-                    tick: 1,
-                },
-                &mut world,
-            )
-            .unwrap();
-        ai.mark_busy(key);
         let mut integrator = PerceptionIntegrator::new(5, 0);
+        integrator.apply_ai_actions(
+            &[AIAction::DispatchMission {
+                kind: MissionKind::ShipDesignResearch,
+                team: vec![designer],
+                decoys: vec![],
+                target_system: target,
+                target_character: None,
+                target_object: None,
+            }],
+            &mut ai,
+            &mut missions,
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut world,
+            5,
+            false,
+        );
+        let id = missions.missions()[0].id;
+        assert_eq!(ai.research_planners[0].mission, Some(id));
 
         integrator.apply_ai_actions(
             &[
-                AIAction::CancelMission { mission_id: id },
-                AIAction::CancelMission { mission_id: id },
+                AIAction::AbortMission { mission_id: id },
+                AIAction::AbortMission { mission_id: id },
             ],
             &mut ai,
             &mut missions,
@@ -2675,13 +2684,14 @@ mod tests {
             false,
         );
 
-        assert!(missions.is_empty());
-        assert!(!ai.is_busy(key));
-        assert!(!world.characters[key].on_mission);
+        assert_eq!(missions.missions()[0].end_code, 2);
         let events = integrator.finish();
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].details["type"], "CancelMission");
-        assert_eq!(events[0].details["mission_id"], id);
+        let aborts: Vec<_> = events
+            .iter()
+            .filter(|e| e.details["type"] == "AbortMission")
+            .collect();
+        assert_eq!(aborts.len(), 1);
+        assert_eq!(aborts[0].details["mission_id"], id);
     }
 
     #[test]

@@ -56,14 +56,15 @@ A class is buildable when `class.research_order <= faction_level_for_tech_type`
 
 `mission_planning.rs` holds the planners `FUN_0047bcd0`, `FUN_0047c2b0` and
 `FUN_0047c900` (one member with the tree's capability and skill 10 or more).
-`AISystem::evaluate_research` follows the strategy `FUN_004e8290`: per tree,
-one research mission per character able to research it
-(`Planner::able`, `FUN_0041bc10`) until the AI's Done level
-(`ai_research_goal`, `FUN_0042dd00`); surplus or done missions are
-cancelled weakest team first (`AIAction::CancelMission`, `FUN_004e5710`),
-and a mission whose system stops being a research site is aborted. The
-target is the best-supported site in the sector with the most sites
-(`research_target`, `FUN_0047be50`). A research site is an own system in no
-uprising or blockade with a yard of the area and a garrison
-(`ai_research_site`, `FUN_00433e40`). See `ghidra/notes/ai-mission-planning.md`,
+`AISystem::evaluate_research` follows the strategy `FUN_004e8290` with
+persistent planners (`AIState.research_planners`, save v37): per tree, one
+planner per character able to research it (`Planner::able`,
+`FUN_0041bc10`) until the AI's Done level (`ai_research_goal`,
+`FUN_0042dd00`). Surplus or Done planners are cancelled weakest first and
+their missions run on (`FUN_004e5710`, `FUN_0047aff0`). Each planner holds
+its designer, remembers its site and previous target
+(`research_site_choice`, `FUN_0047be50`), and after each Mission Report
+aborts its mission when the site is lost (`AIAction::AbortMission`, end
+code 2). A research site is an own system in no uprising or blockade with
+a yard of the area and a garrison (`ai_research_site`, `FUN_00433e40`). See `ghidra/notes/ai-mission-planning.md`,
 "The strategic choice of mission".

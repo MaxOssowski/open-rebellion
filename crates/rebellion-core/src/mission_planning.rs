@@ -16,7 +16,7 @@
 
 use std::collections::HashSet;
 
-use crate::ids::CharacterKey;
+use crate::ids::{CharacterKey, SystemKey};
 use crate::mission_detection::MissionRng;
 use crate::missions::{
     member_skill, members_allowed, members_together, MissionKind, MissionMember, MissionState,
@@ -119,8 +119,13 @@ struct AgentRecord {
     flags: u32,
     caps: u32,
     skills: [u32; 8],
-    /// port: an earlier plan in this evaluation sent the object.
+    /// port: an earlier plan in this evaluation sent the object, or a
+    /// research planner holds it ([`Planner::hold`]).
     sent: bool,
+    /// The object stands, not en route, at a blockaded system: its
+    /// location (`+0x38`) is a system whose record has `+0x28` bit `0x2`
+    /// (`FUN_00433e40`, system `+0x88` bit `0x20`).
+    at_blockade: bool,
 }
 
 /// One candidate query (`FUN_00403460` and `FUN_004035d0`).
@@ -269,6 +274,76 @@ impl<'a> Planner<'a> {
         }
     }
 
+    /// A research planner holds `member` (`FUN_0047b610`: record `+0x24`,
+    /// priority `+0x2c` = 0, `0x800000` cleared). No query of this
+    /// evaluation takes it: `FUN_004035d0` admits an assigned record only
+    /// above its threshold, which is 0 at every call site, and
+    /// `FUN_00403460`'s queries require `0x800000`.
+    pub(crate) fn hold(&mut self, member: MissionMember) {
+        for record in &mut self.records {
+            if record.member == member {
+                record.sent = true;
+                record.flags &= !UNASSIGNED;
+            }
+        }
+    }
+
+    /// `FUN_0047ba40`: a planner keeps its member while the record exists,
+    /// is the side's, lacks `0x7400051`, and passes `FUN_0047ba90` (not
+    /// standing at a blockaded system). The research classes' slot `+0x3c`
+    /// is the shared `FUN_0051ebb0`. port: the record's owner (`+0x24`) is
+    /// the planner by construction.
+    pub(crate) fn keeps(&self, member: MissionMember) -> bool {
+        self.records.iter().any(|r| {
+            r.member == member
+                && r.flags & OWN_SIDE != 0
+                && r.flags & 0x0740_0051 == 0
+                && !r.at_blockade
+        })
+    }
+
+    /// Whether `FUN_0047b360` would send `member`: its record has none of
+    /// `0x74000f1` (on a mission, en route, ...).
+    pub(crate) fn sendable(&self, member: MissionMember) -> bool {
+        self.records
+            .iter()
+            .any(|r| r.member == member && r.flags & NOT_SENT == 0)
+    }
+
+    /// A research planner's team selector (`FUN_0047bcd0` and siblings):
+    /// its best candidate, which the planner then holds.
+    pub(crate) fn pick(&mut self, kind: MissionKind) -> Option<MissionMember> {
+        let selectors = selectors(kind)?;
+        let index = *self.select(selectors.team, 1).first()?;
+        let member = self.records[index].member;
+        self.hold(member);
+        Some(member)
+    }
+
+    /// `FUN_004357b0` over one sorted list (`FUN_0041be80` with `order`,
+    /// `FUN_005f59f0`, `FUN_0041c250`): the last entry wins, so the highest
+    /// key for order 1 and the lowest for order 2; equal keys are ordered by
+    /// coin flips as they are inserted.
+    pub(crate) fn pick_ranked<T: Copy>(
+        &mut self,
+        items: impl IntoIterator<Item = (T, i64)>,
+        ascending: bool,
+    ) -> Option<T> {
+        let mut list: Vec<(T, i64)> = Vec::new();
+        for (item, key) in items {
+            let at = list
+                .iter()
+                .position(|&(_, other)| match key.cmp(&other) {
+                    std::cmp::Ordering::Less => ascending,
+                    std::cmp::Ordering::Greater => !ascending,
+                    std::cmp::Ordering::Equal => self.rng.draw(9) < 5,
+                })
+                .unwrap_or(list.len());
+            list.insert(at, (item, key));
+        }
+        list.last().map(|&(item, _)| item)
+    }
+
     /// `FUN_0041bc10`: the side's characters (record flags `0x2` and
     /// `0x20000000`) with `kind`'s capability bit, which the strategy wants
     /// as many planners of a research tree as (side `+0x2cc`, `+0x2d0`,
@@ -357,8 +432,11 @@ impl<'a> Planner<'a> {
             let Some(best) = pop_best(&mut lists) else {
                 break;
             };
-            // FUN_0047ba90. port: the target system's record +0x28 bit 1 is
-            // untraced and read as clear, so every candidate is eligible.
+            // FUN_0047ba90 rejects a candidate standing at a blockaded
+            // system; the selector loop takes the next.
+            if self.records[best].at_blockade {
+                continue;
+            }
             self.records[best].flags &= !UNASSIGNED;
             taken.push(best);
         }
@@ -520,7 +598,33 @@ fn records(
         }
         records.push(agent_record(world, member, flags, 0));
     }
+    for record in &mut records {
+        record.at_blockade = record.flags & EN_ROUTE == 0
+            && standing_system(world, record.member).is_some_and(|system| {
+                crate::blockade::BlockadeSystem::system_is_blockaded(world, &world.systems[system])
+            });
+    }
     records
+}
+
+/// The system an object stands at, when its location (`+0x38`) is a
+/// system rather than a fleet.
+fn standing_system(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {
+    match member {
+        MissionMember::Character(key) => {
+            let c = world.characters.get(key)?;
+            if c.current_fleet.is_some() {
+                None
+            } else {
+                c.current_system.filter(|&s| world.systems.contains_key(s))
+            }
+        }
+        MissionMember::SpecialForce(key) => world
+            .systems
+            .iter()
+            .find(|(_, sys)| sys.special_forces.contains(&key))
+            .map(|(system, _)| system),
+    }
 }
 
 /// Fill in the skills (slots `+0x1dc..+0x1f8`), the mission capabilities
@@ -575,13 +679,14 @@ fn agent_record(
         caps,
         skills,
         sent: false,
+        at_blockade: false,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ids::SystemKey;
+
     use crate::world::{Character, MissionMemberRules, MissionRecord, SkillPair, SpecialForceUnit};
 
     fn pair(base: u32) -> SkillPair {
@@ -649,6 +754,87 @@ mod tests {
 
     fn planner(world: &GameWorld) -> Planner<'_> {
         Planner::new(world, &MissionState::new(), &HashSet::new(), true, 1)
+    }
+
+    #[test]
+    fn a_planner_keeps_only_a_free_member_of_its_side_away_from_a_blockade() {
+        // FUN_0047ba40: the record must lack 0x7400051 (here 0x1, a
+        // character the side has not recruited) and pass FUN_0047ba90;
+        // a record on the other side is not the side's to keep.
+        let mut world = world();
+        let own = agent(&mut world, 1, |_| {});
+        let enemy = agent(&mut world, 2, |c| {
+            c.is_alliance = false;
+            c.is_empire = true;
+        });
+        let unrecruited = agent(&mut world, 3, |c| c.recruited = false);
+        let mut planner = planner(&world);
+        assert!(planner.keeps(own));
+        assert!(!planner.keeps(enemy));
+        assert!(!planner.keeps(unrecruited));
+        planner.records[0].at_blockade = true;
+        assert!(!planner.keeps(own));
+    }
+
+    #[test]
+    fn a_candidate_standing_at_a_blockaded_system_is_passed_over() {
+        // FUN_0047ba90 rejects a candidate whose location is a system whose
+        // record has +0x28 bit 0x2, the blockade (FUN_00433e40, system
+        // +0x88 bit 0x20); the selector loop takes the next.
+        use crate::world::{ControlKind, Fleet, System};
+        let mut world = world();
+        let system = |world: &mut GameWorld| {
+            world.systems.insert(System {
+                dat_id: crate::ids::DatId::new(0x9000_0001),
+                name: "System".into(),
+                sector: crate::ids::SectorKey::default(),
+                x: 0,
+                y: 0,
+                exploration_status: crate::dat::ExplorationStatus::Explored,
+                popularity_alliance: 0.5,
+                popularity_empire: 0.5,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                is_headquarters: false,
+                is_destroyed: false,
+                control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            })
+        };
+        let blockaded = system(&mut world);
+        let free = system(&mut world);
+        let fleet = world.fleets.insert(Fleet {
+            location: blockaded,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[blockaded].fleets.push(fleet);
+        let best = agent(&mut world, 1, |c| {
+            c.diplomacy = pair(90);
+            c.current_system = Some(blockaded);
+        });
+        let next = agent(&mut world, 2, |c| {
+            c.diplomacy = pair(80);
+            c.current_system = Some(free);
+        });
+        let _ = best;
+
+        assert_eq!(
+            planner(&world)
+                .plan(MissionKind::Diplomacy)
+                .map(|(team, _)| team),
+            Some(vec![next])
+        );
     }
 
     #[test]

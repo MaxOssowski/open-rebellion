@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 36;
+pub const SAVE_VERSION: u32 = 37;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1615,6 +1615,41 @@ mod tests {
             loaded.missions.missions()[0].kind,
             MissionKind::TroopTrainingResearch
         );
+    }
+
+    #[test]
+    fn a_round_trip_keeps_the_ai_s_research_planners() {
+        // v37: the strategy's research planners (side +0xa8) with their held
+        // designer (+0x3c), site (+0x34), target (+0x38), mission (+0x28),
+        // unread report and failure count (+0x6c).
+        use rebellion_core::ai::{AIState, AiFaction, ResearchPlanner};
+        use rebellion_core::research::TechType;
+        let saves_dir = tmp_dir("v37_research_planners_round_trip");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let designer = state
+            .world
+            .characters
+            .insert(rebellion_core::world::Character::default());
+        let mut ai = AIState::new(AiFaction::Empire);
+        ai.next_planner_id = 4;
+        ai.research_planners.push(ResearchPlanner {
+            id: 3,
+            tech: TechType::Facility,
+            member: Some(designer),
+            site: Some(system),
+            target: Some(system),
+            mission: Some(9),
+            report: Some(rebellion_core::missions::MissionOutcome::Failure),
+            failures: 12,
+        });
+        state.ai = ai;
+        save_slot(&saves_dir, 0, "V37 Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(loaded.ai.research_planners, state.ai.research_planners);
+        assert_eq!(loaded.ai.next_planner_id, 4);
     }
 
     #[test]
