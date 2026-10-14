@@ -1768,8 +1768,14 @@ cross-runtime proof remain open
   sector and system queries (`FUN_00419a00`, `FUN_00431830`, `FUN_004357b0`)
   (`ghidra/notes/ai-galaxy-records.md`). Nothing reads them yet; the golden
   is unchanged (`evidence/2026-10-14-ai-galaxy-records/`). Module 1's first
-  read is in `ghidra/notes/ai-production-modules.md`; it needs the Scrap
-  order, which the port lacks.
+  read is in `ghidra/notes/ai-production-modules.md`.
+- Scrap order (2026-10-14): `0x200` (`FUN_0053dd20`) is ported for
+  facilities and regiments in `scrap.rs`. It checks the object
+  (`FUN_004f9860`; a headquarters refuses with `0x17`), destroys it with
+  reason `0x14` (`FUN_00534c00`), and refunds half the class's refined cost
+  (`FUN_00530270`, reasons `0x14..0x16`). `AIAction::Scrap` applies it. No
+  module issues it yet; the golden is unchanged
+  (`ghidra/notes/scrap-order.md`, `evidence/2026-10-14-scrap-order/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

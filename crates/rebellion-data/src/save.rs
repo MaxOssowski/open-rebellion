@@ -1667,6 +1667,12 @@ mod tests {
         ai.priority_cursor = Some(3);
         ai.module_priority[8] = 1;
         ai.module_pending[8] = vec![AIAction::AbortMission { mission_id: 4 }];
+        // A pending Scrap (0x200) keeps its target.
+        ai.module_pending[1] = vec![AIAction::Scrap {
+            target: rebellion_core::scrap::ScrapTarget::Facility(
+                rebellion_core::world::FacilityRef::Production(Default::default()),
+            ),
+        }];
         ai.mission_next = Some(MissionEntry::Group(2));
         state.ai = ai;
         save_slot(&saves_dir, 0, "V39 Save", &state, &[]).unwrap();

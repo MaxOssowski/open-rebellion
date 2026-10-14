@@ -59,6 +59,6 @@ Site choice for state 6:
 
 Open: `FUN_004dc650`, `FUN_004dc9f0`, `FUN_004dcb30`,
 `FUN_004dcc40`, `FUN_004dd050`, `FUN_004dd120`, `FUN_004199b0`,
-`FUN_0041b230`; the controller fields `+0xc`, `+0x1d0`, `+0x1d4`. The port
-also lacks the Scrap order (`0x200`, `move-order.md`), which modules 1, 3,
-6, 7, `0xa` and `0xb` issue.
+`FUN_0041b230`; the controller fields `+0xc`, `+0x1d0`, `+0x1d4`. The
+Scrap order (`0x200`) that modules 1, 3, 6, 7, `0xa` and `0xb` issue is
+ported for facilities and regiments (`scrap-order.md`).

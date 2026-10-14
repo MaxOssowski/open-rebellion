@@ -2515,6 +2515,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &mut mfg_state,
                         &mut movement_state,
                         &mut troop_transport_state,
+                        &mut production_state,
                         &mut world,
                         &mut msg_log,
                         event.tick,
@@ -2543,6 +2544,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             &mut mfg_state,
                             &mut movement_state,
                             &mut troop_transport_state,
+                            &mut production_state,
                             &mut world,
                             &mut msg_log,
                             event.tick,
@@ -7772,6 +7774,7 @@ fn apply_ai_actions(
     mfg_state: &mut ManufacturingState,
     movement_state: &mut MovementState,
     troop_transport_state: &mut TroopTransportState,
+    production_state: &mut ProductionState,
     world: &mut GameWorld,
     log: &mut MessageLog,
     tick: u64,
@@ -7824,6 +7827,31 @@ fn apply_ai_actions(
             }
             AIAction::EnqueueProduction { system, kind, cost } => {
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
+            }
+            AIAction::Scrap { target } => {
+                let Some(side) = ai_state.faction else {
+                    continue;
+                };
+                if let Ok(done) = rebellion_core::scrap::scrap(
+                    world,
+                    production_state,
+                    side.as_faction(),
+                    *target,
+                ) {
+                    log.push(GameMessage::at_system(
+                        tick,
+                        format!(
+                            "{} scrapped a unit (refund {})",
+                            match side {
+                                AiFaction::Alliance => "Alliance",
+                                AiFaction::Empire => "Empire",
+                            },
+                            done.refund
+                        ),
+                        MessageCategory::Ai,
+                        done.system,
+                    ));
+                }
             }
             AIAction::MoveFleet {
                 fleet,

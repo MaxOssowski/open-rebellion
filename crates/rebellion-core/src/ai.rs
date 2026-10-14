@@ -171,6 +171,15 @@ pub enum AiFaction {
 }
 
 impl AiFaction {
+    /// The side as a [`crate::dat::Faction`].
+    #[must_use]
+    pub const fn as_faction(self) -> crate::dat::Faction {
+        match self {
+            Self::Alliance => crate::dat::Faction::Alliance,
+            Self::Empire => crate::dat::Faction::Empire,
+        }
+    }
+
     /// Convert to the `MissionFaction` used by the mission system.
     #[must_use]
     pub fn as_mission_faction(self) -> MissionFaction {
@@ -402,6 +411,11 @@ pub enum AIAction {
         /// action is applied.
         troops: Vec<TroopKey>,
     },
+
+    /// Scrap one of the side's facilities or regiments: the order `0x200`
+    /// (`FUN_0053dd20`) that modules 1, 3, 6, 7 and `0xa` build
+    /// (`ghidra/notes/ai-production-modules.md`).
+    Scrap { target: crate::scrap::ScrapTarget },
 }
 
 /// Why the AI is moving a fleet.

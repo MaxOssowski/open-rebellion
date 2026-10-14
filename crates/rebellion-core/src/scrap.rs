@@ -1,0 +1,409 @@
+//! The Scrap order (`0x200`, `ghidra/notes/scrap-order.md`).
+//!
+//! The order (factory `FUN_0053dd20`, vtable `0x006619b0`) builds one
+//! command per team member (vtable `0x006695a8`). The command checks its
+//! object through the object's slot `+0x5c` (`FUN_004f28d0` and kin, over
+//! `FUN_004f9860`) and executes slot `+0x98` → `+0xa0` (`FUN_00534c00`),
+//! which destroys the object with reason `0x14` (slot `+0xac`,
+//! `FUN_004f71d0`). The side then refunds half the class's refined
+//! material cost (`FUN_00530270`, reasons `0x14..0x16`).
+
+use serde::{Deserialize, Serialize};
+
+use crate::dat::Faction;
+use crate::ids::{DatId, SystemKey, TroopKey};
+use crate::production_cycle::ProductionState;
+use crate::world::{FacilityRef, GameWorld};
+
+/// The destroyed reason Scrap writes to the object's `+0x40`
+/// (`FUN_00534c00`).
+pub const SCRAP_REASON: u8 = 0x14;
+
+/// What a Scrap order names: the facilities and the regiments on a planet.
+///
+/// port: ships, fighter squadrons, fleets and regiments aboard a fleet
+/// take Scrap in the original (`FUN_005575f0`, `FUN_004fdbc0`) but are not
+/// ported yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScrapTarget {
+    Facility(FacilityRef),
+    Troop(TroopKey),
+}
+
+/// Why a Scrap order is refused: the second word of the status pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrapRefusal {
+    /// `0x12`: the object does not resolve (`FUN_00504e60`).
+    Unresolved,
+    /// `1`: the object is not the ordering side's (`FUN_004f9860`,
+    /// `+0x24` bits 6..7).
+    NotOwnSide,
+    /// `0x17`: the class takes no Scrap. A headquarters object
+    /// (`0x20..0x21`, slot `+0x5c` `FUN_00526940`) refuses it.
+    NotAccepted,
+}
+
+impl ScrapRefusal {
+    /// The status code the original reports.
+    #[must_use]
+    pub const fn code(self) -> u32 {
+        // FUN_00504e60 (0x12), FUN_004f9860 (1), FUN_00526940 (0x17).
+        match self {
+            Self::Unresolved => 0x12,
+            Self::NotOwnSide => 1,
+            Self::NotAccepted => 0x17,
+        }
+    }
+}
+
+/// A Scrap that went through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Scrapped {
+    /// The system the object stood at.
+    pub system: SystemKey,
+    /// The refined material returned to the side.
+    pub refund: i32,
+}
+
+/// The object's system, side and refined material cost.
+fn resolve(world: &GameWorld, target: ScrapTarget) -> Option<(SystemKey, Faction, DatId)> {
+    let (system, side, class) = match target {
+        ScrapTarget::Facility(FacilityRef::Defense(key)) => {
+            let f = world.defense_facilities.get(key)?;
+            let system = world
+                .systems
+                .iter()
+                .find(|(_, s)| s.defense_facilities.contains(&key))?
+                .0;
+            (system, f.side, f.class_dat_id)
+        }
+        ScrapTarget::Facility(FacilityRef::Manufacturing(key)) => {
+            let f = world.manufacturing_facilities.get(key)?;
+            let system = world
+                .systems
+                .iter()
+                .find(|(_, s)| s.manufacturing_facilities.contains(&key))?
+                .0;
+            (system, f.side, f.class_dat_id)
+        }
+        ScrapTarget::Facility(FacilityRef::Production(key)) => {
+            let f = world.production_facilities.get(key)?;
+            let system = world
+                .systems
+                .iter()
+                .find(|(_, s)| s.production_facilities.contains(&key))?
+                .0;
+            (system, f.side, f.class_dat_id)
+        }
+        ScrapTarget::Troop(key) => {
+            let t = world.troops.get(key)?;
+            let system = world
+                .systems
+                .iter()
+                .find(|(_, s)| s.ground_units.contains(&key))?
+                .0;
+            let side = if t.is_alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            };
+            (system, side, t.class_dat_id)
+        }
+    };
+    Some((system, side, class))
+}
+
+/// `FUN_004f2980` → `FUN_0053b860`: the class's refined material cost
+/// (`+0x48`), 0 without a class.
+fn refined_cost(world: &GameWorld, class: DatId) -> i32 {
+    world.buildable_classes.get(&class).map_or(0, |c| {
+        i32::try_from(c.refined_material_cost).unwrap_or(i32::MAX)
+    })
+}
+
+/// Whether `side` may scrap `target`: the command's check (slot `+0x5c`).
+///
+/// `FUN_004f9860` also refuses an object that is not completed (`+0x50`
+/// bit 2), destroyed (bit 3) or en route (bit 4). port: every unit and
+/// facility in the world is completed, a removed one does not resolve, and
+/// a regiment on a planet is never en route.
+///
+/// # Errors
+///
+/// The refusal, as above.
+pub fn check(world: &GameWorld, side: Faction, target: ScrapTarget) -> Result<(), ScrapRefusal> {
+    let (_, owner, class) = resolve(world, target).ok_or(ScrapRefusal::Unresolved)?;
+    if (0x20..=0x21).contains(&class.family()) {
+        return Err(ScrapRefusal::NotAccepted);
+    }
+    if owner != side || side == Faction::Neutral {
+        return Err(ScrapRefusal::NotOwnSide);
+    }
+    Ok(())
+}
+
+/// Scrap `target` for `side`: check it, remove it (reason `0x14`) and
+/// refund half its class's refined material cost to the side's stock
+/// (`FUN_00530270`: `refined + cost / 2`, the object completed).
+///
+/// port: the original hands the refund to waiting yards through the
+/// stock's change notifier (slot `+0x1d4`); the port's yards take it on
+/// their next daily pass.
+///
+/// # Errors
+///
+/// The refusal of [`check`].
+pub fn scrap(
+    world: &mut GameWorld,
+    production: &mut ProductionState,
+    side: Faction,
+    target: ScrapTarget,
+) -> Result<Scrapped, ScrapRefusal> {
+    check(world, side, target)?;
+    let (system, owner, class) = resolve(world, target).ok_or(ScrapRefusal::Unresolved)?;
+    let refund = refined_cost(world, class) / 2;
+    match target {
+        ScrapTarget::Facility(facility) => world.remove_facility(system, facility),
+        ScrapTarget::Troop(key) => {
+            if let Some(sys) = world.systems.get_mut(system) {
+                sys.ground_units.retain(|&k| k != key);
+            }
+            world.troops.remove(key);
+        }
+    }
+    if let Some(stock) = production.stock_mut(owner) {
+        stock.refined += refund;
+    }
+    Ok(Scrapped { system, refund })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::{
+        BuildableClass, DefenseFacilityInstance, ManufacturingFacilityInstance,
+        ProductionFacilityInstance, System, TroopUnit,
+    };
+
+    struct Fixture {
+        world: GameWorld,
+        system: SystemKey,
+    }
+
+    fn fixture() -> Fixture {
+        let mut world = GameWorld::default();
+        let system = world.systems.insert(System {
+            dat_id: DatId::new(0x9000_0001),
+            name: "System".into(),
+            sector: crate::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: crate::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 10,
+            raw_materials: 5,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: crate::world::ControlKind::Controlled(Faction::Alliance),
+        });
+        Fixture { world, system }
+    }
+
+    fn class(world: &mut GameWorld, raw: u32, refined: u32) -> DatId {
+        let id = DatId::new(raw);
+        world.buildable_classes.insert(
+            id,
+            BuildableClass {
+                refined_material_cost: refined,
+                ..BuildableClass::default()
+            },
+        );
+        id
+    }
+
+    fn mine(f: &mut Fixture, side: Faction, refined: u32) -> FacilityRef {
+        let class_dat_id = class(&mut f.world, 0x2c00_0001, refined);
+        let key = f
+            .world
+            .production_facilities
+            .insert(ProductionFacilityInstance {
+                class_dat_id,
+                side,
+                is_mine: true,
+            });
+        f.world.systems[f.system].production_facilities.push(key);
+        FacilityRef::Production(key)
+    }
+
+    #[test]
+    fn scrapping_a_facility_removes_it_and_refunds_half_its_refined_cost() {
+        // FUN_00534c00 destroys with reason 0x14; FUN_00530270 adds
+        // class +0x48 / 2 = 7 / 2 = 3 to the side's refined (+0x7c).
+        let mut f = fixture();
+        let target = ScrapTarget::Facility(mine(&mut f, Faction::Alliance, 7));
+        let mut production = ProductionState::new();
+        production.stock_mut(Faction::Alliance).unwrap().refined = 2;
+
+        let done = scrap(&mut f.world, &mut production, Faction::Alliance, target).unwrap();
+
+        assert_eq!(
+            done,
+            Scrapped {
+                system: f.system,
+                refund: 3
+            }
+        );
+        assert!(f.world.production_facilities.is_empty());
+        assert!(f.world.systems[f.system].production_facilities.is_empty());
+        assert_eq!(production.stock(Faction::Alliance).unwrap().refined, 5);
+        assert_eq!(production.stock(Faction::Empire).unwrap().refined, 0);
+    }
+
+    #[test]
+    fn each_facility_kind_and_a_regiment_can_be_scrapped() {
+        // Slot +0x58 accepts 0x200 for every facility class
+        // (FUN_00539c20) and a regiment (FUN_00504b30).
+        let mut f = fixture();
+        let yard = class(&mut f.world, 0x2a00_0001, 4);
+        let yard = f
+            .world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: yard,
+                side: Faction::Empire,
+                is_shipyard: false,
+            });
+        f.world.systems[f.system]
+            .manufacturing_facilities
+            .push(yard);
+        let gun = class(&mut f.world, 0x2500_0001, 6);
+        let gun = f.world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: gun,
+            side: Faction::Empire,
+        });
+        f.world.systems[f.system].defense_facilities.push(gun);
+        let regiment = class(&mut f.world, 0x1000_0001, 9);
+        let troop = f.world.troops.insert(TroopUnit {
+            class_dat_id: regiment,
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        f.world.systems[f.system].ground_units.push(troop);
+        let mut production = ProductionState::new();
+
+        for (target, refund) in [
+            (ScrapTarget::Facility(FacilityRef::Manufacturing(yard)), 2),
+            (ScrapTarget::Facility(FacilityRef::Defense(gun)), 3),
+            (ScrapTarget::Troop(troop), 4),
+        ] {
+            let done = scrap(&mut f.world, &mut production, Faction::Empire, target).unwrap();
+            assert_eq!(done.refund, refund, "{target:?}");
+        }
+
+        let sys = &f.world.systems[f.system];
+        assert!(sys.manufacturing_facilities.is_empty());
+        assert!(sys.defense_facilities.is_empty());
+        assert!(sys.ground_units.is_empty());
+        assert!(f.world.troops.is_empty());
+        assert_eq!(production.stock(Faction::Empire).unwrap().refined, 9);
+    }
+
+    #[test]
+    fn another_side_s_object_is_refused_and_kept() {
+        // FUN_004f9860: the object's side must be the order's (status 1).
+        let mut f = fixture();
+        let target = ScrapTarget::Facility(mine(&mut f, Faction::Alliance, 7));
+        let mut production = ProductionState::new();
+
+        for side in [Faction::Empire, Faction::Neutral] {
+            assert_eq!(
+                scrap(&mut f.world, &mut production, side, target),
+                Err(ScrapRefusal::NotOwnSide)
+            );
+        }
+        assert_eq!(ScrapRefusal::NotOwnSide.code(), 1);
+        assert_eq!(f.world.production_facilities.len(), 1);
+        assert_eq!(production.stock(Faction::Empire).unwrap().refined, 0);
+    }
+
+    #[test]
+    fn a_neutral_facility_is_no_side_s_to_scrap() {
+        // FUN_004f9860: a side of 0 never matches the order's.
+        let mut f = fixture();
+        let target = ScrapTarget::Facility(mine(&mut f, Faction::Neutral, 7));
+
+        assert_eq!(
+            check(&f.world, Faction::Neutral, target),
+            Err(ScrapRefusal::NotOwnSide)
+        );
+    }
+
+    #[test]
+    fn a_missing_object_or_a_regiment_off_the_planet_does_not_resolve() {
+        // FUN_00579790 → FUN_00504e60: status 0x12.
+        let mut f = fixture();
+        let target = ScrapTarget::Facility(mine(&mut f, Faction::Alliance, 7));
+        let mut production = ProductionState::new();
+        scrap(&mut f.world, &mut production, Faction::Alliance, target).unwrap();
+
+        assert_eq!(
+            check(&f.world, Faction::Alliance, target),
+            Err(ScrapRefusal::Unresolved)
+        );
+        let regiment = class(&mut f.world, 0x1000_0001, 9);
+        let aboard = f.world.troops.insert(TroopUnit {
+            class_dat_id: regiment,
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        assert_eq!(
+            check(&f.world, Faction::Alliance, ScrapTarget::Troop(aboard)),
+            Err(ScrapRefusal::Unresolved)
+        );
+        assert_eq!(ScrapRefusal::Unresolved.code(), 0x12);
+    }
+
+    #[test]
+    fn a_headquarters_object_refuses_scrap() {
+        // FUN_00526940, the 0x20 class's slot +0x5c: status 0x17.
+        let mut f = fixture();
+        let hq = class(&mut f.world, 0x2000_0001, 8);
+        let hq = f.world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: hq,
+            side: Faction::Alliance,
+        });
+        f.world.systems[f.system].defense_facilities.push(hq);
+
+        assert_eq!(
+            check(
+                &f.world,
+                Faction::Alliance,
+                ScrapTarget::Facility(FacilityRef::Defense(hq))
+            ),
+            Err(ScrapRefusal::NotAccepted)
+        );
+        assert_eq!(ScrapRefusal::NotAccepted.code(), 0x17);
+    }
+
+    #[test]
+    fn a_class_with_no_record_refunds_nothing() {
+        // FUN_004f2980: no class (+0x2c) gives 0.
+        let mut f = fixture();
+        let target = ScrapTarget::Facility(mine(&mut f, Faction::Alliance, 7));
+        f.world.buildable_classes.clear();
+        let mut production = ProductionState::new();
+
+        let done = scrap(&mut f.world, &mut production, Faction::Alliance, target).unwrap();
+
+        assert_eq!(done.refund, 0);
+    }
+}

@@ -97,7 +97,7 @@ No setter clamps; the bounds are in the callers.
 | `FUN_0052ef90` | `FUN_0052fb30` (refinery input) | `raw - 1` when `raw > 0`; the out-flag reports whether a unit was taken |
 | `FUN_0052eff0` | `FUN_005307e0` (refinery cycle end) | `refined + 1`, same two conditions as the mine |
 | `FUN_0052eff0` | `FUN_0052fb80` (construction input) | `refined - 1` when `refined > 0` |
-| `FUN_0052eff0` | `FUN_00530270` (scrap refund) | `refined + FUN_004f2980() / 2`, for types `0x14..0x16` with `+0x50` bit 2 |
+| `FUN_0052eff0` | `FUN_00530270` (scrap refund) | `refined + FUN_004f2980() / 2`, for destroyed reasons (`+0x40`) `0x14..0x16` with `+0x50` bit 2 |
 | `FUN_0052ec90` | `FUN_005323c0`, `FUN_00532520` | see below |
 
 `FUN_005323c0` and `FUN_00532520` decompile identically. Each reads the mine
@@ -129,9 +129,10 @@ side with `+0x50` bit 6, whatever its type.
 refinery proceeds without it. `FUN_0051c010(mode)` stores `mode` in
 `DAT_006b2bb4` and sets `DAT_006b90e0 = (mode == 0x1a)`; `FUN_00513960`
 returns the flag. Queued requests are retried by timer handlers
-`FUN_00577a20` (raw) and `FUN_00577d40` (refined). Scrapping an object of
-type `0x14..0x16` with `+0x50` bit 2 refunds half its refined cost
-(`FUN_00530270`, `FUN_004f2980`).
+`FUN_00577a20` (raw) and `FUN_00577d40` (refined). Scrapping a completed
+object (`+0x50` bit 2) refunds half its refined cost (`FUN_00530270`,
+`FUN_004f2980`). The test is on the destroyed reason (`+0x40`
+`0x14..0x16`, `scrap-order.md`), not the object's type.
 
 ## Day-0 maintenance survey (2026-10-08)
 
@@ -430,8 +431,10 @@ the other four are matched by the same factory-then-fire layout
 
 **Refund on destruction.** In the `0x300` handler, when the object's
 destroyed bit (`+0x50` bit 3) is set, `FUN_00530270` adds half the class
-refined cost for a completed object of type `0x14..0x16`. The test is the
-destroyed bit, not a scrap order, so it applies to any destruction.
+refined cost for a completed object. Correction (2026-10-14,
+`scrap-order.md`): `0x14..0x16` is the destroyed reason byte `+0x40`, not
+the type, so only Scrap (`0x14`), Autoscrap (`0x15`) and the queue scrap
+(`0x16`) refund.
 
 **Builds count from the order.** `FUN_0052a140` creates each product with
 `FUN_004f7d50(…, 1, 0)`: created, not completed. The object is existing
@@ -534,7 +537,8 @@ yard cycle, and idle yards neither run nor draw.
   (`manufacturing-manager.md`, "The port").
 - All three monitors read; the day-0 capture is
   `browser-alliance-day0-three-monitors.png` in the same folder.
-- Not ported: the refund on destruction (`FUN_00530270`); the over-limit
+- The refund is ported for the Scrap order (`scrap.rs`). Not ported: the
+  refund for reasons `0x15` and `0x16`; the over-limit
   lock (timer `0x382`); and the cycle-end roll's random draw. `economy.rs`
   still runs its own maintenance-shortfall cooldown.
 

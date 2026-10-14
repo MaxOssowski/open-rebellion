@@ -28,6 +28,7 @@ pub mod net_protocol;
 pub mod production_cycle;
 pub mod repair;
 pub mod research;
+pub mod scrap;
 #[doc(hidden)]
 pub mod serde_ordered;
 pub mod side_resources;

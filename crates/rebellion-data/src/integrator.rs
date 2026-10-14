@@ -49,6 +49,7 @@ use rebellion_core::missions::{
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_fleet_transit, ArrivalEvent, MovementState,
 };
+use rebellion_core::production_cycle::ProductionState;
 use rebellion_core::repair::RepairEvent;
 use rebellion_core::research::ResearchState;
 use rebellion_core::troop_transport::{RegimentArrivals, RegimentLeg, TroopTransportState};
@@ -148,6 +149,12 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
             serde_json::json!({
                 "type": "AbortMission",
                 "mission_id": mission_id,
+            })
+        }
+        AIAction::Scrap { target } => {
+            serde_json::json!({
+                "type": "Scrap",
+                "target": format!("{target:?}"),
             })
         }
         AIAction::EnqueueProduction { system, kind, cost } => {
@@ -1152,6 +1159,7 @@ impl PerceptionIntegrator {
         mfg_state: &mut ManufacturingState,
         movement_state: &mut MovementState,
         troop_transport: &mut TroopTransportState,
+        production: &mut ProductionState,
         world: &mut GameWorld,
         tick: u64,
         is_dual: bool,
@@ -1163,6 +1171,7 @@ impl PerceptionIntegrator {
             mfg_state,
             movement_state,
             troop_transport,
+            production,
             world,
             tick,
         );
@@ -1989,6 +1998,7 @@ fn apply_ai_actions_inner(
     mfg_state: &mut ManufacturingState,
     movement_state: &mut MovementState,
     troop_transport: &mut TroopTransportState,
+    production: &mut ProductionState,
     world: &mut GameWorld,
     tick: u64,
 ) -> Vec<bool> {
@@ -2036,6 +2046,9 @@ fn apply_ai_actions_inner(
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
                 true
             }
+            AIAction::Scrap { target } => ai_state.faction.is_some_and(|side| {
+                rebellion_core::scrap::scrap(world, production, side.as_faction(), *target).is_ok()
+            }),
             AIAction::MoveFleet {
                 fleet,
                 to_system,
@@ -2582,6 +2595,7 @@ mod tests {
             &mut manufacturing,
             &mut movement,
             &mut troop_transport,
+            &mut ProductionState::new(),
             &mut world,
             5,
             false,
@@ -2595,6 +2609,64 @@ mod tests {
         assert_eq!(events[0].details["to"], "First Target");
     }
 
+    #[test]
+    fn an_ai_scrap_removes_its_own_facility_refunds_and_reports_it() {
+        // The order 0x200 (FUN_0053dd20) through rebellion_core::scrap: the
+        // Empire's mine goes, with class +0x48 / 2 = 5 refined back
+        // (FUN_00530270); the Alliance's is refused and stays unreported.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Kuat");
+        let class = DatId(0x2c00_0001);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                refined_material_cost: 10,
+                ..Default::default()
+            },
+        );
+        let mut mine = |side| {
+            let key = world.production_facilities.insert(
+                rebellion_core::world::ProductionFacilityInstance {
+                    class_dat_id: class,
+                    side,
+                    is_mine: true,
+                },
+            );
+            world.systems[system].production_facilities.push(key);
+            rebellion_core::scrap::ScrapTarget::Facility(
+                rebellion_core::world::FacilityRef::Production(key),
+            )
+        };
+        let own = mine(Faction::Empire);
+        let theirs = mine(Faction::Alliance);
+        let mut production = ProductionState::new();
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+
+        integrator.apply_ai_actions(
+            &[
+                AIAction::Scrap { target: own },
+                AIAction::Scrap { target: theirs },
+            ],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut production,
+            &mut world,
+            5,
+            false,
+        );
+
+        assert_eq!(world.production_facilities.len(), 1);
+        assert_eq!(world.systems[system].production_facilities.len(), 1);
+        assert_eq!(production.stock(Faction::Empire).unwrap().refined, 5);
+        let events = integrator.finish();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, EVT_AI_ACTION);
+        assert_eq!(events[0].details["type"], "Scrap");
+    }
+
     /// Apply `actions` for the Empire AI and return the telemetry.
     fn empire_ai_events(world: &mut GameWorld, actions: &[AIAction]) -> Vec<GameEventRecord> {
         let mut integrator = PerceptionIntegrator::new(5, 0);
@@ -2605,6 +2677,7 @@ mod tests {
             &mut ManufacturingState::new(),
             &mut MovementState::new(),
             &mut TroopTransportState::default(),
+            &mut ProductionState::new(),
             world,
             5,
             false,
@@ -2662,6 +2735,7 @@ mod tests {
             &mut ManufacturingState::new(),
             &mut MovementState::new(),
             &mut TroopTransportState::default(),
+            &mut ProductionState::new(),
             &mut world,
             5,
             false,
@@ -2679,6 +2753,7 @@ mod tests {
             &mut ManufacturingState::new(),
             &mut MovementState::new(),
             &mut TroopTransportState::default(),
+            &mut ProductionState::new(),
             &mut world,
             5,
             false,
@@ -2823,6 +2898,7 @@ mod tests {
             &mut manufacturing,
             &mut movement,
             &mut troop_transport,
+            &mut ProductionState::new(),
             &mut world,
             5,
             false,
@@ -2878,6 +2954,7 @@ mod tests {
             &mut ManufacturingState::new(),
             &mut movement,
             &mut troop_transport,
+            &mut ProductionState::new(),
             &mut world,
             5,
         );

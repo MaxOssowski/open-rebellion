@@ -1324,7 +1324,7 @@ impl BuildableClass {
 }
 
 /// A facility at a system, from any of the three facility arenas.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FacilityRef {
     Defense(DefenseFacilityKey),
     Manufacturing(ManufacturingFacilityKey),
