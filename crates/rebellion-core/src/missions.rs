@@ -1004,6 +1004,23 @@ pub struct MemberTransit {
     pub arrival: u64,
 }
 
+/// A captive's escape timer `0x38a` (`ghidra/notes/captive-escape.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EscapeTimer {
+    pub character: CharacterKey,
+    /// The day of its next attempt.
+    pub due: u64,
+}
+
+/// An escaped character autorouting to safety (`FUN_004f18e0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EscapeeTransit {
+    pub character: CharacterKey,
+    pub to: SystemKey,
+    /// The day it arrives.
+    pub arrival: u64,
+}
+
 /// All active missions across the galaxy.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MissionState {
@@ -1012,6 +1029,10 @@ pub struct MissionState {
     /// Members on their way to a target. A member keeps travelling when its
     /// mission ends, as its own transit timer does in the original.
     en_route: Vec<MemberTransit>,
+    /// Every captive's armed escape timer, in arming order.
+    escape_timers: Vec<EscapeTimer>,
+    /// Escaped characters travelling to safety.
+    escapees: Vec<EscapeeTransit>,
 }
 
 impl MissionState {
@@ -1021,6 +1042,8 @@ impl MissionState {
             missions: VecDeque::new(),
             next_id: 0,
             en_route: Vec::new(),
+            escape_timers: Vec::new(),
+            escapees: Vec::new(),
         }
     }
 
@@ -1028,6 +1051,18 @@ impl MissionState {
     #[must_use]
     pub fn en_route(&self) -> &[MemberTransit] {
         &self.en_route
+    }
+
+    /// Every captive's armed escape timer, in arming order.
+    #[must_use]
+    pub fn escape_timers(&self) -> &[EscapeTimer] {
+        &self.escape_timers
+    }
+
+    /// Escaped characters travelling to safety.
+    #[must_use]
+    pub fn escapees(&self) -> &[EscapeeTransit] {
+        &self.escapees
     }
 
     /// The last arrival day among a mission's travelling members.
@@ -1436,6 +1471,11 @@ const GNPRTB_HAN_SOLO_SPEED: u16 = 3083;
 /// Shipped GNPRTB.DAT value of parameter 3083, used only when no GNPRTB
 /// table is loaded.
 const SHIPPED_HAN_SOLO_SPEED: i64 = 50;
+/// GNPRTB 2584 (`DAT_006b90ac`, shipped 100): the minimum days of the
+/// escape timer `0x38a` (`FUN_004ef750`, record `+0x54`+`0x28`).
+const GNPRTB_ESCAPE_MIN: u16 = 2584;
+/// GNPRTB 2585 (`DAT_006b9074`, shipped 1000): its random spread.
+const GNPRTB_ESCAPE_SPREAD: u16 = 2585;
 /// GNPRTB 6156..6168 (`FUN_0055bfd0`), each shipped 1: the base skill a
 /// successful member gains.
 const GNPRTB_DIPLOMACY_RAISE: u16 = 6156;
@@ -2509,43 +2549,235 @@ impl MissionSystem {
         }
     }
 
-    /// Check for captured characters escaping on their own.
+    /// Captives escaping on their own (`ghidra/notes/captive-escape.md`).
     ///
-    /// For each character held by the opposing faction, look up ESCAPETB
-    /// and roll against the escape probability. Returns one `CharacterEscaped`
-    /// effect per successful escape.
-    #[must_use]
-    pub fn check_escapes(world: &GameWorld, rolls: &[f64]) -> Vec<MissionEffect> {
-        let Some(table) = world.mission_tables.get("ESCAPETB") else {
-            return Vec::new();
-        };
-
+    /// Capture sets CanEscape, which arms timer `0x38a` for GNPRTB 2584 +
+    /// rand(0..=2585) days (`FUN_004f1a80`, `FUN_004f1ba0`, `FUN_004ef750`).
+    /// When it fires the captive rolls (`FUN_0057d330` -> event `0x317` ->
+    /// `FUN_00561990`) and the timer re-arms with a fresh draw
+    /// (`FUN_005862a0`). A hit frees the captive (`FUN_004ef570`), which
+    /// restores its home side and sets Autorouting (`FUN_004f18e0`): it leaves
+    /// a location another side holds for [`escape_destination`] and travels
+    /// there (`FUN_0054c7d0`). Escapees whose trip ends arrive first.
+    ///
+    /// Each attempt draws the roll, then the next delay; arming draws the
+    /// delay. port: the timer arms on the first advance that sees the captive,
+    /// which is the day of its capture when the caller runs missions first, and
+    /// a timer whose captive is no longer held is dropped then.
+    pub fn advance_escapes(
+        state: &mut MissionState,
+        world: &GameWorld,
+        now: u64,
+        rolls: &[f64],
+    ) -> Vec<MissionEffect> {
         let mut effects = Vec::new();
-        let mut roll_iter = rolls.iter().copied();
+        let (arrived, travelling): (Vec<_>, Vec<_>) = std::mem::take(&mut state.escapees)
+            .into_iter()
+            .partition(|transit| transit.arrival <= now);
+        state.escapees = travelling;
+        effects.extend(
+            arrived
+                .into_iter()
+                .map(|transit| MissionEffect::MemberMoved {
+                    member: MissionMember::Character(transit.character),
+                    to: Some(transit.to),
+                }),
+        );
 
-        for (char_key, character) in &world.characters {
-            if !character.is_captive {
+        let held = |key: CharacterKey| {
+            world
+                .characters
+                .get(key)
+                .is_some_and(|c| c.is_captive && !c.is_killed)
+        };
+        state.escape_timers.retain(|timer| held(timer.character));
+
+        let param = |id| world.gnprtb.value(id, world.difficulty_index);
+        let delay = |rolls: &mut crate::uprising::Rolls<'_>| {
+            crate::uprising::timer_delay(
+                param(GNPRTB_ESCAPE_MIN),
+                param(GNPRTB_ESCAPE_SPREAD),
+                rolls,
+            )
+        };
+        let empty = crate::world::MstbTable::new(Vec::new());
+        let escapetb = world.mission_tables.get("ESCAPETB").unwrap_or(&empty);
+        let mut rolls = crate::uprising::Rolls::new(rolls);
+        for (key, _) in world.characters.iter().filter(|(key, _)| held(*key)) {
+            let Some(index) = state.escape_timers.iter().position(|t| t.character == key) else {
+                let due = now + delay(&mut rolls);
+                state.escape_timers.push(EscapeTimer {
+                    character: key,
+                    due,
+                });
+                continue;
+            };
+            if state.escape_timers[index].due > now {
                 continue;
             }
-            let roll = roll_iter.next().unwrap_or(1.0); // 1.0 = no escape (safe default)
-                                                        // Use loyalty as the skill score for escape probability
-            let skill_score = character.loyalty.base.cast_signed();
-            // The original table lookup is a step function (`FUN_00595090`).
-            let escape_prob = f64::from(table.step_lookup(skill_score)) / 100.0;
-            if roll < escape_prob {
-                // Character escapes back to their home faction.
-                // is_alliance reflects original allegiance — capture tracks captor,
-                // not the character's identity.
-                let escaped_to_alliance = character.is_alliance;
-                effects.push(MissionEffect::CharacterEscaped {
-                    character: char_key,
-                    escaped_to_alliance,
+            let chance = escapetb.step_lookup(escape_input(world, key));
+            let hit = crate::uprising::Draws::chance(
+                &mut rolls,
+                i32::try_from(chance).unwrap_or(i32::MAX),
+            );
+            state.escape_timers[index].due = now + delay(&mut rolls);
+            if !hit {
+                continue;
+            }
+            state.escape_timers.remove(index);
+            let character = &world.characters[key];
+            effects.push(MissionEffect::CharacterEscaped {
+                character: key,
+                escaped_to_alliance: character.is_alliance,
+            });
+            let Some(from) = character.current_system else {
+                continue;
+            };
+            let Some(to) = escape_destination(world, key, from) else {
+                continue;
+            };
+            let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
+            // port: a character travels at the GNPRTB 1 default speed.
+            let days = crate::movement::transit_ticks_between(
+                world,
+                position(from),
+                position(to),
+                crate::movement::default_speed(world),
+            );
+            if days == 0 {
+                effects.push(MissionEffect::MemberMoved {
+                    member: MissionMember::Character(key),
+                    to: Some(to),
+                });
+            } else {
+                // port: a travelling character is off the map, as a mission
+                // member is.
+                effects.push(MissionEffect::MemberMoved {
+                    member: MissionMember::Character(key),
+                    to: None,
+                });
+                state.escapees.push(EscapeeTransit {
+                    character: key,
+                    to,
+                    arrival: now + u64::from(days),
                 });
             }
         }
-
         effects
     }
+}
+
+/// `FUN_00561990` -> `FUN_0055e7e0`: the ESCAPETB input of `captive`,
+/// `(espionage + combat) - guards - regiments`. The guards term is the
+/// integer average combat of the characters at the captive's system that
+/// are usable, of the captor's side and not themselves held (slot `+0x1d4`,
+/// Captured); the regiments term counts the captor's regiments there
+/// (`FUN_00504cc0`). A captive carries its captor's side (`FUN_004eec60`),
+/// so both terms are the captor's. Without a location both are 0.
+fn escape_input(world: &GameWorld, captive: CharacterKey) -> i32 {
+    let own = skill_of(world, captive, Skill::Espionage) + skill_of(world, captive, Skill::Combat);
+    let character = &world.characters[captive];
+    let (Some(system), Some(captor)) = (character.current_system, character.captured_by) else {
+        return own;
+    };
+    let Some(sys) = world.systems.get(system) else {
+        return own;
+    };
+    let (sum, count) = world
+        .characters
+        .iter()
+        .filter(|(_, c)| {
+            crate::uprising::usable_at(c, system)
+                && !c.is_captive
+                && crate::uprising::sides_match(c.is_alliance, c.is_empire, captor)
+        })
+        .fold((0, 0), |(sum, count), (key, _)| {
+            (sum + skill_of(world, key, Skill::Combat), count + 1)
+        });
+    let guards = if count == 0 { 0 } else { sum / count };
+    let regiments =
+        i32::try_from(crate::uprising::regiments(world, sys, captor).len()).unwrap_or(i32::MAX);
+    own - guards - regiments
+}
+
+/// Where an escaped `character` autoroutes from `from` (`FUN_0054c7d0`,
+/// `FUN_00543040`, `FUN_005545e0`), or `None` when it stays.
+///
+/// It stays when its own side holds `from` and the system stands. Otherwise
+/// it takes the first match, nearest first (`FUN_0058b060` sorts every system
+/// by `FUN_0055d860` distance), of: its side's unblockaded system
+/// (`FUN_00554e80`), a system holding its side's fleet (`FUN_00554f80`), its
+/// side's blockaded system (`FUN_005550e0`), a side-3 system (`FUN_005551e0`),
+/// and the other side's system (`FUN_005552e0`). Blockade is
+/// [`crate::blockade::BlockadeSystem`]'s rule (`+0x88` bit `0x20`).
+///
+/// port: the first two candidates, the character's container and its `+0x70`
+/// object (`FUN_00554740`, `FUN_00554ab0`), are skipped, and every candidate
+/// passes, as the move validator `FUN_005571c0` is not ported, except
+/// `from` itself, which would be no move. A fleet's
+/// system is the destination, not the fleet. hyp: side 3 is `Contested`, as
+/// in `blockade.rs`; equal distances keep the arena order (the original's
+/// `qsort` order is unspecified).
+fn escape_destination(
+    world: &GameWorld,
+    character: CharacterKey,
+    from: SystemKey,
+) -> Option<SystemKey> {
+    use crate::dat::Faction;
+    use crate::world::ControlKind;
+
+    let c = world.characters.get(character)?;
+    let side = if c.is_alliance {
+        Faction::Alliance
+    } else if c.is_empire {
+        Faction::Empire
+    } else {
+        Faction::Neutral
+    };
+    let here = world.systems.get(from)?;
+    if !here.is_destroyed && here.control.faction() == Some(side) {
+        return None;
+    }
+    let origin = (i64::from(here.x), i64::from(here.y));
+    let mut nearest: Vec<(i64, SystemKey)> = world
+        .systems
+        .iter()
+        .filter(|(key, s)| *key != from && !s.is_destroyed)
+        .map(|(key, s)| {
+            let (dx, dy) = (i64::from(s.x) - origin.0, i64::from(s.y) - origin.1);
+            (crate::movement::original_isqrt(dx * dx + dy * dy), key)
+        })
+        .collect();
+    nearest.sort_by_key(|(distance, _)| *distance);
+
+    let held_by = |sys: &crate::world::System, faction: Faction| matches!(sys.control, ControlKind::Controlled(f) | ControlKind::Uprising(f) if f == faction);
+    let blockaded = |sys: &crate::world::System| {
+        crate::blockade::BlockadeSystem::system_is_blockaded(world, sys)
+    };
+    let has_fleet = |sys: &crate::world::System| {
+        sys.fleets
+            .iter()
+            .filter_map(|&f| world.fleets.get(f))
+            .any(|fleet| crate::uprising::sides_match(fleet.is_alliance, !fleet.is_alliance, side))
+    };
+    let other = match side {
+        Faction::Alliance => Some(Faction::Empire),
+        Faction::Empire => Some(Faction::Alliance),
+        Faction::Neutral => None,
+    };
+    let rules: [&dyn Fn(&crate::world::System) -> bool; 5] = [
+        &|sys| held_by(sys, side) && !blockaded(sys),
+        &|sys| has_fleet(sys),
+        &|sys| held_by(sys, side) && blockaded(sys),
+        &|sys| sys.control == ControlKind::Contested,
+        &|sys| other.is_some_and(|other| held_by(sys, other)),
+    ];
+    rules.iter().find_map(|rule| {
+        nearest
+            .iter()
+            .find(|(_, key)| rule(&world.systems[*key]))
+            .map(|(_, key)| *key)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2908,124 +3140,373 @@ mod tests {
         );
     }
 
-    // --- Escape tests ---
+    // --- Escape tests (ghidra/notes/captive-escape.md) ---
 
-    #[test]
-    fn check_escapes_returns_escaped_when_roll_below_prob() {
-        use crate::dat::Faction;
-        use crate::world::{MstbEntry, MstbTable};
-
+    /// GNPRTB 2584/2585 at their shipped 100 and 1000.
+    fn escape_world() -> GameWorld {
         let mut world = minimal_world();
-        let _char_key = world.characters.insert(Character {
+        world.gnprtb = crate::world::GnprtbParams::uniform(&[
+            (GNPRTB_ESCAPE_MIN, 100),
+            (GNPRTB_ESCAPE_SPREAD, 1000),
+        ]);
+        world
+    }
+
+    fn held_system(world: &mut GameWorld, x: u16, holder: crate::dat::Faction) -> SystemKey {
+        let system = system_at(world, x);
+        world.systems[system].control = crate::world::ControlKind::Controlled(holder);
+        system
+    }
+
+    fn escapetb(rows: &[(i32, u32)]) -> crate::world::MstbTable {
+        crate::world::MstbTable::new(
+            rows.iter()
+                .map(|&(threshold, value)| crate::world::MstbEntry { threshold, value })
+                .collect(),
+        )
+    }
+
+    /// An Alliance character the Empire holds at `system`.
+    fn captive_at(
+        world: &mut GameWorld,
+        system: SystemKey,
+        espionage: u32,
+        combat: u32,
+    ) -> CharacterKey {
+        world.characters.insert(Character {
             name: "Captive".into(),
             is_alliance: true,
-            loyalty: skill_pair(50), // loyalty base = 50
-            captured_by: Some(Faction::Empire),
-            capture_tick: Some(10),
+            espionage: skill_pair(espionage),
+            combat: skill_pair(combat),
+            captured_by: Some(crate::dat::Faction::Empire),
             is_captive: true,
+            current_system: Some(system),
+            recruited: true,
             ..Default::default()
+        })
+    }
+
+    fn imperial_guard(world: &mut GameWorld, system: SystemKey, combat: u32) -> CharacterKey {
+        let guard = agent_at(world, system, false);
+        world.characters[guard].combat = skill_pair(combat);
+        guard
+    }
+
+    fn add_fleet(world: &mut GameWorld, system: SystemKey, is_alliance: bool) {
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance,
+            has_death_star: false,
+        });
+        world.systems[system].fleets.push(fleet);
+    }
+
+    fn timer_of(state: &MissionState, character: CharacterKey) -> Option<u64> {
+        state
+            .escape_timers
+            .iter()
+            .find(|timer| timer.character == character)
+            .map(|timer| timer.due)
+    }
+
+    #[test]
+    fn a_captive_first_tries_to_escape_after_the_gnprtb_2584_2585_delay() {
+        // FUN_004f1ba0 arms timer 0x38a from the record FUN_004ef750 fills
+        // with GNPRTB 2584 (min) and 2585 (spread); FUN_00586130 adds
+        // rand(0..=spread). Roll 0.5 draws 500: day 10 + 100 + 500.
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 100, 100);
+        world
+            .mission_tables
+            .insert("ESCAPETB".into(), escapetb(&[(0, 100)]));
+        let mut state = MissionState::new();
+
+        let effects = MissionSystem::advance_escapes(&mut state, &world, 10, &[0.5, 0.0]);
+        assert!(effects.is_empty());
+        assert_eq!(timer_of(&state, captive), Some(610));
+        assert!(MissionSystem::advance_escapes(&mut state, &world, 609, &[0.0, 0.0]).is_empty());
+        let effects = MissionSystem::advance_escapes(&mut state, &world, 610, &[0.0, 0.0]);
+        assert!(matches!(
+            effects.first(),
+            Some(MissionEffect::CharacterEscaped { character, escaped_to_alliance: true })
+                if *character == captive
+        ));
+    }
+
+    #[test]
+    fn a_missed_attempt_rearms_the_timer_with_a_fresh_delay() {
+        // FUN_005862a0: the fire (slot +0x30) runs, then the timer adds
+        // rand(0..=spread) + min again. The roll is drawn before the delay.
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 0, 0);
+        world
+            .mission_tables
+            .insert("ESCAPETB".into(), escapetb(&[(0, 50)]));
+        let mut state = MissionState::new();
+        MissionSystem::advance_escapes(&mut state, &world, 0, &[0.0]);
+        assert_eq!(timer_of(&state, captive), Some(100));
+
+        // 0.50 draws 50, not below 50 percent: a miss; 0.25 adds 250.
+        let effects = MissionSystem::advance_escapes(&mut state, &world, 100, &[0.50, 0.25]);
+        assert!(effects.is_empty());
+        assert_eq!(timer_of(&state, captive), Some(450));
+        // 0.49 draws 49, below 50 percent: the captive escapes.
+        let effects = MissionSystem::advance_escapes(&mut state, &world, 450, &[0.49, 0.0]);
+        assert!(matches!(
+            effects.first(),
+            Some(MissionEffect::CharacterEscaped { .. })
+        ));
+        assert_eq!(timer_of(&state, captive), None);
+    }
+
+    #[test]
+    fn escape_chance_steps_between_escapetb_rows_instead_of_interpolating() {
+        // FUN_0053e310 -> FUN_0053e340: the row at or below the input
+        // (FUN_00595090) applies unchanged. Input 75 sits between rows 50
+        // and 100; interpolating would give 88 percent and escape on 0.85.
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 40, 35);
+        world
+            .mission_tables
+            .insert("ESCAPETB".into(), escapetb(&[(50, 80), (100, 95)]));
+        let mut state = MissionState::new();
+        state.escape_timers.push(EscapeTimer {
+            character: captive,
+            due: 0,
         });
 
-        // ESCAPETB: loyalty 50 → 80% escape probability
-        let table = MstbTable::new(vec![
-            MstbEntry {
-                threshold: 0,
-                value: 50,
-            },
-            MstbEntry {
-                threshold: 50,
-                value: 80,
-            },
-            MstbEntry {
-                threshold: 100,
-                value: 95,
-            },
-        ]);
-        world.mission_tables.insert("ESCAPETB".to_string(), table);
+        assert!(MissionSystem::advance_escapes(&mut state, &world, 0, &[0.85, 0.0]).is_empty());
+        state.escape_timers[0].due = 0;
+        assert!(MissionSystem::advance_escapes(&mut state, &world, 0, &[0.80, 0.0]).is_empty());
+        state.escape_timers[0].due = 0;
+        assert_eq!(
+            MissionSystem::advance_escapes(&mut state, &world, 0, &[0.79, 0.0]).len(),
+            1
+        );
+    }
 
-        // Roll 0.5 < 0.80 → escapes
-        let effects = MissionSystem::check_escapes(&world, &[0.5]);
-        assert_eq!(effects.len(), 1);
-        match &effects[0] {
-            MissionEffect::CharacterEscaped {
-                escaped_to_alliance,
-                ..
-            } => {
-                // Captured by Empire → escapes TO Alliance
-                assert!(*escaped_to_alliance);
-            }
-            other => panic!("expected CharacterEscaped, got {other:?}"),
+    #[test]
+    fn escape_input_subtracts_the_captors_average_guard_combat_and_regiments() {
+        // FUN_00561990 -> FUN_0055e7e0: (espionage +0x1e0 + combat +0x1f0)
+        // - avg combat of the captor's usable characters there that are not
+        // held (slot +0x1d4) - the captor's regiments there (FUN_00504cc0).
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 40, 30);
+        imperial_guard(&mut world, prison, 20);
+        imperial_guard(&mut world, prison, 31);
+        // Not guards: another prisoner, a free Rebel, and a guard on a mission.
+        captive_at(&mut world, prison, 0, 90);
+        let rebel = agent_at(&mut world, prison, true);
+        world.characters[rebel].combat = skill_pair(90);
+        let busy = imperial_guard(&mut world, prison, 90);
+        world.characters[busy].on_mission = true;
+        for alliance in [false, false, true] {
+            let troop = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: crate::ids::DatId::new(0x1400_0000),
+                is_alliance: alliance,
+                regiment_strength: 1,
+            });
+            world.systems[prison].ground_units.push(troop);
+        }
+
+        // 70 - (20 + 31) / 2 - 2 = 70 - 25 - 2.
+        assert_eq!(escape_input(&world, captive), 43);
+    }
+
+    #[test]
+    fn escape_input_is_the_captives_own_skills_without_guards() {
+        // FUN_00561990: with no guard the average stays 0 (count 0).
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 40, 30);
+        assert_eq!(escape_input(&world, captive), 70);
+    }
+
+    #[test]
+    fn an_escapee_heads_for_the_nearest_unblockaded_system_of_its_side() {
+        // FUN_004f18e0 sets Autorouting; FUN_0054c7d0 leaves a location
+        // another side holds; FUN_005545e0 tries FUN_00554e80 (own side, no
+        // blockade bit) before FUN_005550e0 (own side, blockaded), each in
+        // the distance order of FUN_0058b060.
+        use crate::dat::Faction;
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, Faction::Empire);
+        let blockaded = held_system(&mut world, 30, Faction::Alliance);
+        add_fleet(&mut world, blockaded, false);
+        let near = held_system(&mut world, 80, Faction::Alliance);
+        let far = held_system(&mut world, 200, Faction::Alliance);
+        let captive = captive_at(&mut world, prison, 0, 0);
+
+        assert_eq!(escape_destination(&world, captive, prison), Some(near));
+        // A farther clear system still beats the nearer blockaded one.
+        world.systems[near].control = crate::world::ControlKind::Controlled(Faction::Empire);
+        assert_eq!(escape_destination(&world, captive, prison), Some(far));
+        // With no clear system left, the blockaded one is next.
+        world.systems[far].control = crate::world::ControlKind::Controlled(Faction::Empire);
+        assert_eq!(escape_destination(&world, captive, prison), Some(blockaded));
+    }
+
+    #[test]
+    fn an_escapee_without_a_friendly_system_falls_back_to_contested_then_enemy() {
+        // FUN_005551e0 (side bits 0xc0) before FUN_005552e0 (the other
+        // side). hyp: side 3 is ControlKind::Contested, as in blockade.rs.
+        use crate::dat::Faction;
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, Faction::Empire);
+        let contested = system_at(&mut world, 90);
+        world.systems[contested].control = crate::world::ControlKind::Contested;
+        let captive = captive_at(&mut world, prison, 0, 0);
+
+        let enemy = held_system(&mut world, 120, Faction::Empire);
+        assert_eq!(escape_destination(&world, captive, prison), Some(contested));
+        world.systems[contested].control = crate::world::ControlKind::Uncontrolled;
+        assert_eq!(escape_destination(&world, captive, prison), Some(enemy));
+        // port: the prison itself is never a destination.
+        world.systems[enemy].control = crate::world::ControlKind::Uncontrolled;
+        assert_eq!(escape_destination(&world, captive, prison), None);
+    }
+
+    #[test]
+    fn an_escapee_held_where_its_own_side_rules_stays_put() {
+        // FUN_0054c7d0: a location of the character's side clears
+        // Autorouting (FUN_004f78e0(0)) instead of routing.
+        use crate::dat::Faction;
+        let mut world = escape_world();
+        let home = held_system(&mut world, 0, Faction::Alliance);
+        held_system(&mut world, 50, Faction::Alliance);
+        let captive = captive_at(&mut world, home, 0, 0);
+        assert_eq!(escape_destination(&world, captive, home), None);
+    }
+
+    #[test]
+    fn an_escapee_leaves_the_map_and_arrives_after_its_transit_days() {
+        // build-delivery.md, Travel: FUN_0055d8c0 gives isqrt(100^2) / 5 *
+        // 100 / 100 = 20 days at the GNPRTB 1 default speed.
+        use crate::dat::Faction;
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, Faction::Empire);
+        let haven = held_system(&mut world, 100, Faction::Alliance);
+        let captive = captive_at(&mut world, prison, 0, 0);
+        world
+            .mission_tables
+            .insert("ESCAPETB".into(), escapetb(&[(0, 100)]));
+        let mut state = MissionState::new();
+        state.escape_timers.push(EscapeTimer {
+            character: captive,
+            due: 5,
+        });
+
+        let member = MissionMember::Character(captive);
+        let effects = MissionSystem::advance_escapes(&mut state, &world, 5, &[0.0, 0.0]);
+        assert_eq!(effects[1], MissionEffect::MemberMoved { member, to: None });
+        assert!(MissionSystem::advance_escapes(&mut state, &world, 24, &[]).is_empty());
+        assert_eq!(
+            MissionSystem::advance_escapes(&mut state, &world, 25, &[]),
+            vec![MissionEffect::MemberMoved {
+                member,
+                to: Some(haven)
+            }]
+        );
+    }
+
+    #[test]
+    fn escape_distance_is_the_isqrt_of_the_squared_coordinate_offsets() {
+        // FUN_0058b060 ranks systems by FUN_0055d860: isqrt(dx^2 + dy^2).
+        // Each case puts a farther system first in the arena.
+        use crate::dat::Faction;
+        let cases = [
+            // (prison, farther, nearer)
+            ((100, 0), (30, 0), (150, 0)),
+            ((0, 100), (0, 30), (0, 150)),
+            ((0, 0), (0, 50), (30, 0)),
+        ];
+        for (prison_at, farther_at, nearer_at) in cases {
+            let mut world = escape_world();
+            let mut place = |(x, y): (u16, u16), holder| {
+                let system = held_system(&mut world, x, holder);
+                world.systems[system].y = y;
+                system
+            };
+            let prison = place(prison_at, Faction::Empire);
+            place(farther_at, Faction::Alliance);
+            let nearer = place(nearer_at, Faction::Alliance);
+            let captive = captive_at(&mut world, prison, 0, 0);
+            assert_eq!(escape_destination(&world, captive, prison), Some(nearer));
         }
     }
 
     #[test]
-    fn escape_chance_steps_between_table_rows_instead_of_interpolating() {
+    fn an_imperial_escapee_with_no_imperial_system_joins_an_imperial_fleets_system() {
+        // FUN_00554f80: the nearest system holding a fleet of the
+        // character's own side (FUN_004ffef0(system, 3, side)).
         use crate::dat::Faction;
-        use crate::world::{MstbEntry, MstbTable};
-
-        // FUN_00595090: the row with the largest threshold at or below the
-        // score applies unchanged until the next row is reached.
-        let mut world = minimal_world();
-        world.characters.insert(Character {
-            name: "Captive".into(),
-            is_alliance: true,
-            loyalty: skill_pair(75), // halfway between the 50 and 100 rows
-            captured_by: Some(Faction::Empire),
-            capture_tick: Some(10),
-            is_captive: true,
-            ..Default::default()
-        });
-        let table = MstbTable::new(vec![
-            MstbEntry {
-                threshold: 50,
-                value: 80,
-            },
-            MstbEntry {
-                threshold: 100,
-                value: 95,
-            },
-        ]);
-        world.mission_tables.insert("ESCAPETB".to_string(), table);
-
-        // The 50 row gives 80%; interpolation would give 88% and escape on 0.85.
-        assert!(MissionSystem::check_escapes(&world, &[0.85]).is_empty());
-        // A roll equal to the chance does not escape.
-        assert!(MissionSystem::check_escapes(&world, &[0.80]).is_empty());
-        assert_eq!(MissionSystem::check_escapes(&world, &[0.79]).len(), 1);
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, Faction::Alliance);
+        let rebel_fleet = system_at(&mut world, 20);
+        add_fleet(&mut world, rebel_fleet, true);
+        let imperial_fleet = system_at(&mut world, 60);
+        add_fleet(&mut world, imperial_fleet, false);
+        let captive = imperial_guard(&mut world, prison, 0);
+        world.characters[captive].is_captive = true;
+        world.characters[captive].captured_by = Some(Faction::Alliance);
+        assert_eq!(
+            escape_destination(&world, captive, prison),
+            Some(imperial_fleet)
+        );
     }
 
     #[test]
-    fn check_escapes_skips_non_captive() {
-        use crate::world::{MstbEntry, MstbTable};
-
-        let mut world = minimal_world();
-        world.characters.insert(Character {
-            name: "Free".into(),
-            is_alliance: true,
-            loyalty: skill_pair(90),
-            // is_captive defaults to false
-            ..Default::default()
-        });
-
-        let table = MstbTable::new(vec![
-            MstbEntry {
-                threshold: 0,
-                value: 100,
-            }, // would always escape if checked
-        ]);
-        world.mission_tables.insert("ESCAPETB".to_string(), table);
-
-        // Roll that would succeed — but character is not captive
-        let effects = MissionSystem::check_escapes(&world, &[0.0]);
-        assert!(effects.is_empty());
+    fn a_blockaded_system_counts_only_when_the_escapees_side_holds_it() {
+        // FUN_005550e0 needs the character's side and the blockade bit; a
+        // blockaded contested system waits for FUN_005551e0, nearest first.
+        use crate::dat::Faction;
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, Faction::Empire);
+        let contested = system_at(&mut world, 40);
+        world.systems[contested].control = crate::world::ControlKind::Contested;
+        let blockaded = system_at(&mut world, 80);
+        world.systems[blockaded].control = crate::world::ControlKind::Contested;
+        add_fleet(&mut world, blockaded, false);
+        let captive = captive_at(&mut world, prison, 0, 0);
+        assert_eq!(escape_destination(&world, captive, prison), Some(contested));
     }
 
     #[test]
-    fn check_escapes_returns_empty_without_escapetb() {
-        let world = minimal_world();
-        // No ESCAPETB in mission_tables
-        let effects = MissionSystem::check_escapes(&world, &[0.0, 0.0, 0.0]);
-        assert!(effects.is_empty());
+    fn a_killed_captive_has_no_escape_timer() {
+        // A destroyed character (+0x50 bit 3) is gone; the port keeps the
+        // record but never arms it.
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 0, 0);
+        world.characters[captive].is_killed = true;
+        let mut state = MissionState::new();
+        MissionSystem::advance_escapes(&mut state, &world, 0, &[0.0]);
+        assert_eq!(timer_of(&state, captive), None);
+    }
+
+    #[test]
+    fn a_captive_freed_another_way_loses_its_escape_timer() {
+        // A rescue or uprising release clears Captured, which drops CanEscape
+        // and changes the timer record, so timer 0x38a is deleted unfired
+        // (FUN_005862a0 compares the record counter).
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 0, 0);
+        let mut state = MissionState::new();
+        MissionSystem::advance_escapes(&mut state, &world, 0, &[0.0]);
+        assert!(timer_of(&state, captive).is_some());
+
+        world.characters[captive].is_captive = false;
+        world.characters[captive].captured_by = None;
+        MissionSystem::advance_escapes(&mut state, &world, 1, &[]);
+        assert_eq!(timer_of(&state, captive), None);
     }
 
     #[test]

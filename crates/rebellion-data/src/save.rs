@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 34;
+pub const SAVE_VERSION: u32 = 35;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1519,6 +1519,58 @@ mod tests {
         assert_eq!(loaded_unit.skills, [1, 2, 3, 4, 5, 6, 7, 8]);
         assert!(loaded_unit.on_mission);
         assert_eq!(loaded.world.mission_records, state.world.mission_records);
+    }
+
+    #[test]
+    fn a_round_trip_keeps_escape_timers_and_escapees_on_the_road() {
+        // v35: timer 0x38a and an escapee's trip (ghidra/notes/captive-escape.md).
+        use rebellion_core::dat::Faction;
+        use rebellion_core::missions::MissionSystem;
+        use rebellion_core::world::{Character, ControlKind, MstbEntry, MstbTable};
+        let saves_dir = tmp_dir("v35_escape_round_trip");
+        let mut state = minimal_save_state();
+        let prison = state.world.systems.keys().next().unwrap();
+        state.world.systems[prison].control = ControlKind::Controlled(Faction::Empire);
+        let mut haven = state.world.systems[prison].clone();
+        haven.x += 100;
+        haven.control = ControlKind::Controlled(Faction::Alliance);
+        state.world.systems.insert(haven);
+        state.world.mission_tables.insert(
+            "ESCAPETB".into(),
+            MstbTable::new(vec![MstbEntry {
+                threshold: 0,
+                value: 50,
+            }]),
+        );
+        for _ in 0..2 {
+            state.world.characters.insert(Character {
+                is_alliance: true,
+                is_captive: true,
+                captured_by: Some(Faction::Empire),
+                current_system: Some(prison),
+                ..Default::default()
+            });
+        }
+        // Arm both timers, then let only the first escape.
+        MissionSystem::advance_escapes(&mut state.missions, &state.world, 0, &[0.0, 0.9]);
+        let effects = MissionSystem::advance_escapes(
+            &mut state.missions,
+            &state.world,
+            1,
+            &[0.0, 0.0, 0.9, 0.0],
+        );
+        assert!(!effects.is_empty());
+        assert_eq!(state.missions.escape_timers().len(), 1);
+        assert_eq!(state.missions.escapees().len(), 1);
+        save_slot(&saves_dir, 0, "V35 Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(
+            loaded.missions.escape_timers(),
+            state.missions.escape_timers()
+        );
+        assert_eq!(loaded.missions.escapees(), state.missions.escapees());
     }
 
     #[test]

@@ -2338,12 +2338,20 @@ Some(RailAudience::side(*faction_is_alliance)),
             }
 
             // ── Character escapes ────────────────────────────────────────────
-            let escape_rolls: Vec<f64> = (0..world.characters.len())
+            // Each captive draws at most an attempt and its next delay.
+            let escape_rolls: Vec<f64> = (0..2 * world.characters.len())
                 .map(|_| sim_rng.gen::<f64>())
                 .collect();
-            let escape_effects = MissionSystem::check_escapes(&world, &escape_rolls);
+            let escape_effects = MissionSystem::advance_escapes(
+                &mut mission_state,
+                &world,
+                current_tick,
+                &escape_rolls,
+            );
             for effect in &escape_effects {
-                if let MissionEffect::CharacterEscaped {
+                if let MissionEffect::MemberMoved { member, to } = effect {
+                    rebellion_core::missions::move_member(&mut world, *member, *to);
+                } else if let MissionEffect::CharacterEscaped {
                     character,
                     escaped_to_alliance,
                 } = effect

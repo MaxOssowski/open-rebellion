@@ -1016,10 +1016,13 @@ impl PerceptionIntegrator {
         }
     }
 
-    /// Apply escape effects: character faction flip + fleet removal + telemetry.
+    /// Apply escape effects in order: the escapee's home side, fleet removal
+    /// and telemetry, and its moves to and from the road.
     pub fn apply_escape_effects(&mut self, world: &mut GameWorld, effects: &[MissionEffect]) {
         for effect in effects {
-            if let MissionEffect::CharacterEscaped {
+            if let MissionEffect::MemberMoved { member, to } = effect {
+                rebellion_core::missions::move_member(world, *member, *to);
+            } else if let MissionEffect::CharacterEscaped {
                 character,
                 escaped_to_alliance,
             } = effect
@@ -2180,6 +2183,62 @@ mod tests {
         );
         assert_eq!(records[0].details["destination"], "Naboo");
         assert_eq!(records[0].details["origin"], "Kuat");
+    }
+
+    #[test]
+    fn an_escape_frees_the_captive_takes_it_off_the_map_and_lands_it_on_arrival() {
+        // FUN_004ef570 frees the captive; its trip starts and ends as moves
+        // (ghidra/notes/captive-escape.md).
+        use rebellion_core::missions::MissionMember;
+        let mut world = GameWorld::default();
+        let prison = add_system(&mut world, "Kessel");
+        let haven = add_system(&mut world, "Yavin");
+        let captive = world.characters.insert(rebellion_core::world::Character {
+            name: "Leia".into(),
+            is_alliance: true,
+            is_captive: true,
+            captured_by: Some(Faction::Empire),
+            current_system: Some(prison),
+            ..Default::default()
+        });
+        let crew = world
+            .characters
+            .insert(rebellion_core::world::Character::default());
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: prison,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![captive, crew],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        let member = MissionMember::Character(captive);
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+
+        integrator.apply_escape_effects(
+            &mut world,
+            &[
+                MissionEffect::CharacterEscaped {
+                    character: captive,
+                    escaped_to_alliance: true,
+                },
+                MissionEffect::MemberMoved { member, to: None },
+            ],
+        );
+        let c = &world.characters[captive];
+        assert!(!c.is_captive && c.captured_by.is_none() && c.is_alliance && !c.is_empire);
+        assert_eq!(c.current_system, None);
+        assert_eq!(world.fleets[fleet].characters, [crew]);
+
+        integrator.apply_escape_effects(
+            &mut world,
+            &[MissionEffect::MemberMoved {
+                member,
+                to: Some(haven),
+            }],
+        );
+        assert_eq!(world.characters[captive].current_system, Some(haven));
+        assert_eq!(integrator.finish()[0].event_type, EVT_ESCAPE);
     }
 
     #[test]

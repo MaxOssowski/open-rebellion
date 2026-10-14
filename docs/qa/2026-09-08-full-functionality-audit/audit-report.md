@@ -1604,7 +1604,15 @@ cross-runtime proof remain open
   The freed character then autoroutes from where it was held to the
   nearest unblockaded system of its own side (falling back to a friendly
   fleet, a blockaded friendly system, a neutral one, then an enemy one).
-  Not ported yet.
+- Fix (2026-10-14): `MissionSystem::advance_escapes` ports that rule and
+  replaces the loyalty roll (save v35). 16 tests cover the timer, the
+  ESCAPETB step, the input terms, the destination order and distance, and
+  the integrator's trip; scoped `cargo mutants` catch all 63 viable mutants.
+  Five 5000-day dual-AI playtests (seeds 1 to 5) record 22 captures and 22
+  escapes. The seed-42 golden moves for this cause and the save version:
+  `v1:18b0d4ae14e00774` -> `v1:501c8c959ff47345`. The escape bullet above is
+  closed; the container and `+0x70` candidates and the move validator stay
+  open. Evidence: `evidence/2026-10-14-captive-escape/README.md`.
 - Acceptance: Detection, escape, and effects follow their decompiles with
   failing-without tests; mission members become a roster (with F-019).
 

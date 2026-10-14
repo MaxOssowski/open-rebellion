@@ -197,7 +197,7 @@ run_simulation_tick():
   3. CombatSystem::resolve_*       → integrator.apply_space_combat() / apply_ground_combat()
   4. FogSystem::advance            → integrator.emit_fog_reveals()
   5. MissionSystem::advance        → integrator.apply_mission_result()
-  5b. check_escapes()              → integrator.apply_escape_effects()
+  5b. advance_escapes()            → integrator.apply_escape_effects()
   6. EventSystem::advance          → integrator.apply_fired_events()
   7. AISystem::advance             → integrator.apply_ai_actions()
   8. BlockadeSystem::advance       → integrator.apply_blockade_events()

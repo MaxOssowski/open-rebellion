@@ -566,8 +566,10 @@ pub fn run_simulation_tick(
     }
 
     // ── 5b. Character escapes ────────────────────────────────────────────
-    let escape_rolls = take_rolls(world.characters.len());
-    let escape_effects = MissionSystem::check_escapes(world, &escape_rolls);
+    // Each captive draws at most an attempt and its next delay.
+    let escape_rolls = take_rolls(2 * world.characters.len());
+    let escape_effects =
+        MissionSystem::advance_escapes(&mut states.missions, world, current_tick, &escape_rolls);
     integrator.apply_escape_effects(world, &escape_effects);
 
     // ── 6. Events ────────────────────────────────────────────────────────

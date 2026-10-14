@@ -107,17 +107,20 @@ else:                     side := home
 `personnel-finder.md` had it. A captured Alliance character carries the
 Empire side, and the reverse, until it escapes or is freed.
 
-## Port gap (2026-10-14)
+## Port (2026-10-14)
 
-`MissionSystem::check_escapes` (`missions.rs`) rolls every captive every call
-with loyalty as the ESCAPETB input. The original:
+`MissionSystem::advance_escapes` (`missions.rs`) replaces `check_escapes`,
+which rolled every captive every day on loyalty. It keeps timer `0x38a` per
+captive in `MissionState` (save v35), rolls ESCAPETB on `escape_input`, and
+sends the escapee to `escape_destination` at the GNPRTB 1 default speed.
+Port differences, tagged in the code:
 
-- rolls on timer `0x38a`, GNPRTB 2584 + rand(0..=2585) after capture and
-  between attempts;
-- uses espionage + combat minus the captor's guard combat average and
-  usable regiment count at the captive's location;
-- frees through state `+0x98` := 1, which clears Captured and restores the
-  home side.
+- the timer arms on the first advance that sees the captive (the capture
+  day when missions run first);
+- the container and `+0x70` candidates are skipped, the move validator is
+  not ported, and the prison itself is never a destination;
+- a fleet's system is the destination, not the fleet;
+- equal distances keep the arena order.
 
 ## Where an escaped character goes
 

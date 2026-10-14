@@ -112,7 +112,7 @@ See `agent_docs/simulation.md` for full API reference on all 15 systems.
 - **Han Solo speed bonus** (`movement.rs`): `hyperdrive_modifier` on Character, consulted by `fleet_ticks_per_hop()`
 - **Betrayal system** (`betrayal.rs`): loyalty threshold via UPRIS1TB, `is_unable_to_betray` immunity, 50-tick cooldown
 - **Decoy system** (`missions.rs`): FDECOYTB consultation during mission resolution
-- **Escape system** (`missions.rs`): ESCAPETB per-tick check for captive characters, `check_escapes()` in main loop
+- **Escape system** (`missions.rs`): timer `0x38a` per captive (GNPRTB 2584 + rand(0..=2585) days), an ESCAPETB roll on espionage + combat minus the captor's guards and regiments, and autorouting to the nearest safe system, `advance_escapes()` (`ghidra/notes/captive-escape.md`)
 - **Mission state flags**: `on_mission`, `on_hidden_mission`, `on_mandatory_mission` tracked on Character; `dispatch_guarded()` prevents double-dispatch
 - **6 new EventConditions** + **6 new EventActions** for story event mechanics
 - **15 Ghidra RE event ID constants** (0x12c–0x370)

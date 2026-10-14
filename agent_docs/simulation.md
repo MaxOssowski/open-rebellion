@@ -66,7 +66,7 @@ Per-system detail docs: `agent_docs/systems/{combat,blockade,uprising,death-star
 | Autoscrap | (no world effect) |
 
 Additional per-tick effects (not mission-driven):
-- `CharacterEscaped` (from `check_escapes()`) → restore home faction, clear captivity
+- `CharacterEscaped` (from `advance_escapes()`) → restore home faction, clear captivity; the escapee's trip follows as `MemberMoved` effects
 - `CharacterBusy` → set `on_mission = true`
 - `CharacterAvailable` → clear `on_mission`, `on_hidden_mission`
 - `DecoyTriggered` → log message, no world mutation
@@ -84,7 +84,7 @@ run_simulation_tick():
   3. combat triggers → CombatSystem::resolve_*()       → integrator.apply_space_combat() / apply_ground_combat()
   4. reveals         = FogSystem::advance()             → integrator.emit_fog_reveals()
   5. results         = MissionSystem::advance()         → integrator.apply_mission_result()
-  5b. escapes        = MissionSystem::check_escapes()   → integrator.apply_escape_effects()
+  5b. escapes        = MissionSystem::advance_escapes() → integrator.apply_escape_effects()
   6. fired_events    = EventSystem::advance()           → integrator.apply_fired_events()
   7. ai_actions      = AISystem::advance()              → integrator.apply_ai_actions()
   8. blockade        = BlockadeSystem::advance()        → integrator.apply_blockade_events()

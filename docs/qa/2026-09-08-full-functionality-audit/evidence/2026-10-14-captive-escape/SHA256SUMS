@@ -1,0 +1,10 @@
+2d3b7ecb7d6438f72de083e88e08db89f2b642ca80fc1caeaaa43b3e964ceef4  web/open-rebellion.wasm
+2de177d821fc814f574ab42164221ee4f85e4d9dd609d0ef41ec404874575676  web/data/runtime.orpk
+6951edc2bb33f7a43387bd832167378740deba78356f0e7fa1b11b47a05fa181  crates/rebellion-data/tests/fixtures/replay_seed42_v1.json
+c5db9f346a54c03eb65414a521247268b626283be64d24dc4fd17410c7c0c504  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-captive-escape/browser-console.log
+1c3c551e41181cf9898dd30cccc1ffdb669ce84f4549cd457af4c8f2057928d5  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-captive-escape/browser-network.json
+0a9e2c8b340c2aed7f4ade1faacbdae830fc31429035f430c165ce751416eaf4  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-captive-escape/browser-replay.png
+93c5d0df56c14b3e5c98a5eb36d2c3dee6a2ae45e2802318a9083cc0c8da185a  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-captive-escape/browser-report.json
+4c219196e223b34fdf2de07ff95c9f8bd2d5d01dcdc6337e945737de2316269c  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-captive-escape/native-report.json
+f776ef5b2921e539c32e67fce29ac321c7fad3d4e7a315bdb5c0493956e06d9d  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-captive-escape/cdp-replay.mjs
+b9d5d94d1ce6f44065b710d6ec86aa4e0d4ee808aa9a5e540c49bf95a297ebf9  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-captive-escape/playtest-captures-escapes.jsonl

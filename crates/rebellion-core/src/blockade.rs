@@ -429,7 +429,7 @@ impl BlockadeSystem {
     /// port: presence counts fleets only, because fighter squadrons exist
     /// only inside fleets, and every fleet is active. hyp: `Contested` is the
     /// original's side 3, and an `Uprising` system keeps its holder's side.
-    fn system_is_blockaded(world: &GameWorld, sys: &crate::world::System) -> bool {
+    pub(crate) fn system_is_blockaded(world: &GameWorld, sys: &crate::world::System) -> bool {
         use crate::dat::Faction;
 
         let (alliance, empire) = sys

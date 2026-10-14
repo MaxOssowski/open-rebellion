@@ -200,13 +200,13 @@ impl UprisingState {
 // ---------------------------------------------------------------------------
 
 /// Caller-supplied `[0, 1)` rolls consumed in order.
-struct Rolls<'a> {
+pub(crate) struct Rolls<'a> {
     rolls: &'a [f64],
     next: usize,
 }
 
 impl<'a> Rolls<'a> {
-    fn new(rolls: &'a [f64]) -> Self {
+    pub(crate) fn new(rolls: &'a [f64]) -> Self {
         Self { rolls, next: 0 }
     }
 
@@ -424,7 +424,7 @@ impl UprisingSystem {
 }
 
 /// `FUN_00586130`: `min + rand(0..=spread)`, at least one tick.
-fn timer_delay(min: i32, spread: i32, rolls: &mut Rolls<'_>) -> u64 {
+pub(crate) fn timer_delay(min: i32, spread: i32, rolls: &mut Rolls<'_>) -> u64 {
     let delay = min + rolls.draw(spread.max(0));
     u64::try_from(delay.max(1)).unwrap_or(1)
 }
@@ -455,7 +455,7 @@ pub(crate) fn support_points(sys: &System, side: Faction) -> i32 {
 }
 
 /// The regiments of `side` on the ground at `sys`.
-fn regiments(world: &GameWorld, sys: &System, side: Faction) -> Vec<TroopKey> {
+pub(crate) fn regiments(world: &GameWorld, sys: &System, side: Faction) -> Vec<TroopKey> {
     sys.ground_units
         .iter()
         .copied()
@@ -719,7 +719,7 @@ fn apply_code(
 /// mission) are excluded. Mode 1 keeps `+0x50` bit 0, Usable, which
 /// `0x004f7b80` sets only for an object that exists (created, not destroyed)
 /// and is complete and not en route.
-fn usable_at(c: &Character, system: SystemKey) -> bool {
+pub(crate) fn usable_at(c: &Character, system: SystemKey) -> bool {
     c.current_system == Some(system)
         && c.current_fleet.is_none()
         && !c.on_mission
@@ -727,7 +727,7 @@ fn usable_at(c: &Character, system: SystemKey) -> bool {
         && !c.is_killed
 }
 
-fn sides_match(is_alliance: bool, is_empire: bool, side: Faction) -> bool {
+pub(crate) fn sides_match(is_alliance: bool, is_empire: bool, side: Faction) -> bool {
     match side {
         Faction::Alliance => is_alliance,
         Faction::Empire => is_empire,

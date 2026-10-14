@@ -1,0 +1,2 @@
+[log] Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.
+[info] [assets] render_profile=original-parity

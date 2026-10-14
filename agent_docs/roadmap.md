@@ -121,7 +121,7 @@ Delivered:
 - Save format v4 with mod metadata + FNV-1a hash, migration framework
 - ModRuntime: discovery, enable/disable, structured errors, config persistence
 - Mod Manager egui panel (discover, toggle, reload)
-- ESCAPETB per-tick escape check wired into main loop
+- Captive escape follows timer `0x38a`, the ESCAPETB guard and regiment input, and autorouting (2026-10-14, `ghidra/notes/captive-escape.md`)
 
 ## Release: historical packaging tranche delivered
 *Release packaging work by Knesset Hokhmah (v0.7.0); release acceptance remains open*
