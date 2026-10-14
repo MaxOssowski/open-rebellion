@@ -49,6 +49,8 @@ const fixturePlugin = `    <script>
                             (window.__openRebellionInterfaceQuadrants ||= []).push(message);
                         } else if (message.status === "production") {
                             window.__openRebellionInterfaceProduction = message;
+                        } else if (message.status === "mission-flow") {
+                            window.__openRebellionInterfaceMissionFlow = message;
                         } else if (message.status === "fleet-finder") {
                             (window.__openRebellionInterfaceFleetFinders ||= []).push(message);
                         } else {

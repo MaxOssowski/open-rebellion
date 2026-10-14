@@ -1,0 +1,16 @@
+fbe9c8410db83d5df73c3d5b2ef0b02c70ed4a201be8c93b596d4446a62a68c5  .artifacts/interface-parity/site/open-rebellion-test.wasm
+2de177d821fc814f574ab42164221ee4f85e4d9dd609d0ef41ec404874575676  .artifacts/interface-parity/site/data/runtime.orpk
+22dc10bcb2c6274445da0642726dae682c8ed312471850f1df6e31f4ee57c2f2  web/open-rebellion.wasm
+474cf00eebcbe2f2411e4b6b8380007da61c7e0b9160541bccbfa50d37e61c7c  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/rescue-flow.py
+9501de441ab0ae912c0107ba3cb807f1ee93b62adcb5c26e2a9c441dafef797f  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/alliance/1-start.png
+d8f46f52e4be7bc31d874c72cece60c00105481f69c0b011c500528a13516073  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/alliance/2-menu.png
+3956f01c050de89a303be8c84a62a01fc12b72dc58937ae57c03e15fdf3cbb19  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/alliance/3-targeting.png
+8487842a755465ff4ca806d654c94253aff48ed109b802f8180b0d698cd8a486  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/alliance/4-dialog.png
+6d7cde5143e116decf444259d1abdbf26f46375748322af4e526ea7b3cfc98b8  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/alliance/5-after-begin.png
+ba8bc9748c96d6d413f4ce03cee698df6c0e22b62408093067d50e31d866a9f1  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/empire/1-start.png
+09c545c59c17bb2ff8047d0286f87478fcf9bf56b654242dcdbe462f7ffec920  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/empire/2-menu.png
+6a2f716aba51d3291f2d3d51363b3408f98d843daf6a963fd3a5df4da011a54f  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/empire/3-targeting.png
+21abdded7160b634f552f92bc4fcbdf68ea61d1570dff10b359a2d693e551815  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/empire/4-dialog.png
+5bfe6c141c2dbfdfb6520562e63f82853d63a9fb4bce7ab315e1988570bcfd38  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/empire/5-after-begin.png
+9916edfb46514898070db6c9987d2600a33fd71c93876ec69d2bbebd6b67882c  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/alliance/result.json
+02a5ba07e920a98165a652a6e49261006b7951bed9f78052d0767d3d06d4faeb  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/empire/result.json

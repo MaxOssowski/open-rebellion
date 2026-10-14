@@ -41,7 +41,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 57;
+const SCENARIO_COUNT: u8 = 58;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -119,6 +119,10 @@ pub enum Scenario {
     /// One message of each pictured report class waits in the Mission
     /// category (`message_pictures`).
     EventMessages = 56,
+    /// An agent free at the primary system and a prisoner of the player's
+    /// side alone at the secondary, enemy system, each system's Defenses
+    /// window open: a Mission released on the prisoner offers Rescue.
+    RescueTargeting = 57,
 }
 
 impl Scenario {
@@ -181,6 +185,7 @@ impl Scenario {
             54 => Self::BuildSelection,
             55 => Self::StoryMessages,
             56 => Self::EventMessages,
+            57 => Self::RescueTargeting,
             _ => return None,
         })
     }
@@ -204,6 +209,7 @@ impl Scenario {
     /// The scenarios whose gate opens the object pop-up menu.
     fn reports_object_menu(self) -> bool {
         self == Self::MissionTargeting
+            || self == Self::RescueTargeting
             || self == Self::BuildSelection
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
@@ -354,7 +360,10 @@ pub fn apply(
             request.scenario,
             Scenario::Mission | Scenario::ActivePersonnel
         );
-        if request.scenario == Scenario::MissionTargeting {
+        if matches!(
+            request.scenario,
+            Scenario::MissionTargeting | Scenario::RescueTargeting
+        ) {
             // MissionState::mission_order_enabled: a free recruited member.
             character.recruited = true;
             character.is_captive = false;
@@ -473,6 +482,9 @@ pub fn apply(
         map.selected_system = Some(primary);
         sectors.open_for_system(world, primary, request.faction);
     }
+    if request.scenario == Scenario::RescueTargeting {
+        place_prisoner(request, world, defenses, cockpit, primary, secondary);
+    }
     if request.scenario == Scenario::MissionTargeting {
         // The primary system's Defenses window at the galaxy view's right
         // edge holds the agent first on its personnel page; the second
@@ -494,6 +506,129 @@ pub fn apply(
     }
 
     let _ = manufacturing;
+}
+
+/// The Rescue scenario: the second character becomes a prisoner of the
+/// player's side held by the enemy at `secondary`, the only character
+/// there, so it fills the first cell of that system's personnel page
+/// (`FUN_004eec60` gives it the captor's side). The agent's Defenses window
+/// opens at the galaxy view's right edge, the prison's at its left edge.
+fn place_prisoner(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    defenses: &mut DefensesWindowState,
+    cockpit: &CockpitState,
+    primary: SystemKey,
+    secondary: SystemKey,
+) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let Some(prisoner) = world.characters.keys().nth(1) else {
+        return;
+    };
+    for (key, character) in &mut world.characters {
+        if key != prisoner && character.current_system == Some(secondary) {
+            character.current_system = Some(primary);
+        }
+    }
+    for fleet in world.fleets.values_mut() {
+        fleet.characters.retain(|&key| key != prisoner);
+    }
+    let character = &mut world.characters[prisoner];
+    character.current_system = Some(secondary);
+    character.current_fleet = None;
+    character.is_alliance = player_is_alliance;
+    character.is_empire = !player_is_alliance;
+    character.is_captive = true;
+    character.captured_by = Some(if player_is_alliance {
+        Faction::Empire
+    } else {
+        Faction::Alliance
+    });
+    character.is_killed = false;
+    character.on_mission = false;
+    character.on_mandatory_mission = false;
+    character.recruited = true;
+
+    let layout = cockpit.layout_for(640.0, 480.0);
+    let galaxy = layout.galaxy;
+    defenses.open(
+        world,
+        primary,
+        (
+            (galaxy.x + galaxy.width - DEFENSES_WINDOW_WIDTH) as i16 - 5,
+            galaxy.y as i16 + 5,
+        ),
+        request.faction,
+        layout,
+    );
+    defenses.open(
+        world,
+        secondary,
+        (galaxy.x as i16 + 5, galaxy.y as i16 + 5),
+        request.faction,
+        layout,
+    );
+}
+
+/// The Rescue scenario sees into the enemy prison
+/// (`opposing_contents_visible`).
+pub fn reveal(
+    request: FixtureRequest,
+    world: &GameWorld,
+    fog_alliance: &mut FogState,
+    fog_empire: &mut FogState,
+) {
+    if request.scenario != Scenario::RescueTargeting {
+        return;
+    }
+    if let Some(secondary) = world.systems.keys().nth(1) {
+        fog_alliance.reveal(secondary);
+        fog_empire.reveal(secondary);
+    }
+}
+
+/// The mission dialog and the active missions, each frame, for the Rescue
+/// scenario.
+#[derive(Debug, Serialize, PartialEq)]
+struct FixtureMissionFlow {
+    status: &'static str,
+    code: u32,
+    dialog_open: bool,
+    kinds: Vec<String>,
+    target_character: Option<String>,
+    missions: Vec<(String, Option<String>)>,
+}
+
+pub fn emit_mission_flow(
+    request: FixtureRequest,
+    world: &GameWorld,
+    dialog: &MissionDialogState,
+    missions: &MissionState,
+) {
+    if request.scenario != Scenario::RescueTargeting {
+        return;
+    }
+    let name = |key| world.characters.get(key).map(|c| c.name.clone());
+    let report = FixtureMissionFlow {
+        status: "mission-flow",
+        code: request.code,
+        dialog_open: dialog.is_open(),
+        kinds: dialog
+            .dialog()
+            .map(|d| d.kinds().iter().map(|kind| format!("{kind:?}")).collect())
+            .unwrap_or_default(),
+        target_character: dialog
+            .dialog()
+            .and_then(|d| d.target().character)
+            .and_then(name),
+        missions: missions
+            .missions()
+            .iter()
+            .map(|m| (format!("{:?}", m.kind), m.target_character.and_then(name)))
+            .collect(),
+    };
+    let bytes = serde_json::to_vec(&report).expect("serialize the mission flow report");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
 /// The Fleet Finder scenario: the player's first fleet at the primary
@@ -1078,6 +1213,7 @@ fn object_menu_report<'a>(
     menu: &ObjectMenuState,
     world: &'a GameWorld,
     sectors: &SectorWindowState,
+    defenses: &DefensesWindowState,
 ) -> Option<FixtureObjectMenu<'a>> {
     let key = if request.scenario.uses_the_fleet_window() {
         loading_target(world, world.systems.keys().next()?)?
@@ -1087,7 +1223,11 @@ fn object_menu_report<'a>(
     let target = world.systems.get(key)?;
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
     // The Build Selection gate targets nothing; its menu reports anyway.
-    let planet = match sectors.planet_screen_rect(world, layout, key) {
+    // The Rescue scenario targets the prisoner in the prison's first cell.
+    let prison_cell = (request.scenario == Scenario::RescueTargeting)
+        .then(|| defenses.cell_screen_rect(layout, key, 0))
+        .flatten();
+    let planet = match prison_cell.or_else(|| sectors.planet_screen_rect(world, layout, key)) {
         Some(rect) => rect.center(),
         None if request.scenario == Scenario::BuildSelection => egui_macroquad::egui::Pos2::ZERO,
         None => return None,
@@ -1123,11 +1263,12 @@ pub fn emit_object_menu(
     menu: &ObjectMenuState,
     world: &GameWorld,
     sectors: &SectorWindowState,
+    defenses: &DefensesWindowState,
 ) {
     if !request.scenario.reports_object_menu() {
         return;
     }
-    let Some(report) = object_menu_report(request, rect, menu, world, sectors) else {
+    let Some(report) = object_menu_report(request, rect, menu, world, sectors, defenses) else {
         return;
     };
     let bytes = serde_json::to_vec(&report).expect("serialize the object menu report");
@@ -2734,6 +2875,96 @@ mod tests {
     }
 
     #[test]
+    fn the_rescue_scenario_holds_a_prisoner_alone_in_the_enemy_prison_in_sight() {
+        // The prisoner carries its captor's side (FUN_004eec60), so it lists
+        // first on the prison's personnel page; the menu report aims at
+        // that cell.
+        let mut world = diplomacy_world(Faction::Alliance);
+        let here = world.systems.keys().next().unwrap();
+        let mut second = world.systems[here].clone();
+        second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
+        let prison = world.systems.insert(second);
+        let bystander = world.characters.insert(rebellion_core::world::Character {
+            name: "Bystander".into(),
+            current_system: Some(prison),
+            ..Default::default()
+        });
+        let request = request(Scenario::RescueTargeting, CockpitFaction::Alliance);
+        let mut cockpit = CockpitState::new(CockpitFaction::Alliance);
+        let mut defenses = DefensesWindowState::default();
+        apply(
+            request,
+            &mut world,
+            &mut GameMode::MainMenu,
+            &mut MissionFaction::Alliance,
+            &mut cockpit,
+            &mut GalaxyMapState::default(),
+            &mut MovementState::default(),
+            &mut ManufacturingState::default(),
+            &mut EconomyState::default(),
+            &mut MissionState::default(),
+            &mut BlockadeState::default(),
+            &mut SectorWindowState::default(),
+            &mut SystemWindowState::default(),
+            &mut FleetWindowState::default(),
+            &mut defenses,
+            &mut TroopTransportState::default(),
+        );
+
+        let prisoner = world.characters.keys().nth(1).unwrap();
+        assert_eq!(prisoner, bystander);
+        let held = &world.characters[prisoner];
+        assert!(held.is_captive && held.is_alliance);
+        assert_eq!(held.captured_by, Some(Faction::Empire));
+        assert_eq!(held.current_system, Some(prison));
+        assert_eq!(
+            world.systems[prison].control,
+            ControlKind::Controlled(Faction::Empire)
+        );
+        assert!(defenses.is_open(here) && defenses.is_open(prison));
+
+        let (mut alliance, mut empire) = (
+            FogState::new(Faction::Alliance),
+            FogState::new(Faction::Empire),
+        );
+        reveal(request, &world, &mut alliance, &mut empire);
+        assert!(alliance.is_visible(prison));
+
+        let layout = cockpit.layout_for(640.0, 480.0);
+        let menu = ObjectMenuState::new(
+            Some(MenuObject::Character(
+                world.characters.keys().next().unwrap(),
+            )),
+            OrderGates {
+                mission: true,
+                ..OrderGates::default()
+            },
+            (0, 0),
+        );
+        let rect = egui_macroquad::egui::Rect::from_min_size(
+            egui_macroquad::egui::Pos2::ZERO,
+            egui_macroquad::egui::vec2(10.0, 10.0),
+        );
+        let report = object_menu_report(
+            request,
+            rect,
+            &menu,
+            &world,
+            &SectorWindowState::default(),
+            &defenses,
+        )
+        .unwrap();
+        let cell = defenses
+            .cell_screen_rect(layout, prison, 0)
+            .unwrap()
+            .center();
+        assert_eq!(
+            (report.target_screen_x, report.target_screen_y),
+            (cell.x, cell.y)
+        );
+    }
+
+    #[test]
     fn the_targeting_scenario_frees_the_agent_and_shows_the_target_planet_clear_of_its_window() {
         let mut world = diplomacy_world(Faction::Alliance);
         let sector = world.sectors.insert(rebellion_core::world::Sector {
@@ -2812,7 +3043,15 @@ mod tests {
             egui_macroquad::egui::pos2(100.0, 150.0),
             egui_macroquad::egui::vec2(120.0, 142.0),
         );
-        let report = object_menu_report(request, rect, &menu, &world, &sectors).unwrap();
+        let report = object_menu_report(
+            request,
+            rect,
+            &menu,
+            &world,
+            &sectors,
+            &DefensesWindowState::default(),
+        )
+        .unwrap();
         assert_eq!(
             (report.left, report.top, report.width, report.height),
             (100.0, 150.0, 120.0, 142.0)
@@ -4132,7 +4371,8 @@ mod tests {
                 Scenario::RegimentUnloadRefused,
                 Scenario::FleetJoin,
                 Scenario::ProductionDestination,
-                Scenario::BuildSelection
+                Scenario::BuildSelection,
+                Scenario::RescueTargeting
             ]
         );
     }

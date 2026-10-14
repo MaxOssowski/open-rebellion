@@ -1263,9 +1263,15 @@ cross-runtime proof remain open
     (`FUN_0042c3b0(.., 1, 1)`). The System, Fleet and sector windows still
     reduce their objects to the system, so manufacturing and production
     facilities and the Death Star are not yet targetable by the player.
-  - Open: those three windows' `+0x68`, and a browser and native check of
-    the flow: `agent-browser` and `cua-driver` are not available on this
-    machine, so no interactive acceptance was run.
+  - Browser (2026-10-14): fixture scenario `RescueTargeting` (code 58)
+    runs the whole flow on both sides with `agent-browser` and headless
+    Chromium 153: the agent's menu, Mission, a click on the prisoner in the
+    enemy Defenses window, a dialog offering Rescue alone and naming the
+    prisoner, and an active Rescue after Begin Mission; 4 of 4 requests,
+    0 console errors. Evidence:
+    `evidence/2026-10-14-rescue-targeting/README.md`.
+  - Open: the System, Fleet and sector windows' `+0x68`, the object
+    portrait, and a native check (`cua-driver` is not available here).
 
 ### F-020: A mod with a missing dependency fails silently
 

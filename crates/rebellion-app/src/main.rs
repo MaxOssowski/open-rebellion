@@ -1358,6 +1358,12 @@ async fn main() {
             &mut defenses_window_state,
             &mut troop_transport_state,
         );
+        interface_test_fixture::reveal(
+            request,
+            &world,
+            &mut fog_alliance_state,
+            &mut fog_empire_state,
+        );
         interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_event_messages(request, &world, &mut msg_log);
         // The AI plays the other side, as a new game sets it.
@@ -4867,6 +4873,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                             menu,
                             &world,
                             &sector_window_state,
+                            &defenses_window_state,
+                        );
+                    }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let Some(request) = interface_fixture_request {
+                        interface_test_fixture::emit_mission_flow(
+                            request,
+                            &world,
+                            &mission_dialog_state,
+                            &mission_state,
                         );
                     }
 

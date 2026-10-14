@@ -100,6 +100,18 @@ impl MissionDialog {
         self.kinds[self.kind]
     }
 
+    /// The kinds the dialog lists.
+    #[must_use]
+    pub fn kinds(&self) -> &[MissionKind] {
+        &self.kinds
+    }
+
+    /// The target the order's release set.
+    #[must_use]
+    pub fn target(&self) -> MissionTargetPick {
+        self.target
+    }
+
     #[must_use]
     pub fn agents(&self) -> &[MissionMember] {
         &self.agents
