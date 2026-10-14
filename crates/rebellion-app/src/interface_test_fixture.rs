@@ -15,6 +15,7 @@ use rebellion_core::missions::{
 use rebellion_core::movement::{
     begin_fleet_transit, fleet_speed, reconcile_fleet_orbits, MovementState,
 };
+use rebellion_core::research::ResearchState;
 use rebellion_core::tick::TickEvent;
 use rebellion_core::troop_transport::{regiment_system, TroopTransportState};
 use rebellion_core::uprising::UprisingState;
@@ -41,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 63;
+const SCENARIO_COUNT: u8 = 64;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -139,6 +140,11 @@ pub enum Scenario {
     /// Longprobe Y-wing Recon Team, or the Imperial Probe Droid) in the
     /// agent's place: only those classes may undertake Reconnaissance.
     ReconTargeting = 62,
+    /// As `MissionTargeting` with the target system the player's, at full
+    /// support, holding the player's shipyard, the side's recruit pool
+    /// empty, and the agent a ship designer: only Ship Design Research
+    /// lists.
+    ResearchTargeting = 63,
 }
 
 impl Scenario {
@@ -207,6 +213,7 @@ impl Scenario {
             60 => Self::ShipTargeting,
             61 => Self::FleetTargeting,
             62 => Self::ReconTargeting,
+            63 => Self::ResearchTargeting,
             _ => return None,
         })
     }
@@ -231,6 +238,7 @@ impl Scenario {
     fn reports_object_menu(self) -> bool {
         self == Self::MissionTargeting
             || self == Self::ReconTargeting
+            || self == Self::ResearchTargeting
             || self.targets_an_object()
             || self == Self::BuildSelection
             || self.moves_a_fleet()
@@ -394,7 +402,11 @@ pub fn apply(
             request.scenario,
             Scenario::Mission | Scenario::ActivePersonnel
         );
-        if request.scenario == Scenario::MissionTargeting || request.scenario.targets_an_object() {
+        if matches!(
+            request.scenario,
+            Scenario::MissionTargeting | Scenario::ResearchTargeting
+        ) || request.scenario.targets_an_object()
+        {
             // MissionState::mission_order_enabled: a free recruited member.
             character.recruited = true;
             character.is_captive = false;
@@ -549,9 +561,40 @@ pub fn apply(
             });
         world.systems[primary].special_forces = vec![unit];
     }
+    if request.scenario == Scenario::ResearchTargeting {
+        // FUN_0056c510: an own-side target with a working yard of the tree's
+        // area, and a member with the tree's skill. Full support ends
+        // Diplomacy (FUN_00573ee0) and the empty pool Recruitment
+        // (FUN_0056b370), so the dialog lists research alone.
+        let target = &mut world.systems[secondary];
+        target.control = ControlKind::Controlled(player_control);
+        target.popularity_alliance = if player_is_alliance { 1.0 } else { 0.0 };
+        target.popularity_empire = 1.0 - target.popularity_alliance;
+        let yard = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+                side: player_control,
+                is_shipyard: true,
+            },
+        );
+        world.systems[secondary].manufacturing_facilities = vec![yard];
+        world.set_recruit_pool_empty(player_control);
+        if let Some(agent) = world.characters.values_mut().next() {
+            agent.ship_design = rebellion_core::world::SkillPair {
+                base: 40,
+                variance: 0,
+            };
+            let none = rebellion_core::world::SkillPair {
+                base: 0,
+                variance: 0,
+            };
+            agent.troop_training = none;
+            agent.facility_design = none;
+        }
+    }
     if matches!(
         request.scenario,
-        Scenario::MissionTargeting | Scenario::ReconTargeting
+        Scenario::MissionTargeting | Scenario::ReconTargeting | Scenario::ResearchTargeting
     ) {
         // The primary system's Defenses window at the galaxy view's right
         // edge holds the agent first on its personnel page; the second
@@ -769,7 +812,7 @@ pub fn emit_mission_flow(
     if !request.scenario.targets_an_object()
         && !matches!(
             request.scenario,
-            Scenario::MissionTargeting | Scenario::ReconTargeting
+            Scenario::MissionTargeting | Scenario::ReconTargeting | Scenario::ResearchTargeting
         )
     {
         return;
@@ -2867,6 +2910,7 @@ pub fn open_mission_dialog(
     request: FixtureRequest,
     world: &GameWorld,
     uprisings: &UprisingState,
+    research: &ResearchState,
     dialog: &mut MissionDialogState,
 ) -> bool {
     let page = match request.scenario {
@@ -2884,7 +2928,7 @@ pub fn open_mission_dialog(
         CockpitFaction::Empire => MissionFaction::Empire,
     };
     let team = vec![MissionMember::Character(character)];
-    let kinds = available_kinds(world, uprisings, faction, &team, &[], target);
+    let kinds = available_kinds(world, uprisings, research, faction, &team, &[], target);
     if !dialog.open(faction, target, team, kinds) {
         return false;
     }
@@ -3002,6 +3046,7 @@ mod tests {
             request(Scenario::MissionDialogAgents, CockpitFaction::Alliance),
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &mut dialog,
         );
 
@@ -3021,6 +3066,7 @@ mod tests {
             request(Scenario::MissionDialogMission, CockpitFaction::Empire),
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &mut dialog,
         );
 
@@ -3046,8 +3092,13 @@ mod tests {
         ] {
             let mut dialog = MissionDialogState::default();
 
-            let opened =
-                open_mission_dialog(request, &world, &UprisingState::default(), &mut dialog);
+            let opened = open_mission_dialog(
+                request,
+                &world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                &mut dialog,
+            );
 
             assert!(!opened, "{:?}", request.scenario);
             assert!(!dialog.is_open());
@@ -3057,6 +3108,7 @@ mod tests {
             request(Scenario::MissionDialogAgents, CockpitFaction::Alliance),
             &GameWorld::default(),
             &UprisingState::default(),
+            &ResearchState::default(),
             &mut dialog,
         ));
     }
@@ -3153,6 +3205,81 @@ mod tests {
             (report.target_screen_x, report.target_screen_y),
             (cell.x, cell.y)
         );
+    }
+
+    #[test]
+    fn the_research_scenario_lists_ship_design_research_alone_of_the_trees() {
+        // FUN_0056c510: an own-side target with a working yard of the tree's
+        // area, and a member with the tree's skill (FUN_0056c820).
+        for (cockpit_side, side) in [
+            (CockpitFaction::Alliance, Faction::Alliance),
+            (CockpitFaction::Empire, Faction::Empire),
+        ] {
+            let mut world = diplomacy_world(side);
+            let here = world.systems.keys().next().unwrap();
+            let mut second = world.systems[here].clone();
+            second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
+            let target = world.systems.insert(second);
+            let template = world.mission_records[0];
+            world.mission_records = [0x5100_0010, 0x5300_0020, 0x5300_0021, 0x5300_0022]
+                .into_iter()
+                .map(|id| rebellion_core::world::MissionRecord {
+                    dat_id: rebellion_core::ids::DatId::new(id),
+                    ..template
+                })
+                .collect();
+            let mut missions = MissionState::default();
+            apply(
+                request(Scenario::ResearchTargeting, cockpit_side),
+                &mut world,
+                &mut GameMode::MainMenu,
+                &mut MissionFaction::Alliance,
+                &mut CockpitState::new(cockpit_side),
+                &mut GalaxyMapState::default(),
+                &mut MovementState::default(),
+                &mut ManufacturingState::default(),
+                &mut EconomyState::default(),
+                &mut missions,
+                &mut BlockadeState::default(),
+                &mut SectorWindowState::default(),
+                &mut SystemWindowState::default(),
+                &mut FleetWindowState::default(),
+                &mut DefensesWindowState::default(),
+                &mut TroopTransportState::default(),
+            );
+            let agent = MissionMember::Character(world.characters.keys().next().unwrap());
+            let faction = if side == Faction::Alliance {
+                MissionFaction::Alliance
+            } else {
+                MissionFaction::Empire
+            };
+
+            let kinds = available_kinds(
+                &world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                faction,
+                &[agent],
+                &[],
+                target,
+            );
+
+            assert_eq!(world.systems[target].control, ControlKind::Controlled(side));
+            let (own, other) = if side == Faction::Alliance {
+                (
+                    world.systems[target].popularity_alliance,
+                    world.systems[target].popularity_empire,
+                )
+            } else {
+                (
+                    world.systems[target].popularity_empire,
+                    world.systems[target].popularity_alliance,
+                )
+            };
+            assert_eq!((own, other), (1.0, 0.0));
+            assert!(world.recruit_pool_empty(side));
+            assert_eq!(kinds, vec![MissionKind::ShipDesignResearch], "{side:?}");
+        }
     }
 
     #[test]
@@ -4572,7 +4699,8 @@ mod tests {
                 Scenario::DeathStarTargeting,
                 Scenario::ShipTargeting,
                 Scenario::FleetTargeting,
-                Scenario::ReconTargeting
+                Scenario::ReconTargeting,
+                Scenario::ResearchTargeting
             ]
         );
     }

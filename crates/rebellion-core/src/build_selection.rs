@@ -99,6 +99,72 @@ pub fn listed_classes(
     listed.into_iter().map(|(_, kind)| kind).collect()
 }
 
+/// A class of a production family as research reads it: its `DatId`, its
+/// research order (`+0x50`) and difficulty (`+0x54`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResearchClass {
+    pub id: DatId,
+    pub order: u32,
+    pub difficulty: u32,
+}
+
+/// `FUN_00567880`: the classes of `area`'s family that serve a side
+/// (`+0x40` Alliance, `+0x44` Empire) and cost refined material
+/// (`FUN_0053b860` nonzero), in `DatId` order. hyp: the original walks its
+/// class tables in id order.
+#[must_use]
+pub fn research_classes(
+    world: &GameWorld,
+    area: ProductionArea,
+    is_alliance: bool,
+) -> Vec<ResearchClass> {
+    let serves = |alliance: bool, empire: bool| if is_alliance { alliance } else { empire };
+    let mut classes = Vec::new();
+    if area == ProductionArea::Shipyard {
+        classes.extend(
+            world
+                .capital_ship_classes
+                .values()
+                .filter(|c| serves(c.is_alliance, c.is_empire) && c.refined_material_cost != 0)
+                .map(|c| ResearchClass {
+                    id: c.dat_id,
+                    order: c.research_order,
+                    difficulty: c.research_difficulty,
+                }),
+        );
+        classes.extend(
+            world
+                .fighter_classes
+                .values()
+                .filter(|c| serves(c.is_alliance, c.is_empire) && c.refined_material_cost != 0)
+                .map(|c| ResearchClass {
+                    id: c.dat_id,
+                    order: c.research_order,
+                    difficulty: c.research_difficulty,
+                }),
+        );
+    } else {
+        classes.extend(
+            world
+                .buildable_classes
+                .iter()
+                .filter(|(&class, value)| {
+                    catalog_kind(class, is_alliance)
+                        .is_some_and(|kind| ProductionArea::of(kind) == area)
+                        && value.serves(is_alliance)
+                        && value.refined_material_cost != 0
+                })
+                .map(|(&class, value)| ResearchClass {
+                    id: class,
+                    order: value.research_order,
+                    difficulty: value.research_difficulty,
+                }),
+        );
+    }
+    classes.sort_unstable_by_key(|class| class.id.raw());
+    classes
+}
+
 /// One unit's refined material and maintenance costs (class `+0x48`,
 /// `+0x4c`; `FUN_0053b860`, `FUN_0053b870`).
 #[must_use]

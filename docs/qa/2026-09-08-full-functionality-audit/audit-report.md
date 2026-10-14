@@ -1758,6 +1758,13 @@ cross-runtime proof remain open
   and `apply_support_change`, which mission and uprising support shifts go
   through, with tests citing both. The economy's per-tick `SupportDrifted`
   path does not use them, so the cadence bullet stands.
+- Research (2026-10-14): `research.rs` no longer follows rebellion2. Its
+  projects, ticks and the Research panel are gone; research runs only as
+  missions (F-040). Each side's points and Done flag drive its levels
+  through the points hook `FUN_005326f0` -> `FUN_00567ba0`: the next order
+  of the tree's family, costing the class difficulty times side `+0xc0`
+  over 100, with tests citing them. The research bullet is closed; the
+  economy bullets stand.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 
@@ -1833,6 +1840,20 @@ cross-runtime proof remain open
   offers Reconnaissance alone and dispatches it
   (`evidence/2026-10-14-reconnaissance/`). Open: its AI planners
   (`FUN_0047f790`, `FUN_0047f320`, `FUN_0047f500`).
+- Research (2026-10-14): `MissionKind::ShipDesignResearch`,
+  `FacilityDesignResearch` and `TroopTrainingResearch` run the lifecycle on
+  records `0x53000020..22`. The validator `FUN_0056c510` adds to the system
+  rules a creation check (each character needs the tree's skill,
+  `FUN_0056c820`) and two running checks: a working yard of the tree's area
+  at the target (end `0xc`) and the side's Done flag (end `0xe`). Each team
+  member rolls below its skill and on a hit adds 1 + rand(0..=6) points and
+  raises the skill by GNPRTB 6158 (`FUN_0056cdb0`); `FUN_0056cf30` adds the
+  points to the side's tree. The AI planners `FUN_0047bcd0`, `FUN_0047c2b0`
+  and `FUN_0047c900` send one member of skill 10 or more. Browser: fixture
+  `ResearchTargeting` (code 64), both sides, dispatches Ship Design
+  Research; a seed-42 dual-AI playtest reaches Ship level 4 in 600 days
+  (`evidence/2026-10-14-research-missions/`). Open: the AI's choice of tree
+  and target (side `+0x318`/`+0x31c`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

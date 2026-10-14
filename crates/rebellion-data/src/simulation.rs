@@ -30,7 +30,7 @@ use rebellion_core::production_cycle::{
     advance_yards, scrap_yardless_queues, suspended_systems, ProductionState, ProductionSystem,
 };
 use rebellion_core::repair::{RepairState, RepairSystem};
-use rebellion_core::research::{ResearchState, ResearchSystem};
+use rebellion_core::research::ResearchState;
 use rebellion_core::tick::{GameClock, TickEvent};
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
@@ -469,6 +469,7 @@ pub fn run_simulation_tick(
         &mut states.missions,
         world,
         &states.uprising,
+        &states.research,
         tick_events,
         &mission_rolls,
     );
@@ -478,7 +479,7 @@ pub fn run_simulation_tick(
         ai2.free_mission_members(&mission_advance.effects);
     }
     for result in &mission_advance.results {
-        integrator.apply_mission_result(world, result, &mut states.uprising);
+        integrator.apply_mission_result(world, result, &mut states.uprising, &mut states.research);
         // Knesset Shamash-Bet #R11: emit `EVT_CHARACTER_KILLED` telemetry for
         // mission-side assassinations. The integrator's `MissionEffect::CharacterKilled`
         // arm marks `is_killed = true` via `mark_killed()` instead of deleting
@@ -601,7 +602,6 @@ pub fn run_simulation_tick(
         &mut states.manufacturing,
         &mut states.movement,
         &mut states.troop_transport,
-        &mut states.research,
         world,
         current_tick,
         false,
@@ -626,7 +626,6 @@ pub fn run_simulation_tick(
             &mut states.manufacturing,
             &mut states.movement,
             &mut states.troop_transport,
-            &mut states.research,
             world,
             current_tick,
             true,
@@ -729,8 +728,7 @@ pub fn run_simulation_tick(
     }
 
     // ── 12. Research ─────────────────────────────────────────────────────
-    let research_results = ResearchSystem::advance(&mut states.research, world, tick_events);
-    integrator.apply_research_results(&research_results, &mut states.research);
+    // Research missions add their points when they resolve (step 5).
 
     // ── 12b. Ship repair ────────────────────────────────────────────────
     let repair_events = RepairSystem::advance(&mut states.repair, world, tick_events);

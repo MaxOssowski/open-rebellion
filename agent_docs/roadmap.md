@@ -122,6 +122,7 @@ Delivered:
 - ModRuntime: discovery, enable/disable, structured errors, config persistence
 - Mod Manager egui panel (discover, toggle, reload)
 - Captive escape follows timer `0x38a`, the ESCAPETB guard and regiment input, and autorouting (2026-10-14, `ghidra/notes/captive-escape.md`)
+- Research runs only as the three research missions with the points hook; the rebellion2 projects and Research panel are gone (2026-10-14, save v36, F-040/F-037)
 
 ## Release: historical packaging tranche delivered
 *Release packaging work by Knesset Hokhmah (v0.7.0); release acceptance remains open*
@@ -352,6 +353,7 @@ Based on 3-agent review + 23-function GhidraMCP session (2026-03-23) + TheArchit
 - [x] Updated `autoresearch_loop.py` to write and pass config files
 
 ### Phase B: Research Dispatch (P0 Gap #1) — COMPLETE
+*Superseded 2026-10-14: research is a mission (F-040); `DispatchResearch` is gone.*
 *AI tech tree progression. ~60 LOC.*
 
 - [x] Added `evaluate_research()` to AISystem — assigns idle characters to Ship/Troop/Facility trees

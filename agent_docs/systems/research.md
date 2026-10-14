@@ -1,55 +1,61 @@
 ---
 title: "Research System"
-description: "Three independent tech trees per faction (Ship/Troop/Facility)"
+description: "Three research trees per side, advanced only by research missions and the points hook"
 category: "agent-docs"
 created: 2026-03-14
-updated: 2026-03-16
-tags: [research, tech-tree, ship-design, simulation]
+updated: 2026-10-14
+tags: [research, tech-tree, ship-design, simulation, missions]
 ---
 
 # Research System
 
-`research.rs` — Three independent tech trees per faction (Ship/Troop/Facility).
+Research runs only as missions. The recovered mechanics are in
+`ghidra/notes/mission-lifecycle.md`, "Research"; the rebellion2 projects,
+ticks and Research panel were removed on 2026-10-14 (save v36).
 
-## Types
+## Types (`research.rs`)
 
 | Type | Purpose |
 |------|---------|
-| `ResearchState` | `alliance: ResearchLevels`, `empire: ResearchLevels`, `projects: Vec<ResearchProject>` |
-| `ResearchProject` | `{ tech_type, character, faction_is_alliance, ticks_remaining, total_ticks }` |
-| `ResearchResult` | `TechUnlocked { faction_is_alliance, tech_type, new_level }` |
-| `TechType` | Ship / Troop / Facility |
-| `ResearchLevels` | `{ ship: u32, troop: u32, facility: u32 }` |
+| `TechType` | Ship / Troop / Facility; `skill()` and production `area()` |
+| `ResearchLevels` | One side's level per tree (side `+0x9c`, `+0xa0`, `+0xa4`) |
+| `TreeProgress` | One tree's points (`+0x90`, `+0x94`, `+0x98`) and Done flag (`+0xac`, `+0xb0`, `+0xb4`) |
+| `ResearchState` | Both sides' levels and progress |
 
-## API
+## Missions (`missions.rs`)
 
-```rust
-// Each tick: advance all active research projects
-let results = ResearchSystem::advance(&mut research_state, &world, &tick_events);
+`MissionKind::ShipDesignResearch`, `FacilityDesignResearch` and
+`TroopTrainingResearch` use records `0x53000020`, `0x53000021` and
+`0x53000022`.
 
-// Query cost for next level:
-let cost = ResearchSystem::ticks_for_next_level(&world, true, TechType::Ship, current_level);
+- Validator `FUN_0056c510`, in `running_end_code`: at creation each
+  character needs the tree's skill (`creation_member_ok`); while running the
+  target needs a working yard of the tree's area (`research_site`, end `0xc`)
+  and the side's tree must not be Done (end `0xe`).
+- Phase 10 `FUN_0056cdb0`: each member rolls below its skill
+  (`research_chance`); a hit adds GNPRTB 6171 + rand(0..=6172) points and
+  raises the skill by GNPRTB 6158.
+- `FUN_0056cf30` emits `MissionEffect::ResearchPoints`; the integrator and
+  the app apply it with `ResearchState::add_points`, which runs the points
+  hook and returns the levels reached.
 
-// Check if a ship class is available:
-ResearchSystem::ship_class_is_available(&world, &state, true, class_key); // -> bool
+## Points hook
 
-// Dispatch a project (replaces existing for same faction + tech):
-state.dispatch(ResearchProject { ... });
-```
+`ResearchState::add_points` follows `FUN_005326f0` -> `FUN_00567ba0`: while
+a next level exists (`next_level`, the least order above the current one
+among the side's classes of the tree's family with a refined cost) and the
+points cover its cost (`level_cost`, difficulty x systems / 100), take it
+and spend the cost. With no next level the tree is Done.
 
 ## Tech Unlock Rule
 
-A class is buildable when `class.research_order <= faction_level_for_tech_type`. Level 0 units are always available.
+A class is buildable when `class.research_order <= faction_level_for_tech_type`
+(`FUN_0052e580`). Level 0 units are always available.
 
-## Tick Cost Calculation
+## AI
 
-`max(research_difficulty)` among all classes at `research_order == current_level + 1`, clamped to `RESEARCH_MIN_TICKS = 10`. Falls back to `RESEARCH_DEFAULT_TICKS = 30` when no classes exist at that order.
-
-## Known Deviation
-
-`advance()` both mutates `ResearchState` (applies level-ups internally) AND returns events. This breaks the pure advance() contract. Deferred fix (v0.5.0) — choose either pure results (caller applies) or stateful (return notifications only).
-
-## Source
-
-- `rebellion2/Faction.cs` — tech tree structure
-- `CapitalShipClass::research_order` and `research_difficulty` from DAT
+`mission_planning.rs` holds the planners `FUN_0047bcd0`, `FUN_0047c2b0` and
+`FUN_0047c900` (one member with the tree's capability and skill 10 or more).
+`AISystem::evaluate_research` orders a tree while none of the side's
+research in it runs, at the side's first system with a research site
+(port: the side's strategic choice is untraced).

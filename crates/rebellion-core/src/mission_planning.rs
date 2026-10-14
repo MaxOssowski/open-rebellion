@@ -77,12 +77,15 @@ fn capability(kind: MissionKind) -> Option<u32> {
         MissionKind::InciteUprising => 0x100,
         MissionKind::Reconnaissance => 0x200,
         MissionKind::Recruitment => 0x400,
+        MissionKind::ShipDesignResearch => 0x800,
+        MissionKind::TroopTrainingResearch => 0x1000,
+        MissionKind::FacilityDesignResearch => 0x2000,
         MissionKind::Autoscrap => return None,
     })
 }
 
 /// The port's agent kinds, in capability-bit order.
-pub(crate) const KINDS: [MissionKind; 11] = [
+pub(crate) const KINDS: [MissionKind; 14] = [
     MissionKind::Diplomacy,
     MissionKind::Rescue,
     MissionKind::Sabotage,
@@ -94,6 +97,9 @@ pub(crate) const KINDS: [MissionKind; 11] = [
     MissionKind::InciteUprising,
     MissionKind::Reconnaissance,
     MissionKind::Recruitment,
+    MissionKind::ShipDesignResearch,
+    MissionKind::TroopTrainingResearch,
+    MissionKind::FacilityDesignResearch,
 ];
 
 /// The three Research records (`0x53000020`, `0x53000022`, `0x53000021`;
@@ -178,7 +184,9 @@ const fn decoys(req_caps: u32, cap: DecoyCap) -> Option<(Query, DecoyCap)> {
 /// class for subtypes other than 6 (the posture `FUN_004b7150` names no
 /// subtype for it), and Abduction takes its default class.
 fn selectors(kind: MissionKind) -> Option<Selectors> {
-    use Skill::{Combat, Diplomacy, Espionage, Leadership};
+    use Skill::{
+        Combat, Diplomacy, Espionage, FacilityDesign, Leadership, ShipDesign, TroopTraining,
+    };
     const DIPLOMACY: &[Query] = &[query(0x2, 0x1, 0x0740_4051, 0, Diplomacy, 69)];
     const ESPIONAGE: &[Query] = &[query(0x1080_0002, 0x8, 0x0740_0051, 0, Espionage, 51)];
     const RECRUITMENT: &[Query] = &[query(0x2, 0x400, 0x0740_0051, 0, Leadership, 80)];
@@ -195,6 +203,9 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         query(0x2, 0x80, 0x4740_0051, 0, Combat, 51),
         query(0x2, 0x80, 0x4740_0051, 0, Espionage, 51),
     ];
+    const SHIP_RESEARCH: &[Query] = &[query(0x2, 0x800, 0x0740_0051, 0, ShipDesign, 10)];
+    const TROOP_RESEARCH: &[Query] = &[query(0x2, 0x1000, 0x0740_0051, 0, TroopTraining, 10)];
+    const FACILITY_RESEARCH: &[Query] = &[query(0x2, 0x2000, 0x0740_0051, 0, FacilityDesign, 10)];
     let (team, team_size, decoys) = match kind {
         // FUN_004815a0; FUN_0047f500 takes no decoys.
         MissionKind::Diplomacy => (DIPLOMACY, 1, None),
@@ -219,6 +230,11 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         // port: the Recon planners (FUN_0047f790 for subtype 5, else
         // FUN_0047f320 and FUN_0047f500) are not ported, so the AI sends none.
         MissionKind::Autoscrap | MissionKind::Reconnaissance => return None,
+        // FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900: Recruitment's selector
+        // shape, with no decoy selector.
+        MissionKind::ShipDesignResearch => (SHIP_RESEARCH, 1, None),
+        MissionKind::TroopTrainingResearch => (TROOP_RESEARCH, 1, None),
+        MissionKind::FacilityDesignResearch => (FACILITY_RESEARCH, 1, None),
     };
     Some(Selectors {
         team,
@@ -311,13 +327,6 @@ impl<'a> Planner<'a> {
             }
         }
         Some((team, decoys))
-    }
-
-    /// Whether a plan in this evaluation sent `character`.
-    pub(crate) fn sent(&self, character: CharacterKey) -> bool {
-        self.records
-            .iter()
-            .any(|r| r.sent && r.member == MissionMember::Character(character))
     }
 
     /// Run `queries` and take their best common hit until `size` are taken
@@ -863,21 +872,6 @@ mod tests {
             planner.plan(MissionKind::Sabotage),
             Some((vec![second], vec![third]))
         );
-    }
-
-    #[test]
-    fn a_planner_reports_which_characters_its_plans_sent() {
-        let mut world = world();
-        let diplomat = agent(&mut world, 1, |c| c.diplomacy = pair(90));
-        let idle = agent(&mut world, 2, |c| c.diplomacy = pair(10));
-        let mut planner = planner(&world);
-        let key = |m: MissionMember| m.character().unwrap();
-
-        assert!(!planner.sent(key(diplomat)));
-        planner.plan(MissionKind::Diplomacy);
-
-        assert!(planner.sent(key(diplomat)));
-        assert!(!planner.sent(key(idle)));
     }
 
     #[test]

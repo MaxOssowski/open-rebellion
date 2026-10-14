@@ -102,7 +102,7 @@ See `agent_docs/simulation.md` for full API reference on all 15 systems.
 - **Blockade** (`blockade.rs`): Hostile fleet without defender halts manufacturing, destroys in-transit troops
 - **Uprising** (`uprising.rs`): revolts start on a troop shortfall and never change control; an incident every 30-100 ticks maps its score through UPRIS1TB/UPRIS2TB step lookups to losses; natural disasters erode resources and facilities
 - **Death Star** (`death_star.rs`): Construction countdown, superlaser fire (precondition checks from RE), nearby-warning scan
-- **Research** (`research.rs`): 3 tech trees (Ship/Troop/Facility) per faction, `research_order` + `research_difficulty`
+- **Research** (`research.rs`): 3 trees (Ship/Troop/Facility) per side, advanced only by the three research missions (`0x53000020..22`); `research_order` gates classes and `research_difficulty` prices levels
 - **Jedi training** (`jedi.rs`): 4-tier Force progression (None→Aware→Training→Experienced), XP accumulation, detection checks
 - **Victory conditions** (`victory.rs`): HQ capture, Death Star fire/destroyed, `resolved` flag prevents re-trigger
 - **Save/load** (`rebellion-data/src/save.rs`): Bincode with OPENREB header, v4 format with mod metadata + FNV-1a hash, migration framework, 10 slots. See `agent_docs/save-load.md`.
@@ -120,7 +120,7 @@ See `agent_docs/simulation.md` for full API reference on all 15 systems.
 ### Mod Workshop (v0.6.0)
 - **Sensor-radius fog** (`fog.rs`): fleets with detection capability reveal nearby systems within `detection * 15.0` coordinate radius
 - **Captivity state** (`world/mod.rs`): `is_captive`, `captured_by: Option<Faction>`, `capture_tick: Option<u64>` on Character — set on capture, cleared on rescue/escape
-- **Research pure contract** (`research.rs`): `advance()` returns results only, caller applies level-ups
+- **Research points** (`research.rs`): `add_points()` runs the points hook and returns the levels reached
 - **Mod runtime** (`mods.rs`): `ModRuntime`, `ModConfig`, enable/disable with `config.toml` persistence, structured `ModError`, hot reload integration. See `agent_docs/mod-runtime.md`.
 - **Mod Manager panel** (`panels/mod_manager.rs`): egui floating window with mod list, enable/disable, reload, Tab shortcut
 - **Save migration framework** (`save.rs`): versioned dispatch, mod metadata in header, FNV-1a hash. See `agent_docs/save-load.md`.

@@ -427,6 +427,7 @@ The first rule that fires sets the status and wins: later rules check
 | 0x69 | Sabotage | `56a110` | object rules (its own checks are creation-only) |
 | 0x6a | DS Sabotage | `5744c0` | object rules (creation-only checks) |
 | 0x54 | Reconnaissance | `56be20` (slot `+0x1bc` `56bd10`) | system rules |
+| 0x53 | Research | `56c510` (slot `+0x1bc` `56c220`) | system rules and its own checks; see "Research" |
 
 Side `+0xb8` is set by `FUN_0052f590(side, 1)` from `FUN_0055fc80`, the
 recruit pick: it counts the side's recruitable characters (`FUN_0055ef30`),
@@ -502,6 +503,72 @@ revolt is over, and Rescue once its target is free.
 Inference: Rescue's own-side column is 0, so a prisoner must read as its
 captor's side for a Rescue to run; the side a system reads as is taken to be
 its holder. Neither is traced to a writer.
+
+## Research (read 2026-10-14)
+
+Three MISSNSD records share family `0x53`; `FUN_0056c460` maps each to its
+type: `0x53000020` ships (0, TEXTSTRA 11296 "Ship Design Research"),
+`0x53000021` facilities (1, 11297), `0x53000022` troops (2, 11298). The
+shipped records take an own-side system, revolting or calm; time 10 +
+rand(0..=10) days and repeat; run detection and allow resigning; admit
+characters of both sides (mask `0x10000`) and no special force.
+
+**Validator `FUN_0056c510`.** System rules (`FUN_005868c0`), then:
+
+- At creation (context `+4`): each character in the three lists needs a
+  nonzero effective skill of the type (`FUN_0056c820` -> `FUN_005337f0`; type
+  0 slot `+0x1e4` ship design, 1 `+0x1ec` facility design, 2 `+0x1e8` troop
+  training), else message `0x40`/4 refuses it. Special forces take
+  `FUN_0056c990`, which refuses one whose `FUN_00593c30` and `FUN_00593c70`
+  are both 0.
+- While running (`+0xc`): the target's production manager for the type's
+  area (`FUN_00509670`) must hold a working yard (`FUN_00528100(0)`, a yard
+  without `+0x60` bit 0, Suspended), else end `0xc` (`0x40`/`0x2c`); then
+  the side's Done flag for the type (`FUN_0052eb10`) ends with `0xe`
+  (`0x40`/`0x32`). Both write the end code, so `0xe` wins.
+
+**Slots.** `+0x274` `56cb20` gives 0: research rolls inside its member slot.
+`+0x278` `56cd70` zeroes the mission's RdPoints (`+0xa8`) and RdOrders
+(`+0xac`). `+0x27c` `56cdb0`, per team member: a draw `FUN_0053e2f0` below
+the member's effective skill (`FUN_005337f0` through the identity
+`FUN_0055c6f0`); on a hit `FUN_0055c9f0` gives GNPRTB 6171 (`DAT_006bb5c4`,
+1) + rand(0..=GNPRTB 6172) (`DAT_006bb578`, 6) points, added to RdPoints,
+and the member's slot `+0x1d8` raises its base skill by GNPRTB 6158
+(`FUN_00534990`). `+0x280` `56cf30` adds RdPoints to the side's points for
+the type (`FUN_00530600`), stores the levels gained in RdOrders, and sets
+the result to 2 + (RdPoints != 0).
+
+**Side fields** (vtable `0x00660af8`): points `+0x90` ships, `+0x98`
+facilities, `+0x94` troops; levels `+0x9c` ShipyardRdOrder, `+0xa4`
+ConstructionYardRdOrder, `+0xa0` TrainingFacilRdOrder; Done `+0xac`,
+`+0xb4`, `+0xb0`.
+
+**Points hook.** Setting the points runs `FUN_005326f0` (ships) or its
+siblings: `FUN_00530a20` -> `FUN_0051cc30`/`cc60`/`cc90` ->
+`FUN_0051cb90(side, family 0x28/0x2a/0x29, level)` -> `FUN_00567ba0`. That
+walks the orders from level + 1 to the family's highest
+(`FUN_00567880`: the side's classes of the family with a refined cost) and
+takes the first order holding a class (`FUN_00567a90`), with that class's
+difficulty `+0x54`. The cost is difficulty x side `+0xc0` / 100
+(`FUN_0055bf80` -> `FUN_0053e190` -> `FUN_0053e170`, integer division);
+`+0xc0` is set by `FUN_00519d00` through `FUN_005305c0`
+(inference: the galaxy's system count). With no next order the hook sets
+Done (`FUN_0052f440(1)`); with points >= cost it takes the level
+(`FUN_0052f280`) and stores points - cost (`FUN_0052f130`), which runs the
+hook again.
+
+**AI.** The capability bits of `FUN_00402720` are `0x800` ships, `0x1000`
+troops, `0x2000` facilities. `FUN_0047bcd0`, `FUN_0047c2b0` and
+`FUN_0047c900` have Recruitment's selector shape and no decoy selector:
+`FUN_004035d0(0, 2, cap, 0x7400051, 0, skill 2/3/4, 10, 10000, 1)`, one
+member of skill 10 or more.
+
+Ported 2026-10-14 (`MissionKind::ShipDesignResearch`,
+`FacilityDesignResearch`, `TroopTrainingResearch`; `research.rs`). port:
+Suspended is the port's blockade or uprising; the AI's choice of tree and
+target (side `+0x318`/`+0x31c`) stays untraced, so the port orders a tree
+while none of the side's research in it runs, at its first system with a
+yard of the area.
 
 ## Still open
 

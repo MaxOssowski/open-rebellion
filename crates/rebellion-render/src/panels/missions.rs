@@ -157,6 +157,9 @@ fn mission_kind_display(kind: MissionKind) -> (&'static str, Color32) {
         MissionKind::SubdueUprising => ("[SUBD]", Color32::from_rgb(100, 200, 100)),
         MissionKind::DeathStarSabotage => ("[DSSB]", Color32::from_rgb(255, 60, 60)),
         MissionKind::Reconnaissance => ("[RECN]", Color32::from_rgb(140, 200, 240)),
+        MissionKind::ShipDesignResearch
+        | MissionKind::FacilityDesignResearch
+        | MissionKind::TroopTrainingResearch => ("[RSCH]", Color32::from_rgb(120, 220, 120)),
         MissionKind::Autoscrap => ("[AUTO]", Color32::from_rgb(120, 120, 120)),
     }
 }

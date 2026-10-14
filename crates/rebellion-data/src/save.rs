@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 35;
+pub const SAVE_VERSION: u32 = 36;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1574,6 +1574,50 @@ mod tests {
     }
 
     #[test]
+    fn a_round_trip_keeps_research_points_done_flags_and_research_missions() {
+        // v36: each side's points (+0x90..+0x98) and Done flags (+0xac..
+        // +0xb4) beside its levels; research runs as missions.
+        use rebellion_core::missions::{
+            MissionFaction, MissionKind, MissionMember, MissionRequest,
+        };
+        use rebellion_core::research::TechType;
+        use rebellion_core::world::Character;
+        let saves_dir = tmp_dir("v36_research_round_trip");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let designer = MissionMember::Character(state.world.characters.insert(Character {
+            is_alliance: true,
+            current_system: Some(system),
+            ..Default::default()
+        }));
+        state.research.alliance.ship = 3;
+        state.research.alliance_progress.ship.points = 17;
+        state.research.empire_progress.facility.done = true;
+        state.missions.dispatch(MissionRequest {
+            kind: MissionKind::TroopTrainingResearch,
+            faction: MissionFaction::Alliance,
+            team: vec![designer],
+            decoys: vec![],
+            target_system: system,
+            target_character: None,
+            target_object: None,
+            tick: 12,
+        });
+        save_slot(&saves_dir, 0, "V36 Save", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(loaded.research.level(true, TechType::Ship), 3);
+        assert_eq!(loaded.research.progress(true, TechType::Ship).points, 17);
+        assert!(loaded.research.progress(false, TechType::Facility).done);
+        assert!(!loaded.research.progress(true, TechType::Facility).done);
+        assert_eq!(
+            loaded.missions.missions()[0].kind,
+            MissionKind::TroopTrainingResearch
+        );
+    }
+
+    #[test]
     fn a_round_trip_keeps_resign_requests_and_troop_detection() {
         use rebellion_core::missions::{ActiveMission, MissionFaction, MissionKind, MissionMember};
         use rebellion_core::world::{Character, TroopClassDef};
@@ -1650,6 +1694,7 @@ mod tests {
             &mut state.missions,
             &state.world,
             &state.uprising,
+            &state.research,
             &[TickEvent { tick: 1 }],
             &[],
         );
@@ -1718,6 +1763,7 @@ mod tests {
                 &mut state.missions,
                 &state.world,
                 &state.uprising,
+                &state.research,
                 &[TickEvent { tick }],
                 &[],
             );

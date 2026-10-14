@@ -41,7 +41,7 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | 9 | **Blockade** | `blockade.rs` | `advance(state, world, ticks)` | Hostile fleet + no defender = blockade |
 | 10 | **Uprising** | `uprising.rs` | `advance(state, world, economy, missions, ticks, rolls)` | Needs the economy summary; incidents and disasters run on recovered timers |
 | 11 | **Death Star** | `death_star.rs` | `advance(state, world, ticks)` | Self-clears construction on completion |
-| 12 | **Research** | `research.rs` | `advance(state, world, ticks)` | Pure return — caller applies level-ups (fixed v0.6.0) |
+| 12 | **Research** | `research.rs` | none; research missions resolve in step 5 | `MissionEffect::ResearchPoints` -> `ResearchState::add_points` (2026-10-14) |
 | 13 | **Jedi** | `jedi.rs` | `advance(state, world, ticks, rolls)` | XP stored in `JediTrainingRecord`, not world |
 | 14 | **Victory** | `victory.rs` | `check(state, world, ticks)` | Death Star checks supersede HQ capture |
 | 15 | **Betrayal** | `betrayal.rs` | `advance(state, world, ticks, rolls, loyalty_tb)` | `is_unable_to_betray` immunity; 50-tick cooldown |
@@ -91,7 +91,7 @@ run_simulation_tick():
   9. uprising        = UprisingSystem::advance()        → integrator.apply_uprising_events()
   10. betrayal       = BetrayalSystem::advance()        → integrator.apply_betrayal_events()
   11. ds_events      = DeathStarSystem::advance()       → integrator.apply_death_star_events()
-  12. research       = ResearchSystem::advance()        → integrator.apply_research_results()
+  12. research       = (none: research missions add points in step 5, apply_mission_result)
   13. jedi           = JediSystem::advance()            → integrator.apply_jedi_events()
   14. victory        = VictorySystem::check()           → integrator.apply_victory()
   15. snapshot       (every 250 ticks)                  → integrator.emit_campaign_snapshot()
@@ -145,7 +145,7 @@ All simulation states are created in `main.rs` and included in `SaveState` (`reb
 | `BlockadeState` | `BlockadeSystem::advance` |
 | `UprisingState` | `UprisingSystem::advance`, `end_if_garrisoned()` |
 | `DeathStarState` | `DeathStarSystem::advance`, `fire()`, `start_construction()` |
-| `ResearchState` | `ResearchSystem::advance` (auto-applies level-ups) |
+| `ResearchState` | `ResearchState::add_points` from a research mission's `ResearchPoints` effect |
 | `JediState` | `JediSystem::advance`, `start_training()`, `stop_training()` |
 | `VictoryState` | Caller sets `resolved = true` after outcome |
 | `GameWorld` | Effect application only (never inside advance()) |

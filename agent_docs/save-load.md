@@ -1,9 +1,9 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v30, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v36, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-10-13
+updated: 2026-10-14
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 
@@ -11,14 +11,14 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v35, and it is the only one
+serializable snapshot. The current format is v36, and it is the only one
 that loads.
 
-## Native format (v35)
+## Native format (v36)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
-[version: u32 LE]             — SAVE_VERSION = 35
+[version: u32 LE]             — SAVE_VERSION = 36
 [save_name: u32 len + UTF-8]
 [timestamp_secs: u64 LE]
 [mod_count: u32 LE]
@@ -53,7 +53,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `blockade` | `BlockadeState` |
 | `uprising` | `UprisingState` |
 | `death_star` | `DeathStarState` |
-| `research` | `ResearchState` |
+| `research` | `ResearchState`: each side's level, points and Done flag per tree; research runs only as missions, so the invented projects are gone (v36) |
 | `jedi` | `JediState` |
 | `victory` | `VictoryState` |
 | `betrayal` | `BetrayalState` |

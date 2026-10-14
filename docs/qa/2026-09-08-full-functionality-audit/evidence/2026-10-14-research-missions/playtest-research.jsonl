@@ -1,0 +1,58 @@
+{"tick":28,"wall_ms":3,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Empire","kind":"ShipDesignResearch","target_system":"Coruscant","team":["Bevel Lemelisk"]}}
+{"tick":42,"wall_ms":5,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Failure","target_system":"Coruscant"}}
+{"tick":57,"wall_ms":6,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":74,"wall_ms":8,"system":"research","event_type":"research_unlocked","details":{"faction_is_alliance":false,"new_level":1,"tech_type":"Ship"}}
+{"tick":74,"wall_ms":8,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":93,"wall_ms":10,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Failure","target_system":"Coruscant"}}
+{"tick":110,"wall_ms":12,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":121,"wall_ms":13,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Failure","target_system":"Coruscant"}}
+{"tick":135,"wall_ms":15,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":147,"wall_ms":16,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":164,"wall_ms":18,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":176,"wall_ms":19,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":186,"wall_ms":20,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":205,"wall_ms":22,"system":"research","event_type":"research_unlocked","details":{"faction_is_alliance":false,"new_level":2,"tech_type":"Ship"}}
+{"tick":205,"wall_ms":22,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":225,"wall_ms":24,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Failure","target_system":"Coruscant"}}
+{"tick":243,"wall_ms":26,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":253,"wall_ms":27,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":268,"wall_ms":29,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":280,"wall_ms":30,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Alliance","kind":"TroopTrainingResearch","target_system":"Vagran","team":["Adar Tallon"]}}
+{"tick":286,"wall_ms":31,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":299,"wall_ms":32,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":301,"wall_ms":32,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Alliance","kind":"TroopTrainingResearch","target_system":"Vagran","team":["Adar Tallon"]}}
+{"tick":313,"wall_ms":34,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":328,"wall_ms":35,"system":"research","event_type":"research_unlocked","details":{"faction_is_alliance":false,"new_level":3,"tech_type":"Ship"}}
+{"tick":328,"wall_ms":35,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":329,"wall_ms":35,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Alliance","kind":"TroopTrainingResearch","target_system":"Vagran","team":["Adar Tallon"]}}
+{"tick":336,"wall_ms":36,"system":"missions","event_type":"mission_dispatched","details":{"decoys":[],"faction":"Alliance","kind":"TroopTrainingResearch","target_system":"Vagran","team":["Adar Tallon"]}}
+{"tick":338,"wall_ms":36,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Failure","target_system":"Coruscant"}}
+{"tick":353,"wall_ms":38,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":373,"wall_ms":40,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":383,"wall_ms":40,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":400,"wall_ms":42,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":412,"wall_ms":43,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":428,"wall_ms":44,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":439,"wall_ms":45,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Failure","target_system":"Vagran"}}
+{"tick":440,"wall_ms":45,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":456,"wall_ms":47,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Failure","target_system":"Coruscant"}}
+{"tick":459,"wall_ms":47,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Success","target_system":"Vagran"}}
+{"tick":470,"wall_ms":48,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Success","target_system":"Vagran"}}
+{"tick":475,"wall_ms":49,"system":"research","event_type":"research_unlocked","details":{"faction_is_alliance":false,"new_level":4,"tech_type":"Ship"}}
+{"tick":475,"wall_ms":49,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":487,"wall_ms":50,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Failure","target_system":"Vagran"}}
+{"tick":491,"wall_ms":50,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":504,"wall_ms":51,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Success","target_system":"Vagran"}}
+{"tick":510,"wall_ms":52,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":524,"wall_ms":53,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Failure","target_system":"Vagran"}}
+{"tick":525,"wall_ms":53,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":536,"wall_ms":54,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":542,"wall_ms":55,"system":"research","event_type":"research_unlocked","details":{"faction_is_alliance":true,"new_level":1,"tech_type":"Troop"}}
+{"tick":542,"wall_ms":55,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Success","target_system":"Vagran"}}
+{"tick":546,"wall_ms":55,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":556,"wall_ms":56,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Failure","target_system":"Vagran"}}
+{"tick":566,"wall_ms":57,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":566,"wall_ms":57,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Failure","target_system":"Vagran"}}
+{"tick":578,"wall_ms":58,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Success","target_system":"Vagran"}}
+{"tick":581,"wall_ms":58,"system":"missions","event_type":"mission_resolved","details":{"kind":"ShipDesignResearch","outcome":"Success","target_system":"Coruscant"}}
+{"tick":593,"wall_ms":59,"system":"missions","event_type":"mission_resolved","details":{"kind":"TroopTrainingResearch","outcome":"Failure","target_system":"Vagran"}}

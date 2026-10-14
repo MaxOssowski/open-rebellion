@@ -28,7 +28,6 @@ pub mod loyalty;
 pub mod missions;
 pub mod mod_manager;
 pub mod officers;
-pub mod research;
 pub mod save_load;
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
@@ -44,7 +43,6 @@ use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
 use rebellion_core::manufacturing::BuildableKind;
 use rebellion_core::missions::{MissionFaction, MissionKind, MissionMember};
-use rebellion_core::research::TechType;
 use rebellion_core::troop_transport::RegimentTarget;
 
 /// Player-initiated actions returned by War Room panels.
@@ -170,19 +168,6 @@ pub enum PanelAction {
     ToggleMod { name: String },
     /// Reload all mods from disk.
     ReloadMods,
-
-    // ── Research ──────────────────────────────────────────────────────────
-    /// Assign a character to research a tech tree.
-    DispatchResearch {
-        character: CharacterKey,
-        tech_type: TechType,
-        faction: MissionFaction,
-    },
-    /// Cancel an active research project.
-    CancelResearch {
-        tech_type: TechType,
-        faction: MissionFaction,
-    },
 
     // ── Jedi Training ──────────────────────────────────────────────────────
     /// Start Force training for a character.

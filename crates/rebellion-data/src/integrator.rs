@@ -50,7 +50,7 @@ use rebellion_core::movement::{
     apply_fleet_arrival, begin_fleet_transit, ArrivalEvent, MovementState,
 };
 use rebellion_core::repair::RepairEvent;
-use rebellion_core::research::{ResearchResult, ResearchState};
+use rebellion_core::research::ResearchState;
 use rebellion_core::troop_transport::{RegimentArrivals, RegimentLeg, TroopTransportState};
 use rebellion_core::uprising::{UprisingEvent, UprisingState};
 use rebellion_core::victory::VictoryOutcome;
@@ -150,18 +150,6 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "system": sys_name(world, *system),
                 "kind": format!("{:?}", kind),
                 "cost": cost,
-            })
-        }
-        AIAction::DispatchResearch {
-            character,
-            tech_type,
-            ticks,
-        } => {
-            serde_json::json!({
-                "type": "DispatchResearch",
-                "character": char_name(world, *character),
-                "tech_type": format!("{:?}", tech_type),
-                "ticks": ticks,
             })
         }
     }
@@ -917,9 +905,31 @@ impl PerceptionIntegrator {
         world: &mut GameWorld,
         result: &MissionResult,
         uprising_state: &mut UprisingState,
+        research_state: &mut ResearchState,
     ) {
         let ended =
             apply_mission_effects_inner(&result.effects, world, result.tick, uprising_state);
+        for effect in &result.effects {
+            if let MissionEffect::ResearchPoints {
+                faction,
+                tech,
+                points,
+            } = *effect
+            {
+                let is_alliance = faction == MissionFaction::Alliance;
+                for level in research_state.add_points(world, is_alliance, tech, points) {
+                    self.emit(
+                        SYS_RESEARCH,
+                        EVT_RESEARCH_UNLOCKED,
+                        serde_json::json!({
+                            "faction_is_alliance": is_alliance,
+                            "tech_type": format!("{tech:?}"),
+                            "new_level": level,
+                        }),
+                    );
+                }
+            }
+        }
         for event in &ended {
             if let UprisingEvent::UprisingEnded { system, tick } = event {
                 self.events.push(GameEventRecord::new(
@@ -1136,7 +1146,6 @@ impl PerceptionIntegrator {
         mfg_state: &mut ManufacturingState,
         movement_state: &mut MovementState,
         troop_transport: &mut TroopTransportState,
-        research_state: &mut ResearchState,
         world: &mut GameWorld,
         tick: u64,
         is_dual: bool,
@@ -1148,7 +1157,6 @@ impl PerceptionIntegrator {
             mfg_state,
             movement_state,
             troop_transport,
-            research_state,
             world,
             tick,
         );
@@ -1391,37 +1399,6 @@ impl PerceptionIntegrator {
         }
     }
 
-    // ── Step 12: Research ─────────────────────────────────────────────────
-
-    /// Apply research results: level-ups + telemetry.
-    pub fn apply_research_results(
-        &mut self,
-        results: &[ResearchResult],
-        research_state: &mut ResearchState,
-    ) {
-        for result in results {
-            let ResearchResult::TechUnlocked {
-                faction_is_alliance,
-                tech_type,
-                new_level,
-            } = result;
-            if *faction_is_alliance {
-                research_state.alliance.advance(*tech_type);
-            } else {
-                research_state.empire.advance(*tech_type);
-            }
-            self.emit(
-                SYS_RESEARCH,
-                EVT_RESEARCH_UNLOCKED,
-                serde_json::json!({
-                    "faction_is_alliance": faction_is_alliance,
-                    "tech_type": format!("{:?}", tech_type),
-                    "new_level": new_level,
-                }),
-            );
-        }
-    }
-
     // ── Step 12b: Repair ───────────────────────────────────────────────────
 
     /// Apply repair events: hull restoration + telemetry.
@@ -1636,6 +1613,8 @@ fn apply_mission_effects_inner(
             }
             // port: the port stores no injury (F-026).
             MissionEffect::CharacterInjured { .. } => {}
+            // Applied by apply_mission_result, which reports the levels.
+            MissionEffect::ResearchPoints { .. } => {}
             MissionEffect::CharacterRescued {
                 character,
                 returned_to,
@@ -2004,7 +1983,6 @@ fn apply_ai_actions_inner(
     mfg_state: &mut ManufacturingState,
     movement_state: &mut MovementState,
     troop_transport: &mut TroopTransportState,
-    research_state: &mut ResearchState,
     world: &mut GameWorld,
     tick: u64,
 ) -> Vec<bool> {
@@ -2048,24 +2026,6 @@ fn apply_ai_actions_inner(
             }
             AIAction::EnqueueProduction { system, kind, cost } => {
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
-                true
-            }
-            AIAction::DispatchResearch {
-                character,
-                tech_type,
-                ticks,
-            } => {
-                let is_alliance = ai_state
-                    .faction
-                    .is_some_and(|f| matches!(f, rebellion_core::ai::AiFaction::Alliance));
-                research_state.dispatch(rebellion_core::research::ResearchProject {
-                    tech_type: *tech_type,
-                    character: *character,
-                    faction_is_alliance: is_alliance,
-                    ticks_remaining: *ticks,
-                    total_ticks: *ticks,
-                });
-                ai_state.mark_busy(*character);
                 true
             }
             AIAction::MoveFleet {
@@ -2332,7 +2292,12 @@ mod tests {
                 }],
             };
             let mut integrator = PerceptionIntegrator::new(9, 0);
-            integrator.apply_mission_result(&mut world, &result, &mut uprisings);
+            integrator.apply_mission_result(
+                &mut world,
+                &result,
+                &mut uprisings,
+                &mut ResearchState::new(),
+            );
             assert_eq!(uprisings.is_uprising(system), !ends, "gain {support_gain}");
         }
     }
@@ -2371,7 +2336,12 @@ mod tests {
             }],
         };
         let mut integrator = PerceptionIntegrator::new(9, 0);
-        integrator.apply_mission_result(&mut world, &result, &mut uprisings);
+        integrator.apply_mission_result(
+            &mut world,
+            &result,
+            &mut uprisings,
+            &mut ResearchState::new(),
+        );
 
         assert!((world.systems[system].popularity_empire - 0.65).abs() < 1e-6);
         assert!(!uprisings.is_uprising(system));
@@ -2379,6 +2349,71 @@ mod tests {
             .events
             .iter()
             .any(|e| e.event_type == EVT_UPRISING_ENDED && e.tick == 9));
+    }
+
+    #[test]
+    fn research_points_raise_the_side_s_tree_and_report_each_level() {
+        // FUN_0056cf30 -> FUN_00530600 adds the mission's points; the points
+        // hook FUN_005326f0 takes each level they cover.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Kuat");
+        for (id, order) in [(0x1400_0001, 1), (0x1400_0002, 2)] {
+            world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass {
+                    dat_id: DatId(id),
+                    is_empire: true,
+                    refined_material_cost: 10,
+                    research_order: order,
+                    research_difficulty: 100,
+                    ..Default::default()
+                });
+        }
+        let result = MissionResult {
+            mission_id: 1,
+            tick: 7,
+            kind: MissionKind::ShipDesignResearch,
+            faction: MissionFaction::Empire,
+            character: None,
+            target_system: system,
+            outcome: MissionOutcome::Success,
+            effects: vec![MissionEffect::ResearchPoints {
+                faction: MissionFaction::Empire,
+                tech: rebellion_core::research::TechType::Ship,
+                points: 2,
+            }],
+        };
+        let mut research = ResearchState::new();
+        let mut integrator = PerceptionIntegrator::new(7, 0);
+        integrator.apply_mission_result(
+            &mut world,
+            &result,
+            &mut UprisingState::new(),
+            &mut research,
+        );
+
+        // One system: each level costs 100 * 1 / 100 = 1 point.
+        assert_eq!(research.empire.ship, 2);
+        assert_eq!(research.alliance.ship, 0);
+        assert!(research.empire_progress.ship.done);
+        let levels: Vec<_> = integrator
+            .events
+            .iter()
+            .filter(|e| e.event_type == EVT_RESEARCH_UNLOCKED)
+            .map(|e| {
+                (
+                    e.details["faction_is_alliance"].clone(),
+                    e.details["new_level"].clone(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            levels,
+            vec![
+                (serde_json::json!(false), serde_json::json!(1)),
+                (serde_json::json!(false), serde_json::json!(2))
+            ]
+        );
     }
 
     #[test]
@@ -2530,7 +2565,6 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         let mut movement = MovementState::new();
         let mut troop_transport = TroopTransportState::default();
-        let mut research = ResearchState::new();
         let mut integrator = PerceptionIntegrator::new(5, 0);
 
         integrator.apply_ai_actions(
@@ -2540,7 +2574,6 @@ mod tests {
             &mut manufacturing,
             &mut movement,
             &mut troop_transport,
-            &mut research,
             &mut world,
             5,
             false,
@@ -2564,7 +2597,6 @@ mod tests {
             &mut ManufacturingState::new(),
             &mut MovementState::new(),
             &mut TroopTransportState::default(),
-            &mut ResearchState::new(),
             world,
             5,
             false,
@@ -2701,7 +2733,6 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         let mut movement = MovementState::new();
         let mut troop_transport = TroopTransportState::default();
-        let mut research = ResearchState::new();
         let mut integrator = PerceptionIntegrator::new(5, 0);
 
         integrator.apply_ai_actions(
@@ -2711,7 +2742,6 @@ mod tests {
             &mut manufacturing,
             &mut movement,
             &mut troop_transport,
-            &mut research,
             &mut world,
             5,
             false,
@@ -2767,7 +2797,6 @@ mod tests {
             &mut ManufacturingState::new(),
             &mut movement,
             &mut troop_transport,
-            &mut ResearchState::new(),
             &mut world,
             5,
         );

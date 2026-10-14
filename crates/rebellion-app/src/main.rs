@@ -65,7 +65,7 @@ use rebellion_core::production_cycle::{
     advance_yards, scrap_yardless_queues, suspended_systems, ProductionState, ProductionSystem,
 };
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
-use rebellion_core::research::{ResearchState, ResearchSystem};
+use rebellion_core::research::ResearchState;
 use rebellion_core::tick::{GameClock, GameSpeed};
 use rebellion_core::troop_transport::{RegimentLeg, RegimentTarget, TroopTransportState};
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
@@ -106,7 +106,6 @@ use rebellion_render::quadrant_icons::Quadrant;
 use rebellion_render::panels::death_star::draw_death_star;
 use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
-use rebellion_render::panels::research::{draw_research, ResearchPanelState};
 use rebellion_render::status_rows::StatusSources;
 use rebellion_render::status_window::{draw_status_window, StatusWindowAction, StatusWindowState};
 use rebellion_render::system_window::fleet_label;
@@ -1126,7 +1125,6 @@ async fn main() {
     let mut message_index: Option<MessageIndexState> = None;
     let mut advice_saved_speed: Option<GameSpeed> = None;
     let mut enc_state = EncyclopediaState::new();
-    let mut research_panel_state = ResearchPanelState::default();
     let mut jedi_panel_state = JediPanelState::default();
     let mut bombardment_panel_state = BombardmentPanelState::default();
     let mut mod_manager_state = rebellion_render::ModManagerState::default();
@@ -1153,7 +1151,6 @@ async fn main() {
     let mut show_officers = false;
     let mut show_fleets = false;
     let mut show_missions = false;
-    let mut show_research = false;
     let mut show_jedi = false;
     let mut show_bombardment = false;
     let mut show_death_star = false;
@@ -1376,6 +1373,7 @@ async fn main() {
             request,
             &world,
             &uprising_state,
+            &research_state,
             &mut mission_dialog_state,
         );
     }
@@ -1526,7 +1524,6 @@ async fn main() {
                     show_officers = false;
                     show_fleets = false;
                     show_missions = false;
-                    show_research = false;
                     show_jedi = false;
                     show_bombardment = false;
                     show_death_star = false;
@@ -1638,7 +1635,6 @@ async fn main() {
                                 &mut show_officers,
                                 &mut show_fleets,
                                 &mut show_missions,
-                                &mut show_research,
                                 &mut show_jedi,
                                 &mut show_bombardment,
                                 &mut show_death_star,
@@ -1652,11 +1648,10 @@ async fn main() {
             toggle_panel!(KeyCode::O, 0);
             toggle_panel!(KeyCode::F, 1);
             toggle_panel!(KeyCode::N, 2);
-            toggle_panel!(KeyCode::T, 3);
-            toggle_panel!(KeyCode::J, 4);
-            toggle_panel!(KeyCode::B, 5);
-            toggle_panel!(KeyCode::D, 6);
-            toggle_panel!(KeyCode::L, 7);
+            toggle_panel!(KeyCode::J, 3);
+            toggle_panel!(KeyCode::B, 4);
+            toggle_panel!(KeyCode::D, 5);
+            toggle_panel!(KeyCode::L, 6);
             if !alt_down
                 && is_key_pressed(KeyCode::S)
                 && !matches!(
@@ -2285,6 +2280,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 &mut mission_state,
                 &world,
                 &uprising_state,
+                &research_state,
                 &tick_events,
                 &mission_rolls,
             );
@@ -2299,6 +2295,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 apply_mission_result(
                     result,
                     &mut world,
+                    &mut research_state,
                     &mut msg_log,
                     #[cfg(not(target_arch = "wasm32"))]
                     &mut audio_engine,
@@ -2502,7 +2499,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                 &mut mfg_state,
                 &mut movement_state,
                 &mut troop_transport_state,
-                &mut research_state,
                 &mut world,
                 &mut msg_log,
                 tick_events.last().map_or(0, |e| e.tick),
@@ -2549,7 +2545,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                     &mut mfg_state,
                     &mut movement_state,
                     &mut troop_transport_state,
-                    &mut research_state,
                     &mut world,
                     &mut msg_log,
                     tick_events.last().map_or(0, |e| e.tick),
@@ -2859,51 +2854,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                             &format!("Warning! Death Star detected near {name}!"),
                         );
                     }
-                }
-            }
-
-            // ── Research ─────────────────────────────────────────────────────
-            let research_results =
-                ResearchSystem::advance(&mut research_state, &world, &tick_events);
-            for result in &research_results {
-                let rebellion_core::research::ResearchResult::TechUnlocked {
-                    faction_is_alliance,
-                    tech_type,
-                    new_level,
-                } = result;
-                let faction_name = if *faction_is_alliance {
-                    "Alliance"
-                } else {
-                    "Empire"
-                };
-                let tech_name = match tech_type {
-                    rebellion_core::research::TechType::Ship => "Ship",
-                    rebellion_core::research::TechType::Troop => "Troop",
-                    rebellion_core::research::TechType::Facility => "Facility",
-                };
-                // Notification 5, Research Report.
-                msg_log.push(filed(
-                    GameMessage::new(
-                        current_tick,
-                        format!("{faction_name} {tech_name} tech advanced to level {new_level}"),
-                        MessageCategory::Event,
-                    )
-                    .with_picture_if(Some(pictures::research())),
-                    MessageRail::Manufacturing,
-                    Some(RailAudience::side(*faction_is_alliance)),
-                ));
-            }
-            // Apply research level-ups (advance() is now pure — caller must apply)
-            for result in &research_results {
-                let rebellion_core::research::ResearchResult::TechUnlocked {
-                    faction_is_alliance,
-                    tech_type,
-                    ..
-                } = result;
-                if *faction_is_alliance {
-                    research_state.alliance.advance(*tech_type);
-                } else {
-                    research_state.empire.advance(*tech_type);
                 }
             }
 
@@ -3495,7 +3445,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     personnel_finder_state = PersonnelFinderState::default();
                                     message_index = None;
                                     advice_saved_speed = None;
-                                    research_panel_state = ResearchPanelState::default();
                                     jedi_panel_state = JediPanelState::default();
                                     bombardment_panel_state = BombardmentPanelState::default();
                                     enc_state = EncyclopediaState::new();
@@ -3511,7 +3460,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     show_officers = false;
                                     show_fleets = false;
                                     show_missions = false;
-                                    show_research = false;
                                     show_jedi = false;
                                     show_bombardment = false;
                                     show_death_star = false;
@@ -3996,17 +3944,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                         if let Some(action) =
                             draw_missions(ctx, &world, &mission_state, player_faction, clock.tick)
                         {
-                            panel_actions.push(action);
-                        }
-                    }
-                    if show_research {
-                        if let Some(action) = draw_research(
-                            ctx,
-                            &world,
-                            &research_state,
-                            &mut research_panel_state,
-                            player_faction,
-                        ) {
                             panel_actions.push(action);
                         }
                     }
@@ -5226,6 +5163,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     let kinds = rebellion_core::missions::available_kinds(
                                         &world,
                                         &uprising_state,
+                                        &research_state,
                                         player_faction,
                                         &team,
                                         &[],
@@ -6050,7 +5988,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                             personnel_finder_state = PersonnelFinderState::default();
                             message_index = None;
                             advice_saved_speed = None;
-                            research_panel_state = ResearchPanelState::default();
                             jedi_panel_state = JediPanelState::default();
                             bombardment_panel_state = BombardmentPanelState::default();
                             enc_state = EncyclopediaState::new();
@@ -6066,7 +6003,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                             show_officers = false;
                             show_fleets = false;
                             show_missions = false;
-                            show_research = false;
                             show_jedi = false;
                             show_bombardment = false;
                             show_death_star = false;
@@ -6141,7 +6077,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &mut troop_transport_state,
                         active_fog_state,
                         &mut ai_state,
-                        &mut research_state,
                         &mut jedi_state,
                         &mut death_star_state,
                         &mut msg_log,
@@ -6380,7 +6315,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                         left_panel_open: show_officers
                             || show_fleets
                             || show_missions
-                            || show_research
                             || show_jedi
                             || show_bombardment
                             || show_death_star
@@ -6747,7 +6681,6 @@ fn apply_panel_action(
     troop_transport_state: &mut TroopTransportState,
     fog_state: &mut FogState,
     ai_state: &mut AIState,
-    research_state: &mut ResearchState,
     jedi_state: &mut JediState,
     death_star_state: &mut DeathStarState,
     msg_log: &mut MessageLog,
@@ -7095,6 +7028,9 @@ fn apply_panel_action(
                 MissionKind::SubdueUprising => "Subdue Uprising",
                 MissionKind::DeathStarSabotage => "Death Star Sabotage",
                 MissionKind::Reconnaissance => "Reconnaissance",
+                MissionKind::ShipDesignResearch => "Ship Design Research",
+                MissionKind::FacilityDesignResearch => "Facility Design Research",
+                MissionKind::TroopTrainingResearch => "Troop Training Research",
                 MissionKind::Autoscrap => "Autoscrap",
             };
             msg_log.push(GameMessage::at_system(
@@ -7455,66 +7391,6 @@ fn apply_panel_action(
             ));
         }
 
-        // ── Research ─────────────────────────────────────────────────────────
-        PanelAction::DispatchResearch {
-            character,
-            tech_type,
-            faction,
-        } => {
-            let is_alliance = faction == MissionFaction::Alliance;
-            let current_level = research_state.level(is_alliance, tech_type);
-            // Calculate research duration from world data
-            let ticks = rebellion_core::research::ResearchSystem::ticks_for_next_level(
-                world,
-                is_alliance,
-                tech_type,
-                current_level,
-            );
-            let project = rebellion_core::research::ResearchProject {
-                tech_type,
-                character,
-                faction_is_alliance: is_alliance,
-                ticks_remaining: ticks,
-                total_ticks: ticks,
-            };
-            research_state.dispatch(project);
-            let char_name = world
-                .characters
-                .get(character)
-                .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-            let tree_name = match tech_type {
-                rebellion_core::research::TechType::Ship => "Ship",
-                rebellion_core::research::TechType::Troop => "Troop",
-                rebellion_core::research::TechType::Facility => "Facility",
-            };
-            msg_log.push(GameMessage::new(
-                clock.tick,
-                format!(
-                    "{} assigned to {} research (level {} → {}, {} ticks)",
-                    char_name,
-                    tree_name,
-                    current_level,
-                    current_level + 1,
-                    ticks
-                ),
-                MessageCategory::Event,
-            ));
-        }
-        PanelAction::CancelResearch { tech_type, faction } => {
-            let is_alliance = faction == MissionFaction::Alliance;
-            research_state.cancel(is_alliance, tech_type);
-            let tree_name = match tech_type {
-                rebellion_core::research::TechType::Ship => "Ship",
-                rebellion_core::research::TechType::Troop => "Troop",
-                rebellion_core::research::TechType::Facility => "Facility",
-            };
-            msg_log.push(GameMessage::new(
-                clock.tick,
-                format!("{tree_name} research cancelled"),
-                MessageCategory::Event,
-            ));
-        }
-
         // ── Jedi Training ────────────────────────────────────────────────────
         PanelAction::StartJediTraining { character, faction } => {
             let is_alliance = faction == MissionFaction::Alliance;
@@ -7555,6 +7431,7 @@ fn apply_panel_action(
 fn apply_mission_result(
     result: &rebellion_core::missions::MissionResult,
     world: &mut GameWorld,
+    research_state: &mut ResearchState,
     log: &mut MessageLog,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
@@ -7575,6 +7452,9 @@ fn apply_mission_result(
         MissionKind::SubdueUprising => "Subdue Uprising",
         MissionKind::DeathStarSabotage => "Death Star Sabotage",
         MissionKind::Reconnaissance => "Reconnaissance",
+        MissionKind::ShipDesignResearch => "Ship Design Research",
+        MissionKind::FacilityDesignResearch => "Facility Design Research",
+        MissionKind::TroopTrainingResearch => "Troop Training Research",
         MissionKind::Autoscrap => "Autoscrap",
     };
     let sys_name = world
@@ -7598,6 +7478,9 @@ fn apply_mission_result(
         | MissionKind::Abduction
         | MissionKind::DeathStarSabotage
         | MissionKind::Reconnaissance
+        | MissionKind::ShipDesignResearch
+        | MissionKind::FacilityDesignResearch
+        | MissionKind::TroopTrainingResearch
         | MissionKind::Autoscrap => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.
@@ -7653,6 +7536,31 @@ fn apply_mission_result(
                 skill,
                 amount,
             } => rebellion_core::missions::raise_skill(world, *character, *skill, *amount),
+            MissionEffect::ResearchPoints {
+                faction,
+                tech,
+                points,
+            } => {
+                let is_alliance = *faction == MissionFaction::Alliance;
+                let tree_name = match tech {
+                    rebellion_core::research::TechType::Ship => "Ship",
+                    rebellion_core::research::TechType::Troop => "Troop",
+                    rebellion_core::research::TechType::Facility => "Facility",
+                };
+                for level in research_state.add_points(world, is_alliance, *tech, *points) {
+                    // Notification 5, Research Report.
+                    log.push(filed(
+                        GameMessage::new(
+                            result.tick,
+                            format!("{faction_name} {tree_name} tech advanced to level {level}"),
+                            MessageCategory::Event,
+                        )
+                        .with_picture_if(Some(pictures::research())),
+                        MessageRail::Manufacturing,
+                        Some(RailAudience::side(is_alliance)),
+                    ));
+                }
+            }
             MissionEffect::UprisingIncident(event) => {
                 rebellion_core::uprising::apply_uprising_event(world, event);
             }
@@ -7834,7 +7742,6 @@ fn apply_ai_actions(
     mfg_state: &mut ManufacturingState,
     movement_state: &mut MovementState,
     troop_transport_state: &mut TroopTransportState,
-    research_state: &mut ResearchState,
     world: &mut GameWorld,
     log: &mut MessageLog,
     tick: u64,
@@ -7933,32 +7840,6 @@ fn apply_ai_actions(
                         }
                     }
                 }
-            }
-            AIAction::DispatchResearch {
-                character,
-                tech_type,
-                ticks,
-            } => {
-                let is_alliance = ai_state
-                    .faction
-                    .is_some_and(|f| matches!(f, AiFaction::Alliance));
-                research_state.dispatch(rebellion_core::research::ResearchProject {
-                    tech_type: *tech_type,
-                    character: *character,
-                    faction_is_alliance: is_alliance,
-                    ticks_remaining: *ticks,
-                    total_ticks: *ticks,
-                });
-                ai_state.mark_busy(*character);
-                let char_name = world
-                    .characters
-                    .get(*character)
-                    .map_or("unknown", |c| c.name.as_str());
-                log.push(GameMessage::new(
-                    tick,
-                    format!("{char_name} assigned to {tech_type:?} research ({ticks} ticks)"),
-                    MessageCategory::Ai,
-                ));
             }
         }
     }

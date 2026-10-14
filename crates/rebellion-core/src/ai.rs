@@ -258,13 +258,6 @@ pub enum AIAction {
         /// action is applied.
         troops: Vec<TroopKey>,
     },
-
-    /// Assign a character to research a tech tree.
-    DispatchResearch {
-        character: CharacterKey,
-        tech_type: TechType,
-        ticks: u32,
-    },
 }
 
 /// Why the AI is moving a fleet.
@@ -338,9 +331,9 @@ impl AISystem {
         Self::evaluate_rescue(&mut planner, world, faction, &mut actions);
         Self::evaluate_reconnaissance(&mut planner, world, faction, config, &mut actions);
         Self::evaluate_research(
-            state,
-            &planner,
+            &mut planner,
             world,
+            mission_state,
             research_state,
             faction,
             &mut actions,
@@ -372,83 +365,6 @@ impl AISystem {
     // -----------------------------------------------------------------------
     // Officer heuristics
     // -----------------------------------------------------------------------
-
-    /// `FUN_00508250` port: Pre-dispatch validation cascade.
-    /// Returns true if a character is eligible for mission dispatch.
-    ///
-    /// Ports 15 of the original 18 AND-chained validators. The remaining 3
-    /// (#2, #3, #4) reference internal C++ allocation budgets (+0x58, +0x5c,
-    /// +0x64) that track entity deployment counts against capacity limits —
-    /// our AI evaluates holistically per cycle, so over-dispatch is naturally
-    /// limited by available characters and the per-cycle mission caps.
-    fn can_dispatch(
-        state: &AIState,
-        faction: AiFaction,
-        char_key: CharacterKey,
-        character: &Character,
-    ) -> bool {
-        // Knesset Shamash-Bet #R11: killed characters stay in the arena for
-        // reactive story events but must be invisible to dispatch logic.
-        if character.is_killed {
-            return false;
-        }
-        // #1 FUN_0051ebb0: Always returns 1 — no-op gate (elided).
-
-        // #5 FUN_0050b230: Faction check + status bits (+0x88>>11) + scoring.
-        // We port the faction check; the status bits encode "entity is deployed"
-        // which we cover via is_busy / on_mission checks below.
-        if !faction.owns_character(character) {
-            return false;
-        }
-
-        // #9 FUN_0050b5a0: Faction + status bits (+0x88 bits 0,2,11) + scoring.
-        // Bit 0 = "entity exists/valid", bit 2 = "entity is available",
-        // bit 11 = "entity is deployed". Our model tracks these via the
-        // is_captive / on_mission / is_busy flags below.
-
-        // #13 FUN_0050bc60: Faction match (character family 4) — covered above.
-
-        // #14 FUN_0050be00: Mandatory mission check
-        if character.on_mandatory_mission {
-            return false;
-        }
-
-        // #17 FUN_0050b800: Status bits (0,2) + position check (+0x7c >= 0).
-        // Bit 0 = valid, bit 2 = available, position = current system index.
-        // We approximate: character must have a valid system assignment or at
-        // least not be in an invalid state.
-        if character.is_captive {
-            return false;
-        }
-
-        // #18 FUN_0050bb00: Faction + status bits + deployment flag.
-        // Combined faction + "not already deployed" — we cover via is_busy.
-        if state.is_busy(char_key) {
-            return false;
-        }
-
-        if character.on_mission || character.on_hidden_mission {
-            return false;
-        }
-
-        // Our extensions (not in original, but necessary for gameplay):
-        if !character.can_be_commander {
-            return false;
-        }
-
-        // Unported validators (require C++ allocation budget tracking):
-        // #2 FUN_0050ad60: capacity overflow (+0x5c < +0x64) — internal budget
-        //    tracking that limits total deployed entities. Our per-cycle caps
-        //    (max_covert_ops_per_eval, etc.) serve the same purpose.
-        // #3 FUN_0050ad80: fleet entity count vs capacity at +0x5c — the most
-        //    complex validator, checking entity counts against fleet-level budgets.
-        //    Our fleet-level checks in can_dispatch_fleet cover the fleet side.
-        // #4 FUN_0050b0b0: entity count via vtable+0x1c8 vs budget at +0x64 —
-        //    a global deployment budget we don't model. Our per-cycle caps
-        //    prevent over-dispatch equivalently.
-
-        true
-    }
 
     /// System-level dispatch validation for fleet/troop operations.
     ///
@@ -955,67 +871,45 @@ impl AISystem {
     // Research heuristics
     // -----------------------------------------------------------------------
 
-    /// Assign idle characters with research skills to tech tree advancement.
+    /// Research orders, one per tree that is not Done.
     ///
-    /// For each tech tree (Ship, Troop, Facility), if no project is active for
-    /// this faction, find the best available character and dispatch them.
-    /// Characters are matched by their primary research skill:
-    /// - Ship: `ship_design`
-    /// - Troop: `troop_training`
-    /// - Facility: `facility_design`
+    /// The research planners (`FUN_0047bcd0`, `FUN_0047c2b0`, `FUN_0047c900`)
+    /// pick one member of the side with the tree's capability and a skill of
+    /// 10 or more. port: the side's strategic choice of mission and target
+    /// (side `+0x318`, `+0x31c`) is untraced, so the port orders a tree's
+    /// research only while none of the side's research in that tree runs,
+    /// at the side's first system that can host it
+    /// ([`crate::missions::research_site`]; uprisings are not read here, and
+    /// the validator ends a mission sent to one).
     fn evaluate_research(
-        state: &AIState,
-        planner: &Planner<'_>,
+        planner: &mut Planner<'_>,
         world: &GameWorld,
+        mission_state: &MissionState,
         research_state: &ResearchState,
         faction: AiFaction,
         actions: &mut Vec<AIAction>,
     ) {
         let is_alliance = matches!(faction, AiFaction::Alliance);
-
-        for &tech in &[TechType::Ship, TechType::Troop, TechType::Facility] {
-            // Skip if there's already an active project for this faction + tree.
-            let has_active = research_state
-                .projects
+        let side = crate::dat::Faction::of_alliance(is_alliance);
+        let no_uprisings = crate::uprising::UprisingState::default();
+        for tech in TechType::ALL {
+            let kind = match tech {
+                TechType::Ship => MissionKind::ShipDesignResearch,
+                TechType::Troop => MissionKind::TroopTrainingResearch,
+                TechType::Facility => MissionKind::FacilityDesignResearch,
+            };
+            let running = mission_state
+                .missions()
                 .iter()
-                .any(|p| p.faction_is_alliance == is_alliance && p.tech_type == tech);
-            if has_active {
+                .any(|m| m.kind == kind && m.faction == faction.as_mission_faction());
+            if running || research_state.progress(is_alliance, tech).done {
                 continue;
             }
-
-            // Find the best available character for this tree.
-            let best = world
-                .characters
-                .iter()
-                .filter(|(key, c)| {
-                    Self::can_dispatch(state, faction, *key, c) && !planner.sent(*key)
-                })
-                .filter_map(|(key, c)| {
-                    let skill = match tech {
-                        TechType::Ship => c.ship_design.base + c.ship_design.variance / 2,
-                        TechType::Troop => c.troop_training.base + c.troop_training.variance / 2,
-                        TechType::Facility => {
-                            c.facility_design.base + c.facility_design.variance / 2
-                        }
-                    };
-                    // Only consider characters with meaningful skill (>= 30).
-                    if skill >= 30 {
-                        Some((key, skill))
-                    } else {
-                        None
-                    }
-                })
-                .max_by_key(|&(_, skill)| skill);
-
-            if let Some((char_key, _)) = best {
-                let current_level = research_state.level(is_alliance, tech);
-                let ticks =
-                    ResearchSystem::ticks_for_next_level(world, is_alliance, tech, current_level);
-                actions.push(AIAction::DispatchResearch {
-                    character: char_key,
-                    tech_type: tech,
-                    ticks,
-                });
+            let site = world.systems.keys().find(|&system| {
+                crate::missions::research_site(world, &no_uprisings, side, tech, system)
+            });
+            if let Some(site) = site {
+                Self::dispatch_planned(planner, kind, (site, None), None, actions);
             }
         }
     }
@@ -4157,23 +4051,18 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn can_dispatch_rejects_killed_character() {
+    fn a_killed_character_is_never_planned() {
+        // FUN_00402230 builds records only for the side's live objects.
         let mut world = empty_world();
-        let ck = add_character(&mut world, /*alliance*/ false, /*major*/ true, 50);
-        let character = world.characters.get(ck).unwrap();
-        let state = AIState::new(AiFaction::Empire);
-        assert!(AISystem::can_dispatch(
-            &state,
-            AiFaction::Empire,
-            ck,
-            character
-        ));
+        let ck = add_character(&mut world, /*alliance*/ false, /*major*/ true, 90);
+        assert!(planner_for(&world, AiFaction::Empire)
+            .plan(MissionKind::Diplomacy)
+            .is_some());
 
-        // Kill and re-check.
         world.characters.get_mut(ck).unwrap().mark_killed();
-        let character = world.characters.get(ck).unwrap();
-        assert!(
-            !AISystem::can_dispatch(&state, AiFaction::Empire, ck, character),
+        assert_eq!(
+            planner_for(&world, AiFaction::Empire).plan(MissionKind::Diplomacy),
+            None,
             "killed character must not pass dispatch gate"
         );
     }
@@ -5056,113 +4945,170 @@ mod tests {
         assert!(orders(&actions, MissionKind::Diplomacy).is_empty());
     }
 
-    #[test]
-    fn the_best_free_designer_of_each_tree_researches_it() {
-        // port: research is the port's own dispatch, not a mission; it
-        // takes the highest base plus half the variance, of 30 or more, and
-        // leaves characters the planners sent.
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let _ = add_system(&mut world, sector, 0.5, 0.5);
-        let designer = |world: &mut GameWorld, tech: TechType, base, variance| {
-            let key = add_character(world, true, false, 30);
-            let pair = SkillPair { base, variance };
-            let c = &mut world.characters[key];
-            match tech {
-                TechType::Ship => c.ship_design = pair,
-                TechType::Troop => c.troop_training = pair,
-                TechType::Facility => c.facility_design = pair,
-            }
-            key
-        };
-        let ship = designer(&mut world, TechType::Ship, 30, 21); // 40
-        let _ = designer(&mut world, TechType::Ship, 39, 0);
-        let troop = designer(&mut world, TechType::Troop, 30, 21);
-        let _ = designer(&mut world, TechType::Troop, 39, 0);
-        let facility = designer(&mut world, TechType::Facility, 30, 21);
-        let _ = designer(&mut world, TechType::Facility, 39, 0);
-        let _below = designer(&mut world, TechType::Facility, 29, 0);
-        let state = AIState::new(AiFaction::Alliance);
-        let planner = planner_for(&world, AiFaction::Alliance);
-        let mut actions = Vec::new();
+    /// An Alliance system holding a yard of `family` (MANFACSD `0x28`
+    /// shipyard, `0x29` training facility, `0x2a` construction yard).
+    fn yard_system(world: &mut GameWorld, sector: SectorKey, family: u32) -> SystemKey {
+        let system = add_system(world, sector, 0.5, 0.5);
+        world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let yard =
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: DatId::new(family << 24 | 1),
+                    side: crate::dat::Faction::Alliance,
+                    is_shipyard: family == 0x28,
+                });
+        world.systems[system].manufacturing_facilities.push(yard);
+        system
+    }
 
+    fn designer(world: &mut GameWorld, tech: TechType, base: u32) -> MissionMember {
+        let key = add_character(world, true, false, 0);
+        let pair = SkillPair { base, variance: 0 };
+        let c = &mut world.characters[key];
+        match tech {
+            TechType::Ship => c.ship_design = pair,
+            TechType::Troop => c.troop_training = pair,
+            TechType::Facility => c.facility_design = pair,
+        }
+        MissionMember::Character(key)
+    }
+
+    fn research_orders(
+        world: &GameWorld,
+        missions: &MissionState,
+        research: &ResearchState,
+    ) -> Vec<AIAction> {
+        let mut planner = Planner::new(world, missions, &HashSet::new(), true, 7);
+        let mut actions = Vec::new();
         AISystem::evaluate_research(
-            &state,
-            &planner,
-            &world,
-            &ResearchState::new(),
+            &mut planner,
+            world,
+            missions,
+            research,
             AiFaction::Alliance,
             &mut actions,
         );
+        actions
+    }
 
-        let researchers: Vec<_> = actions
-            .iter()
-            .filter_map(|a| match a {
-                AIAction::DispatchResearch {
-                    character,
-                    tech_type,
-                    ..
-                } => Some((*tech_type, *character)),
-                _ => None,
-            })
-            .collect();
+    #[test]
+    fn each_tree_sends_its_best_designer_to_a_system_with_its_yard() {
+        // FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900: one member with the
+        // tree's capability (0x800, 0x1000, 0x2000) and skill 2, 3 or 4 of
+        // 10 or more; FUN_0056c510 needs a yard of the tree's area there.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _bare = add_system(&mut world, sector, 0.5, 0.5);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let training = yard_system(&mut world, sector, 0x29);
+        let _weak = designer(&mut world, TechType::Ship, 20);
+        let ship = designer(&mut world, TechType::Ship, 60);
+        let troop = designer(&mut world, TechType::Troop, 30);
+        let _facility = designer(&mut world, TechType::Facility, 70);
+
+        let actions = research_orders(&world, &MissionState::new(), &ResearchState::new());
+
         assert_eq!(
-            researchers,
-            vec![
-                (TechType::Ship, ship),
-                (TechType::Troop, troop),
-                (TechType::Facility, facility),
-            ]
+            orders(&actions, MissionKind::ShipDesignResearch),
+            vec![(vec![ship], shipyard, None)]
+        );
+        assert_eq!(
+            orders(&actions, MissionKind::TroopTrainingResearch),
+            vec![(vec![troop], training, None)]
+        );
+        assert!(orders(&actions, MissionKind::FacilityDesignResearch).is_empty());
+    }
+
+    #[test]
+    fn a_designer_below_skill_10_is_never_sent() {
+        // FUN_0047bcd0: FUN_004035d0(.., skill 2, minimum 10, ..).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _ = yard_system(&mut world, sector, 0x28);
+        let _ = designer(&mut world, TechType::Ship, 9);
+        let actions = research_orders(&world, &MissionState::new(), &ResearchState::new());
+        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
+
+        let ten = designer(&mut world, TechType::Ship, 10);
+        let actions = research_orders(&world, &MissionState::new(), &ResearchState::new());
+        assert_eq!(
+            orders(&actions, MissionKind::ShipDesignResearch)[0].0,
+            vec![ten]
         );
     }
 
     #[test]
-    fn research_reads_half_the_variance() {
-        // base 30 + 4 / 2 = 32 loses to a flat 33 in every tree.
+    fn a_done_tree_or_one_already_researched_gets_no_order() {
+        // port: one research order per tree while none runs; a Done tree
+        // would end at once with code 0xe (FUN_0052eb10).
         let mut world = empty_world();
         let sector = add_sector(&mut world);
-        let _ = add_system(&mut world, sector, 0.5, 0.5);
-        let mut expected = Vec::new();
-        for tech in [TechType::Ship, TechType::Troop, TechType::Facility] {
-            for (base, variance) in [(30, 4), (33, 0)] {
-                let key = add_character(&mut world, true, false, 30);
-                let pair = SkillPair { base, variance };
-                let c = &mut world.characters[key];
-                match tech {
-                    TechType::Ship => c.ship_design = pair,
-                    TechType::Troop => c.troop_training = pair,
-                    TechType::Facility => c.facility_design = pair,
-                }
-                if base == 33 {
-                    expected.push((tech, key));
-                }
-            }
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let _ = yard_system(&mut world, sector, 0x29);
+        let _ = designer(&mut world, TechType::Ship, 50);
+        let busy = designer(&mut world, TechType::Troop, 50);
+        let _ = designer(&mut world, TechType::Troop, 40);
+        let mut research = ResearchState::new();
+        research.alliance_progress.ship.done = true;
+        let mut missions = MissionState::new();
+        missions.dispatch(crate::missions::MissionRequest {
+            kind: MissionKind::TroopTrainingResearch,
+            faction: crate::missions::MissionFaction::Alliance,
+            team: vec![busy],
+            decoys: vec![],
+            target_system: shipyard,
+            target_character: None,
+            target_object: None,
+            tick: 1,
+        });
+
+        let actions = research_orders(&world, &missions, &research);
+
+        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
+        assert!(orders(&actions, MissionKind::TroopTrainingResearch).is_empty());
+    }
+
+    #[test]
+    fn another_side_s_or_another_tree_s_research_blocks_no_order() {
+        // port: only the side's own research in the same tree holds a tree.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let ship = designer(&mut world, TechType::Ship, 50);
+        let enemy = add_character(&mut world, false, false, 0);
+        let trainer = add_character(&mut world, true, false, 0);
+        let mut missions = MissionState::new();
+        for (kind, faction, member) in [
+            (
+                MissionKind::ShipDesignResearch,
+                crate::missions::MissionFaction::Empire,
+                MissionMember::Character(enemy),
+            ),
+            (
+                MissionKind::TroopTrainingResearch,
+                crate::missions::MissionFaction::Alliance,
+                MissionMember::Character(trainer),
+            ),
+        ] {
+            missions.dispatch(crate::missions::MissionRequest {
+                kind,
+                faction,
+                team: vec![member],
+                decoys: vec![],
+                target_system: shipyard,
+                target_character: None,
+                target_object: None,
+                tick: 1,
+            });
         }
-        let state = AIState::new(AiFaction::Alliance);
-        let planner = planner_for(&world, AiFaction::Alliance);
-        let mut actions = Vec::new();
 
-        AISystem::evaluate_research(
-            &state,
-            &planner,
-            &world,
-            &ResearchState::new(),
-            AiFaction::Alliance,
-            &mut actions,
+        let actions = research_orders(&world, &missions, &ResearchState::new());
+
+        assert_eq!(
+            orders(&actions, MissionKind::ShipDesignResearch),
+            vec![(vec![ship], shipyard, None)]
         );
-
-        let researchers: Vec<_> = actions
-            .iter()
-            .filter_map(|a| match a {
-                AIAction::DispatchResearch {
-                    character,
-                    tech_type,
-                    ..
-                } => Some((*tech_type, *character)),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(researchers, expected);
     }
 
     #[test]
@@ -5208,67 +5154,5 @@ mod tests {
             .map(|(_, system, _)| system)
             .collect();
         assert_eq!(targets, vec![garrisoned, empty]);
-    }
-
-    #[test]
-    fn research_skips_a_tree_the_side_already_researches_and_anyone_a_planner_sent() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let _ = add_system(&mut world, sector, 0.1, 0.5);
-        let busy = add_character(&mut world, true, false, 90);
-        world.characters[busy].ship_design = SkillPair {
-            base: 90,
-            variance: 0,
-        };
-        let spare = add_character(&mut world, true, false, 0);
-        world.characters[spare].ship_design = SkillPair {
-            base: 40,
-            variance: 0,
-        };
-        world.characters[spare].troop_training = SkillPair {
-            base: 40,
-            variance: 0,
-        };
-        let mut research = ResearchState::new();
-        research.projects.push(crate::research::ResearchProject {
-            tech_type: TechType::Troop,
-            character: busy,
-            faction_is_alliance: true,
-            ticks_remaining: 5,
-            total_ticks: 5,
-        });
-        research.projects.push(crate::research::ResearchProject {
-            tech_type: TechType::Ship,
-            character: busy,
-            faction_is_alliance: false,
-            ticks_remaining: 5,
-            total_ticks: 5,
-        });
-        let state = AIState::new(AiFaction::Alliance);
-        let mut planner = planner_for(&world, AiFaction::Alliance);
-        assert!(planner.plan(MissionKind::Diplomacy).is_some());
-        let mut actions = Vec::new();
-
-        AISystem::evaluate_research(
-            &state,
-            &planner,
-            &world,
-            &research,
-            AiFaction::Alliance,
-            &mut actions,
-        );
-
-        let researchers: Vec<_> = actions
-            .iter()
-            .filter_map(|a| match a {
-                AIAction::DispatchResearch {
-                    character,
-                    tech_type,
-                    ..
-                } => Some((*tech_type, *character)),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(researchers, vec![(TechType::Ship, spare)]);
     }
 }

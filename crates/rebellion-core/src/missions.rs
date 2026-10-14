@@ -9,7 +9,7 @@
 //!
 //! - `MissionState` holds every active mission and the members travelling
 //!   to a mission target.
-//! - `MissionSystem::advance(state, world, uprisings, tick_events, rolls)`
+//! - `MissionSystem::advance(state, world, uprisings, &ResearchState::default(), tick_events, rolls)`
 //!   returns a `MissionAdvance`: member moves and releases, phase 10
 //!   results, and the missions that ended.
 //! - The caller provides pre-generated random rolls so rebellion-core stays
@@ -52,6 +52,7 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{CharacterKey, SpecialForceKey, SystemKey};
+use crate::research::{ResearchState, TechType};
 use crate::tick::TickEvent;
 use crate::world::{Character, GameWorld, Skill};
 
@@ -115,6 +116,20 @@ pub enum MissionKind {
     /// Observe a system another side holds (MISSNSD `0x54000015`). It
     /// always succeeds (`FUN_0056bea0`) and has no MSTB.
     Reconnaissance,
+
+    /// Research the next ship level at an own system with a shipyard
+    /// (MISSNSD `0x53000020`, type 0; `ghidra/notes/mission-lifecycle.md`,
+    /// "Research"). Skill: ship design.
+    ShipDesignResearch,
+
+    /// Research the next facility level at an own system with a
+    /// construction yard (MISSNSD `0x53000021`, type 1). Skill: facility
+    /// design.
+    FacilityDesignResearch,
+
+    /// Research the next troop level at an own system with a training
+    /// facility (MISSNSD `0x53000022`, type 2). Skill: troop training.
+    TroopTrainingResearch,
 }
 
 impl MissionKind {
@@ -134,7 +149,23 @@ impl MissionKind {
             MissionKind::InciteUprising => Some("INCTMSTB"),
             MissionKind::SubdueUprising => Some("SUBDMSTB"),
             MissionKind::DeathStarSabotage => Some("DSSBMSTB"),
-            MissionKind::Autoscrap | MissionKind::Reconnaissance => None,
+            MissionKind::Autoscrap
+            | MissionKind::Reconnaissance
+            | MissionKind::ShipDesignResearch
+            | MissionKind::FacilityDesignResearch
+            | MissionKind::TroopTrainingResearch => None,
+        }
+    }
+
+    /// The tree a research kind advances (`FUN_0056c460`), `None` for the
+    /// other kinds.
+    #[must_use]
+    pub const fn research_tech(self) -> Option<TechType> {
+        match self {
+            MissionKind::ShipDesignResearch => Some(TechType::Ship),
+            MissionKind::FacilityDesignResearch => Some(TechType::Facility),
+            MissionKind::TroopTrainingResearch => Some(TechType::Troop),
+            _ => None,
         }
     }
 
@@ -157,6 +188,10 @@ impl MissionKind {
             MissionKind::Autoscrap => (1, 1),
             // The shipped record's 1 + rand(0..=5).
             MissionKind::Reconnaissance => (1, 6),
+            // The shipped records' 10 + rand(0..=10).
+            MissionKind::ShipDesignResearch
+            | MissionKind::FacilityDesignResearch
+            | MissionKind::TroopTrainingResearch => (10, 20),
         }
     }
 }
@@ -758,6 +793,18 @@ fn creation_target_ok(kind: MissionKind, object: Option<MissionTarget>) -> bool 
     }
 }
 
+/// The creation member check of research (`FUN_0056c510` with creation flag
+/// `+4`): every character member needs a nonzero effective skill in the
+/// tree (`FUN_0056c820` -> `FUN_005337f0`), else the order is refused
+/// (`0x40`/4). Special forces take the sibling `FUN_0056c990`; the records'
+/// special-force mask 0 keeps them off research. Other kinds pass.
+fn creation_member_ok(world: &GameWorld, kind: MissionKind, member: MissionMember) -> bool {
+    match kind.research_tech() {
+        Some(tech) => member_skill(world, member, tech.skill()).is_some_and(|skill| skill != 0),
+        None => true,
+    }
+}
+
 /// What a Mission order targets: the object the release window answered
 /// (`+0x68`, `ghidra/notes/move-order.md`, "Hit tests") and its system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -807,6 +854,7 @@ impl MissionTargetPick {
 pub fn available_kinds(
     world: &GameWorld,
     uprisings: &crate::uprising::UprisingState,
+    research: &ResearchState,
     faction: MissionFaction,
     team: &[MissionMember],
     decoys: &[MissionMember],
@@ -825,6 +873,11 @@ pub fn available_kinds(
         })
         .filter(|(kind, _)| kind.target_rules() == target.rules())
         .filter(|(kind, _)| creation_target_ok(*kind, target.object))
+        .filter(|(kind, _)| {
+            team.iter()
+                .chain(decoys)
+                .all(|&member| creation_member_ok(world, *kind, member))
+        })
         .filter(|(_, record)| {
             members_allowed(world, record.members, team.iter().chain(decoys).copied())
         })
@@ -834,7 +887,7 @@ pub fn available_kinds(
             mission.decoys = decoys.to_vec();
             mission.target_character = target.character;
             mission.target_object = target.object;
-            running_end_code(&mission, world, uprisings, &[]) == 0
+            running_end_code(&mission, world, uprisings, research, &[]) == 0
         })
         .map(|(kind, _)| kind)
         .collect()
@@ -946,6 +999,11 @@ pub fn member_chance(
         MissionKind::Autoscrap => return 100,
         // FUN_0056bea0: Reconnaissance always succeeds.
         MissionKind::Reconnaissance => return 100,
+        // FUN_0056cb20: 0. Research rolls inside its member slot instead
+        // ([`research_chance`]).
+        MissionKind::ShipDesignResearch
+        | MissionKind::FacilityDesignResearch
+        | MissionKind::TroopTrainingResearch => return 0,
     };
     let (Some(input), Some(table)) = (
         input,
@@ -955,6 +1013,14 @@ pub fn member_chance(
         return 0;
     };
     i32::try_from(table.step_lookup(input)).unwrap_or(i32::MAX)
+}
+
+/// A research member's chance in percent (`FUN_0056cdb0`): its effective
+/// skill in the tree (`FUN_005337f0`), through the identity
+/// `FUN_0055c6f0`.
+#[must_use]
+pub fn research_chance(world: &GameWorld, member: MissionMember, tech: TechType) -> i32 {
+    member_skill(world, member, tech.skill()).map_or(0, |value| i32::try_from(value).unwrap_or(0))
 }
 
 /// A character's skill as [`member_skill`] reads it.
@@ -1246,6 +1312,14 @@ impl MissionState {
         if !creation_target_ok(request.kind, request.target_object) {
             return Err(MissionRefusal::TargetUnavailable);
         }
+        if let Some(&member) = request
+            .team
+            .iter()
+            .chain(&request.decoys)
+            .find(|&&member| !creation_member_ok(world, request.kind, member))
+        {
+            return Err(MissionRefusal::MemberUnavailable(member));
+        }
         // FUN_0054bb90 moves every prisoner out of the team and decoy lists
         // into the captured list first. FUN_0054c200 then adds the team, the
         // decoys, and the captured, in that order, so the first free team
@@ -1443,6 +1517,13 @@ pub enum MissionEffect {
         skill: Skill,
         amount: i32,
     },
+    /// A research mission's points go to its side's tree (`FUN_0056cf30` ->
+    /// `FUN_00530600`); apply with [`ResearchState::add_points`].
+    ResearchPoints {
+        faction: MissionFaction,
+        tech: TechType,
+        points: u32,
+    },
     /// A pool character joins `faction` at `system` ([`recruit_character`]).
     CharacterRecruited {
         character: CharacterKey,
@@ -1608,8 +1689,20 @@ const GNPRTB_SABOTAGE_COMBAT_RAISE: u16 = 6166;
 const GNPRTB_DS_SABOTAGE_ESPIONAGE_RAISE: u16 = 6167;
 /// GNPRTB 6168 (`DAT_006bb57c`): DS Sabotage's combat raise.
 const GNPRTB_DS_SABOTAGE_COMBAT_RAISE: u16 = 6168;
+/// GNPRTB 6158 (`Gnprtb_6158`): a research member's raise of its skill in
+/// the tree (`FUN_0056cdb0`).
+const GNPRTB_RESEARCH_RAISE: u16 = 6158;
 /// The shipped value of every skill raise, GNPRTB 6156..6168.
 const SHIPPED_SKILL_RAISE: i64 = 1;
+/// GNPRTB 6171 (`DAT_006bb5c4`, shipped 1): a research success's minimum
+/// points (`FUN_0055c9f0`).
+const GNPRTB_RESEARCH_POINTS_MIN: u16 = 6171;
+/// The shipped GNPRTB 6171 (`DAT_006bb5c4`).
+const SHIPPED_RESEARCH_POINTS_MIN: i64 = 1;
+/// GNPRTB 6172 (`DAT_006bb578`, shipped 6): their random spread.
+const GNPRTB_RESEARCH_POINTS_SPREAD: u16 = 6172;
+/// The shipped GNPRTB 6172 (`DAT_006bb578`).
+const SHIPPED_RESEARCH_POINTS_SPREAD: i64 = 6;
 
 /// A skill raise's GNPRTB value, or the shipped one without a table.
 fn skill_raise(world: &GameWorld, id: u16) -> i32 {
@@ -1654,6 +1747,9 @@ impl MissionKind {
             MissionKind::SubdueUprising => 0x5700_0080,
             MissionKind::Assassination => 0x6300_0081,
             MissionKind::Reconnaissance => 0x5400_0015,
+            MissionKind::ShipDesignResearch => 0x5300_0020,
+            MissionKind::FacilityDesignResearch => 0x5300_0021,
+            MissionKind::TroopTrainingResearch => 0x5300_0022,
             MissionKind::Autoscrap => return None,
         };
         Some(crate::ids::DatId::new(raw))
@@ -1673,7 +1769,11 @@ impl MissionKind {
             | MissionKind::InciteUprising
             | MissionKind::SubdueUprising
             // FUN_0056be20: the system rules alone.
-            | MissionKind::Reconnaissance => TargetRules::System,
+            | MissionKind::Reconnaissance
+            // FUN_0056c510: the system rules and its own.
+            | MissionKind::ShipDesignResearch
+            | MissionKind::FacilityDesignResearch
+            | MissionKind::TroopTrainingResearch => TargetRules::System,
         }
     }
 }
@@ -1791,6 +1891,7 @@ pub(crate) fn running_end_code(
     mission: &ActiveMission,
     world: &GameWorld,
     uprisings: &crate::uprising::UprisingState,
+    research: &ResearchState,
     en_route: &[MemberTransit],
 ) -> u8 {
     use crate::dat::Faction;
@@ -1900,7 +2001,47 @@ pub(crate) fn running_end_code(
     if mission.kind == MissionKind::Recruitment && world.recruit_pool_empty(side) {
         return 0x10;
     }
+    // FUN_0056c510 while running (+0xc): no research site ends with 0xc
+    // (0x40/0x2c); the side's Done flag in the tree (FUN_0052eb10) ends with
+    // 0xe (0x40/0x32), written after 0xc and so in its place.
+    if let Some(tech) = mission.kind.research_tech() {
+        if research.progress(side == Faction::Alliance, tech).done {
+            return 0xe;
+        }
+        if !research_site(world, uprisings, side, tech, mission.target_system) {
+            return 0xc;
+        }
+    }
     0
+}
+
+/// Whether `system` can host `side`'s research in `tech`: its production
+/// manager for the tree's area (`FUN_00509670`) holds a yard of the side
+/// that is not Suspended (`FUN_00528100(0)`, yard `+0x60` bit 0).
+///
+/// port: a yard is Suspended while its system is blockaded or in an
+/// uprising, as `crate::production_cycle::suspended_systems` reads it; the
+/// blockade is read from the fleets present.
+pub(crate) fn research_site(
+    world: &GameWorld,
+    uprisings: &crate::uprising::UprisingState,
+    side: crate::dat::Faction,
+    tech: TechType,
+    system: SystemKey,
+) -> bool {
+    let Some(sys) = world.systems.get(system) else {
+        return false;
+    };
+    if uprisings.is_uprising(system)
+        || crate::blockade::BlockadeSystem::system_is_blockaded(world, sys)
+    {
+        return false;
+    }
+    let family = crate::build_selection::area_family(tech.area());
+    sys.manufacturing_facilities
+        .iter()
+        .filter_map(|&key| world.manufacturing_facilities.get(key))
+        .any(|yard| yard.side == side && yard.class_dat_id.family() == family)
 }
 
 // ---------------------------------------------------------------------------
@@ -1982,6 +2123,8 @@ pub struct MissionAdvance {
 struct StepContext<'a> {
     world: &'a GameWorld,
     uprisings: &'a crate::uprising::UprisingState,
+    /// The sides' research, which the research validator reads.
+    research: &'a ResearchState,
     /// Every mission as the tick event began, for the uprising incident's
     /// mission terms.
     missions: &'a VecDeque<ActiveMission>,
@@ -2004,6 +2147,7 @@ impl MissionSystem {
         state: &mut MissionState,
         world: &GameWorld,
         uprisings: &crate::uprising::UprisingState,
+        research: &ResearchState,
         tick_events: &[TickEvent],
         rolls: &[f64],
     ) -> MissionAdvance {
@@ -2029,6 +2173,7 @@ impl MissionSystem {
             let ctx = StepContext {
                 world,
                 uprisings,
+                research,
                 missions: &missions,
             };
             for (index, mut mission) in missions.clone().into_iter().enumerate() {
@@ -2098,7 +2243,13 @@ impl MissionSystem {
                 .is_some_and(|c| c.is_killed);
         mission.container_loss_seen |= container_lost;
         if mission.end_code == 0 && (container_lost || target_lost) {
-            mission.end_code = running_end_code(mission, ctx.world, ctx.uprisings, &state.en_route);
+            mission.end_code = running_end_code(
+                mission,
+                ctx.world,
+                ctx.uprisings,
+                ctx.research,
+                &state.en_route,
+            );
             if mission.end_code == 0 && container_lost && mission.phase > 6 {
                 mission.end_code = 7;
             }
@@ -2178,6 +2329,7 @@ impl MissionSystem {
                 mission,
                 ctx.world,
                 ctx.uprisings,
+                ctx.research,
                 &state.en_route,
                 &mut draws.stream,
                 &mut out.effects,
@@ -2203,7 +2355,8 @@ impl MissionSystem {
         let world = ctx.world;
         let validate = |mission: &mut ActiveMission, state: &MissionState| {
             if mission.end_code == 0 {
-                mission.end_code = running_end_code(mission, world, ctx.uprisings, &state.en_route);
+                mission.end_code =
+                    running_end_code(mission, world, ctx.uprisings, ctx.research, &state.en_route);
             }
         };
         // Leaving phase 8 runs the validator, then disarms timer 0x38b.
@@ -2383,6 +2536,8 @@ impl MissionSystem {
         let mut effects = Vec::new();
         // +0x60: 0 unset, 2 failed, 3 succeeded (FUN_00521880).
         let mut result = 0_u8;
+        // Research's points this pass (+0xa8, zeroed by FUN_0056cd70).
+        let mut research_points = 0_i32;
         // The target of an in-roll action, once it has been acted on.
         let mut target_taken = false;
         // Subdue's view of the target as the successes change it.
@@ -2413,14 +2568,17 @@ impl MissionSystem {
             if mission.kind == MissionKind::InciteUprising && system.is_none() {
                 continue;
             }
-            let chance = member_chance(
-                world,
-                mission.kind,
-                mission.faction,
-                target,
-                mission.target_character,
-                member,
-            );
+            let chance = match mission.kind.research_tech() {
+                Some(tech) => research_chance(world, member, tech),
+                None => member_chance(
+                    world,
+                    mission.kind,
+                    mission.faction,
+                    target,
+                    mission.target_character,
+                    member,
+                ),
+            };
             if !stream.chance(chance) {
                 continue;
             }
@@ -2594,9 +2752,44 @@ impl MissionSystem {
                 MissionKind::Autoscrap => result = 3,
                 // FUN_0056bec0: 3, with no skill raise.
                 MissionKind::Reconnaissance => result = 3,
+                // FUN_0056cdb0: GNPRTB 6171 + rand(0..=6172) points
+                // (FUN_0055c9f0) join the mission's (SetRdPoints +0xa8); then
+                // the member's base skill in the tree rises by GNPRTB 6158
+                // (FUN_00534990).
+                MissionKind::ShipDesignResearch
+                | MissionKind::FacilityDesignResearch
+                | MissionKind::TroopTrainingResearch => {
+                    let gnprtb = |id, shipped| {
+                        i32::try_from(crate::movement::gnprtb_or_shipped(world, id, shipped))
+                            .unwrap_or(0)
+                    };
+                    let points = gnprtb(GNPRTB_RESEARCH_POINTS_MIN, SHIPPED_RESEARCH_POINTS_MIN)
+                        + stream.draw(gnprtb(
+                            GNPRTB_RESEARCH_POINTS_SPREAD,
+                            SHIPPED_RESEARCH_POINTS_SPREAD,
+                        ));
+                    if points != 0 {
+                        research_points += points;
+                        if let Some(tech) = mission.kind.research_tech() {
+                            effects.extend(raise(tech.skill(), GNPRTB_RESEARCH_RAISE));
+                        }
+                    }
+                }
             }
         }
-        // Slot +0x280: an unset result fails (FUN_00576700).
+        // Slot +0x280: an unset result fails (FUN_00576700). Research's
+        // FUN_0056cf30 adds the mission's points to its side's tree
+        // (FUN_00530600) and sets 2 + (points != 0).
+        if let Some(tech) = mission.kind.research_tech() {
+            result = if research_points == 0 { 2 } else { 3 };
+            if let Ok(points @ 1..) = u32::try_from(research_points) {
+                effects.push(MissionEffect::ResearchPoints {
+                    faction: mission.faction,
+                    tech,
+                    points,
+                });
+            }
+        }
         if result == 0 {
             result = 2;
         }
@@ -3016,8 +3209,15 @@ mod tests {
             0,
         ));
         let world = minimal_world();
-        let results =
-            MissionSystem::advance(&mut state, &world, &UprisingState::default(), &[], &[]).results;
+        let results = MissionSystem::advance(
+            &mut state,
+            &world,
+            &UprisingState::default(),
+            &ResearchState::default(),
+            &[],
+            &[],
+        )
+        .results;
         assert!(results.is_empty());
         assert_eq!(state.len(), 1);
     }
@@ -3040,6 +3240,7 @@ mod tests {
             &mut state,
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &[TickEvent { tick: 1 }],
             &[0.0],
         );
@@ -3073,6 +3274,7 @@ mod tests {
             &mut state,
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &[TickEvent { tick: 1 }],
             &[0.01],
         )
@@ -3105,6 +3307,7 @@ mod tests {
             &mut state,
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &[TickEvent { tick: 1 }],
             &[1.0],
         );
@@ -3151,6 +3354,7 @@ mod tests {
             &mut state,
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &[TickEvent { tick: 1 }],
             &[0.0], // first mission succeeds
         )
@@ -3185,6 +3389,7 @@ mod tests {
             &mut state,
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &[TickEvent { tick: 1 }],
             &[1.0],
         )
@@ -3244,6 +3449,7 @@ mod tests {
             &mut state,
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &[TickEvent { tick: 1 }],
             &[0.0],
         );
@@ -4518,6 +4724,7 @@ mod tests {
             available_kinds(
                 world,
                 &UprisingState::default(),
+                &ResearchState::default(),
                 MissionFaction::Alliance,
                 &[envoy],
                 &[],
@@ -4528,6 +4735,256 @@ mod tests {
         world.systems[here].control =
             crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
         assert_eq!(list(&world), vec![MissionKind::Reconnaissance]);
+    }
+
+    /// The shipped Research record for `kind` (MISSNSD `0x53000020..22`):
+    /// an own-side system target, revolting or calm; characters of both
+    /// sides (mask `0x10000`), no special forces.
+    fn research_record(kind: MissionKind) -> crate::world::MissionRecord {
+        crate::world::MissionRecord {
+            dat_id: kind.record_id().unwrap(),
+            timer_min_days: 10,
+            timer_spread_days: 10,
+            repeats: true,
+            hidden: false,
+            detection_phases: false,
+            can_resign: false,
+            rules: crate::world::MissionTargetRules {
+                own_side_target: true,
+                revolting_target: true,
+                calm_target: true,
+                ..Default::default()
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0,
+                character_mask: 0x1_0000,
+            },
+        }
+    }
+
+    /// Give `system` an Alliance yard of MANFACSD `family`.
+    fn yard_at(world: &mut GameWorld, system: SystemKey, family: u32) {
+        let yard =
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: crate::ids::DatId::new(family << 24 | 1),
+                    side: crate::dat::Faction::Alliance,
+                    is_shipyard: family == 0x28,
+                });
+        world.systems[system].manufacturing_facilities.push(yard);
+    }
+
+    #[test]
+    fn each_research_success_adds_points_and_raises_the_tree_skill() {
+        // FUN_0056cdb0: a draw below the member's ship design (FUN_005337f0)
+        // adds GNPRTB 6171 + rand(0..=6172) points (FUN_0055c9f0) and raises
+        // the skill by GNPRTB 6158; FUN_0056cf30 adds the mission's points to
+        // the side's tree and sets 2 + (points != 0).
+        let mut world = minimal_world();
+        // port: a GNPRTB value of 0 reads as shipped, so the spread stays 6.
+        world.gnprtb = crate::world::GnprtbParams::uniform(&[(6171, 3), (6158, 2)]);
+        let here = system_at(&mut world, 0);
+        let first = agent_at(&mut world, here, true);
+        let second = agent_at(&mut world, here, true);
+        let idle = agent_at(&mut world, here, true);
+        for key in [first, second] {
+            world.characters[key].ship_design = skill_pair(100);
+        }
+        world.characters[idle].troop_training = skill_pair(100);
+        let team = [first, idle, second].map(MissionMember::Character).to_vec();
+
+        let result = phase_ten(&world, MissionKind::ShipDesignResearch, team, here, None);
+
+        assert_eq!(result.outcome, MissionOutcome::Success);
+        assert_eq!(
+            raised(&result),
+            vec![
+                (first, Skill::ShipDesign, 2),
+                (second, Skill::ShipDesign, 2)
+            ]
+        );
+        let points: Vec<_> = result
+            .effects
+            .iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::ResearchPoints {
+                    faction: MissionFaction::Alliance,
+                    tech: TechType::Ship,
+                    points,
+                } => Some(*points),
+                _ => None,
+            })
+            .collect();
+        // Two successes of 3 + rand(0..=6) each, in one effect.
+        assert_eq!(points.len(), 1);
+        assert!((6..=18).contains(&points[0]), "{points:?}");
+    }
+
+    #[test]
+    fn research_points_are_one_plus_a_draw_up_to_six_by_default() {
+        // GNPRTB 6171 = 1 and 6172 = 6 as shipped: 1 + rand(0..=6).
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let designer = agent_at(&mut world, here, true);
+        world.characters[designer].facility_design = skill_pair(100);
+        let mut seen = std::collections::BTreeSet::new();
+        for id in 0..200 {
+            let mut mission = ActiveMission::timed(
+                id,
+                MissionKind::FacilityDesignResearch,
+                MissionFaction::Alliance,
+                vec![MissionMember::Character(designer)],
+                here,
+                1,
+            );
+            mission.target_character = None;
+            let mut state = MissionState::new();
+            state.push_timed(mission);
+            let result = step(&mut state, &world, 1, &[]).results.remove(0);
+            for effect in &result.effects {
+                if let MissionEffect::ResearchPoints { tech, points, .. } = effect {
+                    assert_eq!(*tech, TechType::Facility);
+                    seen.insert(*points);
+                }
+            }
+        }
+        assert_eq!(
+            seen.into_iter().collect::<Vec<_>>(),
+            (1..=7).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn research_with_no_success_fails_and_adds_no_points() {
+        // FUN_0056cdb0 draws below a skill of 0 never; FUN_0056cf30 then
+        // sets 2 with no points.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let designer = agent_at(&mut world, here, true);
+
+        let result = phase_ten(
+            &world,
+            MissionKind::TroopTrainingResearch,
+            vec![MissionMember::Character(designer)],
+            here,
+            None,
+        );
+
+        assert_eq!(result.outcome, MissionOutcome::Failure);
+        assert!(result.effects.is_empty());
+    }
+
+    #[test]
+    fn research_ends_without_a_working_yard_and_once_its_tree_is_done() {
+        // FUN_0056c510 while running: no manager with an active yard of the
+        // area (FUN_00509670 -> FUN_00528100(0)) ends with 0xc; the side's
+        // Done flag (FUN_0052eb10) ends with 0xe, written after 0xc.
+        let (mut world, here, designer) =
+            dialog_world(vec![research_record(MissionKind::ShipDesignResearch)]);
+        let mission = ActiveMission::new(
+            0,
+            MissionKind::ShipDesignResearch,
+            MissionFaction::Alliance,
+            vec![designer],
+            here,
+            0,
+        );
+        let mut research = ResearchState::default();
+        let mut uprisings = UprisingState::default();
+        let code = |world: &GameWorld, uprisings: &UprisingState, research: &ResearchState| {
+            running_end_code(&mission, world, uprisings, research, &[])
+        };
+
+        assert_eq!(code(&world, &uprisings, &research), 0xc);
+        yard_at(&mut world, here, 0x29);
+        assert_eq!(code(&world, &uprisings, &research), 0xc);
+        yard_at(&mut world, here, 0x28);
+        assert_eq!(code(&world, &uprisings, &research), 0);
+
+        uprisings.active_uprisings.insert(
+            here,
+            crate::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+            },
+        );
+        assert_eq!(code(&world, &uprisings, &research), 0xc);
+        research.alliance_progress.ship.done = true;
+        assert_eq!(code(&world, &uprisings, &research), 0xe);
+        uprisings.active_uprisings.clear();
+        assert_eq!(code(&world, &uprisings, &research), 0xe);
+        research.alliance_progress.ship.done = false;
+        research.empire_progress.ship.done = true;
+        research.alliance_progress.troop.done = true;
+        assert_eq!(code(&world, &uprisings, &research), 0);
+    }
+
+    #[test]
+    fn the_dialog_lists_research_for_a_member_with_the_tree_skill_at_its_yard() {
+        // FUN_0056c510 at creation: every character needs a nonzero skill in
+        // the tree (FUN_0056c820, 0x40/4); while running, a yard of its area.
+        let (mut world, here, designer) = dialog_world(vec![
+            research_record(MissionKind::ShipDesignResearch),
+            research_record(MissionKind::FacilityDesignResearch),
+            research_record(MissionKind::TroopTrainingResearch),
+        ]);
+        let MissionMember::Character(key) = designer else {
+            unreachable!()
+        };
+        let list = |world: &GameWorld| {
+            available_kinds(
+                world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                MissionFaction::Alliance,
+                &[designer],
+                &[],
+                here,
+            )
+        };
+        yard_at(&mut world, here, 0x28);
+        yard_at(&mut world, here, 0x2a);
+        assert!(list(&world).is_empty());
+
+        world.characters[key].ship_design = skill_pair(1);
+        world.characters[key].troop_training = skill_pair(40);
+        assert_eq!(list(&world), vec![MissionKind::ShipDesignResearch]);
+        world.characters[key].facility_design = skill_pair(40);
+        assert_eq!(
+            list(&world),
+            vec![
+                MissionKind::ShipDesignResearch,
+                MissionKind::FacilityDesignResearch
+            ]
+        );
+    }
+
+    #[test]
+    fn a_research_order_with_an_unskilled_member_is_refused() {
+        // FUN_0056c820 refuses a character whose skill in the tree is 0.
+        let (mut world, here, designer) =
+            dialog_world(vec![research_record(MissionKind::ShipDesignResearch)]);
+        let MissionMember::Character(key) = designer else {
+            unreachable!()
+        };
+        let order = MissionRequest::single(
+            MissionKind::ShipDesignResearch,
+            MissionFaction::Alliance,
+            key,
+            here,
+            None,
+            0,
+        );
+        let mut state = MissionState::new();
+        assert_eq!(
+            state.dispatch_guarded(order.clone(), &mut world),
+            Err(MissionRefusal::MemberUnavailable(designer))
+        );
+        world.characters[key].ship_design = skill_pair(5);
+        assert!(state.dispatch_guarded(order, &mut world).is_ok());
     }
 
     #[test]
@@ -4681,9 +5138,16 @@ mod tests {
                 here,
                 1,
             ));
-            MissionSystem::advance(&mut state, world, uprisings, &[TickEvent { tick: 1 }], &[])
-                .results
-                .remove(0)
+            MissionSystem::advance(
+                &mut state,
+                world,
+                uprisings,
+                &ResearchState::default(),
+                &[TickEvent { tick: 1 }],
+                &[],
+            )
+            .results
+            .remove(0)
         };
         let calm = UprisingState::default();
         let mut revolt = UprisingState::default();
@@ -5054,6 +5518,7 @@ mod tests {
             state,
             world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &[TickEvent { tick }],
             rolls,
         )
@@ -6310,6 +6775,7 @@ mod tests {
             &mut state,
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             &[TickEvent { tick: 1 }, TickEvent { tick: 2 }],
             &rolls,
         );
@@ -6661,11 +7127,17 @@ mod tests {
             5,
         );
         let uprisings = UprisingState::default();
-        assert_eq!(running_end_code(&mission, &world, &uprisings, &[]), 8);
+        assert_eq!(
+            running_end_code(&mission, &world, &uprisings, &ResearchState::default(), &[]),
+            8
+        );
 
         mission.decoys = vec![MissionMember::Character(agent_at(&mut world, here, false))];
 
-        assert_eq!(running_end_code(&mission, &world, &uprisings, &[]), 0);
+        assert_eq!(
+            running_end_code(&mission, &world, &uprisings, &ResearchState::default(), &[]),
+            0
+        );
     }
 
     #[test]
@@ -6826,6 +7298,7 @@ mod tests {
         let kinds = available_kinds(
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             MissionFaction::Alliance,
             &[envoy],
             &[],
@@ -6862,6 +7335,7 @@ mod tests {
             available_kinds(
                 &world,
                 &uprisings,
+                &ResearchState::default(),
                 MissionFaction::Alliance,
                 &[envoy],
                 &[],
@@ -6877,6 +7351,7 @@ mod tests {
             available_kinds(
                 &world,
                 &uprisings,
+                &ResearchState::default(),
                 MissionFaction::Alliance,
                 &[envoy],
                 &[],
@@ -6907,6 +7382,7 @@ mod tests {
         let kinds = available_kinds(
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             MissionFaction::Alliance,
             &[envoy],
             &[],
@@ -6934,6 +7410,7 @@ mod tests {
             available_kinds(
                 &world,
                 &uprisings,
+                &ResearchState::default(),
                 MissionFaction::Alliance,
                 &[envoy],
                 &[],
@@ -6993,6 +7470,7 @@ mod tests {
             available_kinds(
                 world,
                 &uprisings,
+                &ResearchState::default(),
                 MissionFaction::Alliance,
                 &[envoy],
                 &[],
@@ -7099,6 +7577,7 @@ mod tests {
         let kinds = available_kinds(
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             MissionFaction::Alliance,
             &[envoy],
             &[],
@@ -7117,6 +7596,7 @@ mod tests {
         let with_decoy = available_kinds(
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             MissionFaction::Alliance,
             &[envoy],
             &[unit],
@@ -7125,6 +7605,7 @@ mod tests {
         let alone = available_kinds(
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             MissionFaction::Alliance,
             &[envoy],
             &[],
@@ -7147,6 +7628,7 @@ mod tests {
         let kinds = available_kinds(
             &world,
             &UprisingState::default(),
+            &ResearchState::default(),
             MissionFaction::Alliance,
             &[envoy],
             &[],

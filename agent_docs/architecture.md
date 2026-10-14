@@ -56,7 +56,7 @@ crates/rebellion-core/src/
 ├── blockade.rs       — Fleet-presence blockade, manufacturing halt, troop destruction
 ├── uprising.rs       — Recovered revolt lifecycle, uprising incident (UPRIS1TB/UPRIS2TB codes), Subdue gain, disaster
 ├── death_star.rs     — Construction countdown, planet destruction, nearby-warning scan. `cleanup_destroyed_system()` removes all entities (fleets, troops, facilities) and cancels in-transit orders to the destroyed system.
-├── research.rs       — 3 tech trees (Ship/Troop/Facility), MSTB difficulty lookup
+├── research.rs       — 3 research trees per side: levels, points, Done, points hook
 ├── jedi.rs           — 4-tier Force progression (None→Aware→Training→Experienced), detection
 ├── victory.rs        — current HQ/Death Star outcome checks; parity divergences documented
 ├── betrayal.rs       — Loyalty-driven faction defection, UPRIS1TB threshold, immunity flag
@@ -106,7 +106,6 @@ crates/rebellion-render/src/
     ├── fleets.rs         — Fleet roster: composition, assign/remove officers (joining is on the Fleet window)
     ├── manufacturing.rs  — Production queue manager
     ├── missions.rs       — Active missions with progress and cancel; missions start from the object pop-up menu
-    ├── research.rs       — 3 tech tree tabs, active project progress, character assignment
     ├── jedi.rs           — Force-sensitive roster, tier progression, training controls
     ├── bombardment.rs    — Orbital bombardment targeting: fleet selection, damage forecast, fire
     ├── death_star.rs     — Death Star: construction progress, superlaser targeting, movement orders
@@ -204,7 +203,7 @@ run_simulation_tick():
   9. UprisingSystem::advance       → integrator.apply_uprising_events()
   10. BetrayalSystem::advance      → integrator.apply_betrayal_events()
   11. DeathStarSystem::advance     → integrator.apply_death_star_events()
-  12. ResearchSystem::advance      → integrator.apply_research_results()
+  12. (research missions add points in step 5)
   13. JediSystem::advance          → integrator.apply_jedi_events()
   14. VictorySystem::check         → integrator.apply_victory()
   15. Campaign snapshot            → integrator.emit_campaign_snapshot()
@@ -280,7 +279,7 @@ Round-trip validation is enforced inside `parse_and_dump` in `tools/dat-dumper/s
 7. `targeting::{capture_pointer, draw_targeting_cursor}` -- the galaxy view's targeting mode after the menu's Mission
 8. `draw_status_bar(ctx, world, clock, audio_vol)` -- bottom bar with speed/audio controls
 9. `draw_message_log(ctx, log, state)` -- scrollable event feed
-10. Panel functions: `draw_officers`, `draw_fleets`, `draw_missions`, `draw_research`, `draw_jedi`
+10. Panel functions: `draw_officers`, `draw_fleets`, `draw_missions`, `draw_jedi`
 11. `draw_encyclopedia(ctx, world, state)` -- floating 4-tab entity browser
 12. `draw_main_menu(ctx) -> MainMenuAction` -- title screen
 13. `draw_game_setup(ctx, state) -> GameSetupAction` -- new game config

@@ -579,6 +579,7 @@ pub(crate) fn run(
     mission: &mut ActiveMission,
     world: &GameWorld,
     uprisings: &UprisingState,
+    research: &crate::research::ResearchState,
     en_route: &[MemberTransit],
     rng: &mut MissionRng,
     out: &mut Vec<MissionEffect>,
@@ -598,7 +599,7 @@ pub(crate) fn run(
     };
     let validate = |mission: &mut ActiveMission| {
         if mission.end_code == 0 {
-            mission.end_code = running_end_code(mission, world, uprisings, en_route);
+            mission.end_code = running_end_code(mission, world, uprisings, research, en_route);
         }
     };
     first_pass(mission, world, location, rng, out, &validate);
@@ -970,6 +971,7 @@ mod tests {
             mission,
             world,
             &UprisingState::default(),
+            &crate::research::ResearchState::default(),
             &[],
             &mut rng,
             &mut out,
@@ -1213,12 +1215,24 @@ mod tests {
         let lead = agent(&mut world, here, 100);
         let mut mission = sabotage(vec![lead], here, 8);
         assert_eq!(
-            running_end_code(&mission, &world, &UprisingState::default(), &[]),
+            running_end_code(
+                &mission,
+                &world,
+                &UprisingState::default(),
+                &crate::research::ResearchState::default(),
+                &[]
+            ),
             0
         );
         mission.resigning = vec![lead];
         assert_eq!(
-            running_end_code(&mission, &world, &UprisingState::default(), &[]),
+            running_end_code(
+                &mission,
+                &world,
+                &UprisingState::default(),
+                &crate::research::ResearchState::default(),
+                &[]
+            ),
             5
         );
     }
