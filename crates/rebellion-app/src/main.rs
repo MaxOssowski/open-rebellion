@@ -2491,6 +2491,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 &tick_events,
                 &game_config,
                 &research_state,
+                &uprising_state,
             );
             apply_ai_actions(
                 &ai_actions,
@@ -2537,6 +2538,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     &tick_events,
                     &game_config,
                     &research_state,
+                    &uprising_state,
                 );
                 apply_ai_actions(
                     &second_actions,
@@ -7785,6 +7787,16 @@ fn apply_ai_actions(
                     MessageCategory::Ai,
                     *target_system,
                 ));
+            }
+            AIAction::CancelMission { mission_id } => {
+                if let Some(mission) = mission_state.release(*mission_id, world) {
+                    for character in mission
+                        .members()
+                        .filter_map(rebellion_core::missions::MissionMember::character)
+                    {
+                        ai_state.mark_available(character);
+                    }
+                }
             }
             AIAction::EnqueueProduction { system, kind, cost } => {
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));

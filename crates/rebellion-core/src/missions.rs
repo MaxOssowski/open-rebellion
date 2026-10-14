@@ -798,7 +798,11 @@ fn creation_target_ok(kind: MissionKind, object: Option<MissionTarget>) -> bool 
 /// tree (`FUN_0056c820` -> `FUN_005337f0`), else the order is refused
 /// (`0x40`/4). Special forces take the sibling `FUN_0056c990`; the records'
 /// special-force mask 0 keeps them off research. Other kinds pass.
-fn creation_member_ok(world: &GameWorld, kind: MissionKind, member: MissionMember) -> bool {
+pub(crate) fn creation_member_ok(
+    world: &GameWorld,
+    kind: MissionKind,
+    member: MissionMember,
+) -> bool {
     match kind.research_tech() {
         Some(tech) => member_skill(world, member, tech.skill()).is_some_and(|skill| skill != 0),
         None => true,

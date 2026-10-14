@@ -568,7 +568,7 @@ Ported 2026-10-14 (`MissionKind::ShipDesignResearch`,
 Suspended is the port's blockade or uprising; the AI's choice of tree and
 target was untraced at the port, so the port orders a tree while none of
 the side's research in it runs, at its first system with a yard of the
-area. The original choice is now read (2026-10-14): see
+area. The original choice is now read and ported (2026-10-14): see
 `ai-mission-planning.md`, "The strategic choice of mission": one planner
 per able character, and a target chosen among the AI's research sites
 (own, garrisoned, unblockaded systems with an active yard it built).

@@ -269,6 +269,21 @@ impl<'a> Planner<'a> {
         }
     }
 
+    /// `FUN_0041bc10`: the side's characters (record flags `0x2` and
+    /// `0x20000000`) with `kind`'s capability bit, which the strategy wants
+    /// as many planners of a research tree as (side `+0x2cc`, `+0x2d0`,
+    /// `+0x2c8`).
+    pub(crate) fn able(&self, kind: MissionKind) -> usize {
+        let Some(bit) = capability(kind) else {
+            return 0;
+        };
+        self.records
+            .iter()
+            .filter(|r| r.flags & (OWN_SIDE | CHARACTER) == OWN_SIDE | CHARACTER)
+            .filter(|r| r.caps & bit != 0)
+            .count()
+    }
+
     /// Fill `kind`'s team, then its decoys, as its planner's selectors do,
     /// and keep the members the order takes (`FUN_0047b360`). `None` when
     /// no team member is sent.
@@ -526,11 +541,14 @@ fn agent_record(
             continue;
         };
         // port: a kind with no MISSNSD record admits any members, as at
-        // creation.
+        // creation. FUN_0054c440 also runs the class's creation check, so a
+        // character with no skill in a research tree lacks its bit
+        // (FUN_0056c820).
         let legal = kind
             .record_id()
             .and_then(|id| world.mission_record(id))
-            .is_none_or(|record| members_allowed(world, record.members, [member]));
+            .is_none_or(|record| members_allowed(world, record.members, [member]))
+            && crate::missions::creation_member_ok(world, kind, member);
         if legal {
             caps |= bit;
         }

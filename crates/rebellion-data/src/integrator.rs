@@ -144,6 +144,12 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "decoys": member_names(world, decoys),
             })
         }
+        AIAction::CancelMission { mission_id } => {
+            serde_json::json!({
+                "type": "CancelMission",
+                "mission_id": mission_id,
+            })
+        }
         AIAction::EnqueueProduction { system, kind, cost } => {
             serde_json::json!({
                 "type": "EnqueueProduction",
@@ -2024,6 +2030,17 @@ fn apply_ai_actions_inner(
                 }
                 dispatched
             }
+            AIAction::CancelMission { mission_id } => {
+                match mission_state.release(*mission_id, world) {
+                    Some(mission) => {
+                        for character in mission.members().filter_map(MissionMember::character) {
+                            ai_state.mark_available(character);
+                        }
+                        true
+                    }
+                    None => false,
+                }
+            }
             AIAction::EnqueueProduction { system, kind, cost } => {
                 mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
                 true
@@ -2611,6 +2628,60 @@ mod tests {
             current_system: Some(system),
             ..Default::default()
         }))
+    }
+
+    #[test]
+    fn a_cancelled_ai_mission_frees_its_members_and_is_reported() {
+        // FUN_0042f690 (the strategy's cancellation) or order 0x250
+        // (FUN_0047b250) ends the planner's mission; its members are free.
+        let mut world = GameWorld::default();
+        let target = add_system(&mut world, "Kuat");
+        let designer = imperial_at(&mut world, target, "Designer");
+        let MissionMember::Character(key) = designer else {
+            unreachable!()
+        };
+        let mut ai = AIState::new(AiFaction::Empire);
+        let mut missions = MissionState::new();
+        let id = missions
+            .dispatch_guarded(
+                MissionRequest {
+                    kind: MissionKind::Diplomacy,
+                    faction: MissionFaction::Empire,
+                    team: vec![designer],
+                    decoys: vec![],
+                    target_system: target,
+                    target_character: None,
+                    target_object: None,
+                    tick: 1,
+                },
+                &mut world,
+            )
+            .unwrap();
+        ai.mark_busy(key);
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+
+        integrator.apply_ai_actions(
+            &[
+                AIAction::CancelMission { mission_id: id },
+                AIAction::CancelMission { mission_id: id },
+            ],
+            &mut ai,
+            &mut missions,
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut world,
+            5,
+            false,
+        );
+
+        assert!(missions.is_empty());
+        assert!(!ai.is_busy(key));
+        assert!(!world.characters[key].on_mission);
+        let events = integrator.finish();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].details["type"], "CancelMission");
+        assert_eq!(events[0].details["mission_id"], id);
     }
 
     #[test]

@@ -594,6 +594,7 @@ pub fn run_simulation_tick(
         tick_events,
         config,
         &states.research,
+        &states.uprising,
     );
     integrator.apply_ai_actions(
         &ai_actions,
@@ -618,6 +619,7 @@ pub fn run_simulation_tick(
             tick_events,
             config,
             &states.research,
+            &states.uprising,
         );
         integrator.apply_ai_actions(
             &secondary_actions,

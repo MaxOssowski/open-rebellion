@@ -1852,8 +1852,16 @@ cross-runtime proof remain open
   and `FUN_0047c900` send one member of skill 10 or more. Browser: fixture
   `ResearchTargeting` (code 64), both sides, dispatches Ship Design
   Research; a seed-42 dual-AI playtest reaches Ship level 4 in 600 days
-  (`evidence/2026-10-14-research-missions/`). Open: the AI's choice of tree
-  and target (side `+0x318`/`+0x31c`).
+  (`evidence/2026-10-14-research-missions/`).
+- Research AI (2026-10-14): the strategy's choice (`FUN_004e8290`,
+  `FUN_0041bc10`, `FUN_0042dd00`) and the planners' target (`FUN_0047be50`,
+  `FUN_00433e40`) are read and ported. The AI runs one research mission per
+  able character per tree until its Done level, cancels the weakest team
+  when it has a surplus or the tree is done, aborts a mission whose system
+  stops being a research site, and aims at the best-supported site in the
+  sector with the most sites (`AIAction::CancelMission`). A seed-42
+  dual-AI playtest has the Empire run two ship research missions and reach
+  Ship level 6 in 600 days.
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

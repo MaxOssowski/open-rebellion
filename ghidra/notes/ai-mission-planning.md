@@ -409,6 +409,17 @@ tallies of phase 4:
 - Espionage: fewer planners than the sectors holding an opponent system
   (sector `+0x2c` bit 8, `S+0x1bc`) minus those requests.
 
+**Ported (2026-10-14)** in `ai.rs` `evaluate_research`: the wanted count
+(`Planner::able`, with the creation check in the capability probe), the
+AI's Done level (`ai_research_goal`, `ai_research_done`), the research
+site (`ai_research_site`), the first-cycle target (`research_target`), the
+weakest-first cancellation and the abort, both as
+`AIAction::CancelMission`. port: live research missions stand for the
+planners; a tree's orders and cancellations happen within one AI
+evaluation; the abort is checked at each evaluation; the production AI's
+yard marks are not kept, so any yard of the side counts; ties take the
+first sector and system in the port's order.
+
 ## The AI records (re-read 2026-09-28, 2026-09-30)
 
 `FUN_00401d20` builds a record (vtable `0x006584a0`) for one live object,

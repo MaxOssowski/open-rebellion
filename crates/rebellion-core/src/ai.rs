@@ -239,6 +239,14 @@ pub enum AIAction {
         target_object: Option<crate::missions::MissionTarget>,
     },
 
+    /// Cancel one of the side's missions and free its members: the
+    /// strategy's cancellation of a planner (`FUN_004e5710` -> side `+0x314`
+    /// -> `FUN_0042f690`) or a planner's order `0x250` on its mission
+    /// (`FUN_0047b250`).
+    ///
+    /// hyp: order `0x250` aborts the mission; its handler is not read.
+    CancelMission { mission_id: u64 },
+
     /// Enqueue a unit or facility for construction at a system.
     EnqueueProduction {
         system: SystemKey,
@@ -299,6 +307,7 @@ impl AISystem {
         tick_events: &[TickEvent],
         config: &GameConfig,
         research_state: &ResearchState,
+        uprisings: &crate::uprising::UprisingState,
     ) -> Vec<AIAction> {
         let Some(last_tick_event) = tick_events.last() else {
             return Vec::new();
@@ -335,6 +344,7 @@ impl AISystem {
             world,
             mission_state,
             research_state,
+            uprisings,
             faction,
             &mut actions,
         );
@@ -871,45 +881,90 @@ impl AISystem {
     // Research heuristics
     // -----------------------------------------------------------------------
 
-    /// Research orders, one per tree that is not Done.
+    /// Research orders and cancellations, per tree in the order of the
+    /// strategy's list (`FUN_004e8290`: ships, troops, facilities).
     ///
-    /// The research planners (`FUN_0047bcd0`, `FUN_0047c2b0`, `FUN_0047c900`)
-    /// pick one member of the side with the tree's capability and a skill of
-    /// 10 or more. port: the side's strategic choice of mission and target
-    /// (side `+0x318`, `+0x31c`) is untraced, so the port orders a tree's
-    /// research only while none of the side's research in that tree runs,
-    /// at the side's first system that can host it
-    /// ([`crate::missions::research_site`]; uprisings are not read here, and
-    /// the validator ends a mission sent to one).
+    /// The strategy wants one research planner per character of the side
+    /// able to research the tree (`FUN_0041bc10`, [`Planner::able`]) while
+    /// the tree is not Done for the AI ([`ai_research_done`]); it cancels
+    /// the weakest surplus planner, and every one once the tree is Done
+    /// (`FUN_004e5710`). Each planner's team is one member of skill 10 or
+    /// more (`FUN_0047bcd0` and siblings), and its target the AI's research
+    /// site chosen by [`research_target`]. A planner aborts its mission once
+    /// that system is no longer a site (`FUN_0047c110` and siblings,
+    /// `FUN_0047b250`).
+    ///
+    /// port: the port keeps no planners. Its live research missions stand
+    /// for them, a tree's orders and cancellations happen within one
+    /// evaluation rather than one per strategy pass, and the abort is
+    /// checked at each evaluation rather than at each Mission Report.
     fn evaluate_research(
         planner: &mut Planner<'_>,
         world: &GameWorld,
         mission_state: &MissionState,
         research_state: &ResearchState,
+        uprisings: &crate::uprising::UprisingState,
         faction: AiFaction,
         actions: &mut Vec<AIAction>,
     ) {
         let is_alliance = matches!(faction, AiFaction::Alliance);
-        let side = crate::dat::Faction::of_alliance(is_alliance);
-        let no_uprisings = crate::uprising::UprisingState::default();
         for tech in TechType::ALL {
             let kind = match tech {
                 TechType::Ship => MissionKind::ShipDesignResearch,
                 TechType::Troop => MissionKind::TroopTrainingResearch,
                 TechType::Facility => MissionKind::FacilityDesignResearch,
             };
-            let running = mission_state
+            let site = |system| {
+                ai_research_site(world, uprisings, research_state, is_alliance, tech, system)
+            };
+            let mut running: Vec<&crate::missions::ActiveMission> = mission_state
                 .missions()
                 .iter()
-                .any(|m| m.kind == kind && m.faction == faction.as_mission_faction());
-            if running || research_state.progress(is_alliance, tech).done {
+                .filter(|m| m.kind == kind && m.faction == faction.as_mission_faction())
+                .collect();
+            running.retain(|m| {
+                let keep = site(m.target_system);
+                if !keep {
+                    actions.push(AIAction::CancelMission { mission_id: m.id });
+                }
+                keep
+            });
+            let wanted = planner.able(kind);
+            let done = ai_research_done(world, research_state, is_alliance, tech);
+            let surplus = if done {
+                running.len()
+            } else {
+                running.len().saturating_sub(wanted)
+            };
+            // FUN_004e5710: the least team skill in the tree (slot +0x18,
+            // FUN_0047bc30), the earlier planner on a tie.
+            running.sort_by_key(|m| {
+                let skill: u32 = m
+                    .team
+                    .iter()
+                    .filter_map(|&member| {
+                        crate::missions::member_skill(world, member, tech.skill())
+                    })
+                    .sum();
+                (skill, m.id)
+            });
+            for m in running.drain(..surplus) {
+                actions.push(AIAction::CancelMission { mission_id: m.id });
+            }
+            if done {
                 continue;
             }
-            let site = world.systems.keys().find(|&system| {
-                crate::missions::research_site(world, &no_uprisings, side, tech, system)
-            });
-            if let Some(site) = site {
-                Self::dispatch_planned(planner, kind, (site, None), None, actions);
+            let mut active = running.len();
+            while active < wanted {
+                let Some(target) =
+                    research_target(world, uprisings, research_state, is_alliance, tech)
+                else {
+                    break;
+                };
+                if !Self::dispatch_planned(planner, kind, (target, None), None, actions) {
+                    break;
+                }
+                active += 1;
             }
         }
     }
@@ -2282,6 +2337,159 @@ impl AISystem {
 // Tests
 // ---------------------------------------------------------------------------
 
+/// `FUN_0042dd00`: the research level at which the AI counts a tree Done
+/// (controller `+0x140` ships, `+0x144` troops, `+0x148` facilities): the
+/// highest research order of the side's own capital ship and fighter
+/// classes (families `0x14..0x1f`), of its own regiment classes
+/// (`0x10..0x13`), or of every facility class (`0x22..0x2b`, any side). A
+/// class counts as one side's when the other side's flag is clear
+/// (`FUN_00473290`: `+0x28` 1 Alliance, 2 Empire, 0 both).
+fn ai_research_goal(world: &GameWorld, is_alliance: bool, tech: TechType) -> u32 {
+    let own = |alliance: bool, empire: bool| {
+        if empire {
+            !alliance && !is_alliance
+        } else {
+            is_alliance
+        }
+    };
+    match tech {
+        TechType::Ship => world
+            .capital_ship_classes
+            .values()
+            .filter(|c| own(c.is_alliance, c.is_empire))
+            .map(|c| c.research_order)
+            .chain(
+                world
+                    .fighter_classes
+                    .values()
+                    .filter(|c| own(c.is_alliance, c.is_empire))
+                    .map(|c| c.research_order),
+            )
+            .max()
+            .unwrap_or(0),
+        TechType::Troop => world
+            .buildable_classes
+            .iter()
+            .filter(|(id, c)| {
+                (0x10..=0x13).contains(&id.family()) && own(c.is_alliance, c.is_empire)
+            })
+            .map(|(_, c)| c.research_order)
+            .max()
+            .unwrap_or(0),
+        TechType::Facility => world
+            .buildable_classes
+            .iter()
+            .filter(|(id, _)| (0x22..=0x2b).contains(&id.family()))
+            .map(|(_, c)| c.research_order)
+            .max()
+            .unwrap_or(0),
+    }
+}
+
+/// Whether the AI counts a tree Done: the side's research-order
+/// notification (`FUN_004198a0`, `FUN_00419870`, `FUN_004197b0`) found the
+/// new level equal to [`ai_research_goal`] and set the controller's bit
+/// `0x2000000`, `0x4000000` or `0x8000000`.
+///
+/// port: the bit is read as the level having reached a nonzero goal; the
+/// notification fires only on a change of level, so a goal of 0 never sets
+/// it.
+fn ai_research_done(
+    world: &GameWorld,
+    research: &ResearchState,
+    is_alliance: bool,
+    tech: TechType,
+) -> bool {
+    let goal = ai_research_goal(world, is_alliance, tech);
+    goal != 0 && research.level(is_alliance, tech) >= goal
+}
+
+/// A research site of the tree (`FUN_00433e40`, system record `+0x2c` bit
+/// 4, 8 or `0x10`): the side's system (`+0x30` bit 0) in no uprising or
+/// blockade (`+0x28 & 3`) with an active yard of the tree's area
+/// ([`crate::missions::research_site`]) and an active regiment of the side
+/// (`+0x90`), while the tree is not Done for the AI.
+///
+/// port: the original also needs the production AI's mark for a yard of
+/// the area there (`+0x28` bits `0x200000`, `0x400000`, `0x3800000`, set by
+/// `FUN_004cacc0` and its siblings when they order one); the port keeps no
+/// marks, so every yard of the side counts.
+fn ai_research_site(
+    world: &GameWorld,
+    uprisings: &crate::uprising::UprisingState,
+    research: &ResearchState,
+    is_alliance: bool,
+    tech: TechType,
+    system: SystemKey,
+) -> bool {
+    let side = crate::dat::Faction::of_alliance(is_alliance);
+    let Some(sys) = world.systems.get(system) else {
+        return false;
+    };
+    GameWorld::facility_holder(sys.control) == Some(side)
+        && crate::missions::research_site(world, uprisings, side, tech, system)
+        && sys.ground_units.iter().any(|&key| {
+            world
+                .troops
+                .get(key)
+                .is_some_and(|t| t.is_alliance == is_alliance)
+        })
+        && !ai_research_done(world, research, is_alliance, tech)
+}
+
+/// A new research planner's target (`FUN_0047be50`, `FUN_0047c430`,
+/// `FUN_0047ca80`, first cycle): the sector with the most research sites of
+/// the tree (`FUN_00419a00`, sector `+0x154`, `+0x158`, `+0x15c`), then
+/// its site with the highest support of the side (`FUN_00431830`, system
+/// record `+0x48`: `FUN_00507270`, or 100 for an unpopulated system).
+///
+/// port: equal counts and supports go to the first sector and system in
+/// the port's order; the original's order of equal keys is untraced. A
+/// later cycle of an original planner prefers the site nearest its
+/// previous target; the port keeps no planners.
+fn research_target(
+    world: &GameWorld,
+    uprisings: &crate::uprising::UprisingState,
+    research: &ResearchState,
+    is_alliance: bool,
+    tech: TechType,
+) -> Option<SystemKey> {
+    let side = crate::dat::Faction::of_alliance(is_alliance);
+    let sites = |sector: crate::ids::SectorKey| -> Vec<SystemKey> {
+        world
+            .systems
+            .iter()
+            .filter(|(_, sys)| sys.sector == sector)
+            .map(|(key, _)| key)
+            .filter(|&system| {
+                ai_research_site(world, uprisings, research, is_alliance, tech, system)
+            })
+            .collect()
+    };
+    let mut best: Option<Vec<SystemKey>> = None;
+    for sector in world.sectors.keys() {
+        let here = sites(sector);
+        if !here.is_empty() && best.as_ref().is_none_or(|b| here.len() > b.len()) {
+            best = Some(here);
+        }
+    }
+    let support = |system: SystemKey| {
+        let sys = &world.systems[system];
+        if sys.is_populated {
+            crate::uprising::support_points(sys, side)
+        } else {
+            100
+        }
+    };
+    let mut chosen: Option<SystemKey> = None;
+    for system in best? {
+        if chosen.is_none_or(|c| support(system) > support(c)) {
+            chosen = Some(system);
+        }
+    }
+    chosen
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2475,6 +2683,7 @@ mod tests {
                 &ticks(7),
                 &GameConfig::default(),
                 &crate::research::ResearchState::new(),
+                &crate::uprising::UprisingState::default(),
             )
             .into_iter()
             .find_map(|action| match action {
@@ -2614,6 +2823,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &research,
+            &crate::uprising::UprisingState::default(),
         )
         .into_iter()
         .find_map(|action| match action {
@@ -2730,6 +2940,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         )
     }
 
@@ -2808,6 +3019,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
         let mission_count = actions
             .iter()
@@ -2839,6 +3051,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
         let mission_count = actions
             .iter()
@@ -2920,6 +3133,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         let has_fighter_enqueue = actions.iter().any(|a| {
@@ -3004,6 +3218,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         let ship_orders = actions
@@ -3082,6 +3297,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &research,
+            &crate::uprising::UprisingState::default(),
         );
         actions
             .iter()
@@ -3163,6 +3379,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         assert!(!actions.iter().any(|action| matches!(
@@ -3213,6 +3430,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         let fleet_move = actions.iter().find(|a| {
@@ -3269,6 +3487,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         assert!(actions.iter().any(|action| matches!(
@@ -3330,6 +3549,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         assert!(actions.iter().any(|action| matches!(
@@ -3380,6 +3600,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         assert!(!actions.iter().any(
@@ -3431,6 +3652,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         assert!(!actions.iter().any(
@@ -3480,6 +3702,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         assert!(actions.iter().any(|action| matches!(
@@ -3530,6 +3753,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         assert!(!actions.iter().any(
@@ -3583,6 +3807,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         for fleet in [death_star, escort] {
@@ -3731,6 +3956,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         let sabotage = actions.iter().find(|a| {
@@ -3819,6 +4045,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         let covert = actions
@@ -3887,6 +4114,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         let intel = actions.iter().find(|a| {
@@ -3968,6 +4196,7 @@ mod tests {
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
 
         let covert_count = actions
@@ -4011,6 +4240,7 @@ mod tests {
             &[TickEvent { tick: 7 }],
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
         assert_eq!(state.last_eval_tick, 7);
 
@@ -4024,6 +4254,7 @@ mod tests {
             &[TickEvent { tick: 10 }],
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
         assert!(
             second.is_empty(),
@@ -4041,6 +4272,7 @@ mod tests {
             &[TickEvent { tick: 14 }],
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
+            &crate::uprising::UprisingState::default(),
         );
         assert_eq!(state.last_eval_tick, 14);
         let _ = third; // just checking it ran
@@ -4946,7 +5178,8 @@ mod tests {
     }
 
     /// An Alliance system holding a yard of `family` (MANFACSD `0x28`
-    /// shipyard, `0x29` training facility, `0x2a` construction yard).
+    /// shipyard, `0x29` training facility, `0x2a` construction yard) and an
+    /// Alliance regiment: a research site of the yard's tree.
     fn yard_system(world: &mut GameWorld, sector: SectorKey, family: u32) -> SystemKey {
         let system = add_system(world, sector, 0.5, 0.5);
         world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
@@ -4959,7 +5192,17 @@ mod tests {
                     is_shipyard: family == 0x28,
                 });
         world.systems[system].manufacturing_facilities.push(yard);
+        garrison(world, system, true);
         system
+    }
+
+    fn garrison(world: &mut GameWorld, system: SystemKey, is_alliance: bool) {
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance,
+            regiment_strength: 50,
+        });
+        world.systems[system].ground_units.push(troop);
     }
 
     fn designer(world: &mut GameWorld, tech: TechType, base: u32) -> MissionMember {
@@ -4986,23 +5229,54 @@ mod tests {
             world,
             missions,
             research,
+            &crate::uprising::UprisingState::default(),
             AiFaction::Alliance,
             &mut actions,
         );
         actions
     }
 
+    fn research_mission(
+        missions: &mut MissionState,
+        kind: MissionKind,
+        member: MissionMember,
+        system: SystemKey,
+    ) -> u64 {
+        missions.dispatch(crate::missions::MissionRequest {
+            kind,
+            faction: crate::missions::MissionFaction::Alliance,
+            team: vec![member],
+            decoys: vec![],
+            target_system: system,
+            target_character: None,
+            target_object: None,
+            tick: 1,
+        })
+    }
+
+    fn cancelled(actions: &[AIAction]) -> Vec<u64> {
+        actions
+            .iter()
+            .filter_map(|a| match a {
+                AIAction::CancelMission { mission_id } => Some(*mission_id),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
-    fn each_tree_sends_its_best_designer_to_a_system_with_its_yard() {
-        // FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900: one member with the
-        // tree's capability (0x800, 0x1000, 0x2000) and skill 2, 3 or 4 of
-        // 10 or more; FUN_0056c510 needs a yard of the tree's area there.
+    fn each_tree_wants_a_planner_for_every_character_able_to_research_it() {
+        // FUN_004e8290 requests a research subtype while its live planners
+        // (+0x324/+0x328/+0x32c) are fewer than the side's characters with
+        // the tree's capability (FUN_0041bc10: +0x2cc, +0x2d0, +0x2c8); each
+        // planner takes the best free member of skill 10 or more
+        // (FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900).
         let mut world = empty_world();
         let sector = add_sector(&mut world);
         let _bare = add_system(&mut world, sector, 0.5, 0.5);
         let shipyard = yard_system(&mut world, sector, 0x28);
         let training = yard_system(&mut world, sector, 0x29);
-        let _weak = designer(&mut world, TechType::Ship, 20);
+        let weak = designer(&mut world, TechType::Ship, 20);
         let ship = designer(&mut world, TechType::Ship, 60);
         let troop = designer(&mut world, TechType::Troop, 30);
         let _facility = designer(&mut world, TechType::Facility, 70);
@@ -5011,18 +5285,20 @@ mod tests {
 
         assert_eq!(
             orders(&actions, MissionKind::ShipDesignResearch),
-            vec![(vec![ship], shipyard, None)]
+            vec![(vec![ship], shipyard, None), (vec![weak], shipyard, None)]
         );
         assert_eq!(
             orders(&actions, MissionKind::TroopTrainingResearch),
             vec![(vec![troop], training, None)]
         );
         assert!(orders(&actions, MissionKind::FacilityDesignResearch).is_empty());
+        assert!(cancelled(&actions).is_empty());
     }
 
     #[test]
     fn a_designer_below_skill_10_is_never_sent() {
-        // FUN_0047bcd0: FUN_004035d0(.., skill 2, minimum 10, ..).
+        // FUN_0047bcd0: FUN_004035d0(.., skill 2, minimum 10, ..). The
+        // weaker designer still counts as able (FUN_0041bc10).
         let mut world = empty_world();
         let sector = add_sector(&mut world);
         let _ = yard_system(&mut world, sector, 0x28);
@@ -5032,76 +5308,315 @@ mod tests {
 
         let ten = designer(&mut world, TechType::Ship, 10);
         let actions = research_orders(&world, &MissionState::new(), &ResearchState::new());
+        let sent: Vec<_> = orders(&actions, MissionKind::ShipDesignResearch)
+            .into_iter()
+            .map(|(team, _, _)| team)
+            .collect();
+        assert_eq!(sent, vec![vec![ten]]);
+    }
+
+    #[test]
+    fn a_research_site_needs_the_side_s_garrison_and_no_uprising() {
+        // FUN_00433e40: +0x2c bit 4 needs +0x90 > 0 (an active regiment)
+        // and +0x28 & 3 clear (bit 1 an uprising, bit 2 a blockade).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let system = add_system(&mut world, sector, 0.5, 0.5);
+        world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let yard =
+            world
+                .manufacturing_facilities
+                .insert(crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: DatId::new(0x2800_0001),
+                    side: crate::dat::Faction::Alliance,
+                    is_shipyard: true,
+                });
+        world.systems[system].manufacturing_facilities.push(yard);
+        let research = ResearchState::new();
+        let no_uprising = crate::uprising::UprisingState::default();
+        let site = |world: &GameWorld, uprisings| {
+            ai_research_site(world, uprisings, &research, true, TechType::Ship, system)
+        };
+
+        assert!(!site(&world, &no_uprising));
+        garrison(&mut world, system, false);
+        assert!(!site(&world, &no_uprising));
+        garrison(&mut world, system, true);
+        assert!(site(&world, &no_uprising));
+        assert!(!ai_research_site(
+            &world,
+            &no_uprising,
+            &research,
+            true,
+            TechType::Troop,
+            system
+        ));
+        let mut revolt = crate::uprising::UprisingState::default();
+        revolt.active_uprisings.insert(
+            system,
+            crate::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+            },
+        );
+        assert!(!site(&world, &revolt));
+    }
+
+    #[test]
+    fn the_target_is_the_best_supported_site_in_the_sector_with_most_sites() {
+        // FUN_0047be50 first cycle: FUN_00419a00 keys the sectors by their
+        // site count (+0x154), then FUN_00431830 keys the sector's sites by
+        // the side's support (system record +0x48, FUN_00507270).
+        let mut world = empty_world();
+        let lone = add_sector(&mut world);
+        let busy = add_sector(&mut world);
+        let favourite = yard_system(&mut world, lone, 0x28);
+        world.systems[favourite].popularity_alliance = 0.9;
+        let middling = yard_system(&mut world, busy, 0x28);
+        world.systems[middling].popularity_alliance = 0.6;
+        let best = yard_system(&mut world, busy, 0x28);
+        world.systems[best].popularity_alliance = 0.8;
+        let research = ResearchState::new();
+
         assert_eq!(
-            orders(&actions, MissionKind::ShipDesignResearch)[0].0,
-            vec![ten]
+            research_target(
+                &world,
+                &crate::uprising::UprisingState::default(),
+                &research,
+                true,
+                TechType::Ship
+            ),
+            Some(best)
         );
     }
 
     #[test]
-    fn a_done_tree_or_one_already_researched_gets_no_order() {
-        // port: one research order per tree while none runs; a Done tree
-        // would end at once with code 0xe (FUN_0052eb10).
+    fn equal_sectors_and_supports_go_to_the_first_in_order() {
+        // port: the original's order of equal keys (FUN_0041be80 lists) is
+        // untraced; the port keeps the first sector and system.
+        let mut world = empty_world();
+        let first_sector = add_sector(&mut world);
+        let second_sector = add_sector(&mut world);
+        let first = yard_system(&mut world, first_sector, 0x28);
+        let tied = yard_system(&mut world, first_sector, 0x28);
+        let _other = yard_system(&mut world, second_sector, 0x28);
+        let _other_tied = yard_system(&mut world, second_sector, 0x28);
+        world.systems[tied].popularity_alliance = world.systems[first].popularity_alliance;
+
+        assert_eq!(
+            research_target(
+                &world,
+                &crate::uprising::UprisingState::default(),
+                &ResearchState::new(),
+                true,
+                TechType::Ship
+            ),
+            Some(first)
+        );
+    }
+
+    #[test]
+    fn the_ai_counts_a_tree_done_at_its_own_classes_highest_order() {
+        // FUN_0042dd00: +0x140 is the highest research order of the side's
+        // own ship classes (wrapper +0x28 1 or 2, FUN_00473290); +0x148
+        // takes every facility class. FUN_004198a0 sets the Done bit when
+        // the level reaches it.
+        let mut world = empty_world();
+        let class = |alliance, empire, order| crate::world::CapitalShipClass {
+            is_alliance: alliance,
+            is_empire: empire,
+            research_order: order,
+            ..Default::default()
+        };
+        world.capital_ship_classes.insert(class(true, false, 3));
+        world.capital_ship_classes.insert(class(true, true, 7));
+        world.capital_ship_classes.insert(class(false, true, 5));
+        world.buildable_classes.insert(
+            DatId::new(0x2200_0001),
+            crate::world::BuildableClass {
+                is_empire: true,
+                research_order: 4,
+                ..Default::default()
+            },
+        );
+        assert_eq!(ai_research_goal(&world, true, TechType::Ship), 3);
+        assert_eq!(ai_research_goal(&world, false, TechType::Ship), 5);
+        assert_eq!(ai_research_goal(&world, true, TechType::Facility), 4);
+        assert_eq!(ai_research_goal(&world, true, TechType::Troop), 0);
+
+        let mut research = ResearchState::new();
+        research.alliance.ship = 2;
+        assert!(!ai_research_done(&world, &research, true, TechType::Ship));
+        research.alliance.ship = 3;
+        assert!(ai_research_done(&world, &research, true, TechType::Ship));
+        assert!(!ai_research_done(&world, &research, true, TechType::Troop));
+    }
+
+    #[test]
+    fn the_troop_goal_takes_only_the_side_s_own_regiment_classes() {
+        // FUN_0042dd00: +0x144 walks families 0x10..0x13 and keeps a class
+        // whose wrapper side (+0x28, FUN_00473290) is the AI's.
+        let mut world = empty_world();
+        let class = |alliance, empire, order| crate::world::BuildableClass {
+            is_alliance: alliance,
+            is_empire: empire,
+            research_order: order,
+            ..Default::default()
+        };
+        world
+            .buildable_classes
+            .insert(DatId::new(0x1000_0001), class(true, false, 2));
+        world
+            .buildable_classes
+            .insert(DatId::new(0x1000_0002), class(false, true, 6));
+        world
+            .buildable_classes
+            .insert(DatId::new(0x2200_0001), class(true, false, 4));
+        assert_eq!(ai_research_goal(&world, true, TechType::Troop), 2);
+        assert_eq!(ai_research_goal(&world, false, TechType::Troop), 6);
+    }
+
+    #[test]
+    fn orders_stop_at_the_wanted_count() {
+        // FUN_004e8290: a request only while the live planners are fewer
+        // than the able characters; a running mission whose member is not
+        // able still counts as a planner.
         let mut world = empty_world();
         let sector = add_sector(&mut world);
         let shipyard = yard_system(&mut world, sector, 0x28);
-        let _ = yard_system(&mut world, sector, 0x29);
-        let _ = designer(&mut world, TechType::Ship, 50);
-        let busy = designer(&mut world, TechType::Troop, 50);
-        let _ = designer(&mut world, TechType::Troop, 40);
+        let unable = designer(&mut world, TechType::Troop, 50);
+        let best = designer(&mut world, TechType::Ship, 60);
+        let _second = designer(&mut world, TechType::Ship, 40);
+        let mut missions = MissionState::new();
+        research_mission(
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            unable,
+            shipyard,
+        );
+
+        let actions = research_orders(&world, &missions, &ResearchState::new());
+
+        assert_eq!(
+            orders(&actions, MissionKind::ShipDesignResearch),
+            vec![(vec![best], shipyard, None)]
+        );
+        assert!(cancelled(&actions).is_empty());
+    }
+
+    #[test]
+    fn a_done_tree_cancels_its_research_and_orders_none() {
+        // FUN_004e8290: with the Done bit set the subtype takes no request
+        // and its live planners are cancelled.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass {
+                is_alliance: true,
+                research_order: 2,
+                ..Default::default()
+            });
+        let running = designer(&mut world, TechType::Ship, 50);
+        let _ = designer(&mut world, TechType::Ship, 40);
+        let mut missions = MissionState::new();
+        let id = research_mission(
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            running,
+            shipyard,
+        );
         let mut research = ResearchState::new();
-        research.alliance_progress.ship.done = true;
+        research.alliance.ship = 2;
+
+        let actions = research_orders(&world, &missions, &research);
+
+        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
+        assert_eq!(cancelled(&actions), vec![id]);
+    }
+
+    #[test]
+    fn surplus_research_cancels_the_weakest_team_first() {
+        // FUN_004e5710 cancels, among the subtype's planners, the one with
+        // the least team skill in the tree (FUN_0047bc30 sums record +0x48).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let strong = designer(&mut world, TechType::Ship, 50);
+        let unable = designer(&mut world, TechType::Troop, 50);
+        let mut missions = MissionState::new();
+        let _keep = research_mission(
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            strong,
+            shipyard,
+        );
+        let drop = research_mission(
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            unable,
+            shipyard,
+        );
+
+        let actions = research_orders(&world, &missions, &ResearchState::new());
+
+        assert_eq!(cancelled(&actions), vec![drop]);
+        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
+    }
+
+    #[test]
+    fn research_at_a_system_that_is_no_longer_a_site_is_aborted() {
+        // FUN_0047c890 -> FUN_0047b250: once the mission's system loses the
+        // site bit (FUN_0047c110), the planner orders 0x250 on its mission.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let ship = designer(&mut world, TechType::Ship, 50);
+        let mut missions = MissionState::new();
+        let id = research_mission(
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            ship,
+            shipyard,
+        );
+        assert!(cancelled(&research_orders(&world, &missions, &ResearchState::new())).is_empty());
+
+        world.systems[shipyard].ground_units.clear();
+
+        assert_eq!(
+            cancelled(&research_orders(&world, &missions, &ResearchState::new())),
+            vec![id]
+        );
+    }
+
+    #[test]
+    fn another_side_s_or_another_tree_s_research_blocks_no_order() {
+        // FUN_004e5710 and the counts +0x324.. look at the side's own
+        // planners of the subtype only.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let ship = designer(&mut world, TechType::Ship, 50);
+        let enemy = add_character(&mut world, false, false, 0);
+        let trainer = designer(&mut world, TechType::Troop, 30);
         let mut missions = MissionState::new();
         missions.dispatch(crate::missions::MissionRequest {
-            kind: MissionKind::TroopTrainingResearch,
-            faction: crate::missions::MissionFaction::Alliance,
-            team: vec![busy],
+            kind: MissionKind::ShipDesignResearch,
+            faction: crate::missions::MissionFaction::Empire,
+            team: vec![MissionMember::Character(enemy)],
             decoys: vec![],
             target_system: shipyard,
             target_character: None,
             target_object: None,
             tick: 1,
         });
-
-        let actions = research_orders(&world, &missions, &research);
-
-        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
-        assert!(orders(&actions, MissionKind::TroopTrainingResearch).is_empty());
-    }
-
-    #[test]
-    fn another_side_s_or_another_tree_s_research_blocks_no_order() {
-        // port: only the side's own research in the same tree holds a tree.
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let shipyard = yard_system(&mut world, sector, 0x28);
-        let ship = designer(&mut world, TechType::Ship, 50);
-        let enemy = add_character(&mut world, false, false, 0);
-        let trainer = add_character(&mut world, true, false, 0);
-        let mut missions = MissionState::new();
-        for (kind, faction, member) in [
-            (
-                MissionKind::ShipDesignResearch,
-                crate::missions::MissionFaction::Empire,
-                MissionMember::Character(enemy),
-            ),
-            (
-                MissionKind::TroopTrainingResearch,
-                crate::missions::MissionFaction::Alliance,
-                MissionMember::Character(trainer),
-            ),
-        ] {
-            missions.dispatch(crate::missions::MissionRequest {
-                kind,
-                faction,
-                team: vec![member],
-                decoys: vec![],
-                target_system: shipyard,
-                target_character: None,
-                target_object: None,
-                tick: 1,
-            });
-        }
+        research_mission(
+            &mut missions,
+            MissionKind::TroopTrainingResearch,
+            trainer,
+            shipyard,
+        );
 
         let actions = research_orders(&world, &missions, &ResearchState::new());
 
