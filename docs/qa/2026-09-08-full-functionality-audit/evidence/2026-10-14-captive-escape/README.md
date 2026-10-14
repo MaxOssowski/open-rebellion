@@ -52,3 +52,14 @@ Drayson and Talon Karrde, who escape again. Seeds 1, 2 and 4 capture no one.
 
 Hashes are in `SHA256SUMS`. `web/open-rebellion.wasm` is an unoptimized
 build (`wasm-opt` is not installed).
+
+## Full gate, later the same day
+
+With `agent-browser` 0.38.1 installed, `python3
+scripts/check-replay-equivalence.py --skip-build --json` passes on
+`5cfe3928`: the seed-42 artifact (13,479 bytes, nine checkpoints,
+`v1:18b0d4ae14e00774` -> `v1:501c8c959ff47345`) matches native and browser,
+4 requests and 0 browser errors; an invalid query fails in the `query`
+phase, a missing pack in `runtime_pack_fetch`, and normal startup makes 4
+requests and reaches the semantic menu. That closes the three cases the
+CDP run above left out.
