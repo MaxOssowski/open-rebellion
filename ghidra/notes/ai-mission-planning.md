@@ -480,6 +480,48 @@ rank sum, so with one list the last entry wins: the highest key for order 1
 and the lowest (nearest) for order 2, with ties decided by those coin
 flips. The port takes the first of equal entries.
 
+**The remaining port simplifications (read 2026-10-14).**
+
+- *Distance keys.* `FUN_0041b7b0` is the squared difference of two packed
+  `(x, y)` shorts. A sector record's `+0x40` comes from its class record
+  `+0x48` (`FUN_00431450` -> `FUN_00526560`), a system record's `+0x34`
+  from its class record `+0x4c` (`FUN_00433b10` -> `FUN_00509620`); with the
+  class record 0x28 bytes past the DAT record these are SECTORSD
+  `x_position`/`y_position` (offset `0x20`) and SYSTEMSD
+  `x_position`/`y_position` (offset `0x24`). So the keys are map
+  positions, as the port reads them; this also settles the record `+0x34`
+  question under "Still open".
+- *Travel.* State 7 (`FUN_004bd570`) gives every free team member away from
+  the target a Move order `0x201` to it (team list `+0x24`, target
+  `+0x38`); a member already there sets flag 8, and state 8 orders the
+  mission only once all are there. `0x201` expands to a `0x241` order for
+  characters (`move-order.md`), the Move pseudo-mission (family `0x41`),
+  which has no MISSNSD record and so runs no detection. The research
+  mission therefore starts at its site (origin = target: phases 5 and 6
+  do nothing, and its detection runs at the AI's own unblockaded system).
+  The port's research mission travels by itself, so its detection runs at
+  wherever the designer stood. Porting the Move pseudo-mission (F-040)
+  removes the difference.
+- *Cadence.* The AI player's tick (`FUN_00485b40`) runs once per frame in
+  frame-loop phase 8 until it returns 1, and its phase 3 steps the current
+  module until it completes (`+0x20`), then the next ready one
+  (`FUN_004be980`), until no module is ready or the day's 10 orders are
+  spent; phase 5 readies them all again. So every sub-tick the strategy
+  module (id `0xd`: `FUN_004bf320` -> `FUN_004bf390` -> `FUN_004bf490`, the
+  posture, then the six states of `FUN_004e5440`) makes one full pass, and
+  the mission module (`FUN_004d2490`) builds or cancels the strategy's
+  request and runs one planner through one whole cycle, the planners in
+  turn (`FUN_004d2730`). A day has as many sub-ticks as the larger of the
+  sides' `+0xc4` (`FUN_0051dea0`), which the speed order `0x280` sets
+  (`FUN_00628ff0`, its slot `+0x20`) to the speed's rate: 600 Very Slow, 60
+  Slow, 12 Medium, 4 Fast. The AI thus makes 4 to 600 strategy passes and
+  planner cycles a day, capped at 10 orders. The port evaluates once every
+  7 days (`GameConfig.ai.tick_interval`) and then runs every planner's
+  cycle; this holds for every AI module, not only research.
+- *Yard marks.* As above: every cycle of the ship, troop and facility
+  production modules claims one more system, so with several cycles a day
+  every own yard system is marked almost at once.
+
 **Also found.** `FUN_0047ba90` rejects a candidate standing (not en route,
 record `+0x30` bit `0x20`) at a system whose record has `+0x28` bit `0x2`,
 the blockade bit, for every mission kind (ported 2026-10-14).
@@ -661,7 +703,8 @@ original as follows:
 - The posture (`FUN_00478000`, `FUN_004b7150`) and its sector bits.
 - When the controller's research bits (`FUN_004198a0`, `FUN_00419870`,
   `FUN_004197b0`) and leader bit (`FUN_004182a0`) are set.
-- Whether the per-system record's `+0x34` is a DatId or coordinates.
+- Whether the per-system record's `+0x34` is a DatId or coordinates: it is
+  the system's map position (2026-10-14, see above).
 
 ## Supporting decompiles
 
