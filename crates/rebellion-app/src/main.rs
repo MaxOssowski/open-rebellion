@@ -7094,6 +7094,7 @@ fn apply_panel_action(
                 MissionKind::InciteUprising => "Incite Uprising",
                 MissionKind::SubdueUprising => "Subdue Uprising",
                 MissionKind::DeathStarSabotage => "Death Star Sabotage",
+                MissionKind::Reconnaissance => "Reconnaissance",
                 MissionKind::Autoscrap => "Autoscrap",
             };
             msg_log.push(GameMessage::at_system(
@@ -7573,6 +7574,7 @@ fn apply_mission_result(
         MissionKind::InciteUprising => "Incite Uprising",
         MissionKind::SubdueUprising => "Subdue Uprising",
         MissionKind::DeathStarSabotage => "Death Star Sabotage",
+        MissionKind::Reconnaissance => "Reconnaissance",
         MissionKind::Autoscrap => "Autoscrap",
     };
     let sys_name = world
@@ -7595,6 +7597,7 @@ fn apply_mission_result(
         | MissionKind::Rescue
         | MissionKind::Abduction
         | MissionKind::DeathStarSabotage
+        | MissionKind::Reconnaissance
         | MissionKind::Autoscrap => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.

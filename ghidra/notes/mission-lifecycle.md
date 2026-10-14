@@ -426,6 +426,7 @@ The first rule that fires sets the status and wins: later rules check
 | 0x63 | Assassination | `576540` | character rules |
 | 0x69 | Sabotage | `56a110` | object rules (its own checks are creation-only) |
 | 0x6a | DS Sabotage | `5744c0` | object rules (creation-only checks) |
+| 0x54 | Reconnaissance | `56be20` (slot `+0x1bc` `56bd10`) | system rules |
 
 Side `+0xb8` is set by `FUN_0052f590(side, 1)` from `FUN_0055fc80`, the
 recruit pick: it counts the side's recruitable characters (`FUN_0055ef30`),

@@ -1822,6 +1822,17 @@ cross-runtime proof remain open
     See `ghidra/notes/mission-lifecycle.md`.
   - F-019 ports phases, decoys, and the per-member roll for the port's 10
     kinds only (decision 2026-09-28).
+- Reconnaissance (2026-10-14): `MissionKind::Reconnaissance` runs the
+  lifecycle on record `0x54000015`: the system rules (`FUN_0056be20`), a
+  chance of 100 (`FUN_0056bea0`), result 3 with no raise (`FUN_0056bec0`),
+  and observation level 8 at a system target (`FUN_0056bee0`; port: the
+  port reveals the system, as for Espionage). Its member masks admit only
+  the Longprobe Y-wing Recon Team and the Imperial Probe Droid (special
+  force mask `0x104`, character mask 0). The dialog lists it at another
+  side's system. Browser: fixture `ReconTargeting` (code 63), both sides,
+  offers Reconnaissance alone and dispatches it
+  (`evidence/2026-10-14-reconnaissance/`). Open: its AI planners
+  (`FUN_0047f790`, `FUN_0047f320`, `FUN_0047f500`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

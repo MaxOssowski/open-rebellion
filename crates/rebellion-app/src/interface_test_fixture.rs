@@ -41,7 +41,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 62;
+const SCENARIO_COUNT: u8 = 63;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -135,6 +135,10 @@ pub enum Scenario {
     /// The `ShipTargeting` fleet, targeted by its left-list entry: no
     /// mission takes a fleet, so no dialog opens.
     FleetTargeting = 61,
+    /// As `MissionTargeting` with a reconnaissance special force (the
+    /// Longprobe Y-wing Recon Team, or the Imperial Probe Droid) in the
+    /// agent's place: only those classes may undertake Reconnaissance.
+    ReconTargeting = 62,
 }
 
 impl Scenario {
@@ -202,6 +206,7 @@ impl Scenario {
             59 => Self::DeathStarTargeting,
             60 => Self::ShipTargeting,
             61 => Self::FleetTargeting,
+            62 => Self::ReconTargeting,
             _ => return None,
         })
     }
@@ -225,6 +230,7 @@ impl Scenario {
     /// The scenarios whose gate opens the object pop-up menu.
     fn reports_object_menu(self) -> bool {
         self == Self::MissionTargeting
+            || self == Self::ReconTargeting
             || self.targets_an_object()
             || self == Self::BuildSelection
             || self.moves_a_fleet()
@@ -521,7 +527,32 @@ pub fn apply(
             request, world, defenses, systems, fleets, cockpit, primary, secondary,
         );
     }
-    if request.scenario == Scenario::MissionTargeting {
+    if request.scenario == Scenario::ReconTargeting {
+        // The recon special force takes the agent's place: SPECFCSD class 3
+        // (mission mask 0x4) for the Alliance, class 5 (0x100) for the
+        // Empire, both in Reconnaissance's mask 0x104.
+        if let Some(agent) = world.characters.keys().next() {
+            world.characters[agent].current_system = None;
+        }
+        let class = rebellion_core::ids::DatId::new(if player_is_alliance {
+            0x3c00_0003
+        } else {
+            0x3c00_0005
+        });
+        let unit = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: class,
+                is_alliance: player_is_alliance,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        world.systems[primary].special_forces = vec![unit];
+    }
+    if matches!(
+        request.scenario,
+        Scenario::MissionTargeting | Scenario::ReconTargeting
+    ) {
         // The primary system's Defenses window at the galaxy view's right
         // edge holds the agent first on its personnel page; the second
         // system's planet in its sector window, in the first column on the
@@ -714,8 +745,8 @@ pub fn reveal(
     }
 }
 
-/// The mission dialog and the active missions, each frame, for the Rescue
-/// scenario.
+/// The mission dialog and the active missions, each frame, for the
+/// targeting scenarios.
 #[derive(Debug, Serialize, PartialEq)]
 struct FixtureMissionFlow {
     status: &'static str,
@@ -735,7 +766,12 @@ pub fn emit_mission_flow(
     dialog: &MissionDialogState,
     missions: &MissionState,
 ) {
-    if !request.scenario.targets_an_object() {
+    if !request.scenario.targets_an_object()
+        && !matches!(
+            request.scenario,
+            Scenario::MissionTargeting | Scenario::ReconTargeting
+        )
+    {
         return;
     }
     let name = |key| world.characters.get(key).map(|c| c.name.clone());
@@ -4535,7 +4571,8 @@ mod tests {
                 Scenario::SabotageTargeting,
                 Scenario::DeathStarTargeting,
                 Scenario::ShipTargeting,
-                Scenario::FleetTargeting
+                Scenario::FleetTargeting,
+                Scenario::ReconTargeting
             ]
         );
     }

@@ -2036,7 +2036,8 @@
       "title": "Original mission kinds the port lacks",
       "evidence": [
         "MISSNSD holds 25 records; the port has 10 agent kinds plus Autoscrap. Missing: Reconnaissance 0x54 (always succeeds, 56bec0), Research 0x53 (three records, repeat, 56cdb0), Palace 0x64 (rescue plus free every prisoner there, 56e650), Bounty 0x65 (575de0), Jedi Training 0x58 (5712b0), Dagobah 0x71, Vacation 0x72 and Pickup 0x73 (572470/56da80), and the movement pseudo-missions Move, Return, Autorouting and Adrift 0x41..0x44 (ghidra/notes/mission-lifecycle.md)",
-        "F-019 ports phases, decoys and the per-member roll for the port's 10 kinds only (decision 2026-09-28)"
+        "F-019 ports phases, decoys and the per-member roll for the port's 10 kinds only (decision 2026-09-28)",
+        "2026-10-14 Reconnaissance: MissionKind::Reconnaissance runs the lifecycle on record 0x54000015 with the system rules (FUN_0056be20), chance 100 (FUN_0056bea0), result 3 without a raise (FUN_0056bec0) and observation level 8 at a system target (FUN_0056bee0; port: a fog reveal). Only the Longprobe Y-wing Recon Team and the Imperial Probe Droid may undertake it (special force mask 0x104, character mask 0). Browser fixture ReconTargeting (code 63) on both sides. Open: its AI planners."
       ],
       "acceptance": "Each original kind runs through the F-019 lifecycle with its recovered +0x274/+0x27c/+0x280 slots, AI planner and legality rules, or is documented as deliberately excluded with evidence."
     }

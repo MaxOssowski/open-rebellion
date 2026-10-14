@@ -111,6 +111,10 @@ pub enum MissionKind {
     /// Sabotage the Death Star's construction (delay or destroy).
     /// DSSBMSTB.DAT. Skill: espionage.
     DeathStarSabotage,
+
+    /// Observe a system another side holds (MISSNSD `0x54000015`). It
+    /// always succeeds (`FUN_0056bea0`) and has no MSTB.
+    Reconnaissance,
 }
 
 impl MissionKind {
@@ -130,7 +134,7 @@ impl MissionKind {
             MissionKind::InciteUprising => Some("INCTMSTB"),
             MissionKind::SubdueUprising => Some("SUBDMSTB"),
             MissionKind::DeathStarSabotage => Some("DSSBMSTB"),
-            MissionKind::Autoscrap => None,
+            MissionKind::Autoscrap | MissionKind::Reconnaissance => None,
         }
     }
 
@@ -151,6 +155,8 @@ impl MissionKind {
             MissionKind::Espionage => (15, 25),
             MissionKind::DeathStarSabotage => (30, 40),
             MissionKind::Autoscrap => (1, 1),
+            // The shipped record's 1 + rand(0..=5).
+            MissionKind::Reconnaissance => (1, 6),
         }
     }
 }
@@ -938,6 +944,8 @@ pub fn member_chance(
         }
         // Autoscrap is no MSTB mission; it always succeeds.
         MissionKind::Autoscrap => return 100,
+        // FUN_0056bea0: Reconnaissance always succeeds.
+        MissionKind::Reconnaissance => return 100,
     };
     let (Some(input), Some(table)) = (
         input,
@@ -1645,6 +1653,7 @@ impl MissionKind {
             MissionKind::DeathStarSabotage => 0x6a00_0041,
             MissionKind::SubdueUprising => 0x5700_0080,
             MissionKind::Assassination => 0x6300_0081,
+            MissionKind::Reconnaissance => 0x5400_0015,
             MissionKind::Autoscrap => return None,
         };
         Some(crate::ids::DatId::new(raw))
@@ -1662,7 +1671,9 @@ impl MissionKind {
             | MissionKind::Espionage
             | MissionKind::Recruitment
             | MissionKind::InciteUprising
-            | MissionKind::SubdueUprising => TargetRules::System,
+            | MissionKind::SubdueUprising
+            // FUN_0056be20: the system rules alone.
+            | MissionKind::Reconnaissance => TargetRules::System,
         }
     }
 }
@@ -2581,6 +2592,8 @@ impl MissionSystem {
                     effects.extend(raise(Skill::Combat, GNPRTB_DS_SABOTAGE_COMBAT_RAISE));
                 }
                 MissionKind::Autoscrap => result = 3,
+                // FUN_0056bec0: 3, with no skill raise.
+                MissionKind::Reconnaissance => result = 3,
             }
         }
         // Slot +0x280: an unset result fails (FUN_00576700).
@@ -2612,6 +2625,17 @@ impl MissionSystem {
                 // (FUN_0050d5a0). port: the port reveals the system; the
                 // counts of FUN_0055c940 are not ported.
                 MissionKind::Espionage => {
+                    if world.systems.contains_key(target) {
+                        effects.push(MissionEffect::SystemIntelligenceGathered {
+                            system: target,
+                            faction: mission.faction,
+                        });
+                    }
+                }
+                // FUN_0056bee0: observation level 8 for the mission's side
+                // at a system target (Event319_Handle(8, side)). port: the
+                // port reveals the system, as for Espionage's level 10.
+                MissionKind::Reconnaissance => {
                     if world.systems.contains_key(target) {
                         effects.push(MissionEffect::SystemIntelligenceGathered {
                             system: target,
@@ -4433,6 +4457,77 @@ mod tests {
                     faction: MissionFaction::Alliance,
                 }));
         }
+    }
+
+    #[test]
+    fn reconnaissance_always_succeeds_and_observes_its_system_without_a_raise() {
+        // FUN_0056bea0 gives 100, FUN_0056bec0 sets 3 with no skill raise,
+        // and FUN_0056bee0 raises observation (level 8) at a system target.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        held_by(&mut world, here, crate::dat::Faction::Empire);
+        let scout = agent_at(&mut world, here, true);
+
+        let result = phase_ten(
+            &world,
+            MissionKind::Reconnaissance,
+            vec![MissionMember::Character(scout)],
+            here,
+            None,
+        );
+
+        assert_eq!(result.outcome, MissionOutcome::Success);
+        assert!(raised(&result).is_empty());
+        assert!(result
+            .effects
+            .contains(&MissionEffect::SystemIntelligenceGathered {
+                system: here,
+                faction: MissionFaction::Alliance,
+            }));
+    }
+
+    #[test]
+    fn the_dialog_lists_reconnaissance_only_at_another_sides_system() {
+        // The shipped Recon record (0x54000015) takes other and opponent
+        // targets, not its own side's (columns 15..17), under the system
+        // rules (FUN_0056be20 -> FUN_005868c0).
+        let recon = crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x5400_0015),
+            timer_min_days: 1,
+            timer_spread_days: 5,
+            repeats: false,
+            hidden: false,
+            detection_phases: true,
+            can_resign: true,
+            rules: crate::world::MissionTargetRules {
+                other_side_target: true,
+                opponent_target: true,
+                revolting_target: true,
+                calm_target: true,
+                ..Default::default()
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0x104,
+                character_mask: 0x1_0000,
+            },
+        };
+        let (mut world, here, envoy) = dialog_world(vec![recon]);
+        let list = |world: &GameWorld| {
+            available_kinds(
+                world,
+                &UprisingState::default(),
+                MissionFaction::Alliance,
+                &[envoy],
+                &[],
+                here,
+            )
+        };
+        assert!(list(&world).is_empty());
+        world.systems[here].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        assert_eq!(list(&world), vec![MissionKind::Reconnaissance]);
     }
 
     #[test]

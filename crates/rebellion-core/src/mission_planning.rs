@@ -75,13 +75,14 @@ fn capability(kind: MissionKind) -> Option<u32> {
         MissionKind::Assassination => 0x40,
         MissionKind::DeathStarSabotage => 0x80,
         MissionKind::InciteUprising => 0x100,
+        MissionKind::Reconnaissance => 0x200,
         MissionKind::Recruitment => 0x400,
         MissionKind::Autoscrap => return None,
     })
 }
 
 /// The port's agent kinds, in capability-bit order.
-pub(crate) const KINDS: [MissionKind; 10] = [
+pub(crate) const KINDS: [MissionKind; 11] = [
     MissionKind::Diplomacy,
     MissionKind::Rescue,
     MissionKind::Sabotage,
@@ -91,6 +92,7 @@ pub(crate) const KINDS: [MissionKind; 10] = [
     MissionKind::Assassination,
     MissionKind::DeathStarSabotage,
     MissionKind::InciteUprising,
+    MissionKind::Reconnaissance,
     MissionKind::Recruitment,
 ];
 
@@ -214,7 +216,9 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         MissionKind::Sabotage => (SABOTAGE, 2, decoys(0x4, DecoyCap::Posture)),
         // FUN_00482180, FUN_00482330 (cap 4).
         MissionKind::DeathStarSabotage => (DS_SABOTAGE, 2, decoys(0x80, DecoyCap::Fixed(4))),
-        MissionKind::Autoscrap => return None,
+        // port: the Recon planners (FUN_0047f790 for subtype 5, else
+        // FUN_0047f320 and FUN_0047f500) are not ported, so the AI sends none.
+        MissionKind::Autoscrap | MissionKind::Reconnaissance => return None,
     };
     Some(Selectors {
         team,

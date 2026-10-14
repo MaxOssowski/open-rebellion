@@ -348,6 +348,7 @@ const fn kind_text_id(kind: MissionKind) -> u16 {
         MissionKind::DeathStarSabotage => 11329,
         MissionKind::SubdueUprising => 11392,
         MissionKind::Assassination => 11393,
+        MissionKind::Reconnaissance => 11285,
         MissionKind::Autoscrap => 0,
     }
 }
@@ -366,6 +367,7 @@ pub const fn kind_name(kind: MissionKind) -> &'static str {
         MissionKind::DeathStarSabotage => "Death Star Sabotage",
         MissionKind::SubdueUprising => "Subdue Uprising",
         MissionKind::Assassination => "Assassination",
+        MissionKind::Reconnaissance => "Reconnaissance",
         MissionKind::Autoscrap => "",
     }
 }
