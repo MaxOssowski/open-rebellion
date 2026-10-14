@@ -119,10 +119,78 @@ with loyalty as the ESCAPETB input. The original:
 - frees through state `+0x98` := 1, which clears Captured and restores the
   home side.
 
+## Where an escaped character goes
+
+`FUN_004f0580` only mirrors `+0x98` into the two side views. The change hook
+is slot `+0x334`, `FUN_004f18e0`:
+
+```
+Captured := (+0x98 == 0)                  FUN_004eef70 -> chain above
+FUN_004ef190(...)                         untraced (FUN_004f26d0 on a key)
+Autorouting := 1                          GameObj_SetAutorouting, +0x50 bit 12
+if on a mission: MissionRemoveRequest := 1
+raise event 0x30a                         handler FUN_00516220, not read
+```
+
+Autorouting raises event `0x307`, whose handler `FUN_00515480` sends a
+completed character (`0x30..0x3f`) to `FUN_00545df0` -> `FUN_00548da0`. That
+takes the character's location (slot `+0xc`) and calls `FUN_00548e90`, which
+gathers every autorouting or adrift (`+0x78` bit 6) character there, also
+inside fleets, and runs `FUN_00549230` unless the location is a system in
+battle (`+0x88` bit `0x1000`).
+
+`FUN_0054c7d0` decides per character, grouping characters of the same side
+and adrift state:
+
+- the character's location is destroyed (`+0x50` bit 3) or belongs to
+  another side (`+0x24` bits 6..7 differ), the character is not destroyed,
+  and an object the decompile loses (`local_44`) has `+0x50` mask `0x4`
+  set and `0x800` clear: pick a destination with `FUN_00543040`;
+- otherwise clear Autorouting (`FUN_004f78e0(0)`): the character stays.
+
+After an escape the character's side is home again and the captor still
+holds the location, so it leaves. `FUN_00543040`:
+
+- origin (`FUN_005431e0`): the location if it is a system (`0x90..0x97`),
+  else the system key at `+0x74`, else a per-side default (the pushed keys
+  are lost in the decompile);
+- second key (`FUN_00543360`): `+0x70` when it is a system;
+- `FUN_005545e0(character, origin, key70, 0, 1, &dest)` tries, in order,
+  until one finds a destination:
+  1. `FUN_00554740`: the current container (fleet `0x14..0x1b`, facility
+     `0x08..0x0f` or system `0x90..0x97`; the object checked is lost in the
+     decompile);
+  2. `FUN_00554ab0`: the `+0x70` object, if it differs from the current
+     location;
+  3. `FUN_00554e80`: the nearest system of the character's side that is not
+     blockaded (`+0x88` bit `0x20`);
+  4. `FUN_00554f80`: the nearest system holding a fleet of the character's
+     side (each such fleet, `FUN_004ffef0(system, 3, side)`);
+  5. `FUN_005550e0`: the nearest blockaded system of the character's side;
+  6. `FUN_005551e0`: the nearest neutral system (side bits `0xc0`);
+  7. `FUN_005552e0`: the nearest system of the other side (skipped for a
+     neutral character).
+- A destination key of family `0x65` is replaced by `0x98000481`
+  (`FUN_00543040`, end); meaning untraced.
+
+"Nearest" is the order of the origin's row in the table at `+0x68`
+(`FUN_00554150` -> `FUN_0058afd0`). `FUN_0058b060` builds one 200-entry row
+per system: every system with its `FUN_0055d860` distance (integer square
+root of the coordinate distance, as in `build-delivery.md`), sorted by
+`qsort` with the comparator at `0x0058b140` (ascending; empty slots last).
+Each candidate passes the move-order validator `FUN_005571c0`
+(`FUN_005511d0`, `FUN_005513a0`, `FUN_005515d0`, then `FUN_00551630` issues
+the move), and the first that validates wins. The character then travels
+like any other object (`build-delivery.md`, Travel).
+
+Port consequence: an escaped character does not reappear at home. It
+travels from where it was held to the nearest unblockaded system of its own
+side (in practice), with the transit time of `FUN_0055d8c0`.
+
 ## Still open
 
-- Where an escaped character goes. `FUN_004ee3e0` only writes the state;
-  the move is in a state-change hook (slot `+0x334`, `FUN_004f0580`) not
-  read here.
+- `+0x70` and `+0x74` on a character (likely a last or home system; not
+  traced), and the per-side default origin.
+- `FUN_004ef190` and the handler of event `0x30a` (`FUN_00516220`).
 - What `FUN_00505230` with range `1..0x12` checks before each fire
   (`FUN_0057d330`, `FUN_0057d670`).

@@ -1601,6 +1601,9 @@ cross-runtime proof remain open
   espionage + combat minus the average combat of the captor's free
   characters and the count of the captor's usable regiments at the
   captive's location; success clears Captured and restores the home side.
+  The freed character then autoroutes from where it was held to the
+  nearest unblockaded system of its own side (falling back to a friendly
+  fleet, a blockaded friendly system, a neutral one, then an enemy one).
   Not ported yet.
 - Acceptance: Detection, escape, and effects follow their decompiles with
   failing-without tests; mission members become a roster (with F-019).
