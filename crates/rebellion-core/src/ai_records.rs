@@ -732,6 +732,22 @@ pub struct SystemRecord {
     /// `+0x30`: side and kind.
     pub kind: u32,
     pub values: [i32; 60],
+    /// `+0x34`: the map position, class `+0x4c` (`FUN_00509620`), SYSTEMSD
+    /// `x_position`/`y_position`.
+    pub position: (i16, i16),
+}
+
+/// A map position as the records pack it: two shorts.
+fn map_position(x: u16, y: u16) -> (i16, i16) {
+    (x.cast_signed(), y.cast_signed())
+}
+
+/// `FUN_0041b7b0`: the squared distance of two packed positions, the
+/// products wrapping as the original's 32-bit `imul`.
+fn squared_distance(a: (i16, i16), b: (i16, i16)) -> i32 {
+    let dx = i32::from(a.0) - i32::from(b.0);
+    let dy = i32::from(a.1) - i32::from(b.1);
+    dx.wrapping_mul(dx).wrapping_add(dy.wrapping_mul(dy))
 }
 
 /// The side number the original stores (system `+0x24 >> 6 & 3`,
@@ -787,12 +803,14 @@ impl SystemRecord {
         } else {
             f30 |= 2;
         }
+        let position = map_position(sys.x, sys.y);
         let record = |f28, f2c, f30, v| Self {
             system,
             state: f28,
             summary: f2c,
             kind: f30,
             values: v,
+            position,
         };
         if sys.exploration_status != crate::dat::ExplorationStatus::Explored {
             // +0x2c is still clear here.
@@ -1291,17 +1309,25 @@ pub struct SectorRecord {
     pub values: [i32; 90],
     /// The system records, in the sector's order.
     pub systems: Vec<SystemRecord>,
+    /// `+0x40`: the map position, class `+0x48` (`FUN_00431450` ->
+    /// `FUN_00526560`), SECTORSD `x_position`/`y_position`.
+    pub position: (i16, i16),
 }
 
 impl SectorRecord {
-    /// `FUN_004321e0` over `systems`, the sector's system records.
+    /// `FUN_004321e0` over `systems`, the sector's system records, for the
+    /// sector at map `position`.
     ///
     /// port: a sector holds as many systems as the galaxy gives it; the
     /// original's tests for all 10 (`+0x70`, `+0x74`, `+0x78`) read "all
     /// of them". hyp: the fields `+0x30`/`+0x38` behind `+0x2c` bits
     /// `0x4000000`/`0x10000` and `+0x18c` are untraced and stay clear.
     #[must_use]
-    pub fn build(sector: crate::ids::SectorKey, systems: Vec<SystemRecord>) -> Self {
+    pub fn build(
+        sector: crate::ids::SectorKey,
+        position: (i16, i16),
+        systems: Vec<SystemRecord>,
+    ) -> Self {
         let mut r = Self {
             sector,
             candidates: 0,
@@ -1309,6 +1335,7 @@ impl SectorRecord {
             summary: 0,
             values: [0; 90],
             systems: Vec::new(),
+            position,
         };
         r.values[sector_at(0x144)] = 100_000;
         for system in &systems {
@@ -1736,7 +1763,7 @@ impl Galaxy {
             .sectors
             .keys()
             .map(|sector| {
-                let systems = world
+                let systems: Vec<SystemRecord> = world
                     .systems
                     .iter()
                     .filter(|(_, sys)| sys.sector == sector)
@@ -1744,7 +1771,11 @@ impl Galaxy {
                         SystemRecord::build(&inputs, key, marks.get(&key).copied().unwrap_or(0))
                     })
                     .collect();
-                SectorRecord::build(sector, systems)
+                let position = world
+                    .sectors
+                    .get(sector)
+                    .map_or((0, 0), |s| map_position(s.x, s.y));
+                SectorRecord::build(sector, position, systems)
             })
             .collect();
         Self {
@@ -1800,6 +1831,70 @@ impl Galaxy {
                         && masks[2].admits(r.kind)
                 })
                 .map(|r| (r.system, r.values.get(key).copied().unwrap_or(0))),
+            order,
+            coin,
+        )
+    }
+
+    /// `FUN_00419b80`: the sectors whose `+0x24`, `+0x28`, `+0x2c` pass
+    /// `masks`, sorted on their squared distance (`FUN_0041b7b0`) from the
+    /// sector of `origin`, the object the walk up its containers starts at
+    /// (here its system). Empty when `origin` has no record.
+    pub fn sectors_by_distance(
+        &self,
+        origin: crate::ids::SystemKey,
+        masks: [Mask; 3],
+        order: Order,
+        coin: &mut dyn FnMut() -> bool,
+    ) -> Vec<crate::ids::SectorKey> {
+        let Some(home) = self
+            .sectors
+            .iter()
+            .find(|s| s.systems.iter().any(|r| r.system == origin))
+        else {
+            return Vec::new();
+        };
+        ranked(
+            self.sectors
+                .iter()
+                .filter(|s| {
+                    masks[0].admits(s.candidates)
+                        && masks[1].admits(s.state)
+                        && masks[2].admits(s.summary)
+                })
+                .map(|s| (s.sector, squared_distance(home.position, s.position))),
+            order,
+            coin,
+        )
+    }
+
+    /// `FUN_0041a400` -> `FUN_00431c00`: `sector`'s systems whose `+0x28`,
+    /// `+0x2c`, `+0x30` pass `masks`, sorted on their squared distance from
+    /// `origin`'s system record (`+0x34`). Empty when either has no record.
+    pub fn systems_by_distance(
+        &self,
+        sector: crate::ids::SectorKey,
+        origin: crate::ids::SystemKey,
+        masks: [Mask; 3],
+        order: Order,
+        coin: &mut dyn FnMut() -> bool,
+    ) -> Vec<crate::ids::SystemKey> {
+        let (Some(record), Some(home)) = (
+            self.sectors.iter().find(|s| s.sector == sector),
+            self.system(origin),
+        ) else {
+            return Vec::new();
+        };
+        ranked(
+            record
+                .systems
+                .iter()
+                .filter(|r| {
+                    masks[0].admits(r.state)
+                        && masks[1].admits(r.summary)
+                        && masks[2].admits(r.kind)
+                })
+                .map(|r| (r.system, squared_distance(home.position, r.position))),
             order,
             coin,
         )
@@ -2729,7 +2824,7 @@ mod tests {
         let fixture = system_fixture();
         let system = system_record(&fixture, true, 0);
 
-        let r = SectorRecord::build(crate::ids::SectorKey::default(), vec![system]);
+        let r = SectorRecord::build(crate::ids::SectorKey::default(), (0, 0), vec![system]);
 
         assert_eq!(
             r.candidates,
@@ -2777,7 +2872,11 @@ mod tests {
         fixture.world.systems[fixture.system].control = crate::world::ControlKind::Uncontrolled;
         let neutral = system_record(&fixture, false, 0);
 
-        let r = SectorRecord::build(crate::ids::SectorKey::default(), vec![opponent, neutral]);
+        let r = SectorRecord::build(
+            crate::ids::SectorKey::default(),
+            (0, 0),
+            vec![opponent, neutral],
+        );
 
         let at = |offset| r.values[sector_at(offset)];
         assert_eq!((at(0x80), at(0x84)), (1, 1));
@@ -2817,6 +2916,171 @@ mod tests {
         // Places add: 1, 2 and 3 all sum to 2; the earliest wins.
         assert_eq!(pick(&[vec![1, 2, 3], vec![3, 2, 1]]), Some(1));
         assert_eq!(pick(&[vec![1], vec![2]]), None);
+    }
+
+    /// The fixture's world with sectors at `sectors` (map positions), one
+    /// fixture system in the first, and a copy of it in each sector at each
+    /// of `systems` (sector index, position, controlled).
+    fn spread_galaxy(
+        sectors: &[(u16, u16)],
+        systems: &[(usize, (u16, u16), bool)],
+    ) -> (
+        Galaxy,
+        Vec<crate::ids::SectorKey>,
+        Vec<crate::ids::SystemKey>,
+    ) {
+        let mut fixture = system_fixture();
+        let keys: Vec<_> = sectors
+            .iter()
+            .map(|&(x, y)| {
+                fixture.world.sectors.insert(crate::world::Sector {
+                    dat_id: DatId::new(0x8000_0001),
+                    name: "Sector".into(),
+                    group: crate::dat::SectorGroup::Core,
+                    x,
+                    y,
+                    systems: vec![],
+                })
+            })
+            .collect();
+        fixture.world.systems[fixture.system].sector = keys[0];
+        let mut placed = vec![fixture.system];
+        for &(at, (x, y), held) in systems {
+            let key = system(&mut fixture.world);
+            let sys = &mut fixture.world.systems[key];
+            sys.sector = keys[at];
+            (sys.x, sys.y) = (x, y);
+            if !held {
+                sys.control = crate::world::ControlKind::Uncontrolled;
+            }
+            placed.push(key);
+        }
+        let classes = ClassRecords::build(&fixture.world);
+        let fleets = HashMap::new();
+        let uprisings = crate::uprising::UprisingState::default();
+        let manufacturing = crate::manufacturing::ManufacturingState::new();
+        let research = crate::research::ResearchState::new();
+        let inputs = SystemInputs {
+            world: &fixture.world,
+            classes: &classes,
+            fleets: &fleets,
+            person: &|_| None,
+            economy: &fixture.economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            is_alliance: true,
+            minor_classes: 0,
+        };
+        let galaxy = Galaxy::build(
+            &inputs,
+            &crate::movement::MovementState::new(),
+            &crate::troop_transport::TroopTransportState::new(),
+            &HashMap::new(),
+        );
+        (galaxy, keys, placed)
+    }
+
+    #[test]
+    fn sectors_rank_by_squared_distance_from_the_origin_s_sector() {
+        // FUN_00419b80: sector records passing the masks, keyed on
+        // FUN_0041b7b0 (dx² + dy²) from the origin's sector's +0x40. From
+        // (0, 0): (3, 4) is 25 away, (10, 0) 100. Order 2 puts the farthest
+        // first, so FUN_004357b0's pick (the last place) is the nearest.
+        let (galaxy, sectors, systems) = spread_galaxy(
+            &[(0, 0), (10, 0), (3, 4)],
+            &[(1, (0, 0), true), (2, (0, 0), false)],
+        );
+        let any = Mask::default();
+        let mut coin = || false;
+
+        let far_first =
+            galaxy.sectors_by_distance(systems[0], [any; 3], Order::Descending, &mut coin);
+        assert_eq!(far_first, vec![sectors[1], sectors[2], sectors[0]]);
+        assert_eq!(pick(&[far_first]), Some(sectors[0]));
+        assert_eq!(
+            galaxy.sectors_by_distance(systems[2], [any; 3], Order::Ascending, &mut coin),
+            vec![sectors[2], sectors[0], sectors[1]]
+        );
+        // Sector +0x2c bit 4 (an own system) leaves out the neutral one.
+        assert_eq!(
+            galaxy.sectors_by_distance(
+                systems[0],
+                [any, any, Mask::new(4, 0)],
+                Order::Descending,
+                &mut coin
+            ),
+            vec![sectors[1], sectors[0]]
+        );
+        // A key past every system in the galaxy.
+        let mut nowhere = slotmap::SlotMap::<crate::ids::SystemKey, ()>::with_key();
+        let missing = (0..10).map(|_| nowhere.insert(())).last().unwrap();
+        assert!(galaxy
+            .sectors_by_distance(missing, [any; 3], Order::Ascending, &mut coin)
+            .is_empty());
+    }
+
+    #[test]
+    fn a_sector_s_systems_rank_by_squared_distance_from_the_origin_system() {
+        // FUN_0041a400 -> FUN_00431c00: the sector's system records passing
+        // the masks, keyed on the squared distance of their +0x34 from the
+        // origin system's. From (1, 1): (4, 5) is 25 away, (1, 3) 4, and
+        // the origin 0.
+        let (galaxy, sectors, systems) = spread_galaxy(
+            &[(0, 0), (50, 50)],
+            &[(0, (4, 5), true), (0, (1, 3), false), (1, (2, 2), true)],
+        );
+        let mut origin_moved = galaxy.clone();
+        for r in origin_moved.sectors.iter_mut().flat_map(|s| &mut s.systems) {
+            if r.system == systems[0] {
+                r.position = (1, 1);
+            }
+        }
+        let any = Mask::default();
+        let mut coin = || false;
+
+        assert_eq!(
+            origin_moved.systems_by_distance(
+                sectors[0],
+                systems[0],
+                [any; 3],
+                Order::Ascending,
+                &mut coin
+            ),
+            vec![systems[0], systems[2], systems[1]]
+        );
+        // +0x30 bit 1 (own) leaves out the neutral system; the origin may
+        // lie in another sector: from (2, 2), (4, 5) is 13 away, (1, 1) 2.
+        assert_eq!(
+            origin_moved.systems_by_distance(
+                sectors[0],
+                systems[3],
+                [any, any, Mask::new(1, 0)],
+                Order::Descending,
+                &mut coin
+            ),
+            vec![systems[1], systems[0]]
+        );
+        // A key past every system in the galaxy.
+        let mut nowhere = slotmap::SlotMap::<crate::ids::SystemKey, ()>::with_key();
+        let missing = (0..10).map(|_| nowhere.insert(())).last().unwrap();
+        assert!(origin_moved
+            .systems_by_distance(sectors[0], missing, [any; 3], Order::Ascending, &mut coin)
+            .is_empty());
+    }
+
+    #[test]
+    fn a_squared_distance_wraps_like_the_original_s_imul() {
+        // FUN_0041b7b0 multiplies 32-bit ints: (dx, dy) = (32767, 32767)
+        // gives 2 * 1073676289, which wraps.
+        assert_eq!(squared_distance((3, 4), (0, 0)), 25);
+        assert_eq!(squared_distance((0, 0), (-3, -4)), 25);
+        assert_eq!(squared_distance((32767, 32767), (0, 0)), 2_147_352_578);
+        assert_eq!(
+            squared_distance((32767, 32767), (-1, 0)),
+            1_073_741_824_i32.wrapping_add(1_073_676_289)
+        );
+        assert_eq!(map_position(65535, 2), (-1, 2));
     }
 
     #[test]
@@ -3739,11 +4003,12 @@ mod tests {
             summary,
             kind,
             values: v,
+            position: (0, 0),
         }
     }
 
     fn sector_of(records: Vec<SystemRecord>) -> SectorRecord {
-        SectorRecord::build(crate::ids::SectorKey::default(), records)
+        SectorRecord::build(crate::ids::SectorKey::default(), (0, 0), records)
     }
 
     #[test]

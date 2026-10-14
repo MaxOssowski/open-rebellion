@@ -255,6 +255,25 @@ takes the highest rank sum over all the lists it merges
 (`ai-mission-planning.md`, "Picking"). Ported as `ai_records::Galaxy::{sector_query,
 system_query}`, `ranked` and `pick`.
 
+**By distance** (read 2026-10-14). `FUN_00419b80(origin, req24, req28,
+req2c, forbid24, forbid28, forbid2c, order)` walks `origin` up its
+containers (`+0x1c`) to a sector (`0x80..0x8f`); with none it returns no
+list. It then takes that sector's record (`FUN_0041bd90`) and lists every
+sector record passing the masks, keyed by the squared distance
+(`FUN_0041b7b0`: `dx*dx + dy*dy` over packed shorts, 32-bit) between the
+records' `+0x40` positions. `FUN_0041a400(sector, origin, req28, req2c,
+req30, forbid28, forbid2c, forbid30, order)` takes `sector`'s record and
+calls `FUN_00431c00`. That walks `origin` up to a system (`0x90..0x97`),
+takes its record (`FUN_00403d30`), and lists the sector's system records
+passing the masks, keyed by the squared distance between `+0x34`
+positions.
+
+Module 1 asks with order 2 (farthest first) and reads the list through
+`FUN_004357b0`. That takes the highest place, the last entry, so it
+gets the nearest. Ported as `Galaxy::{sectors_by_distance,
+systems_by_distance}`, with the origin given as its system. The record
+positions are `SectorRecord::position` and `SystemRecord::position`.
+
 ## Fleet records (`FUN_00432e40`, `FUN_00433620`, `FUN_00433780`)
 
 The constructor stores the record's side at `+0x20`, the fleet's owner at

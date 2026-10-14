@@ -1781,6 +1781,12 @@ cross-runtime proof remain open
   `AIState::yard_marks` (save v40) and feed `Galaxy::build`. Golden
   `v1:e271a795cd483ebe` -> `v1:e187411365b9f348` for the save layout only
   (`evidence/2026-10-14-ai-yard-marks/`).
+- Distance queries (2026-10-14): `FUN_00419b80` (sectors) and
+  `FUN_0041a400` -> `FUN_00431c00` (a sector's systems), keyed by the
+  squared distance of the records' map positions (`FUN_0041b7b0`), are
+  ported as `Galaxy::{sectors_by_distance, systems_by_distance}`. Module 1
+  reads them in order 2 through `FUN_004357b0`, which gives the nearest
+  (`evidence/2026-10-14-ai-distance-queries/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

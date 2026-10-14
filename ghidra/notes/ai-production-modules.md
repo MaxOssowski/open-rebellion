@@ -57,6 +57,10 @@ Site choice for state 6:
   `0x3e00003`, keys `0xf` and 0. Failing that, the nearest sector with
   `+0x24` bit `0x400`, then its nearest system with `+0x28` bit `0x20`.
 
+The nearest-site queries (`FUN_00419b80`, `FUN_0041a400`) are ported
+(`ai-galaxy-records.md`, "By distance"); the yard at `+0x44` is their
+origin, and order 2 with `FUN_004357b0`'s pick gives the nearest.
+
 Open: `FUN_004dc650`, `FUN_004dc9f0`, `FUN_004dcb30`,
 `FUN_004dcc40`, `FUN_004dd050`, `FUN_004dd120`, `FUN_004199b0`,
 `FUN_0041b230`; the controller fields `+0xc`, `+0x1d0`, `+0x1d4`. The
