@@ -268,8 +268,9 @@ wins, in this order (`S` is the side controller, `F` its flag word `+4`,
 | 11 | Recon `0x54`/5 | `S+0x344 <` the strategy's count `FUN_005f50e0` | |
 | 12 | Espionage `0x52`/6 | `S+0x348 < S+0x1bc -` that count | |
 
-(The cancel tests of rows 6 to 12 follow the same pattern; only the
-research rows were checked term by term.)
+(The request terms are read for every row; the cancel terms of rows 6 to
+12 follow the same pattern. "The other rows" below gives what each wanted
+count means.)
 
 **The live-planner counts `S+0x320..`.** `FUN_004d2580` builds the planner
 of `+0x318`/`+0x31c` (`FUN_0042f640` -> `FUN_0042f830`) and, when its slot
@@ -303,22 +304,110 @@ notifications (`FUN_00485f20`, `FUN_00485f00`, `FUN_00485ee0`) call
 equal to the target sets `F` bit `0x2000000`, `0x4000000` or `0x8000000`.
 From then on the tree takes no request and its planners are cancelled.
 
-**The target.** The research planners leave `+0x34` and `+0x38` empty
-(constructors `FUN_0047bba0`, `FUN_0047c170`, `FUN_0047c750` set only the
-record id `0x53000020`, `0x53000022`, `0x53000021`). State 6
-(`FUN_004bd0a0`) then walks the team: a member's location (`+0x38` of its
-record), climbed through its containers (`+0x1c`) to a system, becomes the
-target when that system's record has `+0x30` bit 0 and not `+0x28` bit
-`0x2`. `FUN_00433e40` refreshes those bits: `+0x30` bit 0 when the system
-is the record side's (bit 2 another side's, bit 1 neutral), and `+0x28`
-bit `0x2` when the system is blockaded (`+0x88` bit `0x20`, read only when
-`+0x88` bit `0x2` is set). So the AI researches where its chosen designer
-already stands, at one of its own unblockaded systems; it does not check
-for a yard, which the mission validator then requires (`FUN_0056c510`).
+**The target** (re-read 2026-10-14; an earlier reading here said the AI
+researches where its designer stands, which was wrong). The constructors
+(`FUN_0047bba0`, `FUN_0047c170`, `FUN_0047c750`) set only the record id
+(`0x53000020`, `0x53000022`, `0x53000021`). The target comes from state 5,
+slot `+0x50` (`FUN_0047be50` ships, `FUN_0047c430` troops, `FUN_0047ca80`
+facilities), once the team selector has found a member (`+0x20` bit 1):
 
-Open: the cadence of `FUN_004bf390`; what state 6 does when no member
-stands at a suitable system; whether a planner ends after its order, other
-than by cancellation.
+1. A remembered site `+0x34` whose system record still has the tree's site
+   bit (`+0x2c` bit `4` ships, `8` troops, `0x10` facilities) is kept.
+2. Otherwise, when `+0x38` (the target of the previous cycle) is a system:
+   the nearest sector that holds such a site (`FUN_00419b80`: sector
+   records with `+0x28` bit 1, 2 or 4, keyed by the squared distance from
+   `+0x38`'s sector, order 2), then in it the site nearest `+0x38`
+   (`FUN_0041a400` -> `FUN_00431c00`, order 2).
+3. Otherwise the sector with the most sites of the tree (`FUN_00419a00`:
+   sector key `0x39`, `0x3a`, `0x3b` = sector `+0x154`, `+0x158`, `+0x15c`,
+   order 1), then in it the site with the highest support of the side
+   (`FUN_0041a340` -> `FUN_00431830`: system record `+0x48`, which
+   `FUN_00433e40` sets to `FUN_00507270`, the side's support, or 100 for an
+   own unpopulated system).
+
+The chosen site goes to `+0x34` and `+0x30`. State 6 (`FUN_004bd0a0`) then
+takes it as the target when its record has `+0x30` bit 0 and lacks `+0x28`
+bit `0x2`, and state 7 moves the team there before state 8 orders.
+
+**Research sites** (`FUN_00433e40`). A system record gets `+0x2c` bit 4
+(ships), 8 (troops) or `0x10` (facilities) when all of these hold:
+- `+0x28 & 3 == 0`: no uprising (bit 1, system `+0x88` bit 2) and no
+  blockade (bit 2, system `+0x88` bit `0x20`);
+- the AI has marked the system for a yard of the area: `+0x28` bit
+  `0x200000` (shipyard), `0x400000` (training facility), `0x3800000`
+  (construction yards). The production planners set these when they order
+  such a yard there (`FUN_004cacc0`, `FUN_004cafa0`, `FUN_004d0860`, ...),
+  and the refresh keeps them (mask `0x3e00000`);
+- the controller's Done bit for the tree is clear;
+- a yard of the area there is active (object `+0x50` bit 0);
+- `+0x90 > 0`: an active regiment stands there (the walk of families
+  `0x10..0x13`, `FUN_00504c40`).
+
+The sector record sums its systems (`FUN_00432350`): a ship site sets
+sector `+0x28` bit 1 and adds to `+0x154`; troops bit 2 and `+0x158`;
+facilities bit 4 and `+0x15c`.
+
+**The planner's life.** `FUN_004bced0` ends a cycle (`*out = 1`, state 0,
+then 1) after state 8 emits its order, after a failed state 6, and after
+state 7 while members are still travelling. The next cycle reselects the
+team (state 2 drops members that fail `FUN_0047ba40`), so a research
+planner lives until it is cancelled. The order's mission reports its
+result through Mission Report `0x1f0` (`FUN_00523e70` -> mission slot
+`+0x234` = `FUN_00525040`), which the AI player's slot `+0x128`
+(`FUN_00485f60` -> `FUN_004195f0` -> `FUN_0042f7f0`) hands to the planner
+whose `+0x28` is that mission, at slot `+0x30` (`FUN_0047c890`, shared by
+the three research classes):
+- result 0: flag `0x80000000`;
+- result 2 (failed): `+0x6c` counts failures against slot `+0x24`
+  (`FUN_00480df0`, 1000); past it the planner sets `0x80` and
+  `0x20000000`, else `0x40000000`;
+- result 3 (succeeded): `0x40000000` and `+0x6c` cleared.
+At the next state 1, `0x60000000` runs `FUN_0047b250`: while the mission
+still runs, `0x40000000` asks slot `+0x34` (`FUN_0047c110` and siblings)
+whether the mission's system is still a site of the tree; when it is not,
+or after `0x20000000`, the planner orders `0x250` on its mission
+(hyp: the abort) and returns that order.
+
+**Cadence.** The AI player's tick is slot `+0x24` (`FUN_00485b40`, vtable
+`0x0065abf0`), called in frame-loop phase 8 (`FUN_0041cf20` ->
+`FUN_004361a0`), one side then the other, until both return 1. Each tick:
+phase 4 refreshes the records (`FUN_00418500`, the side tallies
+`FUN_0041b7e0`, `FUN_0041bc10`, `FUN_0041ba80`); phase 5 readies every
+module (slot `+0x10`, `FUN_004cc990`); phase 3 runs one step of a ready
+module (`FUN_004be980`: the highest priority `+0x34`, else round robin)
+and counts each order it returns, except kind `0x203`, against the daily
+budget `+0x428` = 10 (`FUN_00485a50`). It returns 1 once the budget is
+spent or no module is ready. `FUN_00485de0` (slot `+0x54`, from
+`FUN_0041e500` when the scheduler's day-boundary flag `+0x24` is set)
+clears the count `+0x420` each day, since `+0x424` stays 0. The fourteen
+modules (`FUN_004bea20` ids 1 to `0xe`) include the strategy (id `0xd`,
+`FUN_004bf0d0`; one strategy state per step) and the mission module
+(`FUN_004d2490`: state 1 builds or cancels the strategy's request, then
+each step advances one planner by one state, `FUN_004d2730` and
+`FUN_004d27b0`). Planners and requests therefore advance a few states per
+game day, not once a week.
+
+**The other rows of `FUN_004e8290`.** The wanted counts come from the side
+tallies of phase 4:
+- Recruitment: `S+0xa4` is the count of the side's MNCHARSD classes
+  (`FUN_0042dd00`, family `0x38`, at setup), so the AI keeps up to two
+  recruitment planners while it has any minor characters in the data.
+- Diplomacy: `S+0x214` = (systems with record `+0x2c` bit `0x40`) / 5 + 1,
+  that is neutral systems and own systems whose support is below 70
+  (`+0x2c` bit `0x10000000`) and not in an uprising.
+- Subdue: `F & 0x100` (an own system below 70 support, sector `+0x28` bit
+  `0x8000000`) and fewer planners than own systems in an uprising (`+0x2c`
+  bit `0x20`, `S+0x21c`) plus one.
+- Incite: `S+0x218` = (opponent systems where the side's support exceeds
+  50, `+0x2c` bit `0x100`) / 6 + 1.
+- DS Sabotage: strategy `+4 == 1` and `F & 4`, set by `FUN_0041ba80` for a
+  fleet record with bit `0x10` (hyp: the Death Star).
+- Rescue: `F & 0x200`, set by `FUN_0041bc10` when a character of the side is
+  a prisoner.
+- Recon: fewer planners than the side's pending system requests (`+0xd8`,
+  `FUN_005f50e0`).
+- Espionage: fewer planners than the sectors holding an opponent system
+  (sector `+0x2c` bit 8, `S+0x1bc`) minus those requests.
 
 ## The AI records (re-read 2026-09-28, 2026-09-30)
 
@@ -493,8 +582,8 @@ original as follows:
 
 ## Still open
 
-- The strategy's cadence (`FUN_004bf390`) and the non-research rows of
-  `FUN_004e8290` term by term.
+- What order `0x250` from `FUN_0047b250` does (hyp: abort the mission),
+  and the fleet record bit `0x10` behind `F & 4`.
 - The posture (`FUN_00478000`, `FUN_004b7150`) and its sector bits.
 - When the controller's research bits (`FUN_004198a0`, `FUN_00419870`,
   `FUN_004197b0`) and leader bit (`FUN_004182a0`) are set.
