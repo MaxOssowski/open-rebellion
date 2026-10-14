@@ -366,7 +366,7 @@ At the next state 1, `0x60000000` runs `FUN_0047b250`: while the mission
 still runs, `0x40000000` asks slot `+0x34` (`FUN_0047c110` and siblings)
 whether the mission's system is still a site of the tree; when it is not,
 or after `0x20000000`, the planner orders `0x250` on its mission
-(hyp: the abort) and returns that order.
+(the abort: end code 2, see below) and returns that order.
 
 **Cadence.** The AI player's tick is slot `+0x24` (`FUN_00485b40`, vtable
 `0x0065abf0`), called in frame-loop phase 8 (`FUN_0041cf20` ->
@@ -419,6 +419,63 @@ planners; a tree's orders and cancellations happen within one AI
 evaluation; the abort is checked at each evaluation; the production AI's
 yard marks are not kept, so any yard of the side counts; ties take the
 first sector and system in the port's order.
+
+### The port's simplifications checked (2026-10-14)
+
+**Holding a member.** `FUN_0047b610` writes the member's record `+0x24`
+(the planner's id, planner `+0x18`), `+0x2c` (the planner's priority, slot
+`+0x20`) and clears `0x800000`. `FUN_004035d0` admits an assigned record
+only when the query's first argument is below that priority
+(`param_1 < record +0x2c`), else only unassigned ones. The research
+planners' priority is 0 (`FUN_005a5b60`) and their query passes 0, so
+another research planner never takes a held designer. A planner keeps its
+member across cycles while the record lacks `0x7400051`, still names it
+(`+0x24`), and passes `FUN_0047ba90` (`FUN_0047ba40`); being on a mission
+(`0x80`) does not release it. So each research planner keeps its own
+designer for as long as it lives. The port keeps no planners: within one
+evaluation `sent` has the same effect, but in a later evaluation a designer
+already on research is not held, so the selector can pick him again and
+the order drops him (`FUN_0047b360`).
+
+**Cancellation does not end the mission.** `FUN_0042f690` flags the
+planner `0x10000000`; at its next state 1, `FUN_0047aff0` releases its
+team and decoys (`FUN_0047b870`, `FUN_0047b8e0`) and removes it
+(`FUN_0041b530`). Its mission keeps running, unowned, until its own
+validator ends it (for a Done tree, end `0xe` once the side's points hook
+sets Done). The port's `CancelMission` ends the mission instead.
+
+**The abort.** Order `0x250` (`FUN_00580580`, vtable `0x00669b70`) builds a
+command whose execute (`FUN_0054e310`) calls the mission's slot `+0x1d4`
+(`FUN_00523310`) -> `+0x1d8` (`FUN_005233a0`) -> `+0x1dc(2)`: end code 2
+while the mission runs, so it ends through phase `0xb`. The Mission Report
+behind the check comes from `FUN_00521880`, which notifies only on a
+change of result: entering phase 8 sets 0 (`FUN_00524b70`) and phase 10
+sets 2 or 3, so the planner checks its site once per research pass (every
+10 to 20 days), not continuously.
+
+**Yard marks.** The ship production module (`FUN_004c8d20`, state 7
+`FUN_004cacc0`) claims a system each cycle: from a sector with a candidate
+(`FUN_00419a00`, sector `+0x24` bit `0x20`), the side's system with no
+mark, uprising or blockade (`FUN_00431830`: forbid `+0x28` `0x200003`,
+require `+0x30` bit 1, forbid `+0x30` `0x40000000`), keyed by its
+shipyard count (`+0x58`) and its free capacity (`+0x114`), and marks it
+`0x200000`. No code clears the marks (the refresh keeps `0x3e00000`). The
+troop and facility modules do the same with `0x400000` and
+`0x800000..0x2000000`. Since the module runs every AI tick and prefers
+systems with yards, every own system with a yard is marked within the
+first days; the port's "any yard counts" differs only before that.
+
+**Ties.** `FUN_005f59f0` inserts each candidate before the first entry the
+comparator `FUN_0041c250` puts it ahead of; order 1 sorts ascending, 2
+descending, and an equal key goes ahead on `FUN_0041cd80(10) < 5`.
+`FUN_0041c230` ranks the list from 1 and `FUN_004357b0` takes the highest
+rank sum, so with one list the last entry wins: the highest key for order 1
+and the lowest (nearest) for order 2, with ties decided by those coin
+flips. The port takes the first of equal entries.
+
+**Also found.** `FUN_0047ba90` rejects a candidate standing (not en route,
+record `+0x30` bit `0x20`) at a system whose record has `+0x28` bit `0x2`,
+the blockade bit, for every mission kind; the port reads that bit as clear.
 
 ## The AI records (re-read 2026-09-28, 2026-09-30)
 
@@ -593,8 +650,7 @@ original as follows:
 
 ## Still open
 
-- What order `0x250` from `FUN_0047b250` does (hyp: abort the mission),
-  and the fleet record bit `0x10` behind `F & 4`.
+- The fleet record bit `0x10` behind `F & 4`.
 - The posture (`FUN_00478000`, `FUN_004b7150`) and its sector bits.
 - When the controller's research bits (`FUN_004198a0`, `FUN_00419870`,
   `FUN_004197b0`) and leader bit (`FUN_004182a0`) are set.
