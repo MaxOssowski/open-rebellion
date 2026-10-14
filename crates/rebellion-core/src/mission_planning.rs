@@ -308,8 +308,6 @@ impl<'a> Planner<'a> {
 
     /// The flags (`+0x30`) of `member`'s record, which the fleet records
     /// read for the people aboard (`FUN_00484630`).
-    // port: the AI pass reads it once the modules use the galaxy records.
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn flags(&self, member: MissionMember) -> Option<u32> {
         self.records
             .iter()

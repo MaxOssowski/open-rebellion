@@ -67,4 +67,6 @@ Open: `FUN_004dc650`, `FUN_004dc9f0`, `FUN_004dcb30`,
 Scrap order (`0x200`) that modules 1, 3, 6, 7, `0xa` and `0xb` issue is
 ported for facilities and regiments (`scrap-order.md`).
 The yard marks (`0x200000`..`0x2000000`) are kept per system in
-`AIState::yard_marks` (save v40), for `Galaxy::build`.
+`AIState::yard_marks` (save v40), for `Galaxy::build`. Each AI pass
+builds the records before the modules step (`AISystem::records`), so a
+module can query them.

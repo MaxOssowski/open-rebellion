@@ -1715,7 +1715,7 @@ pub fn pick<T: Copy + PartialEq>(lists: &[Vec<T>]) -> Option<T> {
 
 /// The AI's records of the galaxy for one side, as phase 4 refreshes them
 /// (`FUN_00418500`): class, fleet, system and sector records.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Galaxy {
     pub classes: ClassRecords,
     pub fleets: HashMap<crate::ids::FleetKey, FleetRecord>,

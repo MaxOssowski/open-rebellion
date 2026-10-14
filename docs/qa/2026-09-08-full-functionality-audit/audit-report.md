@@ -1787,6 +1787,11 @@ cross-runtime proof remain open
   ported as `Galaxy::{sectors_by_distance, systems_by_distance}`. Module 1
   reads them in order 2 through `FUN_004357b0`, which gives the nearest
   (`evidence/2026-10-14-ai-distance-queries/`).
+- Records in each pass (2026-10-14): `AISystem::pass` rebuilds the side's
+  records as phase 4 (`FUN_00418500`, `AISystem::records`) with the yard
+  marks, the planner's person flags and side `+0xa4`, and hands them to
+  the modules. Golden unchanged; in the browser, Very Slow's longest frame
+  was 2.6 ms and Fast's 1.6 ms (`evidence/2026-10-14-ai-records-pass/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

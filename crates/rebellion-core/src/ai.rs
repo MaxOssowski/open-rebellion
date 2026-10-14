@@ -496,6 +496,42 @@ struct ModuleInputs<'a> {
     research_state: &'a ResearchState,
     uprisings: &'a crate::uprising::UprisingState,
     faction: AiFaction,
+    /// The side's records of the galaxy, refreshed for this pass.
+    #[expect(dead_code, reason = "module 1 is the first reader; it is ported next")]
+    galaxy: &'a crate::ai_records::Galaxy,
+}
+
+/// What phase 4 reads to refresh the side's records ([`AISystem::records`]).
+struct RecordInputs<'a> {
+    world: &'a GameWorld,
+    economy: &'a crate::economy::EconomyState,
+    uprisings: &'a crate::uprising::UprisingState,
+    manufacturing: &'a ManufacturingState,
+    research: &'a ResearchState,
+    movement: &'a crate::movement::MovementState,
+    transport: &'a crate::troop_transport::TroopTransportState,
+}
+
+/// Side `+0xa4`: the side's MNCHARSD classes (`FUN_0042dd00`, family
+/// `0x38`, counted at setup).
+///
+/// hyp: each MNCHARSD record is one of the world's minor characters
+/// (`rebellion-data` loads one per record), and a class serves the sides
+/// its record names.
+fn minor_classes(world: &GameWorld, is_alliance: bool) -> i32 {
+    let count = world
+        .characters
+        .values()
+        .filter(|c| (0x38..=0x3b).contains(&c.dat_id.family()))
+        .filter(|c| {
+            if is_alliance {
+                c.is_alliance
+            } else {
+                c.is_empire
+            }
+        })
+        .count();
+    i32::try_from(count).unwrap_or(i32::MAX)
 }
 
 /// Stateless AI evaluation system.
@@ -526,6 +562,8 @@ impl AISystem {
         mfg_state: &ManufacturingState,
         mission_state: &MissionState,
         movement: &crate::movement::MovementState,
+        economy: &crate::economy::EconomyState,
+        troop_transport: &crate::troop_transport::TroopTransportState,
         tick: u64,
         config: &GameConfig,
         research_state: &ResearchState,
@@ -550,6 +588,19 @@ impl AISystem {
                 planner.hold(crate::missions::MissionMember::Character(c));
             }
         }
+        let galaxy = Self::records(
+            state,
+            &planner,
+            &RecordInputs {
+                world,
+                economy,
+                uprisings,
+                manufacturing: mfg_state,
+                research: research_state,
+                movement,
+                transport: troop_transport,
+            },
+        );
         let ctx = ModuleInputs {
             world,
             mfg_state,
@@ -560,6 +611,7 @@ impl AISystem {
             research_state,
             uprisings,
             faction,
+            galaxy: &galaxy,
         };
         let mut ready = [true; MODULES];
         while let Some(module) = Self::next_module(state, &ready) {
@@ -572,6 +624,44 @@ impl AISystem {
             }
         }
         Vec::new()
+    }
+
+    /// Phase 4's refresh of the side's records (`FUN_00418500`): the class,
+    /// fleet, system and sector records ([`crate::ai_records::Galaxy`]),
+    /// with the people aboard read from the planner's records
+    /// ([`Planner::flags`], `FUN_00401d20`) and the yard marks the modules
+    /// keep ([`AIState::yard_marks`]).
+    ///
+    /// port: the original refreshes a record when its dirty flag is set;
+    /// the port rebuilds them all each pass (about 30 µs natively on the
+    /// seed-42 galaxy).
+    fn records(
+        state: &AIState,
+        planner: &Planner<'_>,
+        inputs: &RecordInputs<'_>,
+    ) -> crate::ai_records::Galaxy {
+        let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
+        let classes = crate::ai_records::ClassRecords::build(inputs.world);
+        let fleets = HashMap::new();
+        let person = |c| planner.flags(crate::missions::MissionMember::Character(c));
+        let system_inputs = crate::ai_records::SystemInputs {
+            world: inputs.world,
+            classes: &classes,
+            fleets: &fleets,
+            person: &person,
+            economy: inputs.economy,
+            uprisings: inputs.uprisings,
+            manufacturing: inputs.manufacturing,
+            research: inputs.research,
+            is_alliance,
+            minor_classes: minor_classes(inputs.world, is_alliance),
+        };
+        crate::ai_records::Galaxy::build(
+            &system_inputs,
+            inputs.movement,
+            inputs.transport,
+            &state.yard_marks,
+        )
     }
 
     /// The module the next step runs (`FUN_004be980`): the ready module
@@ -659,6 +749,7 @@ impl AISystem {
             research_state,
             uprisings,
             faction,
+            galaxy: _,
         } = *ctx;
         let production = |actions: &mut Vec<AIAction>| {
             let mut all = Vec::new();
@@ -3455,6 +3546,7 @@ mod tests {
             matches!(faction, AiFaction::Alliance),
             last.tick,
         );
+        let galaxy = crate::ai_records::Galaxy::default();
         let ctx = ModuleInputs {
             world,
             mfg_state,
@@ -3465,6 +3557,7 @@ mod tests {
             research_state,
             uprisings,
             faction,
+            galaxy: &galaxy,
         };
         let mut actions = Vec::new();
         research_all(state, &mut planner, &ctx, &mut actions);
@@ -3549,6 +3642,7 @@ mod tests {
             research_state: research,
             uprisings,
             faction: AiFaction::Alliance,
+            galaxy: Box::leak(Box::default()),
         }
     }
 
@@ -6648,6 +6742,8 @@ mod tests {
             &ManufacturingState::new(),
             &MissionState::new(),
             &crate::movement::MovementState::new(),
+            &crate::economy::EconomyState::default(),
+            &crate::troop_transport::TroopTransportState::new(),
             7,
             &GameConfig::default(),
             &ResearchState::new(),
@@ -6847,6 +6943,72 @@ mod tests {
         // search began, one past module 2.
         assert!(cadence_pass(&mut state, &world).is_empty());
         assert_eq!(state.module_cursor, Some(3));
+    }
+
+    #[test]
+    fn phase_four_builds_the_side_s_records_with_its_marks_and_minor_classes() {
+        // FUN_00418500 refreshes the side's records each AI tick:
+        // FUN_00433e40 keeps the yard marks (+0x28 & 0x3e00000) and, for an
+        // own calm system, sets +0x2c 2 while the side has MNCHARSD classes
+        // (side +0xa4, FUN_0042dd00).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let sys = add_system(&mut world, sector, 0.5, 0.5);
+        world.systems[sys].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let minor = add_character(&mut world, true, false, 0);
+        world.characters[minor].dat_id = DatId(0x3800_0001);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let economy = crate::economy::EconomyState::default();
+        let uprisings = crate::uprising::UprisingState::default();
+        let manufacturing = ManufacturingState::new();
+        let research = ResearchState::new();
+        let movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let inputs = RecordInputs {
+            world: &world,
+            economy: &economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            movement: &movement,
+            transport: &transport,
+        };
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.set_yard_marks(sys, MARK_SHIPYARD);
+        let planner = Planner::new(&world, &missions, &busy, true, 7);
+
+        let galaxy = AISystem::records(&state, &planner, &inputs);
+
+        let r = galaxy.system(sys).unwrap();
+        assert_eq!(r.state & YARD_MARKS, MARK_SHIPYARD);
+        assert_eq!(r.summary & 2, 2);
+        assert_eq!(r.kind & 1, 1);
+        // The Empire sees the system as the opponent's (+0x30 4).
+        let planner = Planner::new(&world, &missions, &busy, false, 7);
+        let galaxy = AISystem::records(&AIState::new(AiFaction::Empire), &planner, &inputs);
+        assert_eq!(galaxy.system(sys).unwrap().kind & 5, 4);
+    }
+
+    #[test]
+    fn a_side_s_minor_classes_are_its_minor_characters() {
+        // Side +0xa4 counts the side's MNCHARSD (family 0x38) classes.
+        // hyp: one minor character per MNCHARSD record.
+        let mut world = empty_world();
+        for (raw, alliance) in [
+            (0x3800_0001, true),
+            (0x3800_0002, true),
+            (0x3000_0001, true),
+        ] {
+            let c = add_character(&mut world, alliance, raw >> 24 == 0x30, 0);
+            world.characters[c].dat_id = DatId(raw);
+        }
+        let both = add_character(&mut world, true, false, 0);
+        world.characters[both].dat_id = DatId(0x3800_0003);
+        world.characters[both].is_empire = true;
+
+        assert_eq!(minor_classes(&world, true), 3);
+        assert_eq!(minor_classes(&world, false), 1);
     }
 
     #[test]
