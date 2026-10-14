@@ -2495,6 +2495,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 if let Some(ref mut second_ai) = secondary_ai_state {
                     second_ai.begin_day();
                 }
+                let ai_started = macroquad::time::get_time();
                 for _ in 0..ai_passes {
                     let ai_actions = AISystem::pass(
                         &mut ai_state,
@@ -2552,6 +2553,15 @@ Some(RailAudience::side(*faction_is_alliance)),
                         );
                     }
                 }
+                macroquad::logging::info!(
+                    "[ai] day={} speed={:?} passes={} orders={} second_orders={} ms={:.1}",
+                    event.tick,
+                    clock.speed,
+                    ai_passes,
+                    ai_state.orders_today,
+                    secondary_ai_state.as_ref().map_or(0, |ai| ai.orders_today),
+                    (macroquad::time::get_time() - ai_started) * 1000.0
+                );
             }
 
             // ── The player's agent (FUN_00439a10): once a day, its running

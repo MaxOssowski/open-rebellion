@@ -1746,6 +1746,12 @@ cross-runtime proof remain open
   `v1:4225657ae5e05393` (`evidence/2026-10-14-ai-cadence/`). Open: the
   fourteen modules' identities, their priorities (`+0x34`, `FUN_004bede0`)
   and one-order steps.
+- Game loop (2026-10-14): the browser build runs the cadence in the app's
+  loop (`[ai]` console line per day): 4 passes a day at Fast and 600 at
+  Very Slow, where the longest frame was 18.7 ms. Repeated Sabotage orders
+  are detected missions retried, as the original planner does up to 1000
+  failures (`FUN_00480df0`) (`evidence/2026-10-14-ai-cadence-game-loop/`).
+  Native GUI not run.
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.
