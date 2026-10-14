@@ -83,9 +83,14 @@ The release site is run with `agent-browser` (headless Chromium, 640 by
 `1-medium-day-16.png` shows the campaign at day 16 and Medium. The console
 (`console.txt`, both runs: 32 Fast and 16 Medium days) has 48 `[ai]` lines and
 0 errors.
-`network.txt` lists 8 requests, all HTTP 200. The browser
-runs used the build before the `production_module` refactor. The refactor
-leaves behaviour unchanged, and the golden replay matched both builds.
+`network.txt` lists 8 requests, all HTTP 200. Those runs
+used the build before the `production_module` refactor.
+
+A rerun on the committed build (SHA-256 `6451f492...`), Fast for 12 s,
+gave the same orders on days 1 to 6 (4, 4, 3, 0, 3, 4 at `passes=4`).
+The longest frame was 2.2 ms, with 0 console errors and 4 requests, all
+HTTP 200 (`console-final-build.txt`, `network-final-build.txt`,
+`2-final-build-fast.png`).
 
 ## Gates
 
