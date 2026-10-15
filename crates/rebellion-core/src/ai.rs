@@ -148,15 +148,19 @@ fn accepts(
 const MISSION_GROUPS: u8 = 5;
 
 /// The module whose step issues the production heuristic's order for
-/// `kind`: 2 a manufacturing facility, 3 a defense facility, 5 a regiment,
-/// `0xb` a capital ship or fighter; none for the rest.
+/// `kind`: `0xa` a manufacturing facility, 3 a defense facility, 5 a
+/// regiment, `0xb` a capital ship or fighter; none for the rest.
 ///
 /// port: a first read of the modules' orders and marks (`0x210` with marks
 /// `0x1000000` and `0x2000000`, `0x212` with `0x400000`, `0x211` with
-/// `0x200000`; `ghidra/notes/ai-mission-planning.md`).
+/// `0x200000`; `ghidra/notes/ai-mission-planning.md`). Module 2, now
+/// ported, builds only construction yards, mines and refineries
+/// (`FUN_004e2400`, `FUN_004e25c0`), so the heuristic's facilities, mostly
+/// shipyards and training facilities, stand in for module `0xa`'s
+/// shipyard placement.
 fn production_module(kind: &BuildableKind) -> Option<u8> {
     match kind {
-        BuildableKind::ManufacturingFacility(_) => Some(2),
+        BuildableKind::ManufacturingFacility(_) => Some(0xa),
         BuildableKind::DefenseFacility(_) => Some(3),
         BuildableKind::Troop(_) => Some(5),
         BuildableKind::CapitalShip(_) | BuildableKind::Fighter(_) => Some(0xb),
@@ -351,6 +355,8 @@ pub struct AIState {
     pub controller: crate::ai_module1::Controller,
     /// Module 1's fields (`FUN_004da950`).
     pub module1: crate::ai_module1::Module1,
+    /// Module 2's fields (`FUN_004e1e50`).
+    pub module2: crate::ai_module2::Module2,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -414,6 +420,7 @@ impl AIState {
             record_kinds: HashMap::new(),
             controller: crate::ai_module1::Controller::default(),
             module1: crate::ai_module1::Module1::default(),
+            module2: crate::ai_module2::Module2::default(),
         }
     }
 
@@ -724,9 +731,11 @@ impl AISystem {
         // controller's token (FUN_004199b0: 0x80 module 1, 0x40 module 2,
         // 0x20 module 6, 0x10 module 0xa, 8 module 7, 4 module 5, 2 module
         // 0xb, 1 module 3), each passing it on once its own work allows.
-        // Only module 1 is ported, so a pass hands on the yards that an
-        // unported module holds.
-        if state.controller.yard_holder != crate::ai_module1::YARD_TOKEN {
+        // Only modules 1 and 2 are ported, so a pass hands on the yards
+        // that an unported module holds.
+        if ![crate::ai_module1::YARD_TOKEN, crate::ai_module2::YARD_TOKEN]
+            .contains(&state.controller.yard_holder)
+        {
             state.controller.pass_yards();
         }
         let mut ready = [true; MODULES];
@@ -759,9 +768,11 @@ impl AISystem {
                     state.orders_today += 1;
                     orders.push(order);
                 } else {
-                    // The module's slot +0x18 (module 1: FUN_004dd810).
-                    if MODULE_IDS[module] == 1 {
-                        state.module1.refused();
+                    // The module's slot +0x18 (FUN_004dd810).
+                    match MODULE_IDS[module] {
+                        1 => state.module1.refused(),
+                        2 => state.module2.refused(),
+                        _ => {}
                     }
                     state.module_priority[module] = 0;
                     complete = true;
@@ -861,7 +872,8 @@ impl AISystem {
         galaxy: &mut crate::ai_records::Galaxy,
         tallies: crate::ai_module1::Tallies,
     ) -> crate::ai_module1::Step {
-        if MODULE_IDS[module] == 1 {
+        let id = MODULE_IDS[module];
+        if id == 1 || id == 2 {
             let mut coin = || planner.coin();
             let mut io = crate::ai_module1::Inputs {
                 world: ctx.world,
@@ -874,7 +886,11 @@ impl AISystem {
                 is_alliance: matches!(ctx.faction, AiFaction::Alliance),
                 coin: &mut coin,
             };
-            return state.module1.step(&mut io);
+            return if id == 1 {
+                state.module1.step(&mut io)
+            } else {
+                state.module2.step(&mut io)
+            };
         }
         if state.module_pending[module].is_empty() {
             let mut decided = Vec::new();
@@ -895,13 +911,14 @@ impl AISystem {
     /// - `0xd`, the strategy: the research strategy
     ///   ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
-    /// - 2, 3, 5, `0xb`: the production heuristic's manufacturing
+    /// - `0xa`, 3, 5, `0xb`: the production heuristic's manufacturing
     ///   facilities, defense facilities, troops, and ships and fighters.
     /// - 8: Death Star escort and fleet deployment; `0xc`: troop movement.
     ///
     /// port: the assignment of the port's heuristics to modules is a first
-    /// read (the modules' roles in the note above); modules 1, 6, 7, 9,
-    /// `0xa` and `0xe` have no port counterpart and order nothing.
+    /// read (the modules' roles in the note above); modules 6, 7, 9 and
+    /// `0xe` have no port counterpart and order nothing. Modules 1 and 2
+    /// are ported ([`crate::ai_module1`], [`crate::ai_module2`]).
     fn run_module(
         id: u8,
         state: &mut AIState,
@@ -940,7 +957,7 @@ impl AISystem {
                 actions,
             ),
             4 => Self::mission_step(state, planner, ctx, actions),
-            2 | 3 | 5 | 0xb => production(actions),
+            3 | 5 | 0xa | 0xb => production(actions),
             8 => {
                 Self::evaluate_ds_escort(world, movement, faction, config, actions);
                 Self::evaluate_fleet_deployment(
@@ -6943,9 +6960,11 @@ mod tests {
             class: DatId::new(0x2200_0001),
             is_alliance: true,
         };
+        // Module 2 builds only 0x2a, 0x2c and 0x2d (FUN_004e2400,
+        // FUN_004e25c0); the heuristic's facilities stand in for 0xa.
         assert_eq!(
             production_module(&BuildableKind::ManufacturingFacility(facility)),
-            Some(2)
+            Some(0xa)
         );
         assert_eq!(
             production_module(&BuildableKind::DefenseFacility(facility)),
@@ -6972,7 +6991,7 @@ mod tests {
     #[test]
     fn a_production_module_issues_only_its_own_kind() {
         // The world of idle_system_with_mfg_gets_fighter_production: module
-        // 0xb orders the fighters, modules 2, 3 and 5 nothing.
+        // 0xb orders the fighters, modules 2, 3, 5 and 0xa nothing.
         let (world, _) = fighter_world();
         let (missions, research, mfg, movement, config, uprisings) = (
             MissionState::new(),
@@ -7006,7 +7025,7 @@ mod tests {
                 ..
             }
         )));
-        for id in [2, 3, 5] {
+        for id in [2, 3, 5, 0xa] {
             assert!(run(id).is_empty(), "module {id}");
         }
     }
@@ -7308,6 +7327,30 @@ mod tests {
         assert_eq!(state.module_priority[2], 0);
         assert_eq!(state.orders_today, 0);
         // Only module 1 was stepped: the round robin did not move.
+        assert_eq!(state.module_cursor, None);
+    }
+
+    #[test]
+    fn a_refused_module_two_order_ends_its_cycle_and_the_tick() {
+        // FUN_00485b40 sends module 2's refused order to its slot +0x18,
+        // FUN_004dd810, as for module 1. Module 2's yard cycle state 8
+        // (FUN_004e4300): Destination on a manager the side lacks.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module2.phase = crate::ai_module2::YARD_CYCLE;
+        state.module2.state = 8;
+        state.module2.target = crate::ai_module1::Target::System(site);
+        state.module2.yard = crate::ai_module1::Yard::Manager(site);
+        state.module_priority[1] = 5;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert!(orders.is_empty());
+        assert_eq!((state.module2.phase, state.module2.state), (0, 0));
+        assert_eq!(state.module_priority[1], 0);
+        assert_eq!(state.orders_today, 0);
         assert_eq!(state.module_cursor, None);
     }
 

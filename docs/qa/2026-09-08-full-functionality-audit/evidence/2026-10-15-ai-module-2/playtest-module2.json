@@ -1,0 +1,502 @@
+{
+  "command": "rebellion-playtest data/base --seed 42 --ticks 600 --dual-ai",
+  "orders_by_side_and_type": {
+    "Alliance Build": 1,
+    "Alliance DispatchMission": 25,
+    "Alliance EnqueueProduction": 15,
+    "Alliance MoveFleet": 1,
+    "Alliance SetDestination": 1,
+    "Empire Build": 27,
+    "Empire DispatchMission": 71,
+    "Empire EnqueueProduction": 34,
+    "Empire MoveFleet": 2,
+    "Empire Scrap": 1,
+    "Empire SetDestination": 27
+  },
+  "yard_orders": [
+    {
+      "tick": 1,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Hoth",
+      "system": "Hoth"
+    },
+    {
+      "tick": 1,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 10,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(704643075), is_alliance: true })",
+      "system": "Hoth"
+    },
+    {
+      "tick": 2,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Manufacturing(ManufacturingFacilityKey(19v1)))"
+      ]
+    },
+    {
+      "tick": 2,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 2,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 215,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 215,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 227,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 227,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 239,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 239,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 251,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 251,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 263,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 263,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 275,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 275,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 287,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 287,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 299,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 299,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 311,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 311,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 323,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 323,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 335,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 335,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 347,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 347,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 359,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 359,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 371,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 371,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 383,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 383,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 395,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 395,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 407,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 407,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 419,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 419,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 431,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 431,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 443,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 443,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 455,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 455,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 467,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 467,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 479,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 479,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 491,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 491,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 503,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 503,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 515,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 515,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    }
+  ]
+}

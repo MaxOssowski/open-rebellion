@@ -1800,6 +1800,15 @@ cross-runtime proof remain open
   Save v41; golden `v1:e187411365b9f348` -> `v1:ada51196c4d497ba`. port:
   the seven other yard-token modules are not ported, so their turns pass
   at once (`evidence/2026-10-15-ai-module-1/`).
+- Module 2 (2026-10-15): the second construction yard module
+  (`FUN_004e1e50`, step `FUN_004e2120`) is ported in `ai_module2.rs`. It
+  keeps its own sites (mark `0x1000000`) and runs a mine or refinery
+  cycle (`FUN_004e25c0`) or a yard cycle (`FUN_004e2400`) that borrows
+  module 1's nearest idle yard with the token `0x40`. Its shared steps are
+  module 1's, read as identical in assembly. The production heuristic's
+  manufacturing facilities move from module 2 to `0xa`. Save v42; golden
+  `v1:ada51196c4d497ba` -> `v1:09ab7bb25d2c1611`
+  (`evidence/2026-10-15-ai-module-2/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

@@ -45,7 +45,7 @@ pub enum Target {
 }
 
 impl Target {
-    fn system(self) -> Option<SystemKey> {
+    pub(crate) fn system(self) -> Option<SystemKey> {
         match self {
             Self::System(s) => Some(s),
             _ => None,
@@ -190,11 +190,11 @@ pub struct Inputs<'a> {
 }
 
 impl Inputs<'_> {
-    fn side(&self) -> Faction {
+    pub(crate) fn side(&self) -> Faction {
         Faction::of_alliance(self.is_alliance)
     }
 
-    fn set_mark(&mut self, system: SystemKey, set: u32, clear: u32) {
+    pub(crate) fn set_mark(&mut self, system: SystemKey, set: u32, clear: u32) {
         self.galaxy.update_state(system, set, clear);
         let value = self.marks.entry(system).or_default();
         *value = (*value & !clear) | set;
@@ -203,7 +203,7 @@ impl Inputs<'_> {
         }
     }
 
-    fn set_kind(&mut self, system: SystemKey, set: u32, clear: u32) {
+    pub(crate) fn set_kind(&mut self, system: SystemKey, set: u32, clear: u32) {
         self.galaxy.update_kind(system, set, clear);
         let value = self.kinds.entry(system).or_default();
         *value = (*value & !clear) | set;
@@ -212,11 +212,11 @@ impl Inputs<'_> {
         }
     }
 
-    fn sectors(&mut self, masks: [Mask; 3], key: usize, order: Order) -> Vec<SectorKey> {
+    pub(crate) fn sectors(&mut self, masks: [Mask; 3], key: usize, order: Order) -> Vec<SectorKey> {
         self.galaxy.sector_query(masks, key, order, self.coin)
     }
 
-    fn systems(
+    pub(crate) fn systems(
         &mut self,
         sector: Option<SectorKey>,
         masks: [Mask; 3],
@@ -230,7 +230,7 @@ impl Inputs<'_> {
 
     /// The side's facilities of `family` at `system`, in the system's
     /// order (`FUN_0052cab0` and its siblings).
-    fn facilities(&self, system: SystemKey, family: u8) -> Vec<ScrapTarget> {
+    pub(crate) fn facilities(&self, system: SystemKey, family: u8) -> Vec<ScrapTarget> {
         let side = self.side();
         let Some(sys) = self.world.systems.get(system) else {
             return Vec::new();
@@ -271,7 +271,7 @@ impl Inputs<'_> {
         }
     }
 
-    fn has_manager(&self, system: SystemKey) -> bool {
+    pub(crate) fn has_manager(&self, system: SystemKey) -> bool {
         has_construction_yard(self.world, self.side(), system)
     }
 }
@@ -301,7 +301,7 @@ pub struct Step {
 }
 
 impl Step {
-    const fn pending() -> Self {
+    pub(crate) const fn pending() -> Self {
         Self {
             order: None,
             complete: false,
@@ -309,7 +309,7 @@ impl Step {
         }
     }
 
-    const fn complete() -> Self {
+    pub(crate) const fn complete() -> Self {
         Self {
             order: None,
             complete: true,
@@ -319,7 +319,7 @@ impl Step {
 
     /// An order step of states 3 and 7: complete with an order, which
     /// raises the priority; without one the module steps on.
-    fn ordered(order: Option<AIAction>) -> Self {
+    pub(crate) fn ordered(order: Option<AIAction>) -> Self {
         let has = order.is_some();
         Self {
             order,
@@ -329,7 +329,7 @@ impl Step {
     }
 }
 
-const ANY: Mask = Mask::new(0, 0);
+pub(crate) const ANY: Mask = Mask::new(0, 0);
 
 impl Module1 {
     /// One step (`FUN_004dabe0`). The scheduler steps only a ready module,
@@ -352,9 +352,16 @@ impl Module1 {
             return Step::pending();
         }
         if io.controller.yard_holder != YARD_TOKEN || io.controller.flags & NO_SITE != 0 {
-            self.adopt_or_request(io);
+            self.target = adopt_or_request(
+                io,
+                &mut self.sites,
+                &mut self.class,
+                MARK_MINES,
+                YARD_TOKEN,
+                PERCENT,
+            );
         }
-        self.claim(io);
+        claim(io, &self.sites, &mut self.claimed);
         self.phase = 0;
         self.state = 0;
         Step::complete()
@@ -388,7 +395,7 @@ impl Module1 {
                 }
             }
             3 => {
-                let order = self.scrap_at_target(io);
+                let order = scrap_at(io, self.target.system());
                 self.state = 4;
                 Step::ordered(order)
             }
@@ -401,7 +408,7 @@ impl Module1 {
                 Step::pending()
             }
             5 => {
-                let order = self.scrap_spare_yard(io);
+                let order = scrap_spare_yard(io, &mut self.sites, &mut self.target, MARK_MINES);
                 self.state = 0;
                 self.phase = 0;
                 Step {
@@ -429,7 +436,7 @@ impl Module1 {
                 self.state_seven(io)
             }
             7 => self.state_seven(io),
-            8 => match self.destination(io) {
+            8 => match destination(self.target, self.yard) {
                 Some(order) => {
                     self.state = 9;
                     Step {
@@ -441,7 +448,7 @@ impl Module1 {
                 None => self.end(),
             },
             9 => {
-                let order = self.build(io);
+                let order = build(io, self.yard, self.class, self.count);
                 self.state = 0;
                 self.phase = 0;
                 Step {
@@ -451,7 +458,14 @@ impl Module1 {
                 }
             }
             10 => {
-                self.adopt_or_request(io);
+                self.target = adopt_or_request(
+                    io,
+                    &mut self.sites,
+                    &mut self.class,
+                    MARK_MINES,
+                    YARD_TOKEN,
+                    PERCENT,
+                );
                 self.end()
             }
             _ => {
@@ -612,76 +626,6 @@ impl Module1 {
         true
     }
 
-    /// State 3 (`FUN_004db820`): scrap what stands in the way at the
-    /// target.
-    fn scrap_at_target(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {
-        let target = self.target.system()?;
-        let r = io.galaxy.system(target).copied()?;
-        let mut team = Vec::new();
-        if r.state & 0x20_0000 == 0 {
-            team.extend(io.facilities(target, 0x28));
-        }
-        if r.state & 0x40_0000 == 0 {
-            team.extend(io.facilities(target, 0x29));
-        }
-        team.extend(io.facilities(target, 0x25));
-        if r.values[15] == 0 && team.is_empty() {
-            let t = io.tallies;
-            if t.refineries > t.mines || r.values[2] == 0 {
-                team.extend(io.facilities(target, 0x2d).into_iter().take(1));
-            }
-            if team.is_empty() && (t.mines >= t.refineries || r.values[3] == 0) {
-                team.extend(io.facilities(target, 0x2c).into_iter().take(1));
-            }
-        }
-        (!team.is_empty()).then_some(AIAction::Scrap { team })
-    }
-
-    /// `FUN_004dd050`: the construction yard maintenance the side wants
-    /// beyond its sites': `+0x24` (4) percent of the capacity, 0 when the
-    /// side's free maintenance falls short of it.
-    fn wanted(&self, io: &Inputs<'_>) -> i32 {
-        let held: i32 = self
-            .sites
-            .iter()
-            .filter_map(|&s| io.galaxy.system(s))
-            .map(|r| r.values[36])
-            .sum();
-        let t = io.tallies;
-        let wanted = 4 * t.capacity / 100 - held;
-        if t.capacity - t.requirement < wanted {
-            0
-        } else {
-            wanted
-        }
-    }
-
-    /// `FUN_0041b230(&+0x48, 0x2a, 0x10000, 0x4000, 2)` →
-    /// `FUN_0042e3c0`: the side's buildable construction yard class with
-    /// the lowest processing rate (class record `+0x30`, `FUN_00473060`),
-    /// into `+0x48`; its maintenance (`+0x20`), 0 with none.
-    fn yard_class(&mut self, io: &mut Inputs<'_>) -> i32 {
-        let classes: Vec<_> = crate::build_selection::listed_classes(
-            io.world,
-            io.research,
-            ProductionArea::ConstructionYard,
-            io.is_alliance,
-        )
-        .into_iter()
-        .filter_map(BuildableKind::class_dat_id)
-        .filter(|c| c.family() == 0x2a)
-        .filter_map(|c| {
-            let r = io.galaxy.classes.get(c)?;
-            (r.flags & CLASS_CONSTRUCTION == CLASS_CONSTRUCTION).then_some((c, r.values[0]))
-        })
-        .collect();
-        let list = crate::ai_records::ranked(classes, Order::Descending, io.coin);
-        self.class = crate::ai_records::pick(&[list]);
-        self.class
-            .and_then(|c| io.galaxy.classes.get(c))
-            .map_or(0, |r| r.maintenance)
-    }
-
     /// State 4 (`FUN_004dbd60`): 8 to build construction yards, else 6
     /// (5 is stored for a surplus but overwritten, `0x4dbe48`), 0 with no
     /// target system.
@@ -690,10 +634,11 @@ impl Module1 {
         let Some(target) = self.target.system() else {
             return 0;
         };
-        let wanted = self.wanted(io);
+        let wanted = wanted(io, &self.sites, PERCENT);
         let mut next = 0;
         if wanted > 0 {
-            let maintenance = self.yard_class(io);
+            let maintenance;
+            (self.class, maintenance) = yard_class(io);
             if self.class.is_some() && maintenance != 0 {
                 self.count = wanted / maintenance;
             }
@@ -710,43 +655,6 @@ impl Module1 {
             next = 6;
         }
         next
-    }
-
-    /// State 5 (`FUN_004dbe70`): leave a site with too few yards, or scrap
-    /// a construction yard at one with two or more. Unreachable from state
-    /// 4 in the original; kept for fidelity.
-    fn scrap_spare_yard(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {
-        let mut chosen = None;
-        let mut i = 0;
-        while i < self.sites.len() {
-            let site = self.sites[i];
-            let Some(r) = io.galaxy.system(site).copied() else {
-                i += 1;
-                continue;
-            };
-            let count = self.sites.len();
-            if r.values[6] < 1 {
-                self.sites.remove(i);
-                io.set_mark(site, 0, MARK_MINES);
-            } else if r.state & 0x1000 == 0 {
-                i += 1;
-            } else if r.values[6] < 2 {
-                if count > 1 {
-                    self.target = Target::System(site);
-                    self.sites.remove(i);
-                    io.set_mark(site, 0, MARK_MINES);
-                    chosen = Some(site);
-                }
-                break;
-            } else {
-                self.target = Target::System(site);
-                chosen = Some(site);
-                break;
-            }
-        }
-        let site = chosen?;
-        let yard = io.facilities(site, 0x2a).into_iter().next()?;
-        Some(AIAction::Scrap { team: vec![yard] })
     }
 
     /// `FUN_004dc150`: the mine site.
@@ -769,7 +677,7 @@ impl Module1 {
             self.target = Target::System(system);
         }
         if self.target.system().is_none() {
-            self.nearest(io, 0x800, 0x40);
+            self.target = nearest(io, self.yard, 0x800, Mask::new(0x40, 0));
         }
         self.target.system().is_some()
     }
@@ -792,43 +700,9 @@ impl Module1 {
             self.target = Target::System(system);
         }
         if self.target.system().is_none() {
-            self.nearest(io, 0x400, 0x20);
+            self.target = nearest(io, self.yard, 0x400, Mask::new(0x20, 0));
         }
         self.target.system().is_some()
-    }
-
-    /// `FUN_00419b80` then `FUN_0041a400` from the yard, order 2: the
-    /// nearest sector with `sector_bit` (`+0x24`), then its nearest system
-    /// with `system_bit` (`+0x28`).
-    fn nearest(&mut self, io: &mut Inputs<'_>, sector_bit: u32, system_bit: u32) {
-        let origin = match self.yard {
-            Yard::System(s) | Yard::Manager(s) => s,
-            Yard::None => {
-                self.target = Target::None;
-                return;
-            }
-        };
-        let sectors = io.galaxy.sectors_by_distance(
-            origin,
-            [Mask::new(sector_bit, 0), ANY, ANY],
-            Order::Descending,
-            io.coin,
-        );
-        let sector = crate::ai_records::pick(&[sectors]);
-        self.target = sector.map_or(Target::None, Target::Sector);
-        let Some(sector) = sector else {
-            return;
-        };
-        let systems = io.galaxy.systems_by_distance(
-            sector,
-            origin,
-            [Mask::new(system_bit, 0), ANY, ANY],
-            Order::Descending,
-            io.coin,
-        );
-        if let Some(system) = crate::ai_records::pick(&[systems]) {
-            self.target = Target::System(system);
-        }
     }
 
     /// State 7 (`FUN_004dc650`): clear an unmarked target of its yards.
@@ -843,141 +717,344 @@ impl Module1 {
         team.extend(io.facilities(target, 0x2a));
         (!team.is_empty()).then_some(AIAction::Scrap { team })
     }
+}
 
-    /// State 8 (`FUN_004dc9f0`): Destination on the yard, to the target.
-    fn destination(&self, _io: &Inputs<'_>) -> Option<AIAction> {
-        let target = self.target.system()?;
-        let Yard::Manager(yard) = self.yard else {
-            return None;
-        };
-        Some(AIAction::SetDestination {
-            system: yard,
-            area: ProductionArea::ConstructionYard,
-            destination: target,
-        })
+/// Module 1's `+0x24`: the percent of the maintenance capacity it wants in
+/// construction yards (`FUN_004da950`).
+const PERCENT: i32 = 4;
+
+/// Module 1's state 3 (`FUN_004db820`; module 2's `FUN_004e3a40` on
+/// `+0x48`): scrap what stands in the way at the target.
+pub(crate) fn scrap_at(io: &mut Inputs<'_>, target: Option<SystemKey>) -> Option<AIAction> {
+    let target = target?;
+    let r = io.galaxy.system(target).copied()?;
+    let mut team = Vec::new();
+    if r.state & 0x20_0000 == 0 {
+        team.extend(io.facilities(target, 0x28));
     }
-
-    /// State 9 (`FUN_004dcb30`): Build the class on the yard.
-    fn build(&self, io: &Inputs<'_>) -> Option<AIAction> {
-        let Yard::Manager(yard) = self.yard else {
-            return None;
-        };
-        let class = self.class?;
-        let build = FacilityBuild {
-            class,
-            is_alliance: io.is_alliance,
-        };
-        let kind = match class.family() {
-            0x2c | 0x2d => BuildableKind::ProductionFacility(build),
-            _ => BuildableKind::ManufacturingFacility(build),
-        };
-        let cost = io
-            .world
-            .buildable_classes
-            .get(&class)
-            .map_or(0, |c| c.refined_material_cost);
-        Some(AIAction::Build {
-            system: yard,
-            kind,
-            cost,
-            count: self.count,
-        })
+    if r.state & 0x40_0000 == 0 {
+        team.extend(io.facilities(target, 0x29));
     }
-
-    /// State 10 (`FUN_004dcc40`): adopt a system with construction yards
-    /// as a site, or ask for the yards.
-    fn adopt_or_request(&mut self, io: &mut Inputs<'_>) {
-        self.target = Target::None;
-        let wanted = self.wanted(io);
-        let mut found = None;
-        if wanted > 0 {
-            let sectors = io.sectors([Mask::new(0x80, 0), ANY, ANY], 0x15, Order::Ascending);
-            'sectors: for sector in picks(vec![sectors]) {
-                let yards = io
-                    .galaxy
-                    .sector(sector)
-                    .map_or(0, |s| s.values[sector_at(0xc4)]);
-                if yards <= 0 {
-                    break;
-                }
-                let masks = [Mask::new(0, 0x380_0003), ANY, Mask::new(1, 0x4000_0000)];
-                let systems = io.systems(Some(sector), masks, 6, Order::Ascending);
-                for system in picks(vec![systems]) {
-                    if io
-                        .galaxy
-                        .system(system)
-                        .is_some_and(|r| r.values[6] > 0 && r.values[36] <= wanted)
-                    {
-                        found = Some(system);
-                        break 'sectors;
-                    }
-                }
-            }
+    team.extend(io.facilities(target, 0x25));
+    if r.values[15] == 0 && team.is_empty() {
+        let t = io.tallies;
+        if t.refineries > t.mines || r.values[2] == 0 {
+            team.extend(io.facilities(target, 0x2d).into_iter().take(1));
         }
-        if let Some(system) = found {
-            self.target = Target::System(system);
-            self.sites.push(system);
-            io.set_mark(system, MARK_MINES, 0);
-        } else if self.sites.len() < 2 {
-            let has_yard = self
-                .sites
-                .first()
-                .and_then(|&s| io.galaxy.system(s))
-                .is_some_and(|r| r.values[6] > 0);
-            if !has_yard && self.yard_class(io) <= wanted {
-                io.controller.yard_requests |= YARD_TOKEN;
-            }
+        if team.is_empty() && (t.mines >= t.refineries || r.values[3] == 0) {
+            team.extend(io.facilities(target, 0x2c).into_iter().take(1));
         }
     }
+    (!team.is_empty()).then_some(AIAction::Scrap { team })
+}
 
-    /// `FUN_004dd120`: claim the site with the most construction yards and
-    /// active regiments that no other module claims.
-    fn claim(&mut self, io: &mut Inputs<'_>) {
-        let mut best = 0;
-        let mut chosen = None;
-        for &site in &self.sites {
-            let Some(r) = io.galaxy.system(site) else {
-                continue;
-            };
-            if r.values[6] <= best {
-                continue;
-            }
-            if r.kind & CLAIMED != 0 && !self.claimed.contains(&site) {
-                continue;
-            }
-            if r.values[18] > 0 {
-                best = r.values[6];
+/// `FUN_004dd050` (module 2: `FUN_004e4950`): the construction yard
+/// maintenance the side wants beyond its sites': `percent` (`+0x24`) of
+/// the capacity, 0 when the side's free maintenance falls short of it.
+pub(crate) fn wanted(io: &Inputs<'_>, sites: &[SystemKey], percent: i32) -> i32 {
+    let held: i32 = sites
+        .iter()
+        .filter_map(|&s| io.galaxy.system(s))
+        .map(|r| r.values[36])
+        .sum();
+    let t = io.tallies;
+    let wanted = percent * t.capacity / 100 - held;
+    if t.capacity - t.requirement < wanted {
+        0
+    } else {
+        wanted
+    }
+}
+
+/// `FUN_0041b230(&class, 0x2a, 0x10000, 0x4000, 2)` → `FUN_0042e3c0`: the
+/// side's buildable construction yard class with the lowest processing
+/// rate (class record `+0x30`, `FUN_00473060`), and its maintenance
+/// (`+0x20`), 0 with none.
+pub(crate) fn yard_class(io: &mut Inputs<'_>) -> (Option<DatId>, i32) {
+    let classes: Vec<_> = crate::build_selection::listed_classes(
+        io.world,
+        io.research,
+        ProductionArea::ConstructionYard,
+        io.is_alliance,
+    )
+    .into_iter()
+    .filter_map(BuildableKind::class_dat_id)
+    .filter(|c| c.family() == 0x2a)
+    .filter_map(|c| {
+        let r = io.galaxy.classes.get(c)?;
+        (r.flags & CLASS_CONSTRUCTION == CLASS_CONSTRUCTION).then_some((c, r.values[0]))
+    })
+    .collect();
+    let list = crate::ai_records::ranked(classes, Order::Descending, io.coin);
+    let class = crate::ai_records::pick(&[list]);
+    let maintenance = class
+        .and_then(|c| io.galaxy.classes.get(c))
+        .map_or(0, |r| r.maintenance);
+    (class, maintenance)
+}
+
+/// Module 1's state 5 (`FUN_004dbe70`; module 2's `FUN_004e4020`): leave
+/// a site with too few yards, or scrap a construction yard at one with two
+/// or more. The site chosen becomes the target.
+pub(crate) fn scrap_spare_yard(
+    io: &mut Inputs<'_>,
+    sites: &mut Vec<SystemKey>,
+    target: &mut Target,
+    mark: u32,
+) -> Option<AIAction> {
+    let mut chosen = None;
+    let mut i = 0;
+    while i < sites.len() {
+        let site = sites[i];
+        let Some(r) = io.galaxy.system(site).copied() else {
+            i += 1;
+            continue;
+        };
+        let count = sites.len();
+        if r.values[6] < 1 {
+            sites.remove(i);
+            io.set_mark(site, 0, mark);
+        } else if r.state & 0x1000 == 0 {
+            i += 1;
+        } else if r.values[6] < 2 {
+            if count > 1 {
+                *target = Target::System(site);
+                sites.remove(i);
+                io.set_mark(site, 0, mark);
                 chosen = Some(site);
             }
+            break;
+        } else {
+            *target = Target::System(site);
+            chosen = Some(site);
+            break;
         }
-        for site in std::mem::take(&mut self.claimed) {
-            io.set_kind(site, 0, CLAIMED);
+    }
+    let site = chosen?;
+    let yard = io.facilities(site, 0x2a).into_iter().next()?;
+    Some(AIAction::Scrap { team: vec![yard] })
+}
+
+/// `FUN_00419b80` then `FUN_0041a400` from the yard, order 2: the nearest
+/// sector with `sector_bit` (`+0x24`), then its nearest system whose
+/// `+0x28` passes `system`.
+pub(crate) fn nearest(io: &mut Inputs<'_>, yard: Yard, sector_bit: u32, system: Mask) -> Target {
+    let origin = match yard {
+        Yard::System(s) | Yard::Manager(s) => s,
+        Yard::None => return Target::None,
+    };
+    let sectors = io.galaxy.sectors_by_distance(
+        origin,
+        [Mask::new(sector_bit, 0), ANY, ANY],
+        Order::Descending,
+        io.coin,
+    );
+    let Some(sector) = crate::ai_records::pick(&[sectors]) else {
+        return Target::None;
+    };
+    let systems = io.galaxy.systems_by_distance(
+        sector,
+        origin,
+        [system, ANY, ANY],
+        Order::Descending,
+        io.coin,
+    );
+    crate::ai_records::pick(&[systems]).map_or(Target::Sector(sector), Target::System)
+}
+
+/// Module 1's state 8 (`FUN_004dc9f0`; module 2's `FUN_004e4300`):
+/// Destination on the yard's manager, to the target system.
+pub(crate) fn destination(target: Target, yard: Yard) -> Option<AIAction> {
+    let target = target.system()?;
+    let Yard::Manager(yard) = yard else {
+        return None;
+    };
+    Some(AIAction::SetDestination {
+        system: yard,
+        area: ProductionArea::ConstructionYard,
+        destination: target,
+    })
+}
+
+/// Module 1's state 9 (`FUN_004dcb30`; module 2's `FUN_004e4440`): Build
+/// `count` of the class on the yard's manager.
+pub(crate) fn build(
+    io: &Inputs<'_>,
+    yard: Yard,
+    class: Option<DatId>,
+    count: i32,
+) -> Option<AIAction> {
+    let Yard::Manager(yard) = yard else {
+        return None;
+    };
+    let class = class?;
+    let build = FacilityBuild {
+        class,
+        is_alliance: io.is_alliance,
+    };
+    let kind = match class.family() {
+        0x2c | 0x2d => BuildableKind::ProductionFacility(build),
+        _ => BuildableKind::ManufacturingFacility(build),
+    };
+    let cost = io
+        .world
+        .buildable_classes
+        .get(&class)
+        .map_or(0, |c| c.refined_material_cost);
+    Some(AIAction::Build {
+        system: yard,
+        kind,
+        cost,
+        count,
+    })
+}
+
+/// Module 1's state 10 (`FUN_004dcc40`; module 2's `FUN_004e4540`): adopt
+/// a system with construction yards as a site (`mark`), or ask for the
+/// yards (`token`), writing the yard class into `class` (`+0x48`, module
+/// 2's `+0x50`). Returns the new target.
+pub(crate) fn adopt_or_request(
+    io: &mut Inputs<'_>,
+    sites: &mut Vec<SystemKey>,
+    class: &mut Option<DatId>,
+    mark: u32,
+    token: u32,
+    percent: i32,
+) -> Target {
+    let wanted = wanted(io, sites, percent);
+    let mut found = None;
+    if wanted > 0 {
+        let sectors = io.sectors([Mask::new(0x80, 0), ANY, ANY], 0x15, Order::Ascending);
+        'sectors: for sector in picks(vec![sectors]) {
+            let yards = io
+                .galaxy
+                .sector(sector)
+                .map_or(0, |s| s.values[sector_at(0xc4)]);
+            if yards <= 0 {
+                break;
+            }
+            let masks = [Mask::new(0, 0x380_0003), ANY, Mask::new(1, 0x4000_0000)];
+            let systems = io.systems(Some(sector), masks, 6, Order::Ascending);
+            for system in picks(vec![systems]) {
+                if io
+                    .galaxy
+                    .system(system)
+                    .is_some_and(|r| r.values[6] > 0 && r.values[36] <= wanted)
+                {
+                    found = Some(system);
+                    break 'sectors;
+                }
+            }
         }
-        if let Some(site) = chosen {
-            io.set_kind(site, CLAIMED, 0);
-            self.claimed.push(site);
+    }
+    if let Some(system) = found {
+        sites.push(system);
+        io.set_mark(system, mark, 0);
+        return Target::System(system);
+    }
+    if sites.len() < 2 {
+        let has_yard = sites
+            .first()
+            .and_then(|&s| io.galaxy.system(s))
+            .is_some_and(|r| r.values[6] > 0);
+        if !has_yard {
+            let maintenance;
+            (*class, maintenance) = yard_class(io);
+            if maintenance <= wanted {
+                io.controller.yard_requests |= token;
+            }
         }
+    }
+    Target::None
+}
+
+/// `FUN_004dd120` (module 2: `FUN_004e4a20`): claim the site with the most
+/// construction yards and active regiments that no other module claims.
+pub(crate) fn claim(io: &mut Inputs<'_>, sites: &[SystemKey], claimed: &mut Vec<SystemKey>) {
+    let mut best = 0;
+    let mut chosen = None;
+    for &site in sites {
+        let Some(r) = io.galaxy.system(site) else {
+            continue;
+        };
+        if r.values[6] <= best {
+            continue;
+        }
+        if r.kind & CLAIMED != 0 && !claimed.contains(&site) {
+            continue;
+        }
+        if r.values[18] > 0 {
+            best = r.values[6];
+            chosen = Some(site);
+        }
+    }
+    for site in std::mem::take(claimed) {
+        io.set_kind(site, 0, CLAIMED);
+    }
+    if let Some(site) = chosen {
+        io.set_kind(site, CLAIMED, 0);
+        claimed.push(site);
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::ai::AIState;
     use crate::ai_records::KEPT_STATE as KEPT;
     use crate::ai_records::{ClassRecords, SystemInputs};
     use crate::world::{BuildableClass, ManufacturingFacilityInstance, Sector, System};
 
-    struct Fixture {
-        world: GameWorld,
-        sector: SectorKey,
-        /// An Alliance system with an idle construction yard.
-        yard: SystemKey,
-        /// An Alliance system with nothing built.
-        empty: SystemKey,
+    /// Module 1's view of the shared steps, as the tests name them.
+    impl Module1 {
+        fn scrap_at_target(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {
+            scrap_at(io, self.target.system())
+        }
+
+        fn wanted(&self, io: &Inputs<'_>) -> i32 {
+            wanted(io, &self.sites, PERCENT)
+        }
+
+        fn yard_class(&mut self, io: &mut Inputs<'_>) -> i32 {
+            let maintenance;
+            (self.class, maintenance) = yard_class(io);
+            maintenance
+        }
+
+        fn scrap_spare_yard(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {
+            scrap_spare_yard(io, &mut self.sites, &mut self.target, MARK_MINES)
+        }
+
+        fn build(&self, io: &Inputs<'_>) -> Option<AIAction> {
+            build(io, self.yard, self.class, self.count)
+        }
+
+        fn adopt_or_request(&mut self, io: &mut Inputs<'_>) {
+            self.target = adopt_or_request(
+                io,
+                &mut self.sites,
+                &mut self.class,
+                MARK_MINES,
+                YARD_TOKEN,
+                PERCENT,
+            );
+        }
+
+        fn claim(&mut self, io: &mut Inputs<'_>) {
+            claim(io, &self.sites, &mut self.claimed);
+        }
     }
 
-    fn system(world: &mut GameWorld, sector: SectorKey, x: u16) -> SystemKey {
+    pub(crate) struct Fixture {
+        pub(crate) world: GameWorld,
+        pub(crate) sector: SectorKey,
+        /// An Alliance system with an idle construction yard.
+        pub(crate) yard: SystemKey,
+        /// An Alliance system with nothing built.
+        pub(crate) empty: SystemKey,
+    }
+
+    pub(crate) fn system(world: &mut GameWorld, sector: SectorKey, x: u16) -> SystemKey {
         world.systems.insert(System {
             dat_id: DatId::new(0x9000_0001),
             name: "System".into(),
@@ -1003,7 +1080,13 @@ mod tests {
         })
     }
 
-    fn class(world: &mut GameWorld, raw: u32, maintenance: u32, rate: u32, order: u32) -> DatId {
+    pub(crate) fn class(
+        world: &mut GameWorld,
+        raw: u32,
+        maintenance: u32,
+        rate: u32,
+        order: u32,
+    ) -> DatId {
         let id = DatId::new(raw);
         world.buildable_classes.insert(
             id,
@@ -1020,7 +1103,7 @@ mod tests {
         id
     }
 
-    fn add_yard(world: &mut GameWorld, at: SystemKey, class: DatId, side: Faction) {
+    pub(crate) fn add_yard(world: &mut GameWorld, at: SystemKey, class: DatId, side: Faction) {
         let key = world
             .manufacturing_facilities
             .insert(ManufacturingFacilityInstance {
@@ -1031,7 +1114,7 @@ mod tests {
         world.systems[at].manufacturing_facilities.push(key);
     }
 
-    fn fixture() -> Fixture {
+    pub(crate) fn fixture() -> Fixture {
         let mut world = GameWorld::default();
         let sector = world.sectors.insert(Sector {
             dat_id: DatId::new(0x8000_0001),
@@ -1055,7 +1138,7 @@ mod tests {
         }
     }
 
-    fn records_of(f: &Fixture, state: &AIState) -> Galaxy {
+    pub(crate) fn records_of(f: &Fixture, state: &AIState) -> Galaxy {
         let classes = ClassRecords::build(&f.world);
         let fleets = HashMap::new();
         let economy = crate::economy::EconomyState::default();
@@ -1104,7 +1187,7 @@ mod tests {
 
     /// Capacity 1000, requirement 0: 4% of it is 40, so 30 beyond the
     /// yard's own 10 (`FUN_004dd050`).
-    const ROOMY: Tallies = Tallies {
+    pub(crate) const ROOMY: Tallies = Tallies {
         mines: 0,
         refineries: 0,
         capacity: 1000,
@@ -1417,7 +1500,10 @@ mod tests {
         run(&mut state.module1, &mut io)
     }
 
-    fn record(galaxy: &mut Galaxy, system: SystemKey) -> &mut crate::ai_records::SystemRecord {
+    pub(crate) fn record(
+        galaxy: &mut Galaxy,
+        system: SystemKey,
+    ) -> &mut crate::ai_records::SystemRecord {
         galaxy
             .sectors
             .iter_mut()

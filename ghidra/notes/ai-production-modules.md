@@ -231,6 +231,143 @@ complete, `+0x38 = 0`, `+0x3c = 0`, `+0x34 = 0`.
 The nearest-site queries are ported (`ai-galaxy-records.md`, "By
 distance"); order 2 with `FUN_004357b0`'s pick gives the nearest.
 
+## Module 2 (`FUN_004e1e50`, step `FUN_004e2120`)
+
+Read in full 2026-10-15, the queries' arguments checked in assembly.
+Module 2 keeps its own sites (marked `0x1000000`) and builds a mine or a
+refinery at a time with them, or more construction yards. Half of its
+functions are module 1's with the fields moved: the assembly matches
+instruction for instruction except for the offsets, marks and token
+(`FUN_004e3a40` = `FUN_004db820` on `+0x48`; `FUN_004e4020` =
+`FUN_004dbe70`; `FUN_004e4300` = `FUN_004dc9f0` with the target as an
+argument; `FUN_004e4440` = `FUN_004dcb30` without its class check;
+`FUN_004e4540` = `FUN_004dcc40`; `FUN_004e4950` = `FUN_004dd050`;
+`FUN_004e4a20` = `FUN_004dd120`).
+
+### Fields
+
+The constructor sets `+0x24 = 3` (the percent of the capacity it wants in
+construction yards) and clears `+0x38`, `+0x3c`, `+0x54`, `+0x58`,
+`+0x5c`.
+
+| Field | Meaning |
+|---|---|
+| `+0x38` | 0, or the cycle: `0x3ea` mine, `0x3eb` refinery, `0x3ec` yards |
+| `+0x3c` | the cycle's state |
+| `+0x40` | the mine site |
+| `+0x44` | the refinery site |
+| `+0x48` | the target |
+| `+0x4c` | the yard: a site, then its construction manager |
+| `+0x50` | the class to build |
+| `+0x54` | how many |
+| `+0x58` | the borrowed yard's construction yards |
+| `+0x5c` | the target's free room `v[0x33]` |
+| `+0x60` | the sites, marked `0x1000000` |
+| `+0x68` | the claimed sites (record `+0x30` bit `0x10000000`) |
+
+### The step (`FUN_004e2120`)
+
+1. Not ready: clear `+0x38`, `+0x3c`; complete.
+2. `+0x38 == 0`: `FUN_004e21d0` keeps a site. Success: `+0x38 =
+   0x3eb` when controller `+0x1d4 <= +0x1d0` (refineries no more than
+   mines), else `0x3ea`. Failure: `+0x38 = 0x3ec`. Neither completes.
+3. `0x3ea`, `0x3eb`: `FUN_004e25c0`; `0x3ec`: `FUN_004e2400`; any other
+   value: clear `+0x38`.
+
+**`FUN_004e21d0`** walks `+0x60` into `+0x4c`:
+- a site that is not a system, or has no record, leaves;
+- one not the side's (`+0x30` bit 1) or that lost its mark `0x1000000`
+  drops the mark (dirty) and leaves;
+- the first with construction yards (`v[6] > 0`), an idle one (`+0x28`
+  bit `0x800`) and calm (`& 3 == 0`) is taken; others stay.
+
+Then `+0x4c` becomes the side's construction manager there. Success needs
+one; otherwise `+0x4c` is cleared.
+
+### The mine and refinery cycle (`FUN_004e25c0`), by `+0x3c`
+
+The site is `+0x44` for `0x3eb`, `+0x40` for `0x3ea`.
+
+| State | Action |
+|---|---|
+| other | `+0x3c = 1`. |
+| 1 | `FUN_004e2760`: 2 when it finds a system over budget, else 3. |
+| 2 | `FUN_004e2940`: a Scrap order or none; with one, complete and `+0x34 += 1`. Go to 3. |
+| 3 | `FUN_004e2f10` (refinery) or `FUN_004e2c70` (mine): a site; go to 4. None: end. |
+| 4 | `FUN_004e31b0(site)`: a Scrap order or none (as state 2). Go to 8. |
+| 8 | `FUN_004e4300(site)`: Destination; with one, `+0x3c = 9`, complete, `+0x34 += 1`. None: end. |
+| 9 | `+0x50` = `0x2d000002` (refinery) or `0x2c000001` (mine), `+0x54 = 1`, `FUN_004e4440`: Build. End. |
+
+End: `+0x3c = 0`, `+0x38 = 0`, complete.
+
+**`FUN_004e2760`**, only when the capacity `+0x184` is below the
+requirement `+0x188`: sectors by `+0x24` bits `0xe0`, keys `0x15`, `0x11`,
+`0x13` (order 1), picked into `+0x48`; its systems with `+0x30` bit 1,
+forbidding `+0x28` `0x3e00000`, keys 6, 4, 5 (order 1), picked into
+`+0x48`. A system there gives 0 (state 2), anything else 1.
+
+**`FUN_004e2940`**, at a system `+0x48` with a record: the side's first
+shipyard (`FUN_0052cab0`), else its first training facility
+(`FUN_0052c740`), else its first construction yard (`FUN_0052c420`). One
+member gives a Scrap order.
+
+**`FUN_004e2c70` (mine)**: keep `+0x40` when it is a calm system with
+`+0x28` bit `0x80`. Otherwise the sector nearest the yard `+0x4c` with
+`+0x24` bit `0x100` (`FUN_00419b80`, order 2), then its nearest system
+with `+0x28` bit `0x80`, forbidding 3 (`FUN_0041a400`, order 2); failing
+that, sector bit `0x800` and system bit `0x40`. Success: `+0x40` is a
+system. **`FUN_004e2f10` (refinery)** is the same on `+0x44` with bits
+`0x100` (kept), sector `0x200` then system `0x100`, and sector `0x400`
+then system `0x20`.
+
+**`FUN_004e31b0(site)`**, at a system with a record: every shipyard unless
+the site is marked `0x200000`, every training facility unless
+`0x400000`, every construction yard unless `0x3800000`. A team gives a
+Scrap order.
+
+### The yard cycle (`FUN_004e2400`), by `+0x3c`
+
+| State | Action |
+|---|---|
+| other | `+0x3c = 1`. |
+| 1, 2 | As in the other cycle. |
+| 3 | `FUN_004e3530` chooses the target: go to 7. None: end. |
+| 4 | `FUN_004e3a40` (module 1's state 3 on `+0x48`): a Scrap order or none. Go to 5. |
+| 5 | `+0x3c` = `FUN_004e3f80` (8, 6 or 0); 0 ends. |
+| 6 | `FUN_004e4020` (module 1's state 5): a Scrap order or none. End. |
+| 7 | Clear controller `+8` bit `0x40`. With `+0xc == 0x40` and `FUN_004e3810`: `FUN_004199b0`, go to 4. Else go to 10. |
+| 8 | `FUN_004e4300(+0x48)`: as in the other cycle. |
+| 9 | `FUN_004e4440`: Build. End. |
+| 10 | `FUN_004e4540` (module 1's state 10, mark `0x1000000`, request `0x40`), then `FUN_004e4a20` (module 1's `FUN_004dd120`). End. |
+
+**`FUN_004e3530`** clears `+0x48` and `+0x5c` and takes from `+0x60` the
+own, calm site with room `v[0x33] > 0` and the fewest construction yards
+(below 1000): `+0x5c = v[0x33]`. With none: sectors by `+0x24` bit `0x80`,
+key `0x15` (order 1) and key 4 (order 2), picked; their systems with
+`+0x30` bit 1, forbidding `+0x28` `0x3800003` and `+0x30` `0x40000000`,
+key 6, and key `0x33` too when `+0x60` is not empty (order 1), picked.
+Success means a system. One with a record joins `+0x60` and gets the
+mark `0x1000000` (the other marks are not cleared).
+
+**`FUN_004e3810`** borrows module 1's yard nearest the target: the
+sector nearest `+0x48` with `+0x24` bit `0x1000` (a calm system with
+module 1's mark and an idle construction yard; `FUN_00419b80`, order 2),
+then its system with `+0x28` bits `0x800800`, `+0x30` bit 1, forbidding
+`+0x28` 3, key 6 (order 1). With a record and a manager there: `+0x58 =
+v[6]`, less one when above 1, and `+0x4c` = the manager. Success then
+adds the target to `+0x60` (unless listed) and marks it `0x1000000`.
+
+**`FUN_004e3f80`**: `+0x54 = 0`; `w` = `FUN_004e4950` (3% of the
+capacity less the sites' `v[36]`, 0 when unaffordable):
+- `w < 0`: 6; `w == 0`: 0;
+- `w > 0`: the construction yard class (`FUN_0041b230`, as module 1) into
+  `+0x50`; `+0x54 = w / m`. When positive it is capped by `+0x58` and by
+  `min(v[15], +0x5c)` of the target's record, and the result is 8 (even
+  if the cap makes it 0). Otherwise 0.
+
+So state 6 is reachable here, unlike module 1's state 5. A target found
+by query leaves `+0x5c` at 0, so its Build asks for 0 yards.
+
 ### The scheduler, read again (`FUN_00485b40`)
 
 Phase 3 steps the current module (`+0x80`). A returned order is
@@ -272,3 +409,26 @@ construction yards on day 1 (Destination, then Build). From then on its
 sites' yards stay busy with the heuristics' queues or blockaded, so no
 site is idle and the cycle waits. The original waits under the same
 conditions.
+
+### Module 2 ported (2026-10-15)
+
+`crates/rebellion-core/src/ai_module2.rs`, save v42. `Module2` holds
+`+0x38..+0x68`, with `step` (`FUN_004e2120`) and both cycles. The steps it
+shares with module 1 are free functions in `ai_module1.rs` that take the
+module's fields (`scrap_at`, `wanted`, `yard_class`, `scrap_spare_yard`,
+`nearest`, `destination`, `build`, `adopt_or_request`, `claim`).
+
+port:
+- The site lists `+0x58`/`+0x60` are sorted trees (`FUN_005f4f10` inserts
+  by the list's comparator, slot `+8`, and `+0x10` threads them in order);
+  both ports keep them in insertion order. The comparator is not read.
+- The pass hands the yard token on unless module 1 or 2 holds it.
+- The production heuristic's manufacturing facilities, which stood in for
+  module 2, now stand in for module `0xa` (shipyard placement).
+
+On the seed-42 campaign (dual AI, 600 days) the Empire's module 2 scraps
+one manufacturing facility on day 2, then orders a mine at Xyquine from
+Coruscant's yard (Destination, then Build). From day 215 it orders a mine
+or a refinery every 12 days from Yaga Minor's yard, at Yaga Minor,
+Coruscant, Xyquine and Sullust in turn. The Alliance's module 2 orders
+nothing in this campaign.
