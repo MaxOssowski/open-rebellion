@@ -1869,6 +1869,16 @@ cross-runtime proof remain open
   standing in for module `0xb` boards planet squadrons onto its fleets.
   port: a planet's squadrons take no part in battle yet. Save v46; golden
   `v1:6d35df6768400d72` -> `v1:d33088556c4445a3` (`evidence/2026-10-15-planet-squadrons/`).
+- Module 7 (2026-10-15): the squadron module (`FUN_004d2ef0`, step
+  `FUN_004d3100`) is ported in `ai_module7.rs`: a planet's surplus goes to
+  a fleet with hangar room or a short system as Move `0x201`, else Scrap
+  `0x200` (`FUN_004d3170`); squadrons are built at shipyard sites for the
+  short system nearest (`FUN_004d3220`, Build `0x211`), raising the side's
+  squadron goals `+0x388..+0x390` when none is short; and shipyards are
+  built with the token 8 (`FUN_004d3350`). A squadron now travels between
+  systems on its own and takes Scrap on a planet. port: fleet record bit 8
+  and module 8's planners are not available. Save v47; golden
+  `v1:d33088556c4445a3` -> `v1:da11bf56815cc333` (`evidence/2026-10-15-ai-module-7/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

@@ -1970,6 +1970,44 @@ Some(RailAudience::side(*faction_is_alliance)),
                     transit.origin,
                 ));
             }
+            // Squadrons travelling on their own (squadrons::SquadronTransits).
+            let (squadrons_arrived, squadrons_lost) =
+                troop_transport_state.squadrons.advance(&mut world, now);
+            for transit in &squadrons_arrived {
+                let system = match transit.to {
+                    SquadronPlace::Planet(system) => Some(system),
+                    SquadronPlace::Fleet(fleet) => world.fleets.get(fleet).map(|f| f.location),
+                };
+                let Some(system) = system else { continue };
+                let name = world
+                    .systems
+                    .get(system)
+                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                let alliance = rebellion_core::squadrons::is_alliance(&world, transit.class);
+                // Notification 0xd, Unit Arrival.
+                msg_log.push(filed(
+                    GameMessage::at_system(
+                        transit.arrival_tick,
+                        format!("Squadron arrived at {name}"),
+                        MessageCategory::Mission,
+                        system,
+                    )
+                    .with_picture_if(alliance.and_then(|alliance| {
+                        pictures::arrival(pictures::Arrival::Units, pictures::reader(alliance))
+                    })),
+                    MessageRail::Fleet,
+                    alliance.map(RailAudience::side),
+                ));
+            }
+            for transit in &squadrons_lost {
+                // Event 0x303, GameObjDestroyedOnArrivalNotif.
+                msg_log.push(GameMessage::at_system(
+                    transit.arrival_tick,
+                    "Squadron lost on arrival: its destination no longer exists".to_string(),
+                    MessageCategory::Mission,
+                    transit.origin,
+                ));
+            }
 
             // Unopposed troop transports can land immediately. Contested
             // orbits retain cargo until space combat produces a winner.
@@ -6895,8 +6933,9 @@ fn apply_panel_action(
         PanelAction::MoveSquadron { class, from, to } => {
             let alliance = *player_faction == MissionFaction::Alliance;
             // port: FUN_00487c90's advisor reaction; this line stands in.
-            if let Err(error) =
-                rebellion_core::squadrons::move_squadrons(world, alliance, class, 1, from, to)
+            if let Err(error) = troop_transport_state
+                .squadrons
+                .move_squadrons(world, alliance, class, 1, from, to, clock.tick)
             {
                 msg_log.push(GameMessage::new(
                     clock.tick,
@@ -8025,9 +8064,9 @@ fn apply_ai_actions(
                 to,
             } => {
                 if let Some(alliance) = rebellion_core::squadrons::is_alliance(world, *class) {
-                    let _ = rebellion_core::squadrons::move_squadrons(
-                        world, alliance, *class, *count, *from, *to,
-                    );
+                    let _ = troop_transport_state
+                        .squadrons
+                        .move_squadrons(world, alliance, *class, *count, *from, *to, tick);
                 }
             }
             AIAction::SetDestination {

@@ -675,6 +675,16 @@ impl FleetRecord {
 /// records take it from [`SystemInputs::shield_goal`].
 pub const SHIELD_GOAL: i32 = 1;
 
+/// Side `+0x388`, `+0x38c` and `+0x390` at AI setup (`FUN_0041bd20`): the
+/// squadron goal of an own system, unmarked, marked and headquarters.
+/// Module 7 raises them (`FUN_00418240(9, 10, 11)`), so the records take
+/// them from [`SystemInputs::squadron_goals`].
+pub const SQUADRON_GOALS: [i32; 3] = [
+    side_constants::S388,
+    side_constants::S38C,
+    side_constants::S390,
+];
+
 /// The side object's constants (`FUN_0041bd20`, at AI setup): garrison and
 /// defense goals by a system's state.
 pub(crate) mod side_constants {
@@ -721,6 +731,8 @@ pub struct SystemInputs<'a> {
     pub minor_classes: i32,
     /// Side `+0x374` ([`SHIELD_GOAL`] at setup).
     pub shield_goal: i32,
+    /// Side `+0x388`, `+0x38c`, `+0x390` ([`SQUADRON_GOALS`] at setup).
+    pub squadron_goals: [i32; 3],
 }
 
 /// A system record (`FUN_00433b10`, refreshed by `FUN_00433e40`).
@@ -749,7 +761,7 @@ fn map_position(x: u16, y: u16) -> (i16, i16) {
 
 /// `FUN_0041b7b0`: the squared distance of two packed positions, the
 /// products wrapping as the original's 32-bit `imul`.
-fn squared_distance(a: (i16, i16), b: (i16, i16)) -> i32 {
+pub(crate) fn squared_distance(a: (i16, i16), b: (i16, i16)) -> i32 {
     let dx = i32::from(a.0) - i32::from(b.0);
     let dy = i32::from(a.1) - i32::from(b.1);
     dx.wrapping_mul(dx).wrapping_add(dy.wrapping_mul(dy))
@@ -1251,14 +1263,15 @@ impl SystemRecord {
                         v[21] = v[22] - v[17];
                     }
                 }
+                let [unmarked, marked, headquarters] = inputs.squadron_goals;
                 let less = if f28 & 0x8000_0000 != 0 {
-                    S390
+                    headquarters
                 } else if f28 & 0x3e0_0000 != 0 {
-                    S38C
+                    marked
                 } else if v[17] < 1 {
                     -1
                 } else {
-                    S388
+                    unmarked
                 };
                 if less < 0 {
                     v[38] = v[23];
@@ -1897,6 +1910,17 @@ impl Galaxy {
         )
     }
 
+    /// The position of the sector record holding `system`'s record: where
+    /// a walk up a system's containers stops at its sector (`FUN_00419b80`,
+    /// `FUN_0041a600`).
+    #[must_use]
+    pub fn sector_position_of(&self, system: crate::ids::SystemKey) -> Option<(i16, i16)> {
+        self.sectors
+            .iter()
+            .find(|s| s.systems.iter().any(|r| r.system == system))
+            .map(|s| s.position)
+    }
+
     /// `FUN_00419b80`: the sectors whose `+0x24`, `+0x28`, `+0x2c` pass
     /// `masks`, sorted on their squared distance (`FUN_0041b7b0`) from the
     /// sector of `origin`, the object the walk up its containers starts at
@@ -1908,11 +1932,7 @@ impl Galaxy {
         order: Order,
         coin: &mut dyn FnMut() -> bool,
     ) -> Vec<crate::ids::SectorKey> {
-        let Some(home) = self
-            .sectors
-            .iter()
-            .find(|s| s.systems.iter().any(|r| r.system == origin))
-        else {
+        let Some(home) = self.sector_position_of(origin) else {
             return Vec::new();
         };
         ranked(
@@ -1923,7 +1943,7 @@ impl Galaxy {
                         && masks[1].admits(s.state)
                         && masks[2].admits(s.summary)
                 })
-                .map(|s| (s.sector, squared_distance(home.position, s.position))),
+                .map(|s| (s.sector, squared_distance(home, s.position))),
             order,
             coin,
         )
@@ -2249,6 +2269,7 @@ mod tests {
             is_alliance,
             minor_classes,
             shield_goal: SHIELD_GOAL,
+            squadron_goals: SQUADRON_GOALS,
         };
         SystemRecord::build(&inputs, fixture.system, marks).unwrap()
     }
@@ -2452,6 +2473,7 @@ mod tests {
                 is_alliance: true,
                 minor_classes: 1,
                 shield_goal: SHIELD_GOAL,
+                squadron_goals: SQUADRON_GOALS,
             },
             fixture.system,
             0,
@@ -2619,6 +2641,7 @@ mod tests {
                 is_alliance,
                 minor_classes: 0,
                 shield_goal: SHIELD_GOAL,
+                squadron_goals: SQUADRON_GOALS,
             },
             fixture.system,
             0,
@@ -2888,6 +2911,7 @@ mod tests {
                 is_alliance: true,
                 minor_classes: 1,
                 shield_goal: SHIELD_GOAL,
+                squadron_goals: SQUADRON_GOALS,
             },
             sys,
             0,
@@ -3150,6 +3174,7 @@ mod tests {
             is_alliance: true,
             minor_classes: 0,
             shield_goal: SHIELD_GOAL,
+            squadron_goals: SQUADRON_GOALS,
         };
         let galaxy = Galaxy::build(
             &inputs,
@@ -3306,6 +3331,7 @@ mod tests {
             is_alliance: true,
             minor_classes: 0,
             shield_goal: SHIELD_GOAL,
+            squadron_goals: SQUADRON_GOALS,
         };
         let marks = HashMap::from([(other, 0x20_0000)]);
         let galaxy = Galaxy::build(

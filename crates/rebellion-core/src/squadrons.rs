@@ -13,8 +13,12 @@
 //! room: each ship's fighter capacity (`+0x26c`) less the squadrons aboard
 //! (`FUN_00500b40`, refused with status `0x14`/1).
 //!
+//! A squadron has a speed (slot `+0x34`, `FUN_00502f80`: the FIGHTSD
+//! hyperdrive), so a Move to another system sends it there on its own, as a
+//! regiment's does (`FUN_00556390`, `FUN_00556430`).
+//!
 //! port: the room is the whole fleet's, where the original fills one ship
-//! at a time; a squadron's move to another system is not ported.
+//! at a time.
 
 use std::fmt;
 
@@ -128,8 +132,6 @@ pub enum SquadronMoveError {
     IntoItself,
     /// The fleet has no room (`FUN_00500b40`, `0x14`/1).
     NoRoom,
-    /// port: a squadron's move to another system is not ported.
-    OtherSystem,
 }
 
 impl fmt::Display for SquadronMoveError {
@@ -144,7 +146,6 @@ impl fmt::Display for SquadronMoveError {
             Self::OtherSidePlanet => "the destination planet belongs to another side",
             Self::IntoItself => "the squadron is already there",
             Self::NoRoom => "the fleet has no room for fighters",
-            Self::OtherSystem => "squadrons cannot yet travel between systems",
         })
     }
 }
@@ -219,19 +220,16 @@ pub fn move_enabled(
             .any(|entry| entry.class == class && entry.count > 0)
 }
 
-/// Check a Move of `count` squadrons of `class` from `from` to `to` for the
-/// side `alliance`, as [`move_squadrons`] would, without moving them.
-///
-/// # Errors
-/// Returns why the move is refused.
-pub fn check_move(
+/// The checks of a Move of `count` squadrons of `class` from `from` to
+/// `to` for the side `alliance`, but the room.
+fn check_route(
     world: &GameWorld,
     alliance: bool,
     class: FighterKey,
     count: u32,
     from: SquadronPlace,
     to: SquadronPlace,
-) -> Result<(), SquadronMoveError> {
+) -> Result<(SystemKey, SystemKey), SquadronMoveError> {
     if from == to {
         return Err(SquadronMoveError::IntoItself);
     }
@@ -261,42 +259,192 @@ pub fn check_move(
             }
         }
     }
-    if destination != origin {
-        return Err(SquadronMoveError::OtherSystem);
-    }
-    if let SquadronPlace::Fleet(fleet) = to {
-        if fleet_room(world, fleet) < count {
-            return Err(SquadronMoveError::NoRoom);
-        }
-    }
-    Ok(())
+    Ok((origin, destination))
 }
 
-/// Move `count` squadrons of `class` from `from` to `to` within one
-/// system, for the side `alliance`. A fleet left with no ship, squadron or
-/// character disbands (`FUN_004fe630`).
+/// A squadron Move's travel to another system (`FUN_00556430`: the
+/// in-transit bit, the destination and the arrival day).
 ///
-/// # Errors
-/// Returns [`check_move`]'s refusal, and then nothing changes.
-pub fn move_squadrons(
-    world: &mut GameWorld,
-    alliance: bool,
-    class: FighterKey,
-    count: u32,
-    from: SquadronPlace,
-    to: SquadronPlace,
-) -> Result<(), SquadronMoveError> {
-    check_move(world, alliance, class, count, from, to)?;
-    if let Some(source) = entries_mut(world, from) {
-        take(source, class, count);
+/// The original moves the squadron into its new container at once and marks
+/// it en route. hyp: as for regiments and deliveries, the port holds it here
+/// and places it on arrival, so no walk of the destination sees it early.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SquadronTransit {
+    pub class: FighterKey,
+    pub count: u32,
+    /// The system it left.
+    pub origin: SystemKey,
+    /// Where it goes.
+    pub to: SquadronPlace,
+    /// The game-day it arrives.
+    pub arrival_tick: u64,
+}
+
+/// What a squadron Move did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SquadronMove {
+    /// Within one system the squadrons changed place at once.
+    Placed,
+    /// The squadrons left for another system and arrive on this day.
+    Departed(u64),
+}
+
+/// The squadrons travelling on their own, in departure order.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SquadronTransits {
+    transits: Vec<SquadronTransit>,
+}
+
+impl SquadronTransits {
+    /// The squadrons travelling, in departure order.
+    #[must_use]
+    pub fn transits(&self) -> &[SquadronTransit] {
+        &self.transits
     }
-    if let Some(target) = entries_mut(world, to) {
-        add(target, class, count);
+
+    /// The squadrons on their way to `fleet`.
+    fn incoming(&self, fleet: FleetKey) -> u32 {
+        self.transits
+            .iter()
+            .filter(|transit| transit.to == SquadronPlace::Fleet(fleet))
+            .fold(0_u32, |sum, transit| sum.saturating_add(transit.count))
     }
-    if let SquadronPlace::Fleet(fleet) = from {
-        disband_if_empty(world, fleet);
+
+    /// Check a Move of `count` squadrons of `class` from `from` to `to` for
+    /// the side `alliance`, as [`Self::move_squadrons`] would, without moving
+    /// them: the move command's validation (`FUN_00578d00`). A fleet's room
+    /// counts the squadrons on their way to it.
+    ///
+    /// # Errors
+    /// Returns why the move is refused.
+    pub fn check(
+        &self,
+        world: &GameWorld,
+        alliance: bool,
+        class: FighterKey,
+        count: u32,
+        from: SquadronPlace,
+        to: SquadronPlace,
+    ) -> Result<(), SquadronMoveError> {
+        self.checked(world, alliance, class, count, from, to)
+            .map(|_| ())
     }
-    Ok(())
+
+    /// [`Self::check`], giving the systems the squadrons leave and enter.
+    fn checked(
+        &self,
+        world: &GameWorld,
+        alliance: bool,
+        class: FighterKey,
+        count: u32,
+        from: SquadronPlace,
+        to: SquadronPlace,
+    ) -> Result<(SystemKey, SystemKey), SquadronMoveError> {
+        let systems = check_route(world, alliance, class, count, from, to)?;
+        if let SquadronPlace::Fleet(fleet) = to {
+            if fleet_room(world, fleet).saturating_sub(self.incoming(fleet)) < count {
+                return Err(SquadronMoveError::NoRoom);
+            }
+        }
+        Ok(systems)
+    }
+
+    /// Move `count` squadrons of `class` from `from` to `to` for the side
+    /// `alliance` on day `now`: within one system at once, to another
+    /// system at the class's speed (`FUN_00502f80`, `FUN_0055d8c0`). A
+    /// fleet left with no ship, squadron or character disbands
+    /// (`FUN_004fe630`).
+    ///
+    /// # Errors
+    /// Returns [`Self::check`]'s refusal, and then nothing changes.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "A Move names its side, squadrons, places and day."
+    )]
+    pub fn move_squadrons(
+        &mut self,
+        world: &mut GameWorld,
+        alliance: bool,
+        class: FighterKey,
+        count: u32,
+        from: SquadronPlace,
+        to: SquadronPlace,
+        now: u64,
+    ) -> Result<SquadronMove, SquadronMoveError> {
+        let (origin, destination) = self.checked(world, alliance, class, count, from, to)?;
+        if let Some(source) = entries_mut(world, from) {
+            take(source, class, count);
+        }
+        let moved = if origin == destination {
+            if let Some(target) = entries_mut(world, to) {
+                add(target, class, count);
+            }
+            SquadronMove::Placed
+        } else {
+            let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
+            let speed = world.fighter_classes.get(class).map_or_else(
+                || crate::movement::default_speed(world),
+                |value| crate::movement::fighter_speed(world, value),
+            );
+            let ticks = crate::movement::transit_ticks_between(
+                world,
+                position(origin),
+                position(destination),
+                speed,
+            );
+            let arrival_tick = now + u64::from(ticks);
+            self.transits.push(SquadronTransit {
+                class,
+                count,
+                origin,
+                to,
+                arrival_tick,
+            });
+            SquadronMove::Departed(arrival_tick)
+        };
+        if let SquadronPlace::Fleet(fleet) = from {
+            disband_if_empty(world, fleet);
+        }
+        Ok(moved)
+    }
+
+    /// Place every squadron whose day has come in its destination: a
+    /// planet, or a fleet wherever it is. One whose fleet is gone or whose
+    /// planet is destroyed is lost (`FUN_004fc080`). Returns the arrivals
+    /// and the losses.
+    pub fn advance(
+        &mut self,
+        world: &mut GameWorld,
+        now: u64,
+    ) -> (Vec<SquadronTransit>, Vec<SquadronTransit>) {
+        let (mut arrived, mut lost) = (Vec::new(), Vec::new());
+        let mut remaining = Vec::with_capacity(self.transits.len());
+        for transit in std::mem::take(&mut self.transits) {
+            if transit.arrival_tick > now {
+                remaining.push(transit);
+                continue;
+            }
+            let entries = match transit.to {
+                SquadronPlace::Planet(system) => world
+                    .systems
+                    .get_mut(system)
+                    .filter(|value| !value.is_destroyed)
+                    .map(|value| &mut value.fighters),
+                SquadronPlace::Fleet(fleet) => {
+                    world.fleets.get_mut(fleet).map(|value| &mut value.fighters)
+                }
+            };
+            match entries {
+                Some(entries) => {
+                    add(entries, transit.class, transit.count);
+                    arrived.push(transit);
+                }
+                None => lost.push(transit),
+            }
+        }
+        self.transits = remaining;
+        (arrived, lost)
+    }
 }
 
 /// Remove `fleet` when it holds nothing: no ship, squadron or character.
@@ -546,6 +694,29 @@ mod tests {
         }
     }
 
+    /// A Move on day 0 with no squadron travelling.
+    fn move_squadrons(
+        world: &mut GameWorld,
+        alliance: bool,
+        class: FighterKey,
+        count: u32,
+        from: SquadronPlace,
+        to: SquadronPlace,
+    ) -> Result<SquadronMove, SquadronMoveError> {
+        SquadronTransits::default().move_squadrons(world, alliance, class, count, from, to, 0)
+    }
+
+    fn check_move(
+        world: &GameWorld,
+        alliance: bool,
+        class: FighterKey,
+        count: u32,
+        from: SquadronPlace,
+        to: SquadronPlace,
+    ) -> Result<(), SquadronMoveError> {
+        SquadronTransits::default().check(world, alliance, class, count, from, to)
+    }
+
     #[test]
     fn squadrons_add_to_their_class_entry_and_leave_an_emptied_one() {
         let s = setup(0);
@@ -664,7 +835,7 @@ mod tests {
             check(&s.world, true, s.x_wing, 1, planet, planet),
             Err(SquadronMoveError::IntoItself)
         );
-        // port: no squadron travels to another system yet.
+        // FUN_00556390: a squadron travels to another system on its own.
         assert_eq!(
             check(
                 &s.world,
@@ -674,7 +845,7 @@ mod tests {
                 planet,
                 SquadronPlace::Planet(s.there)
             ),
-            Err(SquadronMoveError::OtherSystem)
+            Ok(())
         );
         // hyp: FUN_0053d430's 1/0x28 refuses a planet another side holds.
         s.world.systems[s.here].control = ControlKind::Controlled(Faction::Empire);
@@ -771,8 +942,8 @@ mod tests {
             "the fleet has no room for fighters"
         );
         assert_eq!(
-            SquadronMoveError::OtherSystem.to_string(),
-            "squadrons cannot yet travel between systems"
+            SquadronMoveError::OtherSidePlanet.to_string(),
+            "the destination planet belongs to another side"
         );
     }
 
@@ -846,6 +1017,90 @@ mod tests {
         });
         assert!(scramble(&mut s.world, s.there).is_empty());
         assert!(scramble(&mut s.world, SystemKey::default()).is_empty());
+    }
+
+    #[test]
+    fn a_squadron_sent_to_another_system_travels_and_lands_there() {
+        // FUN_00556390 / FUN_00556430: across systems the squadron leaves at
+        // once and arrives after the transit at its speed (FUN_00502f80).
+        let mut s = setup(1);
+        s.world.systems[s.there].x = 300;
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 2);
+        let mut transits = SquadronTransits::default();
+        let moved = transits
+            .move_squadrons(
+                &mut s.world,
+                true,
+                s.x_wing,
+                1,
+                SquadronPlace::Planet(s.here),
+                SquadronPlace::Planet(s.there),
+                10,
+            )
+            .unwrap();
+        let SquadronMove::Departed(day) = moved else {
+            panic!("{moved:?}");
+        };
+        let class = &s.world.fighter_classes[s.x_wing];
+        let ticks = crate::movement::transit_ticks_between(
+            &s.world,
+            (0, 0),
+            (300, 0),
+            crate::movement::fighter_speed(&s.world, class),
+        );
+        assert!(ticks > 1);
+        assert_eq!(day, 10 + u64::from(ticks));
+        assert_eq!(on_planet(&s.world, s.here, true), 1);
+        assert_eq!(on_planet(&s.world, s.there, true), 0);
+        assert_eq!(transits.transits().len(), 1);
+
+        assert_eq!(transits.advance(&mut s.world, day - 1), (vec![], vec![]));
+        let (arrived, lost) = transits.advance(&mut s.world, day);
+        assert_eq!((arrived.len(), lost.len()), (1, 0));
+        assert_eq!(on_planet(&s.world, s.there, true), 1);
+        assert!(transits.transits().is_empty());
+    }
+
+    #[test]
+    fn a_squadron_on_its_way_to_a_fleet_takes_its_room_and_boards_on_arrival() {
+        // FUN_00500b40 at the order: the room counts the squadrons on their
+        // way; the original puts the squadron in its fleet at once.
+        let mut s = setup(1);
+        s.world.systems[s.there].x = 300;
+        add(&mut s.world.systems[s.there].fighters, s.x_wing, 2);
+        let mut transits = SquadronTransits::default();
+        let (from, to) = (
+            SquadronPlace::Planet(s.there),
+            SquadronPlace::Fleet(s.fleet),
+        );
+        let SquadronMove::Departed(day) = transits
+            .move_squadrons(&mut s.world, true, s.x_wing, 1, from, to, 0)
+            .unwrap()
+        else {
+            panic!("no transit");
+        };
+        assert_eq!(
+            transits.check(&s.world, true, s.x_wing, 1, from, to),
+            Err(SquadronMoveError::NoRoom)
+        );
+        transits.advance(&mut s.world, day);
+        assert_eq!(total(&s.world.fleets[s.fleet].fighters), 1);
+
+        // A planet destroyed before the arrival loses it (FUN_004fc080).
+        transits
+            .move_squadrons(
+                &mut s.world,
+                true,
+                s.x_wing,
+                1,
+                from,
+                SquadronPlace::Planet(s.here),
+                0,
+            )
+            .unwrap();
+        s.world.systems[s.here].is_destroyed = true;
+        let (arrived, lost) = transits.advance(&mut s.world, u64::MAX);
+        assert_eq!((arrived.len(), lost.len()), (0, 1));
     }
 
     #[test]

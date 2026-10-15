@@ -1,0 +1,78 @@
+{
+  "command": "rebellion-playtest data/base --seed 42 --ticks 600 --dual-ai",
+  "orders_by_side_and_type": {
+    "Alliance Build Fighter": 1,
+    "Alliance Build ManufacturingFacility": 9,
+    "Alliance Build ProductionFacility": 14,
+    "Alliance Build Troop": 9,
+    "Alliance DispatchMission": 59,
+    "Alliance EnqueueProduction": 5,
+    "Alliance MoveFleet": 5,
+    "Alliance MoveRegiments": 5,
+    "Alliance Scrap": 7,
+    "Alliance SetDestination": 33,
+    "Empire Build Fighter": 1,
+    "Empire Build ManufacturingFacility": 3,
+    "Empire Build ProductionFacility": 19,
+    "Empire DispatchMission": 115,
+    "Empire EnqueueProduction": 4,
+    "Empire MoveFleet": 3,
+    "Empire MoveRegiments": 2,
+    "Empire Scrap": 14,
+    "Empire SetDestination": 23
+  },
+  "module7_orders": [
+    {
+      "tick": 43,
+      "side": "Empire",
+      "cost": 20,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(671088641), is_alliance: false })",
+      "system": "Coruscant",
+      "type": "Build"
+    },
+    {
+      "tick": 62,
+      "side": "Alliance",
+      "cost": 20,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(671088641), is_alliance: true })",
+      "system": "Hoth",
+      "type": "Build"
+    },
+    {
+      "tick": 91,
+      "side": "Empire",
+      "area": "Shipyard",
+      "destination": "Coruscant",
+      "system": "Yaga Minor",
+      "type": "SetDestination"
+    },
+    {
+      "tick": 91,
+      "side": "Empire",
+      "cost": 3,
+      "count": 1,
+      "kind": "Fighter(FighterKey(5v1))",
+      "system": "Yaga Minor",
+      "type": "Build"
+    },
+    {
+      "tick": 160,
+      "side": "Alliance",
+      "area": "Shipyard",
+      "destination": "Ghorman",
+      "system": "Ghorman",
+      "type": "SetDestination"
+    },
+    {
+      "tick": 160,
+      "side": "Alliance",
+      "cost": 5,
+      "count": 1,
+      "kind": "Fighter(FighterKey(3v1))",
+      "system": "Ghorman",
+      "type": "Build"
+    }
+  ]
+}

@@ -185,6 +185,11 @@ pub fn run_simulation_tick(
     // Regiments travelling on their own (FUN_00556430, event 0x387).
     let regiments = states.troop_transport.advance_transit(world, current_tick);
     integrator.apply_regiment_arrivals(world, &regiments);
+    // Squadrons travelling on their own (squadrons::SquadronTransits).
+    let _ = states
+        .troop_transport
+        .squadrons
+        .advance(world, current_tick);
 
     // ── 3. Combat ────────────────────────────────────────────────────────
     let combat_triggers: Vec<_> = world

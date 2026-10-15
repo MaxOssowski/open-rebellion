@@ -93,16 +93,21 @@ setup (`FUN_005442f0` → `FUN_005435f0`) takes the planet's squadrons.
   the planet's squadrons as above.
 - Move (`0x201`) of one squadron, from the Defenses window's Squadrons page
   or the Fleet window's Fighters tab, by the pop-up menu or a drag:
-  `squadrons::move_squadrons` boards a fleet in orbit with room, lands on
-  the planet, or passes to another fleet in the same system.
-- `AIAction::MoveSquadrons`: the production heuristic standing in for
-  module `0xb` boards the side's planet squadrons onto its fleets in orbit,
-  up to their room.
+  `SquadronTransits::move_squadrons` boards a fleet in orbit with room,
+  lands on the planet, or passes to another fleet in the same system at
+  once; to another system (since 2026-10-15, for module 7) the squadron
+  travels on its own at its FIGHTSD speed and enters its planet or fleet on
+  arrival, lost when the planet is destroyed or the fleet gone. A fleet's
+  room counts the squadrons on their way to it.
+- `AIAction::MoveSquadrons`: module 7's squadron Move
+  (`ai-production-modules.md`, "Module 7"). The production heuristic's
+  loading that stood in for it before is removed.
+- A squadron on a planet takes Scrap (`ScrapTarget::PlanetFighter`), as
+  module 7 orders it.
 
 port:
 - The room is the whole fleet's (living ships' capacity less the squadrons
   aboard), where the original fills one ship at a time.
-- A squadron's move to another system is refused.
 - Battle (2026-10-15): a battle starts where both sides are present by a
   fleet or a planet squadron (`squadrons::sides_present`). The port's
   combat is fleet against fleet, so for the battle's length each side's
@@ -111,8 +116,8 @@ port:
   (`recover`); a group neither bombards nor lands regiments. The original's
   autorouting of the loser's fleets and squadrons is not ported: the port's
   battles end when a side is destroyed or a round changes nothing.
-- A mission names squadrons aboard fleets only; Scrap and Confirmed Move
-  stay disabled for a squadron.
+- A mission names squadrons aboard fleets only; the player's Scrap and
+  Confirmed Move stay disabled for a squadron.
 - The port's seeding still puts a seed group's squadrons into a fleet, which
   may hold squadrons alone; such a fleet disbands when its last squadron
   lands.

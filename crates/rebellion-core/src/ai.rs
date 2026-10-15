@@ -194,7 +194,10 @@ fn accepts(
             count,
             from,
             to,
-        } => crate::squadrons::check_move(world, is_alliance, *class, *count, *from, *to).is_ok(),
+        } => transport
+            .squadrons
+            .check(world, is_alliance, *class, *count, *from, *to)
+            .is_ok(),
         _ => true,
     }
 }
@@ -423,6 +426,9 @@ pub struct AIState {
     pub module5: crate::ai_module5::Module5,
     /// Module 6's fields (`FUN_004dd460`).
     pub module6: crate::ai_module6::Module6,
+    /// Module 7's fields (`FUN_004d2ef0`).
+    #[serde(default)]
+    pub module7: crate::ai_module7::Module7,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -490,6 +496,7 @@ impl AIState {
             module3: crate::ai_module3::Module3::default(),
             module5: crate::ai_module5::Module5::default(),
             module6: crate::ai_module6::Module6::default(),
+            module7: crate::ai_module7::Module7::default(),
         }
     }
 
@@ -817,7 +824,7 @@ impl AISystem {
         // controller's token (FUN_004199b0: 0x80 module 1, 0x40 module 2,
         // 0x20 module 6, 0x10 module 0xa, 8 module 7, 4 module 5, 2 module
         // 0xb, 1 module 3), each passing it on once its own work allows.
-        // Only modules 1, 2, 3, 5 and 6 are ported, so a pass hands on the
+        // Only modules 1, 2, 3, 5, 6 and 7 are ported, so a pass hands on the
         // yards that an unported module holds.
         if ![
             crate::ai_module1::YARD_TOKEN,
@@ -825,6 +832,7 @@ impl AISystem {
             crate::ai_module3::YARD_TOKEN,
             crate::ai_module5::YARD_TOKEN,
             crate::ai_module6::YARD_TOKEN,
+            crate::ai_module7::YARD_TOKEN,
         ]
         .contains(&state.controller.yard_holder)
         {
@@ -874,6 +882,7 @@ impl AISystem {
                         3 => state.module3.refused(),
                         5 => state.module5.refused(),
                         6 => state.module6.refused(),
+                        7 => state.module7.refused(),
                         _ => {}
                     }
                     state.module_priority[module] = 0;
@@ -922,6 +931,7 @@ impl AISystem {
             is_alliance,
             minor_classes: minor_classes(inputs.world, is_alliance),
             shield_goal: state.controller.shield_goal,
+            squadron_goals: state.controller.squadron_goals,
         };
         crate::ai_records::Galaxy::build(
             &system_inputs,
@@ -976,7 +986,7 @@ impl AISystem {
         tallies: crate::ai_module1::Tallies,
     ) -> crate::ai_module1::Step {
         let id = MODULE_IDS[module];
-        if matches!(id, 1 | 2 | 3 | 5 | 6) {
+        if matches!(id, 1 | 2 | 3 | 5 | 6 | 7) {
             let mut coin = || planner.coin();
             let mut io = crate::ai_module1::Inputs {
                 world: ctx.world,
@@ -994,7 +1004,8 @@ impl AISystem {
                 2 => state.module2.step(&mut io),
                 3 => state.module3.step(&mut io),
                 5 => state.module5.step(&mut io),
-                _ => state.module6.step(&mut io),
+                6 => state.module6.step(&mut io),
+                _ => state.module7.step(&mut io),
             };
         }
         if state.module_pending[module].is_empty() {
@@ -1021,11 +1032,11 @@ impl AISystem {
     /// - 8: Death Star escort and fleet deployment; `0xc`: troop movement.
     ///
     /// port: the assignment of the port's heuristics to modules is a first
-    /// read (the modules' roles in the note above); modules 7, 9 and `0xe`
-    /// have no port counterpart and order nothing. Modules 1, 2, 3, 5 and
-    /// 6 are ported ([`crate::ai_module1`], [`crate::ai_module2`],
-    /// [`crate::ai_module3`], [`crate::ai_module5`],
-    /// [`crate::ai_module6`]).
+    /// read (the modules' roles in the note above); modules 9 and `0xe`
+    /// have no port counterpart and order nothing. Modules 1, 2, 3, 5, 6
+    /// and 7 are ported ([`crate::ai_module1`], [`crate::ai_module2`],
+    /// [`crate::ai_module3`], [`crate::ai_module5`], [`crate::ai_module6`],
+    /// [`crate::ai_module7`]).
     fn run_module(
         id: u8,
         state: &mut AIState,
@@ -1064,12 +1075,7 @@ impl AISystem {
                 actions,
             ),
             4 => Self::mission_step(state, planner, ctx, actions),
-            0xa | 0xb => {
-                production(actions);
-                if id == 0xb {
-                    Self::evaluate_squadron_loading(world, faction, actions);
-                }
-            }
+            0xa | 0xb => production(actions),
             8 => {
                 Self::evaluate_ds_escort(world, movement, faction, config, actions);
                 Self::evaluate_fleet_deployment(
@@ -1879,53 +1885,6 @@ impl AISystem {
     // -----------------------------------------------------------------------
     // Production heuristics
     // -----------------------------------------------------------------------
-
-    /// Board the side's squadrons on a planet onto its fleets in orbit there,
-    /// as far as each fleet's room goes ([`crate::squadrons::fleet_room`]),
-    /// one Move per class and fleet.
-    ///
-    /// port: a stand-in for module `0xb`, whose fleet orders are not read;
-    /// a built squadron now stays on its planet
-    /// (`ghidra/notes/planet-squadrons.md`), where the heuristic's fleets
-    /// used to receive it.
-    fn evaluate_squadron_loading(
-        world: &GameWorld,
-        faction: AiFaction,
-        actions: &mut Vec<AIAction>,
-    ) {
-        use crate::squadrons::SquadronPlace;
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        for (system, value) in &world.systems {
-            let mut waiting: Vec<(crate::ids::FighterKey, u32)> = value
-                .fighters
-                .iter()
-                .filter(|entry| {
-                    crate::squadrons::is_alliance(world, entry.class) == Some(is_alliance)
-                })
-                .map(|entry| (entry.class, entry.count))
-                .collect();
-            for &fleet in &value.fleets {
-                if world.fleets.get(fleet).map(|f| f.is_alliance) != Some(is_alliance) {
-                    continue;
-                }
-                let mut room = crate::squadrons::fleet_room(world, fleet);
-                for (class, left) in &mut waiting {
-                    let count = room.min(*left);
-                    if count == 0 {
-                        continue;
-                    }
-                    actions.push(AIAction::MoveSquadrons {
-                        class: *class,
-                        count,
-                        from: SquadronPlace::Planet(system),
-                        to: SquadronPlace::Fleet(fleet),
-                    });
-                    room -= count;
-                    *left -= count;
-                }
-            }
-        }
-    }
 
     /// For systems with idle manufacturing capacity, enqueue appropriate units.
     ///
@@ -7759,6 +7718,30 @@ mod tests {
         assert_eq!(state.module_cursor, None);
     }
 
+    #[test]
+    fn a_refused_module_seven_order_ends_its_cycle_and_the_tick() {
+        // FUN_00485b40 sends module 7's refused order to its slot +0x18.
+        // Module 7's squadron cycle state 0xb (FUN_004d5dd0): Destination
+        // on a shipyard manager the side lacks.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module7.phase = crate::ai_module7::SQUADRON_CYCLE;
+        state.module7.state = 0xb;
+        state.module7.destination = Some(crate::squadrons::SquadronPlace::Planet(site));
+        state.module7.yard = crate::ai_module1::Yard::Manager(site);
+        state.module_priority[5] = 5;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert!(orders.is_empty());
+        assert_eq!((state.module7.phase, state.module7.state), (0, 0));
+        assert_eq!(state.module_priority[5], 0);
+        assert_eq!(state.orders_today, 0);
+        assert_eq!(state.module_cursor, None);
+    }
+
     /// An Alliance system holding, on its planet, 3 X-wings and 2 TIEs, with
     /// an Alliance carrier fleet of room `room` and an Empire carrier.
     fn squadron_world(room: u32) -> (GameWorld, SystemKey, FleetKey, FleetKey, FighterKey) {
@@ -7796,100 +7779,6 @@ mod tests {
         crate::squadrons::add(&mut world.systems[system].fighters, x_wing, 3);
         crate::squadrons::add(&mut world.systems[system].fighters, tie, 2);
         (world, system, ours, empire, x_wing)
-    }
-
-    #[test]
-    fn the_ai_boards_its_planet_s_squadrons_onto_its_fleets_up_to_their_room() {
-        // port: module 0xb's stand-in; FUN_00500b40 gives the room.
-        use crate::squadrons::SquadronPlace;
-        let (world, system, ours, _, x_wing) = squadron_world(2);
-        let mut actions = Vec::new();
-        AISystem::evaluate_squadron_loading(&world, AiFaction::Alliance, &mut actions);
-        assert_eq!(
-            actions,
-            [AIAction::MoveSquadrons {
-                class: x_wing,
-                count: 2,
-                from: SquadronPlace::Planet(system),
-                to: SquadronPlace::Fleet(ours),
-            }]
-        );
-
-        let (world, _, _, _, _) = squadron_world(0);
-        let mut actions = Vec::new();
-        AISystem::evaluate_squadron_loading(&world, AiFaction::Alliance, &mut actions);
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn the_ai_boards_each_class_until_each_fleet_is_full() {
-        // port: module 0xb's stand-in, the room of FUN_00500b40 per fleet:
-        // 5 X-wings and 2 A-wings wait; fleets of room 2 and 4 take 2
-        // X-wings, then 3 X-wings and 1 A-wing, leaving 1 A-wing.
-        use crate::squadrons::SquadronPlace;
-        let (mut world, system, first, _, x_wing) = squadron_world(2);
-        let a_wing = world.fighter_classes.insert(FighterClass {
-            is_alliance: true,
-            ..FighterClass::default()
-        });
-        crate::squadrons::add(&mut world.systems[system].fighters, x_wing, 2);
-        crate::squadrons::add(&mut world.systems[system].fighters, a_wing, 2);
-        let mut second = world.fleets[first].clone();
-        let big = world.capital_ship_classes.insert(CapitalShipClass {
-            is_alliance: true,
-            fighter_capacity: 4,
-            ..CapitalShipClass::default()
-        });
-        second.capital_ships = vec![ShipInstance::new(big, 100, true)];
-        let second = world.fleets.insert(second);
-        world.systems[system].fleets.push(second);
-        let mut actions = Vec::new();
-        AISystem::evaluate_squadron_loading(&world, AiFaction::Alliance, &mut actions);
-        let order = |class, count, fleet| AIAction::MoveSquadrons {
-            class,
-            count,
-            from: SquadronPlace::Planet(system),
-            to: SquadronPlace::Fleet(fleet),
-        };
-        assert_eq!(
-            actions,
-            [
-                order(x_wing, 2, first),
-                order(x_wing, 3, second),
-                order(a_wing, 1, second),
-            ]
-        );
-    }
-
-    #[test]
-    fn module_0xb_boards_squadrons_and_module_0xa_does_not() {
-        // port: the production heuristic's split (production_module); the
-        // squadron loading stands in for module 0xb.
-        let (world, _, _, _, _) = squadron_world(2);
-        let (missions, research, mfg, movement, config, uprisings) = (
-            MissionState::new(),
-            ResearchState::new(),
-            ManufacturingState::new(),
-            crate::movement::MovementState::new(),
-            GameConfig::default(),
-            crate::uprising::UprisingState::default(),
-        );
-        let ctx = ModuleInputs {
-            faction: AiFaction::Alliance,
-            ..inputs(
-                &world, &missions, &research, &mfg, &movement, &config, &uprisings,
-            )
-        };
-        let busy = HashSet::new();
-        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
-        let mut state = AIState::new(AiFaction::Alliance);
-        let mut run = |id| {
-            let mut actions = Vec::new();
-            AISystem::run_module(id, &mut state, &mut planner, &ctx, &mut actions);
-            actions
-        };
-        assert!(matches!(run(0xb)[..], [AIAction::MoveSquadrons { .. }]));
-        assert!(run(0xa).is_empty());
     }
 
     #[test]
@@ -8002,19 +7891,19 @@ mod tests {
         // FUN_004be980: +0x10 steps to the next module and goes round the
         // list back to where it began.
         let world = empty_world();
-        // Index 5 (module 7): indices 1 to 4 are modules 2, 1, 3 and 6,
+        // Index 6 (module 4): indices 1 to 5 are modules 2, 1, 3, 6 and 7,
         // which run their own cycles rather than lists of decided orders.
         let order = AIAction::AbortMission { mission_id: 7 };
         let mut state = AIState::new(AiFaction::Alliance);
-        state.module_pending[5] = vec![order.clone()];
+        state.module_pending[6] = vec![order.clone()];
         state.module_cursor = Some(MODULES - 2);
 
         assert_eq!(cadence_pass(&mut state, &world), vec![order]);
-        assert_eq!(state.module_cursor, Some(5));
-        // Every module runs and orders nothing; +0x10 stops where the last
-        // search began, one past module 7.
-        assert!(cadence_pass(&mut state, &world).is_empty());
         assert_eq!(state.module_cursor, Some(6));
+        // Every module runs and orders nothing; +0x10 stops where the last
+        // search began, one past module 4.
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.module_cursor, Some(7));
     }
 
     #[test]

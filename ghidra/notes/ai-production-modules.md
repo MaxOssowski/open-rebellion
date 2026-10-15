@@ -825,6 +825,162 @@ End: `+0x3c = 0`, `+0x38 = 0x3ef`, complete.
   `+0x18`, and the strategy's `+4` bits.
 - The regiment record's slot `+0x1e0` and its keys `0x1000`, `0x2000`.
 
+## Module 7 (`FUN_004d2ef0`, step `FUN_004d3100`)
+
+Read 2026-10-15, the queries' arguments taken from the assembly and the
+shared functions compared instruction by instruction. Module 7 balances
+the side's fighter squadrons on planets: it sends a planet's surplus to a
+fleet with hangar room or a system short of squadrons, or scraps it; builds
+squadrons at its shipyard sites for systems short of them; and builds
+shipyards. Its sites carry the mark `0x200000`.
+
+The constructor sets `+0x24 = 0x11` (17) and clears `+0x38`, `+0x3c`,
+`+0x60..+0x68`.
+
+| Field | Meaning |
+|---|---|
+| `+0x38` | the cycle: `0x3f1` surplus, `0x3f2` squadrons, `0x3ec` yards |
+| `+0x50` | the source system, or the site, then its manager |
+| `+0x54` | where squadrons go: a fleet or a system |
+| `+0x58` | the yard cycle's target |
+| `+0x5c` | the class to build |
+| `+0x60` | how many |
+| `+0x64` | the site's shipyards `v[4]`, or the borrowed yard's construction yards |
+| `+0x68` | the target's free room `v[0x33]` |
+| `+0x6c` | the sites, marked `0x200000` |
+| `+0x74` | the claimed sites |
+
+### The step (`FUN_004d3100`)
+
+Not ready: clear `+0x38`, `+0x3c`; complete. `0x3ec`: `FUN_004d3350`;
+`0x3f1`: `FUN_004d3170`; `0x3f2`: `FUN_004d3220`; any other value: `+0x38
+= 0x3f1`, `+0x3c = 0`. The cycles run in turn: `0x3f1`, `0x3f2`, `0x3ec`.
+
+### The surplus cycle (`FUN_004d3170`)
+
+| State | Action |
+|---|---|
+| other | 1 |
+| 1 | `FUN_004d34c0` finds the source: 2. None: `+0x38 = 0x3f2`, `+0x3c = 0`, not complete. |
+| 2 | `FUN_004d3610` chooses the destination: 3. None: 4. |
+| 3 | `FUN_004d3a90`: a Move ends the cycle; none: 4. |
+| 4 | `FUN_004d3db0`: a Scrap or none. End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3f2`, complete.
+
+- `FUN_004d34c0`: sectors with `+0x24` `0x2000000` (a squadron surplus)
+  by key `0x22`, order 1; their systems with `+0x30` 1, forbidding
+  `+0x28` 2 and `+0x30` `0x40000`, by key `0x35`, order 1, into `+0x50`.
+  Found when `v[53] > 0`.
+- `FUN_004d3610`, into `+0x54`: the fleet records with `0x100009`,
+  forbidding 2, by distance from the source's sector (`FUN_0041a600`,
+  order 2) merged with the same by key `0x17` (hangar room, `FUN_0041a4c0`,
+  order 1); failing that the same with `0x100005`; failing that the sector
+  nearest the source with `0x10000000` and its system with `+0x28`
+  `0x140000`, `+0x30` 1, forbidding 2, by key `0x26` (order 2); failing
+  that module 8's sector planners (`FUN_00419e90`, `FUN_00476f90`). Fleet
+  record bit 8 has no writer found; 4 is the constructor's; `0x100000` is
+  hangar room left (`v[23] > 0`).
+- `FUN_004d3a90`: how many: a system's `-v[38]`, a fleet's hangar room
+  (record `+0xac`), at most the source's `v[53]`. The loop takes the
+  squadron with the lowest slot `+0x1f4` (`FUN_005031e0`: slot `+0x244`,
+  the fighters left, times `FUN_005574f0`) among the source's squadrons
+  (`FUN_005039d0` mode 1) on each pass, without leaving out the one taken
+  (no `FUN_004f5940` check, unlike module 6), so the team holds one
+  squadron. A team gives Move `0x201` to `+0x54`.
+- `FUN_004d3db0`: the same team, while the source's `v[38] > 0`, as Scrap
+  `0x200`.
+
+### The squadron cycle (`FUN_004d3220`)
+
+| State | Action |
+|---|---|
+| other | 5 |
+| 5 | `FUN_004d3ff0` keeps a site: 2. None: 10. |
+| 2 | `FUN_004d4370` chooses the system: 6. None: 10. |
+| 6 | `+0x3c` = `FUN_004d46e0` (`0xb`, 7 or 0); 0: `+0x38 = 0x3ec`, complete. |
+| 10 | `FUN_004d47b0`: over budget: 7. Else `+0x38 = 0x3ec`, `+0x3c = 0`, not complete. |
+| 7 | `FUN_004d4800`: a Move or Scrap. End. |
+| `0xb` | `FUN_004d5dd0(+0x54)`: Destination on the shipyard manager (`0xa2..0xa4`); with one, `0xc`, complete, raise. None: end. |
+| `0xc` | `FUN_004d5f10`: Build `0x211`, class `+0x5c`, count `+0x60`. End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3ec`, complete.
+
+- `FUN_004d3ff0` is module 2's `FUN_004e21d0` on `+0x6c` with the mark
+  `0x200000`, the idle bit `0x200` and `v[4]` into `+0x64`, falling back
+  on controller `+0x20`, then `+0x24`; the manager is the shipyard's
+  (`FUN_00509670(0)`).
+- `FUN_004d4370`, from the site: the sector nearest it with `0x4000000`
+  and its system with `+0x28` `0x40000`, `+0x30` 1, forbidding
+  `0x4000003`, by key `0x26` (order 2); failing that sector `0x40000000`,
+  then `0x1000000`, with systems forbidding 3. Found when `v[38] < 0`.
+  With no system and `FUN_004d66a0 > 0` it raises side `+0x388`, `+0x38c`
+  and `+0x390` by one (`FUN_00418240(9, 10, 11)`, no limit) and marks the
+  records dirty.
+- `FUN_004d46e0`: `w` = `FUN_004d66a0`; `w < 0` gives 7, `w == 0` 0. Else
+  `+0x60 = -v[38]` and the class by `FUN_0041b230(&+0x5c, 0x28, 0x200000,
+  key, order)`: key 1 (maintenance), order 2 for a system with no
+  `0x83e00000`; key `0x400` (`+0x34`, `FUN_00473640`), order 1 otherwise.
+  When `m * count > w`, `count = w / m`; capped by `+0x64`; `0xb`.
+- `FUN_004d66a0`: 80% of `+0x24` percent of the capacity, less controller
+  `+0x1e0` (the sector records' `+0x104`, own systems' `v[32]`); 0 when
+  the free maintenance falls short. `FUN_004d47b0`: 90% of it, less
+  `+0x1e0`, below 0.
+- `FUN_004d4800`: the source (`+0x50`): sectors `0x2000000` by key `0x22`
+  and systems `+0x30` 1, forbidding `+0x30` `0x40000`, by key `0x35`
+  (order 1); failing that sectors `0x8000000`, forbidding `0x40000000`, by
+  key `0x19`, systems `+0x28` `0x80000`, forbidding `0x80000000` and
+  `+0x30` `0x40000`, by key `0x17` (order 2); failing that the same
+  without the forbidden bits. The weakest squadron as in `FUN_004d3a90`;
+  the destination as in `FUN_004d3610` but for the short system; a fleet
+  gives Move `0x201`, else Scrap `0x200`. No source gives no order.
+
+### The yard cycle (`FUN_004d3350`)
+
+Module 6's yard cycle (`FUN_004dda00`) for shipyards, renumbered: the
+token is 8; the borrow is module 2's (`FUN_004d52e0` = `FUN_004e3810`,
+clearing `+0x64` first, adding the target as a site with `0x200000`); the
+plan gives `0xb`, 9 or 0.
+
+| State | Action |
+|---|---|
+| other | 2 |
+| 2 | `FUN_004d5000` (`FUN_004dfcf0`: sector `0x20` key `0x11`, systems forbidding `0x200003` key 4) chooses the target `+0x58`: 5. None: end. |
+| 5 | Clear controller `+8` bit 8; with `+0xc == 8` and `FUN_004d52e0`: `FUN_004199b0`, 8. Else `0xd`. |
+| 8 | `FUN_004d5510`: a Scrap or none (complete and raise with one). 6. |
+| 6 | `+0x3c` = `FUN_004d5a50` (`0xb`, 9 or 0); 0: `+0x38 = 0x3f1`, complete. |
+| 9 | `FUN_004d5af0`: a Scrap or none. End. |
+| `0xb` | `FUN_004d6030(+0x58)`: Destination; `0xc`. |
+| `0xc` | `FUN_004d6170`: Build. End. |
+| `0xd` | `FUN_004d6290` (adopt or request bit 8; sector `+0xb4`, upkeep `v[34]`), `FUN_004d67e0` (claim). End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3f1`, complete.
+
+- `FUN_004d5510`: training facilities unless `0x400000`, construction
+  yards unless `0x3800000`, Death Star shields, then module 1's refinery
+  or mine; never shipyards.
+- `FUN_004d5a50`: the shipyard class (`0x4000`); `FUN_004d6700`: 20% of
+  `+0x24` percent of the capacity, less the sites' `v[34]`.
+
+### Module 7 ported (2026-10-15)
+
+`crates/rebellion-core/src/ai_module7.rs`. Save v47.
+- The squadron Move is `AIAction::MoveSquadrons`; across systems a
+  squadron travels on its own (`squadrons::SquadronTransits`, in
+  `TroopTransportState`), at its FIGHTSD speed (`FUN_00502f80`).
+- A squadron on a planet takes Scrap (`ScrapTarget::PlanetFighter`).
+- Side `+0x388..+0x390` are `Controller::squadron_goals`, read by the
+  system records.
+- The shared yard steps take `YardKind::SHIPYARD`; `scrap_at` spares two
+  families per kind.
+- The heuristic's squadron loading is removed: the surplus cycle sends a
+  planet's squadrons onto fleets.
+
+port: fleet record bit 8 is never set, so the first fleet query finds
+none; module 8's planners are not ported; the fallbacks controller `+0x20`
+and `+0x24` have no counterpart; every squadron is at full strength, so
+the weakest is the smallest class.
+
 ### The scheduler, read again (`FUN_00485b40`)
 
 Phase 3 steps the current module (`+0x80`). A returned order is

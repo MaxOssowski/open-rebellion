@@ -2120,10 +2120,10 @@ fn apply_ai_actions_inner(
                 from,
                 to,
             } => rebellion_core::squadrons::is_alliance(world, *class).is_some_and(|alliance| {
-                rebellion_core::squadrons::move_squadrons(
-                    world, alliance, *class, *count, *from, *to,
-                )
-                .is_ok()
+                troop_transport
+                    .squadrons
+                    .move_squadrons(world, alliance, *class, *count, *from, *to, tick)
+                    .is_ok()
             }),
             AIAction::SetDestination {
                 system,

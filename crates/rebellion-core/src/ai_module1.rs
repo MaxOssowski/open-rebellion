@@ -104,6 +104,11 @@ pub struct Controller {
     /// ([`crate::ai_records::SHIELD_GOAL`] at setup), which module 3 raises
     /// (`FUN_00418240(4)`).
     pub shield_goal: i32,
+    /// `+0x388`, `+0x38c`, `+0x390`: the squadron goals of an own system's
+    /// record, unmarked, marked and headquarters
+    /// ([`crate::ai_records::SQUADRON_GOALS`] at setup), which module 7
+    /// raises (`FUN_00418240(9, 10, 11)`).
+    pub squadron_goals: [i32; 3],
 }
 
 impl Default for Controller {
@@ -115,6 +120,7 @@ impl Default for Controller {
             yard_next: 0x40,
             flags: 0,
             shield_goal: crate::ai_records::SHIELD_GOAL,
+            squadron_goals: crate::ai_records::SQUADRON_GOALS,
         }
     }
 }
@@ -170,6 +176,9 @@ pub struct Tallies {
     /// `+0x1d8`: the regiments' maintenance on the side's planets (the
     /// sector records' `+0xfc`, own systems' `v[30]`; `FUN_0041b7e0`).
     pub regiment_upkeep: i32,
+    /// `+0x1e0`: the squadrons' maintenance on the side's planets (the
+    /// sector records' `+0x104`, own systems' `v[32]`; `FUN_0041b7e0`).
+    pub squadron_upkeep: i32,
     /// `+0x250`: the regiments' maintenance aboard the side's fleets (the
     /// own fleet records' `values[15]`, `FUN_0041ba80`).
     pub cargo_upkeep: i32,
@@ -205,6 +214,7 @@ impl Tallies {
                 .fold(0, i32::max),
             special_ready: [0; 4],
             regiment_upkeep: sum(0xfc),
+            squadron_upkeep: sum(0x104),
             cargo_upkeep: galaxy
                 .fleets
                 .values()
@@ -800,9 +810,9 @@ pub(crate) struct YardKind {
     pub upkeep: usize,
     /// Their class record flag ([`CLASS_CONSTRUCTION`], `CLASS_TRAINING`).
     pub class_flags: u32,
-    /// The other yard family a target scrap takes unless marked, with the
-    /// mark that spares it.
-    pub spared: (u8, u32),
+    /// The other yard families a target scrap takes unless marked, each
+    /// with the mark that spares it, in the scrap's order.
+    pub spared: [(u8, u32); 2],
     /// The sector candidate bit (`+0x24`) and key of the adoption query.
     pub sector_bit: u32,
     pub sector_key: usize,
@@ -825,7 +835,7 @@ pub(crate) const CONSTRUCTION: YardKind = YardKind {
     count: 6,
     upkeep: 36,
     class_flags: CLASS_CONSTRUCTION,
-    spared: (0x29, 0x40_0000),
+    spared: [(0x28, 0x20_0000), (0x29, 0x40_0000)],
     sector_bit: 0x80,
     sector_key: 0x15,
     sector_yards: 0xc4,
@@ -842,7 +852,7 @@ pub(crate) const TRAINING: YardKind = YardKind {
     count: 5,
     upkeep: 35,
     class_flags: crate::ai_records::CLASS_TRAINING,
-    spared: (0x2a, 0x380_0000),
+    spared: [(0x28, 0x20_0000), (0x2a, 0x380_0000)],
     sector_bit: 0x40,
     sector_key: 0x13,
     sector_yards: 0xbc,
@@ -850,6 +860,22 @@ pub(crate) const TRAINING: YardKind = YardKind {
     system_key: 5,
     few_sites_only: true,
     idle: 0x400,
+};
+
+/// Shipyards (module 7; `FUN_004d5510`, `FUN_004d6290`, `FUN_004d67e0`).
+pub(crate) const SHIPYARD: YardKind = YardKind {
+    family: 0x28,
+    count: 4,
+    upkeep: 34,
+    class_flags: crate::ai_records::CLASS_SHIPYARD,
+    spared: [(0x29, 0x40_0000), (0x2a, 0x380_0000)],
+    sector_bit: 0x20,
+    sector_key: 0x11,
+    sector_yards: 0xb4,
+    forbid: 0x20_0003,
+    system_key: 4,
+    few_sites_only: false,
+    idle: 0x200,
 };
 
 /// The class record value a class choice ranks on (slot `+4`:
@@ -864,7 +890,9 @@ pub(crate) enum ClassKey {
 
 /// Module 1's state 3 (`FUN_004db820`; module 2's `FUN_004e3a40` on
 /// `+0x48`; module 5's `FUN_004d0d30`, sparing construction yards rather
-/// than training facilities): scrap what stands in the way at the target.
+/// than training facilities; module 7's `FUN_004d5510`, sparing training
+/// facilities and construction yards): scrap what stands in the way at the
+/// target.
 pub(crate) fn scrap_at(
     io: &mut Inputs<'_>,
     target: Option<SystemKey>,
@@ -873,12 +901,10 @@ pub(crate) fn scrap_at(
     let target = target?;
     let r = io.galaxy.system(target).copied()?;
     let mut team = Vec::new();
-    if r.state & 0x20_0000 == 0 {
-        team.extend(io.facilities(target, 0x28));
-    }
-    let (family, mark) = kind.spared;
-    if r.state & mark == 0 {
-        team.extend(io.facilities(target, family));
+    for (family, mark) in kind.spared {
+        if r.state & mark == 0 {
+            team.extend(io.facilities(target, family));
+        }
     }
     team.extend(io.facilities(target, 0x25));
     if r.values[15] == 0 && team.is_empty() {
@@ -1354,6 +1380,7 @@ pub(crate) mod tests {
             is_alliance: true,
             minor_classes: 0,
             shield_goal: SHIELD_GOAL,
+            squadron_goals: crate::ai_records::SQUADRON_GOALS,
         };
         Galaxy::build(
             &inputs,
@@ -1395,6 +1422,7 @@ pub(crate) mod tests {
         special_goal: 0,
         special_ready: [0; 4],
         regiment_upkeep: 0,
+        squadron_upkeep: 0,
         cargo_upkeep: 0,
         sector_short: false,
     };
@@ -2380,6 +2408,7 @@ pub(crate) mod tests {
                 special_goal: 0,
                 special_ready: [0; 4],
                 regiment_upkeep: 0,
+                squadron_upkeep: 0,
                 cargo_upkeep: 0,
                 sector_short: false,
             }

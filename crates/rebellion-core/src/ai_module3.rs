@@ -1070,6 +1070,7 @@ mod tests {
                 is_alliance: true,
                 minor_classes: 0,
                 shield_goal,
+                squadron_goals: crate::ai_records::SQUADRON_GOALS,
             };
             let r = SystemRecord::build(&inputs, f.empty, MARK_MINES).unwrap();
             (r.values[1], r.values[9])

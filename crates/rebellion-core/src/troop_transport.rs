@@ -33,6 +33,9 @@ pub struct TroopTransportState {
     held: Vec<FleetKey>,
     /// Regiments travelling on their own, in departure order.
     transit: Vec<RegimentTransit>,
+    /// Squadrons travelling on their own ([`crate::squadrons`]).
+    #[serde(default)]
+    pub squadrons: crate::squadrons::SquadronTransits,
 }
 
 /// Where a regiment's Move is released: the drop window's `+0x70` object

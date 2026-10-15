@@ -19,15 +19,23 @@ use crate::world::{FacilityRef, GameWorld};
 /// (`FUN_00534c00`).
 pub const SCRAP_REASON: u8 = 0x14;
 
-/// What a Scrap order names: the facilities and the regiments on a planet.
+/// What a Scrap order names: the facilities, the regiments and the
+/// squadrons on a planet.
 ///
-/// port: ships, fighter squadrons, fleets and regiments aboard a fleet
-/// take Scrap in the original (`FUN_005575f0`, `FUN_004fdbc0`) but are not
-/// ported yet.
+/// port: ships, squadrons aboard a fleet, fleets and regiments aboard a
+/// fleet take Scrap in the original (`FUN_005575f0`, `FUN_004fdbc0`) but
+/// are not ported yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScrapTarget {
     Facility(FacilityRef),
     Troop(TroopKey),
+    /// One squadron of `class` on `system`'s planet (squadron vtable
+    /// `0x0065def0` slot `+0x5c`, `FUN_005575f0`). port: squadrons are
+    /// counts per class.
+    PlanetFighter {
+        system: SystemKey,
+        class: crate::ids::FighterKey,
+    },
 }
 
 /// Why a Scrap order is refused: the second word of the status pair.
@@ -109,6 +117,14 @@ fn resolve(world: &GameWorld, target: ScrapTarget) -> Option<(SystemKey, Faction
             };
             (system, side, t.class_dat_id)
         }
+        ScrapTarget::PlanetFighter { system, class } => {
+            let fighters = &world.systems.get(system)?.fighters;
+            if !fighters.iter().any(|e| e.class == class && e.count > 0) {
+                return None;
+            }
+            let c = world.fighter_classes.get(class)?;
+            (system, Faction::of_alliance(c.is_alliance), c.dat_id)
+        }
     };
     Some((system, side, class))
 }
@@ -161,7 +177,14 @@ pub fn scrap(
 ) -> Result<Scrapped, ScrapRefusal> {
     check(world, side, target)?;
     let (system, owner, class) = resolve(world, target).ok_or(ScrapRefusal::Unresolved)?;
-    let refund = refined_cost(world, class) / 2;
+    let refund = match target {
+        ScrapTarget::PlanetFighter { class, .. } => {
+            world.fighter_classes.get(class).map_or(0, |c| {
+                i32::try_from(c.refined_material_cost).unwrap_or(i32::MAX)
+            }) / 2
+        }
+        _ => refined_cost(world, class) / 2,
+    };
     match target {
         ScrapTarget::Facility(facility) => world.remove_facility(system, facility),
         ScrapTarget::Troop(key) => {
@@ -169,6 +192,11 @@ pub fn scrap(
                 sys.ground_units.retain(|&k| k != key);
             }
             world.troops.remove(key);
+        }
+        ScrapTarget::PlanetFighter { class, .. } => {
+            if let Some(sys) = world.systems.get_mut(system) {
+                crate::squadrons::take(&mut sys.fighters, class, 1);
+            }
         }
     }
     if let Some(stock) = production.stock_mut(owner) {
@@ -288,6 +316,61 @@ mod tests {
         assert!(f.world.systems[f.system].production_facilities.is_empty());
         assert_eq!(production.stock(Faction::Alliance).unwrap().refined, 5);
         assert_eq!(production.stock(Faction::Empire).unwrap().refined, 0);
+    }
+
+    #[test]
+    fn a_squadron_on_a_planet_is_scrapped_one_at_a_time() {
+        // The squadron's check is FUN_005575f0 (slot +0x5c, the object
+        // check FUN_004f9860); FUN_00530270 refunds +0x48 / 2 = 9 / 2 = 4.
+        let mut f = fixture();
+        let x_wing = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            refined_material_cost: 9,
+            ..Default::default()
+        });
+        crate::squadrons::add(&mut f.world.systems[f.system].fighters, x_wing, 2);
+        let target = ScrapTarget::PlanetFighter {
+            system: f.system,
+            class: x_wing,
+        };
+        let mut production = ProductionState::new();
+
+        assert_eq!(
+            check(&f.world, Faction::Empire, target),
+            Err(ScrapRefusal::NotOwnSide)
+        );
+        let done = scrap(&mut f.world, &mut production, Faction::Alliance, target).unwrap();
+        assert_eq!(done.refund, 4);
+        assert_eq!(
+            crate::squadrons::total(&f.world.systems[f.system].fighters),
+            1
+        );
+        scrap(&mut f.world, &mut production, Faction::Alliance, target).unwrap();
+        assert!(f.world.systems[f.system].fighters.is_empty());
+        assert_eq!(
+            check(&f.world, Faction::Alliance, target),
+            Err(ScrapRefusal::Unresolved)
+        );
+        assert_eq!(production.stock(Faction::Alliance).unwrap().refined, 8);
+        // An emptied entry, or only another class, does not resolve.
+        let a_wing = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            ..Default::default()
+        });
+        f.world.systems[f.system].fighters = vec![
+            crate::world::FighterEntry {
+                class: x_wing,
+                count: 0,
+            },
+            crate::world::FighterEntry {
+                class: a_wing,
+                count: 1,
+            },
+        ];
+        assert_eq!(
+            check(&f.world, Faction::Alliance, target),
+            Err(ScrapRefusal::Unresolved)
+        );
     }
 
     #[test]
