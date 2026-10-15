@@ -398,6 +398,55 @@ pub struct FleetRecord {
     /// `+0x48`: its capital ships' records, in the fleet's order
     /// (`FUN_00433620`).
     pub ships: Vec<ShipRecord>,
+    /// `+0x30`: the id of the planner holding the fleet, 0 for none
+    /// (`FUN_00478fd0`).
+    pub owner: u32,
+    /// `+0x34`: that planner's plan id.
+    pub plan: u32,
+}
+
+/// Fleet record `+0x38` bit 4: no planner holds the fleet. The record's
+/// constructor sets it; a planner taking the fleet clears it
+/// (`FUN_00478fd0`) and giving it back sets it (`FUN_004791d0`).
+pub const FLEET_FREE: u32 = 4;
+
+/// The fleet record `+0x38` bits the refresh keeps (`FUN_00433620`'s mask
+/// `0xf000000c`): [`FLEET_FREE`], 8 and the plan's roles `0xf0000000`.
+pub const FLEET_KEPT: u32 = 0xf000_000c;
+
+/// What the AI keeps on a fleet's record across refreshes: its `+0x38`
+/// bits within [`FLEET_KEPT`], `+0x30` and `+0x34`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FleetHold {
+    pub flags: u32,
+    pub owner: u32,
+    pub plan: u32,
+}
+
+impl Default for FleetHold {
+    /// The record's constructor: free, held by no planner.
+    fn default() -> Self {
+        Self {
+            flags: FLEET_FREE,
+            owner: 0,
+            plan: 0,
+        }
+    }
+}
+
+/// The refresh's kept fleet record fields: each fleet record takes its
+/// hold's bits, `+0x30` and `+0x34`.
+pub fn apply_fleet_holds(
+    galaxy: &mut Galaxy,
+    holds: &std::collections::HashMap<crate::ids::FleetKey, FleetHold>,
+) {
+    for (key, record) in &mut galaxy.fleets {
+        if let Some(h) = holds.get(key) {
+            record.flags = (record.flags & !FLEET_KEPT) | (h.flags & FLEET_KEPT);
+            record.owner = h.owner;
+            record.plan = h.plan;
+        }
+    }
 }
 
 /// Ship record `+0x24` bit `0x20000`: no planner holds the ship. The
@@ -421,6 +470,8 @@ pub struct ShipRecord {
     pub index: usize,
     /// Its [`crate::world::ShipInstance::id`].
     pub id: u64,
+    /// `+0x2c`: its fleet.
+    pub fleet: crate::ids::FleetKey,
     /// `+0x24`.
     pub flags: u32,
     /// `+0x30`: the id of the planner holding it, 0 for none.
@@ -649,9 +700,11 @@ impl FleetRecord {
         let en_route = movement.is_in_transit(fleet_key);
         // +0x38 keeps 4 from its constructor (mask 0xf000000c).
         let mut r = Self {
-            flags: 4,
+            flags: FLEET_FREE,
             values: [0; 30],
             ships: Vec::new(),
+            owner: 0,
+            plan: 0,
         };
         if fleet.is_alliance == is_alliance {
             r.flags |= FLEET_OWN;
@@ -676,6 +729,7 @@ impl FleetRecord {
             r.ships.push(ShipRecord {
                 index,
                 id: ship.id,
+                fleet: fleet_key,
                 flags: flags | own | SHIP_FREE,
                 owner: 0,
                 plan: 0,
@@ -2235,7 +2289,10 @@ impl Galaxy {
         }
     }
 
-    fn system_mut(&mut self, system: crate::ids::SystemKey) -> Option<&mut SystemRecord> {
+    pub(crate) fn system_mut(
+        &mut self,
+        system: crate::ids::SystemKey,
+    ) -> Option<&mut SystemRecord> {
         self.sectors
             .iter_mut()
             .flat_map(|s| &mut s.systems)
@@ -2931,6 +2988,7 @@ mod tests {
         let record = |id| ShipRecord {
             index: 0,
             id,
+            fleet: crate::ids::FleetKey::default(),
             flags: SHIP_OWN | SHIP_FREE | 1,
             owner: 0,
             plan: 0,
@@ -2942,6 +3000,8 @@ mod tests {
                 flags: 5,
                 values: [0; 30],
                 ships: vec![record(4), record(5)],
+                owner: 0,
+                plan: 0,
             },
         );
         let holds = std::collections::HashMap::from([(
@@ -3154,6 +3214,8 @@ mod tests {
                     flags: FLEET_STANDING | 0x10 | 0x20_0000 | 0x40_0000 | 0x200_0000 | 0x100_0000,
                     values,
                     ships: Vec::new(),
+                    owner: 0,
+                    plan: 0,
                 },
             ),
             (
@@ -3162,6 +3224,8 @@ mod tests {
                     flags: FLEET_OWN | FLEET_STANDING,
                     values,
                     ships: Vec::new(),
+                    owner: 0,
+                    plan: 0,
                 },
             ),
         ]);
@@ -4097,6 +4161,8 @@ mod tests {
                     flags,
                     values: [1; 30],
                     ships: Vec::new(),
+                    owner: 0,
+                    plan: 0,
                 },
             )]);
             let manufacturing = crate::manufacturing::ManufacturingState::new();

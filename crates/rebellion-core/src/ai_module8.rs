@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ai_module1::ANY;
+use crate::ai_planner::{PlannerIo, PlannerStep};
 use crate::ai_records::{pick, ranked, Galaxy, Mask, Order};
 use crate::ids::SectorKey;
 
@@ -37,10 +38,41 @@ pub struct SectorPlanner {
     pub kind: u32,
     /// `+0x60`: its flags ([`CYCLED`], [`REVIEWED`]).
     pub flags: u32,
+    /// `+0x64`: what its forces lack or hold to spare, one bit each
+    /// ([`crate::ai_planner`]).
+    pub requests: u32,
+    /// `+0x24`: the ships it holds, by id.
+    pub ships: Vec<u64>,
+    /// `+0x2c`: the fleets it holds.
+    pub fleets: Vec<crate::ids::FleetKey>,
+    /// `+0x6c..+0x90`: its forces less what its plan wants.
+    pub counts: [i32; 10],
+    /// `+0x94`, `+0x98`: `counts[2]` and `counts[3]` as its fleets give
+    /// them (`FUN_00477cb0`).
+    pub held: [i32; 2],
+    /// `+0x38`: its flagship, by id.
+    pub flagship: Option<u64>,
+    /// `+0x3c`: the system its movement planners work from.
+    pub station: Option<crate::ids::SystemKey>,
+    /// `+0x40`: its base, a system of its sector.
+    pub base: Option<crate::ids::SystemKey>,
+    /// `+0x68`: its lists want checking against the records.
+    pub resync: bool,
+    /// `+0xbc`, `+0xc0`, `+0xc4`: the mission kind and subtype its plan
+    /// asks for, and the mission planner it takes.
+    pub mission: [u32; 3],
+    /// `+0xe0`, `+0xe4`: the movement its plan asks for, and the movement
+    /// planner it takes.
+    pub movement: [u32; 2],
+    /// The plan object's `+0x34..+0x58`: what the plan wants of each
+    /// count.
+    pub wanted: [i32; 10],
+    /// The plan object's `+8`: its step state (`FUN_004adb70`).
+    pub plan_state: u32,
 }
 
 /// What a step of module 8 leaves to the caller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Step8 {
     /// Not complete; the scheduler steps the module again.
     Pending,
@@ -49,6 +81,8 @@ pub enum Step8 {
     /// State 4 for a planner with a plan object: its step
     /// (`FUN_004774c0`).
     Plan,
+    /// An order, complete; the priority rises while the cycle goes on.
+    Order(crate::ai::AIAction, bool),
 }
 
 /// Module 8's own fields (`FUN_004cf410`: `+0x38..+0x44`) and the
@@ -86,11 +120,33 @@ impl Default for Module8 {
 /// What a step reads: the records, the controller's planner balance
 /// `+0x204` and the AI's generator.
 pub struct Inputs8<'a> {
+    pub world: &'a crate::world::GameWorld,
     pub galaxy: &'a mut Galaxy,
+    /// [`crate::ai::AIState::ship_holds`].
+    pub ship_holds: &'a mut std::collections::HashMap<u64, crate::ai_records::ShipHold>,
+    /// [`crate::ai::AIState::fleet_holds`].
+    pub fleet_holds:
+        &'a mut std::collections::HashMap<crate::ids::FleetKey, crate::ai_records::FleetHold>,
+    /// Controller `+4`.
+    pub controller_flags: u32,
     /// Controller `+0x204` ([`crate::ai_module1::Tallies::planner_balance`]).
     pub balance: i32,
     /// `FUN_0041cd80(n)`: a draw below `n`.
     pub random: &'a mut dyn FnMut(i32) -> i32,
+}
+
+impl Inputs8<'_> {
+    /// The planner's view of the same inputs.
+    pub fn planner(&mut self) -> PlannerIo<'_> {
+        PlannerIo {
+            world: self.world,
+            galaxy: self.galaxy,
+            ship_holds: self.ship_holds,
+            fleet_holds: self.fleet_holds,
+            controller_flags: self.controller_flags,
+            random: &mut *self.random,
+        }
+    }
 }
 
 impl Module8 {
@@ -119,15 +175,20 @@ impl Module8 {
                 }
             }
             4 => {
-                let bound = self
-                    .planners
-                    .iter()
-                    .any(|p| p.id == self.current && p.kind != 0);
-                if bound {
-                    Step8::Plan
-                } else {
-                    // FUN_004774c0 without a plan object: the cycle ends.
-                    self.end()
+                let Some(i) = self.planners.iter().position(|p| p.id == self.current) else {
+                    return self.end();
+                };
+                let mut pio = io.planner();
+                match self.planners[i].step(&mut pio) {
+                    PlannerStep::Pending => Step8::Pending,
+                    PlannerStep::Done => self.end(),
+                    PlannerStep::StandIn => Step8::Plan,
+                    PlannerStep::Order(order, done) => {
+                        if done {
+                            self.end();
+                        }
+                        Step8::Order(order, !done)
+                    }
                 }
             }
             _ => {
@@ -165,21 +226,21 @@ impl Module8 {
                 });
             }
         } else if io.balance > 0 {
-            self.drop_one(io.galaxy);
+            self.drop_one(io);
         }
     }
 
     /// `FUN_0042f3d0`: the first planner without a sector, or whose
     /// sector has `+0x18c > 0` (a planner without a plan), is reset
     /// (`FUN_00477190`) and leaves the list.
-    fn drop_one(&mut self, galaxy: &mut Galaxy) {
+    fn drop_one(&mut self, io: &mut Inputs8<'_>) {
         let at = crate::ai_records::sector_at(0x18c);
         let found = self.planners.iter().position(|p| {
             p.sector
-                .is_none_or(|s| galaxy.sector(s).is_some_and(|r| r.values[at] > 0))
+                .is_none_or(|s| io.galaxy.sector(s).is_some_and(|r| r.values[at] > 0))
         });
         if let Some(i) = found {
-            reset(&mut self.planners[i], galaxy);
+            reset(&mut self.planners[i], io);
             self.planners.remove(i);
         }
     }
@@ -247,7 +308,7 @@ impl Module8 {
                 return false;
             }
         }
-        bind(&mut self.planners[i], io.galaxy)
+        bind(&mut self.planners[i], io)
     }
 }
 
@@ -296,40 +357,53 @@ fn take(planner: &mut SectorPlanner, galaxy: &mut Galaxy, sector: SectorKey) {
 /// plan (`+0x30`), else build the one of that kind (`FUN_00477630`), the
 /// step state starting over; follow the plan's id. Without one the
 /// planner resets (`FUN_00477190`).
-fn bind(planner: &mut SectorPlanner, galaxy: &mut Galaxy) -> bool {
-    let Some(record) = planner.sector.and_then(|s| galaxy.sector(s)) else {
-        reset(planner, galaxy);
+fn bind(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) -> bool {
+    let Some(record) = planner.sector.and_then(|s| io.galaxy.sector(s)) else {
+        reset(planner, io);
         return false;
     };
     let (plan, plan_id) = (record.plan, record.plan_id);
     if planner.kind != plan {
-        planner.kind = 0;
+        // A new plan object: +0x60 and +0x64 cleared, the step state and
+        // +0x68 0, what it wants and its own state from nothing.
+        planner.kind = plan;
+        planner.flags = 0;
+        planner.requests = 0;
         planner.state = 0;
-        if plan != 0 {
-            planner.kind = plan;
-        }
+        planner.resync = false;
+        planner.wanted = [0; 10];
+        planner.plan_state = 0;
     }
     if plan_id != planner.plan_id {
         planner.plan_id = plan_id;
     }
     if planner.kind == 0 {
-        reset(planner, galaxy);
+        reset(planner, io);
         return false;
     }
     true
 }
 
-/// `FUN_00477190`: drop the plan object and the step state, and release
-/// the sector (its `+0x38`) and the plan's id.
+/// `FUN_00477190`: drop the plan object, clear `+0x60`, `+0x64` and the
+/// step state, release the sector (its `+0x38`) and the plan's id, and
+/// give back every ship (`FUN_004790d0`) and fleet (`FUN_004791d0`).
 ///
-/// port: the planner holds no fleets, units or missions yet
-/// (`FUN_004790d0`, `FUN_004791d0`, `FUN_0042f690`, `FUN_0042ef90`), nor a
-/// system whose `+0x30` bits `0x70000` it would clear.
-pub fn reset(planner: &mut SectorPlanner, galaxy: &mut Galaxy) {
+/// port: the planner holds no mission or movement planners
+/// (`FUN_0042f690`, `FUN_0042ef90`), and no base system yet whose `+0x30`
+/// bits `0x70000` it would clear.
+pub fn reset(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) {
+    let mut pio = io.planner();
+    planner.release_all(&mut pio);
     planner.kind = 0;
     planner.state = 0;
+    planner.flags = 0;
+    planner.requests = 0;
+    planner.resync = false;
+    planner.flagship = None;
+    planner.station = None;
+    planner.held = [0; 2];
     if let Some(sector) = planner.sector.take() {
-        if let Some(r) = galaxy.sectors.iter_mut().find(|r| r.sector == sector) {
+        if let Some(r) = io.galaxy.sectors.iter_mut().find(|r| r.sector == sector) {
             r.planner = 0;
         }
     }
@@ -391,8 +465,15 @@ mod tests {
             let d = if draws.is_empty() { 0 } else { draws.remove(0) };
             d.rem_euclid(n)
         };
+        let world = crate::world::GameWorld::default();
+        let mut ship_holds = std::collections::HashMap::new();
+        let mut fleet_holds = std::collections::HashMap::new();
         let mut io = Inputs8 {
+            world: &world,
             galaxy: g,
+            ship_holds: &mut ship_holds,
+            fleet_holds: &mut fleet_holds,
+            controller_flags: 0,
             balance,
             random: &mut random,
         };
@@ -622,7 +703,7 @@ mod tests {
         let steps: Vec<Step8> = (0..5)
             .map(|_| run(&mut m, &mut g, -1, &mut vec![], |m, io| m.step(io)))
             .collect();
-        assert_eq!(steps[..4], [Step8::Pending; 4]);
+        assert!(steps[..4].iter().all(|s| *s == Step8::Pending));
         assert_eq!(steps[4], Step8::Plan);
         assert_eq!(
             m.planners,
@@ -657,7 +738,13 @@ mod tests {
             plan_id: 1,
             ..planner(1, Some(keys[0]), 3)
         };
-        assert!(!bind(&mut p, &mut g));
+        assert!(!run(
+            &mut Module8::default(),
+            &mut g,
+            0,
+            &mut vec![],
+            |_, io| bind(&mut p, io)
+        ));
         assert_eq!(p, planner(1, None, 0));
         assert_eq!(g.sectors[0].planner, 0);
         // A new kind drops the old object and its step state.
@@ -667,13 +754,25 @@ mod tests {
             state: 3,
             ..planner(1, Some(keys[0]), 3)
         };
-        assert!(bind(&mut p, &mut g));
+        assert!(run(
+            &mut Module8::default(),
+            &mut g,
+            0,
+            &mut vec![],
+            |_, io| bind(&mut p, io)
+        ));
         assert_eq!((p.kind, p.state, p.plan_id), (5, 0, 2));
         let mut same = SectorPlanner {
             state: 3,
             ..planner(1, Some(keys[0]), 5)
         };
-        assert!(bind(&mut same, &mut g));
+        assert!(run(
+            &mut Module8::default(),
+            &mut g,
+            0,
+            &mut vec![],
+            |_, io| bind(&mut same, io)
+        ));
         assert_eq!(same.state, 3);
     }
 

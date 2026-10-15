@@ -190,13 +190,14 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": sys_name(world, *to),
             })
         }
-        AIAction::CreateFleet { fleet, ships } => serde_json::json!({
+        AIAction::CreateFleet { fleet, ships, to } => serde_json::json!({
             "type": "CreateFleet",
             "ships": ships.len(),
             "at": world
                 .fleets
                 .get(*fleet)
                 .map_or_else(|| "unknown".into(), |f| sys_name(world, f.location)),
+            "to": sys_name(world, *to),
         }),
         AIAction::SetDestination {
             system,
@@ -2137,9 +2138,12 @@ fn apply_ai_actions_inner(
                     .is_ok()
                 })
             }),
-            AIAction::CreateFleet { fleet, ships } => ai_state.faction.is_some_and(|side| {
-                let roster = rebellion_core::fleet_join::roster(world, *fleet);
-                roster.is_some_and(|roster| {
+            AIAction::CreateFleet { fleet, ships, to } => ai_state.faction.is_some_and(|side| {
+                let is_alliance = matches!(side, AiFaction::Alliance);
+                let Some(roster) = rebellion_core::fleet_join::roster(world, *fleet) else {
+                    return false;
+                };
+                if world.fleets.get(*fleet).is_some_and(|f| f.location == *to) {
                     rebellion_core::fleet_join::create_fleet(
                         world,
                         movement_state,
@@ -2147,10 +2151,22 @@ fn apply_ai_actions_inner(
                         *fleet,
                         ships,
                         roster,
-                        matches!(side, AiFaction::Alliance),
+                        is_alliance,
                     )
                     .is_ok()
-                })
+                } else {
+                    rebellion_core::fleet_join::move_ships_to_system(
+                        world,
+                        movement_state,
+                        troop_transport,
+                        *fleet,
+                        ships,
+                        roster,
+                        *to,
+                        is_alliance,
+                    )
+                    .is_ok()
+                }
             }),
             AIAction::MoveRegiments { troops, to } => {
                 let blockaded = rebellion_core::blockade::BlockadeSystem::blockaded_now(world);
@@ -3035,7 +3051,11 @@ mod tests {
         let mut integrator = PerceptionIntegrator::new(5, 0);
         let mut apply = |world: &mut GameWorld, ships: Vec<usize>| {
             integrator.apply_ai_actions(
-                &[AIAction::CreateFleet { fleet, ships }],
+                &[AIAction::CreateFleet {
+                    fleet,
+                    ships,
+                    to: kuat,
+                }],
                 &mut AIState::new(AiFaction::Empire),
                 &mut MissionState::new(),
                 &mut ManufacturingState::new(),

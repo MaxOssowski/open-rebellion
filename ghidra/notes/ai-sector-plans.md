@@ -253,6 +253,97 @@ slots `+0x24..+0x30` for kinds `0x12`, `0x13`, `0x15`, `0x17`/`0x81`). So
 the sector planner learns about its ships from the records each cycle,
 and about missions only through mission planners.
 
+## The planner's step (`FUN_004774c0`, read 2026-10-15)
+
+Planner fields beyond the list above: `+0x24` the ships held, `+0x2c` the
+fleets held, `+0x38` the flagship, `+0x3c` the movement planners' system,
+`+0x40` the base, `+0x60` flags, `+0x64` requests, `+0x68` resync,
+`+0x6c..+0x90` ten counts, `+0x94`/`+0x98` copies of counts 2 and 3,
+`+0xa0..+0xac` and `+0xc8..+0xd0` its mission and movement planners by
+kind, `+0xb0`/`+0xd4` those planners, `+0xbc..+0xc4` and `+0xe0`/`+0xe4`
+the plan's requests. The plan object (`FUN_004ad8e0`): `+4` side, `+8`
+state, `+0xc` controller, `+0x10` planner, `+0x2c` a fleet,
+`+0x34..+0x58` ten wanted counts; 22 slots, kinds by slot `+0x14`
+(`0x65c108` 5, `0x65c160` 3, `0x65c1b8` 6, `0x65c210` 4, `0x65c268` 2,
+`0x65c2c0` 1).
+
+With `+0x68` set the step first checks its lists against the records
+(`FUN_00477810`: a ship still its own and the side's keeps its fleet
+held, a free one taken by `FUN_00478fd0`, else given back;
+`FUN_00477950`: a fleet not its own, not the side's or without ships is
+given back). Without a plan object the cycle ends. Else by `+0x1c`:
+1. clear `+0x60`/`+0x64`; `FUN_00477a40` (damaged ships off, Create
+   Fleet); 2.
+2. `FUN_00477cb0`: the counts from the held fleets' records (`+0xb4`,
+   `+0xb8`, `+0x84`, `+0x78`, `+0x68`, `+0x7c`, `+0x70`, `+0x9c`; bits
+   `0x10`, `0x20` counted), `+0x64` bits for the positive ones;
+   `FUN_004adaf0`: the plan's slot `+0x50` (what it wants), less; 3.
+3. `FUN_00477e80`: a count short (0, 1, 2, 3, 5, 4, 6, 9 below 0):
+   `FUN_004782a0` takes free ships of the nearest free fleets, else
+   `FUN_00478690` takes held ships of a later plan's fleets; short
+   counts marked (`+0x64` 1, 2, 4, 8, `0x10`, `0x20`, `0x40`, `0x80`,
+   `0x800`); with no order and a count to spare, `FUN_00478aa0` gives
+   one ship back. Each order is Create Fleet `0x270` to `FUN_00479220`'s
+   system (the base, the sector's headquarters, its own system nearest,
+   the nearest other sector's). 4.
+4. `FUN_00478000`: the plan's mission request (slot `+0x18`) and the
+   mission planners held; `FUN_00478140`: the movement request (slot
+   `+0x1c`) and the movement planners held. 5.
+5. `FUN_004adb70`, the plan object's step, until it ends. 6.
+6. `FUN_00479560` (the flagship among the held ships, with movement
+   planners), `FUN_004799d0` (slot `+0x10` sets `+0x3c`, else cleared),
+   slot `+0x20` (the report's plan bits) and `FUN_00479a00`: `+0x64 &
+   0x4ff` clear gives `0x1c0000`; else nothing held (`0x9fe00000`) gives
+   `0x10000`; else `0x100000`, and `0x80000` without a short `0x1f`. Then
+   the default: state 1, `+0x68` set, the cycle ends.
+An order sets `+0x68`.
+
+Kind 3 (`0x65c160`): slot `+0x50` `FUN_004b4920` (wants at least 1.2
+times the sector's `+0x190`, `+0x194` and `+0x198` + `+0x138`, or
+controller `+0x164`/`+0x168`, never less than before; one laser ship;
+a Death Star with controller `+4` `0x1000000`; the regiments held);
+slot `+0x20` `FUN_004b3830` (`0x4000000`, with the sector `0x8000000`,
+with an own system `0x20000`); slot `+0x18` `FUN_004b7150` (missions by
+the counts of each kind held: Recon `0x54`, Espionage `0x52`, Sabotage
+`0x69`, Abduction `0x62`/`0x63`); slot `+0x1c` `FUN_004b1800`
+(movement 3 or 5).
+
+The plan object's step (`FUN_004adb70`): 1 `FUN_004af6d0` (the held
+fleets' roles onto their systems' `+0x30`) -> 2; 2 slot `+0x34`
+(`FUN_004af8a0`: keep or choose the base, marking it `+0x30` `0x40000`)
+-> 3, or 5 without one; 3 slot `+0x38` (`FUN_004afce0`: unload the
+regiments of the held fleets at own systems) -> 4; 4 `FUN_004b0120`
+(squadrons from the base to held fleets with room) -> 5; 5
+`FUN_004b04c0` (the next idle held fleet into `+0x2c`) -> 6, else
+`0xe`; 6 `FUN_004b06b0` -> 7, or `0xe` when done; 7 slot `+0x3c` ->
+`0xd`, else 8; 8 slot `+0x40` -> 10 (`0xd` with one); 10 slot `+0x48`
+-> 9 (`0xd`); 9 slot `+0x44` -> `0xd` or `0xc`; `0xc` `FUN_004b0c90`,
+`0xd` `FUN_004b0f90` -> `0xe`; `0xe` `FUN_004b1070`, which ends the step.
+States 6, 7, 9 and `0xc` to `0xe` are not read in full yet.
+
+## Ported (2026-10-15, save v52): the planner's step, kind 3's wants
+
+`crates/rebellion-core/src/ai_planner.rs`: the planner's lists, counts,
+requests and the step's states 1 to 4 and 6 above, with kind 3's slots
+`+0x50`, `+0x20`, `+0x18` and `+0x1c`. `AIState::fleet_holds` keeps the
+fleet records' kept bits (`0xf000000c`), `+0x30` and `+0x34`. Module 8's
+state 4 runs the step; an order completes the module and raises its
+priority while the cycle goes on. `AIAction::CreateFleet` gains its
+target (`+0x34`).
+
+port:
+- State 5 (the plan object's step) is the port's fleet heuristics,
+  decided once a cycle; the other kinds' planners run them for the whole
+  cycle.
+- The planners hold no mission or movement planners: their counts are
+  0, so kind 3 always asks for Recon or Espionage and, holding a fleet,
+  for movement 3; the flagship and `+0x3c` stay clear.
+- hyp: `FUN_00477a40`'s Create Fleet target is read from a list node,
+  not an id; the port leaves the damaged ships in their system. The
+  Create Fleet of `FUN_004782a0` and `FUN_00478aa0` reads its origin
+  from an unset local; the port uses the ships' system.
+- hyp: controller `+0x164`, `+0x168` have no writer found and read as 0.
+
 ## Ported (2026-10-15, save v51): the ships' records
 
 port: `ShipInstance::id` and `GameWorld::number_ships` give each capital

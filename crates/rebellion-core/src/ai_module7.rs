@@ -850,6 +850,8 @@ mod tests {
                 flags: 0x10_0005,
                 values,
                 ships: Vec::new(),
+                owner: 0,
+                plan: 0,
             },
         );
     }
@@ -1443,6 +1445,8 @@ mod tests {
                         flags,
                         values: [0; 30],
                         ships: Vec::new(),
+                        owner: 0,
+                        plan: 0,
                     },
                 );
             };

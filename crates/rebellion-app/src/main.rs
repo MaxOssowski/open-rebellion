@@ -8107,22 +8107,36 @@ fn apply_ai_actions(
                     ));
                 }
             }
-            AIAction::CreateFleet { fleet, ships } => {
+            AIAction::CreateFleet { fleet, ships, to } => {
                 let Some(side) = ai_state.faction else {
                     continue;
                 };
                 let Some(roster) = rebellion_core::fleet_join::roster(world, *fleet) else {
                     continue;
                 };
-                let _ = rebellion_core::fleet_join::create_fleet(
-                    world,
-                    movement_state,
-                    troop_transport_state,
-                    *fleet,
-                    ships,
-                    roster,
-                    matches!(side, AiFaction::Alliance),
-                );
+                let is_alliance = matches!(side, AiFaction::Alliance);
+                if world.fleets.get(*fleet).is_some_and(|f| f.location == *to) {
+                    let _ = rebellion_core::fleet_join::create_fleet(
+                        world,
+                        movement_state,
+                        troop_transport_state,
+                        *fleet,
+                        ships,
+                        roster,
+                        is_alliance,
+                    );
+                } else {
+                    let _ = rebellion_core::fleet_join::move_ships_to_system(
+                        world,
+                        movement_state,
+                        troop_transport_state,
+                        *fleet,
+                        ships,
+                        roster,
+                        *to,
+                        is_alliance,
+                    );
+                }
             }
             AIAction::SetDestination {
                 system,

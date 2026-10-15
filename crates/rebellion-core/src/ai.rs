@@ -189,9 +189,10 @@ fn accepts(
         }
         // Create Fleet's validation: the side's own fleet, out of
         // hyperspace, each ship a living one of it named once
-        // (fleet_join::check_create_fleet).
-        AIAction::CreateFleet { fleet, ships } => crate::fleet_join::roster(world, *fleet)
-            .is_some_and(|roster| {
+        // (fleet_join::check_create_fleet), and a target elsewhere it can
+        // reach (FUN_00578d00).
+        AIAction::CreateFleet { fleet, ships, to } => {
+            crate::fleet_join::roster(world, *fleet).is_some_and(|roster| {
                 crate::fleet_join::check_create_fleet(
                     world,
                     movement,
@@ -201,7 +202,18 @@ fn accepts(
                     is_alliance,
                 )
                 .is_ok()
-            }),
+            }) && world.fleets.get(*fleet).is_some_and(|f| {
+                f.location == *to
+                    || crate::movement::validate_fleet_dispatch(
+                        movement,
+                        world,
+                        *fleet,
+                        *to,
+                        is_alliance,
+                    )
+                    .is_ok()
+            })
+        }
         // The move command's validation (FUN_00578d00): the side's own
         // fleet, out of hyperspace, with living ships, to a system it can
         // reach. port: a part of a fleet is checked as the whole fleet, so
@@ -483,6 +495,15 @@ pub struct AIState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub ship_holds: HashMap<u64, crate::ai_records::ShipHold>,
+    /// What the AI keeps on its fleet records (`+0x38` kept bits, `+0x30`,
+    /// `+0x34`); a fleet without an entry has the constructor's
+    /// ([`crate::ai_records::FleetHold`]).
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub fleet_holds: HashMap<FleetKey, crate::ai_records::FleetHold>,
     /// System record `+0x44`: the day each system not the side's was last
     /// seen blockaded (`FUN_00433e40`), which the records keep.
     #[serde(
@@ -563,6 +584,7 @@ impl AIState {
             strategy: crate::ai_strategy::Strategy::default(),
             module8: crate::ai_module8::Module8::default(),
             ship_holds: HashMap::new(),
+            fleet_holds: HashMap::new(),
             seen: HashMap::new(),
         }
     }
@@ -742,10 +764,20 @@ pub enum AIAction {
     },
 
     /// Create Fleet (`0x270`): capital ships of one of the side's fleets
-    /// leave it as a new fleet in their system, carried out by
-    /// [`crate::fleet_join::create_fleet`]. The ships are their places in
-    /// the fleet.
-    CreateFleet { fleet: FleetKey, ships: Vec<usize> },
+    /// leave it as a new fleet for the order's target (`+0x34`,
+    /// `FUN_0051fbb0`): in their system through
+    /// [`crate::fleet_join::create_fleet`], elsewhere through
+    /// [`crate::fleet_join::move_ships_to_system`]. The ships are their
+    /// places in the fleet.
+    ///
+    /// hyp: the order's move command (`FUN_00580a90`) takes the new fleet
+    /// to the target; the player's Create Fleet targets the ships' own
+    /// system.
+    CreateFleet {
+        fleet: FleetKey,
+        ships: Vec<usize>,
+        to: SystemKey,
+    },
 
     /// Destination (`0x214`) on `system`'s `area` manager: what it builds
     /// goes to `destination` (`FUN_004dc9f0`).
@@ -900,6 +932,9 @@ impl AISystem {
             .flat_map(|f| f.ships.iter().map(|s| s.id))
             .collect();
         state.ship_holds.retain(|id, _| alive.contains(id));
+        state
+            .fleet_holds
+            .retain(|key, _| galaxy.fleets.contains_key(key));
         // FUN_00433e40: a blockaded system not the side's is seen today
         // (record +0x44).
         for r in galaxy.sectors.iter().flat_map(|s| &s.systems) {
@@ -1047,6 +1082,7 @@ impl AISystem {
             &state.record_kinds,
         );
         crate::ai_records::apply_ship_holds(&mut galaxy, &state.ship_holds);
+        crate::ai_records::apply_fleet_holds(&mut galaxy, &state.fleet_holds);
         crate::ai_module8::mark_planners(&mut galaxy, &state.module8.planners);
         crate::ai_strategy::mark_plans(&mut galaxy, &state.strategy.plans);
         galaxy
@@ -1165,20 +1201,32 @@ impl AISystem {
         tallies: crate::ai_module1::Tallies,
     ) -> crate::ai_module1::Step {
         use crate::ai_module8::Step8;
-        let mut random = |n| planner.random(n);
-        let mut io = crate::ai_module8::Inputs8 {
-            galaxy,
-            balance: tallies.planner_balance,
-            random: &mut random,
+        let step = {
+            let mut random = |n| planner.random(n);
+            let mut io = crate::ai_module8::Inputs8 {
+                world: ctx.world,
+                galaxy,
+                ship_holds: &mut state.ship_holds,
+                fleet_holds: &mut state.fleet_holds,
+                controller_flags: state.controller.flags,
+                balance: tallies.planner_balance,
+                random: &mut random,
+            };
+            state.module8.step(&mut io)
         };
         let done = crate::ai_module1::Step {
             order: None,
             complete: true,
             raise: false,
         };
-        match state.module8.step(&mut io) {
+        match step {
             Step8::Pending => crate::ai_module1::Step::pending(),
             Step8::Done => done,
+            Step8::Order(order, raise) => crate::ai_module1::Step {
+                order: Some(order),
+                complete: true,
+                raise,
+            },
             Step8::Plan => {
                 if !state.module8.decided {
                     state.module8.decided = true;
@@ -1188,14 +1236,32 @@ impl AISystem {
                 }
                 let order = (!state.module_pending[module].is_empty())
                     .then(|| state.module_pending[module].remove(0));
-                let more = !state.module_pending[module].is_empty();
-                if !more {
+                if !state.module_pending[module].is_empty() {
+                    return crate::ai_module1::Step {
+                        raise: true,
+                        order,
+                        complete: true,
+                    };
+                }
+                state.module8.decided = false;
+                let current = state.module8.current;
+                let ends = state
+                    .module8
+                    .planners
+                    .iter_mut()
+                    .find(|p| p.id == current)
+                    .is_none_or(crate::ai_module8::SectorPlanner::plan_done);
+                if ends {
                     state.module8.end();
                 }
-                crate::ai_module1::Step {
-                    raise: more,
-                    order,
-                    complete: true,
+                match order {
+                    Some(order) => crate::ai_module1::Step {
+                        raise: !ends,
+                        order: Some(order),
+                        complete: true,
+                    },
+                    None if ends => done,
+                    None => crate::ai_module1::Step::pending(),
                 }
             }
         }
@@ -7404,16 +7470,18 @@ mod tests {
         // binds kind 3 (FUN_004cf700, FUN_004cf7c0, FUN_004773f0).
         assert!(state.module8.planners.is_empty());
         cadence_pass(&mut state, &world);
-        assert_eq!(
-            state.module8.planners,
-            vec![crate::ai_module8::SectorPlanner {
-                id: 1,
-                sector: Some(sector),
-                plan_id: 1,
-                kind: 3,
-                ..crate::ai_module8::SectorPlanner::default()
-            }]
-        );
+        let planners: Vec<_> = state
+            .module8
+            .planners
+            .iter()
+            .map(|p| (p.id, p.sector, p.plan_id, p.kind))
+            .collect();
+        assert_eq!(planners, vec![(1, Some(sector), 1, 3)]);
+        // Its first cycle ran (FUN_004774c0 states 1 to 6, back to 1),
+        // reporting through kind 3's slot +0x20 (0x4000000).
+        let p = &state.module8.planners[0];
+        assert_eq!(p.state, 1);
+        assert_ne!(p.flags & crate::ai_module8::CYCLED, 0);
     }
 
     /// A sector planner already holding the world's sector, planned kind
@@ -7585,10 +7653,15 @@ mod tests {
         state.mark_busy(ship.character().unwrap());
         assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["fleet"]);
         assert_eq!(state.module_cursor, Some(FLEETS));
-        // Round from module 9 to 8 again: the rest order nothing.
-        assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["fleet"]);
+        // Module 8's cycle went on after its order (the planner's state 6,
+        // FUN_004774c0), so its raised priority takes it first: it ends the
+        // cycle without an order (FUN_004cf630), and round from module 9
+        // to 8 again the rest order nothing.
+        assert_eq!(state.module_priority[FLEETS], 1);
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.module8.state, 0);
         assert_eq!(state.module_cursor, Some(FLEETS));
-        assert_eq!(state.orders_today, 3);
+        assert_eq!(state.orders_today, 2);
     }
 
     #[test]
@@ -7609,11 +7682,15 @@ mod tests {
         // The round robin would go on from module 9 and come round to the
         // mission module first; the priority sends the second fleet.
         assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["fleet"]);
-        assert_eq!(state.module_priority[FLEETS], 0);
         assert!(state.module_pending[FLEETS].is_empty());
         assert_eq!(state.module_cursor, Some(FLEETS));
-        // The last order ends module 8's cycle.
-        assert_eq!((state.module8.state, state.module8.decided), (0, false));
+        // The last order leaves the planner's state 6 (FUN_004774c0), so
+        // the cycle goes on raised; the next pass ends it with no order.
+        assert_eq!(state.module_priority[FLEETS], 1);
+        assert_eq!((state.module8.state, state.module8.decided), (4, false));
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.module_priority[FLEETS], 0);
+        assert_eq!(state.module8.state, 0);
     }
 
     #[test]
@@ -8125,11 +8202,36 @@ mod tests {
             is_alliance: true,
             has_death_star: false,
         });
+        let far = add_system(&mut world, sector, 0.5, 0.5);
+        world.systems[far].x = 40;
         let transport = crate::troop_transport::TroopTransportState::new();
         let mut movement = crate::movement::MovementState::new();
+        let to_far = |to| {
+            accepts(
+                &AIAction::CreateFleet {
+                    fleet,
+                    ships: vec![1],
+                    to,
+                },
+                &world,
+                &ResearchState::new(),
+                AiFaction::Alliance,
+                &transport,
+                &crate::movement::MovementState::new(),
+            )
+        };
+        // A target elsewhere needs a move the fleet can make: not to a
+        // system that does not exist.
+        assert!(!to_far(SystemKey::default()));
+        assert!(to_far(here));
+        assert!(to_far(far));
         let ok = |ships: Vec<usize>, side, movement: &crate::movement::MovementState| {
             accepts(
-                &AIAction::CreateFleet { fleet, ships },
+                &AIAction::CreateFleet {
+                    fleet,
+                    ships,
+                    to: here,
+                },
                 &world,
                 &ResearchState::new(),
                 side,
@@ -8201,6 +8303,96 @@ mod tests {
             (r.owner, r.plan, r.flags & crate::ai_records::SHIP_FREE),
             (3, 1, 0)
         );
+    }
+
+    #[test]
+    fn a_planner_sends_its_damaged_ships_off_as_a_fleet() {
+        // FUN_004774c0 state 1 (FUN_00477a40): the held fleet with a
+        // damaged ship (0x3000) gives it back as a fleet of its own,
+        // Create Fleet 0x270; the order completes module 8 and, the cycle
+        // going on, raises its priority (FUN_004cf630).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let here = add_system(&mut world, sector, 0.9, 0.1);
+        world.systems[here].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            hull: 100,
+            hyperdrive: 100,
+            is_alliance: true,
+            ..CapitalShipClass::default()
+        });
+        let mut ships = ShipInstance::make(class, 100, true, 2);
+        ships[1].hull_current = 40;
+        let fleet = world.fleets.insert(Fleet {
+            location: here,
+            capital_ships: ships,
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[here].fleets.push(fleet);
+        world.number_ships();
+        let ids: Vec<u64> = world.fleets[fleet]
+            .capital_ships
+            .iter()
+            .map(|s| s.id)
+            .collect();
+        let mut state = AIState::new(AiFaction::Alliance);
+        with_sector_planner(&mut state, &world);
+        let held = crate::ai_records::ShipHold {
+            flags: 0,
+            owner: 1,
+            plan: 1,
+        };
+        for &id in &ids {
+            state.ship_holds.insert(id, held);
+        }
+        state.fleet_holds.insert(
+            fleet,
+            crate::ai_records::FleetHold {
+                flags: 0,
+                owner: 1,
+                plan: 1,
+            },
+        );
+        let p = &mut state.module8.planners[0];
+        p.ships = ids.clone();
+        p.fleets = vec![fleet];
+        state.module_cursor = Some(FLEETS - 1);
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert_eq!(
+            orders,
+            vec![AIAction::CreateFleet {
+                fleet,
+                ships: vec![1],
+                to: here
+            }]
+        );
+        assert_eq!(state.module_priority[FLEETS], 1);
+        assert_eq!(state.module8.planners[0].ships, vec![ids[0]]);
+        assert_eq!(state.ship_holds[&ids[1]].owner, 0);
+    }
+
+    #[test]
+    fn a_planner_of_another_kind_with_nothing_to_order_ends_its_cycle() {
+        // port: a kind the port has no plan object for runs the fleet
+        // heuristics for its whole cycle; with no order its cycle ends
+        // (FUN_004cf630: +0x3c = 0, complete) in the same pass.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _ = add_system(&mut world, sector, 0.9, 0.1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        with_sector_planner(&mut state, &world);
+        state.strategy.plans[0].kind = 5;
+        state.module8.planners[0].kind = 5;
+        state.module_cursor = Some(FLEETS - 1);
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.module8.state, 0);
+        assert_eq!(state.module8.planners[0].state, 1);
+        assert_eq!(state.module_priority[FLEETS], 0);
     }
 
     #[test]

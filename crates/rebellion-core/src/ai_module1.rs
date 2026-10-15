@@ -2512,6 +2512,8 @@ pub(crate) mod tests {
                     flags,
                     values,
                     ships: Vec::new(),
+                    owner: 0,
+                    plan: 0,
                 },
             );
         }
@@ -2547,6 +2549,8 @@ pub(crate) mod tests {
                     flags,
                     values,
                     ships: Vec::new(),
+                    owner: 0,
+                    plan: 0,
                 },
             );
         }

@@ -1927,6 +1927,18 @@ cross-runtime proof remain open
   gets no order reports. No module uses these yet. Save v51; golden
   `v1:6cc71d2663560368` -> `v1:1ec77e5da40c2f8f`
   (`evidence/2026-10-15-ai-ship-records/`).
+- Module 8, stage 4a (2026-10-15): the sector planner's step
+  (`FUN_004774c0`) in `ai_planner.rs`: the planner holds ships and fleets
+  (`FUN_00478e00`, `FUN_004790d0`, `FUN_00478fd0`, `FUN_004791d0`),
+  checks them against the records after an order, splits damaged ships
+  off, weighs its forces against what kind 3's plan wants
+  (`FUN_004b4920`), takes free ships of the nearest fleets or a later
+  plan's, gives spare ones back (Create Fleet `0x270` with a target), asks
+  for missions and movement, and reports; the strategy's review now
+  grows and shrinks its plans. port: the plan object's step and the
+  other kinds still run the fleet heuristics; no mission or movement
+  planners. Save v52; golden `v1:1ec77e5da40c2f8f` ->
+  `v1:030a4e7e7f7902e9` (`evidence/2026-10-15-ai-planner-step/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

@@ -1545,6 +1545,8 @@ mod tests {
                 flags,
                 values: [0; 30],
                 ships: Vec::new(),
+                owner: 0,
+                plan: 0,
             };
             r.values[15] = upkeep;
             r
