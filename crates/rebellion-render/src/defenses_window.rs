@@ -15,7 +15,9 @@ use egui_macroquad::egui;
 use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::economy::EconomyState;
 use rebellion_core::fog::FogState;
-use rebellion_core::ids::{CharacterKey, DefenseFacilityKey, SpecialForceKey, SystemKey, TroopKey};
+use rebellion_core::ids::{
+    CharacterKey, DefenseFacilityKey, FighterKey, SpecialForceKey, SystemKey, TroopKey,
+};
 use rebellion_core::missions::{MissionMember, MissionState, MissionTarget, MissionTargetPick};
 use rebellion_core::world::GameWorld;
 
@@ -23,6 +25,7 @@ use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::{control_side, faction_side, fleet_side, paint_native};
 use crate::object_menu::MenuObject;
+use crate::panels::fleets::fighter_mini_id;
 use crate::quadrant_icons::{mission_keys, system_members};
 use crate::system_window::{
     canvas_point, character_mini_resource_id, clamp_window_to_galaxy, defense_facility_mini,
@@ -149,19 +152,29 @@ pub enum DefensesItem {
     Character(CharacterKey),
     SpecialForce(SpecialForceKey),
     Troop(TroopKey),
+    /// The `nth` squadron of `class` on `system`'s planet. port: squadrons
+    /// are counts per class.
+    Squadron {
+        system: SystemKey,
+        class: FighterKey,
+        nth: u32,
+    },
     Defense(DefenseFacilityKey),
 }
 
 impl DefensesItem {
     /// The object its pop-up menu opens for: a character (`FUN_004ed350`),
-    /// a special force (`FUN_00503b50`), a regiment (`FUN_00504b30`) or a
-    /// defense facility, whose menu holds Encyclopedia and Status
-    /// (`FUN_0051d990`).
+    /// a special force (`FUN_00503b50`), a regiment (`FUN_00504b30`), a
+    /// squadron (`FUN_00502fe0`) or a defense facility, whose menu holds
+    /// Encyclopedia and Status (`FUN_0051d990`).
     const fn menu_object(self) -> Option<MenuObject> {
         match self {
             Self::Character(key) => Some(MenuObject::Character(key)),
             Self::SpecialForce(key) => Some(MenuObject::SpecialForce(key)),
             Self::Troop(key) => Some(MenuObject::Troop(key)),
+            Self::Squadron { system, class, .. } => {
+                Some(MenuObject::PlanetFighter { system, class })
+            }
             Self::Defense(key) => Some(MenuObject::DefenseFacility(key)),
         }
     }
@@ -368,7 +381,9 @@ impl DefensesWindowState {
             Some(DefensesItem::Defense(key)) => {
                 pick.object = Some(MissionTarget::DefenseFacility(key));
             }
-            None => {}
+            // port: a mission names a squadron aboard a fleet only
+            // (MissionTarget::Fighter), so one on a planet is no target.
+            Some(DefensesItem::Squadron { .. }) | None => {}
         }
         Some(pick)
     }
@@ -509,8 +524,8 @@ fn selected_color(side: u8) -> egui::Color32 {
 /// port: the player sees the other side's objects only where the System
 /// window shows them (`opposing_contents_visible`). The walks follow the
 /// port's lists: characters in key order, then special forces, regiments
-/// and facilities in their system's order. Squadrons live only aboard
-/// fleets in the port, so the squadron page is always empty.
+/// and facilities in their system's order, and each squadron of the
+/// planet's class entries in turn.
 fn page_rows(
     world: &GameWorld,
     fog: &FogState,
@@ -576,7 +591,28 @@ fn page_rows(
                 })
             })
             .collect(),
-        DefensesPage::Squadrons => Vec::new(),
+        // FUN_005039d0: the squadrons on the planet (0x1c..0x1f).
+        DefensesPage::Squadrons => value
+            .fighters
+            .iter()
+            .filter_map(|entry| {
+                let class = world.fighter_classes.get(entry.class)?;
+                if fleet_side(class.is_alliance) != side {
+                    return None;
+                }
+                let mini = fighter_mini_id(class.dat_id)?;
+                Some((0..entry.count).map(move |nth| DefensesRow {
+                    item: DefensesItem::Squadron {
+                        system,
+                        class: entry.class,
+                        nth,
+                    },
+                    mini,
+                    label: class.name.clone(),
+                }))
+            })
+            .flatten()
+            .collect(),
         // FUN_00527050, keeping families 0x24 and 0x25 (page 4) or 0x22 and
         // 0x23 (page 5).
         DefensesPage::Shields | DefensesPage::Batteries => value
@@ -1098,6 +1134,7 @@ mod tests {
             defense_facilities: Vec::new(),
             manufacturing_facilities: Vec::new(),
             production_facilities: Vec::new(),
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,
@@ -1191,6 +1228,21 @@ mod tests {
             on_mission: false,
         });
         world.systems[system].special_forces.push(force);
+        for (raw, name, alliance, count) in [
+            (0x1c00_0001, "X-wing", true, 2),
+            (0x1c00_0005, "TIE Fighter", false, 1),
+        ] {
+            let class = world
+                .fighter_classes
+                .insert(rebellion_core::world::FighterClass {
+                    dat_id: DatId::new(raw),
+                    name: name.into(),
+                    is_alliance: alliance,
+                    is_empire: !alliance,
+                    ..Default::default()
+                });
+            rebellion_core::squadrons::add(&mut world.systems[system].fighters, class, count);
+        }
         let mut missions = MissionState::new();
         send_on_mission(&mut missions, away, system);
         send_on_mission(&mut missions, hidden, system);
@@ -1202,7 +1254,8 @@ mod tests {
         // FUN_004a90d0: pages 5 and 4 keep families 0x22/0x23 and 0x24/0x25
         // of the FUN_00527050 walk; page 2 is FUN_00504cc0; page 1 keeps
         // members with no mission key or on a hidden mission (+0x78 bit 8);
-        // all filtered to the system's side (+0x148).
+        // page 3 is FUN_005039d0's squadrons on the planet; all filtered to
+        // the system's side (+0x148).
         let (world, system, missions) = stocked();
         let fog = seen(system);
         let page = |page| labels(&world, &fog, &missions, system, page);
@@ -1213,11 +1266,33 @@ mod tests {
             ["GenCore Level I", "Death Star Shield"]
         );
         assert_eq!(page(DefensesPage::Regiments), ["Alliance Army Regiment"]);
-        // port: squadrons live only aboard fleets.
-        assert!(page(DefensesPage::Squadrons).is_empty());
+        assert_eq!(page(DefensesPage::Squadrons), ["X-wing", "X-wing"]);
         assert_eq!(
             page(DefensesPage::Personnel),
             ["Idle", "Hidden", "Guerrillas"]
+        );
+    }
+
+    #[test]
+    fn a_squadron_row_opens_its_class_s_menu_and_names_no_mission_target() {
+        // FUN_004a7a20 gives the row's object; a squadron's class menu is
+        // FUN_00502fe0's. port: a mission names squadrons aboard fleets only.
+        let (world, system, missions) = stocked();
+        let rows = page_rows(
+            &world,
+            &seen(system),
+            &missions,
+            Faction::Alliance,
+            system,
+            DefensesPage::Squadrons,
+        );
+        let DefensesItem::Squadron { class, nth, .. } = rows[1].item else {
+            panic!("{:?}", rows[1].item);
+        };
+        assert_eq!(nth, 1);
+        assert_eq!(
+            rows[1].item.menu_object(),
+            Some(MenuObject::PlanetFighter { system, class })
         );
     }
 
@@ -1239,6 +1314,16 @@ mod tests {
                 DefensesPage::Regiments
             ),
             ["Stormtrooper Regiment"]
+        );
+        assert_eq!(
+            labels(
+                &world,
+                &seen(system),
+                &missions,
+                system,
+                DefensesPage::Squadrons
+            ),
+            ["TIE Fighter"]
         );
         assert_eq!(
             labels(
@@ -1636,7 +1721,7 @@ mod tests {
             (CLOSE_NORMAL, at(218.0, 3.0)),
             (10571, at(28.0, 20.0)),
             (10563, at(64.0, 20.0)),
-            (10558, at(100.0, 20.0)),
+            (10556, at(100.0, 20.0)),
             (10553, at(136.0, 20.0)),
             (10550, at(172.0, 20.0)),
             (18_176 + 832, at(7.0, 81.0)),
@@ -1697,7 +1782,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(report.selected, Some(1));
-        assert_eq!(report.counts, [3, 1, 0, 2, 2]);
+        assert_eq!(report.counts, [3, 1, 2, 2, 2]);
 
         // The same tab keeps the selection; another clears it.
         let _ = run(&world, &missions, &mut state, click(at(40.0, 30.0)));

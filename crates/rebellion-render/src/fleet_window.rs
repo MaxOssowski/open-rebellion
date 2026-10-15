@@ -617,8 +617,11 @@ impl FleetWindowState {
             return None;
         }
         Some(match drag.object {
-            // port: a squadron cannot move apart from its fleet.
-            ItemObject::Fighter { .. } => return None,
+            ItemObject::Fighter { fleet, index } => FleetWindowAction::DragSquadron {
+                fleet,
+                index,
+                point,
+            },
             ItemObject::Fleet(fleet) => FleetWindowAction::DragFleet { fleet, point },
             ItemObject::Regiment(troop) => FleetWindowAction::DragRegiment { troop, point },
             ItemObject::Ship {
@@ -706,6 +709,13 @@ pub enum FleetWindowAction {
     /// view hit-tests the screen point and issues `0x201` (`FUN_00422ce0`).
     DragRegiment {
         troop: TroopKey,
+        point: egui::Pos2,
+    },
+    /// A Fighters tab squadron dragged out of its list: the same `0x201`
+    /// for one squadron of the entry `index` of the fleet's `fighters`.
+    DragSquadron {
+        fleet: FleetKey,
+        index: usize,
         point: egui::Pos2,
     },
     /// A Capital Ships tab item dragged out of its list: the same `0x201`
@@ -2173,6 +2183,7 @@ pub(crate) mod tests {
             defense_facilities: Vec::new(),
             manufacturing_facilities: Vec::new(),
             production_facilities: Vec::new(),
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,
@@ -3039,6 +3050,43 @@ pub(crate) mod tests {
 
         assert!(held);
         assert_eq!(regiment_drops(&actions), [(troop, release)]);
+    }
+
+    #[test]
+    fn a_squadron_dragged_out_of_the_fighters_tab_drops_its_entry() {
+        // FUN_006083c0 / FUN_00422ce0: the squadron's 0x201 against the
+        // window under the release (FUN_00557ce0 lists Move for it).
+        let (mut world, transport, system, fleet, _) = fleet_with_regiment();
+        let fighter = world.fighter_classes.insert(Default::default());
+        world.fleets[fleet]
+            .fighters
+            .push(rebellion_core::world::FighterEntry {
+                class: fighter,
+                count: 1,
+            });
+
+        let (actions, release, held) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::Fighters,
+            FIRST_RIGHT_ITEM,
+            (40.0, 200.0),
+        );
+
+        assert!(held);
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| matches!(action, FleetWindowAction::DragSquadron { .. }))
+                .collect::<Vec<_>>(),
+            [&FleetWindowAction::DragSquadron {
+                fleet,
+                index: 0,
+                point: release,
+            }]
+        );
     }
 
     #[test]

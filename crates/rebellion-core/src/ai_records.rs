@@ -1086,8 +1086,30 @@ impl SystemRecord {
             if v[0] < 70 {
                 f2c |= 0x1000_0000;
             }
-            // FUN_005039d0: squadrons on the planet. port: none; the port's
-            // fighters ride fleets.
+            // FUN_005039d0 (mode 3, either side): the squadrons on the planet
+            // (0x1c..0x1f). A counted one is the side's in an unmarked
+            // system, or one whose class +0x34 reaches the threshold
+            // `+0x40 -> +0x28` (hyp: 0). port: every squadron is active
+            // (+0x50 bit 0) and at full strength (FUN_00473610/620/630).
+            for entry in &sys.fighters {
+                let Some(class) = inputs.classes.fighter(entry.class) else {
+                    continue;
+                };
+                for _ in 0..entry.count {
+                    v[23] += 1;
+                    v[32] += class.maintenance;
+                    if f30 & 1 != 0 && (f28 & 0x83e0_0000 == 0 || class.values[1] >= 0) {
+                        v[24] += 1;
+                    }
+                    v[26] += class.values[0];
+                    v[27] += class.values[1];
+                    v[28] += class.values[2];
+                    v[25] += 1;
+                    if f30 & 1 != 0 {
+                        f28 |= 0x8_0000;
+                    }
+                }
+            }
             if f30 & 1 != 0 && f28 & 3 == 0 && f28 & 0x3e0_0000 == 0 {
                 f28 |= 0x400_0000;
                 let mut used = v[11] + v[10] + v[3] + v[2] + v[7];
@@ -2004,6 +2026,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -2264,6 +2287,56 @@ mod tests {
             (v[20], v[9], v[13], v[37], v[22], v[51]),
             (2, 1, 0, 1, 2, 8)
         );
+    }
+
+    #[test]
+    fn a_system_record_counts_the_squadrons_on_its_planet() {
+        // FUN_00433e40 -> FUN_005039d0 (mode 3, either side): +0xa4 all,
+        // +0xa8 counted, +0xac active, +0xb0..+0xb8 FUN_00473610/620/630,
+        // +0xc8 maintenance; an own system sets +0x28 bit 0x80000.
+        let mut fixture = system_fixture();
+        let wing = |world: &mut GameWorld, alliance: bool| {
+            world.fighter_classes.insert(crate::world::FighterClass {
+                is_alliance: alliance,
+                is_empire: !alliance,
+                maintenance_cost: 4,
+                squadron_size: 2,
+                laser_cannon_fore: 1,
+                maneuverability: 3,
+                ..crate::world::FighterClass::default()
+            })
+        };
+        let x_wing = wing(&mut fixture.world, true);
+        let tie = wing(&mut fixture.world, false);
+        let system = fixture.system;
+        crate::squadrons::add(&mut fixture.world.systems[system].fighters, x_wing, 2);
+        crate::squadrons::add(&mut fixture.world.systems[system].fighters, tie, 1);
+
+        let r = system_record(&fixture, true, 0);
+        let v = &r.values;
+        // FUN_004736c0: attack 100 / 6 * 2 = 32, laser 1 * 3 * 2 * 10 = 60,
+        // 2 * 25 / 10 = 5.
+        assert_eq!((v[23], v[24], v[25]), (3, 3, 3));
+        assert_eq!((v[26], v[27], v[28], v[32]), (3 * 32, 3 * 60, 3 * 5, 3 * 4));
+        assert_ne!(r.state & 0x8_0000, 0);
+        // Squadrons against the goal: counted 3 less S388, active 3 less S388.
+        assert_eq!(
+            (v[38], v[53]),
+            (3 - side_constants::S388, 3 - side_constants::S388)
+        );
+
+        // A marked own system (a yard mark, 0x200000) counts a squadron whose
+        // class +0x34 reaches the threshold; hyp: the threshold is 0.
+        let r = system_record(&fixture, true, 0x20_0000);
+        assert_eq!((r.values[24], r.values[38]), (3, 3 - side_constants::S38C));
+
+        // An opponent's system counts them all, none toward a goal, and adds
+        // the active ones to +0xbc.
+        let r = system_record(&fixture, false, 0);
+        let v = &r.values;
+        assert_eq!((v[23], v[24], v[25]), (3, 0, 3));
+        assert_eq!(r.state & 0x8_0000, 0);
+        assert_eq!(v[29], 2 + 3);
     }
 
     #[test]

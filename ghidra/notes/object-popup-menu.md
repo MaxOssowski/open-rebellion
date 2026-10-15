@@ -79,6 +79,18 @@ in a table that `FUN_0051f930(kind, factory)` fills (`FUN_0041ec50`,
 `FUN_0051f4b0`). Mission `0x240` is `FUN_004f5250` → `FUN_004f5200`, vtable
 `0x0065d118` over the base `FUN_004f4690` / `FUN_0051fa20`.
 
+### A squadron's orders
+
+A squadron's vtable is `0x0065def0`. Its slot `+0x3c`, `FUN_00502fe0`,
+copies the list `FUN_00557ce0` builds once: `0x201` Move, `0x202`
+Confirmed Move, `0x204` and `0x200` Scrap, after the empty object list
+(`FUN_00558380` → `FUN_00558350` → `FUN_004f2a10`). STRATEGY holds no record for `0x204`, so the menu shows Move,
+Confirmed Move, Scrap, Encyclopedia and Status, as a regiment's does
+(`planet-squadrons.md`). Since 2026-10-15 the port offers them for a
+squadron aboard a fleet (Fleet window) and on a planet (Defenses window);
+Move is enabled for the player's squadron on a planet or aboard a fleet in
+orbit. port: Confirmed Move and Scrap stay disabled.
+
 ### When Mission is enabled
 
 - Listed: `+0x10` is `FUN_0040f340`, which returns 1.

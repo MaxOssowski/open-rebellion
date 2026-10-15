@@ -115,6 +115,13 @@ pub enum PanelAction {
         troop: TroopKey,
         target: RegimentTarget,
     },
+    /// A squadron's Move (`0x201`) released on a system or fleet
+    /// (`squadrons::move_squadrons`).
+    MoveSquadron {
+        class: rebellion_core::ids::FighterKey,
+        from: rebellion_core::squadrons::SquadronPlace,
+        to: rebellion_core::squadrons::SquadronPlace,
+    },
 
     // ── Manufacturing ─────────────────────────────────────────────────────────
     /// Stop (`0x213`): `system`'s `area` drops every unit it was building

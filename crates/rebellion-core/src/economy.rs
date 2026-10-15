@@ -697,6 +697,16 @@ fn count_military_presence(world: &GameWorld, sys: &crate::world::System) -> Mil
         }
     }
 
+    // The squadrons on the planet count with the fleets' (FUN_005039d0;
+    // FUN_0050b310 counts both).
+    for entry in &sys.fighters {
+        match crate::squadrons::is_alliance(world, entry.class) {
+            Some(true) => presence.alliance_fighters += entry.count,
+            Some(false) => presence.empire_fighters += entry.count,
+            None => {}
+        }
+    }
+
     for &troop_key in &sys.ground_units {
         if let Some(troop) = world.troops.get(troop_key) {
             if troop.is_alliance {
@@ -812,6 +822,11 @@ fn calculate_support_drift(
         friendly_troops.cast_signed()
     };
 
+    // port: FUN_0050b230 passes FUN_00559c40 the side's squadrons on the
+    // planet alone (FUN_00508fb0 -> FUN_00503a50), its fleets' capital ships
+    // (FUN_00509090) and, for the gate, their Death Stars (FUN_00509140);
+    // this counts the squadrons aboard fleets too, and the fleets themselves
+    // (ghidra/notes/planet-squadrons.md).
     // Military suppression: integer subtraction matching original exactly.
     // Original: clamp(base - fighters*GNPRTB[7687] - troops_adj*GNPRTB[7688] - fleet*GNPRTB[7686], 0, 100)
     let suppression = friendly_fighters.cast_signed() * fighter_influence
@@ -1423,6 +1438,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -1465,6 +1481,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -1513,6 +1530,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -1683,6 +1701,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: true, // Destroyed!
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -1750,6 +1769,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -1818,6 +1838,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -1865,6 +1886,7 @@ mod tests {
             espionage_rating: 0.0,
             fleets: vec![],
             ground_units: vec![],
+            fighters: Vec::new(),
             special_forces: vec![],
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
@@ -1960,6 +1982,7 @@ mod tests {
             espionage_rating: 0.0,
             fleets: vec![],
             ground_units: vec![],
+            fighters: Vec::new(),
             special_forces: vec![],
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
@@ -2026,6 +2049,7 @@ mod tests {
             espionage_rating: 0.0,
             fleets: vec![],
             ground_units: vec![],
+            fighters: Vec::new(),
             special_forces: vec![],
             defense_facilities: vec![],
             manufacturing_facilities: vec![
@@ -2090,6 +2114,63 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_fighter_posture_counts_the_squadrons_on_the_planet() {
+        // FUN_0050b310 counts the squadrons aboard the fleets and at the
+        // system (FUN_005039d0); the posture follows that count.
+        let mut world = GameWorld {
+            gnprtb: stock_gnprtb(),
+            ..Default::default()
+        };
+        let sector = world.sectors.insert(crate::world::Sector {
+            dat_id: DatId(0),
+            name: "S".into(),
+            group: crate::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let sys_key = world.systems.insert(crate::world::System {
+            dat_id: DatId(0),
+            name: "Yavin".into(),
+            sector,
+            x: 0,
+            y: 0,
+            exploration_status: crate::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 10,
+            raw_materials: 10,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+        });
+        for (alliance, count) in [(true, 2), (false, 3)] {
+            let class = world.fighter_classes.insert(crate::world::FighterClass {
+                is_alliance: alliance,
+                is_empire: !alliance,
+                ..Default::default()
+            });
+            crate::squadrons::add(&mut world.systems[sys_key].fighters, class, count);
+        }
+
+        let mut state = EconomyState::default();
+        EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+
+        let posture = &state.per_system[&sys_key].summary.fighter_posture;
+        assert_eq!((posture.alliance_fighters, posture.empire_fighters), (2, 3));
+        assert!(posture.is_contested);
+    }
+
     // -----------------------------------------------------------------------
     // Phase 3b: Troop-based side resolution tests
     // -----------------------------------------------------------------------
@@ -2132,6 +2213,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -2199,6 +2281,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -2261,6 +2344,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -2340,6 +2424,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -2381,6 +2466,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -2424,6 +2510,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -2464,6 +2551,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -2505,6 +2593,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -2549,6 +2638,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -2586,6 +2676,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -2640,6 +2731,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -2717,6 +2809,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -2773,6 +2866,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -2862,6 +2956,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,

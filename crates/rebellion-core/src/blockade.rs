@@ -314,8 +314,8 @@ impl BlockadeSystem {
     ///
     /// 100 unless the system is blockaded and has no KDY-150. Otherwise
     /// `max(0, 100 - ships * GNPRTB[7684] - fighters * GNPRTB[7685])` over every
-    /// fleet at the system, both sides (`FUN_0055a020`, clamped by
-    /// `FUN_0053e120`).
+    /// fleet at the system and the squadrons on its planet, both sides
+    /// (`FUN_005039d0`, `FUN_0055a020`, clamped by `FUN_0053e120`).
     #[must_use]
     pub fn withdraw_percent(world: &GameWorld, system: SystemKey) -> u8 {
         let Some(sys) = world.systems.get(system) else {
@@ -341,6 +341,7 @@ impl BlockadeSystem {
                 let squadrons: i64 = fleet.fighters.iter().map(|f| i64::from(f.count)).sum();
                 (ships + i64::from(fleet.ship_count()), fighters + squadrons)
             });
+        let fighters = fighters + i64::from(crate::squadrons::total(&sys.fighters));
         let param = |id| i64::from(world.gnprtb.value(id, world.difficulty_index));
         let penalty = ships * param(GNPRTB_WITHDRAW_PENALTY_PER_CAPSHIP)
             + fighters * param(GNPRTB_WITHDRAW_PENALTY_PER_FIGHTER);
@@ -439,20 +440,34 @@ impl BlockadeSystem {
     /// contested one, when populated, by either side's fleets. A neutral
     /// system never is.
     ///
-    /// port: presence counts fleets only, because fighter squadrons exist
-    /// only inside fleets, and every fleet is active. hyp: `Contested` is the
-    /// original's side 3, and an `Uprising` system keeps its holder's side.
+    /// A side is present by a fleet or a squadron on the planet
+    /// (`FUN_00509710` → `FUN_00503a50`), but only a fleet blockades
+    /// (`FUN_0050b8e0` walks `FUN_004ffe70`). port: every fleet and squadron
+    /// is active. hyp: `Contested` is the original's side 3, and an
+    /// `Uprising` system keeps its holder's side.
     pub(crate) fn system_is_blockaded(world: &GameWorld, sys: &crate::world::System) -> bool {
         use crate::dat::Faction;
 
-        let (alliance, empire) = sys
-            .fleets
-            .iter()
-            .filter_map(|&fk| world.fleets.get(fk))
-            .fold((false, false), |(alliance, empire), fleet| {
-                (alliance || fleet.is_alliance, empire || !fleet.is_alliance)
-            });
-        if alliance && empire {
+        let side_flags = |sides: &mut dyn Iterator<Item = bool>| {
+            sides.fold((false, false), |(alliance, empire), is_alliance| {
+                (alliance || is_alliance, empire || !is_alliance)
+            })
+        };
+        let (alliance, empire) = side_flags(
+            &mut sys
+                .fleets
+                .iter()
+                .filter_map(|&fk| world.fleets.get(fk))
+                .map(|fleet| fleet.is_alliance),
+        );
+        let (alliance_squadron, empire_squadron) = side_flags(
+            &mut sys
+                .fighters
+                .iter()
+                .filter(|entry| entry.count > 0)
+                .filter_map(|entry| crate::squadrons::is_alliance(world, entry.class)),
+        );
+        if (alliance || alliance_squadron) && (empire || empire_squadron) {
             return false;
         }
         match sys.control {
@@ -511,6 +526,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),
@@ -572,6 +588,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),
@@ -693,6 +710,65 @@ mod tests {
         let mut state = BlockadeState::new();
         BlockadeSystem::advance(&mut state, &world, &[tick(1)]);
         state.is_blockaded(sys)
+    }
+
+    /// `make_world`'s Alliance system with a squadron of `alliance`'s side on
+    /// its planet and, when `enemy_fleet`, an Empire fleet in orbit.
+    fn squadron_world(alliance: bool, enemy_fleet: bool) -> (GameWorld, SystemKey) {
+        let (mut world, sys) = make_world();
+        let class = world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: alliance,
+            is_empire: !alliance,
+            ..crate::world::FighterClass::default()
+        });
+        crate::squadrons::add(&mut world.systems[sys].fighters, class, 1);
+        if enemy_fleet {
+            add_fleet(&mut world, sys, false);
+        }
+        (world, sys)
+    }
+
+    // FUN_00509710 -> FUN_00503a50: a squadron on the planet makes its side
+    // present, so the enemy fleet meets a battle (0x1000), not a blockade.
+    #[test]
+    fn the_holder_s_squadron_on_the_planet_turns_a_blockade_into_a_battle() {
+        let (world, sys) = squadron_world(true, true);
+        assert!(!BlockadeSystem::system_is_blockaded(
+            &world,
+            &world.systems[sys]
+        ));
+        let (world, sys) = squadron_world(true, false);
+        assert!(!BlockadeSystem::system_is_blockaded(
+            &world,
+            &world.systems[sys]
+        ));
+    }
+
+    // FUN_00503a50 finds no squadron in an emptied class entry.
+    #[test]
+    fn an_emptied_squadron_entry_makes_no_side_present() {
+        let (mut world, sys) = squadron_world(true, true);
+        world.systems[sys].fighters[0].count = 0;
+        assert!(BlockadeSystem::system_is_blockaded(
+            &world,
+            &world.systems[sys]
+        ));
+    }
+
+    // FUN_0050b8e0 takes the blockade bit from the fleets (FUN_004ffe70)
+    // alone: an enemy squadron on the planet does not blockade.
+    #[test]
+    fn an_enemy_squadron_on_the_planet_does_not_blockade() {
+        let (world, sys) = squadron_world(false, false);
+        assert!(!BlockadeSystem::system_is_blockaded(
+            &world,
+            &world.systems[sys]
+        ));
+        let (world, sys) = squadron_world(false, true);
+        assert!(BlockadeSystem::system_is_blockaded(
+            &world,
+            &world.systems[sys]
+        ));
     }
 
     // FUN_0050b8e0: a populated side-3 system takes the blockade bit from any
@@ -924,6 +1000,23 @@ mod tests {
                 .embarked_regiment(run.troop)
                 .map(|r| r.withdraw_percent),
             Some(0)
+        );
+    }
+
+    #[test]
+    fn squadrons_on_the_planet_lower_the_withdraw_percent() {
+        // FUN_0050b310 counts the fighters aboard each ship and at the system
+        // (FUN_005039d0): 100 - 10 ships * 5 - (5 + 3) squadrons * 2 = 34.
+        let mut run = setup_run(10, 5);
+        let class = run.world.fleets[run.fleet].fighters[0].class;
+        crate::squadrons::add(&mut run.world.systems[run.target].fighters, class, 3);
+        run.carry_into_target();
+
+        assert_eq!(
+            run.state
+                .embarked_regiment(run.troop)
+                .map(|regiment| regiment.withdraw_percent),
+            Some(34)
         );
     }
 

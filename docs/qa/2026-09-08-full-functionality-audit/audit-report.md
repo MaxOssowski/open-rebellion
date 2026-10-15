@@ -1371,8 +1371,15 @@ cross-runtime proof remain open
   keys, so a slot holding only a v14 save was overwritten without
   confirmation. Occupancy and deletion now derive their keys from
   `STORED_VERSIONS`.
-- Open: the model has no system-based fighters outside fleets, and the app
-  path needs a browser pass.
+- Open: the app path needs a browser pass. (The model's missing
+  system-based fighters are closed below.)
+- Squadrons on planets (2026-10-15): the open model item is closed. A
+  built squadron stands on its system's planet (`FUN_0052a140`, slot
+  `+0xa8`), and `withdraw_percent` counts the planet's squadrons with the
+  fleets' (`FUN_0050b310` via `FUN_005039d0`). A squadron on the planet also
+  makes its side present (`FUN_00509710` → `FUN_00503a50`), so the holder's
+  squadrons turn an enemy fleet's blockade into a battle. Save v46
+  (`evidence/2026-10-15-planet-squadrons/`).
 - Acceptance: a regiment carried into a blockaded system without a KDY-150
   rolls against the recovered percent when it leaves, garrisons and
   surface-loaded regiments are never rolled, and a browser pass shows the
@@ -1584,6 +1591,10 @@ cross-runtime proof remain open
   - port: the production panel picks the destination from a list of held
     systems. The original order path is unrecovered, and AI builds stay at
     their facility.
+- 2026-10-15: a completed or delivered squadron joins its destination
+  system's planet, not a fleet there (`FUN_0052a140`, `FUN_0052a380`; manual
+  p. 114); the player or the AI moves it onto a carrier with Move `0x201`
+  (`evidence/2026-10-15-planet-squadrons/`).
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 
@@ -1841,6 +1852,14 @@ cross-runtime proof remain open
   strategy-driven garrison goal changes, give nothing. The heuristic's
   regiments are gone. Save v45; golden `v1:ed967029485e168a` ->
   `v1:6d35df6768400d72` (`evidence/2026-10-15-ai-module-6/`).
+- Squadrons on planets (2026-10-15), ahead of module 7: the system record
+  counts the planet's squadrons (`FUN_00433e40`: `v[23..28]`, `v[32]`,
+  `+0x28` bit `0x80000`, and so `v[38]`/`v[53]`, which are squadrons, not
+  regiments, against the goal). `AIAction::MoveSquadrons` carries a
+  squadron Move, validated by `squadrons::check_move`; the heuristic
+  standing in for module `0xb` boards planet squadrons onto its fleets.
+  port: a planet's squadrons take no part in battle yet. Save v46; golden
+  `v1:6d35df6768400d72` -> `v1:d33088556c4445a3` (`evidence/2026-10-15-planet-squadrons/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

@@ -84,5 +84,6 @@ function named here has a `FUN_<address>.c` note in this directory.
 ## Port
 
 `crates/rebellion-core/src/blockade.rs`: `BlockadeSystem::withdraw_percent`,
-`running_regiments`, `resolve_running`. Our model has no per-system fighters
-outside fleets and treats "active" as present.
+`running_regiments`, `resolve_running`. Since 2026-10-15 the fighter count
+includes the squadrons on the planet (`planet-squadrons.md`). The port treats
+"active" as present.

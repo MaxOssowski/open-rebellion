@@ -67,6 +67,7 @@ use rebellion_core::production_cycle::{
 use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
 use rebellion_core::research::ResearchState;
 use rebellion_core::tick::{GameClock, GameSpeed};
+use rebellion_core::squadrons::SquadronPlace;
 use rebellion_core::troop_transport::{RegimentLeg, RegimentTarget, TroopTransportState};
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
 use rebellion_core::victory::{VictoryState, VictorySystem};
@@ -4550,6 +4551,45 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 };
                                 panel_actions.push(PanelAction::MoveRegiment { troop, target });
                             }
+                            // FUN_00422ce0: the squadron's 0x201 against the
+                            // window under the point.
+                            FleetWindowAction::DragSquadron {
+                                fleet,
+                                index,
+                                point,
+                            } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                let Some(class) = world
+                                    .fleets
+                                    .get(fleet)
+                                    .and_then(|value| value.fighters.get(index))
+                                    .map(|entry| entry.class)
+                                else {
+                                    continue;
+                                };
+                                let Some(target) = release_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) else {
+                                    continue;
+                                };
+                                panel_actions.push(PanelAction::MoveSquadron {
+                                    class,
+                                    from: SquadronPlace::Fleet(fleet),
+                                    to: target.squadron_place(),
+                                });
+                            }
                         }
                     }
 
@@ -4699,6 +4739,30 @@ Some(RailAudience::side(*faction_is_alliance)),
                         }
                         Some((ObjectMenuCommand::Move, Some(MenuObject::Troop(troop)))) => {
                             targeting = Some(Targeting::new(TargetOrder::TroopMove { troop }));
+                        }
+                        Some((
+                            ObjectMenuCommand::Move,
+                            Some(MenuObject::Fighter { fleet, index }),
+                        )) => {
+                            if let Some(entry) = world
+                                .fleets
+                                .get(fleet)
+                                .and_then(|value| value.fighters.get(index))
+                            {
+                                targeting = Some(Targeting::new(TargetOrder::SquadronMove {
+                                    class: entry.class,
+                                    from: SquadronPlace::Fleet(fleet),
+                                }));
+                            }
+                        }
+                        Some((
+                            ObjectMenuCommand::Move,
+                            Some(MenuObject::PlanetFighter { system, class }),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::SquadronMove {
+                                class,
+                                from: SquadronPlace::Planet(system),
+                            }));
                         }
                         Some((
                             ObjectMenuCommand::Move,
@@ -5283,6 +5347,16 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 }) => panel_actions.push(PanelAction::MoveRegiment {
                                     troop,
                                     target: RegimentTarget::System(system),
+                                }),
+                                // A squadron's 0x201 against the release
+                                // window's +0x70: boarding or landing.
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::SquadronMove { class, from },
+                                    target,
+                                }) => panel_actions.push(PanelAction::MoveSquadron {
+                                    class,
+                                    from,
+                                    to: target.squadron_place(),
                                 }),
                                 // FUN_00512700 kind 4: the order's team is
                                 // every production area of the system, or
@@ -6545,6 +6619,29 @@ fn order_gates(
             }
             _ => false,
         },
+        squadron_move: match selection {
+            Some(MenuObject::Fighter { fleet, index }) => world
+                .fleets
+                .get(fleet)
+                .and_then(|value| value.fighters.get(index))
+                .is_some_and(|entry| {
+                    rebellion_core::squadrons::move_enabled(
+                        world,
+                        is_alliance,
+                        entry.class,
+                        SquadronPlace::Fleet(fleet),
+                    )
+                }),
+            Some(MenuObject::PlanetFighter { system, class }) => {
+                rebellion_core::squadrons::move_enabled(
+                    world,
+                    is_alliance,
+                    class,
+                    SquadronPlace::Planet(system),
+                )
+            }
+            _ => false,
+        },
         // FUN_004f9860: the ship's fleet is the player's and in orbit.
         ship_move: match selection {
             Some(MenuObject::Ship { fleet, index, .. }) => {
@@ -6755,6 +6852,20 @@ fn apply_panel_action(
                 msg_log.push(GameMessage::new(
                     clock.tick,
                     format!("Regiment move rejected: {error}"),
+                    MessageCategory::Event,
+                ));
+            }
+        }
+        // FUN_00557ce0's 0x201 for a squadron (rebellion_core::squadrons).
+        PanelAction::MoveSquadron { class, from, to } => {
+            let alliance = *player_faction == MissionFaction::Alliance;
+            // port: FUN_00487c90's advisor reaction; this line stands in.
+            if let Err(error) =
+                rebellion_core::squadrons::move_squadrons(world, alliance, class, 1, from, to)
+            {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    format!("Squadron move rejected: {error}"),
                     MessageCategory::Event,
                 ));
             }
@@ -7872,6 +7983,18 @@ fn apply_ai_actions(
                     );
                 }
             }
+            AIAction::MoveSquadrons {
+                class,
+                count,
+                from,
+                to,
+            } => {
+                if let Some(alliance) = rebellion_core::squadrons::is_alliance(world, *class) {
+                    let _ = rebellion_core::squadrons::move_squadrons(
+                        world, alliance, *class, *count, *from, *to,
+                    );
+                }
+            }
             AIAction::SetDestination {
                 system,
                 area,
@@ -8138,6 +8261,7 @@ mod tactical_ground_tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -8199,6 +8323,7 @@ mod tactical_ground_tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -8534,6 +8659,7 @@ mod fleet_move_tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -8736,6 +8862,7 @@ mod fleet_move_tests {
                 defense_facilities: vec![],
                 manufacturing_facilities: vec![],
                 production_facilities: vec![],
+                fighters: Vec::new(),
                 is_headquarters: false,
                 is_destroyed: false,
                 control,

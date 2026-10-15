@@ -132,6 +132,8 @@ enum DefenderId {
     Ship(FleetKey, usize),
     /// A fleet's fighter entry and the squadron within its count.
     Fighter(FleetKey, usize, u32),
+    /// The planet's fighter entry and the squadron within its count.
+    PlanetFighter(usize, u32),
 }
 
 /// A detector (`ghidra/notes/decoy-roll.md`, "Officer rank and detector
@@ -155,14 +157,33 @@ pub(crate) fn faction_of(is_alliance: bool) -> Faction {
 
 /// `FUN_00587640`: the defenders at `location` in walk order.
 ///
-/// port: the port keeps fighters in fleets only, so a system has no
-/// fighters of its own, and a fleet's fighters follow all of its ships
-/// where the original walks each ship's fighters and regiments after the
-/// ship; fleets carry no regiments. A fleet in hyperspace reads its last
-/// orbit.
+/// The system's squadrons need the system flag and the fighter flag, which
+/// the port folds into the fleet flag ([`Flags`]); they come before its
+/// regiments.
+///
+/// port: a fleet's fighters follow all of its ships where the original
+/// walks each ship's fighters and regiments after the ship; fleets carry no
+/// regiments. A fleet in hyperspace reads its last orbit.
 fn walk(world: &GameWorld, location: SystemKey, flags: Flags, kinds: Kinds) -> Vec<Defender> {
     let mut defenders = Vec::new();
     let as_i32 = |value: u32| i32::try_from(value).unwrap_or(i32::MAX);
+    if flags.system && flags.fleets && kinds.fighters {
+        if let Some(system) = world.systems.get(location) {
+            for (index, entry) in system.fighters.iter().enumerate() {
+                let Some(class) = world.fighter_classes.get(entry.class) else {
+                    continue;
+                };
+                for squadron in 0..entry.count {
+                    defenders.push(Defender {
+                        id: DefenderId::PlanetFighter(index, squadron),
+                        in_fleet: false,
+                        detection: as_i32(class.detection),
+                        side: faction_of(class.is_alliance),
+                    });
+                }
+            }
+        }
+    }
     if flags.system && kinds.regiments {
         if let Some(system) = world.systems.get(location) {
             for &key in &system.ground_units {
@@ -793,6 +814,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,
@@ -1278,12 +1300,16 @@ mod tests {
             alive: false,
             name: None,
         });
+        let tie = world
+            .fighter_classes
+            .insert(crate::world::FighterClass::default());
         world.fleets[fleet]
             .fighters
             .push(crate::world::FighterEntry {
                 class: crate::ids::FighterKey::default(),
                 count: 2,
             });
+        crate::squadrons::add(&mut world.systems[here].fighters, tie, 1);
         imperial_fleet(&mut world, there, false);
         let ids = |flags, kinds| -> Vec<DefenderId> {
             walk(&world, here, flags, kinds)
@@ -1302,9 +1328,12 @@ mod tests {
             regiments,
         };
 
+        // FUN_00587640: the system's squadrons (FUN_005039d0), then its
+        // regiments (FUN_00504c40), then each fleet (FUN_004ffe70).
         assert_eq!(
             ids(both, ALL),
             vec![
+                DefenderId::PlanetFighter(0, 0),
                 DefenderId::Regiment(troop),
                 DefenderId::Ship(fleet, 0),
                 DefenderId::Fighter(fleet, 0, 0),

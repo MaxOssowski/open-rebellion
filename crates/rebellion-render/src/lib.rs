@@ -753,14 +753,19 @@ fn gid_metric(
                     .is_some_and(|troop| same_faction(troop.is_alliance))
             })
             .count() as u32,
-        GidMode::FighterSquadrons => system
-            .fleets
-            .iter()
-            .filter_map(|key| world.fleets.get(*key))
-            .filter(|fleet| same_faction(fleet.is_alliance))
-            .flat_map(|fleet| fleet.fighters.iter())
-            .map(|fighters| fighters.count)
-            .sum(),
+        // hyp: the original's count is untraced; the side's squadrons aboard
+        // its fleets and on the planet (FUN_005039d0) both count.
+        GidMode::FighterSquadrons => {
+            system
+                .fleets
+                .iter()
+                .filter_map(|key| world.fleets.get(*key))
+                .filter(|fleet| same_faction(fleet.is_alliance))
+                .flat_map(|fleet| fleet.fighters.iter())
+                .map(|fighters| fighters.count)
+                .sum::<u32>()
+                + rebellion_core::squadrons::on_planet(world, system_key, player_is_alliance)
+        }
         GidMode::DeathStarShields => system
             .defense_facilities
             .iter()
@@ -1760,6 +1765,7 @@ mod interaction_tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(rebellion_core::dat::Faction::Empire),
@@ -1836,6 +1842,7 @@ mod interaction_tests {
             defense_facilities: vec![],
             manufacturing_facilities: yards,
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(rebellion_core::dat::Faction::Alliance),
@@ -1866,5 +1873,70 @@ mod interaction_tests {
         assert_eq!(metric(GidMode::IdleShipyards), 1);
         assert_eq!(metric(GidMode::IdleTrainingFacilities), 0);
         assert_eq!(metric(GidMode::TrainingFacilities), 1);
+    }
+
+    // Our own count: the side's squadrons on the planet (FUN_005039d0) join
+    // those aboard its fleets; hyp: the original's metric is untraced.
+    #[test]
+    fn the_squadron_display_counts_the_side_s_squadrons_on_the_planet() {
+        let mut world = GameWorld::default();
+        let key = world.systems.insert(System {
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Naboo".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.8,
+            popularity_empire: 0.2,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(rebellion_core::dat::Faction::Alliance),
+        });
+        for (alliance, count) in [(true, 2), (false, 5)] {
+            let class = world
+                .fighter_classes
+                .insert(rebellion_core::world::FighterClass {
+                    is_alliance: alliance,
+                    is_empire: !alliance,
+                    ..Default::default()
+                });
+            rebellion_core::squadrons::add(&mut world.systems[key].fighters, class, count);
+        }
+        let movement = rebellion_core::movement::MovementState::new();
+        let manufacturing = ManufacturingState::new();
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let gid = GidOverlayContext {
+            movement: &movement,
+            manufacturing: &manufacturing,
+            economy: &economy,
+            missions: &missions,
+            uprisings: &uprisings,
+        };
+        let metric = |alliance| {
+            gid_metric(
+                &world,
+                key,
+                &world.systems[key],
+                alliance,
+                GidMode::FighterSquadrons,
+                &gid,
+            )
+        };
+        assert_eq!(metric(true), 2);
+        assert_eq!(metric(false), 5);
     }
 }

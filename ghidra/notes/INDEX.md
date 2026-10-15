@@ -3,7 +3,7 @@ title: "Ghidra RE Notes — Index"
 description: "Master index of 5,408 decompiled C files (5,207 by address, 201 named copies), Ghidra scripts, and recovered subsystem notes"
 category: "ghidra"
 created: 2026-03-13
-updated: 2026-10-06
+updated: 2026-10-15
 ---
 
 # Ghidra RE Notes — Index
@@ -61,6 +61,7 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | [ai-galaxy-records.md](ai-galaxy-records.md) | The AI's world model: system, sector and class records, their refresh, flags and value arrays, and the sector/system queries the production modules use | FUN_004321e0, FUN_00433e40, FUN_00432350, FUN_0042dd00, FUN_00419a00, FUN_00431830, FUN_0041bd20 |
 | [ai-mission-planning.md](ai-mission-planning.md) | Who fills mission team and decoy lists: mission orders 0x240..0x242 into command 0x250, the player dialog's team/decoy buttons, AI planners per kind, the candidate filter, decoy cap (+0xbc + 2) / 2 | FUN_0046c3c0, FUN_004f4a00, FUN_004f4b60, FUN_0042f830, FUN_004bced0, FUN_0047b360, FUN_0047d720, FUN_00403460 |
 | [object-state-flags.md](object-state-flags.md) | `+0x50` state bits (usable, created, completed, destroyed, en route, existing) and the direct-child iterator modes | FUN_004f7410, FUN_004f6b90, FUN_005131d0, FUN_00513120, FUN_004fe540 |
+| [planet-squadrons.md](planet-squadrons.md) | Fighter squadrons on a planet: a built squadron joins its system, the readers (presence, blockade, withdraw, drift, AI record, Defenses window, mission defenders), a squadron's order list and a fleet's room | FUN_0052a140, FUN_005039d0, FUN_00503a50, FUN_00509710, FUN_0050b8e0, FUN_0050b230, FUN_00433e40, FUN_00502fe0, FUN_00557ce0, FUN_00500b40, FUN_00587640 |
 | [regiment-unload.md](regiment-unload.md) | Unloading a regiment by hand: drop targets, the group and command refusals (0x28 only toward another side, populated-planet rule), regiment speed GNPRTB 1, immediate same-system container change | FUN_00556390, FUN_00555920, FUN_0053d430, FUN_004f63f0, FUN_004f8630, FUN_004f6fd0 |
 | [fleet-join-split.md](fleet-join-split.md) | Joining and splitting fleets: a move onto a fleet hands over its capital ships, an emptied fleet disbands, Create Fleet (0x270) fills a system's hidden spare fleet, a fleet holds only capital ships | FUN_004feca0, FUN_004ffc90, FUN_004fe630, FUN_0050be00, FUN_00512d00, FUN_00580b00, FUN_00509b40 |
 | [fleet-finder.md](fleet-finder.md) | The Fleet Finder (window type 0x15, 470x330): cockpit command 0x12e or F3, side tabs, name box with prefix match, a name-sorted list of the side's known fleets or ships, Display and double click open the Sector and Fleet windows | FUN_0042a0c0, FUN_00461750, FUN_00461960, FUN_00462be0, FUN_00462770, FUN_00462a50, FUN_00429440 |

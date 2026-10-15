@@ -56,7 +56,7 @@ use rebellion_core::troop_transport::{RegimentArrivals, RegimentLeg, TroopTransp
 use rebellion_core::uprising::{UprisingEvent, UprisingState};
 use rebellion_core::victory::VictoryOutcome;
 use rebellion_core::world::{
-    CapitalShipClass, ControlKind, DefenseFacilityInstance, FighterEntry, Fleet, GameWorld,
+    CapitalShipClass, ControlKind, DefenseFacilityInstance, Fleet, GameWorld,
     ManufacturingFacilityInstance, ProductionFacilityInstance, ShipInstance, SpecialForceUnit,
     TroopUnit,
 };
@@ -162,6 +162,20 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "type": "MoveRegiments",
                 "troops": troops.len(),
                 "to": sys_name(world, *to),
+            })
+        }
+        AIAction::MoveSquadrons {
+            class,
+            count,
+            from,
+            to,
+        } => {
+            serde_json::json!({
+                "type": "MoveSquadrons",
+                "class": world.fighter_classes.get(*class).map_or("unknown", |c| c.name.as_str()),
+                "count": count,
+                "from": format!("{from:?}"),
+                "to": format!("{to:?}"),
             })
         }
         AIAction::SetDestination {
@@ -2100,6 +2114,17 @@ fn apply_ai_actions_inner(
                 }
                 moved
             }
+            AIAction::MoveSquadrons {
+                class,
+                count,
+                from,
+                to,
+            } => rebellion_core::squadrons::is_alliance(world, *class).is_some_and(|alliance| {
+                rebellion_core::squadrons::move_squadrons(
+                    world, alliance, *class, *count, *from, *to,
+                )
+                .is_ok()
+            }),
             AIAction::SetDestination {
                 system,
                 area,
@@ -2190,6 +2215,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
@@ -2786,6 +2812,67 @@ mod tests {
     }
 
     #[test]
+    fn a_squadron_move_boards_the_planet_s_squadrons_onto_the_fleet() {
+        // Move 0x201 for squadrons (FUN_00557ce0), carried out by
+        // squadrons::move_squadrons for the class's side; a move beyond the
+        // fleet's room (FUN_00500b40) changes nothing.
+        use rebellion_core::squadrons::SquadronPlace;
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Kuat");
+        let carrier = world.capital_ship_classes.insert(CapitalShipClass {
+            fighter_capacity: 2,
+            ..Default::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![rebellion_core::world::ShipInstance::new(
+                carrier, 100, false,
+            )],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[system].fleets.push(fleet);
+        let tie = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                is_empire: true,
+                ..Default::default()
+            });
+        rebellion_core::squadrons::add(&mut world.systems[system].fighters, tie, 3);
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+        let order = |count| AIAction::MoveSquadrons {
+            class: tie,
+            count,
+            from: SquadronPlace::Planet(system),
+            to: SquadronPlace::Fleet(fleet),
+        };
+
+        integrator.apply_ai_actions(
+            &[order(3), order(2)],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::new(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            false,
+        );
+
+        assert_eq!(
+            rebellion_core::squadrons::total(&world.fleets[fleet].fighters),
+            2
+        );
+        assert_eq!(
+            rebellion_core::squadrons::total(&world.systems[system].fighters),
+            1
+        );
+    }
+
+    #[test]
     fn module_one_s_destination_and_build_reach_the_manager() {
         // FUN_004dc9f0 (0x214) sets the area's destination; FUN_004dcb30
         // (0x210) builds +0x4c units; a count of 0 builds nothing and is
@@ -3219,15 +3306,9 @@ mod tests {
             hull: 100,
             ..Default::default()
         });
-        let fighter = world
-            .fighter_classes
-            .insert(rebellion_core::world::FighterClass {
-                is_alliance: true,
-                ..Default::default()
-            });
         for (system, kind) in [
             (first, BuildableKind::CapitalShip(ship)),
-            (second, BuildableKind::Fighter(fighter)),
+            (second, BuildableKind::CapitalShip(ship)),
         ] {
             apply_build_completion_inner(
                 &CompletionEvent {
@@ -3361,18 +3442,21 @@ mod tests {
     }
 
     #[test]
-    fn completed_squadrons_stack_in_their_own_side_fleet() {
+    fn completed_squadrons_stack_on_their_planet_beside_any_fleet() {
+        // FUN_0052a140 / FUN_0052a380: the product joins its destination's
+        // container (slot +0xa8), the system; FUN_005039d0 lists it on the
+        // planet (ghidra/notes/planet-squadrons.md).
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Yard");
-        let enemy = world.fleets.insert(Fleet {
+        let own = world.fleets.insert(Fleet {
             location: system,
             capital_ships: vec![],
             fighters: vec![],
             characters: vec![],
-            is_alliance: true,
+            is_alliance: false,
             has_death_star: false,
         });
-        world.systems[system].fleets.push(enemy);
+        world.systems[system].fleets.push(own);
         let tie = world
             .fighter_classes
             .insert(rebellion_core::world::FighterClass {
@@ -3390,10 +3474,11 @@ mod tests {
             );
         }
 
-        assert!(world.fleets[enemy].fighters.is_empty());
-        let own = world.systems[system].fleets[1];
-        assert_eq!(world.fleets[own].fighters.len(), 1);
-        assert_eq!(world.fleets[own].fighters[0].count, 2);
+        assert!(world.fleets[own].fighters.is_empty());
+        assert_eq!(world.systems[system].fleets, [own]);
+        assert_eq!(world.systems[system].fighters.len(), 1);
+        assert_eq!(world.systems[system].fighters[0].class, tie);
+        assert_eq!(world.systems[system].fighters[0].count, 2);
     }
 
     #[test]
@@ -3775,6 +3860,7 @@ mod combat_application_tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -4084,51 +4170,15 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                 }
             }
         }
+        // FUN_0052a140 / FUN_0052a380: the product joins the container its
+        // Destination names (slot +0xa8), the system, and stands on its
+        // planet (FUN_005039d0; ghidra/notes/planet-squadrons.md).
         BuildableKind::Fighter(class_key) => {
-            let is_alliance = world
-                .fighter_classes
-                .get(*class_key)
-                .is_some_and(|c| c.is_alliance);
-
-            let fleet_key = {
-                let Some(sys) = world.systems.get(sys_key) else {
-                    return;
-                };
-                sys.fleets.iter().copied().find(|&fk| {
-                    world
-                        .fleets
-                        .get(fk)
-                        .is_some_and(|f| f.is_alliance == is_alliance)
-                })
-            };
-
-            if let Some(fk) = fleet_key {
-                if let Some(fleet) = world.fleets.get_mut(fk) {
-                    if let Some(entry) = fleet.fighters.iter_mut().find(|e| e.class == *class_key) {
-                        entry.count += 1;
-                    } else {
-                        fleet.fighters.push(FighterEntry {
-                            class: *class_key,
-                            count: 1,
-                        });
-                    }
-                }
-            } else {
-                let fleet = Fleet {
-                    location: sys_key,
-                    capital_ships: vec![],
-                    fighters: vec![FighterEntry {
-                        class: *class_key,
-                        count: 1,
-                    }],
-                    characters: vec![],
-                    is_alliance,
-                    has_death_star: false,
-                };
-                let fk = world.insert_fleet(fleet);
-                if let Some(sys) = world.systems.get_mut(sys_key) {
-                    sys.fleets.push(fk);
-                }
+            if !world.fighter_classes.contains_key(*class_key) {
+                return;
+            }
+            if let Some(sys) = world.systems.get_mut(sys_key) {
+                rebellion_core::squadrons::add(&mut sys.fighters, *class_key, 1);
             }
         }
         BuildableKind::ManufacturingFacility(build) => {

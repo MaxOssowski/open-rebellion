@@ -1330,6 +1330,7 @@ mod tests {
             defense_facilities: Vec::new(),
             manufacturing_facilities: Vec::new(),
             production_facilities: Vec::new(),
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,

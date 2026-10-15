@@ -187,6 +187,14 @@ fn accepts(
                             .is_ok()
                 })
         }
+        // The move command's validation (FUN_00578d00): the side's own
+        // squadrons, then the squadron move's checks.
+        AIAction::MoveSquadrons {
+            class,
+            count,
+            from,
+            to,
+        } => crate::squadrons::check_move(world, is_alliance, *class, *count, *from, *to).is_ok(),
         _ => true,
     }
 }
@@ -639,6 +647,15 @@ pub enum AIAction {
         to: SystemKey,
     },
 
+    /// Move `count` squadrons of `class` (`0x201`), carried out by
+    /// [`crate::squadrons::move_squadrons`] for the class's side.
+    MoveSquadrons {
+        class: crate::ids::FighterKey,
+        count: u32,
+        from: crate::squadrons::SquadronPlace,
+        to: crate::squadrons::SquadronPlace,
+    },
+
     /// Destination (`0x214`) on `system`'s `area` manager: what it builds
     /// goes to `destination` (`FUN_004dc9f0`).
     SetDestination {
@@ -1047,7 +1064,12 @@ impl AISystem {
                 actions,
             ),
             4 => Self::mission_step(state, planner, ctx, actions),
-            0xa | 0xb => production(actions),
+            0xa | 0xb => {
+                production(actions);
+                if id == 0xb {
+                    Self::evaluate_squadron_loading(world, faction, actions);
+                }
+            }
             8 => {
                 Self::evaluate_ds_escort(world, movement, faction, config, actions);
                 Self::evaluate_fleet_deployment(
@@ -1858,6 +1880,53 @@ impl AISystem {
     // Production heuristics
     // -----------------------------------------------------------------------
 
+    /// Board the side's squadrons on a planet onto its fleets in orbit there,
+    /// as far as each fleet's room goes ([`crate::squadrons::fleet_room`]),
+    /// one Move per class and fleet.
+    ///
+    /// port: a stand-in for module `0xb`, whose fleet orders are not read;
+    /// a built squadron now stays on its planet
+    /// (`ghidra/notes/planet-squadrons.md`), where the heuristic's fleets
+    /// used to receive it.
+    fn evaluate_squadron_loading(
+        world: &GameWorld,
+        faction: AiFaction,
+        actions: &mut Vec<AIAction>,
+    ) {
+        use crate::squadrons::SquadronPlace;
+        let is_alliance = matches!(faction, AiFaction::Alliance);
+        for (system, value) in &world.systems {
+            let mut waiting: Vec<(crate::ids::FighterKey, u32)> = value
+                .fighters
+                .iter()
+                .filter(|entry| {
+                    crate::squadrons::is_alliance(world, entry.class) == Some(is_alliance)
+                })
+                .map(|entry| (entry.class, entry.count))
+                .collect();
+            for &fleet in &value.fleets {
+                if world.fleets.get(fleet).map(|f| f.is_alliance) != Some(is_alliance) {
+                    continue;
+                }
+                let mut room = crate::squadrons::fleet_room(world, fleet);
+                for (class, left) in &mut waiting {
+                    let count = room.min(*left);
+                    if count == 0 {
+                        continue;
+                    }
+                    actions.push(AIAction::MoveSquadrons {
+                        class: *class,
+                        count,
+                        from: SquadronPlace::Planet(system),
+                        to: SquadronPlace::Fleet(fleet),
+                    });
+                    room -= count;
+                    *left -= count;
+                }
+            }
+        }
+    }
+
     /// For systems with idle manufacturing capacity, enqueue appropriate units.
     ///
     /// - Systems with no active queue → enqueue best available fighter class
@@ -1891,7 +1960,12 @@ impl AISystem {
             .filter(|f| f.is_alliance == is_alliance)
             .flat_map(|f| &f.fighters)
             .map(|e| e.count as usize)
-            .sum();
+            .sum::<usize>()
+            + world
+                .systems
+                .keys()
+                .map(|system| crate::squadrons::on_planet(world, system, is_alliance) as usize)
+                .sum::<usize>();
 
         let our_faction = if is_alliance {
             crate::dat::Faction::Alliance
@@ -3504,6 +3578,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -3579,6 +3654,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![yard, training],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -3709,6 +3785,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![yard, training],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(side),
@@ -4171,6 +4248,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![mfg_key],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -4192,6 +4270,58 @@ mod tests {
         });
 
         (world, sys_key)
+    }
+
+    #[test]
+    fn the_production_heuristic_counts_the_squadrons_on_its_planets() {
+        // Our own heuristic (module 0xb's stand-in): fighters until the side
+        // holds fighter_ratio per capital ship, squadrons on planets
+        // included now that a built squadron stays there.
+        let (mut world, sys_key) = fighter_world();
+        let destroyer = world.capital_ship_classes.insert(CapitalShipClass {
+            name: "Star Destroyer".into(),
+            is_empire: true,
+            hull: 100,
+            refined_material_cost: 100,
+            ..CapitalShipClass::default()
+        });
+        let config = GameConfig::default();
+        let ships = config.production.capship_threshold;
+        let fleet = world.fleets.insert(Fleet {
+            location: sys_key,
+            capital_ships: ShipInstance::make(destroyer, 100, false, u32::try_from(ships).unwrap()),
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[sys_key].fleets.push(fleet);
+        let tie = world.fighter_classes.keys().next().unwrap();
+        let wanted = u32::try_from(ships * config.production.fighter_ratio).unwrap();
+        let fighters = |world: &GameWorld| {
+            let mut actions = Vec::new();
+            AISystem::evaluate_production(
+                world,
+                &ManufacturingState::new(),
+                &crate::research::ResearchState::new(),
+                AiFaction::Empire,
+                &config,
+                &mut actions,
+            );
+            actions.iter().any(|a| {
+                matches!(
+                    a,
+                    AIAction::EnqueueProduction {
+                        kind: BuildableKind::Fighter(_),
+                        ..
+                    }
+                )
+            })
+        };
+        crate::squadrons::add(&mut world.systems[sys_key].fighters, tie, wanted - 1);
+        assert!(fighters(&world));
+        crate::squadrons::add(&mut world.systems[sys_key].fighters, tie, 1);
+        assert!(!fighters(&world));
     }
 
     #[test]
@@ -4262,6 +4392,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![mfg_key],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -4347,6 +4478,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![mfg_key],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -5013,6 +5145,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![mfg_key],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -5101,6 +5234,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![mfg_key],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -5170,6 +5304,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,
@@ -5249,6 +5384,7 @@ mod tests {
                 defense_facilities: vec![],
                 manufacturing_facilities: vec![mfg_key],
                 production_facilities: vec![],
+                fighters: Vec::new(),
                 is_headquarters: false,
                 is_destroyed: false,
                 control: ControlKind::Uncontrolled,
@@ -5458,6 +5594,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -5504,6 +5641,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -5529,6 +5667,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Empire),
@@ -5554,6 +5693,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -5769,6 +5909,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
@@ -7616,6 +7757,168 @@ mod tests {
         assert_eq!(state.module_priority[4], 0);
         assert_eq!(state.orders_today, 0);
         assert_eq!(state.module_cursor, None);
+    }
+
+    /// An Alliance system holding, on its planet, 3 X-wings and 2 TIEs, with
+    /// an Alliance carrier fleet of room `room` and an Empire carrier.
+    fn squadron_world(room: u32) -> (GameWorld, SystemKey, FleetKey, FleetKey, FighterKey) {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let system = add_system(&mut world, sector, 0.9, 0.1);
+        world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let mut fleet = |is_alliance| {
+            let carrier = world.capital_ship_classes.insert(CapitalShipClass {
+                is_alliance,
+                fighter_capacity: room,
+                ..CapitalShipClass::default()
+            });
+            let key = world.fleets.insert(Fleet {
+                location: system,
+                capital_ships: vec![ShipInstance::new(carrier, 100, is_alliance)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+            });
+            world.systems[system].fleets.push(key);
+            key
+        };
+        let empire = fleet(false);
+        let ours = fleet(true);
+        let x_wing = world.fighter_classes.insert(FighterClass {
+            is_alliance: true,
+            ..FighterClass::default()
+        });
+        let tie = world.fighter_classes.insert(FighterClass {
+            is_empire: true,
+            ..FighterClass::default()
+        });
+        crate::squadrons::add(&mut world.systems[system].fighters, x_wing, 3);
+        crate::squadrons::add(&mut world.systems[system].fighters, tie, 2);
+        (world, system, ours, empire, x_wing)
+    }
+
+    #[test]
+    fn the_ai_boards_its_planet_s_squadrons_onto_its_fleets_up_to_their_room() {
+        // port: module 0xb's stand-in; FUN_00500b40 gives the room.
+        use crate::squadrons::SquadronPlace;
+        let (world, system, ours, _, x_wing) = squadron_world(2);
+        let mut actions = Vec::new();
+        AISystem::evaluate_squadron_loading(&world, AiFaction::Alliance, &mut actions);
+        assert_eq!(
+            actions,
+            [AIAction::MoveSquadrons {
+                class: x_wing,
+                count: 2,
+                from: SquadronPlace::Planet(system),
+                to: SquadronPlace::Fleet(ours),
+            }]
+        );
+
+        let (world, _, _, _, _) = squadron_world(0);
+        let mut actions = Vec::new();
+        AISystem::evaluate_squadron_loading(&world, AiFaction::Alliance, &mut actions);
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn the_ai_boards_each_class_until_each_fleet_is_full() {
+        // port: module 0xb's stand-in, the room of FUN_00500b40 per fleet:
+        // 5 X-wings and 2 A-wings wait; fleets of room 2 and 4 take 2
+        // X-wings, then 3 X-wings and 1 A-wing, leaving 1 A-wing.
+        use crate::squadrons::SquadronPlace;
+        let (mut world, system, first, _, x_wing) = squadron_world(2);
+        let a_wing = world.fighter_classes.insert(FighterClass {
+            is_alliance: true,
+            ..FighterClass::default()
+        });
+        crate::squadrons::add(&mut world.systems[system].fighters, x_wing, 2);
+        crate::squadrons::add(&mut world.systems[system].fighters, a_wing, 2);
+        let mut second = world.fleets[first].clone();
+        let big = world.capital_ship_classes.insert(CapitalShipClass {
+            is_alliance: true,
+            fighter_capacity: 4,
+            ..CapitalShipClass::default()
+        });
+        second.capital_ships = vec![ShipInstance::new(big, 100, true)];
+        let second = world.fleets.insert(second);
+        world.systems[system].fleets.push(second);
+        let mut actions = Vec::new();
+        AISystem::evaluate_squadron_loading(&world, AiFaction::Alliance, &mut actions);
+        let order = |class, count, fleet| AIAction::MoveSquadrons {
+            class,
+            count,
+            from: SquadronPlace::Planet(system),
+            to: SquadronPlace::Fleet(fleet),
+        };
+        assert_eq!(
+            actions,
+            [
+                order(x_wing, 2, first),
+                order(x_wing, 3, second),
+                order(a_wing, 1, second),
+            ]
+        );
+    }
+
+    #[test]
+    fn module_0xb_boards_squadrons_and_module_0xa_does_not() {
+        // port: the production heuristic's split (production_module); the
+        // squadron loading stands in for module 0xb.
+        let (world, _, _, _, _) = squadron_world(2);
+        let (missions, research, mfg, movement, config, uprisings) = (
+            MissionState::new(),
+            ResearchState::new(),
+            ManufacturingState::new(),
+            crate::movement::MovementState::new(),
+            GameConfig::default(),
+            crate::uprising::UprisingState::default(),
+        );
+        let ctx = ModuleInputs {
+            faction: AiFaction::Alliance,
+            ..inputs(
+                &world, &missions, &research, &mfg, &movement, &config, &uprisings,
+            )
+        };
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let mut run = |id| {
+            let mut actions = Vec::new();
+            AISystem::run_module(id, &mut state, &mut planner, &ctx, &mut actions);
+            actions
+        };
+        assert!(matches!(run(0xb)[..], [AIAction::MoveSquadrons { .. }]));
+        assert!(run(0xa).is_empty());
+    }
+
+    #[test]
+    fn the_ai_s_squadron_move_passes_the_squadron_move_s_checks() {
+        // FUN_00578d00: the move command's validation for each member, here
+        // squadrons::check_move.
+        use crate::squadrons::SquadronPlace;
+        let (world, system, ours, empire, x_wing) = squadron_world(2);
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let movement = crate::movement::MovementState::new();
+        let research = ResearchState::new();
+        let ok = |count, to| {
+            accepts(
+                &AIAction::MoveSquadrons {
+                    class: x_wing,
+                    count,
+                    from: SquadronPlace::Planet(system),
+                    to: SquadronPlace::Fleet(to),
+                },
+                &world,
+                &research,
+                AiFaction::Alliance,
+                &transport,
+                &movement,
+            )
+        };
+        assert!(ok(2, ours));
+        assert!(!ok(3, ours));
+        assert!(!ok(1, empire));
     }
 
     #[test]

@@ -147,13 +147,13 @@ Refresh: return unless `+0x24` (dirty) is set; zero `v[0..0x3c]`, keep
 | 30, 31, 32 | `+0xc0..+0xc8` | maintenance of regiments, defenses, squadrons |
 | 33..36 | `+0xcc..+0xd8` | maintenance of yards: all, shipyards, training, construction |
 | 37 | `+0xdc` | the defense balance |
-| 38 | `+0xe0` | regiments against the goal |
+| 38 | `+0xe0` | counted squadrons against the goal |
 | 39..43 | `+0xe4..+0xf4` | foreign fleets' records `+0xb4`, `+0xb8`, `+0x60`, -, `+0x70` |
 | 44..48 | `+0xf8..+0x108` | characters |
 | 50 | `+0x110` | the headquarters counts |
 | 51 | `+0x114` | free facility slots: energy - (marked yards + max(`0x24`, goal) + max(`0x22`, goal) + HQ) |
 | 52 | `+0x118` | |
-| 53 | `+0x11c` | regiments against the goal |
+| 53 | `+0x11c` | active squadrons against the goal |
 
 **Goals** (own systems, `+0x30` bit 1):
 - support term `v[20]` += (79 - support) / 10 when support < 70, at most 6;

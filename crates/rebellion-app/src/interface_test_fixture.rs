@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 64;
+const SCENARIO_COUNT: u8 = 65;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -145,6 +145,10 @@ pub enum Scenario {
     /// empty, and the agent a ship designer: only Ship Design Research
     /// lists.
     ResearchTargeting = 63,
+    /// As `FleetLoad` with a carrier of fighters and two of the player's
+    /// squadrons on the primary system's planet, the Defenses window on its
+    /// squadron page (`ghidra/notes/planet-squadrons.md`).
+    SquadronLoad = 64,
 }
 
 impl Scenario {
@@ -214,6 +218,7 @@ impl Scenario {
             61 => Self::FleetTargeting,
             62 => Self::ReconTargeting,
             63 => Self::ResearchTargeting,
+            64 => Self::SquadronLoad,
             _ => return None,
         })
     }
@@ -228,6 +233,7 @@ impl Scenario {
             self,
             Self::FleetLoad
                 | Self::FleetLoadFull
+                | Self::SquadronLoad
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -1010,7 +1016,9 @@ fn loading_regiment(world: &GameWorld, primary: SystemKey) -> Option<TroopKey> {
 /// variant the target is the other side's and populated, the regiment
 /// starts aboard and held, and the Defenses window shows the target, so a
 /// drop on it is the refused move (the Fleet window covers the target's
-/// planet in the sector window).
+/// planet in the sector window). In the squadron variant the carrier also
+/// carries fighters, two of the player's squadrons stand on the primary
+/// planet, and the Defenses window shows its squadron page.
 #[allow(clippy::too_many_arguments)]
 fn place_loading_fleet(
     request: FixtureRequest,
@@ -1052,13 +1060,16 @@ fn place_loading_fleet(
             value.location = elsewhere;
         }
     }
-    // One carrier of the player's side that can enter hyperspace.
+    // One carrier of the player's side that can enter hyperspace, of
+    // fighters in the squadron variant.
+    let squadrons = request.scenario == Scenario::SquadronLoad;
     let carrier = world
         .capital_ship_classes
         .iter()
         .find(|(_, class)| {
             class.is_alliance == player_is_alliance
                 && class.troop_capacity > 0
+                && (!squadrons || class.fighter_capacity > 0)
                 && class.hyperdrive > 0
         })
         .map(|(key, _)| key)
@@ -1071,6 +1082,7 @@ fn place_loading_fleet(
                     hull: 100,
                     hyperdrive: 80,
                     troop_capacity: 2,
+                    fighter_capacity: 2,
                     ..Default::default()
                 })
         });
@@ -1161,6 +1173,22 @@ fn place_loading_fleet(
         let _ = troop_transport.load(world, fleet, &aboard);
     }
 
+    // The squadron variant: two of the player's squadrons, of its side's
+    // first fighter class, on the primary planet.
+    if squadrons {
+        for system in [primary, target] {
+            world.systems[system].fighters.clear();
+        }
+        if let Some(class) = world
+            .fighter_classes
+            .iter()
+            .find(|(_, class)| class.is_alliance == player_is_alliance)
+            .map(|(key, _)| key)
+        {
+            rebellion_core::squadrons::add(&mut world.systems[primary].fighters, class, 2);
+        }
+    }
+
     let layout = cockpit.layout_for(640.0, 480.0);
     let galaxy = layout.galaxy;
     let subject = defenses_window_subject(request, world, primary).unwrap_or(primary);
@@ -1171,7 +1199,14 @@ fn place_loading_fleet(
         request.faction,
         layout,
     );
-    defenses.show_page(subject, DefensesPage::Regiments);
+    defenses.show_page(
+        subject,
+        if squadrons {
+            DefensesPage::Squadrons
+        } else {
+            DefensesPage::Regiments
+        },
+    );
     sectors.open_for_system(world, elsewhere, request.faction);
     sectors.open_for_system(world, primary, request.faction);
 }
@@ -2262,7 +2297,8 @@ struct FixtureFleetLoadSetup {
     icon: (f32, f32),
     /// The primary system's facility (System quadrant) icon, when shown.
     system_icon: Option<(f32, f32)>,
-    /// The regiment's cell on the Defenses window's regiment page.
+    /// The first cell on the Defenses window's page: the regiment, or in
+    /// the squadron variant the first squadron.
     troop_item: Option<(f32, f32)>,
     /// The Defenses window's centre: a move released anywhere on it targets
     /// its system (`+0x70`, `FUN_004aa470`).
@@ -2271,6 +2307,8 @@ struct FixtureFleetLoadSetup {
     target_planet: (f32, f32),
     day_readout: (f32, f32),
     capacity: Option<u32>,
+    /// The fleet's room for squadrons (`FUN_00500b40`).
+    fighter_room: u32,
 }
 
 fn fleet_load_setup(
@@ -2309,6 +2347,7 @@ fn fleet_load_setup(
             layout.canvas.y + (day.y + day.height / 2.0) * layout.scale,
         ),
         capacity: TroopTransportState::fleet_capacity(world, fleet),
+        fighter_room: rebellion_core::squadrons::fleet_room(world, fleet),
     })
 }
 
@@ -2364,6 +2403,10 @@ struct FleetLoadObservation {
     confirmation_open: bool,
     last_message: Option<String>,
     last_regiment_message: Option<String>,
+    /// The player's squadrons on the primary planet and aboard the fleet.
+    planet_squadrons: u32,
+    fleet_squadrons: u32,
+    fighters_tab: Option<(f32, f32)>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2452,6 +2495,18 @@ fn fleet_load_observation(
             .rev()
             .find(|message| message.text.starts_with("Regiment "))
             .map(|message| message.text.clone()),
+        planet_squadrons: rebellion_core::squadrons::on_planet(
+            world,
+            primary,
+            request.faction == CockpitFaction::Alliance,
+        ),
+        fleet_squadrons: world
+            .fleets
+            .get(fleet)
+            .map_or(0, |value| rebellion_core::squadrons::total(&value.fighters)),
+        fighters_tab: fleets
+            .tab_screen_rect(layout, primary, FleetWindowTab::Fighters)
+            .map(screen_center),
     })
 }
 
@@ -2983,6 +3038,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(side),
@@ -3533,6 +3589,45 @@ mod tests {
             &mut applied.transport,
         );
         applied
+    }
+
+    // port: the fixture's own layout; the room follows FUN_00500b40.
+    #[test]
+    fn the_squadron_load_scenario_puts_two_squadrons_beside_a_fighter_carrier() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let request = request(Scenario::SquadronLoad, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                for side in [true, false] {
+                    world
+                        .fighter_classes
+                        .insert(rebellion_core::world::FighterClass {
+                            is_alliance: side,
+                            is_empire: !side,
+                            ..Default::default()
+                        });
+                }
+            });
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let fleet = world.fleets.keys().next().unwrap();
+            assert_eq!(
+                rebellion_core::squadrons::on_planet(world, primary, alliance),
+                2
+            );
+            assert_eq!(
+                rebellion_core::squadrons::on_planet(world, primary, !alliance),
+                0
+            );
+            assert!(rebellion_core::squadrons::fleet_room(world, fleet) >= 1);
+            assert!(world.fleets[fleet].fighters.is_empty());
+            let setup =
+                fleet_load_setup(request, world, &applied.sectors, &applied.defenses).unwrap();
+            assert_eq!(
+                setup.fighter_room,
+                rebellion_core::squadrons::fleet_room(world, fleet)
+            );
+        }
     }
 
     // port: the fixture's own layout; the load itself follows FUN_00500b40.
@@ -4700,7 +4795,8 @@ mod tests {
                 Scenario::ShipTargeting,
                 Scenario::FleetTargeting,
                 Scenario::ReconTargeting,
-                Scenario::ResearchTargeting
+                Scenario::ResearchTargeting,
+                Scenario::SquadronLoad
             ]
         );
     }

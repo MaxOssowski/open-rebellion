@@ -103,6 +103,16 @@ pub fn maintenance_totals(
             upkeep += fighter_cost(entry.class) * entry.count;
         }
     }
+    // The squadrons on the planets (ghidra/notes/planet-squadrons.md).
+    for entry in world.systems.values().flat_map(|system| &system.fighters) {
+        let alliance = world
+            .fighter_classes
+            .get(entry.class)
+            .map(|value| value.is_alliance);
+        if alliance.is_some() && alliance == is_alliance {
+            upkeep += fighter_cost(entry.class) * entry.count;
+        }
+    }
     for troop in world.troops.values() {
         if Some(troop.is_alliance) == is_alliance {
             upkeep += class_cost(troop.class_dat_id);
@@ -200,6 +210,7 @@ mod tests {
             defense_facilities: Vec::new(),
             manufacturing_facilities: Vec::new(),
             production_facilities: Vec::new(),
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,
@@ -369,6 +380,38 @@ mod tests {
         );
         assert_eq!(totals(&world, Faction::Alliance).upkeep, 35 + 2);
         assert_eq!(totals(&world, Faction::Neutral).upkeep, 13);
+    }
+
+    #[test]
+    fn upkeep_counts_the_squadrons_on_a_planet_for_their_class_s_side() {
+        // FUN_0052fff0 counts every existing object of the side in families
+        // 0x10..0x3f, a squadron on a planet (FUN_005039d0) among them.
+        let mut world = GameWorld::default();
+        let here = system(&mut world, ControlKind::Controlled(Faction::Alliance));
+        let x_wing = world.fighter_classes.insert(FighterClass {
+            is_alliance: true,
+            maintenance_cost: 3,
+            ..FighterClass::default()
+        });
+        let tie = world.fighter_classes.insert(FighterClass {
+            is_empire: true,
+            maintenance_cost: 2,
+            ..FighterClass::default()
+        });
+        world.systems[here].fighters = vec![
+            FighterEntry {
+                class: x_wing,
+                count: 2,
+            },
+            FighterEntry {
+                class: tie,
+                count: 5,
+            },
+        ];
+
+        assert_eq!(totals(&world, Faction::Alliance).upkeep, 2 * 3);
+        assert_eq!(totals(&world, Faction::Empire).upkeep, 5 * 2);
+        assert_eq!(totals(&world, Faction::Neutral).upkeep, 0);
     }
 
     #[test]

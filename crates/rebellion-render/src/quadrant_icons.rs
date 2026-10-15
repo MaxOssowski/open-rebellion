@@ -197,8 +197,6 @@ impl<'a> SystemContents<'a> {
     /// `FUN_0045ce80`'s sum: defense facilities (`FUN_00526fd0`), regiments
     /// (`FUN_00504c40`), squadrons (`FUN_005039d0`), and each member of
     /// families `0x30..0x40` with no mission key or on a hidden mission.
-    ///
-    /// port: squadrons live only aboard fleets in the port, so none count.
     fn defenses(&self, missions: &MissionState) -> usize {
         let Some(value) = self.world.systems.get(self.system) else {
             return 0;
@@ -215,11 +213,22 @@ impl<'a> SystemContents<'a> {
                 .get(**key)
                 .is_some_and(|troop| self.seen(fleet_side(troop.is_alliance)))
         });
+        let squadrons: usize = value
+            .fighters
+            .iter()
+            .filter(|entry| {
+                self.world
+                    .fighter_classes
+                    .get(entry.class)
+                    .is_some_and(|class| self.seen(fleet_side(class.is_alliance)))
+            })
+            .map(|entry| entry.count as usize)
+            .sum();
         let keys = mission_keys(missions);
         let idle = self
             .members()
             .filter(|(member, _, hidden)| *hidden || !keys.contains_key(member));
-        defense.count() + regiments.count() + idle.count()
+        defense.count() + regiments.count() + squadrons + idle.count()
     }
 
     /// The system's characters and special forces the player sees, each with
@@ -360,6 +369,7 @@ mod tests {
             defense_facilities: Vec::new(),
             manufacturing_facilities: Vec::new(),
             production_facilities: Vec::new(),
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,
@@ -570,6 +580,21 @@ mod tests {
             on_mission: false,
         });
         world.systems[system].special_forces.push(force);
+        assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(1));
+        assert_eq!(alliance_side(&world, system, Quadrant::System), None);
+    }
+
+    #[test]
+    fn a_squadron_on_the_planet_lights_the_defenses_icon() {
+        // FUN_0045ce80: FUN_005039d0 counts the squadrons on the planet.
+        let (mut world, system) = alliance_world();
+        let x_wing = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                is_alliance: true,
+                ..Default::default()
+            });
+        rebellion_core::squadrons::add(&mut world.systems[system].fighters, x_wing, 1);
         assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(1));
         assert_eq!(alliance_side(&world, system, Quadrant::System), None);
     }

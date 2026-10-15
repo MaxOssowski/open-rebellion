@@ -9,7 +9,7 @@
 
 use rebellion_core::dat::Faction;
 use rebellion_core::ids::{
-    CharacterKey, DatId, DefenseFacilityKey, FleetKey, ManufacturingFacilityKey,
+    CharacterKey, DatId, DefenseFacilityKey, FighterKey, FleetKey, ManufacturingFacilityKey,
     ProductionFacilityKey, SpecialForceKey, SystemKey, TroopKey,
 };
 use rebellion_core::manufacturing::{ManufacturingState, ProductionArea};
@@ -54,6 +54,12 @@ pub enum StatusObject {
     /// `0x1c..0x1f`, `FUN_004444c0`: a fleet's squadron entry by its index.
     /// port: squadrons live on their fleet, not as objects.
     Fighter { fleet: FleetKey, index: usize },
+    /// `0x1c..0x1f`, `FUN_004444c0`: a squadron of `class` on `system`'s
+    /// planet. port: squadrons are counts per class.
+    PlanetFighter {
+        system: SystemKey,
+        class: FighterKey,
+    },
     /// `0x10..0x13`, `FUN_00445280`.
     Troop(TroopKey),
     /// `0x20..0x27`, `FUN_00444e20`.
@@ -424,13 +430,34 @@ pub fn fighter_rows(
     let fleet = world.fleets.get(fleet_key)?;
     let entry = fleet.fighters.get(index)?;
     let class = world.fighter_classes.get(entry.class)?;
-    let size = class.squadron_size;
-    let full = |per_craft: u32| ratio(per_craft * size, per_craft * size);
     let mut rows = vec![row(
         "Attached: ",
         fleet_label(world, fleet_key).unwrap_or_default(),
     )];
     eta(&mut rows, fleet_arrival(sources, fleet_key));
+    squadron_class_rows(&mut rows, class);
+    Some(rows)
+}
+
+/// [`fighter_rows`] for a squadron of `class` on `system`'s planet: it is
+/// attached to the system.
+#[must_use]
+pub fn planet_fighter_rows(
+    sources: StatusSources<'_>,
+    system: SystemKey,
+    class: FighterKey,
+) -> Option<Vec<StatusRow>> {
+    let world = sources.world;
+    let value = world.systems.get(system)?;
+    let class = world.fighter_classes.get(class)?;
+    let mut rows = vec![row("Attached: ", value.name.clone())];
+    squadron_class_rows(&mut rows, class);
+    Some(rows)
+}
+
+fn squadron_class_rows(rows: &mut Vec<StatusRow>, class: &rebellion_core::world::FighterClass) {
+    let size = class.squadron_size;
+    let full = |per_craft: u32| ratio(per_craft * size, per_craft * size);
     rows.extend([
         row("Maintenance Cost:", class.maintenance_cost.to_string()),
         row("Squadron Size:", ratio(size, size)),
@@ -448,7 +475,6 @@ pub fn fighter_rows(
         row(" Ion Cannon:", full(class.ion_cannon_attack_strength)),
         row(" Torpedoes:", full(class.torpedoes)),
     ]);
-    Some(rows)
 }
 
 /// Where a regiment is, and its arrival day while it travels.
@@ -859,6 +885,16 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                 fighter_rows(sources, fleet, index)?,
             )
         }
+        StatusObject::PlanetFighter { system, class } => {
+            let fighter = world.fighter_classes.get(class)?;
+            view(
+                "Fighter Squadron Status",
+                side_index(fighter.is_alliance),
+                picture(fighter_mini_id(fighter.dat_id)),
+                fighter.name.clone(),
+                planet_fighter_rows(sources, system, class)?,
+            )
+        }
         StatusObject::Troop(key) => {
             let troop = world.troops.get(key)?;
             view(
@@ -1020,6 +1056,7 @@ mod tests {
             defense_facilities: Vec::new(),
             manufacturing_facilities: Vec::new(),
             production_facilities: Vec::new(),
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,
@@ -1240,6 +1277,42 @@ mod tests {
                 ("Maximum Shield Strength:", "60:60"),
             ]
         );
+    }
+
+    #[test]
+    fn a_squadron_on_a_planet_is_attached_to_its_system() {
+        // FUN_004444c0: Attached names the squadron's container, here the
+        // system (FUN_005039d0); the ratings follow as aboard a fleet.
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Yavin",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let fleet = carrier_fleet(&mut world, here);
+        let class = world.fleets[fleet].fighters[0].class;
+        let states = States::new();
+
+        let rows = planet_fighter_rows(states.sources(&world), here, class).unwrap();
+        assert_eq!(
+            super::tests::rows(&rows[..3]),
+            vec![
+                ("Attached: ", "Yavin"),
+                ("Maintenance Cost:", "2"),
+                ("Squadron Size:", "12:12"),
+            ]
+        );
+        let view = status_view(
+            states.sources(&world),
+            StatusObject::PlanetFighter {
+                system: here,
+                class,
+            },
+        )
+        .unwrap();
+        assert_eq!(view.title, "Fighter Squadron Status");
+        assert_eq!(view.name, "X-wing");
+        assert!(planet_fighter_rows(states.sources(&world), SystemKey::default(), class).is_none());
     }
 
     #[test]

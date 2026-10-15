@@ -276,6 +276,10 @@ pub struct System {
     pub fleets: Vec<FleetKey>,
     /// Ground troop units stationed on the surface.
     pub ground_units: Vec<TroopKey>,
+    /// Fighter squadrons stationed on the planet (`FUN_005039d0`, families
+    /// `0x1c..0x1f`), of either side: a squadron's side is its class's.
+    #[serde(default)]
+    pub fighters: Vec<FighterEntry>,
     /// Special forces units assigned to this system.
     pub special_forces: Vec<SpecialForceKey>,
     /// Planetary shields, turbolaser batteries, and similar fixed defenses.
@@ -1921,6 +1925,7 @@ mod facility_ownership_tests {
             defense_facilities: Vec::new(),
             manufacturing_facilities: Vec::new(),
             production_facilities: Vec::new(),
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control,
@@ -2531,6 +2536,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Uncontrolled,

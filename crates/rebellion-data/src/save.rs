@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 45;
+pub const SAVE_VERSION: u32 = 46;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -913,6 +913,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: true,
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),
@@ -936,6 +937,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: true,
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),

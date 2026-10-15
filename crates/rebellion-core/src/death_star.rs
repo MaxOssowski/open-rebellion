@@ -301,7 +301,8 @@ use crate::movement::MovementState;
 /// Called after Death Star fires. Matches original game behavior:
 /// characters at the system are killed (marked `is_killed`, removed from
 /// fleet rosters, but kept in the arena so next-tick story events can still
-/// resolve them by `dat_id` / `name`), fleets destroyed, facilities removed,
+/// resolve them by `dat_id` / `name`), fleets and the planet's squadrons
+/// destroyed, facilities removed,
 /// manufacturing queues cleared, blockade lifted, in-transit orders cancelled.
 ///
 /// Emits one `GameEffect::CharacterKilled` per killed character into the
@@ -378,6 +379,7 @@ pub fn cleanup_destroyed_system(
     if let Some(sys) = world.systems.get_mut(system) {
         sys.fleets.clear();
         sys.ground_units.clear();
+        sys.fighters.clear();
         sys.special_forces.clear();
         sys.defense_facilities.clear();
         sys.manufacturing_facilities.clear();
@@ -446,6 +448,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),
@@ -571,6 +574,28 @@ mod tests {
     }
 
     #[test]
+    fn a_destroyed_planet_loses_its_squadrons_with_its_regiments() {
+        // port: cleanup_destroyed_system removes every object at the system;
+        // the planet's squadrons (FUN_005039d0) stand on it.
+        let (mut world, sys) = make_world();
+        let tie = world
+            .fighter_classes
+            .insert(crate::world::FighterClass::default());
+        crate::squadrons::add(&mut world.systems[sys].fighters, tie, 2);
+        let mut effects = Vec::new();
+        cleanup_destroyed_system(
+            &mut world,
+            sys,
+            &mut MovementState::new(),
+            &mut DeathStarState::default(),
+            &mut ManufacturingState::new(),
+            &mut BlockadeState::new(),
+            &mut effects,
+        );
+        assert!(world.systems[sys].fighters.is_empty());
+    }
+
+    #[test]
     fn fire_is_blocked_without_a_death_star_fleet() {
         // No recovered source: FUN_005617b0 is the CharacterMgr SeatOfPower
         // check, not a fire precondition (ghidra/notes/FUN_005617b0.c).
@@ -635,6 +660,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),
@@ -686,6 +712,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),

@@ -12,7 +12,7 @@
 
 use egui_macroquad::egui;
 use rebellion_core::ids::{
-    CharacterKey, DefenseFacilityKey, FleetKey, SpecialForceKey, SystemKey, TroopKey,
+    CharacterKey, DefenseFacilityKey, FighterKey, FleetKey, SpecialForceKey, SystemKey, TroopKey,
 };
 use rebellion_core::manufacturing::ProductionArea;
 use rebellion_core::missions::MissionMember;
@@ -81,7 +81,16 @@ pub enum MenuObject {
     },
     /// A Fleet window squadron item (`0x1c..0x1f`): the fleet and its
     /// squadron entry's index. port: squadrons are counts per class.
-    Fighter { fleet: FleetKey, index: usize },
+    Fighter {
+        fleet: FleetKey,
+        index: usize,
+    },
+    /// A Defenses window squadron on `system`'s planet (`0x1c..0x1f`), by
+    /// its class. port: squadrons are counts per class.
+    PlanetFighter {
+        system: SystemKey,
+        class: FighterKey,
+    },
     /// A Defenses window facility (`0x20..0x27`).
     DefenseFacility(DefenseFacilityKey),
 }
@@ -99,6 +108,7 @@ impl MenuObject {
             | Self::SystemIcon { .. }
             | Self::Producer { .. }
             | Self::Fighter { .. }
+            | Self::PlanetFighter { .. }
             | Self::DefenseFacility(_) => None,
         }
     }
@@ -115,6 +125,9 @@ impl MenuObject {
             Self::Ship { fleet, index, .. } => Some(StatusObject::Ship { fleet, index }),
             Self::Producer { system, area } => Some(StatusObject::Producer { system, area }),
             Self::Fighter { fleet, index } => Some(StatusObject::Fighter { fleet, index }),
+            Self::PlanetFighter { system, class } => {
+                Some(StatusObject::PlanetFighter { system, class })
+            }
             Self::DefenseFacility(key) => Some(StatusObject::DefenseFacility(key)),
             Self::SystemIcon { .. } => None,
         }
@@ -333,6 +346,8 @@ impl ObjectMenuRow {
 /// - A regiment's Move is enabled when `gates.troop_move` says so. port:
 ///   its Confirmed Move stays disabled; loading onto a fleet in the same
 ///   system needs no transit confirmation.
+/// - A squadron's Move is enabled when `gates.squadron_move` says so.
+///   port: its Confirmed Move stays disabled, as a regiment's.
 /// - A capital ship's Move and Create Fleet are enabled when
 ///   `gates.ship_move` says so (its fleet is the player's and in orbit).
 ///   port: its Confirmed Move stays disabled.
@@ -358,6 +373,10 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         )
     );
     let troop = matches!(selection, Some(MenuObject::Troop(_)));
+    let squadron = matches!(
+        selection,
+        Some(MenuObject::Fighter { .. } | MenuObject::PlanetFighter { .. })
+    );
     let fleet_entry = matches!(selection, Some(MenuObject::Fleet(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
     let producer = matches!(selection, Some(MenuObject::Producer { .. }));
@@ -380,10 +399,14 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             ProductionArea::TrainingFacility => &[BUILD_TROOPS, STOP, DESTINATION, RESERVED],
             ProductionArea::ConstructionYard => &[BUILD_FACILITIES, STOP, DESTINATION, RESERVED],
         },
-        // port: a squadron's and a defense facility's class order lists
-        // (vtable `+0x3c`) are untraced; FUN_0051d990's Encyclopedia and
-        // Status are always added.
-        Some(MenuObject::Fighter { .. } | MenuObject::DefenseFacility(_)) | None => &[],
+        // FUN_00502fe0 -> FUN_00557ce0: 0x201, 0x202, 0x204 (no STRATEGY
+        // record) and 0x200.
+        Some(MenuObject::Fighter { .. } | MenuObject::PlanetFighter { .. }) => {
+            &[MOVE, CONFIRMED_MOVE, SCRAP]
+        }
+        // port: a defense facility's class order list (vtable `+0x3c`) is
+        // untraced; FUN_0051d990's Encyclopedia and Status are always added.
+        Some(MenuObject::DefenseFacility(_)) | None => &[],
     };
     let mut rows: Vec<ObjectMenuRow> = offered
         .iter()
@@ -396,6 +419,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                     (fleet && gates.fleet_move)
                         || (troop && gates.troop_move)
                         || (ship && gates.ship_move)
+                        || (squadron && gates.squadron_move)
                 }
                 ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
                 ObjectMenuCommand::Rename => (fleet_entry || ship) && gates.rename,
@@ -422,6 +446,9 @@ pub struct OrderGates {
     pub mission: bool,
     pub fleet_move: bool,
     pub troop_move: bool,
+    /// A squadron's Move: the player's, on a planet or aboard a fleet in
+    /// orbit ([`rebellion_core::squadrons`]).
+    pub squadron_move: bool,
     pub ship_move: bool,
     /// Rename (0x203): the selection is the player's and can take a name
     /// (`FUN_004f6e60` refuses a destroyed object).
@@ -538,6 +565,7 @@ mod tests {
         mission: true,
         fleet_move: false,
         troop_move: false,
+        squadron_move: false,
         ship_move: false,
         rename: false,
         destination: false,
@@ -672,6 +700,7 @@ mod tests {
             mission: false,
             fleet_move: true,
             troop_move: true,
+            squadron_move: true,
             ship_move: true,
             rename: false,
             destination: false,
@@ -846,6 +875,7 @@ mod tests {
             mission: true,
             fleet_move: true,
             troop_move: true,
+            squadron_move: true,
             ship_move: true,
             rename: false,
             destination: false,
@@ -942,6 +972,7 @@ mod tests {
         let troop = Some(MenuObject::Troop(TroopKey::default()));
         let gates = OrderGates {
             troop_move: true,
+            squadron_move: true,
             ..OrderGates::default()
         };
         assert_eq!(
@@ -1045,19 +1076,40 @@ mod tests {
     }
 
     #[test]
-    fn a_squadron_or_defense_facility_lists_only_encyclopedia_and_status() {
-        // FUN_0051d990 adds 0x100 and 0x103 to every menu; port: the
-        // classes' own order lists are untraced.
+    fn a_squadron_lists_move_confirmed_move_and_scrap() {
+        // FUN_00502fe0 -> FUN_00557ce0: a squadron's class lists 0x201,
+        // 0x202, 0x204 (no STRATEGY record) and 0x200; FUN_0051d990 adds
+        // 0x100 and 0x103.
+        let gates = OrderGates {
+            squadron_move: true,
+            ..MISSION_GATE
+        };
         for selection in [
             MenuObject::Fighter {
                 fleet: FleetKey::default(),
                 index: 1,
             },
-            MenuObject::DefenseFacility(DefenseFacilityKey::default()),
+            MenuObject::PlanetFighter {
+                system: SystemKey::default(),
+                class: FighterKey::default(),
+            },
         ] {
-            let rows = object_menu_rows(Some(selection), MISSION_GATE);
-            assert_eq!(labels(&rows), ["Encyclopedia", "Status"], "{selection:?}");
-            assert_eq!(enabled(&rows), ["Encyclopedia", "Status"], "{selection:?}");
+            let rows = object_menu_rows(Some(selection), gates);
+            assert_eq!(
+                labels(&rows),
+                ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"],
+                "{selection:?}"
+            );
+            assert_eq!(
+                enabled(&rows),
+                ["Move", "Encyclopedia", "Status"],
+                "{selection:?}"
+            );
+            assert_eq!(
+                enabled(&object_menu_rows(Some(selection), MISSION_GATE)),
+                ["Encyclopedia", "Status"],
+                "{selection:?}"
+            );
             assert_eq!(selection.mission_member(), None);
         }
         assert_eq!(
@@ -1072,7 +1124,29 @@ mod tests {
             })
         );
         assert_eq!(
-            MenuObject::DefenseFacility(DefenseFacilityKey::default()).status_object(),
+            MenuObject::PlanetFighter {
+                system: SystemKey::default(),
+                class: FighterKey::default(),
+            }
+            .status_object(),
+            Some(StatusObject::PlanetFighter {
+                system: SystemKey::default(),
+                class: FighterKey::default(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_defense_facility_lists_only_encyclopedia_and_status() {
+        // FUN_0051d990 adds 0x100 and 0x103 to every menu; port: the
+        // facility class's own order list is untraced.
+        let selection = MenuObject::DefenseFacility(DefenseFacilityKey::default());
+        let rows = object_menu_rows(Some(selection), MISSION_GATE);
+        assert_eq!(labels(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(selection.mission_member(), None);
+        assert_eq!(
+            selection.status_object(),
             Some(StatusObject::DefenseFacility(DefenseFacilityKey::default()))
         );
     }

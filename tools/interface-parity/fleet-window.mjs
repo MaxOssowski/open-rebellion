@@ -25,6 +25,7 @@ const FLEET_LOAD_FULL = 49;
 const REGIMENT_UNLOAD_REFUSED = 51;
 const FLEET_JOIN = 52;
 const PRODUCTION_DESTINATION = 54;
+const SQUADRON_LOAD = 65;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -410,6 +411,30 @@ async function loadRegiment(page, setup, directory) {
   return { opened, menu, loaded };
 }
 
+// The squadron variant's first squadron, moved onto the selected fleet by
+// its pop-up menu's Move; then the Fighters tab.
+async function loadSquadron(page, setup, directory) {
+  const opened = await openFleetWindow(page, setup);
+  assert.equal(opened.planet_squadrons, 2, "two squadrons stand on the planet");
+  assert.equal(opened.fleet_squadrons, 0);
+  assert.ok(setup.fighter_room >= 1, `the carrier has room: ${JSON.stringify(setup)}`);
+  await selectFleet(page, opened);
+  await shot(page, directory, "squadron-page");
+  const menu = await openMenu(page, point(setup.troop_item), directory, "squadron");
+  // FUN_00557ce0 lists Move first and Confirmed Move second.
+  assert.deepEqual([menu.move_row, menu.confirmed_move_row], [0, 1], JSON.stringify(menu));
+  await choose(page, menu, menu.move_row, "Move");
+  await click(page, point(opened.fleet_entry));
+  const boarded = await until(page, "a squadron boards the fleet",
+    (o) => o.fleet_squadrons === 1 && o.planet_squadrons === 1);
+  assert.equal(boarded.enabled[1], true, "the Fighters tab lights with a squadron aboard");
+  await click(page, point(boarded.fighters_tab));
+  const fighters = await until(page, "the Fighters tab opens", (o) => o.tab === "Fighters" && o.first_item);
+  assert.equal(fighters.items.length, 1, "the Fighters tab lists the squadron");
+  await shot(page, directory, "fighters-tab");
+  return { opened, menu, boarded, fighters };
+}
+
 // A left press on a right-list item, held while the mouse moves away, then
 // released at `to` (CoolDragList, FUN_006083c0, posts 0x29a).
 async function dragItem(page, from, to) {
@@ -528,6 +553,32 @@ const cases = [
         setup.target_dat_id, 90_000);
       assert.equal(landed.cargo, 0);
       return { loaded, menu, departed, speed, landed };
+    },
+  },
+  {
+    name: "squadron-load",
+    code: SQUADRON_LOAD,
+    // A squadron on the planet (FUN_005039d0, the Defenses window's page 3)
+    // takes Move from its class's list (FUN_00502fe0 -> FUN_00557ce0);
+    // released on the Fleet window's fleet it boards within the ships' room
+    // (FUN_00500b40, ghidra/notes/planet-squadrons.md).
+    async run(page, faction, setup, directory) {
+      const { opened, menu, boarded, fighters } = await loadSquadron(page, setup, directory);
+      return { opened, menu, boarded, fighters };
+    },
+  },
+  {
+    name: "squadron-unload",
+    code: SQUADRON_LOAD,
+    // A squadron dragged out of the Fighters tab onto the Defenses window
+    // (+0x70: its system, FUN_004aa470) lands on its own planet.
+    async run(page, faction, setup, directory) {
+      const { fighters } = await loadSquadron(page, setup, directory);
+      await dragItem(page, point(fighters.first_item), point(setup.defenses_window));
+      const landed = await until(page, "the squadron lands on its planet",
+        (o) => o.fleet_squadrons === 0 && o.planet_squadrons === 2);
+      await shot(page, directory, "squadron-landed");
+      return { fighters, landed };
     },
   },
   {
@@ -1004,7 +1055,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "fleet-window",
-    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), and the facility icon's Destination (0x214) released on a planet, on both sides",
+    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, and a squadron's Move from the planet onto a fleet and its drag back onto its planet, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

@@ -37,6 +37,7 @@ pub mod scrap;
 #[doc(hidden)]
 pub mod serde_ordered;
 pub mod side_resources;
+pub mod squadrons;
 pub mod story_events;
 pub mod tick;
 pub mod troop_transport;

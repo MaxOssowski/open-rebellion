@@ -1431,6 +1431,7 @@ mod tests {
             defense_facilities: vec![],
             manufacturing_facilities: vec![],
             production_facilities: vec![],
+            fighters: Vec::new(),
             control: ControlKind::Uncontrolled,
             is_headquarters: false,
             is_destroyed: false,

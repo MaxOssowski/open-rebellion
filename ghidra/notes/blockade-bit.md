@@ -81,9 +81,10 @@ original's fresh state.
 (`Controlled` or `Uprising`) is blockaded by the other side's fleets; a
 populated `Contested` system by either side's fleets; a neutral one never.
 
-- port: the port has no fighter squadrons outside fleets
-  (`blockade-troop-withdrawal.md`, "Port"), so presence is fleets only, and
-  every fleet counts as active;
+- 2026-10-15: a squadron on the planet makes its side present, so the
+  holder's squadrons turn an enemy fleet's blockade into a battle; only
+  fleets blockade (`planet-squadrons.md`). port: every fleet and squadron
+  counts as active;
 - hyp: `ControlKind::Contested` is side 3, and an `Uprising` system keeps its
   holder's side bits;
 - port: the rule reruns every tick (`BlockadeSystem::advance`), where the

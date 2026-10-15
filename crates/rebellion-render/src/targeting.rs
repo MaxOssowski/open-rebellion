@@ -42,6 +42,13 @@ pub enum TargetOrder {
     /// fleet (`ghidra/notes/fleet-window.md`, "Loading a regiment onto a
     /// fleet").
     TroopMove { troop: TroopKey },
+    /// A squadron's Move (`0x201`) of one squadron of `class` from `from`.
+    /// Released on a Fleet window it boards the fleet; on its own system it
+    /// lands on the planet ([`rebellion_core::squadrons`]).
+    SquadronMove {
+        class: rebellion_core::ids::FighterKey,
+        from: rebellion_core::squadrons::SquadronPlace,
+    },
     /// A capital ship's Move (`0x201`). Released on a Fleet window it joins
     /// that fleet; on a system it forms a fleet of its own there
     /// (`ghidra/notes/fleet-join-split.md`).
@@ -66,6 +73,18 @@ pub enum TargetOrder {
 pub enum ReleaseTarget {
     System(SystemKey),
     Fleet { fleet: FleetKey, system: SystemKey },
+}
+
+impl ReleaseTarget {
+    /// Where a squadron's Move released here goes: the fleet, or the
+    /// system's planet.
+    #[must_use]
+    pub const fn squadron_place(self) -> rebellion_core::squadrons::SquadronPlace {
+        match self {
+            Self::Fleet { fleet, .. } => rebellion_core::squadrons::SquadronPlace::Fleet(fleet),
+            Self::System(system) => rebellion_core::squadrons::SquadronPlace::Planet(system),
+        }
+    }
 }
 
 impl ReleaseTarget {
@@ -348,6 +367,21 @@ pub fn draw_targeting_cursor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_squadron_released_on_a_fleet_boards_it_and_on_a_system_lands() {
+        // FUN_00557ce0's 0x201 against the release window's +0x70.
+        use rebellion_core::squadrons::SquadronPlace;
+        let (fleet, system) = (FleetKey::default(), SystemKey::default());
+        assert_eq!(
+            ReleaseTarget::Fleet { fleet, system }.squadron_place(),
+            SquadronPlace::Fleet(fleet)
+        );
+        assert_eq!(
+            ReleaseTarget::System(system).squadron_place(),
+            SquadronPlace::Planet(system)
+        );
+    }
     use crate::cockpit::CockpitViewport;
     use rebellion_core::ids::CharacterKey;
 
@@ -598,6 +632,7 @@ mod tests {
                     defense_facilities: vec![],
                     manufacturing_facilities: vec![],
                     production_facilities: vec![],
+                    fighters: Vec::new(),
                     is_headquarters: false,
                     is_destroyed: false,
                     control: ControlKind::Uncontrolled,
