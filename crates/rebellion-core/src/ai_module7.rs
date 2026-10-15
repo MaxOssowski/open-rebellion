@@ -1206,6 +1206,7 @@ mod tests {
             minor_classes: 0,
             shield_goal: crate::ai_records::SHIELD_GOAL,
             squadron_goals: state.controller.squadron_goals,
+            garrison_goals: state.controller.garrison_goals,
         };
         // A marked system (a yard mark) takes the marked goal +0x38c.
         let r = SystemRecord::build(&inputs, f.empty, MARK_SHIPYARD).unwrap();

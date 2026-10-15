@@ -1,0 +1,310 @@
+{
+  "command": "rebellion-playtest data/base --seed 42 --ticks 600 --dual-ai (temporary eprintln trace in Strategy::step, removed)",
+  "garrison_goal_changes": 0,
+  "sides": {
+    "Alliance": {
+      "postures": [
+        {
+          "day": 1,
+          "from": 0,
+          "to": 1,
+          "strength": 166,
+          "enemy_strength": 3194,
+          "spare_regiments": 5,
+          "weakest_enemy": 13,
+          "free_energy": 23,
+          "free_raw": 17,
+          "own_systems": 5,
+          "open_sectors": 7,
+          "yard_requests": "0x0"
+        },
+        {
+          "day": 2,
+          "from": 1,
+          "to": 4,
+          "strength": 166,
+          "enemy_strength": 3194,
+          "spare_regiments": 3,
+          "weakest_enemy": 12,
+          "free_energy": 23,
+          "free_raw": 17,
+          "own_systems": 5,
+          "open_sectors": 7,
+          "yard_requests": "0x8"
+        },
+        {
+          "day": 42,
+          "from": 4,
+          "to": 1,
+          "strength": 166,
+          "enemy_strength": 3194,
+          "spare_regiments": -6,
+          "weakest_enemy": 12,
+          "free_energy": 18,
+          "free_raw": 13,
+          "own_systems": 4,
+          "open_sectors": 7,
+          "yard_requests": "0x0"
+        },
+        {
+          "day": 43,
+          "from": 1,
+          "to": 4,
+          "strength": 166,
+          "enemy_strength": 3194,
+          "spare_regiments": -6,
+          "weakest_enemy": 12,
+          "free_energy": 18,
+          "free_raw": 13,
+          "own_systems": 4,
+          "open_sectors": 7,
+          "yard_requests": "0x2"
+        },
+        {
+          "day": 102,
+          "from": 4,
+          "to": 1,
+          "strength": 166,
+          "enemy_strength": 3194,
+          "spare_regiments": -5,
+          "weakest_enemy": 12,
+          "free_energy": 18,
+          "free_raw": 13,
+          "own_systems": 4,
+          "open_sectors": 7,
+          "yard_requests": "0x0"
+        },
+        {
+          "day": 120,
+          "from": 1,
+          "to": 4,
+          "strength": 166,
+          "enemy_strength": 3194,
+          "spare_regiments": 2,
+          "weakest_enemy": 12,
+          "free_energy": 23,
+          "free_raw": 17,
+          "own_systems": 5,
+          "open_sectors": 7,
+          "yard_requests": "0x40"
+        }
+      ],
+      "plans": [
+        {
+          "day": 2,
+          "plans": [
+            {
+              "sector": "2v1",
+              "kind": 4,
+              "param": 1
+            }
+          ]
+        },
+        {
+          "day": 42,
+          "plans": [
+            {
+              "sector": "1v1",
+              "kind": 3,
+              "param": 0
+            }
+          ]
+        },
+        {
+          "day": 43,
+          "plans": [
+            {
+              "sector": "2v1",
+              "kind": 4,
+              "param": 1
+            }
+          ]
+        },
+        {
+          "day": 102,
+          "plans": [
+            {
+              "sector": "1v1",
+              "kind": 3,
+              "param": 0
+            }
+          ]
+        },
+        {
+          "day": 120,
+          "plans": [
+            {
+              "sector": "9v1",
+              "kind": 4,
+              "param": 3
+            }
+          ]
+        }
+      ]
+    },
+    "Empire": {
+      "postures": [
+        {
+          "day": 1,
+          "from": 0,
+          "to": 6,
+          "strength": 3194,
+          "enemy_strength": 166,
+          "spare_regiments": 8,
+          "weakest_enemy": 6,
+          "free_energy": 24,
+          "free_raw": 31,
+          "own_systems": 6,
+          "open_sectors": 7,
+          "yard_requests": "0x0"
+        },
+        {
+          "day": 2,
+          "from": 6,
+          "to": 4,
+          "strength": 3194,
+          "enemy_strength": 166,
+          "spare_regiments": 1,
+          "weakest_enemy": 6,
+          "free_energy": 24,
+          "free_raw": 31,
+          "own_systems": 6,
+          "open_sectors": 7,
+          "yard_requests": "0x8"
+        },
+        {
+          "day": 123,
+          "from": 4,
+          "to": 5,
+          "strength": 3194,
+          "enemy_strength": 166,
+          "spare_regiments": -7,
+          "weakest_enemy": 7,
+          "free_energy": 24,
+          "free_raw": 31,
+          "own_systems": 6,
+          "open_sectors": 7,
+          "yard_requests": "0x0"
+        },
+        {
+          "day": 124,
+          "from": 5,
+          "to": 4,
+          "strength": 3194,
+          "enemy_strength": 166,
+          "spare_regiments": -7,
+          "weakest_enemy": 7,
+          "free_energy": 24,
+          "free_raw": 31,
+          "own_systems": 6,
+          "open_sectors": 7,
+          "yard_requests": "0x2"
+        },
+        {
+          "day": 143,
+          "from": 4,
+          "to": 5,
+          "strength": 3194,
+          "enemy_strength": 166,
+          "spare_regiments": -7,
+          "weakest_enemy": 7,
+          "free_energy": 24,
+          "free_raw": 31,
+          "own_systems": 6,
+          "open_sectors": 7,
+          "yard_requests": "0x0"
+        },
+        {
+          "day": 143,
+          "from": 5,
+          "to": 4,
+          "strength": 3194,
+          "enemy_strength": 166,
+          "spare_regiments": -7,
+          "weakest_enemy": 7,
+          "free_energy": 24,
+          "free_raw": 31,
+          "own_systems": 6,
+          "open_sectors": 7,
+          "yard_requests": "0x20"
+        },
+        {
+          "day": 365,
+          "from": 4,
+          "to": 5,
+          "strength": 3194,
+          "enemy_strength": 166,
+          "spare_regiments": -10,
+          "weakest_enemy": 7,
+          "free_energy": 21,
+          "free_raw": 28,
+          "own_systems": 6,
+          "open_sectors": 7,
+          "yard_requests": "0x0"
+        }
+      ],
+      "plans": [
+        {
+          "day": 3,
+          "plans": [
+            {
+              "sector": "9v1",
+              "kind": 4,
+              "param": 2
+            }
+          ]
+        },
+        {
+          "day": 123,
+          "plans": [
+            {
+              "sector": "9v1",
+              "kind": 2,
+              "param": 0
+            }
+          ]
+        },
+        {
+          "day": 124,
+          "plans": [
+            {
+              "sector": "9v1",
+              "kind": 4,
+              "param": 1
+            }
+          ]
+        },
+        {
+          "day": 143,
+          "plans": [
+            {
+              "sector": "9v1",
+              "kind": 2,
+              "param": 0
+            }
+          ]
+        },
+        {
+          "day": 143,
+          "plans": [
+            {
+              "sector": "9v1",
+              "kind": 4,
+              "param": 2
+            }
+          ]
+        },
+        {
+          "day": 365,
+          "plans": [
+            {
+              "sector": "9v1",
+              "kind": 2,
+              "param": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

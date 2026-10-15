@@ -1892,6 +1892,19 @@ cross-runtime proof remain open
   move to a base, the planner-driven roles and `FUN_004c9cb0` need module
   8's planners and the fleet plan objects. Save v48; golden
   `v1:da11bf56815cc333` -> `v1:bde18d3a1df8ed02` (`evidence/2026-10-15-ai-module-b/`).
+- Module `0xd`'s posture and sector plans (2026-10-15), stage 1 of module
+  8: `ai_strategy.rs` ports the posture (`FUN_004bf490`: the fleets'
+  attack against 1.5 times the opponent's, spare regiments against the
+  weakest opponent sector, the economy and the yard requests choose one of
+  seven strategies, setting controller `+4` `0x800000` or `0x400000`), and
+  the strategy's states 1 and 2: each strategy names the sectors the side
+  works on with a plan kind (slot `+0x14` of seven classes, the sector
+  record's `+0x30`/`+0x3c`, `FUN_00419e90`) and reviews them
+  (`FUN_004e5560`). Module 6 now raises and lowers the garrison goals
+  `+0x37c..+0x384` under those bits. port: module 8's planners and their
+  plan objects are not ported, so each side keeps one planned sector and
+  no plan gives an order yet. Save v49; golden `v1:bde18d3a1df8ed02` ->
+  `v1:cca1045386d40ca4` (`evidence/2026-10-15-ai-strategy-posture/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

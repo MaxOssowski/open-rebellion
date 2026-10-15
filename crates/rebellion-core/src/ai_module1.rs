@@ -109,6 +109,11 @@ pub struct Controller {
     /// ([`crate::ai_records::SQUADRON_GOALS`] at setup), which module 7
     /// raises (`FUN_00418240(9, 10, 11)`).
     pub squadron_goals: [i32; 3],
+    /// `+0x37c`, `+0x380`, `+0x384`: the garrison goals of an own system's
+    /// record, unmarked, marked and headquarters
+    /// ([`crate::ai_records::GARRISON_GOALS`] at setup), which module 6
+    /// raises and lowers (`FUN_00418240(6, 7, 8)`, `FUN_00418270`).
+    pub garrison_goals: [i32; 3],
 }
 
 impl Default for Controller {
@@ -121,6 +126,7 @@ impl Default for Controller {
             flags: 0,
             shield_goal: crate::ai_records::SHIELD_GOAL,
             squadron_goals: crate::ai_records::SQUADRON_GOALS,
+            garrison_goals: crate::ai_records::GARRISON_GOALS,
         }
     }
 }
@@ -202,6 +208,35 @@ pub struct Tallies {
     /// `+0x20c`: the most regiments a system needs to be taken, the sector
     /// records' greatest `+0x134` (`FUN_0041b7e0`).
     pub troops_wanted: i32,
+    /// `+0x258`: the attack of the side's fleets (own fleet records'
+    /// `values[25]`, `FUN_0041ba80`).
+    pub strength: i32,
+    /// `+0x288`: the attack of the other side's fleets (the other fleet
+    /// records' `values[25]`, `FUN_0041ba80`).
+    pub enemy_strength: i32,
+    /// `+0x25c`: the regiments aboard the side's fleets (`values[11]`).
+    pub fleet_regiments: i32,
+    /// `+0x1fc`: the garrisons the side's systems want (the sector records'
+    /// `+0x9c`, own systems' `v[22]`; `FUN_0041b7e0`).
+    pub garrison_goal: i32,
+    /// `+0x200`: the regiments on the side's planets (`+0xf0`, `v[16]`).
+    pub planet_regiments: i32,
+    /// `+0x210`: over the sectors holding an opponent system (`+0x2c` bit
+    /// 8), the least `+0xa0` (the regiments its opponent systems need to
+    /// be taken, `v[52]`); a 0 is replaced by the next sector's.
+    pub weakest_enemy: i32,
+    /// `+0x1e8`: the side's free energy (`+0x94`, own systems' `v[15]`).
+    pub free_energy: i32,
+    /// `+0x1ec`: the side's free raw materials (`+0x98`, `v[14]`).
+    pub free_raw: i32,
+    /// `+0x1ac`: the side's systems (`+0x7c`).
+    pub own_systems: i32,
+    /// `+0x1c8`: the sectors with a system no side holds (`+0x2c` bit 2
+    /// clear).
+    pub open_sectors: i32,
+    /// `+0x204`: the sector records' `+0x18c` summed: -1 for each planned
+    /// sector without a planner, 1 for each planner without a plan.
+    pub planner_balance: i32,
 }
 
 impl Tallies {
@@ -252,6 +287,36 @@ impl Tallies {
                 .iter()
                 .map(|s| s.values[sector_at(0x134)])
                 .fold(0, i32::max),
+            strength: own(25),
+            enemy_strength: galaxy
+                .fleets
+                .values()
+                .filter(|f| f.flags & crate::ai_records::FLEET_OWN == 0)
+                .map(|f| f.values[25])
+                .sum(),
+            fleet_regiments: own(11),
+            garrison_goal: sum(0x9c),
+            planet_regiments: sum(0xf0),
+            weakest_enemy: galaxy
+                .sectors
+                .iter()
+                .filter(|s| s.summary & 8 != 0)
+                .map(|s| s.values[sector_at(0xa0)])
+                .fold(
+                    0,
+                    |least, v| if v < least || least == 0 { v } else { least },
+                ),
+            free_energy: sum(0x94),
+            free_raw: sum(0x98),
+            own_systems: sum(0x7c),
+            open_sectors: galaxy
+                .sectors
+                .iter()
+                .filter(|s| s.summary & 2 == 0)
+                .count()
+                .try_into()
+                .unwrap_or(i32::MAX),
+            planner_balance: sum(0x18c),
         }
     }
 }
@@ -1411,6 +1476,7 @@ pub(crate) mod tests {
             minor_classes: 0,
             shield_goal: SHIELD_GOAL,
             squadron_goals: crate::ai_records::SQUADRON_GOALS,
+            garrison_goals: crate::ai_records::GARRISON_GOALS,
         };
         Galaxy::build(
             &inputs,
@@ -1462,6 +1528,17 @@ pub(crate) mod tests {
         hangars: 0,
         death_star: false,
         troops_wanted: 0,
+        strength: 0,
+        enemy_strength: 0,
+        fleet_regiments: 0,
+        garrison_goal: 0,
+        planet_regiments: 0,
+        weakest_enemy: 0,
+        free_energy: 0,
+        free_raw: 0,
+        own_systems: 0,
+        open_sectors: 0,
+        planner_balance: 0,
     };
 
     #[test]
@@ -2447,8 +2524,43 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_tallies_weigh_the_fleets_and_regiments_for_the_posture() {
+        // FUN_0041ba80: +0x258 the own fleet records' values[25], +0x288
+        // the others', +0x25c own values[11]. FUN_0041b7e0: +0x1fc sector
+        // +0x9c, +0x200 +0xf0, +0x210 the least +0xa0 of the sectors with
+        // +0x2c 8 (a 0 replaced), +0x1c8 the sectors without +0x2c 2.
+        let f = fixture();
+        let state = AIState::new(crate::ai::AiFaction::Alliance);
+        let mut galaxy = records_of(&f, &state);
+        let mut nowhere = slotmap::SlotMap::<crate::ids::FleetKey, ()>::with_key();
+        for (flags, attack, regiments) in [(1, 4, 2), (1, 5, 1), (0, 7, 9)] {
+            let mut values = [0; 30];
+            values[25] = attack;
+            values[11] = regiments;
+            galaxy.fleets.insert(
+                nowhere.insert(()),
+                crate::ai_records::FleetRecord { flags, values },
+            );
+        }
+        let mut sectors = vec![galaxy.sectors[0].clone(); 4];
+        for (i, (summary, need)) in [(8, 0), (8, 6), (0, 1), (8 | 2, 4)].into_iter().enumerate() {
+            sectors[i].summary = summary;
+            sectors[i].values[sector_at(0xa0)] = need;
+            sectors[i].values[sector_at(0x9c)] = 3;
+            sectors[i].values[sector_at(0xf0)] = 2;
+        }
+        galaxy.sectors = sectors;
+        let t = Tallies::of(&galaxy, 0, 0);
+        assert_eq!((t.strength, t.enemy_strength, t.fleet_regiments), (9, 7, 3));
+        assert_eq!((t.garrison_goal, t.planet_regiments), (12, 8));
+        assert_eq!((t.weakest_enemy, t.open_sectors), (4, 3));
+    }
+
+    #[test]
     fn the_tallies_sum_the_side_s_mines_and_refineries() {
-        // FUN_0041b7e0: +0x1d0 += sector +0xa8, +0x1d4 += +0xac.
+        // FUN_0041b7e0: +0x1d0 += sector +0xa8, +0x1d4 += +0xac; the two
+        // own systems (+0x7c) give +0x1ac, their free energy (10 each,
+        // +0x94) +0x1e8 and raw materials (5 each, +0x98) +0x1ec.
         let mut f = fixture();
         for (raw, is_mine, at) in [
             (MINE_CLASS, true, f.yard),
@@ -2489,6 +2601,17 @@ pub(crate) mod tests {
                 hangars: 0,
                 death_star: false,
                 troops_wanted: 0,
+                strength: 0,
+                enemy_strength: 0,
+                fleet_regiments: 0,
+                garrison_goal: 0,
+                planet_regiments: 0,
+                weakest_enemy: 0,
+                free_energy: 20,
+                free_raw: 10,
+                own_systems: 2,
+                open_sectors: 0,
+                planner_balance: 0,
             }
         );
     }

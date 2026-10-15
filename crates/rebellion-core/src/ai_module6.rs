@@ -15,6 +15,7 @@ use crate::ai_module1::{
 use crate::ai_module2::keep_site;
 use crate::ai_module3::choose_target;
 use crate::ai_records::{pick, Mask, Order, CLASS_DEFENSIVE, CLASS_OFFENSIVE};
+use crate::ai_strategy::{SECURE, WEAK};
 use crate::ids::{DatId, SystemKey, TroopKey};
 use crate::manufacturing::ProductionArea;
 
@@ -361,11 +362,11 @@ impl Module6 {
     }
 
     /// `FUN_004df440`: the destination, by the five queries in the order
-    /// `+0x78` sets, each while none has found a system.
-    ///
-    /// port: the raise of the side's garrison goals that follows needs the
-    /// strategy module's controller `+4` bit `0x800000`, which the port
-    /// never sets.
+    /// `+0x78` sets, each while none has found a system. When every query
+    /// but the home one found nothing, the strategy's posture is weak
+    /// (controller `+4` [`WEAK`]) and regiments are budgeted, the side's
+    /// garrison goals rise by one: `+0x384` below 12, `+0x380` below 6,
+    /// `+0x37c` below 4 (`FUN_00418240(8, 7, 6)`).
     fn choose_destination(&mut self, io: &mut Inputs<'_>) -> bool {
         use Query::{Defended, Far, Home, Marked, Near};
         self.count = 0;
@@ -387,9 +388,18 @@ impl Module6 {
             self.query(io, query);
         }
         self.next_query = next;
-        self.destination
+        let found = self
+            .destination
             .system()
-            .is_some_and(|d| io.galaxy.system(d).is_some())
+            .is_some_and(|d| io.galaxy.system(d).is_some());
+        if self.missed & 0xf == 0xf && io.controller.flags & WEAK != 0 && regiment_budget(io) > 0 {
+            for (goal, ceiling) in io.controller.garrison_goals.iter_mut().zip([4, 6, 12]) {
+                if *goal < ceiling {
+                    *goal += 1;
+                }
+            }
+        }
+        found
     }
 
     /// One destination query (`FUN_004e1060`, `FUN_004e0ef0`,
@@ -474,13 +484,21 @@ impl Module6 {
 
     /// `FUN_004df9a0`: `0xc` to train regiments of the chosen class (at
     /// most what the budget pays for and the site's training facilities),
-    /// 8 when regiments cost more than the budget, else 0.
+    /// 8 when regiments cost more than the budget, else 0. With no budget
+    /// and a secure posture (controller `+4` [`SECURE`]) the side's
+    /// garrison goals fall by one: `+0x384` above 9, `+0x380` above 3,
+    /// `+0x37c` above 0 (`FUN_00418270(8, 7, 6)`).
     ///
-    /// port: the lowering of the side's garrison goals needs the strategy
-    /// module's controller `+4` bit `0x400000`, which the port never sets;
-    /// controller `+0x14`, which it clears, has no counterpart.
+    /// port: controller `+0x14`, which it clears, has no counterpart.
     fn plan_regiments(&mut self, io: &mut Inputs<'_>) -> u32 {
         let budget = regiment_budget(io);
+        if io.controller.flags & SECURE != 0 && budget < 1 {
+            for (goal, floor) in io.controller.garrison_goals.iter_mut().zip([0, 3, 9]) {
+                if *goal > floor {
+                    *goal -= 1;
+                }
+            }
+        }
         if budget < 0 {
             return 8;
         }
@@ -1624,5 +1642,81 @@ mod tests {
         state.module6.capacity = 9;
         let next = edited(&f, &mut state, ROOMY, |_| {}, |m, io| m.plan_yards(io));
         assert_eq!((next, state.module6.count), (0, 0));
+    }
+
+    #[test]
+    fn a_weak_posture_raises_the_garrison_goals_when_every_query_fails() {
+        // FUN_004df440's end: +0x28 & 0xf == 0xf, controller +4 0x800000
+        // and FUN_004e19c0 > 0 raise +0x384 below 12, +0x380 below 6 and
+        // +0x37c below 4 (FUN_00418240(8, 7, 6)).
+        let f = regiment_fixture();
+        let mut state = AIState::new(AiFaction::Alliance);
+        let choose = |state: &mut AIState, tallies| {
+            state.module6.next_query = 1;
+            edited(&f, state, tallies, |_| {}, |m, io| m.choose_destination(io))
+        };
+        assert!(!choose(&mut state, ROOMY));
+        assert_eq!(state.module6.missed & 0xf, 0xf);
+        assert_eq!(state.controller.garrison_goals, [0, 3, 9]);
+        state.controller.flags |= WEAK;
+        choose(&mut state, ROOMY);
+        assert_eq!(state.controller.garrison_goals, [1, 4, 10]);
+        // No regiment budget: no raise.
+        let poor = Tallies {
+            capacity: 0,
+            ..ROOMY
+        };
+        choose(&mut state, poor);
+        assert_eq!(state.controller.garrison_goals, [1, 4, 10]);
+        state.controller.garrison_goals = [3, 6, 11];
+        choose(&mut state, ROOMY);
+        assert_eq!(state.controller.garrison_goals, [4, 6, 12]);
+        choose(&mut state, ROOMY);
+        assert_eq!(state.controller.garrison_goals, [4, 6, 12]);
+        // A query that finds a system leaves the goals: order 3 asks the
+        // site first (FUN_004e12e0), and the others do not run.
+        state.controller.garrison_goals = [0, 3, 9];
+        state.module6.yard = Yard::System(f.yard);
+        state.module6.next_query = 3;
+        let found = edited(
+            &f,
+            &mut state,
+            ROOMY,
+            |_| {},
+            |m, io| m.choose_destination(io),
+        );
+        assert!(found);
+        assert_eq!(state.module6.missed & 0xf, 0);
+        assert_eq!(state.controller.garrison_goals, [0, 3, 9]);
+    }
+
+    #[test]
+    fn a_secure_posture_lowers_the_garrison_goals_without_a_budget() {
+        // FUN_004df9a0's end: controller +4 0x400000 and FUN_004e19c0 < 1
+        // lower +0x384 above 9, +0x380 above 3 and +0x37c above 0
+        // (FUN_00418270).
+        let f = regiment_fixture();
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.controller.garrison_goals = [1, 5, 10];
+        let poor = Tallies {
+            capacity: 0,
+            ..ROOMY
+        };
+        edited(&f, &mut state, poor, |_| {}, |m, io| m.plan_regiments(io));
+        assert_eq!(state.controller.garrison_goals, [1, 5, 10]);
+        state.controller.flags |= SECURE;
+        edited(&f, &mut state, ROOMY, |_| {}, |m, io| m.plan_regiments(io));
+        assert_eq!(state.controller.garrison_goals, [1, 5, 10]);
+        // A budget of 1 (22% of 10 is 2, 80% of that 1) is not below 1.
+        let one = Tallies {
+            capacity: 10,
+            ..ROOMY
+        };
+        edited(&f, &mut state, one, |_| {}, |m, io| m.plan_regiments(io));
+        assert_eq!(state.controller.garrison_goals, [1, 5, 10]);
+        edited(&f, &mut state, poor, |_| {}, |m, io| m.plan_regiments(io));
+        assert_eq!(state.controller.garrison_goals, [0, 4, 9]);
+        edited(&f, &mut state, poor, |_| {}, |m, io| m.plan_regiments(io));
+        assert_eq!(state.controller.garrison_goals, [0, 3, 9]);
     }
 }

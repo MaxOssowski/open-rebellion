@@ -452,6 +452,17 @@ pub struct AIState {
     /// Module `0xb`'s fields (`FUN_004c8820`).
     #[serde(default)]
     pub module_b: crate::ai_module_b::ModuleB,
+    /// Module `0xd`'s posture and strategy (`FUN_004bf0d0`).
+    #[serde(default)]
+    pub strategy: crate::ai_strategy::Strategy,
+    /// System record `+0x44`: the day each system not the side's was last
+    /// seen blockaded (`FUN_00433e40`), which the records keep.
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub seen: HashMap<SystemKey, u64>,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -521,6 +532,8 @@ impl AIState {
             module6: crate::ai_module6::Module6::default(),
             module7: crate::ai_module7::Module7::default(),
             module_b: crate::ai_module_b::ModuleB::default(),
+            strategy: crate::ai_strategy::Strategy::default(),
+            seen: HashMap::new(),
         }
     }
 
@@ -843,6 +856,13 @@ impl AISystem {
                 transport: troop_transport,
             },
         );
+        // FUN_00433e40: a blockaded system not the side's is seen today
+        // (record +0x44).
+        for r in galaxy.sectors.iter().flat_map(|s| &s.systems) {
+            if r.state & 2 != 0 && r.kind & 6 != 0 {
+                state.seen.insert(r.system, tick);
+            }
+        }
         let ctx = ModuleInputs {
             world,
             mfg_state,
@@ -969,14 +989,17 @@ impl AISystem {
             minor_classes: minor_classes(inputs.world, is_alliance),
             shield_goal: state.controller.shield_goal,
             squadron_goals: state.controller.squadron_goals,
+            garrison_goals: state.controller.garrison_goals,
         };
-        crate::ai_records::Galaxy::build(
+        let mut galaxy = crate::ai_records::Galaxy::build(
             &system_inputs,
             inputs.movement,
             inputs.transport,
             &state.yard_marks,
             &state.record_kinds,
-        )
+        );
+        crate::ai_strategy::mark_plans(&mut galaxy, &state.strategy.plans);
+        galaxy
     }
 
     /// The module the next step runs (`FUN_004be980`): the ready module
@@ -1046,6 +1069,19 @@ impl AISystem {
                 _ => state.module_b.step(&mut io),
             };
         }
+        if id == 0xd && state.module_pending[module].is_empty() {
+            let mut coin = || planner.coin();
+            let mut io = crate::ai_strategy::StrategyInputs {
+                galaxy,
+                tallies,
+                controller: &mut state.controller,
+                is_alliance: matches!(ctx.faction, AiFaction::Alliance),
+                day: ctx.tick,
+                seen: &state.seen,
+                coin: &mut coin,
+            };
+            state.strategy.step(&mut io);
+        }
         if state.module_pending[module].is_empty() {
             let mut decided = Vec::new();
             Self::run_module(MODULE_IDS[module], state, planner, ctx, &mut decided);
@@ -1062,8 +1098,9 @@ impl AISystem {
 
     /// The port's work for the original module `id`.
     ///
-    /// - `0xd`, the strategy: the research strategy
-    ///   ([`Self::research_strategy`]).
+    /// - `0xd`, the strategy: its posture and sector plans run first in
+    ///   [`Self::step_module`] ([`crate::ai_strategy`]), then the research
+    ///   strategy ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
     /// - `0xa`: the production heuristic's manufacturing facilities.
     /// - 8: Death Star escort and fleet deployment; `0xc`: troop movement.
@@ -7205,6 +7242,60 @@ mod tests {
         )
     }
 
+    #[test]
+    fn the_strategy_module_chooses_a_posture_and_plans_a_sector_on_the_next_pass() {
+        // Module 0xd (FUN_004bf390): the posture (FUN_004bf490) builds a
+        // strategy, which replans (controller +4 bit 2) with no plan to
+        // keep; the review (FUN_004e5560) grows the empty list, and the
+        // next pass names one sector (FUN_004e62b0's third query: +0x2c 6,
+        // kind 3). A blockaded system not the side's is seen that day
+        // (FUN_00433e40, record +0x44).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let own = add_system(&mut world, sector, 0.9, 0.1);
+        world.systems[own].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let held = add_system(&mut world, sector, 0.1, 0.9);
+        world.systems[held].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let blockaded = add_system(&mut world, sector, 0.1, 0.9);
+        world.systems[blockaded].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let fleet = world.fleets.insert(Fleet {
+            location: blockaded,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[blockaded].fleets.push(fleet);
+        // An own system under an Empire fleet is blockaded too, but the
+        // side's own (+0x30 & 6 clear).
+        let enemy = world.fleets.insert(Fleet {
+            location: own,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[own].fleets.push(enemy);
+        let mut state = AIState::new(AiFaction::Alliance);
+        cadence_pass(&mut state, &world);
+        assert_ne!(state.strategy.posture, 0);
+        assert_eq!(state.strategy.kind, state.strategy.posture);
+        assert!(state.strategy.plans.is_empty());
+        assert!(state.strategy.grow);
+        assert_eq!(state.seen, HashMap::from([(blockaded, 7)]));
+        cadence_pass(&mut state, &world);
+        assert_eq!(
+            state.strategy.plans,
+            vec![crate::ai_strategy::SectorPlan {
+                sector,
+                kind: 3,
+                param: 0
+            }]
+        );
+    }
+
     fn kinds(actions: &[AIAction]) -> Vec<&'static str> {
         actions
             .iter()
@@ -8103,6 +8194,47 @@ mod tests {
         let planner = Planner::new(&world, &missions, &busy, false, 7);
         let galaxy = AISystem::records(&AIState::new(AiFaction::Empire), &planner, &inputs);
         assert_eq!(galaxy.system(sys).unwrap().kind & 5, 4);
+    }
+
+    #[test]
+    fn the_refreshed_sector_records_carry_the_strategy_s_plans() {
+        // FUN_004321e0 keeps +0x2c 0x8000000 and reads +0x30/+0x38: the
+        // planned sector, with no planner, has 0x4000000, 0x10000 and
+        // +0x18c = -1, and its +0x3c is the plan's id.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _ = add_system(&mut world, sector, 0.5, 0.5);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let economy = crate::economy::EconomyState::default();
+        let uprisings = crate::uprising::UprisingState::default();
+        let manufacturing = ManufacturingState::new();
+        let research = ResearchState::new();
+        let movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let inputs = RecordInputs {
+            world: &world,
+            economy: &economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            movement: &movement,
+            transport: &transport,
+        };
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.strategy.plans = vec![crate::ai_strategy::SectorPlan {
+            sector,
+            kind: 3,
+            param: 0,
+        }];
+        let planner = Planner::new(&world, &missions, &busy, true, 7);
+
+        let galaxy = AISystem::records(&state, &planner, &inputs);
+
+        let r = galaxy.sector(sector).unwrap();
+        assert_eq!(r.summary & 0xc01_0000, 0xc01_0000);
+        assert_eq!((r.plan, r.plan_id), (3, 1));
+        assert_eq!(r.values[crate::ai_records::sector_at(0x18c)], -1);
     }
 
     #[test]

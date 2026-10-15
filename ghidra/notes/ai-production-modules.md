@@ -1330,8 +1330,9 @@ port:
   from module 8's sector planners, which are not ported, so they move
   nothing.
 - The raise and lowering of the side's garrison goals need the strategy
-  module's controller `+4` bits `0x800000` and `0x400000`, which the port
-  never sets; they are not ported.
+  module's controller `+4` bits `0x800000` and `0x400000`. Ported
+  2026-10-15 with the posture (`ai-sector-plans.md`, save v49): the goals
+  live on the controller (`+0x37c..+0x384`) and the records read them.
 - Controller `+0x14` and `+0x18` have no counterpart.
 - The heuristic's regiments are gone: module 6 trains them.
 

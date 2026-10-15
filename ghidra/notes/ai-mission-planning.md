@@ -397,7 +397,7 @@ reads.
 
 | Id | Ctor, vtable | Step | Orders | Reads, marks | Module |
 |----|--------------|------|--------|--------------|--------|
-| `0xd` | `004bf0d0`, `0x65c480` | `004bf320` | Move `0x201` | strategy `FUN_004e5440`, sets the requests `+0x318`, `+0x354`/`+0x358` (`FUN_004e57e0`) | strategy |
+| `0xd` | `004bf0d0`, `0x65c480` | `004bf320` | Move `0x201` | strategy `FUN_004e5440`, sets the requests `+0x318`, `+0x354`/`+0x358` (`FUN_004e57e0`) | strategy: posture and sector plans (read 2026-10-15, `ai-sector-plans.md`) |
 | 1 | `004da950`, `0x65c7f8` | `004dabe0` | Build `0x210`, Destination `0x214` | sector bit `0x2000` (an idle construction yard, system `+0x28` bit `0x800`); marks `0x800000`; classes `0x2c`/`0x2d` | mines and refineries |
 | 2 | `004e1e50`, `0x65c838` | `004e2120` | `0x210`, `0x214` | sector bits `0xe0` (yard candidates); marks `0x1000000` | facility placement |
 | 3 | `004d6b20`, `0x65c7d8` | `004d6d30` | Scrap `0x200`, `0x210`, `0x214` | sector bits `0x10000`/`0x4000` (system `[0x25]` above or below 0); marks `0x2000000` | facility balance |
@@ -405,7 +405,7 @@ reads.
 | 5 | `004cfb20`, `0x65c758` | `004cfed0` | troops `0x212`, Retire `0x242`, `0x210`, `0x214` | sector bit `0x40`; marks `0x400000` (`FUN_004d0860`) | troop production |
 | 6 | `004dd460`, `0x65c818` | `004dd7a0` | `0x200`, `0x212`, `0x210`, `0x214` | marks `0x400000` | garrison balance |
 | 7 | `004d2ef0`, `0x65c7b8` | `004d3100` | `0x200`, `0x201`, ships `0x211`, `0x210`, `0x214` | marks `0x200000` | ship balance |
-| 8 | `004cf410`, `0x65c738` | `004cf600` -> `FUN_004cf630` | through its planners (`0x201`) | side `+0x204`; one planner per sector (`FUN_004762b0`, vtable `0x65a3b0`) | sector fleet planners |
+| 8 | `004cf410`, `0x65c738` | `004cf600` -> `FUN_004cf630` | through its planners (`0x201`) | side `+0x204`; one planner per sector (`FUN_004762b0`, vtable `0x65a3b0`) | sector fleet planners (states read 2026-10-15, `ai-sector-plans.md`) |
 | 9 | `004cf0a0`, `0x65c718` | `004cf290` -> `FUN_004cf2c0` | through its planners | fleets `0x08..0x0f` | fleet planners |
 | `0xa` | `004cc6b0`, `0x65c6f8` | `004cc9c0` | `0x200`, `0x211`, `0x210`, `0x214` | sector bit `0x20`; marks `0x200000`; managers `0xa0..0xaf` | shipyard placement |
 | `0xb` | `004c8820`, `0x65c6d8` | `004c8b30` | `0x200`, `0x201`, `0x270`, `0x211`, `0x210`, `0x214` | marks `0x200000` (`FUN_004c8d20`, `FUN_004cacc0`) | capital ships: repair, the Death Star's return, production (read 2026-10-15, `ai-production-modules.md`) |

@@ -706,6 +706,17 @@ pub const SQUADRON_GOALS: [i32; 3] = [
     side_constants::S390,
 ];
 
+/// Side `+0x37c`, `+0x380` and `+0x384` at AI setup (`FUN_0041bd20`): the
+/// garrison goal of an own system, unmarked, marked and headquarters.
+/// Module 6 raises and lowers them (`FUN_00418240(6, 7, 8)`,
+/// `FUN_00418270`), so the records take them from
+/// [`SystemInputs::garrison_goals`].
+pub const GARRISON_GOALS: [i32; 3] = [
+    side_constants::S37C,
+    side_constants::S380,
+    side_constants::S384,
+];
+
 /// The side object's constants (`FUN_0041bd20`, at AI setup): garrison and
 /// defense goals by a system's state.
 pub(crate) mod side_constants {
@@ -754,6 +765,8 @@ pub struct SystemInputs<'a> {
     pub shield_goal: i32,
     /// Side `+0x388`, `+0x38c`, `+0x390` ([`SQUADRON_GOALS`] at setup).
     pub squadron_goals: [i32; 3],
+    /// Side `+0x37c`, `+0x380`, `+0x384` ([`GARRISON_GOALS`] at setup).
+    pub garrison_goals: [i32; 3],
 }
 
 /// A system record (`FUN_00433b10`, refreshed by `FUN_00433e40`).
@@ -1258,12 +1271,13 @@ impl SystemRecord {
                 if f28 & 1 != 0 {
                     v[20] <<= 1;
                 }
+                let [unmarked, marked, headquarters] = inputs.garrison_goals;
                 v[22] = if f28 & 0x8000_0000 != 0 {
-                    S384
+                    headquarters
                 } else if f28 & 0x3e0_0000 != 0 {
-                    S380
+                    marked
                 } else {
-                    S37C
+                    unmarked
                 }
                 .max(v[20]);
                 if f28 & 2 == 0 || f30 & 0x3_0000 == 0 {
@@ -1392,6 +1406,16 @@ pub struct SectorRecord {
     /// `+0x40`: the map position, class `+0x48` (`FUN_00431450` ->
     /// `FUN_00526560`), SECTORSD `x_position`/`y_position`.
     pub position: (i16, i16),
+    /// `+0x30`: the kind of the strategy's plan for the sector, 1 to 6, 0
+    /// for none (`FUN_00431790`, `FUN_004317b0`).
+    pub plan: u32,
+    /// `+0x34`: the plan's parameter (`FUN_00431790`).
+    pub plan_param: u32,
+    /// `+0x38`: the id of the module 8 planner working the sector, 0 for
+    /// none (`FUN_004317d0`).
+    pub planner: u32,
+    /// `+0x3c`: the plan's id in the strategy's list, 0 for none.
+    pub plan_id: u32,
 }
 
 impl SectorRecord {
@@ -1400,8 +1424,8 @@ impl SectorRecord {
     ///
     /// port: a sector holds as many systems as the galaxy gives it; the
     /// original's tests for all 10 (`+0x70`, `+0x74`, `+0x78`) read "all
-    /// of them". hyp: the fields `+0x30`/`+0x38` behind `+0x2c` bits
-    /// `0x4000000`/`0x10000` and `+0x18c` are untraced and stay clear.
+    /// of them". The plan fields start clear; [`Self::plan_bits`] reads
+    /// them once the strategy has set them.
     #[must_use]
     pub fn build(
         sector: crate::ids::SectorKey,
@@ -1416,6 +1440,10 @@ impl SectorRecord {
             values: [0; 90],
             systems: Vec::new(),
             position,
+            plan: 0,
+            plan_param: 0,
+            planner: 0,
+            plan_id: 0,
         };
         r.values[sector_at(0x144)] = 100_000;
         for system in &systems {
@@ -1443,6 +1471,33 @@ impl SectorRecord {
         }
         r.systems = systems;
         r
+    }
+
+    /// Whether `+0x24`, `+0x28` and `+0x2c` pass `masks`, as the sector
+    /// queries test them (`FUN_00419a00`).
+    #[must_use]
+    pub fn admitted(&self, masks: [Mask; 3]) -> bool {
+        masks[0].admits(self.candidates)
+            && masks[1].admits(self.state)
+            && masks[2].admits(self.summary)
+    }
+
+    /// The end of `FUN_004321e0`: a planned sector (`+0x30`) has `+0x2c`
+    /// bit `0x4000000`, and without a planner (`+0x38`) bit `0x10000` and
+    /// `+0x18c` = -1; a planner without a plan has `+0x18c` = 1.
+    pub fn plan_bits(&mut self) {
+        let at = sector_at(0x18c);
+        if self.plan == 0 {
+            if self.planner != 0 {
+                self.values[at] = 1;
+            }
+        } else {
+            self.summary |= 0x400_0000;
+            if self.planner == 0 {
+                self.values[at] = -1;
+                self.summary |= 0x1_0000;
+            }
+        }
     }
 
     /// `FUN_00432350`: one system record into the sector's.
@@ -1956,15 +2011,55 @@ impl Galaxy {
         let Some(home) = self.sector_position_of(origin) else {
             return Vec::new();
         };
+        self.sectors_from(home, masks, order, coin)
+    }
+
+    /// `FUN_00419b80` from a sector record: the sectors passing `masks`,
+    /// sorted on their squared distance from `origin`. Empty when `origin`
+    /// has no record.
+    pub fn sectors_near(
+        &self,
+        origin: crate::ids::SectorKey,
+        masks: [Mask; 3],
+        order: Order,
+        coin: &mut dyn FnMut() -> bool,
+    ) -> Vec<crate::ids::SectorKey> {
+        let Some(home) = self.sector(origin).map(|s| s.position) else {
+            return Vec::new();
+        };
+        self.sectors_from(home, masks, order, coin)
+    }
+
+    fn sectors_from(
+        &self,
+        home: (i16, i16),
+        masks: [Mask; 3],
+        order: Order,
+        coin: &mut dyn FnMut() -> bool,
+    ) -> Vec<crate::ids::SectorKey> {
         ranked(
             self.sectors
                 .iter()
-                .filter(|s| {
-                    masks[0].admits(s.candidates)
-                        && masks[1].admits(s.state)
-                        && masks[2].admits(s.summary)
-                })
+                .filter(|s| s.admitted(masks))
                 .map(|s| (s.sector, squared_distance(home, s.position))),
+            order,
+            coin,
+        )
+    }
+
+    /// `FUN_00419e90`: the sectors passing `masks`, keyed on their plan's
+    /// id (`+0x3c`), 100 for an unplanned sector.
+    pub fn planned_sectors(
+        &self,
+        masks: [Mask; 3],
+        order: Order,
+        coin: &mut dyn FnMut() -> bool,
+    ) -> Vec<crate::ids::SectorKey> {
+        ranked(
+            self.sectors.iter().filter(|s| s.admitted(masks)).map(|s| {
+                let key = if s.plan_id == 0 { 100 } else { s.plan_id };
+                (s.sector, i32::try_from(key).unwrap_or(i32::MAX))
+            }),
             order,
             coin,
         )
@@ -2351,6 +2446,7 @@ mod tests {
             minor_classes,
             shield_goal: SHIELD_GOAL,
             squadron_goals: SQUADRON_GOALS,
+            garrison_goals: GARRISON_GOALS,
         };
         SystemRecord::build(&inputs, fixture.system, marks).unwrap()
     }
@@ -2555,6 +2651,7 @@ mod tests {
                 minor_classes: 1,
                 shield_goal: SHIELD_GOAL,
                 squadron_goals: SQUADRON_GOALS,
+                garrison_goals: GARRISON_GOALS,
             },
             fixture.system,
             0,
@@ -2723,6 +2820,7 @@ mod tests {
                 minor_classes: 0,
                 shield_goal: SHIELD_GOAL,
                 squadron_goals: SQUADRON_GOALS,
+                garrison_goals: GARRISON_GOALS,
             },
             fixture.system,
             0,
@@ -2993,6 +3091,7 @@ mod tests {
                 minor_classes: 1,
                 shield_goal: SHIELD_GOAL,
                 squadron_goals: SQUADRON_GOALS,
+                garrison_goals: GARRISON_GOALS,
             },
             sys,
             0,
@@ -3256,6 +3355,7 @@ mod tests {
             minor_classes: 0,
             shield_goal: SHIELD_GOAL,
             squadron_goals: SQUADRON_GOALS,
+            garrison_goals: GARRISON_GOALS,
         };
         let galaxy = Galaxy::build(
             &inputs,
@@ -3413,6 +3513,7 @@ mod tests {
             minor_classes: 0,
             shield_goal: SHIELD_GOAL,
             squadron_goals: SQUADRON_GOALS,
+            garrison_goals: GARRISON_GOALS,
         };
         let marks = HashMap::from([(other, 0x20_0000)]);
         let galaxy = Galaxy::build(
