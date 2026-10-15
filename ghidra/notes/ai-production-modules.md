@@ -677,6 +677,157 @@ Differences from module 3's yard cycle:
   request is bit 4 with the training facility class.
 - `FUN_004d1ed0`: the most training facilities `v[5]`.
 
+## Module 6 (`FUN_004dd460`, step `FUN_004dd7a0`)
+
+Read 2026-10-15, the queries' arguments taken from the assembly. Module 6
+balances the side's regiments. It moves them from systems with a surplus
+to systems short of garrison, trains regiments at training facility
+sites and sends them on, and builds training facilities. It shares
+module 5's sites: the same mark `0x400000` on its own list `+0x7c`.
+
+The constructor sets `+0x24 = 0x16` (22), `+0x78 = 1`, and clears
+`+0x38`, `+0x3c`, `+0x60..+0x74`.
+
+| Field | Meaning |
+|---|---|
+| `+0x38` | the cycle: `0x3ef` moves, `0x3f0` regiments, `0x3ec` yards |
+| `+0x50` | the source system, or the troop manager |
+| `+0x54` | the destination system |
+| `+0x58` | the yard cycle's target |
+| `+0x5c` | the class to build |
+| `+0x60` | how many |
+| `+0x64` | the site's training facilities `v[5]` |
+| `+0x68` | the target's free room `v[0x33]` |
+| `+0x6c`, `+0x70`, `+0x74` | the class choice's flags, key and order |
+| `+0x78` | the destination query to start from (1 to 4) |
+| `+0x7c` | the sites, marked `0x400000` |
+| `+0x84` | the claimed sites |
+| `+0x28` | bits 1, 2, 4, 8: a destination query found no system |
+
+### The step (`FUN_004dd7a0`)
+
+Not ready: clear `+0x38`, `+0x3c`; complete. `0x3ec`: `FUN_004dda00`;
+`0x3ef`: `FUN_004dd840`; `0x3f0`: `FUN_004dd8d0`; any other value: `+0x38
+= 0x3ef`, `+0x3c = 0`. The cycles run in turn: `0x3ef`, `0x3f0`, `0x3ec`.
+
+### The move cycle (`FUN_004dd840`)
+
+States 1 to 4 try `FUN_004ddb70`, `FUN_004de130`, `FUN_004de6f0` and
+`FUN_004deba0` in turn; the first that gives an order ends the cycle
+(`+0x38 = 0x3f0`, complete), as does state 4 either way. Each builds a
+Move `0x201` of regiments to a destination `+0x54`:
+- the destination: a system short of garrison, by the sector query
+  (`FUN_00419a00` sector `0x40010` or `0x40000`, key `0x1e`, order 2, then
+  systems with `+0x28` `0x2001` or `0x2000`, forbidding 2, by key `0x15`)
+  or, in the first two, by `FUN_00419e90` over the sector planners
+  (sector `+0x2c` `0x2000000`) and the systems with `+0x30` `0x20001` or
+  `0x10001`, forbidding 2, by key `0x10`;
+- how many: the destination's `v[21]` (`+0x9c`), or in the first two the
+  count the sector's fleet planner asks for (`FUN_0042f310` finds the
+  planner of module 8 whose `+0x40` is the system, `FUN_00476b70` asks
+  it); at most the source's `v[19]` (`+0x94`);
+- the source: the sector nearest the destination with `+0x24` `0x80000`
+  (and in the first and last `+0x2c` `0x1000`, or failing that sector
+  `0x280000`/`0x180000`), its system with `+0x28` `0x10000` or `0x18000`,
+  forbidding 2 and `+0x30` `0x30000`, by key `0x13` (order 2);
+- the team: one at a time, the source's regiment (`FUN_00504c40`) with
+  the lowest slot `+0x1e0` not yet taken; the first two take only classes
+  with record flag `0x2000` (defensive).
+
+The first two run only while controller `+4` has `0x20`, which
+`FUN_0041b7e0` sets for a sector record with `+0x2c` `0x2000000`.
+
+### The regiment cycle (`FUN_004dd8d0`)
+
+| State | Action |
+|---|---|
+| other | `+0x3c = 5`. |
+| 5 | `FUN_004df160` keeps a training site (module 5's `FUN_004d01a0` on `+0x7c` and `+0x50`, `+0x64 = v[5]`; fallback controller `+0x18`): 6. None: `0xb`. |
+| 6 | `FUN_004df440` chooses the destination: 7. None: `0xb`. |
+| 7 | `+0x3c` = `FUN_004df9a0` (`0xc`, 8 or 0); 0: `+0x38 = 0x3ec`, complete. |
+| 8 | `FUN_004dfa80`: a Move or none. End. |
+| `0xb` | `FUN_004dfa70` always gives 0: `+0x38 = 0x3ec`, `+0x3c = 0`. |
+| `0xc` | `FUN_004e0a30(+0x54)`: Destination `0x214` on the troop manager `+0x50` (`0xa4..0xa5`); with one, `0xd`, complete, raise. None: end. |
+| `0xd` | `FUN_004e0b70`: Build `0x212` on `+0x50`, class `+0x5c`, count `+0x60`. End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3ec`, complete. State 8 is unreachable
+(`FUN_004dfa70` gives 0).
+
+**`FUN_004df440`** clears `+0x60`, `+0x6c..+0x74` and `+0x28` bits
+`0xf`, then runs the destination queries in an order set by `+0x78`
+(1: `e1060`, `e0ef0`, `e1430`, `e12e0`, `e11a0`; 2: `e0ef0`, `e1430`,
+`e1430`, `e12e0`, `e11a0`, `e1060`; 3: `e12e0`, `e11a0`, `e1060`,
+`e0ef0`, `e1430`; 4: `e11a0`, `e1060`, `e0ef0`, `e1430`, `e12e0`), each
+only while `+0x54` holds no system, and moves `+0x78` on (4 back to 1).
+Success: `+0x54` is a system with a record. When all four query bits
+are set, controller `+4` has `0x800000` and `FUN_004e19c0 > 0`, it
+raises side `+0x384` (below 12), `+0x380` (below 6) and `+0x37c` (below
+4) by one (`FUN_00418240(8, 7, 6)`).
+
+The queries, each from the troop manager `+0x50` (order 2 by distance
+where named; systems by key `0x15`, order 2) and setting `+0x60` from the
+system's `v[21]`:
+- `FUN_004e1060`: nearest sector `0x800000`; system `+0x28` `0x2000`,
+  `+0x30` 1, forbidding `0x4000003`; flags `0x2000`, key `0x2000`, order
+  1. None: `+0x28 |= 1`.
+- `FUN_004e0ef0`: nearest sector `0x400000`; system `0x20000`, forbidding
+  3; when the system has `0x83e00000`, as `e1060`, else flags `0x2000`,
+  key 1, order 2. None: `+0x28 |= 8`.
+- `FUN_004e1430`: nearest sector `0x40000`; system `0x2000`, forbidding 3;
+  flags `0x2000`, key 1, order 2. None: `+0x28 |= 4`.
+- `FUN_004e11a0`: sector `0x40000000` by key `0x1e`; system `0x2000`,
+  forbidding 3; as `e1060`. None: `+0x28 |= 2`.
+- `FUN_004e12e0`: the system that holds the troop manager; `+0x60 =
+  +0x64`; flags `0x1000`, key `0x1000`, order 1.
+
+**`FUN_004df9a0`**: `w` = `FUN_004e19c0` (80% of 22% of the capacity,
+less controller `+0x250` and `+0x1d8`); `w < 0` gives 8, `w == 0` 0. Else
+the class from the training facility's list (`FUN_0041b230(&+0x5c, 0x29,
++0x6c, +0x70, +0x74)`); when `m * +0x60 > w`, `+0x60 = w / m`; capped by
+`+0x64`; with `+0x60 > 0` it clears controller `+0x14` (module 5's
+fallback site, as module 5 clears `+0x18`, this module's) and gives
+`0xc`. Then, when controller `+4` has `0x400000`
+and `w < 1`, it lowers `+0x384` (above 9), `+0x380` (above 3) and
+`+0x37c` (above 0) by one (`FUN_00418270`).
+
+Controller `+4` bits `0x400000` and `0x800000` are the strategy module's
+(`0xd`, around `0x4bf6ab` and `0x4bf6ca`).
+
+### The yard cycle (`FUN_004dda00`)
+
+Module 5's yard cycle (training facilities, mark `0x400000`) with these
+differences: the token is `0x20`; the borrow (`FUN_004dffd0`) is module
+3's by distance from the target; the budget (`FUN_004e1a20`) is 20% of
+22% of the capacity less the sites' `v[35]`; the plan (`FUN_004e06b0`)
+gives `0xc`, `0xa` or 0; a choice with no target ends the cycle (no
+budget check); the adoption (`FUN_004e15b0`) is not limited to fewer
+than two sites.
+
+| State | Action |
+|---|---|
+| other | 6 |
+| 6 | `FUN_004dfcf0` (module 5's `FUN_004d0860`) chooses the target `+0x58`: 5. None: end. |
+| 5 | Clear controller `+8` bit `0x20`; with `+0xc == 0x20` and `FUN_004dffd0`: `FUN_004199b0`, 9. Else `0xe`. |
+| 9 | `FUN_004e0170` (module 5's `FUN_004d0d30`): a Scrap or none. 7. |
+| 7 | `+0x3c` = `FUN_004e06b0`; 0: `+0x38 = 0x3ef`, complete. |
+| 10 | `FUN_004e0750` (module 5's `FUN_004d1310`): a Scrap or none. End. |
+| `0xc` | `FUN_004e0c90(+0x58)`: Destination; `0xd`. |
+| `0xd` | `FUN_004e0dd0`: Build. End. |
+| `0xe` | `FUN_004e15b0` (adopt or request `0x20`), `FUN_004e1b00` (claim by `v[5]`). End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3ef`, complete.
+
+### Open for the port
+
+- The Move `0x201` of regiments between systems: the original moves a
+  regiment on its own with a transit (`move-order.md`, the move command
+  `0x201`; `build-delivery.md`); the port carries regiments only aboard
+  fleets.
+- The sector fleet planners of module 8 (`FUN_0042f310`, `FUN_00476b70`).
+- Controller `+0x250` (from `FUN_0041ba80` over the fleet records),
+  `+0x18`, and the strategy's `+4` bits.
+- The regiment record's slot `+0x1e0` and its keys `0x1000`, `0x2000`.
+
 ### The scheduler, read again (`FUN_00485b40`)
 
 Phase 3 steps the current module (`+0x80`). A returned order is
