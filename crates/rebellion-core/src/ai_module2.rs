@@ -216,13 +216,14 @@ impl Module2 {
                 self.end(order)
             }
             10 => {
+                let budget = wanted(io, &self.sites, PERCENT);
                 self.target = adopt_or_request(
                     io,
                     &mut self.sites,
                     &mut self.class,
                     MARK_FACILITIES,
                     YARD_TOKEN,
-                    PERCENT,
+                    budget,
                 );
                 claim(io, &self.sites, &mut self.claimed);
                 self.end(None)
@@ -237,32 +238,7 @@ impl Module2 {
     /// `FUN_004e21d0`: keep the first site with an idle construction yard,
     /// and take its manager as the yard.
     fn keep_site(&mut self, io: &mut Inputs<'_>) -> bool {
-        self.yard = Yard::None;
-        let mut i = 0;
-        while i < self.sites.len() {
-            let site = self.sites[i];
-            let Some(r) = io.galaxy.system(site).copied() else {
-                self.sites.remove(i);
-                continue;
-            };
-            if r.kind & 1 == 0 || r.state & MARK_FACILITIES == 0 {
-                io.set_mark(site, 0, MARK_FACILITIES);
-                self.sites.remove(i);
-                continue;
-            }
-            i += 1;
-            if r.values[6] > 0 && r.state & 0x800 != 0 && r.state & 3 == 0 {
-                self.yard = Yard::System(site);
-                break;
-            }
-        }
-        match self.yard {
-            Yard::System(site) if io.has_manager(site) => {
-                self.yard = Yard::Manager(site);
-                true
-            }
-            _ => false,
-        }
+        keep_site(io, &mut self.sites, &mut self.yard, MARK_FACILITIES)
     }
 
     /// `FUN_004e2760`: while the side's maintenance requirement exceeds
@@ -346,7 +322,7 @@ impl Module2 {
         }
         let mut site = Target::None;
         for (sector_bit, system_bit) in pairs {
-            site = nearest(io, yard, sector_bit, Mask::new(system_bit, 3));
+            site = nearest(io, yard, sector_bit, [Mask::new(system_bit, 3), ANY, ANY]);
             if site.system().is_some() {
                 break;
             }
@@ -354,18 +330,9 @@ impl Module2 {
         site
     }
 
-    /// `FUN_004e31b0`: at the site, every shipyard, training facility and
-    /// construction yard not kept by another module's mark.
+    /// `FUN_004e31b0`.
     fn scrap_in_the_way(io: &mut Inputs<'_>, site: Target) -> Option<AIAction> {
-        let site = site.system()?;
-        let r = io.galaxy.system(site).copied()?;
-        let mut team = Vec::new();
-        for (family, mark) in [(0x28, 0x20_0000), (0x29, 0x40_0000), (0x2a, 0x380_0000)] {
-            if r.state & mark == 0 {
-                team.extend(io.facilities(site, family));
-            }
-        }
-        (!team.is_empty()).then_some(AIAction::Scrap { team })
+        scrap_in_the_way(io, site)
     }
 
     /// `FUN_004e3530`: the target, a site with room and the fewest
@@ -473,6 +440,58 @@ impl Module2 {
         self.count = self.count.min(r.values[15].min(self.room));
         8
     }
+}
+
+/// `FUN_004e21d0` (module 3: `FUN_004d7ac0`): keep the first site with an
+/// idle construction yard, and take its manager as the yard. A site that
+/// is not the side's or lost its `mark` leaves the list.
+pub(crate) fn keep_site(
+    io: &mut Inputs<'_>,
+    sites: &mut Vec<SystemKey>,
+    yard: &mut Yard,
+    mark: u32,
+) -> bool {
+    *yard = Yard::None;
+    let mut i = 0;
+    while i < sites.len() {
+        let site = sites[i];
+        let Some(r) = io.galaxy.system(site).copied() else {
+            sites.remove(i);
+            continue;
+        };
+        if r.kind & 1 == 0 || r.state & mark == 0 {
+            io.set_mark(site, 0, mark);
+            sites.remove(i);
+            continue;
+        }
+        i += 1;
+        if r.values[6] > 0 && r.state & 0x800 != 0 && r.state & 3 == 0 {
+            *yard = Yard::System(site);
+            break;
+        }
+    }
+    match *yard {
+        Yard::System(site) if io.has_manager(site) => {
+            *yard = Yard::Manager(site);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// `FUN_004e31b0` (the first part of module 3's `FUN_004d7cf0`): at the
+/// site, every shipyard, training facility and construction yard not kept
+/// by another module's mark.
+pub(crate) fn scrap_in_the_way(io: &mut Inputs<'_>, site: Target) -> Option<AIAction> {
+    let site = site.system()?;
+    let r = io.galaxy.system(site).copied()?;
+    let mut team = Vec::new();
+    for (family, mark) in [(0x28, 0x20_0000), (0x29, 0x40_0000), (0x2a, 0x380_0000)] {
+        if r.state & mark == 0 {
+            team.extend(io.facilities(site, family));
+        }
+    }
+    (!team.is_empty()).then_some(AIAction::Scrap { team })
 }
 
 #[cfg(test)]

@@ -588,9 +588,9 @@ flips. The port takes the first of equal entries.
   step (`step_module`, `module_pending`), and the mission module one entry
   a step (`mission_next`). The port's heuristics stand in: research
   strategy for `0xd`; the research planners and the mission heuristics for
-  4; production split by kind for 3, 5, `0xa`, `0xb`; fleets for 8; troop
-  moves for `0xc`. Modules 6, 7, 9 and `0xe` order nothing. Modules 1 and
-  2 are ported (`ai-production-modules.md`).
+  4; production split by kind for 5, `0xa`, `0xb`; fleets for 8; troop
+  moves for `0xc`. Modules 6, 7, 9 and `0xe` order nothing. Modules 1, 2
+  and 3 are ported (`ai-production-modules.md`).
 - *Yard marks.* As above: every cycle of the ship, troop and facility
   production modules claims one more system, so with several cycles a day
   every own yard system is marked almost at once.

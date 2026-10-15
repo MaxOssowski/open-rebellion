@@ -1809,6 +1809,16 @@ cross-runtime proof remain open
   manufacturing facilities move from module 2 to `0xa`. Save v42; golden
   `v1:ada51196c4d497ba` -> `v1:09ab7bb25d2c1611`
   (`evidence/2026-10-15-ai-module-2/`).
+- Module 3 (2026-10-15): the defense balance module (`FUN_004d6b20`,
+  step `FUN_004d6d30`) is ported in `ai_module3.rs`: a surplus cycle that
+  scraps defenses beyond the records' goals (`FUN_004d6da0`), a defense
+  and mine cycle at its own sites (`FUN_004d6e70`, Coruscant first,
+  `FUN_00418240(4)` raising the shield goal), and a yard cycle with the
+  token 1 (`FUN_004d7060`). The heuristic's defenses, which stood in for
+  it, are gone; on seed 42 module 3's yard budget stays below one
+  construction yard, so the AI builds no defenses there. Save v43; golden
+  `v1:09ab7bb25d2c1611` -> `v1:76a53e974120e2d1`
+  (`evidence/2026-10-15-ai-module-3/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

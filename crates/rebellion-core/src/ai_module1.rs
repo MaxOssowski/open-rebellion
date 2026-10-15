@@ -100,6 +100,10 @@ pub struct Controller {
     pub yard_next: u32,
     /// `+4`, the bits the modules set ([`NO_SITE`]).
     pub flags: u32,
+    /// `+0x374`, the shield goal of an own unmarked system's record
+    /// ([`crate::ai_records::SHIELD_GOAL`] at setup), which module 3 raises
+    /// (`FUN_00418240(4)`).
+    pub shield_goal: i32,
 }
 
 impl Default for Controller {
@@ -110,6 +114,7 @@ impl Default for Controller {
             yard_holder: YARD_TOKEN,
             yard_next: 0x40,
             flags: 0,
+            shield_goal: crate::ai_records::SHIELD_GOAL,
         }
     }
 }
@@ -150,11 +155,14 @@ pub struct Tallies {
     pub capacity: i32,
     /// `+0x188`: the side's maintenance requirement (side `+0x70`).
     pub requirement: i32,
+    /// `+0x1dc`: the side's defense maintenance (own systems' `v[31]`).
+    pub defenses: i32,
 }
 
 impl Tallies {
-    /// The mines and refineries summed over the side's sector records
-    /// (`+0xa8`, `+0xac`, `FUN_0041b7e0`), with the side's maintenance.
+    /// The mines, refineries and defense maintenance summed over the
+    /// side's sector records (`+0xa8`, `+0xac`, `+0x100`, `FUN_0041b7e0`),
+    /// with the side's maintenance.
     #[must_use]
     pub fn of(galaxy: &Galaxy, capacity: i32, requirement: i32) -> Self {
         let sum = |offset| {
@@ -169,6 +177,7 @@ impl Tallies {
             refineries: sum(0xac),
             capacity,
             requirement,
+            defenses: sum(0x100),
         }
     }
 }
@@ -238,7 +247,7 @@ impl Inputs<'_> {
         let w = self.world;
         let of = |class: DatId, owner: Faction| class.family() == family && owner == side;
         match family {
-            0x25 => sys
+            0x22..=0x27 => sys
                 .defense_facilities
                 .iter()
                 .filter(|&&k| {
@@ -352,13 +361,14 @@ impl Module1 {
             return Step::pending();
         }
         if io.controller.yard_holder != YARD_TOKEN || io.controller.flags & NO_SITE != 0 {
+            let budget = wanted(io, &self.sites, PERCENT);
             self.target = adopt_or_request(
                 io,
                 &mut self.sites,
                 &mut self.class,
                 MARK_MINES,
                 YARD_TOKEN,
-                PERCENT,
+                budget,
             );
         }
         claim(io, &self.sites, &mut self.claimed);
@@ -458,13 +468,14 @@ impl Module1 {
                 }
             }
             10 => {
+                let budget = wanted(io, &self.sites, PERCENT);
                 self.target = adopt_or_request(
                     io,
                     &mut self.sites,
                     &mut self.class,
                     MARK_MINES,
                     YARD_TOKEN,
-                    PERCENT,
+                    budget,
                 );
                 self.end()
             }
@@ -677,7 +688,7 @@ impl Module1 {
             self.target = Target::System(system);
         }
         if self.target.system().is_none() {
-            self.target = nearest(io, self.yard, 0x800, Mask::new(0x40, 0));
+            self.target = nearest(io, self.yard, 0x800, [Mask::new(0x40, 0), ANY, ANY]);
         }
         self.target.system().is_some()
     }
@@ -700,7 +711,7 @@ impl Module1 {
             self.target = Target::System(system);
         }
         if self.target.system().is_none() {
-            self.target = nearest(io, self.yard, 0x400, Mask::new(0x20, 0));
+            self.target = nearest(io, self.yard, 0x400, [Mask::new(0x20, 0), ANY, ANY]);
         }
         self.target.system().is_some()
     }
@@ -771,6 +782,21 @@ pub(crate) fn wanted(io: &Inputs<'_>, sites: &[SystemKey], percent: i32) -> i32 
 /// rate (class record `+0x30`, `FUN_00473060`), and its maintenance
 /// (`+0x20`), 0 with none.
 pub(crate) fn yard_class(io: &mut Inputs<'_>) -> (Option<DatId>, i32) {
+    best_class(io, CLASS_CONSTRUCTION, 0, Order::Descending)
+}
+
+/// `FUN_0041b230(&class, 0x2a, flags, key, order)` → `FUN_0042e3c0`: the
+/// classes a construction yard lists for the side (`FUN_0052e580(0x2a)`)
+/// whose class record has `flags`, ranked on the record value the key
+/// selects (`values[key]`: `FUN_00473060`, `FUN_00473250`) in `order`, and
+/// picked (`FUN_004357b0`); with the class's maintenance (`+0x20`), 0 with
+/// none.
+pub(crate) fn best_class(
+    io: &mut Inputs<'_>,
+    flags: u32,
+    key: usize,
+    order: Order,
+) -> (Option<DatId>, i32) {
     let classes: Vec<_> = crate::build_selection::listed_classes(
         io.world,
         io.research,
@@ -779,13 +805,12 @@ pub(crate) fn yard_class(io: &mut Inputs<'_>) -> (Option<DatId>, i32) {
     )
     .into_iter()
     .filter_map(BuildableKind::class_dat_id)
-    .filter(|c| c.family() == 0x2a)
     .filter_map(|c| {
         let r = io.galaxy.classes.get(c)?;
-        (r.flags & CLASS_CONSTRUCTION == CLASS_CONSTRUCTION).then_some((c, r.values[0]))
+        (r.flags & flags == flags).then_some((c, r.values[key]))
     })
     .collect();
-    let list = crate::ai_records::ranked(classes, Order::Descending, io.coin);
+    let list = crate::ai_records::ranked(classes, order, io.coin);
     let class = crate::ai_records::pick(&[list]);
     let maintenance = class
         .and_then(|c| io.galaxy.classes.get(c))
@@ -837,8 +862,13 @@ pub(crate) fn scrap_spare_yard(
 
 /// `FUN_00419b80` then `FUN_0041a400` from the yard, order 2: the nearest
 /// sector with `sector_bit` (`+0x24`), then its nearest system whose
-/// `+0x28` passes `system`.
-pub(crate) fn nearest(io: &mut Inputs<'_>, yard: Yard, sector_bit: u32, system: Mask) -> Target {
+/// `+0x28`, `+0x2c` and `+0x30` pass `system`.
+pub(crate) fn nearest(
+    io: &mut Inputs<'_>,
+    yard: Yard,
+    sector_bit: u32,
+    system: [Mask; 3],
+) -> Target {
     let origin = match yard {
         Yard::System(s) | Yard::Manager(s) => s,
         Yard::None => return Target::None,
@@ -852,13 +882,9 @@ pub(crate) fn nearest(io: &mut Inputs<'_>, yard: Yard, sector_bit: u32, system: 
     let Some(sector) = crate::ai_records::pick(&[sectors]) else {
         return Target::None;
     };
-    let systems = io.galaxy.systems_by_distance(
-        sector,
-        origin,
-        [system, ANY, ANY],
-        Order::Descending,
-        io.coin,
-    );
+    let systems = io
+        .galaxy
+        .systems_by_distance(sector, origin, system, Order::Descending, io.coin);
     crate::ai_records::pick(&[systems]).map_or(Target::Sector(sector), Target::System)
 }
 
@@ -894,6 +920,7 @@ pub(crate) fn build(
     };
     let kind = match class.family() {
         0x2c | 0x2d => BuildableKind::ProductionFacility(build),
+        0x22..=0x27 => BuildableKind::DefenseFacility(build),
         _ => BuildableKind::ManufacturingFacility(build),
     };
     let cost = io
@@ -912,16 +939,16 @@ pub(crate) fn build(
 /// Module 1's state 10 (`FUN_004dcc40`; module 2's `FUN_004e4540`): adopt
 /// a system with construction yards as a site (`mark`), or ask for the
 /// yards (`token`), writing the yard class into `class` (`+0x48`, module
-/// 2's `+0x50`). Returns the new target.
+/// 2's `+0x50`). `wanted` is the module's yard budget (`FUN_004dd050`,
+/// `FUN_004e4950`, `FUN_004da530`). Returns the new target.
 pub(crate) fn adopt_or_request(
     io: &mut Inputs<'_>,
     sites: &mut Vec<SystemKey>,
     class: &mut Option<DatId>,
     mark: u32,
     token: u32,
-    percent: i32,
+    wanted: i32,
 ) -> Target {
-    let wanted = wanted(io, sites, percent);
     let mut found = None;
     if wanted > 0 {
         let sectors = io.sectors([Mask::new(0x80, 0), ANY, ANY], 0x15, Order::Ascending);
@@ -1002,7 +1029,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::ai::AIState;
     use crate::ai_records::KEPT_STATE as KEPT;
-    use crate::ai_records::{ClassRecords, SystemInputs};
+    use crate::ai_records::{ClassRecords, SystemInputs, SHIELD_GOAL};
     use crate::world::{BuildableClass, ManufacturingFacilityInstance, Sector, System};
 
     /// Module 1's view of the shared steps, as the tests name them.
@@ -1030,13 +1057,14 @@ pub(crate) mod tests {
         }
 
         fn adopt_or_request(&mut self, io: &mut Inputs<'_>) {
+            let budget = wanted(io, &self.sites, PERCENT);
             self.target = adopt_or_request(
                 io,
                 &mut self.sites,
                 &mut self.class,
                 MARK_MINES,
                 YARD_TOKEN,
-                PERCENT,
+                budget,
             );
         }
 
@@ -1156,6 +1184,7 @@ pub(crate) mod tests {
             research: &research,
             is_alliance: true,
             minor_classes: 0,
+            shield_goal: SHIELD_GOAL,
         };
         Galaxy::build(
             &inputs,
@@ -1192,6 +1221,7 @@ pub(crate) mod tests {
         refineries: 0,
         capacity: 1000,
         requirement: 0,
+        defenses: 0,
     };
 
     #[test]
@@ -1330,6 +1360,7 @@ pub(crate) mod tests {
             refineries: 1,
             capacity: 100,
             requirement: 0,
+            defenses: 0,
         };
         for _ in 0..6 {
             step(&f, &mut state, tallies);
@@ -2168,7 +2199,8 @@ pub(crate) mod tests {
                 mines: 2,
                 refineries: 1,
                 capacity: 7,
-                requirement: 3
+                requirement: 3,
+                defenses: 0,
             }
         );
     }

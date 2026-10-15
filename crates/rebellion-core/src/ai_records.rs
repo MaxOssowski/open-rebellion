@@ -670,9 +670,14 @@ impl FleetRecord {
     }
 }
 
+/// Side `+0x374`'s value at AI setup (`FUN_0041bd20`): the shield goal of
+/// an own, unmarked system. Module 3 raises it (`FUN_00418240(4)`), so the
+/// records take it from [`SystemInputs::shield_goal`].
+pub const SHIELD_GOAL: i32 = 1;
+
 /// The side object's constants (`FUN_0041bd20`, at AI setup): garrison and
 /// defense goals by a system's state.
-mod side_constants {
+pub(crate) mod side_constants {
     /// Side `+0x364` (`FUN_0041bd20`).
     pub const S364: i32 = 3;
     /// Side `+0x368` (`FUN_0041bd20`).
@@ -681,8 +686,6 @@ mod side_constants {
     pub const S36C: i32 = 2;
     /// Side `+0x370` (`FUN_0041bd20`).
     pub const S370: i32 = 1;
-    /// Side `+0x374` (`FUN_0041bd20`).
-    pub const S374: i32 = 1;
     /// Side `+0x378` (`FUN_0041bd20`).
     pub const S378: i32 = 0;
     /// Side `+0x37c` (`FUN_0041bd20`).
@@ -716,6 +719,8 @@ pub struct SystemInputs<'a> {
     pub is_alliance: bool,
     /// The side's MNCHARSD classes (side `+0xa4`, `FUN_0042dd00`).
     pub minor_classes: i32,
+    /// Side `+0x374` ([`SHIELD_GOAL`] at setup).
+    pub shield_goal: i32,
 }
 
 /// A system record (`FUN_00433b10`, refreshed by `FUN_00433e40`).
@@ -1150,15 +1155,15 @@ impl SystemRecord {
                 let (mut shields, mut batteries) = (0, 0);
                 if f30 & 0x4000_0000 == 0 {
                     if f28 & 0x3e0_0000 == 0 {
-                        if v[20] > 0 && S378 + S374 < v[1] {
-                            shields = S374;
+                        if v[20] > 0 && S378 + inputs.shield_goal < v[1] {
+                            shields = inputs.shield_goal;
                             batteries = S378;
                         }
                     } else if S370 + S36C < v[1] {
                         shields = S36C;
                         batteries = S370;
-                    } else if S374 < v[1] {
-                        shields = S374;
+                    } else if inputs.shield_goal < v[1] {
+                        shields = inputs.shield_goal;
                     }
                 } else {
                     let empire = i32::from(side == 2);
@@ -2220,6 +2225,7 @@ mod tests {
             research: &research,
             is_alliance,
             minor_classes,
+            shield_goal: SHIELD_GOAL,
         };
         SystemRecord::build(&inputs, fixture.system, marks).unwrap()
     }
@@ -2372,6 +2378,7 @@ mod tests {
                 research: &research,
                 is_alliance: true,
                 minor_classes: 1,
+                shield_goal: SHIELD_GOAL,
             },
             fixture.system,
             0,
@@ -2538,6 +2545,7 @@ mod tests {
                 research: &research,
                 is_alliance,
                 minor_classes: 0,
+                shield_goal: SHIELD_GOAL,
             },
             fixture.system,
             0,
@@ -2806,6 +2814,7 @@ mod tests {
                 research: &research,
                 is_alliance: true,
                 minor_classes: 1,
+                shield_goal: SHIELD_GOAL,
             },
             sys,
             0,
@@ -3067,6 +3076,7 @@ mod tests {
             research: &research,
             is_alliance: true,
             minor_classes: 0,
+            shield_goal: SHIELD_GOAL,
         };
         let galaxy = Galaxy::build(
             &inputs,
@@ -3222,6 +3232,7 @@ mod tests {
             research: &research,
             is_alliance: true,
             minor_classes: 0,
+            shield_goal: SHIELD_GOAL,
         };
         let marks = HashMap::from([(other, 0x20_0000)]);
         let galaxy = Galaxy::build(

@@ -148,8 +148,8 @@ fn accepts(
 const MISSION_GROUPS: u8 = 5;
 
 /// The module whose step issues the production heuristic's order for
-/// `kind`: `0xa` a manufacturing facility, 3 a defense facility, 5 a
-/// regiment, `0xb` a capital ship or fighter; none for the rest.
+/// `kind`: `0xa` a manufacturing facility, 5 a regiment, `0xb` a capital
+/// ship or fighter; none for the rest.
 ///
 /// port: a first read of the modules' orders and marks (`0x210` with marks
 /// `0x1000000` and `0x2000000`, `0x212` with `0x400000`, `0x211` with
@@ -157,11 +157,11 @@ const MISSION_GROUPS: u8 = 5;
 /// ported, builds only construction yards, mines and refineries
 /// (`FUN_004e2400`, `FUN_004e25c0`), so the heuristic's facilities, mostly
 /// shipyards and training facilities, stand in for module `0xa`'s
-/// shipyard placement.
+/// shipyard placement. Module 3, ported, builds the defenses
+/// (`FUN_004d8460`), so the heuristic's defenses stand in for no module.
 fn production_module(kind: &BuildableKind) -> Option<u8> {
     match kind {
         BuildableKind::ManufacturingFacility(_) => Some(0xa),
-        BuildableKind::DefenseFacility(_) => Some(3),
         BuildableKind::Troop(_) => Some(5),
         BuildableKind::CapitalShip(_) | BuildableKind::Fighter(_) => Some(0xb),
         _ => None,
@@ -357,6 +357,8 @@ pub struct AIState {
     pub module1: crate::ai_module1::Module1,
     /// Module 2's fields (`FUN_004e1e50`).
     pub module2: crate::ai_module2::Module2,
+    /// Module 3's fields (`FUN_004d6b20`).
+    pub module3: crate::ai_module3::Module3,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -421,6 +423,7 @@ impl AIState {
             controller: crate::ai_module1::Controller::default(),
             module1: crate::ai_module1::Module1::default(),
             module2: crate::ai_module2::Module2::default(),
+            module3: crate::ai_module3::Module3::default(),
         }
     }
 
@@ -731,10 +734,14 @@ impl AISystem {
         // controller's token (FUN_004199b0: 0x80 module 1, 0x40 module 2,
         // 0x20 module 6, 0x10 module 0xa, 8 module 7, 4 module 5, 2 module
         // 0xb, 1 module 3), each passing it on once its own work allows.
-        // Only modules 1 and 2 are ported, so a pass hands on the yards
+        // Only modules 1, 2 and 3 are ported, so a pass hands on the yards
         // that an unported module holds.
-        if ![crate::ai_module1::YARD_TOKEN, crate::ai_module2::YARD_TOKEN]
-            .contains(&state.controller.yard_holder)
+        if ![
+            crate::ai_module1::YARD_TOKEN,
+            crate::ai_module2::YARD_TOKEN,
+            crate::ai_module3::YARD_TOKEN,
+        ]
+        .contains(&state.controller.yard_holder)
         {
             state.controller.pass_yards();
         }
@@ -772,6 +779,7 @@ impl AISystem {
                     match MODULE_IDS[module] {
                         1 => state.module1.refused(),
                         2 => state.module2.refused(),
+                        3 => state.module3.refused(),
                         _ => {}
                     }
                     state.module_priority[module] = 0;
@@ -819,6 +827,7 @@ impl AISystem {
             research: inputs.research,
             is_alliance,
             minor_classes: minor_classes(inputs.world, is_alliance),
+            shield_goal: state.controller.shield_goal,
         };
         crate::ai_records::Galaxy::build(
             &system_inputs,
@@ -873,7 +882,7 @@ impl AISystem {
         tallies: crate::ai_module1::Tallies,
     ) -> crate::ai_module1::Step {
         let id = MODULE_IDS[module];
-        if id == 1 || id == 2 {
+        if (1..=3).contains(&id) {
             let mut coin = || planner.coin();
             let mut io = crate::ai_module1::Inputs {
                 world: ctx.world,
@@ -886,10 +895,10 @@ impl AISystem {
                 is_alliance: matches!(ctx.faction, AiFaction::Alliance),
                 coin: &mut coin,
             };
-            return if id == 1 {
-                state.module1.step(&mut io)
-            } else {
-                state.module2.step(&mut io)
+            return match id {
+                1 => state.module1.step(&mut io),
+                2 => state.module2.step(&mut io),
+                _ => state.module3.step(&mut io),
             };
         }
         if state.module_pending[module].is_empty() {
@@ -911,14 +920,15 @@ impl AISystem {
     /// - `0xd`, the strategy: the research strategy
     ///   ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
-    /// - `0xa`, 3, 5, `0xb`: the production heuristic's manufacturing
-    ///   facilities, defense facilities, troops, and ships and fighters.
+    /// - `0xa`, 5, `0xb`: the production heuristic's manufacturing
+    ///   facilities, troops, and ships and fighters.
     /// - 8: Death Star escort and fleet deployment; `0xc`: troop movement.
     ///
     /// port: the assignment of the port's heuristics to modules is a first
     /// read (the modules' roles in the note above); modules 6, 7, 9 and
-    /// `0xe` have no port counterpart and order nothing. Modules 1 and 2
-    /// are ported ([`crate::ai_module1`], [`crate::ai_module2`]).
+    /// `0xe` have no port counterpart and order nothing. Modules 1, 2 and
+    /// 3 are ported ([`crate::ai_module1`], [`crate::ai_module2`],
+    /// [`crate::ai_module3`]).
     fn run_module(
         id: u8,
         state: &mut AIState,
@@ -957,7 +967,7 @@ impl AISystem {
                 actions,
             ),
             4 => Self::mission_step(state, planner, ctx, actions),
-            3 | 5 | 0xa | 0xb => production(actions),
+            5 | 0xa | 0xb => production(actions),
             8 => {
                 Self::evaluate_ds_escort(world, movement, faction, config, actions);
                 Self::evaluate_fleet_deployment(
@@ -6966,9 +6976,10 @@ mod tests {
             production_module(&BuildableKind::ManufacturingFacility(facility)),
             Some(0xa)
         );
+        // Module 3 builds the defenses itself (FUN_004d8460).
         assert_eq!(
             production_module(&BuildableKind::DefenseFacility(facility)),
-            Some(3)
+            None
         );
         assert_eq!(
             production_module(&BuildableKind::Troop(DatId::new(0x1000_0001))),
@@ -7355,23 +7366,47 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_module_three_order_ends_its_cycle_and_the_tick() {
+        // FUN_00485b40 sends module 3's refused order to its slot +0x18,
+        // FUN_004dd810. Module 3's yard cycle state 0xb (FUN_004d9e70):
+        // Destination on a manager the side lacks.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module3.phase = crate::ai_module3::YARD_CYCLE;
+        state.module3.state = 0xb;
+        state.module3.target = crate::ai_module1::Target::System(site);
+        state.module3.yard = crate::ai_module1::Yard::Manager(site);
+        state.module_priority[3] = 5;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert!(orders.is_empty());
+        assert_eq!((state.module3.phase, state.module3.state), (0, 0));
+        assert_eq!(state.module_priority[3], 0);
+        assert_eq!(state.orders_today, 0);
+        assert_eq!(state.module_cursor, None);
+    }
+
+    #[test]
     fn the_round_robin_wraps_round_the_list_to_a_module_with_orders() {
         // FUN_004be980: +0x10 steps to the next module and goes round the
         // list back to where it began.
         let world = empty_world();
-        // Index 3 (module 3): index 2 is module 1, which runs its own
-        // cycle rather than a list of decided orders.
+        // Index 4 (module 6): indices 1 to 3 are modules 2, 1 and 3, which
+        // run their own cycles rather than lists of decided orders.
         let order = AIAction::AbortMission { mission_id: 7 };
         let mut state = AIState::new(AiFaction::Alliance);
-        state.module_pending[3] = vec![order.clone()];
+        state.module_pending[4] = vec![order.clone()];
         state.module_cursor = Some(MODULES - 2);
 
         assert_eq!(cadence_pass(&mut state, &world), vec![order]);
-        assert_eq!(state.module_cursor, Some(3));
-        // Every module runs and orders nothing; +0x10 stops where the last
-        // search began, one past module 3.
-        assert!(cadence_pass(&mut state, &world).is_empty());
         assert_eq!(state.module_cursor, Some(4));
+        // Every module runs and orders nothing; +0x10 stops where the last
+        // search began, one past module 6.
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.module_cursor, Some(5));
     }
 
     #[test]

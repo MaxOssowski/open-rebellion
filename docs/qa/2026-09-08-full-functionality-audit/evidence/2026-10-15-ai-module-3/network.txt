@@ -1,0 +1,4 @@
+200	http://127.0.0.1:18437/
+200	http://127.0.0.1:18437/gl.js
+200	http://127.0.0.1:18437/open-rebellion.wasm
+200	http://127.0.0.1:18437/data/runtime.orpk

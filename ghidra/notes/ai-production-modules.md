@@ -368,6 +368,174 @@ capacity less the sites' `v[36]`, 0 when unaffordable):
 So state 6 is reachable here, unlike module 1's state 5. A target found
 by query leaves `+0x5c` at 0, so its Build asks for 0 yards.
 
+## Module 3 (`FUN_004d6b20`, step `FUN_004d6d30`)
+
+Read in full 2026-10-15, the queries' arguments taken from the assembly.
+Module 3 balances the side's planetary defenses: it scraps a surplus
+(record `v[37]` above 0), builds where defenses fall short (`v[37]`
+below 0, or Coruscant short of shields), and builds mines, refineries and
+construction yards with its own sites (mark `0x2000000`). Like module 2,
+many of its functions are module 1's or 2's with the fields moved
+(assembly matches but for offsets, marks and token): `FUN_004d7ac0` =
+`FUN_004e21d0`; `FUN_004d8fe0` = `FUN_004e3a40` on `+0x58`; `FUN_004d95c0`
+= `FUN_004e4020`; `FUN_004d9e70` = `FUN_004e4300`; `FUN_004d9fb0` =
+`FUN_004e4440`; `FUN_004da0d0` = `FUN_004e4540` (request bit 1);
+`FUN_004da610` = `FUN_004e4a20`; `FUN_004d9b00` = `FUN_004dc650` without
+its mark check or record.
+
+### Fields
+
+The constructor sets `+0x24 = 9` and clears `+0x38`, `+0x3c`, `+0x60`,
+`+0x64`, `+0x68`.
+
+| Field | Meaning |
+|---|---|
+| `+0x38` | the cycle: `0x3ed` defense surplus, `0x3ee` defenses and mines, `0x3ec` yards |
+| `+0x3c` | the cycle's state |
+| `+0x40` | the merged query lists (as module 2's `+0x70`) |
+| `+0x50` | the yard: a site, then its construction manager |
+| `+0x54` | the site to scrap at or build at |
+| `+0x58` | the yard cycle's target |
+| `+0x5c` | the class to build |
+| `+0x60` | how many |
+| `+0x64` | the borrowed yard's construction yards |
+| `+0x68` | the target's free room `v[0x33]` |
+| `+0x6c` | the sites, marked `0x2000000` |
+| `+0x74` | the claimed sites |
+
+Controller `+0x1dc` is the side's defense maintenance: the sector
+records' `+0x100` (system `v[31]`) summed by `FUN_0041b7e0`.
+
+### The step (`FUN_004d6d30`)
+
+Not ready: clear `+0x38`, `+0x3c`; complete. `+0x38` `0x3ec`:
+`FUN_004d7060`; `0x3ed`: `FUN_004d6da0`; `0x3ee`: `FUN_004d6e70`; any
+other value: `+0x38 = 0x3ed`, `+0x3c = 0`. The cycles hand on in turn:
+`0x3ed` to `0x3ee` to `0x3ec` to `0x3ed`.
+
+### The surplus cycle (`FUN_004d6da0`)
+
+| State | Action |
+|---|---|
+| other | `+0x3c = 1`. |
+| 1 | `FUN_004d71e0` finds a system: go to 2. None: `+0x38 = 0x3ee`, `+0x3c = 0`. |
+| 2 | `FUN_004d7330`: a Scrap order or none. `+0x38 = 0x3ee`, `+0x3c = 0`, complete (no raise). |
+| 3, 7 | Unreachable (nothing sets them in this cycle): `FUN_004d76a0`, `FUN_004d8520`, then `0x3ec`. |
+
+**`FUN_004d71e0`**: sectors by `+0x24` bit `0x10000`, key `0x1d` (order
+1), picked into `+0x54`; their systems with `+0x30` bit 1, key `0x25`
+(order 1), picked. Success: a system whose record has `v[37] > 0`.
+
+**`FUN_004d7330`**, at `+0x54` with a record: up to `v[7] - v[9]` of the
+side's `0x24` defenses (`FUN_005278c0`), then up to `v[11] - v[13]`
+batteries, the `0x22` ones first (`FUN_00527550`), then `0x23`
+(`FUN_005272e0`). A team gives a Scrap order.
+
+### The defense cycle (`FUN_004d6e70`)
+
+| State | Action |
+|---|---|
+| other | `+0x3c = 4`. |
+| 4 | `FUN_004d7ac0` keeps a site (module 2's `FUN_004e21d0`, mark `0x2000000`, `+0x50`): go to 1. None: `+0x38 = 0x3ec`, `+0x3c = 0`. |
+| 1 | `FUN_004d76f0` finds a system short of defenses: 6, else 9. |
+| 6 | `FUN_004d7cf0`: a Scrap order or none (complete and raise with one). Go to 5. |
+| 5 | `+0x3c` = `FUN_004d8460` (`0xb`, 9 or 7). |
+| 7 | `FUN_004d8520`: a Scrap order ends the cycle; none goes to 9. |
+| 9 | The refinery `0x2d000002` (`FUN_004d99d0`) when `+0x1d4 < +0x1d0`, else the mine `0x2c000001` (`FUN_004d98a0`), into `+0x5c`. Success: `+0x60 = 1`, go to 10. Failure: `+0x38 = 0x3ec`, `+0x3c = 0`. Either way state 10 runs at once. |
+| 10 | `FUN_004d9b00`: a Scrap order or none (complete and raise with one). `+0x3c = 0xb`. |
+| `0xb` | `FUN_004d9e70(+0x54)`: Destination; with one, `+0x3c = 0xc`, complete, raise. None: end. |
+| `0xc` | `FUN_004d9fb0`: Build. End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3ec`, complete. As in module 1, a failed
+state 9 still runs state 10, which overwrites `+0x3c` with `0xb`, and the
+next step runs the yard cycle's state `0xb` with `+0x58`.
+
+**`FUN_004d76f0`** puts Coruscant (`0x90000109`) in `+0x54`:
+- not the side's, or blockaded (`+0x28` bit 2): cleared;
+- `+0x28` bit `0x40000000`, or fewer `0x24` defenses than the side's
+  `+0x36c` (`v[7] < 2`): found.
+
+Otherwise:
+- sectors by `+0x24` `0x4000` key `0x1c` (order 1), merged with the
+  sectors nearest the yard `+0x50` with `0x4000` (`FUN_00419b80`, order
+  2), picked; their systems with `+0x28` `0x4000`, `+0x30` 1, forbidding
+  `+0x28` `0x4000003`, key `0x25` (order 2), picked;
+- no system: Coruscant again, found when it is the side's, not
+  blockaded, and `v[37] < 0`;
+- still none: the sector nearest the yard with `0x8000`, its systems with
+  `0x4000`, `+0x30` 1, forbidding 3, key `0x25` (order 2);
+- a system: found when its record has `v[37] < 0`;
+- none: when `FUN_004da4d0 > 0` and the side's `+0x374` is below 2,
+  `FUN_00418240(4)` raises `+0x374` by one and marks every system record
+  dirty.
+
+**`FUN_004d7cf0`**, at `+0x54`: every shipyard unless marked `0x200000`,
+training facility unless `0x400000`, construction yard unless
+`0x3800000`. With none and no free energy (`v[15] == 0`): one refinery
+when `+0x1d0 < +0x1d4` or `v[2] == 0`; else one mine when `+0x1d4 <=
++0x1d0` or `v[3] == 0`; else one shipyard, else one training facility,
+else one construction yard. A team gives a Scrap order.
+
+**`FUN_004d8460`**: `+0x60 = 0`; `w` = `FUN_004da4d0`: 90% of `+0x24`
+(9) percent of the capacity, less `+0x1dc`, and 0 when `capacity -
+requirement` is below it.
+- `w < 0`: 7; `w == 0`: 9;
+- `w > 0`, with a record at `+0x54` that has free energy (`v[15] > 0`):
+  the class by `FUN_0041b230(&+0x5c, 0x2a, flags, key, 1)`: `0x40000`
+  by key `0x10000` when `+0x28` has `0x40000000`; `0x20000` by
+  `0x10000` when it has `0x8000` (short of shields); else `0x80000` by
+  `0x40000`. Key `0x10000` is the class record's `+0x34` (shields),
+  `0x40000` its `+0x30` (attack) (`FUN_00473250`); order 1 picks the
+  highest. When the class's maintenance is at most `w`, `+0x60 = 1` and
+  the result is `0xb`; otherwise 9.
+
+**`FUN_004d8520`** chooses `+0x54`: the sector with `0x10000` by key
+`0x1d` and its system by `0x25` (as `FUN_004d71e0`); failing that,
+sectors `0x200e0` key 3 and systems with `+0x30` 1, forbidding `+0x28`
+`0x3e00000` and `+0x30` `0x40000000`, keys 7 and `0xb`; failing that,
+sectors `0x20000` key 3 and systems forbidding only `+0x30`
+`0x40000000`, keys 7 and `0xb` (all order 1). At a system: the side's
+first `0x22` defense, else its first `0x23`, else its first `0x24`, as a
+Scrap order.
+
+**`FUN_004d98a0` (mine)**: the sector nearest the yard `+0x50` with
+`0x100`, its nearest system with `+0x28` `0x80`, forbidding `0x3e00003`
+(order 2), into `+0x54`. **`FUN_004d99d0` (refinery)**: sector `0x200`,
+system `0x100` with `+0x30` 1, forbidding `0x3e00003`. Success: a
+system. There is no kept site and no fallback pair.
+
+**`FUN_004d9b00`**: at `+0x54`, every shipyard, training facility and
+construction yard of the side, as a Scrap order.
+
+### The yard cycle (`FUN_004d7060`)
+
+| State | Action |
+|---|---|
+| other | `+0x3c = 1`. |
+| 1 | `FUN_004d8ad0` chooses the target `+0x58`: go to 4. None: end. |
+| 4 | Clear controller `+8` bit 1. With `+0xc == 1` and `FUN_004d8db0`: `FUN_004199b0`, go to 6. Else go to `0xd`. |
+| 6 | `FUN_004d8fe0` (module 1's state 3 on `+0x58`): a Scrap order or none. Go to 5. |
+| 5 | `+0x3c` = `FUN_004d9520` (`0xb`, 8 or 0). 0: `+0x38 = 0x3ed`, complete. |
+| 8 | `FUN_004d95c0` (module 1's state 5): a Scrap order or none. End. |
+| `0xb` | `FUN_004d9e70(+0x58)`: Destination (as above). |
+| `0xc` | `FUN_004d9fb0`: Build. End. |
+| `0xd` | `FUN_004da0d0` (adopt or request bit 1, `FUN_004da530`), then `FUN_004da610` (claim). End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3ed`, complete.
+
+**`FUN_004d8ad0`** is module 2's `FUN_004e3530` on `+0x58`, `+0x68` and
+`+0x6c`, except that the sector list by key 4 (order 2) joins only when
+`+0x6c` is not empty, as the systems' key `0x33` list does.
+
+**`FUN_004d8db0`** is module 2's `FUN_004e3810`, except that the system
+is the one nearest the target (`FUN_0041a400` from `+0x58`, `+0x28`
+`0x800800`, `+0x30` 1, forbidding 3, order 2) rather than by key 6;
+`+0x64` takes the yards.
+
+**`FUN_004d9520`** is module 2's `FUN_004e3f80` on `+0x58`, `+0x64` and
+`+0x68` with `w` = `FUN_004da530` (10% of `+0x24` percent of the
+capacity, less the sites' `v[36]`), and gives `0xb` and 8 for 8 and 6.
+
 ### The scheduler, read again (`FUN_00485b40`)
 
 Phase 3 steps the current module (`+0x80`). A returned order is
@@ -432,3 +600,30 @@ Coruscant's yard (Destination, then Build). From day 215 it orders a mine
 or a refinery every 12 days from Yaga Minor's yard, at Yaga Minor,
 Coruscant, Xyquine and Sullust in turn. The Alliance's module 2 orders
 nothing in this campaign.
+
+### Module 3 ported (2026-10-15)
+
+`crates/rebellion-core/src/ai_module3.rs`, save v43. `Module3` holds
+`+0x38..+0x74` with the step (`FUN_004d6d30`) and the three cycles. The
+steps shared with modules 1 and 2 are the free functions of
+`ai_module1.rs` and `ai_module2.rs` (`keep_site`, `scrap_in_the_way`
+joined them); `best_class` generalizes `FUN_0041b230` to any class
+flags and key, and `adopt_or_request` takes the module's budget.
+Controller `+0x374` is `Controller::shield_goal`, which the system
+records read (`SystemInputs::shield_goal`); `Tallies::defenses` is
+`+0x1dc`.
+
+port:
+- The heuristic's defenses, which stood in for module 3, are gone: no
+  other module builds defenses.
+- The pass hands the yard token on unless module 1, 2 or 3 holds it.
+
+On the seed-42 campaign (dual AI, 600 days) module 3 scraps a surplus
+defense four times for the Empire (days 1 to 4) and once for the Alliance
+(day 1), and once scraps a facility at its yard target (`FUN_004d8fe0`).
+Its defense cycle never starts: it needs one of its own sites with an
+idle construction yard (`FUN_004d7ac0`). It borrows module 1's yard at
+times, but its yard budget (`FUN_004da530`, 10% of 9% of a capacity of
+650 to 1000, so 5 to 9) stays below a construction yard's maintenance
+(10), so it never builds or adopts one. The AI therefore builds no
+defenses in that campaign.
