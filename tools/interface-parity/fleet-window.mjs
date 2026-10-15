@@ -26,6 +26,7 @@ const REGIMENT_UNLOAD_REFUSED = 51;
 const FLEET_JOIN = 52;
 const PRODUCTION_DESTINATION = 54;
 const SQUADRON_LOAD = 65;
+const SQUADRON_BATTLE = 66;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -582,6 +583,33 @@ const cases = [
     },
   },
   {
+    name: "squadron-battle",
+    code: SQUADRON_BATTLE,
+    // The other side's squadrons on the planet make it present beside the
+    // player's fleet (FUN_00509710), so the running clock starts a battle
+    // (FUN_00516d50); the squadrons go up as a group for it (port:
+    // squadrons::Sortie) and the tactical view opens.
+    async run(page, faction, setup, directory) {
+      const before = await until(page, "the enemy's squadrons wait on the planet",
+        (o) => o.enemy_planet_squadrons === 2 && o.enemy_fleets === 0);
+      await shot(page, directory, "squadron-battle-before");
+      const speed = await runFast(page, setup);
+      const battle = await until(page, "the squadrons go up for the battle",
+        (o) => o.enemy_planet_squadrons === 0 && o.enemy_fleets === 1, null, 60_000);
+      await frames(page, 30);
+      await shot(page, directory, "squadron-battle");
+      // The battle alert's middle button simulates the battle (resource
+      // 1110 row, BattleAlertControl::Simulate); the group's survivors land.
+      await click(page, { x: 275, y: 362 });
+      const after = await until(page, "the surviving squadrons land again",
+        (o) => o.enemy_fleets === 0, null, 30_000);
+      assert.ok(after.enemy_planet_squadrons <= 2, JSON.stringify(after));
+      await frames(page, 10);
+      await shot(page, directory, "squadron-battle-after");
+      return { before, speed, battle, after };
+    },
+  },
+  {
     name: "unload",
     code: FLEET_LOAD,
     // A drag out of the Troops tab released on the Defenses window (type
@@ -1055,7 +1083,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "fleet-window",
-    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, and a squadron's Move from the planet onto a fleet and its drag back onto its planet, on both sides",
+    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, a squadron's Move from the planet onto a fleet and its drag back onto its planet, and a battle the other side's planet squadrons start with the player's fleet, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

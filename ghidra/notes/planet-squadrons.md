@@ -36,6 +36,35 @@ Readers:
 | `FUN_004a90d0` (Defenses window, page 3) | Lists them. |
 | `FUN_00587640` (mission defenders) | With the system flag and the fighter flag, walks the system's squadrons before its regiments. |
 
+## Battle
+
+The system's `+0x88` bit `0x1000` is BattlePending
+(`System_SetBattlePending`, `FUN_0050a900`; `ghidra/generated/setters.tsv`),
+written by `FUN_0050b8e0` from side presence (`FUN_00509710`): both sides
+present, by an active fleet or an active squadron on the planet. The battle
+manager `FUN_00516d50` walks the systems (`0x90..0x98`), takes those with
+BattlePending, and sets Battle (`+0x88` bit `0x10`, `FUN_0050a580(1)`) on
+one. So a fleet entering a system where the other side has only squadrons on
+the planet meets a battle (manual p. 141: tactical mode starts "when an
+enemy fleet comes into orbit around one of your systems where fleets or
+fighter squadrons are stationed").
+
+At the battle's end `FUN_00516ef0` clears Battle and counts each side's
+fleets (`FUN_004ffef0`) and planet squadrons (`FUN_00503a50`). With a winner
+(`FUN_00509ad0`, the battle object's `+100`), or failing one with both sides
+still present the side the system's `+0x78` bits name, it sets the loser's
+fleets and planet squadrons autorouting (`FUN_004f78e0`,
+`GameObj_SetAutorouting`, object `+0x50` bit `0x1000`) and, when
+`FUN_00506e60` allows, passes the winner's planet squadrons to
+`FUN_00556710` (a route step; not read further). `FUN_00517270` then gives
+the system's battle-won side from the same counts (`FUN_0050a040`).
+
+untraced: how the battle itself takes the planet's squadrons; the battle
+object behind system `+0x54`. The "space combat" pipeline in
+`space-combat.md` (`FUN_005457f0` → `FUN_00549910`) is reached through
+`FUN_005438a0`, which tests story event ids (`0x32000242` and others): it is
+the mission manager's, not the battle's.
+
 ## Moving a squadron
 
 The squadron vtable is `0x0065def0` (slot `+0x34` is `FUN_00502f80`, the
@@ -74,9 +103,14 @@ port:
 - The room is the whole fleet's (living ships' capacity less the squadrons
   aboard), where the original fills one ship at a time.
 - A squadron's move to another system is refused.
-- A planet's squadrons take no part in a battle: the port's combat is fleet
-  against fleet. With the holder's squadrons present an enemy fleet meets
-  neither a blockade nor a battle.
+- Battle (2026-10-15): a battle starts where both sides are present by a
+  fleet or a planet squadron (`squadrons::sides_present`). The port's
+  combat is fleet against fleet, so for the battle's length each side's
+  planet squadrons join its first fleet in orbit, or a group of their own
+  (`squadrons::Sortie`, `scramble`), and the survivors land again
+  (`recover`); a group neither bombards nor lands regiments. The original's
+  autorouting of the loser's fleets and squadrons is not ported: the port's
+  battles end when a side is destroyed or a round changes nothing.
 - A mission names squadrons aboard fleets only; Scrap and Confirmed Move
   stay disabled for a squadron.
 - The port's seeding still puts a seed group's squadrons into a fleet, which

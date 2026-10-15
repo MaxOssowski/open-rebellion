@@ -1661,6 +1661,15 @@ cross-runtime proof remain open
   - death_star.rs construction (1825 ticks) and warning radius (300) are
     estimates
   - evidence/invention-review-r1/combat.md
+- Battle start (2026-10-15): a battle starts where both sides are present
+  by a fleet or a squadron on the planet (`FUN_00509710` → BattlePending
+  `FUN_0050a900`; the battle manager `FUN_00516d50` sets Battle); it used to
+  need a fleet of each side. port: the planet's squadrons fight inside
+  their side's first fleet or a group of their own, and the survivors land
+  after it; the loser's autorouting (`FUN_00516ef0` → `FUN_004f78e0`) is not
+  ported. The "space combat" pipeline `FUN_005457f0` → `FUN_00549910` is the
+  mission manager's story path (`FUN_005438a0`), not the battle's
+  (`evidence/2026-10-15-squadron-battles/`).
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

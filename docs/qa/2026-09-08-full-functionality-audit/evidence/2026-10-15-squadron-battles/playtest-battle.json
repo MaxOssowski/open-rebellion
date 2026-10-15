@@ -1,0 +1,26 @@
+{
+  "command": "rebellion-playtest data/base --seed 42 --ticks 600 --dual-ai",
+  "orders_by_side_and_type": {
+    "Alliance Build ManufacturingFacility": 8,
+    "Alliance Build ProductionFacility": 14,
+    "Alliance Build Troop": 10,
+    "Alliance DispatchMission": 73,
+    "Alliance MoveFleet": 3,
+    "Alliance MoveRegiments": 5,
+    "Alliance Scrap": 6,
+    "Alliance SetDestination": 32,
+    "Empire AbortMission": 1,
+    "Empire Build ManufacturingFacility": 4,
+    "Empire Build ProductionFacility": 13,
+    "Empire Build Troop": 5,
+    "Empire DispatchMission": 141,
+    "Empire EnqueueProduction": 1,
+    "Empire MoveFleet": 3,
+    "Empire MoveRegiments": 5,
+    "Empire Scrap": 10,
+    "Empire SetDestination": 24
+  },
+  "same_as_module6_run": true,
+  "squadron_orders": [],
+  "squadrons_deployed": []
+}

@@ -8,6 +8,15 @@ updated: 2026-03-16
 
 # Space Combat Auto-Resolve
 
+> **Correction (2026-10-15).** `FUN_005457f0` runs `FUN_00549910` only when
+> `FUN_005438a0` matches a story event id (`0x32000242`, `0x31000241`,
+> `0x33000243`, `0x38000343`, `0x35000281`, ...), and `FUN_005442f0` takes
+> a pair of objects from `FUN_005435f0` and compares an id with
+> `0x98000481`. This
+> pipeline belongs to the mission manager's story events, not to a system's
+> battle. The battle's start and end are read in `planet-squadrons.md`,
+> "Battle". The rest of this note stands as first written and is unverified.
+
 ## Entry Point
 
 `FUN_005457f0` → `FUN_00549910` (77 lines)

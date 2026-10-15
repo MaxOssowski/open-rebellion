@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 65;
+const SCENARIO_COUNT: u8 = 66;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -149,6 +149,10 @@ pub enum Scenario {
     /// squadrons on the primary system's planet, the Defenses window on its
     /// squadron page (`ghidra/notes/planet-squadrons.md`).
     SquadronLoad = 64,
+    /// As `FleetLoad` with two of the other side's squadrons on the primary
+    /// system's planet: a running clock starts a battle there
+    /// (`ghidra/notes/planet-squadrons.md`, "Battle").
+    SquadronBattle = 65,
 }
 
 impl Scenario {
@@ -219,6 +223,7 @@ impl Scenario {
             62 => Self::ReconTargeting,
             63 => Self::ResearchTargeting,
             64 => Self::SquadronLoad,
+            65 => Self::SquadronBattle,
             _ => return None,
         })
     }
@@ -234,6 +239,7 @@ impl Scenario {
             Self::FleetLoad
                 | Self::FleetLoadFull
                 | Self::SquadronLoad
+                | Self::SquadronBattle
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -1183,6 +1189,20 @@ fn place_loading_fleet(
             .fighter_classes
             .iter()
             .find(|(_, class)| class.is_alliance == player_is_alliance)
+            .map(|(key, _)| key)
+        {
+            rebellion_core::squadrons::add(&mut world.systems[primary].fighters, class, 2);
+        }
+    }
+    // The battle variant: two of the other side's squadrons there instead.
+    if request.scenario == Scenario::SquadronBattle {
+        for system in [primary, target] {
+            world.systems[system].fighters.clear();
+        }
+        if let Some(class) = world
+            .fighter_classes
+            .iter()
+            .find(|(_, class)| class.is_alliance != player_is_alliance)
             .map(|(key, _)| key)
         {
             rebellion_core::squadrons::add(&mut world.systems[primary].fighters, class, 2);
@@ -2407,6 +2427,10 @@ struct FleetLoadObservation {
     planet_squadrons: u32,
     fleet_squadrons: u32,
     fighters_tab: Option<(f32, f32)>,
+    /// The other side's squadrons on the primary planet and its fleets
+    /// orbiting there (a battle's group of the planet's squadrons).
+    enemy_planet_squadrons: u32,
+    enemy_fleets: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2507,6 +2531,20 @@ fn fleet_load_observation(
         fighters_tab: fleets
             .tab_screen_rect(layout, primary, FleetWindowTab::Fighters)
             .map(screen_center),
+        enemy_planet_squadrons: rebellion_core::squadrons::on_planet(
+            world,
+            primary,
+            request.faction != CockpitFaction::Alliance,
+        ),
+        enemy_fleets: world.systems[primary]
+            .fleets
+            .iter()
+            .filter(|&&key| {
+                world.fleets.get(key).is_some_and(|value| {
+                    value.is_alliance != (request.faction == CockpitFaction::Alliance)
+                })
+            })
+            .count(),
     })
 }
 
@@ -3589,6 +3627,41 @@ mod tests {
             &mut applied.transport,
         );
         applied
+    }
+
+    // FUN_00509710: the other side's squadrons make it present beside the
+    // player's fleet, so a battle is due.
+    #[test]
+    fn the_squadron_battle_scenario_puts_two_enemy_squadrons_under_the_fleet() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let request = request(Scenario::SquadronBattle, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                for side in [true, false] {
+                    world
+                        .fighter_classes
+                        .insert(rebellion_core::world::FighterClass {
+                            is_alliance: side,
+                            is_empire: !side,
+                            ..Default::default()
+                        });
+                }
+            });
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            assert_eq!(
+                rebellion_core::squadrons::on_planet(world, primary, !alliance),
+                2
+            );
+            assert_eq!(
+                rebellion_core::squadrons::on_planet(world, primary, alliance),
+                0
+            );
+            assert_eq!(
+                rebellion_core::squadrons::sides_present(world, primary),
+                (true, true)
+            );
+        }
     }
 
     // port: the fixture's own layout; the room follows FUN_00500b40.
@@ -4796,7 +4869,8 @@ mod tests {
                 Scenario::FleetTargeting,
                 Scenario::ReconTargeting,
                 Scenario::ResearchTargeting,
-                Scenario::SquadronLoad
+                Scenario::SquadronLoad,
+                Scenario::SquadronBattle
             ]
         );
     }

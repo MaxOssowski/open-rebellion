@@ -1,0 +1,271 @@
+{
+  "family": "fleet-window",
+  "status": "pass",
+  "viewport": {
+    "width": 640,
+    "height": 480,
+    "device_scale_factor": 1
+  },
+  "wasm_sha256": "f88e5607c3fdce7c2efa218862b7ce3a8921dc78544867c369b5aefc1e5df058",
+  "runtime_pack_sha256": "2de177d821fc814f574ab42164221ee4f85e4d9dd609d0ef41ec404874575676",
+  "browser_version": "Chromium 153.0.8010.52 (the harness manifest pins 151.0.7922.34)",
+  "note": "run on the system Chromium through an untracked copy of fleet-window.mjs with only the version pin removed; the pinned macOS Chrome for Testing 151 is not installed on this machine",
+  "cases": [
+    {
+      "faction": "alliance",
+      "case": "chrome",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "load",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "move-and-land",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "squadron-load",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "squadron-unload",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "squadron-battle",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "unload",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "drag-wheel",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "unload-refused",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "travel",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "full",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "join-ship",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "join-refused",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "create-fleet",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "ship-to-system",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "ship-move-join",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "ship-move-system",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "join-fleet",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "confirmed-join-refused",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "confirmed-join",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "rename",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "destination",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "chrome",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "load",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "move-and-land",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "squadron-load",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "squadron-unload",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "squadron-battle",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "unload",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "drag-wheel",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "unload-refused",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "travel",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "full",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "join-ship",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "join-refused",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "create-fleet",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "ship-to-system",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "ship-move-join",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "ship-move-system",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "join-fleet",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "confirmed-join-refused",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "confirmed-join",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "rename",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "destination",
+      "status": "pass"
+    }
+  ],
+  "squadron_battle": {
+    "alliance": {
+      "before": {
+        "enemy_planet_squadrons": 2,
+        "enemy_fleets": 0,
+        "last_message": null
+      },
+      "battle": {
+        "enemy_planet_squadrons": 0,
+        "enemy_fleets": 1,
+        "last_message": "Empire scrapped a unit (refund 3)"
+      },
+      "after": {
+        "enemy_planet_squadrons": 2,
+        "enemy_fleets": 0,
+        "last_message": "Space battle at Akrit'tar \u2014 Draw (auto-resolved)"
+      }
+    },
+    "empire": {
+      "before": {
+        "enemy_planet_squadrons": 2,
+        "enemy_fleets": 0,
+        "last_message": null
+      },
+      "battle": {
+        "enemy_planet_squadrons": 0,
+        "enemy_fleets": 1,
+        "last_message": "Uprising at Akrit'tar!"
+      },
+      "after": {
+        "enemy_planet_squadrons": 2,
+        "enemy_fleets": 0,
+        "last_message": "Space battle at Akrit'tar \u2014 Draw (auto-resolved)"
+      }
+    }
+  }
+}

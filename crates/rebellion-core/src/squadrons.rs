@@ -318,6 +318,142 @@ fn disband_if_empty(world: &mut GameWorld, fleet: FleetKey) {
     }
 }
 
+/// Whether each side, Alliance then Empire, is present at `system`: an
+/// active fleet in orbit or an active squadron on the planet
+/// (`FUN_00509710`). Both present make a battle pending (`FUN_0050a900`),
+/// and the battle manager starts a battle there (`FUN_00516d50`).
+#[must_use]
+pub fn sides_present(world: &GameWorld, system: SystemKey) -> (bool, bool) {
+    let Some(value) = world.systems.get(system) else {
+        return (false, false);
+    };
+    let fleets = value
+        .fleets
+        .iter()
+        .filter_map(|&key| world.fleets.get(key))
+        .map(|fleet| fleet.is_alliance);
+    let squadrons = value
+        .fighters
+        .iter()
+        .filter(|entry| entry.count > 0)
+        .filter_map(|entry| is_alliance(world, entry.class));
+    fleets
+        .chain(squadrons)
+        .fold((false, false), |(alliance, empire), side| {
+            (alliance || side, empire || !side)
+        })
+}
+
+/// A side's planet squadrons sent up for one battle: into its first fleet
+/// in orbit, or, when it has none, into a group of their own.
+///
+/// port: the original's battle takes a planet's squadrons from the planet
+/// (manual p. 129, "they can engage an enemy fleet when it enters your
+/// system"; `FUN_00516ef0` counts them with each side's fleets). The port's
+/// combat is fleet against fleet, so they join a fleet for the battle's
+/// length and the survivors land again (`recover`). The squadrons aboard
+/// keep no identity, so the planet takes back its own first.
+#[derive(Debug, Clone)]
+pub struct Sortie {
+    pub system: SystemKey,
+    pub fleet: FleetKey,
+    /// True when the fleet is a group made for the battle.
+    pub group: bool,
+    /// The squadrons that left the planet.
+    pub launched: Vec<FighterEntry>,
+}
+
+/// Send each side's squadrons on `system`'s planet into the battle there
+/// ([`Sortie`]). The planet keeps none.
+pub fn scramble(world: &mut GameWorld, system: SystemKey) -> Vec<Sortie> {
+    let mut sorties = Vec::new();
+    for alliance in [true, false] {
+        let Some(value) = world.systems.get(system) else {
+            return sorties;
+        };
+        let launched: Vec<FighterEntry> = value
+            .fighters
+            .iter()
+            .filter(|entry| entry.count > 0 && is_alliance(world, entry.class) == Some(alliance))
+            .cloned()
+            .collect();
+        if launched.is_empty() {
+            continue;
+        }
+        let carrier = value.fleets.iter().copied().find(|&key| {
+            world
+                .fleets
+                .get(key)
+                .is_some_and(|f| f.is_alliance == alliance)
+        });
+        if let Some(planet) = world.systems.get_mut(system) {
+            planet
+                .fighters
+                .retain(|entry| !launched.iter().any(|sent| sent.class == entry.class));
+        }
+        let (fleet, group) = if let Some(fleet) = carrier {
+            for entry in &launched {
+                add(&mut world.fleets[fleet].fighters, entry.class, entry.count);
+            }
+            (fleet, false)
+        } else {
+            let fleet = world.fleets.insert(crate::world::Fleet {
+                location: system,
+                capital_ships: Vec::new(),
+                fighters: launched.clone(),
+                characters: Vec::new(),
+                is_alliance: alliance,
+                has_death_star: false,
+            });
+            world.systems[system].fleets.push(fleet);
+            (fleet, true)
+        };
+        sorties.push(Sortie {
+            system,
+            fleet,
+            group,
+            launched,
+        });
+    }
+    sorties
+}
+
+/// Land each sortie's surviving squadrons on its planet after the battle,
+/// and remove a group made for it.
+pub fn recover(world: &mut GameWorld, sorties: &[Sortie]) {
+    for sortie in sorties {
+        let mut landing = Vec::new();
+        if sortie.group {
+            if let Some(fleet) = world.fleets.remove(sortie.fleet) {
+                landing = fleet.fighters;
+            }
+            if let Some(system) = world.systems.get_mut(sortie.system) {
+                system.fleets.retain(|&key| key != sortie.fleet);
+            }
+        } else if let Some(fleet) = world.fleets.get_mut(sortie.fleet) {
+            for sent in &sortie.launched {
+                let left = fleet
+                    .fighters
+                    .iter()
+                    .find(|entry| entry.class == sent.class)
+                    .map_or(0, |entry| entry.count);
+                let count = left.min(sent.count);
+                if take(&mut fleet.fighters, sent.class, count) {
+                    landing.push(FighterEntry {
+                        class: sent.class,
+                        count,
+                    });
+                }
+            }
+        }
+        if let Some(system) = world.systems.get_mut(sortie.system) {
+            for entry in landing {
+                add(&mut system.fighters, entry.class, entry.count);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,6 +774,78 @@ mod tests {
             SquadronMoveError::OtherSystem.to_string(),
             "squadrons cannot yet travel between systems"
         );
+    }
+
+    #[test]
+    fn a_side_is_present_by_a_fleet_or_a_squadron_on_the_planet() {
+        // FUN_00509710: an active fleet (FUN_004ffef0) or squadron
+        // (FUN_00503a50) of the side.
+        let mut s = setup(1);
+        assert_eq!(sides_present(&s.world, s.here), (true, false));
+        add(&mut s.world.systems[s.here].fighters, s.tie, 1);
+        assert_eq!(sides_present(&s.world, s.here), (true, true));
+        assert_eq!(sides_present(&s.world, s.there), (false, false));
+        add(&mut s.world.systems[s.there].fighters, s.x_wing, 1);
+        assert_eq!(sides_present(&s.world, s.there), (true, false));
+        s.world.systems[s.there].fighters[0].count = 0;
+        assert_eq!(sides_present(&s.world, s.there), (false, false));
+        assert_eq!(
+            sides_present(&s.world, SystemKey::default()),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn a_battle_sends_each_side_s_planet_squadrons_up_and_lands_the_survivors() {
+        // port: a planet's squadrons fight beside their side's fleet, or as
+        // a group of their own (Sortie); the survivors land again.
+        let mut s = setup(1);
+        add(&mut s.world.fleets[s.fleet].fighters, s.x_wing, 1);
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 2);
+        add(&mut s.world.systems[s.here].fighters, s.tie, 3);
+        let sorties = scramble(&mut s.world, s.here);
+
+        assert_eq!(sorties.len(), 2);
+        assert!(s.world.systems[s.here].fighters.is_empty());
+        assert_eq!((sorties[0].fleet, sorties[0].group), (s.fleet, false));
+        assert_eq!(total(&s.world.fleets[s.fleet].fighters), 3);
+        let group = sorties[1].fleet;
+        assert!(sorties[1].group);
+        assert!(!s.world.fleets[group].is_alliance);
+        assert_eq!(total(&s.world.fleets[group].fighters), 3);
+        assert!(s.world.systems[s.here].fleets.contains(&group));
+
+        // The battle costs the Alliance two squadrons and the Empire one.
+        take(&mut s.world.fleets[s.fleet].fighters, s.x_wing, 2);
+        take(&mut s.world.fleets[group].fighters, s.tie, 1);
+        recover(&mut s.world, &sorties);
+
+        assert!(!s.world.fleets.contains_key(group));
+        assert!(!s.world.systems[s.here].fleets.contains(&group));
+        assert!(s.world.fleets[s.fleet].fighters.is_empty());
+        assert_eq!(on_planet(&s.world, s.here, true), 1);
+        assert_eq!(on_planet(&s.world, s.here, false), 2);
+    }
+
+    #[test]
+    fn a_destroyed_fleet_or_group_lands_nothing() {
+        let mut s = setup(1);
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 2);
+        add(&mut s.world.systems[s.here].fighters, s.tie, 1);
+        let sorties = scramble(&mut s.world, s.here);
+        for sortie in &sorties {
+            s.world.fleets.remove(sortie.fleet);
+        }
+        recover(&mut s.world, &sorties);
+        assert!(s.world.systems[s.here].fighters.is_empty());
+        assert_eq!(scramble(&mut s.world, s.there).len(), 0);
+        // An emptied entry sends nothing up.
+        s.world.systems[s.there].fighters.push(FighterEntry {
+            class: s.tie,
+            count: 0,
+        });
+        assert!(scramble(&mut s.world, s.there).is_empty());
+        assert!(scramble(&mut s.world, SystemKey::default()).is_empty());
     }
 
     #[test]

@@ -1059,6 +1059,8 @@ async fn main() {
     let mut fog_empire_state = FogState::new(Faction::Empire);
     FogSystem::seed(&mut fog_alliance_state, &world);
     FogSystem::seed(&mut fog_empire_state, &world);
+    // The planet squadrons up for the player's battle, landed when it ends.
+    let mut battle_sorties: Vec<rebellion_core::squadrons::Sortie> = Vec::new();
     let mut combat_cooldowns: std::collections::HashMap<rebellion_core::ids::SystemKey, u64> =
         std::collections::HashMap::new();
     let mut blockade_state = BlockadeState::new();
@@ -2049,28 +2051,31 @@ Some(RailAudience::side(*faction_is_alliance)),
                             return None;
                         }
                     }
-                    let sys = &world.systems[sys_key];
-                    let alliance_fleets: Vec<_> = sys
-                        .fleets
-                        .iter()
-                        .copied()
-                        .filter(|&k| world.fleets.get(k).is_some_and(|f| f.is_alliance))
-                        .collect();
-                    let empire_fleets: Vec<_> = sys
-                        .fleets
-                        .iter()
-                        .copied()
-                        .filter(|&k| world.fleets.get(k).is_some_and(|f| !f.is_alliance))
-                        .collect();
-                    if !alliance_fleets.is_empty() && !empire_fleets.is_empty() {
-                        Some((sys_key, alliance_fleets[0], empire_fleets[0]))
-                    } else {
-                        None
-                    }
+                    // FUN_00509710 / FUN_00516d50: both sides present, by a
+                    // fleet or a squadron on the planet, start a battle.
+                    let (alliance, empire) =
+                        rebellion_core::squadrons::sides_present(&world, sys_key);
+                    (alliance && empire).then_some(sys_key)
                 })
                 .collect();
 
-            for (sys_key, atk_fleet, def_fleet) in combat_triggers {
+            for sys_key in combat_triggers {
+                // The planet's squadrons go up for the battle and land after
+                // it (squadrons::Sortie).
+                let sorties = rebellion_core::squadrons::scramble(&mut world, sys_key);
+                let first_fleet = |alliance: bool| {
+                    world.systems[sys_key].fleets.iter().copied().find(|&key| {
+                        world
+                            .fleets
+                            .get(key)
+                            .is_some_and(|fleet| fleet.is_alliance == alliance)
+                    })
+                };
+                let (Some(atk_fleet), Some(def_fleet)) = (first_fleet(true), first_fleet(false))
+                else {
+                    rebellion_core::squadrons::recover(&mut world, &sorties);
+                    continue;
+                };
                 let sys_name = world
                     .systems
                     .get(sys_key)
@@ -2107,8 +2112,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &mut game_mode,
                     ) {
                         eprintln!("Skipping invalid tactical battle at {sys_name}: {error:?}");
+                        rebellion_core::squadrons::recover(&mut world, &sorties);
                         continue;
                     }
+                    battle_sorties = sorties;
                     tactical_state.set_display_options(game_options_state.tactical_flags());
                     #[cfg(not(target_arch = "wasm32"))]
                     audio_engine.play_sfx(SfxKind::CombatStart, &audio_vol);
@@ -2131,6 +2138,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 // Apply ship damage: reduce counts proportional to destroyed hulls.
                 apply_space_combat_result(&space_result, &mut world);
                 troop_transport_state.destroy_untransportable_cargo(&mut world);
+                rebellion_core::squadrons::recover(&mut world, &sorties);
                 // Record combat cooldown to prevent infinite re-trigger on draws.
                 combat_cooldowns.insert(sys_key, current_tick);
 
@@ -2149,6 +2157,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                 audio_engine.play_sfx(SfxKind::CombatStart, &audio_vol);
 
                 // Surviving transports land only after a decisive space result.
+                // A group of a planet's squadrons is gone after `recover`, so
+                // it neither bombards nor lands regiments.
                 let winner = match space_result.winner {
                     CombatSide::Attacker => Some((true, atk_fleet)),
                     CombatSide::Defender => Some((false, def_fleet)),
@@ -5510,6 +5520,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 &mut victory_state,
                             );
                             troop_transport_state.destroy_untransportable_cargo(&mut world);
+                            rebellion_core::squadrons::recover(
+                                &mut world,
+                                &std::mem::take(&mut battle_sorties),
+                            );
 
                             let ground_attacker = match space_result.winner {
                                 CombatSide::Attacker => Some(session.attacker_fleet),
@@ -5622,6 +5636,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     &mut victory_state,
                                 );
                             }
+                            rebellion_core::squadrons::recover(
+                                &mut world,
+                                &std::mem::take(&mut battle_sorties),
+                            );
                             if !strategic_results_applied {
                                 let winner_str = match battle_return.winner {
                                     Some(rebellion_render::CombatWinner::Attacker) => {
@@ -6443,6 +6461,23 @@ Some(RailAudience::side(*faction_is_alliance)),
                         missions: &mission_state,
                         economy: &economy_state,
                     },
+                );
+            } else if game_mode == GameMode::TacticalCombat {
+                // The battle variant follows the planet's squadrons into
+                // the battle the clock starts.
+                fleet_load_watch.observe(
+                    request,
+                    &world,
+                    if player_faction == MissionFaction::Alliance {
+                        &fog_alliance_state
+                    } else {
+                        &fog_empire_state
+                    },
+                    &movement_state,
+                    &troop_transport_state,
+                    &fleet_window_state,
+                    move_confirmation_state.is_open(),
+                    msg_log.messages(),
                 );
             }
         }

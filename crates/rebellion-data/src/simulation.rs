@@ -31,6 +31,7 @@ use rebellion_core::production_cycle::{
 };
 use rebellion_core::repair::{RepairState, RepairSystem};
 use rebellion_core::research::ResearchState;
+use rebellion_core::squadrons;
 use rebellion_core::tick::{GameClock, TickEvent};
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
@@ -195,23 +196,16 @@ pub fn run_simulation_tick(
                     return false;
                 }
             }
-            let sys = &world.systems[sys_key];
-            let has_alliance = sys
-                .fleets
-                .iter()
-                .copied()
-                .any(|k| world.fleets.get(k).is_some_and(|f| f.is_alliance));
-            let has_empire = sys
-                .fleets
-                .iter()
-                .copied()
-                .any(|k| world.fleets.get(k).is_some_and(|f| !f.is_alliance));
+            // FUN_00509710 / FUN_00516d50: both sides present, by a fleet
+            // or a squadron on the planet, start a battle.
+            let (has_alliance, has_empire) = squadrons::sides_present(world, sys_key);
             has_alliance && has_empire
         })
         .collect();
 
     for sys_key in combat_triggers {
         let combat_rolls = take_rolls(256);
+        let sorties = squadrons::scramble(world, sys_key);
         let space_result = resolve_system_space_combat(
             world,
             sys_key,
@@ -220,6 +214,7 @@ pub fn run_simulation_tick(
             current_tick,
             states.death_star.shield_generator_active,
         );
+        squadrons::recover(world, &sorties);
 
         integrator.emit_system_space_combat(world, &space_result);
         states.combat_cooldowns.insert(
@@ -240,11 +235,14 @@ pub fn run_simulation_tick(
         // assault is resolved below after surviving transports have landed.
         // Alliance is always coded as attacker, Empire as defender in the trigger above.
         // The space combat winner gets to follow up with ground assault + orbital bombardment.
+        // A group of a planet's squadrons is gone after `recover`, so it
+        // neither bombards nor lands regiments.
         let winner_info = match (space_result.winner, space_result.winner_fleet) {
             (CombatSide::Attacker, Some(fleet)) => Some((fleet, true)), // Alliance won
             (CombatSide::Defender, Some(fleet)) => Some((fleet, false)), // Empire won
             _ => None,
-        };
+        }
+        .filter(|&(fleet, _)| world.fleets.contains_key(fleet));
         if let Some((winner_fleet, winner_is_alliance)) = winner_info {
             let brd_result = BombardmentSystem::resolve_bombardment(
                 world,
@@ -1090,6 +1088,38 @@ mod tests {
             &rebellion_core::tuning::GameConfig::default(),
         );
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn an_enemy_planet_s_squadrons_meet_an_arriving_fleet_in_battle() {
+        // FUN_00509710 / FUN_00516d50: a squadron on the planet makes its side
+        // present, so the Alliance fleet at the Empire's planet starts a
+        // battle; port: the squadrons fight as a group and land after it.
+        let (mut world, mut states, fleet, _) = world_with_loading_fleet();
+        let system = world.fleets[fleet].location;
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let tie = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                is_empire: true,
+                squadron_size: 12,
+                laser_cannon_fore: 2,
+                laser_cannon_attack_strength: 2,
+                ..Default::default()
+            });
+        squadrons::add(&mut world.systems[system].fighters, tie, 3);
+
+        run_one_tick(&mut world, &mut states);
+
+        assert!(states.combat_cooldowns.contains_key(&system));
+        assert!(world
+            .fleets
+            .iter()
+            .all(|(key, value)| key == fleet || value.is_alliance));
+        assert!(world.systems[system].fleets.iter().all(|&key| key == fleet));
+        // The armed squadrons beat the unarmed transport and land again.
+        assert!(!world.fleets.contains_key(fleet));
+        assert!((1..=3).contains(&squadrons::on_planet(&world, system, false)));
     }
 
     #[test]
