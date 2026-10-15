@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::ai::{AIAction, MARK_FACILITIES};
 use crate::ai_module1::{
     adopt_or_request, build, claim, destination, nearest, scrap_at, scrap_spare_yard, wanted,
-    yard_class, Inputs, Step, Target, Yard, ANY, MINE_CLASS, REFINERY_CLASS,
+    yard_class, Inputs, Step, Target, Yard, YardKind, ANY, CONSTRUCTION, MINE_CLASS,
+    REFINERY_CLASS,
 };
 use crate::ai_records::{pick, Mask, Order};
 use crate::ids::{DatId, SystemKey};
@@ -184,7 +185,7 @@ impl Module2 {
                 }
             }
             4 => {
-                let order = scrap_at(io, self.target.system());
+                let order = scrap_at(io, self.target.system(), CONSTRUCTION);
                 self.state = 5;
                 Step::ordered(order)
             }
@@ -196,8 +197,13 @@ impl Module2 {
                 Step::pending()
             }
             6 => {
-                let order =
-                    scrap_spare_yard(io, &mut self.sites, &mut self.target, MARK_FACILITIES);
+                let order = scrap_spare_yard(
+                    io,
+                    &mut self.sites,
+                    &mut self.target,
+                    MARK_FACILITIES,
+                    CONSTRUCTION,
+                );
                 self.end(order)
             }
             7 => {
@@ -224,8 +230,9 @@ impl Module2 {
                     MARK_FACILITIES,
                     YARD_TOKEN,
                     budget,
+                    CONSTRUCTION,
                 );
-                claim(io, &self.sites, &mut self.claimed);
+                claim(io, &self.sites, &mut self.claimed, CONSTRUCTION);
                 self.end(None)
             }
             _ => {
@@ -238,7 +245,13 @@ impl Module2 {
     /// `FUN_004e21d0`: keep the first site with an idle construction yard,
     /// and take its manager as the yard.
     fn keep_site(&mut self, io: &mut Inputs<'_>) -> bool {
-        keep_site(io, &mut self.sites, &mut self.yard, MARK_FACILITIES)
+        keep_site(
+            io,
+            &mut self.sites,
+            &mut self.yard,
+            MARK_FACILITIES,
+            CONSTRUCTION,
+        )
     }
 
     /// `FUN_004e2760`: while the side's maintenance requirement exceeds
@@ -426,7 +439,7 @@ impl Module2 {
             return 0;
         }
         let maintenance;
-        (self.class, maintenance) = yard_class(io);
+        (self.class, maintenance) = yard_class(io, CONSTRUCTION);
         if self.class.is_some() && maintenance != 0 {
             self.count = wanted / maintenance;
         }
@@ -442,14 +455,16 @@ impl Module2 {
     }
 }
 
-/// `FUN_004e21d0` (module 3: `FUN_004d7ac0`): keep the first site with an
-/// idle construction yard, and take its manager as the yard. A site that
-/// is not the side's or lost its `mark` leaves the list.
+/// `FUN_004e21d0` (module 3: `FUN_004d7ac0`; module 5: `FUN_004d01a0`,
+/// training facilities): keep the first site with an idle yard of `kind`,
+/// and take its manager as the yard. A site that is not the side's or lost
+/// its `mark` leaves the list.
 pub(crate) fn keep_site(
     io: &mut Inputs<'_>,
     sites: &mut Vec<SystemKey>,
     yard: &mut Yard,
     mark: u32,
+    kind: YardKind,
 ) -> bool {
     *yard = Yard::None;
     let mut i = 0;
@@ -465,13 +480,13 @@ pub(crate) fn keep_site(
             continue;
         }
         i += 1;
-        if r.values[6] > 0 && r.state & 0x800 != 0 && r.state & 3 == 0 {
+        if r.values[kind.count] > 0 && r.state & kind.idle != 0 && r.state & 3 == 0 {
             *yard = Yard::System(site);
             break;
         }
     }
     match *yard {
-        Yard::System(site) if io.has_manager(site) => {
+        Yard::System(site) if io.has_manager_of(site, kind.family) => {
             *yard = Yard::Manager(site);
             true
         }

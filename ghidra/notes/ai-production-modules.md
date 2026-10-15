@@ -536,6 +536,147 @@ is the one nearest the target (`FUN_0041a400` from `+0x58`, `+0x28`
 `+0x68` with `w` = `FUN_004da530` (10% of `+0x24` percent of the
 capacity, less the sites' `v[36]`), and gives `0xb` and 8 for 8 and 6.
 
+## Module 5 (`FUN_004cfb20`, step `FUN_004cfed0`)
+
+Read in full 2026-10-15, the queries' arguments taken from the assembly.
+Module 5 trains special forces at its own training facility sites (mark
+`0x400000`), and with a yard it borrows from module 1 builds more
+training facilities there. Its yard cycle is module 3's adapted to
+training facilities (assembly compared): `FUN_004d0860` =
+`FUN_004d8ad0`, `FUN_004d0d30` = `FUN_004d8fe0`, `FUN_004d1270` =
+`FUN_004d9520`, `FUN_004d1310` = `FUN_004d95c0`, `FUN_004d1710` =
+`FUN_004d9e70`, `FUN_004d1850` = `FUN_004d9fb0`, `FUN_004d1970` ~
+`FUN_004da0d0`, `FUN_004d1ed0` = `FUN_004da610`, `FUN_004d1df0` ~
+`FUN_004da530`, with the differences below.
+
+### Fields
+
+The constructor sets `+0x24 = 4` and clears `+0x38`, `+0x3c`, the short
+`+0x40`, `+0x48..+0x54`.
+
+| Field | Meaning |
+|---|---|
+| `+0x38` | the cycle: `0x3f4` special forces, `0x3ec` yards |
+| `+0x3c` | the cycle's state |
+| `+0x40` | the next special force kind, `0x5a..0x5d` (short) |
+| `+0x44` | the target's free room `v[0x33]` |
+| `+0x48` | how many |
+| `+0x4c` | the borrowed yard's construction yards |
+| `+0x50` | the special force class flags (`0x1000000..0x8000000`) |
+| `+0x54` | the class key (1, the maintenance) |
+| `+0x5c` | the yard cycle's target |
+| `+0x60` | the yard: a site, then its manager |
+| `+0x64` | the class to build |
+| `+0x68` | the merged query lists |
+| `+0x78` | the sites, marked `0x400000` |
+| `+0x80` | the claimed sites |
+
+Controller tallies (phase 4, while controller `+4` has `0x10000000`;
+`FUN_0041bc10` over the object records `+0x8c`):
+- `+0x2c4`: the summed `+0x64` of the side's own records. `FUN_00402230`
+  sets `+0x64` only for non-characters: the class maintenance
+  (`FUN_004f2990` -> `FUN_0053b870`). So it is the special forces' upkeep.
+- `+0x2dc..+0x2e8`: own non-character records by the kind bit in `+0x34`
+  (`0x10000000..0x80000000`, `FUN_00402e80`: `0x3c000001`/`5`,
+  `2`/`6`, `3`/`7`, `4`/`8`); `+0x2ec..+0x2f8` the same with `+0x34`
+  bit `0x800000` as well. No code sets `+0x34` bit `0x800000`
+  (`FUN_00402720` sets bits 0 to 13; a search for writes found none), so
+  `+0x2ec..+0x2f8` stay 0.
+- `+0x2fc`: the most of the sector records' `+0x140` (`FUN_0041b7e0`).
+
+### The step (`FUN_004cfed0`)
+
+Not ready: return 0 (nothing cleared). `+0x38` `0x3ec`: `FUN_004d0010`;
+`0x3f4`: `FUN_004cff20`; any other value: `+0x38 = 0x3f4`. The cycles
+alternate.
+
+### The special force cycle (`FUN_004cff20`)
+
+| State | Action |
+|---|---|
+| other | `+0x3c = 9`. |
+| 9 | `FUN_004d01a0` keeps a training site: 1. None: 6. |
+| 1 | `FUN_004d0480` picks a kind short of units: 5. None: 6. |
+| 5 | `+0x3c` = `FUN_004d0590` (`0xb`, 2 or 0); 0: `+0x38 = 0x3ec`, complete. |
+| 6 | `FUN_004d0570`: the special force budget below 0: 2. Else end. |
+| 2 | `FUN_004d0610`: a Retire order or none. End. |
+| `0xb` | `FUN_004d15f0`: Build `0x212`. End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3ec`, complete.
+
+**`FUN_004d01a0`** is module 2's `FUN_004e21d0` on `+0x78` and `+0x60`
+with mark `0x400000`, the training facilities `v[5]` and the idle
+training bit `+0x28` `0x400`, taking the manager of kind 2 (troops,
+`FUN_00509670(system, 2)`). With no site it tries controller `+0x14`
+under the same conditions; that field's writer was not found.
+
+**`FUN_004d0480`** starts `+0x40` at `0x5a` and walks the four kinds once
+from there: for kind `k` it sets `+0x48` to 1 when controller `+0x184 +
+4k` (`+0x2ec..+0x2f8`) is below `max(+0x2fc, 8)`, and moves `+0x40` on
+(`0x5a` -> `0x5b` -> `0x5c` -> `0x5d` -> `0x5a`) with `+0x50` =
+`0x1000000`, `0x2000000`, `0x4000000`, `0x8000000` for the kind just
+tested and `+0x54 = 1`. It stops at the first kind with `+0x48 > 0`.
+Since `+0x2ec..+0x2f8` stay 0, the first kind tested always passes.
+
+**`FUN_004d1d90`**: `+0x24` (4) percent of the capacity, 70% of that,
+less `+0x2c4`; 0 when `capacity - requirement` is below it.
+`FUN_004d0570` is that budget `< 0`.
+
+**`FUN_004d0590`**: `w` = `FUN_004d1d90`: `w < 0` gives 2, `w == 0` 0.
+Otherwise the class from the training facility's list
+(`FUN_0041b230(&+0x64, 0x29, +0x50, +0x54, 1)`: the kind's flag, by
+maintenance, order 1: the dearest); when `m * +0x48 > w`, `+0x48 = w /
+m`. With `+0x48 > 0` it clears controller `+0x18` and gives `0xb`;
+otherwise 0.
+
+**`FUN_004d0610`** queries the object records (`FUN_00403460`) for
+flags `0x802000`, none of `0xa0`, by `+0x64` (index 9) from 0 to 1000,
+order 1, then for `0x2000`; a special force found (`0x3c..0x3f`) gets a
+Retire order `0x242`. No code sets record flag `0x2000`, and
+`FUN_00402230` clears it at every refresh (mask `0x7080440e`), so no
+Retire is ever given.
+
+**`FUN_004d15f0`**: with a troop manager (`0xa4..0xa5`) at `+0x60`, Build
+`0x212` of `+0x64`, count `+0x48`.
+
+### The yard cycle (`FUN_004d0010`)
+
+| State | Action |
+|---|---|
+| other | `+0x3c = 3`. |
+| 3 | `FUN_004d0860` chooses the target `+0x5c`: 9. None: 7. |
+| 9 | Clear controller `+8` bit 4. With `+0xc == 4` and `FUN_004d0b40`: `FUN_004199b0`, go to 4. Else `0xc`. |
+| 4 | `FUN_004d0d30`: a Scrap order or none (complete and raise with one). Go to 5. |
+| 5 | `+0x3c` = `FUN_004d1270` (10, 8 or 0); 0: `+0x38 = 0x3f4`, complete. |
+| 7 | `FUN_004d0d10`: the training budget below 0: 8. Else `+0x38 = 0x3f4`, `+0x3c = 0`. |
+| 8 | `FUN_004d1310`: a Scrap order or none. End. |
+| 10 | `FUN_004d1710(+0x5c)`: Destination; with one, `0xb`, complete, raise. None: end. |
+| `0xb` | `FUN_004d1850`: Build. End. |
+| `0xc` | `FUN_004d1970` (adopt or request bit 4), then `FUN_004d1ed0` (claim). End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3f4`, complete.
+
+Differences from module 3's yard cycle:
+- `FUN_004d0860`: sectors by `+0x24` `0x40`, key `0x13` (and key 4 with
+  sites); systems forbidding `+0x28` `0x400003`, key 5 (and `0x33` with
+  sites); the walk compares training facilities `v[5]`; mark `0x400000`.
+- `FUN_004d0b40`: no distance: the sector with `0x1000` by key `0x14`
+  (order 1), its system with `0x800800`, `+0x30` 1, forbidding 3, by key
+  6 (order 1); `+0x4c` = `v[6]`, less one when above 1. The target is
+  not added to the sites.
+- `FUN_004d0d30`: shipyards unless `0x200000`, construction yards (not
+  training facilities) unless `0x3800000`, then as module 1.
+- `FUN_004d1270`: the training facility class (`0x8000`, key `0x4000`,
+  order 2); 10 and 8 for 8 and 6.
+- `FUN_004d1df0`: 30% of 4% of the capacity, less the sites' `v[35]`.
+- `FUN_004d1310`: training facilities `v[5]` and family `0x29`, mark
+  `0x400000`.
+- `FUN_004d1970`: runs only while `+0x78` holds fewer than two sites;
+  sectors by `0x40`, key `0x13`, sector `+0xbc`; systems forbidding
+  `0x400003`, key 5, `v[5] > 0`, `v[35] <= w`; mark `0x400000`; the
+  request is bit 4 with the training facility class.
+- `FUN_004d1ed0`: the most training facilities `v[5]`.
+
 ### The scheduler, read again (`FUN_00485b40`)
 
 Phase 3 steps the current module (`+0x80`). A returned order is
@@ -627,3 +768,28 @@ times, but its yard budget (`FUN_004da530`, 10% of 9% of a capacity of
 650 to 1000, so 5 to 9) stays below a construction yard's maintenance
 (10), so it never builds or adopts one. The AI therefore builds no
 defenses in that campaign.
+
+### Module 5 ported (2026-10-15)
+
+`crates/rebellion-core/src/ai_module5.rs`, save v44. `Module5` holds
+`+0x38..+0x80` with the step (`FUN_004cfed0`) and both cycles. The steps
+it shares with modules 1 to 3 take a `YardKind` (`CONSTRUCTION`,
+`TRAINING`): the yards' family, record count and upkeep, class flag,
+idle bit, the yard family a target scrap spares by mark, and the adoption
+query's bits and keys. `best_class` takes the manager's area and a
+`ClassKey` (a record value or the maintenance). The troop cycle's tallies
+are `Tallies::special_upkeep` (`+0x2c4`), `special_goal` (`+0x2fc`) and
+`special_ready` (`+0x2ec..+0x2f8`, always 0, as above). A Build's
+validator needs the side's yard of its class's area.
+
+port:
+- The heuristic's regiments, which stood in for module 5, now stand in
+  for module 6 (garrison balance): module 5 trains only special forces.
+- Controller `+0x14` (the fallback site) and `+0x18` (cleared before a
+  Build) have no port counterpart.
+- No Retire is given, as in the original (record flag `0x2000`).
+
+On the seed-42 campaign (dual AI, 600 days) the Alliance trains special
+forces at Vagran from day 75 (44 Build orders, the four basic kinds in
+turn) and the Empire at Yaga Minor from day 391 (21). With more agents
+the Alliance's missions rise from 17 (module 3's run) to 192.

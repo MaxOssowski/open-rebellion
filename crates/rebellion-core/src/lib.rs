@@ -3,6 +3,7 @@ pub mod ai;
 pub mod ai_module1;
 pub mod ai_module2;
 pub mod ai_module3;
+pub mod ai_module5;
 pub mod ai_records;
 pub mod betrayal;
 pub mod blockade;

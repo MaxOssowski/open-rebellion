@@ -157,6 +157,16 @@ pub struct Tallies {
     pub requirement: i32,
     /// `+0x1dc`: the side's defense maintenance (own systems' `v[31]`).
     pub defenses: i32,
+    /// `+0x2c4`: the summed `+0x64` of the side's object records, its
+    /// special forces' maintenance (`FUN_0041bc10`, `FUN_00402230`).
+    pub special_upkeep: i32,
+    /// `+0x2fc`: the most of the sector records' `+0x140`
+    /// (`FUN_0041b7e0`).
+    pub special_goal: i32,
+    /// `+0x2ec..+0x2f8`: the side's special forces of each kind whose
+    /// record `+0x34` has `0x800000` (`FUN_0041bc10`). No code sets that
+    /// bit (`ai-production-modules.md`, "Module 5"), so these are 0.
+    pub special_ready: [i32; 4],
 }
 
 impl Tallies {
@@ -178,6 +188,13 @@ impl Tallies {
             capacity,
             requirement,
             defenses: sum(0x100),
+            special_upkeep: 0,
+            special_goal: galaxy
+                .sectors
+                .iter()
+                .map(|s| s.values[sector_at(0x140)])
+                .fold(0, i32::max),
+            special_ready: [0; 4],
         }
     }
 }
@@ -283,6 +300,12 @@ impl Inputs<'_> {
     pub(crate) fn has_manager(&self, system: SystemKey) -> bool {
         has_construction_yard(self.world, self.side(), system)
     }
+
+    /// The side's manager of the yards of `family` at `system`
+    /// (`FUN_00509670`; hyp: one stands while the side has such a yard).
+    pub(crate) fn has_manager_of(&self, system: SystemKey, family: u8) -> bool {
+        has_yard(self.world, self.side(), system, family)
+    }
 }
 
 /// `FUN_004f3220` then `FUN_00509670(system, 1)`: `side`'s construction
@@ -290,12 +313,18 @@ impl Inputs<'_> {
 /// construction yard (`0x2a`) there.
 #[must_use]
 pub fn has_construction_yard(world: &GameWorld, side: Faction, system: SystemKey) -> bool {
+    has_yard(world, side, system, 0x2a)
+}
+
+/// Whether `side` has a yard of `family` (`0x28..0x2a`) at `system`.
+#[must_use]
+pub fn has_yard(world: &GameWorld, side: Faction, system: SystemKey, family: u8) -> bool {
     world.systems.get(system).is_some_and(|sys| {
         sys.manufacturing_facilities.iter().any(|&k| {
             world
                 .manufacturing_facilities
                 .get(k)
-                .is_some_and(|f| f.side == side && f.class_dat_id.family() == 0x2a)
+                .is_some_and(|f| f.side == side && f.class_dat_id.family() == family)
         })
     })
 }
@@ -369,9 +398,10 @@ impl Module1 {
                 MARK_MINES,
                 YARD_TOKEN,
                 budget,
+                CONSTRUCTION,
             );
         }
-        claim(io, &self.sites, &mut self.claimed);
+        claim(io, &self.sites, &mut self.claimed, CONSTRUCTION);
         self.phase = 0;
         self.state = 0;
         Step::complete()
@@ -405,7 +435,7 @@ impl Module1 {
                 }
             }
             3 => {
-                let order = scrap_at(io, self.target.system());
+                let order = scrap_at(io, self.target.system(), CONSTRUCTION);
                 self.state = 4;
                 Step::ordered(order)
             }
@@ -418,7 +448,13 @@ impl Module1 {
                 Step::pending()
             }
             5 => {
-                let order = scrap_spare_yard(io, &mut self.sites, &mut self.target, MARK_MINES);
+                let order = scrap_spare_yard(
+                    io,
+                    &mut self.sites,
+                    &mut self.target,
+                    MARK_MINES,
+                    CONSTRUCTION,
+                );
                 self.state = 0;
                 self.phase = 0;
                 Step {
@@ -476,6 +512,7 @@ impl Module1 {
                     MARK_MINES,
                     YARD_TOKEN,
                     budget,
+                    CONSTRUCTION,
                 );
                 self.end()
             }
@@ -649,7 +686,7 @@ impl Module1 {
         let mut next = 0;
         if wanted > 0 {
             let maintenance;
-            (self.class, maintenance) = yard_class(io);
+            (self.class, maintenance) = yard_class(io, CONSTRUCTION);
             if self.class.is_some() && maintenance != 0 {
                 self.count = wanted / maintenance;
             }
@@ -734,17 +771,97 @@ impl Module1 {
 /// construction yards (`FUN_004da950`).
 const PERCENT: i32 = 4;
 
+/// The kind of yard a module's sites keep: what its shared steps count,
+/// query, mark and build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct YardKind {
+    /// The yards' family (`0x2a`, `0x29`).
+    pub family: u8,
+    /// The system record's count of them (`v[6]`, `v[5]`).
+    pub count: usize,
+    /// The system record's upkeep of them (`v[36]`, `v[35]`).
+    pub upkeep: usize,
+    /// Their class record flag ([`CLASS_CONSTRUCTION`], `CLASS_TRAINING`).
+    pub class_flags: u32,
+    /// The other yard family a target scrap takes unless marked, with the
+    /// mark that spares it.
+    pub spared: (u8, u32),
+    /// The sector candidate bit (`+0x24`) and key of the adoption query.
+    pub sector_bit: u32,
+    pub sector_key: usize,
+    /// The sector record value of unmarked yards (`+0xc4`, `+0xbc`).
+    pub sector_yards: usize,
+    /// The marks and states a candidate system may not have (`+0x28`).
+    pub forbid: u32,
+    /// The system key of the adoption query.
+    pub system_key: usize,
+    /// The adoption runs only while the module has fewer than two sites.
+    pub few_sites_only: bool,
+    /// The system record's idle yard bit (`+0x28` `0x800`, `0x400`).
+    pub idle: u32,
+}
+
+/// Construction yards (modules 1, 2 and 3; `FUN_004db820`, `FUN_004dcc40`,
+/// `FUN_004dd120`).
+pub(crate) const CONSTRUCTION: YardKind = YardKind {
+    family: 0x2a,
+    count: 6,
+    upkeep: 36,
+    class_flags: CLASS_CONSTRUCTION,
+    spared: (0x29, 0x40_0000),
+    sector_bit: 0x80,
+    sector_key: 0x15,
+    sector_yards: 0xc4,
+    forbid: 0x380_0003,
+    system_key: 6,
+    few_sites_only: false,
+    idle: 0x800,
+};
+
+/// Training facilities (module 5; `FUN_004d0d30`, `FUN_004d1970`,
+/// `FUN_004d1ed0`).
+pub(crate) const TRAINING: YardKind = YardKind {
+    family: 0x29,
+    count: 5,
+    upkeep: 35,
+    class_flags: crate::ai_records::CLASS_TRAINING,
+    spared: (0x2a, 0x380_0000),
+    sector_bit: 0x40,
+    sector_key: 0x13,
+    sector_yards: 0xbc,
+    forbid: 0x40_0003,
+    system_key: 5,
+    few_sites_only: true,
+    idle: 0x400,
+};
+
+/// The class record value a class choice ranks on (slot `+4`:
+/// `FUN_00473060`, `FUN_00473250`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClassKey {
+    /// `values[i]` (`+0x30 + 4i`).
+    Value(usize),
+    /// Key 1: the maintenance (`+0x20`).
+    Maintenance,
+}
+
 /// Module 1's state 3 (`FUN_004db820`; module 2's `FUN_004e3a40` on
-/// `+0x48`): scrap what stands in the way at the target.
-pub(crate) fn scrap_at(io: &mut Inputs<'_>, target: Option<SystemKey>) -> Option<AIAction> {
+/// `+0x48`; module 5's `FUN_004d0d30`, sparing construction yards rather
+/// than training facilities): scrap what stands in the way at the target.
+pub(crate) fn scrap_at(
+    io: &mut Inputs<'_>,
+    target: Option<SystemKey>,
+    kind: YardKind,
+) -> Option<AIAction> {
     let target = target?;
     let r = io.galaxy.system(target).copied()?;
     let mut team = Vec::new();
     if r.state & 0x20_0000 == 0 {
         team.extend(io.facilities(target, 0x28));
     }
-    if r.state & 0x40_0000 == 0 {
-        team.extend(io.facilities(target, 0x29));
+    let (family, mark) = kind.spared;
+    if r.state & mark == 0 {
+        team.extend(io.facilities(target, family));
     }
     team.extend(io.facilities(target, 0x25));
     if r.values[15] == 0 && team.is_empty() {
@@ -781,35 +898,42 @@ pub(crate) fn wanted(io: &Inputs<'_>, sites: &[SystemKey], percent: i32) -> i32 
 /// side's buildable construction yard class with the lowest processing
 /// rate (class record `+0x30`, `FUN_00473060`), and its maintenance
 /// (`+0x20`), 0 with none.
-pub(crate) fn yard_class(io: &mut Inputs<'_>) -> (Option<DatId>, i32) {
-    best_class(io, CLASS_CONSTRUCTION, 0, Order::Descending)
+pub(crate) fn yard_class(io: &mut Inputs<'_>, kind: YardKind) -> (Option<DatId>, i32) {
+    best_class(
+        io,
+        ProductionArea::ConstructionYard,
+        kind.class_flags,
+        ClassKey::Value(0),
+        Order::Descending,
+    )
 }
 
-/// `FUN_0041b230(&class, 0x2a, flags, key, order)` → `FUN_0042e3c0`: the
-/// classes a construction yard lists for the side (`FUN_0052e580(0x2a)`)
-/// whose class record has `flags`, ranked on the record value the key
-/// selects (`values[key]`: `FUN_00473060`, `FUN_00473250`) in `order`, and
+/// `FUN_0041b230(&class, area, flags, key, order)` → `FUN_0042e3c0`: the
+/// classes `area`'s manager lists for the side (`FUN_0052e580`: `0x2a` a
+/// construction yard, `0x29` a training facility) whose class record has
+/// `flags`, ranked on the record value the key selects in `order`, and
 /// picked (`FUN_004357b0`); with the class's maintenance (`+0x20`), 0 with
 /// none.
 pub(crate) fn best_class(
     io: &mut Inputs<'_>,
+    area: ProductionArea,
     flags: u32,
-    key: usize,
+    key: ClassKey,
     order: Order,
 ) -> (Option<DatId>, i32) {
-    let classes: Vec<_> = crate::build_selection::listed_classes(
-        io.world,
-        io.research,
-        ProductionArea::ConstructionYard,
-        io.is_alliance,
-    )
-    .into_iter()
-    .filter_map(BuildableKind::class_dat_id)
-    .filter_map(|c| {
-        let r = io.galaxy.classes.get(c)?;
-        (r.flags & flags == flags).then_some((c, r.values[key]))
-    })
-    .collect();
+    let classes: Vec<_> =
+        crate::build_selection::listed_classes(io.world, io.research, area, io.is_alliance)
+            .into_iter()
+            .filter_map(BuildableKind::class_dat_id)
+            .filter_map(|c| {
+                let r = io.galaxy.classes.get(c)?;
+                let value = match key {
+                    ClassKey::Value(i) => r.values[i],
+                    ClassKey::Maintenance => r.maintenance,
+                };
+                (r.flags & flags == flags).then_some((c, value))
+            })
+            .collect();
     let list = crate::ai_records::ranked(classes, order, io.coin);
     let class = crate::ai_records::pick(&[list]);
     let maintenance = class
@@ -826,6 +950,7 @@ pub(crate) fn scrap_spare_yard(
     sites: &mut Vec<SystemKey>,
     target: &mut Target,
     mark: u32,
+    kind: YardKind,
 ) -> Option<AIAction> {
     let mut chosen = None;
     let mut i = 0;
@@ -836,12 +961,12 @@ pub(crate) fn scrap_spare_yard(
             continue;
         };
         let count = sites.len();
-        if r.values[6] < 1 {
+        if r.values[kind.count] < 1 {
             sites.remove(i);
             io.set_mark(site, 0, mark);
         } else if r.state & 0x1000 == 0 {
             i += 1;
-        } else if r.values[6] < 2 {
+        } else if r.values[kind.count] < 2 {
             if count > 1 {
                 *target = Target::System(site);
                 sites.remove(i);
@@ -856,7 +981,7 @@ pub(crate) fn scrap_spare_yard(
         }
     }
     let site = chosen?;
-    let yard = io.facilities(site, 0x2a).into_iter().next()?;
+    let yard = io.facilities(site, kind.family).into_iter().next()?;
     Some(AIAction::Scrap { team: vec![yard] })
 }
 
@@ -921,6 +1046,8 @@ pub(crate) fn build(
     let kind = match class.family() {
         0x2c | 0x2d => BuildableKind::ProductionFacility(build),
         0x22..=0x27 => BuildableKind::DefenseFacility(build),
+        0x10..=0x13 => BuildableKind::Troop(class),
+        0x3c..=0x3f => BuildableKind::SpecialForce(class),
         _ => BuildableKind::ManufacturingFacility(build),
     };
     let cost = io
@@ -948,25 +1075,30 @@ pub(crate) fn adopt_or_request(
     mark: u32,
     token: u32,
     wanted: i32,
+    kind: YardKind,
 ) -> Target {
+    if kind.few_sites_only && sites.len() >= 2 {
+        return Target::None;
+    }
     let mut found = None;
     if wanted > 0 {
-        let sectors = io.sectors([Mask::new(0x80, 0), ANY, ANY], 0x15, Order::Ascending);
+        let bit = [Mask::new(kind.sector_bit, 0), ANY, ANY];
+        let sectors = io.sectors(bit, kind.sector_key, Order::Ascending);
         'sectors: for sector in picks(vec![sectors]) {
             let yards = io
                 .galaxy
                 .sector(sector)
-                .map_or(0, |s| s.values[sector_at(0xc4)]);
+                .map_or(0, |s| s.values[sector_at(kind.sector_yards)]);
             if yards <= 0 {
                 break;
             }
-            let masks = [Mask::new(0, 0x380_0003), ANY, Mask::new(1, 0x4000_0000)];
-            let systems = io.systems(Some(sector), masks, 6, Order::Ascending);
+            let masks = [Mask::new(0, kind.forbid), ANY, Mask::new(1, 0x4000_0000)];
+            let systems = io.systems(Some(sector), masks, kind.system_key, Order::Ascending);
             for system in picks(vec![systems]) {
                 if io
                     .galaxy
                     .system(system)
-                    .is_some_and(|r| r.values[6] > 0 && r.values[36] <= wanted)
+                    .is_some_and(|r| r.values[kind.count] > 0 && r.values[kind.upkeep] <= wanted)
                 {
                     found = Some(system);
                     break 'sectors;
@@ -983,10 +1115,10 @@ pub(crate) fn adopt_or_request(
         let has_yard = sites
             .first()
             .and_then(|&s| io.galaxy.system(s))
-            .is_some_and(|r| r.values[6] > 0);
+            .is_some_and(|r| r.values[kind.count] > 0);
         if !has_yard {
             let maintenance;
-            (*class, maintenance) = yard_class(io);
+            (*class, maintenance) = yard_class(io, kind);
             if maintenance <= wanted {
                 io.controller.yard_requests |= token;
             }
@@ -995,23 +1127,29 @@ pub(crate) fn adopt_or_request(
     Target::None
 }
 
-/// `FUN_004dd120` (module 2: `FUN_004e4a20`): claim the site with the most
-/// construction yards and active regiments that no other module claims.
-pub(crate) fn claim(io: &mut Inputs<'_>, sites: &[SystemKey], claimed: &mut Vec<SystemKey>) {
+/// `FUN_004dd120` (module 2: `FUN_004e4a20`; module 5: `FUN_004d1ed0`,
+/// by training facilities): claim the site with the most yards of `kind`
+/// and active regiments that no other module claims.
+pub(crate) fn claim(
+    io: &mut Inputs<'_>,
+    sites: &[SystemKey],
+    claimed: &mut Vec<SystemKey>,
+    kind: YardKind,
+) {
     let mut best = 0;
     let mut chosen = None;
     for &site in sites {
         let Some(r) = io.galaxy.system(site) else {
             continue;
         };
-        if r.values[6] <= best {
+        if r.values[kind.count] <= best {
             continue;
         }
         if r.kind & CLAIMED != 0 && !claimed.contains(&site) {
             continue;
         }
         if r.values[18] > 0 {
-            best = r.values[6];
+            best = r.values[kind.count];
             chosen = Some(site);
         }
     }
@@ -1035,7 +1173,7 @@ pub(crate) mod tests {
     /// Module 1's view of the shared steps, as the tests name them.
     impl Module1 {
         fn scrap_at_target(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {
-            scrap_at(io, self.target.system())
+            scrap_at(io, self.target.system(), CONSTRUCTION)
         }
 
         fn wanted(&self, io: &Inputs<'_>) -> i32 {
@@ -1044,12 +1182,18 @@ pub(crate) mod tests {
 
         fn yard_class(&mut self, io: &mut Inputs<'_>) -> i32 {
             let maintenance;
-            (self.class, maintenance) = yard_class(io);
+            (self.class, maintenance) = yard_class(io, CONSTRUCTION);
             maintenance
         }
 
         fn scrap_spare_yard(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {
-            scrap_spare_yard(io, &mut self.sites, &mut self.target, MARK_MINES)
+            scrap_spare_yard(
+                io,
+                &mut self.sites,
+                &mut self.target,
+                MARK_MINES,
+                CONSTRUCTION,
+            )
         }
 
         fn build(&self, io: &Inputs<'_>) -> Option<AIAction> {
@@ -1065,11 +1209,12 @@ pub(crate) mod tests {
                 MARK_MINES,
                 YARD_TOKEN,
                 budget,
+                CONSTRUCTION,
             );
         }
 
         fn claim(&mut self, io: &mut Inputs<'_>) {
-            claim(io, &self.sites, &mut self.claimed);
+            claim(io, &self.sites, &mut self.claimed, CONSTRUCTION);
         }
     }
 
@@ -1222,6 +1367,9 @@ pub(crate) mod tests {
         capacity: 1000,
         requirement: 0,
         defenses: 0,
+        special_upkeep: 0,
+        special_goal: 0,
+        special_ready: [0; 4],
     };
 
     #[test]
@@ -1360,7 +1508,7 @@ pub(crate) mod tests {
             refineries: 1,
             capacity: 100,
             requirement: 0,
-            defenses: 0,
+            ..ROOMY
         };
         for _ in 0..6 {
             step(&f, &mut state, tallies);
@@ -2201,6 +2349,9 @@ pub(crate) mod tests {
                 capacity: 7,
                 requirement: 3,
                 defenses: 0,
+                special_upkeep: 0,
+                special_goal: 0,
+                special_ready: [0; 4],
             }
         );
     }
@@ -2354,5 +2505,43 @@ pub(crate) mod tests {
         };
         m.refused();
         assert_eq!((m.phase, m.state), (0, 0));
+    }
+
+    #[test]
+    fn a_build_names_the_kind_of_its_class_family() {
+        // The Build order's class (0x210 facilities and defenses, 0x212
+        // regiments and special forces) goes to the matching kind.
+        let f = fixture();
+        let mut state = AIState::new(crate::ai::AiFaction::Alliance);
+        let mut galaxy = records_of(&f, &state);
+        let kinds = with_io(&f, &mut state, &mut galaxy, ROOMY, |_, io| {
+            [
+                0x1000_0001,
+                0x3c00_0001,
+                0x2200_0001,
+                0x2c00_0001,
+                0x2a00_0003,
+            ]
+            .map(|raw| {
+                match build(io, Yard::Manager(f.yard), Some(DatId::new(raw)), 1) {
+                    Some(AIAction::Build { kind, .. }) => kind,
+                    other => panic!("{other:?}"),
+                }
+            })
+        });
+        let facility = |raw| FacilityBuild {
+            class: DatId::new(raw),
+            is_alliance: true,
+        };
+        assert_eq!(
+            kinds,
+            [
+                BuildableKind::Troop(DatId::new(0x1000_0001)),
+                BuildableKind::SpecialForce(DatId::new(0x3c00_0001)),
+                BuildableKind::DefenseFacility(facility(0x2200_0001)),
+                BuildableKind::ProductionFacility(facility(0x2c00_0001)),
+                BuildableKind::ManufacturingFacility(facility(0x2a00_0003)),
+            ]
+        );
     }
 }

@@ -1,0 +1,1536 @@
+{
+  "command": "rebellion-playtest data/base --seed 42 --ticks 600 --dual-ai",
+  "orders_by_side_and_type": {
+    "Alliance Build": 53,
+    "Alliance DispatchMission": 192,
+    "Alliance EnqueueProduction": 3,
+    "Alliance MoveFleet": 1,
+    "Alliance Scrap": 1,
+    "Alliance SetDestination": 9,
+    "Empire AbortMission": 1,
+    "Empire Build": 55,
+    "Empire DispatchMission": 144,
+    "Empire EnqueueProduction": 1,
+    "Empire MoveFleet": 2,
+    "Empire Scrap": 24,
+    "Empire SetDestination": 34
+  },
+  "yard_orders": [
+    {
+      "tick": 1,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Defense(DefenseFacilityKey(28v1)))"
+      ]
+    },
+    {
+      "tick": 1,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Hoth",
+      "system": "Hoth"
+    },
+    {
+      "tick": 1,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 10,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(704643075), is_alliance: true })",
+      "system": "Hoth"
+    },
+    {
+      "tick": 1,
+      "side": "Alliance",
+      "type": "Scrap",
+      "team": [
+        "Facility(Defense(DefenseFacilityKey(20v1)))"
+      ]
+    },
+    {
+      "tick": 2,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Bothawui"
+    },
+    {
+      "tick": 2,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Bothawui"
+    },
+    {
+      "tick": 2,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Manufacturing(ManufacturingFacilityKey(19v1)))"
+      ]
+    },
+    {
+      "tick": 2,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yavin",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 2,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 2,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: true })",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 3,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 10,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(704643075), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 3,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 3,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 3,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Defense(DefenseFacilityKey(6v1)))"
+      ]
+    },
+    {
+      "tick": 4,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Defense(DefenseFacilityKey(14v1)))"
+      ]
+    },
+    {
+      "tick": 4,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Defense(DefenseFacilityKey(36v1)))"
+      ]
+    },
+    {
+      "tick": 43,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Manufacturing(ManufacturingFacilityKey(23v1)))"
+      ]
+    },
+    {
+      "tick": 44,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 44,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 75,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 79,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 83,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 83,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 84,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Manufacturing(ManufacturingFacilityKey(24v1)))"
+      ]
+    },
+    {
+      "tick": 85,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Balmorra",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 85,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 85,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: true })",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 85,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 87,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 95,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 99,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 103,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 111,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 119,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 123,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 126,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Sullust",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 126,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 127,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 135,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 152,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 162,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 163,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 163,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 165,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Balmorra",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 165,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: true })",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 166,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 167,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 167,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 181,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 189,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 202,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 208,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 208,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 213,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 223,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 239,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 244,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 244,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 245,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Balmorra",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 245,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: true })",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 247,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 249,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 249,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 251,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 255,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 263,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 271,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 287,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 289,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 289,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 10,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(704643075), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 291,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 309,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 310,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 311,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 324,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 324,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 325,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Balmorra",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 325,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: true })",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 351,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 351,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 10,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(704643078), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 354,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 358,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 364,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 364,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 366,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 371,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 371,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 10,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(687865861), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 383,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 383,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 10,
+      "count": 1,
+      "kind": "ManufacturingFacility(FacilityBuild { class: DatId(687865861), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 391,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632965))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 393,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632966))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 393,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 395,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632967))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 395,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(198v1)))"
+      ]
+    },
+    {
+      "tick": 395,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Coruscant",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 395,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 399,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632968))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 403,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632965))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 403,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 404,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 404,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 405,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632966))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 405,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Balmorra",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 405,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: true })",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 407,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632967))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 409,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632968))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 411,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632965))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 413,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632966))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 415,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(136v1)))"
+      ]
+    },
+    {
+      "tick": 415,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632967))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 415,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(139v1)))"
+      ]
+    },
+    {
+      "tick": 416,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Manufacturing(ManufacturingFacilityKey(34v1)))"
+      ]
+    },
+    {
+      "tick": 416,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(197v1)))"
+      ]
+    },
+    {
+      "tick": 416,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 417,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 419,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632968))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 423,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632965))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 425,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632966))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 427,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632967))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 428,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 438,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(200v1)))"
+      ]
+    },
+    {
+      "tick": 438,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 438,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 439,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 444,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 444,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 444,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632966))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 446,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632967))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 455,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 458,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(137v1)))"
+      ]
+    },
+    {
+      "tick": 459,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(201v1)))"
+      ]
+    },
+    {
+      "tick": 459,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 460,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 480,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(140v1)))"
+      ]
+    },
+    {
+      "tick": 480,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 480,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(138v1)))"
+      ]
+    },
+    {
+      "tick": 481,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 481,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 484,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 484,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 485,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Ghorman",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 485,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: true })",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 485,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 493,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 497,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 501,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(221v1)))"
+      ]
+    },
+    {
+      "tick": 501,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632962))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 502,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 502,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 509,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632963))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 522,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(197v3)))"
+      ]
+    },
+    {
+      "tick": 522,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(201v3)))"
+      ]
+    },
+    {
+      "tick": 523,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 523,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 524,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 524,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 530,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632965))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 532,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632966))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 543,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(141v1)))"
+      ]
+    },
+    {
+      "tick": 544,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 544,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 561,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632964))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 564,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Xyquine",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 564,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(754974722), is_alliance: false })",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 564,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(138v3)))"
+      ]
+    },
+    {
+      "tick": 565,
+      "side": "Alliance",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Ghorman",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 565,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: true })",
+      "system": "Balmorra"
+    },
+    {
+      "tick": 565,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(137v3)))"
+      ]
+    },
+    {
+      "tick": 565,
+      "side": "Alliance",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632961))",
+      "system": "Vagran"
+    },
+    {
+      "tick": 566,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 566,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 569,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 2,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632967))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 574,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 1,
+      "count": 1,
+      "kind": "SpecialForce(DatId(1006632965))",
+      "system": "Yaga Minor"
+    },
+    {
+      "tick": 586,
+      "side": "Empire",
+      "type": "Scrap",
+      "team": [
+        "Facility(Production(ProductionFacilityKey(221v3)))"
+      ]
+    },
+    {
+      "tick": 587,
+      "side": "Empire",
+      "type": "SetDestination",
+      "area": "ConstructionYard",
+      "destination": "Yaga Minor",
+      "system": "Coruscant"
+    },
+    {
+      "tick": 587,
+      "side": "Empire",
+      "type": "Build",
+      "cost": 20,
+      "count": 1,
+      "kind": "ProductionFacility(FacilityBuild { class: DatId(738197505), is_alliance: false })",
+      "system": "Coruscant"
+    }
+  ]
+}

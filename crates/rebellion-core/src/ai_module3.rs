@@ -10,11 +10,13 @@ use serde::{Deserialize, Serialize};
 use crate::ai::{AIAction, MARK_BALANCE};
 use crate::ai_module1::{
     adopt_or_request, best_class, build, claim, destination, nearest, scrap_at, scrap_spare_yard,
-    yard_class, Inputs, Step, Target, Yard, ANY, MINE_CLASS, REFINERY_CLASS,
+    yard_class, ClassKey, Inputs, Step, Target, Yard, YardKind, ANY, CONSTRUCTION, MINE_CLASS,
+    REFINERY_CLASS,
 };
 use crate::ai_module2::{keep_site, scrap_in_the_way};
 use crate::ai_records::{pick, side_constants::S36C, Mask, Order};
 use crate::ids::{DatId, SystemKey};
+use crate::manufacturing::ProductionArea;
 use crate::scrap::ScrapTarget;
 
 /// `+0x38` while the yard cycle runs (`FUN_004d6d30`).
@@ -131,7 +133,13 @@ impl Module3 {
     fn defense_cycle(&mut self, io: &mut Inputs<'_>) -> Step {
         match self.state {
             4 => {
-                if keep_site(io, &mut self.sites, &mut self.yard, MARK_BALANCE) {
+                if keep_site(
+                    io,
+                    &mut self.sites,
+                    &mut self.yard,
+                    MARK_BALANCE,
+                    CONSTRUCTION,
+                ) {
                     self.state = 1;
                 } else {
                     self.state = 0;
@@ -256,7 +264,7 @@ impl Module3 {
                 Step::pending()
             }
             6 => {
-                let order = scrap_at(io, self.target.system());
+                let order = scrap_at(io, self.target.system(), CONSTRUCTION);
                 self.state = 5;
                 Step::ordered(order)
             }
@@ -268,7 +276,13 @@ impl Module3 {
                 Step::pending()
             }
             8 => {
-                let order = scrap_spare_yard(io, &mut self.sites, &mut self.target, MARK_BALANCE);
+                let order = scrap_spare_yard(
+                    io,
+                    &mut self.sites,
+                    &mut self.target,
+                    MARK_BALANCE,
+                    CONSTRUCTION,
+                );
                 self.end(SURPLUS_CYCLE, order)
             }
             0xb => self.destination_state(self.target, YARD_CYCLE),
@@ -285,8 +299,9 @@ impl Module3 {
                     MARK_BALANCE,
                     YARD_TOKEN,
                     budget,
+                    CONSTRUCTION,
                 );
-                claim(io, &self.sites, &mut self.claimed);
+                claim(io, &self.sites, &mut self.claimed, CONSTRUCTION);
                 self.end(SURPLUS_CYCLE, None)
             }
             _ => {
@@ -480,7 +495,13 @@ impl Module3 {
             (crate::ai_records::CLASS_DEFENSE_22, 0)
         };
         let maintenance;
-        (self.class, maintenance) = best_class(io, flags, key, Order::Ascending);
+        (self.class, maintenance) = best_class(
+            io,
+            ProductionArea::ConstructionYard,
+            flags,
+            ClassKey::Value(key),
+            Order::Ascending,
+        );
         if self.class.is_some() && maintenance != 0 && maintenance <= budget {
             self.count = 1;
             return 0xb;
@@ -522,47 +543,16 @@ impl Module3 {
         (!team.is_empty()).then_some(AIAction::Scrap { team })
     }
 
-    /// `FUN_004d8ad0`: the target, a site with room and the fewest
-    /// construction yards, or a new site. The second lists join only when
-    /// the module has sites.
+    /// `FUN_004d8ad0`.
     fn choose_target(&mut self, io: &mut Inputs<'_>) -> bool {
-        self.target = Target::None;
-        self.room = 0;
-        let mut best = 1000;
-        for &site in &self.sites {
-            let Some(r) = io.galaxy.system(site) else {
-                continue;
-            };
-            if r.kind & 1 != 0 && r.state & 3 == 0 && r.values[0x33] > 0 && r.values[6] < best {
-                self.room = r.values[0x33];
-                best = r.values[6];
-                self.target = Target::System(site);
-            }
-        }
-        if self.target.system().is_some() {
-            return true;
-        }
-        let listed = !self.sites.is_empty();
-        let bit = [Mask::new(0x80, 0), ANY, ANY];
-        let mut lists = vec![io.sectors(bit, 0x15, Order::Ascending)];
-        if listed {
-            lists.push(io.sectors(bit, 4, Order::Descending));
-        }
-        let sector = pick(&lists);
-        let masks = [Mask::new(0, 0x380_0003), ANY, Mask::new(1, 0x4000_0000)];
-        let mut lists = vec![io.systems(sector, masks, 6, Order::Ascending)];
-        if listed {
-            lists.push(io.systems(sector, masks, 0x33, Order::Ascending));
-        }
-        let Some(system) = pick(&lists) else {
-            return false;
-        };
-        self.target = Target::System(system);
-        if io.galaxy.system(system).is_some() {
-            self.sites.push(system);
-            io.set_mark(system, MARK_BALANCE, 0);
-        }
-        true
+        choose_target(
+            io,
+            &mut self.sites,
+            &mut self.target,
+            &mut self.room,
+            MARK_BALANCE,
+            CONSTRUCTION,
+        )
     }
 
     /// `FUN_004d8db0`: borrow the idle construction yard of module 1's
@@ -622,7 +612,7 @@ impl Module3 {
             return 0;
         }
         let maintenance;
-        (self.class, maintenance) = yard_class(io);
+        (self.class, maintenance) = yard_class(io, CONSTRUCTION);
         if self.class.is_some() && maintenance != 0 {
             self.count = budget / maintenance;
         }
@@ -636,6 +626,58 @@ impl Module3 {
         self.count = self.count.min(r.values[15].min(self.room));
         0xb
     }
+}
+
+/// `FUN_004d8ad0` (module 5: `FUN_004d0860`, training facilities): the
+/// target, an own calm site with room and the fewest yards of `kind`
+/// (its room into `room`), or a new site found by query and marked
+/// `mark`. The second lists join only when the module has sites.
+pub(crate) fn choose_target(
+    io: &mut Inputs<'_>,
+    sites: &mut Vec<SystemKey>,
+    target: &mut Target,
+    room: &mut i32,
+    mark: u32,
+    kind: YardKind,
+) -> bool {
+    *target = Target::None;
+    *room = 0;
+    let mut best = 1000;
+    for &site in sites.iter() {
+        let Some(r) = io.galaxy.system(site) else {
+            continue;
+        };
+        if r.kind & 1 != 0 && r.state & 3 == 0 && r.values[0x33] > 0 && r.values[kind.count] < best
+        {
+            *room = r.values[0x33];
+            best = r.values[kind.count];
+            *target = Target::System(site);
+        }
+    }
+    if target.system().is_some() {
+        return true;
+    }
+    let listed = !sites.is_empty();
+    let bit = [Mask::new(kind.sector_bit, 0), ANY, ANY];
+    let mut lists = vec![io.sectors(bit, kind.sector_key, Order::Ascending)];
+    if listed {
+        lists.push(io.sectors(bit, 4, Order::Descending));
+    }
+    let sector = pick(&lists);
+    let masks = [Mask::new(0, kind.forbid), ANY, Mask::new(1, 0x4000_0000)];
+    let mut lists = vec![io.systems(sector, masks, kind.system_key, Order::Ascending)];
+    if listed {
+        lists.push(io.systems(sector, masks, 0x33, Order::Ascending));
+    }
+    let Some(system) = pick(&lists) else {
+        return false;
+    };
+    *target = Target::System(system);
+    if io.galaxy.system(system).is_some() {
+        sites.push(system);
+        io.set_mark(system, mark, 0);
+    }
+    true
 }
 
 /// `FUN_004da530`: 10% of `+0x24` percent of the capacity, less the

@@ -1819,6 +1819,17 @@ cross-runtime proof remain open
   construction yard, so the AI builds no defenses there. Save v43; golden
   `v1:09ab7bb25d2c1611` -> `v1:76a53e974120e2d1`
   (`evidence/2026-10-15-ai-module-3/`).
+- Module 5 (2026-10-15): the special force module (`FUN_004cfb20`, step
+  `FUN_004cfed0`) is ported in `ai_module5.rs`: a cycle that trains the
+  four special force kinds in turn at its training facility sites
+  (`FUN_004cff20`, budget 70% of 4% of the capacity less their upkeep),
+  and a yard cycle that builds training facilities with the token 4
+  (`FUN_004d0010`). The shared steps take a yard kind (construction or
+  training). Two original quirks are kept: no record carries `+0x34` bit
+  `0x800000`, so every kind counts as short, and none carries flag
+  `0x2000`, so no Retire is given. The heuristic's regiments now stand in
+  for module 6. Save v44; golden `v1:76a53e974120e2d1` ->
+  `v1:ed967029485e168a` (`evidence/2026-10-15-ai-module-5/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.
