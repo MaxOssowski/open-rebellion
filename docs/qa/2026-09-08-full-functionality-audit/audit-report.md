@@ -1830,6 +1830,17 @@ cross-runtime proof remain open
   `0x2000`, so no Retire is given. The heuristic's regiments now stand in
   for module 6. Save v44; golden `v1:76a53e974120e2d1` ->
   `v1:ed967029485e168a` (`evidence/2026-10-15-ai-module-5/`).
+- Module 6 (2026-10-15): the regiment module (`FUN_004dd460`, step
+  `FUN_004dd7a0`) is ported in `ai_module6.rs`: Move `0x201` of a
+  surplus's weakest regiments to a system short of garrison
+  (`FUN_004de6f0`, `FUN_004deba0`; `AIAction::MoveRegiments`, validated by
+  `TroopTransportState::check_move_regiment`), training regiments at its
+  training facility sites and sending them on (`FUN_004dd8d0`), and the
+  training facility yard cycle with the token `0x20` (`FUN_004dda00`).
+  port: the two moves that ask module 8's sector planners, and the
+  strategy-driven garrison goal changes, give nothing. The heuristic's
+  regiments are gone. Save v45; golden `v1:ed967029485e168a` ->
+  `v1:6d35df6768400d72` (`evidence/2026-10-15-ai-module-6/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

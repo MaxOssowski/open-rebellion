@@ -796,8 +796,9 @@ Controller `+4` bits `0x400000` and `0x800000` are the strategy module's
 ### The yard cycle (`FUN_004dda00`)
 
 Module 5's yard cycle (training facilities, mark `0x400000`) with these
-differences: the token is `0x20`; the borrow (`FUN_004dffd0`) is module
-3's by distance from the target; the budget (`FUN_004e1a20`) is 20% of
+differences: the token is `0x20`; the borrow (`FUN_004dffd0`) takes the
+sector nearest the target with `0x1000` and its system with `0x800800` by
+key 6 (order 1), and adds no site; the budget (`FUN_004e1a20`) is 20% of
 22% of the capacity less the sites' `v[35]`; the plan (`FUN_004e06b0`)
 gives `0xc`, `0xa` or 0; a choice with no target ends the cycle (no
 budget check); the adoption (`FUN_004e15b0`) is not limited to fewer
@@ -819,10 +820,6 @@ End: `+0x3c = 0`, `+0x38 = 0x3ef`, complete.
 
 ### Open for the port
 
-- The Move `0x201` of regiments between systems: the original moves a
-  regiment on its own with a transit (`move-order.md`, the move command
-  `0x201`; `build-delivery.md`); the port carries regiments only aboard
-  fleets.
 - The sector fleet planners of module 8 (`FUN_0042f310`, `FUN_00476b70`).
 - Controller `+0x250` (from `FUN_0041ba80` over the fleet records),
   `+0x18`, and the strategy's `+4` bits.
@@ -944,3 +941,33 @@ On the seed-42 campaign (dual AI, 600 days) the Alliance trains special
 forces at Vagran from day 75 (44 Build orders, the four basic kinds in
 turn) and the Empire at Yaga Minor from day 391 (21). With more agents
 the Alliance's missions rise from 17 (module 3's run) to 192.
+
+### Module 6 ported (2026-10-15)
+
+`crates/rebellion-core/src/ai_module6.rs`, save v45. `Module6` holds
+`+0x38..+0x84` with the step (`FUN_004dd7a0`) and the three cycles. The
+regiment Move is `AIAction::MoveRegiments`; its validation runs
+`TroopTransportState::check_move_regiment` for each member, and the
+integrator and the interactive loop carry it out with `move_regiment`.
+`Tallies` gains `regiment_upkeep` (`+0x1d8`), `cargo_upkeep` (`+0x250`)
+and `sector_short` (controller `+4` bit `0x20`). A Destination's validator
+needs the side's yard of its area.
+
+port:
+- The first two moves (`FUN_004ddb70`, `FUN_004de130`) take their count
+  from module 8's sector planners, which are not ported, so they move
+  nothing.
+- The raise and lowering of the side's garrison goals need the strategy
+  module's controller `+4` bits `0x800000` and `0x400000`, which the port
+  never sets; they are not ported.
+- Controller `+0x14` and `+0x18` have no counterpart.
+- The heuristic's regiments are gone: module 6 trains them.
+
+On the seed-42 campaign (dual AI, 600 days) the Empire moves regiments
+five times (day 1 to Yaga Minor, day 4 five to Drall) and trains 5
+regiments from day 487; the Alliance moves regiments five times (Hoth,
+then Ghorman) and trains 10 from day 3, each sent on with a Destination.
+Module 5 trains no special forces in this campaign: a temporary trace
+shows it keeping one or two sites, none with an idle training facility
+(`FUN_004d01a0`), while module 6, which runs first, trains regiments at
+the training facilities of the sites both mark `0x400000`.

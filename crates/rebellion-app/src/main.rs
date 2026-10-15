@@ -7859,6 +7859,19 @@ fn apply_ai_actions(
                     }
                 }
             }
+            AIAction::MoveRegiments { troops, to } => {
+                let blockaded = rebellion_core::blockade::BlockadeSystem::blockaded_now(world);
+                for &troop in troops {
+                    let _ = troop_transport_state.move_regiment(
+                        world,
+                        movement_state,
+                        &blockaded,
+                        troop,
+                        rebellion_core::troop_transport::RegimentTarget::System(*to),
+                        tick,
+                    );
+                }
+            }
             AIAction::SetDestination {
                 system,
                 area,

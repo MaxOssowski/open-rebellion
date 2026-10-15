@@ -110,7 +110,7 @@ fn special_upkeep(world: &GameWorld, faction: AiFaction) -> i32 {
 
 /// The order's validation (slot `+0x1c`) for the production modules'
 /// orders: every Scrap member passes [`crate::scrap::check`]; Destination
-/// needs the side's construction manager there, Build the manager of its
+/// needs the side's manager of its area there, Build the manager of its
 /// class's area (hyp: a yard of that area's family, `FUN_00509670`), a
 /// class the manager lists ([`crate::build_selection::listed_classes`])
 /// and a count.
@@ -121,6 +121,8 @@ fn accepts(
     world: &GameWorld,
     research: &ResearchState,
     faction: AiFaction,
+    transport: &crate::troop_transport::TroopTransportState,
+    movement: &crate::movement::MovementState,
 ) -> bool {
     let side = faction.as_faction();
     let is_alliance = matches!(faction, AiFaction::Alliance);
@@ -133,11 +135,15 @@ fn accepts(
         }
         AIAction::SetDestination {
             system,
+            area,
             destination,
-            ..
         } => {
-            crate::ai_module1::has_construction_yard(world, side, *system)
-                && world.systems.contains_key(*destination)
+            crate::ai_module1::has_yard(
+                world,
+                side,
+                *system,
+                crate::build_selection::area_family(*area),
+            ) && world.systems.contains_key(*destination)
         }
         AIAction::Build {
             system,
@@ -160,6 +166,27 @@ fn accepts(
                 )
                 .contains(kind)
         }
+        // The move command's validation (FUN_00578d00) for each regiment:
+        // the side's own (FUN_004f9860), then the regiment move's checks.
+        AIAction::MoveRegiments { troops, to } => {
+            let blockaded = crate::blockade::BlockadeSystem::blockaded_now(world);
+            !troops.is_empty()
+                && troops.iter().all(|&troop| {
+                    world
+                        .troops
+                        .get(troop)
+                        .is_some_and(|t| t.is_alliance == is_alliance)
+                        && transport
+                            .check_move_regiment(
+                                world,
+                                movement,
+                                &blockaded,
+                                troop,
+                                crate::troop_transport::RegimentTarget::System(*to),
+                            )
+                            .is_ok()
+                })
+        }
         _ => true,
     }
 }
@@ -171,8 +198,8 @@ fn accepts(
 const MISSION_GROUPS: u8 = 5;
 
 /// The module whose step issues the production heuristic's order for
-/// `kind`: `0xa` a manufacturing facility, 6 a regiment, `0xb` a capital
-/// ship or fighter; none for the rest.
+/// `kind`: `0xa` a manufacturing facility, `0xb` a capital ship or
+/// fighter; none for the rest.
 ///
 /// port: a first read of the modules' orders and marks (`0x210` with marks
 /// `0x1000000` and `0x2000000`, `0x212` with `0x400000`, `0x211` with
@@ -182,13 +209,12 @@ const MISSION_GROUPS: u8 = 5;
 /// shipyards and training facilities, stand in for module `0xa`'s
 /// shipyard placement. Module 3, ported, builds the defenses
 /// (`FUN_004d8460`), so the heuristic's defenses stand in for no module.
-/// Module 5, ported, trains only special forces (`FUN_004d0590`), so the
-/// heuristic's regiments stand in for module 6's garrison balance (orders
-/// `0x212` with mark `0x400000`).
+/// Modules 5 and 6, ported, train special forces (`FUN_004d0590`) and
+/// regiments (`FUN_004df9a0`), so the heuristic's regiments stand in for
+/// no module.
 fn production_module(kind: &BuildableKind) -> Option<u8> {
     match kind {
         BuildableKind::ManufacturingFacility(_) => Some(0xa),
-        BuildableKind::Troop(_) => Some(6),
         BuildableKind::CapitalShip(_) | BuildableKind::Fighter(_) => Some(0xb),
         _ => None,
     }
@@ -387,6 +413,8 @@ pub struct AIState {
     pub module3: crate::ai_module3::Module3,
     /// Module 5's fields (`FUN_004cfb20`).
     pub module5: crate::ai_module5::Module5,
+    /// Module 6's fields (`FUN_004dd460`).
+    pub module6: crate::ai_module6::Module6,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -453,6 +481,7 @@ impl AIState {
             module2: crate::ai_module2::Module2::default(),
             module3: crate::ai_module3::Module3::default(),
             module5: crate::ai_module5::Module5::default(),
+            module6: crate::ai_module6::Module6::default(),
         }
     }
 
@@ -600,6 +629,14 @@ pub enum AIAction {
     /// (`ghidra/notes/ai-production-modules.md`).
     Scrap {
         team: Vec<crate::scrap::ScrapTarget>,
+    },
+
+    /// Move regiments of the side to a system: the order `0x201` module 6
+    /// builds for regiments (`FUN_004de6f0`), each regiment carried out by
+    /// [`crate::troop_transport::TroopTransportState::move_regiment`].
+    MoveRegiments {
+        troops: Vec<TroopKey>,
+        to: SystemKey,
     },
 
     /// Destination (`0x214`) on `system`'s `area` manager: what it builds
@@ -763,13 +800,14 @@ impl AISystem {
         // controller's token (FUN_004199b0: 0x80 module 1, 0x40 module 2,
         // 0x20 module 6, 0x10 module 0xa, 8 module 7, 4 module 5, 2 module
         // 0xb, 1 module 3), each passing it on once its own work allows.
-        // Only modules 1, 2, 3 and 5 are ported, so a pass hands on the
+        // Only modules 1, 2, 3, 5 and 6 are ported, so a pass hands on the
         // yards that an unported module holds.
         if ![
             crate::ai_module1::YARD_TOKEN,
             crate::ai_module2::YARD_TOKEN,
             crate::ai_module3::YARD_TOKEN,
             crate::ai_module5::YARD_TOKEN,
+            crate::ai_module6::YARD_TOKEN,
         ]
         .contains(&state.controller.yard_holder)
         {
@@ -801,7 +839,14 @@ impl AISystem {
             let gave = step.order.is_some();
             let mut complete = step.complete;
             if let Some(order) = step.order {
-                if accepts(&order, world, research_state, faction) {
+                if accepts(
+                    &order,
+                    world,
+                    research_state,
+                    faction,
+                    troop_transport,
+                    movement,
+                ) {
                     state.orders_today += 1;
                     orders.push(order);
                 } else {
@@ -811,6 +856,7 @@ impl AISystem {
                         2 => state.module2.refused(),
                         3 => state.module3.refused(),
                         5 => state.module5.refused(),
+                        6 => state.module6.refused(),
                         _ => {}
                     }
                     state.module_priority[module] = 0;
@@ -913,7 +959,7 @@ impl AISystem {
         tallies: crate::ai_module1::Tallies,
     ) -> crate::ai_module1::Step {
         let id = MODULE_IDS[module];
-        if matches!(id, 1 | 2 | 3 | 5) {
+        if matches!(id, 1 | 2 | 3 | 5 | 6) {
             let mut coin = || planner.coin();
             let mut io = crate::ai_module1::Inputs {
                 world: ctx.world,
@@ -930,7 +976,8 @@ impl AISystem {
                 1 => state.module1.step(&mut io),
                 2 => state.module2.step(&mut io),
                 3 => state.module3.step(&mut io),
-                _ => state.module5.step(&mut io),
+                5 => state.module5.step(&mut io),
+                _ => state.module6.step(&mut io),
             };
         }
         if state.module_pending[module].is_empty() {
@@ -952,15 +999,16 @@ impl AISystem {
     /// - `0xd`, the strategy: the research strategy
     ///   ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
-    /// - `0xa`, 6, `0xb`: the production heuristic's manufacturing
-    ///   facilities, regiments, and ships and fighters.
+    /// - `0xa`, `0xb`: the production heuristic's manufacturing
+    ///   facilities, and ships and fighters.
     /// - 8: Death Star escort and fleet deployment; `0xc`: troop movement.
     ///
     /// port: the assignment of the port's heuristics to modules is a first
     /// read (the modules' roles in the note above); modules 7, 9 and `0xe`
-    /// have no port counterpart and order nothing. Modules 1, 2, 3 and 5
-    /// are ported ([`crate::ai_module1`], [`crate::ai_module2`],
-    /// [`crate::ai_module3`], [`crate::ai_module5`]).
+    /// have no port counterpart and order nothing. Modules 1, 2, 3, 5 and
+    /// 6 are ported ([`crate::ai_module1`], [`crate::ai_module2`],
+    /// [`crate::ai_module3`], [`crate::ai_module5`],
+    /// [`crate::ai_module6`]).
     fn run_module(
         id: u8,
         state: &mut AIState,
@@ -999,7 +1047,7 @@ impl AISystem {
                 actions,
             ),
             4 => Self::mission_step(state, planner, ctx, actions),
-            6 | 0xa | 0xb => production(actions),
+            0xa | 0xb => production(actions),
             8 => {
                 Self::evaluate_ds_escort(world, movement, faction, config, actions);
                 Self::evaluate_fleet_deployment(
@@ -7013,11 +7061,10 @@ mod tests {
             production_module(&BuildableKind::DefenseFacility(facility)),
             None
         );
-        // Module 5 trains only special forces (FUN_004d0590); the
-        // heuristic's regiments stand in for module 6.
+        // Module 6 trains the regiments itself (FUN_004df9a0).
         assert_eq!(
             production_module(&BuildableKind::Troop(DatId::new(0x1000_0001))),
-            Some(6)
+            None
         );
         assert_eq!(
             production_module(&BuildableKind::CapitalShip(CapitalShipKey::default())),
@@ -7258,7 +7305,16 @@ mod tests {
                 });
         world.systems[site].manufacturing_facilities.push(key);
         let research = ResearchState::new();
-        let ok = |order: &AIAction| accepts(order, &world, &research, AiFaction::Alliance);
+        let ok = |order: &AIAction| {
+            accepts(
+                order,
+                &world,
+                &research,
+                AiFaction::Alliance,
+                &crate::troop_transport::TroopTransportState::new(),
+                &crate::movement::MovementState::new(),
+            )
+        };
         let own =
             crate::scrap::ScrapTarget::Facility(crate::world::FacilityRef::Manufacturing(key));
         assert!(ok(&AIAction::Scrap { team: vec![own] }));
@@ -7267,7 +7323,9 @@ mod tests {
             &AIAction::Scrap { team: vec![own] },
             &world,
             &research,
-            AiFaction::Empire
+            AiFaction::Empire,
+            &crate::troop_transport::TroopTransportState::new(),
+            &crate::movement::MovementState::new()
         ));
         let destination = |system, destination| AIAction::SetDestination {
             system,
@@ -7282,7 +7340,9 @@ mod tests {
             &destination(site, elsewhere),
             &gone,
             &research,
-            AiFaction::Alliance
+            AiFaction::Alliance,
+            &crate::troop_transport::TroopTransportState::new(),
+            &crate::movement::MovementState::new()
         ));
         let build = |system, class: u32, count| AIAction::Build {
             system,
@@ -7484,9 +7544,23 @@ mod tests {
             world.systems[site].manufacturing_facilities.push(key);
         };
         add(&mut world, 0x2a00_0003);
-        assert!(!accepts(&build, &world, &research, AiFaction::Alliance));
+        assert!(!accepts(
+            &build,
+            &world,
+            &research,
+            AiFaction::Alliance,
+            &crate::troop_transport::TroopTransportState::new(),
+            &crate::movement::MovementState::new()
+        ));
         add(&mut world, 0x2900_0001);
-        assert!(accepts(&build, &world, &research, AiFaction::Alliance));
+        assert!(accepts(
+            &build,
+            &world,
+            &research,
+            AiFaction::Alliance,
+            &crate::troop_transport::TroopTransportState::new(),
+            &crate::movement::MovementState::new()
+        ));
     }
 
     #[test]
@@ -7521,23 +7595,123 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_module_six_order_ends_its_cycle_and_the_tick() {
+        // FUN_00485b40 sends module 6's refused order to its slot +0x18,
+        // FUN_004dd810. Module 6's regiment cycle state 0xc (FUN_004e0a30):
+        // Destination on a troop manager the side lacks.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module6.phase = crate::ai_module6::REGIMENT_CYCLE;
+        state.module6.state = 0xc;
+        state.module6.destination = crate::ai_module1::Target::System(site);
+        state.module6.yard = crate::ai_module1::Yard::Manager(site);
+        state.module_priority[4] = 5;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert!(orders.is_empty());
+        assert_eq!((state.module6.phase, state.module6.state), (0, 0));
+        assert_eq!(state.module_priority[4], 0);
+        assert_eq!(state.orders_today, 0);
+        assert_eq!(state.module_cursor, None);
+    }
+
+    #[test]
+    fn a_regiment_move_needs_the_side_s_regiments_each_able_to_move() {
+        // The move command's validation (FUN_00578d00) for each member:
+        // the side's own (FUN_004f9860), then the regiment move's checks
+        // (TroopTransportState::check_move_regiment); a Destination needs
+        // the manager of its area.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let from = add_system(&mut world, sector, 0.9, 0.1);
+        let to = add_system(&mut world, sector, 0.9, 0.1);
+        let enemy = add_system(&mut world, sector, 0.1, 0.9);
+        for s in [from, to] {
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        }
+        world.systems[enemy].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.systems[enemy].is_populated = true;
+        let mut add = |is_alliance| {
+            let key = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: DatId(0x1000_0001),
+                is_alliance,
+                regiment_strength: 100,
+            });
+            world.systems[from].ground_units.push(key);
+            key
+        };
+        let ours = add(true);
+        let theirs = add(false);
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let movement = crate::movement::MovementState::new();
+        let research = ResearchState::new();
+        let ok = |troops: Vec<TroopKey>, to| {
+            accepts(
+                &AIAction::MoveRegiments { troops, to },
+                &world,
+                &research,
+                AiFaction::Alliance,
+                &transport,
+                &movement,
+            )
+        };
+        assert!(ok(vec![ours], to));
+        assert!(!ok(vec![], to));
+        assert!(!ok(vec![ours, theirs], to));
+        assert!(!ok(vec![ours], enemy));
+        let destination = AIAction::SetDestination {
+            system: from,
+            area: ProductionArea::TrainingFacility,
+            destination: to,
+        };
+        let check = |world: &GameWorld| {
+            accepts(
+                &destination,
+                world,
+                &research,
+                AiFaction::Alliance,
+                &transport,
+                &movement,
+            )
+        };
+        let mut world = world.clone();
+        let yard = |world: &mut GameWorld, class: u32| {
+            let key = world.manufacturing_facilities.insert(
+                crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: DatId(class),
+                    side: crate::dat::Faction::Alliance,
+                    is_shipyard: false,
+                },
+            );
+            world.systems[from].manufacturing_facilities.push(key);
+        };
+        yard(&mut world, 0x2a00_0003);
+        assert!(!check(&world));
+        yard(&mut world, 0x2900_0001);
+        assert!(check(&world));
+    }
+
+    #[test]
     fn the_round_robin_wraps_round_the_list_to_a_module_with_orders() {
         // FUN_004be980: +0x10 steps to the next module and goes round the
         // list back to where it began.
         let world = empty_world();
-        // Index 4 (module 6): indices 1 to 3 are modules 2, 1 and 3, which
-        // run their own cycles rather than lists of decided orders.
+        // Index 5 (module 7): indices 1 to 4 are modules 2, 1, 3 and 6,
+        // which run their own cycles rather than lists of decided orders.
         let order = AIAction::AbortMission { mission_id: 7 };
         let mut state = AIState::new(AiFaction::Alliance);
-        state.module_pending[4] = vec![order.clone()];
+        state.module_pending[5] = vec![order.clone()];
         state.module_cursor = Some(MODULES - 2);
 
         assert_eq!(cadence_pass(&mut state, &world), vec![order]);
-        assert_eq!(state.module_cursor, Some(4));
-        // Every module runs and orders nothing; +0x10 stops where the last
-        // search began, one past module 6.
-        assert!(cadence_pass(&mut state, &world).is_empty());
         assert_eq!(state.module_cursor, Some(5));
+        // Every module runs and orders nothing; +0x10 stops where the last
+        // search began, one past module 7.
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.module_cursor, Some(6));
     }
 
     #[test]

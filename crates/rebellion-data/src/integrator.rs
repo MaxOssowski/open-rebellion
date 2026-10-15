@@ -157,6 +157,13 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "team": team.iter().map(|t| format!("{t:?}")).collect::<Vec<_>>(),
             })
         }
+        AIAction::MoveRegiments { troops, to } => {
+            serde_json::json!({
+                "type": "MoveRegiments",
+                "troops": troops.len(),
+                "to": sys_name(world, *to),
+            })
+        }
         AIAction::SetDestination {
             system,
             area,
@@ -2076,6 +2083,23 @@ fn apply_ai_actions_inner(
                 rebellion_core::scrap::scrap_team(world, production, side.as_faction(), team)
                     .is_ok()
             }),
+            AIAction::MoveRegiments { troops, to } => {
+                let blockaded = rebellion_core::blockade::BlockadeSystem::blockaded_now(world);
+                let mut moved = false;
+                for &troop in troops {
+                    moved |= troop_transport
+                        .move_regiment(
+                            world,
+                            movement_state,
+                            &blockaded,
+                            troop,
+                            rebellion_core::troop_transport::RegimentTarget::System(*to),
+                            tick,
+                        )
+                        .is_ok();
+                }
+                moved
+            }
             AIAction::SetDestination {
                 system,
                 area,
@@ -2711,6 +2735,54 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, EVT_AI_ACTION);
         assert_eq!(events[0].details["type"], "Scrap");
+    }
+
+    #[test]
+    fn module_six_s_regiment_move_sends_each_regiment_on_its_way() {
+        // FUN_004de6f0's Move 0x201: each regiment moves as by hand
+        // (TroopTransportState::move_regiment, FUN_00556390), across
+        // systems in transit.
+        let mut world = GameWorld::default();
+        let from = add_system(&mut world, "Kuat");
+        let to = add_system(&mut world, "Fondor");
+        world.systems[to].x = 100;
+        for s in [from, to] {
+            world.systems[s].control = rebellion_core::world::ControlKind::Controlled(
+                rebellion_core::dat::Faction::Empire,
+            );
+        }
+        let troops: Vec<_> = (0..2)
+            .map(|_| {
+                let key = world.troops.insert(rebellion_core::world::TroopUnit {
+                    class_dat_id: DatId(0x1000_0001),
+                    is_alliance: false,
+                    regiment_strength: 100,
+                });
+                world.systems[from].ground_units.push(key);
+                key
+            })
+            .collect();
+        let mut transport = TroopTransportState::new();
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+
+        integrator.apply_ai_actions(
+            &[AIAction::MoveRegiments {
+                troops: troops.clone(),
+                to,
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut transport,
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            false,
+        );
+
+        assert_eq!(transport.transits().len(), 2);
+        assert!(world.systems[from].ground_units.is_empty());
     }
 
     #[test]

@@ -303,6 +303,41 @@ impl TroopTransportState {
         target: RegimentTarget,
         tick: u64,
     ) -> Result<RegimentMove, TroopTransportError> {
+        let (place, origin, leg) = self.plan_move(world, movement, blockaded, troop, target)?;
+        if let (RegimentPlace::Cargo(current), RegimentLeg::Fleet(fleet)) = (place, leg) {
+            if current == fleet {
+                return Ok(RegimentMove::Unchanged);
+            }
+        }
+        self.execute(world, troop, place, origin, leg, tick)
+    }
+
+    /// The checks of [`Self::move_regiment`] without carrying it out: the
+    /// move command's validation (slot `+0x1c`, `FUN_00578d00`) that an AI
+    /// order passes before it is given.
+    ///
+    /// # Errors
+    /// Returns the refusal [`Self::move_regiment`] would give.
+    pub fn check_move_regiment(
+        &self,
+        world: &GameWorld,
+        movement: &MovementState,
+        blockaded: &HashSet<SystemKey>,
+        troop: TroopKey,
+        target: RegimentTarget,
+    ) -> Result<(), TroopTransportError> {
+        self.plan_move(world, movement, blockaded, troop, target)
+            .map(|_| ())
+    }
+
+    fn plan_move(
+        &self,
+        world: &GameWorld,
+        movement: &MovementState,
+        blockaded: &HashSet<SystemKey>,
+        troop: TroopKey,
+        target: RegimentTarget,
+    ) -> Result<(RegimentPlace, SystemKey, RegimentLeg), TroopTransportError> {
         let is_alliance = world
             .troops
             .get(troop)
@@ -324,12 +359,7 @@ impl TroopTransportState {
         };
         Self::check_group(world, is_alliance, target)?;
         let leg = self.choose_leg(world, movement, blockaded, is_alliance, target)?;
-        if let (RegimentPlace::Cargo(current), RegimentLeg::Fleet(fleet)) = (place, leg) {
-            if current == fleet {
-                return Ok(RegimentMove::Unchanged);
-            }
-        }
-        self.execute(world, troop, place, origin, leg, tick)
+        Ok((place, origin, leg))
     }
 
     /// Advance travelling regiments to `now`: each whose day has come enters
@@ -1463,6 +1493,42 @@ mod tests {
         assert_eq!(state.advance_transit(&mut world, 30).arrived, vec![transit]);
         assert!(world.systems[destination].ground_units.contains(&troops[0]));
         assert!(state.transits().is_empty());
+    }
+
+    // FUN_00578d00: the move command's validation runs the same checks as
+    // the move and changes nothing.
+    #[test]
+    fn the_move_check_matches_the_move_and_changes_nothing() {
+        let (mut world, origin, destination, _, troops) = alliance_world(1);
+        let mut state = TroopTransportState::new();
+        let blockaded = HashSet::new();
+        let check = |state: &TroopTransportState, world: &GameWorld, target| {
+            state.check_move_regiment(world, &MovementState::new(), &blockaded, troops[0], target)
+        };
+        assert_eq!(
+            check(&state, &world, RegimentTarget::System(destination)),
+            Ok(())
+        );
+        assert!(state.transits().is_empty());
+        assert!(world.systems[origin].ground_units.contains(&troops[0]));
+        world.systems[destination].control = ControlKind::Controlled(Faction::Empire);
+        world.systems[destination].is_populated = true;
+        assert_eq!(
+            check(&state, &world, RegimentTarget::System(destination)),
+            Err(TroopTransportError::OtherSideDestination)
+        );
+        world.systems[destination].control = ControlKind::Controlled(Faction::Alliance);
+        move_to(
+            &mut state,
+            &mut world,
+            troops[0],
+            RegimentTarget::System(destination),
+        )
+        .unwrap();
+        assert_eq!(
+            check(&state, &world, RegimentTarget::System(origin)),
+            Err(TroopTransportError::RegimentEnRoute)
+        );
     }
 
     // FUN_004f9860: an en-route object cannot take a Move.

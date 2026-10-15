@@ -167,6 +167,15 @@ pub struct Tallies {
     /// record `+0x34` has `0x800000` (`FUN_0041bc10`). No code sets that
     /// bit (`ai-production-modules.md`, "Module 5"), so these are 0.
     pub special_ready: [i32; 4],
+    /// `+0x1d8`: the regiments' maintenance on the side's planets (the
+    /// sector records' `+0xfc`, own systems' `v[30]`; `FUN_0041b7e0`).
+    pub regiment_upkeep: i32,
+    /// `+0x250`: the regiments' maintenance aboard the side's fleets (the
+    /// own fleet records' `values[15]`, `FUN_0041ba80`).
+    pub cargo_upkeep: i32,
+    /// Controller `+4` bit `0x20`: some sector record has `+0x2c` bit
+    /// `0x2000000` (`FUN_0041b7e0`).
+    pub sector_short: bool,
 }
 
 impl Tallies {
@@ -195,6 +204,14 @@ impl Tallies {
                 .map(|s| s.values[sector_at(0x140)])
                 .fold(0, i32::max),
             special_ready: [0; 4],
+            regiment_upkeep: sum(0xfc),
+            cargo_upkeep: galaxy
+                .fleets
+                .values()
+                .filter(|f| f.flags & crate::ai_records::FLEET_OWN != 0)
+                .map(|f| f.values[15])
+                .sum(),
+            sector_short: galaxy.sectors.iter().any(|s| s.summary & 0x200_0000 != 0),
         }
     }
 }
@@ -1016,13 +1033,19 @@ pub(crate) fn nearest(
 /// Module 1's state 8 (`FUN_004dc9f0`; module 2's `FUN_004e4300`):
 /// Destination on the yard's manager, to the target system.
 pub(crate) fn destination(target: Target, yard: Yard) -> Option<AIAction> {
+    destination_in(ProductionArea::ConstructionYard, target, yard)
+}
+
+/// Destination on the yard's `area` manager, to the target system
+/// (module 6's `FUN_004e0a30` on the troop manager).
+pub(crate) fn destination_in(area: ProductionArea, target: Target, yard: Yard) -> Option<AIAction> {
     let target = target.system()?;
     let Yard::Manager(yard) = yard else {
         return None;
     };
     Some(AIAction::SetDestination {
         system: yard,
-        area: ProductionArea::ConstructionYard,
+        area,
         destination: target,
     })
 }
@@ -1370,6 +1393,9 @@ pub(crate) mod tests {
         special_upkeep: 0,
         special_goal: 0,
         special_ready: [0; 4],
+        regiment_upkeep: 0,
+        cargo_upkeep: 0,
+        sector_short: false,
     };
 
     #[test]
@@ -2352,6 +2378,9 @@ pub(crate) mod tests {
                 special_upkeep: 0,
                 special_goal: 0,
                 special_ready: [0; 4],
+                regiment_upkeep: 0,
+                cargo_upkeep: 0,
+                sector_short: false,
             }
         );
     }

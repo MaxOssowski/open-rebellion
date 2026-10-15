@@ -226,6 +226,19 @@ impl BlockadeState {
 pub struct BlockadeSystem;
 
 impl BlockadeSystem {
+    /// The systems blockaded now, by [`Self::system_is_blockaded`]: what
+    /// [`Self::advance`] would store, for a check that runs between
+    /// advances.
+    #[must_use]
+    pub fn blockaded_now(world: &GameWorld) -> HashSet<SystemKey> {
+        world
+            .systems
+            .iter()
+            .filter(|(_, sys)| Self::system_is_blockaded(world, sys))
+            .map(|(key, _)| key)
+            .collect()
+    }
+
     /// Advance blockade state for all systems.
     ///
     /// For each system in `world`:
@@ -634,6 +647,20 @@ mod tests {
             .iter()
             .any(|e| matches!(e, BlockadeEvent::BlockadeStarted { .. })));
         assert!(state.is_blockaded(sys));
+    }
+
+    #[test]
+    fn the_blockade_now_is_what_an_advance_would_store() {
+        let (mut world, sys) = make_world();
+        assert!(BlockadeSystem::blockaded_now(&world).is_empty());
+        add_fleet(&mut world, sys, false);
+        let mut state = BlockadeState::new();
+        BlockadeSystem::advance(&mut state, &world, &[tick(1)]);
+        assert_eq!(
+            &BlockadeSystem::blockaded_now(&world),
+            state.blockaded_systems()
+        );
+        assert!(BlockadeSystem::blockaded_now(&world).contains(&sys));
     }
 
     #[test]

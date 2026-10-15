@@ -121,10 +121,10 @@ exists (`+0x50` bit 6, `object-state-flags.md`), else 0. `DAT_006b9050` is
 GNPRTB 1, which is 100 in every column (`FUN_0053e0b0`, `build-delivery.md`
 "Speed (`+0x34`) and mobile"). Special forces and facilities share it. So `1`/`0x18` never
 refuses a live regiment. A regiment may therefore move on its own to another
-system: onto a planet of its side, or aboard a friendly ship there. `fleet-window.md` and the port carried "a regiment has no speed"
-(hyp), and the port refuses a regiment's cross-system move with
-`TroopTransportError::RegimentCannotTravel`. That refusal is not the
-original's.
+system: onto a planet of its side, or aboard a friendly ship there. `fleet-window.md` and the port once carried "a regiment has no speed"
+(hyp) and refused a regiment's cross-system move; the port now moves it
+with a transit (`TroopTransportState::move_regiment`, "Port notes"
+below).
 
 ## Execute (`FUN_00556390`)
 
