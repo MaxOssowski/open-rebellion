@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::ai_module1::{Controller, Tallies, ANY};
+use crate::ai_module8::{SectorPlanner, CYCLED, REVIEWED};
 use crate::ai_records::{pick, picks, Galaxy, Mask, Order};
 use crate::ids::{SectorKey, SystemKey};
 
@@ -77,6 +78,8 @@ pub struct StrategyInputs<'a> {
     pub day: u64,
     /// System record `+0x44`: the day each system was last seen.
     pub seen: &'a HashMap<SystemKey, u64>,
+    /// Controller `+0xd8`: module 8's sector planners.
+    pub planners: &'a mut [SectorPlanner],
     pub coin: &'a mut dyn FnMut() -> bool,
 }
 
@@ -124,19 +127,24 @@ impl Strategy {
     /// headquarters' `+0x30` bit `0x10000000`) are not ported; neither
     /// are the Alliance's states after the strategy (`FUN_004bf3e0`).
     pub fn step(&mut self, io: &mut StrategyInputs<'_>) {
-        self.choose_posture(&io.tallies, io.controller);
+        self.choose_posture(&io.tallies, io.controller, io.planners);
         if io.controller.flags & REPLAN != 0 {
             self.short = false;
             self.name_sectors(io);
             io.controller.flags &= !REPLAN;
         }
-        self.review(io.controller);
+        self.review(io);
     }
 
     /// `FUN_004bf490`: keep the posture while its condition holds, else
     /// choose again, and build the posture's strategy when it has none of
     /// that kind.
-    fn choose_posture(&mut self, t: &Tallies, controller: &mut Controller) {
+    fn choose_posture(
+        &mut self,
+        t: &Tallies,
+        controller: &mut Controller,
+        planners: &mut [SectorPlanner],
+    ) {
         let mut ratio = t.strength as f32;
         if t.enemy_strength > 0 {
             ratio /= t.enemy_strength as f32;
@@ -196,6 +204,11 @@ impl Strategy {
         // planners' 0x8000000); the plans stay. A new one replans
         // (controller +4 bit 2).
         if self.kind != self.posture {
+            if self.kind != 0 {
+                for p in planners.iter_mut() {
+                    p.flags &= !REVIEWED;
+                }
+            }
             self.kind = self.posture;
             self.short = false;
             self.grow = false;
@@ -501,18 +514,59 @@ impl Strategy {
             .any(|s| io.galaxy.system(s).is_some_and(|r| r.values[key] >= 1))
     }
 
-    /// `FUN_004e5560`, state 2: once every plan's planner has finished
-    /// (`+0x60` bits `0x8000000` and `0x4000000`), shrink when more than
-    /// one planner gave its sector up (`0x10000`), else grow unless the
-    /// last naming fell short; either names the sectors again.
-    ///
-    /// port: module 8's planners are not ported, so a plan never has one:
-    /// the strategy grows only while it has no plan.
-    fn review(&mut self, controller: &mut Controller) {
+    /// `FUN_004e5560`, state 2: each plan's planner (its sector's `+0x38`)
+    /// takes the plan's id (`FUN_004769f0`). Once every plan's planner has
+    /// `+0x60` bits `0x8000000` and `0x4000000`: a planner without
+    /// `0x20000` asks for a replan, each loses `0x8000000`; more than one
+    /// that gave up (`0x10000`, with the last one's) shrinks the list, else
+    /// with all held (`0x80000`) and the last naming not short it grows;
+    /// either names the sectors again (controller `+4` bit 2).
+    fn review(&mut self, io: &mut StrategyInputs<'_>) {
         self.grow = false;
         self.shrink = false;
-        if self.plans.is_empty() && !self.short {
-            controller.flags |= REPLAN;
+        let mut done = true;
+        let mut owners = Vec::new();
+        for (i, plan) in self.plans.iter().enumerate() {
+            let Some(record) = io.galaxy.sector(plan.sector) else {
+                continue;
+            };
+            let owner = io.planners.iter().position(|p| p.id == record.planner);
+            if let Some(at) = owner {
+                let p = &mut io.planners[at];
+                p.plan_id = u32::try_from(i + 1).unwrap_or(u32::MAX);
+                owners.push(at);
+                if p.flags & REVIEWED != 0 && p.flags & CYCLED != 0 {
+                    continue;
+                }
+            }
+            done = false;
+        }
+        if !done {
+            return;
+        }
+        let (mut unheld, mut gave_up, mut last, mut count) = (false, false, false, 0);
+        for at in owners {
+            let p = &mut io.planners[at];
+            if p.flags & 0x8_0000 == 0 {
+                unheld = true;
+            }
+            last = p.flags & 0x1_0000 != 0;
+            if last {
+                gave_up = true;
+                count += 1;
+            }
+            if p.flags & 0x2_0000 == 0 {
+                io.controller.flags |= REPLAN;
+            }
+            p.flags &= !REVIEWED;
+        }
+        if gave_up {
+            if last && count > 1 {
+                io.controller.flags |= REPLAN;
+                self.shrink = true;
+            }
+        } else if !unheld && !self.short {
+            io.controller.flags |= REPLAN;
             self.grow = true;
         }
     }
@@ -610,6 +664,7 @@ mod tests {
         seen: HashMap<SystemKey, u64>,
         day: u64,
         is_alliance: bool,
+        planners: Vec<SectorPlanner>,
     }
 
     impl Run {
@@ -621,6 +676,7 @@ mod tests {
                 seen: HashMap::new(),
                 day: 0,
                 is_alliance: false,
+                planners: Vec::new(),
             }
         }
 
@@ -633,6 +689,7 @@ mod tests {
                 is_alliance: self.is_alliance,
                 day: self.day,
                 seen: &self.seen,
+                planners: &mut self.planners,
                 coin: &mut coin,
             };
             f(&mut io)
@@ -648,7 +705,7 @@ mod tests {
             yard_requests,
             ..Controller::default()
         };
-        strategy.choose_posture(&t, &mut controller);
+        strategy.choose_posture(&t, &mut controller, &mut []);
         (strategy.posture, controller.flags & (WEAK | SECURE))
     }
 
@@ -815,7 +872,7 @@ mod tests {
                                                 flags,
                                                 ..Controller::default()
                                             };
-                                            strategy.choose_posture(&t, &mut controller);
+                                            strategy.choose_posture(&t, &mut controller, &mut []);
                                             let want = decompiled_posture(&t, yards, before, flags);
                                             assert_eq!(
                                                 (strategy.posture, controller.flags & !REPLAN),
@@ -1017,6 +1074,113 @@ mod tests {
         assert_eq!(run.with(|io| five.first_choice(io)), Some((sectors[0], 2)));
     }
 
+    /// Two plans, each sector held by a planner with `flags`.
+    fn reviewed(flags: [u32; 2], short: bool) -> (Strategy, Run) {
+        let (mut g, keys) = galaxy(2);
+        g.sectors[0].planner = 1;
+        g.sectors[1].planner = 2;
+        let mut run = Run::new(g);
+        run.planners = (0..2)
+            .map(|i| SectorPlanner {
+                id: u32::try_from(i).unwrap() + 1,
+                sector: Some(keys[i]),
+                flags: flags[i],
+                ..SectorPlanner::default()
+            })
+            .collect();
+        run.controller.flags = 0;
+        let mut strategy = Strategy {
+            posture: 1,
+            kind: 1,
+            short,
+            plans: keys
+                .iter()
+                .map(|&sector| SectorPlan {
+                    sector,
+                    kind: 3,
+                    param: 0,
+                })
+                .collect(),
+            ..Strategy::default()
+        };
+        run.with(|io| strategy.review(io));
+        (strategy, run)
+    }
+
+    #[test]
+    fn the_review_waits_for_every_plan_s_planner_to_cycle() {
+        // FUN_004e5560: each plan's planner takes its id (FUN_004769f0);
+        // a planner without both +0x60 0x8000000 and 0x4000000 holds the
+        // review back.
+        let done = REVIEWED | CYCLED | 0xa_0000;
+        let (s, run) = reviewed([done, CYCLED | 0xa_0000], false);
+        assert!(!s.grow && !s.shrink);
+        assert_eq!(run.controller.flags, 0);
+        assert_eq!(
+            run.planners.iter().map(|p| p.plan_id).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(run.planners[0].flags, done);
+        // Either bit alone holds it back.
+        for half in [REVIEWED, CYCLED] {
+            let (s, run) = reviewed([done, half | 0xa_0000], false);
+            assert!(!s.grow);
+            assert_eq!(run.controller.flags, 0);
+        }
+    }
+
+    #[test]
+    fn with_every_plan_held_the_strategy_grows_unless_short() {
+        // All done, all held (0x80000), none gave up: grow (+0x14) and
+        // replan; each planner loses 0x8000000. Short (+0x10 bit 1): no.
+        let done = REVIEWED | CYCLED | 0xa_0000;
+        let (s, run) = reviewed([done, done], false);
+        assert!(s.grow && !s.shrink);
+        assert_eq!(run.controller.flags, REPLAN);
+        assert!(run.planners.iter().all(|p| p.flags == CYCLED | 0xa_0000));
+        let (s, run) = reviewed([done, done], true);
+        assert!(!s.grow);
+        assert_eq!(run.controller.flags, 0);
+        // A sector not held (no 0x80000): no growth.
+        let (s, _) = reviewed([done, REVIEWED | CYCLED | 0x2_0000], false);
+        assert!(!s.grow);
+    }
+
+    #[test]
+    fn two_planners_giving_up_shrink_the_list() {
+        // More than one 0x10000, the last planner's among them: shrink
+        // (+0x18) and replan; one alone does neither, and blocks growth.
+        let gave_up = REVIEWED | CYCLED | 0xb_0000;
+        let done = REVIEWED | CYCLED | 0xa_0000;
+        let (s, run) = reviewed([gave_up, gave_up], false);
+        assert!(s.shrink && !s.grow);
+        assert_eq!(run.controller.flags, REPLAN);
+        let (s, run) = reviewed([gave_up, done], false);
+        assert!(!s.shrink && !s.grow);
+        assert_eq!(run.controller.flags, 0);
+        // A planner without 0x20000 asks for a replan by itself.
+        let (s, run) = reviewed([REVIEWED | CYCLED | 0x8_0000, gave_up], false);
+        assert!(!s.shrink && !s.grow);
+        assert_eq!(run.controller.flags, REPLAN);
+    }
+
+    #[test]
+    fn a_new_posture_clears_the_planners_review_bit() {
+        // FUN_004e54f0 on the old strategy: every planner on controller
+        // +0xd8 loses +0x60 0x8000000; the first strategy has no old one.
+        let mut planners = vec![SectorPlanner {
+            flags: REVIEWED | CYCLED,
+            ..SectorPlanner::default()
+        }];
+        let mut strategy = Strategy::default();
+        let mut controller = Controller::default();
+        strategy.choose_posture(&Tallies::default(), &mut controller, &mut planners);
+        assert_eq!(planners[0].flags, REVIEWED | CYCLED);
+        controller.yard_requests = 1;
+        strategy.choose_posture(&Tallies::default(), &mut controller, &mut planners);
+        assert_eq!(planners[0].flags, CYCLED);
+    }
+
     #[test]
     fn a_posture_is_kept_while_its_own_condition_holds() {
         // FUN_004bf490's switch on +0x5c: posture 6 needs only strength,
@@ -1055,14 +1219,14 @@ mod tests {
         let mut strategy = Strategy::default();
         let mut controller = Controller::default();
         let weak = Tallies::default();
-        strategy.choose_posture(&weak, &mut controller);
+        strategy.choose_posture(&weak, &mut controller, &mut []);
         assert_eq!((strategy.kind, controller.flags & REPLAN), (1, REPLAN));
         controller.flags = 0;
         strategy.grow = true;
-        strategy.choose_posture(&weak, &mut controller);
+        strategy.choose_posture(&weak, &mut controller, &mut []);
         assert_eq!((controller.flags & REPLAN, strategy.grow), (0, true));
         controller.yard_requests = 1;
-        strategy.choose_posture(&weak, &mut controller);
+        strategy.choose_posture(&weak, &mut controller, &mut []);
         assert_eq!((strategy.kind, controller.flags & REPLAN), (4, REPLAN));
         assert!(!strategy.grow);
     }

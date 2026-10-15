@@ -1,0 +1,195 @@
+{
+  "command": "rebellion-playtest data/base --seed 42 --ticks 600 --dual-ai (temporary eprintln trace in AISystem::module8_step, removed)",
+  "planner_changes": [
+    {
+      "day": 3,
+      "side": "Alliance",
+      "before": [],
+      "after": [
+        {
+          "id": 1,
+          "sector": null,
+          "kind": 0,
+          "plan_id": 0
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "side": "Alliance",
+      "before": [
+        {
+          "id": 1,
+          "sector": null,
+          "kind": 0,
+          "plan_id": 0
+        }
+      ],
+      "after": [
+        {
+          "id": 1,
+          "sector": "2v1",
+          "kind": 4,
+          "plan_id": 1
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "side": "Empire",
+      "before": [],
+      "after": [
+        {
+          "id": 1,
+          "sector": null,
+          "kind": 0,
+          "plan_id": 0
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "side": "Empire",
+      "before": [
+        {
+          "id": 1,
+          "sector": null,
+          "kind": 0,
+          "plan_id": 0
+        }
+      ],
+      "after": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 4,
+          "plan_id": 1
+        }
+      ]
+    },
+    {
+      "day": 16,
+      "side": "Alliance",
+      "before": [
+        {
+          "id": 1,
+          "sector": "2v1",
+          "kind": 4,
+          "plan_id": 1
+        }
+      ],
+      "after": [
+        {
+          "id": 1,
+          "sector": "1v1",
+          "kind": 3,
+          "plan_id": 1
+        }
+      ]
+    },
+    {
+      "day": 122,
+      "side": "Empire",
+      "before": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 4,
+          "plan_id": 1
+        }
+      ],
+      "after": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 2,
+          "plan_id": 1
+        }
+      ]
+    },
+    {
+      "day": 123,
+      "side": "Empire",
+      "before": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 2,
+          "plan_id": 1
+        }
+      ],
+      "after": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 4,
+          "plan_id": 1
+        }
+      ]
+    },
+    {
+      "day": 142,
+      "side": "Empire",
+      "before": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 4,
+          "plan_id": 1
+        }
+      ],
+      "after": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 2,
+          "plan_id": 1
+        }
+      ]
+    },
+    {
+      "day": 143,
+      "side": "Empire",
+      "before": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 2,
+          "plan_id": 1
+        }
+      ],
+      "after": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 4,
+          "plan_id": 1
+        }
+      ]
+    },
+    {
+      "day": 364,
+      "side": "Empire",
+      "before": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 4,
+          "plan_id": 1
+        }
+      ],
+      "after": [
+        {
+          "id": 1,
+          "sector": "9v1",
+          "kind": 2,
+          "plan_id": 1
+        }
+      ]
+    }
+  ],
+  "plan_steps_deciding": {
+    "Alliance": 2263,
+    "Empire": 2112
+  }
+}

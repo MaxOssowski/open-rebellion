@@ -1905,6 +1905,17 @@ cross-runtime proof remain open
   plan objects are not ported, so each side keeps one planned sector and
   no plan gives an order yet. Save v49; golden `v1:bde18d3a1df8ed02` ->
   `v1:cca1045386d40ca4` (`evidence/2026-10-15-ai-strategy-posture/`).
+- Module 8's planners (2026-10-15), stage 2: `ai_module8.rs` ports the
+  module's states 1 to 3 (`FUN_004cf630`): a planner is added while a
+  planned sector lacks one and every planner has cycled, dropped when it
+  holds no plan (`FUN_004cf700`); each cycle takes the next planner
+  (`FUN_004cf760`), which keeps its sector or claims the nearest planned
+  one, else one by a random key (`FUN_004cf7c0`, `FUN_0041a1d0`), and
+  binds the plan's kind (`FUN_004773f0`). The strategy's review now reads
+  the planners (`FUN_004e5560`). port: the plan objects are not ported;
+  in state 4 the port's fleet heuristics stand in, so module 8 orders only
+  while a planner holds a plan. Save v50; golden `v1:cca1045386d40ca4` ->
+  `v1:6cc71d2663560368` (`evidence/2026-10-15-ai-sector-planners/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

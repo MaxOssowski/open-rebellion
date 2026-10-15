@@ -312,6 +312,12 @@ impl<'a> Planner<'a> {
         self.rng.draw(9) < 5
     }
 
+    /// `FUN_0041cd80(n)`: a draw from 0 to `n - 1` from the planner's
+    /// draws.
+    pub(crate) fn random(&mut self, n: i32) -> i32 {
+        self.rng.draw(n - 1)
+    }
+
     /// The flags (`+0x30`) of `member`'s record, which the fleet records
     /// read for the people aboard (`FUN_00484630`).
     pub(crate) fn flags(&self, member: MissionMember) -> Option<u32> {
@@ -705,6 +711,17 @@ fn agent_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_ranged_draw_covers_zero_to_one_below_its_bound() {
+        // FUN_0041cd80(n): 0 to n - 1.
+        let world = GameWorld::default();
+        let mut planner = Planner::new(&world, &MissionState::new(), &HashSet::new(), true, 3);
+        let draws: Vec<i32> = (0..400).map(|_| planner.random(20)).collect();
+        assert!(draws.iter().all(|d| (0..20).contains(d)));
+        assert_eq!(draws.iter().max(), Some(&19));
+        assert_eq!(draws.iter().min(), Some(&0));
+    }
 
     use crate::world::{Character, MissionMemberRules, MissionRecord, SkillPair, SpecialForceUnit};
 

@@ -214,6 +214,30 @@ units, cancels its missions, clears the system's `+0x30` bits
 `FUN_00478140`, `FUN_004adb70`, `FUN_00479560`...) and the six plan
 objects (about 7,000 decompiled lines) are not read yet.
 
+## Ported (2026-10-15, save v50): module 8's planners
+
+`crates/rebellion-core/src/ai_module8.rs`: `Module8` (`+0x3c..+0x44`, the
+planner list controller `+0xd8` with its id counter) and `SectorPlanner`
+(`+0x18` id, `+0x1c` step state, `+0x34` sector, `+0x44` plan id, the plan
+object's kind, `+0x60` flags). States 1 to 3 of `FUN_004cf630`
+(`FUN_004cf700`, `FUN_0042f350`, `FUN_0042f3d0`, `FUN_004cf760`,
+`FUN_004cf7c0`, `FUN_004768b0`, `FUN_004773f0`, `FUN_00477190`); the
+refresh writes each planner's sector `+0x38` (`mark_planners`). The
+strategy's review now reads the planners (`FUN_004e5560` in full) and a
+posture change clears their `0x8000000` (`FUN_004e54f0`).
+`Planner::random` is `FUN_0041cd80(n)`; `FUN_0041a1d0`'s key draws
+interleave with its tie coins.
+
+port:
+- The plan objects (`FUN_00477630`) and the planner's step
+  (`FUN_004774c0`) are not ported. In state 4 a planner holding a plan
+  runs the port's fleet heuristics instead, decided once a cycle and
+  issued one order a step; without a planner module 8 orders nothing.
+- No planner gains `+0x60` bits, so module 8 never adds a second planner
+  and the strategy never grows past one plan.
+- The planner holds no fleets, units or missions, so its reset releases
+  none.
+
 ## Ported (2026-10-15, save v49)
 
 `crates/rebellion-core/src/ai_strategy.rs`: `Strategy` (posture, kind,
