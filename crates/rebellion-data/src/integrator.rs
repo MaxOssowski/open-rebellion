@@ -178,6 +178,18 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": format!("{to:?}"),
             })
         }
+        AIAction::MoveShips { fleet, ships, to } => {
+            let from = world
+                .fleets
+                .get(*fleet)
+                .map_or_else(|| "unknown".into(), |f| sys_name(world, f.location));
+            serde_json::json!({
+                "type": "MoveShips",
+                "ships": ships.len(),
+                "from": from,
+                "to": sys_name(world, *to),
+            })
+        }
         AIAction::SetDestination {
             system,
             area,
@@ -2094,8 +2106,28 @@ fn apply_ai_actions_inner(
                 true
             }
             AIAction::Scrap { team } => ai_state.faction.is_some_and(|side| {
-                rebellion_core::scrap::scrap_team(world, production, side.as_faction(), team)
+                let done =
+                    rebellion_core::scrap::scrap_team(world, production, side.as_faction(), team)
+                        .is_ok();
+                // A scrapped ship's regiments beyond the room left are lost.
+                troop_transport.destroy_untransportable_cargo(world);
+                done
+            }),
+            AIAction::MoveShips { fleet, ships, to } => ai_state.faction.is_some_and(|side| {
+                let roster = rebellion_core::fleet_join::roster(world, *fleet);
+                roster.is_some_and(|roster| {
+                    rebellion_core::fleet_join::move_ships_to_system(
+                        world,
+                        movement_state,
+                        troop_transport,
+                        *fleet,
+                        ships,
+                        roster,
+                        *to,
+                        matches!(side, AiFaction::Alliance),
+                    )
                     .is_ok()
+                })
             }),
             AIAction::MoveRegiments { troops, to } => {
                 let blockaded = rebellion_core::blockade::BlockadeSystem::blockaded_now(world);
@@ -2870,6 +2902,90 @@ mod tests {
             rebellion_core::squadrons::total(&world.systems[system].fighters),
             1
         );
+    }
+
+    #[test]
+    fn a_ship_move_sends_the_chosen_ships_off_and_a_scrapped_ship_s_cargo_is_lost() {
+        // Module 0xb's Move 0x201 of ships (FUN_004c8e90), carried out by
+        // fleet_join::move_ships_to_system: the chosen ship leaves as a
+        // fleet of its own. Its Scrap (FUN_004cab20) takes the last
+        // transport, and the regiment it carried has no room left.
+        let mut world = GameWorld::default();
+        let kuat = add_system(&mut world, "Kuat");
+        let fondor = add_system(&mut world, "Fondor");
+        world.systems[fondor].x = 40;
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            troop_capacity: 1,
+            hyperdrive: 100,
+            ..Default::default()
+        });
+        let ship = || rebellion_core::world::ShipInstance::new(class, 100, false);
+        let fleet = world.fleets.insert(Fleet {
+            location: kuat,
+            capital_ships: vec![ship(), ship()],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[kuat].fleets.push(fleet);
+        let mut movement = MovementState::new();
+        let mut transport = TroopTransportState::new();
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+        let mut apply = |world: &mut GameWorld,
+                         movement: &mut MovementState,
+                         transport: &mut TroopTransportState,
+                         action: AIAction| {
+            integrator.apply_ai_actions(
+                &[action],
+                &mut AIState::new(AiFaction::Empire),
+                &mut MissionState::new(),
+                &mut ManufacturingState::new(),
+                movement,
+                transport,
+                &mut ProductionState::new(),
+                world,
+                5,
+                false,
+            );
+        };
+
+        apply(
+            &mut world,
+            &mut movement,
+            &mut transport,
+            AIAction::MoveShips {
+                fleet,
+                ships: vec![1],
+                to: fondor,
+            },
+        );
+        assert_eq!(world.fleets[fleet].capital_ships.len(), 1);
+        assert_eq!(world.fleets.len(), 2);
+        let gone = world.fleets.keys().find(|&k| k != fleet).unwrap();
+        assert!(movement.is_in_transit(gone));
+
+        let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId(0x1000_0001),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[kuat].ground_units.push(regiment);
+        transport.embark(&mut world, fleet, &[regiment]).unwrap();
+        world.fleets[fleet]
+            .characters
+            .push(rebellion_core::ids::CharacterKey::default());
+        apply(
+            &mut world,
+            &mut movement,
+            &mut transport,
+            AIAction::Scrap {
+                team: vec![rebellion_core::scrap::ScrapTarget::Ship { fleet, index: 0 }],
+            },
+        );
+        assert!(world.fleets[fleet].capital_ships.is_empty());
+        assert!(!world.troops.contains_key(regiment));
     }
 
     #[test]

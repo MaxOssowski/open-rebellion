@@ -981,6 +981,222 @@ none; module 8's planners are not ported; the fallbacks controller `+0x20`
 and `+0x24` have no counterpart; every squadron is at full strength, so
 the weakest is the smallest class.
 
+## Module `0xb` (`FUN_004c8820`, step `FUN_004c8b30`)
+
+Read 2026-10-15, the queries' arguments taken from the assembly and the
+shared functions compared instruction by instruction. Module `0xb` keeps
+the side's capital ships: it sends damaged ships to a shipyard site and
+the Death Star home, builds capital ships at its shipyard sites, scraps
+one when their upkeep is over budget, and builds shipyards. Its sites
+carry the mark `0x200000`, as module 7's do.
+
+The constructor sets `+0x24 = 0x1e` (30) and clears `+0x38`, `+0x3c` and
+`+0x60..+0x74`.
+
+| Field | Meaning |
+|---|---|
+| `+0x28` | the roles tried: bits `0x1000000..0x40000000` (module base word) |
+| `+0x38` | the cycle: `0x3f8` fleets, `0x3f9` ships, `0x3ec` yards |
+| `+0x50` | the site, then its shipyard manager; in the yard cycle the borrowed construction yard's manager |
+| `+0x54` | the fleet the fleet cycle works on |
+| `+0x58` | the yard cycle's target |
+| `+0x5c` | the class to build |
+| `+0x60`, `+0x64`, `+0x68` | the role: class flags, class key, its tried bit |
+| `+0x6c` | how many |
+| `+0x70` | the borrowed yard's construction yards (`v[6]`, less one above 1) |
+| `+0x74` | the target's free room `v[0x33]` (`FUN_004cacc0`) |
+| `+0x78` | the sites, marked `0x200000` |
+| `+0x80` | the claimed sites |
+
+### The step (`FUN_004c8b30`)
+
+Not ready: clear `+0x38`, `+0x3c`; complete. `0x3ec`: `FUN_004c8d20`;
+`0x3f8`: `FUN_004c8ba0`; `0x3f9`: `FUN_004c8c20`; any other value: `+0x38
+= 0x3f8`, `+0x3c = 0`. The cycles run in turn: `0x3f8`, `0x3f9`, `0x3ec`.
+
+### The fleet cycle (`FUN_004c8ba0`)
+
+| State | Action |
+|---|---|
+| other | 2 |
+| 2 | `FUN_004c8e90`: a Move or none; 3. With one, complete and raise. |
+| 3 | `FUN_004c94c0`: a Move, a Create Fleet or none; 4. With one, complete and raise. |
+| 4 | `FUN_004c9cb0`: a Move or none. `+0x3c = 0`, `+0x38 = 0x3f9`, complete. |
+
+- `FUN_004c8e90` sends damaged ships to a shipyard. The fleets with record
+  bits `0x1005` (own, a damaged ship that can move), forbidding `0x802`
+  (en route), by key 0 (ships), order 1 (`FUN_0041a4c0`), are walked best
+  first into `+0x54`: first for one at an opponent's system (`+0x30` bit
+  4), failing that for one at a system without the mark `0x200000`. Its
+  ships whose record has `0x1000` and not `0x800800` form the team; the
+  destination is the system nearest the fleet with the mark `0x200000`
+  and no blockade (`FUN_00419b80`: sector `+0x24` 8, `+0x2c` `0x20000`;
+  `FUN_0041a400`: `+0x28` `0x200000`, forbidding 2; both order 2), else
+  the nearest own system without a blockade (sector `+0x2c` 4; system
+  `+0x30` 1, forbidding `+0x28` 2). A team and a system give Move `0x201`.
+- The ship record (`FUN_00484630`) sets `0x1000` for a damaged ship
+  (object `+0x50` bit `0x200`, `GameObj_SetDamaged`) whose slot `+0x34(1)`
+  gives a speed, and `0x800000` for one that has none. A capital ship's
+  slot `+0x34` is `FUN_00500820` (vtables `0x65d650`, `0x65d930`,
+  `0x65dc10`): its hyperdrive less its damage, else its damaged rating,
+  else the default speed `DAT_006b9050` while byte `+0x41` is clear (the
+  port's `movement::capital_ship_speed`). `FUN_00501c00` sets Damaged
+  while the hull damage (slot `+0x274`, `+0x60`) or a system damage nibble
+  (`FUN_005006a0`, `+0x64`) is not 0. A ship with `0x1000` keeps no
+  bombardment (`+0x48`, class `+0x38`), and its fleet takes `0x1000`
+  instead of counting it among the armed ships (`FUN_00433780`).
+- `FUN_004c94c0` walks the fleets with `5` (own), forbidding `0x3802`
+  (en route, damaged), by key 0, order 2, until one gives an order. For a
+  fleet with no inactive ship (`+0x38` `0x400` clear), at a system with a
+  record:
+  - with the Death Star (`0x10`), while Coruscant (`0x90000109`) is the
+    side's and the fleet is elsewhere: Move the fleet there;
+  - else, when its system is not an own base (`+0x30` 1 and `0x40000`):
+    the base nearest it in its sector (`FUN_0041a400`, `+0x30` `0x40001`,
+    forbidding `+0x28` 2), else, in a sector with a headquarters (`+0x24`
+    `0x40000000`), the headquarters (`+0x28` `0x80000000`, `+0x30` 1);
+    else the nearest base in another sector (`FUN_0041b2b0`: the sectors
+    by distance, skipping the fleet's own), else the nearest own system in
+    another sector. Move the fleet there.
+  A fleet with an inactive ship and a standing one (`0x4000`) gives Create
+  Fleet (`0x270`) to its standing own ships (`FUN_0041ac80`: ship `0x4000`,
+  forbidding `0x803800`).
+- The bases (`+0x30` `0x40000`, kept across refreshes) are set by the
+  fleet plan objects' slots `FUN_004b24b0` (`0x60000`), `FUN_004b5b20` and
+  `FUN_004b8070` (`0x50000`), in vtables `0x65c100`, `0x65c1b0` and
+  `0x65c210`.
+- `FUN_004c9cb0` (first read) runs while controller `+4` has `0x30`: it
+  needs a module 8 sector planner (`FUN_00419e90`, sector `+0x24`
+  `0x8000000`) whose request (`FUN_00476b70`) is above 0 to name a
+  system. It then walks the side's fleets (`0x5`, forbidding 2, key `0xc`)
+  and their own ships (`FUN_0041ac80`: `0x24000`, forbidding `0x800`, key
+  9) for the regiments aboard (`FUN_00504c40`) and gives Move `0x201`.
+  With no planner it names no system and gives nothing.
+
+### The ship cycle (`FUN_004c8c20`)
+
+| State | Action |
+|---|---|
+| other | 8 |
+| 8 | `FUN_004ca300` keeps a site: 5. None: `0xd`. |
+| 5 | `FUN_004ca5e0` chooses the role: 9. |
+| 9 | `+0x3c` = `FUN_004ca910` (`0xf`, 10 or 0); 0: `+0x38 = 0x3ec`, complete. |
+| `0xd` | `FUN_004caad0`: over budget: 10. Else `+0x3c = 0`, `+0x38 = 0x3ec`, not complete. |
+| 10 | `FUN_004cab20`: a Scrap or none. End. |
+| `0xf` | `FUN_004cba90`: Build `0x211`, class `+0x5c`, count `+0x6c`, on the manager `+0x50`. End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3ec`, complete. No Destination precedes the
+Build.
+
+- `FUN_004ca300` is module 5's `FUN_004d01a0` for shipyards: the first
+  site still the side's and marked `0x200000` with shipyards (`v[4] > 0`),
+  idle (`+0x28` `0x200`) and calm (`+0x28 & 3` clear), its manager area 0;
+  a site that lost its mark leaves the list; falling back on controller
+  `+0x1c`.
+- `FUN_004ca5e0` counts the requests of module 8's sector planners
+  (controller `+0xd8`, request `+0x64` bits 4, 1, `0x80`, `0x10`, 8 and,
+  with controller `+4` bit `0x1000000`, `0x800`) whose role was not
+  tried, and takes the role with the most. With none:
+  - troop carriers when the fleets' troop room (controller `+0x260`) is
+    below the most regiments a system needs to be taken (`+0x20c`, the
+    sector records' greatest `+0x134`, systems' `v[52]`);
+  - the Death Star for the Empire (`+0x30 == 2`) with two sites or more,
+    no Death Star in its fleets (controller `+4` bit 4) and the role not
+    tried;
+  - armed ships when its fleets have none (`+0x268 < 1`);
+  - ships with lasers when none (`+0x26c < 1`);
+  - carriers when the fleets' hangar room `+0x27c` is at most controller
+    `+0x16c` (no writer found).
+
+  | Role | Class flags `+0x60` | Key `+0x64` | Tried `+0x68` |
+  |---|---|---|---|
+  | troop carrier | `0x100004` | `0x100`: troop capacity | `0x4000000` |
+  | armed | `0x100001` | `0x80000`: attack per maintenance | `0x1000000` |
+  | lasers | `0x100002` | `0x400`: the laser figure | `0x2000000` |
+  | bombardment | `0x100800` | `0x800`: bombardment | `0x10000000` |
+  | carrier | `0x100102` | `0x80`: fighter capacity | `0x8000000` |
+  | interdictor | `0x100400` | `0x10000`: shield recharge | `0x40000000` |
+  | Death Star | `0x80` | `0x200`: attack | `0x20000000` |
+
+  The keys are the ship class record's slot `+4` (`FUN_00473930`, vtable
+  `0x65a398`).
+- `FUN_004ca910` clears the tried bits, then with `w` = `FUN_004cc220`:
+  `w < 0` gives 10, `w == 0` 0. Else the side's shipyard classes with the
+  role's flags (`FUN_0041b270(0x28, +0x60, +0x64, 1)`, `FUN_0042e720`) are
+  taken best first until one's maintenance is at most `w`: count 1,
+  `0xf`. With none, the role's bit is tried (`+0x28 |= +0x68`), 0. With no
+  role (flags 0) every shipyard class qualifies, fighters too, at key 0.
+- `FUN_004cc220`: 90% of `+0x24` percent of the capacity, less the
+  capital ships' upkeep (controller `+0x24c`); 0 when the side's free
+  maintenance falls short. `FUN_004caad0`: the same, below 0.
+- `FUN_004cab20`: the side's fleet not en route and with no inactive ship
+  (`5`, forbidding `0x402`) with the least upkeep (key `0xe`, order 2),
+  its own ship (`0x24000`, forbidding `0x2800`) with the least
+  maintenance (key `0xb`, order 2): Scrap `0x200`.
+- The controller sums (`FUN_0041ba80`, the side's own fleet records):
+  `+0x24c` `+0x88` (upkeep), `+0x260` `+0xbc` (the troop carriers' room),
+  `+0x268` `+0x98` (armed ships), `+0x26c` `+0x9c` (ships with lasers),
+  `+0x27c` `+0x78` (hangar room); a Death Star fleet (`0x10`) sets `+4`
+  bit 4.
+
+### The yard cycle (`FUN_004c8d20`)
+
+Module 7's yard cycle (`FUN_004d3350`) renumbered, with the token 2 and
+module 2's borrow (`FUN_004cafa0` = `FUN_004e3810`, on `+0x58`, marking
+`0x200000`). Every state function matches module 7's but for the fields:
+`FUN_004cacc0` = `FUN_004d5000`, `FUN_004cb1d0` = `FUN_004d5510`,
+`FUN_004cb710` = `FUN_004d5a50` (giving `0xe`, `0xc` or 0),
+`FUN_004cb7b0` = `FUN_004d5af0`, `FUN_004cbbb0` = `FUN_004d6030`,
+`FUN_004cbcf0` = `FUN_004d6170`, `FUN_004cbe10` = `FUN_004d6290` (token
+2), `FUN_004cc360` = `FUN_004d67e0`.
+
+| State | Action |
+|---|---|
+| other | 7 |
+| 7 | `FUN_004cacc0` chooses the target `+0x58`: 8. None: end. |
+| 8 | Clear controller `+8` bit 2; with `+0xc == 2` and `FUN_004cafa0`: `FUN_004199b0`, `0xb`. Else `0x10`. |
+| `0xb` | `FUN_004cb1d0`: a Scrap or none (complete and raise with one). 9. |
+| 9 | `+0x3c` = `FUN_004cb710` (`0xe`, `0xc` or 0); 0: `+0x38 = 0x3f8`, complete. |
+| `0xc` | `FUN_004cb7b0`: a Scrap or none. End. |
+| `0xe` | `FUN_004cbbb0(+0x58)`: Destination; with one, `0xf`, complete, raise. None: end. |
+| `0xf` | `FUN_004cbcf0`: Build. End. |
+| `0x10` | `FUN_004cbe10` (adopt or request bit 2), `FUN_004cc360` (claim). End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3f8`, complete.
+
+- `FUN_004cc280`: 10% of `+0x24` percent of the capacity, less the sites'
+  `v[36]` (`+0xd8`; module 7's `FUN_004d6700` reads `v[34]`). It is module
+  3's `FUN_004da530` on another list.
+
+### Module `0xb` ported (2026-10-15)
+
+`crates/rebellion-core/src/ai_module_b.rs`. Save v48.
+- Ship records take Damaged (`ai_records::ship_damaged`: hull below the
+  class's) as `0x1000`, or `0x800000` without a speed
+  (`movement::capital_ship_speed`).
+- `AIAction::MoveShips` is the Move of ships or a fleet, carried out by
+  `fleet_join::move_ships_to_system`; its validation is the whole fleet's
+  dispatch check, so a move to the fleet's own system is refused.
+- `ScrapTarget::Ship` scraps a capital ship (`FUN_005575f0`): half its
+  refined cost back; a fleet left with nothing disbands, and the regiments
+  beyond the room left are lost.
+- `Tallies` gains `ship_upkeep` (`+0x24c`), `troop_room` (`+0x260`),
+  `armed` (`+0x268`), `lasers` (`+0x26c`), `hangars` (`+0x27c`),
+  `death_star` (`+4` bit 4) and `troops_wanted` (`+0x20c`).
+- Module 2's borrow is the shared `ai_module2::borrow_yard`, and module
+  3's budget `ai_module3::tenth_less_yards`.
+- The production heuristic builds no ships or fighters any more.
+
+port:
+- `FUN_004c94c0`'s move to a base is left out: no system is a base
+  without the fleet plan objects, and the fallback would send every idle
+  fleet to another sector at each step. Only the Death Star's return runs.
+- `FUN_004c9cb0` and the role requests of `FUN_004ca5e0` need module 8's
+  sector planners; the bombardment and interdictor roles never come up.
+- A fleet of squadrons alone (the port's seeding) is passed over by the
+  fleet queries.
+- hyp: controller `+0x16c` has no writer found and reads as 0.
+
 ### The scheduler, read again (`FUN_00485b40`)
 
 Phase 3 steps the current module (`+0x80`). A returned order is

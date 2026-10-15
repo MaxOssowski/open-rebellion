@@ -185,6 +185,23 @@ pub struct Tallies {
     /// Controller `+4` bit `0x20`: some sector record has `+0x2c` bit
     /// `0x2000000` (`FUN_0041b7e0`).
     pub sector_short: bool,
+    /// `+0x24c`: the capital ships' upkeep in the side's fleets (own fleet
+    /// records' `values[14]`, `FUN_0041ba80`).
+    pub ship_upkeep: i32,
+    /// `+0x260`: the troop carriers' room (`values[27]`).
+    pub troop_room: i32,
+    /// `+0x268`: the armed ships (`values[18]`, records with bit 4).
+    pub armed: i32,
+    /// `+0x26c`: the ships with lasers (`values[19]`, records with bit 4).
+    pub lasers: i32,
+    /// `+0x27c`: the hangar room (`values[10]`, records with bit 4).
+    pub hangars: i32,
+    /// Controller `+4` bit 4: an own fleet record has the Death Star bit
+    /// `0x10` (`FUN_0041ba80`).
+    pub death_star: bool,
+    /// `+0x20c`: the most regiments a system needs to be taken, the sector
+    /// records' greatest `+0x134` (`FUN_0041b7e0`).
+    pub troops_wanted: i32,
 }
 
 impl Tallies {
@@ -200,6 +217,13 @@ impl Tallies {
                 .map(|s| s.values[sector_at(offset)])
                 .sum()
         };
+        let own_fleets = || {
+            galaxy
+                .fleets
+                .values()
+                .filter(|f| f.flags & crate::ai_records::FLEET_OWN != 0)
+        };
+        let own = |k: usize| own_fleets().map(|f| f.values[k]).sum();
         Self {
             mines: sum(0xa8),
             refineries: sum(0xac),
@@ -215,13 +239,19 @@ impl Tallies {
             special_ready: [0; 4],
             regiment_upkeep: sum(0xfc),
             squadron_upkeep: sum(0x104),
-            cargo_upkeep: galaxy
-                .fleets
-                .values()
-                .filter(|f| f.flags & crate::ai_records::FLEET_OWN != 0)
-                .map(|f| f.values[15])
-                .sum(),
+            cargo_upkeep: own(15),
             sector_short: galaxy.sectors.iter().any(|s| s.summary & 0x200_0000 != 0),
+            ship_upkeep: own(14),
+            troop_room: own(27),
+            armed: own(18),
+            lasers: own(19),
+            hangars: own(10),
+            death_star: own_fleets().any(|f| f.flags & 0x10 != 0),
+            troops_wanted: galaxy
+                .sectors
+                .iter()
+                .map(|s| s.values[sector_at(0x134)])
+                .fold(0, i32::max),
         }
     }
 }
@@ -1425,6 +1455,13 @@ pub(crate) mod tests {
         squadron_upkeep: 0,
         cargo_upkeep: 0,
         sector_short: false,
+        ship_upkeep: 0,
+        troop_room: 0,
+        armed: 0,
+        lasers: 0,
+        hangars: 0,
+        death_star: false,
+        troops_wanted: 0,
     };
 
     #[test]
@@ -2376,6 +2413,40 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_tallies_sum_the_side_s_own_fleet_records() {
+        // FUN_0041ba80 over the own fleet records (+0x38 bit 1): +0x24c
+        // values[14], +0x260 values[27], +0x268 values[18], +0x26c
+        // values[19], +0x27c values[10]; record bit 0x10 sets controller
+        // +4 bit 4. FUN_0041b7e0: +0x20c the sector records' greatest
+        // +0x134.
+        let f = fixture();
+        let state = AIState::new(crate::ai::AiFaction::Alliance);
+        let mut galaxy = records_of(&f, &state);
+        let mut nowhere = slotmap::SlotMap::<crate::ids::FleetKey, ()>::with_key();
+        let mut values = [0; 30];
+        for (k, v) in [(14, 1), (27, 2), (18, 3), (19, 4), (10, 5)] {
+            values[k] = v;
+        }
+        // Two own records and another side's with the Death Star bit.
+        for flags in [5, 5, 0x14] {
+            galaxy.fleets.insert(
+                nowhere.insert(()),
+                crate::ai_records::FleetRecord { flags, values },
+            );
+        }
+        galaxy.sectors[0].values[crate::ai_records::sector_at(0x134)] = 6;
+        let t = Tallies::of(&galaxy, 7, 3);
+        assert_eq!(
+            (t.ship_upkeep, t.troop_room, t.armed, t.lasers, t.hangars),
+            (2, 4, 6, 8, 10)
+        );
+        assert!(!t.death_star);
+        assert_eq!(t.troops_wanted, 6);
+        galaxy.fleets.values_mut().for_each(|r| r.flags |= 0x10);
+        assert!(Tallies::of(&galaxy, 7, 3).death_star);
+    }
+
+    #[test]
     fn the_tallies_sum_the_side_s_mines_and_refineries() {
         // FUN_0041b7e0: +0x1d0 += sector +0xa8, +0x1d4 += +0xac.
         let mut f = fixture();
@@ -2411,6 +2482,13 @@ pub(crate) mod tests {
                 squadron_upkeep: 0,
                 cargo_upkeep: 0,
                 sector_short: false,
+                ship_upkeep: 0,
+                troop_room: 0,
+                armed: 0,
+                lasers: 0,
+                hangars: 0,
+                death_star: false,
+                troops_wanted: 0,
             }
         );
     }

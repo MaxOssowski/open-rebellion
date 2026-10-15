@@ -188,6 +188,26 @@ fn accepts(
                 })
         }
         // The move command's validation (FUN_00578d00): the side's own
+        // fleet, out of hyperspace, with living ships, to a system it can
+        // reach. port: a part of a fleet is checked as the whole fleet, so
+        // a move to the fleet's own system is refused.
+        AIAction::MoveShips { fleet, ships, to } => {
+            !ships.is_empty()
+                && world.fleets.get(*fleet).is_some_and(|f| {
+                    ships
+                        .iter()
+                        .all(|&i| f.capital_ships.get(i).is_some_and(|s| s.alive))
+                })
+                && crate::movement::validate_fleet_dispatch(
+                    movement,
+                    world,
+                    *fleet,
+                    *to,
+                    is_alliance,
+                )
+                .is_ok()
+        }
+        // The move command's validation (FUN_00578d00): the side's own
         // squadrons, then the squadron move's checks.
         AIAction::MoveSquadrons {
             class,
@@ -209,8 +229,7 @@ fn accepts(
 const MISSION_GROUPS: u8 = 5;
 
 /// The module whose step issues the production heuristic's order for
-/// `kind`: `0xa` a manufacturing facility, `0xb` a capital ship or
-/// fighter; none for the rest.
+/// `kind`: `0xa` a manufacturing facility; none for the rest.
 ///
 /// port: a first read of the modules' orders and marks (`0x210` with marks
 /// `0x1000000` and `0x2000000`, `0x212` with `0x400000`, `0x211` with
@@ -222,11 +241,12 @@ const MISSION_GROUPS: u8 = 5;
 /// (`FUN_004d8460`), so the heuristic's defenses stand in for no module.
 /// Modules 5 and 6, ported, train special forces (`FUN_004d0590`) and
 /// regiments (`FUN_004df9a0`), so the heuristic's regiments stand in for
-/// no module.
+/// no module. Modules 7 and `0xb`, ported, build squadrons
+/// (`FUN_004d46e0`) and capital ships (`FUN_004ca910`), so the heuristic's
+/// fighters and ships stand in for no module.
 fn production_module(kind: &BuildableKind) -> Option<u8> {
     match kind {
         BuildableKind::ManufacturingFacility(_) => Some(0xa),
-        BuildableKind::CapitalShip(_) | BuildableKind::Fighter(_) => Some(0xb),
         _ => None,
     }
 }
@@ -429,6 +449,9 @@ pub struct AIState {
     /// Module 7's fields (`FUN_004d2ef0`).
     #[serde(default)]
     pub module7: crate::ai_module7::Module7,
+    /// Module `0xb`'s fields (`FUN_004c8820`).
+    #[serde(default)]
+    pub module_b: crate::ai_module_b::ModuleB,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -497,6 +520,7 @@ impl AIState {
             module5: crate::ai_module5::Module5::default(),
             module6: crate::ai_module6::Module6::default(),
             module7: crate::ai_module7::Module7::default(),
+            module_b: crate::ai_module_b::ModuleB::default(),
         }
     }
 
@@ -663,6 +687,17 @@ pub enum AIAction {
         to: crate::squadrons::SquadronPlace,
     },
 
+    /// Move capital ships of one of the side's fleets (`0x201`) to a
+    /// system: module `0xb`'s damaged ships (`FUN_004c8e90`) or whole
+    /// fleet (`FUN_004c94c0`), carried out by
+    /// [`crate::fleet_join::move_ships_to_system`]. The ships are their
+    /// places in the fleet.
+    MoveShips {
+        fleet: FleetKey,
+        ships: Vec<usize>,
+        to: SystemKey,
+    },
+
     /// Destination (`0x214`) on `system`'s `area` manager: what it builds
     /// goes to `destination` (`FUN_004dc9f0`).
     SetDestination {
@@ -824,8 +859,8 @@ impl AISystem {
         // controller's token (FUN_004199b0: 0x80 module 1, 0x40 module 2,
         // 0x20 module 6, 0x10 module 0xa, 8 module 7, 4 module 5, 2 module
         // 0xb, 1 module 3), each passing it on once its own work allows.
-        // Only modules 1, 2, 3, 5, 6 and 7 are ported, so a pass hands on the
-        // yards that an unported module holds.
+        // Only modules 1, 2, 3, 5, 6, 7 and 0xb are ported, so a pass hands
+        // on the yards that an unported module holds.
         if ![
             crate::ai_module1::YARD_TOKEN,
             crate::ai_module2::YARD_TOKEN,
@@ -833,6 +868,7 @@ impl AISystem {
             crate::ai_module5::YARD_TOKEN,
             crate::ai_module6::YARD_TOKEN,
             crate::ai_module7::YARD_TOKEN,
+            crate::ai_module_b::YARD_TOKEN,
         ]
         .contains(&state.controller.yard_holder)
         {
@@ -883,6 +919,7 @@ impl AISystem {
                         5 => state.module5.refused(),
                         6 => state.module6.refused(),
                         7 => state.module7.refused(),
+                        0xb => state.module_b.refused(),
                         _ => {}
                     }
                     state.module_priority[module] = 0;
@@ -986,7 +1023,7 @@ impl AISystem {
         tallies: crate::ai_module1::Tallies,
     ) -> crate::ai_module1::Step {
         let id = MODULE_IDS[module];
-        if matches!(id, 1 | 2 | 3 | 5 | 6 | 7) {
+        if matches!(id, 1 | 2 | 3 | 5 | 6 | 7 | 0xb) {
             let mut coin = || planner.coin();
             let mut io = crate::ai_module1::Inputs {
                 world: ctx.world,
@@ -1005,7 +1042,8 @@ impl AISystem {
                 3 => state.module3.step(&mut io),
                 5 => state.module5.step(&mut io),
                 6 => state.module6.step(&mut io),
-                _ => state.module7.step(&mut io),
+                7 => state.module7.step(&mut io),
+                _ => state.module_b.step(&mut io),
             };
         }
         if state.module_pending[module].is_empty() {
@@ -1027,16 +1065,15 @@ impl AISystem {
     /// - `0xd`, the strategy: the research strategy
     ///   ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
-    /// - `0xa`, `0xb`: the production heuristic's manufacturing
-    ///   facilities, and ships and fighters.
+    /// - `0xa`: the production heuristic's manufacturing facilities.
     /// - 8: Death Star escort and fleet deployment; `0xc`: troop movement.
     ///
     /// port: the assignment of the port's heuristics to modules is a first
     /// read (the modules' roles in the note above); modules 9 and `0xe`
-    /// have no port counterpart and order nothing. Modules 1, 2, 3, 5, 6
-    /// and 7 are ported ([`crate::ai_module1`], [`crate::ai_module2`],
+    /// have no port counterpart and order nothing. Modules 1, 2, 3, 5, 6, 7
+    /// and `0xb` are ported ([`crate::ai_module1`], [`crate::ai_module2`],
     /// [`crate::ai_module3`], [`crate::ai_module5`], [`crate::ai_module6`],
-    /// [`crate::ai_module7`]).
+    /// [`crate::ai_module7`], [`crate::ai_module_b`]).
     fn run_module(
         id: u8,
         state: &mut AIState,
@@ -1075,7 +1112,7 @@ impl AISystem {
                 actions,
             ),
             4 => Self::mission_step(state, planner, ctx, actions),
-            0xa | 0xb => production(actions),
+            0xa => production(actions),
             8 => {
                 Self::evaluate_ds_escort(world, movement, faction, config, actions);
                 Self::evaluate_fleet_deployment(
@@ -3695,6 +3732,32 @@ mod tests {
         troop: u32,
         facility: u32,
     ) -> Option<BuildableKind> {
+        let (world, sys_key, research, faction) = ground_world(is_alliance, troop, facility);
+        evaluate(
+            &mut AIState::new(faction),
+            &world,
+            &ManufacturingState::new(),
+            &MissionState::new(),
+            &crate::movement::MovementState::new(),
+            &ticks(7),
+            &GameConfig::default(),
+            &research,
+            &crate::uprising::UprisingState::default(),
+        )
+        .into_iter()
+        .find_map(|action| match action {
+            AIAction::EnqueueProduction { system, kind, .. } if system == sys_key => Some(kind),
+            _ => None,
+        })
+    }
+
+    /// The world of [`ground_order_at_levels`], its system, research and
+    /// side.
+    fn ground_world(
+        is_alliance: bool,
+        troop: u32,
+        facility: u32,
+    ) -> (GameWorld, SystemKey, ResearchState, AiFaction) {
         use crate::world::BuildableClass;
         let side = crate::dat::Faction::of_alliance(is_alliance);
         let mut world = empty_world();
@@ -3777,22 +3840,40 @@ mod tests {
         } else {
             AiFaction::Empire
         };
-        evaluate(
-            &mut AIState::new(faction),
-            &world,
-            &ManufacturingState::new(),
-            &MissionState::new(),
-            &crate::movement::MovementState::new(),
-            &ticks(7),
-            &GameConfig::default(),
-            &research,
-            &crate::uprising::UprisingState::default(),
-        )
-        .into_iter()
-        .find_map(|action| match action {
-            AIAction::EnqueueProduction { system, kind, .. } if system == sys_key => Some(kind),
-            _ => None,
-        })
+        (world, sys_key, research, faction)
+    }
+
+    #[test]
+    fn module_a_issues_the_heuristic_s_manufacturing_facilities() {
+        // port: the production heuristic's facilities stand in for module
+        // 0xa's shipyard placement (FUN_004cc9c0); its other modules' kinds
+        // are not 0xa's.
+        let (world, sys_key, research, faction) = ground_world(true, 0, 2);
+        let (missions, mfg, movement, config, uprisings) = (
+            MissionState::new(),
+            ManufacturingState::new(),
+            crate::movement::MovementState::new(),
+            GameConfig::default(),
+            crate::uprising::UprisingState::default(),
+        );
+        let ctx = ModuleInputs {
+            faction,
+            ..inputs(
+                &world, &missions, &research, &mfg, &movement, &config, &uprisings,
+            )
+        };
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, true, 7);
+        let mut actions = Vec::new();
+        AISystem::run_module(0xa, &mut AIState::new(faction), &mut planner, &ctx, &mut actions);
+        assert!(matches!(
+            actions.as_slice(),
+            [AIAction::EnqueueProduction {
+                system,
+                kind: BuildableKind::ManufacturingFacility(_),
+                ..
+            }] if *system == sys_key
+        ));
     }
 
     /// hyp: the AI waits on the same DAT `research_order` gate Build Selection
@@ -7166,13 +7247,15 @@ mod tests {
             production_module(&BuildableKind::Troop(DatId::new(0x1000_0001))),
             None
         );
+        // Modules 7 and 0xb build the squadrons and capital ships
+        // themselves (FUN_004d46e0, FUN_004ca910).
         assert_eq!(
             production_module(&BuildableKind::CapitalShip(CapitalShipKey::default())),
-            Some(0xb)
+            None
         );
         assert_eq!(
             production_module(&BuildableKind::Fighter(FighterKey::default())),
-            Some(0xb)
+            None
         );
         assert_eq!(
             production_module(&BuildableKind::SpecialForce(DatId::new(0x3c00_0001))),
@@ -7182,8 +7265,10 @@ mod tests {
 
     #[test]
     fn a_production_module_issues_only_its_own_kind() {
-        // The world of idle_system_with_mfg_gets_fighter_production: module
-        // 0xb orders the fighters, modules 2, 3, 5, 6 and 0xa nothing.
+        // The world of idle_system_with_mfg_gets_fighter_production: the
+        // heuristic decides fighters there, which no module issues now that
+        // modules 7 and 0xb build squadrons and ships (FUN_004d46e0,
+        // FUN_004ca910); modules 2, 3, 5, 6, 0xa and 0xb issue nothing.
         let (world, _) = fighter_world();
         let (missions, research, mfg, movement, config, uprisings) = (
             MissionState::new(),
@@ -7208,16 +7293,23 @@ mod tests {
             actions
         };
 
-        let ships = run(0xb);
-        assert!(!ships.is_empty());
-        assert!(ships.iter().all(|a| matches!(
+        let mut decided = Vec::new();
+        AISystem::evaluate_production(
+            &world,
+            &mfg,
+            &research,
+            AiFaction::Empire,
+            &config,
+            &mut decided,
+        );
+        assert!(decided.iter().any(|a| matches!(
             a,
             AIAction::EnqueueProduction {
                 kind: BuildableKind::Fighter(_),
                 ..
             }
         )));
-        for id in [2, 3, 5, 6, 0xa] {
+        for id in [2, 3, 5, 6, 0xa, 0xb] {
             assert!(run(id).is_empty(), "module {id}");
         }
     }
@@ -7742,6 +7834,29 @@ mod tests {
         assert_eq!(state.module_cursor, None);
     }
 
+    #[test]
+    fn a_refused_module_b_order_ends_its_cycle_and_the_tick() {
+        // FUN_00485b40 sends module 0xb's refused order to its slot +0x18.
+        // Its yard cycle state 0xe (FUN_004cbbb0): Destination on a
+        // construction manager the side lacks.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module_b.phase = crate::ai_module_b::YARD_CYCLE;
+        state.module_b.state = 0xe;
+        state.module_b.target = crate::ai_module1::Target::System(site);
+        state.module_b.yard = crate::ai_module1::Yard::Manager(site);
+        state.module_priority[11] = 5;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert!(orders.is_empty());
+        assert_eq!((state.module_b.phase, state.module_b.state), (0, 0));
+        assert_eq!(state.module_priority[11], 0);
+        assert_eq!(state.orders_today, 0);
+    }
+
     /// An Alliance system holding, on its planet, 3 X-wings and 2 TIEs, with
     /// an Alliance carrier fleet of room `room` and an Empire carrier.
     fn squadron_world(room: u32) -> (GameWorld, SystemKey, FleetKey, FleetKey, FighterKey) {
@@ -7808,6 +7923,45 @@ mod tests {
         assert!(ok(2, ours));
         assert!(!ok(3, ours));
         assert!(!ok(1, empire));
+    }
+
+    #[test]
+    fn the_ai_s_ship_move_needs_its_own_fleet_s_living_ships_and_another_system() {
+        // FUN_00578d00 for module 0xb's Move (FUN_004c8e90, FUN_004c94c0):
+        // the side's own fleet out of hyperspace, ships of it that live,
+        // and a destination it can enter; port: checked as the whole
+        // fleet, so the fleet's own system is refused.
+        let (mut world, system, ours, empire, _) = squadron_world(2);
+        let sector = world.systems[system].sector;
+        let there = add_system(&mut world, sector, 0.9, 0.1);
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let mut movement = crate::movement::MovementState::new();
+        let research = ResearchState::new();
+        let ok = |world: &GameWorld,
+                  movement: &crate::movement::MovementState,
+                  fleet,
+                  ships: Vec<usize>,
+                  to| {
+            accepts(
+                &AIAction::MoveShips { fleet, ships, to },
+                world,
+                &research,
+                AiFaction::Alliance,
+                &transport,
+                movement,
+            )
+        };
+        assert!(ok(&world, &movement, ours, vec![0], there));
+        assert!(!ok(&world, &movement, ours, vec![], there));
+        assert!(!ok(&world, &movement, ours, vec![1], there));
+        assert!(!ok(&world, &movement, ours, vec![0], system));
+        assert!(!ok(&world, &movement, empire, vec![0], there));
+        world.fleets[ours].capital_ships[0].alive = false;
+        assert!(!ok(&world, &movement, ours, vec![0], there));
+        world.fleets[ours].capital_ships[0].alive = true;
+        crate::movement::begin_faction_fleet_transit(&mut movement, &mut world, ours, there, true)
+            .unwrap();
+        assert!(!ok(&world, &movement, ours, vec![0], system));
     }
 
     #[test]

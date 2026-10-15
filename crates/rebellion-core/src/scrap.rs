@@ -19,12 +19,12 @@ use crate::world::{FacilityRef, GameWorld};
 /// (`FUN_00534c00`).
 pub const SCRAP_REASON: u8 = 0x14;
 
-/// What a Scrap order names: the facilities, the regiments and the
-/// squadrons on a planet.
+/// What a Scrap order names: the facilities, the regiments, the squadrons
+/// on a planet and the capital ships.
 ///
-/// port: ships, squadrons aboard a fleet, fleets and regiments aboard a
-/// fleet take Scrap in the original (`FUN_005575f0`, `FUN_004fdbc0`) but
-/// are not ported yet.
+/// port: squadrons aboard a fleet, fleets and regiments aboard a fleet
+/// take Scrap in the original (`FUN_005575f0`, `FUN_004fdbc0`) but are not
+/// ported yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScrapTarget {
     Facility(FacilityRef),
@@ -35,6 +35,13 @@ pub enum ScrapTarget {
     PlanetFighter {
         system: SystemKey,
         class: crate::ids::FighterKey,
+    },
+    /// The capital ship at `index` in `fleet` (vtables `0x65d650`,
+    /// `0x65d930`, `0x65dc10`, slot `+0x5c` `FUN_005575f0`). port: a ship
+    /// is named by its place in its fleet.
+    Ship {
+        fleet: crate::ids::FleetKey,
+        index: usize,
     },
 }
 
@@ -125,6 +132,12 @@ fn resolve(world: &GameWorld, target: ScrapTarget) -> Option<(SystemKey, Faction
             let c = world.fighter_classes.get(class)?;
             (system, Faction::of_alliance(c.is_alliance), c.dat_id)
         }
+        ScrapTarget::Ship { fleet, index } => {
+            let f = world.fleets.get(fleet)?;
+            let ship = f.capital_ships.get(index).filter(|s| s.alive)?;
+            let c = world.capital_ship_classes.get(ship.class)?;
+            (f.location, Faction::of_alliance(f.is_alliance), c.dat_id)
+        }
     };
     Some((system, side, class))
 }
@@ -183,6 +196,12 @@ pub fn scrap(
                 i32::try_from(c.refined_material_cost).unwrap_or(i32::MAX)
             }) / 2
         }
+        ScrapTarget::Ship { fleet, index } => {
+            let ship = world.fleets[fleet].capital_ships[index].class;
+            world.capital_ship_classes.get(ship).map_or(0, |c| {
+                i32::try_from(c.refined_material_cost).unwrap_or(i32::MAX)
+            }) / 2
+        }
         _ => refined_cost(world, class) / 2,
     };
     match target {
@@ -198,11 +217,30 @@ pub fn scrap(
                 crate::squadrons::take(&mut sys.fighters, class, 1);
             }
         }
+        ScrapTarget::Ship { fleet, index } => remove_ship(world, fleet, index),
     }
     if let Some(stock) = production.stock_mut(owner) {
         stock.refined += refund;
     }
     Ok(Scrapped { system, refund })
+}
+
+/// Take the ship at `index` out of `fleet`; a fleet left holding nothing
+/// disbands (`FUN_004fe630`). The regiments its remaining ships have no
+/// room for are lost with the next cargo check
+/// ([`crate::troop_transport::TroopTransportState::destroy_untransportable_cargo`]).
+fn remove_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, index: usize) {
+    let value = &mut world.fleets[fleet];
+    value.capital_ships.remove(index);
+    if !(value.capital_ships.is_empty() && value.fighters.is_empty() && value.characters.is_empty())
+    {
+        return;
+    }
+    let location = value.location;
+    world.fleets.remove(fleet);
+    if let Some(system) = world.systems.get_mut(location) {
+        system.fleets.retain(|&key| key != fleet);
+    }
 }
 
 /// A Scrap order's team: the validator (`FUN_0051ff30`) checks every
@@ -316,6 +354,92 @@ mod tests {
         assert!(f.world.systems[f.system].production_facilities.is_empty());
         assert_eq!(production.stock(Faction::Alliance).unwrap().refined, 5);
         assert_eq!(production.stock(Faction::Empire).unwrap().refined, 0);
+    }
+
+    #[test]
+    fn a_capital_ship_is_scrapped_out_of_its_fleet_which_disbands_when_emptied() {
+        // A ship's check is FUN_005575f0 (vtables 0x65d650.., slot +0x5c);
+        // FUN_00530270 refunds +0x48 / 2 = 11 / 2 = 5. The fleet whose last
+        // ship goes disbands (FUN_004fe630); one keeping a squadron stays.
+        let mut f = fixture();
+        let class = f
+            .world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass {
+                is_alliance: true,
+                refined_material_cost: 11,
+                ..Default::default()
+            });
+        let wing = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            ..Default::default()
+        });
+        let fleet = |f: &mut Fixture, ships: usize, fighters| {
+            let key = f.world.insert_fleet(crate::world::Fleet {
+                location: f.system,
+                capital_ships: crate::world::ShipInstance::make(class, 10, true, ships as u32),
+                fighters,
+                characters: vec![],
+                is_alliance: true,
+                has_death_star: false,
+            });
+            f.world.systems[f.system].fleets.push(key);
+            key
+        };
+        let pair = fleet(&mut f, 2, vec![]);
+        let carrier = fleet(
+            &mut f,
+            1,
+            vec![crate::world::FighterEntry {
+                class: wing,
+                count: 1,
+            }],
+        );
+        let mut production = ProductionState::new();
+        let first = ScrapTarget::Ship {
+            fleet: pair,
+            index: 1,
+        };
+        assert_eq!(
+            check(&f.world, Faction::Empire, first),
+            Err(ScrapRefusal::NotOwnSide)
+        );
+        let done = scrap(&mut f.world, &mut production, Faction::Alliance, first).unwrap();
+        assert_eq!((done.system, done.refund), (f.system, 5));
+        assert_eq!(f.world.fleets[pair].capital_ships.len(), 1);
+        assert_eq!(
+            check(&f.world, Faction::Alliance, first),
+            Err(ScrapRefusal::Unresolved)
+        );
+        let last = ScrapTarget::Ship {
+            fleet: pair,
+            index: 0,
+        };
+        scrap(&mut f.world, &mut production, Faction::Alliance, last).unwrap();
+        assert!(!f.world.fleets.contains_key(pair));
+        assert!(!f.world.systems[f.system].fleets.contains(&pair));
+        let alone = ScrapTarget::Ship {
+            fleet: carrier,
+            index: 0,
+        };
+        scrap(&mut f.world, &mut production, Faction::Alliance, alone).unwrap();
+        assert!(f.world.fleets[carrier].capital_ships.is_empty());
+        assert!(f.world.systems[f.system].fleets.contains(&carrier));
+        assert_eq!(production.stock(Faction::Alliance).unwrap().refined, 15);
+        // A destroyed ship does not resolve.
+        let wreck = fleet(&mut f, 1, vec![]);
+        f.world.fleets[wreck].capital_ships[0].alive = false;
+        assert_eq!(
+            check(
+                &f.world,
+                Faction::Alliance,
+                ScrapTarget::Ship {
+                    fleet: wreck,
+                    index: 0
+                }
+            ),
+            Err(ScrapRefusal::Unresolved)
+        );
     }
 
     #[test]

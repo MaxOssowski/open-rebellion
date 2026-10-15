@@ -684,13 +684,19 @@ pub(crate) fn choose_target(
 /// sites' construction yard maintenance (`v[36]`); 0 when the side's free
 /// maintenance falls short of it.
 fn yard_budget(io: &Inputs<'_>, sites: &[SystemKey]) -> i32 {
+    tenth_less_yards(io, sites, PERCENT)
+}
+
+/// [`yard_budget`] for a module's `percent` (`+0x24`; module `0xb`'s
+/// `FUN_004cc280`).
+pub(crate) fn tenth_less_yards(io: &Inputs<'_>, sites: &[SystemKey], percent: i32) -> i32 {
     let held: i32 = sites
         .iter()
         .filter_map(|&s| io.galaxy.system(s))
         .map(|r| r.values[36])
         .sum();
     let t = io.tallies;
-    let budget = PERCENT * t.capacity / 100 * 10 / 100 - held;
+    let budget = percent * t.capacity / 100 * 10 / 100 - held;
     if t.capacity - t.requirement < budget {
         0
     } else {

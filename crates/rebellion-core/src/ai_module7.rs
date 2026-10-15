@@ -13,7 +13,7 @@ use crate::ai_module1::{
     adopt_or_request, build, claim, destination, destination_in, scrap_at, scrap_spare_yard,
     yard_class, Inputs, Step, Target, Yard, ANY, SHIPYARD,
 };
-use crate::ai_module2::keep_site;
+use crate::ai_module2::{borrow_yard, keep_site};
 use crate::ai_module3::choose_target;
 use crate::ai_records::{pick, ranked, squared_distance, Mask, Order};
 use crate::ids::{DatId, FighterKey, FleetKey, SystemKey};
@@ -571,38 +571,14 @@ impl Module7 {
     /// the target a site.
     fn borrow_yard(&mut self, io: &mut Inputs<'_>) -> bool {
         self.capacity = 0;
-        self.yard = Yard::None;
-        let Some(target) = self.target.system() else {
-            return false;
-        };
-        let sectors = io.galaxy.sectors_by_distance(
-            target,
-            [Mask::new(0x1000, 0), ANY, ANY],
-            Order::Descending,
-            io.coin,
-        );
-        let sector = pick(&[sectors]);
-        let masks = [Mask::new(0x80_0800, 3), ANY, Mask::new(1, 0)];
-        let Some(system) = pick(&[io.systems(sector, masks, 6, Order::Ascending)]) else {
-            return false;
-        };
-        let Some(r) = io.galaxy.system(system).copied() else {
-            return false;
-        };
-        if !io.has_manager(system) {
-            return false;
-        }
-        self.capacity = if r.values[6] > 1 {
-            r.values[6] - 1
-        } else {
-            r.values[6]
-        };
-        self.yard = Yard::Manager(system);
-        if !self.sites.contains(&target) && io.galaxy.system(target).is_some() {
-            self.sites.push(target);
-            io.set_mark(target, MARK_SHIPYARD, 0);
-        }
-        true
+        borrow_yard(
+            io,
+            self.target,
+            &mut self.sites,
+            &mut self.yard,
+            &mut self.capacity,
+            MARK_SHIPYARD,
+        )
     }
 
     /// `FUN_004d5a50`: `0xb` to build shipyards, 9 to scrap one when the

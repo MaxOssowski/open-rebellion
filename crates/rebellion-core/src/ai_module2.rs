@@ -392,39 +392,14 @@ impl Module2 {
     /// `FUN_004e3810`: borrow the idle construction yard of module 1's
     /// site nearest the target, and make the target a site.
     fn borrow_yard(&mut self, io: &mut Inputs<'_>) -> bool {
-        self.yard = Yard::None;
-        let Some(target) = self.target.system() else {
-            return false;
-        };
-        let sectors = io.galaxy.sectors_by_distance(
-            target,
-            [Mask::new(0x1000, 0), ANY, ANY],
-            Order::Descending,
-            io.coin,
-        );
-        let sector = pick(&[sectors]);
-        let masks = [Mask::new(0x80_0800, 3), ANY, Mask::new(1, 0)];
-        let systems = io.systems(sector, masks, 6, Order::Ascending);
-        let Some(system) = pick(&[systems]) else {
-            return false;
-        };
-        let Some(r) = io.galaxy.system(system).copied() else {
-            return false;
-        };
-        if !io.has_manager(system) {
-            return false;
-        }
-        self.capacity = if r.values[6] > 1 {
-            r.values[6] - 1
-        } else {
-            r.values[6]
-        };
-        self.yard = Yard::Manager(system);
-        if !self.sites.contains(&target) && io.galaxy.system(target).is_some() {
-            self.sites.push(target);
-            io.set_mark(target, MARK_FACILITIES, 0);
-        }
-        true
+        borrow_yard(
+            io,
+            self.target,
+            &mut self.sites,
+            &mut self.yard,
+            &mut self.capacity,
+            MARK_FACILITIES,
+        )
     }
 
     /// `FUN_004e3f80`: 8 to build construction yards, 6 to scrap one when
@@ -453,6 +428,55 @@ impl Module2 {
         self.count = self.count.min(r.values[15].min(self.room));
         8
     }
+}
+
+/// `FUN_004e3810` (module 7: `FUN_004d52e0`, which clears `capacity`
+/// first; module `0xb`: `FUN_004cafa0`): borrow the idle construction yard
+/// of module 1's site nearest the target (sector `+0x24` `0x1000`; its
+/// system `+0x28` `0x800800`, own, not in an uprising or blockade, by key
+/// 6) into `yard`, its construction yards less one above one into
+/// `capacity`, and make the target a site marked `mark`.
+pub(crate) fn borrow_yard(
+    io: &mut Inputs<'_>,
+    target: Target,
+    sites: &mut Vec<SystemKey>,
+    yard: &mut Yard,
+    capacity: &mut i32,
+    mark: u32,
+) -> bool {
+    *yard = Yard::None;
+    let Some(target) = target.system() else {
+        return false;
+    };
+    let sectors = io.galaxy.sectors_by_distance(
+        target,
+        [Mask::new(0x1000, 0), ANY, ANY],
+        Order::Descending,
+        io.coin,
+    );
+    let sector = pick(&[sectors]);
+    let masks = [Mask::new(0x80_0800, 3), ANY, Mask::new(1, 0)];
+    let systems = io.systems(sector, masks, 6, Order::Ascending);
+    let Some(system) = pick(&[systems]) else {
+        return false;
+    };
+    let Some(r) = io.galaxy.system(system).copied() else {
+        return false;
+    };
+    if !io.has_manager(system) {
+        return false;
+    }
+    *capacity = if r.values[6] > 1 {
+        r.values[6] - 1
+    } else {
+        r.values[6]
+    };
+    *yard = Yard::Manager(system);
+    if !sites.contains(&target) && io.galaxy.system(target).is_some() {
+        sites.push(target);
+        io.set_mark(target, mark, 0);
+    }
+    true
 }
 
 /// `FUN_004e21d0` (module 3: `FUN_004d7ac0`; module 5: `FUN_004d01a0`,

@@ -8021,12 +8021,15 @@ fn apply_ai_actions(
                 let Some(side) = ai_state.faction else {
                     continue;
                 };
-                if let Ok(done) = rebellion_core::scrap::scrap_team(
+                let scrapped = rebellion_core::scrap::scrap_team(
                     world,
                     production_state,
                     side.as_faction(),
                     team,
-                ) {
+                );
+                // A scrapped ship's regiments beyond the room left are lost.
+                troop_transport_state.destroy_untransportable_cargo(world);
+                if let Ok(done) = scrapped {
                     for unit in done {
                         log.push(GameMessage::at_system(
                             tick,
@@ -8067,6 +8070,39 @@ fn apply_ai_actions(
                     let _ = troop_transport_state
                         .squadrons
                         .move_squadrons(world, alliance, *class, *count, *from, *to, tick);
+                }
+            }
+            AIAction::MoveShips { fleet, ships, to } => {
+                let Some(side) = ai_state.faction else {
+                    continue;
+                };
+                let Some(roster) = rebellion_core::fleet_join::roster(world, *fleet) else {
+                    continue;
+                };
+                let moved = rebellion_core::fleet_join::move_ships_to_system(
+                    world,
+                    movement_state,
+                    troop_transport_state,
+                    *fleet,
+                    ships,
+                    roster,
+                    *to,
+                    matches!(side, AiFaction::Alliance),
+                );
+                if moved.is_ok() {
+                    log.push(GameMessage::at_system(
+                        tick,
+                        format!(
+                            "{} moving {} ship(s) to system",
+                            match side {
+                                AiFaction::Alliance => "Alliance",
+                                AiFaction::Empire => "Empire",
+                            },
+                            ships.len()
+                        ),
+                        MessageCategory::Ai,
+                        *to,
+                    ));
                 }
             }
             AIAction::SetDestination {

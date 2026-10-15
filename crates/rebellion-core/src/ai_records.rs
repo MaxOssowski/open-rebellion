@@ -423,9 +423,9 @@ type Cargo<'a> = (
 /// (`+0x244 - +0x254`), so each counts at its class's full figure; its
 /// fighters and regiments ride the fleet, not one ship, and the first
 /// ship carries them; every unit aboard counts as active (object `+0x50`
-/// bit 2) and not as bit 5. hyp: the slot `+0x34(1)` test for object bit
-/// `0x200` (ship bits `0x1000`/`0x800000`) is untraced and reads as
-/// clear.
+/// bit 2) and not as bit 5. A damaged ship ([`ship_damaged`]) takes
+/// `0x1000` with a speed (slot `+0x34(1)`, `FUN_00500820`,
+/// [`crate::movement::capital_ship_speed`]), else `0x800000`.
 fn ship_record(
     world: &GameWorld,
     classes: &ClassRecords,
@@ -444,8 +444,17 @@ fn ship_record(
     if en_route {
         flags |= 0x800;
     }
+    if ship_damaged(classes, ship) {
+        let moves = world
+            .capital_ship_classes
+            .get(ship.class)
+            .is_some_and(|c| crate::movement::capital_ship_speed(world, c) > 0);
+        flags |= if moves { 0x1000 } else { 0x80_0000 };
+    }
     v[0] = class.values[4];
-    v[1] = class.values[2];
+    if flags & 0x1000 == 0 {
+        v[1] = class.values[2];
+    }
     // FUN_00473910 with the full shield recharge: class +0x3c. Its guard
     // (+0x54 > 0) and FUN_004738d0's (+0x50 > 0) give 0 when the recharge
     // is 0, as the class figures are then.
@@ -501,6 +510,18 @@ fn ship_record(
         }
     }
     (flags, v)
+}
+
+/// Whether a capital ship is damaged (object `+0x50` bit `0x200`,
+/// `GameObj_SetDamaged`): `FUN_00501c00` sets it while its hull damage
+/// (slot `+0x274`, `+0x60`) or a system damage nibble (`FUN_005006a0`,
+/// `+0x64`) is not 0. port: the port keeps hull damage alone.
+#[must_use]
+pub fn ship_damaged(classes: &ClassRecords, ship: &crate::world::ShipInstance) -> bool {
+    ship.alive
+        && classes
+            .ship(ship.class)
+            .is_some_and(|c| ship.hull_current < c.values[4])
 }
 
 /// `FUN_00484630`'s bits for a person aboard, from its record's `+0x30`.
@@ -1713,7 +1734,7 @@ impl Mask {
         Self { require, forbid }
     }
 
-    const fn admits(self, flags: u32) -> bool {
+    pub(crate) const fn admits(self, flags: u32) -> bool {
         flags & self.require == self.require && flags & self.forbid == 0
     }
 }
@@ -2099,7 +2120,11 @@ mod tests {
             regiment_strength: 100,
         });
         world.systems[here].ground_units.push(troop);
-        let ships = [gunship, hull].map(|class| crate::world::ShipInstance::new(class, 500, true));
+        // Each ship at its class's full hull: a damaged one counts apart.
+        let ships = [gunship, hull].map(|class| {
+            let full = i32::try_from(world.capital_ship_classes[class].hull).unwrap();
+            crate::world::ShipInstance::new(class, full, true)
+        });
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: here,
             capital_ships: ships.to_vec(),
@@ -2147,6 +2172,62 @@ mod tests {
             4 | FLEET_OWN | FLEET_STANDING | 0x8000 | 0x2_0000 | 0x4_0000 | 0x8_0000 | 0x10_0000
         );
         assert_eq!(build(false).flags & FLEET_OWN, 0);
+    }
+
+    #[test]
+    fn a_damaged_ship_keeps_no_bombardment_and_its_fleet_counts_it_damaged_not_armed() {
+        // FUN_00484630: object +0x50 bit 0x200 (FUN_00501c00: hull damage)
+        // with a speed (FUN_00500820) sets 0x1000, and +0x48 (class +0x38)
+        // stays 0; FUN_00433780 gives the fleet 0x1000 and leaves 0x8000
+        // and the armed count (values[18]) out.
+        let mut world = GameWorld::default();
+        let here = system(&mut world);
+        let gunship = world.capital_ship_classes.insert(CapitalShipClass {
+            turbolaser_fore: 2,
+            bombardment_modifier: 1,
+            ..ship(0x40)
+        });
+        let fleet = |world: &mut GameWorld, hull| {
+            let key = world.fleets.insert(crate::world::Fleet {
+                location: here,
+                capital_ships: vec![crate::world::ShipInstance::new(gunship, hull, true)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: true,
+                has_death_star: false,
+            });
+            world.systems[here].fleets.push(key);
+            key
+        };
+        let whole = fleet(&mut world, 500);
+        let damaged = fleet(&mut world, 499);
+        let classes = ClassRecords::build(&world);
+        let movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let build = |key| {
+            FleetRecord::build(&world, &classes, key, true, &movement, &transport, &|_| {
+                None
+            })
+            .unwrap()
+        };
+        let (a, b) = (build(whole), build(damaged));
+        // The ship's +0x48 sums into the fleet's +0x68 (values[6]).
+        assert_eq!(
+            (a.flags & 0x9000, a.values[18], a.values[6]),
+            (0x8000, 1, 1)
+        );
+        assert_eq!(
+            (b.flags & 0x9000, b.values[18], b.values[6]),
+            (0x1000, 0, 0)
+        );
+        assert!(!ship_damaged(
+            &classes,
+            &world.fleets[whole].capital_ships[0]
+        ));
+        assert!(ship_damaged(
+            &classes,
+            &world.fleets[damaged].capital_ships[0]
+        ));
     }
 
     /// A world for the system records: an Alliance system with energy 10

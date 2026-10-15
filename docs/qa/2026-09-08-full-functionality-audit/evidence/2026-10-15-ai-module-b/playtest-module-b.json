@@ -1,0 +1,126 @@
+{
+  "command": "rebellion-playtest data/base --seed 42 --ticks 600 --dual-ai",
+  "orders_by_side_and_type": {
+    "Alliance Build CapitalShip": 2,
+    "Alliance Build ManufacturingFacility": 3,
+    "Alliance Build ProductionFacility": 2,
+    "Alliance Build Troop": 4,
+    "Alliance DispatchMission": 46,
+    "Alliance MoveFleet": 4,
+    "Alliance MoveRegiments": 3,
+    "Alliance Scrap": 3,
+    "Alliance SetDestination": 9,
+    "Empire AbortMission": 2,
+    "Empire Build CapitalShip": 8,
+    "Empire Build Fighter": 79,
+    "Empire Build ManufacturingFacility": 8,
+    "Empire Build ProductionFacility": 10,
+    "Empire Build Troop": 7,
+    "Empire DispatchMission": 135,
+    "Empire MoveFleet": 11,
+    "Empire MoveRegiments": 4,
+    "Empire MoveSquadrons": 48,
+    "Empire Scrap": 35,
+    "Empire SetDestination": 60
+  },
+  "capital_ship_orders": [
+    {
+      "tick": 107,
+      "side": "Alliance",
+      "cost": 24,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(8v1))",
+      "system": "Vagran",
+      "type": "Build"
+    },
+    {
+      "tick": 148,
+      "side": "Empire",
+      "cost": 10,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(25v1))",
+      "system": "Xyquine",
+      "type": "Build"
+    },
+    {
+      "tick": 188,
+      "side": "Empire",
+      "cost": 10,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(25v1))",
+      "system": "Xyquine",
+      "type": "Build"
+    },
+    {
+      "tick": 203,
+      "side": "Alliance",
+      "cost": 24,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(8v1))",
+      "system": "Vagran",
+      "type": "Build"
+    },
+    {
+      "tick": 220,
+      "side": "Empire",
+      "cost": 10,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(25v1))",
+      "system": "Xyquine",
+      "type": "Build"
+    },
+    {
+      "tick": 232,
+      "side": "Alliance",
+      "team": [
+        "Ship { fleet: FleetKey(9v1), index: 0 }"
+      ],
+      "type": "Scrap"
+    },
+    {
+      "tick": 240,
+      "side": "Empire",
+      "cost": 10,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(25v1))",
+      "system": "Xyquine",
+      "type": "Build"
+    },
+    {
+      "tick": 260,
+      "side": "Empire",
+      "cost": 10,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(25v1))",
+      "system": "Xyquine",
+      "type": "Build"
+    },
+    {
+      "tick": 280,
+      "side": "Empire",
+      "cost": 10,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(25v1))",
+      "system": "Xyquine",
+      "type": "Build"
+    },
+    {
+      "tick": 300,
+      "side": "Empire",
+      "cost": 10,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(25v1))",
+      "system": "Xyquine",
+      "type": "Build"
+    },
+    {
+      "tick": 408,
+      "side": "Empire",
+      "cost": 26,
+      "count": 1,
+      "kind": "CapitalShip(CapitalShipKey(19v1))",
+      "system": "Xyquine",
+      "type": "Build"
+    }
+  ]
+}

@@ -1879,6 +1879,19 @@ cross-runtime proof remain open
   systems on its own and takes Scrap on a planet. port: fleet record bit 8
   and module 8's planners are not available. Save v47; golden
   `v1:d33088556c4445a3` -> `v1:da11bf56815cc333` (`evidence/2026-10-15-ai-module-7/`).
+- Module `0xb` (2026-10-15): the capital ship module (`FUN_004c8820`, step
+  `FUN_004c8b30`) is ported in `ai_module_b.rs`: damaged ships go to the
+  nearest shipyard site (`FUN_004c8e90`, `AIAction::MoveShips`; ship
+  records now take Damaged, `0x1000`), the Death Star returns to
+  Coruscant (`FUN_004c94c0`), capital ships are built at its shipyard
+  sites by role (`FUN_004c8c20`: troop carriers, the Death Star, armed,
+  lasers, carriers, else any shipyard class, within 90% of 30% of the
+  capacity less their upkeep) and the cheapest ship is scrapped over
+  budget (`ScrapTarget::Ship`), and shipyards are built with the token 2
+  (`FUN_004c8d20`). The heuristic's ships and fighters are gone. port: the
+  move to a base, the planner-driven roles and `FUN_004c9cb0` need module
+  8's planners and the fleet plan objects. Save v48; golden
+  `v1:da11bf56815cc333` -> `v1:bde18d3a1df8ed02` (`evidence/2026-10-15-ai-module-b/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.
