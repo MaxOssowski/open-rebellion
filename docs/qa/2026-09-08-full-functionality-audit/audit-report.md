@@ -1916,6 +1916,17 @@ cross-runtime proof remain open
   in state 4 the port's fleet heuristics stand in, so module 8 orders only
   while a planner holds a plan. Save v50; golden `v1:cca1045386d40ca4` ->
   `v1:6cc71d2663560368` (`evidence/2026-10-15-ai-sector-planners/`).
+- Module 8, stage 3 (2026-10-15): the planners' infrastructure. A
+  capital ship has an id (`ShipInstance::id`, numbered before the AI's
+  passes); the AI keeps its ship records' kept bits and holder
+  (`+0x24 & 0x1b020000`, `+0x30`, `+0x34`; `FUN_00484230`,
+  `FUN_00484630`) by that id; fleet records list their ship records;
+  `AIAction::CreateFleet` carries out Create Fleet `0x270`; the fleets
+  near a sector (`FUN_0041a600`) are a shared query. The reading found
+  that a sector planner holds ships (`FUN_00478e00`, `FUN_004790d0`) and
+  gets no order reports. No module uses these yet. Save v51; golden
+  `v1:6cc71d2663560368` -> `v1:1ec77e5da40c2f8f`
+  (`evidence/2026-10-15-ai-ship-records/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

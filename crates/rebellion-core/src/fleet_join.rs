@@ -398,6 +398,31 @@ pub fn create_fleet(
     Ok(split_off(world, troop_transport, fleet, &ships))
 }
 
+/// [`create_fleet`]'s checks without its effect: the order's validation.
+///
+/// # Errors
+/// As [`create_fleet`].
+pub fn check_create_fleet(
+    world: &GameWorld,
+    movement: &MovementState,
+    fleet: FleetKey,
+    ships: &[usize],
+    chosen: u64,
+    expected_is_alliance: bool,
+) -> Result<(), FleetOrderError> {
+    let source = movable(world, movement, fleet, expected_is_alliance)?;
+    mover_ships(
+        world,
+        source,
+        &FleetMover::Ships {
+            fleet,
+            ships: ships.to_vec(),
+            roster: chosen,
+        },
+    )
+    .map(|_| ())
+}
+
 /// A move whose destination is a fleet (`0x201` against a Fleet window's
 /// `+0x70`). In the target's system the movers join it at once; elsewhere
 /// they leave as a fleet and join it on arrival (port: the original makes
@@ -1528,6 +1553,67 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(world.systems[here].fleets, expected);
         assert_eq!(transport.cargo(source), [troop]);
+    }
+
+    #[test]
+    fn a_ship_keeps_its_id_in_the_fleet_it_leaves_for() {
+        // port: the AI's per-ship records follow a ship by its id
+        // (GameWorld::number_ships).
+        let mut setup = setup();
+        let here = setup.here;
+        let source = fleet(&mut setup, here, &[10, 20, 30], true);
+        setup.world.number_ships();
+        let before: Vec<u64> = setup.world.fleets[source]
+            .capital_ships
+            .iter()
+            .map(|s| s.id)
+            .collect();
+        let chosen = roster(&setup.world, source).unwrap();
+        let created = create_fleet(
+            &mut setup.world,
+            &MovementState::new(),
+            &mut TroopTransportState::default(),
+            source,
+            &[0, 2],
+            chosen,
+            true,
+        )
+        .unwrap();
+        let ids = |f: FleetKey| -> Vec<u64> {
+            setup.world.fleets[f]
+                .capital_ships
+                .iter()
+                .map(|s| s.id)
+                .collect()
+        };
+        assert_eq!(ids(created), vec![before[0], before[2]]);
+        assert_eq!(ids(source), vec![before[1]]);
+    }
+
+    #[test]
+    fn the_create_fleet_check_refuses_what_create_fleet_refuses() {
+        // check_create_fleet is create_fleet's validation without its
+        // effect.
+        let mut setup = setup();
+        let here = setup.here;
+        let source = fleet(&mut setup, here, &[10, 20], true);
+        let chosen = roster(&setup.world, source).unwrap();
+        let movement = MovementState::new();
+        let check = |ships: &[usize], roster: u64, side: bool| {
+            check_create_fleet(&setup.world, &movement, source, ships, roster, side)
+        };
+        assert_eq!(check(&[1], chosen, true), Ok(()));
+        assert_eq!(
+            check(&[1], chosen, false),
+            Err(FleetOrderError::WrongFaction)
+        );
+        assert!(check(&[2], chosen, true).is_err());
+        assert!(check(&[], chosen, true).is_err());
+        assert_eq!(
+            check(&[1], chosen ^ 1, true),
+            Err(FleetOrderError::ShipsChanged)
+        );
+        assert_eq!(setup.world.fleets[source].capital_ships.len(), 2);
     }
 
     // FUN_004fe630: when every ship leaves, the old fleet disbands and its

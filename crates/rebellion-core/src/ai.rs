@@ -187,6 +187,21 @@ fn accepts(
                             .is_ok()
                 })
         }
+        // Create Fleet's validation: the side's own fleet, out of
+        // hyperspace, each ship a living one of it named once
+        // (fleet_join::check_create_fleet).
+        AIAction::CreateFleet { fleet, ships } => crate::fleet_join::roster(world, *fleet)
+            .is_some_and(|roster| {
+                crate::fleet_join::check_create_fleet(
+                    world,
+                    movement,
+                    *fleet,
+                    ships,
+                    roster,
+                    is_alliance,
+                )
+                .is_ok()
+            }),
         // The move command's validation (FUN_00578d00): the side's own
         // fleet, out of hyperspace, with living ships, to a system it can
         // reach. port: a part of a fleet is checked as the whole fleet, so
@@ -459,6 +474,15 @@ pub struct AIState {
     /// controller `+0xd8`).
     #[serde(default)]
     pub module8: crate::ai_module8::Module8,
+    /// What the AI keeps on its ship records (`+0x24` bits, `+0x30`,
+    /// `+0x34`), by [`crate::world::ShipInstance::id`]; a ship without an
+    /// entry has the constructor's ([`crate::ai_records::ShipHold`]).
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub ship_holds: HashMap<u64, crate::ai_records::ShipHold>,
     /// System record `+0x44`: the day each system not the side's was last
     /// seen blockaded (`FUN_00433e40`), which the records keep.
     #[serde(
@@ -538,6 +562,7 @@ impl AIState {
             module_b: crate::ai_module_b::ModuleB::default(),
             strategy: crate::ai_strategy::Strategy::default(),
             module8: crate::ai_module8::Module8::default(),
+            ship_holds: HashMap::new(),
             seen: HashMap::new(),
         }
     }
@@ -716,6 +741,12 @@ pub enum AIAction {
         to: SystemKey,
     },
 
+    /// Create Fleet (`0x270`): capital ships of one of the side's fleets
+    /// leave it as a new fleet in their system, carried out by
+    /// [`crate::fleet_join::create_fleet`]. The ships are their places in
+    /// the fleet.
+    CreateFleet { fleet: FleetKey, ships: Vec<usize> },
+
     /// Destination (`0x214`) on `system`'s `area` manager: what it builds
     /// goes to `destination` (`FUN_004dc9f0`).
     SetDestination {
@@ -861,6 +892,14 @@ impl AISystem {
                 transport: troop_transport,
             },
         );
+        // A record goes with its ship: holds of ships no longer among the
+        // side's records are dropped.
+        let alive: HashSet<u64> = galaxy
+            .fleets
+            .values()
+            .flat_map(|f| f.ships.iter().map(|s| s.id))
+            .collect();
+        state.ship_holds.retain(|id, _| alive.contains(id));
         // FUN_00433e40: a blockaded system not the side's is seen today
         // (record +0x44).
         for r in galaxy.sectors.iter().flat_map(|s| &s.systems) {
@@ -1007,6 +1046,7 @@ impl AISystem {
             &state.yard_marks,
             &state.record_kinds,
         );
+        crate::ai_records::apply_ship_holds(&mut galaxy, &state.ship_holds);
         crate::ai_module8::mark_planners(&mut galaxy, &state.module8.planners);
         crate::ai_strategy::mark_plans(&mut galaxy, &state.strategy.plans);
         galaxy
@@ -8065,6 +8105,102 @@ mod tests {
         assert_eq!((state.module_b.phase, state.module_b.state), (0, 0));
         assert_eq!(state.module_priority[11], 0);
         assert_eq!(state.orders_today, 0);
+    }
+
+    #[test]
+    fn create_fleet_is_accepted_for_living_ships_of_an_own_fleet_at_rest() {
+        // Create Fleet's validation (fleet_join::check_create_fleet): the
+        // side's fleet, out of hyperspace, each named ship living.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let here = add_system(&mut world, sector, 0.5, 0.5);
+        let class = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        let fleet = world.fleets.insert(Fleet {
+            location: here,
+            capital_ships: ShipInstance::make(class, 100, true, 2),
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let mut movement = crate::movement::MovementState::new();
+        let ok = |ships: Vec<usize>, side, movement: &crate::movement::MovementState| {
+            accepts(
+                &AIAction::CreateFleet { fleet, ships },
+                &world,
+                &ResearchState::new(),
+                side,
+                &transport,
+                movement,
+            )
+        };
+        assert!(ok(vec![1], AiFaction::Alliance, &movement));
+        assert!(!ok(vec![1], AiFaction::Empire, &movement));
+        assert!(!ok(vec![2], AiFaction::Alliance, &movement));
+        assert!(!ok(vec![], AiFaction::Alliance, &movement));
+        movement.order(fleet, here, here, 3);
+        assert!(!ok(vec![1], AiFaction::Alliance, &movement));
+    }
+
+    #[test]
+    fn the_ship_holds_follow_the_side_s_ships_and_reach_their_records() {
+        // FUN_00484630 keeps a ship record's AI bits and +0x30/+0x34 (by
+        // ship id); a hold whose ship is gone is dropped at the refresh.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let here = add_system(&mut world, sector, 0.5, 0.5);
+        world.systems[here].sector = sector;
+        let class = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        let fleet = world.fleets.insert(Fleet {
+            location: here,
+            capital_ships: ShipInstance::make(class, 100, true, 1),
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[here].fleets.push(fleet);
+        world.number_ships();
+        let id = world.fleets[fleet].capital_ships[0].id;
+        let mut state = AIState::new(AiFaction::Alliance);
+        let hold = crate::ai_records::ShipHold {
+            flags: 0,
+            owner: 3,
+            plan: 1,
+        };
+        state.ship_holds.insert(id, hold);
+        state.ship_holds.insert(id + 50, hold);
+        cadence_pass(&mut state, &world);
+        assert_eq!(state.ship_holds, HashMap::from([(id, hold)]));
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let economy = crate::economy::EconomyState::default();
+        let uprisings = crate::uprising::UprisingState::default();
+        let manufacturing = ManufacturingState::new();
+        let research = ResearchState::new();
+        let movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let inputs = RecordInputs {
+            world: &world,
+            economy: &economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            movement: &movement,
+            transport: &transport,
+        };
+        let planner = Planner::new(&world, &missions, &busy, true, 7);
+        let galaxy = AISystem::records(&state, &planner, &inputs);
+        let r = &galaxy.fleets[&fleet].ships[0];
+        assert_eq!(
+            (r.owner, r.plan, r.flags & crate::ai_records::SHIP_FREE),
+            (3, 1, 0)
+        );
     }
 
     #[test]

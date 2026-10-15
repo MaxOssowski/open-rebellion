@@ -922,6 +922,11 @@ pub struct ShipInstance {
     /// The name the player gave it (`+0x34`, order 0x203); `None` shows the
     /// class's (`FUN_004f6270`).
     pub name: Option<String>,
+    /// port: the ship's identity, 0 until [`GameWorld::number_ships`]
+    /// numbers it. The original's AI keeps a record per ship object
+    /// (`FUN_00484230`); the port's AI keys its per-ship state on this.
+    #[serde(default)]
+    pub id: u64,
 }
 
 impl ShipInstance {
@@ -937,6 +942,7 @@ impl ShipInstance {
             shield_weapon_packed: 0,
             alive: true,
             name: None,
+            id: 0,
         }
     }
 
@@ -1528,6 +1534,9 @@ pub struct GameWorld {
     pub recruit_pool_empty: [bool; 2],
     /// Each fleet's name (`+0x34`) and each side's default-name counter.
     pub fleet_names: FleetNames,
+    /// The last id [`Self::number_ships`] gave a capital ship.
+    #[serde(default)]
+    pub last_ship_id: u64,
 }
 
 /// The fleet record's name (`+0x34`, TEXTSTRA 11523): a fleet's name until
@@ -1712,6 +1721,24 @@ impl GameWorld {
     }
 
     /// Insert `fleet` and give it its side's next default name.
+    /// Give every capital ship without an id the next one, fleet by fleet
+    /// in key order and ship by ship.
+    ///
+    /// port: the drivers call this before the AI's passes, at a new
+    /// campaign and at a load, so the AI's per-ship state
+    /// ([`crate::ai::AIState::ship_holds`]) can follow a ship between
+    /// fleets.
+    pub fn number_ships(&mut self) {
+        let mut last = self.last_ship_id;
+        for fleet in self.fleets.values_mut() {
+            for ship in fleet.capital_ships.iter_mut().filter(|s| s.id == 0) {
+                last += 1;
+                ship.id = last;
+            }
+        }
+        self.last_ship_id = last;
+    }
+
     pub fn insert_fleet(&mut self, fleet: Fleet) -> FleetKey {
         let key = self.fleets.insert(fleet);
         self.name_new_fleet(key);
@@ -2574,6 +2601,42 @@ mod tests {
         assert!(!c.is_captive, "is_captive must be cleared");
         assert_eq!(c.captured_by, None, "captured_by must be cleared");
         assert_eq!(c.capture_tick, None, "capture_tick must be cleared");
+    }
+
+    #[test]
+    fn number_ships_gives_each_unnumbered_ship_the_next_id() {
+        // port: ship ids for the AI's per-ship records (FUN_00484230 keeps
+        // one record per ship object).
+        let mut world = GameWorld::default();
+        let class = CapitalShipKey::default();
+        let mut fleet = |ships: Vec<ShipInstance>| {
+            world.fleets.insert(Fleet {
+                location: SystemKey::default(),
+                capital_ships: ships,
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: true,
+                has_death_star: false,
+            })
+        };
+        let a = fleet(ShipInstance::make(class, 10, true, 2));
+        let b = fleet(vec![ShipInstance {
+            id: 7,
+            ..ShipInstance::new(class, 10, true)
+        }]);
+        world.last_ship_id = 7;
+        world.number_ships();
+        let ids = |world: &GameWorld, f| -> Vec<u64> {
+            world.fleets[f].capital_ships.iter().map(|s| s.id).collect()
+        };
+        assert_eq!(ids(&world, a), vec![8, 9]);
+        assert_eq!(ids(&world, b), vec![7]);
+        world.fleets[b]
+            .capital_ships
+            .push(ShipInstance::new(class, 10, true));
+        world.number_ships();
+        assert_eq!(ids(&world, b), vec![7, 10]);
+        assert_eq!(world.last_ship_id, 10);
     }
 
     #[test]

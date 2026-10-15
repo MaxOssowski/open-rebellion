@@ -978,6 +978,7 @@ mod tests {
                 shield_weapon_packed: 0,
                 alive: true,
                 name: None,
+                id: 0,
             }],
             fighters: vec![],
             characters: vec![],
@@ -1299,6 +1300,7 @@ mod tests {
             shield_weapon_packed: 0,
             alive: false,
             name: None,
+            id: 0,
         });
         let tie = world
             .fighter_classes

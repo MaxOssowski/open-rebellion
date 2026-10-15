@@ -15,7 +15,7 @@ use crate::ai_module1::{
 };
 use crate::ai_module2::{borrow_yard, keep_site};
 use crate::ai_module3::choose_target;
-use crate::ai_records::{pick, ranked, squared_distance, Mask, Order};
+use crate::ai_records::{pick, ranked, Mask, Order};
 use crate::ids::{DatId, FighterKey, FleetKey, SystemKey};
 use crate::manufacturing::{BuildableKind, ProductionArea};
 use crate::squadrons::SquadronPlace;
@@ -675,26 +675,15 @@ fn weakest_squadron(io: &Inputs<'_>, system: SystemKey) -> Option<FighterKey> {
 /// `+0xac` (key `0x17`, order 1).
 fn fleet_with_room(io: &mut Inputs<'_>, source: SystemKey, require: u32) -> Option<FleetKey> {
     let home = io.galaxy.sector_position_of(source)?;
-    let fleets: Vec<(FleetKey, i32, i32)> = io
-        .world
-        .fleets
-        .iter()
-        .filter_map(|(key, fleet)| {
-            let r = io.galaxy.fleets.get(&key)?;
-            if r.flags & require != require || r.flags & 2 != 0 {
-                return None;
-            }
-            let position = io.galaxy.system(fleet.location)?.position;
-            Some((key, squared_distance(home, position), r.values[23]))
-        })
-        .collect();
-    let near = ranked(
-        fleets.iter().map(|&(key, distance, _)| (key, distance)),
-        Order::Descending,
-        io.coin,
-    );
+    let mask = Mask::new(require, 2);
+    let near = io
+        .galaxy
+        .fleets_near(io.world, home, mask, Order::Descending, io.coin);
     let roomy = ranked(
-        fleets.iter().map(|&(key, _, room)| (key, room)),
+        io.galaxy
+            .fleets_in(io.world, mask)
+            .into_iter()
+            .map(|key| (key, io.galaxy.fleets[&key].values[23])),
         Order::Ascending,
         io.coin,
     );
@@ -860,6 +849,7 @@ mod tests {
             FleetRecord {
                 flags: 0x10_0005,
                 values,
+                ships: Vec::new(),
             },
         );
     }
@@ -1452,6 +1442,7 @@ mod tests {
                     FleetRecord {
                         flags,
                         values: [0; 30],
+                        ships: Vec::new(),
                     },
                 );
             };

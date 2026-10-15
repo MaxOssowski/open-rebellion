@@ -601,6 +601,8 @@ pub fn run_simulation_tick(
         if let Some(ref mut ai2) = states.ai2 {
             ai2.begin_day();
         }
+        // The AI follows its ships by id (GameWorld::number_ships).
+        world.number_ships();
         for _ in 0..passes {
             let ai_actions = AISystem::pass(
                 &mut states.ai,
@@ -938,6 +940,16 @@ mod tests {
             10,
             &rebellion_core::tuning::GameConfig::default(),
         );
+    }
+
+    #[test]
+    fn a_day_numbers_the_ships_before_the_ai_passes() {
+        // port: GameWorld::number_ships gives the AI's per-ship records
+        // their key (FUN_00484230 keeps one record per ship object).
+        let (mut world, mut states, fleet, _) = world_with_loading_fleet();
+        assert_eq!(world.fleets[fleet].capital_ships[0].id, 0);
+        run_one_tick(&mut world, &mut states);
+        assert_eq!(world.fleets[fleet].capital_ships[0].id, 1);
     }
 
     #[test]

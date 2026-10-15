@@ -1544,6 +1544,7 @@ mod tests {
             let mut r = crate::ai_records::FleetRecord {
                 flags,
                 values: [0; 30],
+                ships: Vec::new(),
             };
             r.values[15] = upkeep;
             r

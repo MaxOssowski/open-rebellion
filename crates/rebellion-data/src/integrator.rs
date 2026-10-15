@@ -190,6 +190,14 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": sys_name(world, *to),
             })
         }
+        AIAction::CreateFleet { fleet, ships } => serde_json::json!({
+            "type": "CreateFleet",
+            "ships": ships.len(),
+            "at": world
+                .fleets
+                .get(*fleet)
+                .map_or_else(|| "unknown".into(), |f| sys_name(world, f.location)),
+        }),
         AIAction::SetDestination {
             system,
             area,
@@ -2129,6 +2137,21 @@ fn apply_ai_actions_inner(
                     .is_ok()
                 })
             }),
+            AIAction::CreateFleet { fleet, ships } => ai_state.faction.is_some_and(|side| {
+                let roster = rebellion_core::fleet_join::roster(world, *fleet);
+                roster.is_some_and(|roster| {
+                    rebellion_core::fleet_join::create_fleet(
+                        world,
+                        movement_state,
+                        troop_transport,
+                        *fleet,
+                        ships,
+                        roster,
+                        matches!(side, AiFaction::Alliance),
+                    )
+                    .is_ok()
+                })
+            }),
             AIAction::MoveRegiments { troops, to } => {
                 let blockaded = rebellion_core::blockade::BlockadeSystem::blockaded_now(world);
                 let mut moved = false;
@@ -2986,6 +3009,52 @@ mod tests {
         );
         assert!(world.fleets[fleet].capital_ships.is_empty());
         assert!(!world.troops.contains_key(regiment));
+    }
+
+    #[test]
+    fn a_create_fleet_order_splits_the_chosen_ships_off_in_place() {
+        // Create Fleet 0x270 (FUN_00580b00), carried out by
+        // fleet_join::create_fleet: the chosen ship forms a new fleet in
+        // its system; an index past the fleet changes nothing.
+        let mut world = GameWorld::default();
+        let kuat = add_system(&mut world, "Kuat");
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            ..Default::default()
+        });
+        let ship = || rebellion_core::world::ShipInstance::new(class, 100, false);
+        let fleet = world.fleets.insert(Fleet {
+            location: kuat,
+            capital_ships: vec![ship(), ship()],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[kuat].fleets.push(fleet);
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+        let mut apply = |world: &mut GameWorld, ships: Vec<usize>| {
+            integrator.apply_ai_actions(
+                &[AIAction::CreateFleet { fleet, ships }],
+                &mut AIState::new(AiFaction::Empire),
+                &mut MissionState::new(),
+                &mut ManufacturingState::new(),
+                &mut MovementState::new(),
+                &mut TroopTransportState::new(),
+                &mut ProductionState::new(),
+                world,
+                5,
+                false,
+            );
+        };
+        apply(&mut world, vec![5]);
+        assert_eq!(world.fleets.len(), 1);
+        apply(&mut world, vec![1]);
+        assert_eq!(world.fleets.len(), 2);
+        assert_eq!(world.fleets[fleet].capital_ships.len(), 1);
+        let made = world.fleets.keys().find(|&k| k != fleet).unwrap();
+        assert_eq!(world.fleets[made].location, kuat);
+        assert_eq!(world.systems[kuat].fleets.len(), 2);
     }
 
     #[test]

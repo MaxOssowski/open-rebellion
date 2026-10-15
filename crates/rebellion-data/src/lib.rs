@@ -156,6 +156,7 @@ pub fn load_game_data_with_options(
         difficulty_index: seed_options.gnprtb_index(),
         recruit_pool_empty: [false; 2],
         fleet_names: rebellion_core::world::FleetNames::default(),
+        last_ship_id: 0,
     };
 
     // ── 1. Sectors ───────────────────────────────────────────────────────────
@@ -729,6 +730,7 @@ pub fn load_game_data_with_options(
         }
     }
 
+    world.number_ships();
     Ok(world)
 }
 

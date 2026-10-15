@@ -2508,7 +2508,11 @@ pub(crate) mod tests {
         for flags in [5, 5, 0x14] {
             galaxy.fleets.insert(
                 nowhere.insert(()),
-                crate::ai_records::FleetRecord { flags, values },
+                crate::ai_records::FleetRecord {
+                    flags,
+                    values,
+                    ships: Vec::new(),
+                },
             );
         }
         galaxy.sectors[0].values[crate::ai_records::sector_at(0x134)] = 6;
@@ -2539,7 +2543,11 @@ pub(crate) mod tests {
             values[11] = regiments;
             galaxy.fleets.insert(
                 nowhere.insert(()),
-                crate::ai_records::FleetRecord { flags, values },
+                crate::ai_records::FleetRecord {
+                    flags,
+                    values,
+                    ships: Vec::new(),
+                },
             );
         }
         let mut sectors = vec![galaxy.sectors[0].clone(); 4];

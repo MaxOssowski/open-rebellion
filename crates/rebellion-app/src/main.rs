@@ -2544,6 +2544,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                 if let Some(ref mut second_ai) = secondary_ai_state {
                     second_ai.begin_day();
                 }
+                // The AI follows its ships by id (GameWorld::number_ships).
+                world.number_ships();
                 let ai_started = macroquad::time::get_time();
                 for _ in 0..ai_passes {
                     let ai_actions = AISystem::pass(
@@ -8104,6 +8106,23 @@ fn apply_ai_actions(
                         *to,
                     ));
                 }
+            }
+            AIAction::CreateFleet { fleet, ships } => {
+                let Some(side) = ai_state.faction else {
+                    continue;
+                };
+                let Some(roster) = rebellion_core::fleet_join::roster(world, *fleet) else {
+                    continue;
+                };
+                let _ = rebellion_core::fleet_join::create_fleet(
+                    world,
+                    movement_state,
+                    troop_transport_state,
+                    *fleet,
+                    ships,
+                    roster,
+                    matches!(side, AiFaction::Alliance),
+                );
             }
             AIAction::SetDestination {
                 system,

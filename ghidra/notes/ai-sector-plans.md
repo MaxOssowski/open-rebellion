@@ -214,6 +214,59 @@ units, cancels its missions, clears the system's `+0x30` bits
 `FUN_00478140`, `FUN_004adb70`, `FUN_00479560`...) and the six plan
 objects (about 7,000 decompiled lines) are not read yet.
 
+## The planner's ships and the reports it gets (read 2026-10-15)
+
+**A planner holds ships, not fleets.** Its list `+0x2c` holds capital
+ship ids. `FUN_00478e00` takes a ship: the ship's record (`FUN_004f5940`)
+loses `+0x24` `0x20000`, gets `+0x30` = the planner's id and `+0x34` =
+its plan id, and the planner's counts grow by the record's values
+(`+0x7c` into `+0x6c`, `+0x80` into `+0x70`, `+0x6c` into `+0x74`,
+`+0x60` into `+0x78`, `+0x48` into `+0x80`, `+0x64` into `+0x88`, `+0x58`
+into `+0x8c`; bits `0x80`, `0x400`, 2 count into `+0x7c`, `+0x84`,
+`+0x90`), with request bits in `+0x64`. `FUN_004790d0` gives a ship back
+(when `+0x30` is this planner: `0x20000` set, `0x3000000` cleared,
+`+0x30`/`+0x34` cleared) and takes its values off. `FUN_004791d0` does the
+same for a fleet record (`+0x38` bit 4 set: no planner holds the fleet,
+the bit module 7's queries `0x100005` require). `FUN_00475e70` and
+`FUN_00475f60` are another planner class's take and give (bit
+`0x10000000`).
+
+**The ship record** (`FUN_00484230`, vtable `0x65aa50`): the class's bits
+`& 0x4ff`, `0x20000` (free), `+0x30`/`+0x34` 0. The refresh
+(`FUN_00484630`) keeps `+0x24 & 0x1b0204ff`, sets `0x4000` for the
+record's side's ship, `0x800` en route, `0x2000` an inactive ship
+(object `+0x50` bit 4 clear), `0x1000`/`0x800000` damaged.
+
+**Create Fleet** (`0x270`, `FUN_004f5cd0`): planner states use it to
+split ships off a fleet (`FUN_00477a40`: the damaged ships, `0x801000`
+without `0x800`, of the first held fleet with `0x3000` and without
+`0xf0000802`; `FUN_004782a0`: free ships, `0x20000` without `0xc03800`,
+of the own fleets nearest the planner's sector, `FUN_0041a600(sector,
+0x8005, 2, 2)`, that fill a need the counts show).
+
+**No order reports to a sector planner.** Mission Report `0x1f0` reaches
+the mission planner whose `+0x28` is the mission (`FUN_00485f60` ->
+`FUN_004195f0` -> `FUN_0042f7f0`, controller list `+0xa8`). A mission
+planner that belongs to a sector planner (its `+0x70`) passes its kind
+and target on (`FUN_004bdbc0` -> `FUN_00476e80` -> the plan object's
+slots `+0x24..+0x30` for kinds `0x12`, `0x13`, `0x15`, `0x17`/`0x81`). So
+the sector planner learns about its ships from the records each cycle,
+and about missions only through mission planners.
+
+## Ported (2026-10-15, save v51): the ships' records
+
+port: `ShipInstance::id` and `GameWorld::number_ships` give each capital
+ship an identity (the drivers number the ships before the AI's passes, at
+a new world and at a load); `AIState::ship_holds` keeps what the AI sets
+on a ship record (`+0x24 & 0x1b020000`, `+0x30`, `+0x34`) by that id, and
+the refresh writes it into the records (`apply_ship_holds`), dropping the
+holds of ships no longer among the side's records. `FleetRecord::ships`
+lists the ship records (`ShipRecord`). `AIAction::CreateFleet` carries
+`0x270` out through `fleet_join::create_fleet`, validated by
+`fleet_join::check_create_fleet`. `Galaxy::fleets_near` is
+`FUN_0041a600` (module 7's query, now shared). No module issues Create
+Fleet or takes a ship yet.
+
 ## Ported (2026-10-15, save v50): module 8's planners
 
 `crates/rebellion-core/src/ai_module8.rs`: `Module8` (`+0x3c..+0x44`, the

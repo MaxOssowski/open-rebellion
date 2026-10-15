@@ -389,12 +389,79 @@ impl ClassRecords {
 /// added in by `FUN_00433780`).
 ///
 /// `values[i]` is the word at `+0x50 + 4i`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FleetRecord {
     /// `+0x38`.
     pub flags: u32,
     /// `+0x50..+0xc4`.
     pub values: [i32; 30],
+    /// `+0x48`: its capital ships' records, in the fleet's order
+    /// (`FUN_00433620`).
+    pub ships: Vec<ShipRecord>,
+}
+
+/// Ship record `+0x24` bit `0x20000`: no planner holds the ship. The
+/// record's constructor sets it (`FUN_00484230`); a planner taking the
+/// ship clears it (`FUN_00478e00`) and releasing it sets it again
+/// (`FUN_004790d0`).
+pub const SHIP_FREE: u32 = 0x2_0000;
+
+/// Ship record `+0x24` bit `0x4000`: the ship is the record's side's
+/// (`FUN_00484630`).
+pub const SHIP_OWN: u32 = 0x4000;
+
+/// The ship record `+0x24` bits the AI sets and the refresh keeps
+/// (`FUN_00484630`'s mask `0x1b0204ff` without the class's `0x4ff`).
+pub const SHIP_KEPT: u32 = 0x1b02_0000;
+
+/// A capital ship's record (`FUN_00484230`, refreshed by `FUN_00484630`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShipRecord {
+    /// Its place in the fleet's `capital_ships`.
+    pub index: usize,
+    /// Its [`crate::world::ShipInstance::id`].
+    pub id: u64,
+    /// `+0x24`.
+    pub flags: u32,
+    /// `+0x30`: the id of the planner holding it, 0 for none.
+    pub owner: u32,
+    /// `+0x34`: the id of that planner's plan.
+    pub plan: u32,
+    /// `+0x44 + 4i`.
+    pub values: ShipValues,
+}
+
+/// What the AI keeps on a ship's record across refreshes: its `+0x24`
+/// bits within [`SHIP_KEPT`], `+0x30` and `+0x34`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShipHold {
+    pub flags: u32,
+    pub owner: u32,
+    pub plan: u32,
+}
+
+/// The refresh's kept ship record fields: each ship record takes its
+/// hold's bits, `+0x30` and `+0x34`; a ship without one keeps the
+/// constructor's.
+pub fn apply_ship_holds(galaxy: &mut Galaxy, holds: &std::collections::HashMap<u64, ShipHold>) {
+    for record in galaxy.fleets.values_mut().flat_map(|f| f.ships.iter_mut()) {
+        if let Some(h) = holds.get(&record.id) {
+            record.flags = (record.flags & !SHIP_KEPT) | (h.flags & SHIP_KEPT);
+            record.owner = h.owner;
+            record.plan = h.plan;
+        }
+    }
+}
+
+impl Default for ShipHold {
+    /// `FUN_00484230`: free, held by no planner.
+    fn default() -> Self {
+        Self {
+            flags: SHIP_FREE,
+            owner: 0,
+            plan: 0,
+        }
+    }
 }
 
 /// The fleet is the record's side's (`FUN_00433620`).
@@ -584,6 +651,7 @@ impl FleetRecord {
         let mut r = Self {
             flags: 4,
             values: [0; 30],
+            ships: Vec::new(),
         };
         if fleet.is_alliance == is_alliance {
             r.flags |= FLEET_OWN;
@@ -592,9 +660,27 @@ impl FleetRecord {
             r.flags |= FLEET_EN_ROUTE;
         }
         let mut cargo = Some((transport.cargo(fleet_key), person));
-        for ship in fleet.capital_ships.iter().filter(|s| s.alive) {
+        let own = if fleet.is_alliance == is_alliance {
+            SHIP_OWN
+        } else {
+            0
+        };
+        for (index, ship) in fleet
+            .capital_ships
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.alive)
+        {
             let (flags, v) = ship_record(world, classes, ship, fleet, en_route, cargo.take());
             r.add_ship(flags, &v);
+            r.ships.push(ShipRecord {
+                index,
+                id: ship.id,
+                flags: flags | own | SHIP_FREE,
+                owner: 0,
+                plan: 0,
+                values: v,
+            });
         }
         if r.values[22] > 0 {
             r.flags |= 0x8_0000;
@@ -2047,6 +2133,42 @@ impl Galaxy {
         )
     }
 
+    /// The fleets, in the world's order, whose record's `+0x38` passes
+    /// `mask` and whose system has a record (`FUN_0041a600`'s walk).
+    #[must_use]
+    pub fn fleets_in(&self, world: &GameWorld, mask: Mask) -> Vec<crate::ids::FleetKey> {
+        world
+            .fleets
+            .iter()
+            .filter(|(key, fleet)| {
+                self.fleets.get(key).is_some_and(|r| mask.admits(r.flags))
+                    && self.system(fleet.location).is_some()
+            })
+            .map(|(key, _)| key)
+            .collect()
+    }
+
+    /// `FUN_0041a600`: [`Self::fleets_in`] sorted on the squared distance
+    /// of their system from `home`, a sector record's position.
+    pub fn fleets_near(
+        &self,
+        world: &GameWorld,
+        home: (i16, i16),
+        mask: Mask,
+        order: Order,
+        coin: &mut dyn FnMut() -> bool,
+    ) -> Vec<crate::ids::FleetKey> {
+        let items: Vec<(crate::ids::FleetKey, i32)> = self
+            .fleets_in(world, mask)
+            .into_iter()
+            .filter_map(|key| {
+                let at = self.system(world.fleets.get(key)?.location)?.position;
+                Some((key, squared_distance(home, at)))
+            })
+            .collect();
+        ranked(items, order, coin)
+    }
+
     /// `FUN_00419e90`: the sectors passing `masks`, keyed on their plan's
     /// id (`+0x3c`), 100 for an unplanned sector.
     pub fn planned_sectors(
@@ -2748,6 +2870,176 @@ mod tests {
     }
 
     #[test]
+    fn a_fleet_record_lists_its_living_ships_records() {
+        // FUN_00433620 builds a record per capital ship (FUN_00484230:
+        // +0x24 0x20000 at construction; FUN_00484630: 0x4000 for the
+        // record's side's ship, 0x800 en route). A dead ship has none.
+        let mut world = GameWorld::default();
+        let here = system(&mut world);
+        let hull = world.capital_ship_classes.insert(ship(0x40));
+        let mut dead = crate::world::ShipInstance::new(hull, 1, true);
+        dead.alive = false;
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: here,
+            capital_ships: vec![
+                crate::world::ShipInstance::new(hull, 1, true),
+                dead,
+                crate::world::ShipInstance::new(hull, 1, true),
+            ],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.number_ships();
+        let classes = ClassRecords::build(&world);
+        let mut movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let build = |movement: &crate::movement::MovementState, side| {
+            FleetRecord::build(&world, &classes, fleet, side, movement, &transport, &|_| {
+                None
+            })
+            .unwrap()
+        };
+        let r = build(&movement, true);
+        let ships: Vec<(usize, u64, u32)> = r
+            .ships
+            .iter()
+            .map(|s| (s.index, s.id, s.flags & (SHIP_OWN | SHIP_FREE | 0x800)))
+            .collect();
+        assert_eq!(
+            ships,
+            vec![(0, 1, SHIP_OWN | SHIP_FREE), (2, 3, SHIP_OWN | SHIP_FREE)]
+        );
+        assert_eq!(r.ships[0].values[0], r.values[1] / 2);
+        let theirs = build(&movement, false);
+        assert!(theirs.ships.iter().all(|s| s.flags & SHIP_OWN == 0));
+        movement.order(fleet, here, here, 3);
+        assert!(build(&movement, true)
+            .ships
+            .iter()
+            .all(|s| s.flags & 0x800 != 0));
+    }
+
+    #[test]
+    fn a_ship_record_keeps_what_the_ai_set_on_it() {
+        // FUN_00484630 keeps +0x24 & 0x1b0204ff, and +0x30/+0x34 stay: the
+        // hold's bits replace the kept ones, a ship without a hold keeps
+        // the constructor's 0x20000.
+        let mut galaxy = Galaxy::default();
+        let mut keys = slotmap::SlotMap::<crate::ids::FleetKey, ()>::with_key();
+        let record = |id| ShipRecord {
+            index: 0,
+            id,
+            flags: SHIP_OWN | SHIP_FREE | 1,
+            owner: 0,
+            plan: 0,
+            values: [0; 30],
+        };
+        galaxy.fleets.insert(
+            keys.insert(()),
+            FleetRecord {
+                flags: 5,
+                values: [0; 30],
+                ships: vec![record(4), record(5)],
+            },
+        );
+        let holds = std::collections::HashMap::from([(
+            4,
+            ShipHold {
+                flags: 0x200_0000 | 0x4000,
+                owner: 2,
+                plan: 3,
+            },
+        )]);
+        apply_ship_holds(&mut galaxy, &holds);
+        let ships = &galaxy.fleets.values().next().unwrap().ships;
+        assert_eq!(
+            (ships[0].flags, ships[0].owner, ships[0].plan),
+            (SHIP_OWN | 0x200_0000 | 1, 2, 3)
+        );
+        assert_eq!(
+            (ships[1].flags, ships[1].owner),
+            (SHIP_OWN | SHIP_FREE | 1, 0)
+        );
+        assert_eq!(ShipHold::default().flags, SHIP_FREE);
+    }
+
+    #[test]
+    fn the_fleets_near_a_sector_rank_on_their_system_s_distance() {
+        // FUN_0041a600: the fleets whose record passes the mask, by the
+        // squared distance of their system from the sector (order 2: the
+        // pick is the nearest).
+        let mut world = GameWorld::default();
+        let near = system(&mut world);
+        let far = system(&mut world);
+        let nowhere = system(&mut world);
+        let hull = world.capital_ship_classes.insert(ship(0x40));
+        let mut fleet = |at, is_alliance| {
+            let f = world.fleets.insert(crate::world::Fleet {
+                location: at,
+                capital_ships: vec![crate::world::ShipInstance::new(hull, 1, is_alliance)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+            });
+            world.systems[at].fleets.push(f);
+            f
+        };
+        let b = fleet(near, true);
+        let a = fleet(far, true);
+        let c = fleet(near, false);
+        // A fleet at a system without a record (no sector) is left out.
+        let _ = fleet(nowhere, false);
+        world.systems[far].x = 30;
+        let sector = world.sectors.insert(crate::world::Sector {
+            dat_id: DatId::new(0x8000_0001),
+            name: "Sector".into(),
+            group: crate::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![near, far],
+        });
+        for key in [near, far] {
+            world.systems[key].sector = sector;
+        }
+        let classes = ClassRecords::build(&world);
+        let fleets = HashMap::new();
+        let economy = crate::economy::EconomyState::default();
+        let uprisings = crate::uprising::UprisingState::default();
+        let manufacturing = crate::manufacturing::ManufacturingState::new();
+        let research = crate::research::ResearchState::new();
+        let inputs = SystemInputs {
+            world: &world,
+            classes: &classes,
+            fleets: &fleets,
+            person: &|_| None,
+            economy: &economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            is_alliance: true,
+            minor_classes: 0,
+            shield_goal: SHIELD_GOAL,
+            squadron_goals: SQUADRON_GOALS,
+            garrison_goals: GARRISON_GOALS,
+        };
+        let galaxy = Galaxy::build(
+            &inputs,
+            &crate::movement::MovementState::new(),
+            &crate::troop_transport::TroopTransportState::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
+        let own = Mask::new(FLEET_OWN, FLEET_EN_ROUTE);
+        let order = galaxy.fleets_near(&world, (0, 0), own, Order::Descending, &mut || false);
+        assert_eq!(order, vec![a, b]);
+        assert_eq!(pick(&[order]), Some(b));
+        assert_eq!(galaxy.fleets_in(&world, Mask::new(0, FLEET_OWN)), vec![c]);
+    }
+
+    #[test]
     fn a_travelling_fleet_is_neither_standing_nor_roomy() {
         // FUN_00433620: object +0x50 bit 4 sets +0x38 bit 2 and each ship's
         // 0x800, which bars 0x4000 and the free room (0x2800).
@@ -2861,6 +3153,7 @@ mod tests {
                 FleetRecord {
                     flags: FLEET_STANDING | 0x10 | 0x20_0000 | 0x40_0000 | 0x200_0000 | 0x100_0000,
                     values,
+                    ships: Vec::new(),
                 },
             ),
             (
@@ -2868,6 +3161,7 @@ mod tests {
                 FleetRecord {
                     flags: FLEET_OWN | FLEET_STANDING,
                     values,
+                    ships: Vec::new(),
                 },
             ),
         ]);
@@ -3802,6 +4096,7 @@ mod tests {
                 FleetRecord {
                     flags,
                     values: [1; 30],
+                    ships: Vec::new(),
                 },
             )]);
             let manufacturing = crate::manufacturing::ManufacturingState::new();

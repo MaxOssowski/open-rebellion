@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v50, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v51, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-15
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v50, and it is the only one
+serializable snapshot. The current format is v51, and it is the only one
 that loads.
 
-## Native format (v50)
+## Native format (v51)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -41,12 +41,12 @@ Every mutable campaign subsystem required by the app is serialized:
 
 | Field | Type |
 |-------|------|
-| `world` | `GameWorld`; each system keeps the squadrons on its planet (v46) |
+| `world` | `GameWorld`; each system keeps the squadrons on its planet (v46); each capital ship its id and the world the last id given (v51) |
 | `clock` | `GameClock` |
 | `manufacturing` | `ManufacturingState`: one queue and one Destination per system and production area (v30); a queue keeps its build points and each unit its cost in points (v34) |
 | `missions` | `MissionState`: missions, travelling members, and each captive's escape timer and escaped characters on the road (v35) |
 | `events` | `EventState` |
-| `ai` | `AIState`: busy characters, battle cooldowns, the strategy's research planners with their held designer, site, target, mission, unread report and failures (v37), the day's order count and the round robin's module (v38; the evaluation tick is gone), the priority scan's cursor, each module's priority and undecided orders, and the mission module's next entry (v39), the yard marks the modules keep on system records (v40), the kept record `+0x30` bits, the controller's yard token and module 1's fields and sites (v41), module 2's fields and sites (v42), and module 3's fields and sites and the controller's shield goal `+0x374` (v43), module 5's fields and sites (v44), module 6's fields and sites (v45), module 7's fields and sites and the controller's squadron goals `+0x388..+0x390` (v47), module `0xb`'s fields and sites (v48), and the strategy's posture, kind, growth flags and sector plans, the controller's garrison goals `+0x37c..+0x384`, and the day each system was last seen (record `+0x44`) (v49), and module 8's fields and sector planners (v50) |
+| `ai` | `AIState`: busy characters, battle cooldowns, the strategy's research planners with their held designer, site, target, mission, unread report and failures (v37), the day's order count and the round robin's module (v38; the evaluation tick is gone), the priority scan's cursor, each module's priority and undecided orders, and the mission module's next entry (v39), the yard marks the modules keep on system records (v40), the kept record `+0x30` bits, the controller's yard token and module 1's fields and sites (v41), module 2's fields and sites (v42), and module 3's fields and sites and the controller's shield goal `+0x374` (v43), module 5's fields and sites (v44), module 6's fields and sites (v45), module 7's fields and sites and the controller's squadron goals `+0x388..+0x390` (v47), module `0xb`'s fields and sites (v48), and the strategy's posture, kind, growth flags and sector plans, the controller's garrison goals `+0x37c..+0x384`, and the day each system was last seen (record `+0x44`) (v49), module 8's fields and sector planners (v50), and the AI's ship record holds by ship id (v51) |
 | `movement` | `MovementState` |
 | `fog_alliance`, `fog_empire` | `FogState` |
 | `player_is_alliance` | `bool` |
