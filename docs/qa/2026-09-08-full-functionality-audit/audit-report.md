@@ -1952,6 +1952,20 @@ cross-runtime proof remain open
   gives an order, so the campaign's events equal stage 4a's. Save v53;
   golden `v1:030a4e7e7f7902e9` -> `v1:a9d12433c6c44f1e`
   (`evidence/2026-10-16-ai-plan-object/`).
+- Module 8, stage 4c (2026-10-16): kind 3's plan object runs to its end
+  (`FUN_004adb70`, states 7 to `0xe`): its fleet attacks an enemy fleet it
+  prevails over (`FUN_004b4560`, `FUN_004ae150`) or takes a system to
+  bombard (`FUN_004b4730`, `FUN_004ae320`) and moves there
+  (`FUN_004b0f90`); else it joins the nearest held fleet
+  (`FUN_004b0c90`, `AIAction::JoinFleet`) or goes home (`FUN_004b4a20`);
+  `FUN_004b1070` settles the roles at their targets, and state 1 marks
+  them. The fleet record keeps its target `+0x2c`. The fleet heuristics
+  no longer stand in for kind 3 and leave held fleets alone. port: the
+  bombardments (`0x220`, `0x222`, `0x223`) are not given (F-032). In seed
+  42 the Alliance's plan finds no target in its sector and gives no
+  order; the heuristics' fleet moves fall from 28 to 15. Save v54; golden
+  `v1:a9d12433c6c44f1e` -> `v1:dbb908594619dd4b`
+  (`evidence/2026-10-16-ai-plan-roles/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

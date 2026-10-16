@@ -403,6 +403,9 @@ pub struct FleetRecord {
     pub owner: u32,
     /// `+0x34`: that planner's plan id.
     pub plan: u32,
+    /// `+0x2c`: the system a plan object sent the fleet to, written only by
+    /// the plan objects (`FUN_004b4560`, `FUN_004b4730`, `FUN_004b1070`).
+    pub target: Option<crate::ids::SystemKey>,
 }
 
 /// Fleet record `+0x38` bit 4: no planner holds the fleet. The record's
@@ -415,12 +418,15 @@ pub const FLEET_FREE: u32 = 4;
 pub const FLEET_KEPT: u32 = 0xf000_000c;
 
 /// What the AI keeps on a fleet's record across refreshes: its `+0x38`
-/// bits within [`FLEET_KEPT`], `+0x30` and `+0x34`.
+/// bits within [`FLEET_KEPT`], `+0x30`, `+0x34` and the plan's target
+/// `+0x2c`, which the refresh (`FUN_00433620`) does not write.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FleetHold {
     pub flags: u32,
     pub owner: u32,
     pub plan: u32,
+    #[serde(default)]
+    pub target: Option<crate::ids::SystemKey>,
 }
 
 impl Default for FleetHold {
@@ -430,12 +436,13 @@ impl Default for FleetHold {
             flags: FLEET_FREE,
             owner: 0,
             plan: 0,
+            target: None,
         }
     }
 }
 
 /// The refresh's kept fleet record fields: each fleet record takes its
-/// hold's bits, `+0x30` and `+0x34`.
+/// hold's bits, `+0x30`, `+0x34` and `+0x2c`.
 pub fn apply_fleet_holds(
     galaxy: &mut Galaxy,
     holds: &std::collections::HashMap<crate::ids::FleetKey, FleetHold>,
@@ -445,6 +452,7 @@ pub fn apply_fleet_holds(
             record.flags = (record.flags & !FLEET_KEPT) | (h.flags & FLEET_KEPT);
             record.owner = h.owner;
             record.plan = h.plan;
+            record.target = h.target;
         }
     }
 }
@@ -705,6 +713,7 @@ impl FleetRecord {
             ships: Vec::new(),
             owner: 0,
             plan: 0,
+            target: None,
         };
         if fleet.is_alliance == is_alliance {
             r.flags |= FLEET_OWN;
@@ -3002,6 +3011,7 @@ mod tests {
                 ships: vec![record(4), record(5)],
                 owner: 0,
                 plan: 0,
+                target: None,
             },
         );
         let holds = std::collections::HashMap::from([(
@@ -3216,6 +3226,7 @@ mod tests {
                     ships: Vec::new(),
                     owner: 0,
                     plan: 0,
+                    target: None,
                 },
             ),
             (
@@ -3226,6 +3237,7 @@ mod tests {
                     ships: Vec::new(),
                     owner: 0,
                     plan: 0,
+                    target: None,
                 },
             ),
         ]);
@@ -4163,6 +4175,7 @@ mod tests {
                     ships: Vec::new(),
                     owner: 0,
                     plan: 0,
+                    target: None,
                 },
             )]);
             let manufacturing = crate::manufacturing::ManufacturingState::new();

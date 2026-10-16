@@ -1547,6 +1547,7 @@ mod tests {
                 ships: Vec::new(),
                 owner: 0,
                 plan: 0,
+                target: None,
             };
             r.values[15] = upkeep;
             r

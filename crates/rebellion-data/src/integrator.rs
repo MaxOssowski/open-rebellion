@@ -200,6 +200,19 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": sys_name(world, *to),
             })
         }
+        AIAction::JoinFleet { fleet, into } => {
+            let at = |key| {
+                world
+                    .fleets
+                    .get(key)
+                    .map_or_else(|| "unknown".into(), |f| sys_name(world, f.location))
+            };
+            serde_json::json!({
+                "type": "JoinFleet",
+                "from": at(*fleet),
+                "to": at(*into),
+            })
+        }
         AIAction::MoveShips { fleet, ships, to } => {
             let from = world
                 .fleets
@@ -2144,6 +2157,17 @@ fn apply_ai_actions_inner(
                 troop_transport.destroy_untransportable_cargo(world);
                 done
             }),
+            AIAction::JoinFleet { fleet, into } => ai_state.faction.is_some_and(|side| {
+                rebellion_core::fleet_join::join_fleet(
+                    world,
+                    movement_state,
+                    troop_transport,
+                    &rebellion_core::fleet_join::FleetMover::Fleet(*fleet),
+                    *into,
+                    matches!(side, AiFaction::Alliance),
+                )
+                .is_ok()
+            }),
             AIAction::MoveShips { fleet, ships, to } => ai_state.faction.is_some_and(|side| {
                 let roster = rebellion_core::fleet_join::roster(world, *fleet);
                 roster.is_some_and(|roster| {
@@ -3136,6 +3160,58 @@ mod tests {
             5,
         );
         assert_eq!(applied, [false]);
+    }
+
+    #[test]
+    fn a_join_merges_a_fleet_into_another_in_its_system_or_sends_it_there() {
+        // A sector plan's Move 0x201 onto a held fleet (FUN_004b0c90),
+        // carried out by fleet_join::join_fleet: in the same system the
+        // fleet merges at once; elsewhere it departs to join on arrival.
+        let mut world = GameWorld::default();
+        let kuat = add_system(&mut world, "Kuat");
+        let fondor = add_system(&mut world, "Fondor");
+        world.systems[fondor].x = 40;
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            hyperdrive: 100,
+            ..Default::default()
+        });
+        let fleet = |world: &mut GameWorld, at| {
+            let key = world.fleets.insert(Fleet {
+                location: at,
+                capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: false,
+                has_death_star: false,
+            });
+            world.systems[at].fleets.push(key);
+            key
+        };
+        let a = fleet(&mut world, kuat);
+        let b = fleet(&mut world, kuat);
+        let c = fleet(&mut world, fondor);
+        let mut movement = MovementState::new();
+        let apply = |world: &mut GameWorld, movement: &mut MovementState, fleet, into| {
+            apply_ai_actions_inner(
+                &[AIAction::JoinFleet { fleet, into }],
+                &mut AIState::new(AiFaction::Empire),
+                &mut MissionState::new(),
+                &mut ManufacturingState::new(),
+                movement,
+                &mut TroopTransportState::new(),
+                &mut ProductionState::new(),
+                world,
+                5,
+            )
+        };
+        assert_eq!(apply(&mut world, &mut movement, a, b), [true]);
+        assert!(!world.fleets.contains_key(a));
+        assert_eq!(world.fleets[b].capital_ships.len(), 2);
+        assert_eq!(apply(&mut world, &mut movement, b, c), [true]);
+        assert!(movement.is_in_transit(b));
+        // In hyperspace it cannot be moved again.
+        assert_eq!(apply(&mut world, &mut movement, b, c), [false]);
     }
 
     #[test]

@@ -433,6 +433,47 @@ The fleet record's `+0x28` is its location, written by each refresh
 (`FUN_00433620`); `+0x2c` is the plan's target, written only by the
 plan objects, so it persists across refreshes.
 
+## Ported (2026-10-16, save v54): the plan object's states 7 to `0xe`
+
+`crates/rebellion-core/src/ai_plan.rs`: kind 3's step runs to its end.
+1 marks each held fleet's target by its role; 7 binds an attacker
+(`values[2]`) to the first enemy fleet's system it prevails at
+(`FUN_004ae150`: `0x100000`, role `0x10000000`); 8 and 10 return 0; 9
+binds a bombarder (`values[6]`) to the first system of the opponent it
+can bombard (`FUN_004ae320`: `0x400000`, role `0x40000000`); `0xd` moves
+the fleet to its target; `0xc` joins the nearest other held fleet without
+an enemy fleet there (`FUN_0041ae20`, `AIAction::JoinFleet`, new), else
+goes to slot `+0x54`'s system (`FUN_004b4a20`); `0xe` keeps an attacker
+at its target while it prevails and takes every other role and target
+back, then ends the step (`*out`), and the planner's state 5 goes to 6.
+The fleet record's target `+0x2c` is kept with its hold. The fleet
+heuristics no longer stand in for kind 3, and leave the fleets any
+planner holds alone.
+
+port:
+- The bombardments `FUN_004b1070` gives at a `0x40000000` fleet's target
+  (`FUN_004b1330`: `0x223` with fleet `0x10` and system `v[50]` above 0,
+  else `FUN_004ae320`'s `0x220` or `0x222`) are not given: the Fleet
+  menu's bombardment orders are not ported and the bombardment itself is
+  unrecovered (F-032). The fleet loses its role and target as after the
+  order, and with no order the walk always reaches its end, so its cursor
+  `+0x30` stays clear.
+- The port's move refuses a fleet's own system, which the original's
+  accepts and does nothing with (`FUN_00578d00`); a move there gives no
+  order.
+- The stand-in for the other kinds skips a held fleet (record `+0x30`
+  not 0): its plan object moves it.
+- hyp: controller `+0x168` reads as 0 (`FUN_004ae320`'s shields).
+- Seed 42 (600 days, both sides AI): the Alliance's planner holds one
+  fleet at its base in the headquarters' sector, which has no enemy fleet
+  or system of the opponent; states 7 and 9 find no target and `0xc` none
+  but the base it stands at, so the plan gives no order. Without the
+  stand-in for kind 3 the heuristics' fleet moves (both sides) fall from
+  28 to 15 and the space battles from 12 to 5. In seed 3 the Alliance's
+  planners send a fleet home twice (days 100 and 163) and bind a
+  bombarder, which moves to its target (day 519) and there, with no
+  bombardment, loses its role and takes it again each cycle.
+
 ## Ported (2026-10-16, save v53): the plan object's states 1 to 6
 
 `crates/rebellion-core/src/ai_plan.rs`: the planner's state 5 runs the

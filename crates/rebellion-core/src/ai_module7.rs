@@ -852,6 +852,7 @@ mod tests {
                 ships: Vec::new(),
                 owner: 0,
                 plan: 0,
+                target: None,
             },
         );
     }
@@ -1447,6 +1448,7 @@ mod tests {
                         ships: Vec::new(),
                         owner: 0,
                         plan: 0,
+                        target: None,
                     },
                 );
             };

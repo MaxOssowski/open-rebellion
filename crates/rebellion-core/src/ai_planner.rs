@@ -5,9 +5,9 @@
 //! ships with Create Fleet `0x270`, runs the plan object, and reports
 //! (`ghidra/notes/ai-sector-plans.md`, "The planner's step").
 //!
-//! port: of the plan objects only kind 3's slots are ported here; the plan
-//! object's step (`FUN_004adb70`, state 5) is the port's fleet heuristics
-//! until it is.
+//! port: of the plan objects only kind 3's slots are ported here
+//! ([`crate::ai_plan`]); the other kinds' planners run the port's fleet
+//! heuristics instead of their cycle.
 
 use std::collections::HashMap;
 
@@ -93,7 +93,7 @@ impl PlannerIo<'_> {
     }
 
     /// Change a fleet record and keep the change across refreshes.
-    fn edit_fleet(
+    pub(crate) fn edit_fleet(
         &mut self,
         fleet: FleetKey,
         edit: impl FnOnce(&mut crate::ai_records::FleetRecord),
@@ -108,6 +108,7 @@ impl PlannerIo<'_> {
                 flags: record.flags & FLEET_KEPT,
                 owner: record.owner,
                 plan: record.plan,
+                target: record.target,
             },
         );
     }
@@ -122,7 +123,8 @@ pub enum PlannerStep {
     Order(AIAction, bool),
     /// The cycle ended without an order.
     Done,
-    /// State 5: the plan object's step (the port's heuristics stand in).
+    /// A planner of a kind not ported: the port's heuristics stand in for
+    /// its cycle.
     StandIn,
 }
 
@@ -329,10 +331,13 @@ impl SectorPlanner {
                 self.state = 5;
                 None
             }
-            5 => match self.plan_step(io) {
-                crate::ai_plan::PlanStep::Order(order) => order,
-                crate::ai_plan::PlanStep::StandIn => return PlannerStep::StandIn,
-            },
+            5 => {
+                let (order, ended) = self.plan_step(io);
+                if ended {
+                    self.state = 6;
+                }
+                order
+            }
             6 => {
                 self.flagship(io);
                 // FUN_004799d0 without movement planners (0x2000000).
@@ -359,20 +364,11 @@ impl SectorPlanner {
         }
     }
 
-    /// The stand-in for the plan object's states 7 to `0xe` finished: its
-    /// step ends (`FUN_004adb70`: state 0, `*out` set), so for kind 3
-    /// state 6 is next and the cycle goes on; for the other kinds (port:
-    /// not ported) the cycle ends.
-    pub fn plan_done(&mut self) -> bool {
-        if self.kind == 3 {
-            self.plan_state = 0;
-            self.state = 6;
-            false
-        } else {
-            self.state = 1;
-            self.resync = true;
-            true
-        }
+    /// The stand-in for another kind's planner finished: its cycle ends
+    /// (port: only kind 3's slots are ported).
+    pub fn plan_done(&mut self) {
+        self.state = 1;
+        self.resync = true;
     }
 
     /// `FUN_00477a40`: the first held fleet with a damaged ship (`0x3000`,
@@ -1137,7 +1133,8 @@ pub(crate) mod tests {
         // FUN_004774c0: 0 -> 1 (resync), 1 (clears +0x60/+0x64), 2, 3, 4,
         // 5 (the plan object), 6 (report) -> 1, done. The plan object
         // (FUN_004adb70) steps 0 -> 1, 1, 2 (a base), 3, 4, 5 (no held
-        // fleet: 0xe), where the stand-in takes over.
+        // fleet: 0xe), 0xe (its walk ends: 0, *out), and state 5 goes on
+        // to 6.
         let mut fx = fixture();
         let mut p = planner(&fx);
         p.flags = 0xff;
@@ -1145,12 +1142,9 @@ pub(crate) mod tests {
         for _ in 0..12 {
             steps.push(with(&mut fx, |io| p.step(io)));
         }
-        assert!(steps[..11].iter().all(|s| *s == PlannerStep::Pending));
-        assert_eq!(steps[11], PlannerStep::StandIn);
-        assert_eq!((p.state, p.plan_state), (5, 0xe));
+        assert!(steps.iter().all(|s| *s == PlannerStep::Pending));
+        assert_eq!((p.state, p.plan_state), (6, 0));
         assert!(p.base.is_some());
-        assert!(!p.plan_done());
-        assert_eq!(p.plan_state, 0);
         assert_eq!(with(&mut fx, |io| p.step(io)), PlannerStep::Done);
         assert_eq!((p.state, p.resync), (1, true));
         // Kind 3's slot +0x20 and FUN_00479a00: cycled and reviewed, the
@@ -1163,8 +1157,9 @@ pub(crate) mod tests {
             ..planner(&fx)
         };
         assert_eq!(with(&mut fx, |io| other.step(io)), PlannerStep::StandIn);
-        assert!(other.plan_done());
-        assert_eq!(other.state, 1);
+        other.state = 5;
+        other.plan_done();
+        assert_eq!((other.state, other.resync), (1, true));
     }
 
     #[test]

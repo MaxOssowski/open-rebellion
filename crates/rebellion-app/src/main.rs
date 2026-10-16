@@ -8096,6 +8096,34 @@ fn apply_ai_actions(
                     );
                 }
             }
+            AIAction::JoinFleet { fleet, into } => {
+                let Some(side) = ai_state.faction else {
+                    continue;
+                };
+                let to = world.fleets.get(*into).map(|f| f.location);
+                let joined = rebellion_core::fleet_join::join_fleet(
+                    world,
+                    movement_state,
+                    troop_transport_state,
+                    &rebellion_core::fleet_join::FleetMover::Fleet(*fleet),
+                    *into,
+                    matches!(side, AiFaction::Alliance),
+                );
+                if let (Ok(_), Some(to)) = (joined, to) {
+                    log.push(GameMessage::at_system(
+                        tick,
+                        format!(
+                            "{} fleet joining a fleet",
+                            match side {
+                                AiFaction::Alliance => "Alliance",
+                                AiFaction::Empire => "Empire",
+                            }
+                        ),
+                        MessageCategory::Ai,
+                        to,
+                    ));
+                }
+            }
             AIAction::MoveShips { fleet, ships, to } => {
                 let Some(side) = ai_state.faction else {
                     continue;

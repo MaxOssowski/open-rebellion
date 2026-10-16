@@ -2514,6 +2514,7 @@ pub(crate) mod tests {
                     ships: Vec::new(),
                     owner: 0,
                     plan: 0,
+                    target: None,
                 },
             );
         }
@@ -2551,6 +2552,7 @@ pub(crate) mod tests {
                     ships: Vec::new(),
                     owner: 0,
                     plan: 0,
+                    target: None,
                 },
             );
         }
