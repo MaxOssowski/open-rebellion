@@ -2004,6 +2004,13 @@ cross-runtime proof remain open
   `bombardment::order_enabled`, the AI's validation now shared with it. No
   simulation change; the golden is unchanged
   (`evidence/2026-10-16-bombardment-menu/`).
+- Module 8, stages 5a and 5b (2026-10-16): kinds 1 and 2's plan objects
+  read (`ghidra/notes/ai-sector-plans.md`); kind 1 ported: its wants
+  (`FUN_004bb510`), a second attack list (`FUN_004bafe0`), three
+  bombardment lists (`FUN_004bb300`) and a lone fleet's patrol of the
+  systems seen longest ago (`FUN_004bb630`, `FUN_0041a3a0`). Only seed 47
+  of nine makes a kind 1 planner, and it holds no fleet; every count and
+  the golden are unchanged (`evidence/2026-10-16-ai-plan-kind1/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

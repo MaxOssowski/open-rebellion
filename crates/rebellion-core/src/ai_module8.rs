@@ -145,6 +145,10 @@ pub struct Inputs8<'a> {
     pub people: &'a std::collections::HashMap<crate::ids::CharacterKey, u32>,
     /// Controller `+4`.
     pub controller_flags: u32,
+    /// Today (`FUN_004fcf00`).
+    pub day: u64,
+    /// [`crate::ai::AIState::seen`].
+    pub seen: &'a std::collections::HashMap<crate::ids::SystemKey, u64>,
     /// Controller `+0x204` ([`crate::ai_module1::Tallies::planner_balance`]).
     pub balance: i32,
     /// `FUN_0041cd80(n)`: a draw below `n`.
@@ -163,6 +167,8 @@ impl Inputs8<'_> {
             transport: self.transport,
             people: self.people,
             controller_flags: self.controller_flags,
+            day: self.day,
+            seen: self.seen,
             random: &mut *self.random,
         }
     }
@@ -499,6 +505,7 @@ mod tests {
         let mut kinds = std::collections::HashMap::new();
         let transport = crate::troop_transport::TroopTransportState::new();
         let people = std::collections::HashMap::new();
+        let seen = std::collections::HashMap::new();
         let mut io = Inputs8 {
             world: &world,
             galaxy: g,
@@ -508,6 +515,8 @@ mod tests {
             transport: &transport,
             people: &people,
             controller_flags: 0,
+            day: 0,
+            seen: &seen,
             balance,
             random: &mut random,
         };

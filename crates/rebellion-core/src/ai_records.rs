@@ -2135,6 +2135,45 @@ impl Galaxy {
         )
     }
 
+    /// `FUN_0041a3a0`: [`Self::system_query`]'s masks with no key: each
+    /// system ranked by `FUN_00433de0`, 0 for an own system (`+0x30` 1),
+    /// else the days since it was last seen (`day` less its `+0x44`,
+    /// [`crate::ai::AIState::seen`]).
+    pub fn system_query_by_age(
+        &self,
+        sector: crate::ids::SectorKey,
+        masks: [Mask; 3],
+        (day, seen): (u64, &HashMap<crate::ids::SystemKey, u64>),
+        order: Order,
+        coin: &mut dyn FnMut() -> bool,
+    ) -> Vec<crate::ids::SystemKey> {
+        let Some(record) = self.sectors.iter().find(|s| s.sector == sector) else {
+            return Vec::new();
+        };
+        let age = |r: &SystemRecord| {
+            if r.kind & 1 != 0 {
+                return 0;
+            }
+            let last = seen.get(&r.system).copied().unwrap_or(0);
+            // The original's 32-bit subtraction.
+            let word = |x: u64| u32::try_from(x & 0xffff_ffff).unwrap_or(0).cast_signed();
+            word(day).wrapping_sub(word(last))
+        };
+        ranked(
+            record
+                .systems
+                .iter()
+                .filter(|r| {
+                    masks[0].admits(r.state)
+                        && masks[1].admits(r.summary)
+                        && masks[2].admits(r.kind)
+                })
+                .map(|r| (r.system, age(r))),
+            order,
+            coin,
+        )
+    }
+
     /// The position of the sector record holding `system`'s record: where
     /// a walk up a system's containers stops at its sector (`FUN_00419b80`,
     /// `FUN_0041a600`).

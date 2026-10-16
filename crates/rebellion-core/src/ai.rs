@@ -1308,6 +1308,8 @@ impl AISystem {
                 transport: ctx.transport,
                 people: &people,
                 controller_flags: state.controller.flags,
+                day: ctx.tick,
+                seen: &state.seen,
                 balance: tallies.planner_balance,
                 random: &mut random,
             };

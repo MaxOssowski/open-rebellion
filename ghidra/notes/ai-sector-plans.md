@@ -514,11 +514,32 @@ the sector: it sends its lone fleet to each listed system once, keeps the
 visited ones on `+0x5c`, and reports the sector swept (`0x20000000`)
 when none is left.
 
-Open for the port: the system record's `+0x44` (`ai_records::SystemRecord`
-has no such field) and kind 2's visited list `+0x5c` must be added and
-saved; the bits these lists read (system `+0x2c` `0x400000`, `+0x30`
-`0x20`, fleet `+0x38` `0x200` and `0x800`) are to be checked against the
-port's refresh before the port relies on them.
+Open for the port: kind 2's visited list `+0x5c` must be added and saved.
+The system record's `+0x44` is already kept, as `AIState::seen` (stage 1,
+`FUN_004317e0`'s staleness). The fleet record's `+0x38` `0x200` is
+regiments aboard and `0x800` en route (`ai_records::FleetRecord::build`);
+`+0x30` `0x20` is a system held by either side (`FUN_00433e40`: `0x21`
+own, `0x24` the opponent's).
+
+## Ported (2026-10-16, save v55): kind 1's plan object
+
+`ai_planner::ported_kind`: a kind 1 planner now runs its own cycle (no
+stand-in). `ai_planner.rs`: slot `+0x50` `FUN_004bb510` (`+0x34` without
+the controller floor, `+0x48` 1.1 x the sector's `+0x144`), the shared
+mission and movement slots, the report's `0x20000` from the sector's
+`+0x2c` `0x80000` (`FUN_004ba5e0`). `ai_plan.rs`: slot `+0x3c`
+`FUN_004bafe0`'s second list (`attack_from`), slot `+0x44`
+`FUN_004bb300`'s three lists, slot `+0x54` `FUN_004bb630`'s lone fleet's
+patrol (`Galaxy::system_query_by_age`, `FUN_0041a3a0`; `PlannerIo` gains
+the day and `AIState::seen`). No save change.
+
+hyp: controller `+0x174` (`+0x48`'s floor), like `+0x164` and `+0x168`,
+has no writer found and reads as 0.
+
+Campaigns (600 days, both sides AI): seeds 42, 1, 2, 3, 7, 11, 13 and 99
+make no kind 1 planner; in seed 47 a kind 1 planner runs 713
+cycles holding no fleet, so neither the patrol nor the second attack list
+comes up, and every event count equals stage 4f's.
 
 ## Ported (2026-10-16, save v55): the plan object's bombardments
 

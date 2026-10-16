@@ -46,6 +46,10 @@ pub struct PlannerIo<'a> {
     pub people: &'a HashMap<crate::ids::CharacterKey, u32>,
     /// Controller `+4`.
     pub controller_flags: u32,
+    /// Today (`FUN_004fcf00`).
+    pub day: u64,
+    /// [`crate::ai::AIState::seen`]: the system records' `+0x44`.
+    pub seen: &'a HashMap<SystemKey, u64>,
     /// `FUN_0041cd80(n)`: a draw below `n`.
     pub random: &'a mut dyn FnMut(i32) -> i32,
 }
@@ -299,9 +303,9 @@ impl SectorPlanner {
         if self.kind == 0 {
             return PlannerStep::Done;
         }
-        // port: only kind 3's slots are ported; the other kinds' planners
-        // run the port's heuristics for their whole cycle.
-        if self.kind != 3 {
+        // port: only kinds 1 and 3's slots are ported; the other kinds'
+        // planners run the port's heuristics for their whole cycle.
+        if !ported_kind(self.kind) {
             return PlannerStep::StandIn;
         }
         let mut done = false;
@@ -365,7 +369,7 @@ impl SectorPlanner {
     }
 
     /// The stand-in for another kind's planner finished: its cycle ends
-    /// (port: only kind 3's slots are ported).
+    /// (port: only kinds 1 and 3's slots are ported).
     pub fn plan_done(&mut self) {
         self.state = 1;
         self.resync = true;
@@ -440,10 +444,14 @@ impl SectorPlanner {
     /// Death Star with controller `+4` bit `0x1000000`; the regiments it
     /// has.
     ///
-    /// hyp: controller `+0x164` and `+0x168` have no writer found and read
-    /// as 0.
+    /// Kind 1, `FUN_004bb510`: the same, but `+0x34` has no controller
+    /// floor, and `+0x48` takes 1.1 times the sector's `+0x144` (or
+    /// controller `+0x174`).
+    ///
+    /// hyp: controller `+0x164`, `+0x168` and `+0x174` have no writer found
+    /// and read as 0.
     fn want(&mut self, io: &PlannerIo<'_>) {
-        if self.kind != 3 {
+        if !ported_kind(self.kind) {
             return;
         }
         let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) else {
@@ -451,7 +459,12 @@ impl SectorPlanner {
         };
         let v = |offset| r.values[sector_at(offset)];
         let w = &mut self.wanted;
-        w[0] = w[0].max((v(0x190) * 12 / 10).max(0));
+        if self.kind == 1 {
+            w[0] = w[0].max(v(0x190) * 12 / 10);
+            w[5] = w[5].max((v(0x144) * 11 / 10).max(0));
+        } else {
+            w[0] = w[0].max((v(0x190) * 12 / 10).max(0));
+        }
         w[1] = w[1].max((v(0x194) * 12 / 10).max(0));
         w[3] = w[3].max((v(0x198) + v(0x138)) * 12 / 10);
         w[2] = 0;
@@ -712,12 +725,12 @@ impl SectorPlanner {
     /// planners it holds (`+0xb0`) set more bits.
     ///
     /// port: the sector planners' mission planners are not ported, so it
-    /// holds none and every count of them (`+0xa0..+0xac`) is 0. Kind 3's
-    /// slot (`FUN_004b7150`) then asks for Recon (`0x54`) in a sector with
+    /// holds none and every count of them (`+0xa0..+0xac`) is 0. Kinds 1
+    /// and 3's slot (`FUN_004b7150`) then asks for Recon (`0x54`) in a sector with
     /// a system not the side's (`+0x2c` `0x18`), else Espionage (`0x52`).
     fn missions(&mut self, io: &PlannerIo<'_>) {
         self.mission = [0; 3];
-        if self.kind != 3 {
+        if !ported_kind(self.kind) {
             return;
         }
         if let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) {
@@ -733,13 +746,13 @@ impl SectorPlanner {
     ///
     /// port: the sector planners' movement planners (module `0xc`, list
     /// `+0xd4`) are not ported, so it holds none. Kind 3's slot
-    /// (`FUN_004b1800`) asks for kind 3 while the planner holds a fleet,
+    /// (`FUN_004b1800`, the same code as kind 1's `FUN_004b9290`) asks for kind 3 while the planner holds a fleet,
     /// else kind 5 while it holds regiments (`+0x98`) in a sector with
     /// `+0x2c` `0x40008`.
     fn movement(&mut self, io: &PlannerIo<'_>) {
         self.movement = [0; 2];
         self.flags &= !0x700_0000;
-        if self.kind != 3 {
+        if !ported_kind(self.kind) {
             return;
         }
         if let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) {
@@ -767,17 +780,19 @@ impl SectorPlanner {
     /// The plan's slot `+0x20` and `FUN_00479a00`: kind 3
     /// (`FUN_004b3830`) sets `0x4000000`, with a sector record
     /// `0x8000000`, and `0x20000` when the sector has a system of the
-    /// side's (`+0x2c` 4). Then from `+0x64`: nothing short (`0x4ff`;
+    /// side's (`+0x2c` 4); kind 1 (`FUN_004ba5e0`) the same with the
+    /// sector's `+0x2c` `0x80000`. Then from `+0x64`: nothing short (`0x4ff`;
     /// the mission and movement requests `0x100`, `0x200` are outside it)
     /// gives `0x1c0000`; short and nothing held (`0x9fe00000`), `0x10000`
     /// (gave up); else `0x100000`, and `0x80000` when none of `0x1f` is
     /// short.
     fn report(&mut self, io: &PlannerIo<'_>) {
-        if self.kind == 3 {
+        if ported_kind(self.kind) {
             self.flags |= CYCLED;
+            let bit = if self.kind == 1 { 0x8_0000 } else { 4 };
             if let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) {
                 self.flags |= REVIEWED;
-                if r.summary & 4 != 0 {
+                if r.summary & bit != 0 {
                     self.flags |= 0x2_0000;
                 }
             }
@@ -793,6 +808,12 @@ impl SectorPlanner {
             }
         }
     }
+}
+
+/// The plan kinds whose plan object's slots are ported: 1 (vtable
+/// `0x65c2c0`) and 3 (`0x65c160`).
+pub(crate) fn ported_kind(kind: u32) -> bool {
+    matches!(kind, 1 | 3)
 }
 
 /// `FUN_0041b2b0`: of the sectors but `from`, by squared distance (the
@@ -868,6 +889,8 @@ pub(crate) mod tests {
         pub(crate) transport: crate::troop_transport::TroopTransportState,
         pub(crate) people: HashMap<crate::ids::CharacterKey, u32>,
         pub(crate) draws: Vec<i32>,
+        pub(crate) day: u64,
+        pub(crate) seen: HashMap<SystemKey, u64>,
     }
 
     pub(crate) fn fixture() -> Fx {
@@ -926,6 +949,8 @@ pub(crate) mod tests {
             transport: crate::troop_transport::TroopTransportState::new(),
             people: HashMap::new(),
             draws: Vec::new(),
+            day: 0,
+            seen: HashMap::new(),
         };
         rebuild(&mut fx);
         fx
@@ -1003,6 +1028,8 @@ pub(crate) mod tests {
             transport: &fx.transport,
             people: &fx.people,
             controller_flags: 0,
+            day: fx.day,
+            seen: &fx.seen,
             random: &mut random,
         };
         f(&mut io)
@@ -1726,6 +1753,88 @@ pub(crate) mod tests {
         };
         with(&mut fx, |io| other.want(io));
         assert_eq!(other.wanted, [0; 10]);
+    }
+
+    #[test]
+    fn kind_one_wants_kind_three_s_navy_without_its_floor_and_a_tenth_more_troops() {
+        // FUN_004bb510: +0x34 1.2 x +0x190 with no controller floor (a
+        // negative threat stays negative), +0x38 and +0x40 as kind 3's,
+        // +0x48 1.1 x +0x144 (floor controller +0x174, read as 0); kind 3
+        // (FUN_004b4920) leaves +0x48.
+        let mut fx = fixture();
+        {
+            let s = &mut fx.galaxy.sectors[0];
+            s.values[sector_at(0x190)] = -10;
+            s.values[sector_at(0x194)] = 5;
+            s.values[sector_at(0x198)] = 7;
+            s.values[sector_at(0x138)] = 8;
+            s.values[sector_at(0x144)] = 20;
+        }
+        let mut one = SectorPlanner {
+            kind: 1,
+            wanted: [-20; 10],
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| one.want(io));
+        assert_eq!(
+            (one.wanted[0], one.wanted[1], one.wanted[3], one.wanted[5]),
+            (-12, 6, 18, 22)
+        );
+        let mut three = SectorPlanner {
+            wanted: [-20; 10],
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| three.want(io));
+        assert_eq!((three.wanted[0], three.wanted[5]), (0, -20));
+        // +0x48's floor is 0 (controller +0x174): a negative +0x144 gives 0.
+        fx.galaxy.sectors[0].values[sector_at(0x144)] = -20;
+        with(&mut fx, |io| one.want(io));
+        assert_eq!(one.wanted[5], 22);
+        let mut low = SectorPlanner {
+            kind: 1,
+            wanted: [-20; 10],
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| low.want(io));
+        assert_eq!(low.wanted[5], 0);
+    }
+
+    #[test]
+    fn kind_one_runs_its_own_cycle_with_kind_three_s_requests() {
+        // The planner steps kinds 1 and 3 itself; kind 1 shares
+        // FUN_004b7150 (missions) and FUN_004b9290 (movement, the code of
+        // FUN_004b1800). Its report (FUN_004ba5e0) sets 0x20000 with the
+        // sector's +0x2c 0x80000, not 4.
+        let mut fx = fixture();
+        let mut p = SectorPlanner {
+            kind: 1,
+            ..planner(&fx)
+        };
+        assert_eq!(with(&mut fx, |io| p.step(io)), PlannerStep::Pending);
+        let mut three = planner(&fx);
+        with(&mut fx, |io| {
+            p.missions(io);
+            p.movement(io);
+            three.missions(io);
+            three.movement(io);
+        });
+        assert_eq!((p.mission, p.movement), (three.mission, three.movement));
+        assert_ne!(p.mission[0], 0);
+        fx.galaxy.sectors[0].summary = (fx.galaxy.sectors[0].summary | 4) & !0x8_0000;
+        p.flags = 0;
+        with(&mut fx, |io| p.report(io));
+        assert_eq!(p.flags & 0x2_0000, 0);
+        assert_ne!(p.flags & REVIEWED, 0);
+        fx.galaxy.sectors[0].summary |= 0x8_0000;
+        p.flags = 0;
+        with(&mut fx, |io| p.report(io));
+        assert_eq!(p.flags & 0x2_0000, 0x2_0000);
+        let mut two = SectorPlanner {
+            kind: 2,
+            ..planner(&fx)
+        };
+        two.resync = false;
+        assert_eq!(with(&mut fx, |io| two.step(io)), PlannerStep::StandIn);
     }
 
     #[test]
