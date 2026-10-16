@@ -8,6 +8,11 @@ updated: 2026-03-16
 
 # Ground Combat Resolution
 
+> Superseded 2026-10-16 by `planetary-assault.md`: ground battles happen
+> only in the Planetary Assault event (`FUN_00563390`, `FUN_0058c120`), and
+> this note's family ranges are wrong (`0x14..0x1b` are capital ships;
+> regiments are `0x10..0x13`).
+
 ## Entry Point
 
 `FUN_00560d50` (232 lines) — called from system battle orchestrator (`FUN_00514a60`).

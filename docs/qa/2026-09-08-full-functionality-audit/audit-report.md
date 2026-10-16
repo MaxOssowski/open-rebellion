@@ -266,6 +266,17 @@ cross-runtime proof remain open
 - Status: confirmed design divergence
 - Evidence: tactical space and interactive ground combat use simplified
   calculations separate from core auto-resolution.
+  - Ground combat read 2026-10-16 (`ghidra/notes/planetary-assault.md`,
+    module 8, stage 5e): the original fights on the ground only in the
+    Planetary Assault event (`0x234`, `FUN_00563390` -> `FUN_0058c120`):
+    the system's defenses fire at the landing regiments, each attacking
+    regiment duels a drawn defender (`FUN_0055eb00`: a 0..10 draw plus
+    TROOPSD attack less defense, the generals' leadership / G`0x201`; lost
+    at or below G`0x203` 4, the defender at or above G`0x204` 6), duels
+    cause collateral damage (G`0x205` 8%), and the winners land, at most
+    6. The port's `CombatSystem::resolve_ground`, run whenever both sides
+    have regiments at a system, rests on a misread (`ground-combat.md`'s
+    family ranges) and has no counterpart.
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 
