@@ -6,13 +6,10 @@
 
 use std::collections::HashMap;
 
-use crate::integrator::{
-    apply_ground_combat_result_inner, resolve_system_space_combat, PerceptionIntegrator,
-};
+use crate::integrator::{resolve_system_space_combat, PerceptionIntegrator};
 use rebellion_core::ai::{AIState, AISystem};
 use rebellion_core::betrayal::{BetrayalState, BetrayalSystem};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
-use rebellion_core::combat::{CombatSide, CombatSystem};
 use rebellion_core::dat::Faction;
 use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
 use rebellion_core::delivery::DeliveryState;
@@ -38,7 +35,6 @@ use rebellion_core::victory::{VictoryState, VictorySystem};
 use rebellion_core::world::{CampaignConfig, GameWorld, MstbTable};
 
 const COMBAT_RETRY_TICKS: u64 = 5;
-const MAX_SYSTEM_GROUND_COMBAT_ROUNDS: u32 = 256;
 const UNCHANGED_STALEMATE_COOLDOWN: u64 = u64::MAX;
 
 fn combat_is_on_cooldown(last_battle: u64, current_tick: u64) -> bool {
@@ -264,50 +260,34 @@ pub fn run_simulation_tick(
     let destroyed_cargo = states.troop_transport.destroy_untransportable_cargo(world);
     integrator.emit_destroyed_transport_cargo(&destroyed_cargo);
 
-    // ── 3b. Troop landing, ground combat, and occupation ────────────────
-    // A fleet may land cargo only after it is the sole orbital faction. This
-    // also covers unopposed invasions, which do not create a space-combat
-    // trigger. Surface combat continues on later ticks until it is decisive.
+    // ── 3b. Troop landing and occupation ────────────────────────────────
+    // Regiments carried to a system land when its planet is their side's,
+    // standing and not blockaded (FUN_005073d0); elsewhere they stay aboard.
+    // The original fights on the ground only in a Planetary Assault
+    // (ghidra/notes/planetary-assault.md), so a planet with one side's
+    // regiments alone passes to that side and two sides' regiments stand
+    // together. port: the occupation is the port's.
     let ground_systems: Vec<_> = world.systems.keys().collect();
     for sys_key in ground_systems {
-        let orbiting: Vec<_> = world
-            .systems
-            .get(sys_key)
-            .map(|system| system.fleets.clone())
-            .unwrap_or_default();
-        let has_alliance_fleet = orbiting.iter().any(|fleet| {
-            world
-                .fleets
-                .get(*fleet)
-                .is_some_and(|value| value.is_alliance)
-        });
-        let has_empire_fleet = orbiting.iter().any(|fleet| {
-            world
-                .fleets
-                .get(*fleet)
-                .is_some_and(|value| !value.is_alliance)
-        });
-        let orbital_winner = match (has_alliance_fleet, has_empire_fleet) {
-            (true, false) => Some(Faction::Alliance),
-            (false, true) => Some(Faction::Empire),
-            _ => None,
+        let Some(system) = world.systems.get(sys_key) else {
+            continue;
         };
-
-        if let Some(faction) = orbital_winner {
-            let landing_fleets: Vec<_> =
-                orbiting
-                    .iter()
-                    .copied()
-                    .filter(|fleet| {
-                        world.fleets.get(*fleet).is_some_and(|value| {
-                            value.is_alliance == (faction == Faction::Alliance)
-                        }) && !states.troop_transport.is_held(*fleet)
+        let holder = GameWorld::facility_holder(system.control);
+        let lands = !system.is_destroyed && !BlockadeSystem::system_is_blockaded(world, system);
+        let landing_fleets: Vec<_> = system
+            .fleets
+            .iter()
+            .copied()
+            .filter(|fleet| {
+                lands
+                    && world.fleets.get(*fleet).is_some_and(|value| {
+                        Some(Faction::of_alliance(value.is_alliance)) == holder
                     })
-                    .collect();
-
-            for fleet in landing_fleets {
-                integrator.apply_troop_landing(world, &mut states.troop_transport, fleet, sys_key);
-            }
+                    && !states.troop_transport.is_held(*fleet)
+            })
+            .collect();
+        for fleet in landing_fleets {
+            integrator.apply_troop_landing(world, &mut states.troop_transport, fleet, sys_key);
         }
 
         let (alliance_troops, empire_troops) = world
@@ -330,64 +310,9 @@ pub fn run_simulation_tick(
             .unwrap_or_default();
 
         let occupying_faction = match (alliance_troops > 0, empire_troops > 0) {
-            (true, true) => {
-                let attacker_is_alliance =
-                    orbital_winner.is_none_or(|faction| faction == Faction::Alliance);
-                let ground_rolls = take_rolls(256);
-                let mut final_winner = CombatSide::Draw;
-                let mut total_engagements = 0;
-                let mut rounds = 0;
-                let mut stalemate = false;
-                while rounds < MAX_SYSTEM_GROUND_COMBAT_ROUNDS {
-                    let result = CombatSystem::resolve_ground(
-                        world,
-                        sys_key,
-                        attacker_is_alliance,
-                        world.difficulty_index,
-                        &ground_rolls,
-                        current_tick,
-                    );
-                    let made_progress = result
-                        .troop_damage
-                        .iter()
-                        .any(|event| event.strength_after < event.strength_before);
-                    final_winner = result.winner;
-                    total_engagements += result.troop_damage.len();
-                    rounds += 1;
-                    apply_ground_combat_result_inner(&result, world);
-                    if final_winner != CombatSide::Draw || !made_progress {
-                        stalemate = final_winner == CombatSide::Draw;
-                        break;
-                    }
-                }
-                if rounds == MAX_SYSTEM_GROUND_COMBAT_ROUNDS && final_winner == CombatSide::Draw {
-                    stalemate = true;
-                }
-                integrator.emit_system_ground_combat(
-                    world,
-                    sys_key,
-                    final_winner,
-                    total_engagements,
-                    rounds,
-                    stalemate,
-                );
-                match final_winner {
-                    CombatSide::Attacker => Some(if attacker_is_alliance {
-                        Faction::Alliance
-                    } else {
-                        Faction::Empire
-                    }),
-                    CombatSide::Defender => Some(if attacker_is_alliance {
-                        Faction::Empire
-                    } else {
-                        Faction::Alliance
-                    }),
-                    CombatSide::Draw => None,
-                }
-            }
             (true, false) => Some(Faction::Alliance),
             (false, true) => Some(Faction::Empire),
-            (false, false) => None,
+            _ => None,
         };
 
         if let Some(winner) = occupying_faction {
@@ -675,6 +600,9 @@ pub fn run_simulation_tick(
     // ── 11. Death Star ───────────────────────────────────────────────────
     for (req, outcome) in &bombard.outcomes {
         integrator.emit_bombardment(world, req, outcome);
+    }
+    for (req, outcome) in &bombard.assaults {
+        integrator.emit_assault(world, req, outcome);
     }
     let mut ds_events = DeathStarSystem::advance(&mut states.death_star, world, tick_events);
     ds_events.extend(planets_destroyed(&bombard, tick_events));
@@ -1149,6 +1077,112 @@ mod tests {
     }
 
     #[test]
+    fn carried_regiments_land_only_on_their_side_s_standing_unblockaded_planet() {
+        // FUN_005073d0: a planet takes a regiment when it is the regiment's
+        // side's, not destroyed and not blockaded; elsewhere the regiment
+        // stays aboard (ghidra/notes/regiment-unload.md).
+        let run = |control: ControlKind, destroyed: bool| {
+            let mut world = GameWorld::default();
+            let make = |dat_id, control| System {
+                dat_id: DatId::new(dat_id),
+                name: "System".into(),
+                sector: SectorKey::default(),
+                x: 0,
+                y: 0,
+                exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+                popularity_alliance: 0.9,
+                popularity_empire: 0.1,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: Vec::new(),
+                is_headquarters: false,
+                is_destroyed: false,
+                control,
+                espionage_rating: 0.0,
+            };
+            let target = world.systems.insert(make(1, control));
+            let other = world
+                .systems
+                .insert(make(2, ControlKind::Controlled(Faction::Empire)));
+            let class = world.capital_ship_classes.insert(CapitalShipClass {
+                is_alliance: true,
+                hull: 100,
+                troop_capacity: 2,
+                ..CapitalShipClass::default()
+            });
+            let fleet = world.fleets.insert(Fleet {
+                location: target,
+                capital_ships: vec![ShipInstance::new(class, 100, true)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: true,
+                has_death_star: false,
+            });
+            world.systems[target].fleets.push(fleet);
+            world.systems[target].is_destroyed = destroyed;
+            let troop = world.troops.insert(TroopUnit {
+                class_dat_id: DatId::new(20),
+                is_alliance: true,
+                regiment_strength: 100,
+            });
+            world.systems[target].ground_units.push(troop);
+            let mut states = SimulationStates {
+                clock: GameClock::new(),
+                manufacturing: ManufacturingState::new(),
+                missions: MissionState::new(),
+                events: EventState::new(),
+                ai: AIState::new(AiFaction::Empire),
+                ai2: None,
+                movement: MovementState::new(),
+                fog: FogState::new(Faction::Alliance),
+                blockade: BlockadeState::new(),
+                uprising: UprisingState::new(),
+                death_star: DeathStarState::default(),
+                research: ResearchState::new(),
+                jedi: JediState::new(),
+                victory: VictoryState::new(target, other),
+                betrayal: BetrayalState::new(),
+                economy: EconomyState::default(),
+                repair: RepairState::default(),
+                production: ProductionState::new(),
+                troop_transport: TroopTransportState::default(),
+                deliveries: DeliveryState::default(),
+                combat_cooldowns: HashMap::new(),
+                campaign_config: CampaignConfig::default(),
+            };
+            states
+                .troop_transport
+                .embark(&mut world, fleet, &[troop])
+                .unwrap();
+            run_simulation_tick(
+                &mut world,
+                &mut states,
+                &[TickEvent { tick: 1 }],
+                &[0.99; 2_048],
+                10,
+                &rebellion_core::tuning::GameConfig::default(),
+            );
+            states.troop_transport.cargo(fleet).is_empty()
+                && world.systems[target].ground_units.contains(&troop)
+        };
+        assert!(run(ControlKind::Controlled(Faction::Alliance), false));
+        // A destroyed planet: stays aboard. (A blockade of the planet needs
+        // an enemy fleet with none of the side's, so the carrying fleet
+        // there rules it out, BlockadeSystem::system_is_blockaded.)
+        assert!(!run(ControlKind::Controlled(Faction::Alliance), true));
+        // Another side's or a neutral planet: stays aboard.
+        assert!(!run(ControlKind::Controlled(Faction::Empire), false));
+        assert!(!run(ControlKind::Uncontrolled, false));
+    }
+
+    #[test]
     #[expect(
         clippy::too_many_lines,
         reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
@@ -1157,7 +1191,11 @@ mod tests {
         clippy::cast_possible_truncation,
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
     )]
-    fn surface_battle_continues_on_later_tick_after_transport_empties() {
+    fn regiments_of_both_sides_stand_together_without_an_assault() {
+        // The original fights on the ground only in a Planetary Assault
+        // (ghidra/notes/planetary-assault.md, FUN_00563390): two sides'
+        // regiments on one planet stand together, and neither side takes
+        // it. This test asserted the port's automatic surface battle.
         let mut world = GameWorld::default();
         let make_system = |dat_id, name: &str, control| System {
             dat_id: DatId::new(dat_id),
@@ -1260,9 +1298,9 @@ mod tests {
             &config,
         );
         let first_strength = world.troops[alliance_troop].regiment_strength;
-        assert_eq!(first_strength, 744);
+        assert_eq!(first_strength, 1_000);
         assert!(states.troop_transport.is_empty());
-        assert!(first_events
+        assert!(!first_events
             .iter()
             .any(|event| event.event_type == EVT_COMBAT_GROUND));
 
@@ -1275,15 +1313,37 @@ mod tests {
             &config,
         );
 
-        assert!(world.troops[alliance_troop].regiment_strength < first_strength);
-        assert!(world.troops.contains_key(empire_troop));
+        assert_eq!(
+            world.troops[alliance_troop].regiment_strength,
+            first_strength
+        );
+        assert_eq!(world.troops[empire_troop].regiment_strength, 1_000);
         assert!(states.troop_transport.is_empty());
-        assert!(second_events
+        assert!(!second_events
             .iter()
             .any(|event| event.event_type == EVT_COMBAT_GROUND));
         assert_ne!(
             world.systems[target].control,
             ControlKind::Controlled(Faction::Alliance)
+        );
+        // The Empire's regiment alone takes the planet back (port: the
+        // occupation).
+        world.systems[target]
+            .ground_units
+            .retain(|&t| t != alliance_troop);
+        world.systems[target].fleets.clear();
+        world.fleets.remove(fleet);
+        run_simulation_tick(
+            &mut world,
+            &mut states,
+            &[TickEvent { tick: 3 }],
+            &[0.99; 2_048],
+            30,
+            &config,
+        );
+        assert_eq!(
+            world.systems[target].control,
+            ControlKind::Controlled(Faction::Empire)
         );
     }
 
@@ -1429,10 +1489,13 @@ mod tests {
         clippy::cast_possible_truncation,
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
     )]
-    fn an_unopposed_imperial_invasion_occupies_the_alliance_hq_without_bombarding() {
-        // As above: the landing is no bombardment order, so the HQ facility
-        // stands and the occupation alone does not end the campaign
-        // (ghidra/notes/bombardment-order.md).
+    fn an_imperial_transport_at_the_alliance_hq_keeps_its_regiment_aboard() {
+        // A regiment carried to a system lands only on its side's planet
+        // (FUN_005073d0); another side's is taken only by a Planetary
+        // Assault (ghidra/notes/planetary-assault.md). This test asserted
+        // the port's automatic landing and occupation of the HQ; on the same
+        // campaign the regiment stays aboard, the HQ stays the Alliance's
+        // and nothing bombards (ghidra/notes/bombardment-order.md).
         let mut world = GameWorld::default();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
@@ -1556,9 +1619,11 @@ mod tests {
         );
 
         assert!(world.systems[alliance_hq].is_headquarters);
+        assert_eq!(states.troop_transport.cargo(fleet), [troop]);
+        assert!(!world.systems[alliance_hq].ground_units.contains(&troop));
         assert_eq!(
             world.systems[alliance_hq].control,
-            ControlKind::Controlled(Faction::Empire)
+            ControlKind::Controlled(Faction::Alliance)
         );
         assert!(!states.victory.resolved);
         assert!(!events
@@ -1575,7 +1640,12 @@ mod tests {
         clippy::cast_possible_truncation,
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
     )]
-    fn troop_transport_arrives_lands_occupies_and_captures() {
+    fn a_transport_at_the_other_side_s_system_keeps_its_regiment_aboard() {
+        // FUN_005073d0: the regiment does not land on the Empire's planet;
+        // only a Planetary Assault takes it (ghidra/notes/planetary-assault.md).
+        // This test asserted the port's automatic landing, occupation,
+        // capture and victory; on the same campaign the fleet arrives and
+        // nothing else happens.
         let mut world = GameWorld::default();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
@@ -1703,28 +1773,26 @@ mod tests {
             &rebellion_core::tuning::GameConfig::default(),
         );
 
-        assert!(states.troop_transport.is_empty());
-        assert!(world.systems[target].ground_units.contains(&troop));
+        assert_eq!(states.troop_transport.cargo(fleet), [troop]);
+        assert!(!world.systems[target].ground_units.contains(&troop));
         assert_eq!(
             world.systems[target].control,
-            ControlKind::Controlled(Faction::Alliance)
+            ControlKind::Controlled(Faction::Empire)
         );
-        assert!(world.characters[prisoner].is_captive);
-        assert_eq!(
-            world.characters[prisoner].captured_by,
-            Some(Faction::Alliance)
-        );
-        assert!(states.victory.resolved);
+        assert!(!world.characters[prisoner].is_captive);
+        assert!(!states.victory.resolved);
+        assert!(events
+            .iter()
+            .any(|event| event.event_type == EVT_FLEET_ARRIVED));
         for event_type in [
-            EVT_FLEET_ARRIVED,
             EVT_TROOP_MOVED,
             EVT_CONTROL_CHANGED,
             EVT_CAPTURE,
             EVT_VICTORY,
         ] {
             assert!(
-                events.iter().any(|event| event.event_type == event_type),
-                "missing {event_type} telemetry"
+                !events.iter().any(|event| event.event_type == event_type),
+                "unexpected {event_type} telemetry"
             );
         }
     }

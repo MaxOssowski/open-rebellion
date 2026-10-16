@@ -445,7 +445,8 @@ impl BlockadeSystem {
     /// (`FUN_0050b8e0` walks `FUN_004ffe70`). port: every fleet and squadron
     /// is active. hyp: `Contested` is the original's side 3, and an
     /// `Uprising` system keeps its holder's side.
-    pub(crate) fn system_is_blockaded(world: &GameWorld, sys: &crate::world::System) -> bool {
+    #[must_use]
+    pub fn system_is_blockaded(world: &GameWorld, sys: &crate::world::System) -> bool {
         use crate::dat::Faction;
 
         let side_flags = |sides: &mut dyn Iterator<Item = bool>| {

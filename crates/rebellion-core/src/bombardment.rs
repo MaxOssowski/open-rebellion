@@ -723,6 +723,12 @@ pub struct BombardEnv {
     pub alliance_hq: Option<SystemKey>,
     /// Each bombardment carried out, in order.
     pub outcomes: Vec<(BombardRequest, BombardmentOutcome)>,
+    /// Each Planetary Assault carried out, in order
+    /// ([`crate::assault`]).
+    pub assaults: Vec<(
+        crate::assault::AssaultRequest,
+        crate::assault::AssaultOutcome,
+    )>,
 }
 
 impl BombardEnv {
@@ -732,6 +738,7 @@ impl BombardEnv {
             state: seed,
             alliance_hq,
             outcomes: Vec::new(),
+            assaults: Vec::new(),
         }
     }
 

@@ -1121,6 +1121,11 @@ fn place_loading_fleet(
         world.systems[system].control = ControlKind::Controlled(player);
         world.systems[system].exploration_status = ExplorationStatus::Explored;
     }
+    // The empty target stays the player's until the fleet arrives: without
+    // regiments a system keeps its holder only with energy at GNPRTB 7760
+    // (60; economy::resolve_system_control, FUN_0050b610), and a carried
+    // regiment lands only on its side's planet (FUN_005073d0).
+    world.systems[target].total_energy = world.systems[target].total_energy.max(60);
     for (key, value) in &mut world.fleets {
         if key != fleet
             && Some(key) != second

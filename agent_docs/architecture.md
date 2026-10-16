@@ -96,7 +96,6 @@ crates/rebellion-render/src/
 ├── bmp_cache.rs        — DllSource enum, BMP/PNG texture cache with HD fallback, WASM path rebasing, named DLL resource ID catalog
 ├── cockpit.rs          — Faction cockpit chrome (top/bottom bars), 9 control buttons, CockpitViewport
 ├── tactical_view.rs    — 2D tactical combat: BattleSession, ship placement, phased combat, targeting, retreat
-├── ground_combat.rs    — Ground combat: regiment engagement, animated bars, win/loss results
 ├── story_messages.rs   — Story events as Message window messages: the Mission rail and, where the message class is recovered, its picture (FUN_0046a320).
 ├── advisor.rs          — Animated droid advisors (C-3PO/R2-D2 or Imperial), priority message queue, BIN-driven frame sequencing with BMP modulo fallback
 └── panels/
@@ -193,7 +192,7 @@ run_simulation_tick():
   0. EconomySystem::advance       → integrator.apply_economy_events()
   1. ManufacturingSystem::advance  → integrator.apply_build_completions()
   2. MovementSystem::advance       → integrator.apply_arrivals()
-  3. CombatSystem::resolve_*       → integrator.apply_space_combat() / apply_ground_combat()
+  3. CombatSystem::resolve_space   → integrator.apply_space_combat(); 3b. landing and occupation
   4. FogSystem::advance            → integrator.emit_fog_reveals()
   5. MissionSystem::advance        → integrator.apply_mission_result()
   5b. advance_escapes()            → integrator.apply_escape_effects()

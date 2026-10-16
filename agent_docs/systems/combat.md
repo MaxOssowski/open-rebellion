@@ -1,6 +1,6 @@
 ---
 title: "Combat System"
-description: "Space and ground combat resolution via combat.rs and bombardment.rs"
+description: "Space combat, bombardment and Planetary Assault resolution via combat.rs, bombardment.rs and assault.rs"
 category: "agent-docs"
 created: 2026-03-14
 updated: 2026-10-16
@@ -9,7 +9,9 @@ tags: [combat, space-combat, ground-combat, simulation]
 
 # Combat System
 
-`combat.rs` + `bombardment.rs` — Space and ground combat resolution.
+`combat.rs` + `bombardment.rs` + `assault.rs` — space combat, Planetary
+Bombardment and Planetary Assault resolution. There is no other ground
+battle: regiments of two sides on one planet stand together.
 
 ## Trigger
 
@@ -19,23 +21,22 @@ Opposing fleets coexist at a system (checked each tick in `main.rs`). Per-system
 
 | Type | Purpose |
 |------|---------|
-| `CombatSystem` | Stateless resolver — `resolve_space()` and `resolve_ground()` |
+| `CombatSystem` | Stateless resolver — `resolve_space()` |
 | `SpaceCombatResult` | `{ winner, attacker_fleet, defender_fleet, ship_damage, fighter_losses }` |
-| `GroundCombatResult` | `{ winner, system, troop_damage }` |
 | `ShipDamageEvent` | `{ fleet, ship_index, hull_after }` — hull=0 means destroyed |
 | `FighterLossEvent` | `{ fleet, fighter_index, squads_before, squads_after }` |
-| `TroopDamageEvent` | `{ troop, strength_after }` — strength ≤ 0 means destroyed |
 | `CombatPhaseFlags` | Custom bitfield (NOT `bitflags!`) — uses `.set()` not `.insert()` |
 | `CombatSide` | Attacker / Defender / Draw |
 | `bombardment` | `resolve(world, &BombardRequest, draw)`, `apply`, `BombardEnv` (a tick's draws and outcomes) |
+| `assault` | `resolve(world, &AssaultRequest, draw)`, `apply`, `order_enabled`, `BombardEnv::assault` |
 
 ## API
 
 ```rust
 let result = CombatSystem::resolve_space(&world, atk, def, sys, difficulty, &rolls, tick);
-let ground = CombatSystem::resolve_ground(&world, sys, alliance_attacks, &rolls, tick);
 let outcome = bombardment::resolve(&world, &request, &mut draw);
 bombardment::apply(&mut world, &request, &outcome);
+let assault = env.assault(&mut world, &mut transport, side, &fleets, system);
 ```
 
 ## Space Combat: 7-Phase Pipeline
@@ -68,14 +69,28 @@ draw; civilian damage costs the attacker 20 support. The AI's plan objects
 order it (`AIAction::Bombard`); the player's Bombard button orders General
 Bombardment. See `ghidra/notes/bombardment-order.md`.
 
+## Planetary Assault
+
+Only the Fleet menu's Planetary Assault (`0x234`) fights on the ground
+(`FUN_00563390` -> `FUN_0058c120`): the system's defenses fire at the
+landing regiments (attack / 5 percent each); each attacking regiment duels a
+drawn defender (a 0..10 draw plus TROOPSD attack less defense; the attacker
+falls at or below 4, the defender at or above 6); each duel may destroy a
+facility, energy or raw unit (8%); with no defender left up to 6 attackers
+land. Regiments carried to a system land only on their side's standing,
+unblockaded planet (`FUN_005073d0`); one side's regiments alone take a
+planet (port: the occupation, `simulation.rs` step 3b and
+`tactical_flow::land_and_occupy`). The AI orders it with
+`AIAction::Assault`. See `ghidra/notes/planetary-assault.md`.
+
 ## Effect Application (main.rs)
 
 - `apply_space_combat_result`: Maps destroyed hulls (hull_after == 0) to fleet `capital_ships` count decrements. Removes empty fleets from system fleet lists.
-- `apply_ground_combat_result`: Updates `TroopUnit.regiment_strength`. Removes destroyed troops from system and arena.
 
 ## Source
 
 - `ghidra/notes/space-combat.md` — full 7-phase pipeline
-- `ghidra/notes/ground-combat.md` — troop iteration
+- `ghidra/notes/planetary-assault.md` — the assault order and its resolution
+- `ghidra/notes/ground-combat.md` — superseded (its family ranges are wrong)
 - `ghidra/notes/bombardment-order.md` — the bombardment orders and their resolution
 - `ghidra/notes/combat-formulas.md` — GNPRTB parameter mapping

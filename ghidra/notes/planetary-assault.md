@@ -144,7 +144,40 @@ least `b`.
 `FUN_0053e2f0(p)` is a draw of 0..99 (`DAT_00661a88` = 100) below `p`;
 `FUN_0053e290(n)` a draw of 0 to `n`.
 
-## Against the port
+## Ported (2026-10-16, module 8, stage 5f)
+
+`crates/rebellion-core/src/assault.rs`: `resolve` runs the six phases
+(the counts, the defenses, the duels, the collateral damage, the landing;
+phase 6's marks are not kept), `apply` carries out the losses, the
+collateral damage and the landing, `order_enabled` is the order's
+enabled check, `BombardEnv::assault` draws from the tick's stream.
+`AIAction::Assault` is validated by `order_enabled` and carried out by the
+integrator and the app (telemetry `combat_ground`, the app's Assault
+Summary line). No plan object binds the assault role yet (kind 4).
+
+Removed (by the user's choice): the port's automatic landing on another
+side's planet, its automatic ground battle (`CombatSystem::resolve_ground`
+and its integrator helpers, the simulation's step 3b battle, the app's
+`tactical_flow` ground routes) and the app's interactive ground-combat
+screen (`rebellion-render` `ground_combat.rs`). Regiments carried to a
+system land only on their side's standing, unblockaded planet
+(`FUN_005073d0`); one side's regiments alone still take a planet (port).
+
+port:
+- No officer ranks: the generals' leadership terms are 0.
+- A fleet's regiments are its cargo; the walk takes the fleets in the
+  system's order and each one's cargo in order.
+- The order's members' target test (`FUN_0053f150`) is not read; in its
+  place each fleet orbits the system out of hyperspace, the system stands,
+  is not the side's and has at most one shield (the manual's
+  fully-shielded rule).
+- hyp: phase 2 fires every defense facility of the system; phase 4's
+  facilities are the system's defenses, then manufacturing, then
+  production facilities, of any side, the headquarters placeholder left
+  out.
+- The draws come from the tick's `SplitMix64` stream (`BombardEnv`).
+
+## Against the port (before stage 5f)
 
 - The port has no Planetary Assault order: the player and the AI land
   regiments by Move, and the simulation (`simulation.rs`) and the app

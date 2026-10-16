@@ -277,6 +277,14 @@ cross-runtime proof remain open
     6. The port's `CombatSystem::resolve_ground`, run whenever both sides
     have regiments at a system, rests on a misread (`ground-combat.md`'s
     family ranges) and has no counterpart.
+  - Planetary Assault ported 2026-10-16 (module 8, stage 5f,
+    `assault.rs`, `AIAction::Assault`); removed by the user's choice: the
+    automatic landing on another side's planet, the automatic ground battle
+    (`CombatSystem::resolve_ground`) and the app's interactive ground-combat
+    screen. Regiments land only on their side's planet (`FUN_005073d0`);
+    one side's regiments alone still take a planet (port). Until the kind 4
+    plan is ported the AI orders no assault, so it no longer takes the
+    other side's planets by landing (`evidence/2026-10-16-planetary-assault/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

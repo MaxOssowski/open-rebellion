@@ -14,6 +14,7 @@ pub mod ai_records;
 pub mod ai_strategy;
 pub mod betrayal;
 pub mod blockade;
+pub mod assault;
 pub mod bombardment;
 pub mod build_selection;
 pub mod combat;

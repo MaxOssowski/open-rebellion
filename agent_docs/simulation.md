@@ -37,7 +37,7 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | 5 | **AI** | `ai.rs` | `pass(state, world, mfg, missions, movement, economy, troop_transport, tick, ..)` | Per-fleet targeting, deconfliction, battle penalty. `passes_per_day(speed)` passes a day, each applied before the next, one side then the other; at most one order a pass, 10 a day; fourteen modules by priority, then round robin; each pass first rebuilds the side's records (`ai_records::Galaxy`); a module steps until it completes (modules 1, 2, 3, 5, 6, 7 and `0xb`, `ai_module1.rs` to `ai_module7.rs` and `ai_module_b.rs`, run their cycles within one pass); module `0xd` first chooses its posture and names the sectors it plans for (`ai_strategy.rs`), and module 8 keeps a sector planner per planned sector (`ai_module8.rs`), which holds ships and fleets for its plan and steps them (`ai_planner.rs`); the plan object's step (`ai_plan.rs`) chooses its base, unloads its fleets' regiments, boards the base's squadrons, sets down their people, gives one fleet a cycle a role (attack, bombardment) and target or sends it to another held fleet or home, and settles the roles at their targets, a bombarder ordering its bombardment (`AIAction::Bombard`, resolved by `bombardment.rs`); the other kinds' planners are still the port's fleet heuristics, which leave held fleets alone. Before the day's passes the driver numbers new capital ships (`GameWorld::number_ships`), the key of the AI's per-ship records. |
 | 6 | **Movement** | `movement.rs` | `advance(state, ticks) -> Vec<ArrivalEvent>` | Caller must update `fleet.location` + `system.fleets` |
 | 7 | **Fog** | `fog.rs` | `advance(state, world, movement)` | Fleet presence + sensor radius (detection * 15.0); monotonic |
-| 8 | **Combat** | `combat.rs` | `resolve_space()` / `resolve_ground()` | Phase gate: `ACTIVE && !PHASES_ENABLED` (inverted) |
+| 8 | **Combat** | `combat.rs`, `assault.rs` | `resolve_space()`; `assault::resolve` (Planetary Assault only) | Phase gate: `ACTIVE && !PHASES_ENABLED` (inverted) |
 | 9 | **Blockade** | `blockade.rs` | `advance(state, world, ticks)` | Hostile fleet + no defender = blockade |
 | 10 | **Uprising** | `uprising.rs` | `advance(state, world, economy, missions, ticks, rolls)` | Needs the economy summary; incidents and disasters run on recovered timers |
 | 11 | **Death Star** | `death_star.rs` | `advance(state, world, ticks)` | Self-clears construction on completion |
@@ -81,7 +81,8 @@ run_simulation_tick():
   0. economy_events  = EconomySystem::advance()       → integrator.apply_economy_events()
   1. completions     = production_cycle::advance_yards() → integrator.apply_build_completions()
   2. arrivals        = MovementSystem::advance()       → integrator.apply_arrivals()
-  3. combat triggers → CombatSystem::resolve_*()       → integrator.apply_space_combat() / apply_ground_combat()
+  3. combat triggers → CombatSystem::resolve_space()   → integrator.apply_space_combat()
+  3b. landing on own planets, occupation (no ground battle outside Planetary Assault)
   4. reveals         = FogSystem::advance()             → integrator.emit_fog_reveals()
   5. results         = MissionSystem::advance()         → integrator.apply_mission_result()
   5b. escapes        = MissionSystem::advance_escapes() → integrator.apply_escape_effects()

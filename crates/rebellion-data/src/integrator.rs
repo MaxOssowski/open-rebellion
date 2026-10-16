@@ -10,13 +10,12 @@
 //! All 17 simulation sections route through `PerceptionIntegrator` methods for both
 //! world mutation and telemetry emission. simulation.rs is a thin tick orchestrator (~449 LOC).
 
-use std::collections::HashMap;
 
 use rebellion_core::ai::{AIAction, AIState, AiFaction};
 use rebellion_core::betrayal::BetrayalEvent;
 use rebellion_core::blockade::BlockadeEvent;
 use rebellion_core::bombardment::BombardEnv;
-use rebellion_core::combat::{CombatSide, CombatSystem, GroundCombatResult, SpaceCombatResult};
+use rebellion_core::combat::{CombatSide, CombatSystem, SpaceCombatResult};
 use rebellion_core::death_star::DeathStarEvent;
 use rebellion_core::economy::{EconomyEvent, EconomyState};
 use rebellion_core::events::{EventAction, FiredEvent, SkillField, SystemTag};
@@ -210,6 +209,11 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
             "fleets": fleets.len(),
             "system": sys_name(world, *system),
             "kind": format!("{kind:#x}"),
+        }),
+        AIAction::Assault { fleets, system } => serde_json::json!({
+            "type": "Assault",
+            "fleets": fleets.len(),
+            "system": sys_name(world, *system),
         }),
         AIAction::JoinFleet { fleet, into } => {
             let at = |key| {
@@ -822,53 +826,6 @@ impl PerceptionIntegrator {
         );
     }
 
-    /// Apply ground combat result: troop damage + dead removal + telemetry.
-    pub fn apply_ground_combat(&mut self, world: &mut GameWorld, result: &GroundCombatResult) {
-        apply_ground_combat_result_inner(result, world);
-        let ground_winner = match result.winner {
-            CombatSide::Attacker => "alliance",
-            CombatSide::Defender => "empire",
-            CombatSide::Draw => "draw",
-        };
-        self.emit(
-            SYS_COMBAT,
-            EVT_COMBAT_GROUND,
-            serde_json::json!({
-                "system": sys_name(world, result.system),
-                "winner": ground_winner,
-                "engagements": result.troop_damage.len(),
-            }),
-        );
-    }
-
-    /// Emit one summary for a complete multi-round ground engagement.
-    pub fn emit_system_ground_combat(
-        &mut self,
-        world: &GameWorld,
-        system: SystemKey,
-        winner: CombatSide,
-        engagements: usize,
-        rounds: u32,
-        stalemate: bool,
-    ) {
-        let ground_winner = match winner {
-            CombatSide::Attacker => "attacker",
-            CombatSide::Defender => "defender",
-            CombatSide::Draw => "draw",
-        };
-        self.emit(
-            SYS_COMBAT,
-            EVT_COMBAT_GROUND,
-            serde_json::json!({
-                "system": sys_name(world, system),
-                "winner": ground_winner,
-                "engagements": engagements,
-                "rounds": rounds,
-                "stalemate": stalemate,
-            }),
-        );
-    }
-
     /// Land every regiment carried by a fleet and emit one movement record.
     pub fn apply_troop_landing(
         &mut self,
@@ -1030,6 +987,30 @@ impl PerceptionIntegrator {
             }),
         );
     }
+    /// Telemetry for one Planetary Assault ([`BombardEnv::assault`]).
+    pub fn emit_assault(
+        &mut self,
+        world: &GameWorld,
+        req: &rebellion_core::assault::AssaultRequest,
+        outcome: &rebellion_core::assault::AssaultOutcome,
+    ) {
+        self.emit(
+            SYS_COMBAT,
+            EVT_COMBAT_GROUND,
+            serde_json::json!({
+                "system": sys_name(world, req.system),
+                "order": "assault",
+                "attackers": outcome.attackers,
+                "defenders": outcome.defenders,
+                "duels": outcome.duels,
+                "attackers_lost": outcome.lost_attackers.len(),
+                "defenders_lost": outcome.lost_defenders.len(),
+                "collateral": outcome.collateral.len(),
+                "landed": outcome.landed.len(),
+            }),
+        );
+    }
+
     // ── Step 5: Missions + Escapes ──────────────────────────────────────
 
     /// Apply mission result: world mutations + telemetry.
@@ -2187,6 +2168,12 @@ fn apply_ai_actions_inner(
                     true
                 }
             }),
+            AIAction::Assault { fleets, system } => ai_state.faction.is_some_and(|side| {
+                world.systems.contains_key(*system) && {
+                    bombard.assault(world, troop_transport, side.as_faction(), fleets, *system);
+                    true
+                }
+            }),
             AIAction::JoinFleet { fleet, into } => ai_state.faction.is_some_and(|side| {
                 rebellion_core::fleet_join::join_fleet(
                     world,
@@ -3278,6 +3265,84 @@ mod tests {
             .unwrap();
         assert_eq!(record.details["kind"], "0x222");
         assert_eq!(record.details["destroyed"], 1);
+    }
+
+    #[test]
+    fn an_assault_order_lands_the_winners_and_reports_the_ground_battle() {
+        // Planetary Assault (0x234) resolved through assault::resolve: with
+        // no defender the regiments aboard land at once (FUN_0058c810).
+        let mut world = GameWorld::default();
+        world.gnprtb = rebellion_core::world::GnprtbParams::new(
+            [(0x1e51, 60), (0x1e52, -10)]
+                .iter()
+                .map(|&(id, v)| rebellion_core::world::GnprtbEntry {
+                    parameter_id: id,
+                    development: v,
+                    alliance_sp_easy: v,
+                    alliance_sp_medium: v,
+                    alliance_sp_hard: v,
+                    empire_sp_easy: v,
+                    empire_sp_medium: v,
+                    empire_sp_hard: v,
+                    multiplayer: v,
+                })
+                .collect(),
+        );
+        let kuat = add_system(&mut world, "Kuat");
+        world.systems[kuat].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Alliance);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            hull: 100,
+            troop_capacity: 2,
+            ..Default::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: kuat,
+            capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[kuat].fleets.push(fleet);
+        let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId(0x1000_0006),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[kuat].ground_units.push(regiment);
+        let mut transport = TroopTransportState::new();
+        transport.load(&mut world, fleet, &[regiment]).unwrap();
+        let mut env = BombardEnv::new(7, None);
+        let applied = apply_ai_actions_inner(
+            &[AIAction::Assault {
+                fleets: vec![fleet],
+                system: kuat,
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut transport,
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            &mut env,
+        );
+        assert_eq!(applied, [true]);
+        assert_eq!(world.systems[kuat].ground_units, [regiment]);
+        assert_eq!(transport.cargo(fleet), []);
+        assert_eq!(env.assaults.len(), 1);
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+        integrator.emit_assault(&world, &env.assaults[0].0, &env.assaults[0].1);
+        let events = integrator.finish();
+        let record = events
+            .iter()
+            .find(|e| e.event_type == EVT_COMBAT_GROUND)
+            .unwrap();
+        assert_eq!(record.details["order"], "assault");
+        assert_eq!(record.details["landed"], 1);
     }
 
     #[test]
@@ -4681,32 +4746,6 @@ mod combat_application_tests {
         assert_eq!(result.rounds, 1);
         assert!(result.stalemate);
         assert_eq!(world.systems[system].fleets.len(), 2);
-    }
-}
-
-pub fn apply_ground_combat_result_inner(result: &GroundCombatResult, world: &mut GameWorld) {
-    let mut final_strengths: HashMap<TroopKey, i16> = HashMap::new();
-    for evt in &result.troop_damage {
-        final_strengths.insert(evt.troop, evt.strength_after);
-    }
-    for (&key, &strength) in &final_strengths {
-        if let Some(troop) = world.troops.get_mut(key) {
-            troop.regiment_strength = strength;
-        }
-    }
-
-    let sys_key = result.system;
-    if let Some(sys) = world.systems.get_mut(sys_key) {
-        sys.ground_units
-            .retain(|&k| world.troops.get(k).is_some_and(|t| t.regiment_strength > 0));
-    }
-    let dead: Vec<_> = final_strengths
-        .iter()
-        .filter(|(_, &s)| s <= 0)
-        .map(|(&k, _)| k)
-        .collect();
-    for key in dead {
-        world.troops.remove(key);
     }
 }
 

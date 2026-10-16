@@ -242,6 +242,10 @@ fn accepts(
         } => {
             crate::bombardment::order_enabled(world, movement, is_alliance, fleets, *system, *kind)
         }
+        // Planetary Assault's enabled check (assault::order_enabled).
+        AIAction::Assault { fleets, system } => {
+            crate::assault::order_enabled(world, movement, transport, is_alliance, fleets, *system)
+        }
         // The move command's validation (FUN_00578d00) with a fleet for
         // the destination: both the side's, out of hyperspace, and the
         // departure's checks when the target lies elsewhere.
@@ -850,6 +854,14 @@ pub enum AIAction {
         fleets: Vec<FleetKey>,
         system: SystemKey,
         kind: u32,
+    },
+
+    /// Planetary Assault (`0x234`) of `system` by the side's `fleets`,
+    /// resolved by [`crate::assault::resolve`]
+    /// (`ghidra/notes/planetary-assault.md`).
+    Assault {
+        fleets: Vec<FleetKey>,
+        system: SystemKey,
     },
 
     /// Create Fleet (`0x270`): capital ships of one of the side's fleets
@@ -8881,6 +8893,44 @@ mod tests {
         )
         .unwrap();
         assert!(!ok(&world, &movement, vec![empire], general));
+    }
+
+    #[test]
+    fn an_assault_needs_the_side_s_fleet_in_orbit_carrying_a_regiment() {
+        // Planetary Assault's enabled check (FUN_00581ae0): a team fleet
+        // carrying a regiment; port: assault::order_enabled's orbit and
+        // system tests.
+        let (mut world, system, ours, empire, _) = squadron_world(2);
+        let class = world.fleets[empire].capital_ships[0].class;
+        world.capital_ship_classes[class].troop_capacity = 2;
+        let mut transport = crate::troop_transport::TroopTransportState::new();
+        let movement = crate::movement::MovementState::new();
+        let research = ResearchState::new();
+        let ok = |world: &GameWorld,
+                  transport: &crate::troop_transport::TroopTransportState,
+                  fleets: Vec<FleetKey>| {
+            accepts(
+                &AIAction::Assault { fleets, system },
+                world,
+                &research,
+                AiFaction::Empire,
+                transport,
+                &movement,
+            )
+        };
+        assert!(!ok(&world, &transport, vec![empire]));
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: crate::ids::DatId::new(0x1000_0006),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+        transport.load(&mut world, empire, &[troop]).unwrap();
+        assert!(ok(&world, &transport, vec![empire]));
+        assert!(!ok(&world, &transport, vec![ours]));
+        assert!(!ok(&world, &transport, vec![]));
+        world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        assert!(!ok(&world, &transport, vec![empire]));
     }
 
     #[test]
