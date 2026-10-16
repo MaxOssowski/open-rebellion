@@ -1641,6 +1641,14 @@ cross-runtime proof remain open
     FUN_00500820, and the fleet speed FUN_004fd900. A fleet without a capital
     ship cannot enter hyperspace (FUN_004fda10). The per-ship damage nibble is
     not modelled. Bombardment and fog remain open.
+  - Bombardment read 2026-10-16 (`ghidra/notes/bombardment-order.md`): the
+    Fleet menu's orders `0x220..0x223` send a bombardment that the game
+    resolves in `FUN_005637c0` -> `FUN_0058d800` -> `FUN_0058d770`: a Death
+    Star destroys the system (`0x223`); the ion cannons and batteries fire
+    at the bombarding ships; firepower less the shields gives shots, each
+    destroying a drawn target whose bombardment defense loses to a 1-10
+    draw; civilian damage costs support. The original never bombards after
+    a battle on its own. Not yet ported.
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.

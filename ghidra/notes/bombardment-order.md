@@ -1,0 +1,165 @@
+# Planetary Bombardment: the orders and their resolution
+
+This note records the Fleet menu's Planetary Bombardment orders (`0x220`
+Target Military Facilities, `0x221` Target Civilian Facilities, `0x222`
+General Bombardment, `0x223` Destroy System) and how the game resolves
+them. It supersedes `bombardment.md`, whose chain (`FUN_00556430`,
+`FUN_0055d8c0`) is the transit computation (F-032). Read 2026-10-16.
+
+The manual (the Fleet menu, Planetary Bombardment): the sub-menu
+"becomes available when your fleet is in orbit around an enemy or
+neutral system. If you bombard a system that has defensive batteries,
+they will fire at your ships in orbit ... (Exception: The planet-based
+ion cannon ... robs energy from an attacking vessel, preventing it from
+being able to bombard the system during the attack.) If a system has one
+or more planetary shields, the attacking ships must first blast through
+the shield(s). Each ship's Bombardment Modifier ... is combined and
+pitted against the shield's defensive strength. Any bombardment
+firepower that gets past the shield is used against troops and
+facilities on the ground." Admirals "magnify the effects of ships on
+bombardment" (Characters, ranks). Civilian damage lowers support in the
+sector, a Death Star's destruction throughout the galaxy (Popular
+support). Every claim below matches.
+
+## The orders
+
+`FUN_0051f4b0` registers the factories: `0x220` `FUN_00582980` (vtable
+`0x66a028`), `0x221` `FUN_00582710`, `0x222` `FUN_005828b0` (`0x669fd0`),
+`0x223` `FUN_005827e0` (`0x669f78`). All are 0x48 bytes over
+`FUN_00581d70` (vtable `0x669ec8`, a sub-order list at `+0x44`,
+`FUN_0054ede0`) and differ only in slot `+0xc`, the kind.
+
+| Slot | Function | Role |
+|---|---|---|
+| `+0x18` | `FUN_00581e80` | Enabled: `FUN_00553770` (a team, every member's slot `+0x18`, all of one side, status `1`/`0x16`, `1`/`0x14`), then `FUN_00582440` |
+| `+0x1c` | `FUN_00581fa0` | Validator: each sub-order's `+0x1c` (`FUN_00553960`) |
+| `+0x20` | `FUN_005820a0` | Execute: each sub-order goes out to the game (`FUN_005539f0` -> `DAT_006b2b00` = `LAB_004fcff0` -> `FUN_0051d8d0` -> `FUN_0054ee30`) |
+| `+0x4c` | `FUN_00582200` | Build: the sub-orders for the team and target (`FUN_005535b0`) |
+
+`FUN_00582440`: of the team's fleets (families `8..0xf`, `+0x50` bit 1),
+one with bombardment (`FUN_004fd6b0` above 0) enables the order (else
+`8`/`6`); for `0x223` that fleet must also hold a Death Star
+(`FUN_005003d0(fleet, 1)` and `FUN_005131b0`; else `8`/`8`).
+
+## The resolution (`FUN_005637c0`)
+
+The game's handler resolves the system (`+0x3c`) and runs a bombardment
+object (`FUN_0058d720`, vtable `0x66a950`): `FUN_0058d800(system, order)`,
+then `FUN_0058d770`.
+
+**`FUN_0058d800`.** The kind sets the target classes:
+
+| Kind | `+0x34` ground | `+0x38` facilities | `+0x3c` resources | `+0x40` military | `+0x44` destroy |
+|---|---|---|---|---|---|
+| `0x220` | 1 | | | 1 | |
+| `0x221` | | 1 | | | |
+| `0x222` | 1 | 1 | 1 | | |
+| `0x223` | 1 | 1 | 1 | | 1 |
+
+The fleets in the system with `+0x58` bit `0x40` (bombarding, set by the
+order's sub-orders through fleet slot `+0x1d4`, `FUN_004fec00` ->
+`FUN_004fe460(1)`) must all be one side; the object keeps the system
+(`+0x10`), that side (`+0x14`) and the system's side (`+0x18`). The four
+phases run in order; each returns success.
+
+**Lists.** `FUN_0058ca70` walks the bombarding fleets (side `+0x14`,
+`FUN_004ffef0`) and their capital ships (`FUN_00502e30`, families
+`0x14..0x1b`). `FUN_0058cba0` walks the targets: with `+0x34` the
+system's regiments (`FUN_00504cc0`, families `0x10..0x13`), defense
+facilities (`FUN_00527050`, `0x22..0x27`) and placeholders
+(`FUN_00526d70`, `0x20..0x21`), each of the system's side; with `+0x38`
+its manufacturing and production facilities (`FUN_0053b760`,
+`0x28..0x2f`); with `+0x3c` an energy unit (system `+0x5c` above 0) and a
+raw material unit (`+0x64` above 0). Visitors (vtables `0x66a918..`)
+count (`FUN_0058d1a0`, `FUN_0058d210`) or take the `n`th
+(`FUN_00587470`, `FUN_0058d2f0`).
+
+**1, `FUN_0058d990`.** The system's `+0x88` bit `0x40` (bombarded) is set
+(`FUN_0050a660(1)`). With `+0x44`, a Death Star among the bombarding
+ships (family `0x18..0x1b`, `FUN_0058d440`) destroys the system
+(`FUN_0058ce70`: slot `+0xac` with `0x10` for the attacker's own, else
+`0xf`), sets `+0x2c` and `+0x28`, and each minor character there
+(families `0x38..0x3b`, `FUN_0056f3d0`) not yet hit (`+0x50` bit 5) is
+hit with probability GNPRTB `0x606` (50%, `FUN_0055e9e0`): slot `+0x2f0(1,
+10)`, and when `+0x50` bit 6, slot `+0xac(10)`. Without it (or another
+kind) `+0x1c` counts the bombarding ships, `+0x20` the targets, and
+`+0x24` is 1 for `0x220`.
+
+**2, `FUN_0058dc10`, the batteries.** For each of the system's family
+`0x22` facilities (`FUN_00527550`) a bombarding ship drawn at random
+(`FUN_0053e290(+0x1c - 1)`, 0 to count - 1) takes `(general / G0x600 + 1)
+* class +0x5c` (`FUN_0055e930`; G `0x600` = 40; the system's rank 3
+officer, `FUN_00509330(3)`, slot `+0x1f4` leadership `+0x88`; class
+`+0x5c` is DEFFACSD attack strength) into its first count (`+0x54` ->
+`+0x20`); the family `0x23` facilities (`FUN_005272e0`) into its second
+(`+0x24`). Family `0x22` is the KDY v-150 ion cannon (DEFFACSD 1), the
+manual's exception; `0x23` the planetary batteries (2 and 5). Then each ship (`FUN_0058d540`): shields `S` = slot `+0x1e0`
+less `+0x204` (its shields now), `H` its hull damage room (class hull
+`+0xc0` less `+0x60` damage); the first count, then the second, is
+absorbed by `S` (`FUN_0055e9a0(a, b)`: the excess of one over the other);
+the second's excess falls on `H`; the shields lost go to `+0x28`; the
+hull damage grows by the second's excess (`FUN_00501ae0`, capped; at the
+hull the ship is destroyed, slot `+0xac(0xf)`). The first count's excess
+stays: a ship with one cannot bombard (`FUN_00500f00`). No bombarding
+ship left: `+0x30`, the bombardment stops.
+
+**3, `FUN_0058df60`, the bombardment.** Unless stopped: firepower is the
+sum over the bombarding fleets of `(admiral / G0x601 + 1) * bombardment`
+(`FUN_0055e950`, G `0x601` = 40; the fleet's rank 2 officer,
+`FUN_004fd790(2)`, leadership; `FUN_004fd6b0`: each ship's slot `+0x1dc`
+and each squadron's aboard). A ship's is CAPSHPSD `bombardment_modifier`
+(`+0xd4`) less its share of hull damage (`modifier * damage / hull`,
+`FUN_00500f00`), 0 with a first count left (when `+0x24 & 0x30` is 0); a
+squadron's FIGHTSD `+0xcc` less its share of `+0x60`. Shields are the
+sum of the system's family `0x24` facilities' class `+0x60` (DEFFACSD
+shield strength; side `+0x18`, `FUN_00527940`). Shots: firepower less
+shields when above 0. With shots and `0x220`, collateral damage with
+probability `+0x24 / (+0x20 + +0x24)` (`FUN_0053e290(+0x20 - 1 + 1) <
+1`): a manufacturing or production facility (`FUN_0058d080`; the
+decompile takes the first of `FUN_0053b760`, its counter never
+advancing) gets the destruction roll. Then up to `shots` times: a target
+drawn at random (`FUN_0053e290(+0x20 - 1)`, `FUN_0058d290`); its defense
+(`FUN_0058cf80`: a facility's slot `+0x1c0` less `+0x1c4`, the class
+`bombardment_defense` `+0x58`; a regiment's slot `+0x1d8` less `+0x1e4`,
+TROOPSD `bombardment_defense` `+0x60`; energy G `0x604` = 9; raw G `0x605`
+= 9); destroyed when the defense is below a draw of G `0x602`..G `0x603`
+(1 to 10, `FUN_0055e970`, `FUN_0053e2c0`): `FUN_0058d020` -> slot
+`+0xac(0x10 own / 0xf)`, a manufacturing or production facility setting
+`+0x28`; an energy or raw unit lowers `+0x5c` or `+0x64` by one
+(`FUN_00509cc0`, `FUN_00509dc0`) and sets `+0x28`. The targets are
+counted again; none left stops.
+
+**4, `FUN_0058e320`, the support.** With `+0x28` (civilian damage) the
+attacker's support on the system moves by G `0x1e19` (-20,
+`FUN_0050c9f0`: populated systems only, `+0x88` bit 1; scaled by
+`DAT_006bb400` with `+0x88` bit 11, `FUN_00559be0`). With `+0x2c` (a
+destroyed system) both sides' galaxy-wide support events
+(`FUN_0055da90` -> `FUN_00518a70`); else with `+0x28` the sector's
+(`FUN_0055d900` -> `FUN_00518ac0`), GNPRTB `DAT_006bb5f4..6d0` (not yet
+read: `FUN_00518b20`, `FUN_00518be0`). The system's bombarded bit is
+cleared (`FUN_0050a660(0)`), and every fleet of the side loses
+`+0x58` bit `0x40` (`FUN_004fe460(0)`).
+
+## GNPRTB
+
+| Id | Global | Value | Use |
+|---|---|---|---|
+| `0x600` | `DAT_006bb768` | 40 | the general's leadership divisor (batteries) |
+| `0x601` | `DAT_006bb774` | 40 | the admiral's leadership divisor (firepower) |
+| `0x602` | `DAT_006bb75c` | 1 | the destruction draw's low end |
+| `0x603` | `DAT_006bb764` | 10 | the destruction draw's high end |
+| `0x604` | `DAT_006bb760` | 9 | an energy unit's defense |
+| `0x605` | `DAT_006bb770` | 9 | a raw material unit's defense |
+| `0x606` | `DAT_006bb76c` | 50 | a minor character's hit chance on destruction |
+| `0x1e19` | `DAT_006bb47c` | -20 | the attacker's support after civilian damage |
+
+## Port notes
+
+- The port's automatic bombardment after a space victory
+  (`simulation.rs`, `tactical_flow.rs`) has no counterpart: the original
+  bombards only on these orders.
+- The port has no officer ranks (`+0x96`): no general or admiral, so both
+  multipliers are 1.
+- The port's ship keeps its current hull (`hull_current`), so `+0x60`
+  damage is `hull - hull_current`; it has no shield damage (`+0x28`) or
+  per-squadron damage, and squadrons are counts.

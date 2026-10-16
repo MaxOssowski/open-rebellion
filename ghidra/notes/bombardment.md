@@ -8,6 +8,10 @@ updated: 2026-03-16
 
 # Orbital Bombardment
 
+> Superseded (2026-10-16): the chain below is the transit computation
+> (F-032). The bombardment orders and their resolution are in
+> `bombardment-order.md`.
+
 ## Entry Point
 
 `FUN_00556430` (78 lines) — called from system battle orchestrator (`FUN_00514a60`).
