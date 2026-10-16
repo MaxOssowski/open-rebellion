@@ -5,8 +5,8 @@
 //! and the roles' orders (`ghidra/notes/ai-sector-plans.md`, "The plan
 //! object's step").
 //!
-//! port: only kinds 1 to 3's slots are ported (vtables `0x65c2c0`,
-//! `0x65c268`, `0x65c160`).
+//! port: only kinds 1 to 4's slots are ported (vtables `0x65c2c0`,
+//! `0x65c268`, `0x65c160`, `0x65c210`).
 
 use crate::ai::AIAction;
 use crate::ai_module1::ANY;
@@ -36,6 +36,9 @@ const ROLES: u32 = 0xf000_0000;
 /// Role `0x10000000`: attack the enemy's fleets at the target
 /// (`FUN_004b4560`), marked `0x100000` on the system.
 const ROLE_ATTACK: u32 = 0x1000_0000;
+/// Role `0x20000000`: assault the target (`FUN_004b8ab0`), marked
+/// `0x200000` on the system.
+const ROLE_ASSAULT: u32 = 0x2000_0000;
 /// Role `0x40000000`: bombard the target (`FUN_004b4730`), marked
 /// `0x400000` on the system.
 const ROLE_BOMBARD: u32 = 0x4000_0000;
@@ -45,7 +48,7 @@ const ROLE_BOMBARD: u32 = 0x4000_0000;
 const ROLE_MARK_OF: [(u32, u32); 4] = [
     (0x8000_0000, 0x100_0000),
     (ROLE_ATTACK, 0x10_0000),
-    (0x2000_0000, 0x20_0000),
+    (ROLE_ASSAULT, 0x20_0000),
     (ROLE_BOMBARD, 0x40_0000),
 ];
 
@@ -81,12 +84,21 @@ impl SectorPlanner {
                 None
             }
             2 => {
-                self.plan_state = if self.choose_base(io) { 3 } else { 5 };
+                let based = if self.kind == 4 {
+                    self.invasion_base(io)
+                } else {
+                    self.choose_base(io)
+                };
+                self.plan_state = if based { 3 } else { 5 };
                 None
             }
             3 => {
                 self.plan_state = 4;
-                self.unload(io)
+                if self.kind == 4 {
+                    self.board(io)
+                } else {
+                    self.unload(io)
+                }
             }
             4 => {
                 self.plan_state = 5;
@@ -105,9 +117,14 @@ impl SectorPlanner {
                 self.plan_state = if self.attack_target(io) { 0xd } else { 8 };
                 None
             }
-            // Kind 3's slots +0x40 and +0x48 (0x6158b0) return 0.
+            // Slot +0x40: kind 4's assault (FUN_004b8ab0); the other ported
+            // kinds' (and every +0x48) are 0x6158b0, which returns 0.
             8 => {
-                self.plan_state = 10;
+                self.plan_state = if self.kind == 4 && self.assault_target(io) {
+                    0xd
+                } else {
+                    10
+                };
                 None
             }
             10 => {
@@ -492,16 +509,33 @@ impl SectorPlanner {
         let Some(values) = io.galaxy.fleets.get(&fleet).map(|r| r.values) else {
             return false;
         };
-        if values[2] > 0
-            && attack_from(
+        if values[2] > 0 {
+            // Kind 4 (FUN_004b8880) first tries its target when an enemy
+            // fleet is there (+0x30 0x200), with no other mark test.
+            if let Some(target) = self.plan_target.filter(|_| self.kind == 4) {
+                let wins = io.galaxy.system(target).is_some_and(|r| {
+                    r.kind & 0x200 != 0
+                        && io
+                            .galaxy
+                            .fleets
+                            .get(&fleet)
+                            .is_some_and(|f| fleet_prevails(f, r))
+                });
+                if wins {
+                    io.set_kind(target, 0x10_0000, 0);
+                    bind(io, fleet, target, ROLE_ATTACK);
+                    return true;
+                }
+            }
+            if attack_from(
                 io,
                 fleet,
                 sector,
                 [ANY, ANY, Mask::new(0x200, 0x10_0000)],
                 0x27,
-            )
-        {
-            return true;
+            ) {
+                return true;
+            }
         }
         matches!(self.kind, 1 | 2)
             && values[3] > 0
@@ -514,6 +548,146 @@ impl SectorPlanner {
             )
     }
 
+    /// State 8, kind 4's slot `+0x40` (`FUN_004b8ab0`): a step's fleet with
+    /// regiments (`values[12]`) takes the target (`+0x5c`) when it can
+    /// assault it ([`fleet_assaults`]): the system takes `0x200000`, the
+    /// fleet the target and [`ROLE_ASSAULT`]. True when bound.
+    fn assault_target(&mut self, io: &mut PlannerIo<'_>) -> bool {
+        let (Some(fleet), Some(target)) = (self.plan_fleet, self.plan_target) else {
+            return false;
+        };
+        if io
+            .galaxy
+            .fleets
+            .get(&fleet)
+            .is_none_or(|r| r.values[12] < 1)
+            || io.galaxy.system(target).is_none()
+            || !fleet_assaults(io, fleet, target)
+        {
+            return false;
+        }
+        io.set_kind(target, 0x20_0000, 0);
+        bind(io, fleet, target, ROLE_ASSAULT);
+        true
+    }
+
+    /// State 2, kind 4's slot `+0x34` (`FUN_004b8070`): a base (planner
+    /// `+0x40`) whose record is not the side's (`+0x30` 1) or is blockaded
+    /// (`+0x28` 2) loses `0x50000` and goes; else it takes `0x50000` unless
+    /// it has `0x10000`, and the slot is true. Without a base: the sector's
+    /// own headquarters not blockaded and no base (`+0x28` `0x80000000`
+    /// forbidding 2, `+0x30` 1 forbidding `0x40000`; key `0x13`, order 1),
+    /// else such a system of any kind, else one of the nearest sector that
+    /// has one (`FUN_0041b2b0`); it takes `0x50000`. A base without a
+    /// record stays and the slot is false.
+    fn invasion_base(&mut self, io: &mut PlannerIo<'_>) -> bool {
+        const MARKS: u32 = 0x5_0000;
+        if let Some(base) = self.base {
+            let Some(r) = io.galaxy.system(base) else {
+                return false;
+            };
+            let (state, kind) = (r.state, r.kind);
+            if kind & 1 == 0 || state & 2 != 0 {
+                io.set_kind(base, 0, MARKS);
+                self.base = None;
+            } else {
+                if kind & 0x1_0000 == 0 {
+                    io.set_kind(base, MARKS, 0);
+                }
+                return true;
+            }
+        }
+        let Some(sector) = self.sector else {
+            return false;
+        };
+        let free = Mask::new(1, BASE);
+        for state in [Mask::new(0x8000_0000, 2), Mask::new(0, 2)] {
+            let mut coin = || (io.random)(10) < 5;
+            let systems = io.galaxy.system_query(
+                sector,
+                [state, ANY, free],
+                0x13,
+                Order::Ascending,
+                &mut coin,
+            );
+            if let Some(system) = pick(&[systems]) {
+                self.base = Some(system);
+                break;
+            }
+        }
+        if self.base.is_none() {
+            self.base =
+                crate::ai_planner::nearest_sector_system(io, sector, [Mask::new(0, 2), ANY, free]);
+        }
+        let Some(base) = self.base.filter(|&b| io.galaxy.system(b).is_some()) else {
+            return false;
+        };
+        io.set_kind(base, MARKS, 0);
+        true
+    }
+
+    /// State 3, kind 4's slot `+0x38` (`FUN_004b8470`): with the side's
+    /// regiments at the base (its record's `v[19]`), the first held fleet
+    /// (`1` forbidding en route `2`; key `0x16`, order 1) found at the base
+    /// takes, when it has room (`values[22]`), the strongest of them (slot
+    /// `+0x1dc`, TROOPSD attack; the first of equals, each once), as many as
+    /// the room and `v[19]` allow. Move `0x201` onto the fleet.
+    ///
+    /// hyp: the base's walk (`FUN_00504c40`) gives the side's regiments on
+    /// the planet in its order.
+    fn board(&mut self, io: &mut PlannerIo<'_>) -> Option<AIAction> {
+        let base = self.base?;
+        let present = io.galaxy.system(base)?.values[19];
+        if present < 1 {
+            return None;
+        }
+        let fleets = self.held_fleets(io, Mask::new(1, 2), 0x16, Order::Ascending);
+        let fleet = picks(vec![fleets])
+            .into_iter()
+            .find(|&f| io.world.fleets.get(f).is_some_and(|v| v.location == base))?;
+        let room = io.galaxy.fleets.get(&fleet)?.values[22];
+        let is_alliance = io.world.fleets.get(fleet)?.is_alliance;
+        if room < 1 {
+            return None;
+        }
+        let candidates: Vec<(TroopKey, i32)> = io
+            .world
+            .systems
+            .get(base)?
+            .ground_units
+            .iter()
+            .filter_map(|&t| {
+                let troop = io.world.troops.get(t)?;
+                (troop.is_alliance == is_alliance).then(|| {
+                    let attack = io
+                        .world
+                        .troop_classes
+                        .get(&troop.class_dat_id)
+                        .map_or(0, |c| i32::try_from(c.attack_strength).unwrap_or(i32::MAX));
+                    (t, attack)
+                })
+            })
+            .collect();
+        let mut chosen: Vec<TroopKey> = Vec::new();
+        for _ in 0..room.min(present) {
+            let mut best: Option<(TroopKey, i32)> = None;
+            // The search starts at 0: a regiment without attack is never
+            // taken.
+            for &(t, attack) in &candidates {
+                if !chosen.contains(&t) && attack > best.map_or(0, |(_, top)| top) {
+                    best = Some((t, attack));
+                }
+            }
+            if let Some((t, _)) = best {
+                chosen.push(t);
+            }
+        }
+        (!chosen.is_empty()).then_some(AIAction::BoardRegiments {
+            troops: chosen,
+            fleet,
+        })
+    }
+
     /// State 9, kind 3's slot `+0x44` (`FUN_004b4730`): a step's fleet
     /// with bombardment (`values[6]`) takes the first of the sector's
     /// systems of the opponent with no role bound there (`+0x30` 4,
@@ -523,8 +697,8 @@ impl SectorPlanner {
     /// when found. Kind 1's slot (`FUN_004bb300`) merges three lists:
     /// key 8 (order 2), `0x21` and 0 (order 1).
     fn bombard_target(&mut self, io: &mut PlannerIo<'_>) -> bool {
-        // Kind 2's slot +0x44 is 0x6158b0, which returns 0.
-        if self.kind == 2 {
+        // Kinds 2 and 4's slot +0x44 is 0x6158b0, which returns 0.
+        if matches!(self.kind, 2 | 4) {
             return false;
         }
         let (Some(fleet), Some(sector)) = (self.plan_fleet, self.sector) else {
@@ -678,21 +852,25 @@ impl SectorPlanner {
                 }
             }
         }
+        // Kind 4 (FUN_004b8ca0) takes its base and the headquarters or a
+        // yard without the blockade tests.
+        let invasion = self.kind == 4;
         if let Some(base) = self
             .base
-            .filter(|&b| io.galaxy.system(b).is_some_and(|r| r.state & 2 == 0))
+            .filter(|&b| invasion || io.galaxy.system(b).is_some_and(|r| r.state & 2 == 0))
         {
             return Some(base);
         }
         let sector = self.sector?;
         let mut coin = || (io.random)(10) < 5;
+        let blockade = if invasion { 0 } else { 2 };
         for (state, key, order) in [
             (0x8000_0000, 7, Order::Descending),
             (0x3e0_0000, 0x21, Order::Ascending),
         ] {
             let systems = io.galaxy.system_query(
                 sector,
-                [Mask::new(state, 2), ANY, Mask::new(1, 0)],
+                [Mask::new(state, blockade), ANY, Mask::new(1, 0)],
                 key,
                 order,
                 &mut coin,
@@ -773,6 +951,30 @@ fn settle_role(io: &mut PlannerIo<'_>, fleet: FleetKey) -> Option<AIAction> {
     if let Some((system, target)) = there {
         if record.flags & ROLE_ATTACK != 0 {
             keep = fleet_prevails(record, target);
+        } else if record.flags & ROLE_ASSAULT != 0 {
+            // FUN_004b1070: Destroy System with fleet 0x10 and v[50];
+            // else Planetary Assault (0x234) while FUN_004ae240 holds;
+            // else FUN_004ae320's bombardment. The role stays after an
+            // order and goes only when none is given.
+            order = if record.flags & 0x10 != 0 && target.values[50] > 0 {
+                Some(AIAction::Bombard {
+                    fleets: vec![fleet],
+                    system,
+                    kind: crate::bombardment::DESTROY_SYSTEM,
+                })
+            } else if fleet_assaults(io, fleet, system) {
+                Some(AIAction::Assault {
+                    fleets: vec![fleet],
+                    system,
+                })
+            } else {
+                bombardment(io, fleet, system).map(|kind| AIAction::Bombard {
+                    fleets: vec![fleet],
+                    system,
+                    kind,
+                })
+            };
+            keep = order.is_some();
         } else if record.flags & ROLE_BOMBARD != 0 {
             let kind = if record.flags & 0x10 != 0 && target.values[50] > 0 {
                 Some(crate::bombardment::DESTROY_SYSTEM)
@@ -793,6 +995,31 @@ fn settle_role(io: &mut PlannerIo<'_>, fleet: FleetKey) -> Option<AIAction> {
         });
     }
     order
+}
+
+/// `FUN_004ae240`: whether `fleet` can assault `system`, a system held by
+/// a side (`+0x30` `0x20`), not the side's and not fully shielded
+/// (`0x101`). At the system both thresholds are 0; elsewhere the fleet's
+/// defense (`values[3]`) must reach the system's shields (`v[27]`, or
+/// controller `+0x168`), and its troops (`values[9]`) the system's
+/// regiments (`v[23]`) unless it has fighters (`values[19]`). Its regiments
+/// (`values[12]`) must reach the system's garrison need (`v[52]`).
+///
+/// hyp: controller `+0x168` reads as 0.
+fn fleet_assaults(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> bool {
+    let (Some(target), Some(record)) = (io.galaxy.system(system), io.galaxy.fleets.get(&fleet))
+    else {
+        return false;
+    };
+    if target.kind & 0x101 != 0 || target.kind & 0x20 == 0 {
+        return false;
+    }
+    let at = io.world.fleets.get(fleet).map(|f| f.location) == Some(system);
+    let v = &target.values;
+    let (shields, troops) = if at { (0, 0) } else { (v[27].max(0), v[23]) };
+    record.values[3] >= shields
+        && v[52] <= record.values[12]
+        && (record.values[19] > 0 || troops <= record.values[9])
 }
 
 /// `FUN_004ae320`: the bombardment `fleet` would give `system`, a system
@@ -2637,6 +2864,403 @@ mod tests {
         p.plan_walk = Some(second);
         assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(Some(order(second))));
         assert_eq!(fx.galaxy.fleets[&first].flags & ROLES, ROLE_BOMBARD);
+    }
+
+    fn kind_four(fx: &Fx) -> SectorPlanner {
+        SectorPlanner {
+            kind: 4,
+            ..planner(fx)
+        }
+    }
+
+    #[test]
+    fn kind_four_keeps_an_own_base_and_marks_it_else_picks_one_by_key_13() {
+        // FUN_004b8070: a base not the side's or blockaded loses 0x50000 and
+        // goes; else it takes 0x50000 (unless it has 0x10000) and the slot is
+        // true; without one, the sector's own headquarters not blockaded
+        // without 0x40000 by key 0x13 (order 1), else any such system.
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        p.base = Some(fx.systems[1]);
+        assert!(with(&mut fx, |io| p.invasion_base(io)));
+        assert_eq!(kind(&fx, 1) & 0x5_0000, 0x5_0000);
+        // With 0x10000 already, nothing is added.
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        p.base = Some(fx.systems[1]);
+        edit_system(&mut fx, 1, |r| r.kind |= 0x1_0000);
+        assert!(with(&mut fx, |io| p.invasion_base(io)));
+        assert_eq!(kind(&fx, 1) & 0x5_0000, 0x1_0000);
+        // Blockaded: dropped with its marks; a new one by key 0x13.
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        p.base = Some(fx.systems[1]);
+        edit_system(&mut fx, 1, |r| {
+            r.state |= 2;
+            r.kind |= 0x5_0000;
+        });
+        edit_system(&mut fx, 0, |r| r.values[0x13] = 1);
+        assert!(with(&mut fx, |io| p.invasion_base(io)));
+        assert_eq!(p.base, Some(fx.systems[0]));
+        assert_eq!(kind(&fx, 1) & 0x5_0000, 0);
+        assert_eq!(kind(&fx, 0) & 0x5_0000, 0x5_0000);
+        // Equal keys go by the coin (ahead on a draw below 5).
+        let mut chosen = Vec::new();
+        for draw in [4, 5] {
+            let mut fx = fixture();
+            let mut p = kind_four(&fx);
+            fx.draws = vec![draw];
+            with(&mut fx, |io| p.invasion_base(io));
+            chosen.push(p.base);
+        }
+        let fx = fixture();
+        assert_eq!(chosen, [Some(fx.systems[0]), Some(fx.systems[1])]);
+        // Not the side's: dropped too.
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        p.base = Some(fx.systems[1]);
+        edit_system(&mut fx, 1, |r| r.kind &= !1);
+        with(&mut fx, |io| p.invasion_base(io));
+        assert_ne!(p.base, Some(fx.systems[1]));
+    }
+
+    #[test]
+    fn kind_four_boards_the_strongest_regiments_at_its_base_onto_a_fleet_there() {
+        // FUN_004b8470: with regiments at the base (v[19]), the first held
+        // fleet there with room (values[22]) takes the strongest (slot
+        // +0x1dc, TROOPSD attack, above 0), as many as the room and v[19].
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        let f = held(&mut fx, &mut p, 1, 1);
+        p.base = Some(fx.systems[1]);
+        let mut troop = |attack: u32| {
+            let class = crate::ids::DatId::new(0x1000_0100 + attack);
+            fx.world.troop_classes.insert(
+                class,
+                crate::world::TroopClassDef {
+                    attack_strength: attack,
+                    defense_strength: 1,
+                    detection: 0,
+                },
+            );
+            let t = fx.world.troops.insert(TroopUnit {
+                class_dat_id: class,
+                is_alliance: true,
+                regiment_strength: 100,
+            });
+            fx.world.systems[fx.systems[1]].ground_units.push(t);
+            t
+        };
+        let (weak, none, strong) = (troop(5), troop(0), troop(7));
+        let _ = none;
+        edit_system(&mut fx, 1, |r| r.values[19] = 3);
+        record(&mut fx, f).values[22] = 3;
+        let order = with(&mut fx, |io| p.board(io));
+        assert_eq!(
+            order,
+            Some(AIAction::BoardRegiments {
+                troops: vec![strong, weak],
+                fleet: f,
+            })
+        );
+        // The room or v[19] limits the count.
+        record(&mut fx, f).values[22] = 1;
+        assert_eq!(
+            with(&mut fx, |io| p.board(io)),
+            Some(AIAction::BoardRegiments {
+                troops: vec![strong],
+                fleet: f,
+            })
+        );
+        record(&mut fx, f).values[22] = 3;
+        edit_system(&mut fx, 1, |r| r.values[19] = 1);
+        assert_eq!(
+            with(&mut fx, |io| p.board(io)),
+            Some(AIAction::BoardRegiments {
+                troops: vec![strong],
+                fleet: f,
+            })
+        );
+        // No room, no regiments counted, or no fleet at the base: nothing.
+        for edit in [
+            |fx: &mut Fx, f: FleetKey| record(fx, f).values[22] = 0,
+            |fx: &mut Fx, _: FleetKey| edit_system(fx, 1, |r| r.values[19] = 0),
+        ] {
+            edit_system(&mut fx, 1, |r| r.values[19] = 3);
+            record(&mut fx, f).values[22] = 3;
+            edit(&mut fx, f);
+            assert_eq!(with(&mut fx, |io| p.board(io)), None);
+        }
+        edit_system(&mut fx, 1, |r| r.values[19] = 3);
+        record(&mut fx, f).values[22] = 3;
+        p.base = Some(fx.systems[0]);
+        edit_system(&mut fx, 0, |r| r.values[19] = 3);
+        assert_eq!(with(&mut fx, |io| p.board(io)), None);
+    }
+
+    #[test]
+    fn kind_four_attacks_its_target_first_then_assaults_it() {
+        // FUN_004b8880: with an enemy fleet at the target that the fleet
+        // prevails over, the target; else kind 3's list. FUN_004b8ab0: a
+        // fleet with regiments (values[12]) passing FUN_004ae240 takes the
+        // target as its assault (0x200000, 0x20000000); slot +0x44 is 0.
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        let target = fx.systems[1];
+        p.plan_target = Some(target);
+        p.plan_fleet = Some(f);
+        record(&mut fx, f).values[2] = 13;
+        // An attacker already bound there (0x100000) keeps kind 3's list
+        // off it; the target is tried without that test.
+        edit_system(&mut fx, 1, |r| {
+            r.kind = 0x10_0224;
+            r.values[39] = 10;
+        });
+        p.plan_state = 7;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+        assert_eq!(p.plan_state, 0xd);
+        let r = &fx.galaxy.fleets[&f];
+        assert_eq!((r.target, r.flags & ROLES), (Some(target), ROLE_ATTACK));
+        // Without +0x30 0x200 the target is not tried, though the fleet
+        // would prevail over its forces (v[26], counted with +0x30 4).
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        p.plan_target = Some(target);
+        p.plan_fleet = Some(f);
+        record(&mut fx, f).values[2] = 13;
+        edit_system(&mut fx, 1, |r| {
+            r.kind = 0x24;
+            r.values[26] = 10;
+        });
+        p.plan_state = 7;
+        step(&mut fx, &mut p);
+        assert_eq!(p.plan_state, 8);
+        // No enemy fleet there: state 8 binds the assault.
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        p.plan_target = Some(target);
+        p.plan_fleet = Some(f);
+        edit_system(&mut fx, 1, |r| r.kind = 0x24);
+        record(&mut fx, f).values[12] = 1;
+        p.plan_state = 7;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+        assert_eq!(p.plan_state, 8);
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+        assert_eq!(p.plan_state, 0xd);
+        assert_eq!(kind(&fx, 1) & 0x20_0000, 0x20_0000);
+        let r = &fx.galaxy.fleets[&f];
+        assert_eq!((r.target, r.flags & ROLES), (Some(target), ROLE_ASSAULT));
+        // Without regiments, or with no target: 10, then 9 gives nothing
+        // (no bombarder) and 0xc regroups.
+        for edit in [
+            |fx: &mut Fx, f: FleetKey, _: &mut SectorPlanner| record(fx, f).values[12] = 0,
+            |_: &mut Fx, _: FleetKey, p: &mut SectorPlanner| p.plan_target = None,
+        ] {
+            let mut fx = fixture();
+            let mut p = kind_four(&fx);
+            let f = held(&mut fx, &mut p, 0, 1);
+            p.plan_target = Some(target);
+            p.plan_fleet = Some(f);
+            edit_system(&mut fx, 1, |r| r.kind = 0x24);
+            record(&mut fx, f).values[12] = 1;
+            record(&mut fx, f).values[6] = 5;
+            bombardable(&mut fx, 1, (0, 1, 0), (4, 4));
+            edit(&mut fx, f, &mut p);
+            p.plan_state = 8;
+            assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+            assert_eq!(p.plan_state, 10);
+            step(&mut fx, &mut p);
+            assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+            assert_eq!(p.plan_state, 0xc);
+        }
+    }
+
+    #[test]
+    fn kind_four_s_step_takes_its_own_base_and_boards_there() {
+        // FUN_004adb70 with kind 4's slots: state 2 is FUN_004b8070 (marks
+        // 0x50000), state 3 FUN_004b8470 (Move onto the fleet).
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        let f = held(&mut fx, &mut p, 1, 1);
+        p.base = Some(fx.systems[1]);
+        let class = crate::ids::DatId::new(0x1000_0105);
+        fx.world.troop_classes.insert(
+            class,
+            crate::world::TroopClassDef {
+                attack_strength: 5,
+                defense_strength: 1,
+                detection: 0,
+            },
+        );
+        let t = fx.world.troops.insert(TroopUnit {
+            class_dat_id: class,
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        fx.world.systems[fx.systems[1]].ground_units.push(t);
+        edit_system(&mut fx, 1, |r| r.values[19] = 1);
+        record(&mut fx, f).values[22] = 1;
+        p.plan_state = 2;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+        assert_eq!(p.plan_state, 3);
+        assert_eq!(kind(&fx, 1) & 0x5_0000, 0x5_0000);
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Order(Some(AIAction::BoardRegiments {
+                troops: vec![t],
+                fleet: f,
+            }))
+        );
+    }
+
+    #[test]
+    fn kind_four_retreats_to_its_base_even_when_blockaded() {
+        // FUN_004b8ca0: the base without the blockade test; the
+        // headquarters and a yard without it either.
+        let mut fx = fixture();
+        let mut p = kind_four(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        p.plan_fleet = Some(f);
+        p.base = Some(fx.systems[1]);
+        edit_system(&mut fx, 1, |r| r.state |= 2);
+        assert_eq!(with(&mut fx, |io| p.home(io)), Some(fx.systems[1]));
+        p.base = None;
+        edit_system(&mut fx, 1, |r| r.state |= 0x8000_0000);
+        assert_eq!(with(&mut fx, |io| p.home(io)), Some(fx.systems[1]));
+        edit_system(&mut fx, 1, |r| r.state = 0x3e0_0002);
+        assert_eq!(with(&mut fx, |io| p.home(io)), Some(fx.systems[1]));
+        // Kind 3 passes the blockaded ones over.
+        p.kind = 3;
+        assert_eq!(with(&mut fx, |io| p.home(io)), None);
+    }
+
+    #[test]
+    fn a_fleet_assaults_a_held_system_its_defense_and_troops_can_take() {
+        // FUN_004ae240: +0x30 0x20 without 0x101; elsewhere values[3] at
+        // least v[27] (shields) and values[9] at least v[23] unless
+        // values[19] is above 0; values[12] at least v[52]; at the system
+        // both thresholds are 0.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        let target = fx.systems[1];
+        edit_system(&mut fx, 1, |r| {
+            r.kind = 0x24;
+            (r.values[27], r.values[23], r.values[52]) = (3, 2, 1);
+        });
+        let ok = |fx: &mut Fx| with(fx, |io| fleet_assaults(io, f, target));
+        (
+            record(&mut fx, f).values[3],
+            record(&mut fx, f).values[9],
+            record(&mut fx, f).values[12],
+        ) = (3, 2, 1);
+        assert!(ok(&mut fx));
+        record(&mut fx, f).values[3] = 2;
+        assert!(!ok(&mut fx));
+        record(&mut fx, f).values[3] = 3;
+        record(&mut fx, f).values[9] = 1;
+        assert!(!ok(&mut fx));
+        record(&mut fx, f).values[19] = 1;
+        assert!(ok(&mut fx));
+        record(&mut fx, f).values[12] = 0;
+        assert!(!ok(&mut fx));
+        record(&mut fx, f).values[12] = 1;
+        // Own (1), fully shielded (0x100) or held by no side (no 0x20).
+        for kind in [0x21, 0x124, 0x4] {
+            edit_system(&mut fx, 1, |r| r.kind = kind);
+            assert!(!ok(&mut fx), "{kind:#x}");
+        }
+        // At the system: no shield or troop threshold.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let f = held(&mut fx, &mut p, 1, 1);
+        edit_system(&mut fx, 1, |r| {
+            r.kind = 0x24;
+            (r.values[27], r.values[23]) = (9, 9);
+        });
+        assert!(with(&mut fx, |io| fleet_assaults(io, f, fx_system(io, 1))));
+    }
+
+    #[test]
+    fn an_assaulter_at_its_target_assaults_and_keeps_its_role() {
+        // FUN_004b1070: a 0x20000000 fleet at its target gives Planetary
+        // Assault 0x234 while FUN_004ae240 holds, else FUN_004ae320's
+        // bombardment, else loses role and target; Destroy System with
+        // fleet 0x10 and v[50]. After an order the role stays.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let f = held(&mut fx, &mut p, 1, 1);
+        let target = fx.systems[1];
+        edit_system(&mut fx, 1, |r| r.kind = 0x24);
+        with(&mut fx, |io| bind(io, f, target, ROLE_ASSAULT));
+        p.plan_state = 0xe;
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Ended(Some(AIAction::Assault {
+                fleets: vec![f],
+                system: target,
+            }))
+        );
+        let r = &fx.galaxy.fleets[&f];
+        assert_eq!((r.flags & ROLES, r.target), (ROLE_ASSAULT, Some(target)));
+        // FUN_004ae240 fails (v[52] above values[12]): a bombardment.
+        edit_system(&mut fx, 1, |r| r.values[52] = 1);
+        bombardable(&mut fx, 1, (0, 1, 0), (4, 4));
+        edit_system(&mut fx, 1, |r| r.values[52] = 1);
+        record(&mut fx, f).values[6] = 5;
+        p.plan_state = 0xe;
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Ended(Some(AIAction::Bombard {
+                fleets: vec![f],
+                system: target,
+                kind: crate::bombardment::GENERAL,
+            }))
+        );
+        assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, ROLE_ASSAULT);
+        // Neither: the role and the target go.
+        record(&mut fx, f).values[6] = 0;
+        p.plan_state = 0xe;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
+        let r = &fx.galaxy.fleets[&f];
+        assert_eq!((r.flags & ROLES, r.target), (0, None));
+        // A Death Star fleet needs v[50] above 0, and v[50] needs the
+        // Death Star (fleet 0x10): else the assault.
+        let assault = AIAction::Assault {
+            fleets: vec![f],
+            system: target,
+        };
+        edit_system(&mut fx, 1, |r| r.values[52] = 0);
+        for (death_star, v50) in [(true, 0), (false, 1)] {
+            with(&mut fx, |io| bind(io, f, target, ROLE_ASSAULT));
+            if death_star {
+                record(&mut fx, f).flags |= 0x10;
+            } else {
+                record(&mut fx, f).flags &= !0x10;
+            }
+            edit_system(&mut fx, 1, |r| r.values[50] = v50);
+            p.plan_state = 0xe;
+            assert_eq!(
+                step(&mut fx, &mut p),
+                PlanStep::Ended(Some(assault.clone()))
+            );
+        }
+        // A Death Star fleet with v[50]: Destroy System.
+        with(&mut fx, |io| bind(io, f, target, ROLE_ASSAULT));
+        record(&mut fx, f).flags |= 0x10;
+        edit_system(&mut fx, 1, |r| r.values[50] = 1);
+        p.plan_state = 0xe;
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Ended(Some(AIAction::Bombard {
+                fleets: vec![f],
+                system: target,
+                kind: crate::bombardment::DESTROY_SYSTEM,
+            }))
+        );
     }
 
     #[test]

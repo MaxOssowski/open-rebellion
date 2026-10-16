@@ -2038,6 +2038,16 @@ cross-runtime proof remain open
   create fleets, so every campaign moves. Save v56; golden
   `v1:b160883b9ed0c807` -> `v1:fb57b4045cb49e83`
   (`evidence/2026-10-16-ai-plan-kind2/`).
+- Module 8, stages 5d to 5g (2026-10-16): kind 4's plan object read and
+  ported: its target (the opponent's system with the plan's yard kind,
+  chosen anew each cycle, `FUN_004b8f80`), base (`FUN_004b8070`), boarding
+  of the base's regiments (`FUN_004b8470`, `AIAction::BoardRegiments`),
+  attacker, assault role (`FUN_004b8ab0`, `FUN_004ae240`) settled at the
+  target as Planetary Assault (`FUN_004b1070`), wants, movement, report
+  and retreat. Without the planner's request (`+0x0c`) no regiments reach
+  the base, so no fleet carries enough for an assault yet. Save v57;
+  golden `v1:fb57b4045cb49e83` -> `v1:a8343f6c6630924e`
+  (`evidence/2026-10-16-ai-plan-kind4/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

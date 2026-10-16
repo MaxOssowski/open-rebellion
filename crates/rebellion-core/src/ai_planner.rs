@@ -305,7 +305,7 @@ impl SectorPlanner {
         if self.kind == 0 {
             return PlannerStep::Done;
         }
-        // port: only kinds 1 to 3's slots are ported; the other kinds'
+        // port: only kinds 1 to 4's slots are ported; the other kinds'
         // planners run the port's heuristics for their whole cycle.
         if !ported_kind(self.kind) {
             return PlannerStep::StandIn;
@@ -371,7 +371,7 @@ impl SectorPlanner {
     }
 
     /// The stand-in for another kind's planner finished: its cycle ends
-    /// (port: only kinds 1 to 3's slots are ported).
+    /// (port: only kinds 1 to 4's slots are ported).
     pub fn plan_done(&mut self) {
         self.state = 1;
         self.resync = true;
@@ -452,10 +452,18 @@ impl SectorPlanner {
     /// for 1.2, `+0x38` also adding 1.5 times the sector's `+0x13c`, and
     /// `+0x40` with the floor controller `+0x16c`.
     ///
+    /// Kind 4, `FUN_004b8b70`: [`Self::choose_target`] first, then
+    /// [`Self::want_invasion`].
+    ///
     /// hyp: controller `+0x164`, `+0x168`, `+0x16c` and `+0x174` have no
     /// writer found and read as 0.
-    fn want(&mut self, io: &PlannerIo<'_>) {
+    fn want(&mut self, io: &mut PlannerIo<'_>) {
         if !ported_kind(self.kind) {
+            return;
+        }
+        if self.kind == 4 {
+            self.choose_target(io);
+            self.want_invasion(io);
             return;
         }
         let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) else {
@@ -487,6 +495,74 @@ impl SectorPlanner {
         w[7] = 0;
         w[9] = 1;
         w[8] = self.held[1];
+    }
+
+    /// Kind 4's target (`FUN_004b8f80`): with the sector record, the yard
+    /// key of the plan's parameter (sector `+0x34`: 1 shipyards `v[4]`, 2
+    /// training facilities `v[5]`, 3 construction yards `v[6]`, else
+    /// `v[0]`), the picks of the sector's systems held by the opponent
+    /// (`+0x30` `0x20` forbidding `0x101`) merged by that key and by
+    /// `v[0x14]` (both order 2): the first whose record has the key above 0
+    /// becomes `+0x5c`, else none. Without the sector record `+0x5c` stays.
+    pub(crate) fn choose_target(&mut self, io: &mut PlannerIo<'_>) {
+        let Some(sector) = self.sector else {
+            return;
+        };
+        let Some(param) = io.galaxy.sector(sector).map(|r| r.plan_param) else {
+            return;
+        };
+        let key = match param {
+            1 => 4,
+            2 => 5,
+            3 => 6,
+            _ => 0,
+        };
+        let masks = [ANY, ANY, Mask::new(0x20, 0x101)];
+        let mut coin = || (io.random)(10) < 5;
+        let by_yard = io
+            .galaxy
+            .system_query(sector, masks, key, Order::Descending, &mut coin);
+        let by_support = io
+            .galaxy
+            .system_query(sector, masks, 0x14, Order::Descending, &mut coin);
+        self.plan_target = picks(vec![by_yard, by_support])
+            .into_iter()
+            .find(|&s| io.galaxy.system(s).is_some_and(|r| r.values[key] > 0));
+    }
+
+    /// Kind 4's wants (`FUN_004b8b70`): `+0x34` 1.5 times the sector's
+    /// `+0x190` (floor controller `+0x164`); `+0x38` 1.5 times its `+0x194`
+    /// plus 1.5 times the target's shields `v[27]` (floor `+0x168`); `+0x40`
+    /// 1.1 times its `+0x138` with `+0x198` (floor `+0x16c`); `+0x3c` the
+    /// target's garrison need `v[52]`; each never less than before; `+0x44`
+    /// 1 with controller `+4` bit 4 and the sector's `+0x19c` above 0;
+    /// `+0x4c` 1 with `0x1000000`; `+0x50` and `+0x54` the regiments the
+    /// planner has (`+0x94`, `+0x98`); `+0x58` 1.
+    ///
+    /// hyp: without a target `+0x3c` compares the `+0x40` value left in the
+    /// register.
+    fn want_invasion(&mut self, io: &PlannerIo<'_>) {
+        let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) else {
+            return;
+        };
+        let v = |offset| r.values[sector_at(offset)];
+        let target = self.plan_target.and_then(|t| io.galaxy.system(t));
+        let w = &mut self.wanted;
+        w[0] = w[0].max((v(0x190) * 3 / 2).max(0));
+        let shields = target.map_or(0, |t| t.values[27] * 3 / 2);
+        w[1] = w[1].max((v(0x194) * 3 / 2 + shields).max(0));
+        let troops = ((v(0x198) + v(0x138)) * 11 / 10).max(0);
+        w[3] = w[3].max(troops);
+        w[2] = w[2].max(target.map_or(troops, |t| t.values[52]));
+        if io.controller_flags & 4 != 0 && v(0x19c) > 0 {
+            w[4] = 1;
+        }
+        if io.controller_flags & 0x100_0000 != 0 {
+            w[6] = 1;
+        }
+        w[7] = self.held[0];
+        w[8] = self.held[1];
+        w[9] = 1;
     }
 
     /// `FUN_00477e80`, state 3: with a count short (below 0), take ships
@@ -768,7 +844,12 @@ impl SectorPlanner {
             return;
         }
         if let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) {
-            if !self.fleets.is_empty() {
+            // Kind 4 (FUN_004b72d0) first asks for kind 4 with regiments
+            // (+0x94) in a sector with +0x2c 8 and no movement planner of
+            // that kind (+0xcc).
+            if self.kind == 4 && self.held[0] > 0 && r.summary & 8 != 0 {
+                self.movement[0] = 4;
+            } else if !self.fleets.is_empty() {
                 self.movement[0] = 3;
             } else if self.held[1] > 0 && r.summary & 0x4_0008 != 0 {
                 self.movement[0] = 5;
@@ -814,7 +895,16 @@ impl SectorPlanner {
                 .map(|r| r.summary)
             {
                 self.flags |= REVIEWED;
-                if summary & bit != 0 {
+                if self.kind == 4 {
+                    // FUN_004b70a0: while the target is not the side's.
+                    if self
+                        .plan_target
+                        .and_then(|t| io.galaxy.system(t))
+                        .is_some_and(|r| r.kind & 1 == 0)
+                    {
+                        self.flags |= 0x2_0000;
+                    }
+                } else if summary & bit != 0 {
                     self.flags |= 0x2_0000;
                 } else if self.kind == 2 {
                     self.sweep(io);
@@ -879,9 +969,9 @@ impl SectorPlanner {
 }
 
 /// The plan kinds whose plan object's slots are ported: 1 (vtable
-/// `0x65c2c0`), 2 (`0x65c268`) and 3 (`0x65c160`).
+/// `0x65c2c0`), 2 (`0x65c268`), 3 (`0x65c160`) and 4 (`0x65c210`).
 pub(crate) fn ported_kind(kind: u32) -> bool {
-    matches!(kind, 1..=3)
+    matches!(kind, 1..=4)
 }
 
 /// `FUN_0041b2b0`: of the sectors but `from`, by squared distance (the
@@ -1947,6 +2037,165 @@ pub(crate) mod tests {
         assert_eq!(fx.swept, []);
     }
 
+    /// Make `fx.systems[at]` the opponent's (`+0x30` `0x24`) with values.
+    fn opponent(fx: &mut Fx, at: usize, values: &[(usize, i32)]) {
+        let r = fx.galaxy.system_mut(fx.systems[at]).unwrap();
+        r.kind = (r.kind & !1) | 0x24;
+        for &(i, v) in values {
+            r.values[i] = v;
+        }
+    }
+
+    #[test]
+    fn kind_four_targets_the_first_system_of_the_opponent_with_its_yard_kind() {
+        // FUN_004b8f80: the sector's plan parameter (+0x34) names the yard
+        // key (1 v[4], 2 v[5], 3 v[6]); the picks of the systems with +0x30
+        // 0x20 without 0x101, by that key and by v[0x14] (order 2), are
+        // tried in turn; the first with the key above 0 becomes +0x5c, each
+        // cycle anew.
+        let mut fx = fixture();
+        let mut p = SectorPlanner {
+            kind: 4,
+            ..planner(&fx)
+        };
+        fx.galaxy.sectors[0].plan_param = 1;
+        opponent(&mut fx, 0, &[(4, 0), (0x14, 9)]);
+        opponent(&mut fx, 1, &[(4, 2), (0x14, 1)]);
+        with(&mut fx, |io| p.choose_target(io));
+        assert_eq!(p.plan_target, Some(fx.systems[1]));
+        // Training facilities (v[5]): none has one.
+        fx.galaxy.sectors[0].plan_param = 2;
+        with(&mut fx, |io| p.choose_target(io));
+        assert_eq!(p.plan_target, None);
+        // Construction yards (v[6]) at both: the merged lists' best pick
+        // (system 0 first by v[0x14] and equal by v[6]: the coin keeps it).
+        fx.galaxy.sectors[0].plan_param = 3;
+        opponent(&mut fx, 0, &[(6, 0), (0, 1)]);
+        opponent(&mut fx, 1, &[(6, 1), (0, 0)]);
+        with(&mut fx, |io| p.choose_target(io));
+        assert_eq!(p.plan_target, Some(fx.systems[1]));
+        // Equal keys go by the coin (ahead on a draw below 5).
+        opponent(&mut fx, 0, &[(6, 1), (0x14, 1)]);
+        opponent(&mut fx, 1, &[(6, 1), (0x14, 1)]);
+        let mut chosen = Vec::new();
+        for draw in [4, 5] {
+            fx.draws = vec![draw, draw];
+            with(&mut fx, |io| p.choose_target(io));
+            chosen.push(p.plan_target);
+        }
+        assert_eq!(chosen, [Some(fx.systems[0]), Some(fx.systems[1])]);
+        // The side's own system (1) is not a target.
+        let r = fx.galaxy.system_mut(fx.systems[1]).unwrap();
+        r.kind |= 1;
+        let r = fx.galaxy.system_mut(fx.systems[0]).unwrap();
+        r.kind |= 1;
+        with(&mut fx, |io| p.choose_target(io));
+        assert_eq!(p.plan_target, None);
+        // Without the sector the target stays.
+        p.plan_target = Some(fx.systems[0]);
+        p.sector = None;
+        with(&mut fx, |io| p.choose_target(io));
+        assert_eq!(p.plan_target, Some(fx.systems[0]));
+    }
+
+    #[test]
+    fn kind_four_wants_half_again_the_threat_and_the_target_s_shields_and_garrison() {
+        // FUN_004b8b70: +0x34 3/2 x +0x190; +0x38 3/2 x +0x194 plus 3/2 x
+        // the target's v[27]; +0x40 11/10 x (+0x138 + +0x198); +0x3c the
+        // target's v[52]; +0x44 1 with controller +4 bit 4 and +0x19c above
+        // 0; +0x50, +0x54 the planner's +0x94, +0x98; +0x58 1.
+        let mut fx = fixture();
+        {
+            let s = &mut fx.galaxy.sectors[0];
+            s.plan_param = 1;
+            s.values[sector_at(0x190)] = 10;
+            s.values[sector_at(0x194)] = 5;
+            s.values[sector_at(0x138)] = 8;
+            s.values[sector_at(0x198)] = 12;
+            s.values[sector_at(0x19c)] = 1;
+        }
+        opponent(&mut fx, 1, &[(4, 1), (27, 4), (52, 7)]);
+        let mut p = SectorPlanner {
+            kind: 4,
+            held: [2, 3],
+            wanted: [-1; 10],
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| p.want(io));
+        assert_eq!(p.plan_target, Some(fx.systems[1]));
+        // 5 * 3 / 2 + 4 * 3 / 2 = 7 + 6; (8 + 12) * 11 / 10 = 22.
+        assert_eq!(p.wanted, [15, 13, 7, 22, -1, -1, -1, 2, 3, 1]);
+        let mut flagged = SectorPlanner {
+            kind: 4,
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| {
+            io.controller_flags = 0x100_0004;
+            flagged.want(io);
+        });
+        assert_eq!((flagged.wanted[4], flagged.wanted[6]), (1, 1));
+        // +0x19c at 0: no +0x44 even with bit 4.
+        fx.galaxy.sectors[0].values[sector_at(0x19c)] = 0;
+        let mut zero = SectorPlanner {
+            kind: 4,
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| {
+            io.controller_flags = 4;
+            zero.want(io);
+        });
+        assert_eq!(zero.wanted[4], 0);
+        // Without a target, +0x3c takes the +0x40 value.
+        opponent(&mut fx, 1, &[(4, 0)]);
+        let mut none = SectorPlanner {
+            kind: 4,
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| none.want(io));
+        assert_eq!(
+            (none.plan_target, none.wanted[2], none.wanted[1]),
+            (None, 22, 7)
+        );
+    }
+
+    #[test]
+    fn kind_four_asks_for_movement_four_and_reports_while_its_target_stands() {
+        // FUN_004b72d0: movement 4 with regiments (+0x94) in a sector with
+        // +0x2c 8, else kind 3's; FUN_004b70a0: 0x20000 while the target's
+        // record lacks +0x30 1.
+        let mut fx = fixture();
+        let mut p = SectorPlanner {
+            kind: 4,
+            held: [1, 0],
+            ..planner(&fx)
+        };
+        fx.galaxy.sectors[0].summary |= 8;
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement[0], 4);
+        p.held[0] = 0;
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement[0], 0);
+        p.held[0] = 1;
+        fx.galaxy.sectors[0].summary &= !8;
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement[0], 0);
+        p.fleets = vec![FleetKey::default()];
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement[0], 3);
+        opponent(&mut fx, 1, &[]);
+        p.plan_target = Some(fx.systems[1]);
+        p.flags = 0;
+        with(&mut fx, |io| p.report(io));
+        assert_eq!(p.flags & 0x2_0000, 0x2_0000);
+        fx.galaxy.system_mut(fx.systems[1]).unwrap().kind |= 1;
+        p.flags = 0;
+        with(&mut fx, |io| p.report(io));
+        assert_eq!(p.flags & 0x2_0000, 0);
+        p.plan_target = None;
+        with(&mut fx, |io| p.report(io));
+        assert_eq!(p.flags & 0x2_0000, 0);
+    }
+
     #[test]
     fn kind_one_runs_its_own_cycle_with_kind_three_s_requests() {
         // The planner steps kinds 1 and 3 itself; kind 1 shares
@@ -1977,13 +2226,14 @@ pub(crate) mod tests {
         p.flags = 0;
         with(&mut fx, |io| p.report(io));
         assert_eq!(p.flags & 0x2_0000, 0x2_0000);
-        // Kind 4's slots are not ported: it hands over.
-        let mut four = SectorPlanner {
-            kind: 4,
+        // Kind 5's slots are not ported: it hands over (kind 4 until stage
+        // 5g of module 8).
+        let mut five = SectorPlanner {
+            kind: 5,
             ..planner(&fx)
         };
-        four.resync = false;
-        assert_eq!(with(&mut fx, |io| four.step(io)), PlannerStep::StandIn);
+        five.resync = false;
+        assert_eq!(with(&mut fx, |io| five.step(io)), PlannerStep::StandIn);
     }
 
     #[test]

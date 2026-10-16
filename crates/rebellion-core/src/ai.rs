@@ -187,6 +187,27 @@ fn accepts(
                             .is_ok()
                 })
         }
+        // The same validation with the fleet for the destination
+        // (FUN_00578d00, FUN_00553410).
+        AIAction::BoardRegiments { troops, fleet } => {
+            let blockaded = crate::blockade::BlockadeSystem::blockaded_now(world);
+            !troops.is_empty()
+                && troops.iter().all(|&troop| {
+                    world
+                        .troops
+                        .get(troop)
+                        .is_some_and(|t| t.is_alliance == is_alliance)
+                        && transport
+                            .check_move_regiment(
+                                world,
+                                movement,
+                                &blockaded,
+                                troop,
+                                crate::troop_transport::RegimentTarget::Fleet(*fleet),
+                            )
+                            .is_ok()
+                })
+        }
         // Create Fleet's validation: the side's own fleet, out of
         // hyperspace, each ship a living one of it named once
         // (fleet_join::check_create_fleet), and a target elsewhere it can
@@ -803,6 +824,15 @@ pub enum AIAction {
     MoveRegiments {
         troops: Vec<TroopKey>,
         to: SystemKey,
+    },
+
+    /// Move regiments of the side onto one of its fleets (`0x201`): a kind
+    /// 4 plan boards the base's regiments onto its held fleet there
+    /// (`FUN_004b8470`), each carried out by
+    /// [`crate::troop_transport::TroopTransportState::move_regiment`].
+    BoardRegiments {
+        troops: Vec<TroopKey>,
+        fleet: FleetKey,
     },
 
     /// Move `count` squadrons of `class` (`0x201`), carried out by
@@ -7696,27 +7726,28 @@ mod tests {
         state.module8.next_id = 2;
     }
 
-    /// A sector planner of kind 4, which the port's fleet heuristics stand
-    /// in for (only kind 3's plan object is ported), under posture 1 kept
+    /// A sector planner of kind 5, which the port's fleet heuristics stand
+    /// in for (kinds 1 to 4's plan objects are ported; kind 4 until stage
+    /// 5g of module 8 served here), under posture 1 kept
     /// from the start so the strategy does not name the sector again (it
     /// would name it kind 3, `FUN_004bf490`).
     fn with_stand_in_planner(state: &mut AIState, world: &GameWorld) {
         with_sector_planner(state, world);
         state.strategy.posture = 1;
         state.strategy.kind = 1;
-        state.strategy.plans[0].kind = 4;
-        state.module8.planners[0].kind = 4;
+        state.strategy.plans[0].kind = 5;
+        state.module8.planners[0].kind = 5;
     }
 
     /// Module 8 in state 4 with its cycle's orders decided by the stand-in
-    /// for a kind 4 planner.
+    /// for a kind 5 planner.
     fn fleets_mid_cycle(state: &mut AIState) {
         state.module8.state = 4;
         state.module8.current = 1;
         state.module8.decided = true;
         state.module8.planners = vec![crate::ai_module8::SectorPlanner {
             id: 1,
-            kind: 4,
+            kind: 5,
             ..crate::ai_module8::SectorPlanner::default()
         }];
     }
@@ -8893,6 +8924,40 @@ mod tests {
         )
         .unwrap();
         assert!(!ok(&world, &movement, vec![empire], general));
+    }
+
+    #[test]
+    fn boarding_needs_the_side_s_regiments_and_a_fleet_with_room_there() {
+        // FUN_00578d00 with a fleet for the destination (FUN_00553410):
+        // the side's regiment at the fleet's system, the fleet the side's,
+        // out of hyperspace, with room (FUN_00500b40).
+        let (mut world, system, ours, empire, _) = squadron_world(2);
+        let class = world.fleets[empire].capital_ships[0].class;
+        world.capital_ship_classes[class].troop_capacity = 1;
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let movement = crate::movement::MovementState::new();
+        let research = ResearchState::new();
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: crate::ids::DatId::new(0x1000_0006),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+        let ok = |world: &GameWorld, troops: Vec<TroopKey>, fleet| {
+            accepts(
+                &AIAction::BoardRegiments { troops, fleet },
+                world,
+                &research,
+                AiFaction::Empire,
+                &transport,
+                &movement,
+            )
+        };
+        assert!(ok(&world, vec![troop], empire));
+        assert!(!ok(&world, vec![], empire));
+        assert!(!ok(&world, vec![troop], ours));
+        world.capital_ship_classes[class].troop_capacity = 0;
+        assert!(!ok(&world, vec![troop], empire));
     }
 
     #[test]

@@ -549,9 +549,11 @@ loads them onto a held fleet and assaults the target.
   `v[4]` shipyards, `v[5]` training, `v[6]` construction); the merged
   lists of the sector's systems with `+0x30` `0x20` forbidding `0x101`
   (held by the opponent) by `v[k]` and by `v[0x14]`, both order 2. The
-  current `+0x5c` stays while its record's `v[k]` is above 0; else the
-  picks are tried in turn until one has `v[k]` above 0, which becomes
-  `+0x5c`.
+  first pick is written to `+0x5c` at once (`lea edi,[esi+0x5c]` before the
+  loop, corrected 2026-10-16 from an earlier reading that kept the old
+  target); while its record's `v[k]` is not above 0 the next pick replaces
+  it, and with none left `+0x5c` is empty. The target is chosen anew each
+  cycle.
 - **`+0x0c`, `FUN_004b7100`:** with the target's and the base's records,
   the base's `v[20]` less its `v[16]`, plus the target's `v[52]`
   (`+0x118`); else 0. Modules 6 and `0xb` (`FUN_004ddb70`,
@@ -610,6 +612,36 @@ Open for the port: the Planetary Assault order `0x234` (its resolution is
 not read), the planner's request `+0x0c` and modules 6 and `0xb`'s moves
 that read it, loading regiments onto a fleet as an AI order, and the
 plan object's target `+0x5c` (saved).
+
+## Ported (2026-10-16, save v57): kind 4's plan object
+
+`ai_planner::ported_kind` takes kind 4. `ai_planner.rs`:
+`SectorPlanner::choose_target` (`FUN_004b8f80`, the plan object's `+0x5c`,
+`SectorPlanner::plan_target`), `want_invasion` (`FUN_004b8b70`), movement
+4 (`FUN_004b72d0`), the report's `0x20000` while the target is not the
+side's (`FUN_004b70a0`). `ai_plan.rs`: `invasion_base` (`FUN_004b8070`,
+marks `0x50000`, key `0x13`), `board` (`FUN_004b8470`,
+`AIAction::BoardRegiments`, new), the attacker trying the target first
+(`FUN_004b8880`), `assault_target` (`FUN_004b8ab0`, role `0x20000000`,
+`fleet_assaults` = `FUN_004ae240`), no bombarder (slot `+0x44`), the
+retreat without the blockade tests (`FUN_004b8ca0`). State `0xe` now
+settles the assault role as `FUN_004b1070` does: Destroy System with
+fleet `0x10` and `v[50]`, else Planetary Assault `0x234` while
+`FUN_004ae240` holds, else `FUN_004ae320`'s bombardment; the role stays
+after an order and goes only when none is given. Save v57.
+
+port:
+- The planner's request (slot `+0x0c`, `FUN_004b7100`) and modules 6 and
+  `0xb`'s moves of regiments to the base it drives are not ported, nor is
+  slot `+0x4c` (`FUN_004b8b30`).
+- hyp: the base's walk gives the side's regiments on the planet in its
+  order; without a target `+0x3c` takes the `+0x40` value.
+
+Campaigns (600 days, both sides AI), a temporary trace (removed): kind 4
+planners name a target in seeds 42, 3 and 47 and board regiments (2, 3
+and 3 orders), but no fleet binds the assault: the fleets carry at most
+3 regiments where the targets need 4 or 5 (`v[52]`), the base receiving
+none without the planner's request. No assault happens yet.
 
 ## Ported (2026-10-16, save v56): kind 2's plan object
 

@@ -83,6 +83,10 @@ pub struct SectorPlanner {
     /// (`FUN_004f57b0`; `FUN_004b9c90`, `FUN_004ba0d0`).
     #[serde(default)]
     pub visited: Vec<crate::ids::SystemKey>,
+    /// Kind 4's plan object `+0x5c`: the system of the opponent with the
+    /// plan's yard kind it invades (`FUN_004b8f80`).
+    #[serde(default)]
+    pub plan_target: Option<crate::ids::SystemKey>,
 }
 
 /// What a step of module 8 leaves to the caller.
@@ -409,6 +413,7 @@ fn bind(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) -> bool {
         planner.plan_cursor = None;
         planner.plan_walk = None;
         planner.visited.clear();
+        planner.plan_target = None;
     }
     if plan_id != planner.plan_id {
         planner.plan_id = plan_id;
@@ -438,6 +443,7 @@ pub fn reset(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) {
     }
     planner.kind = 0;
     planner.visited.clear();
+    planner.plan_target = None;
     planner.state = 0;
     planner.flags = 0;
     planner.requests = 0;

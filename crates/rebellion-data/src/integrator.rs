@@ -164,6 +164,16 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": sys_name(world, *to),
             })
         }
+        AIAction::BoardRegiments { troops, fleet } => {
+            serde_json::json!({
+                "type": "BoardRegiments",
+                "troops": troops.len(),
+                "at": world
+                    .fleets
+                    .get(*fleet)
+                    .map_or_else(|| "unknown".into(), |f| sys_name(world, f.location)),
+            })
+        }
         AIAction::MoveSquadrons {
             class,
             count,
@@ -2248,6 +2258,23 @@ fn apply_ai_actions_inner(
                 }
                 moved
             }
+            AIAction::BoardRegiments { troops, fleet } => {
+                let blockaded = rebellion_core::blockade::BlockadeSystem::blockaded_now(world);
+                let mut moved = false;
+                for &troop in troops {
+                    moved |= troop_transport
+                        .move_regiment(
+                            world,
+                            movement_state,
+                            &blockaded,
+                            troop,
+                            rebellion_core::troop_transport::RegimentTarget::Fleet(*fleet),
+                            tick,
+                        )
+                        .is_ok();
+                }
+                moved
+            }
             AIAction::MoveSquadrons {
                 class,
                 count,
@@ -3265,6 +3292,56 @@ mod tests {
             .unwrap();
         assert_eq!(record.details["kind"], "0x222");
         assert_eq!(record.details["destroyed"], 1);
+    }
+
+    #[test]
+    fn a_boarding_order_puts_the_regiments_aboard_the_fleet() {
+        // A kind 4 plan's Move 0x201 onto its held fleet (FUN_004b8470),
+        // carried out by move_regiment with the fleet for the leg.
+        let mut world = GameWorld::default();
+        let kuat = add_system(&mut world, "Kuat");
+        world.systems[kuat].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            hull: 100,
+            troop_capacity: 2,
+            ..Default::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: kuat,
+            capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[kuat].fleets.push(fleet);
+        let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId(0x1000_0006),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[kuat].ground_units.push(regiment);
+        let mut transport = TroopTransportState::new();
+        let applied = apply_ai_actions_inner(
+            &[AIAction::BoardRegiments {
+                troops: vec![regiment],
+                fleet,
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut transport,
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            &mut BombardEnv::new(0, None),
+        );
+        assert_eq!(applied, [true]);
+        assert_eq!(transport.cargo(fleet), [regiment]);
+        assert!(!world.systems[kuat].ground_units.contains(&regiment));
     }
 
     #[test]
