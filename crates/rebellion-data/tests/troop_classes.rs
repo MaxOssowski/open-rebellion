@@ -33,3 +33,16 @@ fn original_troop_classes_use_compound_dat_ids() {
     assert!(alliance_army.attack_strength > 0);
     assert!(alliance_army.defense_strength > 0);
 }
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn the_alliance_headquarters_has_its_record_s_bombardment_defense() {
+    // ALLFACSD 1's last word is class +0x58, which FUN_0058cf80 reads as a
+    // bombardment target's defense (ghidra/notes/bombardment-order.md).
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+    let headquarters = world
+        .buildable_classes
+        .get(&DatId::new(0x2000_0001))
+        .expect("ALLFACSD 1");
+    assert_eq!(headquarters.stats.bombardment, 9);
+}

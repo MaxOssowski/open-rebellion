@@ -641,7 +641,8 @@ pub fn load_game_data_with_options(
     // ALLFACSD: the Alliance HQ (family 0x20). It builds nothing, but its
     // side flags decide whether it survives a change of holder
     // (FUN_004f27d0). Its record has the common head after the 24-byte
-    // prefix.
+    // prefix; its last word is class +0x58, the bombardment defense
+    // (FUN_0058cf80 via slot +0x1c0).
     let allfac_path = gdata_path.join("ALLFACSD.DAT");
     if file_available(&allfac_path) {
         let file: AllFacilitiesFile = read_dat_file(&allfac_path)?;
@@ -653,7 +654,10 @@ pub fn load_game_data_with_options(
                 d.text_stra_dll_id,
                 head,
                 0,
-                ClassStats::default(),
+                ClassStats {
+                    bombardment: d.extra7,
+                    ..ClassStats::default()
+                },
             );
         }
     }

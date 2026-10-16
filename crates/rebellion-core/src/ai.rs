@@ -234,6 +234,46 @@ fn accepts(
                 )
                 .is_ok()
         }
+        // The bombardment orders' enabled check: a team of the side's fleets
+        // (FUN_00553770), one with bombardment, and for Destroy System with
+        // a Death Star (FUN_00582440). port: each fleet in orbit at the
+        // system, out of hyperspace, and the system not the side's (the
+        // manual: "in orbit around an enemy or neutral system").
+        AIAction::Bombard {
+            fleets,
+            system,
+            kind,
+        } => {
+            let at = |f: &FleetKey| {
+                world.fleets.get(*f).is_some_and(|value| {
+                    value.is_alliance == is_alliance
+                        && value.location == *system
+                        && !movement.is_in_transit(*f)
+                })
+            };
+            let able = |f: &FleetKey| {
+                crate::bombardment::fleet_bombardment(world, *f) > 0
+                    && (*kind != crate::bombardment::DESTROY_SYSTEM
+                        || world.fleets.get(*f).is_some_and(|value| {
+                            value.capital_ships.iter().any(|s| {
+                                s.alive
+                                    && world
+                                        .capital_ship_classes
+                                        .get(s.class)
+                                        .is_some_and(crate::world::CapitalShipClass::is_death_star)
+                            })
+                        }))
+            };
+            (crate::bombardment::TARGET_MILITARY..=crate::bombardment::DESTROY_SYSTEM)
+                .contains(kind)
+                && !fleets.is_empty()
+                && fleets.iter().all(at)
+                && fleets.iter().any(able)
+                && world.systems.get(*system).is_some_and(|sys| {
+                    !sys.is_destroyed
+                        && crate::world::GameWorld::facility_holder(sys.control) != Some(side)
+                })
+        }
         // The move command's validation (FUN_00578d00) with a fleet for
         // the destination: both the side's, out of hyperspace, and the
         // departure's checks when the target lies elsewhere.
@@ -826,6 +866,15 @@ pub enum AIAction {
     /// a fleet): a sector plan object's step fleet joining a held fleet
     /// (`FUN_004b0c90`), carried out by [`crate::fleet_join::join_fleet`].
     JoinFleet { fleet: FleetKey, into: FleetKey },
+
+    /// Planetary Bombardment (`kind` `0x220..0x223`) of `system` by the
+    /// side's `fleets`: a sector plan object's bombarder at its target
+    /// (`FUN_004b1330`), resolved by [`crate::bombardment::resolve`].
+    Bombard {
+        fleets: Vec<FleetKey>,
+        system: SystemKey,
+        kind: u32,
+    },
 
     /// Create Fleet (`0x270`): capital ships of one of the side's fleets
     /// leave it as a new fleet for the order's target (`+0x34`,
@@ -8779,6 +8828,78 @@ mod tests {
             .unwrap();
         assert!(!ok(&world, &movement, ours, here));
         assert!(!ok(&world, &movement, here, ours));
+    }
+
+    #[test]
+    fn a_bombardment_needs_the_side_s_fleets_in_orbit_with_bombardment() {
+        // The orders' enabled check: a team of one side (FUN_00553770), a
+        // fleet with bombardment and, for 0x223, a Death Star in it
+        // (FUN_00582440); port: in orbit, out of hyperspace, at a system
+        // not the side's (the manual's "enemy or neutral system").
+        let (mut world, system, ours, empire, _) = squadron_world(2);
+        let class = world.fleets[empire].capital_ships[0].class;
+        world.capital_ship_classes[class].bombardment_modifier = 5;
+        world.capital_ship_classes[class].hull = 100;
+        let sector = world.systems[system].sector;
+        let there = add_system(&mut world, sector, 0.9, 0.1);
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let mut movement = crate::movement::MovementState::new();
+        let research = ResearchState::new();
+        let ok = |world: &GameWorld,
+                  movement: &crate::movement::MovementState,
+                  fleets: Vec<FleetKey>,
+                  kind| {
+            accepts(
+                &AIAction::Bombard {
+                    fleets,
+                    system,
+                    kind,
+                },
+                world,
+                &research,
+                AiFaction::Empire,
+                &transport,
+                movement,
+            )
+        };
+        let general = crate::bombardment::GENERAL;
+        assert!(ok(&world, &movement, vec![empire], general));
+        assert!(ok(
+            &world,
+            &movement,
+            vec![empire],
+            crate::bombardment::TARGET_MILITARY
+        ));
+        assert!(!ok(&world, &movement, vec![empire], 0x224));
+        assert!(!ok(&world, &movement, vec![empire], 0x21f));
+        assert!(!ok(&world, &movement, vec![], general));
+        assert!(!ok(&world, &movement, vec![ours], general));
+        assert!(!ok(&world, &movement, vec![empire, ours], general));
+        // No Death Star: no Destroy System.
+        assert!(!ok(
+            &world,
+            &movement,
+            vec![empire],
+            crate::bombardment::DESTROY_SYSTEM
+        ));
+        // The side's own system, or no bombardment: refused.
+        world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        assert!(!ok(&world, &movement, vec![empire], general));
+        world.systems[system].control = ControlKind::Uncontrolled;
+        assert!(ok(&world, &movement, vec![empire], general));
+        world.capital_ship_classes[class].bombardment_modifier = 0;
+        assert!(!ok(&world, &movement, vec![empire], general));
+        world.capital_ship_classes[class].bombardment_modifier = 5;
+        // In hyperspace: refused.
+        crate::movement::begin_faction_fleet_transit(
+            &mut movement,
+            &mut world,
+            empire,
+            there,
+            false,
+        )
+        .unwrap();
+        assert!(!ok(&world, &movement, vec![empire], general));
     }
 
     #[test]

@@ -3,7 +3,7 @@ title: "Combat System"
 description: "Space and ground combat resolution via combat.rs and bombardment.rs"
 category: "agent-docs"
 created: 2026-03-14
-updated: 2026-03-16
+updated: 2026-10-16
 tags: [combat, space-combat, ground-combat, simulation]
 ---
 
@@ -27,14 +27,15 @@ Opposing fleets coexist at a system (checked each tick in `main.rs`). Per-system
 | `TroopDamageEvent` | `{ troop, strength_after }` — strength ≤ 0 means destroyed |
 | `CombatPhaseFlags` | Custom bitfield (NOT `bitflags!`) — uses `.set()` not `.insert()` |
 | `CombatSide` | Attacker / Defender / Draw |
-| `BombardmentSystem` | `resolve_bombardment(world, fleet, system, difficulty, tick)` |
+| `bombardment` | `resolve(world, &BombardRequest, draw)`, `apply`, `BombardEnv` (a tick's draws and outcomes) |
 
 ## API
 
 ```rust
 let result = CombatSystem::resolve_space(&world, atk, def, sys, difficulty, &rolls, tick);
 let ground = CombatSystem::resolve_ground(&world, sys, alliance_attacks, &rolls, tick);
-let brd = BombardmentSystem::resolve_bombardment(&world, fleet, sys, difficulty, tick);
+let outcome = bombardment::resolve(&world, &request, &mut draw);
+bombardment::apply(&mut world, &request, &outcome);
 ```
 
 ## Space Combat: 7-Phase Pipeline
@@ -54,7 +55,18 @@ Key gotchas from RE:
 
 ## Bombardment
 
-The bombardment formula is in FUN_0055d8c0 (damage formula) and FUN_0055d860 (Euclidean distance): `damage = sqrt((atk-def)²) / GNPRTB[0x1400]` with difficulty modifier, minimum 1 damage (only after division, not on zero raw_power). FUN_005617b0 is the CharacterMgr SeatOfPower check, not a bombardment function.
+Only the Fleet menu's Planetary Bombardment orders bombard (`0x220`
+Target Military Facilities, `0x221` Target Civilian Facilities, `0x222`
+General Bombardment, `0x223` Destroy System); nothing bombards after a
+battle. The game resolves an order in four phases (`FUN_0058d770`): a Death
+Star destroys the system (`0x223`); the ion cannons (DEFFACSD family `0x22`)
+drain the bombarding ships' shields and stop them bombarding, and the
+batteries (`0x23`) damage the hulls past them; the ships' bombardment
+modifiers and squadrons less the planet's shields (`0x24`) give the shots,
+each destroying a drawn target whose bombardment defense loses to a 1-10
+draw; civilian damage costs the attacker 20 support. The AI's plan objects
+order it (`AIAction::Bombard`); the player's Bombard button orders General
+Bombardment. See `ghidra/notes/bombardment-order.md`.
 
 ## Effect Application (main.rs)
 
@@ -65,5 +77,5 @@ The bombardment formula is in FUN_0055d8c0 (damage formula) and FUN_0055d860 (Eu
 
 - `ghidra/notes/space-combat.md` — full 7-phase pipeline
 - `ghidra/notes/ground-combat.md` — troop iteration
-- `ghidra/notes/bombardment.md` — Euclidean distance formula
+- `ghidra/notes/bombardment-order.md` — the bombardment orders and their resolution
 - `ghidra/notes/combat-formulas.md` — GNPRTB parameter mapping

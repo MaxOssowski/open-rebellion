@@ -52,7 +52,7 @@ crates/rebellion-core/src/
 ├── mission_planning.rs — The AI mission planners' team and decoy selectors
 ├── fog.rs            — FogState, visibility sets, dim rendering tiers (373 LOC, 9 tests)
 ├── combat.rs         — Space combat 7-phase pipeline, ground combat, CombatPhaseFlags
-├── bombardment.rs    — Orbital bombardment: Euclidean distance / GNPRTB[0x1400]
+├── bombardment.rs    — Planetary bombardment orders 0x220..0x223 (FUN_0058d770)
 ├── blockade.rs       — Fleet-presence blockade, manufacturing halt, troop destruction
 ├── uprising.rs       — Recovered revolt lifecycle, uprising incident (UPRIS1TB/UPRIS2TB codes), Subdue gain, disaster
 ├── death_star.rs     — Construction countdown, planet destruction, nearby-warning scan. `cleanup_destroyed_system()` removes all entities (fleets, troops, facilities) and cancels in-transit orders to the destroyed system.

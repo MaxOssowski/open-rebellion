@@ -5,9 +5,7 @@
 //! and the roles' orders (`ghidra/notes/ai-sector-plans.md`, "The plan
 //! object's step").
 //!
-//! port: only kind 3's slots are ported (vtable `0x65c160`). Its
-//! bombardments (`FUN_004b1330` with `0x220`, `0x222`, `0x223`) are not
-//! given: the Fleet menu's bombardment orders are not ported (F-032).
+//! port: only kind 3's slots are ported (vtable `0x65c160`).
 
 use crate::ai::AIAction;
 use crate::ai_module1::ANY;
@@ -128,9 +126,11 @@ impl SectorPlanner {
                 self.move_to_target(io)
             }
             0xe => {
-                self.settle_roles(io);
-                self.plan_state = 0;
-                return (None, true);
+                let (order, ended) = self.settle_roles(io);
+                if ended {
+                    self.plan_state = 0;
+                }
+                return (order, ended);
             }
             _ => {
                 self.plan_state = 1;
@@ -643,41 +643,76 @@ impl SectorPlanner {
         move_fleet(io, fleet, to)
     }
 
-    /// State `0xe` (`FUN_004b1070`): each held fleet with a role, not en
-    /// route (2), keeps it while it stands at its target (location `+0x28`
-    /// is `+0x2c`, with a record) and its role holds: [`ROLE_ATTACK`]
-    /// while [`fleet_prevails`]. Any other loses its role and target, and
-    /// so does [`ROLE_BOMBARD`] once there (after its bombardment, Destroy
-    /// System `0x223` with fleet `0x10` and system `v[50]` above 0, else
-    /// [`bombardment`]'s). The walk's end ends the plan's step.
-    ///
-    /// port: the bombardment is not given (the module's note), so no
-    /// order stops the walk and it always runs to its end; the walk's
-    /// cursor (`+0x30`) stays clear.
-    fn settle_roles(&self, io: &mut PlannerIo<'_>) {
-        for &fleet in &self.fleets {
-            let Some(record) = io.galaxy.fleets.get(&fleet) else {
-                continue;
-            };
-            if record.flags & ROLES == 0 || record.flags & 2 != 0 {
-                continue;
-            }
-            let location = io.world.fleets.get(fleet).map(|f| f.location);
-            let there = record
-                .target
-                .filter(|&t| Some(t) == location)
-                .and_then(|t| io.galaxy.system(t));
-            let holds = there.is_some_and(|target| {
-                record.flags & ROLE_ATTACK != 0 && fleet_prevails(record, target)
-            });
-            if !holds {
-                io.edit_fleet(fleet, |r| {
-                    r.flags &= !ROLES;
-                    r.target = None;
-                });
+    /// State `0xe` (`FUN_004b1070`): from the held fleet `+0x30` names
+    /// (else the first), each held fleet with a role, not en route (2),
+    /// standing at its target (location `+0x28` is `+0x2c`, with a record):
+    /// [`ROLE_ATTACK`] keeps its role while [`fleet_prevails`];
+    /// [`ROLE_BOMBARD`] bombards (`FUN_004b1330`: Destroy System `0x223`
+    /// with fleet `0x10` and system `v[50]` above 0, else [`bombardment`]'s
+    /// code) and loses role and target. A fleet whose role fails, or that
+    /// stands elsewhere, loses them too. An order stops the walk, `+0x30`
+    /// naming the next fleet; the walk's end ends the plan's step (`*out`)
+    /// and clears `+0x30`. The order, and true at the end.
+    fn settle_roles(&mut self, io: &mut PlannerIo<'_>) -> (Option<AIAction>, bool) {
+        let list = self.fleets.clone();
+        let mut at = self
+            .plan_walk
+            .and_then(|w| list.iter().position(|&f| f == w))
+            .unwrap_or(0);
+        while at < list.len() {
+            let fleet = list[at];
+            at += 1;
+            let order = settle_role(io, fleet);
+            if order.is_some() {
+                if at < list.len() {
+                    self.plan_walk = Some(list[at]);
+                    return (order, false);
+                }
+                self.plan_walk = None;
+                return (order, true);
             }
         }
+        self.plan_walk = None;
+        (None, true)
     }
+}
+
+/// `FUN_004b1070`'s body for one held fleet.
+fn settle_role(io: &mut PlannerIo<'_>, fleet: FleetKey) -> Option<AIAction> {
+    let record = io.galaxy.fleets.get(&fleet)?;
+    if record.flags & ROLES == 0 || record.flags & 2 != 0 {
+        return None;
+    }
+    let location = io.world.fleets.get(fleet).map(|f| f.location);
+    let there = record
+        .target
+        .filter(|&t| Some(t) == location)
+        .and_then(|t| io.galaxy.system(t).map(|r| (t, r)));
+    let mut order = None;
+    let mut keep = false;
+    if let Some((system, target)) = there {
+        if record.flags & ROLE_ATTACK != 0 {
+            keep = fleet_prevails(record, target);
+        } else if record.flags & ROLE_BOMBARD != 0 {
+            let kind = if record.flags & 0x10 != 0 && target.values[50] > 0 {
+                Some(crate::bombardment::DESTROY_SYSTEM)
+            } else {
+                bombardment(io, fleet, system)
+            };
+            order = kind.map(|kind| AIAction::Bombard {
+                fleets: vec![fleet],
+                system,
+                kind,
+            });
+        }
+    }
+    if !keep {
+        io.edit_fleet(fleet, |r| {
+            r.flags &= !ROLES;
+            r.target = None;
+        });
+    }
+    order
 }
 
 /// `FUN_004ae320`: the bombardment `fleet` would give `system`, a system
@@ -802,19 +837,18 @@ mod tests {
         f
     }
 
-    /// What one plan step gives: its order while the step goes on, or the
-    /// step's end (state `0xe`, which gives no order in the port).
+    /// What one plan step gives: its order while the step goes on, or with
+    /// the step's end (state `0xe`).
     #[derive(Debug, PartialEq)]
     enum PlanStep {
         Order(Option<AIAction>),
-        Ended,
+        Ended(Option<AIAction>),
     }
 
     fn step(fx: &mut Fx, p: &mut SectorPlanner) -> PlanStep {
         match with(fx, |io| p.plan_step(io)) {
             (order, false) => PlanStep::Order(order),
-            (None, true) => PlanStep::Ended,
-            (Some(order), true) => panic!("an order ended the plan's step: {order:?}"),
+            (order, true) => PlanStep::Ended(order),
         }
     }
 
@@ -842,7 +876,7 @@ mod tests {
         }
         assert_eq!(states, [1, 2, 3, 4, 5, 6, 7, 8, 10, 9, 0xc, 0xe]);
         assert_eq!(p.plan_fleet, Some(f));
-        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended);
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
         assert_eq!(p.plan_state, 0);
 
         // 2 without a base -> 5: no system of the side's anywhere.
@@ -857,7 +891,7 @@ mod tests {
         // 5 without an idle held fleet -> 0xe, which ends the step.
         assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
         assert_eq!(p.plan_state, 0xe);
-        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended);
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
         // Any other state (0xb has no case) starts over at 1.
         p.plan_state = 0xb;
         assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
@@ -2045,7 +2079,7 @@ mod tests {
             });
         }
         p.plan_state = 0xe;
-        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended);
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
         assert_eq!(p.plan_state, 0);
         let bound = |fx: &Fx, f| {
             let r = &fx.galaxy.fleets[&f];
@@ -2069,7 +2103,7 @@ mod tests {
             });
         });
         p.plan_state = 0xe;
-        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended);
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
         assert_eq!(bound(&fx, f), (0, None));
     }
 
@@ -2192,5 +2226,97 @@ mod tests {
         assert_eq!(bombard, Some(systems[1]));
         assert_eq!(join, 1);
         assert!(twin);
+    }
+
+    #[test]
+    fn a_bombarder_at_its_target_bombards_and_the_walk_goes_on_after_it() {
+        // FUN_004b1070: a 0x40000000 fleet at its target gives
+        // FUN_004b1330 with FUN_004ae320's code and loses role and target;
+        // the order stops the walk, +0x30 naming the next fleet, from which
+        // the next step goes on; an order on the last fleet ends the step.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let first = held(&mut fx, &mut p, 1, 1);
+        let second = held(&mut fx, &mut p, 1, 1);
+        bombardable(&mut fx, 1, (0, 1, 0), (4, 4));
+        let target = fx.systems[1];
+        for f in [first, second] {
+            record(&mut fx, f).values[6] = 5;
+            with(&mut fx, |io| bind(io, f, target, ROLE_BOMBARD));
+        }
+        p.plan_state = 0xe;
+        let order = |f| AIAction::Bombard {
+            fleets: vec![f],
+            system: target,
+            kind: crate::bombardment::GENERAL,
+        };
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Order(Some(order(first))));
+        assert_eq!((p.plan_state, p.plan_walk), (0xe, Some(second)));
+        assert_eq!(fx.galaxy.fleets[&first].flags & ROLES, 0);
+        assert_eq!(fx.galaxy.fleets[&first].target, None);
+        assert_eq!(fx.galaxy.fleets[&second].flags & ROLES, ROLE_BOMBARD);
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(Some(order(second))));
+        assert_eq!((p.plan_state, p.plan_walk), (0, None));
+        // The walk goes on from +0x30, not from the first: bound again, the
+        // first waits while the walk starts at the second.
+        for f in [first, second] {
+            with(&mut fx, |io| bind(io, f, target, ROLE_BOMBARD));
+        }
+        p.plan_state = 0xe;
+        p.plan_walk = Some(second);
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(Some(order(second))));
+        assert_eq!(fx.galaxy.fleets[&first].flags & ROLES, ROLE_BOMBARD);
+    }
+
+    #[test]
+    fn a_death_star_bombarder_destroys_a_system_with_v50() {
+        // FUN_004b1070: with fleet 0x10 and the system's v[50] (+0x110)
+        // above 0, FUN_004b1330 gives Destroy System 0x223.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let f = held(&mut fx, &mut p, 1, 1);
+        bombardable(&mut fx, 1, (0, 1, 0), (4, 4));
+        edit_system(&mut fx, 1, |r| r.values[50] = 1);
+        let target = fx.systems[1];
+        record(&mut fx, f).values[6] = 5;
+        record(&mut fx, f).flags |= 0x10;
+        with(&mut fx, |io| bind(io, f, target, ROLE_BOMBARD));
+        p.plan_state = 0xe;
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Ended(Some(AIAction::Bombard {
+                fleets: vec![f],
+                system: target,
+                kind: crate::bombardment::DESTROY_SYSTEM,
+            }))
+        );
+        // v[50] without the fleet's 0x10: FUN_004ae320's code.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let f = held(&mut fx, &mut p, 1, 1);
+        bombardable(&mut fx, 1, (0, 1, 0), (4, 4));
+        edit_system(&mut fx, 1, |r| r.values[50] = 1);
+        record(&mut fx, f).values[6] = 5;
+        with(&mut fx, |io| bind(io, f, target, ROLE_BOMBARD));
+        p.plan_state = 0xe;
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Ended(Some(AIAction::Bombard {
+                fleets: vec![f],
+                system: target,
+                kind: crate::bombardment::GENERAL,
+            }))
+        );
+        // Without v[50]: FUN_004ae320's code; without it, no order.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let f = held(&mut fx, &mut p, 1, 1);
+        bombardable(&mut fx, 1, (0, 0, 0), (4, 4));
+        record(&mut fx, f).flags |= 0x10;
+        record(&mut fx, f).values[6] = 5;
+        with(&mut fx, |io| bind(io, f, target, ROLE_BOMBARD));
+        p.plan_state = 0xe;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
+        assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, 0);
     }
 }

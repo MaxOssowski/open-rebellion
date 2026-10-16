@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use rebellion_core::ai::{AIAction, AIState, AiFaction};
 use rebellion_core::betrayal::BetrayalEvent;
 use rebellion_core::blockade::BlockadeEvent;
+use rebellion_core::bombardment::BombardEnv;
 use rebellion_core::combat::{CombatSide, CombatSystem, GroundCombatResult, SpaceCombatResult};
 use rebellion_core::death_star::DeathStarEvent;
 use rebellion_core::economy::{EconomyEvent, EconomyState};
@@ -200,6 +201,16 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": sys_name(world, *to),
             })
         }
+        AIAction::Bombard {
+            fleets,
+            system,
+            kind,
+        } => serde_json::json!({
+            "type": "Bombard",
+            "fleets": fleets.len(),
+            "system": sys_name(world, *system),
+            "kind": format!("{kind:#x}"),
+        }),
         AIAction::JoinFleet { fleet, into } => {
             let at = |key| {
                 world
@@ -994,24 +1005,30 @@ impl PerceptionIntegrator {
     }
 
     /// Emit bombardment telemetry after the caller applies its world effects.
+    /// Telemetry for one bombardment ([`BombardEnv::bombard`]).
     pub fn emit_bombardment(
         &mut self,
         world: &GameWorld,
-        system: SystemKey,
-        damage: i32,
-        headquarters_destroyed: bool,
+        req: &rebellion_core::bombardment::BombardRequest,
+        outcome: &rebellion_core::bombardment::BombardmentOutcome,
     ) {
-        if damage > 0 {
-            self.emit(
-                SYS_COMBAT,
-                EVT_BOMBARDMENT,
-                serde_json::json!({
-                    "system": sys_name(world, system),
-                    "damage": damage,
-                    "headquarters_destroyed": headquarters_destroyed,
-                }),
-            );
-        }
+        let headquarters_destroyed = outcome
+            .destroyed
+            .contains(&rebellion_core::bombardment::Target::Headquarters);
+        self.emit(
+            SYS_COMBAT,
+            EVT_BOMBARDMENT,
+            serde_json::json!({
+                "system": sys_name(world, req.system),
+                "kind": format!("{:#x}", req.kind),
+                "shots": outcome.shots,
+                "destroyed": outcome.destroyed.len(),
+                "ships_hit": outcome.ship_losses.len(),
+                "civilian_damage": outcome.civilian_damage,
+                "system_destroyed": outcome.system_destroyed,
+                "headquarters_destroyed": headquarters_destroyed,
+            }),
+        );
     }
     // ── Step 5: Missions + Escapes ──────────────────────────────────────
 
@@ -1266,6 +1283,7 @@ impl PerceptionIntegrator {
         world: &mut GameWorld,
         tick: u64,
         is_dual: bool,
+        bombard: &mut BombardEnv,
     ) {
         let applied = apply_ai_actions_inner(
             actions,
@@ -1277,6 +1295,7 @@ impl PerceptionIntegrator {
             production,
             world,
             tick,
+            bombard,
         );
         for (action, was_applied) in actions.iter().zip(applied) {
             if !was_applied {
@@ -2104,6 +2123,7 @@ fn apply_ai_actions_inner(
     production: &mut ProductionState,
     world: &mut GameWorld,
     tick: u64,
+    bombard: &mut BombardEnv,
 ) -> Vec<bool> {
     let mission_faction = ai_state.faction.map_or(
         MissionFaction::Empire,
@@ -2156,6 +2176,16 @@ fn apply_ai_actions_inner(
                 // A scrapped ship's regiments beyond the room left are lost.
                 troop_transport.destroy_untransportable_cargo(world);
                 done
+            }),
+            AIAction::Bombard {
+                fleets,
+                system,
+                kind,
+            } => ai_state.faction.is_some_and(|side| {
+                world.systems.contains_key(*system) && {
+                    bombard.bombard(world, side.as_faction(), fleets, *system, *kind);
+                    true
+                }
             }),
             AIAction::JoinFleet { fleet, into } => ai_state.faction.is_some_and(|side| {
                 rebellion_core::fleet_join::join_fleet(
@@ -2840,6 +2870,7 @@ mod tests {
             &mut world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
 
         assert_eq!(movement.len(), 1);
@@ -2897,6 +2928,7 @@ mod tests {
             &mut world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
 
         assert_eq!(world.production_facilities.len(), 1);
@@ -2950,6 +2982,7 @@ mod tests {
             &mut world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
 
         assert_eq!(transport.transits().len(), 2);
@@ -3005,6 +3038,7 @@ mod tests {
             &mut world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
 
         assert_eq!(
@@ -3065,6 +3099,7 @@ mod tests {
             &mut ProductionState::new(),
             &mut world,
             5,
+            &mut BombardEnv::new(0, None),
         );
         assert_eq!(applied, [true]);
 
@@ -3093,6 +3128,7 @@ mod tests {
             &mut ProductionState::new(),
             &mut world,
             5,
+            &mut BombardEnv::new(0, None),
         );
         assert_eq!(applied, [false]);
     }
@@ -3136,6 +3172,7 @@ mod tests {
             &mut ProductionState::new(),
             &mut world,
             5,
+            &mut BombardEnv::new(0, None),
         );
         assert_eq!(applied, [true]);
 
@@ -3158,8 +3195,89 @@ mod tests {
             &mut ProductionState::new(),
             &mut world,
             5,
+            &mut BombardEnv::new(0, None),
         );
         assert_eq!(applied, [false]);
+    }
+
+    #[test]
+    fn a_bombardment_order_destroys_the_targets_its_shots_reach() {
+        // The AI's Planetary Bombardment (FUN_004b1330) resolved through
+        // bombardment::resolve: no shields, a bombardment of 5, one
+        // regiment without defense (lost to any draw of 1..10).
+        let mut world = GameWorld::default();
+        world.gnprtb = rebellion_core::world::GnprtbParams::new(
+            [(0x602, 1), (0x603, 10)]
+                .iter()
+                .map(|&(id, v)| rebellion_core::world::GnprtbEntry {
+                    parameter_id: id,
+                    development: v,
+                    alliance_sp_easy: v,
+                    alliance_sp_medium: v,
+                    alliance_sp_hard: v,
+                    empire_sp_easy: v,
+                    empire_sp_medium: v,
+                    empire_sp_hard: v,
+                    multiplayer: v,
+                })
+                .collect(),
+        );
+        let kuat = add_system(&mut world, "Kuat");
+        world.systems[kuat].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Alliance);
+        let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[kuat].ground_units.push(regiment);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            hull: 100,
+            bombardment_modifier: 5,
+            ..Default::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: kuat,
+            capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[kuat].fleets.push(fleet);
+        let mut env = BombardEnv::new(7, None);
+        let applied = apply_ai_actions_inner(
+            &[AIAction::Bombard {
+                fleets: vec![fleet],
+                system: kuat,
+                kind: rebellion_core::bombardment::GENERAL,
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::new(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            &mut env,
+        );
+        assert_eq!(applied, [true]);
+        assert_eq!(world.systems[kuat].ground_units, []);
+        assert!(!world.troops.contains_key(regiment));
+        assert_eq!(env.outcomes.len(), 1);
+        assert_eq!(env.outcomes[0].1.shots, 5);
+        // The telemetry names the kind and what fell.
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+        integrator.emit_bombardment(&world, &env.outcomes[0].0, &env.outcomes[0].1);
+        let events = integrator.finish();
+        let record = events
+            .iter()
+            .find(|e| e.event_type == EVT_BOMBARDMENT)
+            .unwrap();
+        assert_eq!(record.details["kind"], "0x222");
+        assert_eq!(record.details["destroyed"], 1);
     }
 
     #[test]
@@ -3203,6 +3321,7 @@ mod tests {
                 &mut ProductionState::new(),
                 world,
                 5,
+                &mut BombardEnv::new(0, None),
             )
         };
         assert_eq!(apply(&mut world, &mut movement, a, b), [true]);
@@ -3258,6 +3377,7 @@ mod tests {
                 world,
                 5,
                 false,
+                &mut BombardEnv::new(0, None),
             );
         };
 
@@ -3336,6 +3456,7 @@ mod tests {
                 world,
                 5,
                 false,
+                &mut BombardEnv::new(0, None),
             );
         };
         apply(&mut world, vec![5]);
@@ -3395,6 +3516,7 @@ mod tests {
             &mut world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
 
         assert_eq!(manufacturing.destination(site, area), Some(target));
@@ -3426,6 +3548,7 @@ mod tests {
             &mut ProductionState::new(),
             &mut world,
             5,
+            &mut BombardEnv::new(0, None),
         );
         assert_eq!(applied, [false]);
     }
@@ -3444,6 +3567,7 @@ mod tests {
             world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
         integrator.finish()
     }
@@ -3502,6 +3626,7 @@ mod tests {
             &mut world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
         let id = missions.missions()[0].id;
         assert_eq!(ai.research_planners[0].mission, Some(id));
@@ -3520,6 +3645,7 @@ mod tests {
             &mut world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
 
         assert_eq!(missions.missions()[0].end_code, 2);
@@ -3665,6 +3791,7 @@ mod tests {
             &mut world,
             5,
             false,
+            &mut BombardEnv::new(0, None),
         );
 
         assert!(movement.is_in_transit(fleet));
@@ -3720,6 +3847,7 @@ mod tests {
             &mut ProductionState::new(),
             &mut world,
             5,
+            &mut BombardEnv::new(0, None),
         );
 
         assert_eq!(applied, vec![false]);

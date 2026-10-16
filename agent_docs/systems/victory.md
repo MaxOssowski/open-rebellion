@@ -3,7 +3,7 @@ title: "Victory System"
 description: "Game-ending condition detection for Alliance and Empire"
 category: "agent-docs"
 created: 2026-03-14
-updated: 2026-09-10
+updated: 2026-10-16
 tags: [victory, hq-capture, death-star, simulation]
 ---
 
@@ -48,9 +48,11 @@ Both the headquarters objective and principal leaders are required:
 
 - **Alliance victory**: Alliance controls `empire_hq` (Coruscant) and holds
   Emperor Palpatine and Darth Vader captive.
-- **Empire bombardment victory**: a successful Imperial bombardment clears the
-  current Alliance HQ's `is_headquarters` flag; the Empire controls that system
-  and holds Luke Skywalker and Mon Mothma captive.
+- **Empire bombardment victory**: an Imperial bombardment order whose shot
+  destroys the headquarters object (ALLFACSD 1, bombardment defense 9) clears
+  the current Alliance HQ's `is_headquarters` flag; the Empire controls that
+  system and holds Luke Skywalker and Mon Mothma captive. No battle bombards
+  on its own (`ghidra/notes/bombardment-order.md`).
 - **Empire Death Star victory**: `alliance_hq.is_destroyed` is true and the
   Empire holds Luke Skywalker and Mon Mothma captive. Planet destruction does
   not require a subsequent ground occupation.

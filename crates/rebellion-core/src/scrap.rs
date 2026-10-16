@@ -229,7 +229,7 @@ pub fn scrap(
 /// disbands (`FUN_004fe630`). The regiments its remaining ships have no
 /// room for are lost with the next cargo check
 /// ([`crate::troop_transport::TroopTransportState::destroy_untransportable_cargo`]).
-fn remove_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, index: usize) {
+pub(crate) fn remove_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, index: usize) {
     let value = &mut world.fleets[fleet];
     value.capital_ships.remove(index);
     if !(value.capital_ships.is_empty() && value.fighters.is_empty() && value.characters.is_empty())

@@ -153,11 +153,43 @@ cleared (`FUN_0050a660(0)`), and every fleet of the side loses
 | `0x606` | `DAT_006bb76c` | 50 | a minor character's hit chance on destruction |
 | `0x1e19` | `DAT_006bb47c` | -20 | the attacker's support after civilian damage |
 
+## Ported (2026-10-16, save v55)
+
+`crates/rebellion-core/src/bombardment.rs` replaces the transit misread:
+`resolve` runs the four phases (the Death Star's destruction, the ion
+cannons and batteries, the shots, the civilian damage), `apply` carries
+out the hull damage (a ship at its hull is lost, a fleet with nothing
+left disbands), the targets' destruction (the headquarters clears
+`System::is_headquarters`; energy and raw materials lose a unit) and the
+attacker's support (G `0x1e19`, `uprising::apply_support_change`).
+`BombardEnv` holds a tick's draws and outcomes. The AI's plan objects
+order it (`AIAction::Bombard`, `FUN_004b1070` -> `FUN_004b1330`); the
+integrator and the app carry it out, and a Destroy System order's
+destroyed system goes through the Death Star's cleanup. The automatic
+bombardment after a battle is gone (simulation, app, `tactical_flow`).
+The player's Bombard button orders General Bombardment until the
+sub-menu.
+
+port:
+- The draws come from a `SplitMix64` stream seeded by one roll of the
+  tick (the app: its generator), not the game's one generator.
+- The order's sub-orders are not ported; its validation is the enabled
+  check plus: the fleets in orbit at the system, out of hyperspace, the
+  system not the side's.
+- hyp: the system's list holds the manufacturing facilities before the
+  production ones; a ship's `+0x24 & 0x30` is 0; the port's unset packed
+  word (0) reads as a shield nibble of 0; a Death Star's destruction
+  leaves no battery to fire and nothing to bombard.
+- Not ported: the minor characters' hits on destruction (the Death
+  Star's cleanup kills the people aboard its fleets instead), the
+  sector's and the galaxy's support events (`FUN_00518b20`), the system's
+  bombarded bit (`+0x88` bit `0x40`).
+
 ## Port notes
 
-- The port's automatic bombardment after a space victory
-  (`simulation.rs`, `tactical_flow.rs`) has no counterpart: the original
-  bombards only on these orders.
+- The port's automatic bombardment after a space victory had no
+  counterpart: the original bombards only on these orders (removed with
+  the port above).
 - The port has no officer ranks (`+0x96`): no general or admiral, so both
   multipliers are 1.
 - The port's ship keeps its current hull (`hull_current`), so `+0x60`

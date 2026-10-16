@@ -1648,7 +1648,14 @@ cross-runtime proof remain open
     at the bombarding ships; firepower less the shields gives shots, each
     destroying a drawn target whose bombardment defense loses to a 1-10
     draw; civilian damage costs support. The original never bombards after
-    a battle on its own. Not yet ported.
+    a battle on its own.
+  - Bombardment ported 2026-10-16 (save v55, `bombardment.rs`): the four
+    phases replace the transit misread; the automatic bombardment after a
+    battle is gone; the AI's plan objects order bombardments and the
+    player's Bombard button orders General Bombardment (the sub-menu is
+    next). port: the draws come from a stream seeded by the tick; no officer
+    ranks (both leadership factors 1); the sector and galaxy support events
+    are not ported (`evidence/2026-10-16-bombardment/`).
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.
@@ -1974,6 +1981,16 @@ cross-runtime proof remain open
   order; the heuristics' fleet moves fall from 28 to 15. Save v54; golden
   `v1:a9d12433c6c44f1e` -> `v1:dbb908594619dd4b`
   (`evidence/2026-10-16-ai-plan-roles/`).
+- Module 8, stages 4d and 4e (2026-10-16): the Fleet menu's bombardment
+  orders read (`ghidra/notes/bombardment-order.md`) and ported
+  (`bombardment.rs`, F-032): a plan object's bombarder at its target orders
+  `AIAction::Bombard` with Destroy System `0x223` (fleet `0x10`, system
+  `v[50]`) or `FUN_004ae320`'s code (`FUN_004b1070` -> `FUN_004b1330`), the
+  order stopping the walk at `+0x30`. The automatic bombardment after a
+  battle is gone. In 19 campaign runs over 18 seeds no plan binds a
+  role, so nothing bombards. Save v55; golden
+  `v1:dbb908594619dd4b` -> `v1:b160883b9ed0c807`
+  (`evidence/2026-10-16-bombardment/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

@@ -2,13 +2,12 @@
 
 use std::collections::HashMap;
 
-use rebellion_core::bombardment::BombardmentSystem;
 use rebellion_core::combat::{CombatSide, CombatSystem};
 use rebellion_core::dat::Faction;
 use rebellion_core::death_star::DeathStarState;
 use rebellion_core::ids::{FleetKey, SystemKey, TroopKey};
 use rebellion_core::troop_transport::TroopTransportState;
-use rebellion_core::victory::{VictoryState, VictorySystem};
+use rebellion_core::victory::VictoryState;
 use rebellion_core::world::{ControlKind, GameWorld};
 use rebellion_render::{
     BattleSession, CombatWinner, GameMessage, GroundCombatState, MessageCategory, MessageLog,
@@ -60,14 +59,6 @@ pub(crate) enum PostBattleContinuation {
 pub(crate) struct PostBattleOutcome {
     pub continuation: PostBattleContinuation,
     pub landed_regiments: usize,
-    pub bombardment_damage: i32,
-    pub headquarters_destroyed: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BombardmentFollowup {
-    pub damage: i32,
-    pub headquarters_destroyed: bool,
 }
 
 /// Compact strategic-world projection used to prove that a played tactical
@@ -319,12 +310,13 @@ pub(crate) fn reconcile_death_star_result(
 
 /// Run the campaign follow-up shared by auto-resolved and played space battles.
 ///
-/// Both paths bombard first, land every surviving regiment carried by the
-/// victorious faction, and then either resolve the ground fight immediately or
-/// return the production ground-combat state used by the interactive campaign.
+/// Both paths land every surviving regiment carried by the victorious
+/// faction, and then either resolve the ground fight immediately or return
+/// the production ground-combat state used by the interactive campaign. No
+/// bombardment follows a battle: the original bombards only on the Fleet
+/// menu's orders (`ghidra/notes/bombardment-order.md`).
 pub(crate) fn resolve_post_battle(
     world: &mut GameWorld,
-    victory_state: &VictoryState,
     troop_transport: &mut TroopTransportState,
     winner_fleet: FleetKey,
     system: SystemKey,
@@ -340,13 +332,9 @@ pub(crate) fn resolve_post_battle(
         return PostBattleOutcome {
             continuation: PostBattleContinuation::Galaxy,
             landed_regiments: 0,
-            bombardment_damage: 0,
-            headquarters_destroyed: false,
         };
     };
 
-    let bombardment =
-        apply_automatic_bombardment(world, victory_state, winner_fleet, system, tick, log);
     let landed_regiments = land_faction_cargo(
         world,
         troop_transport,
@@ -406,8 +394,6 @@ pub(crate) fn resolve_post_battle(
     PostBattleOutcome {
         continuation,
         landed_regiments,
-        bombardment_damage: bombardment.damage,
-        headquarters_destroyed: bombardment.headquarters_destroyed,
     }
 }
 
@@ -495,65 +481,6 @@ pub(crate) fn land_faction_cargo(
         ));
     }
     landed
-}
-
-/// Apply the campaign bombardment that follows an uncontested orbital win.
-pub(crate) fn apply_automatic_bombardment(
-    world: &mut GameWorld,
-    victory_state: &VictoryState,
-    fleet: FleetKey,
-    system: SystemKey,
-    tick: u64,
-    log: &mut MessageLog,
-) -> BombardmentFollowup {
-    if !world.fleets.contains_key(fleet) || !world.systems.contains_key(system) {
-        return BombardmentFollowup {
-            damage: 0,
-            headquarters_destroyed: false,
-        };
-    }
-
-    let attacker = if world.fleets[fleet].is_alliance {
-        Faction::Alliance
-    } else {
-        Faction::Empire
-    };
-    let result =
-        BombardmentSystem::resolve_bombardment(world, fleet, system, world.difficulty_index, tick);
-    let headquarters_destroyed =
-        VictorySystem::apply_headquarters_bombardment(victory_state, world, &result, attacker);
-    let system_name = world
-        .systems
-        .get(system)
-        .map_or("unknown", |value| value.name.as_str());
-
-    if result.damage > 0 {
-        log.push(GameMessage::at_system(
-            tick,
-            format!(
-                "Orbital bombardment at {} - {} damage",
-                system_name, result.damage
-            ),
-            MessageCategory::Combat,
-            system,
-        ));
-    }
-    if headquarters_destroyed {
-        log.push(
-            GameMessage::at_system(
-                tick,
-                format!("Alliance headquarters destroyed at {system_name}"),
-                MessageCategory::Combat,
-                system,
-            )
-            .on_rail(MessageRail::Resource, RailAudience::Both),
-        );
-    }
-
-    BombardmentFollowup {
-        damage: result.damage,
-        headquarters_destroyed,
-    }
 }
 
 pub(crate) fn apply_system_occupation(
@@ -877,13 +804,12 @@ mod tests {
 
     #[test]
     fn played_space_victory_uses_shared_contested_ground_route() {
-        let (mut world, victory, system, winner_fleet, attacker, mut transport) =
+        let (mut world, _, system, winner_fleet, attacker, mut transport) =
             post_battle_ground_fixture(true);
         let mut messages = MessageLog::default();
 
         let outcome = resolve_post_battle(
             &mut world,
-            &victory,
             &mut transport,
             winner_fleet,
             system,
@@ -930,13 +856,12 @@ mod tests {
 
     #[test]
     fn unopposed_space_victory_uses_shared_occupation_route() {
-        let (mut world, victory, system, winner_fleet, attacker, mut transport) =
+        let (mut world, _, system, winner_fleet, attacker, mut transport) =
             post_battle_ground_fixture(false);
         let mut messages = MessageLog::default();
 
         let outcome = resolve_post_battle(
             &mut world,
-            &victory,
             &mut transport,
             winner_fleet,
             system,

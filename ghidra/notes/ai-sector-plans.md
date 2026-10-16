@@ -433,6 +433,21 @@ The fleet record's `+0x28` is its location, written by each refresh
 (`FUN_00433620`); `+0x2c` is the plan's target, written only by the
 plan objects, so it persists across refreshes.
 
+## Ported (2026-10-16, save v55): the plan object's bombardments
+
+`FUN_004b1070` now gives its bombardment: a `0x40000000` fleet at its
+target orders `AIAction::Bombard` (`FUN_004b1330`) with Destroy System
+`0x223` when the fleet has `0x10` and the system `v[50]` above 0, else
+`FUN_004ae320`'s code, then loses role and target. The order stops the
+walk, `+0x30` (`SectorPlanner::plan_walk`) naming the next fleet; on the
+last fleet the order ends the step too. The bombardment itself is
+`bombardment-order.md`'s port.
+
+- Seeds 42, 1, 2, 3, 7, 11, 13, 47 and 99 (600 days, both sides AI) and
+  3, 5, 8, 21, 33, 64, 77, 123, 2024 and 4242 (900 days): no plan object
+  binds a role, so the AI never bombards. Without the automatic
+  bombardment after battles no bombardment happens in these campaigns.
+
 ## Ported (2026-10-16, save v54): the plan object's states 7 to `0xe`
 
 `crates/rebellion-core/src/ai_plan.rs`: kind 3's step runs to its end.

@@ -37,7 +37,7 @@ use std::path::{Path, PathBuf};
 use rebellion_core::ai::{AIAction, AIState, AISystem, AiFaction, FleetMoveReason};
 use rebellion_core::betrayal::{BetrayalState, BetrayalSystem};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
-use rebellion_core::bombardment::BombardmentSystem;
+use rebellion_core::bombardment::BombardEnv;
 use rebellion_core::combat::{CombatSide, CombatSystem};
 use rebellion_core::agent_automation::{AutomationModule, PlayerAgent};
 use rebellion_core::dat::Faction;
@@ -2042,27 +2042,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                 })
                 .collect();
             for (system, is_alliance) in landing_targets {
-                if !is_alliance && system == victory_state.alliance_hq {
-                    let bombardment_fleet = world.systems.get(system).and_then(|value| {
-                        value.fleets.iter().copied().find(|fleet| {
-                            world
-                                .fleets
-                                .get(*fleet)
-                                .is_some_and(|value| !value.is_alliance)
-                                && troop_transport_state.landing_count(*fleet) > 0
-                        })
-                    });
-                    if let Some(fleet) = bombardment_fleet {
-                        tactical_flow::apply_automatic_bombardment(
-                            &mut world,
-                            &victory_state,
-                            fleet,
-                            system,
-                            current_tick,
-                            &mut msg_log,
-                        );
-                    }
-                }
                 let ground_rolls: Vec<f64> = (0..256).map(|_| sim_rng.gen::<f64>()).collect();
                 ground_resolved_systems.insert(system);
                 tactical_flow::resolve_ground_campaign(
@@ -2202,16 +2181,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                     CombatSide::Defender => Some((false, def_fleet)),
                     CombatSide::Draw => None,
                 };
-                if let Some((winner_is_alliance, winner_fleet)) = winner {
-                    tactical_flow::apply_automatic_bombardment(
-                        &mut world,
-                        &victory_state,
-                        winner_fleet,
-                        sys_key,
-                        current_tick,
-                        &mut msg_log,
-                    );
-
+                if let Some((winner_is_alliance, _)) = winner {
                     let ground_rolls: Vec<f64> = (0..256).map(|_| sim_rng.gen::<f64>()).collect();
                     ground_resolved_systems.insert(sys_key);
                     tactical_flow::resolve_ground_campaign(
@@ -2539,6 +2509,8 @@ Some(RailAudience::side(*faction_is_alliance)),
             // pass's orders apply before the next, and a new day clears each
             // side's order count (FUN_00485de0).
             let ai_passes = rebellion_core::ai::passes_per_day(clock.speed);
+            let mut bombard =
+                BombardEnv::new(sim_rng.gen::<u64>(), Some(victory_state.alliance_hq));
             for event in &tick_events {
                 ai_state.begin_day();
                 if let Some(ref mut second_ai) = secondary_ai_state {
@@ -2572,6 +2544,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         &mut world,
                         &mut msg_log,
                         event.tick,
+                        &mut bombard,
                         #[cfg(not(target_arch = "wasm32"))]
                         &mut audio_engine,
                         #[cfg(not(target_arch = "wasm32"))]
@@ -2603,6 +2576,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                             &mut world,
                             &mut msg_log,
                             event.tick,
+                            &mut bombard,
                             #[cfg(not(target_arch = "wasm32"))]
                             &mut audio_engine,
                             #[cfg(not(target_arch = "wasm32"))]
@@ -2618,6 +2592,21 @@ Some(RailAudience::side(*faction_is_alliance)),
                     ai_state.orders_today,
                     secondary_ai_state.as_ref().map_or(0, |ai| ai.orders_today),
                     (macroquad::time::get_time() - ai_started) * 1000.0
+                );
+            }
+
+            // A Destroy System order's Death Star destroyed these (FUN_0058d990).
+            for system in bombard.destroyed_systems() {
+                destroy_planet(
+                    &mut world,
+                    system,
+                    &mut victory_state,
+                    &mut movement_state,
+                    &mut death_star_state,
+                    &mut mfg_state,
+                    &mut blockade_state,
+                    &mut msg_log,
+                    current_tick,
                 );
             }
 
@@ -5575,7 +5564,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     (0..256).map(|_| sim_rng.gen::<f64>()).collect();
                                 let outcome = tactical_flow::resolve_post_battle(
                                     &mut world,
-                                    &victory_state,
                                     &mut troop_transport_state,
                                     winner_fleet,
                                     session.system,
@@ -5586,10 +5574,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     },
                                 );
                                 macroquad::logging::info!(
-                                    "[post_battle] mode=automatic landed={} bombardment_damage={} headquarters_destroyed={}",
+                                    "[post_battle] mode=automatic landed={}",
                                     outcome.landed_regiments,
-                                    outcome.bombardment_damage,
-                                    outcome.headquarters_destroyed,
                                 );
                             }
 
@@ -5714,7 +5700,6 @@ Some(RailAudience::side(*faction_is_alliance)),
                             } else if let Some(winner_fleet) = battle_return.winner_fleet {
                                 let outcome = tactical_flow::resolve_post_battle(
                                     &mut world,
-                                    &victory_state,
                                     &mut troop_transport_state,
                                     winner_fleet,
                                     session.system,
@@ -5723,10 +5708,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     tactical_flow::PostBattleGroundMode::Interactive,
                                 );
                                 macroquad::logging::info!(
-                                    "[post_battle] mode=interactive landed={} bombardment_damage={} headquarters_destroyed={}",
+                                    "[post_battle] mode=interactive landed={}",
                                     outcome.landed_regiments,
-                                    outcome.bombardment_damage,
-                                    outcome.headquarters_destroyed,
                                 );
                                 match outcome.continuation {
                                     tactical_flow::PostBattleContinuation::Galaxy => {
@@ -7298,58 +7281,22 @@ fn apply_panel_action(
             ));
         }
         PanelAction::OrderBombardment { fleet, system } => {
-            // Guard: both fleet and system must still exist (prevents panic in resolve).
+            // port: the panel's one button is General Bombardment (0x222)
+            // until the Planetary Bombardment sub-menu; the order's draws
+            // come from the day.
             if world.fleets.contains_key(fleet) && world.systems.contains_key(system) {
-                let attacker_is_alliance = world.fleets[fleet].is_alliance;
-                let result = BombardmentSystem::resolve_bombardment(
-                    world,
-                    fleet,
-                    system,
-                    world.difficulty_index,
-                    clock.tick,
-                );
-                let attacker = if attacker_is_alliance {
-                    Faction::Alliance
-                } else {
-                    Faction::Empire
-                };
-                let headquarters_destroyed = VictorySystem::apply_headquarters_bombardment(
-                    victory_state,
-                    world,
-                    &result,
-                    attacker,
-                );
-                if let Some(sys) = world.systems.get_mut(system) {
-                    let pop_reduction = (result.damage as f32 / 100.0).min(0.25);
-                    if attacker_is_alliance {
-                        sys.popularity_empire =
-                            (sys.popularity_empire - pop_reduction).clamp(0.0, 1.0);
-                    } else {
-                        sys.popularity_alliance =
-                            (sys.popularity_alliance - pop_reduction).clamp(0.0, 1.0);
-                    }
-                }
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("Orbital bombardment — {} damage", result.damage),
-                    MessageCategory::Combat,
-                ));
-                if headquarters_destroyed {
-                    let system_name = world
-                        .systems
-                        .get(system)
-                        .map_or("Unknown", |system| system.name.as_str());
-                    // Notification 0x1f, Rebel HQ Destroyed.
-                    msg_log.push(filed(
-                        GameMessage::new(
-                            clock.tick,
-                            format!("Alliance headquarters destroyed at {system_name}"),
-                            MessageCategory::Combat,
-                        ),
-                        MessageRail::Resource,
-                        Some(RailAudience::Both),
-                    ));
-                }
+                let side = Faction::of_alliance(world.fleets[fleet].is_alliance);
+                let mut bombard = BombardEnv::new(clock.tick, Some(victory_state.alliance_hq));
+                let outcome = bombard
+                    .bombard(
+                        world,
+                        side,
+                        &[fleet],
+                        system,
+                        rebellion_core::bombardment::GENERAL,
+                    )
+                    .clone();
+                log_bombardment(world, system, &outcome, clock.tick, msg_log);
             }
         }
         PanelAction::FireDeathStar { system } => {
@@ -7357,59 +7304,17 @@ fn apply_panel_action(
             if let Some(rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { .. }) =
                 DeathStarSystem::fire(death_star_state, world, system, clock.tick)
             {
-                let name = world
-                    .systems
-                    .get(system)
-                    .map_or_else(|| "Unknown".to_string(), |s| s.name.clone());
-                if let Some(sys) = world.systems.get_mut(system) {
-                    sys.is_destroyed = true;
-                }
-                victory_state.death_star_location = Some(system);
-                // Drain the telemetry out-param into the message log so
-                // interactive play surfaces the killed characters
-                // immediately; the run_simulation_tick flow does the same
-                // via the `PerceptionIntegrator`.
-                let mut cleanup_effects: Vec<rebellion_core::effects::GameEffect> = Vec::new();
-                rebellion_core::death_star::cleanup_destroyed_system(
+                destroy_planet(
                     world,
                     system,
+                    victory_state,
                     movement_state,
                     death_star_state,
                     mfg_state,
                     blockade_state,
-                    &mut cleanup_effects,
+                    msg_log,
+                    clock.tick,
                 );
-                for effect in cleanup_effects.drain(..) {
-                    if let rebellion_core::effects::GameEffect::CharacterKilled { character } =
-                        effect
-                    {
-                        if let Some(c) = world.characters.get(character) {
-                            // Notification 0x1a, Character Health.
-                            msg_log.push(filed(
-                                GameMessage::new(
-                                    clock.tick,
-                                    format!("{} has been killed.", c.name),
-                                    MessageCategory::Event,
-                                )
-                                .with_picture_if(Some(
-                                    pictures::killed(pictures::character_side(world, character)),
-                                )),
-                                MessageRail::Mission,
-                                character_audience(&world, character),
-                            ));
-                        }
-                    }
-                }
-                // Notification 0x15, Planet Destroyed.
-                msg_log.push(filed(
-                    GameMessage::new(
-                        clock.tick,
-                        format!("{name} DESTROYED by Death Star superlaser!"),
-                        MessageCategory::Combat,
-                    ),
-                    MessageRail::Mission,
-                    Some(RailAudience::Both),
-                ));
             }
         }
         PanelAction::MoveDeathStar { system } => {
@@ -7950,6 +7855,116 @@ fn apply_space_combat_result(
     rebellion_data::integrator::apply_space_combat_result_inner(result, world);
 }
 
+/// The messages a bombardment leaves: what it destroyed, and the Rebel
+/// HQ's destruction (notification `0x1f`).
+fn log_bombardment(
+    world: &GameWorld,
+    system: SystemKey,
+    outcome: &rebellion_core::bombardment::BombardmentOutcome,
+    tick: u64,
+    log: &mut MessageLog,
+) {
+    let name = world
+        .systems
+        .get(system)
+        .map_or("Unknown", |value| value.name.as_str());
+    log.push(GameMessage::at_system(
+        tick,
+        format!(
+            "Orbital bombardment at {name}: {} shot(s), {} target(s) destroyed",
+            outcome.shots,
+            outcome.destroyed.len()
+        ),
+        MessageCategory::Combat,
+        system,
+    ));
+    if outcome
+        .destroyed
+        .contains(&rebellion_core::bombardment::Target::Headquarters)
+    {
+        log.push(filed(
+            GameMessage::new(
+                tick,
+                format!("Alliance headquarters destroyed at {name}"),
+                MessageCategory::Combat,
+            ),
+            MessageRail::Resource,
+            Some(RailAudience::Both),
+        ));
+    }
+}
+
+/// A planet destroyed by a Death Star (the Fleet menu's superlaser, or a
+/// Destroy System order's `FUN_0058d990`): the system, its fleets, units
+/// and facilities go (`death_star::cleanup_destroyed_system`).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The planet's cleanup touches each of these states."
+)]
+fn destroy_planet(
+    world: &mut GameWorld,
+    system: SystemKey,
+    victory_state: &mut VictoryState,
+    movement_state: &mut MovementState,
+    death_star_state: &mut DeathStarState,
+    mfg_state: &mut ManufacturingState,
+    blockade_state: &mut BlockadeState,
+    msg_log: &mut MessageLog,
+    tick: u64,
+) {
+    let name = world
+        .systems
+        .get(system)
+        .map_or_else(|| "Unknown".to_string(), |s| s.name.clone());
+    if let Some(sys) = world.systems.get_mut(system) {
+        sys.is_destroyed = true;
+    }
+    victory_state.death_star_location = Some(system);
+    // Drain the telemetry out-param into the message log so
+    // interactive play surfaces the killed characters
+    // immediately; the run_simulation_tick flow does the same
+    // via the `PerceptionIntegrator`.
+    let mut cleanup_effects: Vec<rebellion_core::effects::GameEffect> = Vec::new();
+    rebellion_core::death_star::cleanup_destroyed_system(
+        world,
+        system,
+        movement_state,
+        death_star_state,
+        mfg_state,
+        blockade_state,
+        &mut cleanup_effects,
+    );
+    for effect in cleanup_effects.drain(..) {
+        if let rebellion_core::effects::GameEffect::CharacterKilled { character } = effect {
+            if let Some(c) = world.characters.get(character) {
+                // Notification 0x1a, Character Health.
+                msg_log.push(filed(
+                    GameMessage::new(
+                        tick,
+                        format!("{} has been killed.", c.name),
+                        MessageCategory::Event,
+                    )
+                    .with_picture_if(Some(pictures::killed(
+                        pictures::character_side(world, character),
+                    ))),
+                    MessageRail::Mission,
+                    character_audience(world, character),
+                ));
+            }
+        }
+    }
+    // Notification 0x15, Planet Destroyed.
+    msg_log.push(filed(
+        GameMessage::new(
+            tick,
+            format!("{name} DESTROYED by Death Star superlaser!"),
+            MessageCategory::Combat,
+        ),
+        MessageRail::Mission,
+        Some(RailAudience::Both),
+    ));
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "Keep explicit state and UI inputs at this existing integration boundary."
@@ -7969,6 +7984,7 @@ fn apply_ai_actions(
     world: &mut GameWorld,
     log: &mut MessageLog,
     tick: u64,
+    bombard: &mut BombardEnv,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
 ) {
@@ -8094,6 +8110,21 @@ fn apply_ai_actions(
                         rebellion_core::missions::MissionMember::Character(character),
                         Some(*to),
                     );
+                }
+            }
+            AIAction::Bombard {
+                fleets,
+                system,
+                kind,
+            } => {
+                let Some(side) = ai_state.faction else {
+                    continue;
+                };
+                if world.systems.contains_key(*system) {
+                    let outcome = bombard
+                        .bombard(world, side.as_faction(), fleets, *system, *kind)
+                        .clone();
+                    log_bombardment(world, *system, &outcome, tick, log);
                 }
             }
             AIAction::JoinFleet { fleet, into } => {

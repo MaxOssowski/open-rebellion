@@ -12,7 +12,6 @@ use crate::integrator::{
 use rebellion_core::ai::{AIState, AISystem};
 use rebellion_core::betrayal::{BetrayalState, BetrayalSystem};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
-use rebellion_core::bombardment::BombardmentSystem;
 use rebellion_core::combat::{CombatSide, CombatSystem};
 use rebellion_core::dat::Faction;
 use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
@@ -100,6 +99,28 @@ pub struct SimulationStates {
     clippy::cast_possible_truncation,
     reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
 )]
+/// The systems a Destroy System order's Death Star destroyed this tick
+/// (`FUN_0058d990`), as the Death Star's `PlanetDestroyed` events, which
+/// step 11 carries out.
+fn planets_destroyed(
+    bombard: &rebellion_core::bombardment::BombardEnv,
+    tick_events: &[TickEvent],
+) -> Vec<rebellion_core::death_star::DeathStarEvent> {
+    let Some(last) = tick_events.last() else {
+        return Vec::new();
+    };
+    bombard
+        .destroyed_systems()
+        .into_iter()
+        .map(
+            |system| rebellion_core::death_star::DeathStarEvent::PlanetDestroyed {
+                system,
+                tick: last.tick,
+            },
+        )
+        .collect()
+}
+
 pub fn run_simulation_tick(
     world: &mut GameWorld,
     states: &mut SimulationStates,
@@ -236,39 +257,8 @@ pub fn run_simulation_tick(
             AISystem::record_battle(ai2, sys_key, current_tick);
         }
 
-        // Orbital bombardment follows a decisive space victory. Ground
-        // assault is resolved below after surviving transports have landed.
-        // Alliance is always coded as attacker, Empire as defender in the trigger above.
-        // The space combat winner gets to follow up with ground assault + orbital bombardment.
-        // A group of a planet's squadrons is gone after `recover`, so it
-        // neither bombards nor lands regiments.
-        let winner_info = match (space_result.winner, space_result.winner_fleet) {
-            (CombatSide::Attacker, Some(fleet)) => Some((fleet, true)), // Alliance won
-            (CombatSide::Defender, Some(fleet)) => Some((fleet, false)), // Empire won
-            _ => None,
-        }
-        .filter(|&(fleet, _)| world.fleets.contains_key(fleet));
-        if let Some((winner_fleet, winner_is_alliance)) = winner_info {
-            let brd_result = BombardmentSystem::resolve_bombardment(
-                world,
-                winner_fleet,
-                sys_key,
-                world.difficulty_index,
-                current_tick,
-            );
-            let attacker = if winner_is_alliance {
-                Faction::Alliance
-            } else {
-                Faction::Empire
-            };
-            let headquarters_destroyed = VictorySystem::apply_headquarters_bombardment(
-                &states.victory,
-                world,
-                &brd_result,
-                attacker,
-            );
-            integrator.emit_bombardment(world, sys_key, brd_result.damage, headquarters_destroyed);
-        }
+        // No bombardment follows a battle: the original bombards only on the
+        // Fleet menu's orders 0x220..0x223 (ghidra/notes/bombardment-order.md).
     }
 
     let destroyed_cargo = states.troop_transport.destroy_untransportable_cargo(world);
@@ -314,44 +304,6 @@ pub fn run_simulation_tick(
                         }) && !states.troop_transport.is_held(*fleet)
                     })
                     .collect();
-
-            // An unopposed Imperial invasion of the mobile Alliance HQ has no
-            // space battle to trigger the normal bombardment follow-up. Strike
-            // the HQ before landing, but only when a transport is actually
-            // carrying an invasion force. Occupation alone is not sufficient.
-            if faction == Faction::Empire
-                && sys_key == states.victory.alliance_hq
-                && world
-                    .systems
-                    .get(sys_key)
-                    .is_some_and(|system| system.is_headquarters && !system.is_destroyed)
-            {
-                if let Some(bombardment_fleet) = landing_fleets
-                    .iter()
-                    .copied()
-                    .find(|fleet| states.troop_transport.carried_count(*fleet) > 0)
-                {
-                    let result = BombardmentSystem::resolve_bombardment(
-                        world,
-                        bombardment_fleet,
-                        sys_key,
-                        world.difficulty_index,
-                        current_tick,
-                    );
-                    let headquarters_destroyed = VictorySystem::apply_headquarters_bombardment(
-                        &states.victory,
-                        world,
-                        &result,
-                        Faction::Empire,
-                    );
-                    integrator.emit_bombardment(
-                        world,
-                        sys_key,
-                        result.damage,
-                        headquarters_destroyed,
-                    );
-                }
-            }
 
             for fleet in landing_fleets {
                 integrator.apply_troop_landing(world, &mut states.troop_transport, fleet, sys_key);
@@ -596,6 +548,17 @@ pub fn run_simulation_tick(
     // other (FUN_0041cf20 -> FUN_004361a0); each pass's orders apply before
     // the next. A new day clears each side's order count (FUN_00485de0).
     let passes = rebellion_core::ai::passes_per_day(states.clock.speed);
+    // The orders' bombardments draw from a stream seeded by one roll.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "A roll in 0..1 scaled to 53 bits of seed."
+    )]
+    let bombard_seed = (take_rolls(1)[0] * 9_007_199_254_740_992.0) as u64;
+    let mut bombard = rebellion_core::bombardment::BombardEnv::new(
+        bombard_seed,
+        Some(states.victory.alliance_hq),
+    );
     for event in tick_events {
         states.ai.begin_day();
         if let Some(ref mut ai2) = states.ai2 {
@@ -628,6 +591,7 @@ pub fn run_simulation_tick(
                 world,
                 event.tick,
                 false,
+                &mut bombard,
             );
             // ── 7b. AI (second faction, dual-AI mode) ────────────────────
             if let Some(ref mut ai2) = states.ai2 {
@@ -655,6 +619,7 @@ pub fn run_simulation_tick(
                     world,
                     event.tick,
                     true,
+                    &mut bombard,
                 );
             }
         }
@@ -708,7 +673,11 @@ pub fn run_simulation_tick(
     integrator.apply_betrayal_events(world, &betrayal_events);
 
     // ── 11. Death Star ───────────────────────────────────────────────────
-    let ds_events = DeathStarSystem::advance(&mut states.death_star, world, tick_events);
+    for (req, outcome) in &bombard.outcomes {
+        integrator.emit_bombardment(world, req, outcome);
+    }
+    let mut ds_events = DeathStarSystem::advance(&mut states.death_star, world, tick_events);
+    ds_events.extend(planets_destroyed(&bombard, tick_events));
     integrator.apply_death_star_events(world, &ds_events);
     // Update victory state and clean up destroyed systems.
     //
@@ -805,6 +774,38 @@ pub fn run_simulation_tick(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_destroy_system_order_s_planet_goes_through_the_death_star_s_destruction() {
+        // FUN_0058d990: a Death Star bombarding with 0x223 destroys the
+        // system; the tick hands it to step 11 as PlanetDestroyed.
+        let mut systems = slotmap::SlotMap::<rebellion_core::ids::SystemKey, ()>::with_key();
+        let (a, b) = (systems.insert(()), systems.insert(()));
+        let mut env = rebellion_core::bombardment::BombardEnv::new(0, None);
+        for (system, destroyed) in [(a, true), (b, false)] {
+            env.outcomes.push((
+                rebellion_core::bombardment::BombardRequest {
+                    system,
+                    side: Faction::Empire,
+                    kind: rebellion_core::bombardment::DESTROY_SYSTEM,
+                    fleets: Vec::new(),
+                    alliance_hq: None,
+                },
+                rebellion_core::bombardment::BombardmentOutcome {
+                    system_destroyed: destroyed,
+                    ..Default::default()
+                },
+            ));
+        }
+        let events = planets_destroyed(&env, &[TickEvent { tick: 4 }, TickEvent { tick: 5 }]);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0],
+            rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, tick: 5 }
+                if system == a
+        ));
+        assert!(planets_destroyed(&env, &[]).is_empty());
+    }
     use rebellion_core::ai::AiFaction;
     use rebellion_core::dat::Faction;
     use rebellion_core::fog::FogState;
@@ -1295,7 +1296,11 @@ mod tests {
         clippy::cast_possible_truncation,
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
     )]
-    fn decisive_imperial_bombardment_destroys_the_alliance_hq_facility() {
+    fn a_decisive_imperial_victory_leaves_the_alliance_hq_facility_standing() {
+        // No bombardment follows a battle: the original bombards only on the
+        // Fleet menu's orders 0x220..0x223 (FUN_005637c0,
+        // ghidra/notes/bombardment-order.md); the port's automatic one was
+        // invented (F-032).
         let mut world = GameWorld::default();
         let make_system = |dat_id, name: &str, control, is_headquarters| System {
             dat_id: DatId::new(dat_id),
@@ -1408,16 +1413,11 @@ mod tests {
             &rebellion_core::tuning::GameConfig::default(),
         );
 
-        assert!(!world.systems[alliance_hq].is_headquarters);
-        assert!(
-            !states.victory.resolved,
-            "bombardment still requires occupation"
-        );
-        let bombardment = events
+        assert!(world.systems[alliance_hq].is_headquarters);
+        assert!(!states.victory.resolved);
+        assert!(!events
             .iter()
-            .find(|event| event.event_type == EVT_BOMBARDMENT)
-            .expect("bombardment telemetry");
-        assert_eq!(bombardment.details["headquarters_destroyed"], true);
+            .any(|event| event.event_type == EVT_BOMBARDMENT));
     }
 
     #[test]
@@ -1429,7 +1429,10 @@ mod tests {
         clippy::cast_possible_truncation,
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
     )]
-    fn unopposed_imperial_invasion_bombards_before_occupying_alliance_hq() {
+    fn an_unopposed_imperial_invasion_occupies_the_alliance_hq_without_bombarding() {
+        // As above: the landing is no bombardment order, so the HQ facility
+        // stands and the occupation alone does not end the campaign
+        // (ghidra/notes/bombardment-order.md).
         let mut world = GameWorld::default();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
@@ -1552,16 +1555,15 @@ mod tests {
             &rebellion_core::tuning::GameConfig::default(),
         );
 
-        assert!(!world.systems[alliance_hq].is_headquarters);
+        assert!(world.systems[alliance_hq].is_headquarters);
         assert_eq!(
             world.systems[alliance_hq].control,
             ControlKind::Controlled(Faction::Empire)
         );
-        assert!(states.victory.resolved);
-        assert!(events.iter().any(|event| {
-            event.event_type == EVT_BOMBARDMENT && event.details["headquarters_destroyed"] == true
-        }));
-        assert!(events.iter().any(|event| event.event_type == EVT_VICTORY));
+        assert!(!states.victory.resolved);
+        assert!(!events
+            .iter()
+            .any(|event| event.event_type == EVT_BOMBARDMENT || event.event_type == EVT_VICTORY));
     }
 
     #[test]

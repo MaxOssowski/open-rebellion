@@ -75,6 +75,10 @@ pub struct SectorPlanner {
     /// The plan object's `+0x2c`: the held fleet the next search starts
     /// from (`FUN_004b04c0`).
     pub plan_cursor: Option<crate::ids::FleetKey>,
+    /// The plan object's `+0x30`: the held fleet state `0xe`'s walk goes
+    /// on from after an order (`FUN_004b1070`).
+    #[serde(default)]
+    pub plan_walk: Option<crate::ids::FleetKey>,
 }
 
 /// What a step of module 8 leaves to the caller.
@@ -390,6 +394,7 @@ fn bind(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) -> bool {
         planner.plan_state = 0;
         planner.plan_fleet = None;
         planner.plan_cursor = None;
+        planner.plan_walk = None;
     }
     if plan_id != planner.plan_id {
         planner.plan_id = plan_id;

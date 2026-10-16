@@ -29,7 +29,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::bombardment::BombardmentResult;
 use crate::dat::Faction;
 use crate::ids::SystemKey;
 use crate::tick::TickEvent;
@@ -132,33 +131,6 @@ impl VictorySystem {
                 victory_conditions == VictoryConditions::HeadquartersOnly
                     || Self::standard_leaders_captured(outcome, world)
             })
-    }
-
-    /// Apply the headquarters-specific effect of a resolved bombardment.
-    ///
-    /// `System::is_headquarters` represents the surviving mobile Alliance-HQ
-    /// facility. Clearing that already-persisted flag records its destruction
-    /// without changing the save layout. Occupation is checked separately, so
-    /// bombardment alone cannot end the campaign.
-    pub fn apply_headquarters_bombardment(
-        state: &VictoryState,
-        world: &mut GameWorld,
-        result: &BombardmentResult,
-        attacker: Faction,
-    ) -> bool {
-        if attacker != Faction::Empire || result.damage <= 0 || result.system != state.alliance_hq {
-            return false;
-        }
-
-        let Some(system) = world.systems.get_mut(state.alliance_hq) else {
-            return false;
-        };
-        if !system.is_headquarters || system.is_destroyed {
-            return false;
-        }
-
-        system.is_headquarters = false;
-        true
     }
 
     // ── Private ───────────────────────────────────────────────────────────
@@ -374,57 +346,28 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn successful_imperial_bombardment_destroys_alliance_hq_facility() {
-        let (mut world, alliance_hq, empire_hq) = make_world();
-        let state = VictoryState::new(alliance_hq, empire_hq);
-        let result = BombardmentResult {
+    /// A bombardment that destroyed the Alliance's headquarters object
+    /// (ALLFACSD, `bombardment-order.md`), carried out.
+    fn headquarters_bombarded(world: &mut GameWorld, alliance_hq: SystemKey) {
+        let req = crate::bombardment::BombardRequest {
             system: alliance_hq,
-            damage: 12,
-            tick: 1,
+            side: Faction::Empire,
+            kind: crate::bombardment::GENERAL,
+            fleets: Vec::new(),
+            alliance_hq: Some(alliance_hq),
         };
-
-        assert!(VictorySystem::apply_headquarters_bombardment(
-            &state,
-            &mut world,
-            &result,
-            Faction::Empire,
-        ));
-        assert!(!world.systems[alliance_hq].is_headquarters);
+        let outcome = crate::bombardment::BombardmentOutcome {
+            destroyed: vec![crate::bombardment::Target::Headquarters],
+            ..crate::bombardment::BombardmentOutcome::default()
+        };
+        crate::bombardment::apply(world, &req, &outcome);
     }
 
     #[test]
-    fn bombardment_requires_empire_damage_against_current_alliance_hq() {
-        let (mut world, alliance_hq, empire_hq) = make_world();
-        let state = VictoryState::new(alliance_hq, empire_hq);
-        let mut result = BombardmentResult {
-            system: alliance_hq,
-            damage: 0,
-            tick: 1,
-        };
-        assert!(!VictorySystem::apply_headquarters_bombardment(
-            &state,
-            &mut world,
-            &result,
-            Faction::Empire,
-        ));
-
-        result.damage = 10;
-        assert!(!VictorySystem::apply_headquarters_bombardment(
-            &state,
-            &mut world,
-            &result,
-            Faction::Alliance,
-        ));
-
-        result.system = empire_hq;
-        assert!(!VictorySystem::apply_headquarters_bombardment(
-            &state,
-            &mut world,
-            &result,
-            Faction::Empire,
-        ));
-        assert!(world.systems[alliance_hq].is_headquarters);
+    fn a_bombardment_destroying_the_headquarters_clears_the_alliance_hq_facility() {
+        let (mut world, alliance_hq, _) = make_world();
+        headquarters_bombarded(&mut world, alliance_hq);
+        assert!(!world.systems[alliance_hq].is_headquarters);
     }
 
     #[test]
@@ -461,18 +404,7 @@ mod tests {
     fn bombardment_then_occupation_completes_imperial_hq_objective() {
         let (mut world, alliance_hq, empire_hq) = make_world();
         let state = VictoryState::new(alliance_hq, empire_hq);
-        let result = BombardmentResult {
-            system: alliance_hq,
-            damage: 1,
-            tick: 1,
-        };
-
-        assert!(VictorySystem::apply_headquarters_bombardment(
-            &state,
-            &mut world,
-            &result,
-            Faction::Empire,
-        ));
+        headquarters_bombarded(&mut world, alliance_hq);
         world.systems[alliance_hq].control = ControlKind::Controlled(Faction::Empire);
 
         assert!(matches!(
