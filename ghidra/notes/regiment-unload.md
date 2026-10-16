@@ -173,8 +173,11 @@ no source in this trace.
   way to it. A regiment bound for a fleet dies with the fleet and follows a
   merge. A destination planet destroyed, or a fleet gone, loses it on
   arrival. The save carries the transits (v25).
-- port: the leg builder's `+0x58` bit 1 fleet and the side-3, `+0x88` bit 1
-  planet are not modelled; a fleet's room is the whole fleet's.
+- port: the leg builder's `+0x58` bit 1 fleet is not modelled; a fleet's
+  room is the whole fleet's. The explored (`+0x88` bit 2), unpopulated
+  (`+0x88` bit 1 clear), neutral (`+0x24 & 0xc0 == 0xc0`) planet that
+  `FUN_005073d0` lets a regiment land on is modelled since 2026-10-16
+  (`TroopTransportState::accept_planet`).
 - port: a regiment leaving a planet on its own takes no departure roll. Its
   withdraw percent is 100 unless it entered the planet while blockaded,
   which a Move cannot do (`FUN_005073d0`'s `0x90`/4).

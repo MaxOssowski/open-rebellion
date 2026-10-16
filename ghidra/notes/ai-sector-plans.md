@@ -700,12 +700,45 @@ opponent holds a system in it. The strategy names it for a sector without
   `FUN_005f50e0`), no base, and the fleet record's `+0x38` without
   `0xa00`, it takes a random system of the sector (`FUN_0041a460`:
   forbidding `+0x2c` `0x8000000` and `+0x30` `0x700201`, order 1). That
-  is a system not the side's and not marked.
+  is a system not yet explored (`+0x2c` `0x8000000` is the explored bit),
+  not the side's and not marked.
 
-Open for the port:
+Open for the port (closed by stage 6b below):
 - the occupier and its landing order;
 - whether the port's regiment move lets a regiment land on a neutral
   planet (`FUN_005073d0`'s test for a Move `0x201` to a system).
+
+## Ported (2026-10-16, save v57): kind 5's plan object
+
+`ai_planner::ported_kind` takes kind 5. `ai_planner.rs`: the request
+(`FUN_004b17b0`), the wants (`FUN_004b3300`), the report
+(`FUN_004b1760`). `ai_plan.rs`:
+- the base (`FUN_004b24b0`) is kind 4's code with kind 5's marks;
+- boarding (`FUN_004b28c0`) goes by defense while the sector holds no
+  opponent system;
+- the occupier (`occupy_target`, `FUN_004b2f40`, state 10, role
+  `0x80000000`, `fleet_occupies` = `FUN_004ae440`) and its landing in
+  state `0xe` (`land_one`, `FUN_004b1440`, the role kept while
+  `FUN_004ae440` holds);
+- the bombarder's lists (`FUN_004b3110`);
+- the lone fleet's trip to an unexplored system (`FUN_004b3400`).
+
+`TroopTransportState`'s planet acceptance now lets a regiment land on an
+explored, unpopulated, neutral planet (`FUN_005073d0`). That is the
+landing the occupier relies on, and the player's Move gets it too. No save
+change.
+
+port:
+- The simulation's automatic landing of carried regiments (step 3b) still
+  lands them only on their side's planets.
+- The mission reports (slots `+0x24..+0x30`) are not read.
+
+Campaigns: no 600-day campaign of seeds 1, 2, 3, 7, 13, 42 and 47 names a
+kind 5 plan, so their event streams are unchanged. Over 1000 days, seeds 3
+and 26 name one (days 730 and 647). Its cycle then replaces the stand-in's
+fleet heuristics, and in seed 26 it boards a regiment. No occupation
+happens in these campaigns.
+
 
 ## Ported (2026-10-16, save v57): the planner's request
 

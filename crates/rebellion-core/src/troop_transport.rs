@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::dat::Faction;
 use crate::ids::{FleetKey, SystemKey, TroopKey};
 use crate::movement::{default_speed, transit_ticks_between, MovementState};
-use crate::world::GameWorld;
+use crate::world::{ControlKind, GameWorld};
 
 /// Persistent regiment cargo keyed by its carrying fleet.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -291,9 +291,12 @@ impl TroopTransportState {
     /// GNPRTB 1 rate of `FUN_004f63f0`. A regiment boarding a fleet is held
     /// aboard, as by [`Self::load`].
     ///
+    /// A neutral planet (side bits `0xc0`), explored (`+0x88` bit 2) and
+    /// unpopulated (`+0x88` bit 1 clear), takes a regiment too
+    /// (`FUN_005073d0`), unless it is blockaded.
+    ///
     /// port: the leg builder's first pick, a fleet with `+0x58` bit 1, is
-    /// skipped (who sets that bit is untraced), and so is the side-3
-    /// planet with `+0x88` bit 1 that `FUN_005073d0` lets a regiment land on.
+    /// skipped (who sets that bit is untraced).
     ///
     /// # Errors
     /// Returns the refusal, and then nothing changes.
@@ -495,9 +498,18 @@ impl TroopTransportState {
             .systems
             .get(system)
             .ok_or(TroopTransportError::MissingSystem)?;
+        // FUN_005073d0 lifts FUN_00553410's refusal for a regiment when the
+        // system is explored (+0x88 & 2), unpopulated (+0x88 & 1 clear) and
+        // neutral (+0x24 & 0xc0 == 0xc0).
+        let open_neutral = value.exploration_status == crate::dat::ExplorationStatus::Explored
+            && !value.is_populated
+            && matches!(
+                value.control,
+                ControlKind::Uncontrolled | ControlKind::Controlled(Faction::Neutral)
+            );
         if value.is_destroyed {
             Err(TroopTransportError::DestinationDestroyed)
-        } else if !value.control.is_controlled_by(side(is_alliance)) {
+        } else if !value.control.is_controlled_by(side(is_alliance)) && !open_neutral {
             Err(TroopTransportError::OtherSideDestination)
         } else if blockaded.contains(&system) {
             Err(TroopTransportError::DestinationBlockaded)
@@ -1445,6 +1457,83 @@ mod tests {
         assert!(state.cargo(full).is_empty());
         assert_eq!(state.cargo(roomy), &troops[..1]);
         assert!(state.is_held(roomy));
+    }
+
+    // FUN_005073d0 lifts FUN_00553410's refusal for a regiment (0x204,
+    // 0x10..0x14) at a system that is explored (+0x88 & 2), unpopulated
+    // (+0x88 & 1 clear) and neutral (+0x24 & 0xc0 == 0xc0); the blockade's
+    // 0x90/4 still stands.
+    #[test]
+    fn a_regiment_lands_on_an_explored_unpopulated_neutral_planet() {
+        let neutral = |world: &mut GameWorld, origin: SystemKey| {
+            let s = &mut world.systems[origin];
+            (s.control, s.is_populated) = (ControlKind::Uncontrolled, false);
+        };
+        let (mut world, origin, _, fleet, troops) = alliance_world(1);
+        neutral(&mut world, origin);
+        let mut state = TroopTransportState::new();
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        let moved = move_to(
+            &mut state,
+            &mut world,
+            troops[0],
+            RegimentTarget::System(origin),
+        );
+        assert_eq!(
+            moved,
+            Ok(RegimentMove::Placed(RegimentLeg::Surface(origin)))
+        );
+        assert!(world.systems[origin].ground_units.contains(&troops[0]));
+
+        // Controlled(Neutral) is neutral too.
+        let (mut world, origin, _, fleet, troops) = alliance_world(1);
+        neutral(&mut world, origin);
+        world.systems[origin].control = ControlKind::Controlled(Faction::Neutral);
+        let mut state = TroopTransportState::new();
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        let moved = move_to(
+            &mut state,
+            &mut world,
+            troops[0],
+            RegimentTarget::System(origin),
+        );
+        assert_eq!(
+            moved,
+            Ok(RegimentMove::Placed(RegimentLeg::Surface(origin)))
+        );
+
+        // Not when unexplored, populated or blockaded.
+        let edits: [fn(&mut System); 2] = [
+            |s| s.exploration_status = ExplorationStatus::Unexplored,
+            |s| s.is_populated = true,
+        ];
+        for edit in edits {
+            let (mut world, origin, _, fleet, troops) = alliance_world(1);
+            neutral(&mut world, origin);
+            edit(&mut world.systems[origin]);
+            let mut state = TroopTransportState::new();
+            state.load(&mut world, fleet, &troops[..1]).unwrap();
+            let moved = move_to(
+                &mut state,
+                &mut world,
+                troops[0],
+                RegimentTarget::System(origin),
+            );
+            assert_eq!(moved, Err(TroopTransportError::OtherSideDestination));
+        }
+        let (mut world, origin, _, fleet, troops) = alliance_world(1);
+        neutral(&mut world, origin);
+        let mut state = TroopTransportState::new();
+        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        let moved = state.move_regiment(
+            &mut world,
+            &MovementState::new(),
+            &HashSet::from([origin]),
+            troops[0],
+            RegimentTarget::System(origin),
+            10,
+        );
+        assert_eq!(moved, Err(TroopTransportError::DestinationBlockaded));
     }
 
     // FUN_005073d0: 0x90/4 for a blockaded planet, which a regiment keeps

@@ -453,7 +453,10 @@ impl SectorPlanner {
     /// `+0x40` with the floor controller `+0x16c`.
     ///
     /// Kind 4, `FUN_004b8b70`: [`Self::choose_target`] first, then
-    /// [`Self::want_invasion`].
+    /// [`Self::want_invasion`]. Kind 5, `FUN_004b3300`: 1.5 times the
+    /// sector's `+0x190` and `+0x194` (the latter with the floor controller
+    /// `+0x168` only with an opponent system, `+0x2c` 8), 1.2 times its
+    /// `+0x138` with `+0x198`, `+0x3c` at least 1, then kind 4's tail.
     ///
     /// hyp: controller `+0x164`, `+0x168`, `+0x16c` and `+0x174` have no
     /// writer found and read as 0.
@@ -471,6 +474,28 @@ impl SectorPlanner {
         };
         let v = |offset| r.values[sector_at(offset)];
         let w = &mut self.wanted;
+        if self.kind == 5 {
+            // FUN_004b3300.
+            w[0] = w[0].max(v(0x190) * 3 / 2);
+            let mut ships = v(0x194) * 3 / 2;
+            if r.summary & 8 != 0 {
+                // Controller +0x168 (read as 0) when higher.
+                ships = ships.max(0);
+            }
+            w[1] = w[1].max(ships);
+            w[3] = w[3].max((v(0x138) + v(0x198)) * 12 / 10);
+            w[2] = w[2].max(1);
+            if io.controller_flags & 4 != 0 && v(0x19c) > 0 {
+                w[4] = 1;
+            }
+            if io.controller_flags & 0x100_0000 != 0 {
+                w[6] = 1;
+            }
+            w[7] = self.held[0];
+            w[8] = self.held[1];
+            w[9] = 1;
+            return;
+        }
         match self.kind {
             1 => {
                 w[0] = w[0].max(v(0x190) * 12 / 10);
@@ -500,12 +525,24 @@ impl SectorPlanner {
     /// The planner's request (`FUN_00476b70`, the plan object's slot
     /// `+0x0c`): kind 4's (`FUN_004b7100`), with both records, is its
     /// base's garrison term `v[20]` less its `v[16]`, plus the target's
-    /// garrison need `v[52]`; kinds 1 to 3's slot is `0x6158b0` (0).
+    /// garrison need `v[52]`; kind 5's (`FUN_004b17b0`), with the sector's
+    /// and the base's records, the base's `v[20]` less its `v[16]`, less
+    /// the sector's own systems (`+0x78`), plus 10; kinds 1 to 3's slot is
+    /// `0x6158b0` (0).
     ///
-    /// port: kinds 5 and 6's slots (`FUN_004b17b0`, `FUN_004b4df0`) are not
-    /// ported and ask for nothing.
+    /// port: kind 6's slot (`FUN_004b4df0`) is not ported and asks for
+    /// nothing.
     #[must_use]
     pub fn request(&self, galaxy: &Galaxy) -> i32 {
+        if self.kind == 5 {
+            let (Some(sector), Some(base)) = (
+                self.sector.and_then(|s| galaxy.sector(s)),
+                self.base.and_then(|b| galaxy.system(b)),
+            ) else {
+                return 0;
+            };
+            return base.values[20] - base.values[16] - sector.values[sector_at(0x78)] + 10;
+        }
         if self.kind != 4 {
             return 0;
         }
@@ -925,6 +962,12 @@ impl SectorPlanner {
                     {
                         self.flags |= 0x2_0000;
                     }
+                } else if self.kind == 5 {
+                    // FUN_004b1760: while the sector is not wholly the
+                    // side's (+0x2c 2) or holds an opponent's system (8).
+                    if summary & 2 == 0 || summary & 8 != 0 {
+                        self.flags |= 0x2_0000;
+                    }
                 } else if summary & bit != 0 {
                     self.flags |= 0x2_0000;
                 } else if self.kind == 2 {
@@ -990,9 +1033,10 @@ impl SectorPlanner {
 }
 
 /// The plan kinds whose plan object's slots are ported: 1 (vtable
-/// `0x65c2c0`), 2 (`0x65c268`), 3 (`0x65c160`) and 4 (`0x65c210`).
+/// `0x65c2c0`), 2 (`0x65c268`), 3 (`0x65c160`), 4 (`0x65c210`) and 5
+/// (`0x65c108`).
 pub(crate) fn ported_kind(kind: u32) -> bool {
-    matches!(kind, 1..=4)
+    matches!(kind, 1..=5)
 }
 
 /// `FUN_0041b2b0`: of the sectors but `from`, by squared distance (the
@@ -1027,7 +1071,11 @@ pub(crate) fn nearest_sector_system(
 /// `FUN_0041a460` -> `FUN_00431f40`: `sector`'s systems passing `masks`,
 /// each keyed on a draw below 10 as it goes into the list (order 1),
 /// picked.
-fn random_system(io: &mut PlannerIo<'_>, sector: SectorKey, masks: [Mask; 3]) -> Option<SystemKey> {
+pub(crate) fn random_system(
+    io: &mut PlannerIo<'_>,
+    sector: SectorKey,
+    masks: [Mask; 3],
+) -> Option<SystemKey> {
     let systems: Vec<SystemKey> = io
         .galaxy
         .sector(sector)?
@@ -1362,7 +1410,7 @@ pub(crate) mod tests {
         assert_eq!(p.flags, CYCLED | REVIEWED | 0x2_0000 | 0x1_0000);
         // Another kind's planner stands in for its whole cycle.
         let mut other = SectorPlanner {
-            kind: 5,
+            kind: 6,
             ..planner(&fx)
         };
         assert_eq!(with(&mut fx, |io| other.step(io)), PlannerStep::StandIn);
@@ -1635,7 +1683,7 @@ pub(crate) mod tests {
         let fx = fixture();
         let flags = |requests| {
             let mut p = SectorPlanner {
-                kind: 5,
+                kind: 6,
                 requests,
                 ..planner(&fx)
             };
@@ -1930,7 +1978,7 @@ pub(crate) mod tests {
         with(&mut fx, |io| p.want(io));
         assert_eq!((p.wanted[0], p.wanted[3]), (18, 18));
         let mut other = SectorPlanner {
-            kind: 5,
+            kind: 6,
             ..planner(&fx)
         };
         with(&mut fx, |io| other.want(io));
@@ -2247,14 +2295,14 @@ pub(crate) mod tests {
         p.flags = 0;
         with(&mut fx, |io| p.report(io));
         assert_eq!(p.flags & 0x2_0000, 0x2_0000);
-        // Kind 5's slots are not ported: it hands over (kind 4 until stage
-        // 5g of module 8).
-        let mut five = SectorPlanner {
-            kind: 5,
+        // Kind 6's slots are not ported: it hands over (kind 4 until stage
+        // 5g and kind 5 until stage 6b of module 8).
+        let mut six = SectorPlanner {
+            kind: 6,
             ..planner(&fx)
         };
-        five.resync = false;
-        assert_eq!(with(&mut fx, |io| five.step(io)), PlannerStep::StandIn);
+        six.resync = false;
+        assert_eq!(with(&mut fx, |io| six.step(io)), PlannerStep::StandIn);
     }
 
     #[test]
@@ -2496,5 +2544,95 @@ pub(crate) mod tests {
         assert_eq!(p.request(&fx.galaxy), 0);
         (p.plan_target, p.base) = (Some(target), None);
         assert_eq!(p.request(&fx.galaxy), 0);
+    }
+
+    #[test]
+    fn kind_five_asks_for_a_regiment_per_system_not_yet_the_side_s() {
+        // FUN_004b17b0: with the sector record (+0x34) and the base's,
+        // base +0x98 - +0x88 - sector +0x78 + 10; else 0.
+        let mut fx = fixture();
+        let base = fx.systems[0];
+        let r = fx.galaxy.system_mut(base).unwrap();
+        (r.values[20], r.values[16]) = (5, 1);
+        fx.galaxy.sectors[0].values[sector_at(0x78)] = 7;
+        let mut p = planner(&fx);
+        (p.kind, p.base) = (5, Some(base));
+        assert_eq!(p.request(&fx.galaxy), 7);
+        p.sector = None;
+        assert_eq!(p.request(&fx.galaxy), 0);
+        p.sector = Some(fx.sectors[0]);
+        p.base = None;
+        assert_eq!(p.request(&fx.galaxy), 0);
+    }
+
+    #[test]
+    fn kind_five_wants_half_again_its_sector_s_threat_and_one_regiment() {
+        // FUN_004b3300: +0x34 1.5 x +0x190; +0x38 1.5 x +0x194 (or
+        // controller +0x168, read as 0, with +0x2c 8); +0x40 1.2 x (+0x138
+        // + +0x198); +0x3c at least 1; +0x44 1 with controller +4 bit 4 and
+        // +0x19c above 0; +0x4c 1 with 0x1000000; +0x50, +0x54 the
+        // planner's +0x94, +0x98; +0x58 1. Each never less than before.
+        let mut fx = fixture();
+        {
+            let s = &mut fx.galaxy.sectors[0];
+            s.values[sector_at(0x190)] = 10;
+            s.values[sector_at(0x194)] = -4;
+            s.values[sector_at(0x138)] = 3;
+            s.values[sector_at(0x198)] = 7;
+            s.values[sector_at(0x19c)] = 1;
+            s.summary &= !8;
+        }
+        let mut p = SectorPlanner {
+            kind: 5,
+            held: [2, 3],
+            ..planner(&fx)
+        };
+        p.wanted[1] = -9;
+        with(&mut fx, |io| p.want(io));
+        assert_eq!(p.wanted, [15, -6, 1, 12, 0, 0, 0, 2, 3, 1]);
+        fx.galaxy.sectors[0].summary |= 8;
+        p.wanted[1] = -9;
+        with(&mut fx, |io| {
+            io.controller_flags = 0x100_0004;
+            p.want(io);
+        });
+        assert_eq!(p.wanted, [15, 0, 1, 12, 1, 0, 1, 2, 3, 1]);
+        // +0x44 needs +0x19c above 0.
+        fx.galaxy.sectors[0].values[sector_at(0x19c)] = 0;
+        p.wanted[4] = 0;
+        with(&mut fx, |io| {
+            io.controller_flags = 4;
+            p.want(io);
+        });
+        assert_eq!(p.wanted[4], 0);
+        // Without the sector record nothing changes.
+        let mut q = SectorPlanner {
+            kind: 5,
+            sector: None,
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| q.want(io));
+        assert_eq!(q.wanted, [0; 10]);
+    }
+
+    #[test]
+    fn kind_five_reports_work_while_its_sector_is_not_wholly_the_side_s() {
+        // FUN_004b1760: 0x4000000, with the sector record 0x8000000, and
+        // 0x20000 while +0x2c lacks 2 or has 8.
+        let mut fx = fixture();
+        let mut p = SectorPlanner {
+            kind: 5,
+            ..planner(&fx)
+        };
+        let mut report = |summary: u32| {
+            let s = &mut fx.galaxy.sectors[0];
+            s.summary = (s.summary & !0xa) | summary;
+            p.flags = 0;
+            with(&mut fx, |io| p.report(io));
+            p.flags & (CYCLED | REVIEWED | 0x2_0000)
+        };
+        assert_eq!(report(2), CYCLED | REVIEWED);
+        assert_eq!(report(0), CYCLED | REVIEWED | 0x2_0000);
+        assert_eq!(report(0xa), CYCLED | REVIEWED | 0x2_0000);
     }
 }

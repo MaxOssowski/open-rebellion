@@ -1,0 +1,145 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks T --dual-ai, against the stage 6a build (HEAD 2abcb933)",
+  "trace": "temporary (removed): over 600 days seeds 1, 2, 3, 7, 13, 42, 47 name no kind 5 plan; over 1000 days, of seeds 1..30 only 3 and 26 do",
+  "600_days_identical_event_streams": [
+    1,
+    2,
+    3,
+    7,
+    13,
+    42,
+    47
+  ],
+  "1000_days": {
+    "3": {
+      "changed_counts_6a_to_6b": {
+        "ai_action": [
+          662,
+          678
+        ],
+        "combat_space": [
+          4,
+          2
+        ],
+        "fleet_arrived": [
+          41,
+          44
+        ],
+        "manufacturing_complete": [
+          130,
+          137
+        ],
+        "manufacturing_idle": [
+          76,
+          83
+        ],
+        "units_deployed": [
+          130,
+          137
+        ]
+      },
+      "ai_action_types_changed": {
+        "Build": [
+          128,
+          136
+        ],
+        "CreateFleet": [
+          26,
+          27
+        ],
+        "MoveFleet": [
+          5,
+          7
+        ],
+        "MoveSquadrons": [
+          15,
+          18
+        ],
+        "Scrap": [
+          43,
+          47
+        ],
+        "SetDestination": [
+          87,
+          85
+        ]
+      },
+      "first_difference": "day 730: the kind 5 planner's own cycle (CreateFleet at Selonia to Coruscant) replaces the stand-in's MoveFleet"
+    },
+    "26": {
+      "changed_counts_6a_to_6b": {
+        "ai_action": [
+          390,
+          531
+        ],
+        "economy_tick": [
+          619,
+          349
+        ],
+        "fleet_arrived": [
+          10,
+          15
+        ],
+        "manufacturing_complete": [
+          117,
+          184
+        ],
+        "manufacturing_idle": [
+          70,
+          136
+        ],
+        "mission_dispatched": [
+          116,
+          108
+        ],
+        "resource_discovery": [
+          10,
+          13
+        ],
+        "units_deployed": [
+          117,
+          184
+        ]
+      },
+      "ai_action_types_changed": {
+        "BoardRegiments": [
+          0,
+          1
+        ],
+        "Build": [
+          112,
+          179
+        ],
+        "CreateFleet": [
+          9,
+          10
+        ],
+        "DispatchMission": [
+          116,
+          108
+        ],
+        "JoinFleet": [
+          2,
+          3
+        ],
+        "MoveFleet": [
+          5,
+          9
+        ],
+        "MoveShips": [
+          1,
+          2
+        ],
+        "Scrap": [
+          55,
+          126
+        ],
+        "SetDestination": [
+          68,
+          71
+        ]
+      },
+      "first_difference": "day 647: the kind 5 planner's own cycle (CreateFleet to Ord Trasi)"
+    }
+  }
+}

@@ -7728,28 +7728,29 @@ mod tests {
         state.module8.next_id = 2;
     }
 
-    /// A sector planner of kind 5, which the port's fleet heuristics stand
-    /// in for (kinds 1 to 4's plan objects are ported; kind 4 until stage
-    /// 5g of module 8 served here), under posture 1 kept
+    /// A sector planner of kind 6, which the port's fleet heuristics stand
+    /// in for (kinds 1 to 5's plan objects are ported; kind 4 until stage
+    /// 5g and kind 5 until stage 6b of module 8 served here), under posture
+    /// 1 kept
     /// from the start so the strategy does not name the sector again (it
     /// would name it kind 3, `FUN_004bf490`).
     fn with_stand_in_planner(state: &mut AIState, world: &GameWorld) {
         with_sector_planner(state, world);
         state.strategy.posture = 1;
         state.strategy.kind = 1;
-        state.strategy.plans[0].kind = 5;
-        state.module8.planners[0].kind = 5;
+        state.strategy.plans[0].kind = 6;
+        state.module8.planners[0].kind = 6;
     }
 
     /// Module 8 in state 4 with its cycle's orders decided by the stand-in
-    /// for a kind 5 planner.
+    /// for a kind 6 planner.
     fn fleets_mid_cycle(state: &mut AIState) {
         state.module8.state = 4;
         state.module8.current = 1;
         state.module8.decided = true;
         state.module8.planners = vec![crate::ai_module8::SectorPlanner {
             id: 1,
-            kind: 5,
+            kind: 6,
             ..crate::ai_module8::SectorPlanner::default()
         }];
     }
@@ -8616,8 +8617,8 @@ mod tests {
         let _ = add_system(&mut world, sector, 0.9, 0.1);
         let mut state = AIState::new(AiFaction::Alliance);
         with_sector_planner(&mut state, &world);
-        state.strategy.plans[0].kind = 5;
-        state.module8.planners[0].kind = 5;
+        state.strategy.plans[0].kind = 6;
+        state.module8.planners[0].kind = 6;
         state.module_cursor = Some(FLEETS - 1);
         assert!(cadence_pass(&mut state, &world).is_empty());
         assert_eq!(state.module8.state, 0);

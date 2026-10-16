@@ -2062,6 +2062,18 @@ cross-runtime proof remain open
   the first planned sector's base. In seed 1 it sends one regiment to
   Sullust on day 22. No save change; golden unchanged
   (`evidence/2026-10-16-carried-regiments/`).
+- Module 8, stages 6a and 6b (2026-10-16): kind 5's plan object read and
+  ported. It consolidates the side's own sector:
+  - its request asks for a regiment per system not yet the side's;
+  - its base takes `0x60000`;
+  - boarding goes by defense;
+  - an occupier role (`0x80000000`) lands one regiment at a time on a
+    neutral, unpopulated system;
+  - its bombarder targets the opponent's systems;
+  - a lone fleet without a base scouts an unexplored system.
+  A regiment may now land on an explored, unpopulated, neutral planet
+  (`FUN_005073d0`), which the player's Move gets too. No save change;
+  golden unchanged (`evidence/2026-10-16-ai-plan-kind5/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

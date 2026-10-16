@@ -5,8 +5,8 @@
 //! and the roles' orders (`ghidra/notes/ai-sector-plans.md`, "The plan
 //! object's step").
 //!
-//! port: only kinds 1 to 4's slots are ported (vtables `0x65c2c0`,
-//! `0x65c268`, `0x65c160`, `0x65c210`).
+//! port: only kinds 1 to 5's slots are ported (vtables `0x65c2c0`,
+//! `0x65c268`, `0x65c160`, `0x65c210`, `0x65c108`).
 
 use crate::ai::AIAction;
 use crate::ai_module1::ANY;
@@ -42,11 +42,13 @@ const ROLE_ASSAULT: u32 = 0x2000_0000;
 /// Role `0x40000000`: bombard the target (`FUN_004b4730`), marked
 /// `0x400000` on the system.
 const ROLE_BOMBARD: u32 = 0x4000_0000;
+/// Role `0x80000000`: land regiments on a neutral system (kind 5's
+/// `FUN_004b2f40`), marked `0x1000000` on the system.
+const ROLE_OCCUPY: u32 = 0x8000_0000;
 /// Each role and the mark it puts on its target system, in the order
-/// `FUN_004af6d0` tests them: `0x80000000` and `0x20000000` belong to other
-/// kinds' slots (`FUN_004ae440`, `FUN_004ae240`).
+/// `FUN_004af6d0` tests them.
 const ROLE_MARK_OF: [(u32, u32); 4] = [
-    (0x8000_0000, 0x100_0000),
+    (ROLE_OCCUPY, 0x100_0000),
     (ROLE_ATTACK, 0x10_0000),
     (ROLE_ASSAULT, 0x20_0000),
     (ROLE_BOMBARD, 0x40_0000),
@@ -63,6 +65,36 @@ const FLAGSHIP_STAYS: u32 = 0x100_0000;
 /// Planner `+0x60` bit `0x4000000` read by `FUN_004b06b0`: the
 /// flagship's fleet goes to `+0x3c`.
 const FLAGSHIP_MOVES: u32 = 0x400_0000;
+
+/// The base marks of kinds 4 and 5's slot `+0x34`.
+#[derive(Debug, Clone, Copy)]
+struct BaseMarks {
+    /// Taken by the base.
+    set: u32,
+    /// Dropped as it takes them.
+    clear: u32,
+    /// A kept base with this bit is left as it is.
+    kept: u32,
+    /// Dropped with a lost base.
+    release: u32,
+}
+
+/// Kind 4's (`FUN_004b8070`): `| 0x50000`, released `& 0xfffaffff`.
+const INVASION_MARKS: BaseMarks = BaseMarks {
+    set: 0x5_0000,
+    clear: 0,
+    kept: 0x1_0000,
+    release: 0x5_0000,
+};
+
+/// Kind 5's (`FUN_004b24b0`): `& 0xfffeffff | 0x60000`, released
+/// `& 0xfff8ffff`.
+const CONSOLIDATION_MARKS: BaseMarks = BaseMarks {
+    set: 0x6_0000,
+    clear: 0x1_0000,
+    kept: 0x2_0000,
+    release: BASES,
+};
 
 /// Where state `0xc` sends the step's fleet (`FUN_004b0c90`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,17 +116,17 @@ impl SectorPlanner {
                 None
             }
             2 => {
-                let based = if self.kind == 4 {
-                    self.invasion_base(io)
-                } else {
-                    self.choose_base(io)
+                let based = match self.kind {
+                    4 => self.invasion_base(io, INVASION_MARKS),
+                    5 => self.invasion_base(io, CONSOLIDATION_MARKS),
+                    _ => self.choose_base(io),
                 };
                 self.plan_state = if based { 3 } else { 5 };
                 None
             }
             3 => {
                 self.plan_state = 4;
-                if self.kind == 4 {
+                if matches!(self.kind, 4 | 5) {
                     self.board(io)
                 } else {
                     self.unload(io)
@@ -118,7 +150,7 @@ impl SectorPlanner {
                 None
             }
             // Slot +0x40: kind 4's assault (FUN_004b8ab0); the other ported
-            // kinds' (and every +0x48) are 0x6158b0, which returns 0.
+            // kinds' are 0x6158b0, which returns 0.
             8 => {
                 self.plan_state = if self.kind == 4 && self.assault_target(io) {
                     0xd
@@ -127,8 +159,10 @@ impl SectorPlanner {
                 };
                 None
             }
+            // Slot +0x48: kind 5's occupier (FUN_004b2f40); the other
+            // ported kinds' are 0x6158b0.
             10 => {
-                self.plan_state = 9;
+                self.plan_state = if self.occupy_target(io) { 0xd } else { 9 };
                 None
             }
             9 => {
@@ -571,28 +605,28 @@ impl SectorPlanner {
         true
     }
 
-    /// State 2, kind 4's slot `+0x34` (`FUN_004b8070`): a base (planner
-    /// `+0x40`) whose record is not the side's (`+0x30` 1) or is blockaded
-    /// (`+0x28` 2) loses `0x50000` and goes; else it takes `0x50000` unless
-    /// it has `0x10000`, and the slot is true. Without a base: the sector's
-    /// own headquarters not blockaded and no base (`+0x28` `0x80000000`
-    /// forbidding 2, `+0x30` 1 forbidding `0x40000`; key `0x13`, order 1),
-    /// else such a system of any kind, else one of the nearest sector that
-    /// has one (`FUN_0041b2b0`); it takes `0x50000`. A base without a
-    /// record stays and the slot is false.
-    fn invasion_base(&mut self, io: &mut PlannerIo<'_>) -> bool {
-        const MARKS: u32 = 0x5_0000;
+    /// State 2, kind 4's slot `+0x34` (`FUN_004b8070`) and kind 5's
+    /// (`FUN_004b24b0`), with their [`BaseMarks`]: a base (planner `+0x40`)
+    /// whose record is not the side's (`+0x30` 1) or is blockaded (`+0x28`
+    /// 2) loses the release marks and goes; else it takes the marks unless
+    /// it has the kept bit, and the slot is true. Without a base: the
+    /// sector's own headquarters not blockaded and no base (`+0x28`
+    /// `0x80000000` forbidding 2, `+0x30` 1 forbidding `0x40000`; key
+    /// `0x13`, order 1), else such a system of any kind, else one of the
+    /// nearest sector that has one (`FUN_0041b2b0`); it takes the marks. A
+    /// base without a record stays and the slot is false.
+    fn invasion_base(&mut self, io: &mut PlannerIo<'_>, marks: BaseMarks) -> bool {
         if let Some(base) = self.base {
             let Some(r) = io.galaxy.system(base) else {
                 return false;
             };
             let (state, kind) = (r.state, r.kind);
             if kind & 1 == 0 || state & 2 != 0 {
-                io.set_kind(base, 0, MARKS);
+                io.set_kind(base, 0, marks.release);
                 self.base = None;
             } else {
-                if kind & 0x1_0000 == 0 {
-                    io.set_kind(base, MARKS, 0);
+                if kind & marks.kept == 0 {
+                    io.set_kind(base, marks.set, marks.clear);
                 }
                 return true;
             }
@@ -622,8 +656,47 @@ impl SectorPlanner {
         let Some(base) = self.base.filter(|&b| io.galaxy.system(b).is_some()) else {
             return false;
         };
-        io.set_kind(base, MARKS, 0);
+        io.set_kind(base, marks.set, marks.clear);
         true
+    }
+
+    /// State 10, kind 5's slot `+0x48` (`FUN_004b2f40`): a step's fleet
+    /// with regiments (`values[12]`) takes the first of the sector's
+    /// neutral systems (`+0x30` 2, forbidding `0x100208`; key `0xf`, order
+    /// 1) where it can land ([`fleet_occupies`]): the system takes
+    /// `0x1000000`, the fleet the target and [`ROLE_OCCUPY`]. True when
+    /// bound.
+    fn occupy_target(&mut self, io: &mut PlannerIo<'_>) -> bool {
+        if self.kind != 5 {
+            return false;
+        }
+        let (Some(fleet), Some(sector)) = (self.plan_fleet, self.sector) else {
+            return false;
+        };
+        if io
+            .galaxy
+            .fleets
+            .get(&fleet)
+            .is_none_or(|r| r.values[12] < 1)
+        {
+            return false;
+        }
+        let mut coin = || (io.random)(10) < 5;
+        let systems = io.galaxy.system_query(
+            sector,
+            [ANY, ANY, Mask::new(2, 0x10_0208)],
+            0xf,
+            Order::Ascending,
+            &mut coin,
+        );
+        for system in picks(vec![systems]) {
+            if fleet_occupies(io, fleet, system) {
+                io.set_kind(system, 0x100_0000, 0);
+                bind(io, fleet, system, ROLE_OCCUPY);
+                return true;
+            }
+        }
+        false
     }
 
     /// State 3, kind 4's slot `+0x38` (`FUN_004b8470`): with the side's
@@ -633,11 +706,21 @@ impl SectorPlanner {
     /// `+0x1dc`, TROOPSD attack; the first of equals, each once), as many as
     /// the room and `v[19]` allow. Move `0x201` onto the fleet.
     ///
+    /// Kind 5's slot (`FUN_004b28c0`) needs the sector record too, and
+    /// takes the best defense (slot `+0x1e0`) while the sector holds no
+    /// opponent system (`+0x2c` 8).
+    ///
     /// hyp: the base's walk (`FUN_00504c40`) gives the side's regiments on
     /// the planet in its order.
     fn board(&mut self, io: &mut PlannerIo<'_>) -> Option<AIAction> {
         let base = self.base?;
         let present = io.galaxy.system(base)?.values[19];
+        let by_defense = if self.kind == 5 {
+            let sector = self.sector.and_then(|s| io.galaxy.sector(s))?;
+            sector.summary & 8 == 0
+        } else {
+            false
+        };
         if present < 1 {
             return None;
         }
@@ -659,20 +742,27 @@ impl SectorPlanner {
             .filter_map(|&t| {
                 let troop = io.world.troops.get(t)?;
                 (troop.is_alliance == is_alliance).then(|| {
-                    let attack = io
+                    let strength = io
                         .world
                         .troop_classes
                         .get(&troop.class_dat_id)
-                        .map_or(0, |c| i32::try_from(c.attack_strength).unwrap_or(i32::MAX));
-                    (t, attack)
+                        .map_or(0, |c| {
+                            let value = if by_defense {
+                                c.defense_strength
+                            } else {
+                                c.attack_strength
+                            };
+                            i32::try_from(value).unwrap_or(i32::MAX)
+                        });
+                    (t, strength)
                 })
             })
             .collect();
         let mut chosen: Vec<TroopKey> = Vec::new();
         for _ in 0..room.min(present) {
             let mut best: Option<(TroopKey, i32)> = None;
-            // The search starts at 0: a regiment without attack is never
-            // taken.
+            // The search starts at 0: a regiment without attack (or
+            // defense) is never taken.
             for &(t, attack) in &candidates {
                 if !chosen.contains(&t) && attack > best.map_or(0, |(_, top)| top) {
                     best = Some((t, attack));
@@ -695,7 +785,9 @@ impl SectorPlanner {
     /// (order 1), that it can bombard ([`bombardment`]): the system
     /// takes `0x400000`, the fleet the target and [`ROLE_BOMBARD`]. True
     /// when found. Kind 1's slot (`FUN_004bb300`) merges three lists:
-    /// key 8 (order 2), `0x21` and 0 (order 1).
+    /// key 8 (order 2), `0x21` and 0 (order 1). Kind 5's (`FUN_004b3110`)
+    /// takes the opponent's held systems (`+0x30` `0x24`) by key 8 (order
+    /// 2) and `0x21` (order 1).
     fn bombard_target(&mut self, io: &mut PlannerIo<'_>) -> bool {
         // Kinds 2 and 4's slot +0x44 is 0x6158b0, which returns 0.
         if matches!(self.kind, 2 | 4) {
@@ -707,17 +799,18 @@ impl SectorPlanner {
         if io.galaxy.fleets.get(&fleet).is_none_or(|r| r.values[6] < 1) {
             return false;
         }
-        let masks = [ANY, ANY, Mask::new(4, 0x70_0200)];
+        let held = if self.kind == 5 { 0x24 } else { 4 };
+        let masks = [ANY, ANY, Mask::new(held, 0x70_0200)];
         // Kind 1 (FUN_004bb300) merges key 8 (order 2), 0x21 and 0 (order
         // 1); kind 3 key 8 (order 2) and 0x10 (order 1).
-        let keys: &[(usize, Order)] = if self.kind == 1 {
-            &[
+        let keys: &[(usize, Order)] = match self.kind {
+            1 => &[
                 (8, Order::Descending),
                 (0x21, Order::Ascending),
                 (0, Order::Ascending),
-            ]
-        } else {
-            &[(8, Order::Descending), (0x10, Order::Ascending)]
+            ],
+            5 => &[(8, Order::Descending), (0x21, Order::Ascending)],
+            _ => &[(8, Order::Descending), (0x10, Order::Ascending)],
         };
         let mut coin = || (io.random)(10) < 5;
         let lists = keys
@@ -811,7 +904,11 @@ impl SectorPlanner {
     /// (`FUN_004ba0d0`) sends such a lone fleet, when its `values[2]` and
     /// `values[3]` reach controller `+0x164` and `+0x168` (read as 0), to
     /// the first system of the opponent not yet visited
-    /// ([`SectorPlanner::sweep_left`]), which joins the visited list.
+    /// ([`SectorPlanner::sweep_left`]), which joins the visited list. Kind 5
+    /// (`FUN_004b3400`) sends such a lone fleet, when the plan has no base,
+    /// to a random system of the sector not yet explored (`+0x2c`
+    /// `0x8000000`), not the side's and with no enemy fleet or role there
+    /// (`FUN_0041a460`).
     fn home(&mut self, io: &mut PlannerIo<'_>) -> Option<SystemKey> {
         let fleet = self
             .plan_fleet
@@ -835,6 +932,16 @@ impl SectorPlanner {
             {
                 self.visited.push(next);
                 return Some(next);
+            }
+        }
+        if lone && self.kind == 5 && self.base.is_none() {
+            // FUN_004b3400: a random system of the sector (FUN_0041a460)
+            // not explored (+0x2c 0x8000000) and without +0x30 0x700201.
+            if let Some(sector) = self.sector {
+                let masks = [ANY, Mask::new(0, 0x800_0000), Mask::new(0, 0x70_0201)];
+                if let Some(system) = crate::ai_planner::random_system(io, sector, masks) {
+                    return Some(system);
+                }
             }
         }
         if lone && self.kind == 1 {
@@ -986,6 +1093,13 @@ fn settle_role(io: &mut PlannerIo<'_>, fleet: FleetKey) -> Option<AIAction> {
                 system,
                 kind,
             });
+        } else if record.flags & ROLE_OCCUPY != 0 {
+            // FUN_004b1070: while FUN_004ae440 holds the role stays and
+            // FUN_004b1440 lands one regiment.
+            keep = fleet_occupies(io, fleet, system);
+            if keep {
+                order = land_one(io, fleet, system);
+            }
         }
     }
     if !keep {
@@ -1020,6 +1134,35 @@ fn fleet_assaults(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> boo
     record.values[3] >= shields
         && v[52] <= record.values[12]
         && (record.values[19] > 0 || troops <= record.values[9])
+}
+
+/// `FUN_004ae440`: whether `fleet` can land on `system`, a neutral system
+/// (`+0x30` 2) neither populated (8) nor with an enemy fleet (`0x200`),
+/// carrying regiments (`values[12]`).
+fn fleet_occupies(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> bool {
+    let (Some(target), Some(record)) = (io.galaxy.system(system), io.galaxy.fleets.get(&fleet))
+    else {
+        return false;
+    };
+    target.kind & 2 != 0 && target.kind & 0x208 == 0 && record.values[12] > 0
+}
+
+/// `FUN_004b1440`: the first ship of `fleet` whose record carries
+/// regiments (`values[9]`, `+0x68`) gives its first one, Move `0x201` to
+/// `system`.
+///
+/// port: a fleet's regiments are its cargo, which its first ship's record
+/// carries ([`crate::ai_records::FleetRecord::build`]).
+fn land_one(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> Option<AIAction> {
+    let record = io.galaxy.fleets.get(&fleet)?;
+    if !record.ships.iter().any(|s| s.values[9] > 0) {
+        return None;
+    }
+    let troop = *io.transport.cargo(fleet).first()?;
+    Some(AIAction::MoveRegiments {
+        troops: vec![troop],
+        to: system,
+    })
 }
 
 /// `FUN_004ae320`: the bombardment `fleet` would give `system`, a system
@@ -2882,14 +3025,14 @@ mod tests {
         let mut fx = fixture();
         let mut p = kind_four(&fx);
         p.base = Some(fx.systems[1]);
-        assert!(with(&mut fx, |io| p.invasion_base(io)));
+        assert!(with(&mut fx, |io| p.invasion_base(io, INVASION_MARKS)));
         assert_eq!(kind(&fx, 1) & 0x5_0000, 0x5_0000);
         // With 0x10000 already, nothing is added.
         let mut fx = fixture();
         let mut p = kind_four(&fx);
         p.base = Some(fx.systems[1]);
         edit_system(&mut fx, 1, |r| r.kind |= 0x1_0000);
-        assert!(with(&mut fx, |io| p.invasion_base(io)));
+        assert!(with(&mut fx, |io| p.invasion_base(io, INVASION_MARKS)));
         assert_eq!(kind(&fx, 1) & 0x5_0000, 0x1_0000);
         // Blockaded: dropped with its marks; a new one by key 0x13.
         let mut fx = fixture();
@@ -2900,7 +3043,7 @@ mod tests {
             r.kind |= 0x5_0000;
         });
         edit_system(&mut fx, 0, |r| r.values[0x13] = 1);
-        assert!(with(&mut fx, |io| p.invasion_base(io)));
+        assert!(with(&mut fx, |io| p.invasion_base(io, INVASION_MARKS)));
         assert_eq!(p.base, Some(fx.systems[0]));
         assert_eq!(kind(&fx, 1) & 0x5_0000, 0);
         assert_eq!(kind(&fx, 0) & 0x5_0000, 0x5_0000);
@@ -2910,7 +3053,7 @@ mod tests {
             let mut fx = fixture();
             let mut p = kind_four(&fx);
             fx.draws = vec![draw];
-            with(&mut fx, |io| p.invasion_base(io));
+            with(&mut fx, |io| p.invasion_base(io, INVASION_MARKS));
             chosen.push(p.base);
         }
         let fx = fixture();
@@ -2920,7 +3063,7 @@ mod tests {
         let mut p = kind_four(&fx);
         p.base = Some(fx.systems[1]);
         edit_system(&mut fx, 1, |r| r.kind &= !1);
-        with(&mut fx, |io| p.invasion_base(io));
+        with(&mut fx, |io| p.invasion_base(io, INVASION_MARKS));
         assert_ne!(p.base, Some(fx.systems[1]));
     }
 
@@ -3313,5 +3456,320 @@ mod tests {
         p.plan_state = 0xe;
         assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
         assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, 0);
+    }
+
+    fn kind_five(fx: &Fx) -> SectorPlanner {
+        SectorPlanner {
+            kind: 5,
+            ..planner(fx)
+        }
+    }
+
+    fn sector_mut(fx: &mut Fx) -> &mut crate::ai_records::SectorRecord {
+        let sector = fx.sectors[0];
+        fx.galaxy
+            .sectors
+            .iter_mut()
+            .find(|s| s.sector == sector)
+            .unwrap()
+    }
+
+    #[test]
+    fn kind_five_marks_its_base_0x60000_and_drops_the_invasion_mark() {
+        // FUN_004b24b0: a kept base without 0x20000 takes
+        // `& 0xfffeffff | 0x60000`; with 0x20000 it is left; a lost base
+        // drops 0x70000 (`& 0xfff8ffff`); a new one takes the same marks.
+        let mut fx = fixture();
+        let mut p = kind_five(&fx);
+        p.base = Some(fx.systems[1]);
+        edit_system(&mut fx, 1, |r| r.kind |= 0x1_0000);
+        assert!(with(&mut fx, |io| p.invasion_base(io, CONSOLIDATION_MARKS)));
+        assert_eq!(kind(&fx, 1) & BASES, 0x6_0000);
+        let mut fx = fixture();
+        edit_system(&mut fx, 1, |r| r.kind |= 0x3_0000);
+        assert!(with(&mut fx, |io| p.invasion_base(io, CONSOLIDATION_MARKS)));
+        assert_eq!(kind(&fx, 1) & BASES, 0x3_0000);
+        let mut fx = fixture();
+        edit_system(&mut fx, 1, |r| {
+            r.state |= 2;
+            r.kind |= BASES;
+        });
+        edit_system(&mut fx, 0, |r| r.values[0x13] = 1);
+        edit_system(&mut fx, 0, |r| r.kind |= 0x1_0000);
+        // Kind 5's step takes this base in state 2.
+        p.plan_state = 2;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+        assert_eq!((p.base, p.plan_state), (Some(fx.systems[0]), 3));
+        assert_eq!(kind(&fx, 1) & BASES, 0);
+        assert_eq!(kind(&fx, 0) & BASES, 0x6_0000);
+    }
+
+    #[test]
+    fn kind_five_boards_by_defense_unless_an_opponent_holds_a_system_there() {
+        // FUN_004b28c0: kind 4's boarding with the sector record; the best
+        // slot +0x1e0 (TROOPSD defense) while the sector's +0x2c lacks 8,
+        // else +0x1dc (attack).
+        let mut fx = fixture();
+        let mut p = kind_five(&fx);
+        let f = held(&mut fx, &mut p, 1, 1);
+        p.base = Some(fx.systems[1]);
+        let mut troop = |n: u32, attack: u32, defense: u32| {
+            let class = crate::ids::DatId::new(0x1000_0100 + n);
+            fx.world.troop_classes.insert(
+                class,
+                crate::world::TroopClassDef {
+                    attack_strength: attack,
+                    defense_strength: defense,
+                    detection: 0,
+                },
+            );
+            let t = fx.world.troops.insert(TroopUnit {
+                class_dat_id: class,
+                is_alliance: true,
+                regiment_strength: 100,
+            });
+            fx.world.systems[fx.systems[1]].ground_units.push(t);
+            t
+        };
+        let (raider, guard, mixed) = (troop(1, 7, 1), troop(2, 1, 6), troop(3, 3, 3));
+        edit_system(&mut fx, 1, |r| r.values[19] = 2);
+        record(&mut fx, f).values[22] = 2;
+        sector_mut(&mut fx).summary &= !8;
+        let board = |fx: &mut Fx, p: &mut SectorPlanner| with(fx, |io| p.board(io));
+        let onto = |troops| Some(AIAction::BoardRegiments { troops, fleet: f });
+        assert_eq!(board(&mut fx, &mut p), onto(vec![guard, mixed]));
+        // State 3 boards for kind 5 (slot +0x38).
+        p.plan_state = 3;
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Order(onto(vec![guard, mixed]))
+        );
+        sector_mut(&mut fx).summary |= 8;
+        assert_eq!(board(&mut fx, &mut p), onto(vec![raider, mixed]));
+        // Kind 4 goes by attack either way.
+        sector_mut(&mut fx).summary &= !8;
+        p.kind = 4;
+        assert_eq!(board(&mut fx, &mut p), onto(vec![raider, mixed]));
+        // Kind 5 without the sector record boards nothing.
+        p.kind = 5;
+        p.sector = None;
+        assert_eq!(board(&mut fx, &mut p), None);
+    }
+
+    /// Systems 0 and 1 neutral (`+0x30` 2) with their key `0xf`.
+    fn neutral(fx: &mut Fx, keys: [i32; 2]) {
+        for (at, key) in keys.into_iter().enumerate() {
+            edit_system(fx, at, |r| {
+                r.kind = 2;
+                r.values[0xf] = key;
+            });
+        }
+    }
+
+    #[test]
+    fn kind_five_sends_a_fleet_with_regiments_to_occupy_a_neutral_system() {
+        // FUN_004b2f40 (state 10, slot +0x48): values[12] above 0; the
+        // sector's systems with +0x30 2 forbidding 0x100208, key 0xf order
+        // 1 (picked from the last); the first passing FUN_004ae440 takes
+        // 0x1000000, the fleet the target and role 0x80000000: state 0xd.
+        // Else state 9.
+        let setup = |keys| {
+            let mut fx = fixture();
+            let mut p = kind_five(&fx);
+            let f = held(&mut fx, &mut p, 0, 1);
+            record(&mut fx, f).values[12] = 1;
+            neutral(&mut fx, keys);
+            p.plan_fleet = Some(f);
+            p.plan_state = 10;
+            (fx, p, f)
+        };
+        let (mut fx, mut p, f) = setup([1, 2]);
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+        assert_eq!(p.plan_state, 0xd);
+        assert_eq!(fx.galaxy.fleets[&f].target, Some(fx.systems[1]));
+        assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, ROLE_OCCUPY);
+        assert_eq!(kind(&fx, 1) & 0x100_0000, 0x100_0000);
+        let (mut fx, mut p, f) = setup([2, 1]);
+        record(&mut fx, f).values[12] = 2;
+        step(&mut fx, &mut p);
+        assert_eq!(fx.galaxy.fleets[&f].target, Some(fx.systems[0]));
+        // Equal keys go by the coin (ahead on a draw below 5).
+        for (draw, at) in [(4, 0), (5, 1)] {
+            let (mut fx, mut p, f) = setup([1, 1]);
+            fx.draws = vec![draw];
+            step(&mut fx, &mut p);
+            assert_eq!(fx.galaxy.fleets[&f].target, Some(fx.systems[at]));
+        }
+        // A populated system, an enemy fleet, a mark, or not neutral: the
+        // other one.
+        for bits in [8, 0x200, 0x10_0000] {
+            let (mut fx, mut p, f) = setup([1, 2]);
+            edit_system(&mut fx, 1, |r| r.kind |= bits);
+            step(&mut fx, &mut p);
+            assert_eq!(fx.galaxy.fleets[&f].target, Some(fx.systems[0]));
+        }
+        let (mut fx, mut p, f) = setup([1, 2]);
+        edit_system(&mut fx, 1, |r| r.kind = 1);
+        step(&mut fx, &mut p);
+        assert_eq!(fx.galaxy.fleets[&f].target, Some(fx.systems[0]));
+        // No regiments, or another kind: state 9 and no role.
+        for edit in [
+            |fx: &mut Fx, p: &mut SectorPlanner, f| {
+                let _ = p;
+                record(fx, f).values[12] = 0;
+            },
+            |_: &mut Fx, p: &mut SectorPlanner, _| p.kind = 3,
+        ] {
+            let (mut fx, mut p, f) = setup([1, 2]);
+            edit(&mut fx, &mut p, f);
+            assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+            assert_eq!(p.plan_state, 9);
+            assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, 0);
+        }
+    }
+
+    #[test]
+    fn an_occupier_at_its_target_lands_one_regiment_while_it_can() {
+        // FUN_004b1070 with role 0x80000000 at the target: while
+        // FUN_004ae440 holds, FUN_004b1440 gives the first regiment of the
+        // first ship carrying any (+0x68), Move 0x201 to the target; the
+        // role stays. When it fails the role goes.
+        let mut fx = fixture();
+        let mut p = kind_five(&fx);
+        let f = fleet(&mut fx, 1, 1);
+        let class = fx.world.fleets[f].capital_ships[0].class;
+        fx.world.capital_ship_classes[class].troop_capacity = 5;
+        let troops: Vec<TroopKey> = (0..2)
+            .map(|_| {
+                let t = fx.world.troops.insert(TroopUnit {
+                    class_dat_id: crate::ids::DatId::new(0x1000_0001),
+                    is_alliance: true,
+                    regiment_strength: 100,
+                });
+                fx.world.systems[fx.systems[1]].ground_units.push(t);
+                t
+            })
+            .collect();
+        fx.transport.load(&mut fx.world, f, &troops).unwrap();
+        crate::ai_planner::tests::rebuild(&mut fx);
+        let id = ship_id(&fx, f, 0);
+        with(&mut fx, |io| {
+            p.take_fleet(io, f);
+            p.take_ship(io, id);
+        });
+        record(&mut fx, f).values[12] = 2;
+        neutral(&mut fx, [0, 0]);
+        let target = fx.systems[1];
+        with(&mut fx, |io| bind(io, f, target, ROLE_OCCUPY));
+        p.plan_state = 0xe;
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Ended(Some(AIAction::MoveRegiments {
+                troops: vec![troops[0]],
+                to: target,
+            }))
+        );
+        assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, ROLE_OCCUPY);
+        // No ship record carrying regiments: no order, the role stays.
+        record(&mut fx, f).ships[0].values[9] = 0;
+        p.plan_state = 0xe;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
+        assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, ROLE_OCCUPY);
+        // No regiments left (values[12]): the role and target go.
+        record(&mut fx, f).values[12] = 0;
+        p.plan_state = 0xe;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
+        assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, 0);
+        record(&mut fx, f).values[12] = 2;
+        // The side's now, or populated: the role and target go.
+        record(&mut fx, f).ships[0].values[9] = 2;
+        for bits in [0x21, 0x2 | 8] {
+            with(&mut fx, |io| bind(io, f, target, ROLE_OCCUPY));
+            edit_system(&mut fx, 1, |r| r.kind = bits);
+            p.plan_state = 0xe;
+            assert_eq!(step(&mut fx, &mut p), PlanStep::Ended(None));
+            assert_eq!(fx.galaxy.fleets[&f].flags & ROLES, 0);
+            assert_eq!(fx.galaxy.fleets[&f].target, None);
+        }
+    }
+
+    #[test]
+    fn kind_five_bombards_the_opponent_s_held_systems_by_keys_8_and_0x21() {
+        // FUN_004b3110: kind 3's FUN_004b4730 on +0x30 0x24 (forbidding
+        // 0x700200), merging key 8 (order 2) and key 0x21 (order 1). With
+        // system 0 first by key 8 and by key 0x10 and last by key 0x21,
+        // kind 3 picks system 1 and kind 5 system 0; without 0x20, kind 5
+        // passes a system over.
+        let choose = |kind: u32, held_bits: [u32; 2]| {
+            let mut fx = fixture();
+            let mut p = SectorPlanner {
+                kind,
+                ..planner(&fx)
+            };
+            let f = held(&mut fx, &mut p, 2, 1);
+            record(&mut fx, f).values[6] = 5;
+            bombardable(&mut fx, 0, (0, 1, 0), (4, 4));
+            bombardable(&mut fx, 1, (0, 1, 0), (4, 4));
+            for (at, bits) in held_bits.into_iter().enumerate() {
+                edit_system(&mut fx, at, |r| r.kind = (r.kind & !0x20) | bits);
+            }
+            edit_system(&mut fx, 0, |r| {
+                (r.values[8], r.values[0x10], r.values[0x21]) = (1, 0, 1);
+            });
+            edit_system(&mut fx, 1, |r| {
+                (r.values[8], r.values[0x10], r.values[0x21]) = (0, 1, 0);
+            });
+            p.plan_fleet = Some(f);
+            p.plan_state = 9;
+            assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
+            fx.galaxy.fleets[&f].target
+        };
+        let fx = fixture();
+        assert_eq!(choose(3, [0x20, 0x20]), Some(fx.systems[1]));
+        assert_eq!(choose(5, [0x20, 0x20]), Some(fx.systems[0]));
+        assert_eq!(choose(5, [0, 0x20]), Some(fx.systems[1]));
+        assert_eq!(choose(3, [0, 0]), Some(fx.systems[1]));
+    }
+
+    #[test]
+    fn kind_five_s_lone_fleet_without_a_base_goes_to_a_system_not_the_side_s() {
+        // FUN_004b3400: one held fleet, no base, record without +0x38
+        // 0xa00: a random system of the sector (FUN_0041a460) without +0x2c
+        // 0x8000000 (explored) and +0x30 0x700201; then kind 3's chain.
+        let mut fx = fixture();
+        let mut p = kind_five(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        p.plan_fleet = Some(f);
+        edit_system(&mut fx, 1, |r| {
+            r.kind &= !1;
+            r.summary &= !0x800_0000;
+        });
+        let home = |fx: &mut Fx, p: &mut SectorPlanner| with(fx, |io| p.home(io));
+        assert_eq!(home(&mut fx, &mut p), Some(fx.systems[1]));
+        // Kind 3 has no such step.
+        p.kind = 3;
+        assert_eq!(home(&mut fx, &mut p), None);
+        p.kind = 5;
+        // Explored, a fleet en route, or two fleets: none.
+        edit_system(&mut fx, 1, |r| r.summary |= 0x800_0000);
+        assert_eq!(home(&mut fx, &mut p), None);
+        edit_system(&mut fx, 1, |r| r.summary &= !0x800_0000);
+        record(&mut fx, f).flags |= 0x800;
+        assert_eq!(home(&mut fx, &mut p), None);
+        record(&mut fx, f).flags &= !0x800;
+        let other = held(&mut fx, &mut p, 0, 1);
+        let _ = other;
+        assert_eq!(home(&mut fx, &mut p), None);
+        // With a base, the base.
+        let mut fx = fixture();
+        let mut p = kind_five(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        p.plan_fleet = Some(f);
+        edit_system(&mut fx, 1, |r| {
+            r.kind &= !1;
+            r.summary &= !0x800_0000;
+        });
+        p.base = Some(fx.systems[0]);
+        assert_eq!(home(&mut fx, &mut p), Some(fx.systems[0]));
     }
 }
