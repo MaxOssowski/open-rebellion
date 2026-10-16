@@ -2011,6 +2011,14 @@ cross-runtime proof remain open
   systems seen longest ago (`FUN_004bb630`, `FUN_0041a3a0`). Only seed 47
   of nine makes a kind 1 planner, and it holds no fleet; every count and
   the golden are unchanged (`evidence/2026-10-16-ai-plan-kind1/`).
+- Module 8, stage 5c (2026-10-16): kind 2's plan object ported: its wants
+  (`FUN_004b9fe0`), its attacker remembering the target (`FUN_004b9c90`),
+  a lone fleet sent to each system of the opponent once (`FUN_004ba0d0`,
+  the visited list `+0x5c`) and the sector marked swept when none is left
+  (`FUN_004b9310`, `AIState::swept`). Kind 2 planners now take ships and
+  create fleets, so every campaign moves. Save v56; golden
+  `v1:b160883b9ed0c807` -> `v1:fb57b4045cb49e83`
+  (`evidence/2026-10-16-ai-plan-kind2/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

@@ -79,6 +79,10 @@ pub struct SectorPlanner {
     /// on from after an order (`FUN_004b1070`).
     #[serde(default)]
     pub plan_walk: Option<crate::ids::FleetKey>,
+    /// Kind 2's plan object `+0x5c`: the systems its fleets were sent to
+    /// (`FUN_004f57b0`; `FUN_004b9c90`, `FUN_004ba0d0`).
+    #[serde(default)]
+    pub visited: Vec<crate::ids::SystemKey>,
 }
 
 /// What a step of module 8 leaves to the caller.
@@ -149,6 +153,8 @@ pub struct Inputs8<'a> {
     pub day: u64,
     /// [`crate::ai::AIState::seen`].
     pub seen: &'a std::collections::HashMap<crate::ids::SystemKey, u64>,
+    /// [`crate::ai::AIState::swept`].
+    pub swept: &'a mut Vec<SectorKey>,
     /// Controller `+0x204` ([`crate::ai_module1::Tallies::planner_balance`]).
     pub balance: i32,
     /// `FUN_0041cd80(n)`: a draw below `n`.
@@ -169,6 +175,7 @@ impl Inputs8<'_> {
             controller_flags: self.controller_flags,
             day: self.day,
             seen: self.seen,
+            swept: &mut *self.swept,
             random: &mut *self.random,
         }
     }
@@ -401,6 +408,7 @@ fn bind(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) -> bool {
         planner.plan_fleet = None;
         planner.plan_cursor = None;
         planner.plan_walk = None;
+        planner.visited.clear();
     }
     if plan_id != planner.plan_id {
         planner.plan_id = plan_id;
@@ -429,6 +437,7 @@ pub fn reset(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) {
         planner.base = None;
     }
     planner.kind = 0;
+    planner.visited.clear();
     planner.state = 0;
     planner.flags = 0;
     planner.requests = 0;
@@ -506,6 +515,7 @@ mod tests {
         let transport = crate::troop_transport::TroopTransportState::new();
         let people = std::collections::HashMap::new();
         let seen = std::collections::HashMap::new();
+        let mut swept = Vec::new();
         let mut io = Inputs8 {
             world: &world,
             galaxy: g,
@@ -517,6 +527,7 @@ mod tests {
             controller_flags: 0,
             day: 0,
             seen: &seen,
+            swept: &mut swept,
             balance,
             random: &mut random,
         };
@@ -776,9 +787,11 @@ mod tests {
         // sector (+0x38) and the plan's id.
         let (mut g, keys) = galaxy(1);
         g.sectors[0].planner = 1;
+        // Kind 2's visited list (+0x5c) goes with its plan object.
         let mut p = SectorPlanner {
             state: 3,
             plan_id: 1,
+            visited: vec![crate::ids::SystemKey::default()],
             ..planner(1, Some(keys[0]), 3)
         };
         assert!(!run(
@@ -790,11 +803,21 @@ mod tests {
         ));
         assert_eq!(p, planner(1, None, 0));
         assert_eq!(g.sectors[0].planner, 0);
+        // FUN_00477190 alone drops the plan object and its list too.
+        let mut q = SectorPlanner {
+            visited: vec![crate::ids::SystemKey::default()],
+            ..planner(1, None, 2)
+        };
+        run(&mut Module8::default(), &mut g, 0, &mut vec![], |_, io| {
+            reset(&mut q, io);
+        });
+        assert_eq!(q, planner(1, None, 0));
         // A new kind drops the old object and its step state.
         g.sectors[0].plan = 5;
         g.sectors[0].plan_id = 2;
         let mut p = SectorPlanner {
             state: 3,
+            visited: vec![crate::ids::SystemKey::default()],
             ..planner(1, Some(keys[0]), 3)
         };
         assert!(run(
@@ -805,8 +828,10 @@ mod tests {
             |_, io| bind(&mut p, io)
         ));
         assert_eq!((p.kind, p.state, p.plan_id), (5, 0, 2));
+        assert_eq!(p.visited, []);
         let mut same = SectorPlanner {
             state: 3,
+            visited: vec![crate::ids::SystemKey::default()],
             ..planner(1, Some(keys[0]), 5)
         };
         assert!(run(
@@ -816,7 +841,7 @@ mod tests {
             &mut vec![],
             |_, io| bind(&mut same, io)
         ));
-        assert_eq!(same.state, 3);
+        assert_eq!((same.state, same.visited.len()), (3, 1));
     }
 
     #[test]

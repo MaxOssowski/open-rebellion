@@ -521,6 +521,31 @@ regiments aboard and `0x800` en route (`ai_records::FleetRecord::build`);
 `+0x30` `0x20` is a system held by either side (`FUN_00433e40`: `0x21`
 own, `0x24` the opponent's).
 
+## Ported (2026-10-16, save v56): kind 2's plan object
+
+`ai_planner::ported_kind` takes kind 2. `ai_planner.rs`: slot `+0x50`
+`FUN_004b9fe0` (1.5 for 1.2, `+0x38` adding the sector's `+0x13c`, `+0x40`
+with the floor controller `+0x16c`); the report `FUN_004b9310`
+(`SectorPlanner::sweep`, `sweep_left`): `0x20000` with the sector's
+`0x40000` or a system of the opponent left to visit, else the sector record
+takes `0x20000000`. `ai_plan.rs`: slot `+0x3c` `FUN_004b9c90` (kind 1's
+lists, the target joining the visited list), no bombarder (slot `+0x44`
+`0x6158b0`), slot `+0x54` `FUN_004ba0d0` (a lone fleet to the first system
+of the opponent not visited). `SectorPlanner::visited` is the plan object's
+`+0x5c`, dropped with the object (`FUN_004773f0`, `FUN_00477190`).
+`AIState::swept` keeps the sectors' `0x20000000`, which the port's rebuilt
+records would lose (the refresh keeps `+0x2c & 0x28000000`); naming the
+plans clears it for the old and new plans' sectors (`FUN_004317b0`,
+`FUN_00431790`). Save v56.
+
+hyp: controller `+0x16c`, like `+0x164` and `+0x168`, reads as 0.
+
+Campaigns (600 days, both sides AI), a temporary trace (removed): kind 2
+attackers bind in seeds 42, 1, 2, 3, 7 and 47; seed 3 sends a lone fleet to
+three systems from day 463; seeds 1 and 2 mark their sector swept. The kind
+2 planners now take ships and create fleets (Create Fleet 1 -> 3 in seed
+42), so every campaign's counts move.
+
 ## Ported (2026-10-16, save v55): kind 1's plan object
 
 `ai_planner::ported_kind`: a kind 1 planner now runs its own cycle (no

@@ -78,6 +78,8 @@ pub struct StrategyInputs<'a> {
     pub day: u64,
     /// System record `+0x44`: the day each system was last seen.
     pub seen: &'a HashMap<SystemKey, u64>,
+    /// [`crate::ai::AIState::swept`].
+    pub swept: &'a mut Vec<SectorKey>,
     /// Controller `+0xd8`: module 8's sector planners.
     pub planners: &'a mut [SectorPlanner],
     pub coin: &'a mut dyn FnMut() -> bool,
@@ -92,6 +94,16 @@ pub fn mark_plans(galaxy: &mut Galaxy, plans: &[SectorPlan]) {
     }
     for record in &mut galaxy.sectors {
         record.plan_bits();
+    }
+}
+
+/// The swept sectors' record `+0x2c` bit `0x20000000`, which the refresh
+/// keeps (`FUN_004321e0`) and the port's rebuilt records lose.
+pub fn mark_swept(galaxy: &mut Galaxy, swept: &[SectorKey]) {
+    for record in &mut galaxy.sectors {
+        if swept.contains(&record.sector) {
+            record.summary |= 0x2000_0000;
+        }
     }
 }
 
@@ -267,6 +279,9 @@ impl Strategy {
         for (i, plan) in plans.iter().enumerate() {
             set_plan(io.galaxy, plan, i);
         }
+        // Both clear +0x2c 0x20000000.
+        io.swept
+            .retain(|s| !self.plans.iter().chain(&plans).any(|p| p.sector == *s));
         self.plans = plans;
     }
 
@@ -662,6 +677,7 @@ mod tests {
         controller: Controller,
         tallies: Tallies,
         seen: HashMap<SystemKey, u64>,
+        swept: Vec<SectorKey>,
         day: u64,
         is_alliance: bool,
         planners: Vec<SectorPlanner>,
@@ -674,6 +690,7 @@ mod tests {
                 controller: Controller::default(),
                 tallies: Tallies::default(),
                 seen: HashMap::new(),
+                swept: Vec::new(),
                 day: 0,
                 is_alliance: false,
                 planners: Vec::new(),
@@ -689,6 +706,7 @@ mod tests {
                 is_alliance: self.is_alliance,
                 day: self.day,
                 seen: &self.seen,
+                swept: &mut self.swept,
                 planners: &mut self.planners,
                 coin: &mut coin,
             };
@@ -915,6 +933,48 @@ mod tests {
         run.controller.flags = REPLAN;
         run.with(|io| strategy.step(io));
         assert_eq!(strategy.plans[0].sector, keys[1]);
+    }
+
+    #[test]
+    fn naming_the_plans_clears_the_swept_bit_of_their_sectors_only() {
+        // FUN_004317b0 clears an old plan's +0x2c 0x28000000 and
+        // FUN_00431790 a new plan's 0x20000000; the refresh keeps it
+        // elsewhere (FUN_004321e0, +0x2c & 0x28000000).
+        let (mut g, keys) = galaxy(4);
+        // The fourth sector matches no query, so it stays unnamed.
+        for i in 0..3 {
+            g.sectors[i].summary = 6;
+        }
+        mark_swept(&mut g, &[keys[0], keys[3]]);
+        assert_eq!(
+            g.sectors
+                .iter()
+                .map(|s| s.summary & 0x2000_0000)
+                .collect::<Vec<_>>(),
+            [0x2000_0000, 0, 0, 0x2000_0000]
+        );
+        let mut run = Run::new(g);
+        run.swept = vec![keys[0], keys[3]];
+        let mut strategy = Strategy {
+            posture: 1,
+            kind: 1,
+            shrink: true,
+            plans: keys[..3]
+                .iter()
+                .map(|&sector| SectorPlan {
+                    sector,
+                    kind: 2,
+                    param: 0,
+                })
+                .collect(),
+            ..Strategy::default()
+        };
+        run.with(|io| strategy.name_sectors(io));
+        assert_eq!(strategy.plans.len(), 2);
+        assert!(!strategy.plans.iter().any(|p| p.sector == keys[3]));
+        assert_eq!(run.swept, vec![keys[3]]);
+        assert_eq!(run.galaxy.sectors[0].summary & 0x2000_0000, 0);
+        assert_eq!(run.galaxy.sectors[3].summary & 0x2000_0000, 0x2000_0000);
     }
 
     #[test]

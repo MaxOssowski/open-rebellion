@@ -50,6 +50,8 @@ pub struct PlannerIo<'a> {
     pub day: u64,
     /// [`crate::ai::AIState::seen`]: the system records' `+0x44`.
     pub seen: &'a HashMap<SystemKey, u64>,
+    /// [`crate::ai::AIState::swept`].
+    pub swept: &'a mut Vec<SectorKey>,
     /// `FUN_0041cd80(n)`: a draw below `n`.
     pub random: &'a mut dyn FnMut(i32) -> i32,
 }
@@ -303,7 +305,7 @@ impl SectorPlanner {
         if self.kind == 0 {
             return PlannerStep::Done;
         }
-        // port: only kinds 1 and 3's slots are ported; the other kinds'
+        // port: only kinds 1 to 3's slots are ported; the other kinds'
         // planners run the port's heuristics for their whole cycle.
         if !ported_kind(self.kind) {
             return PlannerStep::StandIn;
@@ -369,7 +371,7 @@ impl SectorPlanner {
     }
 
     /// The stand-in for another kind's planner finished: its cycle ends
-    /// (port: only kinds 1 and 3's slots are ported).
+    /// (port: only kinds 1 to 3's slots are ported).
     pub fn plan_done(&mut self) {
         self.state = 1;
         self.resync = true;
@@ -446,10 +448,12 @@ impl SectorPlanner {
     ///
     /// Kind 1, `FUN_004bb510`: the same, but `+0x34` has no controller
     /// floor, and `+0x48` takes 1.1 times the sector's `+0x144` (or
-    /// controller `+0x174`).
+    /// controller `+0x174`). Kind 2, `FUN_004b9fe0`: 1.5 times (`* 3 / 2`)
+    /// for 1.2, `+0x38` also adding 1.5 times the sector's `+0x13c`, and
+    /// `+0x40` with the floor controller `+0x16c`.
     ///
-    /// hyp: controller `+0x164`, `+0x168` and `+0x174` have no writer found
-    /// and read as 0.
+    /// hyp: controller `+0x164`, `+0x168`, `+0x16c` and `+0x174` have no
+    /// writer found and read as 0.
     fn want(&mut self, io: &PlannerIo<'_>) {
         if !ported_kind(self.kind) {
             return;
@@ -459,14 +463,22 @@ impl SectorPlanner {
         };
         let v = |offset| r.values[sector_at(offset)];
         let w = &mut self.wanted;
-        if self.kind == 1 {
-            w[0] = w[0].max(v(0x190) * 12 / 10);
-            w[5] = w[5].max((v(0x144) * 11 / 10).max(0));
-        } else {
-            w[0] = w[0].max((v(0x190) * 12 / 10).max(0));
+        match self.kind {
+            1 => {
+                w[0] = w[0].max(v(0x190) * 12 / 10);
+                w[5] = w[5].max((v(0x144) * 11 / 10).max(0));
+            }
+            2 => {
+                w[0] = w[0].max((v(0x190) * 3 / 2).max(0));
+                w[1] = w[1].max((v(0x13c) * 3 / 2 + v(0x194) * 3 / 2).max(0));
+                w[3] = w[3].max(((v(0x138) + v(0x198)) * 3 / 2).max(0));
+            }
+            _ => w[0] = w[0].max((v(0x190) * 12 / 10).max(0)),
         }
-        w[1] = w[1].max((v(0x194) * 12 / 10).max(0));
-        w[3] = w[3].max((v(0x198) + v(0x138)) * 12 / 10);
+        if self.kind != 2 {
+            w[1] = w[1].max((v(0x194) * 12 / 10).max(0));
+            w[3] = w[3].max((v(0x198) + v(0x138)) * 12 / 10);
+        }
         w[2] = 0;
         w[4] = 0;
         if io.controller_flags & 0x100_0000 != 0 {
@@ -781,19 +793,31 @@ impl SectorPlanner {
     /// (`FUN_004b3830`) sets `0x4000000`, with a sector record
     /// `0x8000000`, and `0x20000` when the sector has a system of the
     /// side's (`+0x2c` 4); kind 1 (`FUN_004ba5e0`) the same with the
-    /// sector's `+0x2c` `0x80000`. Then from `+0x64`: nothing short (`0x4ff`;
+    /// sector's `+0x2c` `0x80000`; kind 2 (`FUN_004b9310`) with
+    /// `0x40000`, else ([`Self::sweep_left`]) while a system of the
+    /// opponent is left to visit, else it marks the sector swept. Then from `+0x64`: nothing short (`0x4ff`;
     /// the mission and movement requests `0x100`, `0x200` are outside it)
     /// gives `0x1c0000`; short and nothing held (`0x9fe00000`), `0x10000`
     /// (gave up); else `0x100000`, and `0x80000` when none of `0x1f` is
     /// short.
-    fn report(&mut self, io: &PlannerIo<'_>) {
+    fn report(&mut self, io: &mut PlannerIo<'_>) {
         if ported_kind(self.kind) {
             self.flags |= CYCLED;
-            let bit = if self.kind == 1 { 0x8_0000 } else { 4 };
-            if let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) {
+            let bit = match self.kind {
+                1 => 0x8_0000,
+                2 => 0x4_0000,
+                _ => 4,
+            };
+            if let Some(summary) = self
+                .sector
+                .and_then(|s| io.galaxy.sector(s))
+                .map(|r| r.summary)
+            {
                 self.flags |= REVIEWED;
-                if r.summary & bit != 0 {
+                if summary & bit != 0 {
                     self.flags |= 0x2_0000;
+                } else if self.kind == 2 {
+                    self.sweep(io);
                 }
             }
         }
@@ -810,10 +834,54 @@ impl SectorPlanner {
     }
 }
 
+impl SectorPlanner {
+    /// Kind 2's report without the sector's `0x40000` (`FUN_004b9310`):
+    /// over the systems of the opponent with no enemy fleet or role there
+    /// (`FUN_0041a3a0`: `+0x30` `0x20` forbidding `0x700201`, order 1),
+    /// one not on the visited list gives `0x20000`; with none the sector
+    /// record takes `0x20000000` ([`crate::ai::AIState::swept`]).
+    fn sweep(&mut self, io: &mut PlannerIo<'_>) {
+        let Some(sector) = self.sector else {
+            return;
+        };
+        if self.sweep_left(io, sector).is_some() {
+            self.flags |= 0x2_0000;
+        } else {
+            if let Some(r) = io.galaxy.sectors.iter_mut().find(|r| r.sector == sector) {
+                r.summary |= 0x2000_0000;
+            }
+            if !io.swept.contains(&sector) {
+                io.swept.push(sector);
+            }
+        }
+    }
+
+    /// The first system of `FUN_0041a3a0(sector, +0x30 0x20 forbidding
+    /// 0x700201, order 1)`, in pick order, not on kind 2's visited list
+    /// (`FUN_004f5940` on `+0x5c`).
+    pub(crate) fn sweep_left(
+        &self,
+        io: &mut PlannerIo<'_>,
+        sector: SectorKey,
+    ) -> Option<SystemKey> {
+        let mut coin = || (io.random)(10) < 5;
+        let systems = io.galaxy.system_query_by_age(
+            sector,
+            [ANY, ANY, Mask::new(0x20, 0x70_0201)],
+            (io.day, io.seen),
+            Order::Ascending,
+            &mut coin,
+        );
+        picks(vec![systems])
+            .into_iter()
+            .find(|s| !self.visited.contains(s))
+    }
+}
+
 /// The plan kinds whose plan object's slots are ported: 1 (vtable
-/// `0x65c2c0`) and 3 (`0x65c160`).
+/// `0x65c2c0`), 2 (`0x65c268`) and 3 (`0x65c160`).
 pub(crate) fn ported_kind(kind: u32) -> bool {
-    matches!(kind, 1 | 3)
+    matches!(kind, 1..=3)
 }
 
 /// `FUN_0041b2b0`: of the sectors but `from`, by squared distance (the
@@ -891,6 +959,7 @@ pub(crate) mod tests {
         pub(crate) draws: Vec<i32>,
         pub(crate) day: u64,
         pub(crate) seen: HashMap<SystemKey, u64>,
+        pub(crate) swept: Vec<SectorKey>,
     }
 
     pub(crate) fn fixture() -> Fx {
@@ -951,6 +1020,7 @@ pub(crate) mod tests {
             draws: Vec::new(),
             day: 0,
             seen: HashMap::new(),
+            swept: Vec::new(),
         };
         rebuild(&mut fx);
         fx
@@ -1030,6 +1100,7 @@ pub(crate) mod tests {
             controller_flags: 0,
             day: fx.day,
             seen: &fx.seen,
+            swept: &mut fx.swept,
             random: &mut random,
         };
         f(&mut io)
@@ -1800,6 +1871,83 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn kind_two_wants_half_again_its_sector_s_threat() {
+        // FUN_004b9fe0: +0x34 3/2 x +0x190, +0x38 3/2 x +0x13c + 3/2 x
+        // +0x194, +0x40 3/2 x (+0x138 + +0x198), each at least the
+        // controller's +0x164, +0x168, +0x16c (read as 0).
+        let mut fx = fixture();
+        {
+            let s = &mut fx.galaxy.sectors[0];
+            s.values[sector_at(0x190)] = 11;
+            s.values[sector_at(0x13c)] = 5;
+            s.values[sector_at(0x194)] = 5;
+            s.values[sector_at(0x138)] = 4;
+            s.values[sector_at(0x198)] = 7;
+            s.values[sector_at(0x144)] = 20;
+        }
+        let mut two = SectorPlanner {
+            kind: 2,
+            wanted: [-20; 10],
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| two.want(io));
+        // 5 * 3 / 2 + 5 * 3 / 2 = 7 + 7; (4 + 7) * 3 / 2 = 16.
+        assert_eq!(
+            (two.wanted[0], two.wanted[1], two.wanted[3], two.wanted[5]),
+            (16, 14, 16, -20)
+        );
+        for at in [0x190, 0x13c, 0x194, 0x138, 0x198] {
+            fx.galaxy.sectors[0].values[sector_at(at)] = -9;
+        }
+        let mut low = SectorPlanner {
+            kind: 2,
+            wanted: [-20; 10],
+            ..planner(&fx)
+        };
+        with(&mut fx, |io| low.want(io));
+        assert_eq!((low.wanted[0], low.wanted[1], low.wanted[3]), (0, 0, 0));
+    }
+
+    #[test]
+    fn kind_two_reports_a_system_left_to_visit_else_marks_its_sector_swept() {
+        // FUN_004b9310: 0x20000 with the sector's +0x2c 0x40000; else over
+        // FUN_0041a3a0(+0x30 0x20 forbidding 0x700201) a system not on the
+        // visited list (+0x5c) gives 0x20000, and with none the sector
+        // record takes 0x20000000.
+        let report = |fx: &mut Fx, visited: Vec<SystemKey>| {
+            let mut p = SectorPlanner {
+                kind: 2,
+                visited,
+                ..planner(fx)
+            };
+            with(fx, |io| p.report(io));
+            p.flags & 0x2_0000
+        };
+        let mut fx = fixture();
+        let enemy = fx.systems[1];
+        fx.galaxy.update_kind(enemy, 0x24, 1);
+        fx.galaxy.sectors[0].summary &= !0x4_0000;
+        assert_eq!(report(&mut fx, vec![]), 0x2_0000);
+        assert_eq!(fx.swept, []);
+        assert_eq!(report(&mut fx, vec![enemy]), 0);
+        assert_eq!(fx.swept, vec![fx.sectors[0]]);
+        assert_eq!(fx.galaxy.sectors[0].summary & 0x2000_0000, 0x2000_0000);
+        // Once only on the list.
+        assert_eq!(report(&mut fx, vec![enemy]), 0);
+        assert_eq!(fx.swept, vec![fx.sectors[0]]);
+        // An enemy fleet or a role there leaves nothing to visit.
+        let mut fx = fixture();
+        fx.galaxy.update_kind(enemy, 0x224, 1);
+        assert_eq!(report(&mut fx, vec![]), 0);
+        assert_eq!(fx.swept, vec![fx.sectors[0]]);
+        // 0x40000 gives 0x20000 without the list.
+        let mut fx = fixture();
+        fx.galaxy.sectors[0].summary |= 0x4_0000;
+        assert_eq!(report(&mut fx, vec![]), 0x2_0000);
+        assert_eq!(fx.swept, []);
+    }
+
+    #[test]
     fn kind_one_runs_its_own_cycle_with_kind_three_s_requests() {
         // The planner steps kinds 1 and 3 itself; kind 1 shares
         // FUN_004b7150 (missions) and FUN_004b9290 (movement, the code of
@@ -1829,12 +1977,13 @@ pub(crate) mod tests {
         p.flags = 0;
         with(&mut fx, |io| p.report(io));
         assert_eq!(p.flags & 0x2_0000, 0x2_0000);
-        let mut two = SectorPlanner {
-            kind: 2,
+        // Kind 4's slots are not ported: it hands over.
+        let mut four = SectorPlanner {
+            kind: 4,
             ..planner(&fx)
         };
-        two.resync = false;
-        assert_eq!(with(&mut fx, |io| two.step(io)), PlannerStep::StandIn);
+        four.resync = false;
+        assert_eq!(with(&mut fx, |io| four.step(io)), PlannerStep::StandIn);
     }
 
     #[test]

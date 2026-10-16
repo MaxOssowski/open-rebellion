@@ -1,0 +1,856 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against the stage 5b build",
+  "seeds": {
+    "42": {
+      "changed_counts_5b_to_5c": {
+        "ai_action": [
+          777,
+          699
+        ],
+        "character_health": [
+          29,
+          15
+        ],
+        "character_killed": [
+          6,
+          4
+        ],
+        "combat_space": [
+          5,
+          4
+        ],
+        "economy_tick": [
+          165,
+          351
+        ],
+        "fleet_arrived": [
+          16,
+          12
+        ],
+        "informant_intel": [
+          22,
+          46
+        ],
+        "manufacturing_complete": [
+          222,
+          170
+        ],
+        "manufacturing_idle": [
+          106,
+          83
+        ],
+        "mission_dispatched": [
+          336,
+          352
+        ],
+        "mission_resolved": [
+          372,
+          388
+        ],
+        "natural_disaster": [
+          0,
+          1
+        ],
+        "research_unlocked": [
+          11,
+          10
+        ],
+        "resource_discovery": [
+          15,
+          16
+        ],
+        "troop_moved": [
+          29,
+          23
+        ],
+        "units_deployed": [
+          222,
+          170
+        ],
+        "uprising_incident": [
+          9,
+          7
+        ],
+        "AbortMission": [
+          1,
+          0
+        ],
+        "Build": [
+          193,
+          151
+        ],
+        "CreateFleet": [
+          1,
+          3
+        ],
+        "DispatchMission": [
+          336,
+          352
+        ],
+        "EnqueueProduction": [
+          6,
+          5
+        ],
+        "MoveFleet": [
+          15,
+          9
+        ],
+        "MoveRegiments": [
+          23,
+          17
+        ],
+        "MoveShips": [
+          0,
+          1
+        ],
+        "MoveSquadrons": [
+          36,
+          20
+        ],
+        "Scrap": [
+          56,
+          31
+        ]
+      },
+      "ai_actions_by_type": {
+        "Scrap": 31,
+        "SetDestination": 110,
+        "MoveRegiments": 17,
+        "Build": 151,
+        "MoveFleet": 9,
+        "DispatchMission": 352,
+        "CreateFleet": 3,
+        "MoveShips": 1,
+        "MoveSquadrons": 20,
+        "EnqueueProduction": 5
+      }
+    },
+    "1": {
+      "changed_counts_5b_to_5c": {
+        "ai_action": [
+          393,
+          338
+        ],
+        "blockade_ended": [
+          0,
+          2
+        ],
+        "blockade_started": [
+          1,
+          2
+        ],
+        "character_health": [
+          13,
+          10
+        ],
+        "character_killed": [
+          6,
+          8
+        ],
+        "combat_space": [
+          1,
+          9
+        ],
+        "economy_tick": [
+          340,
+          167
+        ],
+        "event_fired": [
+          9,
+          4
+        ],
+        "fleet_arrived": [
+          12,
+          14
+        ],
+        "informant_intel": [
+          10,
+          2
+        ],
+        "jedi_tier_advanced": [
+          2,
+          1
+        ],
+        "maintenance_shortfall": [
+          9,
+          14
+        ],
+        "manufacturing_complete": [
+          66,
+          63
+        ],
+        "manufacturing_idle": [
+          38,
+          21
+        ],
+        "mission_dispatched": [
+          230,
+          164
+        ],
+        "mission_resolved": [
+          569,
+          532
+        ],
+        "natural_disaster": [
+          1,
+          0
+        ],
+        "research_unlocked": [
+          17,
+          16
+        ],
+        "resource_discovery": [
+          9,
+          7
+        ],
+        "saboteur_detected": [
+          1,
+          0
+        ],
+        "ship_repair_started": [
+          0,
+          1
+        ],
+        "ship_repaired": [
+          0,
+          1
+        ],
+        "support_drift": [
+          600,
+          258
+        ],
+        "units_deployed": [
+          66,
+          63
+        ],
+        "uprising_incident": [
+          8,
+          9
+        ],
+        "Build": [
+          72,
+          69
+        ],
+        "CreateFleet": [
+          1,
+          3
+        ],
+        "DispatchMission": [
+          230,
+          164
+        ],
+        "MoveRegiments": [
+          7,
+          6
+        ],
+        "MoveShips": [
+          0,
+          2
+        ],
+        "Scrap": [
+          14,
+          12
+        ],
+        "SetDestination": [
+          45,
+          58
+        ]
+      },
+      "ai_actions_by_type": {
+        "Scrap": 12,
+        "SetDestination": 58,
+        "Build": 69,
+        "MoveRegiments": 6,
+        "MoveFleet": 11,
+        "EnqueueProduction": 2,
+        "CreateFleet": 3,
+        "DispatchMission": 164,
+        "MoveSquadrons": 9,
+        "MoveShips": 2,
+        "AbortMission": 2
+      }
+    },
+    "2": {
+      "changed_counts_5b_to_5c": {
+        "ai_action": [
+          363,
+          360
+        ],
+        "blockade_ended": [
+          0,
+          1
+        ],
+        "blockade_started": [
+          2,
+          3
+        ],
+        "combat_space": [
+          1,
+          3
+        ],
+        "economy_tick": [
+          121,
+          30
+        ],
+        "fleet_arrived": [
+          10,
+          14
+        ],
+        "informant_intel": [
+          6,
+          12
+        ],
+        "maintenance_shortfall": [
+          20,
+          13
+        ],
+        "manufacturing_complete": [
+          95,
+          100
+        ],
+        "manufacturing_idle": [
+          33,
+          39
+        ],
+        "mission_dispatched": [
+          137,
+          132
+        ],
+        "mission_resolved": [
+          417,
+          384
+        ],
+        "research_unlocked": [
+          12,
+          11
+        ],
+        "resource_discovery": [
+          12,
+          14
+        ],
+        "support_drift": [
+          600,
+          334
+        ],
+        "troop_moved": [
+          19,
+          20
+        ],
+        "units_deployed": [
+          95,
+          100
+        ],
+        "uprising_incident": [
+          10,
+          9
+        ],
+        "Build": [
+          91,
+          93
+        ],
+        "CreateFleet": [
+          1,
+          7
+        ],
+        "DispatchMission": [
+          137,
+          132
+        ],
+        "EnqueueProduction": [
+          8,
+          7
+        ],
+        "MoveFleet": [
+          9,
+          11
+        ],
+        "MoveRegiments": [
+          14,
+          15
+        ],
+        "MoveShips": [
+          0,
+          1
+        ],
+        "MoveSquadrons": [
+          3,
+          1
+        ],
+        "SetDestination": [
+          84,
+          77
+        ]
+      },
+      "ai_actions_by_type": {
+        "Scrap": 15,
+        "SetDestination": 77,
+        "Build": 93,
+        "MoveRegiments": 15,
+        "MoveFleet": 11,
+        "CreateFleet": 7,
+        "DispatchMission": 132,
+        "EnqueueProduction": 7,
+        "MoveShips": 1,
+        "AbortMission": 1,
+        "MoveSquadrons": 1
+      }
+    },
+    "3": {
+      "changed_counts_5b_to_5c": {
+        "ai_action": [
+          429,
+          376
+        ],
+        "character_health": [
+          39,
+          14
+        ],
+        "combat_space": [
+          28,
+          30
+        ],
+        "economy_tick": [
+          1219,
+          1414
+        ],
+        "fleet_arrived": [
+          28,
+          27
+        ],
+        "manufacturing_complete": [
+          66,
+          68
+        ],
+        "manufacturing_idle": [
+          36,
+          37
+        ],
+        "mission_dispatched": [
+          241,
+          199
+        ],
+        "mission_resolved": [
+          384,
+          350
+        ],
+        "natural_disaster": [
+          2,
+          3
+        ],
+        "ship_repair_started": [
+          0,
+          1
+        ],
+        "ship_repaired": [
+          0,
+          6
+        ],
+        "support_drift": [
+          995,
+          1024
+        ],
+        "units_deployed": [
+          66,
+          68
+        ],
+        "uprising_incident": [
+          14,
+          17
+        ],
+        "Build": [
+          67,
+          66
+        ],
+        "DispatchMission": [
+          241,
+          199
+        ],
+        "JoinFleet": [
+          1,
+          0
+        ],
+        "MoveFleet": [
+          16,
+          13
+        ],
+        "MoveShips": [
+          9,
+          12
+        ],
+        "MoveSquadronTeam": [
+          2,
+          0
+        ],
+        "Scrap": [
+          12,
+          10
+        ],
+        "SetDestination": [
+          62,
+          57
+        ]
+      },
+      "ai_actions_by_type": {
+        "Scrap": 10,
+        "SetDestination": 57,
+        "Build": 66,
+        "MoveRegiments": 10,
+        "EnqueueProduction": 5,
+        "DispatchMission": 199,
+        "MoveFleet": 13,
+        "CreateFleet": 4,
+        "MoveShips": 12
+      }
+    },
+    "7": {
+      "changed_counts_5b_to_5c": {
+        "ai_action": [
+          323,
+          253
+        ],
+        "blockade_started": [
+          1,
+          2
+        ],
+        "character_health": [
+          11,
+          19
+        ],
+        "combat_space": [
+          2,
+          3
+        ],
+        "economy_tick": [
+          3,
+          180
+        ],
+        "event_fired": [
+          3,
+          9
+        ],
+        "fleet_arrived": [
+          7,
+          9
+        ],
+        "informant_intel": [
+          20,
+          36
+        ],
+        "jedi_tier_advanced": [
+          0,
+          2
+        ],
+        "manufacturing_complete": [
+          60,
+          32
+        ],
+        "manufacturing_idle": [
+          30,
+          27
+        ],
+        "mission_dispatched": [
+          163,
+          156
+        ],
+        "mission_resolved": [
+          426,
+          384
+        ],
+        "natural_disaster": [
+          0,
+          1
+        ],
+        "research_unlocked": [
+          11,
+          7
+        ],
+        "resource_discovery": [
+          1,
+          2
+        ],
+        "saboteur_detected": [
+          1,
+          0
+        ],
+        "support_drift": [
+          955,
+          802
+        ],
+        "troop_moved": [
+          15,
+          11
+        ],
+        "units_deployed": [
+          60,
+          32
+        ],
+        "uprising_incident": [
+          19,
+          13
+        ],
+        "AbortMission": [
+          2,
+          1
+        ],
+        "Build": [
+          55,
+          28
+        ],
+        "CreateFleet": [
+          1,
+          2
+        ],
+        "DispatchMission": [
+          163,
+          156
+        ],
+        "MoveRegiments": [
+          11,
+          7
+        ],
+        "MoveShips": [
+          0,
+          1
+        ],
+        "MoveSquadrons": [
+          2,
+          0
+        ],
+        "Scrap": [
+          20,
+          16
+        ],
+        "SetDestination": [
+          55,
+          28
+        ]
+      },
+      "ai_actions_by_type": {
+        "Scrap": 16,
+        "SetDestination": 28,
+        "Build": 28,
+        "MoveRegiments": 7,
+        "EnqueueProduction": 8,
+        "CreateFleet": 2,
+        "MoveFleet": 6,
+        "DispatchMission": 156,
+        "MoveShips": 1,
+        "AbortMission": 1
+      }
+    },
+    "13": {
+      "changed_counts_5b_to_5c": {
+        "ai_action": [
+          189,
+          167
+        ],
+        "blockade_ended": [
+          1,
+          0
+        ],
+        "character_health": [
+          0,
+          6
+        ],
+        "character_killed": [
+          0,
+          6
+        ],
+        "combat_space": [
+          3,
+          1
+        ],
+        "economy_tick": [
+          1,
+          1167
+        ],
+        "event_fired": [
+          9,
+          4
+        ],
+        "fleet_arrived": [
+          5,
+          3
+        ],
+        "informant_intel": [
+          48,
+          10
+        ],
+        "jedi_tier_advanced": [
+          2,
+          1
+        ],
+        "mission_dispatched": [
+          163,
+          142
+        ],
+        "mission_resolved": [
+          406,
+          409
+        ],
+        "natural_disaster": [
+          1,
+          2
+        ],
+        "uprising_incident": [
+          9,
+          10
+        ],
+        "DispatchMission": [
+          163,
+          142
+        ],
+        "MoveFleet": [
+          5,
+          3
+        ],
+        "Scrap": [
+          8,
+          9
+        ]
+      },
+      "ai_actions_by_type": {
+        "SetDestination": 2,
+        "Scrap": 9,
+        "Build": 2,
+        "MoveRegiments": 4,
+        "MoveFleet": 3,
+        "EnqueueProduction": 5,
+        "DispatchMission": 142
+      }
+    },
+    "47": {
+      "changed_counts_5b_to_5c": {
+        "ai_action": [
+          611,
+          419
+        ],
+        "character_health": [
+          11,
+          6
+        ],
+        "character_killed": [
+          4,
+          0
+        ],
+        "collection_rate": [
+          67,
+          68
+        ],
+        "control_changed": [
+          7,
+          8
+        ],
+        "economy_tick": [
+          1,
+          370
+        ],
+        "fleet_arrived": [
+          13,
+          6
+        ],
+        "informant_intel": [
+          28,
+          30
+        ],
+        "jedi_discovered": [
+          0,
+          1
+        ],
+        "maintenance_shortfall": [
+          7,
+          20
+        ],
+        "manufacturing_complete": [
+          155,
+          130
+        ],
+        "manufacturing_idle": [
+          25,
+          23
+        ],
+        "mission_dispatched": [
+          346,
+          170
+        ],
+        "mission_resolved": [
+          368,
+          482
+        ],
+        "natural_disaster": [
+          1,
+          0
+        ],
+        "research_unlocked": [
+          10,
+          11
+        ],
+        "troop_moved": [
+          15,
+          12
+        ],
+        "units_deployed": [
+          155,
+          130
+        ],
+        "AbortMission": [
+          1,
+          0
+        ],
+        "Build": [
+          125,
+          106
+        ],
+        "CreateFleet": [
+          1,
+          3
+        ],
+        "DispatchMission": [
+          346,
+          170
+        ],
+        "EnqueueProduction": [
+          23,
+          4
+        ],
+        "MoveFleet": [
+          12,
+          3
+        ],
+        "MoveRegiments": [
+          11,
+          10
+        ],
+        "MoveShips": [
+          0,
+          1
+        ],
+        "MoveSquadrons": [
+          14,
+          15
+        ],
+        "Scrap": [
+          10,
+          31
+        ],
+        "SetDestination": [
+          68,
+          76
+        ]
+      },
+      "ai_actions_by_type": {
+        "Scrap": 31,
+        "SetDestination": 76,
+        "Build": 106,
+        "CreateFleet": 3,
+        "MoveRegiments": 10,
+        "MoveFleet": 3,
+        "DispatchMission": 170,
+        "MoveShips": 1,
+        "EnqueueProduction": 4,
+        "MoveSquadrons": 15
+      }
+    }
+  },
+  "trace": "temporary (removed): kind 2 attackers bind in seeds 42, 1, 2, 3, 7, 47 (one each); seed 3 sends a lone fleet to 3 systems from day 463; seeds 1 and 2 mark their sector swept; seed 13 neither"
+}

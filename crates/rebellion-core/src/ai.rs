@@ -562,6 +562,13 @@ pub struct AIState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub seen: HashMap<SystemKey, u64>,
+    /// The sectors whose record `+0x2c` has `0x20000000`: kind 2's plan
+    /// has visited every system of the opponent there (`FUN_004b9310`).
+    /// The refresh keeps the bit (`FUN_004321e0`, `+0x2c & 0x28000000`)
+    /// until the strategy names its plans again (`FUN_00431790`,
+    /// `FUN_004317b0`).
+    #[serde(default)]
+    pub swept: Vec<crate::ids::SectorKey>,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -636,6 +643,7 @@ impl AIState {
             ship_holds: HashMap::new(),
             fleet_holds: HashMap::new(),
             seen: HashMap::new(),
+            swept: Vec::new(),
         }
     }
 
@@ -1168,6 +1176,7 @@ impl AISystem {
         crate::ai_records::apply_fleet_holds(&mut galaxy, &state.fleet_holds);
         crate::ai_module8::mark_planners(&mut galaxy, &state.module8.planners);
         crate::ai_strategy::mark_plans(&mut galaxy, &state.strategy.plans);
+        crate::ai_strategy::mark_swept(&mut galaxy, &state.swept);
         galaxy
     }
 
@@ -1247,6 +1256,7 @@ impl AISystem {
                 is_alliance: matches!(ctx.faction, AiFaction::Alliance),
                 day: ctx.tick,
                 seen: &state.seen,
+                swept: &mut state.swept,
                 planners: &mut state.module8.planners,
                 coin: &mut coin,
             };
@@ -1310,6 +1320,7 @@ impl AISystem {
                 controller_flags: state.controller.flags,
                 day: ctx.tick,
                 seen: &state.seen,
+                swept: &mut state.swept,
                 balance: tallies.planner_balance,
                 random: &mut random,
             };
@@ -9101,6 +9112,13 @@ mod tests {
         let r = galaxy.sector(sector).unwrap();
         assert_eq!((r.planner, r.summary & 0x1_0000), (4, 0));
         assert_eq!(r.values[crate::ai_records::sector_at(0x18c)], 0);
+        // A swept sector keeps +0x2c 0x20000000 through the refresh
+        // (FUN_004321e0 keeps 0x28000000), after the plan's bits.
+        assert_eq!(r.summary & 0x2000_0000, 0);
+        state.swept = vec![sector];
+        let galaxy = AISystem::records(&state, &planner, &inputs);
+        let r = galaxy.sector(sector).unwrap();
+        assert_eq!(r.summary & 0x2800_0000, 0x2800_0000);
     }
 
     #[test]
