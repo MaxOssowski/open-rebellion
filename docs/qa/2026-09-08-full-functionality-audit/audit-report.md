@@ -2056,6 +2056,12 @@ cross-runtime proof remain open
   seed 47 a kind 4 plan gets its regiments and orders the campaigns' first
   Planetary Assault. Module `0xb`'s `FUN_004c9cb0` is read, not ported. No
   save change; golden unchanged (`evidence/2026-10-16-planner-request/`).
+- Module 8, stage 5i (2026-10-16): module `0xb`'s fleet cycle state 4
+  (`FUN_004c9cb0`) sends the regiments carried by the first fleet of free
+  own ships to the first unblockaded base of a planner that asks, else to
+  the first planned sector's base. In seed 1 it sends one regiment to
+  Sullust on day 22. No save change; golden unchanged
+  (`evidence/2026-10-16-carried-regiments/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

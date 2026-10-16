@@ -340,6 +340,9 @@ pub struct Inputs<'a> {
     /// Controller `+0xd8`: module 8's sector planners, whose requests
     /// (`FUN_00476b70`) modules 6 and `0xb` read.
     pub planners: &'a [crate::ai_module8::SectorPlanner],
+    /// The regiments the side's fleets carry, which module `0xb` reads
+    /// (`FUN_00504c40` over a ship).
+    pub transport: &'a crate::troop_transport::TroopTransportState,
     /// `FUN_0041cd80(10) < 5`, the ranked lists' coin.
     pub coin: &'a mut dyn FnMut() -> bool,
 }
@@ -1498,6 +1501,7 @@ pub(crate) mod tests {
     fn step(f: &Fixture, state: &mut AIState, tallies: Tallies) -> Step {
         let mut galaxy = records_of(f, state);
         let research = ResearchState::new();
+        let transport = crate::troop_transport::TroopTransportState::default();
         let mut coin = || false;
         let mut io = Inputs {
             world: &f.world,
@@ -1509,6 +1513,7 @@ pub(crate) mod tests {
             tallies,
             is_alliance: true,
             planners: &[],
+            transport: &transport,
             coin: &mut coin,
         };
         state.module1.step(&mut io)
@@ -1814,6 +1819,7 @@ pub(crate) mod tests {
         let mut galaxy = records_of(&f, &state);
         galaxy.update_state(f.yard, 0, 0x800);
         let research = ResearchState::new();
+        let transport = crate::troop_transport::TroopTransportState::default();
         let mut coin = || false;
         let mut io = Inputs {
             world: &f.world,
@@ -1825,6 +1831,7 @@ pub(crate) mod tests {
             tallies: ROOMY,
             is_alliance: true,
             planners: &[],
+            transport: &transport,
             coin: &mut coin,
         };
         state.module1.claim(&mut io);
@@ -1843,6 +1850,7 @@ pub(crate) mod tests {
         run: impl FnOnce(&mut Module1, &mut Inputs<'_>) -> R,
     ) -> R {
         let research = ResearchState::new();
+        let transport = crate::troop_transport::TroopTransportState::default();
         let mut coin = || false;
         let mut io = Inputs {
             world: &f.world,
@@ -1854,6 +1862,7 @@ pub(crate) mod tests {
             tallies,
             is_alliance: true,
             planners: &[],
+            transport: &transport,
             coin: &mut coin,
         };
         run(&mut state.module1, &mut io)

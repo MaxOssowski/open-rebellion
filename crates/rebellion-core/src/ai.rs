@@ -1278,6 +1278,7 @@ impl AISystem {
                 tallies,
                 is_alliance: matches!(ctx.faction, AiFaction::Alliance),
                 planners: &state.module8.planners,
+                transport: ctx.transport,
                 coin: &mut coin,
             };
             return match id {

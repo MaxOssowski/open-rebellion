@@ -630,7 +630,9 @@ port:
 - Kinds 5 and 6's request slots (`FUN_004b17b0`, `FUN_004b4df0`) are not
   read and ask for nothing.
 - Module `0xb`'s move of carried regiments to the base (`FUN_004c9cb0`)
-  is read but not ported.
+  is read but not ported. Stage 5i ports it (`ModuleB::carry_to_base`):
+  the first unblockaded base whose planner asks, else the first pick's;
+  the regiments of the first fleet with free own ships that carries any.
 
 Campaigns (600 days, both sides AI): in seed 47 a kind 4 plan now gets
 its regiments and orders the first Planetary Assault of these campaigns

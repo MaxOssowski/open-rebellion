@@ -556,6 +556,7 @@ mod tests {
         run: impl FnOnce(&mut Module2, &mut Inputs<'_>) -> R,
     ) -> R {
         let research = ResearchState::new();
+        let transport = crate::troop_transport::TroopTransportState::default();
         let mut coin = || false;
         let mut io = Inputs {
             world: &f.world,
@@ -567,6 +568,7 @@ mod tests {
             tallies,
             is_alliance: true,
             planners: &[],
+            transport: &transport,
             coin: &mut coin,
         };
         run(&mut state.module2, &mut io)

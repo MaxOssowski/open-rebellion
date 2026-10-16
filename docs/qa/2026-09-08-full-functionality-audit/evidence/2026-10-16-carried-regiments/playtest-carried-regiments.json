@@ -1,0 +1,127 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against the stage 5h build (HEAD 29509d64)",
+  "seed_1_first_difference": "day 22: MoveRegiments of 1 carried regiment to Sullust (module 0xb, FUN_004c9cb0); the campaign diverges from there",
+  "seeds": {
+    "42": {
+      "identical_event_counts": true,
+      "changed_counts_5h_to_5i": {},
+      "ai_action_types_changed": {}
+    },
+    "1": {
+      "identical_event_counts": false,
+      "changed_counts_5h_to_5i": {
+        "ai_action": [
+          354,
+          314
+        ],
+        "blockade_ended": [
+          0,
+          1
+        ],
+        "blockade_started": [
+          0,
+          1
+        ],
+        "character_escaped": [
+          1,
+          0
+        ],
+        "character_health": [
+          12,
+          15
+        ],
+        "character_killed": [
+          6,
+          8
+        ],
+        "combat_space": [
+          3,
+          2
+        ],
+        "economy_tick": [
+          295,
+          246
+        ],
+        "informant_intel": [
+          14,
+          2
+        ],
+        "jedi_discovered": [
+          1,
+          0
+        ],
+        "mission_dispatched": [
+          187,
+          140
+        ],
+        "mission_resolved": [
+          383,
+          419
+        ],
+        "natural_disaster": [
+          1,
+          0
+        ],
+        "research_unlocked": [
+          13,
+          12
+        ],
+        "resource_discovery": [
+          8,
+          7
+        ],
+        "saboteur_detected": [
+          1,
+          0
+        ],
+        "uprising_incident": [
+          10,
+          8
+        ]
+      },
+      "ai_action_types_changed": {
+        "Build": [
+          70,
+          73
+        ],
+        "DispatchMission": [
+          187,
+          140
+        ],
+        "MoveRegiments": [
+          5,
+          6
+        ],
+        "SetDestination": [
+          54,
+          57
+        ]
+      }
+    },
+    "2": {
+      "identical_event_counts": true,
+      "changed_counts_5h_to_5i": {},
+      "ai_action_types_changed": {}
+    },
+    "3": {
+      "identical_event_counts": true,
+      "changed_counts_5h_to_5i": {},
+      "ai_action_types_changed": {}
+    },
+    "7": {
+      "identical_event_counts": true,
+      "changed_counts_5h_to_5i": {},
+      "ai_action_types_changed": {}
+    },
+    "13": {
+      "identical_event_counts": true,
+      "changed_counts_5h_to_5i": {},
+      "ai_action_types_changed": {}
+    },
+    "47": {
+      "identical_event_counts": true,
+      "changed_counts_5h_to_5i": {},
+      "ai_action_types_changed": {}
+    }
+  }
+}

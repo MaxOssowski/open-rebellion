@@ -14,7 +14,9 @@ use crate::ai_module1::{
 };
 use crate::ai_module2::{borrow_yard, keep_site};
 use crate::ai_module3::{choose_target, tenth_less_yards, CORUSCANT};
-use crate::ai_records::{pick, picks, ranked, ship_damaged, ClassRecord, Mask, Order};
+use crate::ai_records::{
+    pick, picks, ranked, ship_damaged, ClassRecord, Mask, Order, SHIP_FREE, SHIP_OWN,
+};
 use crate::ids::{DatId, FleetKey, SystemKey};
 use crate::manufacturing::{BuildableKind, ProductionArea};
 use crate::scrap::ScrapTarget;
@@ -148,10 +150,6 @@ impl ModuleB {
     }
 
     /// The fleet cycle (`FUN_004c8ba0`).
-    ///
-    /// port: state 4 (`FUN_004c9cb0`) needs a request of module 8's sector
-    /// planners (`FUN_00419e90`), which are not ported, so it gives no
-    /// order.
     fn fleet_cycle(&mut self, io: &mut Inputs<'_>) -> Step {
         match self.state {
             2 => {
@@ -164,12 +162,67 @@ impl ModuleB {
                 self.state = 4;
                 Step::ordered(order)
             }
-            4 => self.end(SHIP_CYCLE, None),
+            4 => {
+                let order = self.carry_to_base(io);
+                self.end(SHIP_CYCLE, order)
+            }
             _ => {
                 self.state = 2;
                 Step::pending()
             }
         }
+    }
+
+    /// `FUN_004c9cb0`: while controller `+4` has `0x30`, the base
+    /// (`+0x40`) of the first planned sector's planner (`FUN_00419e90`:
+    /// sector `+0x2c` `0x8000000`, order 2; the sector record's `+0x38`
+    /// found by `FUN_005f5500`) that asks for regiments (`FUN_00476b70` >
+    /// 0) and is not blockaded (`+0x28` bit 2); failing that, the first
+    /// pick's base while its planner asks, blockaded or not. Then the
+    /// side's fleets (`FUN_0041a4c0`: `+0x38` 5, forbidding 2, key `0xc`,
+    /// order 1) in pick order, each through `+0x54`: the first whose own
+    /// ships no planner holds (`FUN_0041ac80`: `0x24000`, forbidding
+    /// `0x800`) carry regiments (`FUN_00504c40`) gives them all, Move
+    /// `0x201` to the base. `+0x54` is left at the next fleet.
+    ///
+    /// port: a fleet's regiments are its cargo, not a ship's, so a fleet
+    /// gives all its cargo when any of its ships passes the mask.
+    fn carry_to_base(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {
+        if !(io.tallies.sector_short || io.tallies.sector_invading) {
+            return None;
+        }
+        let sectors = picks(vec![io.galaxy.planned_sectors(
+            [ANY, ANY, Mask::new(0x800_0000, 0)],
+            Order::Descending,
+            io.coin,
+        )]);
+        let base_of = |io: &Inputs<'_>, sector| {
+            let id = io.galaxy.sector(sector)?.planner;
+            let planner = io.planners.iter().find(|p| id != 0 && p.id == id)?;
+            (planner.request(io.galaxy) > 0).then_some(planner.base?)
+        };
+        let open = |io: &Inputs<'_>, base| io.galaxy.system(base).is_some_and(|r| r.state & 2 == 0);
+        let base = sectors
+            .iter()
+            .find_map(|&s| base_of(io, s).filter(|&b| open(io, b)))
+            .or_else(|| base_of(io, *sectors.first()?))?;
+        let list = picks(vec![fleets(io, Mask::new(5, 2), 0xc, Order::Ascending)]);
+        let ships = Mask::new(SHIP_FREE | SHIP_OWN, 0x800);
+        let mut troops = Vec::new();
+        self.fleet = None;
+        for (at, &fleet) in list.iter().enumerate() {
+            let Some(record) = io.galaxy.fleets.get(&fleet) else {
+                continue;
+            };
+            if record.ships.iter().any(|r| ships.admits(r.flags)) {
+                troops.extend_from_slice(io.transport.cargo(fleet));
+            }
+            if !troops.is_empty() {
+                self.fleet = list.get(at + 1).copied();
+                break;
+            }
+        }
+        (!troops.is_empty()).then_some(AIAction::MoveRegiments { troops, to: base })
     }
 
     /// `FUN_004c8e90`: the damaged ships of a fleet go to the nearest
@@ -694,6 +747,7 @@ mod tests {
         galaxy: &mut Galaxy,
         tallies: Tallies,
         is_alliance: bool,
+        transport: &crate::troop_transport::TroopTransportState,
         run: impl FnOnce(&mut ModuleB, &mut Inputs<'_>) -> R,
     ) -> R {
         let research = ResearchState::new();
@@ -707,7 +761,8 @@ mod tests {
             kinds: &mut state.record_kinds,
             tallies,
             is_alliance,
-            planners: &[],
+            planners: &state.module8.planners,
+            transport,
             coin: &mut coin,
         };
         run(&mut state.module_b, &mut io)
@@ -722,7 +777,8 @@ mod tests {
     ) -> R {
         let mut galaxy = records_of(f, state);
         edit(&mut galaxy);
-        with_io(f, state, &mut galaxy, tallies, true, run)
+        let transport = crate::troop_transport::TroopTransportState::default();
+        with_io(f, state, &mut galaxy, tallies, true, &transport, run)
     }
 
     fn step(f: &Fixture, state: &mut AIState, tallies: Tallies) -> Step {
@@ -948,6 +1004,260 @@ mod tests {
         assert_eq!(state.module_b.fleet, None);
     }
 
+    /// A regiment at `at` loaded onto `fleet`.
+    fn carried(
+        f: &mut Fixture,
+        transport: &mut crate::troop_transport::TroopTransportState,
+        fleet: FleetKey,
+    ) -> crate::ids::TroopKey {
+        let at = f.world.fleets[fleet].location;
+        let troop = f.world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        f.world.systems[at].ground_units.push(troop);
+        transport.embark(&mut f.world, fleet, &[troop]).unwrap();
+        troop
+    }
+
+    fn base_planner(id: u32, base: SystemKey) -> crate::ai_module8::SectorPlanner {
+        crate::ai_module8::SectorPlanner {
+            id,
+            kind: 4,
+            base: Some(base),
+            plan_target: Some(base),
+            ..Default::default()
+        }
+    }
+
+    /// The sector record at `i` planned (`+0x2c` `0x8000000`) by planner
+    /// `id`, ranked by `plan_id`, and `base` asking for 3 (`v[20]`).
+    fn planned(g: &mut Galaxy, i: usize, id: u32, base: SystemKey) {
+        let s = &mut g.sectors[i];
+        s.summary |= 0x800_0000;
+        (s.planner, s.plan_id) = (id, id);
+        rec(g, base).values[20] = 3;
+    }
+
+    fn run_carry(
+        f: &Fixture,
+        state: &mut AIState,
+        transport: &crate::troop_transport::TroopTransportState,
+        tallies: Tallies,
+        edit: impl FnOnce(&mut Galaxy),
+    ) -> Option<AIAction> {
+        let mut galaxy = records_of(f, state);
+        edit(&mut galaxy);
+        with_io(f, state, &mut galaxy, tallies, true, transport, |m, io| {
+            m.carry_to_base(io)
+        })
+    }
+
+    const SHORT: Tallies = Tallies {
+        sector_short: true,
+        ..ROOMY
+    };
+
+    #[test]
+    fn carried_regiments_go_to_the_base_of_a_planner_that_asks() {
+        // FUN_004c9cb0 (fleet cycle state 4): with controller +4 0x30, the
+        // planned sector (+0x2c 0x8000000) whose planner (+0x38) asks
+        // (FUN_00476b70 > 0) names its base +0x40; the first fleet whose
+        // free own ships (0x24000, forbidding 0x800) carry regiments gives
+        // them all: Move 0x201 to the base. The cycle then ends with
+        // 0x3f9.
+        let (mut f, h) = ship_fixture();
+        let mut transport = crate::troop_transport::TroopTransportState::default();
+        let yard = f.yard;
+        let ship = fleet(&mut f, yard, &[(h.trooper, 100)]);
+        let first = carried(&mut f, &mut transport, ship);
+        let second = carried(&mut f, &mut transport, ship);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module8.planners.push(base_planner(1, f.empty));
+        at(&mut state, FLEET_CYCLE, 4);
+        let mut galaxy = records_of(&f, &state);
+        planned(&mut galaxy, 0, 1, f.empty);
+        let s = with_io(
+            &f,
+            &mut state,
+            &mut galaxy,
+            SHORT,
+            true,
+            &transport,
+            |m, io| m.step(io),
+        );
+        let both = Some(AIAction::MoveRegiments {
+            troops: vec![first, second],
+            to: f.empty,
+        });
+        assert_eq!(s.order, both);
+        assert!(s.complete);
+        assert_eq!(
+            (state.module_b.phase, state.module_b.state),
+            (SHIP_CYCLE, 0)
+        );
+        assert_eq!(state.module_b.fleet, None);
+
+        // Either controller bit serves.
+        let invading = Tallies {
+            sector_invading: true,
+            ..ROOMY
+        };
+        let got = run_carry(&f, &mut state, &transport, invading, |g| {
+            planned(g, 0, 1, f.empty);
+        });
+        assert_eq!(got, both);
+
+        // Nothing without the bits, without the sector bit, with a planner
+        // asking for nothing, or with the ships held by a planner.
+        let got = run_carry(&f, &mut state, &transport, ROOMY, |g| {
+            planned(g, 0, 1, f.empty);
+        });
+        assert_eq!(got, None);
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| {
+            planned(g, 0, 1, f.empty);
+            g.sectors[0].summary &= !0x800_0000;
+        });
+        assert_eq!(got, None);
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| {
+            planned(g, 0, 1, f.empty);
+            rec(g, f.empty).values[20] = 0;
+        });
+        assert_eq!(got, None);
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| {
+            planned(g, 0, 2, f.empty);
+        });
+        assert_eq!(got, None);
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| {
+            planned(g, 0, 1, f.empty);
+            for r in &mut g.fleets.get_mut(&ship).unwrap().ships {
+                r.flags &= !crate::ai_records::SHIP_FREE;
+            }
+        });
+        assert_eq!(got, None);
+        // A fleet without regiments gives nothing.
+        let got = run_carry(&f, &mut state, &Default::default(), SHORT, |g| {
+            planned(g, 0, 1, f.empty);
+        });
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn the_first_unblockaded_base_wins_and_else_the_first_pick_s() {
+        // FUN_004c9cb0 walks the picks (order 2: the least plan id first)
+        // until a base's record lacks +0x28 bit 2; without one it takes
+        // the first pick's base (0x4c9ef0) while its planner asks.
+        let (mut f, h) = ship_fixture();
+        let far_sector = f.world.sectors.insert(crate::world::Sector {
+            dat_id: DatId::new(0x8000_0002),
+            name: "Far".into(),
+            group: crate::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let far = system(&mut f.world, far_sector, 9);
+        f.world.sectors[far_sector].systems.push(far);
+        let mut transport = crate::troop_transport::TroopTransportState::default();
+        let yard = f.yard;
+        let ship = fleet(&mut f, yard, &[(h.trooper, 100)]);
+        let troop = carried(&mut f, &mut transport, ship);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module8.planners.push(base_planner(1, f.empty));
+        state.module8.planners.push(base_planner(2, far));
+        let to = |to| {
+            Some(AIAction::MoveRegiments {
+                troops: vec![troop],
+                to,
+            })
+        };
+        let two = |g: &mut Galaxy| {
+            planned(g, 0, 1, f.empty);
+            let i = g
+                .sectors
+                .iter()
+                .position(|s| s.sector == far_sector)
+                .unwrap();
+            planned(g, i, 2, far);
+        };
+        let got = run_carry(&f, &mut state, &transport, SHORT, two);
+        assert_eq!(got, to(f.empty));
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| {
+            two(g);
+            rec(g, f.empty).state |= 2;
+        });
+        assert_eq!(got, to(far));
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| {
+            two(g);
+            rec(g, f.empty).state |= 2;
+            rec(g, far).state |= 2;
+        });
+        assert_eq!(got, to(f.empty));
+        // The fallback asks the first pick's planner again.
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| {
+            two(g);
+            rec(g, f.empty).values[20] = 0;
+            rec(g, far).state |= 2;
+        });
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn the_fleets_go_by_their_key_and_the_cycle_keeps_the_next() {
+        // FUN_004c9cb0: FUN_0041a4c0(5, 2, 0xc) order 1, picked from the
+        // last (the highest values[12] first); the first fleet with
+        // regiments gives them, and +0x54 holds the next pick.
+        let (mut f, h) = ship_fixture();
+        let mut transport = crate::troop_transport::TroopTransportState::default();
+        let yard = f.yard;
+        let low = fleet(&mut f, yard, &[(h.trooper, 100)]);
+        let high = fleet(&mut f, yard, &[(h.trooper, 100)]);
+        let empty = fleet(&mut f, yard, &[(h.trooper, 100)]);
+        let low_troop = carried(&mut f, &mut transport, low);
+        let high_troop = carried(&mut f, &mut transport, high);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module8.planners.push(base_planner(1, f.empty));
+        let keys = |g: &mut Galaxy, k: [i32; 3]| {
+            planned(g, 0, 1, f.empty);
+            for (fleet, k) in [low, high, empty].into_iter().zip(k) {
+                g.fleets.get_mut(&fleet).unwrap().values[0xc] = k;
+            }
+        };
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| keys(g, [1, 3, 2]));
+        assert_eq!(
+            got,
+            Some(AIAction::MoveRegiments {
+                troops: vec![high_troop],
+                to: f.empty,
+            })
+        );
+        assert_eq!(state.module_b.fleet, Some(empty));
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| keys(g, [3, 1, 2]));
+        assert_eq!(
+            got,
+            Some(AIAction::MoveRegiments {
+                troops: vec![low_troop],
+                to: f.empty,
+            })
+        );
+        assert_eq!(state.module_b.fleet, Some(empty));
+        // A fleet of the other side (record +0x38 without 5) is passed
+        // over.
+        let got = run_carry(&f, &mut state, &transport, SHORT, |g| {
+            keys(g, [1, 3, 2]);
+            g.fleets.get_mut(&high).unwrap().flags &= !4;
+        });
+        assert_eq!(
+            got,
+            Some(AIAction::MoveRegiments {
+                troops: vec![low_troop],
+                to: f.empty,
+            })
+        );
+        assert_eq!(state.module_b.fleet, None);
+    }
+
     #[test]
     fn the_ship_cycle_keeps_a_shipyard_site_and_builds_the_role_s_best_affordable_class() {
         // FUN_004c8c20: 8 (FUN_004ca300 keeps the site, v[4], idle 0x200)
@@ -1001,10 +1311,18 @@ mod tests {
         state.module_b.sites = vec![f.yard, f.empty];
         let role = |state: &mut AIState, t: Tallies, alliance: bool| {
             let mut galaxy = records_of(&f, state);
-            with_io(&f, state, &mut galaxy, t, alliance, |m, io| {
-                m.choose_role(io);
-                m.role
-            })
+            with_io(
+                &f,
+                state,
+                &mut galaxy,
+                t,
+                alliance,
+                &Default::default(),
+                |m, io| {
+                    m.choose_role(io);
+                    m.role
+                },
+            )
         };
         let short = Tallies {
             troops_wanted: 1,

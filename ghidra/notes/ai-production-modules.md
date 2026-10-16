@@ -1073,18 +1073,20 @@ Not ready: clear `+0x38`, `+0x3c`; complete. `0x3ec`: `FUN_004c8d20`;
   fleet plan objects' slots `FUN_004b24b0` (`0x60000`), `FUN_004b5b20` and
   `FUN_004b8070` (`0x50000`), in vtables `0x65c100`, `0x65c1b0` and
   `0x65c210`.
-- `FUN_004c9cb0` (second read 2026-10-16, not ported) runs while
+- `FUN_004c9cb0` (read in full 2026-10-16, ported in stage 5i) runs while
   controller `+4` has `0x30`. Over the planned sectors (`FUN_00419e90`,
-  sector `+0x2c` `0x8000000`, order 2) it takes the first whose planner
-  (`+0x38`, `FUN_005f5500`) asks for more than 0 (`FUN_00476b70`) and
-  whose base (`+0x40`) is not blockaded (`+0x28` bit 2); failing that, one
-  entry with a request above 0, blockaded or not (`FUN_004ece80`; hyp: the
-  list's first). With a base,
+  sector `+0x2c` `0x8000000`, order 2) in pick order it takes the first
+  whose planner (`+0x38`, `FUN_005f5500`) asks for more than 0
+  (`FUN_00476b70`) and whose base (`+0x40`) is not blockaded (`+0x28` bit
+  2). Failing that, it clears the base (`FUN_004ece80`) and takes the
+  first pick's (kept at `0x30(%esp)` from `0x4c9dad`) base, blockaded or
+  not, while its planner asks. With a base,
   it walks the side's fleets (`FUN_0041a4c0(5, 2, 0xc)`, order 1) and
   their own ships (`FUN_0041ac80`: `0x24000`, forbidding `0x800`, key 9);
   the first fleet whose ships carry regiments (`FUN_00504c40`,
   `FUN_00513120`) gives them all, and Move `0x201` (`FUN_004f5cd0`, slot
-  `+0x24`, `+0x2c`) sends them to the base. With no planner it gives
+  `+0x24`, `+0x2c`) sends them to the base. The fleets pass through
+  `+0x54`, which is left at the next pick. With no planner it gives
   nothing.
 
 ### The ship cycle (`FUN_004c8c20`)
@@ -1207,8 +1209,9 @@ port:
   the fallback would send every idle fleet to another sector at each
   step; the move waits for its own stage. Only the Death Star's return
   runs.
-- `FUN_004c9cb0` is not ported (the planner's request now is, stage 5h).
-  The role requests of `FUN_004ca5e0` need module 8's sector planners;
+- `FUN_004c9cb0` is ported (stage 5i, `ModuleB::carry_to_base`). A
+  fleet's regiments are its cargo, not a ship's, so a fleet gives all its
+  cargo when any of its ships is free and its own. The role requests of `FUN_004ca5e0` need module 8's sector planners;
   the bombardment and interdictor roles never come up.
 - A fleet of squadrons alone (the port's seeding) is passed over by the
   fleet queries.
