@@ -740,6 +740,74 @@ fleet heuristics, and in seed 26 it boards a regiment. No occupation
 happens in these campaigns.
 
 
+## Kind 6's plan object (read 2026-10-16)
+
+Kind 6 (vtable `0x65c1b8`) conquers a sector held by the opponent. It
+gathers regiments at a base, boards them like kind 4, and assaults any
+opponent system in the sector that a fleet can take. It attacks like kind
+3 and bombards like kind 5. The strategy names it for sectors with
+`0x408` (the choices above). Its movement is kind 4's.
+
+| Slot | Function | Role |
+|---|---|---|
+| `+0x0c` | `FUN_004b4df0` | the planner's request |
+| `+0x18` | `FUN_004b7150` | missions (shared) |
+| `+0x1c` | `FUN_004b72d0` | movement (kind 4's) |
+| `+0x20` | `FUN_004b4d90` | report |
+| `+0x24..+0x30` | `FUN_004b4e40`, `FUN_004b51b0`, `FUN_004b5370`, `FUN_004b5540` | mission reports (not read) |
+| `+0x34` | `FUN_004b5b20` | the base |
+| `+0x38` | `FUN_004b5f30` | regiments board at the base (kind 4's code) |
+| `+0x3c` | `FUN_004b6340` | attacker (kind 3's code) |
+| `+0x40` | `FUN_004b6510` | assault (state 8) |
+| `+0x44` | `FUN_004b6870` | bombarder (kind 5's code) |
+| `+0x48` | `0x6158b0` | 0 |
+| `+0x4c` | `FUN_004b8b30` | kind 4's |
+| `+0x50` | `FUN_004b6a60` | wants |
+| `+0x54` | `FUN_004b6b70` | retreat |
+
+- **`+0x0c`, `FUN_004b4df0`:** this slot needs the sector record and the
+  base's record. It gives the sector's `+0xa0` (the sum of the opponent
+  systems' garrison needs `v[52]`, `FUN_00432350`) plus the base's `v[20]`
+  less its `v[16]`; else 0.
+- **`+0x20`, `FUN_004b4d90`:** it sets `0x4000000`, and `0x8000000` with
+  the sector record. It adds `0x20000` while the sector's `+0x2c` has 8 (an
+  opponent system) and `0x400` (an opponent system without `+0x30`
+  `0x100`). It also needs either `0x400000` (an opponent system without
+  `+0x30` `0x2000`) or planner `+0x60` bit `0x200000` (writer not traced).
+- **`+0x34`, `FUN_004b5b20`:** kind 4's `FUN_004b8070` with other marks:
+  - a lost base drops `0x70000` (`& 0xfff8ffff`);
+  - a kept base without `0x10000` takes `& 0xfffdffff | 0x50000`;
+  - a new base takes `& 0xfffdffff | 0x50000`.
+- **`+0x38`, `FUN_004b5f30`:** the same code as kind 4's `FUN_004b8470`.
+- **`+0x3c`, `FUN_004b6340`:** the same code as kind 3's `FUN_004b4560`.
+  It has no target to try first, unlike kind 4's.
+- **`+0x40`, `FUN_004b6510`, state 8:** this slot needs the step's fleet
+  with regiments (`+0x80`, `values[12]`, above 0) and the sector record.
+  - With the sector's `+0x19c` above 0, it walks the sector's systems
+    with `+0x30` 4 forbidding `0x300200` by key `0x32` (`v[50]`), order 1.
+  - With none found there, it merges two lists, both forbidding
+    `0x300200`: `+0x30` 4 by key `0x21` (order 1), and `+0x30` `0x24` by
+    key `0x14` (order 2).
+  - The first system for which `FUN_004ae240` holds takes `0x200000`. The
+    fleet takes it as its target with role `0x20000000`. State `0xe`
+    settles that role as for kind 4 (`FUN_004b1070`).
+- **`+0x44`, `FUN_004b6870`:** the same code as kind 5's `FUN_004b3110`.
+- **`+0x50`, `FUN_004b6a60`:** with the sector record (each term floored by
+  controller `+0x164..+0x170`, which read as 0):
+  - `+0x34` at least 1.5 × `v(0x190)`;
+  - `+0x38` at least 1.5 × `v(0x194)` + 1.5 × `v(0x13c)`;
+  - `+0x40` at least 1.5 × (`v(0x198)` + `v(0x138)`);
+  - `+0x3c` at least `v(0x134)`, the largest garrison need of an
+    opponent system;
+  - then kind 4's tail: `+0x44` with controller bit 4 and `v(0x19c)`,
+    `+0x4c` with `0x1000000`, `+0x50`/`+0x54` the planner's `+0x94` and
+    `+0x98`, and `+0x58` = 1.
+- **`+0x54`, `FUN_004b6b70`:** kind 5's `FUN_004b3400` with two changes:
+  - the lone fleet without a base also needs its `values[2]` and
+    `values[3]` at least controller `+0x164`/`+0x168`, as kind 2 does;
+  - its random system forbids only `+0x30` `0x700201`, explored or not.
+  The chain that follows keeps kind 3's blockade tests.
+
 ## Ported (2026-10-16, save v57): the planner's request
 
 `SectorPlanner::request` is slot `+0x0c` (`FUN_00476b70`): kind 4's
