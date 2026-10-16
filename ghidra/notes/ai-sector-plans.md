@@ -613,6 +613,100 @@ not read), the planner's request `+0x0c` and modules 6 and `0xb`'s moves
 that read it, loading regiments onto a fleet as an AI order, and the
 plan object's target `+0x5c` (saved).
 
+## Kind 5's plan object (read 2026-10-16)
+
+Kind 5 (vtable `0x65c108`) consolidates the side's own sector. It holds
+a base, boards regiments there and lands them one at a time on the
+sector's neutral, unpopulated systems. It attacks and bombards like kind 3
+and reports work left while the sector is not wholly the side's or the
+opponent holds a system in it. The strategy names it for a sector without
+`+0x2c` 2 (the choices above).
+
+| Slot | Function | Role |
+|---|---|---|
+| `+0x0c` | `FUN_004b17b0` | the planner's request |
+| `+0x18` | `FUN_004b7150` | missions (shared) |
+| `+0x1c` | `FUN_004b1800` | movement (kind 3's) |
+| `+0x20` | `FUN_004b1760` | report |
+| `+0x24..+0x30` | `FUN_004b1880`, `FUN_004b1bf0`, `FUN_004b1db0`, `FUN_004b1f80` | mission reports (not read) |
+| `+0x34` | `FUN_004b24b0` | the base |
+| `+0x38` | `FUN_004b28c0` | regiments board at the base |
+| `+0x3c` | `FUN_004b2d70` | attacker (kind 3's code) |
+| `+0x40` | `0x6158b0` | 0 |
+| `+0x44` | `FUN_004b3110` | bombarder |
+| `+0x48` | `FUN_004b2f40` | occupier (state 10) |
+| `+0x4c` | `FUN_004b1690` | shared |
+| `+0x50` | `FUN_004b3300` | wants |
+| `+0x54` | `FUN_004b3400` | retreat |
+
+- **`+0x0c`, `FUN_004b17b0`:** this slot needs the sector record (`+0x34`)
+  and the base's record. It gives the base's `v[20]` less its `v[16]`,
+  less the sector's `+0x78` (its own systems), plus 10; else 0. So it asks
+  for a regiment for each system of the sector that is not the side's.
+- **`+0x20`, `FUN_004b1760`:** it sets `0x4000000`, and `0x8000000` with
+  the sector record. It adds `0x20000` while the sector's `+0x2c` lacks 2
+  (`+0x78` < 10, `FUN_00432350`) or has 8 (an opponent system).
+- **`+0x34`, `FUN_004b24b0`:** kind 4's `FUN_004b8070` with other marks:
+  - a base not the side's (`+0x30` 1) or blockaded (`+0x28` 2) loses
+    `0x70000` (`& 0xfff8ffff`) and goes;
+  - a kept base takes `0x60000` and loses `0x10000` unless it has
+    `0x20000`;
+  - the searches are kind 4's, and the new base takes `0x60000` and loses
+    `0x10000`.
+- **`+0x38`, `FUN_004b28c0`:** kind 4's `FUN_004b8470`, plus a check for
+  the sector record (`+0x34`). The best regiment not yet taken
+  (`FUN_004f5940`) is chosen as follows:
+  - while the sector's `+0x2c` lacks 8, the highest defense (slot
+    `+0x1e0`);
+  - with an opponent system in the sector, the highest attack (`+0x1dc`),
+    as kind 4.
+  The limits (`v[19]`, the fleet's room `+0xa8`) and the order Move
+  `0x201` onto the fleet are kind 4's.
+- **`+0x3c`, `FUN_004b2d70`:** the same code as kind 3's `FUN_004b4560`.
+- **`+0x44`, `FUN_004b3110`:** kind 3's `FUN_004b4730`, but the systems
+  are the opponent's (`+0x30` `0x24`, forbidding `0x700200`). The lists
+  are key 8 (order 2) and key `0x21` (order 1), where kind 3 has `0x10`.
+- **`+0x48`, `FUN_004b2f40`, state 10** (true: `0xd`, false: 9):
+  - it needs the step's fleet with regiments aboard (fleet record `+0x80`,
+    `values[12]`, above 0);
+  - it walks the sector's systems with `+0x30` 2 (neutral) forbidding
+    `0x100208` (marked, populated `8`, an opponent's fleet `0x200`), key
+    `0xf`, order 1;
+  - the first system for which `FUN_004ae440` holds takes `+0x30`
+    `0x1000000` and becomes the fleet's target. The fleet takes role
+    `0x80000000`.
+- **`FUN_004ae440(fleet, system)`:** the system's `+0x30` has 2 and lacks
+  8 and `0x200`, and the fleet's `+0x80` is above 0.
+- **State `0xe` with role `0x80000000`** (`FUN_004b1070`, the fleet at its
+  target): while `FUN_004ae440` holds, `FUN_004b1440` walks the fleet's
+  ships. The first ship whose record's `+0x68` (`values[9]`) is above 0
+  and that carries a regiment (`FUN_00504c40`) gives its first regiment.
+  That regiment gets Move `0x201` to the fleet's target `+0x2c`. Otherwise
+  the role goes, as for the other roles.
+- **`+0x50`, `FUN_004b3300`:** with the sector record, `v` being its
+  values:
+  - `+0x34` at least 1.5 × `v(0x190)`;
+  - `+0x38` at least 1.5 × `v(0x194)`, or controller `+0x168` when that
+    is higher and the sector's `+0x2c` has 8;
+  - `+0x40` at least 1.2 × (`v(0x138)` + `v(0x198)`);
+  - `+0x3c` at least 1;
+  - `+0x44` = 1 with controller `+4` bit 4 and `v(0x19c)` above 0;
+  - `+0x4c` = 1 with controller bit `0x1000000`;
+  - `+0x50` = planner `+0x94`, `+0x54` = `+0x98`, `+0x58` = 1.
+- **`+0x54`, `FUN_004b3400`:** kind 3's `FUN_004b4a20` chain (the base not
+  blockaded; the headquarters, key 7 order 2; a yard `0x3e00000`, key
+  `0x21` order 1; at an opponent's system the nearest without `0x204`).
+  One step comes first: with exactly one held fleet (planner `+0x2c`,
+  `FUN_005f50e0`), no base, and the fleet record's `+0x38` without
+  `0xa00`, it takes a random system of the sector (`FUN_0041a460`:
+  forbidding `+0x2c` `0x8000000` and `+0x30` `0x700201`, order 1). That
+  is a system not the side's and not marked.
+
+Open for the port:
+- the occupier and its landing order;
+- whether the port's regiment move lets a regiment land on a neutral
+  planet (`FUN_005073d0`'s test for a Move `0x201` to a system).
+
 ## Ported (2026-10-16, save v57): the planner's request
 
 `SectorPlanner::request` is slot `+0x0c` (`FUN_00476b70`): kind 4's
