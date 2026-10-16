@@ -191,6 +191,9 @@ pub struct Tallies {
     /// Controller `+4` bit `0x20`: some sector record has `+0x2c` bit
     /// `0x2000000` (`FUN_0041b7e0`).
     pub sector_short: bool,
+    /// Controller `+4` bit `0x10`: some sector record has `+0x2c` bit
+    /// `0x1000000`, a kind 4 plan's base (`FUN_0041b7e0`).
+    pub sector_invading: bool,
     /// `+0x24c`: the capital ships' upkeep in the side's fleets (own fleet
     /// records' `values[14]`, `FUN_0041ba80`).
     pub ship_upkeep: i32,
@@ -276,6 +279,7 @@ impl Tallies {
             squadron_upkeep: sum(0x104),
             cargo_upkeep: own(15),
             sector_short: galaxy.sectors.iter().any(|s| s.summary & 0x200_0000 != 0),
+            sector_invading: galaxy.sectors.iter().any(|s| s.summary & 0x100_0000 != 0),
             ship_upkeep: own(14),
             troop_room: own(27),
             armed: own(18),
@@ -333,6 +337,9 @@ pub struct Inputs<'a> {
     pub kinds: &'a mut HashMap<SystemKey, u32>,
     pub tallies: Tallies,
     pub is_alliance: bool,
+    /// Controller `+0xd8`: module 8's sector planners, whose requests
+    /// (`FUN_00476b70`) modules 6 and `0xb` read.
+    pub planners: &'a [crate::ai_module8::SectorPlanner],
     /// `FUN_0041cd80(10) < 5`, the ranked lists' coin.
     pub coin: &'a mut dyn FnMut() -> bool,
 }
@@ -1501,6 +1508,7 @@ pub(crate) mod tests {
             kinds: &mut state.record_kinds,
             tallies,
             is_alliance: true,
+            planners: &[],
             coin: &mut coin,
         };
         state.module1.step(&mut io)
@@ -1521,6 +1529,7 @@ pub(crate) mod tests {
         squadron_upkeep: 0,
         cargo_upkeep: 0,
         sector_short: false,
+        sector_invading: false,
         ship_upkeep: 0,
         troop_room: 0,
         armed: 0,
@@ -1815,6 +1824,7 @@ pub(crate) mod tests {
             kinds: &mut state.record_kinds,
             tallies: ROOMY,
             is_alliance: true,
+            planners: &[],
             coin: &mut coin,
         };
         state.module1.claim(&mut io);
@@ -1843,6 +1853,7 @@ pub(crate) mod tests {
             kinds: &mut state.record_kinds,
             tallies,
             is_alliance: true,
+            planners: &[],
             coin: &mut coin,
         };
         run(&mut state.module1, &mut io)
@@ -2608,6 +2619,7 @@ pub(crate) mod tests {
                 squadron_upkeep: 0,
                 cargo_upkeep: 0,
                 sector_short: false,
+                sector_invading: false,
                 ship_upkeep: 0,
                 troop_room: 0,
                 armed: 0,

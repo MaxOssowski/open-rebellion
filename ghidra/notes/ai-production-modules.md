@@ -726,16 +726,24 @@ Move `0x201` of regiments to a destination `+0x54`:
   count the sector's fleet planner asks for (`FUN_0042f310` finds the
   planner of module 8 whose `+0x40` is the system, `FUN_00476b70` asks
   it); at most the source's `v[19]` (`+0x94`);
-- the source: the sector nearest the destination with `+0x24` `0x80000`
-  (and in the first and last `+0x2c` `0x1000`, or failing that sector
-  `0x280000`/`0x180000`), its system with `+0x28` `0x10000` or `0x18000`,
-  forbidding 2 and `+0x30` `0x30000`, by key `0x13` (order 2);
+- the source: by distance from the destination (`FUN_00419b80`, order 1
+  at `0x4ddce1`, `0x4de85d`, `0x4ded0b` and `0x4dee02`), so with
+  `FUN_004357b0` taking the last entry the farthest sector with `+0x24`
+  `0x80000` (in the first and last also `+0x2c` `0x1000`, in the second
+  `0x800`; failing that, in the first and last, sector `0x280000` and
+  system `+0x28` `0x18000` or `0x20010000`, in the second sector
+  `0x180000` and system `0x10010000`), its system with `+0x28` `0x10000`,
+  forbidding 2, `+0x30` `0x8001` (first and last) or `0x4001` (second)
+  or 1, forbidding `0x30000`, by key `0x13` (order 2);
 - the team: one at a time, the source's regiment (`FUN_00504c40`) with
-  the lowest slot `+0x1e0` not yet taken; the first two take only classes
-  with record flag `0x2000` (defensive).
+  the lowest slot `+0x1e0` not yet taken; the first and last take only
+  classes with record flag `0x2000` (defensive), the second only `0x1000`
+  (offensive).
 
-The first two run only while controller `+4` has `0x20`, which
-`FUN_0041b7e0` sets for a sector record with `+0x2c` `0x2000000`.
+The first runs only while controller `+4` has `0x20`, which `FUN_0041b7e0`
+sets for a sector record with `+0x2c` `0x2000000`; the second (read
+2026-10-16) while it has `0x10`, set for `+0x2c` `0x1000000`, with that
+sector bit and the base `+0x30` `0x10001`.
 
 ### The regiment cycle (`FUN_004dd8d0`)
 
@@ -1065,13 +1073,19 @@ Not ready: clear `+0x38`, `+0x3c`; complete. `0x3ec`: `FUN_004c8d20`;
   fleet plan objects' slots `FUN_004b24b0` (`0x60000`), `FUN_004b5b20` and
   `FUN_004b8070` (`0x50000`), in vtables `0x65c100`, `0x65c1b0` and
   `0x65c210`.
-- `FUN_004c9cb0` (first read) runs while controller `+4` has `0x30`: it
-  needs a module 8 sector planner (`FUN_00419e90`, sector `+0x24`
-  `0x8000000`) whose request (`FUN_00476b70`) is above 0 to name a
-  system. It then walks the side's fleets (`0x5`, forbidding 2, key `0xc`)
-  and their own ships (`FUN_0041ac80`: `0x24000`, forbidding `0x800`, key
-  9) for the regiments aboard (`FUN_00504c40`) and gives Move `0x201`.
-  With no planner it names no system and gives nothing.
+- `FUN_004c9cb0` (second read 2026-10-16, not ported) runs while
+  controller `+4` has `0x30`. Over the planned sectors (`FUN_00419e90`,
+  sector `+0x2c` `0x8000000`, order 2) it takes the first whose planner
+  (`+0x38`, `FUN_005f5500`) asks for more than 0 (`FUN_00476b70`) and
+  whose base (`+0x40`) is not blockaded (`+0x28` bit 2); failing that, one
+  entry with a request above 0, blockaded or not (`FUN_004ece80`; hyp: the
+  list's first). With a base,
+  it walks the side's fleets (`FUN_0041a4c0(5, 2, 0xc)`, order 1) and
+  their own ships (`FUN_0041ac80`: `0x24000`, forbidding `0x800`, key 9);
+  the first fleet whose ships carry regiments (`FUN_00504c40`,
+  `FUN_00513120`) gives them all, and Move `0x201` (`FUN_004f5cd0`, slot
+  `+0x24`, `+0x2c`) sends them to the base. With no planner it gives
+  nothing.
 
 ### The ship cycle (`FUN_004c8c20`)
 
@@ -1193,8 +1207,9 @@ port:
   the fallback would send every idle fleet to another sector at each
   step; the move waits for its own stage. Only the Death Star's return
   runs.
-- `FUN_004c9cb0` and the role requests of `FUN_004ca5e0` need module 8's
-  sector planners; the bombardment and interdictor roles never come up.
+- `FUN_004c9cb0` is not ported (the planner's request now is, stage 5h).
+  The role requests of `FUN_004ca5e0` need module 8's sector planners;
+  the bombardment and interdictor roles never come up.
 - A fleet of squadrons alone (the port's seeding) is passed over by the
   fleet queries.
 - hyp: controller `+0x16c` has no writer found and reads as 0.
@@ -1329,8 +1344,10 @@ needs the side's yard of its area.
 
 port:
 - The first two moves (`FUN_004ddb70`, `FUN_004de130`) take their count
-  from module 8's sector planners, which are not ported, so they move
-  nothing.
+  from module 8's sector planners. Ported 2026-10-16 (stage 5h) with kind
+  4's request; kinds 5 and 6 still ask for nothing. The same stage made
+  the source sector the farthest (order 1), as the original pushes, in
+  `FUN_004de6f0` and `FUN_004deba0` too; the port had the nearest.
 - The raise and lowering of the side's garrison goals need the strategy
   module's controller `+4` bits `0x800000` and `0x400000`. Ported
   2026-10-15 with the posture (`ai-sector-plans.md`, save v49): the goals

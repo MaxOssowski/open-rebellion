@@ -175,7 +175,8 @@ impl Module6 {
     /// first that gives an order ending the cycle.
     fn move_cycle(&mut self, io: &mut Inputs<'_>) -> Step {
         let order = match self.state {
-            1 | 2 => self.planned_move(),
+            1 => self.planned_move(io, false),
+            2 => self.planned_move(io, true),
             3 => self.move_to_short(io, Mask::new(0x4_0010, 0), 0x2001, false),
             4 => self.move_to_short(io, Mask::new(0x4_0000, 0), 0x2000, true),
             _ => {
@@ -190,21 +191,112 @@ impl Module6 {
         Step::pending()
     }
 
-    /// `FUN_004ddb70` and `FUN_004de130`: the count to move comes from the
-    /// fleet planner module 8 keeps for the destination's sector
-    /// (`FUN_0042f310`, `FUN_00476b70`).
-    ///
-    /// port: module 8 is not ported, so no planner asks and nothing moves.
-    fn planned_move(&mut self) -> Option<AIAction> {
+    /// `FUN_004ddb70` (`invasion` false) and `FUN_004de130` (true): while
+    /// controller `+4` has `0x20` (`0x10`), the planned sector with `+0x2c`
+    /// `0x2000000` (`0x1000000`; `FUN_00419e90`, order 2) names its own
+    /// base with `+0x30` `0x20000` (`0x10000`) not blockaded (key `0x10`,
+    /// order 2); the planner whose base it is (`FUN_0042f310`) asks for a
+    /// count (`FUN_00476b70`, [`crate::ai_module8::SectorPlanner::request`]).
+    /// The source is the system with a surplus (`+0x28` `0x10000`, `+0x30`
+    /// `0x8001` (`0x4001`), not blockaded, no base of these kinds `0x30000`;
+    /// key `0x13`, order 2) in the farthest sector (by distance, order 1) with
+    /// `+0x24` `0x80000` and `+0x2c` `0x1000` (`0x800`); else in one with
+    /// `+0x24` `0x280000` (`0x180000`) a system with `+0x28` `0x18000`
+    /// (`0x10010000`) and `+0x30` 1. Up to the count, at most the source's
+    /// surplus `v[19]`, of its regiments of classes with record flag
+    /// `0x2000` (`0x1000`), the lowest slot `+0x1e0` first: Move `0x201`.
+    fn planned_move(&mut self, io: &mut Inputs<'_>, invasion: bool) -> Option<AIAction> {
         self.source = Target::None;
         self.destination = Target::None;
-        None
+        let (asked, sector_bit, base_bit, near_bit, source_kind, wide, wide_state, class) =
+            if invasion {
+                (
+                    io.tallies.sector_invading,
+                    0x100_0000,
+                    0x1_0001,
+                    0x800,
+                    0x4001,
+                    0x18_0000,
+                    0x1001_0000,
+                    CLASS_OFFENSIVE,
+                )
+            } else {
+                (
+                    io.tallies.sector_short,
+                    0x200_0000,
+                    0x2_0001,
+                    0x1000,
+                    0x8001,
+                    0x28_0000,
+                    0x1_8000,
+                    CLASS_DEFENSIVE,
+                )
+            };
+        if !asked {
+            return None;
+        }
+        let sectors = io.galaxy.planned_sectors(
+            [ANY, ANY, Mask::new(sector_bit, 0)],
+            Order::Descending,
+            io.coin,
+        );
+        let sector = pick(&[sectors]);
+        let masks = [Mask::new(0, 2), ANY, Mask::new(base_bit, 0)];
+        let destination = pick(&[io.systems(sector, masks, 0x10, Order::Descending)]);
+        self.destination = destination.map_or(Target::None, Target::System);
+        let destination = destination?;
+        let mut count = io
+            .planners
+            .iter()
+            .find(|p| p.base == Some(destination))
+            .map_or(0, |p| p.request(io.galaxy));
+        if count < 1 {
+            return None;
+        }
+        let near = |io: &mut Inputs<'_>, bits: [Mask; 3]| {
+            let sectors =
+                io.galaxy
+                    .sectors_by_distance(destination, bits, Order::Ascending, io.coin);
+            pick(&[sectors])
+        };
+        let sector = near(io, [Mask::new(0x8_0000, 0), ANY, Mask::new(near_bit, 0)]);
+        let masks = [
+            Mask::new(0x1_0000, 2),
+            ANY,
+            Mask::new(source_kind, 0x3_0000),
+        ];
+        let source = pick(&[io.systems(sector, masks, 0x13, Order::Descending)]).or_else(|| {
+            let sector = near(io, [Mask::new(wide, 0), ANY, ANY]);
+            let masks = [Mask::new(wide_state, 2), ANY, Mask::new(1, 0x3_0000)];
+            pick(&[io.systems(sector, masks, 0x13, Order::Descending)])
+        });
+        self.source = source.map_or(Target::None, Target::System);
+        let source = source?;
+        count = count.min(io.galaxy.system(source)?.values[19]);
+        let candidates = Self::regiments(io, source, class);
+        let mut team: Vec<TroopKey> = Vec::new();
+        while count > 0 {
+            let Some(&(troop, _)) = candidates
+                .iter()
+                .filter(|(t, _)| !team.contains(t))
+                .min_by_key(|&&(_, defense)| defense)
+            else {
+                break;
+            };
+            team.push(troop);
+            count -= 1;
+        }
+        (!team.is_empty()).then_some(AIAction::MoveRegiments {
+            troops: team,
+            to: destination,
+        })
     }
 
     /// `FUN_004de6f0` (and `FUN_004deba0` with `defensive`): the system
-    /// short of garrison in the sector with the most, then the nearest
-    /// sector's system with a surplus, and up to the shortfall `v[21]` (at
-    /// most the source's surplus `v[19]`) of its weakest regiments.
+    /// short of garrison in the sector with the most, then the farthest
+    /// sector's system with a surplus (by distance, order 1: `0x4de85d`,
+    /// `0x4ded0b`, `0x4dee02`), and up to the shortfall `v[21]` (at most the
+    /// source's surplus `v[19]`) of its weakest regiments.
     fn move_to_short(
         &mut self,
         io: &mut Inputs<'_>,
@@ -222,7 +314,7 @@ impl Module6 {
         let near = |io: &mut Inputs<'_>, bits: [Mask; 3]| {
             let sectors =
                 io.galaxy
-                    .sectors_by_distance(destination, bits, Order::Descending, io.coin);
+                    .sectors_by_distance(destination, bits, Order::Ascending, io.coin);
             pick(&[sectors])
         };
         let source = if defensive {
@@ -244,7 +336,7 @@ impl Module6 {
         let surplus = io.galaxy.system(source)?.values[19];
         count = count.min(surplus);
         let mut team: Vec<TroopKey> = Vec::new();
-        let candidates = Self::regiments(io, source, defensive);
+        let candidates = Self::regiments(io, source, if defensive { CLASS_DEFENSIVE } else { 0 });
         while count > 0 {
             let Some(&(troop, _)) = candidates
                 .iter()
@@ -264,9 +356,10 @@ impl Module6 {
 
     /// The side's regiments on `system`'s surface (`FUN_00504c40`) with
     /// their slot `+0x1e0`, the class's defense (`FUN_00520ba0`, class
-    /// `+0x68`), in the system's order; only defensive classes (record
-    /// flag `0x2000`) when `defensive`. The first of the lowest wins.
-    fn regiments(io: &Inputs<'_>, system: SystemKey, defensive: bool) -> Vec<(TroopKey, i32)> {
+    /// `+0x68`), in the system's order; only classes with record flag
+    /// `class` (`0x2000` defensive, `0x1000` offensive) unless it is 0. The
+    /// first of the lowest wins.
+    fn regiments(io: &Inputs<'_>, system: SystemKey, class: u32) -> Vec<(TroopKey, i32)> {
         let side = io.side();
         let Some(sys) = io.world.systems.get(system) else {
             return Vec::new();
@@ -278,12 +371,12 @@ impl Module6 {
                 if crate::dat::Faction::of_alliance(unit.is_alliance) != side {
                     return None;
                 }
-                if defensive
+                if class != 0
                     && io
                         .galaxy
                         .classes
                         .get(unit.class_dat_id)
-                        .is_none_or(|r| r.flags & CLASS_DEFENSIVE == 0)
+                        .is_none_or(|r| r.flags & class == 0)
                 {
                     return None;
                 }
@@ -747,6 +840,7 @@ mod tests {
             kinds: &mut state.record_kinds,
             tallies,
             is_alliance: true,
+            planners: &state.module8.planners,
             coin: &mut coin,
         };
         run(&mut state.module6, &mut io)
@@ -935,6 +1029,53 @@ mod tests {
     }
 
     #[test]
+    fn the_short_system_s_source_is_the_farthest_sector_s() {
+        // FUN_004de6f0 pushes order 1 for FUN_00419b80 (0x4de85d): the
+        // nearest first, and FUN_004357b0 takes the last entry.
+        let mut f = regiment_fixture();
+        add_regiment(&mut f.world, f.yard, MILITIA, true);
+        let far_sector = f.world.sectors.insert(crate::world::Sector {
+            dat_id: DatId::new(0x8000_0002),
+            name: "Far".into(),
+            group: crate::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let far = crate::ai_module1::tests::system(&mut f.world, far_sector, 9);
+        f.world.sectors[far_sector].systems.push(far);
+        let guard = add_regiment(&mut f.world, far, GUARD, true);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let order = edited(
+            &f,
+            &mut state,
+            ROOMY,
+            |g| {
+                short_and_surplus(g, &f, 0x4_0010, 0x2001, 1);
+                let i = g
+                    .sectors
+                    .iter()
+                    .position(|s| s.sector == far_sector)
+                    .unwrap();
+                g.sectors[i].position = (100, 0);
+                g.sectors[i].candidates |= 0x8_0000;
+                let r = rec(g, far);
+                r.state |= 0x1_0000;
+                r.values[19] = 1;
+            },
+            |m, io| m.move_to_short(io, Mask::new(0x4_0010, 0), 0x2001, false),
+        );
+        assert_eq!(
+            order,
+            Some(AIAction::MoveRegiments {
+                troops: vec![guard],
+                to: f.empty,
+            })
+        );
+        assert_eq!(state.module6.source, Target::System(far));
+    }
+
+    #[test]
     fn the_defensive_move_takes_defensive_classes_and_falls_back() {
         // FUN_004deba0 (state 4): sector 0x40000, system 0x2000; the
         // source with sector +0x2c 0x1000 and +0x30 0x8001, else the
@@ -986,9 +1127,9 @@ mod tests {
     }
 
     #[test]
-    fn the_planned_moves_find_no_planner_and_clear_their_systems() {
-        // FUN_004ddb70 and FUN_004de130 take their count from module 8's
-        // sector planners (FUN_0042f310), which the port has not.
+    fn the_planned_moves_without_their_sector_bit_clear_their_systems() {
+        // FUN_004ddb70 and FUN_004de130 clear +0x6c and +0x70 first and
+        // give nothing without the controller's +4 bit 0x20 (0x10).
         let f = regiment_fixture();
         let mut state = AIState::new(AiFaction::Alliance);
         state.module6.source = Target::System(f.yard);
@@ -1001,6 +1142,307 @@ mod tests {
             (state.module6.source, state.module6.destination),
             (Target::None, Target::None)
         );
+    }
+
+    /// The planned move's records: `empty` the planned base in a sector
+    /// with `sector_bit` and `near_bit`, `yard` the source with
+    /// `source_kind` and the surplus `v[19]`; the planner asks for 3.
+    fn planned(g: &mut Galaxy, f: &Fixture, bits: [u32; 4], surplus: i32) {
+        let [sector_bit, near_bit, base_bit, source_kind] = bits;
+        g.sectors[0].summary |= sector_bit | near_bit;
+        g.sectors[0].candidates |= 0x8_0000;
+        let d = rec(g, f.empty);
+        d.kind |= base_bit;
+        (d.values[20], d.values[16], d.values[52]) = (4, 2, 1);
+        let s = rec(g, f.yard);
+        s.state |= 0x1_0000;
+        s.kind |= source_kind;
+        s.values[19] = surplus;
+    }
+
+    fn base_planner(f: &Fixture) -> crate::ai_module8::SectorPlanner {
+        crate::ai_module8::SectorPlanner {
+            id: 1,
+            kind: 4,
+            base: Some(f.empty),
+            plan_target: Some(f.empty),
+            ..Default::default()
+        }
+    }
+
+    const SHORT: [u32; 4] = [0x200_0000, 0x1000, 0x2_0001, 0x8001];
+    const INVADING: [u32; 4] = [0x100_0000, 0x800, 0x1_0001, 0x4001];
+
+    #[test]
+    fn the_short_planned_move_sends_defensive_regiments_to_a_planner_s_base() {
+        // FUN_004ddb70 (state 1), with the controller's +4 bit 0x20: a
+        // sector with +0x2c 0x2000000 (FUN_00419e90), its system with
+        // +0x30 0x20001 (key 0x10); the planner based there (FUN_0042f310)
+        // asks v[20] - v[16] + v[52] = 3 (slot +0x0c, FUN_004b7100); the
+        // nearest sector with +0x24 0x80000 and +0x2c 0x1000, its system
+        // with +0x28 0x10000 and +0x30 0x8001; at most its v[19], regiments
+        // whose class has 0x2000, the lowest defense first. The order ends
+        // the cycle.
+        let mut f = regiment_fixture();
+        let guard = add_regiment(&mut f.world, f.yard, GUARD, true);
+        add_regiment(&mut f.world, f.yard, RAIDER, true);
+        let militia = add_regiment(&mut f.world, f.yard, MILITIA, true);
+        let short = Tallies {
+            sector_short: true,
+            ..ROOMY
+        };
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module8.planners.push(base_planner(&f));
+        state.module6.phase = MOVE_CYCLE;
+        state.module6.state = 1;
+        let s = edited(
+            &f,
+            &mut state,
+            short,
+            |g| planned(g, &f, SHORT, 5),
+            |m, io| m.step(io),
+        );
+        let both = Some(AIAction::MoveRegiments {
+            troops: vec![militia, guard],
+            to: f.empty,
+        });
+        assert_eq!(
+            s,
+            Step {
+                order: both.clone(),
+                complete: true,
+                raise: false,
+            }
+        );
+        assert_eq!(
+            (state.module6.phase, state.module6.state),
+            (REGIMENT_CYCLE, 0)
+        );
+        assert_eq!(
+            (state.module6.source, state.module6.destination),
+            (Target::System(f.yard), Target::System(f.empty))
+        );
+
+        // The source's v[19] limits the count.
+        let order = edited(
+            &f,
+            &mut state,
+            short,
+            |g| planned(g, &f, SHORT, 1),
+            |m, io| m.planned_move(io, false),
+        );
+        let one = Some(AIAction::MoveRegiments {
+            troops: vec![militia],
+            to: f.empty,
+        });
+        assert_eq!(order, one);
+        // The planner's request limits it too.
+        let order = edited(
+            &f,
+            &mut state,
+            short,
+            |g| {
+                planned(g, &f, SHORT, 5);
+                rec(g, f.empty).values[20] = 2;
+            },
+            |m, io| m.planned_move(io, false),
+        );
+        assert_eq!(order, one);
+
+        // Else the farthest sector with +0x24 0x280000, its system with
+        // +0x28 0x18000 and +0x30 1.
+        let fallback = |g: &mut Galaxy| {
+            planned(g, &f, [0x200_0000, 0, 0x2_0001, 1], 5);
+            g.sectors[0].candidates &= !0x10_0000;
+            g.sectors[0].candidates |= 0x28_0000;
+            let r = rec(g, f.yard);
+            r.state |= 0x1_8000;
+            r.kind &= !0x8000;
+        };
+        let order = edited(&f, &mut state, short, fallback, |m, io| {
+            m.planned_move(io, false)
+        });
+        assert_eq!(order, both);
+        let order = edited(
+            &f,
+            &mut state,
+            short,
+            |g| planned(g, &f, [0x200_0000, 0, 0x2_0001, 1], 5),
+            |m, io| m.planned_move(io, false),
+        );
+        assert_eq!(order, None);
+        assert_eq!(
+            (state.module6.source, state.module6.destination),
+            (Target::None, Target::System(f.empty))
+        );
+
+        // A base without a planner, a planner based elsewhere, or one
+        // asking for nothing, gives nothing and keeps the destination.
+        let elsewhere = crate::ai_module8::SectorPlanner {
+            base: Some(f.yard),
+            ..base_planner(&f)
+        };
+        let idle = crate::ai_module8::SectorPlanner {
+            kind: 5,
+            ..base_planner(&f)
+        };
+        for planners in [vec![], vec![elsewhere], vec![idle]] {
+            state.module8.planners = planners;
+            state.module6.source = Target::System(f.yard);
+            let order = edited(
+                &f,
+                &mut state,
+                short,
+                |g| {
+                    planned(g, &f, SHORT, 5);
+                    rec(g, f.yard).values[20] = 9;
+                },
+                |m, io| m.planned_move(io, false),
+            );
+            assert_eq!(order, None);
+            assert_eq!(
+                (state.module6.source, state.module6.destination),
+                (Target::None, Target::System(f.empty))
+            );
+        }
+    }
+
+    #[test]
+    fn the_planned_move_takes_its_source_from_the_farthest_sector() {
+        // FUN_004ddb70 pushes order 1 for FUN_00419b80's source sectors
+        // (0x4ddce1): the nearest first, and FUN_004357b0 takes the last
+        // entry, the farthest.
+        let mut f = regiment_fixture();
+        add_regiment(&mut f.world, f.yard, MILITIA, true);
+        let far_sector = f.world.sectors.insert(crate::world::Sector {
+            dat_id: DatId::new(0x8000_0002),
+            name: "Far".into(),
+            group: crate::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let far = crate::ai_module1::tests::system(&mut f.world, far_sector, 9);
+        f.world.sectors[far_sector].systems.push(far);
+        let guard = add_regiment(&mut f.world, far, GUARD, true);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module8.planners.push(base_planner(&f));
+        let order = edited(
+            &f,
+            &mut state,
+            Tallies {
+                sector_short: true,
+                ..ROOMY
+            },
+            |g| {
+                planned(g, &f, SHORT, 1);
+                let i = g
+                    .sectors
+                    .iter()
+                    .position(|s| s.sector == far_sector)
+                    .unwrap();
+                g.sectors[i].position = (100, 0);
+                g.sectors[i].summary |= 0x1000;
+                g.sectors[i].candidates |= 0x8_0000;
+                let r = rec(g, far);
+                r.state |= 0x1_0000;
+                r.kind |= 0x8001;
+                r.values[19] = 1;
+            },
+            |m, io| m.planned_move(io, false),
+        );
+        assert_eq!(
+            order,
+            Some(AIAction::MoveRegiments {
+                troops: vec![guard],
+                to: f.empty,
+            })
+        );
+        assert_eq!(state.module6.source, Target::System(far));
+    }
+
+    #[test]
+    fn the_invading_planned_move_sends_offensive_regiments_to_a_planner_s_base() {
+        // FUN_004de130 (state 2), with the controller's +4 bit 0x10: the
+        // sector with +0x2c 0x1000000, the base with +0x30 0x10001, the
+        // source sector with +0x2c 0x800 and system with +0x30 0x4001,
+        // else the sector with +0x24 0x180000 and system with +0x28
+        // 0x10010000; regiments whose class has 0x1000.
+        let mut f = regiment_fixture();
+        add_regiment(&mut f.world, f.yard, GUARD, true);
+        let raider = add_regiment(&mut f.world, f.yard, RAIDER, true);
+        add_regiment(&mut f.world, f.yard, MILITIA, true);
+        let second = add_regiment(&mut f.world, f.yard, RAIDER, true);
+        let invading = Tallies {
+            sector_invading: true,
+            ..ROOMY
+        };
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module8.planners.push(base_planner(&f));
+        state.module6.phase = MOVE_CYCLE;
+        state.module6.state = 2;
+        let raiders = Some(AIAction::MoveRegiments {
+            troops: vec![raider, second],
+            to: f.empty,
+        });
+        let s = edited(
+            &f,
+            &mut state,
+            invading,
+            |g| planned(g, &f, INVADING, 5),
+            |m, io| m.step(io),
+        );
+        assert_eq!(
+            s,
+            Step {
+                order: raiders.clone(),
+                complete: true,
+                raise: false,
+            }
+        );
+        let fallback = |g: &mut Galaxy| {
+            planned(g, &f, [0x100_0000, 0, 0x1_0001, 1], 5);
+            g.sectors[0].candidates &= !0x20_0000;
+            g.sectors[0].candidates |= 0x18_0000;
+            let r = rec(g, f.yard);
+            r.state |= 0x1001_0000;
+            r.kind &= !0x4000;
+        };
+        let order = edited(&f, &mut state, invading, fallback, |m, io| {
+            m.planned_move(io, true)
+        });
+        assert_eq!(order, raiders);
+
+        // The short move's bits do not serve it, nor its own without the
+        // controller's bit.
+        let order = edited(
+            &f,
+            &mut state,
+            invading,
+            |g| planned(g, &f, SHORT, 5),
+            |m, io| m.planned_move(io, true),
+        );
+        assert_eq!(order, None);
+        let order = edited(
+            &f,
+            &mut state,
+            ROOMY,
+            |g| planned(g, &f, INVADING, 5),
+            |m, io| m.planned_move(io, true),
+        );
+        assert_eq!(order, None);
+        // Nor does the invading move serve the short one.
+        let order = edited(
+            &f,
+            &mut state,
+            Tallies {
+                sector_short: true,
+                ..ROOMY
+            },
+            |g| planned(g, &f, INVADING, 5),
+            |m, io| m.planned_move(io, false),
+        );
+        assert_eq!(order, None);
     }
 
     /// `yard` as the training site, idle.
@@ -1563,6 +2005,11 @@ mod tests {
         );
         g.sectors[0].summary &= !0x200_0000;
         assert!(!Tallies::of(&g, 0, 0).sector_short);
+        // +4 bit 0x10 for a sector with +0x2c 0x1000000.
+        assert!(!Tallies::of(&g, 0, 0).sector_invading);
+        g.sectors[0].summary |= 0x100_0000;
+        let t = Tallies::of(&g, 0, 0);
+        assert!(t.sector_invading && !t.sector_short);
     }
 
     #[test]

@@ -707,6 +707,7 @@ mod tests {
             kinds: &mut state.record_kinds,
             tallies,
             is_alliance,
+            planners: &[],
             coin: &mut coin,
         };
         run(&mut state.module_b, &mut io)

@@ -1277,6 +1277,7 @@ impl AISystem {
                 kinds: &mut state.record_kinds,
                 tallies,
                 is_alliance: matches!(ctx.faction, AiFaction::Alliance),
+                planners: &state.module8.planners,
                 coin: &mut coin,
             };
             return match id {

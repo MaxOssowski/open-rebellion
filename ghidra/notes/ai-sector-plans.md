@@ -613,6 +613,30 @@ not read), the planner's request `+0x0c` and modules 6 and `0xb`'s moves
 that read it, loading regiments onto a fleet as an AI order, and the
 plan object's target `+0x5c` (saved).
 
+## Ported (2026-10-16, save v57): the planner's request
+
+`SectorPlanner::request` is slot `+0x0c` (`FUN_00476b70`): kind 4's
+`FUN_004b7100` gives the base's `v[20]` less its `v[16]` plus the target's
+`v[52]`, with both records, else 0; kinds 1 to 3 have `0x6158b0` (0).
+Module 6's first two moves read it (`ai-production-modules.md`, "The move
+cycle"): `FUN_004ddb70` sends defensive regiments to a planner's base in a
+sector with `+0x2c` `0x2000000`, `FUN_004de130` offensive ones where
+`+0x2c` has `0x1000000` (controller `+4` bit `0x10`, `Tallies::
+sector_invading`). Their source sector is the farthest (order 1), and so
+is that of `FUN_004de6f0` and `FUN_004deba0`, which the port had as the
+nearest. No save change.
+
+port:
+- Kinds 5 and 6's request slots (`FUN_004b17b0`, `FUN_004b4df0`) are not
+  read and ask for nothing.
+- Module `0xb`'s move of carried regiments to the base (`FUN_004c9cb0`)
+  is read but not ported.
+
+Campaigns (600 days, both sides AI): in seed 47 a kind 4 plan now gets
+its regiments and orders the first Planetary Assault of these campaigns
+(day 28, Commenor: 5 regiments land unopposed, the system passes to the
+Empire the next day).
+
 ## Ported (2026-10-16, save v57): kind 4's plan object
 
 `ai_planner::ported_kind` takes kind 4. `ai_planner.rs`:
@@ -633,7 +657,8 @@ after an order and goes only when none is given. Save v57.
 port:
 - The planner's request (slot `+0x0c`, `FUN_004b7100`) and modules 6 and
   `0xb`'s moves of regiments to the base it drives are not ported, nor is
-  slot `+0x4c` (`FUN_004b8b30`).
+  slot `+0x4c` (`FUN_004b8b30`). Stage 5h below ports the request and
+  module 6's moves.
 - hyp: the base's walk gives the side's regiments on the planet in its
   order; without a target `+0x3c` takes the `+0x40` value.
 

@@ -497,6 +497,27 @@ impl SectorPlanner {
         w[8] = self.held[1];
     }
 
+    /// The planner's request (`FUN_00476b70`, the plan object's slot
+    /// `+0x0c`): kind 4's (`FUN_004b7100`), with both records, is its
+    /// base's garrison term `v[20]` less its `v[16]`, plus the target's
+    /// garrison need `v[52]`; kinds 1 to 3's slot is `0x6158b0` (0).
+    ///
+    /// port: kinds 5 and 6's slots (`FUN_004b17b0`, `FUN_004b4df0`) are not
+    /// ported and ask for nothing.
+    #[must_use]
+    pub fn request(&self, galaxy: &Galaxy) -> i32 {
+        if self.kind != 4 {
+            return 0;
+        }
+        let (Some(target), Some(base)) = (
+            self.plan_target.and_then(|t| galaxy.system(t)),
+            self.base.and_then(|b| galaxy.system(b)),
+        ) else {
+            return 0;
+        };
+        base.values[20] - base.values[16] + target.values[52]
+    }
+
     /// Kind 4's target (`FUN_004b8f80`): with the sector record, the yard
     /// key of the plan's parameter (sector `+0x34`: 1 shipyards `v[4]`, 2
     /// training facilities `v[5]`, 3 construction yards `v[6]`, else
@@ -2452,5 +2473,28 @@ pub(crate) mod tests {
             let got = with(&mut fx, |io| random_system(io, sector, own));
             assert_eq!(got, Some(fx.systems[if second { 3 } else { 2 }]));
         }
+    }
+
+    #[test]
+    fn kind_four_asks_for_its_base_s_garrison_term_plus_the_target_s_need() {
+        // FUN_00476b70 calls the plan object's slot +0x0c; kind 4's
+        // (FUN_004b7100) gives base +0x98 - +0x88 + target +0x118, that is
+        // v[20] - v[16] + v[52], and 0 without either record. Kinds 1 to 3
+        // have 0x6158b0 there.
+        let mut fx = fixture();
+        let (base, target) = (fx.systems[0], fx.systems[2]);
+        let r = fx.galaxy.system_mut(base).unwrap();
+        (r.values[20], r.values[16]) = (7, 2);
+        fx.galaxy.system_mut(target).unwrap().values[52] = 4;
+        let mut p = planner(&fx);
+        (p.kind, p.base, p.plan_target) = (4, Some(base), Some(target));
+        assert_eq!(p.request(&fx.galaxy), 9);
+        p.kind = 3;
+        assert_eq!(p.request(&fx.galaxy), 0);
+        p.kind = 4;
+        p.plan_target = None;
+        assert_eq!(p.request(&fx.galaxy), 0);
+        (p.plan_target, p.base) = (Some(target), None);
+        assert_eq!(p.request(&fx.galaxy), 0);
     }
 }

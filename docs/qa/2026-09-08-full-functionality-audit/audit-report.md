@@ -2048,6 +2048,14 @@ cross-runtime proof remain open
   the base, so no fleet carries enough for an assault yet. Save v57;
   golden `v1:fb57b4045cb49e83` -> `v1:a8343f6c6630924e`
   (`evidence/2026-10-16-ai-plan-kind4/`).
+- Module 8, stage 5h (2026-10-16): the planner's request (slot `+0x0c`,
+  kind 4's `FUN_004b7100`) and module 6's two planned moves of regiments to
+  a planner's base (`FUN_004ddb70` defensive, `FUN_004de130` offensive,
+  controller bit `0x10`). The source sector of module 6's moves is now the
+  farthest (order 1), as the original pushes; the port had the nearest. In
+  seed 47 a kind 4 plan gets its regiments and orders the campaigns' first
+  Planetary Assault. Module `0xb`'s `FUN_004c9cb0` is read, not ported. No
+  save change; golden unchanged (`evidence/2026-10-16-planner-request/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.
