@@ -521,6 +521,96 @@ regiments aboard and `0x800` en route (`ai_records::FleetRecord::build`);
 `+0x30` `0x20` is a system held by either side (`FUN_00433e40`: `0x21`
 own, `0x24` the opponent's).
 
+## Kind 4's plan object (read 2026-10-16)
+
+Kind 4 (vtable `0x65c210`) is the invasion of an enemy yard system: the
+plan's parameter (sector record `+0x34`, `FUN_004e5b10`: 1 shipyards, 2
+training facilities, 3 construction yards) names the yard kind; the plan
+object keeps a target system at `+0x5c`, gathers regiments at its base,
+loads them onto a held fleet and assaults the target.
+
+| Slot | Function | Role |
+|---|---|---|
+| `+0x0c` | `FUN_004b7100` | the planner's request (`FUN_00476b70`) |
+| `+0x18` | `FUN_004b7150` | missions (shared) |
+| `+0x1c` | `FUN_004b72d0` | movement |
+| `+0x20` | `FUN_004b70a0` | report |
+| `+0x34` | `FUN_004b8070` | the base |
+| `+0x38` | `FUN_004b8470` | regiments board at the base |
+| `+0x3c` | `FUN_004b8880` | attacker |
+| `+0x40` | `FUN_004b8ab0` | assault (state 8) |
+| `+0x44`, `+0x48` | `0x6158b0` | 0 |
+| `+0x4c` | `FUN_004b8b30` | true with planner `+0xcc` above 1 |
+| `+0x50` | `FUN_004b8b70` | wants |
+| `+0x54` | `FUN_004b8ca0` | retreat |
+
+- **The target, `FUN_004b8f80`** (called first by `+0x50`): with the
+  sector record, the yard key `k` = 4, 5, 6 for parameter 1, 2, 3 (system
+  `v[4]` shipyards, `v[5]` training, `v[6]` construction); the merged
+  lists of the sector's systems with `+0x30` `0x20` forbidding `0x101`
+  (held by the opponent) by `v[k]` and by `v[0x14]`, both order 2. The
+  current `+0x5c` stays while its record's `v[k]` is above 0; else the
+  picks are tried in turn until one has `v[k]` above 0, which becomes
+  `+0x5c`.
+- **`+0x0c`, `FUN_004b7100`:** with the target's and the base's records,
+  the base's `v[20]` less its `v[16]`, plus the target's `v[52]`
+  (`+0x118`); else 0. Modules 6 and `0xb` (`FUN_004ddb70`,
+  `FUN_004c9cb0`) move regiments to the base while it is above 0
+  (`ai-production-modules.md`).
+- **`+0x1c`, `FUN_004b72d0`:** movement 4 when the planner has no
+  movement planner of that kind (`+0xcc`), holds regiments (`+0x94`) and
+  the sector has `+0x2c` 8; else kind 3's 3 and 5 (`FUN_004b1800`).
+- **`+0x20`, `FUN_004b70a0`:** `0x4000000`, `0x8000000` with the sector
+  record, `0x20000` while the target's record lacks `+0x30` 1 (it is not
+  yet the side's).
+- **`+0x34`, `FUN_004b8070`:** a base (planner `+0x40`) whose record is
+  not the side's (`+0x30` 1) or is blockaded (`+0x28` 2) loses `0x50000`
+  and is cleared; else it takes `0x50000` (when without `0x10000`) and
+  the slot returns true. Without a base: `FUN_0041a340(sector, +0x28
+  0x80000000 forbidding 2, +0x30 1 forbidding 0x40000, key 0x13, order
+  1)`, else the same without the headquarters bit, else `FUN_0041b2b0`
+  with those masks (the nearest other sector); the base found takes
+  `0x50000`; true then. (Kind 3: mark `0x40000`, key `0x26`.)
+- **`+0x38`, `FUN_004b8470`:** with regiments at the base (its record's
+  `+0x94`, `v[19]`, above 0): of the planner's held fleets
+  (`FUN_0041acd0(planner id, 1, forbidding 2, key 0x16)`) the first at the
+  base (record `+0x28`); with its room (record `+0xa8`, `v[22]`) above 0,
+  `min(room, v[19])` of the base's regiments, the strongest first (object
+  slot `+0x1dc`, each once), board it: Move `0x201` of the regiments to
+  the fleet (`FUN_00504c40`, `FUN_00504d40`, `FUN_004f5cd0`).
+- **`+0x3c`, `FUN_004b8880`:** a fleet with `values[2]` above 0 first
+  tries the target itself when it has an enemy fleet (`+0x30` `0x200`)
+  and `FUN_004ae150` passes; else kind 3's list (`0x200` forbidding
+  `0x100000`, key `0x27`, order 1). Same marks and role `0x10000000`.
+- **`+0x40`, `FUN_004b8ab0`:** a fleet with `values[12]` (`+0x80`) above 0
+  takes the target when `FUN_004ae240` passes: the system takes
+  `0x200000`, the fleet the target and role `0x20000000`.
+- **`FUN_004ae240(fleet, system)`:** the system has `+0x30` `0x20` and not
+  `0x101`; at the fleet's own system both thresholds are 0, elsewhere `a`
+  = max(system `v[27]`, controller `+0x168`) and `b` = system `v[23]`.
+  True when the fleet's `values[3]` is at least `a`, its `values[12]` at
+  least the system's `v[52]`, and `values[19]` above 0 or `values[9]` at
+  least `b`. State `0xe` (`FUN_004b1070`) then gives the order `0x234`
+  Planetary Assault at the target while it holds.
+- **`+0x50`, `FUN_004b8b70`:** after `FUN_004b8f80`, kind 2's 1.5 times
+  for `+0x34` (floor `+0x164`) and `+0x38` (the sector's `+0x194` plus the
+  target's `v[27]`, floor `+0x168`), 1.1 times (`+0x138` + `+0x198`) for
+  `+0x40` (floor `+0x16c`); `+0x3c` at least the target's `v[52]`; `+0x44`
+  1 with controller flags `4` and the sector's `+0x19c` above 0; `+0x4c`
+  1 with `0x1000000`; `+0x50` the planner's regiments `+0x94`; `+0x54`
+  `+0x98`; `+0x58` 1. hyp: with no target `+0x3c` compares the value left
+  from `+0x40`.
+- **`+0x54`, `FUN_004b8ca0`:** the base (blockaded or not), else the
+  headquarters (`+0x28` `0x80000000`, `+0x30` 1, key 7, order 2), else a
+  yard (`0x3e00000`, key `0x21`, order 1), else at the opponent's the
+  nearest system without `0x204` (kind 3's chain without the blockade
+  tests).
+
+Open for the port: the Planetary Assault order `0x234` (its resolution is
+not read), the planner's request `+0x0c` and modules 6 and `0xb`'s moves
+that read it, loading regiments onto a fleet as an AI order, and the
+plan object's target `+0x5c` (saved).
+
 ## Ported (2026-10-16, save v56): kind 2's plan object
 
 `ai_planner::ported_kind` takes kind 2. `ai_planner.rs`: slot `+0x50`
