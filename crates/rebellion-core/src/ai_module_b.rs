@@ -229,10 +229,11 @@ impl ModuleB {
     /// 2), until one gives an order: a fleet with the Death Star (`0x10`)
     /// goes to Coruscant (`0x90000109`) while it is the side's.
     ///
-    /// port: the move to a base (`+0x30` `0x40000`) is left out. The fleet
-    /// plan objects that set the bases (`FUN_004b24b0`, `FUN_004b5b20`,
-    /// `FUN_004b8070`) are not ported, and without a base the original's
-    /// fallback sends every idle fleet to another sector at each step. No
+    /// port: the move to a base (`+0x30` `0x40000`) is left out. Of the
+    /// plan objects that set the bases only kind 3's (`FUN_004af8a0`) is
+    /// ported, not `FUN_004b24b0`, `FUN_004b5b20`, `FUN_004b8070`, and
+    /// without a base the original's fallback sends every idle fleet to
+    /// another sector at each step. No
     /// ship is inactive (record `0x2000`), so no fleet takes Create Fleet
     /// (`0x270`).
     fn go_home(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {

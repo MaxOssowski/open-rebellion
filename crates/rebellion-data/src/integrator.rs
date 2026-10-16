@@ -178,6 +178,28 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": format!("{to:?}"),
             })
         }
+        AIAction::MoveSquadronTeam {
+            squadrons,
+            from,
+            to,
+        } => {
+            serde_json::json!({
+                "type": "MoveSquadronTeam",
+                "count": squadrons.iter().map(|&(_, n)| n).sum::<u32>(),
+                "from": format!("{from:?}"),
+                "to": format!("{to:?}"),
+            })
+        }
+        AIAction::MoveCharacters { characters, to } => {
+            serde_json::json!({
+                "type": "MoveCharacters",
+                "characters": characters
+                    .iter()
+                    .map(|&c| member_name(world, MissionMember::Character(c)))
+                    .collect::<Vec<_>>(),
+                "to": sys_name(world, *to),
+            })
+        }
         AIAction::MoveShips { fleet, ships, to } => {
             let from = world
                 .fleets
@@ -2196,6 +2218,34 @@ fn apply_ai_actions_inner(
                     .move_squadrons(world, alliance, *class, *count, *from, *to, tick)
                     .is_ok()
             }),
+            AIAction::MoveSquadronTeam {
+                squadrons,
+                from,
+                to,
+            } => {
+                let mut moved = false;
+                for &(class, count) in squadrons {
+                    moved |= rebellion_core::squadrons::is_alliance(world, class).is_some_and(
+                        |alliance| {
+                            troop_transport
+                                .squadrons
+                                .move_squadrons(world, alliance, class, count, *from, *to, tick)
+                                .is_ok()
+                        },
+                    );
+                }
+                moved
+            }
+            AIAction::MoveCharacters { characters, to } => {
+                for &character in characters {
+                    rebellion_core::missions::move_member(
+                        world,
+                        MissionMember::Character(character),
+                        Some(*to),
+                    );
+                }
+                !characters.is_empty()
+            }
             AIAction::SetDestination {
                 system,
                 area,
@@ -2941,6 +2991,151 @@ mod tests {
             rebellion_core::squadrons::total(&world.systems[system].fighters),
             1
         );
+    }
+
+    #[test]
+    fn a_squadron_team_move_boards_each_class_s_squadrons() {
+        // A sector plan's Move 0x201 of squadrons from its base
+        // (FUN_004b0120): each class's count by squadrons::move_squadrons.
+        use rebellion_core::squadrons::SquadronPlace;
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Kuat");
+        let carrier = world.capital_ship_classes.insert(CapitalShipClass {
+            fighter_capacity: 3,
+            ..Default::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![rebellion_core::world::ShipInstance::new(
+                carrier, 100, false,
+            )],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[system].fleets.push(fleet);
+        let mut wing = || {
+            world
+                .fighter_classes
+                .insert(rebellion_core::world::FighterClass {
+                    is_empire: true,
+                    ..Default::default()
+                })
+        };
+        let (tie, bomber) = (wing(), wing());
+        rebellion_core::squadrons::add(&mut world.systems[system].fighters, tie, 2);
+        rebellion_core::squadrons::add(&mut world.systems[system].fighters, bomber, 2);
+
+        let applied = apply_ai_actions_inner(
+            &[AIAction::MoveSquadronTeam {
+                squadrons: vec![(tie, 2), (bomber, 1)],
+                from: SquadronPlace::Planet(system),
+                to: SquadronPlace::Fleet(fleet),
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::new(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+        );
+        assert_eq!(applied, [true]);
+
+        let aboard: Vec<_> = world.fleets[fleet]
+            .fighters
+            .iter()
+            .map(|e| (e.class, e.count))
+            .collect();
+        assert_eq!(aboard, [(tie, 2), (bomber, 1)]);
+        assert_eq!(
+            rebellion_core::squadrons::total(&world.systems[system].fighters),
+            1
+        );
+        // No squadron of the class is left there: nothing is applied.
+        let applied = apply_ai_actions_inner(
+            &[AIAction::MoveSquadronTeam {
+                squadrons: vec![(tie, 1)],
+                from: SquadronPlace::Planet(system),
+                to: SquadronPlace::Fleet(fleet),
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::new(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+        );
+        assert_eq!(applied, [false]);
+    }
+
+    #[test]
+    fn a_people_move_sets_the_fleet_s_people_down_on_its_system() {
+        // A sector plan's Move 0x201 of the people aboard (FUN_004b06b0),
+        // each carried out by missions::move_member.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Kuat");
+        let fleet = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let people: Vec<_> = (0..2)
+            .map(|_| {
+                let c = world.characters.insert(rebellion_core::world::Character {
+                    is_alliance: true,
+                    current_fleet: Some(fleet),
+                    ..Default::default()
+                });
+                world.fleets[fleet].characters.push(c);
+                c
+            })
+            .collect();
+
+        let applied = apply_ai_actions_inner(
+            &[AIAction::MoveCharacters {
+                characters: people.clone(),
+                to: system,
+            }],
+            &mut AIState::new(AiFaction::Alliance),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::new(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+        );
+        assert_eq!(applied, [true]);
+
+        assert_eq!(world.fleets[fleet].characters, []);
+        for c in people {
+            assert_eq!(world.characters[c].current_system, Some(system));
+            assert_eq!(world.characters[c].current_fleet, None);
+        }
+        // Nobody to move: nothing is applied.
+        let applied = apply_ai_actions_inner(
+            &[AIAction::MoveCharacters {
+                characters: vec![],
+                to: system,
+            }],
+            &mut AIState::new(AiFaction::Alliance),
+            &mut MissionState::new(),
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::new(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+        );
+        assert_eq!(applied, [false]);
     }
 
     #[test]

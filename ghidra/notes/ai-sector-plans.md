@@ -308,18 +308,160 @@ the counts of each kind held: Recon `0x54`, Espionage `0x52`, Sabotage
 `0x69`, Abduction `0x62`/`0x63`); slot `+0x1c` `FUN_004b1800`
 (movement 3 or 5).
 
-The plan object's step (`FUN_004adb70`): 1 `FUN_004af6d0` (the held
-fleets' roles onto their systems' `+0x30`) -> 2; 2 slot `+0x34`
-(`FUN_004af8a0`: keep or choose the base, marking it `+0x30` `0x40000`)
--> 3, or 5 without one; 3 slot `+0x38` (`FUN_004afce0`: unload the
-regiments of the held fleets at own systems) -> 4; 4 `FUN_004b0120`
-(squadrons from the base to held fleets with room) -> 5; 5
-`FUN_004b04c0` (the next idle held fleet into `+0x2c`) -> 6, else
-`0xe`; 6 `FUN_004b06b0` -> 7, or `0xe` when done; 7 slot `+0x3c` ->
-`0xd`, else 8; 8 slot `+0x40` -> 10 (`0xd` with one); 10 slot `+0x48`
--> 9 (`0xd`); 9 slot `+0x44` -> `0xd` or `0xc`; `0xc` `FUN_004b0c90`,
-`0xd` `FUN_004b0f90` -> `0xe`; `0xe` `FUN_004b1070`, which ends the step.
-States 6, 7, 9 and `0xc` to `0xe` are not read in full yet.
+## The plan object's step (`FUN_004adb70`, read 2026-10-16)
+
+The plan object's fields beyond the list above: `+0x18` its pick list
+(`FUN_00435790`/`FUN_004357b0`), `+0x28` the held fleet the step works
+on, `+0x2c` the held fleet the next search starts from, `+0x30` the held
+fleet state `0xe` walks from. The step returns an order and sets `*out`
+when it ends (state 0); the planner's state 5 then goes to 6.
+
+| State | Function | Next |
+|---|---|---|
+| 0, other | | 1 |
+| 1 | `FUN_004af6d0` | 2 |
+| 2 | slot `+0x34` | 3 with a base, else 5 |
+| 3 | slot `+0x38` | 4 |
+| 4 | `FUN_004b0120` | 5 |
+| 5 | `FUN_004b04c0` | 6 with a fleet, else `0xe` |
+| 6 | `FUN_004b06b0` | `0xe` with `*out`, else 7 |
+| 7 | slot `+0x3c` | `0xd` with a target, else 8 |
+| 8 | slot `+0x40` | `0xd`, else 10 |
+| 10 | slot `+0x48` | `0xd`, else 9 |
+| 9 | slot `+0x44` | `0xd`, else `0xc` |
+| `0xc` | `FUN_004b0c90` | `0xe` |
+| `0xd` | `FUN_004b0f90` | `0xe` |
+| `0xe` | `FUN_004b1070` | 0 and `*out` once its walk ends |
+
+Kind 3's slots (vtable `0x65c160`): `+0x34` `FUN_004af8a0`, `+0x38`
+`FUN_004afce0` (both the base class's), `+0x3c` `FUN_004b4560`, `+0x40`
+and `+0x48` `0x6158b0` (returns 0), `+0x44` `FUN_004b4730`, `+0x54`
+`FUN_004b4a20`, `+0x24..+0x30` the mission planners' reports.
+
+- **1, `FUN_004af6d0`:** the planner's sector record's ten systems
+  (`+0x48..+0x6c`) lose `+0x30 & 0x1f00000`; each held fleet (planner
+  list `+0x2c`) whose record's target `+0x2c` is a system marks it by its
+  role (fleet `+0x38` `0x80000000` -> `0x1000000`, `0x10000000` ->
+  `0x100000`, `0x20000000` -> `0x200000`, `0x40000000` -> `0x400000`).
+- **2, `FUN_004af8a0`:** a base (planner `+0x40`) whose system record
+  exists stays while it is the side's (`+0x30` 1), not blockaded (`+0x28`
+  2) and, when the sector has a headquarters (sector `+0x24`
+  `0x40000000`), the headquarters (`+0x28` `0x80000000`); it loses
+  `0x30000`. Any other loses `0x70000` and is cleared. Without a base:
+  `FUN_0041a340(sector, +0x28 0x80000000 forbidding 2, +0x30 1 forbidding
+  0x40000, key 0x26, order 1)`, else the same without the headquarters
+  bit, else `FUN_0041b2b0` with the second masks. A base with a record
+  takes `0x40000` (and loses `0x30000`); true then.
+- **3, `FUN_004afce0`:** `FUN_0041acd0(planner id, 0x40001, forbidding
+  0xf0000002, key 0xc, order 1)` lists the held fleets carrying regiments
+  (`FUN_0041acd0` walks controller `+0x78` for records whose `+0x30` is
+  the planner). The first at a system (record `+0x28`) whose `+0x30` has
+  1 gives Move `0x201` of the regiments aboard its ships
+  (`FUN_0041ac80(fleet, 0x4000, forbidding 0x20800, key 9, order 1)`:
+  the held, own ships not en route; `FUN_00504c40`) to that system.
+- **4, `FUN_004b0120`:** when the base's record has active squadrons
+  (`+0xac`, `v[25]`): `FUN_0041acd0(planner id, 1, forbidding 2, key
+  0x17, order 1)`; the first fleet at the base ends the search, taken when
+  its room (`+0xac`, `values[23]`) is above 0. Move `0x201` of
+  `min(room, v[25])` squadrons of the base's planet (`FUN_005039d0`, mode
+  1) to the fleet.
+- **5, `FUN_004b04c0`:** from the held fleet `+0x2c` names (else the
+  list's first), once round the list, the first whose record lacks
+  `0xf0003802` becomes `+0x28`; `+0x2c` then names the fleet after it,
+  cleared when that is where the search began or nothing was found.
+- **6, `FUN_004b06b0`:** with the fleet's record: when it holds the
+  planner's flagship (`+0x38`, `FUN_004333f0`), planner `+0x60`
+  `0x1000000` sets `*out`; else `0x4000000` with `+0x3c` a system not
+  blockaded gives Move `0x201` of the fleet to `+0x3c` and `*out`. Then a
+  fleet with `0x4000000` and without 2 at a system with `+0x30` 1: the
+  people aboard its ship records without `0x800` and with `0x600000`
+  (`FUN_00536da0(ship, 1)`, person records controller `+0x8c`) all go
+  into a Move `0x201` to that system, which is given when one of them
+  has `+0x30` 2 and no movement planner of this planner holds it
+  (`+0x28`, `FUN_00476e50` on planner list `+0xd4`).
+- **7, kind 3 `FUN_004b4560`:** a fleet whose attack (`values[2]`) is
+  above 0 takes the first of `FUN_0041a340(sector, +0x30 0x200
+  forbidding 0x100000, key 0x27, order 1)` that `FUN_004ae150` passes:
+  the system takes `0x100000`, the fleet's target `+0x2c` the system and
+  its role `0x10000000`.
+- **9, kind 3 `FUN_004b4730`:** a fleet whose `values[6]` is above 0
+  takes the first of two merged lists (`+0x30` 4 forbidding `0x700200`;
+  key 8 order 2, and key `0x10` order 1) that `FUN_004ae320` passes: the
+  system takes `0x400000`, the fleet its target and role `0x40000000`.
+- **`FUN_004ae150(fleet, system)`:** the enemy's strength there: with
+  `+0x30` `0x200`, `v[39]`, `v[40]`, `v[43]`; with 4, plus `v[26]`,
+  `v[27]`, `v[23]`. True when the first is above 0, the fleet's
+  `values[2]` above 1.2 times it, and: the third is 0; or the fleet's
+  `values[3]` is above the second and (with fleet `0x10` or system
+  `0x400`) its `values[9]` above the third, (else) its `values[19]`
+  above 0 or `values[9]` at least the third.
+- **`FUN_004ae320(fleet, system, &code)`:** a system of the opponent
+  (`+0x30` 4) whose sector record is `+0x3c` (`FUN_00432310`): the
+  fleet's `values[3]` at least `max(v[27], controller +0x168)` when the
+  fleet is elsewhere (0 at it), its `values[6]` above the system's
+  `v[8]`, the system's `v[11]` 0; then with `x = (sector values[2] -
+  values[4] + 1) / 2`: `x > 0` needs `v[7] + v[18] > x` and `v[18] > 0`
+  (code `0x220`, Target Military Facilities); else `v[18] > 0` or `v[33]
+  > 0` (code `0x222`, General Bombardment).
+- **`0xc`, `FUN_004b0c90`:** with more than one held fleet,
+  `FUN_0041ae20` lists the others (planner id, 1, forbidding
+  `0xf0000002`, order 2); the first not at a system with an enemy fleet
+  (`+0x30` `0x200`) is the target; else slot `+0x54`. Move `0x201` of the
+  fleet to the target (a fleet: join it).
+- **`+0x54`, kind 3 `FUN_004b4a20`:** the base not blockaded; else the
+  sector's headquarters (`+0x28` `0x80000000` forbidding 2, `+0x30` 1,
+  key 7, order 2); else `+0x28` `0x3e00000` (a yard) the same way, key
+  `0x21`, order 1; else, when the fleet stands at a system of the
+  opponent, the sector's system nearest it with `+0x30` forbidding
+  `0x204` (`FUN_0041a400`, order 2).
+- **`0xd`, `FUN_004b0f90`:** Move `0x201` of the fleet to its target.
+- **`0xe`, `FUN_004b1070`:** from the held fleet `+0x30` names (else the
+  first), each held fleet with a role and not en route: at its target
+  (`+0x28 == +0x2c`) by role, `0x10000000` stays while `FUN_004ae150`
+  holds; `0x40000000` gives `FUN_004b1330(fleet, 0x223)` (Destroy System)
+  with fleet `0x10` and system `+0x110` above 0, else `FUN_004ae320`'s
+  code; `0x20000000` (`FUN_004ae240`, code `0x234` Planetary Assault) and
+  `0x80000000` (`FUN_004ae440`, `FUN_004b1440`) belong to other kinds. A
+  fleet whose role fails, or that stands elsewhere, loses its role and
+  target; after a `0x40000000` order it loses them too. An order stops
+  the walk (`+0x30` the next fleet); the walk's end sets `*out` and
+  clears `+0x30`. `FUN_004b1330(fleet, code)` builds the order `code`
+  with the fleet to its target. Orders `0x220..0x223` and `0x234` are
+  the Fleet menu's bombardments and assault (`move-order.md`).
+
+The fleet record's `+0x28` is its location, written by each refresh
+(`FUN_00433620`); `+0x2c` is the plan's target, written only by the
+plan objects, so it persists across refreshes.
+
+## Ported (2026-10-16, save v53): the plan object's states 1 to 6
+
+`crates/rebellion-core/src/ai_plan.rs`: the planner's state 5 runs the
+plan object's step (`FUN_004adb70`) for kind 3: 1 clears the sector's
+role marks; 2 keeps or chooses the base (`0x40000`); 3 unloads a held
+fleet's regiments at an own system (`AIAction::MoveRegiments`); 4 boards
+the base's squadrons onto a held fleet there
+(`AIAction::MoveSquadronTeam`, new); 5 finds the next idle held fleet; 6
+moves the flagship's fleet or sets down the fleet's people
+(`AIAction::MoveCharacters`, new). A planner's reset gives up its base
+and the base's marks `0x70000`. `SectorPlanner` keeps the plan object's
+`+0x28` and `+0x2c`.
+
+port:
+- States 7 to `0xe` (the fleet's role and its orders) are the port's
+  fleet heuristics, entered at state 7 or `0xe` and run once a cycle;
+  their end ends the plan's step (state 0). No held fleet has a role or
+  a target yet, so state 1 only clears the marks.
+- A fleet's regiments and people are its cargo and characters, which its
+  first ship's record carries; special forces are not aboard fleets.
+- hyp: the planet's squadron walk of `FUN_004b0120` (`FUN_005039d0`,
+  mode 1) gives the side's squadrons in the planet's order.
+- No movement planner holds anyone and the port names no flagship, so
+  the flagship's branch of state 6 does not come up.
+- Seed 42 (600 days, both sides AI): the Alliance's planners take bases
+  (its headquarters for the first); their held fleets carry no regiments
+  or people and the bases no squadrons, so no state gives an order, and
+  every event count equals stage 4a's. Nor in seeds 1, 2, 3, 7, 11, 13,
+  47 and 99.
 
 ## Ported (2026-10-15, save v52): the planner's step, kind 3's wants
 

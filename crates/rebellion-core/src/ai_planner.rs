@@ -37,6 +37,13 @@ pub struct PlannerIo<'a> {
     pub ship_holds: &'a mut HashMap<u64, ShipHold>,
     /// [`crate::ai::AIState::fleet_holds`].
     pub fleet_holds: &'a mut HashMap<FleetKey, FleetHold>,
+    /// [`crate::ai::AIState::record_kinds`]: the system records' kept
+    /// `+0x30` bits.
+    pub kinds: &'a mut HashMap<SystemKey, u32>,
+    /// The regiments aboard the fleets.
+    pub transport: &'a crate::troop_transport::TroopTransportState,
+    /// The people's record flags (`+0x30`), by character.
+    pub people: &'a HashMap<crate::ids::CharacterKey, u32>,
     /// Controller `+4`.
     pub controller_flags: u32,
     /// `FUN_0041cd80(n)`: a draw below `n`.
@@ -44,6 +51,17 @@ pub struct PlannerIo<'a> {
 }
 
 impl PlannerIo<'_> {
+    /// Set and clear bits of `system`'s record `+0x30`, kept across
+    /// refreshes (`FUN_00433e30` marks the record dirty).
+    pub(crate) fn set_kind(&mut self, system: SystemKey, set: u32, clear: u32) {
+        self.galaxy.update_kind(system, set, clear);
+        let value = self.kinds.entry(system).or_default();
+        *value = (*value & !clear) | set;
+        if *value == 0 {
+            self.kinds.remove(&system);
+        }
+    }
+
     fn ship(&self, id: u64) -> Option<&ShipRecord> {
         self.galaxy
             .fleets
@@ -138,7 +156,7 @@ const BALANCED: [usize; 8] = [0, 1, 2, 3, 5, 4, 6, 9];
 impl SectorPlanner {
     /// `FUN_00478e00`: hold a ship. Its record loses `0x20000` and names
     /// this planner and its plan; its values add to the counts.
-    fn take_ship(&mut self, io: &mut PlannerIo<'_>, id: u64) {
+    pub(crate) fn take_ship(&mut self, io: &mut PlannerIo<'_>, id: u64) {
         let Some(record) = io.ship(id).cloned() else {
             return;
         };
@@ -197,7 +215,7 @@ impl SectorPlanner {
 
     /// `FUN_00478fd0`: hold a fleet: its record loses bit 4 and names this
     /// planner and its plan.
-    fn take_fleet(&mut self, io: &mut PlannerIo<'_>, fleet: FleetKey) {
+    pub(crate) fn take_fleet(&mut self, io: &mut PlannerIo<'_>, fleet: FleetKey) {
         if !io.galaxy.fleets.contains_key(&fleet) {
             return;
         }
@@ -311,7 +329,10 @@ impl SectorPlanner {
                 self.state = 5;
                 None
             }
-            5 => return PlannerStep::StandIn,
+            5 => match self.plan_step(io) {
+                crate::ai_plan::PlanStep::Order(order) => order,
+                crate::ai_plan::PlanStep::StandIn => return PlannerStep::StandIn,
+            },
             6 => {
                 self.flagship(io);
                 // FUN_004799d0 without movement planners (0x2000000).
@@ -338,11 +359,13 @@ impl SectorPlanner {
         }
     }
 
-    /// The stand-in for state 5 finished (`FUN_004adb70` sets `*out`):
-    /// for kind 3 state 6 is next and the cycle goes on; for the other
-    /// kinds (port: not ported) the cycle ends.
+    /// The stand-in for the plan object's states 7 to `0xe` finished: its
+    /// step ends (`FUN_004adb70`: state 0, `*out` set), so for kind 3
+    /// state 6 is next and the cycle goes on; for the other kinds (port:
+    /// not ported) the cycle ends.
     pub fn plan_done(&mut self) -> bool {
         if self.kind == 3 {
+            self.plan_state = 0;
             self.state = 6;
             false
         } else {
@@ -779,7 +802,7 @@ impl SectorPlanner {
 /// `FUN_0041b2b0`: of the sectors but `from`, by squared distance (the
 /// first of equals), the nearest whose systems include one passing
 /// `masks`, picked by a random key (`FUN_0041a460`, order 1).
-fn nearest_sector_system(
+pub(crate) fn nearest_sector_system(
     io: &mut PlannerIo<'_>,
     from: SectorKey,
     masks: [Mask; 3],
@@ -827,7 +850,7 @@ fn random_system(io: &mut PlannerIo<'_>, sector: SectorKey, masks: [Mask; 3]) ->
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::ai_records::{
         ClassRecords, SystemInputs, GARRISON_GOALS, SHIELD_GOAL, SQUADRON_GOALS,
@@ -838,17 +861,20 @@ mod tests {
 
     /// Two sectors (at 0 and 100), each with two Alliance systems; the
     /// first sector's second system is far from its first.
-    struct Fx {
-        world: GameWorld,
-        galaxy: Galaxy,
-        sectors: [SectorKey; 2],
-        systems: [SystemKey; 4],
-        ship_holds: HashMap<u64, ShipHold>,
-        fleet_holds: HashMap<FleetKey, FleetHold>,
-        draws: Vec<i32>,
+    pub(crate) struct Fx {
+        pub(crate) world: GameWorld,
+        pub(crate) galaxy: Galaxy,
+        pub(crate) sectors: [SectorKey; 2],
+        pub(crate) systems: [SystemKey; 4],
+        pub(crate) ship_holds: HashMap<u64, ShipHold>,
+        pub(crate) fleet_holds: HashMap<FleetKey, FleetHold>,
+        pub(crate) kinds: HashMap<SystemKey, u32>,
+        pub(crate) transport: crate::troop_transport::TroopTransportState,
+        pub(crate) people: HashMap<crate::ids::CharacterKey, u32>,
+        pub(crate) draws: Vec<i32>,
     }
 
-    fn fixture() -> Fx {
+    pub(crate) fn fixture() -> Fx {
         let mut world = GameWorld::default();
         let mut sector = |x| {
             world.sectors.insert(Sector {
@@ -900,6 +926,9 @@ mod tests {
             systems,
             ship_holds: HashMap::new(),
             fleet_holds: HashMap::new(),
+            kinds: HashMap::new(),
+            transport: crate::troop_transport::TroopTransportState::new(),
+            people: HashMap::new(),
             draws: Vec::new(),
         };
         rebuild(&mut fx);
@@ -907,7 +936,7 @@ mod tests {
     }
 
     /// An Alliance fleet of `n` ships at `at`.
-    fn fleet(fx: &mut Fx, at: usize, n: u32) -> FleetKey {
+    pub(crate) fn fleet(fx: &mut Fx, at: usize, n: u32) -> FleetKey {
         let class = fx.world.capital_ship_classes.insert(CapitalShipClass {
             is_alliance: true,
             hull: 10,
@@ -928,18 +957,20 @@ mod tests {
         fleet
     }
 
-    fn rebuild(fx: &mut Fx) {
+    pub(crate) fn rebuild(fx: &mut Fx) {
         let classes = ClassRecords::build(&fx.world);
         let fleets = HashMap::new();
         let economy = crate::economy::EconomyState::default();
         let uprisings = crate::uprising::UprisingState::default();
         let manufacturing = crate::manufacturing::ManufacturingState::new();
         let research = crate::research::ResearchState::new();
+        let people = &fx.people;
+        let person = |c| people.get(&c).copied();
         let inputs = SystemInputs {
             world: &fx.world,
             classes: &classes,
             fleets: &fleets,
-            person: &|_| None,
+            person: &person,
             economy: &economy,
             uprisings: &uprisings,
             manufacturing: &manufacturing,
@@ -953,15 +984,15 @@ mod tests {
         fx.galaxy = Galaxy::build(
             &inputs,
             &crate::movement::MovementState::new(),
-            &crate::troop_transport::TroopTransportState::new(),
+            &fx.transport,
             &HashMap::new(),
-            &HashMap::new(),
+            &fx.kinds,
         );
         crate::ai_records::apply_ship_holds(&mut fx.galaxy, &fx.ship_holds);
         crate::ai_records::apply_fleet_holds(&mut fx.galaxy, &fx.fleet_holds);
     }
 
-    fn with<R>(fx: &mut Fx, f: impl FnOnce(&mut PlannerIo<'_>) -> R) -> R {
+    pub(crate) fn with<R>(fx: &mut Fx, f: impl FnOnce(&mut PlannerIo<'_>) -> R) -> R {
         let draws = &mut fx.draws;
         let mut random = |n: i32| {
             let d = if draws.is_empty() { 0 } else { draws.remove(0) };
@@ -972,13 +1003,16 @@ mod tests {
             galaxy: &mut fx.galaxy,
             ship_holds: &mut fx.ship_holds,
             fleet_holds: &mut fx.fleet_holds,
+            kinds: &mut fx.kinds,
+            transport: &fx.transport,
+            people: &fx.people,
             controller_flags: 0,
             random: &mut random,
         };
         f(&mut io)
     }
 
-    fn planner(fx: &Fx) -> SectorPlanner {
+    pub(crate) fn planner(fx: &Fx) -> SectorPlanner {
         SectorPlanner {
             id: 1,
             sector: Some(fx.sectors[0]),
@@ -988,11 +1022,11 @@ mod tests {
         }
     }
 
-    fn ship_mut(fx: &mut Fx, fleet: FleetKey, i: usize) -> &mut ShipRecord {
+    pub(crate) fn ship_mut(fx: &mut Fx, fleet: FleetKey, i: usize) -> &mut ShipRecord {
         &mut fx.galaxy.fleets.get_mut(&fleet).unwrap().ships[i]
     }
 
-    fn ship_id(fx: &Fx, fleet: FleetKey, i: usize) -> u64 {
+    pub(crate) fn ship_id(fx: &Fx, fleet: FleetKey, i: usize) -> u64 {
         fx.world.fleets[fleet].capital_ships[i].id
     }
 
@@ -1101,18 +1135,22 @@ mod tests {
     #[test]
     fn a_cycle_runs_state_by_state_and_reports() {
         // FUN_004774c0: 0 -> 1 (resync), 1 (clears +0x60/+0x64), 2, 3, 4,
-        // 5 (the plan object, here the stand-in), 6 (report) -> 1, done.
+        // 5 (the plan object), 6 (report) -> 1, done. The plan object
+        // (FUN_004adb70) steps 0 -> 1, 1, 2 (a base), 3, 4, 5 (no held
+        // fleet: 0xe), where the stand-in takes over.
         let mut fx = fixture();
         let mut p = planner(&fx);
         p.flags = 0xff;
         let mut steps = Vec::new();
-        for _ in 0..6 {
+        for _ in 0..12 {
             steps.push(with(&mut fx, |io| p.step(io)));
         }
-        assert!(steps[..5].iter().all(|s| *s == PlannerStep::Pending));
-        assert_eq!(steps[5], PlannerStep::StandIn);
-        assert_eq!(p.state, 5);
+        assert!(steps[..11].iter().all(|s| *s == PlannerStep::Pending));
+        assert_eq!(steps[11], PlannerStep::StandIn);
+        assert_eq!((p.state, p.plan_state), (5, 0xe));
+        assert!(p.base.is_some());
         assert!(!p.plan_done());
+        assert_eq!(p.plan_state, 0);
         assert_eq!(with(&mut fx, |io| p.step(io)), PlannerStep::Done);
         assert_eq!((p.state, p.resync), (1, true));
         // Kind 3's slot +0x20 and FUN_00479a00: cycled and reviewed, the

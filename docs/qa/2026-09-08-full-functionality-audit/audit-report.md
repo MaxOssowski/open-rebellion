@@ -1939,6 +1939,19 @@ cross-runtime proof remain open
   other kinds still run the fleet heuristics; no mission or movement
   planners. Save v52; golden `v1:1ec77e5da40c2f8f` ->
   `v1:030a4e7e7f7902e9` (`evidence/2026-10-15-ai-planner-step/`).
+- Module 8, stage 4b (2026-10-16): kind 3's plan object steps
+  (`FUN_004adb70`, states 1 to 6) in `ai_plan.rs`: it clears its sector's
+  role marks, keeps or chooses a base (`FUN_004af8a0`, `0x40000`), unloads
+  a held fleet's regiments at an own system (`FUN_004afce0`), boards the
+  base's squadrons onto a held fleet there (`FUN_004b0120`,
+  `AIAction::MoveSquadronTeam`), finds the next idle held fleet
+  (`FUN_004b04c0`) and moves the flagship's fleet or sets down its people
+  (`FUN_004b06b0`, `AIAction::MoveCharacters`); a reset gives up the
+  base. port: states 7 to `0xe` (roles, attacks, bombardment) are still
+  the fleet heuristics. In seed 42 the planners take bases but no state
+  gives an order, so the campaign's events equal stage 4a's. Save v53;
+  golden `v1:030a4e7e7f7902e9` -> `v1:a9d12433c6c44f1e`
+  (`evidence/2026-10-16-ai-plan-object/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

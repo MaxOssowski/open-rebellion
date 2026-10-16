@@ -8074,6 +8074,28 @@ fn apply_ai_actions(
                         .move_squadrons(world, alliance, *class, *count, *from, *to, tick);
                 }
             }
+            AIAction::MoveSquadronTeam {
+                squadrons,
+                from,
+                to,
+            } => {
+                for &(class, count) in squadrons {
+                    if let Some(alliance) = rebellion_core::squadrons::is_alliance(world, class) {
+                        let _ = troop_transport_state
+                            .squadrons
+                            .move_squadrons(world, alliance, class, count, *from, *to, tick);
+                    }
+                }
+            }
+            AIAction::MoveCharacters { characters, to } => {
+                for &character in characters {
+                    rebellion_core::missions::move_member(
+                        world,
+                        rebellion_core::missions::MissionMember::Character(character),
+                        Some(*to),
+                    );
+                }
+            }
             AIAction::MoveShips { fleet, ships, to } => {
                 let Some(side) = ai_state.faction else {
                     continue;

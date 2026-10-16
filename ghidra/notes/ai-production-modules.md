@@ -1188,9 +1188,11 @@ End: `+0x3c = 0`, `+0x38 = 0x3f8`, complete.
 - The production heuristic builds no ships or fighters any more.
 
 port:
-- `FUN_004c94c0`'s move to a base is left out: no system is a base
-  without the fleet plan objects, and the fallback would send every idle
-  fleet to another sector at each step. Only the Death Star's return runs.
+- `FUN_004c94c0`'s move to a base is left out. Kind 3's plan objects now
+  mark bases (`0x40000`, `ai_plan.rs`), but the other kinds' do not, and
+  the fallback would send every idle fleet to another sector at each
+  step; the move waits for its own stage. Only the Death Star's return
+  runs.
 - `FUN_004c9cb0` and the role requests of `FUN_004ca5e0` need module 8's
   sector planners; the bombardment and interdictor roles never come up.
 - A fleet of squadrons alone (the port's seeding) is passed over by the

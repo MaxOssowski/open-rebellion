@@ -69,6 +69,12 @@ pub struct SectorPlanner {
     pub wanted: [i32; 10],
     /// The plan object's `+8`: its step state (`FUN_004adb70`).
     pub plan_state: u32,
+    /// The plan object's `+0x28`: the held fleet its step works on
+    /// (`FUN_004b04c0`).
+    pub plan_fleet: Option<crate::ids::FleetKey>,
+    /// The plan object's `+0x2c`: the held fleet the next search starts
+    /// from (`FUN_004b04c0`).
+    pub plan_cursor: Option<crate::ids::FleetKey>,
 }
 
 /// What a step of module 8 leaves to the caller.
@@ -127,6 +133,12 @@ pub struct Inputs8<'a> {
     /// [`crate::ai::AIState::fleet_holds`].
     pub fleet_holds:
         &'a mut std::collections::HashMap<crate::ids::FleetKey, crate::ai_records::FleetHold>,
+    /// [`crate::ai::AIState::record_kinds`].
+    pub kinds: &'a mut std::collections::HashMap<crate::ids::SystemKey, u32>,
+    /// The regiments aboard the fleets.
+    pub transport: &'a crate::troop_transport::TroopTransportState,
+    /// The people's record flags (`+0x30`), by character.
+    pub people: &'a std::collections::HashMap<crate::ids::CharacterKey, u32>,
     /// Controller `+4`.
     pub controller_flags: u32,
     /// Controller `+0x204` ([`crate::ai_module1::Tallies::planner_balance`]).
@@ -143,6 +155,9 @@ impl Inputs8<'_> {
             galaxy: self.galaxy,
             ship_holds: self.ship_holds,
             fleet_holds: self.fleet_holds,
+            kinds: self.kinds,
+            transport: self.transport,
+            people: self.people,
             controller_flags: self.controller_flags,
             random: &mut *self.random,
         }
@@ -373,6 +388,8 @@ fn bind(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) -> bool {
         planner.resync = false;
         planner.wanted = [0; 10];
         planner.plan_state = 0;
+        planner.plan_fleet = None;
+        planner.plan_cursor = None;
     }
     if plan_id != planner.plan_id {
         planner.plan_id = plan_id;
@@ -388,12 +405,18 @@ fn bind(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) -> bool {
 /// step state, release the sector (its `+0x38`) and the plan's id, and
 /// give back every ship (`FUN_004790d0`) and fleet (`FUN_004791d0`).
 ///
+/// Its base, when the system has a record, loses its marks `0x70000` and
+/// the planner its base.
+///
 /// port: the planner holds no mission or movement planners
-/// (`FUN_0042f690`, `FUN_0042ef90`), and no base system yet whose `+0x30`
-/// bits `0x70000` it would clear.
+/// (`FUN_0042f690`, `FUN_0042ef90`).
 pub fn reset(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) {
     let mut pio = io.planner();
     planner.release_all(&mut pio);
+    if let Some(base) = planner.base.filter(|&b| pio.galaxy.system(b).is_some()) {
+        pio.set_kind(base, 0, crate::ai_plan::BASES);
+        planner.base = None;
+    }
     planner.kind = 0;
     planner.state = 0;
     planner.flags = 0;
@@ -468,11 +491,17 @@ mod tests {
         let world = crate::world::GameWorld::default();
         let mut ship_holds = std::collections::HashMap::new();
         let mut fleet_holds = std::collections::HashMap::new();
+        let mut kinds = std::collections::HashMap::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let people = std::collections::HashMap::new();
         let mut io = Inputs8 {
             world: &world,
             galaxy: g,
             ship_holds: &mut ship_holds,
             fleet_holds: &mut fleet_holds,
+            kinds: &mut kinds,
+            transport: &transport,
+            people: &people,
             controller_flags: 0,
             balance,
             random: &mut random,

@@ -245,6 +245,37 @@ fn accepts(
             .squadrons
             .check(world, is_alliance, *class, *count, *from, *to)
             .is_ok(),
+        AIAction::MoveSquadronTeam {
+            squadrons,
+            from,
+            to,
+        } => {
+            !squadrons.is_empty()
+                && squadrons.iter().all(|&(class, count)| {
+                    transport
+                        .squadrons
+                        .check(world, is_alliance, class, count, *from, *to)
+                        .is_ok()
+                })
+        }
+        // The move command's validation (FUN_00578d00) for each person:
+        // the side's own, free, aboard a fleet out of hyperspace at the
+        // target. port: as for the regiments, one refusal refuses the
+        // order.
+        AIAction::MoveCharacters { characters, to } => {
+            !characters.is_empty()
+                && characters.iter().all(|&key| {
+                    world
+                        .characters
+                        .get(key)
+                        .is_some_and(|c| c.is_alliance == is_alliance && !c.is_captive)
+                        && world.fleets.iter().any(|(k, f)| {
+                            f.characters.contains(&key)
+                                && f.location == *to
+                                && !movement.is_in_transit(k)
+                        })
+                })
+        }
         _ => true,
     }
 }
@@ -752,6 +783,23 @@ pub enum AIAction {
         to: crate::squadrons::SquadronPlace,
     },
 
+    /// Move squadrons of several classes (`0x201`): a sector plan object's
+    /// squadrons from its base to a held fleet (`FUN_004b0120`), each
+    /// class's count carried out by [`crate::squadrons::move_squadrons`].
+    MoveSquadronTeam {
+        squadrons: Vec<(crate::ids::FighterKey, u32)>,
+        from: crate::squadrons::SquadronPlace,
+        to: crate::squadrons::SquadronPlace,
+    },
+
+    /// Move the people aboard a fleet to the system it orbits (`0x201`,
+    /// `FUN_004b06b0`), each carried out by
+    /// [`crate::missions::move_member`].
+    MoveCharacters {
+        characters: Vec<CharacterKey>,
+        to: SystemKey,
+    },
+
     /// Move capital ships of one of the side's fleets (`0x201`) to a
     /// system: module `0xb`'s damaged ships (`FUN_004c8e90`) or whole
     /// fleet (`FUN_004c94c0`), carried out by
@@ -817,6 +865,7 @@ struct ModuleInputs<'a> {
     mfg_state: &'a ManufacturingState,
     mission_state: &'a MissionState,
     movement: &'a crate::movement::MovementState,
+    transport: &'a crate::troop_transport::TroopTransportState,
     tick: u64,
     config: &'a GameConfig,
     research_state: &'a ResearchState,
@@ -947,6 +996,7 @@ impl AISystem {
             mfg_state,
             mission_state,
             movement,
+            transport: troop_transport,
             tick,
             config,
             research_state,
@@ -1202,12 +1252,28 @@ impl AISystem {
     ) -> crate::ai_module1::Step {
         use crate::ai_module8::Step8;
         let step = {
+            // The records of the people aboard the side's fleets
+            // (FUN_004b06b0 reads +0x30).
+            let people: HashMap<CharacterKey, u32> = ctx
+                .world
+                .fleets
+                .values()
+                .flat_map(|f| f.characters.iter().copied())
+                .filter_map(|c| {
+                    planner
+                        .flags(crate::missions::MissionMember::Character(c))
+                        .map(|flags| (c, flags))
+                })
+                .collect();
             let mut random = |n| planner.random(n);
             let mut io = crate::ai_module8::Inputs8 {
                 world: ctx.world,
                 galaxy,
                 ship_holds: &mut state.ship_holds,
                 fleet_holds: &mut state.fleet_holds,
+                kinds: &mut state.record_kinds,
+                transport: ctx.transport,
+                people: &people,
                 controller_flags: state.controller.flags,
                 balance: tallies.planner_balance,
                 random: &mut random,
@@ -1299,6 +1365,7 @@ impl AISystem {
             research_state,
             uprisings,
             faction,
+            ..
         } = *ctx;
         let production = |actions: &mut Vec<AIAction>| {
             let mut all = Vec::new();
@@ -4152,6 +4219,7 @@ mod tests {
             mfg_state,
             mission_state,
             movement,
+            transport: Box::leak(Box::default()),
             tick: last.tick,
             config,
             research_state,
@@ -4236,6 +4304,7 @@ mod tests {
             mfg_state: mfg,
             mission_state: missions,
             movement,
+            transport: Box::leak(Box::default()),
             tick: 7,
             config,
             research_state: research,
@@ -8486,6 +8555,91 @@ mod tests {
         assert!(ok(2, ours));
         assert!(!ok(3, ours));
         assert!(!ok(1, empire));
+    }
+
+    #[test]
+    fn a_squadron_team_move_needs_every_class_s_squadron_move_to_pass() {
+        // FUN_00578d00 for FUN_004b0120's Move: each squadron passes the
+        // squadron move's checks (squadrons::check_move).
+        use crate::squadrons::SquadronPlace;
+        let (mut world, system, ours, empire, x_wing) = squadron_world(4);
+        let y_wing = world.fighter_classes.insert(FighterClass {
+            is_alliance: true,
+            ..FighterClass::default()
+        });
+        crate::squadrons::add(&mut world.systems[system].fighters, y_wing, 1);
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let movement = crate::movement::MovementState::new();
+        let research = ResearchState::new();
+        let ok = |squadrons: Vec<(FighterKey, u32)>, to| {
+            accepts(
+                &AIAction::MoveSquadronTeam {
+                    squadrons,
+                    from: SquadronPlace::Planet(system),
+                    to: SquadronPlace::Fleet(to),
+                },
+                &world,
+                &research,
+                AiFaction::Alliance,
+                &transport,
+                &movement,
+            )
+        };
+        assert!(ok(vec![(x_wing, 3), (y_wing, 1)], ours));
+        assert!(!ok(vec![], ours));
+        assert!(!ok(vec![(x_wing, 3), (y_wing, 2)], ours));
+        assert!(!ok(vec![(x_wing, 1)], empire));
+    }
+
+    #[test]
+    fn a_people_move_needs_the_side_s_free_people_aboard_a_fleet_there() {
+        // FUN_00578d00 for FUN_004b06b0's Move: each person the side's,
+        // not a captive, aboard a fleet out of hyperspace at the target.
+        let (mut world, system, ours, empire, _) = squadron_world(2);
+        let sector = world.systems[system].sector;
+        let there = add_system(&mut world, sector, 0.9, 0.1);
+        let mut person = |fleet, is_alliance| {
+            let c = world.characters.insert(Character {
+                is_alliance,
+                is_empire: !is_alliance,
+                ..Character::default()
+            });
+            world.fleets[fleet].characters.push(c);
+            c
+        };
+        let a = person(ours, true);
+        let b = person(ours, true);
+        let enemy = person(empire, false);
+        let ashore = world.characters.insert(Character {
+            is_alliance: true,
+            ..Character::default()
+        });
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let mut movement = crate::movement::MovementState::new();
+        let research = ResearchState::new();
+        let ok = |world: &GameWorld,
+                  movement: &crate::movement::MovementState,
+                  characters: Vec<CharacterKey>,
+                  to| {
+            accepts(
+                &AIAction::MoveCharacters { characters, to },
+                world,
+                &research,
+                AiFaction::Alliance,
+                &transport,
+                movement,
+            )
+        };
+        assert!(ok(&world, &movement, vec![a, b], system));
+        assert!(!ok(&world, &movement, vec![], system));
+        assert!(!ok(&world, &movement, vec![a], there));
+        assert!(!ok(&world, &movement, vec![a, enemy], system));
+        assert!(!ok(&world, &movement, vec![a, ashore], system));
+        world.characters[b].is_captive = true;
+        assert!(!ok(&world, &movement, vec![a, b], system));
+        crate::movement::begin_faction_fleet_transit(&mut movement, &mut world, ours, there, true)
+            .unwrap();
+        assert!(!ok(&world, &movement, vec![a], system));
     }
 
     #[test]
