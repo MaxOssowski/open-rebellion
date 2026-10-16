@@ -19,7 +19,10 @@ use rebellion_core::missions::MissionMember;
 
 use crate::bmp_cache::BmpCache;
 use crate::cockpit::{CockpitFaction, CockpitLayout, CockpitViewport};
-use crate::game_menu::{draw_game_menu, GameMenuEntry, GameMenuPlacement, GameMenuResponse};
+use crate::game_menu::{
+    draw_game_menu_with_submenu, GameMenuEntry, GameMenuPlacement, GameMenuResponse, GameMenuState,
+    GameSubmenu,
+};
 use crate::quadrant_icons::Quadrant;
 use crate::status_rows::StatusObject;
 
@@ -34,6 +37,8 @@ pub enum ObjectMenuCommand {
     Status,
     Retire,
     Bombardment,
+    /// A Planetary Bombardment target (`0x220..0x223`), by its kind.
+    BombardmentTarget(u32),
     Assault,
     Rename,
     Scrap,
@@ -227,6 +232,42 @@ const BOMBARDMENT: ObjectMenuItem = item(
     "Planetary Bombardment",
     true,
 );
+/// The bombardment targets under [`BOMBARDMENT`]: STRATEGY records
+/// `0x220..0x223` (word 1 the parent `0x120`; `move-order.md`).
+const BOMBARDMENT_TARGETS: [ObjectMenuItem; 4] = [
+    item(
+        0x220,
+        ObjectMenuCommand::BombardmentTarget(0x220),
+        202,
+        12314,
+        "Target Military Facilities",
+        false,
+    ),
+    item(
+        0x221,
+        ObjectMenuCommand::BombardmentTarget(0x221),
+        204,
+        12315,
+        "Target Civilian Facilities",
+        false,
+    ),
+    item(
+        0x222,
+        ObjectMenuCommand::BombardmentTarget(0x222),
+        206,
+        12316,
+        "General Bombardment",
+        false,
+    ),
+    item(
+        0x223,
+        ObjectMenuCommand::BombardmentTarget(0x223),
+        208,
+        12317,
+        "Destroy System",
+        false,
+    ),
+];
 const ASSAULT: ObjectMenuItem = item(
     0x234,
     ObjectMenuCommand::Assault,
@@ -427,6 +468,8 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::Stop => producer && gates.stop,
                 ObjectMenuCommand::Build => producer && gates.build,
                 ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
+                // FUN_00442590: a submenu parent (flags 8) is enabled.
+                ObjectMenuCommand::Bombardment => true,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 // FUN_0051d990: a single selection that is not a system.
                 ObjectMenuCommand::Status => {
@@ -438,6 +481,32 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         .collect();
     rows.sort_by_key(|row| row.item.sort_key);
     rows
+}
+
+/// The rows of the Planetary Bombardment submenu for `selection`: a fleet's
+/// class lists the four targets (`FUN_004ff8e0`), as does a sector window's
+/// fleet icon (`FUN_00507290`); each is enabled by its gate. Empty for any
+/// other selection.
+#[must_use]
+pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
+    let fleet = matches!(
+        selection,
+        Some(
+            MenuObject::Fleet(_)
+                | MenuObject::SystemIcon {
+                    quadrant: Quadrant::Fleets,
+                    ..
+                }
+        )
+    );
+    if !fleet {
+        return Vec::new();
+    }
+    BOMBARDMENT_TARGETS
+        .iter()
+        .zip(gates.bombard)
+        .map(|(&item, enabled)| ObjectMenuRow { item, enabled })
+        .collect()
 }
 
 /// Whether the selection passes each order's own rule, its `+0x18` slot.
@@ -463,6 +532,9 @@ pub struct OrderGates {
     /// Build (0x210..0x212) on a band: the band's area is the player's and
     /// lists something to build.
     pub build: bool,
+    /// The bombardment targets `0x220..0x223` (each order's `+0x18`,
+    /// `FUN_00581e80`; `rebellion_core::bombardment::order_enabled`).
+    pub bombard: [bool; 4],
 }
 
 /// An open object pop-up menu.
@@ -470,6 +542,10 @@ pub struct OrderGates {
 pub struct ObjectMenuState {
     selection: Option<MenuObject>,
     rows: Vec<ObjectMenuRow>,
+    /// The Planetary Bombardment submenu's rows, if the menu has it.
+    submenu: Vec<ObjectMenuRow>,
+    /// The highlight and the submenu's timer (`FUN_004aab50`).
+    window: GameMenuState,
     /// The 640 by 480 canvas point of the right-button release.
     point: (f32, f32),
 }
@@ -481,8 +557,29 @@ impl ObjectMenuState {
         Self {
             selection,
             rows: object_menu_rows(selection, gates),
+            submenu: object_submenu_rows(selection, gates),
+            window: GameMenuState::default(),
             point: (f32::from(point.0), f32::from(point.1)),
         }
+    }
+
+    /// The submenu row that issues `command`, counted from its top.
+    #[must_use]
+    pub fn submenu_row_of(&self, command: ObjectMenuCommand) -> Option<usize> {
+        self.submenu
+            .iter()
+            .position(|row| row.item.command == command)
+    }
+
+    #[must_use]
+    pub fn submenu_row_count(&self) -> usize {
+        self.submenu.len()
+    }
+
+    /// Whether the Planetary Bombardment submenu is shown.
+    #[must_use]
+    pub fn submenu_shown(&self) -> bool {
+        self.window.submenu_shown()
     }
 
     #[must_use]
@@ -503,6 +600,13 @@ const MENU_ID: &str = "original_object_menu";
 #[must_use]
 pub fn object_menu_rect(ctx: &egui::Context) -> Option<egui::Rect> {
     ctx.memory(|memory| memory.area_rect(egui::Id::new(MENU_ID)))
+}
+
+/// The submenu's last window, shown or not (see
+/// [`ObjectMenuState::submenu_shown`]).
+#[must_use]
+pub fn object_submenu_rect(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.memory(|memory| memory.area_rect(egui::Id::new(MENU_ID).with("submenu")))
 }
 
 /// The galaxy view in canvas coordinates: the menu's owner window
@@ -527,13 +631,25 @@ pub fn draw_object_menu(
     faction: CockpitFaction,
     input_enabled: bool,
 ) -> Option<(ObjectMenuCommand, Option<MenuObject>)> {
-    let open = menu.as_ref()?;
+    let open = menu.as_mut()?;
     let entries: Vec<GameMenuEntry<'static>> = open.rows.iter().map(ObjectMenuRow::entry).collect();
+    let children: Vec<GameMenuEntry<'static>> =
+        open.submenu.iter().map(ObjectMenuRow::entry).collect();
+    let parent = open
+        .rows
+        .iter()
+        .position(|row| row.item.command == ObjectMenuCommand::Bombardment);
+    let submenu = parent
+        .filter(|_| !children.is_empty())
+        .map(|parent| GameSubmenu {
+            parent,
+            entries: &children,
+        });
     let placement = GameMenuPlacement {
         owner: galaxy_owner(layout),
         point: open.point,
     };
-    match draw_game_menu(
+    match draw_game_menu_with_submenu(
         ctx,
         egui::Id::new(MENU_ID),
         cache,
@@ -541,6 +657,8 @@ pub fn draw_object_menu(
         faction,
         placement,
         &entries,
+        submenu,
+        &mut open.window,
         input_enabled,
     ) {
         GameMenuResponse::Open => None,
@@ -550,6 +668,11 @@ pub fn draw_object_menu(
         }
         GameMenuResponse::Chosen(index) => {
             let chosen = (open.rows[index].item.command, open.selection);
+            *menu = None;
+            Some(chosen)
+        }
+        GameMenuResponse::ChosenChild(index) => {
+            let chosen = (open.submenu[index].item.command, open.selection);
             *menu = None;
             Some(chosen)
         }
@@ -571,6 +694,7 @@ mod tests {
         destination: false,
         stop: false,
         build: false,
+        bombard: [false; 4],
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -688,7 +812,11 @@ mod tests {
             ["Planetary Bombardment"]
         );
         // A fleet is no mission member, so Mission's gate never reaches it.
-        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        // The bombardment parent is enabled (FUN_00442590 flags 8).
+        assert_eq!(
+            enabled(&rows),
+            ["Planetary Bombardment", "Encyclopedia", "Status"]
+        );
     }
 
     #[test]
@@ -706,14 +834,21 @@ mod tests {
             destination: false,
             stop: false,
             build: false,
+            bombard: [false; 4],
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
-            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
+            [
+                "Move",
+                "Confirmed Move",
+                "Planetary Bombardment",
+                "Encyclopedia",
+                "Status"
+            ]
         );
         assert_eq!(
             enabled(&object_menu_rows(fleet, OrderGates::default())),
-            ["Encyclopedia", "Status"]
+            ["Planetary Bombardment", "Encyclopedia", "Status"]
         );
         // port: a character's move is not ported, so its rows stay disabled.
         let character = Some(MenuObject::Character(CharacterKey::default()));
@@ -858,9 +993,12 @@ mod tests {
         // Status only when that object is not a system (0x90..0x97). An
         // icon's selection is its system (item +0x68, FUN_004f5b10).
         for quadrant in Quadrant::ALL {
+            // The fleet icon's bombardment parent is enabled (flags 8).
+            let parent = (quadrant == Quadrant::Fleets).then_some("Planetary Bombardment");
+            let expected: Vec<&str> = parent.into_iter().chain(["Encyclopedia"]).collect();
             assert_eq!(
                 enabled(&object_menu_rows(icon(quadrant), OrderGates::default())),
-                ["Encyclopedia"],
+                expected,
                 "{quadrant:?}"
             );
         }
@@ -881,10 +1019,16 @@ mod tests {
             destination: false,
             stop: true,
             build: true,
+            bombard: [false; 4],
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),
-            ["Move", "Confirmed Move", "Encyclopedia"]
+            [
+                "Move",
+                "Confirmed Move",
+                "Planetary Bombardment",
+                "Encyclopedia"
+            ]
         );
         for quadrant in [Quadrant::System, Quadrant::Defenses, Quadrant::Missions] {
             assert_eq!(
@@ -948,7 +1092,7 @@ mod tests {
         let fleet = Some(MenuObject::Fleet(FleetKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
-            ["Encyclopedia", "Status"]
+            ["Planetary Bombardment", "Encyclopedia", "Status"]
         );
     }
 
@@ -998,7 +1142,7 @@ mod tests {
                 Some(MenuObject::Fleet(FleetKey::default())),
                 gates
             )),
-            ["Encyclopedia", "Status"]
+            ["Planetary Bombardment", "Encyclopedia", "Status"]
         );
     }
 
@@ -1321,5 +1465,79 @@ mod tests {
                 layout.canvas.y + 380.0 * layout.scale
             )
         );
+    }
+
+    #[test]
+    fn a_fleets_bombardment_submenu_lists_the_four_targets_by_their_gates() {
+        // FUN_004ff8e0 lists 0x220..0x223; STRATEGY records 0x220..0x223
+        // (parent 0x120, sort 202..208, TEXTSTRA 12314..12317); each is
+        // enabled by its +0x18 (FUN_00581e80).
+        let gates = OrderGates {
+            bombard: [true, false, true, false],
+            ..OrderGates::default()
+        };
+        for selection in [
+            MenuObject::Fleet(FleetKey::default()),
+            icon(Quadrant::Fleets).unwrap(),
+        ] {
+            let rows = object_submenu_rows(Some(selection), gates);
+            assert_eq!(
+                labels(&rows),
+                [
+                    "Target Military Facilities",
+                    "Target Civilian Facilities",
+                    "General Bombardment",
+                    "Destroy System"
+                ]
+            );
+            assert_eq!(
+                rows.iter().map(|row| row.item.kind).collect::<Vec<_>>(),
+                [0x220, 0x221, 0x222, 0x223]
+            );
+            assert_eq!(
+                rows.iter().map(|row| row.item.sort_key).collect::<Vec<_>>(),
+                [202, 204, 206, 208]
+            );
+            assert_eq!(
+                rows.iter()
+                    .map(|row| row.item.label_string_id)
+                    .collect::<Vec<_>>(),
+                [12314, 12315, 12316, 12317]
+            );
+            assert_eq!(
+                enabled(&rows),
+                ["Target Military Facilities", "General Bombardment"]
+            );
+            assert_eq!(
+                rows[3].item.command,
+                ObjectMenuCommand::BombardmentTarget(0x223)
+            );
+        }
+        // An open fleet menu finds each target's row; the parent is not in
+        // the submenu, and the submenu waits for the highlight.
+        let menu =
+            ObjectMenuState::new(Some(MenuObject::Fleet(FleetKey::default())), gates, (0, 0));
+        assert_eq!(
+            menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(0x222)),
+            Some(2)
+        );
+        assert_eq!(
+            menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(0x220)),
+            Some(0)
+        );
+        assert_eq!(menu.submenu_row_of(ObjectMenuCommand::Bombardment), None);
+        assert_eq!(menu.submenu_row_count(), 4);
+        assert!(!menu.submenu_shown());
+        // Nothing else has the submenu.
+        for selection in [
+            Some(MenuObject::Troop(TroopKey::default())),
+            icon(Quadrant::System),
+            None,
+        ] {
+            assert_eq!(
+                labels(&object_submenu_rows(selection, gates)),
+                [] as [&str; 0]
+            );
+        }
     }
 }

@@ -594,6 +594,55 @@ pub fn fleet_bombardment(world: &GameWorld, fleet: FleetKey) -> i32 {
     })
 }
 
+/// Whether the side's `fleets` may order bombardment `kind` of `system`:
+/// the orders' enabled check, a team of one side (`FUN_00553770`) with a
+/// fleet that has bombardment and, for Destroy System, a Death Star in that
+/// fleet (`FUN_00582440`).
+///
+/// port: the order's sub-orders are not ported; in their place each fleet
+/// must orbit `system`, out of hyperspace, and `system` must stand and not
+/// be the side's (the manual: "in orbit around an enemy or neutral
+/// system").
+#[must_use]
+pub fn order_enabled(
+    world: &GameWorld,
+    movement: &crate::movement::MovementState,
+    is_alliance: bool,
+    fleets: &[FleetKey],
+    system: SystemKey,
+    kind: u32,
+) -> bool {
+    let at = |f: &FleetKey| {
+        world.fleets.get(*f).is_some_and(|value| {
+            value.is_alliance == is_alliance
+                && value.location == system
+                && !movement.is_in_transit(*f)
+        })
+    };
+    let able = |f: &FleetKey| {
+        fleet_bombardment(world, *f) > 0
+            && (kind != DESTROY_SYSTEM
+                || world.fleets.get(*f).is_some_and(|value| {
+                    value.capital_ships.iter().any(|s| {
+                        s.alive
+                            && world
+                                .capital_ship_classes
+                                .get(s.class)
+                                .is_some_and(crate::world::CapitalShipClass::is_death_star)
+                    })
+                }))
+    };
+    (TARGET_MILITARY..=DESTROY_SYSTEM).contains(&kind)
+        && !fleets.is_empty()
+        && fleets.iter().all(at)
+        && fleets.iter().any(able)
+        && world.systems.get(system).is_some_and(|sys| {
+            !sys.is_destroyed
+                && GameWorld::facility_holder(sys.control)
+                    != Some(Faction::of_alliance(is_alliance))
+        })
+}
+
 /// Carry out `outcome` of `req`: the ships' hull damage (a ship at its
 /// hull is lost, `FUN_00501ae0`; a fleet left with nothing disbands), the
 /// targets destroyed, and the attacker's support after civilian damage

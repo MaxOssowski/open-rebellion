@@ -234,45 +234,13 @@ fn accepts(
                 )
                 .is_ok()
         }
-        // The bombardment orders' enabled check: a team of the side's fleets
-        // (FUN_00553770), one with bombardment, and for Destroy System with
-        // a Death Star (FUN_00582440). port: each fleet in orbit at the
-        // system, out of hyperspace, and the system not the side's (the
-        // manual: "in orbit around an enemy or neutral system").
+        // The bombardment orders' enabled check (bombardment::order_enabled).
         AIAction::Bombard {
             fleets,
             system,
             kind,
         } => {
-            let at = |f: &FleetKey| {
-                world.fleets.get(*f).is_some_and(|value| {
-                    value.is_alliance == is_alliance
-                        && value.location == *system
-                        && !movement.is_in_transit(*f)
-                })
-            };
-            let able = |f: &FleetKey| {
-                crate::bombardment::fleet_bombardment(world, *f) > 0
-                    && (*kind != crate::bombardment::DESTROY_SYSTEM
-                        || world.fleets.get(*f).is_some_and(|value| {
-                            value.capital_ships.iter().any(|s| {
-                                s.alive
-                                    && world
-                                        .capital_ship_classes
-                                        .get(s.class)
-                                        .is_some_and(crate::world::CapitalShipClass::is_death_star)
-                            })
-                        }))
-            };
-            (crate::bombardment::TARGET_MILITARY..=crate::bombardment::DESTROY_SYSTEM)
-                .contains(kind)
-                && !fleets.is_empty()
-                && fleets.iter().all(at)
-                && fleets.iter().any(able)
-                && world.systems.get(*system).is_some_and(|sys| {
-                    !sys.is_destroyed
-                        && crate::world::GameWorld::facility_holder(sys.control) != Some(side)
-                })
+            crate::bombardment::order_enabled(world, movement, is_alliance, fleets, *system, *kind)
         }
         // The move command's validation (FUN_00578d00) with a fleet for
         // the destination: both the side's, out of hyperspace, and the

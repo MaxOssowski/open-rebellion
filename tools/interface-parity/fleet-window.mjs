@@ -27,6 +27,7 @@ const FLEET_JOIN = 52;
 const PRODUCTION_DESTINATION = 54;
 const SQUADRON_LOAD = 65;
 const SQUADRON_BATTLE = 66;
+const FLEET_BOMBARDMENT = 67;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -580,6 +581,49 @@ const cases = [
         (o) => o.fleet_squadrons === 0 && o.planet_squadrons === 2);
       await shot(page, directory, "squadron-landed");
       return { fighters, landed };
+    },
+  },
+  {
+    name: "bombardment",
+    code: FLEET_BOMBARDMENT,
+    // The fleet icon's menu lists Planetary Bombardment (0x120,
+    // FUN_00507290), a parent: a click on it issues nothing, and the
+    // window's 500 ms timer shows its submenu under the highlight
+    // (FUN_004aab50), beside the parent window (FUN_004ab3a0). General
+    // Bombardment (0x222) needs no confirmation (FUN_00487cc0) and is
+    // carried out at once (FUN_00487740, ghidra/notes/bombardment-order.md).
+    async run(page, faction, setup, directory) {
+      const before = await until(page, "two enemy regiments wait on the planet",
+        (o) => o.enemy_regiments === 2 && o.last_bombardment_message === null);
+      const menu = await openMenu(page, point(setup.icon), directory, "fleet");
+      assert.notEqual(menu.bombardment_row, null, JSON.stringify(menu));
+      assert.equal(menu.submenu, null, "the submenu waits for the highlight");
+      const height = (menu.height - 2) / menu.rows;
+      const parent = { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.bombardment_row + 0.5) };
+      await click(page, parent);
+      const hovered = Date.now();
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.submenu,
+        null, { timeout: 5_000 });
+      const waited = Date.now() - hovered;
+      // A new egui area's first frame is its sizing pass; read a later one.
+      await frames(page, 3);
+      const shown = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      assert.equal(shown.status, "object-menu", "a click on the parent leaves the menu open");
+      await shot(page, directory, "bombardment-submenu");
+      const sub = shown.submenu;
+      assert.equal(sub.rows, 4, JSON.stringify(sub));
+      assert.equal(sub.general_row, 2);
+      const leftSide = Math.abs(sub.left - (menu.left - sub.width + 3)) <= 1;
+      const rightSide = Math.abs(sub.left - (menu.left + menu.width - 3)) <= 1;
+      assert.ok(leftSide || rightSide, `the submenu overlaps its parent by three pixels: ${JSON.stringify({ menu, sub })}`);
+      const rowHeight = (sub.height - 2) / sub.rows;
+      await click(page, { x: sub.left + sub.width / 2, y: sub.top + 2 + rowHeight * (sub.general_row + 0.5) });
+      const after = await until(page, "General Bombardment is carried out",
+        (o) => o.last_bombardment_message?.startsWith("Orbital bombardment at "));
+      assert.ok(after.enemy_regiments <= 2);
+      await frames(page, 3);
+      await shot(page, directory, "bombardment-done");
+      return { before, menu, waited, sub, after };
     },
   },
   {

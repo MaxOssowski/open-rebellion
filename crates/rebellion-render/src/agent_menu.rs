@@ -234,7 +234,7 @@ pub fn draw_agent_menu(
         &entries,
         input_enabled,
     ) {
-        GameMenuResponse::Open => None,
+        GameMenuResponse::Open | GameMenuResponse::ChosenChild(_) => None,
         GameMenuResponse::Dismissed => {
             state.anchor = None;
             None

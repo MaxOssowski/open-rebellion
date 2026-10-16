@@ -1656,6 +1656,14 @@ cross-runtime proof remain open
     next). port: the draws come from a stream seeded by the tick; no officer
     ranks (both leadership factors 1); the sector and galaxy support events
     are not ported (`evidence/2026-10-16-bombardment/`).
+  - Bombardment sub-menu 2026-10-16 (module 8, stage 4f): the object
+    pop-up menu's Planetary Bombardment is a parent (`FUN_00442590`) whose
+    window opens beside it (`FUN_004ab3a0`) on the menu's 500 ms timer
+    (`FUN_004aab50`); a fleet or a fleet icon lists the four orders, each
+    enabled by `bombardment::order_enabled`, and a chosen one is carried out
+    at once (`FUN_00486fb0` -> `FUN_00487740`). A browser gate orders General
+    Bombardment from it for both sides
+    (`evidence/2026-10-16-bombardment-menu/`).
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.
@@ -1991,6 +1999,11 @@ cross-runtime proof remain open
   role, so nothing bombards. Save v55; golden
   `v1:dbb908594619dd4b` -> `v1:b160883b9ed0c807`
   (`evidence/2026-10-16-bombardment/`).
+- Module 8, stage 4f (2026-10-16): the player's Planetary Bombardment
+  sub-menu (F-032) gives the same orders through
+  `bombardment::order_enabled`, the AI's validation now shared with it. No
+  simulation change; the golden is unchanged
+  (`evidence/2026-10-16-bombardment-menu/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

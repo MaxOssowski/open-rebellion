@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 66;
+const SCENARIO_COUNT: u8 = 67;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -153,6 +153,11 @@ pub enum Scenario {
     /// system's planet: a running clock starts a battle there
     /// (`ghidra/notes/planet-squadrons.md`, "Battle").
     SquadronBattle = 65,
+    /// As `FleetLoad` with the primary system the other side's, its
+    /// facilities gone and two of that side's regiments on its planet, and
+    /// the fleet's ship one that bombards: the fleet icon's Planetary
+    /// Bombardment submenu (`ghidra/notes/bombardment-order.md`).
+    FleetBombardment = 66,
 }
 
 impl Scenario {
@@ -224,6 +229,7 @@ impl Scenario {
             63 => Self::ResearchTargeting,
             64 => Self::SquadronLoad,
             65 => Self::SquadronBattle,
+            66 => Self::FleetBombardment,
             _ => return None,
         })
     }
@@ -240,6 +246,7 @@ impl Scenario {
                 | Self::FleetLoadFull
                 | Self::SquadronLoad
                 | Self::SquadronBattle
+                | Self::FleetBombardment
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -961,6 +968,62 @@ fn place_moving_fleet(
     sectors.open_for_system(world, secondary, request.faction);
 }
 
+/// The bombardment variant: the primary system becomes the other side's,
+/// its facilities move elsewhere (no battery, ion cannon or shield answers
+/// the fleet, `FUN_0058dc10`), the player's regiment there turns the other
+/// side's and a second joins it, and the fleet's one ship is of the
+/// player's first class that bombards and carries regiments, at full hull
+/// (`FUN_0058df60`).
+fn place_bombarding_fleet(
+    world: &mut GameWorld,
+    fleet: FleetKey,
+    primary: SystemKey,
+    elsewhere: SystemKey,
+    player_is_alliance: bool,
+) {
+    let enemy = if player_is_alliance {
+        Faction::Empire
+    } else {
+        Faction::Alliance
+    };
+    let system = &mut world.systems[primary];
+    system.control = ControlKind::Controlled(enemy);
+    system.is_populated = true;
+    let defense = std::mem::take(&mut system.defense_facilities);
+    let manufacturing = std::mem::take(&mut system.manufacturing_facilities);
+    let production = std::mem::take(&mut system.production_facilities);
+    let other = &mut world.systems[elsewhere];
+    other.defense_facilities.extend(defense);
+    other.manufacturing_facilities.extend(manufacturing);
+    other.production_facilities.extend(production);
+    let regiments = world.systems[primary].ground_units.clone();
+    for &key in &regiments {
+        world.troops[key].is_alliance = !player_is_alliance;
+    }
+    if let Some(&first) = regiments.first() {
+        let copy = world.troops[first].clone();
+        let second = world.troops.insert(copy);
+        world.systems[primary].ground_units.push(second);
+    }
+    if let Some((class, hull)) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| {
+            class.is_alliance == player_is_alliance
+                && class.bombardment_modifier > 0
+                && class.troop_capacity > 0
+                && class.hyperdrive > 0
+        })
+        .map(|(key, class)| (key, class.hull))
+    {
+        world.fleets[fleet].capital_ships = vec![ShipInstance::new(
+            class,
+            i32::try_from(hull).unwrap_or(i32::MAX),
+            player_is_alliance,
+        )];
+    }
+}
+
 /// The regiment-loading target: another system in the primary system's
 /// sector, so the sector window that shows the fleet icon shows it too.
 fn loading_target(world: &GameWorld, primary: SystemKey) -> Option<SystemKey> {
@@ -1207,6 +1270,9 @@ fn place_loading_fleet(
         {
             rebellion_core::squadrons::add(&mut world.systems[primary].fighters, class, 2);
         }
+    }
+    if request.scenario == Scenario::FleetBombardment {
+        place_bombarding_fleet(world, fleet, primary, elsewhere, player_is_alliance);
     }
 
     let layout = cockpit.layout_for(640.0, 480.0);
@@ -1479,15 +1545,32 @@ struct FixtureObjectMenu<'a> {
     status_window_row: Option<usize>,
     build_row: Option<usize>,
     stop_row: Option<usize>,
+    bombardment_row: Option<usize>,
+    /// The Planetary Bombardment submenu while it is shown.
+    submenu: Option<FixtureSubmenu>,
     target_dat_id: u32,
     target_name: &'a str,
     target_screen_x: f32,
     target_screen_y: f32,
 }
 
+/// The shown submenu's window and General Bombardment's row in it.
+#[derive(Debug, Serialize, PartialEq)]
+struct FixtureSubmenu {
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+    rows: usize,
+    general_row: Option<usize>,
+}
+
 fn object_menu_report<'a>(
     request: FixtureRequest,
-    rect: egui_macroquad::egui::Rect,
+    (rect, submenu): (
+        egui_macroquad::egui::Rect,
+        Option<egui_macroquad::egui::Rect>,
+    ),
     menu: &ObjectMenuState,
     world: &'a GameWorld,
     sectors: &SectorWindowState,
@@ -1535,6 +1618,19 @@ fn object_menu_report<'a>(
         status_window_row: menu.row_of(ObjectMenuCommand::Status),
         build_row: menu.row_of(ObjectMenuCommand::Build),
         stop_row: menu.row_of(ObjectMenuCommand::Stop),
+        bombardment_row: menu.row_of(ObjectMenuCommand::Bombardment),
+        submenu: submenu
+            .filter(|_| menu.submenu_shown())
+            .map(|sub| FixtureSubmenu {
+                left: sub.min.x,
+                top: sub.min.y,
+                width: sub.width(),
+                height: sub.height(),
+                rows: menu.submenu_row_count(),
+                general_row: menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(
+                    rebellion_core::bombardment::GENERAL,
+                )),
+            }),
         target_dat_id: target.dat_id.raw(),
         target_name: &target.name,
         target_screen_x,
@@ -1544,7 +1640,10 @@ fn object_menu_report<'a>(
 
 pub fn emit_object_menu(
     request: FixtureRequest,
-    rect: egui_macroquad::egui::Rect,
+    rect: (
+        egui_macroquad::egui::Rect,
+        Option<egui_macroquad::egui::Rect>,
+    ),
     menu: &ObjectMenuState,
     world: &GameWorld,
     sectors: &SectorWindowState,
@@ -2431,6 +2530,10 @@ struct FleetLoadObservation {
     /// orbiting there (a battle's group of the planet's squadrons).
     enemy_planet_squadrons: u32,
     enemy_fleets: usize,
+    /// The other side's regiments on the primary planet, and the last
+    /// bombardment line (the bombardment variant).
+    enemy_regiments: usize,
+    last_bombardment_message: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2545,6 +2648,20 @@ fn fleet_load_observation(
                 })
             })
             .count(),
+        enemy_regiments: world.systems[primary]
+            .ground_units
+            .iter()
+            .filter(|&&key| {
+                world.troops.get(key).is_some_and(|troop| {
+                    troop.is_alliance != (request.faction == CockpitFaction::Alliance)
+                })
+            })
+            .count(),
+        last_bombardment_message: messages
+            .iter()
+            .rev()
+            .find(|message| message.text.contains("bombardment"))
+            .map(|message| message.text.clone()),
     })
 }
 
@@ -3280,7 +3397,7 @@ mod tests {
         );
         let report = object_menu_report(
             request,
-            rect,
+            (rect, None),
             &menu,
             &world,
             &SectorWindowState::default(),
@@ -3457,7 +3574,7 @@ mod tests {
         );
         let report = object_menu_report(
             request,
-            rect,
+            (rect, None),
             &menu,
             &world,
             &sectors,
@@ -3660,6 +3777,100 @@ mod tests {
             assert_eq!(
                 rebellion_core::squadrons::sides_present(world, primary),
                 (true, true)
+            );
+        }
+    }
+
+    // port: the fixture's own layout; the order's gate is
+    // bombardment::order_enabled (FUN_00553770, FUN_00582440).
+    #[test]
+    fn the_bombardment_scenario_lets_the_fleet_bombard_two_enemy_regiments() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let request = request(Scenario::FleetBombardment, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                // Before each side's class that fits, one without room for
+                // regiments (the gate's setup needs it), one that does not
+                // bombard and one without a hyperdrive; the other side's
+                // fitting class comes first.
+                let other = !alliance;
+                for (side, room, bombard, hyperdrive) in [
+                    (other, 2, 5, 80),
+                    (alliance, 0, 5, 80),
+                    (alliance, 2, 0, 80),
+                    (alliance, 2, 5, 0),
+                    (alliance, 2, 5, 80),
+                ] {
+                    world
+                        .capital_ship_classes
+                        .insert(rebellion_core::world::CapitalShipClass {
+                            is_alliance: side,
+                            hull: 300,
+                            hyperdrive,
+                            troop_capacity: room,
+                            bombardment_modifier: bombard,
+                            ..Default::default()
+                        });
+                }
+            });
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let fleet = world.fleets.keys().next().unwrap();
+            let system = &world.systems[primary];
+            assert_eq!(
+                GameWorld::facility_holder(system.control),
+                Some(Faction::of_alliance(!alliance))
+            );
+            assert_eq!(system.defense_facilities.len(), 0);
+            assert_eq!(system.ground_units.len(), 2);
+            assert!(system
+                .ground_units
+                .iter()
+                .all(|&key| world.troops[key].is_alliance != alliance));
+            assert_eq!(world.fleets[fleet].capital_ships.len(), 1);
+            assert_eq!(world.fleets[fleet].capital_ships[0].hull_current, 300);
+            let class = &world.capital_ship_classes[world.fleets[fleet].capital_ships[0].class];
+            assert_eq!(
+                (
+                    class.is_alliance,
+                    class.troop_capacity,
+                    class.bombardment_modifier,
+                    class.hyperdrive
+                ),
+                (alliance, 2, 5, 80)
+            );
+            assert!(rebellion_core::bombardment::fleet_bombardment(world, fleet) > 0);
+            assert!(rebellion_core::bombardment::order_enabled(
+                world,
+                &applied.movement,
+                alliance,
+                &[fleet],
+                primary,
+                rebellion_core::bombardment::GENERAL,
+            ));
+            // port: the fixture's own report counts the other side's
+            // regiments and keeps the last bombardment line.
+            let line = GameMessage::new(
+                1,
+                "Orbital bombardment at X".to_string(),
+                rebellion_render::message_log::MessageCategory::Combat,
+            );
+            let observed = fleet_load_observation(
+                request,
+                loading_regiment(world, primary).unwrap(),
+                world,
+                &FogState::new(Faction::of_alliance(alliance)),
+                &applied.movement,
+                &applied.transport,
+                &FleetWindowState::default(),
+                false,
+                &[line],
+            )
+            .unwrap();
+            assert_eq!(observed.enemy_regiments, 2);
+            assert_eq!(
+                observed.last_bombardment_message.as_deref(),
+                Some("Orbital bombardment at X")
             );
         }
     }
@@ -4870,7 +5081,8 @@ mod tests {
                 Scenario::ReconTargeting,
                 Scenario::ResearchTargeting,
                 Scenario::SquadronLoad,
-                Scenario::SquadronBattle
+                Scenario::SquadronBattle,
+                Scenario::FleetBombardment
             ]
         );
     }

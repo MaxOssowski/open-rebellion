@@ -532,7 +532,7 @@ pub fn draw_game_speed_menu(
         &entries,
         input_enabled,
     ) {
-        GameMenuResponse::Open => None,
+        GameMenuResponse::Open | GameMenuResponse::ChosenChild(_) => None,
         GameMenuResponse::Dismissed => {
             ui_state.menu_anchor = None;
             None

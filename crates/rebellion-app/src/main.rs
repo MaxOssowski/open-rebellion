@@ -4719,6 +4719,19 @@ Some(RailAudience::side(*faction_is_alliance)),
                         cockpit_state.faction,
                         strategic_input_enabled,
                     ) {
+                        Some((ObjectMenuCommand::BombardmentTarget(kind), selection)) => {
+                            if let Some((fleets, system)) = bombard_team(
+                                &world,
+                                selection,
+                                player_faction == MissionFaction::Alliance,
+                            ) {
+                                panel_actions.push(PanelAction::OrderBombardment {
+                                    fleets,
+                                    system,
+                                    kind,
+                                });
+                            }
+                        }
                         Some((ObjectMenuCommand::Encyclopedia, _)) => enc_state.open = true,
                         // FUN_00486fb0 0x103 → FUN_0042a440: the Status
                         // window (type 0x1a) for the selection.
@@ -4942,7 +4955,10 @@ Some(RailAudience::side(*faction_is_alliance)),
                     ) {
                         interface_test_fixture::emit_object_menu(
                             request,
-                            rect,
+                            (
+                                rect,
+                                rebellion_render::object_menu::object_submenu_rect(ctx),
+                            ),
                             menu,
                             &world,
                             &sector_window_state,
@@ -6775,6 +6791,42 @@ fn order_gates(
             }
             _ => false,
         },
+        bombard: bombard_team(world, selection, is_alliance).map_or(
+            [false; 4],
+            |(team, system)| {
+                [0x220, 0x221, 0x222, 0x223].map(|kind| {
+                    rebellion_core::bombardment::order_enabled(
+                        world,
+                        movement_state,
+                        is_alliance,
+                        &team,
+                        system,
+                        kind,
+                    )
+                })
+            },
+        ),
+    }
+}
+
+/// The team and system of a Planetary Bombardment order on `selection`: a
+/// fleet at its system, or a fleet icon's system with its fleets of the
+/// player's side (`FUN_00512700`, kind `0x10`).
+fn bombard_team(
+    world: &GameWorld,
+    selection: Option<MenuObject>,
+    is_alliance: bool,
+) -> Option<(Vec<FleetKey>, SystemKey)> {
+    match selection? {
+        MenuObject::Fleet(fleet) => Some((vec![fleet], world.fleets.get(fleet)?.location)),
+        MenuObject::SystemIcon {
+            system,
+            quadrant: Quadrant::Fleets,
+        } => Some((
+            rebellion_core::movement::system_side_fleets(world, system, is_alliance),
+            system,
+        )),
+        _ => None,
     }
 }
 
@@ -7280,23 +7332,53 @@ fn apply_panel_action(
                 MessageCategory::Event,
             ));
         }
-        PanelAction::OrderBombardment { fleet, system } => {
-            // port: the panel's one button is General Bombardment (0x222)
-            // until the Planetary Bombardment sub-menu; the order's draws
-            // come from the day.
-            if world.fleets.contains_key(fleet) && world.systems.contains_key(system) {
-                let side = Faction::of_alliance(world.fleets[fleet].is_alliance);
+        // FUN_00486fb0 -> FUN_00487740: the order validates (+0x1c), then
+        // executes, or FUN_00487c90 reports the refusal. port: the draws
+        // come from the day.
+        PanelAction::OrderBombardment {
+            fleets,
+            system,
+            kind,
+        } => {
+            let is_alliance = *player_faction == MissionFaction::Alliance;
+            if rebellion_core::bombardment::order_enabled(
+                world,
+                movement_state,
+                is_alliance,
+                &fleets,
+                system,
+                kind,
+            ) {
                 let mut bombard = BombardEnv::new(clock.tick, Some(victory_state.alliance_hq));
                 let outcome = bombard
                     .bombard(
                         world,
-                        side,
-                        &[fleet],
+                        Faction::of_alliance(is_alliance),
+                        &fleets,
                         system,
-                        rebellion_core::bombardment::GENERAL,
+                        kind,
                     )
                     .clone();
                 log_bombardment(world, system, &outcome, clock.tick, msg_log);
+                if outcome.system_destroyed {
+                    destroy_planet(
+                        world,
+                        system,
+                        victory_state,
+                        movement_state,
+                        death_star_state,
+                        mfg_state,
+                        blockade_state,
+                        msg_log,
+                        clock.tick,
+                    );
+                }
+            } else {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    "Planetary bombardment refused".to_string(),
+                    MessageCategory::Combat,
+                ));
             }
         }
         PanelAction::FireDeathStar { system } => {
@@ -8891,6 +8973,44 @@ mod fleet_move_tests {
     }
 
     /// Two Alliance fleets at one system, and a second system 40 away.
+    // FUN_004ff8e0 (a fleet's orders) and FUN_00507290 (the fleet icon's):
+    // the order's team is the fleet, or the side's fleets at the icon's
+    // system, and its target the system they orbit.
+    #[test]
+    fn the_bombardment_team_is_the_fleet_or_the_sides_fleets_at_the_icon() {
+        let (mut world, fleets, _) = world_with_two_fleets();
+        let origin = world.fleets[fleets[0]].location;
+        let enemy = world.fleets.insert(Fleet {
+            location: origin,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[origin].fleets.push(enemy);
+        let icon = |quadrant| {
+            Some(MenuObject::SystemIcon {
+                system: origin,
+                quadrant,
+            })
+        };
+        assert_eq!(
+            bombard_team(&world, Some(MenuObject::Fleet(fleets[1])), true),
+            Some((vec![fleets[1]], origin))
+        );
+        assert_eq!(
+            bombard_team(&world, icon(Quadrant::Fleets), true),
+            Some((fleets.clone(), origin))
+        );
+        assert_eq!(
+            bombard_team(&world, icon(Quadrant::Fleets), false),
+            Some((vec![enemy], origin))
+        );
+        assert_eq!(bombard_team(&world, icon(Quadrant::Defenses), true), None);
+        assert_eq!(bombard_team(&world, None, true), None);
+    }
+
     fn world_with_two_fleets() -> (GameWorld, Vec<FleetKey>, SystemKey) {
         let mut world = GameWorld::default();
         let sector = world.sectors.insert(Sector {

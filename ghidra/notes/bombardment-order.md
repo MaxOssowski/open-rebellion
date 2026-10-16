@@ -167,8 +167,11 @@ order it (`AIAction::Bombard`, `FUN_004b1070` -> `FUN_004b1330`); the
 integrator and the app carry it out, and a Destroy System order's
 destroyed system goes through the Death Star's cleanup. The automatic
 bombardment after a battle is gone (simulation, app, `tactical_flow`).
-The player's Bombard button orders General Bombardment until the
-sub-menu.
+The player orders it from the Fleet menu's Planetary Bombardment
+sub-menu (stage 4f, `object-popup-menu.md` "Submenus"): a fleet or a
+sector window's fleet icon, each order enabled by
+`bombardment::order_enabled`, carried out at once. The older Bombard
+panel's button still orders General Bombardment.
 
 port:
 - The draws come from a `SplitMix64` stream seeded by one roll of the

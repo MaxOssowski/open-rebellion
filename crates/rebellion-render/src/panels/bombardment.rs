@@ -2,7 +2,8 @@
 //!
 //! Shows fleets with bombardment capability at the selected system,
 //! damage forecast, and a "Fire" confirmation button.
-//! Returns `PanelAction::OrderBombardment { fleet, system }`.
+//! Returns `PanelAction::OrderBombardment` with General Bombardment
+//! (`0x222`): port: the panel's one button.
 
 use egui_macroquad::egui::{self, RichText, ScrollArea};
 use rebellion_core::ids::FleetKey;
@@ -146,8 +147,9 @@ pub fn draw_bombardment(
                                                 .size(14.0),
                                         ).clicked() {
                                             action = Some(PanelAction::OrderBombardment {
-                                                fleet: *fleet_key,
+                                                fleets: vec![*fleet_key],
                                                 system: fleet.location,
+                                                kind: rebellion_core::bombardment::GENERAL,
                                             });
                                         }
                                     } else {

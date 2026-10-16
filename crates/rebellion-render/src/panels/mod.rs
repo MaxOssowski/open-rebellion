@@ -186,8 +186,13 @@ pub enum PanelAction {
     StopJediTraining { character: CharacterKey },
 
     // ── Bombardment ──────────────────────────────────────────────────
-    /// Order orbital bombardment from a fleet against its current system.
-    OrderBombardment { fleet: FleetKey, system: SystemKey },
+    /// Order Planetary Bombardment `kind` (`0x220..0x223`) of `system` by
+    /// the player's `fleets` (`FUN_00486fb0` -> `FUN_00487740`).
+    OrderBombardment {
+        fleets: Vec<FleetKey>,
+        system: SystemKey,
+        kind: u32,
+    },
 
     // ── Death Star ───────────────────────────────────────────────────
     /// Fire the Death Star superlaser at a system.

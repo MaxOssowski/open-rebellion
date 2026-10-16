@@ -137,6 +137,43 @@ calls the owner's vtable `+0x20` with the item's kind; a press outside closes
 the menu. For a system window that is `FUN_004ac730`, which calls
 `FUN_0041cdf0(kind, selection, no target, 0)`.
 
+## Submenus
+
+`FUN_00442860` builds a window for the menu and, recursively, one for
+each parent item's children (`FUN_004ab3a0` ties the child window to its
+parent item, `+0x3c`). `FUN_00442590` sets the item flags: a parent
+(flags 8) is always enabled; a child's bit 0 disables it and bit 1 checks
+it (`FUN_004ac5c0`).
+
+`FUN_004ab3a0` places a child window of width `w` and height `h` beside
+its parent window (x, y, width, height) for the parent row (top, bottom):
+
+- x = parent.x - w + 3; when that is below 0, parent.x + parent.width - 3;
+- y = parent.y + row.top - 3 when row.top + h + parent.y < parent.y +
+  parent.height, else parent.y + row.bottom - h + 3.
+
+The parent row carries an arrow at its left edge + 6 and its top: STRATEGY
+10117 while highlighted, 10118 otherwise (side 1; 10128 and 10129 for the
+other side).
+
+The window procedure `FUN_004aab50`:
+
+- `WM_SHOWWINDOW` sets timer 100 to 500 ms; hiding kills it.
+- `WM_MOUSEMOVE` (0x200): `PtInRect` on each enabled item's rect (`+0x60`)
+  picks the highlight `+0x118`; a new highlight hides the open submenu.
+- `WM_TIMER` (0x113): the highlighted parent's submenu is shown.
+- A left release on a parent issues nothing; on an enabled child it
+  issues the child's kind as on a top-level item.
+- Escape (0x1b) in a submenu hands the focus back to its parent window;
+  in the top window it closes the menu.
+
+The Fleet menu's Planetary Bombardment (`0x120`) is such a parent; its
+children are the orders `0x220..0x223` (`bombardment-order.md`).
+`FUN_00486fb0` sends them down its default path with the fleet's system
+as the target and no confirmation (`FUN_00487cc0` asks nothing for these
+kinds): `FUN_00487740` validates and executes the order, and on a refusal
+`FUN_00487c90` reports it.
+
 ## Targeting
 
 `FUN_0041cdf0` → `FUN_00436020` → `FUN_00486fb0` handles the kind. For
@@ -221,6 +258,16 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   Diplomat and Send Spy buttons (`PanelAction::OpenMissionTo`) and the
   missions panel's Dispatch tab (`PanelAction::OpenMissionDialog`). The
   missions panel lists active missions only.
+- 7e (2026-10-16, module 8 stage 4f): submenus
+  (`game_menu::draw_game_menu_with_submenu`): the parent is enabled, the
+  child window opens beside it by `FUN_004ab3a0`'s rule on the window's
+  next 500 ms tick under the highlight, a new highlight hides it, a click
+  on the parent issues nothing, and Escape leaves the submenu first. A
+  fleet and a sector window's fleet icon list Planetary Bombardment's four
+  orders, each enabled by `bombardment::order_enabled`; a chosen one is
+  carried out at once (`PanelAction::OrderBombardment`). port: the timer
+  is counted from the menu's first frame on egui's clock; the Command
+  submenu (`0x160`) is not ported, as a character's orders are not.
 - A sector window's quadrant icons are selected by a left or right press
   and open this menu on a right release, with their kind's orders
   (`sector-icon-menus.md`).

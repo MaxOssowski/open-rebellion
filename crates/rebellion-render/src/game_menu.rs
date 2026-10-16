@@ -179,8 +179,92 @@ pub enum GameMenuResponse {
     Open,
     /// The index of the enabled entry chosen; the menu closes.
     Chosen(usize),
+    /// The index of the enabled submenu entry chosen; the menu closes.
+    ChosenChild(usize),
     /// A press outside the menu or Escape closed it.
     Dismissed,
+}
+
+/// The submenu of one parent row: its own Game Menu Window
+/// (`FUN_00442860` builds one for each parent, `FUN_004ab3a0` ties it to
+/// the parent's item).
+#[derive(Debug, Clone, Copy)]
+pub struct GameSubmenu<'a> {
+    /// The parent's row.
+    pub parent: usize,
+    pub entries: &'a [GameMenuEntry<'a>],
+}
+
+/// The window's timer `100` (500 ms, set when it is shown) and its
+/// highlighted item `+0x118` (`FUN_004aab50`).
+const SUBMENU_TIMER: f64 = 0.5;
+
+/// What an open menu with a submenu keeps between frames.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct GameMenuState {
+    /// When the menu was shown, which starts its 500 ms timer.
+    shown_at: Option<f64>,
+    /// The highlighted row (`+0x118`) and when it became so.
+    highlighted: Option<(usize, f64)>,
+    /// The highlighted parent's submenu is shown.
+    submenu_open: bool,
+}
+
+impl GameMenuState {
+    /// Whether the highlighted parent's submenu is shown.
+    #[must_use]
+    pub fn submenu_shown(&self) -> bool {
+        self.submenu_open
+    }
+}
+
+/// The submenu arrows (`FUN_004ab3a0`): STRATEGY 10117 on the highlighted
+/// parent, 10118 on the others, for side 1; 10128 and 10129 otherwise
+/// (`FUN_00401060`).
+#[must_use]
+pub const fn submenu_arrow(faction: CockpitFaction, highlighted: bool) -> u32 {
+    let base = match faction {
+        CockpitFaction::Alliance => 10117,
+        CockpitFaction::Empire => 10128,
+    };
+    if highlighted {
+        base
+    } else {
+        base + 1
+    }
+}
+
+/// Where `FUN_004ab3a0` places a submenu of `size` beside its parent window
+/// `parent` (x, y, width, height) for the parent row spanning `row_top` to
+/// `row_bottom` within it: on the parent's left, overlapping it by three
+/// pixels, or on its right when that would cross the frame's left edge;
+/// three pixels above the row when it fits above the parent's bottom, else
+/// ending three pixels below the row.
+#[must_use]
+pub fn submenu_origin(
+    parent: (f32, f32, f32, f32),
+    row_top: f32,
+    row_bottom: f32,
+    size: (f32, f32),
+) -> (f32, f32) {
+    let (px, py, pw, ph) = parent;
+    let mut x = px - size.0 + 3.0;
+    if x < 0.0 {
+        x = px + pw - 3.0;
+    }
+    let y = if row_top + size.1 + py < py + ph {
+        row_top - 3.0 + py
+    } else {
+        py + row_bottom - size.1 + 3.0
+    };
+    (x, y)
+}
+
+/// Whether the 500 ms timer has fired since `since` (`WM_TIMER`, which
+/// shows the highlighted parent's submenu).
+fn timer_fired(shown_at: f64, since: f64, now: f64) -> bool {
+    let ticks = ((since - shown_at) / SUBMENU_TIMER).floor() + 1.0;
+    now >= shown_at + ticks * SUBMENU_TIMER
 }
 
 /// Draw a Game Menu Window at `placement`.
@@ -201,8 +285,28 @@ pub fn draw_game_menu(
     entries: &[GameMenuEntry<'_>],
     input_enabled: bool,
 ) -> GameMenuResponse {
-    let scale = layout.scale.max(0.5);
-    let font = egui::FontId::proportional(MENU_FONT_HEIGHT * scale);
+    draw_game_menu_with_submenu(
+        ctx,
+        id,
+        cache,
+        layout,
+        faction,
+        placement,
+        entries,
+        None,
+        &mut GameMenuState::default(),
+        input_enabled,
+    )
+}
+
+/// Measure a window's rows (`FUN_00442a80`), in logical pixels.
+fn measure(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    entries: &[GameMenuEntry<'_>],
+    scale: f32,
+    font: &egui::FontId,
+) -> (GameMenuGeometry, Vec<(f32, f32)>) {
     let text_sizes: Vec<(f32, f32)> = entries
         .iter()
         .map(|entry| {
@@ -228,11 +332,41 @@ pub fn draw_game_menu(
             )
         })
         .collect();
-    let geometry = game_menu_geometry(&icon_sizes, &text_sizes);
-    let (x, y) = placement.origin((geometry.width, geometry.height));
+    (game_menu_geometry(&icon_sizes, &text_sizes), text_sizes)
+}
+
+/// One window's frame: its screen rectangle, the enabled row under the
+/// pointer, and the enabled row clicked.
+struct WindowFrame {
+    rect: egui::Rect,
+    hovered: Option<usize>,
+    clicked: Option<usize>,
+}
+
+/// Paint one Game Menu Window at the canvas point `at` (`FUN_004aab50`).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "One window's owner, faction, rows, highlight and input at this drawing boundary."
+)]
+fn menu_window(
+    ctx: &egui::Context,
+    id: egui::Id,
+    cache: &mut BmpCache,
+    layout: CockpitLayout,
+    faction: CockpitFaction,
+    at: (f32, f32),
+    entries: &[GameMenuEntry<'_>],
+    measured: &(GameMenuGeometry, Vec<(f32, f32)>),
+    highlighted: impl Fn(usize, bool) -> bool,
+    input_enabled: bool,
+) -> WindowFrame {
+    let (geometry, text_sizes) = measured;
+    let scale = layout.scale.max(0.5);
+    let font = egui::FontId::proportional(MENU_FONT_HEIGHT * scale);
+    let pointer = ctx.input(|input| input.pointer.hover_pos());
     let origin = egui::pos2(
-        layout.canvas.x + x * layout.scale,
-        layout.canvas.y + y * layout.scale,
+        layout.canvas.x + at.0 * layout.scale,
+        layout.canvas.y + at.1 * layout.scale,
     );
     let menu_size = egui::vec2(geometry.width * scale, geometry.height * scale);
 
@@ -251,7 +385,8 @@ pub fn draw_game_menu(
             }
             let (rect, _) = ui.allocate_exact_size(menu_size, egui::Sense::hover());
             ui.painter().rect_filled(rect, 0.0, gid_popup_frame().fill);
-            let mut chosen = None;
+            let mut hovered = None;
+            let mut clicked = None;
             for (index, ((entry, (top, height)), text)) in entries
                 .iter()
                 .zip(geometry.rows.iter().copied())
@@ -268,6 +403,8 @@ pub fn draw_game_menu(
                     egui::Sense::hover()
                 };
                 let response = ui.interact(row, id.with(("entry", index)), sense);
+                // WM_MOUSEMOVE: PtInRect on each enabled item (+0x58).
+                let under = entry.enabled && pointer.is_some_and(|p| row.contains(p));
                 if let Some(texture) = entry
                     .icon
                     .and_then(|icon| cache.get(ctx, DllSource::Strategy, icon))
@@ -280,7 +417,21 @@ pub fn draw_game_menu(
                         egui::Color32::WHITE,
                     );
                 }
-                let highlighted = entry.enabled && response.hovered();
+                let lit = entry.enabled && highlighted(index, under);
+                if entry.submenu && entry.icon.is_none() {
+                    // FUN_004aab50 draws the arrow at the item's left + 6.
+                    if let Some(texture) =
+                        cache.get(ctx, DllSource::Strategy, submenu_arrow(faction, lit))
+                    {
+                        let size = texture.size_vec2() * scale;
+                        ui.painter().image(
+                            texture.id(),
+                            egui::Rect::from_min_size(row.min + egui::vec2(6.0 * scale, 0.0), size),
+                            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                }
                 ui.painter().text(
                     egui::pos2(
                         row.min.x + (geometry.icon_column + 6.0) * scale,
@@ -289,29 +440,139 @@ pub fn draw_game_menu(
                     egui::Align2::LEFT_TOP,
                     entry.label,
                     font.clone(),
-                    entry_text_color(entry, highlighted, faction),
+                    entry_text_color(entry, lit, faction),
                 );
+                if under {
+                    hovered = Some(index);
+                }
                 if entry.enabled && response.clicked() {
-                    chosen = Some(index);
+                    clicked = Some(index);
                 }
             }
             paint_gid_frame_border(ui, cache, rect, scale);
-            chosen
+            (hovered, clicked)
         });
-
-    if let Some(index) = shown.inner {
-        return GameMenuResponse::Chosen(index);
+    WindowFrame {
+        rect: shown.response.rect,
+        hovered: shown.inner.0,
+        clicked: shown.inner.1,
     }
-    let dismissed = input_enabled
-        && ctx.input(|input| {
-            input.key_pressed(egui::Key::Escape)
-                || (input.pointer.any_pressed()
-                    && input
-                        .pointer
-                        .interact_pos()
-                        .is_some_and(|pointer| !shown.response.rect.contains(pointer)))
-        });
-    if dismissed {
+}
+
+/// Draw a Game Menu Window at `placement` with an optional submenu
+/// (`FUN_004aab50`): the pointer highlights an enabled row; each tick of
+/// the window's 500 ms timer shows the highlighted parent's submenu, and
+/// another highlight hides it; a click on a parent does nothing, on an
+/// enabled row of either window chooses it; Escape leaves an open submenu
+/// first, then closes the menu, as a press outside both does.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Keep the menu's owner, faction, placement, entries and state explicit at this drawing boundary."
+)]
+pub fn draw_game_menu_with_submenu(
+    ctx: &egui::Context,
+    id: egui::Id,
+    cache: &mut BmpCache,
+    layout: CockpitLayout,
+    faction: CockpitFaction,
+    placement: GameMenuPlacement,
+    entries: &[GameMenuEntry<'_>],
+    submenu: Option<GameSubmenu<'_>>,
+    state: &mut GameMenuState,
+    input_enabled: bool,
+) -> GameMenuResponse {
+    let scale = layout.scale.max(0.5);
+    let font = egui::FontId::proportional(MENU_FONT_HEIGHT * scale);
+    let now = ctx.input(|input| input.time);
+    let shown_at = *state.shown_at.get_or_insert(now);
+    let measured = measure(ctx, cache, entries, scale, &font);
+    let (x, y) = placement.origin((measured.0.width, measured.0.height));
+    let highlighted = state.highlighted.map(|(row, _)| row);
+    let frame = menu_window(
+        ctx,
+        id,
+        cache,
+        layout,
+        faction,
+        (x, y),
+        entries,
+        &measured,
+        |row, hovered| hovered || (submenu.is_some() && highlighted == Some(row)),
+        input_enabled,
+    );
+    // WM_MOUSEMOVE: inside the window the enabled row under the pointer
+    // becomes the highlight, or none; outside it the highlight stays.
+    let pointer = ctx.input(|input| input.pointer.hover_pos());
+    if pointer.is_some_and(|p| frame.rect.contains(p)) {
+        let row = frame.hovered;
+        if row != highlighted {
+            state.highlighted = row.map(|r| (r, now));
+            state.submenu_open = false;
+        }
+    }
+    let parent_lit = submenu.filter(|sub| state.highlighted.map(|(r, _)| r) == Some(sub.parent));
+    if let (Some(_), Some((_, since))) = (parent_lit, state.highlighted) {
+        if !state.submenu_open && timer_fired(shown_at, since, now) {
+            state.submenu_open = true;
+        }
+    }
+    if parent_lit.is_some() && state.submenu_open {
+        ctx.request_repaint();
+    } else if parent_lit.is_some() {
+        ctx.request_repaint_after(std::time::Duration::from_millis(50));
+    }
+    let mut child = None;
+    if let (Some(sub), true) = (parent_lit, state.submenu_open) {
+        let child_measured = measure(ctx, cache, sub.entries, scale, &font);
+        let (top, height) = measured.0.rows[sub.parent];
+        let at = submenu_origin(
+            (x, y, measured.0.width, measured.0.height),
+            top,
+            top + height,
+            (child_measured.0.width, child_measured.0.height),
+        );
+        child = Some(menu_window(
+            ctx,
+            id.with("submenu"),
+            cache,
+            layout,
+            faction,
+            at,
+            sub.entries,
+            &child_measured,
+            |_, hovered| hovered,
+            input_enabled,
+        ));
+    }
+    if let Some(index) = child.as_ref().and_then(|c| c.clicked) {
+        return GameMenuResponse::ChosenChild(index);
+    }
+    if let Some(index) = frame.clicked {
+        // A parent with its submenu (item +0x3c) issues nothing.
+        if submenu.is_none_or(|sub| sub.parent != index) {
+            return GameMenuResponse::Chosen(index);
+        }
+    }
+    if !input_enabled {
+        return GameMenuResponse::Open;
+    }
+    if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+        if child.is_some() {
+            // The parent window takes the focus back; its timer shows the
+            // submenu again on a later tick.
+            state.submenu_open = false;
+            state.highlighted = state.highlighted.map(|(row, _)| (row, now));
+            return GameMenuResponse::Open;
+        }
+        return GameMenuResponse::Dismissed;
+    }
+    let outside = ctx.input(|input| {
+        input.pointer.any_pressed()
+            && input.pointer.interact_pos().is_some_and(|p| {
+                !frame.rect.contains(p) && child.as_ref().is_none_or(|c| !c.rect.contains(p))
+            })
+    });
+    if outside {
         GameMenuResponse::Dismissed
     } else {
         GameMenuResponse::Open
@@ -890,5 +1151,246 @@ mod tests {
             game_menu_origin((120.0, 420.0), (83.0, 102.0), owner),
             (120.0, 318.0)
         );
+    }
+
+    #[test]
+    fn a_submenu_opens_left_of_its_parent_beside_the_row_or_flips() {
+        // FUN_004ab3a0: x = parent.x - width + 3, or parent.x + parent.width
+        // - 3 when that is negative; y = parent.y + row.top - 3 when the
+        // submenu fits above parent.y + parent.height, else parent.y +
+        // row.bottom - height + 3.
+        assert_eq!(
+            submenu_origin((200.0, 100.0, 120.0, 150.0), 40.0, 58.0, (100.0, 60.0)),
+            (103.0, 137.0)
+        );
+        assert_eq!(
+            submenu_origin((50.0, 100.0, 120.0, 150.0), 40.0, 58.0, (100.0, 60.0)),
+            (167.0, 137.0)
+        );
+        // 120 + 40 = 160 is not below 150: the submenu ends at the row.
+        assert_eq!(
+            submenu_origin((200.0, 100.0, 120.0, 150.0), 120.0, 138.0, (100.0, 40.0)),
+            (103.0, 201.0)
+        );
+        // Both tests are strict (`X < 0`, `... < iVar1`): a submenu that
+        // reaches the frame's left edge exactly stays on the left, and one
+        // that ends exactly at the parent's bottom moves up.
+        assert_eq!(
+            submenu_origin((97.0, 100.0, 120.0, 150.0), 40.0, 58.0, (100.0, 60.0)),
+            (0.0, 137.0)
+        );
+        assert_eq!(
+            submenu_origin((200.0, 100.0, 120.0, 150.0), 90.0, 108.0, (100.0, 60.0)),
+            (103.0, 151.0)
+        );
+    }
+
+    #[test]
+    fn the_submenu_waits_for_the_window_s_next_half_second_tick() {
+        // FUN_004aab50: WM_SHOWWINDOW sets timer 100 to 500 ms; WM_TIMER
+        // shows the highlighted parent's submenu.
+        assert!(!timer_fired(0.0, 0.1, 0.49));
+        assert!(timer_fired(0.0, 0.1, 0.5));
+        assert!(!timer_fired(0.0, 0.5, 0.9));
+        assert!(timer_fired(0.0, 0.5, 1.0));
+        assert!(timer_fired(2.0, 2.7, 3.0));
+    }
+
+    #[test]
+    fn the_submenu_arrows_follow_the_side_and_the_highlight() {
+        // FUN_00442860 -> FUN_004ab3a0: 0x2785/0x2786 for side 1, + 0xb else.
+        assert_eq!(submenu_arrow(CockpitFaction::Alliance, true), 10117);
+        assert_eq!(submenu_arrow(CockpitFaction::Alliance, false), 10118);
+        assert_eq!(submenu_arrow(CockpitFaction::Empire, true), 10128);
+        assert_eq!(submenu_arrow(CockpitFaction::Empire, false), 10129);
+    }
+
+    /// One frame of a submenu run: when, where the pointer is (by a
+    /// function of the menu and submenu rectangles), and extra events.
+    struct Step {
+        time: f64,
+        at: fn(egui::Rect, Option<egui::Rect>) -> egui::Pos2,
+        events: Vec<egui::Event>,
+    }
+
+    /// Draw a three-row menu (Move, the parent, Status) whose middle row
+    /// opens a two-row submenu (Military, a disabled Destroy), one frame
+    /// per step; the responses and whether the submenu was laid out.
+    fn run_submenu(steps: Vec<Step>) -> Vec<(GameMenuResponse, bool)> {
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let id = egui::Id::new(MENU_ID);
+        let entries = [
+            labelled("Move", true),
+            GameMenuEntry {
+                label: "Planetary Bombardment",
+                icon: None,
+                enabled: true,
+                submenu: true,
+            },
+            labelled("Status", true),
+        ];
+        let children = [labelled("Military", true), labelled("Destroy", false)];
+        let mut state = GameMenuState::default();
+        let mut out = Vec::new();
+        let mut child_rect: Option<egui::Rect> = None;
+        for (index, step) in [
+            Step {
+                time: 0.0,
+                at: |_, _| egui::Pos2::ZERO,
+                events: vec![],
+            },
+            Step {
+                time: 0.01,
+                at: |_, _| egui::Pos2::ZERO,
+                events: vec![],
+            },
+        ]
+        .into_iter()
+        .chain(steps)
+        .enumerate()
+        {
+            let menu = ctx.memory(|memory| memory.area_rect(id));
+            let pointer = menu.map_or(egui::Pos2::ZERO, |menu| (step.at)(menu, child_rect));
+            let mut events = vec![egui::Event::PointerMoved(pointer)];
+            events.extend(step.events.into_iter().map(|event| match event {
+                egui::Event::PointerButton { pressed, .. } => pointer_button(pointer, pressed),
+                other => other,
+            }));
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 520.0),
+                )),
+                time: Some(step.time),
+                events,
+                ..Default::default()
+            };
+            let mut response = GameMenuResponse::Open;
+            let _ = ctx.run(input, |ctx| {
+                response = draw_game_menu_with_submenu(
+                    ctx,
+                    id,
+                    &mut cache,
+                    layout,
+                    CockpitFaction::Alliance,
+                    GameMenuPlacement::in_frame((300.0, 100.0)),
+                    &entries,
+                    Some(GameSubmenu {
+                        parent: 1,
+                        entries: &children,
+                    }),
+                    &mut state,
+                    true,
+                );
+            });
+            let open = state.submenu_shown();
+            child_rect = open
+                .then(|| ctx.memory(|memory| memory.area_rect(id.with("submenu"))))
+                .flatten();
+            if index >= 2 {
+                out.push((response, open));
+            }
+        }
+        out
+    }
+
+    fn on_parent(menu: egui::Rect, _: Option<egui::Rect>) -> egui::Pos2 {
+        row_center(menu, 1.0, 1, 3)
+    }
+
+    fn on_move(menu: egui::Rect, _: Option<egui::Rect>) -> egui::Pos2 {
+        row_center(menu, 1.0, 0, 3)
+    }
+
+    fn on_child(_: egui::Rect, child: Option<egui::Rect>) -> egui::Pos2 {
+        child.map_or(egui::Pos2::ZERO, |child| row_center(child, 1.0, 0, 2))
+    }
+
+    fn on_disabled_child(_: egui::Rect, child: Option<egui::Rect>) -> egui::Pos2 {
+        child.map_or(egui::Pos2::ZERO, |child| row_center(child, 1.0, 1, 2))
+    }
+
+    fn step(time: f64, at: fn(egui::Rect, Option<egui::Rect>) -> egui::Pos2) -> Step {
+        Step {
+            time,
+            at,
+            events: vec![],
+        }
+    }
+
+    fn press(time: f64, at: fn(egui::Rect, Option<egui::Rect>) -> egui::Pos2, down: bool) -> Step {
+        Step {
+            time,
+            at,
+            events: vec![pointer_button(egui::Pos2::ZERO, down)],
+        }
+    }
+
+    #[test]
+    fn hovering_a_parent_opens_its_submenu_on_the_timer_and_a_child_is_chosen() {
+        // FUN_004aab50: the highlighted parent's submenu shows on the next
+        // 500 ms tick; a left release on a child posts its kind.
+        let out = run_submenu(vec![
+            step(0.1, on_parent),
+            step(0.3, on_parent),
+            step(0.5, on_parent),
+            step(0.6, on_child),
+            press(0.7, on_child, true),
+            press(0.8, on_child, false),
+        ]);
+        let opened: Vec<bool> = out.iter().map(|(_, open)| *open).collect();
+        assert_eq!(opened[..4], [false, false, true, true]);
+        assert_eq!(out[5].0, GameMenuResponse::ChosenChild(0));
+    }
+
+    #[test]
+    fn a_click_on_the_parent_or_a_disabled_child_chooses_nothing() {
+        // FUN_004aab50: WM_LBUTTONUP on an item with a submenu (+0x3c)
+        // returns; a disabled item (+0x58 clear) never highlights.
+        let out = run_submenu(vec![
+            press(0.1, on_parent, true),
+            press(0.2, on_parent, false),
+            step(0.5, on_parent),
+            step(0.55, on_parent),
+            press(0.6, on_disabled_child, true),
+            press(0.7, on_disabled_child, false),
+        ]);
+        assert!(out
+            .iter()
+            .all(|(response, _)| *response == GameMenuResponse::Open));
+        assert!(out[5].1);
+    }
+
+    #[test]
+    fn another_highlight_hides_the_submenu_and_escape_leaves_it_first() {
+        // FUN_004aab50: a repaint hides the submenus of items not
+        // highlighted; Escape returns focus to the parent menu, and only
+        // then closes it.
+        let escape = |time, at| Step {
+            time,
+            at,
+            events: vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::default(),
+            }],
+        };
+        let out = run_submenu(vec![
+            step(0.1, on_parent),
+            step(0.5, on_parent),
+            step(0.6, on_move),
+            step(0.7, on_parent),
+            step(1.0, on_parent),
+            escape(1.1, on_child),
+            escape(1.2, on_parent),
+        ]);
+        let opened: Vec<bool> = out.iter().map(|(_, open)| *open).collect();
+        assert_eq!(opened, [false, true, false, false, true, false, false]);
+        assert_eq!(out[5].0, GameMenuResponse::Open);
+        assert_eq!(out[6].0, GameMenuResponse::Dismissed);
     }
 }
