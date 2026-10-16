@@ -708,6 +708,34 @@ Open for the port (closed by stage 6b below):
 - whether the port's regiment move lets a regiment land on a neutral
   planet (`FUN_005073d0`'s test for a Move `0x201` to a system).
 
+## Ported (2026-10-16, save v57): kind 6's plan object
+
+`ai_planner::ported_kind` takes kind 6. Every kind that `FUN_00477630`
+makes now runs its own plan object; the port's stand-in remains only for a
+kind outside 1 to 6. `ai_planner.rs` has the request (`FUN_004b4df0`), the
+wants (`FUN_004b6a60`), the report (`FUN_004b4d90`, with planner `+0x60`
+`0x200000`, whose writer is not traced) and kind 4's movement.
+`ai_plan.rs` has:
+- the base (`FUN_004b5b20`, `CONQUEST_MARKS`);
+- kind 4's boarding;
+- `assault_sector` (`FUN_004b6510`, state 8). Its second lists are built
+  only when the `v[50]` list found nothing, so they draw no coin
+  otherwise;
+- kind 5's bombarder;
+- the lone strong fleet's random system (`FUN_004b6b70`).
+No save change.
+
+Campaigns (both sides AI):
+- Over 600 days, seeds 3 and 47 run a kind 6 plan from days 421 and 522,
+  and the other five seeds are unchanged. The kind 6 plan boards more
+  regiments (seed 3: 1 to 3 `BoardRegiments`; seed 47: 2 to 5).
+- Over 1000 days, in seed 47 the kind 6 planner assaults Triton on day
+  770: 15 regiments against 9 defenders, all 9 defenders fall, and 6
+  land.
+- A temporary trace also shows that seed 47's day 28 assault (stage 5h)
+  was ordered in state `0xe` of a planner that was kind 3 by then; it had
+  bound the role while it was kind 4.
+
 ## Ported (2026-10-16, save v57): kind 5's plan object
 
 `ai_planner::ported_kind` takes kind 5. `ai_planner.rs`: the request

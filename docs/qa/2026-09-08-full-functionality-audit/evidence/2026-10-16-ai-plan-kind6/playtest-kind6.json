@@ -1,0 +1,401 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks T --dual-ai, against the stage 6c build (HEAD ed89f0ee)",
+  "trace": "temporary (removed): the Assault orders' planner kind in seed 47 over 1000 days: kind 3 on day 28 (role bound while kind 4), kind 6 on day 770",
+  "600_days": {
+    "1": {
+      "changed_counts": {},
+      "ai_action_types_changed": {}
+    },
+    "2": {
+      "changed_counts": {},
+      "ai_action_types_changed": {}
+    },
+    "3": {
+      "changed_counts": {
+        "ai_action": [
+          440,
+          433
+        ],
+        "manufacturing_idle": [
+          29,
+          28
+        ],
+        "troop_moved": [
+          16,
+          17
+        ]
+      },
+      "ai_action_types_changed": {
+        "BoardRegiments": [
+          1,
+          3
+        ],
+        "Build": [
+          64,
+          63
+        ],
+        "CreateFleet": [
+          19,
+          12
+        ],
+        "MoveSquadrons": [
+          1,
+          0
+        ],
+        "Scrap": [
+          10,
+          11
+        ],
+        "SetDestination": [
+          59,
+          58
+        ]
+      },
+      "first_difference_day": 421
+    },
+    "7": {
+      "changed_counts": {},
+      "ai_action_types_changed": {}
+    },
+    "13": {
+      "changed_counts": {},
+      "ai_action_types_changed": {}
+    },
+    "42": {
+      "changed_counts": {},
+      "ai_action_types_changed": {}
+    },
+    "47": {
+      "changed_counts": {
+        "ai_action": [
+          709,
+          711
+        ],
+        "blockade_started": [
+          2,
+          0
+        ],
+        "character_health": [
+          30,
+          31
+        ],
+        "fleet_arrived": [
+          14,
+          15
+        ],
+        "mission_dispatched": [
+          362,
+          366
+        ],
+        "mission_resolved": [
+          487,
+          489
+        ]
+      },
+      "ai_action_types_changed": {
+        "BoardRegiments": [
+          2,
+          5
+        ],
+        "Build": [
+          165,
+          164
+        ],
+        "CreateFleet": [
+          15,
+          19
+        ],
+        "DispatchMission": [
+          362,
+          366
+        ],
+        "JoinFleet": [
+          3,
+          5
+        ],
+        "MoveFleet": [
+          3,
+          0
+        ],
+        "MoveSquadrons": [
+          20,
+          13
+        ]
+      },
+      "first_difference_day": 522
+    }
+  },
+  "1000_days": {
+    "3": {
+      "changed_counts": {
+        "ai_action": [
+          678,
+          617
+        ],
+        "blockade_started": [
+          4,
+          3
+        ],
+        "economy_tick": [
+          2743,
+          2791
+        ],
+        "fleet_arrived": [
+          44,
+          36
+        ],
+        "manufacturing_complete": [
+          137,
+          115
+        ],
+        "manufacturing_idle": [
+          83,
+          66
+        ],
+        "resource_discovery": [
+          13,
+          16
+        ],
+        "troop_moved": [
+          21,
+          20
+        ],
+        "units_deployed": [
+          137,
+          115
+        ]
+      },
+      "ai_action_types_changed": {
+        "BoardRegiments": [
+          5,
+          6
+        ],
+        "Build": [
+          136,
+          113
+        ],
+        "CreateFleet": [
+          27,
+          19
+        ],
+        "JoinFleet": [
+          9,
+          5
+        ],
+        "MoveFleet": [
+          7,
+          2
+        ],
+        "MoveRegiments": [
+          15,
+          12
+        ],
+        "MoveShips": [
+          19,
+          20
+        ],
+        "MoveSquadronTeam": [
+          1,
+          0
+        ],
+        "MoveSquadrons": [
+          18,
+          1
+        ],
+        "Scrap": [
+          47,
+          43
+        ],
+        "SetDestination": [
+          85,
+          87
+        ]
+      },
+      "combat_ground_new": []
+    },
+    "47": {
+      "changed_counts": {
+        "ai_action": [
+          1093,
+          1109
+        ],
+        "blockade_ended": [
+          1,
+          2
+        ],
+        "bombardment": [
+          8,
+          7
+        ],
+        "character_escaped": [
+          0,
+          1
+        ],
+        "character_health": [
+          62,
+          48
+        ],
+        "collection_rate": [
+          74,
+          77
+        ],
+        "combat_ground": [
+          1,
+          2
+        ],
+        "control_changed": [
+          8,
+          10
+        ],
+        "economy_tick": [
+          2220,
+          1840
+        ],
+        "fleet_arrived": [
+          61,
+          39
+        ],
+        "garrison_required": [
+          8,
+          12
+        ],
+        "informant_intel": [
+          38,
+          70
+        ],
+        "manufacturing_complete": [
+          340,
+          334
+        ],
+        "manufacturing_idle": [
+          60,
+          48
+        ],
+        "mission_dispatched": [
+          460,
+          472
+        ],
+        "mission_resolved": [
+          874,
+          834
+        ],
+        "resource_discovery": [
+          17,
+          20
+        ],
+        "support_change": [
+          19,
+          20
+        ],
+        "support_drift": [
+          1000,
+          1226
+        ],
+        "troop_moved": [
+          46,
+          44
+        ],
+        "units_deployed": [
+          340,
+          334
+        ],
+        "uprising_incident": [
+          17,
+          16
+        ]
+      },
+      "ai_action_types_changed": {
+        "Assault": [
+          1,
+          2
+        ],
+        "BoardRegiments": [
+          2,
+          12
+        ],
+        "Bombard": [
+          8,
+          7
+        ],
+        "Build": [
+          293,
+          273
+        ],
+        "CreateFleet": [
+          23,
+          39
+        ],
+        "DispatchMission": [
+          460,
+          472
+        ],
+        "EnqueueProduction": [
+          12,
+          18
+        ],
+        "JoinFleet": [
+          3,
+          10
+        ],
+        "MoveFleet": [
+          11,
+          0
+        ],
+        "MoveRegiments": [
+          38,
+          33
+        ],
+        "MoveShips": [
+          36,
+          18
+        ],
+        "MoveSquadronTeam": [
+          0,
+          1
+        ],
+        "MoveSquadrons": [
+          24,
+          19
+        ],
+        "Scrap": [
+          43,
+          56
+        ],
+        "SetDestination": [
+          137,
+          147
+        ]
+      },
+      "combat_ground_new": [
+        [
+          28,
+          {
+            "attackers": 5,
+            "attackers_lost": 0,
+            "collateral": 0,
+            "defenders": 0,
+            "defenders_lost": 0,
+            "duels": 0,
+            "landed": 5,
+            "order": "assault",
+            "system": "Commenor"
+          }
+        ],
+        [
+          770,
+          {
+            "attackers": 15,
+            "attackers_lost": 1,
+            "collateral": 0,
+            "defenders": 9,
+            "defenders_lost": 9,
+            "duels": 10,
+            "landed": 6,
+            "order": "assault",
+            "system": "Triton"
+          }
+        ]
+      ]
+    }
+  }
+}

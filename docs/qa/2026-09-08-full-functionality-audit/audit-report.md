@@ -2074,6 +2074,17 @@ cross-runtime proof remain open
   A regiment may now land on an explored, unpopulated, neutral planet
   (`FUN_005073d0`), which the player's Move gets too. No save change;
   golden unchanged (`evidence/2026-10-16-ai-plan-kind5/`).
+- Module 8, stages 6c and 6d (2026-10-16): kind 6's plan object read and
+  ported. It conquers a sector of the opponent:
+  - its request is the sector's summed garrison need plus the base's
+    term;
+  - its base takes `0x50000`;
+  - it boards as kind 4, attacks as kind 3 and bombards as kind 5;
+  - its assault takes any opponent system of the sector that a fleet can
+    take (by `v[50]`, else keys `0x21` and `0x14`).
+  Every plan kind is now ported. In seed 47 (1000 days) the kind 6 plan
+  assaults Triton on day 770. No save change; golden unchanged
+  (`evidence/2026-10-16-ai-plan-kind6/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

@@ -756,7 +756,10 @@ mod tests {
     #[test]
     fn a_planner_holding_a_plan_reaches_its_plan_step() {
         // FUN_004cf630 states 1 to 3 within the cycle, then state 4
-        // (FUN_004cfac0 -> FUN_004774c0) for a planner with a plan object.
+        // (FUN_004cfac0 -> FUN_004774c0) for a planner with a plan object:
+        // kind 6's own cycle (ported in stage 6d of module 8; the port's
+        // stand-in answered Step8::Plan before) takes its first step
+        // (FUN_004774c0's default: state 1, the lists to resync).
         let (mut g, keys) = galaxy(1);
         planned(&mut g, 0, 6, 1);
         let mut m = Module8::default();
@@ -764,11 +767,13 @@ mod tests {
             .map(|_| run(&mut m, &mut g, -1, &mut vec![], |m, io| m.step(io)))
             .collect();
         assert!(steps[..4].iter().all(|s| *s == Step8::Pending));
-        assert_eq!(steps[4], Step8::Plan);
+        assert_eq!(steps[4], Step8::Pending);
         assert_eq!(
             m.planners,
             vec![SectorPlanner {
                 plan_id: 1,
+                state: 1,
+                resync: true,
                 ..planner(1, Some(keys[0]), 6)
             }]
         );
