@@ -433,6 +433,93 @@ The fleet record's `+0x28` is its location, written by each refresh
 (`FUN_00433620`); `+0x2c` is the plan's target, written only by the
 plan objects, so it persists across refreshes.
 
+## Kinds 1 and 2's plan objects (read 2026-10-16)
+
+The vtables (`FUN_004ad8e0`'s kinds) read from REBEXE.EXE:
+
+| Slot | Kind 1 `0x65c2c0` | Kind 2 `0x65c268` | Kind 3 `0x65c160` |
+|---|---|---|---|
+| `+0x18` missions | `FUN_004b7150` | `FUN_004b7150` | `FUN_004b7150` |
+| `+0x1c` movement | `FUN_004b9290` | `FUN_004b9290` | `FUN_004b1800` |
+| `+0x20` report | `FUN_004ba5e0` | `FUN_004b9310` | `FUN_004b3830` |
+| `+0x34`, `+0x38` | `FUN_004af8a0`, `FUN_004afce0` | the same | the same |
+| `+0x3c` attacker | `FUN_004bafe0` | `FUN_004b9c90` | `FUN_004b4560` |
+| `+0x40`, `+0x48` | `0x6158b0` (0) | `0x6158b0` | `0x6158b0` |
+| `+0x44` bombarder | `FUN_004bb300` | `0x6158b0` | `FUN_004b4730` |
+| `+0x4c` | `FUN_004b1690` | `FUN_004b1690` | `FUN_004b1690` |
+| `+0x50` wants | `FUN_004bb510` | `FUN_004b9fe0` | `FUN_004b4920` |
+| `+0x54` retreat | `FUN_004bb630` | `FUN_004ba0d0` | `FUN_004b4a20` |
+
+Kinds 4, 5 and 6 (`0x65c210`, `0x65c108`, `0x65c1b8`) have their own
+`+0x34`, `+0x38` and most other slots; they are not read here.
+
+- **`+0x1c`, `FUN_004b9290`:** the same code as kind 3's `FUN_004b1800`
+  (movement 3 with fleets held, `FUN_005f50e0` on planner `+0x2c`, and no
+  movement planner `+0xc8`; else 5 with regiments `+0x98` and sector
+  `+0x2c & 0x40008`).
+- **`+0x20`:** each sets `0x4000000`, and `0x8000000` with the sector
+  record; then `0x20000` when the sector's `+0x2c` has kind 3's `4`, kind
+  1's `0x80000`, kind 2's `0x40000`. Kind 2 without `0x40000`: the sweep
+  list below; while a listed system is not on the plan's visited list
+  (`+0x5c`, `FUN_004f5940`), `0x20000`; when every one is, the sector
+  record's `+0x2c` takes `0x20000000`.
+- **`+0x3c`:** kind 1 and kind 2 first try kind 3's list (`+0x30`
+  `0x200` forbidding `0x100000`, key `0x27`, order 1) with the fleet's
+  `values[2]` (`+0x58`) above 0; with no target and its `values[3]`
+  (`+0x5c`) above 0, a second list: `+0x2c` `0x400000`, `+0x30` 4,
+  forbidding `+0x30` `0x100000`, key `0x1b`, order 1. Each list's first
+  system that `FUN_004ae150` passes takes `0x100000`, and the fleet takes
+  it as target with role `0x10000000`, as in kind 3. Kind 2 then adds the
+  target to its visited list (`FUN_004f57b0` on `+0x5c`).
+- **`+0x44`, kind 1 `FUN_004bb300`:** kind 3's bombarder with the fleet's
+  `values[6]` (`+0x68`) above 0, over three merged lists of `+0x30` 4
+  forbidding `0x700200`: key 8 order 2, key `0x21` order 1, key 0 order 1
+  (kind 3: key 8 order 2, key `0x10` order 1). Same marks and role.
+- **`+0x50` (the wanted counts):**
+  - kind 1 `FUN_004bb510`: `+0x34` 1.2 x sector `+0x190` (kind 3 also
+    takes controller `+0x164` as a floor; kind 1 does not); `+0x38` 1.2 x
+    `+0x194`, floor controller `+0x168`; `+0x40` 1.2 x (`+0x138` +
+    `+0x198`); `+0x48` 1.1 x `+0x144`, floor controller `+0x174` (kind 3
+    leaves `+0x48`); `+0x3c`, `+0x44`, `+0x50` 0; `+0x4c` 1 with
+    `FUN_005f4960() & 0x1000000`; `+0x54` planner `+0x98`; `+0x58` 1.
+    Each count only rises.
+  - kind 2 `FUN_004b9fe0`: as kind 3 with 1.5 (`* 3 / 2`) for 1.2:
+    `+0x34` 1.5 x `+0x190`, floor `+0x164`; `+0x38` 1.5 x `+0x13c` +
+    1.5 x `+0x194`, floor `+0x168`; `+0x40` 1.5 x (`+0x138` + `+0x198`),
+    floor controller `+0x16c`; the rest as kind 3.
+- **`+0x54` (where a fleet with nothing to do goes):**
+  - kind 1 `FUN_004bb630`: when the planner holds exactly one fleet
+    (`FUN_005f50e0` on planner `+0x2c` is 1) and the fleet's record lacks
+    `+0x38 & 0xa00`: the pick of `FUN_0041a3a0(sector, +0x30 forbidding
+    0x700201, order 1)`; then kind 3's chain (the base not blockaded, the
+    headquarters, a yard, the nearest system when at the opponent's).
+  - kind 2 `FUN_004ba0d0`: with exactly one fleet held, the record
+    lacking `0xa00`, and its `values[2]` and `values[3]` at least
+    controller `+0x164` and `+0x168`: the systems of `FUN_0041a3a0(sector,
+    +0x30 0x20 forbidding 0x700201, order 1)` in rank order; the first
+    not on the visited list becomes the target and joins the list. Else
+    kind 3's chain.
+- **`FUN_0041a3a0(sector, req28, req2c, req30, forbid28, forbid2c,
+  forbid30, order)`:** `FUN_0041a340`'s masks with no key: each system
+  record is ranked by `FUN_00433de0`, 0 for an own system (`+0x30` 1),
+  else today (`FUN_004fcf00`, `FUN_0051ce00()->+0x10`) less the record's
+  `+0x44`. `+0x44` is written by the refresh (`FUN_00433e40`) with today
+  while the system is blockaded (`+0x88` `0x20`) and not the side's
+  (`+0x30 & 6`), and kept otherwise.
+
+So kind 1 is kind 3 with a second attack list (the opponent's systems
+with `+0x2c` `0x400000`), a broader bombardment, a navy want and, for a
+lone fleet, a patrol of the sector's systems not its own. Kind 2 sweeps
+the sector: it sends its lone fleet to each listed system once, keeps the
+visited ones on `+0x5c`, and reports the sector swept (`0x20000000`)
+when none is left.
+
+Open for the port: the system record's `+0x44` (`ai_records::SystemRecord`
+has no such field) and kind 2's visited list `+0x5c` must be added and
+saved; the bits these lists read (system `+0x2c` `0x400000`, `+0x30`
+`0x20`, fleet `+0x38` `0x200` and `0x800`) are to be checked against the
+port's refresh before the port relies on them.
+
 ## Ported (2026-10-16, save v55): the plan object's bombardments
 
 `FUN_004b1070` now gives its bombardment: a `0x40000000` fleet at its
