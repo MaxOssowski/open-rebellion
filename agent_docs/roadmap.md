@@ -122,7 +122,7 @@ Delivered:
 - ModRuntime: discovery, enable/disable, structured errors, config persistence
 - Mod Manager egui panel (discover, toggle, reload)
 - Captive escape follows timer `0x38a`, the ESCAPETB guard and regiment input, and autorouting (2026-10-14, `ghidra/notes/captive-escape.md`)
-- Research runs only as the three research missions with the points hook; the rebellion2 projects and Research panel are gone (2026-10-14, save v36, F-040/F-037)
+- Research runs as the three research missions and the yards' own timer `0x381`, both through the points hook; the rebellion2 projects and Research panel are gone (2026-10-14, save v36, F-040/F-037; yards 2026-10-17, save v65)
 
 ## Release: historical packaging tranche delivered
 *Release packaging work by Knesset Hokhmah (v0.7.0); release acceptance remains open*
@@ -597,7 +597,8 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
 - [ ] Replace the invented rules found by the invention review, one system at
   a time: transit and bombardment (F-032), strategic combat (F-033), missions
   (F-034), manufacturing and repair (F-035), AI (F-036), economy and research
-  (F-037), character timers and story events (F-038), and false notes (F-039).
+  (F-037, remediated 2026-10-17; native GUI check pending), character timers
+  and story events (F-038), and false notes (F-039).
 - [ ] Pass five reproducibly configured 5,000-tick seeds: transit ≤10%, orders
   ≤1.5× arrivals, and fleet arena ≤3× initial. Record 50–400 engagements, eight
   systems, busiest-system ≤40%, and 10% minority-faction attack share as

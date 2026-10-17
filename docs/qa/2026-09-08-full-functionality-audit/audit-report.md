@@ -2134,7 +2134,7 @@ cross-runtime proof remain open
 ### F-037: Economy and research run on an invented cadence and miss recovered terms
 
 - Severity: P2
-- Status: open
+- Status: remediated; browser verified, native GUI check pending
 - Evidence:
   - The port recomputes support every tick; the original runs FUN_00508250
     once at setup (stage 0x17) and then updates through field hooks
@@ -2253,6 +2253,13 @@ cross-runtime proof remain open
   (`0x381`..`0x386`) are ported. Still open in F-037: none of the economy
   bullets. The informant (`0x38e`) and resource (`0x390`) incidents stay
   under F-029.
+- 2026-10-17, closed by the user's decision: support moves only through
+  `FUN_0050c9f0` (missions, incidents and the timers `0x384`, `0x386`),
+  the derived fields follow their hooks, bit 11 is DeathStarNearby, the
+  ProductionModifier drives the mines and refineries, the maintenance
+  shortfall is the autoscrap timer `0x382`, and the yards research through
+  timer `0x381`, each with failing-without tests and browser runs. Native
+  GUI acceptance was not run.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 
