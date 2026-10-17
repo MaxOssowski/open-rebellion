@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v62, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v63, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-17
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v62, and it is the only one
+serializable snapshot. The current format is v63, and it is the only one
 that loads.
 
-## Native format (v62)
+## Native format (v63)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -51,13 +51,13 @@ Every mutable campaign subsystem required by the app is serialized:
 | `fog_alliance`, `fog_empire` | `FogState` |
 | `player_is_alliance` | `bool` |
 | `blockade` | `BlockadeState`; v62 adds the support timer `0x386` of each blockaded system |
-| `uprising` | `UprisingState`; v62 adds each revolt's support timer `0x384` |
+| `uprising` | `UprisingState`; v62 adds each revolt's support timer `0x384`, v63 its side |
 | `death_star` | `DeathStarState` |
 | `research` | `ResearchState`: each side's level, points and Done flag per tree; research runs only as missions, so the invented projects are gone (v36) |
 | `jedi` | `JediState` |
 | `victory` | `VictoryState` |
 | `betrayal` | `BetrayalState` |
-| `economy` | `EconomyState`; v61 adds each system's smuggling percent (`+0x6c`) |
+| `economy` | `EconomyState`; v61 adds each system's smuggling percent (`+0x6c`), v63 the hook inputs last seen |
 | `sim_rng` | `Xoshiro256PlusPlus` |
 | `ai2` | `Option<AIState>` |
 | `repair` | `RepairState` |

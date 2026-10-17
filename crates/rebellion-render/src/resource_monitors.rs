@@ -247,6 +247,7 @@ mod tests {
                 started_tick: 1,
                 next_incident_tick: None,
                 next_support_tick: None,
+                side: None,
             },
         );
         assert_eq!(read(&uprising, CockpitFaction::Alliance), 50);

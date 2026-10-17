@@ -81,12 +81,29 @@ and squadrons (`0x1c..0x1f`) the postures and side presence; facilities
 their own fields. None of these recompute SmugglingPercent or
 ProductionModifier.
 
+### Port of the cadence (2026-10-17, step 3b)
+
+- `SystemEconomy::hook_inputs` keeps the support, bit 11 and side seen on
+  the last run (save v63). The smuggling percent is recomputed only when
+  one of them changes, and the collection rate (ProductionModifier) only
+  when the support changes. port: a change made after the economy has
+  run is seen on the next day's run.
+- The side hook clears the uprising bit: `ActiveUprising::side` records
+  the holder, and the revolt ends when the holder changes
+  (`uprising.rs`). The port had kept the revolt going under the new
+  holder, whose support the revolt timer then wore down.
+- TroopRegRequired and the holder have every input among their hooks'
+  triggers, so the daily recompute gives the original's values.
+- Not ported: the side hook's informant timer `0x38e` (`FUN_0050c820`);
+  the port's informant incident has no source (F-029).
+
 So the original recomputes:
 - SmugglingPercent only when the support or bit 11 changes (and in
   `FUN_00510820`), not when ships, squadrons or regiments come or go;
 - TroopRegRequired when the support, the populated bit, the uprising bit or
   bit 11 changes;
-- the holder when the support, the regiments or the populated bit changes.
+- the holder when the support, the regiments or the populated bit changes;
+- everything above, and clears the uprising, when the side changes.
 
 ## Bit 11: DeathStarNearby
 
@@ -109,7 +126,10 @@ fleets at the sector's systems when read; a fleet in hyperspace stands at
 no system.
 
 ## The other hooks
-- `FUN_00510820`, through `FUN_004fae40`: `FUN_0050ac80`, `FUN_0050b890`,
+- `FUN_00510820` is the System's side hook (slot `+0xf0`, overriding
+  `FUN_004fae40`). `FUN_004f6f40` runs it when it changes the side bits
+  `+0x24` to the new holder, which `FUN_00510d70` does when the control
+  word's holder changes. It runs `FUN_0050ac80`, `FUN_0050b890`,
   `FUN_0050c350`, `FUN_0050a4a0(0)` (clears the uprising bit),
   `FUN_00509ec0(0)`, `FUN_0050b230`, `FUN_0050b5a0`, `FUN_0050c820`
   (arms the informant timer `0x38e`) and `FUN_0050ac10(1)`.
@@ -177,7 +197,7 @@ same path (`uprising.rs`, `support_change`).
 
 ## Open
 
-- Who calls `FUN_00510820` (through `FUN_004fae40`).
-- `FUN_004f6f40`, run when the holder changes.
+- `FUN_0050ac80`, `FUN_0050b890`, `FUN_0050c350` and `FUN_0050ac10`, run
+  by the side hook.
 - `FUN_0050ac80`, `FUN_0050b890`, `FUN_0050c350`, `FUN_0050ac10` and the
   blockade hook's `FUN_0050c0b0`..`FUN_0050c1e0`.

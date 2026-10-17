@@ -5033,6 +5033,7 @@ mod tests {
                 started_tick: 0,
                 next_incident_tick: None,
                 next_support_tick: None,
+                side: None,
             },
         );
         assert_eq!(code(&world, &uprisings, &research), 0xc);
@@ -5281,6 +5282,7 @@ mod tests {
                 started_tick: 0,
                 next_incident_tick: None,
                 next_support_tick: None,
+                side: None,
             },
         );
 
@@ -5872,6 +5874,7 @@ mod tests {
                 started_tick: 0,
                 next_incident_tick: None,
                 next_support_tick: None,
+                side: None,
             },
         );
         assert!(!admits(&world, &revolting, any_side, own));

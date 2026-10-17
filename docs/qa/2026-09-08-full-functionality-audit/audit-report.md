@@ -2202,6 +2202,19 @@ cross-runtime proof remain open
   `v1:07eb8ba0a9c5f765` -> `v1:cdf8f5db1e744a60`
   (`evidence/2026-10-17-death-star-nearby/`). The hook cadence (step 3b)
   stands.
+- 2026-10-17, step 3b: the side hook `FUN_00510820` (System slot
+  `+0xf0`, run by `FUN_004f6f40` when the holder changes) clears the
+  uprising, so a revolt now ends when its system changes hands. The
+  smuggling percent is recomputed only on a support, bit 11 or side
+  change, and the collection rate only on a support change. The holder
+  and TroopRegRequired have all their inputs among their hooks, so their
+  daily recompute matches. Save v63; golden final `v1:cdf8f5db1e744a60`
+  -> `v1:653ff1b1bbff8904` (`evidence/2026-10-17-hook-cadence/`). The
+  economy bullets of F-037 are closed: support moves only through
+  `FUN_0050c9f0` (missions, incidents and the timers `0x384` and `0x386`),
+  and the derived fields follow their hooks. Still open: the maintenance
+  counter `0x304` (F-029), timer `0x381` and the collection rate's
+  neutral value (`FUN_00559c10` gives 100, the port 200).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

@@ -1797,6 +1797,7 @@ mod interaction_tests {
                 started_tick: 0,
                 next_incident_tick: None,
                 next_support_tick: None,
+                side: None,
             },
         );
         assert_eq!(metric(&uprisings, &world), 1);

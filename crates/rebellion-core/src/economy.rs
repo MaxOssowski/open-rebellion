@@ -188,6 +188,22 @@ impl SupportTier {
     }
 }
 
+/// The inputs whose System hooks recompute the smuggling percent and the
+/// `ProductionModifier` (`ghidra/notes/economy-cadence.md`, "The hooks"): the
+/// support `+0x58` (slot `+0x1d0`, `FUN_005109f0`), `+0x88` bit 11 (slot
+/// `+0x238`, `FUN_00511740`) and the side bits `+0x24` (slot `+0xf0`,
+/// `FUN_00510820`). Ships, squadrons and regiments coming or going
+/// (`FUN_00508660`) recompute neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HookInputs {
+    /// The Alliance's support in points (`+0x58`).
+    pub alliance_support: i32,
+    /// `+0x88` bit 11 ([`death_star_nearby`]).
+    pub death_star_nearby: bool,
+    /// The side bits: the holder, if any.
+    pub side: Option<crate::dat::Faction>,
+}
+
 /// Per-system resource and economy tracking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[expect(
@@ -195,6 +211,9 @@ impl SupportTier {
     reason = "These independent flags preserve the existing state and serialization model."
 )]
 pub struct SystemEconomy {
+    /// The hook inputs seen on the last run, or `None` before the first
+    /// (the setup rebuild, `FUN_00508250`, computes every field) (v63).
+    pub hook_inputs: Option<HookInputs>,
     /// System `+0x6c` `SmugglingPercent`, -100..100 (`FUN_0050b230`).
     pub smuggling_percent: i32,
     /// Resource collection rate, inversely proportional to support.
@@ -236,6 +255,7 @@ pub struct SystemEconomy {
 impl Default for SystemEconomy {
     fn default() -> Self {
         Self {
+            hook_inputs: None,
             smuggling_percent: 0,
             collection_rate: 1.0,
             garrison_requirement: 0,
@@ -454,25 +474,47 @@ impl EconomySystem {
                 });
             }
 
-            // 1. The smuggling percent (FUN_0050b230). It does not move the
-            // support.
+            // The hooks' inputs. port: a change made after the economy has
+            // run is seen on the next day's run.
             let nearby = death_star_nearby(world, sys);
-            let percent = smuggling_percent(world, sys, nearby, gnprtb, difficulty);
-            if percent != eco.smuggling_percent {
-                eco.smuggling_percent = percent;
-                events.push(EconomyEvent::SmugglingPercentChanged {
-                    system: sys_key,
-                    percent,
-                });
+            let inputs = HookInputs {
+                alliance_support: crate::uprising::support_points(
+                    sys,
+                    crate::dat::Faction::Alliance,
+                ),
+                death_star_nearby: nearby,
+                side: sys.control.faction(),
+            };
+            let last = eco.hook_inputs.replace(inputs);
+            let support_changed =
+                last.is_none_or(|last| last.alliance_support != inputs.alliance_support);
+
+            // 1. The smuggling percent (FUN_0050b230), recomputed by the
+            // support, bit 11 and side hooks only. It does not move the
+            // support.
+            if last != Some(inputs) {
+                let percent = smuggling_percent(world, sys, nearby, gnprtb, difficulty);
+                if percent != eco.smuggling_percent {
+                    eco.smuggling_percent = percent;
+                    events.push(EconomyEvent::SmugglingPercentChanged {
+                        system: sys_key,
+                        percent,
+                    });
+                }
             }
 
-            // 2. Calculate collection rate.
+            // 2. Calculate collection rate (ProductionModifier, FUN_0050b2c0),
+            // recomputed by the support hook only.
             let controlling_support = match sys.control {
                 ControlKind::Controlled(crate::dat::Faction::Alliance) => sys.popularity_alliance,
                 ControlKind::Controlled(crate::dat::Faction::Empire) => sys.popularity_empire,
                 _ => 0.5, // Neutral/contested: baseline
             };
-            let new_rate = calculate_collection_rate(controlling_support, gnprtb, difficulty);
+            let new_rate = if support_changed {
+                calculate_collection_rate(controlling_support, gnprtb, difficulty)
+            } else {
+                eco.collection_rate
+            };
 
             // 3. Calculate garrison requirement.
             let new_garrison = calculate_garrison_requirement(
@@ -1645,6 +1687,56 @@ mod tests {
     }
 
     #[test]
+    fn the_smuggling_percent_waits_for_the_support_bit_11_or_the_side_to_change() {
+        // Only the support (FUN_005109f0), bit 11 (FUN_00511740) and side
+        // (FUN_00510820) hooks run FUN_0050b230; a regiment joining runs
+        // FUN_00508660, which does not.
+        let (mut world, sys) = smuggling_world(false);
+        let mut state = EconomyState::default();
+        let mut day = 0;
+        let mut run = |world: &GameWorld, state: &mut EconomyState| {
+            day += 1;
+            EconomySystem::advance(state, world, &[TickEvent { tick: day }], 2);
+            state.per_system[&sys].smuggling_percent
+        };
+        assert_eq!(run(&world, &mut state), 58);
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId(0),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[sys].ground_units.push(troop);
+        assert_eq!(run(&world, &mut state), 58);
+        // One support point more: 75 - 10 - 5 - 2 * 2.
+        world.systems[sys].popularity_alliance = 0.11;
+        world.systems[sys].popularity_empire = 0.89;
+        assert_eq!(run(&world, &mut state), 56);
+        world.systems[sys].ground_units.pop();
+        assert_eq!(run(&world, &mut state), 56);
+        // The side hook: the Empire holds it at 89 support, above the band.
+        world.systems[sys].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        assert_eq!(run(&world, &mut state), 0);
+    }
+
+    #[test]
+    fn the_collection_rate_waits_for_the_support_to_change() {
+        // ProductionModifier (FUN_0050b2c0) is recomputed by the support
+        // hook FUN_005109f0 only.
+        let (mut world, sys) = smuggling_world(false);
+        let mut state = EconomyState::default();
+        EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        let first = state.per_system[&sys].collection_rate;
+        assert!((first - 1000.0).abs() < f32::EPSILON, "{first}");
+        world.systems[sys].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 2 }], 2);
+        assert!((state.per_system[&sys].collection_rate - first).abs() < f32::EPSILON);
+        world.systems[sys].popularity_alliance = 0.2;
+        world.systems[sys].popularity_empire = 0.8;
+        EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 3 }], 2);
+        assert!((state.per_system[&sys].collection_rate - 125.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn collection_rate_high_support() {
         let gnprtb = stock_gnprtb();
         let rate = calculate_collection_rate(0.8, &gnprtb, 2);
@@ -1705,6 +1797,7 @@ mod tests {
                         started_tick: 0,
                         next_incident_tick: None,
                         next_support_tick: None,
+                        side: None,
                     },
                 );
             }

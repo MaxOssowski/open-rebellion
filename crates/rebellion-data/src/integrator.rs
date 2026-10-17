@@ -2517,6 +2517,7 @@ mod tests {
                 started_tick: 0,
                 next_incident_tick: None,
                 next_support_tick: None,
+                side: None,
             },
         );
         let ended = apply_mission_state_effects(
@@ -2580,6 +2581,7 @@ mod tests {
                     started_tick: 0,
                     next_incident_tick: None,
                     next_support_tick: None,
+                    side: None,
                 },
             );
             let result = MissionResult {
@@ -2625,6 +2627,7 @@ mod tests {
                 started_tick: 0,
                 next_incident_tick: None,
                 next_support_tick: None,
+                side: None,
             },
         );
         let result = MissionResult {

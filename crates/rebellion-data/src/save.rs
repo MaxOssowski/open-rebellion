@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 62;
+pub const SAVE_VERSION: u32 = 63;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1347,6 +1347,7 @@ mod tests {
                 started_tick: 3,
                 next_incident_tick: Some(45),
                 next_support_tick: Some(46),
+                side: Some(rebellion_core::dat::Faction::Empire),
             },
         );
         state.uprising.next_disaster_tick = Some(250);
@@ -1358,6 +1359,7 @@ mod tests {
         assert_eq!(revolt.started_tick, 3);
         assert_eq!(revolt.next_incident_tick, Some(45));
         assert_eq!(revolt.next_support_tick, Some(46));
+        assert_eq!(revolt.side, Some(rebellion_core::dat::Faction::Empire));
         assert_eq!(loaded.uprising.next_disaster_tick, Some(250));
     }
 

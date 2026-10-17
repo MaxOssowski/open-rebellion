@@ -6,7 +6,8 @@
 //! Alliance or the Empire revolts when its troop surplus (`+0x7c`,
 //! `FUN_0050b500`) is negative, and stays in revolt while it remains held and
 //! populated. Control does not change: `FUN_0050a130` only records the side in
-//! revolt. The revolt ends when a successful Subdue Uprising mission
+//! revolt. A change of holder ends it: the side hook `FUN_00510820` clears the
+//! bit. The revolt also ends when a successful Subdue Uprising mission
 //! (`FUN_00569c20`) runs `FUN_0050c910` and the regiments at the system cover
 //! the garrison requirement without the uprising doubling (`FUN_00559fb0`).
 //!
@@ -204,6 +205,9 @@ pub struct ActiveUprising {
     pub next_incident_tick: Option<u64>,
     /// Tick timer `0x384` next fires; set on the next advance when absent.
     pub next_support_tick: Option<u64>,
+    /// The side that held the system when the revolt began; recorded on the
+    /// next advance when absent (v63).
+    pub side: Option<Faction>,
 }
 
 impl UprisingState {
@@ -363,8 +367,15 @@ impl UprisingSystem {
         for (system, sys) in &world.systems {
             let held = sys.control.faction().is_some_and(|f| f != Faction::Neutral);
             let populated = sys.is_populated && !sys.is_destroyed;
-            if state.is_uprising(system) {
-                if !held || !populated {
+            if let Some(uprising) = state.active_uprisings.get_mut(&system) {
+                // FUN_0050b800 ends a revolt in a system no longer held or
+                // populated. A change of holder runs the side hook
+                // FUN_00510820 (System slot +0xf0, from FUN_004f6f40), which
+                // clears the uprising bit (FUN_0050a4a0(0)).
+                let side = *uprising
+                    .side
+                    .get_or_insert_with(|| holder(sys).unwrap_or(Faction::Neutral));
+                if !held || !populated || holder(sys) != Some(side) {
                     state.active_uprisings.remove(&system);
                     events.push(UprisingEvent::UprisingEnded { system, tick });
                 }
@@ -381,6 +392,7 @@ impl UprisingSystem {
                         started_tick: tick,
                         next_incident_tick: None,
                         next_support_tick: None,
+                        side: holder(sys),
                     },
                 );
                 events.push(UprisingEvent::UprisingBegan { system, tick });
@@ -1257,6 +1269,7 @@ mod tests {
                 started_tick: 0,
                 next_incident_tick: Some(next_incident_tick),
                 next_support_tick: None,
+                side: None,
             },
         );
         state
@@ -1321,6 +1334,37 @@ mod tests {
         assert_eq!(
             world.systems[system].control,
             ControlKind::Controlled(Faction::Alliance)
+        );
+    }
+
+    #[test]
+    fn a_change_of_holder_or_of_population_ends_the_revolt() {
+        // FUN_004f6f40 runs the side hook FUN_00510820 (System slot +0xf0)
+        // when the holder changes; it clears the uprising bit
+        // (FUN_0050a4a0(0)).
+        let (mut world, system) = world_with(Faction::Empire, 0.3);
+        let mut state = in_revolt(system, u64::MAX);
+        let missions = MissionState::new();
+        let economy = short_of_troops(system, -1);
+        assert_eq!(
+            UprisingSystem::advance(&mut state, &world, &economy, &missions, &at(1), &[]),
+            vec![]
+        );
+        assert_eq!(state.active_uprisings[&system].side, Some(Faction::Empire));
+        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        assert_eq!(
+            UprisingSystem::advance(&mut state, &world, &economy, &missions, &at(2), &[]),
+            vec![UprisingEvent::UprisingEnded { system, tick: 2 }]
+        );
+        assert!(!state.is_uprising(system));
+
+        // FUN_0050b800: an unpopulated system ends it under the same holder.
+        let (mut world, system) = world_with(Faction::Empire, 0.3);
+        let mut state = in_revolt(system, u64::MAX);
+        world.systems[system].is_populated = false;
+        assert_eq!(
+            UprisingSystem::advance(&mut state, &world, &economy, &missions, &at(1), &[]),
+            vec![UprisingEvent::UprisingEnded { system, tick: 1 }]
         );
     }
 

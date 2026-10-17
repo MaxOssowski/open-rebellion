@@ -2861,6 +2861,7 @@ mod tests {
                 started_tick: 0,
                 next_incident_tick: None,
                 next_support_tick: None,
+                side: None,
             },
         );
         let manufacturing = crate::manufacturing::ManufacturingState::new();
