@@ -4602,6 +4602,17 @@ Some(RailAudience::side(*faction_is_alliance)),
                         cockpit_state.faction,
                         strategic_input_enabled,
                     ) {
+                        // FUN_00486fb0 0x234: Planetary Assault of the
+                        // selection's system by its fleets.
+                        Some((ObjectMenuCommand::Assault, selection)) => {
+                            if let Some((fleets, system)) = bombard_team(
+                                &world,
+                                selection,
+                                player_faction == MissionFaction::Alliance,
+                            ) {
+                                panel_actions.push(PanelAction::OrderAssault { fleets, system });
+                            }
+                        }
                         Some((ObjectMenuCommand::BombardmentTarget(kind), selection)) => {
                             if let Some((fleets, system)) = bombard_team(
                                 &world,
@@ -6569,6 +6580,16 @@ fn order_gates(
                 })
             },
         ),
+        assault: bombard_team(world, selection, is_alliance).is_some_and(|(team, system)| {
+            rebellion_core::assault::order_enabled(
+                world,
+                movement_state,
+                troop_transport_state,
+                is_alliance,
+                &team,
+                system,
+            )
+        }),
     }
 }
 
@@ -7140,6 +7161,38 @@ fn apply_panel_action(
                 msg_log.push(GameMessage::new(
                     clock.tick,
                     "Planetary bombardment refused".to_string(),
+                    MessageCategory::Combat,
+                ));
+            }
+        }
+        // FUN_00486fb0 -> FUN_00487740 -> FUN_00563390: the order
+        // validates (+0x1c), then executes (FUN_0058c120), or FUN_00487c90
+        // reports the refusal. port: the draws come from the day.
+        PanelAction::OrderAssault { fleets, system } => {
+            let is_alliance = *player_faction == MissionFaction::Alliance;
+            if rebellion_core::assault::order_enabled(
+                world,
+                movement_state,
+                troop_transport_state,
+                is_alliance,
+                &fleets,
+                system,
+            ) {
+                let mut env = BombardEnv::new(clock.tick, Some(victory_state.alliance_hq));
+                let outcome = env
+                    .assault(
+                        world,
+                        troop_transport_state,
+                        Faction::of_alliance(is_alliance),
+                        &fleets,
+                        system,
+                    )
+                    .clone();
+                log_assault(world, system, &outcome, clock.tick, msg_log);
+            } else {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    "Planetary assault refused".to_string(),
                     MessageCategory::Combat,
                 ));
             }

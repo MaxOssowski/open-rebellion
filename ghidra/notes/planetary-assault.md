@@ -177,6 +177,16 @@ port:
   out.
 - The draws come from the tick's `SplitMix64` stream (`BombardEnv`).
 
+## Ported (2026-10-17): the player's order
+
+The object pop-up menu's Planetary Assault, on a fleet or a sector
+window's fleet icon, is enabled by `assault::order_enabled`. A click
+orders it at once (`PanelAction::OrderAssault`). The app checks the gate
+again, then carries the order out with the same `BombardEnv::assault` the
+AI's order uses, and writes the same summary line. A refused order writes
+"Planetary assault refused" (`FUN_00487c90`). The Assault Summary window
+is not ported.
+
 ## Against the port (before stage 5f)
 
 - The port has no Planetary Assault order: the player and the AI land

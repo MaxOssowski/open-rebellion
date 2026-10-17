@@ -193,6 +193,12 @@ pub enum PanelAction {
         system: SystemKey,
         kind: u32,
     },
+    /// Order Planetary Assault (`0x234`) of `system` by the player's
+    /// `fleets` (`FUN_00486fb0` -> `FUN_00487740` -> `FUN_00563390`).
+    OrderAssault {
+        fleets: Vec<FleetKey>,
+        system: SystemKey,
+    },
 
     // ── Death Star ───────────────────────────────────────────────────
     /// Fire the Death Star superlaser at a system.

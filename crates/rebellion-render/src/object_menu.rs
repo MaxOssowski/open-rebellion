@@ -392,6 +392,8 @@ impl ObjectMenuRow {
 /// - A capital ship's Move and Create Fleet are enabled when
 ///   `gates.ship_move` says so (its fleet is the player's and in orbit).
 ///   port: its Confirmed Move stays disabled.
+/// - A fleet's or fleet icon's Planetary Assault is enabled when
+///   `gates.assault` says so (`assault::order_enabled`, `FUN_00581ae0`).
 /// - Encyclopedia is enabled for a single selection.
 /// - Status is enabled for any single selection that is not a system
 ///   (`FUN_0051d990`, `ghidra/notes/status-window.md`).
@@ -470,6 +472,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
                 // FUN_00442590: a submenu parent (flags 8) is enabled.
                 ObjectMenuCommand::Bombardment => true,
+                ObjectMenuCommand::Assault => gates.assault,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 // FUN_0051d990: a single selection that is not a system.
                 ObjectMenuCommand::Status => {
@@ -535,6 +538,9 @@ pub struct OrderGates {
     /// The bombardment targets `0x220..0x223` (each order's `+0x18`,
     /// `FUN_00581e80`; `rebellion_core::bombardment::order_enabled`).
     pub bombard: [bool; 4],
+    /// Planetary Assault (`0x234`, its `+0x18` `FUN_00581ae0`;
+    /// `rebellion_core::assault::order_enabled`).
+    pub assault: bool,
 }
 
 /// An open object pop-up menu.
@@ -591,6 +597,12 @@ impl ObjectMenuState {
     #[must_use]
     pub fn row_of(&self, command: ObjectMenuCommand) -> Option<usize> {
         self.rows.iter().position(|row| row.item.command == command)
+    }
+
+    /// Whether the row at `row` is enabled.
+    #[must_use]
+    pub fn row_enabled(&self, row: usize) -> bool {
+        self.rows.get(row).is_some_and(|row| row.enabled)
     }
 }
 
@@ -695,6 +707,7 @@ mod tests {
         stop: false,
         build: false,
         bombard: [false; 4],
+        assault: false,
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -835,6 +848,7 @@ mod tests {
             stop: false,
             build: false,
             bombard: [false; 4],
+            assault: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -1020,6 +1034,7 @@ mod tests {
             stop: true,
             build: true,
             bombard: [false; 4],
+            assault: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),
@@ -1465,6 +1480,46 @@ mod tests {
                 layout.canvas.y + 380.0 * layout.scale
             )
         );
+    }
+
+    #[test]
+    fn planetary_assault_follows_its_gate_on_a_fleet_and_a_fleet_icon() {
+        // FUN_004ff8e0 and FUN_00507290 list 0x234 (STRATEGY sort 220,
+        // TEXTSTRA 12318); its +0x18 is FUN_00581ae0
+        // (assault::order_enabled).
+        let assault = |selection, open: bool| {
+            let gates = OrderGates {
+                assault: open,
+                ..OrderGates::default()
+            };
+            object_menu_rows(selection, gates)
+                .into_iter()
+                .find(|row| row.item.command == ObjectMenuCommand::Assault)
+                .map(|row| (row.item.kind, row.item.sort_key, row.enabled))
+        };
+        for selection in [
+            Some(MenuObject::Fleet(FleetKey::default())),
+            icon(Quadrant::Fleets),
+        ] {
+            assert_eq!(assault(selection, true), Some((0x234, 220, true)));
+            assert_eq!(assault(selection, false), Some((0x234, 220, false)));
+        }
+        // No other selection offers it.
+        assert_eq!(assault(icon(Quadrant::System), true), None);
+        assert_eq!(assault(None, true), None);
+        // An open menu reports the row's state.
+        let fleet = Some(MenuObject::Fleet(FleetKey::default()));
+        for open in [true, false] {
+            let gates = OrderGates {
+                assault: open,
+                ..OrderGates::default()
+            };
+            let menu = ObjectMenuState::new(fleet, gates, (0, 0));
+            let row = menu.row_of(ObjectMenuCommand::Assault).unwrap();
+            assert_eq!(menu.row_enabled(row), open);
+        }
+        let menu = ObjectMenuState::new(fleet, OrderGates::default(), (0, 0));
+        assert!(!menu.row_enabled(menu.row_count()));
     }
 
     #[test]

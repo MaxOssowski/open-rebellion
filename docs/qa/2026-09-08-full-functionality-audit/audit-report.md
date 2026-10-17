@@ -285,6 +285,13 @@ cross-runtime proof remain open
     one side's regiments alone still take a planet (port). Until the kind 4
     plan is ported the AI orders no assault, so it no longer takes the
     other side's planets by landing (`evidence/2026-10-16-planetary-assault/`).
+  - The player's Planetary Assault 2026-10-17: the object pop-up menu's
+    `0x234` on a fleet or a fleet icon is enabled by
+    `assault::order_enabled` (`FUN_00581ae0`). A click carries it out at
+    once, with no confirmation (`FUN_00487cc0`'s default), through the
+    AI's `BombardEnv::assault`. A browser gate orders it for both sides
+    (`evidence/2026-10-17-assault-menu/`). The Assault Summary window is
+    not ported.
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

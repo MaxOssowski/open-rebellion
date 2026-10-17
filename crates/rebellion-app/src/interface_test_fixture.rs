@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 67;
+const SCENARIO_COUNT: u8 = 68;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -158,6 +158,10 @@ pub enum Scenario {
     /// the fleet's ship one that bombards: the fleet icon's Planetary
     /// Bombardment submenu (`ghidra/notes/bombardment-order.md`).
     FleetBombardment = 66,
+    /// As `FleetBombardment` with one of the player's regiments aboard the
+    /// fleet: the fleet icon's Planetary Assault
+    /// (`ghidra/notes/planetary-assault.md`).
+    FleetAssault = 67,
 }
 
 impl Scenario {
@@ -230,6 +234,7 @@ impl Scenario {
             64 => Self::SquadronLoad,
             65 => Self::SquadronBattle,
             66 => Self::FleetBombardment,
+            67 => Self::FleetAssault,
             _ => return None,
         })
     }
@@ -247,6 +252,7 @@ impl Scenario {
                 | Self::SquadronLoad
                 | Self::SquadronBattle
                 | Self::FleetBombardment
+                | Self::FleetAssault
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -1276,8 +1282,17 @@ fn place_loading_fleet(
             rebellion_core::squadrons::add(&mut world.systems[primary].fighters, class, 2);
         }
     }
-    if request.scenario == Scenario::FleetBombardment {
+    if matches!(
+        request.scenario,
+        Scenario::FleetBombardment | Scenario::FleetAssault
+    ) {
         place_bombarding_fleet(world, fleet, primary, elsewhere, player_is_alliance);
+    }
+    // The assault variant: one of the player's regiments aboard the fleet.
+    if request.scenario == Scenario::FleetAssault {
+        let key = world.troops.insert(regiment());
+        world.systems[primary].ground_units.push(key);
+        let _ = troop_transport.load(world, fleet, &[key]);
     }
 
     let layout = cockpit.layout_for(640.0, 480.0);
@@ -1551,6 +1566,7 @@ struct FixtureObjectMenu<'a> {
     build_row: Option<usize>,
     stop_row: Option<usize>,
     bombardment_row: Option<usize>,
+    assault_row: Option<usize>,
     /// The Planetary Bombardment submenu while it is shown.
     submenu: Option<FixtureSubmenu>,
     target_dat_id: u32,
@@ -1624,6 +1640,9 @@ fn object_menu_report<'a>(
         build_row: menu.row_of(ObjectMenuCommand::Build),
         stop_row: menu.row_of(ObjectMenuCommand::Stop),
         bombardment_row: menu.row_of(ObjectMenuCommand::Bombardment),
+        assault_row: menu
+            .row_of(ObjectMenuCommand::Assault)
+            .filter(|&row| menu.row_enabled(row)),
         submenu: submenu
             .filter(|_| menu.submenu_shown())
             .map(|sub| FixtureSubmenu {
@@ -2539,6 +2558,8 @@ struct FleetLoadObservation {
     /// bombardment line (the bombardment variant).
     enemy_regiments: usize,
     last_bombardment_message: Option<String>,
+    /// The last Planetary Assault line (the assault variant).
+    last_assault_message: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2666,6 +2687,11 @@ fn fleet_load_observation(
             .iter()
             .rev()
             .find(|message| message.text.contains("bombardment"))
+            .map(|message| message.text.clone()),
+        last_assault_message: messages
+            .iter()
+            .rev()
+            .find(|message| message.text.contains("assault"))
             .map(|message| message.text.clone()),
     })
 }
@@ -3880,6 +3906,75 @@ mod tests {
         }
     }
 
+    // port: the fixture's own layout; the order's gate is
+    // assault::order_enabled (FUN_00581ae0, FUN_00553770).
+    #[test]
+    fn the_assault_scenario_lets_the_fleet_assault_with_a_regiment_aboard() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let assault = |scenario| {
+                let applied = apply_to_loading_world_with(request(scenario, faction), |world| {
+                    world
+                        .capital_ship_classes
+                        .insert(rebellion_core::world::CapitalShipClass {
+                            is_alliance: alliance,
+                            hull: 300,
+                            hyperdrive: 80,
+                            troop_capacity: 2,
+                            bombardment_modifier: 5,
+                            ..Default::default()
+                        });
+                });
+                let world = &applied.world;
+                let primary = world.systems.keys().next().unwrap();
+                let fleet = world.fleets.keys().next().unwrap();
+                let aboard = applied.transport.cargo(fleet).to_vec();
+                let enabled = rebellion_core::assault::order_enabled(
+                    world,
+                    &applied.movement,
+                    &applied.transport,
+                    alliance,
+                    &[fleet],
+                    primary,
+                );
+                (applied, aboard, enabled)
+            };
+            let (applied, aboard, enabled) = assault(Scenario::FleetAssault);
+            assert_eq!(aboard.len(), 1);
+            assert_eq!(applied.world.troops[aboard[0]].is_alliance, alliance);
+            assert!(enabled);
+            // The bombardment variant carries none, so the order is off.
+            let (_, aboard, enabled) = assault(Scenario::FleetBombardment);
+            assert!(aboard.is_empty());
+            assert!(!enabled);
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let line = GameMessage::new(
+                1,
+                "Planetary assault at X".to_string(),
+                rebellion_render::message_log::MessageCategory::Combat,
+            );
+            let observed = fleet_load_observation(
+                request(Scenario::FleetAssault, faction),
+                loading_regiment(world, primary).unwrap(),
+                world,
+                &FogState::new(Faction::of_alliance(alliance)),
+                &applied.movement,
+                &applied.transport,
+                &FleetWindowState::default(),
+                false,
+                &[line],
+            )
+            .unwrap();
+            assert_eq!(observed.enemy_regiments, 2);
+            assert_eq!(
+                observed.last_assault_message.as_deref(),
+                Some("Planetary assault at X")
+            );
+            assert_eq!(observed.last_bombardment_message, None);
+        }
+    }
+
     // port: the fixture's own layout; the room follows FUN_00500b40.
     #[test]
     fn the_squadron_load_scenario_puts_two_squadrons_beside_a_fighter_carrier() {
@@ -5087,7 +5182,8 @@ mod tests {
                 Scenario::ResearchTargeting,
                 Scenario::SquadronLoad,
                 Scenario::SquadronBattle,
-                Scenario::FleetBombardment
+                Scenario::FleetBombardment,
+                Scenario::FleetAssault
             ]
         );
     }

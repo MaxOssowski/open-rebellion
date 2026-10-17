@@ -28,6 +28,7 @@ const PRODUCTION_DESTINATION = 54;
 const SQUADRON_LOAD = 65;
 const SQUADRON_BATTLE = 66;
 const FLEET_BOMBARDMENT = 67;
+const FLEET_ASSAULT = 68;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -624,6 +625,27 @@ const cases = [
       await frames(page, 3);
       await shot(page, directory, "bombardment-done");
       return { before, menu, waited, sub, after };
+    },
+  },
+  {
+    name: "assault",
+    code: FLEET_ASSAULT,
+    // The fleet icon's menu lists Planetary Assault (0x234, FUN_00507290),
+    // enabled by its +0x18 (FUN_00581ae0: a fleet of the side carrying a
+    // regiment). A click carries it out at once (FUN_00487740 ->
+    // FUN_00563390 -> FUN_0058c120, ghidra/notes/planetary-assault.md).
+    async run(page, faction, setup, directory) {
+      const before = await until(page, "two enemy regiments wait on the planet",
+        (o) => o.enemy_regiments === 2 && o.last_assault_message === null);
+      const menu = await openMenu(page, point(setup.icon), directory, "assault");
+      assert.notEqual(menu.assault_row, null, JSON.stringify(menu));
+      const height = (menu.height - 2) / menu.rows;
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.assault_row + 0.5) });
+      const after = await until(page, "Planetary Assault is carried out",
+        (o) => o.last_assault_message?.startsWith("Planetary assault at "));
+      await frames(page, 3);
+      await shot(page, directory, "assault-done");
+      return { before, menu, after };
     },
   },
   {

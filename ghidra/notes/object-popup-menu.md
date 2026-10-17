@@ -174,6 +174,14 @@ as the target and no confirmation (`FUN_00487cc0` asks nothing for these
 kinds): `FUN_00487740` validates and executes the order, and on a refusal
 `FUN_00487c90` reports it.
 
+Planetary Assault (`0x234`, STRATEGY sort 220, TEXTSTRA 12318) is a plain
+item of the same fleet and fleet icon menus. Its `+0x18` is
+`FUN_00581ae0` (`planetary-assault.md`). `FUN_00487cc0` asks no
+confirmation for it: `0x234` falls to its default, 0. So `FUN_00486fb0`
+sends it down the same default path at once, and `FUN_00487740` executes
+it through `FUN_00563390`. Ported 2026-10-17 (`OrderGates::assault`,
+`PanelAction::OrderAssault`).
+
 ## Targeting
 
 `FUN_0041cdf0` → `FUN_00436020` → `FUN_00486fb0` handles the kind. For
