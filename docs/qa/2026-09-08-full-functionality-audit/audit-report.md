@@ -2374,6 +2374,16 @@ cross-runtime proof remain open
   injury had landed since the injury step. Seven 600-day campaigns now
   land 19 injuries and Leia gains up to 6 Force. Golden unchanged
   (`evidence/2026-10-18-evade-force/`).
+- 2026-10-18: the Jedi Training mission (`0x58`) is ported
+  (`MissionKind::JediTraining`, save v71; also F-040). The first member
+  who trains Jedi at Force 100+ teaches; every other member needs some
+  Force below the teacher's, and the team two members or more
+  (`FUN_00570690`). Each pupil hits with teacher - pupil percent and gains
+  rand(0..=(teacher - pupil) / 2) `ForceTraining` `+0x90` (`FUN_005712b0`).
+  Force is now `+0x8e` + `+0x90`. No AI planner sends it, so the campaigns
+  are unchanged. Golden initial `v1:58473b5bf4582374` ->
+  `v1:d077dd4c3c2b7247`, final `v1:461650933b75014c` ->
+  `v1:1d8dbb48d17c03de` (`evidence/2026-10-18-jedi-training/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
@@ -2469,6 +2479,12 @@ cross-runtime proof remain open
   moves to Umgul on day 28 and researches there from day 70; the seed-42
   golden is unchanged (`evidence/2026-10-14-move-mission/`). Open: Return,
   Autorouting and Adrift (`0x42..0x44`) and the player's character moves.
+- 2026-10-18: Jedi Training (`0x58`) runs through the lifecycle
+  (`MissionKind::JediTraining`, save v71): the phase-2 teacher, the rules
+  of `FUN_00570690`, the chance `FUN_005710b0` and the `ForceTraining` gain
+  `FUN_005712b0` (F-038). No AI planner sends it yet
+  (`evidence/2026-10-18-jedi-training/`). Open: Palace, Bounty, Dagobah,
+  Vacation, Pickup, Return, Autorouting, Adrift.
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

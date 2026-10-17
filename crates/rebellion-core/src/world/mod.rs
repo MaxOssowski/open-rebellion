@@ -731,6 +731,9 @@ pub struct Character {
     /// Character `+0xa4`: the trainer who discovered this character's Force
     /// (`FUN_004ee680`, timer `0x389`), by record.
     pub force_discoverer: Option<DatId>,
+    /// Character `+0x90`, `ForceTraining` (`FUN_004ee1d0`, `0..=0x7fff`):
+    /// what Jedi Training added (`FUN_005712b0`).
+    pub force_training: u16,
 }
 
 impl Character {
@@ -749,13 +752,20 @@ impl Character {
         u32::try_from(value).unwrap_or(0)
     }
 
-    /// `+0x8c`, the Force level: the Force base `+0x8e` plus `+0x90`
-    /// (`FUN_004eee40`, run by the base's hook, slot `+0x320`).
-    ///
-    /// port: `+0x90` is not read yet; the port keeps it 0.
+    /// `+0x8c`, the Force level: `ForceExperience` `+0x8e` (the port's
+    /// `force_base`) plus `ForceTraining` `+0x90` (`FUN_004eee40`, run by
+    /// both fields' hooks, slots `+0x320` and `+0x324`), clamped to
+    /// `0..=0x7fff` (`FUN_004ee0d0`).
     #[must_use]
     pub fn force_level(&self) -> u32 {
-        u32::from(self.force_base)
+        (u32::from(self.force_base) + u32::from(self.force_training)).min(0x7fff)
+    }
+
+    /// Add `amount` to `ForceTraining` `+0x90` through `FUN_004ee1d0`,
+    /// clamped to `0..=0x7fff`.
+    pub fn add_force_training(&mut self, amount: i32) {
+        let value = (i32::from(self.force_training) + amount).clamp(0, 0x7fff);
+        self.force_training = u16::try_from(value).unwrap_or(0x7fff);
     }
 
     /// `FUN_004eee60`'s guard: a character with no Force base, with both
@@ -890,6 +900,7 @@ impl Default for Character {
             force_aware: false,
             force_base: 0,
             force_discoverer: None,
+            force_training: 0,
         }
     }
 }
@@ -2693,6 +2704,25 @@ mod tests {
     }
 
     #[test]
+    fn the_force_level_sums_experience_and_training() {
+        // FUN_004eee40: +0x8c = +0x8e + +0x90, clamped to 0x7fff
+        // (FUN_004ee0d0); FUN_004ee1d0 clamps +0x90 to 0..=0x7fff.
+        let mut c = Character {
+            force_base: 50,
+            ..Character::default()
+        };
+        c.add_force_training(30);
+        assert_eq!(c.force_training, 30);
+        assert_eq!(c.force_level(), 80);
+        c.add_force_training(-100);
+        assert_eq!(c.force_training, 0);
+        c.force_base = 0x7f00;
+        c.add_force_training(0x7fff + 5);
+        assert_eq!(c.force_training, 0x7fff);
+        assert_eq!(c.force_level(), 0x7fff);
+    }
+
+    #[test]
     fn only_a_potential_and_aware_character_without_a_force_base_rolls_one() {
         // FUN_004eee60: +0x8e == 0 and +0xac bits 0x20 and 0x10.
         let due = |force_potential, force_aware, force_base| {
@@ -2764,7 +2794,8 @@ mod tests {
             "force_potential": false,
             "force_aware": false,
             "force_base": 0,
-            "force_discoverer": null
+            "force_discoverer": null,
+            "force_training": 0
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

@@ -181,6 +181,9 @@ class's slot `+4` (`MOV EAX, imm`).
 
 `51ebb0` is the shared no-op default; `576700` is the shared `+0x280`.
 
+Jedi Training (`0x58`) is read and ported in `force-awareness.md`, "Force
+growth" (2026-10-18).
+
 ### Outcomes (first read; confirm before porting each)
 
 - Diplomacy (re-read 2026-09-28): `5740a0` draws against the member's

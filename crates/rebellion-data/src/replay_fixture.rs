@@ -36,23 +36,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:58473b5bf4582374";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:461650933b75014c";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:d077dd4c3c2b7247";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:1d8dbb48d17c03de";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:7999c9568bf2e8a4"),
-    (2, 0, "v1:45eb127b23ea0873"),
-    (3, 5, "v1:947ddb594e04a381"),
-    (4, 10, "v1:bdfdb59fc4b2ce73"),
-    (5, 15, "v1:3fb768c77cf9af86"),
-    (6, 20, "v1:c15b34e97094f1df"),
-    (7, 25, "v1:db72e52bde07a374"),
-    (8, 25, "v1:461650933b75014c"),
-    (9, 25, "v1:461650933b75014c"),
+    (1, 0, "v1:503f037f67bc883b"),
+    (2, 0, "v1:1d6f8e64c1d91d22"),
+    (3, 5, "v1:0865c3f7e0ee8334"),
+    (4, 10, "v1:4e98337eb85b7873"),
+    (5, 15, "v1:3ae3ac6a980e9e92"),
+    (6, 20, "v1:c153ab80c47f6716"),
+    (7, 25, "v1:82e50cc81c3dcbfe"),
+    (8, 25, "v1:1d8dbb48d17c03de"),
+    (9, 25, "v1:1d8dbb48d17c03de"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

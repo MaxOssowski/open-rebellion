@@ -353,6 +353,8 @@ const fn kind_text_id(kind: MissionKind) -> u16 {
         MissionKind::FacilityDesignResearch => 11297,
         MissionKind::TroopTrainingResearch => 11298,
         MissionKind::Move => 11265,
+        // MISSNSD 0x58000042's TEXTSTRA id.
+        MissionKind::JediTraining => 11330,
         MissionKind::Autoscrap => 0,
     }
 }
@@ -376,6 +378,7 @@ pub const fn kind_name(kind: MissionKind) -> &'static str {
         MissionKind::FacilityDesignResearch => "Facility Design Research",
         MissionKind::TroopTrainingResearch => "Troop Training Research",
         MissionKind::Move => "Move",
+        MissionKind::JediTraining => "Jedi Training",
         MissionKind::Autoscrap => "",
     }
 }

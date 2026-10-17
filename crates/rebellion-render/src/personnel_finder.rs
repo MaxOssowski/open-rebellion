@@ -1066,6 +1066,7 @@ mod tests {
             force_aware: false,
             force_base: 0,
             force_discoverer: None,
+            force_training: 0,
         }
     }
 

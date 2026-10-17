@@ -98,7 +98,10 @@ So in the original Luke grows by evading capture, by Dagobah, by the
 encounter, and by Jedi Training once someone of his side reaches Force
 100. Ported: the mission detection's evade gain (2026-10-18,
 `MissionEffect::ForceExperienceGained`,
-`evidence/2026-10-18-evade-force/`).
+`evidence/2026-10-18-evade-force/`) and Jedi Training (2026-10-18,
+`MissionKind::JediTraining`, `Character::force_training`, save v71,
+`evidence/2026-10-18-jedi-training/`). The AI's Jedi Training planner is
+not read, so only the player sends it.
 
 ## Discovering others (timer `0x389`)
 

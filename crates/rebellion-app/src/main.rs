@@ -7250,6 +7250,7 @@ fn apply_panel_action(
                 MissionKind::TroopTrainingResearch => "Troop Training Research",
                 MissionKind::Autoscrap => "Autoscrap",
                 MissionKind::Move => "Move",
+                MissionKind::JediTraining => "Jedi Training",
             };
             msg_log.push(GameMessage::at_system(
                 clock.tick,
@@ -7735,6 +7736,7 @@ fn apply_mission_result(
         MissionKind::TroopTrainingResearch => "Troop Training Research",
         MissionKind::Autoscrap => "Autoscrap",
         MissionKind::Move => "Move",
+        MissionKind::JediTraining => "Jedi Training",
     };
     let sys_name = world
         .systems
@@ -7761,7 +7763,8 @@ fn apply_mission_result(
         | MissionKind::FacilityDesignResearch
         | MissionKind::TroopTrainingResearch
         | MissionKind::Autoscrap
-        | MissionKind::Move => MessageCategory::Mission,
+        | MissionKind::Move
+        | MissionKind::JediTraining => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.
     let picture = {
@@ -7928,6 +7931,12 @@ fn apply_mission_result(
             MissionEffect::ForceExperienceGained { character, amount } => {
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.add_force_experience(*amount);
+                }
+            }
+            // FUN_005712b0 -> FUN_004ee1d0: a Jedi Training gain.
+            MissionEffect::ForceTrainingGained { character, amount } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.add_force_training(*amount);
                 }
             }
             MissionEffect::CharacterRescued {

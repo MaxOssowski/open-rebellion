@@ -140,6 +140,12 @@ pub enum MissionKind {
     /// rolls no one, and the base rules `FUN_00523450` (slot `+0x1bc`,
     /// `FUN_005215e0`).
     Move,
+
+    /// Jedi Training (MISSNSD `0x58000042`, TEXTSTRA 11330, vtable
+    /// `0x006667d8`; `ghidra/notes/force-awareness.md`, "Force growth"): a
+    /// teacher who trains Jedi at Force GNPRTB 2581 (100) or more trains the
+    /// other members, each gaining `ForceTraining` `+0x90`.
+    JediTraining,
 }
 
 impl MissionKind {
@@ -164,7 +170,8 @@ impl MissionKind {
             | MissionKind::ShipDesignResearch
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch
-            | MissionKind::Move => None,
+            | MissionKind::Move
+            | MissionKind::JediTraining => None,
         }
     }
 
@@ -205,6 +212,8 @@ impl MissionKind {
             | MissionKind::TroopTrainingResearch => (10, 20),
             // The shipped record's 0 + rand(0..=0).
             MissionKind::Move => (0, 0),
+            // The shipped record's 60 + rand(0..=30).
+            MissionKind::JediTraining => (60, 90),
         }
     }
 }
@@ -305,6 +314,10 @@ pub struct ActiveMission {
     /// Members with a resign request (role `+0x78` bit 3, `FUN_00534640`),
     /// set when an exposed member may resign (record column 9).
     pub resigning: Vec<MissionMember>,
+    /// Jedi Training's teacher `+0xa8` (`MissionJediTrainingTeacherKeyNotif`),
+    /// chosen on entering phase 2 (`FUN_00571410` -> `FUN_00570e40`,
+    /// `FUN_005703b0`).
+    pub teacher: Option<CharacterKey>,
 }
 
 /// The phase that starts every member's transit (`FUN_00520b20`).
@@ -348,6 +361,7 @@ impl ActiveMission {
             timer_due: None,
             container_loss_seen: false,
             resigning: Vec::new(),
+            teacher: None,
         }
     }
 
@@ -811,6 +825,93 @@ fn creation_target_ok(kind: MissionKind, object: Option<MissionTarget>) -> bool 
 /// tree (`FUN_0056c820` -> `FUN_005337f0`), else the order is refused
 /// (`0x40`/4). Special forces take the sibling `FUN_0056c990`; the records'
 /// special-force mask 0 keeps them off research. Other kinds pass.
+/// GNPRTB 2581 (`DAT_006b90dc`) = 100: the Force at which a Jedi trainer
+/// may teach (`FUN_004ed310` -> `FUN_0053eb90`).
+const GNPRTB_TEACHING_FORCE: u16 = 2581;
+/// GNPRTB 2581's shipped value.
+const SHIPPED_TEACHING_FORCE: i64 = 100;
+/// GNPRTB 6173 (`DAT_006bb528`) = 50: the share of the Force gap a Jedi
+/// Training hit may add (`FUN_0055ca20`).
+const GNPRTB_JEDI_TRAINING_SHARE: u16 = 6173;
+/// GNPRTB 6173's shipped value.
+const SHIPPED_JEDI_TRAINING_SHARE: i64 = 50;
+/// The end code a failed Jedi Training rule writes (`FUN_00570690`,
+/// `FUN_00570940`: `*end = -1`), as a byte.
+pub const JEDI_TRAINING_REFUSED: u8 = 0xff;
+
+/// `FUN_004ed310`: the character trains Jedi (class `+0xb8`) at Force
+/// GNPRTB 2581 or more.
+#[must_use]
+pub fn can_teach_jedi(world: &GameWorld, character: &crate::world::Character) -> bool {
+    character.is_jedi_trainer
+        && i64::from(character.force_level())
+            >= crate::movement::gnprtb_or_shipped(
+                world,
+                GNPRTB_TEACHING_FORCE,
+                SHIPPED_TEACHING_FORCE,
+            )
+}
+
+/// `FUN_00570e40`: the first character member who may teach.
+pub(crate) fn jedi_teacher(world: &GameWorld, team: &[MissionMember]) -> Option<CharacterKey> {
+    team.iter()
+        .filter_map(|member| member.character())
+        .find(|&key| {
+            world
+                .characters
+                .get(key)
+                .is_some_and(|c| can_teach_jedi(world, c))
+        })
+}
+
+/// `FUN_005710b0` -> `FUN_0055c7c0`: a character pupil's chance is the
+/// teacher's Force less its own, in percent; 0 without a teacher.
+pub(crate) fn jedi_training_chance(
+    world: &GameWorld,
+    teacher: Option<CharacterKey>,
+    member: MissionMember,
+) -> i32 {
+    let force = |key: CharacterKey| {
+        world
+            .characters
+            .get(key)
+            .map(|c| i64::from(c.force_level()))
+    };
+    match (teacher.and_then(force), member.character().and_then(force)) {
+        (Some(teacher), Some(pupil)) => i32::try_from(teacher - pupil).unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// `FUN_00570690` while a Jedi Training runs (`FUN_00570940` over the member
+/// lists): a teacher must be among the members (`0x40`/`0x90`), every other
+/// character member needs some Force (`0x40`/5) below the teacher's
+/// (`0x40`/`0xd`), and there must be two members or more (`0x40`/`0x94`).
+///
+/// port: the dialog runs these object checks at creation too, in place of
+/// the class-record ones (`FUN_00570bc0`).
+fn jedi_training_refused(world: &GameWorld, mission: &ActiveMission) -> bool {
+    let members: Vec<MissionMember> = mission.members().collect();
+    let Some(teacher) = jedi_teacher(world, &members) else {
+        return true;
+    };
+    let force = |key: CharacterKey| {
+        world
+            .characters
+            .get(key)
+            .map_or(0, crate::world::Character::force_level)
+    };
+    let teacher_force = force(teacher);
+    let pupils_fit = members
+        .iter()
+        .filter_map(|member| member.character())
+        .all(|key| {
+            let pupil = force(key);
+            pupil != 0 && (key == teacher || pupil < teacher_force)
+        });
+    !pupils_fit || members.len() < 2
+}
+
 pub(crate) fn creation_member_ok(
     world: &GameWorld,
     kind: MissionKind,
@@ -883,8 +984,11 @@ pub fn available_kinds(
         .iter()
         .filter(|record| !record.hidden)
         .filter_map(|record| {
+            // port: the AI's kinds, and Jedi Training, which no AI planner
+            // sends (its planner is not read).
             crate::mission_planning::KINDS
                 .into_iter()
+                .chain([MissionKind::JediTraining])
                 .find(|kind| kind.record_id() == Some(record.dat_id))
                 .map(|kind| (kind, record))
         })
@@ -1026,6 +1130,9 @@ pub fn member_chance(
         | MissionKind::TroopTrainingResearch => return 0,
         // The base class has no slot +0x274 roll; phase 10 rolls no one.
         MissionKind::Move => return 0,
+        // FUN_005710b0 reads the mission's teacher +0xa8: phase 10 takes
+        // the chance from [`jedi_training_chance`].
+        MissionKind::JediTraining => return 0,
     };
     let (Some(input), Some(table)) = (
         input,
@@ -1677,6 +1784,13 @@ pub enum MissionEffect {
         injury: i32,
     },
 
+    /// A Jedi Training pupil gained `amount` `ForceTraining` `+0x90`
+    /// (`FUN_005712b0` -> `FUN_004ee1d0`).
+    ForceTrainingGained {
+        character: CharacterKey,
+        amount: i32,
+    },
+
     /// Luke or Leia evaded capture: their slot `+0x208` (`FUN_0056f8b0`,
     /// `FUN_0056ffa0`) adds GNPRTB 3081 or 3082 (1) to `ForceExperience`
     /// `+0x8e` (`FUN_004ee150`).
@@ -1822,6 +1936,7 @@ impl MissionKind {
             MissionKind::FacilityDesignResearch => 0x5300_0021,
             MissionKind::TroopTrainingResearch => 0x5300_0022,
             MissionKind::Move => 0x4100_0001,
+            MissionKind::JediTraining => 0x5800_0042,
             MissionKind::Autoscrap => return None,
         };
         Some(crate::ids::DatId::new(raw))
@@ -1848,6 +1963,8 @@ impl MissionKind {
             | MissionKind::TroopTrainingResearch => TargetRules::System,
             // FUN_005215e0: the base rules alone, at a system target.
             MissionKind::Move => TargetRules::Place,
+            // FUN_00570690: the system rules, then its own.
+            MissionKind::JediTraining => TargetRules::System,
         }
     }
 }
@@ -2109,6 +2226,10 @@ pub(crate) fn running_end_code(
     // FUN_0056b550 rules are not traced.
     if mission.kind == MissionKind::Recruitment && world.recruit_pool_empty(side) {
         return 0x10;
+    }
+    // FUN_00570690: Jedi Training's teacher and pupils.
+    if mission.kind == MissionKind::JediTraining && jedi_training_refused(world, mission) {
+        return JEDI_TRAINING_REFUSED;
     }
     // FUN_0056c510 while running (+0xc): no research site ends with 0xc
     // (0x40/0x2c); the side's Done flag in the tree (FUN_0052eb10) ends with
@@ -2481,6 +2602,11 @@ impl MissionSystem {
                     .find_map(|member| member_location(world, member));
                 mission.origin = origin;
                 mission.speed = Self::character_speed(mission, world);
+                // FUN_00571410 (Jedi Training's slot +0x1f4) in phase 2: the
+                // teacher +0xa8 is the first member who may teach.
+                if mission.kind == MissionKind::JediTraining {
+                    mission.teacher = jedi_teacher(world, &mission.team);
+                }
             }
             PHASE_TRANSIT => {
                 validate(mission, state);
@@ -2681,6 +2807,9 @@ impl MissionSystem {
             }
             let chance = match mission.kind.research_tech() {
                 Some(tech) => research_chance(world, member, tech),
+                None if mission.kind == MissionKind::JediTraining => {
+                    jedi_training_chance(world, mission.teacher, member)
+                }
                 None => member_chance(
                     world,
                     mission.kind,
@@ -2865,6 +2994,33 @@ impl MissionSystem {
                 MissionKind::Move => {}
                 // FUN_0056bec0: 3, with no skill raise.
                 MissionKind::Reconnaissance => result = 3,
+                // FUN_005712b0: a character pupil's Force becomes Force +
+                // rand(0..=(teacher - pupil) x GNPRTB 6173 / 100)
+                // (FUN_0055ca20); the gain goes to ForceTraining +0x90
+                // (FUN_004ee1d0) and sets 3 when it is not 0.
+                MissionKind::JediTraining => {
+                    let pupil = member.character().and_then(|key| world.characters.get(key));
+                    let teacher = mission.teacher.and_then(|key| world.characters.get(key));
+                    if let (Some(character), Some(pupil), Some(teacher)) =
+                        (member.character(), pupil, teacher)
+                    {
+                        let gap = i64::from(teacher.force_level()) - i64::from(pupil.force_level());
+                        if gap > 0 {
+                            let share = crate::movement::gnprtb_or_shipped(
+                                world,
+                                GNPRTB_JEDI_TRAINING_SHARE,
+                                SHIPPED_JEDI_TRAINING_SHARE,
+                            );
+                            let spread = i32::try_from(gap * share / 100).unwrap_or(i32::MAX);
+                            let amount = stream.draw(spread);
+                            if amount != 0 {
+                                result = 3;
+                                effects
+                                    .push(MissionEffect::ForceTrainingGained { character, amount });
+                            }
+                        }
+                    }
+                }
                 // FUN_0056cdb0: GNPRTB 6171 + rand(0..=6172) points
                 // (FUN_0055c9f0) join the mission's (SetRdPoints +0xa8); then
                 // the member's base skill in the tree rises by GNPRTB 6158
@@ -7704,6 +7860,211 @@ mod tests {
     // --- The dialog's mission list (FUN_004f5380, FUN_005422f0) ---
 
     /// An Alliance envoy at an Alliance system, with records in `records`.
+    /// The shipped MISSNSD Jedi Training record `0x58000042`: an own-side
+    /// system, timer (60, 30), no repeat, characters of both sides.
+    fn jedi_training_record() -> crate::world::MissionRecord {
+        crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x5800_0042),
+            timer_min_days: 60,
+            timer_spread_days: 30,
+            repeats: false,
+            hidden: false,
+            detection_phases: true,
+            can_resign: true,
+            rules: crate::world::MissionTargetRules {
+                container_loss_ends: true,
+                needs_populated_container: false,
+                target_loss_ends: true,
+                own_side_target: true,
+                other_side_target: false,
+                opponent_target: false,
+                revolting_target: true,
+                calm_target: true,
+                prisoner_target: false,
+                free_target: false,
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0,
+                character_mask: 0x1_0000,
+            },
+        }
+    }
+
+    /// An Alliance teacher (trains Jedi, Force `teacher`) and a pupil
+    /// (Force `pupil`) at an Alliance system with the Jedi Training record.
+    fn jedi_world(teacher: u16, pupil: u16) -> (GameWorld, SystemKey, CharacterKey, CharacterKey) {
+        let (mut world, here, envoy) = dialog_world(vec![jedi_training_record()]);
+        let master = envoy.character().unwrap();
+        world.characters[master].is_jedi_trainer = true;
+        world.characters[master].force_base = teacher;
+        let student = agent_at(&mut world, here, true);
+        world.characters[student].force_base = pupil;
+        (world, here, master, student)
+    }
+
+    #[test]
+    fn jedi_training_needs_a_teacher_at_force_100_and_weaker_pupils() {
+        // FUN_00570690 / FUN_00570940: a member who trains Jedi at Force
+        // GNPRTB 2581 (100) or more (FUN_00570e40, FUN_004ed310), every
+        // other member with some Force (0x40/5) below the teacher's
+        // (0x40/0xd), and two members or more (0x40/0x94).
+        let list = |world: &GameWorld, team: &[CharacterKey], here| {
+            let team: Vec<MissionMember> =
+                team.iter().map(|&c| MissionMember::Character(c)).collect();
+            available_kinds(
+                world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                MissionFaction::Alliance,
+                &team,
+                &[],
+                here,
+            )
+        };
+        let (world, here, master, student) = jedi_world(100, 20);
+        assert_eq!(
+            list(&world, &[master, student], here),
+            vec![MissionKind::JediTraining]
+        );
+        // The teacher may come second.
+        assert_eq!(
+            list(&world, &[student, master], here),
+            vec![MissionKind::JediTraining]
+        );
+        assert_eq!(list(&world, &[master], here), []);
+        let (world, here, master, student) = jedi_world(99, 20);
+        assert_eq!(list(&world, &[master, student], here), []);
+        let (mut world, here, master, student) = jedi_world(100, 20);
+        world.characters[master].is_jedi_trainer = false;
+        assert_eq!(list(&world, &[master, student], here), []);
+        let (world, here, master, student) = jedi_world(100, 0);
+        assert_eq!(list(&world, &[master, student], here), []);
+        let (world, here, master, student) = jedi_world(100, 100);
+        assert_eq!(list(&world, &[master, student], here), []);
+        let (world, here, master, student) = jedi_world(100, 99);
+        assert_eq!(
+            list(&world, &[master, student], here),
+            vec![MissionKind::JediTraining]
+        );
+        // A running mission whose teacher left ends with -1 (0xff).
+        let (world, here, _, student) = jedi_world(100, 20);
+        let mission = ActiveMission::new(
+            0,
+            MissionKind::JediTraining,
+            MissionFaction::Alliance,
+            vec![MissionMember::Character(student)],
+            here,
+            0,
+        );
+        assert_eq!(
+            running_end_code(
+                &mission,
+                &world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                &[]
+            ),
+            JEDI_TRAINING_REFUSED
+        );
+    }
+
+    #[test]
+    fn entering_phase_two_chooses_the_first_member_who_may_teach() {
+        // FUN_00571410 in phase 2: FUN_00570e40 walks the members in order
+        // and FUN_005703b0 stores the first who may teach at +0xa8.
+        let (mut world, here, master, student) = jedi_world(120, 20);
+        let second = agent_at(&mut world, here, true);
+        world.characters[second].is_jedi_trainer = true;
+        // Stronger than the later trainer, which then counts as a pupil
+        // below the teacher (FUN_00570940's 0x40/0xd).
+        world.characters[second].force_base = 130;
+        let mut mission = ActiveMission::new(
+            0,
+            MissionKind::JediTraining,
+            MissionFaction::Alliance,
+            vec![
+                MissionMember::Character(student),
+                MissionMember::Character(second),
+                MissionMember::Character(master),
+            ],
+            here,
+            0,
+        );
+        mission.phase = 1;
+        let mut state = MissionState::new();
+        state.push_timed(mission);
+        step(&mut state, &world, 1, &[]);
+        let mission = &state.missions()[0];
+        assert!(mission.phase >= 2);
+        assert_eq!(mission.teacher, Some(second));
+    }
+
+    #[test]
+    fn a_jedi_training_pupil_gains_up_to_half_the_force_gap() {
+        // FUN_005710b0: chance = teacher - pupil (120 - 20 = 100, a sure
+        // hit); FUN_005712b0 -> FUN_0055ca20: gain rand(0..=100 x GNPRTB
+        // 6173 (50) / 100) into ForceTraining +0x90, result 3 when not 0.
+        // The teacher's own chance is 0.
+        let (world, here, master, student) = jedi_world(120, 20);
+        let mut gains = std::collections::BTreeSet::new();
+        for seed in 0..200_u32 {
+            let mut mission = ActiveMission::timed(
+                0,
+                MissionKind::JediTraining,
+                MissionFaction::Alliance,
+                vec![
+                    MissionMember::Character(master),
+                    MissionMember::Character(student),
+                ],
+                here,
+                1,
+            );
+            mission.teacher = Some(master);
+            let mut state = MissionState::new();
+            state.push_timed(mission);
+            let roll = f64::from(seed) / 200.0;
+            let result = step(&mut state, &world, 1, &[roll; 8]).results.remove(0);
+            let gained: Vec<_> = result
+                .effects
+                .iter()
+                .filter_map(|effect| match effect {
+                    MissionEffect::ForceTrainingGained { character, amount } => {
+                        Some((*character, *amount))
+                    }
+                    _ => None,
+                })
+                .collect();
+            match gained.as_slice() {
+                [] => assert_eq!(result.outcome, MissionOutcome::Failure),
+                [(character, amount)] => {
+                    assert_eq!(*character, student);
+                    assert_eq!(result.outcome, MissionOutcome::Success);
+                    gains.insert(*amount);
+                }
+                other => panic!("one pupil, {other:?}"),
+            }
+        }
+        assert!(
+            gains.iter().all(|gain| (1..=50).contains(gain)),
+            "{gains:?}"
+        );
+        assert!(gains.contains(&50) && gains.len() > 20, "{gains:?}");
+        assert_eq!(
+            jedi_training_chance(&world, Some(master), MissionMember::Character(master)),
+            0
+        );
+        assert_eq!(
+            jedi_training_chance(&world, None, MissionMember::Character(student)),
+            0
+        );
+        assert_eq!(
+            jedi_training_chance(&world, Some(master), MissionMember::Character(student)),
+            100
+        );
+    }
+
     fn dialog_world(
         records: Vec<crate::world::MissionRecord>,
     ) -> (GameWorld, SystemKey, MissionMember) {

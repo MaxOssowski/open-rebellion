@@ -83,6 +83,8 @@ fn capability(kind: MissionKind) -> Option<u32> {
         // No planner sends these: Autoscrap is the Autoscrap planner's, and
         // Move is the trip an AI planner orders before its mission (FUN_004bd570).
         MissionKind::Autoscrap | MissionKind::Move => return None,
+        // port: the AI's Jedi Training planner is not read, so it sends none.
+        MissionKind::JediTraining => return None,
     })
 }
 
@@ -238,7 +240,7 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         // FUN_0047f320 and FUN_0047f500) are not ported, so the AI sends none.
         MissionKind::Autoscrap | MissionKind::Reconnaissance => return None,
         // The Move pseudo-mission has no selectors (FUN_004bd570 builds it).
-        MissionKind::Move => return None,
+        MissionKind::Move | MissionKind::JediTraining => return None,
         // FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900: Recruitment's selector
         // shape, with no decoy selector.
         MissionKind::ShipDesignResearch => (SHIP_RESEARCH, 1, None),

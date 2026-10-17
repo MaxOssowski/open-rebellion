@@ -1903,6 +1903,12 @@ fn apply_mission_effects_inner(
                     c.add_force_experience(*amount);
                 }
             }
+            // FUN_005712b0 -> FUN_004ee1d0: a Jedi Training gain.
+            MissionEffect::ForceTrainingGained { character, amount } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.add_force_training(*amount);
+                }
+            }
             MissionEffect::CharacterInjured { character, injury } => {
                 // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
                 if let Some(c) = world.characters.get_mut(*character) {
@@ -2547,6 +2553,28 @@ mod tests {
     use rebellion_core::missions::MissionOutcome;
     use rebellion_core::world::{CapitalShipClass, Sector, System};
 
+
+    #[test]
+    fn a_jedi_training_gain_raises_the_pupil_s_force_training() {
+        // FUN_005712b0 -> FUN_004ee1d0: the gain goes to +0x90, and the
+        // Force level +0x8c is +0x8e + +0x90 (FUN_004eee40).
+        let mut world = GameWorld::default();
+        let pupil = world.characters.insert(rebellion_core::world::Character {
+            force_base: 20,
+            ..Default::default()
+        });
+        apply_mission_effects_inner(
+            &[MissionEffect::ForceTrainingGained {
+                character: pupil,
+                amount: 12,
+            }],
+            &mut world,
+            1,
+            &mut UprisingState::default(),
+        );
+        assert_eq!(world.characters[pupil].force_training, 12);
+        assert_eq!(world.characters[pupil].force_level(), 32);
+    }
 
     #[test]
     fn the_detection_s_injuries_and_force_gains_are_recorded() {
