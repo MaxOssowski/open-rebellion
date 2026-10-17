@@ -18,6 +18,11 @@
 //! characters, or frees prisoners it holds (`FUN_0050d150`). Active Incite
 //! Uprising missions then cut the holder's support (`FUN_0050c9f0`).
 //!
+//! The same hook arms timer `0x384` on the system's record `+0x54`+`0x20`,
+//! whose minimum `FUN_0050e200` sets to GNPRTB 7698 (30). Each time it fires
+//! in revolt, `FUN_0050caa0` shifts the holder's support by GNPRTB 7697 (-1)
+//! through `FUN_0050c9f0`.
+//!
 //! # Disaster (system `+0x88` bit 18)
 //!
 //! A galaxy timer (event `0x38f`, `FUN_00556fa0`) fires every GNPRTB 7717 +
@@ -46,6 +51,12 @@ use crate::world::{Character, GameWorld, MstbTable, Skill, System};
 // GNPRTB parameters (FUN_0053e390 id -> DAT global)
 // ---------------------------------------------------------------------------
 
+/// 7698 (`DAT_006bb3c4`) = 30: timer `0x384`'s minimum (`FUN_0050e200`,
+/// record `+0x54`+`0x20`).
+const GNPRTB_UPRISING_SUPPORT_PERIOD: u16 = 7698;
+/// 7697 (`DAT_006bb4c8`) = -1: timer `0x384`'s support shift
+/// (`FUN_0050caa0`).
+const GNPRTB_UPRISING_SUPPORT_DELTA: u16 = 7697;
 /// 7701 (`DAT_006bb420`) = 30: uprising incident timer minimum.
 const GNPRTB_UPRISING_INCIDENT_MIN: u16 = 7701;
 /// 7702 (`DAT_006bb49c`) = 70: uprising incident timer spread.
@@ -144,6 +155,15 @@ pub enum UprisingEvent {
         /// Change to the holder's support, in points.
         support_delta: i32,
     },
+    /// Timer `0x384` fired in revolt (`FUN_0050caa0`): the holder's support
+    /// shifts by GNPRTB 7697.
+    SupportEroded {
+        system: SystemKey,
+        tick: u64,
+        side: Faction,
+        /// Change to the holder's support, in points.
+        support_delta: i32,
+    },
     /// The disaster incident (event `0x38f`, `FUN_00511930`) struck.
     Disaster {
         system: SystemKey,
@@ -180,6 +200,8 @@ pub struct ActiveUprising {
     /// Tick the uprising incident (event `0x38d`) next fires; drawn on the
     /// next advance when absent.
     pub next_incident_tick: Option<u64>,
+    /// Tick timer `0x384` next fires; set on the next advance when absent.
+    pub next_support_tick: Option<u64>,
 }
 
 impl UprisingState {
@@ -356,6 +378,7 @@ impl UprisingSystem {
                     ActiveUprising {
                         started_tick: tick,
                         next_incident_tick: None,
+                        next_support_tick: None,
                     },
                 );
                 events.push(UprisingEvent::UprisingBegan { system, tick });
@@ -372,10 +395,35 @@ impl UprisingSystem {
                 rolls,
             )
         };
-        for system in world.systems.keys() {
+        // port: the record's spread is never set (FUN_0050e200 sets only
+        // the minimum), so FUN_00586130's draw over 0..=0 is always 0 and
+        // the port takes no roll for it.
+        let support_period =
+            u64::try_from(param(GNPRTB_UPRISING_SUPPORT_PERIOD).max(1)).unwrap_or(1);
+        for (system, sys) in &world.systems {
             let Some(uprising) = state.active_uprisings.get_mut(&system) else {
                 continue;
             };
+            // Timer 0x384, armed with 0x38d by FUN_00510f20 (first).
+            let mut due = uprising.next_support_tick.unwrap_or(tick + support_period);
+            if due <= tick {
+                if let Some(side) = holder(sys).filter(|_| sys.is_populated) {
+                    let delta = param(GNPRTB_UPRISING_SUPPORT_DELTA);
+                    let support_delta = support_change(world, sys, side, delta);
+                    // A shift of 0 leaves the support as it is.
+                    if support_delta != 0 {
+                        events.push(UprisingEvent::SupportEroded {
+                            system,
+                            tick,
+                            side,
+                            support_delta,
+                        });
+                    }
+                }
+                due += support_period;
+            }
+            uprising.next_support_tick = Some(due);
+
             let mut due = match uprising.next_incident_tick {
                 Some(due) => due,
                 None => tick + incident_delay(&mut rolls),
@@ -539,7 +587,7 @@ fn uprising_mission_terms(
 
 /// `FUN_00559be0` then `FUN_0053e0d0`: the change a support shift of `delta`
 /// makes to `side`'s support at `sys`.
-fn support_change(world: &GameWorld, sys: &System, side: Faction, delta: i32) -> i32 {
+pub(crate) fn support_change(world: &GameWorld, sys: &System, side: Faction, delta: i32) -> i32 {
     let difficulty = world.difficulty_index;
     let strong = economy::is_strong_support(sys, &world.gnprtb, difficulty);
     let favours_holder =
@@ -927,7 +975,9 @@ pub fn apply_support_change(world: &mut GameWorld, system: SystemKey, side: Fact
     shift_support(world, system, side, change);
 }
 
-fn shift_support(world: &mut GameWorld, system: SystemKey, side: Faction, points: i32) {
+/// Shift `side`'s support at `system` by `points` already computed by
+/// [`support_change`] (`FUN_00509c00`).
+pub fn shift_support(world: &mut GameWorld, system: SystemKey, side: Faction, points: i32) {
     if let Some(sys) = world.systems.get_mut(system) {
         shift_system(sys, side, points);
     }
@@ -983,6 +1033,12 @@ pub fn apply_uprising_event(world: &mut GameWorld, event: &UprisingEvent) {
             }
             shift_support(world, *system, *side, *support_delta);
         }
+        UprisingEvent::SupportEroded {
+            system,
+            side,
+            support_delta,
+            ..
+        } => shift_support(world, *system, *side, *support_delta),
         UprisingEvent::Disaster {
             system,
             total_energy,
@@ -1053,6 +1109,8 @@ mod tests {
             [
                 (GNPRTB_UPRISING_INCIDENT_MIN, 30),
                 (GNPRTB_UPRISING_INCIDENT_SPREAD, 70),
+                (GNPRTB_UPRISING_SUPPORT_PERIOD, 30),
+                (GNPRTB_UPRISING_SUPPORT_DELTA, -1),
                 (GNPRTB_INCIDENT_DRAW_BASE, 1),
                 (GNPRTB_INCIDENT_DRAW_SPREAD, 9),
                 (GNPRTB_STRONG_EMPIRE_TROOP_WEIGHT, 2),
@@ -1174,6 +1232,7 @@ mod tests {
             ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: Some(next_incident_tick),
+                next_support_tick: None,
             },
         );
         state
@@ -1312,11 +1371,105 @@ mod tests {
             &at(40),
             &[0.0, 0.0, 0.999],
         );
-        assert_eq!(fired.len(), 1);
+        // FUN_00510f20 armed timer 0x384 with 0x38d on day 10, so its
+        // 30-day minimum also ends on day 40.
+        assert_eq!(fired.len(), 2);
+        assert!(matches!(
+            fired[0],
+            UprisingEvent::SupportEroded { tick: 40, .. }
+        ));
+        assert!(matches!(
+            fired[1],
+            UprisingEvent::UprisingIncident { tick: 40, .. }
+        ));
         assert_eq!(
             state.active_uprisings[&system].next_incident_tick,
             Some(140)
         );
+    }
+
+    fn support_erosions(events: &[UprisingEvent]) -> Vec<(u64, Faction, i32)> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                UprisingEvent::SupportEroded {
+                    tick,
+                    side,
+                    support_delta,
+                    ..
+                } => Some((*tick, *side, *support_delta)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_holder_in_revolt_loses_a_support_point_every_thirty_days() {
+        // FUN_00510f20 arms timer 0x384 (record +0x54+0x20, minimum GNPRTB
+        // 7698 = 30 from FUN_0050e200); FUN_0050caa0 shifts the holder's
+        // support by GNPRTB 7697 (-1) through FUN_0050c9f0.
+        let (world, system) = world_with(Faction::Alliance, 0.3);
+        let mut state = in_revolt(system, u64::MAX);
+        let economy = short_of_troops(system, -1);
+        let missions = MissionState::default();
+        let mut fired = Vec::new();
+        for day in 1..=61 {
+            fired.extend(support_erosions(&UprisingSystem::advance(
+                &mut state,
+                &world,
+                &economy,
+                &missions,
+                &at(day),
+                &[],
+            )));
+        }
+        assert_eq!(
+            fired,
+            vec![(31, Faction::Alliance, -1), (61, Faction::Alliance, -1)]
+        );
+        assert_eq!(state.active_uprisings[&system].next_support_tick, Some(91));
+    }
+
+    #[test]
+    fn a_strongly_supported_empire_loses_nothing_to_the_revolt_timer() {
+        // FUN_00559be0 divides a shift that favours the strongly supported
+        // Empire (negative) by GNPRTB 7681 (2): -1 / 2 is 0.
+        let (world, system) = world_with(Faction::Empire, 0.6);
+        let mut state = in_revolt(system, u64::MAX);
+        state
+            .active_uprisings
+            .get_mut(&system)
+            .unwrap()
+            .next_support_tick = Some(1);
+        let events = UprisingSystem::advance(
+            &mut state,
+            &world,
+            &short_of_troops(system, -1),
+            &MissionState::default(),
+            &at(1),
+            &[],
+        );
+        assert_eq!(support_erosions(&events), vec![]);
+        assert_eq!(state.active_uprisings[&system].next_support_tick, Some(31));
+    }
+
+    #[test]
+    fn the_revolt_timer_takes_the_point_from_the_world() {
+        let (mut world, system) = world_with(Faction::Alliance, 0.3);
+        apply_uprising_event(
+            &mut world,
+            &UprisingEvent::SupportEroded {
+                system,
+                tick: 31,
+                side: Faction::Alliance,
+                support_delta: -1,
+            },
+        );
+        assert_eq!(
+            support_points(&world.systems[system], Faction::Alliance),
+            29
+        );
+        assert_eq!(support_points(&world.systems[system], Faction::Empire), 71);
     }
 
     #[test]

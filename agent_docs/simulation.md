@@ -38,8 +38,8 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | 6 | **Movement** | `movement.rs` | `advance(state, ticks) -> Vec<ArrivalEvent>` | Caller must update `fleet.location` + `system.fleets` |
 | 7 | **Fog** | `fog.rs` | `advance(state, world, movement)` | Fleet presence + sensor radius (detection * 15.0); monotonic |
 | 8 | **Combat** | `combat.rs`, `assault.rs` | `resolve_space()`; `assault::resolve` (Planetary Assault only) | Phase gate: `ACTIVE && !PHASES_ENABLED` (inverted) |
-| 9 | **Blockade** | `blockade.rs` | `advance(state, world, ticks)` | Hostile fleet + no defender = blockade |
-| 10 | **Uprising** | `uprising.rs` | `advance(state, world, economy, missions, ticks, rolls)` | Needs the economy summary; incidents and disasters run on recovered timers |
+| 9 | **Blockade** | `blockade.rs` | `advance(state, world, ticks)` | Hostile fleet + no defender = blockade; timer `0x386` shifts the blockader's support every GNPRTB 7694 days (`FUN_0050cb20`) |
+| 10 | **Uprising** | `uprising.rs` | `advance(state, world, economy, missions, ticks, rolls)` | Needs the economy summary; incidents, disasters and the revolt's support timer `0x384` (`FUN_0050caa0`) run on recovered timers |
 | 11 | **Death Star** | `death_star.rs` | `advance(state, world, ticks)` | Self-clears construction on completion |
 | 12 | **Research** | `research.rs` | none; research missions resolve in step 5 | `MissionEffect::ResearchPoints` -> `ResearchState::add_points` (2026-10-14) |
 | 13 | **Jedi** | `jedi.rs` | `advance(state, world, ticks, rolls)` | XP stored in `JediTrainingRecord`, not world |

@@ -22,7 +22,8 @@ use rebellion_core::events::{EventAction, FiredEvent, SkillField, SystemTag};
 use rebellion_core::fog::RevealEvent;
 use rebellion_core::game_events::{
     GameEventRecord, EVT_AI_ACTION, EVT_BETRAYAL_CHECK, EVT_BLOCKADE_ENDED, EVT_BLOCKADE_STARTED,
-    EVT_BLOCKADE_TROOP_DESTROYED, EVT_BOMBARDMENT, EVT_BUILD_COMPLETE, EVT_CAMPAIGN_SNAPSHOT,
+    EVT_BLOCKADE_SUPPORT, EVT_BLOCKADE_TROOP_DESTROYED, EVT_BOMBARDMENT, EVT_BUILD_COMPLETE,
+    EVT_CAMPAIGN_SNAPSHOT,
     EVT_CAPTURE, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
@@ -32,6 +33,7 @@ use rebellion_core::game_events::{
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
     EVT_SUPPORT_CHANGE, EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
+    EVT_UPRISING_SUPPORT,
     EVT_UPRISING_INCIDENT, EVT_VICTORY, EVT_VICTORY_CHECK, SYS_AI, SYS_BETRAYAL, SYS_BLOCKADE,
     SYS_COMBAT, SYS_DEATH_STAR, SYS_ECONOMY, SYS_EVENTS, SYS_FOG, SYS_JEDI, SYS_MANUFACTURING,
     SYS_MISSIONS, SYS_MOVEMENT, SYS_REPAIR, SYS_RESEARCH, SYS_STORY, SYS_UPRISING, SYS_VICTORY,
@@ -1333,6 +1335,25 @@ impl PerceptionIntegrator {
                         ));
                     }
                 }
+                BlockadeEvent::SupportShifted {
+                    system,
+                    side,
+                    support_delta,
+                    tick,
+                } => {
+                    self.events.push(GameEventRecord::new(
+                        *tick,
+                        self.wall_ms,
+                        SYS_BLOCKADE,
+                        EVT_BLOCKADE_SUPPORT,
+                        serde_json::json!({
+                            "system": sys_name(world, *system),
+                            "side": format!("{side:?}"),
+                            "support_delta": support_delta,
+                        }),
+                    ));
+                    rebellion_core::uprising::shift_support(world, *system, *side, *support_delta);
+                }
             }
         }
     }
@@ -1363,6 +1384,19 @@ impl PerceptionIntegrator {
                         "system": sys_name(world, *system),
                         "codes": codes,
                         "losses": losses.len(),
+                        "support_delta": support_delta,
+                    }),
+                ),
+                UprisingEvent::SupportEroded {
+                    system,
+                    tick,
+                    support_delta,
+                    ..
+                } => (
+                    *tick,
+                    EVT_UPRISING_SUPPORT,
+                    serde_json::json!({
+                        "system": sys_name(world, *system),
                         "support_delta": support_delta,
                     }),
                 ),
@@ -2482,6 +2516,7 @@ mod tests {
             rebellion_core::uprising::ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
         let ended = apply_mission_state_effects(
@@ -2544,6 +2579,7 @@ mod tests {
                 rebellion_core::uprising::ActiveUprising {
                     started_tick: 0,
                     next_incident_tick: None,
+                    next_support_tick: None,
                 },
             );
             let result = MissionResult {
@@ -2588,6 +2624,7 @@ mod tests {
             rebellion_core::uprising::ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
         let result = MissionResult {
@@ -2775,6 +2812,32 @@ mod tests {
         let mut integrator = PerceptionIntegrator::new(1, 0);
         integrator.apply_ground_occupation(&mut world, system, Faction::Alliance, 1);
         assert_alliance_took_over(&world, system);
+    }
+
+    #[test]
+    fn a_blockade_support_shift_moves_the_blockader_s_support() {
+        // FUN_0050cb20 -> FUN_0050c9f0 sets the blockader's support.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Naboo");
+        world.systems[system].popularity_alliance = 0.3;
+        world.systems[system].popularity_empire = 0.7;
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.apply_blockade_events(
+            &mut world,
+            &mut TroopTransportState::default(),
+            &[BlockadeEvent::SupportShifted {
+                system,
+                side: Faction::Empire,
+                support_delta: 1,
+                tick: 31,
+            }],
+        );
+        assert!((world.systems[system].popularity_empire - 0.71).abs() < 1e-6);
+        assert!((world.systems[system].popularity_alliance - 0.29).abs() < 1e-6);
+        assert!(integrator
+            .events
+            .iter()
+            .any(|e| e.event_type == EVT_BLOCKADE_SUPPORT && e.tick == 31));
     }
 
     #[test]

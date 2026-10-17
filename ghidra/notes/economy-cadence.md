@@ -77,15 +77,39 @@ They run when a system's inputs change. Who calls each one is still open
 
 All go through `FUN_0050c9f0`, which adds then clamps, as the port's
 `uprising::apply_support_change` does:
-- `0x384` (`FUN_0050caa0`): in uprising (`+0x88` bit 2), GNPRTB 7697 (-1).
-  Armed by `FUN_00510f20`, the uprising hook.
+- `0x384` (`FUN_0050caa0`): in uprising (`+0x88` bit 2), GNPRTB 7697 (-1)
+  to the holder (side bits). Armed by `FUN_00510f20`, the uprising hook,
+  on record `+0x54`+`0x20`, whose minimum `FUN_0050e200` sets to GNPRTB
+  7698 (30).
 - `0x385` (`FUN_0050cad0`): with `+0x88` bit 8, side bits 2 and no
   uprising, GNPRTB 7691 (0).
-- `0x386` (`FUN_0050cb20`): while blockaded (bit 5), toward the blockading
-  side (`FUN_00509890`: its fleet's side bits; `FUN_00509980`: whether
-  it is the holder). The amount is GNPRTB 7693 (1), or 7695 (-1) when it
-  is not the holder. The period record is system `+0x54`+`0x30`; the port
-  reads GNPRTB 7694 (30) for it, and `FUN_005109f0` reads it too.
+- `0x386` (`FUN_0050cb20`): while blockaded (bit 5), to the blockading
+  side (`FUN_00509890`: the side bits of the first fleet at the system).
+  The amount is GNPRTB 7693 (1) when that side has more support, else
+  7695 (-1): `FUN_00509980` compares it with `FUN_00509930`, which names
+  the side with more support (`FUN_00507270`), or 3 on a tie. Armed by
+  `FUN_00511300`, the blockade hook, on record `+0x54`+`0x30`, whose
+  minimum `FUN_0050e200` sets to GNPRTB 7694 (30); `FUN_005109f0` resets
+  it to 7694 when the blockader is the more popular side, else 7696 (30).
+  The economy's maintenance counter also reads GNPRTB 7694 (F-029).
+
+Arming (`FUN_0053fa60`) stores the flag's new value in the record's armed
+bit; when that changes the record, the old timer is cancelled (its counter
+no longer matches) and, if armed, a new one is scheduled. So both timers
+start when the uprising or blockade starts and stop when it ends. A fired
+timer reschedules with the same delay.
+
+### Port of the timers (2026-10-17)
+
+- `uprising.rs`: `ActiveUprising::next_support_tick`; `UprisingEvent::
+  SupportEroded` carries the holder's change after `FUN_00559be0`.
+- `blockade.rs`: `BlockadeState`'s timers, set when a blockade starts and
+  dropped when it ends; `BlockadeEvent::SupportShifted`.
+- Save v62. A change of 0 posts no event.
+- port: the spread draw over `0..=0` takes no roll; `FUN_005109f0`'s reset
+  to 7696 is not modelled (both 30).
+- hyp: the delay records' spreads are 0 (`timer-scheduler.md`).
+- `0x385` is not ported: its change, GNPRTB 7691, is 0.
 
 Missions, uprisings and other events also move the support through the
 same path (`uprising.rs`, `support_change`).
@@ -108,6 +132,8 @@ same path (`uprising.rs`, `support_change`).
 ## Open
 
 - Who calls `FUN_00510820` and `FUN_00511740`.
-- The period records of `0x384`..`0x386` (`timer-scheduler.md`, "Open").
+- `+0x88` bit 11, which halves shifts that favour the Alliance or hurt the
+  Empire (`FUN_00559be0`), is still the port's `strong_support` guess. In
+  the campaigns it turns most blockade shifts of an unpopular Empire to 0.
 - `FUN_0050ac80`, `FUN_0050b890`, `FUN_0050c350`, `FUN_0050ac10` and the
   blockade hook's `FUN_0050c0b0`..`FUN_0050c1e0`.

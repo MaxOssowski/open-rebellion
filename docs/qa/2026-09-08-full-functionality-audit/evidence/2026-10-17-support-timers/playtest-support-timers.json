@@ -1,0 +1,247 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against 44d3d8e4",
+  "seeds": {
+    "1": {
+      "head": {
+        "control_changed": 14,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 6,
+        "uprising_ended": 0,
+        "uprising_incident": 33,
+        "uprising_support": {},
+        "blockade_started": 2,
+        "blockade_support": {}
+      },
+      "new": {
+        "control_changed": 15,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 6,
+        "uprising_ended": 1,
+        "uprising_incident": 27,
+        "uprising_support": {
+          "-1": 13
+        },
+        "blockade_started": 0,
+        "blockade_support": {}
+      }
+    },
+    "2": {
+      "head": {
+        "control_changed": 13,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 4,
+        "uprising_ended": 0,
+        "uprising_incident": 17,
+        "uprising_support": {},
+        "blockade_started": 1,
+        "blockade_support": {}
+      },
+      "new": {
+        "control_changed": 13,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 4,
+        "uprising_ended": 0,
+        "uprising_incident": 17,
+        "uprising_support": {},
+        "blockade_started": 1,
+        "blockade_support": {}
+      }
+    },
+    "3": {
+      "head": {
+        "control_changed": 20,
+        "systems_changing_3_or_more_times": {
+          "Sluis Van": [
+            [
+              9,
+              "Controlled(Alliance)"
+            ],
+            [
+              70,
+              "Controlled(Empire)"
+            ],
+            [
+              109,
+              "Controlled(Alliance)"
+            ],
+            [
+              144,
+              "Controlled(Empire)"
+            ],
+            [
+              461,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 9,
+        "uprising_ended": 0,
+        "uprising_incident": 55,
+        "uprising_support": {},
+        "blockade_started": 1,
+        "blockade_support": {}
+      },
+      "new": {
+        "control_changed": 19,
+        "systems_changing_3_or_more_times": {
+          "Sluis Van": [
+            [
+              9,
+              "Controlled(Alliance)"
+            ],
+            [
+              70,
+              "Controlled(Empire)"
+            ],
+            [
+              109,
+              "Controlled(Alliance)"
+            ],
+            [
+              144,
+              "Controlled(Empire)"
+            ],
+            [
+              428,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 9,
+        "uprising_ended": 0,
+        "uprising_incident": 59,
+        "uprising_support": {
+          "-1": 38
+        },
+        "blockade_started": 0,
+        "blockade_support": {}
+      }
+    },
+    "7": {
+      "head": {
+        "control_changed": 15,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 7,
+        "uprising_ended": 0,
+        "uprising_incident": 36,
+        "uprising_support": {},
+        "blockade_started": 1,
+        "blockade_support": {}
+      },
+      "new": {
+        "control_changed": 14,
+        "systems_changing_3_or_more_times": {
+          "Bothawui": [
+            [
+              11,
+              "Controlled(Alliance)"
+            ],
+            [
+              191,
+              "Uncontrolled"
+            ],
+            [
+              304,
+              "Controlled(Empire)"
+            ]
+          ]
+        },
+        "uprising_began": 8,
+        "uprising_ended": 1,
+        "uprising_incident": 25,
+        "uprising_support": {
+          "-1": 22
+        },
+        "blockade_started": 1,
+        "blockade_support": {}
+      }
+    },
+    "13": {
+      "head": {
+        "control_changed": 13,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 4,
+        "uprising_ended": 0,
+        "uprising_incident": 23,
+        "uprising_support": {},
+        "blockade_started": 5,
+        "blockade_support": {}
+      },
+      "new": {
+        "control_changed": 14,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 4,
+        "uprising_ended": 0,
+        "uprising_incident": 22,
+        "uprising_support": {
+          "-1": 15
+        },
+        "blockade_started": 6,
+        "blockade_support": {}
+      }
+    },
+    "42": {
+      "head": {
+        "control_changed": 15,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 8,
+        "uprising_ended": 0,
+        "uprising_incident": 36,
+        "uprising_support": {},
+        "blockade_started": 1,
+        "blockade_support": {}
+      },
+      "new": {
+        "control_changed": 17,
+        "systems_changing_3_or_more_times": {
+          "Drall": [
+            [
+              206,
+              "Controlled(Alliance)"
+            ],
+            [
+              208,
+              "Controlled(Empire)"
+            ],
+            [
+              374,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 9,
+        "uprising_ended": 0,
+        "uprising_incident": 36,
+        "uprising_support": {
+          "-1": 19
+        },
+        "blockade_started": 2,
+        "blockade_support": {}
+      }
+    },
+    "47": {
+      "head": {
+        "control_changed": 16,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 10,
+        "uprising_ended": 0,
+        "uprising_incident": 52,
+        "uprising_support": {},
+        "blockade_started": 6,
+        "blockade_support": {}
+      },
+      "new": {
+        "control_changed": 16,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 10,
+        "uprising_ended": 0,
+        "uprising_incident": 52,
+        "uprising_support": {
+          "-1": 24
+        },
+        "blockade_started": 6,
+        "blockade_support": {}
+      }
+    }
+  }
+}

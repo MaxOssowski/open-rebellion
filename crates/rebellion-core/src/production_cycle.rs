@@ -1864,6 +1864,7 @@ mod tests {
             ActiveUprising {
                 started_tick: 1,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
         let suspended = suspended_systems(&BlockadeState::new(), &uprising);

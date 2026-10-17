@@ -5032,6 +5032,7 @@ mod tests {
             crate::uprising::ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
         assert_eq!(code(&world, &uprisings, &research), 0xc);
@@ -5279,6 +5280,7 @@ mod tests {
             crate::uprising::ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
 
@@ -5869,6 +5871,7 @@ mod tests {
             crate::uprising::ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
         assert!(!admits(&world, &revolting, any_side, own));

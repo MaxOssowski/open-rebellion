@@ -780,7 +780,11 @@ fn smuggling_formula(
             - regiments * gnprtb.value(GNPRTB_SMUGGLING_REGIMENT, difficulty))
         .clamp(0, 100);
     }
-    if empire { -percent } else { percent }
+    if empire {
+        -percent
+    } else {
+        percent
+    }
 }
 
 /// `FUN_0050b230`: the system's `SmugglingPercent` for its holder, or 0 for a
@@ -1650,6 +1654,7 @@ mod tests {
                     crate::uprising::ActiveUprising {
                         started_tick: 0,
                         next_incident_tick: None,
+                        next_support_tick: None,
                     },
                 );
             }

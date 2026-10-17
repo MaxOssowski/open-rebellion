@@ -136,10 +136,10 @@ it), slot `+0x2c` resolves the target's record, and slot `+0x30` acts.
 | `0x380` | `0x00669870` | `FUN_0057c2c0` | `0x14..0x20` | target slot `+0x228` | `0x557c17`, `0x557c4b` (unnamed) | not traced |
 | `0x381` | `0x006694b8` | `FUN_005783b0` | `0xf3..0xf4` | `FUN_00530460`: sum `FUN_00528040` over three per-system lists of every same-side system, store side `+0x90/+0x94/+0x98` | `FUN_00532350` | `+0xd4`: min 7169 (30), spread 7170 (30) |
 | `0x382` | `0x00669480` | `FUN_00578060` | `0xf3..0xf4` | `FUN_00530350`: when side `+0x58` < `+0x70` or `+0x74`, set Locked (bit 13, `FUN_004f7950`) on one random same-side existing, completed object passing `FUN_004f2990` | `0x532a07` (unnamed) | `+0xcc`: min 7168 (10) (inference: `+0xcc` is the only other record `FUN_00532350` sets) |
-| `0x383` | `0x006634d8` | `FUN_00565400` | `0x90..0x98` | `FUN_0050ca80`: if system `+0x88` bit 2, clear it (`FUN_0050a4a0(0)`) | `0x5116f6` (unnamed) | not traced |
-| `0x384` | `0x00663510` | `FUN_00565730` | `0x90..0x98` | `FUN_0050caa0`: if `+0x88` bit 2, `FUN_0050c9f0(GNPRTB 7697 (-1), side)` | `FUN_00510f20` | system `+0x54`+`0x20`, not traced |
-| `0x385` | `0x00663548` | `FUN_00565a60` | `0x90..0x98` | `FUN_0050cad0`: if `+0x88` bit 8, side bits = 2 and not bit 2, `FUN_0050c9f0(GNPRTB 7691 (0), side)` | `0x511690` (unnamed) | not traced |
-| `0x386` | `0x00663580` | `FUN_00565d90` | `0x90..0x98` | `FUN_0050cb20`: if `+0x88` bit 5, `FUN_0050c9f0(GNPRTB 7693 (1) or 7695 (-1), side)` from `FUN_00509980`/`FUN_00509890` | `FUN_00511300`, `FUN_005109f0` | system `+0x54`+`0x30`, not traced |
+| `0x383` | `0x006634d8` | `FUN_00565400` | `0x90..0x98` | `FUN_0050ca80`: if system `+0x88` bit 2, clear it (`FUN_0050a4a0(0)`) | `0x5116f6` (unnamed) | system `+0x54`+`0x18`: GNPRTB 7699 (20) min, 7700 (20) spread (`FUN_0050e200`) |
+| `0x384` | `0x00663510` | `FUN_00565730` | `0x90..0x98` | `FUN_0050caa0`: if `+0x88` bit 2, `FUN_0050c9f0(GNPRTB 7697 (-1), side)` | `FUN_00510f20` | system `+0x54`+`0x20`: GNPRTB 7698 (30) min (`FUN_0050e200`); ported 2026-10-17 (`uprising.rs`) |
+| `0x385` | `0x00663548` | `FUN_00565a60` | `0x90..0x98` | `FUN_0050cad0`: if `+0x88` bit 8, side bits = 2 and not bit 2, `FUN_0050c9f0(GNPRTB 7691 (0), side)` | `0x511690` (unnamed) | system `+0x54`+`0x28`: GNPRTB 7692 (1000) min (`FUN_0050e200`) |
+| `0x386` | `0x00663580` | `FUN_00565d90` | `0x90..0x98` | `FUN_0050cb20`: if `+0x88` bit 5, `FUN_0050c9f0(GNPRTB 7693 (1) or 7695 (-1), side)` from `FUN_00509980`/`FUN_00509890` | `FUN_00511300`, `FUN_005109f0` | system `+0x54`+`0x30`: GNPRTB 7694 (30) min (`FUN_0050e200`); `FUN_005109f0` resets it to 7694 or 7696 (30); ported 2026-10-17 (`blockade.rs`) |
 | `0x387` | `0x00669838` | `FUN_0057bf80` | `0x01..0xff` | `FUN_004f7fc0`: arrival; if Autorouting, clear it and the arrival tick (`build-delivery.md`) | `FUN_004f8010`; cancelled by `FUN_004fba10` | object `+0x54`+`0x10`; delay = travel ticks |
 | `0x388` | `0x00669900` | `FUN_0057cca0` | `0x30..0x3c` | `FUN_004ef100`: injury recovery. When character injury `+0x94` (`uprising-incident.md:141`) != 0, reduce it by GNPRTB 2563 (2) or 2564 (1), chosen by `+0xac` bit 2, through `FUN_0053e120`, and store it with `FUN_004ee2d0` (clamped `0..0x7fff`) | `0x4f1b18`, `0x4f1b57` (unnamed) | not traced |
 | `0x389` | `0x00669938` | `FUN_0057cff0` | `0x30..0x3c` | `FUN_00560a30` (149 lines, not read) | `0x4f1b87` (unnamed) | not traced |
@@ -147,7 +147,7 @@ it), slot `+0x2c` resolves the target's record, and slot `+0x30` acts.
 | `0x38b` | `0x00661e50` | `FUN_0054d6c0` | `0x40..0x80` | `FUN_00522a10`: if `+0x68` == 8, set `+0xa4` bit 0 (`FUN_00522130`) | `FUN_00524b70` (twice) | object `+0x54`+`0x20`, not traced |
 | `0x38c` | `0x00661e88` | `FUN_0054da10` | `0x40..0x80` | `FUN_00522a30`: if `+0x68` == 11, own slot `+0xac(0x14)` | `FUN_005229c0` (from `FUN_00522fc0`, `FUN_00524b20`) | object `+0x54`+`0x28`, not traced |
 | `0x38d` | `0x006635b8` | `FUN_005660c0` | `0x90..0x98` | `FUN_0050cb80`: uprising incident on, then off (`FUN_0050aa50`) | `FUN_00510f20` | GNPRTB 7701 (30) + rand 7702 (70) (`uprising.rs`) |
-| `0x38e` | `0x006635f0` | `FUN_00566410` | `0x90..0x98` | `FUN_0050cbe0`: when held (side bits != 3) and `FUN_00559f90` passes, informant incident on, then off (`FUN_0050aac0`) | `FUN_0050c820` (from `FUN_00510820`, `FUN_0050e200`) | object `+0x54`+`0x40`, not traced |
+| `0x38e` | `0x006635f0` | `FUN_00566410` | `0x90..0x98` | `FUN_0050cbe0`: when held (side bits != 3) and `FUN_00559f90` passes, informant incident on, then off (`FUN_0050aac0`) | `FUN_0050c820` (from `FUN_00510820`, `FUN_0050e200`) | system `+0x54`+`0x40`: GNPRTB 7703 (30) min, 7704 (970) spread (`FUN_0050e200`) |
 | `0x38f` | `0x00663628` | `FUN_00566760` | `0xf9..0xfa` | `FUN_00556b50`: disaster on one random existing system (`FUN_0050cdc0`) | `FUN_00556fa0` | GNPRTB 7717 (1) + rand 7718 (399) |
 | `0x390` | `0x00663660` | `FUN_00566a90` | `0xf9..0xfa` | `FUN_00556be0`: resource incident on one random existing system (`FUN_0050cc70`) | `FUN_00556fa0` | GNPRTB 7719 (1) + rand 7720 (499) |
 | `0x392` | `0x00661f48` | `FUN_0054e620` | `0xf8..0xf9` | `FUN_00546f80` -> `FUN_00543af0(1)`: set `+0x58` bit 0 | `FUN_00549d60`, `FUN_0054a800` | GNPRTB 6146 (300) + rand 6147 (100) |
@@ -204,9 +204,11 @@ The event factories' fire slots are not decompiled.
 
 ## Open
 
-- The record delays for the per-system timers `0x383..0x386` and `0x38e`,
-  and for `0x380`, `0x388..0x38c` and `0x394`. They are set before arming,
-  probably at setup, but not traced.
+- The record delays for `0x380`, `0x388..0x38c` and `0x394`. Those of the
+  per-system timers `0x383..0x386`, `0x38d` and `0x38e` are set by the
+  system's setup `FUN_0050e200` (read from its disassembly, 2026-10-17;
+  the decompile drops the record pointers). A spread it does not set is
+  taken to be 0 (hyp: the record constructor zeroes it).
 - `FUN_00560a30` (`0x389`) and `FUN_00546fa0` (`0x393`).
 - Target slot `+0x228` for `0x380`.
 - The meaning of side `+0x58/+0x70/+0x74` (`0x382`) and system `+0x88`

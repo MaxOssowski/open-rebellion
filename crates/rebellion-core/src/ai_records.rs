@@ -2860,6 +2860,7 @@ mod tests {
             crate::uprising::ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
         let manufacturing = crate::manufacturing::ManufacturingState::new();

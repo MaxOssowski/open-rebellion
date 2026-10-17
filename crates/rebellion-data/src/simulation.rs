@@ -960,6 +960,7 @@ mod tests {
                 rebellion_core::uprising::ActiveUprising {
                     started_tick: 0,
                     next_incident_tick: Some(u64::MAX),
+                    next_support_tick: Some(u64::MAX),
                 },
             );
         }

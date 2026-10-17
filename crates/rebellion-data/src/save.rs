@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 61;
+pub const SAVE_VERSION: u32 = 62;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1346,6 +1346,7 @@ mod tests {
             rebellion_core::uprising::ActiveUprising {
                 started_tick: 3,
                 next_incident_tick: Some(45),
+                next_support_tick: Some(46),
             },
         );
         state.uprising.next_disaster_tick = Some(250);
@@ -1356,6 +1357,7 @@ mod tests {
         let revolt = &loaded.uprising.active_uprisings[&system];
         assert_eq!(revolt.started_tick, 3);
         assert_eq!(revolt.next_incident_tick, Some(45));
+        assert_eq!(revolt.next_support_tick, Some(46));
         assert_eq!(loaded.uprising.next_disaster_tick, Some(250));
     }
 

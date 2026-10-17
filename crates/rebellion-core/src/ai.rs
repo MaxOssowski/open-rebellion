@@ -5513,6 +5513,7 @@ mod tests {
             crate::uprising::ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
         assert!(!site(&world, &revolt));
@@ -6510,6 +6511,7 @@ mod tests {
             crate::uprising::ActiveUprising {
                 started_tick: 0,
                 next_incident_tick: None,
+                next_support_tick: None,
             },
         );
         assert_eq!(capacity(&world, &uprisings), 0);

@@ -2183,6 +2183,15 @@ cross-runtime proof remain open
   `v1:6f20d000b67b9f3a` -> `v1:8790fcc409096722`
   (`evidence/2026-10-17-smuggling-percent/`). The timers `0x384` and
   `0x386` (step 2) and the hook cadence (step 3) stand.
+- 2026-10-17, step 2: the support timers are ported. In revolt, timer
+  `0x384` (`FUN_0050caa0`) takes GNPRTB 7697 (-1) from the holder every
+  GNPRTB 7698 (30) days. Under blockade, timer `0x386` (`FUN_0050cb20`)
+  gives the blockader GNPRTB 7693 (1) when it is the more popular side,
+  else 7695 (-1), every GNPRTB 7694 (30) days. The delay records come from
+  `FUN_0050e200`'s disassembly. Save v62; golden final
+  `v1:8790fcc409096722` -> `v1:07eb8ba0a9c5f765`
+  (`evidence/2026-10-17-support-timers/`). The hook cadence (step 3) and
+  `+0x88` bit 11 stand.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

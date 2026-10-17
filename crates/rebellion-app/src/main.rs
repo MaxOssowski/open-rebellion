@@ -2553,6 +2553,20 @@ Some(RailAudience::side(*faction_is_alliance)),
                             Some(RailAudience::Both),
                         ));
                     }
+                    rebellion_core::blockade::BlockadeEvent::SupportShifted {
+                        system,
+                        side,
+                        support_delta,
+                        ..
+                    } => {
+                        // Timer 0x386 only sets the support (FUN_0050c9f0).
+                        rebellion_core::uprising::shift_support(
+                            &mut world,
+                            *system,
+                            *side,
+                            *support_delta,
+                        );
+                    }
                     rebellion_core::blockade::BlockadeEvent::TroopDestroyed {
                         system,
                         troop,
@@ -2630,8 +2644,15 @@ Some(RailAudience::side(*faction_is_alliance)),
             );
             for evt in &uprising_events {
                 use rebellion_core::uprising::UprisingEvent;
+                // Timer 0x384 only sets the support (FUN_0050c9f0); it
+                // posts no message of its own.
+                if let UprisingEvent::SupportEroded { .. } = evt {
+                    rebellion_core::uprising::apply_uprising_event(&mut world, evt);
+                    continue;
+                }
                 let (system, tick) = match evt {
-                    UprisingEvent::UprisingBegan { system, tick }
+                    UprisingEvent::SupportEroded { system, tick, .. }
+                    | UprisingEvent::UprisingBegan { system, tick }
                     | UprisingEvent::UprisingEnded { system, tick }
                     | UprisingEvent::UprisingIncident { system, tick, .. }
                     | UprisingEvent::Disaster { system, tick, .. } => (*system, *tick),
@@ -2666,6 +2687,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         format!("Natural disaster strikes {name}"),
                         MessageCategory::Event,
                     ),
+                    UprisingEvent::SupportEroded { .. } => continue,
                 };
                 // FUN_00499460 and FUN_0048e940; an incident has no class.
                 let picture = match evt {
@@ -2673,7 +2695,9 @@ Some(RailAudience::side(*faction_is_alliance)),
                     UprisingEvent::UprisingEnded { .. } => {
                         pictures::uprising_ends(pictures::system_side(&world, system))
                     }
-                    UprisingEvent::UprisingIncident { .. } => None,
+                    UprisingEvent::UprisingIncident { .. } | UprisingEvent::SupportEroded { .. } => {
+                        None
+                    }
                     UprisingEvent::Disaster { .. } => Some(pictures::system_incident(true)),
                 };
                 // Notification 3, Uprising Message.
