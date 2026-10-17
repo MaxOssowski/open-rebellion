@@ -1,4 +1,5 @@
-//! Uprisings and the disaster incident, as recovered from REBEXE.EXE.
+//! Uprisings, the disaster incident and the resource incident, as recovered
+//! from REBEXE.EXE.
 //!
 //! # Uprising (system `+0x88` bit 2)
 //!
@@ -23,6 +24,14 @@
 //! whose minimum `FUN_0050e200` sets to GNPRTB 7698 (30). Each time it fires
 //! in revolt, `FUN_0050caa0` shifts the holder's support by GNPRTB 7697 (-1)
 //! through `FUN_0050c9f0`.
+//!
+//! # Resource incident (system `+0x88` bit 19)
+//!
+//! A galaxy timer (event `0x390`, `FUN_00556fa0`) fires every GNPRTB 7719 +
+//! rand(0..=7720) ticks. `FUN_00556be0` picks an existing system at random,
+//! and `FUN_0050cc70` draws RESRCTB at rand(0..=99) (`FUN_00559ee0`): its
+//! raw materials or energy fall or rise by one, and a change posts New
+//! Resources or Resources Depleted (notification `0x155`).
 //!
 //! # Disaster (system `+0x88` bit 18)
 //!
@@ -87,6 +96,19 @@ pub(crate) const GNPRTB_INJURY_SPREAD: u16 = 2567;
 const GNPRTB_DISASTER_EROSION: u16 = 7715;
 /// 7716 (`DAT_006bb43c`) = 10: disaster facility destruction percent.
 const GNPRTB_DISASTER_FACILITY_CHANCE: u16 = 7716;
+/// 7719 = 1: resource incident timer minimum (`FUN_00556fa0`).
+const GNPRTB_RESOURCE_MIN: u16 = 7719;
+/// 7720 = 499: resource incident timer spread (`FUN_00556fa0`).
+const GNPRTB_RESOURCE_SPREAD: u16 = 7720;
+/// 7711 (`DAT_006bb4b4`) = 0: raw materials a depletion leaves at least
+/// (`FUN_00559ee0`, code 1).
+const GNPRTB_RAW_FLOOR: u16 = 7711;
+/// 7712 (`DAT_006bb40c`) = 15: raw materials a discovery stays below (code 3).
+const GNPRTB_RAW_CEILING: u16 = 7712;
+/// 7713 (`DAT_006bb3e0`) = 0: energy a depletion leaves at least (code 2).
+const GNPRTB_ENERGY_FLOOR: u16 = 7713;
+/// 7714 (`DAT_006bb488`) = 15: energy a discovery stays below (code 4).
+const GNPRTB_ENERGY_CEILING: u16 = 7714;
 /// 7717 (`DAT_006bb404`) = 1: disaster timer minimum.
 const GNPRTB_DISASTER_MIN: u16 = 7717;
 /// 7718 (`DAT_006bb41c`) = 399: disaster timer spread.
@@ -167,6 +189,17 @@ pub enum UprisingEvent {
         /// Change to the holder's support, in points.
         support_delta: i32,
     },
+    /// The resource incident (event `0x390`, `FUN_0050cc70`) changed a
+    /// system's raw materials or energy by one. `code` is the RESRCTB
+    /// outcome: 1 raw materials depleted, 2 energy depleted, 3 new raw
+    /// materials, 4 new energy.
+    ResourceChanged {
+        system: SystemKey,
+        tick: u64,
+        code: u32,
+        total_energy: u8,
+        raw_materials: u8,
+    },
     /// The disaster incident (event `0x38f`, `FUN_00511930`) struck.
     Disaster {
         system: SystemKey,
@@ -193,6 +226,9 @@ pub struct UprisingState {
     /// Tick the disaster timer (event `0x38f`) next fires; drawn on the
     /// first advance.
     pub next_disaster_tick: Option<u64>,
+    /// Tick the resource incident timer (event `0x390`) next fires; drawn
+    /// on the first advance (v67).
+    pub next_resource_tick: Option<u64>,
 }
 
 /// One system in revolt.
@@ -338,7 +374,16 @@ impl UprisingSystem {
         } else {
             0
         };
-        world.systems.len() + incidents * INCIDENT_ROLLS + disaster
+        // The resource incident: its first delay, or the pick, the RESRCTB
+        // draw and the next delay.
+        let resource = if state.next_resource_tick.is_none() {
+            1
+        } else if due(state.next_resource_tick) {
+            3
+        } else {
+            0
+        };
+        world.systems.len() + incidents * INCIDENT_ROLLS + disaster + resource
     }
 
     /// Start and end uprisings, then fire the uprising and disaster timers
@@ -481,8 +526,79 @@ impl UprisingSystem {
         }
         state.next_disaster_tick = Some(due);
 
+        let resource_delay = |rolls: &mut Rolls<'_>| {
+            timer_delay(
+                param(GNPRTB_RESOURCE_MIN),
+                param(GNPRTB_RESOURCE_SPREAD),
+                rolls,
+            )
+        };
+        let mut due = match state.next_resource_tick {
+            Some(due) => due,
+            None => tick + resource_delay(&mut rolls),
+        };
+        if due <= tick {
+            if let Some(event) = resolve_resource(world, tick, &mut rolls) {
+                events.push(event);
+            }
+            due += resource_delay(&mut rolls);
+        }
+        state.next_resource_tick = Some(due);
+
         events
     }
+}
+
+/// `FUN_00556be0` then `FUN_0050cc70`: one existing system at random, and
+/// RESRCTB at rand(0..=99) (`FUN_00559ee0`, table `0x2b`):
+/// - 1: with a mine of the system's side (`FUN_0052d690`, `0x2c`), raw
+///   materials above GNPRTB 7711 fall by one;
+/// - 2: with any facility of its side (`FUN_00539df0`, `0x20..0x30`),
+///   energy above GNPRTB 7713 falls by one;
+/// - 3: raw materials below GNPRTB 7712 and below the energy rise by one;
+/// - 4: energy below GNPRTB 7714 rises by one.
+///
+/// Only a change pulses bit 19 and stores the values.
+fn resolve_resource(world: &GameWorld, tick: u64, rolls: &mut Rolls<'_>) -> Option<UprisingEvent> {
+    let existing: Vec<SystemKey> = world
+        .systems
+        .iter()
+        .filter(|(_, s)| !s.is_destroyed)
+        .map(|(k, _)| k)
+        .collect();
+    let system = existing[rolls.pick(existing.len())?];
+    let sys = &world.systems[system];
+    let side = holder(sys).unwrap_or(Faction::Neutral);
+    let param = |id| world.gnprtb.value(id, world.difficulty_index);
+    let has_mine = sys.production_facilities.iter().any(|key| {
+        world
+            .production_facilities
+            .get(*key)
+            .is_some_and(|f| f.side == side && f.is_mine)
+    });
+    let has_facility = !facilities(world, sys, Some(side)).is_empty();
+    let empty = MstbTable::new(Vec::new());
+    let code = world
+        .mission_tables
+        .get("RESRCTB")
+        .unwrap_or(&empty)
+        .step_lookup(rolls.draw(99));
+    let mut raw = i32::from(sys.raw_materials);
+    let mut energy = i32::from(sys.total_energy);
+    match code {
+        1 if has_mine && raw > param(GNPRTB_RAW_FLOOR) => raw -= 1,
+        2 if has_facility && energy > param(GNPRTB_ENERGY_FLOOR) => energy -= 1,
+        3 if raw < param(GNPRTB_RAW_CEILING) && raw < energy => raw += 1,
+        4 if energy < param(GNPRTB_ENERGY_CEILING) => energy += 1,
+        _ => return None,
+    }
+    Some(UprisingEvent::ResourceChanged {
+        system,
+        tick,
+        code,
+        total_energy: u8::try_from(energy).unwrap_or(u8::MAX),
+        raw_materials: u8::try_from(raw).unwrap_or(u8::MAX),
+    })
 }
 
 /// `FUN_00586130`: `min + rand(0..=spread)`, at least one tick.
@@ -1054,6 +1170,17 @@ pub fn apply_uprising_event(world: &mut GameWorld, event: &UprisingEvent) {
             support_delta,
             ..
         } => shift_support(world, *system, *side, *support_delta),
+        UprisingEvent::ResourceChanged {
+            system,
+            total_energy,
+            raw_materials,
+            ..
+        } => {
+            if let Some(sys) = world.systems.get_mut(*system) {
+                sys.total_energy = *total_energy;
+                sys.raw_materials = *raw_materials;
+            }
+        }
         UprisingEvent::Disaster {
             system,
             total_energy,
@@ -1139,6 +1266,12 @@ mod tests {
                 (GNPRTB_DISASTER_FACILITY_CHANCE, 10),
                 (GNPRTB_DISASTER_MIN, 1),
                 (GNPRTB_DISASTER_SPREAD, 399),
+                (GNPRTB_RESOURCE_MIN, 1),
+                (GNPRTB_RESOURCE_SPREAD, 499),
+                (GNPRTB_RAW_FLOOR, 0),
+                (GNPRTB_RAW_CEILING, 15),
+                (GNPRTB_ENERGY_FLOOR, 0),
+                (GNPRTB_ENERGY_CEILING, 15),
                 (GNPRTB_SUBDUE_OWN_BASE, 1),
                 (GNPRTB_SUBDUE_OWN_SPREAD, 19),
                 (GNPRTB_SUBDUE_NEUTRAL_BASE, 1),
@@ -1247,6 +1380,145 @@ mod tests {
         mine
     }
 
+    /// The resource incident at `world_with`'s only system, with its raw
+    /// materials and energy, RESRCTB's rows and the timer due on day 5.
+    /// Returns the change, if any.
+    fn resource_incident(
+        world: &mut GameWorld,
+        system: SystemKey,
+        raw: u8,
+        energy: u8,
+        table_roll: f64,
+    ) -> Option<(u32, u8, u8)> {
+        world.systems[system].raw_materials = raw;
+        world.systems[system].total_energy = energy;
+        world.mission_tables.insert(
+            "RESRCTB".into(),
+            table(&[(0, 1), (25, 2), (50, 3), (75, 4)]),
+        );
+        let mut state = UprisingState {
+            next_disaster_tick: Some(u64::MAX),
+            next_resource_tick: Some(5),
+            ..UprisingState::default()
+        };
+        let events = UprisingSystem::advance(
+            &mut state,
+            world,
+            &EconomyState::default(),
+            &MissionState::new(),
+            &at(5),
+            &[0.0, table_roll, 0.0],
+        );
+        events.into_iter().find_map(|event| match event {
+            UprisingEvent::ResourceChanged {
+                code,
+                raw_materials,
+                total_energy,
+                ..
+            } => Some((code, raw_materials, total_energy)),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn each_resrctb_quarter_moves_raw_materials_or_energy_by_one() {
+        // FUN_00559ee0: RESRCTB (0x2b) at rand(0..=99): 1 raw - 1 with a mine
+        // of the side, 2 energy - 1 with a facility of the side, 3 raw + 1
+        // below GNPRTB 7712 (15) and the energy, 4 energy + 1 below 7714 (15).
+        let (mut world, system) = world_with(Faction::Alliance, 0.5);
+        add_mine(&mut world, system, true);
+        assert_eq!(
+            resource_incident(&mut world, system, 4, 4, 0.0),
+            Some((1, 3, 4))
+        );
+        assert_eq!(
+            resource_incident(&mut world, system, 4, 4, 0.25),
+            Some((2, 4, 3))
+        );
+        assert_eq!(
+            resource_incident(&mut world, system, 4, 5, 0.5),
+            Some((3, 5, 5))
+        );
+        assert_eq!(
+            resource_incident(&mut world, system, 4, 4, 0.75),
+            Some((4, 4, 5))
+        );
+    }
+
+    #[test]
+    fn a_resource_incident_that_changes_nothing_posts_nothing() {
+        // FUN_0050cc70 pulses bit 19 only when a value changed.
+        let (mut world, system) = world_with(Faction::Alliance, 0.5);
+        // No mine and no facility of the side.
+        assert_eq!(resource_incident(&mut world, system, 4, 4, 0.0), None);
+        assert_eq!(resource_incident(&mut world, system, 4, 4, 0.25), None);
+        // The other side's mine does not count (FUN_0052d690 takes the
+        // system's side).
+        add_mine(&mut world, system, false);
+        assert_eq!(resource_incident(&mut world, system, 4, 4, 0.0), None);
+        add_mine(&mut world, system, true);
+        // GNPRTB 7711 and 7713 (0) floors, 7712 and 7714 (15) ceilings, and
+        // raw materials must stay below the energy.
+        assert_eq!(resource_incident(&mut world, system, 0, 4, 0.0), None);
+        assert_eq!(resource_incident(&mut world, system, 4, 0, 0.25), None);
+        assert_eq!(resource_incident(&mut world, system, 15, 16, 0.5), None);
+        assert_eq!(resource_incident(&mut world, system, 4, 4, 0.5), None);
+        assert_eq!(resource_incident(&mut world, system, 4, 15, 0.75), None);
+    }
+
+    #[test]
+    fn the_resource_timer_waits_one_to_five_hundred_ticks_and_counts_its_rolls() {
+        // FUN_00556fa0: GNPRTB 7719 (1) + rand(0..=7720 (499)); the budget
+        // holds its first delay, or its pick, table draw and next delay.
+        let (world, system) = world_with(Faction::Alliance, 0.5);
+        let mut state = in_revolt(system, u64::MAX);
+        state.next_resource_tick = None;
+        assert_eq!(UprisingSystem::roll_budget(&state, &world, 1), 1 + 1);
+        UprisingSystem::advance(
+            &mut state,
+            &world,
+            &EconomyState::default(),
+            &MissionState::new(),
+            &at(1),
+            &[0.999_999],
+        );
+        assert_eq!(state.next_resource_tick, Some(501));
+        assert_eq!(UprisingSystem::roll_budget(&state, &world, 501), 1 + 3);
+        // Fired, it waits again from that day: 1 + 250 (0.5 of the 500
+        // values 0..=499).
+        UprisingSystem::advance(
+            &mut state,
+            &world,
+            &EconomyState::default(),
+            &MissionState::new(),
+            &at(501),
+            &[0.0, 0.0, 0.5],
+        );
+        assert_eq!(state.next_resource_tick, Some(752));
+    }
+
+    #[test]
+    fn a_resource_change_sets_the_system_s_values() {
+        let (mut world, system) = world_with(Faction::Alliance, 0.5);
+        apply_uprising_event(
+            &mut world,
+            &UprisingEvent::ResourceChanged {
+                system,
+                tick: 5,
+                code: 4,
+                total_energy: 5,
+                raw_materials: 4,
+            },
+        );
+        assert_eq!(
+            (
+                world.systems[system].raw_materials,
+                world.systems[system].total_energy
+            ),
+            (4, 5)
+        );
+    }
+
     fn short_of_troops(system: SystemKey, surplus: i32) -> EconomyState {
         let mut economy = EconomyState::default();
         economy
@@ -1261,6 +1533,7 @@ mod tests {
     fn in_revolt(system: SystemKey, next_incident_tick: u64) -> UprisingState {
         let mut state = UprisingState {
             next_disaster_tick: Some(u64::MAX),
+            next_resource_tick: Some(u64::MAX),
             ..UprisingState::default()
         };
         state.active_uprisings.insert(

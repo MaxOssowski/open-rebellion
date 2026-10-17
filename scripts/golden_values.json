@@ -1755,7 +1755,7 @@
         "min": 0,
         "max": 50,
         "baseline_observed": 0,
-        "description": "K3 EVT_RESOURCE_DISCOVERY (0x155) fires when a new mine comes online. Zero in baseline because the seeded galaxy has stable facilities for the whole run; max=50 allows for Dabora 3 story-driven discoveries."
+        "description": "One record per resource incident that changes a system (event 0x390 every 1 to 500 days, RESRCTB; uprising.rs resolve_resource), notification 0x155."
       },
       "maintenance_shortfall": {
         "min": 0,

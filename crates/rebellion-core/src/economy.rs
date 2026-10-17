@@ -75,36 +75,6 @@ const GNPRTB_SUPPORT_CONTROL_THRESHOLD: u16 = 7760;
 // Economy state
 // ---------------------------------------------------------------------------
 
-/// Incident state flags (original system `+0x88` bits 16-19).
-/// When a flag turns on between ticks, the corresponding incident message fires.
-///
-/// In the original each incident is a one-tick pulse raised by a timer event,
-/// and the system vtable (`0x0065e640`) holds each incident's effect.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "These independent flags preserve the existing state and serialization model."
-)]
-pub struct IncidentFlags {
-    /// Bit 16 (0x10000), `FUN_0050aa50`; views get
-    /// `SystemUprisingIncidentNotif` (`FUN_00512580`). Raised by
-    /// `UprisingSystem`; always clear here, kept for the save layout.
-    pub uprising: bool,
-    /// Bit 17 (0x20000), `FUN_0050aac0`; views get
-    /// `SystemInformantIncidentNotif` (`FUN_005125d0`). Raised by the
-    /// informant timer (`informant.rs`); always clear here, kept for the
-    /// save layout.
-    pub informant: bool,
-    /// Bit 18 (0x40000), `FUN_0050ab30`; views get
-    /// `SystemDisasterIncidentNotif` (`FUN_00512620`). Raised by
-    /// `UprisingSystem`; always clear here, kept for the save layout.
-    pub disaster: bool,
-    /// Bit 19 (0x80000), `FUN_0050aba0`; views get
-    /// `SystemResourceIncidentNotif` (`FUN_00512670`). Our overcap trigger
-    /// has no source (F-029).
-    pub resource: bool,
-}
-
 /// Fleet posture summary for a system (`FUN_0050bc60`/`FUN_0050be00`/`FUN_0050c350`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FleetPosture {
@@ -238,9 +208,6 @@ pub struct SystemEconomy {
     pub raw_material_overcapped: bool,
     /// Derived troop/fleet/shipyard summary (functions 9-15).
     pub summary: SystemSummary,
-    /// Incident state flags (original system `+0x88` bits 16-19).
-    /// When one turns on from the previous tick, its incident message fires.
-    pub incident_flags: IncidentFlags,
     /// System `+0x88` bit 9 (`FUN_0050bb00`): held, populated, in revolt, and
     /// not short of troops.
     pub uprising_visible: bool,
@@ -250,10 +217,6 @@ pub struct SystemEconomy {
     /// `world::System`. No `#[serde(default)]`: v8 is the migration
     /// boundary (see Dabora 1 cleanup — bincode is positional).
     pub last_support_tier: SupportTier,
-    /// True once the controlling faction has established this system in
-    /// a prior tick. Suppresses `EVT_RESOURCE_DISCOVERY` (0x155) on the
-    /// very first eval — the galaxy seed itself is not a "discovery".
-    pub resource_discovery_armed: bool,
 }
 
 impl Default for SystemEconomy {
@@ -269,10 +232,8 @@ impl Default for SystemEconomy {
             energy_overcapped: false,
             raw_material_overcapped: false,
             summary: SystemSummary::default(),
-            incident_flags: IncidentFlags::default(),
             uprising_visible: false,
             last_support_tier: SupportTier::default(),
-            resource_discovery_armed: false,
         }
     }
 }
@@ -313,11 +274,6 @@ pub enum EconomyEvent {
         system: SystemKey,
         new_control: ControlKind,
     },
-    /// Incident state changed — fire the corresponding notification (`FUN_0050b800` + `FUN_0050e5b0`).
-    IncidentTriggered {
-        system: SystemKey,
-        incident_type: &'static str,
-    },
     /// Energy allocated exceeds system capacity (`FUN_0050ad60`).
     EnergyOvercapped {
         system: SystemKey,
@@ -338,11 +294,6 @@ pub enum EconomyEvent {
         from: SupportTier,
         to: SupportTier,
     },
-    /// K3: `EVT_RESOURCE_DISCOVERY` (0x155) — a new mine came online at
-    /// a previously-seeded system. Detected as a positive delta on
-    /// `eco.raw_material_allocated` (after the `resource_discovery_armed`
-    /// gate disarms the seed tick).
-    ResourceDiscovered { system: SystemKey, new_output: u32 },
 }
 
 // ---------------------------------------------------------------------------
@@ -418,7 +369,6 @@ impl EconomySystem {
             // 0a. Resource capacity enforcement (FUN_0050ad60 + FUN_0050ad80 + FUN_0050b0b0).
             // Sum facility/mine outputs and cap at system limits.
             let eco = state.per_system.entry(sys_key).or_default();
-            let prev_raw_allocated = eco.raw_material_allocated;
             let (energy_alloc, raw_alloc) = calculate_resource_allocation(world, sys);
             let energy_cap = u32::from(sys.total_energy);
             let raw_cap = u32::from(sys.raw_materials);
@@ -427,19 +377,6 @@ impl EconomySystem {
             eco.energy_overcapped = energy_alloc > energy_cap;
             eco.raw_material_allocated = raw_alloc.min(raw_cap);
             eco.raw_material_overcapped = raw_alloc > raw_cap;
-
-            // K3: EVT_RESOURCE_DISCOVERY (0x155).
-            // Fire when a new mine comes online (capped raw material output
-            // strictly increases). Suppress on the first armed pass — the
-            // galaxy seed itself is not a "discovery".
-            let new_raw = eco.raw_material_allocated;
-            if eco.resource_discovery_armed && new_raw > prev_raw_allocated {
-                events.push(EconomyEvent::ResourceDiscovered {
-                    system: sys_key,
-                    new_output: new_raw,
-                });
-            }
-            eco.resource_discovery_armed = true;
 
             if eco.energy_overcapped {
                 events.push(EconomyEvent::EnergyOvercapped {
@@ -554,23 +491,10 @@ impl EconomySystem {
             // 6. Troop/fleet summary propagation (FUN_0050b500 through FUN_0050b8e0).
             eco.summary = compute_system_summary(world, sys, &presence, eco.garrison_requirement);
 
-            // 7. Incident state + uprising visibility (FUN_0050bb00).
-            // The uprising and disaster incidents are timer events that
-            // `UprisingSystem` raises (F-026), and the informant incident is
-            // timer 0x38e (`informant.rs`). The resource trigger below has
-            // no recovered source (F-029).
-            let new_flags = evaluate_incident_flags(eco);
-            let old_flags = &eco.incident_flags;
-            if new_flags.resource && !old_flags.resource {
-                // NOTE: this is the legacy "grid overcap" incident, not K3.
-                // K3 (EVT_RESOURCE_DISCOVERY) fires above on positive
-                // raw_material_allocated deltas.
-                events.push(EconomyEvent::IncidentTriggered {
-                    system: sys_key,
-                    incident_type: "resource",
-                });
-            }
-            eco.incident_flags = new_flags;
+            // 7. Uprising visibility (FUN_0050bb00). The incidents are
+            // timer events: the uprising, disaster and resource incidents
+            // are raised by `UprisingSystem`, the informant incident by
+            // `informant.rs`.
 
             // FUN_0050bb00 sets system +0x88 bit 9 for a populated, held
             // system in revolt whose troop surplus is not negative.
@@ -1023,26 +947,6 @@ pub(crate) fn death_star_nearby(world: &GameWorld, sys: &crate::world::System) -
                 .get(ship.class)
                 .is_some_and(crate::world::CapitalShipClass::is_death_star)
         })
-}
-
-// ---------------------------------------------------------------------------
-// Incident evaluation
-// ---------------------------------------------------------------------------
-
-/// Evaluate the resource incident flag for a system.
-///
-/// The resource trigger has no recovered source (audit finding F-029): the
-/// original raises the resource incident from a galaxy timer (event
-/// `0x390`, `FUN_00556be0`). The informant incident is the per-system timer
-/// `0x38e` (`informant.rs`); the uprising and disaster incidents are raised
-/// by `UprisingSystem`. Their flags stay clear.
-fn evaluate_incident_flags(eco: &SystemEconomy) -> IncidentFlags {
-    IncidentFlags {
-        uprising: false,
-        informant: false,
-        disaster: false,
-        resource: eco.energy_overcapped || eco.raw_material_overcapped,
-    }
 }
 
 /// `FUN_0050b2c0` -> `FUN_00559c10`: system `+0x70` `ProductionModifier`,
@@ -2836,7 +2740,7 @@ mod tests {
     // -----------------------------------------------------------------------
     // Knesset Shamash-Bet Dabora 2 #K7: parameterized notification
     // idempotency tests for the state-transition events (K1
-    // SupportChanged, K3 ResourceDiscovered) —
+    // SupportChanged) —
     // each must fire exactly ONCE per transition, not once per tick. K2's
     // support-based disaster was removed: the disaster is a galaxy timer
     // event (FUN_00556b50) that UprisingSystem raises.
@@ -2920,56 +2824,5 @@ mod tests {
             .filter(|e| matches!(e, EconomyEvent::SupportChanged { .. }))
             .count();
         assert_eq!(count2, 0, "K1: unchanged-tier second tick must not re-fire");
-    }
-
-    #[test]
-    fn k3_resource_discovery_fires_on_positive_delta_not_on_seed() {
-        // First tick (armed=false at start): no emission because the
-        // seeded mine count isn't a "discovery". Second tick (now
-        // armed): still no emission because nothing changed.
-        let (mut world, sys_key) = make_singleton_world(
-            0.5,
-            0.5,
-            ControlKind::Controlled(crate::dat::Faction::Alliance),
-            true,
-        );
-        let mut state = EconomyState::default();
-        let events1 = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
-        let count1 = events1
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::ResourceDiscovered { .. }))
-            .count();
-        assert_eq!(
-            count1, 0,
-            "K3: seed tick must NOT emit ResourceDiscovered (not armed)"
-        );
-
-        // Seed a new mine. Second tick should detect the positive delta.
-        let mine = world
-            .production_facilities
-            .insert(crate::world::ProductionFacilityInstance {
-                class_dat_id: DatId(0x2200_0001),
-                is_mine: true,
-                side: crate::dat::Faction::Alliance,
-            });
-        world.systems[sys_key].production_facilities.push(mine);
-
-        let events2 = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 2 }], 2);
-        let count2 = events2
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::ResourceDiscovered { .. }))
-            .count();
-        assert_eq!(
-            count2, 1,
-            "K3: new mine should trigger exactly one ResourceDiscovered"
-        );
-
-        // Third tick (no change): should not re-fire.
-        let events3 = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 3 }], 2);
-        let count3 = events3
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::ResourceDiscovered { .. }))
-            .count();
-        assert_eq!(count3, 0, "K3: stable resource count must not re-fire");
     }
 }

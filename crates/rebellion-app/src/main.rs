@@ -1724,24 +1724,6 @@ async fn main() {
                     }
                     // Knesset Shamash-Bet Dabora 2 notification events —
                     // surface them in the interactive message log.
-                    EconomyEvent::ResourceDiscovered { system, new_output } => {
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 0x20, System Resources Messages.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                economy_tick,
-                                format!("New resources discovered at {name} ({new_output} units)"),
-                                MessageCategory::Event,
-                                *system,
-                            )
-                            .with_picture_if(Some(pictures::system_incident(false))),
-                            MessageRail::Resource,
-                            system_audience(&world, *system),
-                        ));
-                    }
                     _ => {} // Telemetry-only events (collection rate, garrison, incidents, support change tier)
                 }
             }
@@ -2749,8 +2731,34 @@ async fn main() {
                     rebellion_core::uprising::apply_uprising_event(&mut world, evt);
                     continue;
                 }
+                // Notification 0x155, New Resources or Resources Depleted
+                // (FUN_0048e940, TEXTSTRA 0x7194-0x719a).
+                if let UprisingEvent::ResourceChanged {
+                    system, tick, code, ..
+                } = evt
+                {
+                    let name = world
+                        .systems
+                        .get(*system)
+                        .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                    let text = match code {
+                        1 => format!("Resources Depleted on {name}: operations on {name} have reduced the number of raw materials on that system."),
+                        2 => format!("Resources Depleted on {name}: operations on {name} have reduced the system energy available."),
+                        3 => format!("New Resources on {name}: new sources of raw materials have been discovered on {name}."),
+                        _ => format!("New Resources on {name}: new sources of system energy have been discovered on {name}."),
+                    };
+                    msg_log.push(filed(
+                        GameMessage::at_system(*tick, text, MessageCategory::Event, *system)
+                            .with_picture_if(Some(pictures::system_incident(false))),
+                        MessageRail::Resource,
+                        system_audience(&world, *system),
+                    ));
+                    rebellion_core::uprising::apply_uprising_event(&mut world, evt);
+                    continue;
+                }
                 let (system, tick) = match evt {
-                    UprisingEvent::SupportEroded { system, tick, .. }
+                    UprisingEvent::ResourceChanged { system, tick, .. }
+                    | UprisingEvent::SupportEroded { system, tick, .. }
                     | UprisingEvent::UprisingBegan { system, tick }
                     | UprisingEvent::UprisingEnded { system, tick }
                     | UprisingEvent::UprisingIncident { system, tick, .. }
@@ -2786,7 +2794,9 @@ async fn main() {
                         format!("Natural disaster strikes {name}"),
                         MessageCategory::Event,
                     ),
-                    UprisingEvent::SupportEroded { .. } => continue,
+                    UprisingEvent::SupportEroded { .. } | UprisingEvent::ResourceChanged { .. } => {
+                        continue
+                    }
                 };
                 // FUN_00499460 and FUN_0048e940; an incident has no class.
                 let picture = match evt {
@@ -2794,9 +2804,9 @@ async fn main() {
                     UprisingEvent::UprisingEnded { .. } => {
                         pictures::uprising_ends(pictures::system_side(&world, system))
                     }
-                    UprisingEvent::UprisingIncident { .. } | UprisingEvent::SupportEroded { .. } => {
-                        None
-                    }
+                    UprisingEvent::UprisingIncident { .. }
+                    | UprisingEvent::SupportEroded { .. }
+                    | UprisingEvent::ResourceChanged { .. } => None,
                     UprisingEvent::Disaster { .. } => Some(pictures::system_incident(true)),
                 };
                 // Notification 3, Uprising Message.

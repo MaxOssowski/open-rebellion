@@ -1598,6 +1598,16 @@ cross-runtime proof remain open
   trigger is gone. Save v66; golden final `v1:21ecf34ac9e1f828` ->
   `v1:e212b88bcf82db21` (`evidence/2026-10-17-informant-incident/`). The
   resource incident stands.
+- 2026-10-17: the resource incident is ported (`uprising.rs`,
+  `resolve_resource`). Event `0x390` every GNPRTB 7719 (1) + rand(0..=7720
+  (499)) days picks a random existing system (`FUN_00556be0`), and RESRCTB
+  at rand(0..=99) (`FUN_00559ee0`) moves its raw materials or energy by one
+  within GNPRTB 7711-7714, posting New Resources or Resources Depleted
+  (`0x155`). The economy's overcap incident and its "resource discovery"
+  on rising output are gone. Save v67; golden final `v1:e212b88bcf82db21`
+  -> `v1:c02d4ee44749e195` (`evidence/2026-10-17-resource-incident/`).
+  Both incidents of this finding now follow their recovered timers and
+  tables.
 - Acceptance: both incidents follow their recovered timers and tables with
   failing-without tests.
 

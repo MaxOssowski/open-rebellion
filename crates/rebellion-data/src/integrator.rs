@@ -550,19 +550,6 @@ impl PerceptionIntegrator {
                         }),
                     );
                 }
-                EconomyEvent::IncidentTriggered {
-                    system,
-                    incident_type,
-                } => {
-                    self.emit(
-                        SYS_ECONOMY,
-                        EVT_ECONOMY_TICK,
-                        serde_json::json!({
-                            "system": sys_name(world, *system),
-                            "incident": incident_type,
-                        }),
-                    );
-                }
                 EconomyEvent::ControlResolved {
                     system,
                     new_control,
@@ -624,17 +611,6 @@ impl PerceptionIntegrator {
                             "system": sys_name(world, *system),
                             "from": format!("{:?}", from),
                             "to": format!("{:?}", to),
-                        }),
-                    );
-                }
-                EconomyEvent::ResourceDiscovered { system, new_output } => {
-                    // K3: EVT_RESOURCE_DISCOVERY (0x155).
-                    self.emit(
-                        SYS_ECONOMY,
-                        EVT_RESOURCE_DISCOVERY,
-                        serde_json::json!({
-                            "system": sys_name(world, *system),
-                            "new_output": new_output,
                         }),
                     );
                 }
@@ -1458,6 +1434,22 @@ impl PerceptionIntegrator {
                     serde_json::json!({
                         "system": sys_name(world, *system),
                         "support_delta": support_delta,
+                    }),
+                ),
+                UprisingEvent::ResourceChanged {
+                    system,
+                    tick,
+                    code,
+                    total_energy,
+                    raw_materials,
+                } => (
+                    *tick,
+                    EVT_RESOURCE_DISCOVERY,
+                    serde_json::json!({
+                        "system": sys_name(world, *system),
+                        "code": code,
+                        "total_energy": total_energy,
+                        "raw_materials": raw_materials,
                     }),
                 ),
                 UprisingEvent::UprisingBegan { system, tick } => (

@@ -1,0 +1,132 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against 1cc835d7",
+  "seeds": {
+    "1": {
+      "head": {
+        "old_overcap_incidents": 3,
+        "old_resource_discoveries": 16,
+        "resource_incidents_by_code": {},
+        "control_changed": 22,
+        "manufacturing_complete": 423
+      },
+      "new": {
+        "old_overcap_incidents": 0,
+        "old_resource_discoveries": 0,
+        "resource_incidents_by_code": {
+          "1": 1,
+          "2": 1
+        },
+        "control_changed": 31,
+        "manufacturing_complete": 406
+      }
+    },
+    "2": {
+      "head": {
+        "old_overcap_incidents": 3,
+        "old_resource_discoveries": 14,
+        "resource_incidents_by_code": {},
+        "control_changed": 15,
+        "manufacturing_complete": 389
+      },
+      "new": {
+        "old_overcap_incidents": 0,
+        "old_resource_discoveries": 0,
+        "resource_incidents_by_code": {
+          "4": 1
+        },
+        "control_changed": 23,
+        "manufacturing_complete": 378
+      }
+    },
+    "3": {
+      "head": {
+        "old_overcap_incidents": 4,
+        "old_resource_discoveries": 27,
+        "resource_incidents_by_code": {},
+        "control_changed": 27,
+        "manufacturing_complete": 450
+      },
+      "new": {
+        "old_overcap_incidents": 0,
+        "old_resource_discoveries": 0,
+        "resource_incidents_by_code": {
+          "2": 1
+        },
+        "control_changed": 31,
+        "manufacturing_complete": 447
+      }
+    },
+    "7": {
+      "head": {
+        "old_overcap_incidents": 1,
+        "old_resource_discoveries": 9,
+        "resource_incidents_by_code": {},
+        "control_changed": 24,
+        "manufacturing_complete": 323
+      },
+      "new": {
+        "old_overcap_incidents": 0,
+        "old_resource_discoveries": 0,
+        "resource_incidents_by_code": {
+          "4": 3
+        },
+        "control_changed": 16,
+        "manufacturing_complete": 339
+      }
+    },
+    "13": {
+      "head": {
+        "old_overcap_incidents": 3,
+        "old_resource_discoveries": 10,
+        "resource_incidents_by_code": {},
+        "control_changed": 9,
+        "manufacturing_complete": 489
+      },
+      "new": {
+        "old_overcap_incidents": 0,
+        "old_resource_discoveries": 0,
+        "resource_incidents_by_code": {
+          "2": 1,
+          "4": 1
+        },
+        "control_changed": 26,
+        "manufacturing_complete": 493
+      }
+    },
+    "42": {
+      "head": {
+        "old_overcap_incidents": 2,
+        "old_resource_discoveries": 14,
+        "resource_incidents_by_code": {},
+        "control_changed": 17,
+        "manufacturing_complete": 372
+      },
+      "new": {
+        "old_overcap_incidents": 0,
+        "old_resource_discoveries": 0,
+        "resource_incidents_by_code": {},
+        "control_changed": 20,
+        "manufacturing_complete": 382
+      }
+    },
+    "47": {
+      "head": {
+        "old_overcap_incidents": 3,
+        "old_resource_discoveries": 12,
+        "resource_incidents_by_code": {},
+        "control_changed": 16,
+        "manufacturing_complete": 412
+      },
+      "new": {
+        "old_overcap_incidents": 0,
+        "old_resource_discoveries": 0,
+        "resource_incidents_by_code": {
+          "3": 1,
+          "4": 2
+        },
+        "control_changed": 20,
+        "manufacturing_complete": 416
+      }
+    }
+  }
+}

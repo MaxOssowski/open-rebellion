@@ -180,10 +180,24 @@ non-zero. `FUN_00511930` then:
 ## Other incidents
 
 - Resource (bit 19): event 0x390 every `G7719 + rand[0..=G7720]` (1..500)
-  ticks, `FUN_00556be0` -> `FUN_0050cc70` (RESRCTB, `FUN_00559ee0`).
+  ticks, `FUN_00556be0` -> `FUN_0050cc70` (RESRCTB, `FUN_00559ee0`). Read and
+  ported 2026-10-17 (`uprising.rs`, `resolve_resource`):
+  - `FUN_00556be0` counts the existing systems (`+0x50` bit `0x40`) and
+    picks one with `FUN_0053e290(count - 1)`.
+  - `FUN_0050cc70` notes whether the system's side has a mine
+    (`FUN_0052d690`, `0x2c..0x2d`) and any facility (`FUN_00539df0`,
+    `0x20..0x30`), and calls `FUN_00559ee0(&raw +0x64, &energy +0x5c)`.
+  - `FUN_00559ee0` looks RESRCTB (table `0x2b`; rows 0/25/50/75 give codes
+    1..4) up at `FUN_0053e2e0()` (0..99): 1, with a mine, raw above GNPRTB
+    7711 (0) falls by one; 2, with a facility, energy above 7713 (0) falls by
+    one; 3, raw below 7712 (15) and below the energy rises by one; 4, energy
+    below 7714 (15) rises by one.
+  - Only a change pulses bit 19, which posts notification `0x155` (New
+    Resources / Resources Depleted, TEXTSTRA `0x7194`..`0x719a`, picture
+    `0x3ea`), and stores the values.
 - Informant (bit 17): event 0x38e on a per-system timer (`+0x40`, GNPRTB
   7703/7704), `FUN_0050cbe0` rolls support, then `FUN_00511860` ->
-  `FUN_0050d510` (INFORMTB).
+  `FUN_0050d510` (INFORMTB). Ported 2026-10-17 (`informant-incident.md`).
 
 ## Still open
 
