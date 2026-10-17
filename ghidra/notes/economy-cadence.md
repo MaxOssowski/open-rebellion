@@ -51,23 +51,68 @@ value changes.
   support with it.
 - port: the economy loop still skips unpopulated systems, so a system held
   only by regiments keeps 0.
-- port: bit 11 of `+0x88` is still the port's `strong_support` guess.
+- Bit 11 of `+0x88` is DeathStarNearby (see "Bit 11" below), ported
+  2026-10-17 in place of the port's support guess.
 
 ## The hooks
 
-They run when a system's inputs change. Who calls each one is still open
-(`timer-scheduler.md`).
+Each System setter notifies a master slot (`setters.tsv`), and the System
+vtable `0x0065e640` holds that slot's hook (`class-slots.tsv`). Read
+2026-10-17; the earlier reading had the first one as the regiments' hook.
 
-- `FUN_005109f0`, the regiments changing (slot `+0x1d0`): `FUN_0050b610`
-  (holder), `FUN_0050b5a0` (TroopRegRequired), `FUN_0050b230`
-  (SmugglingPercent) and `FUN_0050b2c0` (ProductionModifier). While the
-  system is blockaded (`+0x88` bit 5) it arms timer `0x386`.
+| Slot | Field that changed | Hook | It recomputes |
+|---|---|---|---|
+| `+0x1d0` | `+0x58` support (`System_SetLoyalty`) | `FUN_005109f0` | holder (`FUN_0050b610`), TroopRegRequired (`FUN_0050b5a0`), SmugglingPercent (`FUN_0050b230`), ProductionModifier (`FUN_0050b2c0`); while blockaded, the `0x386` minimum: GNPRTB 7694 when the blockader is the more popular side, else 7696 |
+| `+0x1d4` | `+0x5c` energy | `FUN_00510ae0` | `FUN_0050ad60`, `FUN_0050ad80` |
+| `+0x1dc` | `+0x64` raw material | `FUN_00510b20` | `FUN_0050ad60`, `FUN_0050b0b0` |
+| `+0x1e8` | `+0x70` ProductionModifier | `FUN_00510b60` | `FUN_0050c2b0` |
+| `+0x200` | `+0x7c` TroopRegSurplus | `FUN_00510cf0` | uprising start (`FUN_0050b800`), `+0x88` bit 9 (`FUN_0050bb00`) |
+| `+0x204` | `+0x80` TroopRegRequired | `FUN_00510d40` | TroopRegSurplus (`FUN_0050b500`) |
+| `+0x208` | `+0x84` control word | `FUN_00510d70` | when the holder changes: bit `0x2000` (held by support alone), `FUN_004f6f40(holder)`, event `0x31b` |
+| `+0x20c` | `+0x88` bit 0 populated | `FUN_00510e30` | when set, the support (100 to the holder, or the middle for no side); holder, TroopRegRequired, `FUN_0050ac10(1)`, `FUN_0050b890` |
+| `+0x214` | bit 2 uprising | `FUN_00510f20` | `FUN_0050bbb0`, `FUN_0050c180`..`FUN_0050c1e0`, TroopRegRequired, `FUN_0050ba90`, `FUN_0050b4d0`, `FUN_0050bb00`; event `0x303`; arms `0x384`, `0x38d` |
+| `+0x220` | bit 5 blockade | `FUN_00511300` | see below; arms `0x386` |
+| `+0x238` | bit 11 DeathStarNearby | `FUN_00511740` | TroopRegRequired, SmugglingPercent |
+
+A unit joining or leaving the system runs its slot `+0xd0`,
+`FUN_00508660`, by family: regiments (`0x10..0x13`) recompute the holder,
+`FUN_0050ba90` and TroopRegSurplus (`FUN_0050b500`); fleets (`0x08..0x0f`)
+and squadrons (`0x1c..0x1f`) the postures and side presence; facilities
+their own fields. None of these recompute SmugglingPercent or
+ProductionModifier.
+
+So the original recomputes:
+- SmugglingPercent only when the support or bit 11 changes (and in
+  `FUN_00510820`), not when ships, squadrons or regiments come or go;
+- TroopRegRequired when the support, the populated bit, the uprising bit or
+  bit 11 changes;
+- the holder when the support, the regiments or the populated bit changes.
+
+## Bit 11: DeathStarNearby
+
+`System_SetDeathStarNearby` (`FUN_0050a890`) writes `+0x88` bit `0x800`.
+Its only caller, `FUN_005178b0`, walks the sectors (`0x80..0x90`). For
+each one it looks for an active (`+0x50` bit 0) Death Star (`0x18..0x1c`)
+whose system lies in that sector (`FUN_00518690`: the system's parent
+`+0x1c`), then sets the bit on every system of the sector to the answer.
+`FUN_00514510` and `FUN_00514a60` run it when objects move.
+The Death Star's side does not matter.
+
+The bit doubles the Empire's regiments in the smuggling percent
+(`FUN_00559b60`) and in the uprising score (`FUN_00559ce0`), halves the
+Empire's garrison requirement (`FUN_00559fe0`), and halves support shifts
+that favour the Alliance or hurt the Empire (`FUN_00559be0`). The port had
+read it as "the holder's support is above GNPRTB 7732 (40)".
+
+Port (2026-10-17): `economy::death_star_nearby` computes it from the
+fleets at the sector's systems when read; a fleet in hyperspace stands at
+no system.
+
+## The other hooks
 - `FUN_00510820`, through `FUN_004fae40`: `FUN_0050ac80`, `FUN_0050b890`,
   `FUN_0050c350`, `FUN_0050a4a0(0)` (clears the uprising bit),
   `FUN_00509ec0(0)`, `FUN_0050b230`, `FUN_0050b5a0`, `FUN_0050c820`
   (arms the informant timer `0x38e`) and `FUN_0050ac10(1)`.
-- `FUN_00511740`: `FUN_0050b5a0` and `FUN_0050b230`. It is probably the
-  support's hook, since both depend on support.
 - `FUN_00511300`, the blockade changing: `FUN_0050c0b0`, `FUN_0050bbb0`,
   `FUN_0050c180`, `FUN_0050c1b0`, `FUN_0050c1e0` and `FUN_0050b310` (the
   withdraw percent), then `FUN_0050ce20` for both sides. It arms timer
@@ -90,7 +135,8 @@ All go through `FUN_0050c9f0`, which adds then clamps, as the port's
   the side with more support (`FUN_00507270`), or 3 on a tie. Armed by
   `FUN_00511300`, the blockade hook, on record `+0x54`+`0x30`, whose
   minimum `FUN_0050e200` sets to GNPRTB 7694 (30); `FUN_005109f0` resets
-  it to 7694 when the blockader is the more popular side, else 7696 (30).
+  it, when the support changes, to 7694 when the blockader is the more
+  popular side, else 7696 (30).
   The economy's maintenance counter also reads GNPRTB 7694 (F-029).
 
 Arming (`FUN_0053fa60`) stores the flag's new value in the record's armed
@@ -131,9 +177,7 @@ same path (`uprising.rs`, `support_change`).
 
 ## Open
 
-- Who calls `FUN_00510820` and `FUN_00511740`.
-- `+0x88` bit 11, which halves shifts that favour the Alliance or hurt the
-  Empire (`FUN_00559be0`), is still the port's `strong_support` guess. In
-  the campaigns it turns most blockade shifts of an unpopular Empire to 0.
+- Who calls `FUN_00510820` (through `FUN_004fae40`).
+- `FUN_004f6f40`, run when the holder changes.
 - `FUN_0050ac80`, `FUN_0050b890`, `FUN_0050c350`, `FUN_0050ac10` and the
   blockade hook's `FUN_0050c0b0`..`FUN_0050c1e0`.

@@ -39,8 +39,10 @@ the side handlers (`FUN_0050fa90`, slot `+0x208`).
 Callers:
 - `FUN_00508250`, the full state rebuild;
 - `FUN_00508660`;
-- `FUN_005109f0` and `FUN_00510e30`, the system's handlers when its
-  contents change. So the holder follows the regiments at once.
+- `FUN_005109f0`, the support's hook, and `FUN_00510e30`, the populated
+  bit's hook (`economy-cadence.md`, "The hooks"). `FUN_00508660` runs it
+  when a regiment joins or leaves the system, so the holder follows the
+  regiments at once.
 
 ## Port (2026-10-17)
 
@@ -50,8 +52,8 @@ Callers:
   `FUN_00504cc0` does, at any strength.
 - The economy's step 5 uses it. The simulation's step 3b and the app's
   `tactical_flow::occupy` use it too, for each system with regiments on
-  its planet. That stands in for `FUN_005109f0`'s call when a system's
-  contents change.
+  its planet. That stands in for `FUN_00508660`'s call when a regiment
+  joins or leaves the system.
 
 hyp:
 - The port keeps no regiment bits. With both sides' regiments, the

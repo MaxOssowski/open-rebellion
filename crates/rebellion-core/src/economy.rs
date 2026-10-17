@@ -60,7 +60,7 @@ const GNPRTB_GARRISON_DIVISOR: u16 = 7762;
 const GNPRTB_COLLECTION_RATE_BASE: u16 = 7763;
 
 // Phase 3b: new constants from source tree cross-reference
-const GNPRTB_EMPIRE_TROOP_MULT: u16 = 7680; // =2: Empire troop doubling + garrison halving divisor
+const GNPRTB_EMPIRE_TROOP_MULT: u16 = 7680; // =2: Empire regiments doubled, garrison halved near a Death Star (+0x88 bit 11)
 const GNPRTB_UPRISING_GARRISON_MULT: u16 = 7682; // =2: garrison doubles during uprising
 const GNPRTB_KDY_CAPSHIP_PENALTY: u16 = 7684; // =5: KDY production penalty per capital ship
 const GNPRTB_KDY_FIGHTER_PENALTY: u16 = 7685; // =2: KDY production penalty per fighter
@@ -140,10 +140,8 @@ pub struct SystemSummary {
     pub fleet_posture: FleetPosture,
     /// Fighter posture.
     pub fighter_posture: FighterPosture,
-    /// Bit 11 of original `field_0x88`: "strong support" flag.
-    /// When true AND Empire-controlled, troop suppression is doubled (GNPRTB[7680]).
-    /// Set when controlling faction's support > GNPRTB[7732] (40).
-    pub strong_support: bool,
+    /// System `+0x88` bit 11, `DeathStarNearby` ([`death_star_nearby`]).
+    pub death_star_nearby: bool,
 }
 
 /// Discrete bands of the controlling faction's popular support.
@@ -456,10 +454,10 @@ impl EconomySystem {
                 });
             }
 
-            // 1. The smuggling percent (FUN_0050b230), with the previous
-            // tick's bit 11 of +0x88. It does not move the support.
-            let percent =
-                smuggling_percent(world, sys, eco.summary.strong_support, gnprtb, difficulty);
+            // 1. The smuggling percent (FUN_0050b230). It does not move the
+            // support.
+            let nearby = death_star_nearby(world, sys);
+            let percent = smuggling_percent(world, sys, nearby, gnprtb, difficulty);
             if percent != eco.smuggling_percent {
                 eco.smuggling_percent = percent;
                 events.push(EconomyEvent::SmugglingPercentChanged {
@@ -480,7 +478,7 @@ impl EconomySystem {
             let new_garrison = calculate_garrison_requirement(
                 controlling_support,
                 sys.control,
-                eco.summary.strong_support,
+                nearby,
                 uprisings.is_uprising(sys_key),
                 gnprtb,
                 difficulty,
@@ -524,14 +522,7 @@ impl EconomySystem {
             eco.production_modifier = new_prod_mod;
 
             // 6. Troop/fleet summary propagation (FUN_0050b500 through FUN_0050b8e0).
-            eco.summary = compute_system_summary(
-                world,
-                sys,
-                &presence,
-                eco.garrison_requirement,
-                gnprtb,
-                difficulty,
-            );
+            eco.summary = compute_system_summary(world, sys, &presence, eco.garrison_requirement);
 
             // 7. Incident state + uprising visibility (FUN_0050bb00).
             // The uprising and disaster incidents are timer events that
@@ -984,8 +975,6 @@ fn compute_system_summary(
     sys: &crate::world::System,
     presence: &MilitaryPresence,
     garrison_requirement: u32,
-    gnprtb: &GnprtbParams,
-    difficulty: u8,
 ) -> SystemSummary {
     let controlling_troops = match sys.control {
         ControlKind::Controlled(crate::dat::Faction::Alliance) => presence.alliance_troops,
@@ -1027,41 +1016,44 @@ fn compute_system_summary(
         empire_fighters: presence.empire_fighters,
     };
 
-    let strong_support = is_strong_support(sys, gnprtb, difficulty);
-
     SystemSummary {
         troop_surplus,
         total_controlling_troops,
         has_shipyard,
         fleet_posture,
         fighter_posture,
-        strong_support,
+        death_star_nearby: death_star_nearby(world, sys),
     }
 }
 
-/// Bit 11 of field_0x88: "strong support" — set when controlling faction's
-/// support exceeds GNPRTB 7732 (40). Controls Empire troop doubling in
-/// FUN_00559b60 (the community dump calls it adjust_value_for_strong_support).
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
-)]
-pub(crate) fn is_strong_support(
-    sys: &crate::world::System,
-    gnprtb: &GnprtbParams,
-    difficulty: u8,
-) -> bool {
-    let drift_threshold = gnprtb.value(GNPRTB_SMUGGLING_SUPPORT_CEILING, difficulty);
-    let controlling_support = match sys.control {
-        ControlKind::Controlled(crate::dat::Faction::Alliance) => {
-            (sys.popularity_alliance * 100.0).round() as i32
-        }
-        ControlKind::Controlled(crate::dat::Faction::Empire) => {
-            (sys.popularity_empire * 100.0).round() as i32
-        }
-        _ => 0,
-    };
-    controlling_support > drift_threshold
+/// System `+0x88` bit 11, `DeathStarNearby` (`FUN_0050a890`,
+/// `ghidra/generated/setters.tsv`). `FUN_005178b0` sets it on every system
+/// of a sector that holds an active Death Star (CAPSHPSD family `0x18`;
+/// `FUN_00518690` gives the sector of its system) and clears it elsewhere;
+/// `FUN_00514510` and `FUN_00514a60` run it when objects move. It doubles
+/// the Empire's regiments in the smuggling percent (`FUN_00559b60`) and the
+/// uprising score (`FUN_00559ce0`), halves the Empire's garrison requirement
+/// (`FUN_00559fe0`), and halves support shifts that favour the Alliance or
+/// hurt the Empire (`FUN_00559be0`).
+///
+/// port: computed from the fleets standing at the sector's systems when
+/// read, which is what the move hooks keep; a fleet in hyperspace stands at
+/// no system.
+pub(crate) fn death_star_nearby(world: &GameWorld, sys: &crate::world::System) -> bool {
+    world
+        .systems
+        .values()
+        .filter(|other| other.sector == sys.sector)
+        .flat_map(|other| other.fleets.iter())
+        .filter_map(|key| world.fleets.get(*key))
+        .flat_map(|fleet| fleet.capital_ships.iter())
+        .filter(|ship| ship.alive)
+        .any(|ship| {
+            world
+                .capital_ship_classes
+                .get(ship.class)
+                .is_some_and(crate::world::CapitalShipClass::is_death_star)
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -1122,7 +1114,7 @@ fn calculate_collection_rate(support: f32, gnprtb: &GnprtbParams, difficulty: u8
 fn calculate_garrison_requirement(
     support: f32,
     control: ControlKind,
-    strong_support: bool,
+    death_star_nearby: bool,
     in_uprising: bool,
     gnprtb: &GnprtbParams,
     difficulty: u8,
@@ -1137,7 +1129,7 @@ fn calculate_garrison_requirement(
     garrison_requirement(
         side,
         support_int,
-        strong_support,
+        death_star_nearby,
         in_uprising,
         gnprtb,
         difficulty,
@@ -1146,18 +1138,18 @@ fn calculate_garrison_requirement(
 }
 
 /// Troops a side must hold at a system (`FUN_00559fe0`): the uprising
-/// threshold, divided by GNPRTB 7680 for the Empire when support is strong
-/// (+0x88 bit 11), and multiplied by GNPRTB 7682 during an uprising.
+/// threshold, divided by GNPRTB 7680 for the Empire with a Death Star in the
+/// sector (+0x88 bit 11), and multiplied by GNPRTB 7682 during an uprising.
 pub(crate) fn garrison_requirement(
     side: crate::dat::Faction,
     support: i32,
-    strong_support: bool,
+    death_star_nearby: bool,
     in_uprising: bool,
     gnprtb: &GnprtbParams,
     difficulty: u8,
 ) -> i32 {
     let mut requirement = uprising_threshold(support, gnprtb, difficulty);
-    if strong_support && side == crate::dat::Faction::Empire {
+    if death_star_nearby && side == crate::dat::Faction::Empire {
         requirement /= gnprtb.value(GNPRTB_EMPIRE_TROOP_MULT, difficulty).max(1);
     }
     if in_uprising {
@@ -1456,6 +1448,64 @@ mod tests {
     }
 
     #[test]
+    fn a_death_star_sets_bit_11_on_every_system_of_its_sector_only() {
+        // FUN_005178b0: each sector's systems get +0x88 bit 11
+        // (DeathStarNearby, FUN_0050a890) when an active Death Star
+        // (CAPSHPSD family 0x18) stands at one of its systems
+        // (FUN_00518690); support plays no part.
+        use crate::dat::Faction::{Alliance, Empire};
+        use crate::world::{CapitalShipClass, Fleet, Sector, ShipInstance};
+        let mut world = GameWorld {
+            gnprtb: stock_gnprtb(),
+            ..Default::default()
+        };
+        let sector = |world: &mut GameWorld| {
+            world.sectors.insert(Sector {
+                dat_id: DatId::new(0x9200_0000),
+                name: "Sector".into(),
+                group: crate::dat::SectorGroup::Core,
+                x: 0,
+                y: 0,
+                systems: vec![],
+            })
+        };
+        let (home, other) = (sector(&mut world), sector(&mut world));
+        let mut system = |sector, support| {
+            let mut sys = held_system(support, ControlKind::Controlled(Empire));
+            sys.sector = sector;
+            world.systems.insert(sys)
+        };
+        let (station, neighbour, far) =
+            (system(home, 90.0), system(home, 10.0), system(other, 10.0));
+        let nearby = |world: &GameWorld| {
+            [station, neighbour, far].map(|key| death_star_nearby(world, &world.systems[key]))
+        };
+        assert_eq!(nearby(&world), [false; 3]);
+
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(crate::world::DEATH_STAR_CLASS_ID),
+            ..CapitalShipClass::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: station,
+            capital_ships: vec![ShipInstance::new(class, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: true,
+        });
+        world.systems[station].fleets.push(fleet);
+        assert_eq!(nearby(&world), [true, true, false]);
+
+        world.fleets[fleet].is_alliance = true;
+        world.systems[station].control = ControlKind::Controlled(Alliance);
+        assert_eq!(nearby(&world), [true, true, false]);
+
+        world.fleets[fleet].capital_ships[0].alive = false;
+        assert_eq!(nearby(&world), [false; 3]);
+    }
+
+    #[test]
     fn smuggling_takes_the_support_band_s_base_less_the_weighted_forces() {
         // FUN_00559c40 with GNPRTB 7732..7737 and 7686..7688 (stock values).
         use crate::dat::Faction::Alliance;
@@ -1619,14 +1669,14 @@ mod tests {
     }
 
     #[test]
-    fn empire_garrison_is_halved_only_when_support_is_strong() {
+    fn empire_garrison_is_halved_only_with_a_death_star_nearby() {
         // FUN_00559fe0 divides by GNPRTB 7680 only when param_3 (system
         // +0x88 bit 11) is set and the side is 2.
         let gnprtb = stock_gnprtb();
         let alliance = ControlKind::Controlled(crate::dat::Faction::Alliance);
         let empire = ControlKind::Controlled(crate::dat::Faction::Empire);
-        let req = |control, strong| {
-            calculate_garrison_requirement(0.3, control, strong, false, &gnprtb, 2)
+        let req = |control, nearby| {
+            calculate_garrison_requirement(0.3, control, nearby, false, &gnprtb, 2)
         };
         assert_eq!(req(alliance, false), 3);
         assert_eq!(req(alliance, true), 3);
@@ -2770,8 +2820,7 @@ mod tests {
             alliance_capships: 0,
             empire_capships: 0,
         };
-        let gnprtb = stock_gnprtb();
-        let summary_1v1 = compute_system_summary(&world, &sys, &presence_1v1, 0, &gnprtb, 2);
+        let summary_1v1 = compute_system_summary(&world, &sys, &presence_1v1, 0);
         assert!(
             !summary_1v1.fleet_posture.is_contested,
             "1v1 fleets should NOT be contested"
@@ -2787,7 +2836,7 @@ mod tests {
             alliance_capships: 0,
             empire_capships: 0,
         };
-        let summary_2v2 = compute_system_summary(&world, &sys, &presence_2v2, 0, &gnprtb, 2);
+        let summary_2v2 = compute_system_summary(&world, &sys, &presence_2v2, 0);
         assert!(
             summary_2v2.fleet_posture.is_contested,
             "2v2 fleets should be contested"

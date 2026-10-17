@@ -65,11 +65,13 @@ const GNPRTB_UPRISING_INCIDENT_SPREAD: u16 = 7702;
 const GNPRTB_INCIDENT_DRAW_BASE: u16 = 7707;
 /// 7708 (`DAT_006bb418`) = 9: spread of each incident score draw.
 const GNPRTB_INCIDENT_DRAW_SPREAD: u16 = 7708;
-/// 7680 (`DAT_006bb3dc`) = 2: Empire regiment weight under strong support.
-const GNPRTB_STRONG_EMPIRE_TROOP_WEIGHT: u16 = 7680;
+/// 7680 (`DAT_006bb3dc`) = 2: Empire regiment weight near a Death Star
+/// (`+0x88` bit 11).
+const GNPRTB_DEATH_STAR_EMPIRE_TROOP_WEIGHT: u16 = 7680;
 /// 7681 (`DAT_006bb400`) = 2: divisor for support changes that favour the
-/// holder of a strongly supported system (`FUN_00559be0`).
-const GNPRTB_STRONG_SUPPORT_DIVISOR: u16 = 7681;
+/// Alliance or hurt the Empire near a Death Star (`+0x88` bit 11,
+/// `FUN_00559be0`).
+const GNPRTB_DEATH_STAR_SUPPORT_DIVISOR: u16 = 7681;
 /// 6144 (`DAT_006bb594`) = 10: divisor of an uprising mission's leadership.
 const GNPRTB_UPRISING_MISSION_DIVISOR: u16 = 6144;
 /// 6145 (`DAT_006bb52c`) = -2: support change while Incite Uprising is active.
@@ -589,14 +591,14 @@ fn uprising_mission_terms(
 /// makes to `side`'s support at `sys`.
 pub(crate) fn support_change(world: &GameWorld, sys: &System, side: Faction, delta: i32) -> i32 {
     let difficulty = world.difficulty_index;
-    let strong = economy::is_strong_support(sys, &world.gnprtb, difficulty);
+    let nearby = economy::death_star_nearby(world, sys);
     let favours_holder =
         (side == Faction::Alliance && delta > 0) || (side == Faction::Empire && delta < 0);
-    let delta = if strong && favours_holder {
+    let delta = if nearby && favours_holder {
         delta
             / world
                 .gnprtb
-                .value(GNPRTB_STRONG_SUPPORT_DIVISOR, difficulty)
+                .value(GNPRTB_DEATH_STAR_SUPPORT_DIVISOR, difficulty)
                 .max(1)
     } else {
         delta
@@ -634,15 +636,15 @@ fn resolve_incident(
     let side = holder(sys)?;
     let difficulty = world.difficulty_index;
     let param = |id| world.gnprtb.value(id, difficulty);
-    let strong = economy::is_strong_support(sys, &world.gnprtb, difficulty);
+    let nearby = economy::death_star_nearby(world, sys);
 
     // FUN_00559ce0
     let base = param(GNPRTB_INCIDENT_DRAW_BASE);
     let spread = param(GNPRTB_INCIDENT_DRAW_SPREAD);
     let first = rolls.draw(spread) + base;
     let second = rolls.draw(spread) + base;
-    let weight = if strong && side == Faction::Empire {
-        param(GNPRTB_STRONG_EMPIRE_TROOP_WEIGHT)
+    let weight = if nearby && side == Faction::Empire {
+        param(GNPRTB_DEATH_STAR_EMPIRE_TROOP_WEIGHT)
     } else {
         1
     };
@@ -917,7 +919,7 @@ pub(crate) fn garrison_covers(world: &GameWorld, sys: &System) -> bool {
     let requirement = economy::garrison_requirement(
         side,
         support_points(sys, side),
-        economy::is_strong_support(sys, &world.gnprtb, difficulty),
+        economy::death_star_nearby(world, sys),
         false,
         &world.gnprtb,
         difficulty,
@@ -965,7 +967,8 @@ pub fn end_if_garrisoned(
 // ---------------------------------------------------------------------------
 
 /// `FUN_0050c9f0`: shift `side`'s support at `system` by `delta` points
-/// (halved for a strongly supported holder, `FUN_00559be0`), clamped to
+/// (halved near a Death Star when it favours the Alliance or hurts the
+/// Empire, `FUN_00559be0`), clamped to
 /// `0..=100`. The other side moves by the opposite amount.
 pub fn apply_support_change(world: &mut GameWorld, system: SystemKey, side: Faction, delta: i32) {
     let Some(sys) = world.systems.get(system) else {
@@ -1113,8 +1116,8 @@ mod tests {
                 (GNPRTB_UPRISING_SUPPORT_DELTA, -1),
                 (GNPRTB_INCIDENT_DRAW_BASE, 1),
                 (GNPRTB_INCIDENT_DRAW_SPREAD, 9),
-                (GNPRTB_STRONG_EMPIRE_TROOP_WEIGHT, 2),
-                (GNPRTB_STRONG_SUPPORT_DIVISOR, 2),
+                (GNPRTB_DEATH_STAR_EMPIRE_TROOP_WEIGHT, 2),
+                (GNPRTB_DEATH_STAR_SUPPORT_DIVISOR, 2),
                 (GNPRTB_UPRISING_MISSION_DIVISOR, 10),
                 (GNPRTB_INCITE_SUPPORT_DELTA, -2),
                 (GNPRTB_INJURY_MIN_CHANCE, 1),
@@ -1182,6 +1185,27 @@ mod tests {
             control: ControlKind::Controlled(side),
         });
         (world, system)
+    }
+
+    /// An Alliance fleet holding the Death Star at `system`, which sets
+    /// `+0x88` bit 11 on every system of its sector (`FUN_005178b0`, which
+    /// does not look at the Death Star's side).
+    fn add_death_star(world: &mut GameWorld, system: SystemKey) {
+        let class = world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass {
+                dat_id: DatId::new(crate::world::DEATH_STAR_CLASS_ID),
+                ..crate::world::CapitalShipClass::default()
+            });
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: system,
+            capital_ships: vec![crate::world::ShipInstance::new(class, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: true,
+        });
+        world.systems[system].fleets.push(fleet);
     }
 
     fn add_regiment(
@@ -1431,10 +1455,11 @@ mod tests {
     }
 
     #[test]
-    fn a_strongly_supported_empire_loses_nothing_to_the_revolt_timer() {
-        // FUN_00559be0 divides a shift that favours the strongly supported
-        // Empire (negative) by GNPRTB 7681 (2): -1 / 2 is 0.
-        let (world, system) = world_with(Faction::Empire, 0.6);
+    fn an_empire_near_a_death_star_loses_nothing_to_the_revolt_timer() {
+        // FUN_00559be0 divides a shift that hurts the Empire by GNPRTB 7681
+        // (2) under +0x88 bit 11, DeathStarNearby: -1 / 2 is 0.
+        let (mut world, system) = world_with(Faction::Empire, 0.6);
+        add_death_star(&mut world, system);
         let mut state = in_revolt(system, u64::MAX);
         state
             .active_uprisings
@@ -1746,16 +1771,23 @@ mod tests {
     }
 
     #[test]
-    fn support_changes_that_favour_a_strongly_supported_alliance_are_halved() {
-        // FUN_00559be0 divides by GNPRTB 7681 when strong and the change helps
-        // side 1 or hurts side 2; FUN_0053e0d0 clamps to 0..=100.
+    fn support_changes_that_favour_the_alliance_near_a_death_star_are_halved() {
+        // FUN_00559be0 divides by GNPRTB 7681 under +0x88 bit 11
+        // (DeathStarNearby) when the change helps side 1 or hurts side 2;
+        // FUN_0053e0d0 clamps to 0..=100.
         let (mut world, system) = world_with(Faction::Alliance, 0.5);
+        apply_support_change(&mut world, system, Faction::Alliance, 10);
+        assert!((world.systems[system].popularity_alliance - 0.6).abs() < 1e-6);
+
+        let (mut world, system) = world_with(Faction::Alliance, 0.5);
+        add_death_star(&mut world, system);
         apply_support_change(&mut world, system, Faction::Alliance, 10);
         assert!((world.systems[system].popularity_alliance - 0.55).abs() < 1e-6);
         apply_support_change(&mut world, system, Faction::Alliance, -10);
         assert!((world.systems[system].popularity_alliance - 0.45).abs() < 1e-6);
 
         let (mut world, system) = world_with(Faction::Alliance, 0.95);
+        add_death_star(&mut world, system);
         apply_support_change(&mut world, system, Faction::Alliance, 20);
         assert!((world.systems[system].popularity_alliance - 1.0).abs() < 1e-6);
     }
@@ -2166,13 +2198,15 @@ mod tests {
     }
 
     #[test]
-    fn support_changes_that_hurt_a_strongly_supported_empire_are_halved() {
-        // FUN_00559be0 divides by GNPRTB 7681 when strong and the change
-        // hurts side 2; a gain for side 2 is not divided.
+    fn support_changes_that_hurt_the_empire_near_a_death_star_are_halved() {
+        // FUN_00559be0 divides by GNPRTB 7681 under +0x88 bit 11 when the
+        // change hurts side 2; a gain for side 2 is not divided.
         let (mut world, system) = world_with(Faction::Empire, 0.5);
+        add_death_star(&mut world, system);
         apply_support_change(&mut world, system, Faction::Empire, -10);
         assert!((world.systems[system].popularity_empire - 0.45).abs() < 1e-6);
         let (mut world, system) = world_with(Faction::Empire, 0.5);
+        add_death_star(&mut world, system);
         apply_support_change(&mut world, system, Faction::Empire, 10);
         assert!((world.systems[system].popularity_empire - 0.6).abs() < 1e-6);
     }
@@ -2197,11 +2231,12 @@ mod tests {
     }
 
     #[test]
-    fn a_strongly_supported_empire_counts_each_regiment_twice() {
-        // FUN_00559ce0 weights side 2's regiments by GNPRTB 7680 (2) when
-        // strong. Support 50: draws 5 + 5, threshold 1, one regiment weighs 2:
-        // 9 gives UPRIS1TB code 1 (10 would give code 2), UPRIS2TB 3.
+    fn an_empire_near_a_death_star_counts_each_regiment_twice() {
+        // FUN_00559ce0 weights side 2's regiments by GNPRTB 7680 (2) under
+        // +0x88 bit 11. Support 50: draws 5 + 5, threshold 1, one regiment
+        // weighs 2: 9 gives UPRIS1TB code 1 (10 would give code 2), UPRIS2TB 3.
         let (mut world, system) = world_with(Faction::Empire, 0.5);
+        add_death_star(&mut world, system);
         add_regiment(&mut world, system, 0x1000_0008, false);
         let mut state = in_revolt(system, 5);
         let events = UprisingSystem::advance(
@@ -2216,11 +2251,12 @@ mod tests {
     }
 
     #[test]
-    fn the_incite_support_loss_is_halved_only_for_a_strongly_supported_empire() {
-        // FUN_00559be0 divides GNPRTB 6145 (-2) by 7681 (2) when the holder is
-        // strong and the change hurts side 2; a strong Alliance loses all 2.
+    fn the_incite_support_loss_near_a_death_star_is_halved_only_for_the_empire() {
+        // FUN_00559be0 divides GNPRTB 6145 (-2) by 7681 (2) under +0x88 bit
+        // 11 when the change hurts side 2; the Alliance loses all 2.
         for (side, expected) in [(Faction::Empire, -1), (Faction::Alliance, -2)] {
             let (mut world, system) = world_with(side, 0.5);
+            add_death_star(&mut world, system);
             let agent = world.characters.insert(Character::default());
             let mut missions = MissionState::new();
             missions.dispatch(MissionRequest::single(

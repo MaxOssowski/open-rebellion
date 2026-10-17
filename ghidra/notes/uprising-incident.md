@@ -73,7 +73,7 @@ disaster bits. With the correct base:
 |-------------|----------|--------|-------------|
 | 2 (mask 4) | uprising in progress | `FUN_0050a4a0` | `+0x214` `FUN_00510f20` (timers) |
 | 9 | uprising visible | `FUN_0050bb00` | |
-| 11 | strong support | | |
+| 11 | DeathStarNearby (`economy-cadence.md`; read 2026-10-17, earlier taken for strong support) | `FUN_0050a890` | `+0x238` `FUN_00511740` |
 | 16 | uprising incident | `FUN_0050aa50` | `+0x248` `FUN_00511840` -> `FUN_0050d030` |
 | 17 | informant incident | `FUN_0050aac0` | `+0x24c` `FUN_00511860` -> `FUN_0050d510` |
 | 18 | disaster incident | `FUN_0050ab30` | `+0x250` `FUN_00511930` |
@@ -89,7 +89,7 @@ disaster bits. With the correct base:
   held or populated. Control never changes: `FUN_0050a130` only writes the
   uprising side into `+0x78` bits 4-5.
 - The stored requirement (`FUN_0050b5a0`) is `FUN_00559fe0(side, support,
-  strong, in_uprising, 1)`: halved by GNPRTB 7680 only when strong and Empire,
+  bit 11, in_uprising, 1)`: halved by GNPRTB 7680 only with bit 11 and Empire,
   doubled by GNPRTB 7682 only in an uprising, 0 unless side 1 or 2.
   `FUN_0050bb00` sets bit 9 when the system is held, populated, in revolt and
   the surplus is >= 0.
@@ -114,7 +114,7 @@ the informant incident's setter) and then calls `FUN_00559ce0`:
 d      = rand[0..=G7708] + G7707                 ; 9 and 1, drawn twice
 score  = d1 + d2
        + ceil((G7761 - support) / -G7762)       ; 60 and -10, only when support < 60 (FUN_0055a050)
-       - k * regiments(side)                    ; k = G7680 (2) if strong && side == 2, else 1
+       - k * regiments(side)                    ; k = G7680 (2) if bit 11 && side == 2, else 1
        + p6 + p7 - p5
 ```
 
@@ -150,7 +150,7 @@ not usable (`object-state-flags.md`).
 
 Finally `FUN_0050c9f0` changes support by `+0x54 -> +0x7c`: GNPRTB 6145
 (-2) while an Incite Uprising mission is active, else 0. `FUN_00559be0`
-divides the change by GNPRTB 7681 (2) when support is strong and the change
+divides the change by GNPRTB 7681 (2) under bit 11 (DeathStarNearby) and the change
 favours side 1 or hurts side 2, and `FUN_0053e0d0` clamps the result to
 0..100.
 

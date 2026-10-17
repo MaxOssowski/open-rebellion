@@ -139,7 +139,7 @@ it), slot `+0x2c` resolves the target's record, and slot `+0x30` acts.
 | `0x383` | `0x006634d8` | `FUN_00565400` | `0x90..0x98` | `FUN_0050ca80`: if system `+0x88` bit 2, clear it (`FUN_0050a4a0(0)`) | `0x5116f6` (unnamed) | system `+0x54`+`0x18`: GNPRTB 7699 (20) min, 7700 (20) spread (`FUN_0050e200`) |
 | `0x384` | `0x00663510` | `FUN_00565730` | `0x90..0x98` | `FUN_0050caa0`: if `+0x88` bit 2, `FUN_0050c9f0(GNPRTB 7697 (-1), side)` | `FUN_00510f20` | system `+0x54`+`0x20`: GNPRTB 7698 (30) min (`FUN_0050e200`); ported 2026-10-17 (`uprising.rs`) |
 | `0x385` | `0x00663548` | `FUN_00565a60` | `0x90..0x98` | `FUN_0050cad0`: if `+0x88` bit 8, side bits = 2 and not bit 2, `FUN_0050c9f0(GNPRTB 7691 (0), side)` | `0x511690` (unnamed) | system `+0x54`+`0x28`: GNPRTB 7692 (1000) min (`FUN_0050e200`) |
-| `0x386` | `0x00663580` | `FUN_00565d90` | `0x90..0x98` | `FUN_0050cb20`: if `+0x88` bit 5, `FUN_0050c9f0(GNPRTB 7693 (1) or 7695 (-1), side)` from `FUN_00509980`/`FUN_00509890` | `FUN_00511300`, `FUN_005109f0` | system `+0x54`+`0x30`: GNPRTB 7694 (30) min (`FUN_0050e200`); `FUN_005109f0` resets it to 7694 or 7696 (30); ported 2026-10-17 (`blockade.rs`) |
+| `0x386` | `0x00663580` | `FUN_00565d90` | `0x90..0x98` | `FUN_0050cb20`: if `+0x88` bit 5, `FUN_0050c9f0(GNPRTB 7693 (1) or 7695 (-1), side)` from `FUN_00509980`/`FUN_00509890` | `FUN_00511300`, `FUN_005109f0` | system `+0x54`+`0x30`: GNPRTB 7694 (30) min (`FUN_0050e200`); `FUN_005109f0`, the support's hook, resets it to 7694 or 7696 (30); ported 2026-10-17 (`blockade.rs`) |
 | `0x387` | `0x00669838` | `FUN_0057bf80` | `0x01..0xff` | `FUN_004f7fc0`: arrival; if Autorouting, clear it and the arrival tick (`build-delivery.md`) | `FUN_004f8010`; cancelled by `FUN_004fba10` | object `+0x54`+`0x10`; delay = travel ticks |
 | `0x388` | `0x00669900` | `FUN_0057cca0` | `0x30..0x3c` | `FUN_004ef100`: injury recovery. When character injury `+0x94` (`uprising-incident.md:141`) != 0, reduce it by GNPRTB 2563 (2) or 2564 (1), chosen by `+0xac` bit 2, through `FUN_0053e120`, and store it with `FUN_004ee2d0` (clamped `0..0x7fff`) | `0x4f1b18`, `0x4f1b57` (unnamed) | not traced |
 | `0x389` | `0x00669938` | `FUN_0057cff0` | `0x30..0x3c` | `FUN_00560a30` (149 lines, not read) | `0x4f1b87` (unnamed) | not traced |
@@ -213,10 +213,9 @@ The event factories' fire slots are not decompiled.
 - Target slot `+0x228` for `0x380`.
 - The meaning of side `+0x58/+0x70/+0x74` (`0x382`) and system `+0x88`
   bits 2, 5 and 8.
-- Who calls the system field hooks `FUN_00510820`, `FUN_005109f0` (slot
-  `+0x1d0`) and `FUN_00511740`. These also run support recalculation
-  `FUN_0050b230` -> `FUN_00559c40`, so support is recomputed when an input
-  changes, not on a clock.
+- Who calls `FUN_00510820`. `FUN_005109f0` (slot `+0x1d0`) is the
+  support's hook and `FUN_00511740` (slot `+0x238`) bit 11's
+  (`economy-cadence.md`, "The hooks").
 - The queue `+0xb0` producers, and the message that sends frame case 9.
 
 ## Generated event table (2026-10-13)

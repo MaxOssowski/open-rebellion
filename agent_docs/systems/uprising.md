@@ -51,8 +51,8 @@ let ended = end_if_garrisoned(&mut state, &world, system, tick);
    Empire's Stormtroopers, and the Incite and Subdue agents' leadership, then
    applies the UPRIS1TB and UPRIS2TB step-lookup codes: a lost facility or
    regiment, an injured character, or freed prisoners. An active Incite
-   mission then costs the holder 2 support points (halved for a strongly
-   supported Empire holder).
+   mission then costs the holder 2 support points (halved for an Empire
+   holder with a Death Star in the sector, `+0x88` bit 11).
 
 ## Character picks
 
@@ -70,7 +70,8 @@ yet (F-030).
 ## Garrison
 
 `economy::garrison_requirement` (`FUN_00559fe0`) halves the requirement only
-for a strongly supported Empire system and doubles it only during a revolt.
+for an Empire system with a Death Star in its sector (`+0x88` bit 11,
+DeathStarNearby) and doubles it only during a revolt.
 
 ## Open
 

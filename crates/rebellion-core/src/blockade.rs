@@ -332,8 +332,8 @@ impl BlockadeSystem {
 
         // port: the record's spread is never set (FUN_0050e200 sets only the
         // minimum), so the delay is the minimum. port: FUN_005109f0 resets
-        // the minimum to GNPRTB 7694 or 7696 (both 30) when the regiments
-        // change; the port keeps 7694.
+        // the minimum to GNPRTB 7694 or 7696 (both 30) when the support
+        // changes; the port keeps 7694.
         let period = u64::try_from(
             world
                 .gnprtb

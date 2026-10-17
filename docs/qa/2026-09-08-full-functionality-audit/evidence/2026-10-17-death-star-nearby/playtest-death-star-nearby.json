@@ -1,0 +1,583 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against c245b4d6",
+  "seeds": {
+    "1": {
+      "head": {
+        "control_changed": 15,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 6,
+        "uprising_ended": 1,
+        "uprising_incident": 27,
+        "uprising_support": {
+          "-1": 13
+        },
+        "blockade_support": {},
+        "smuggling_percent": 4,
+        "garrison_required": 17
+      },
+      "new": {
+        "control_changed": 17,
+        "systems_changing_3_or_more_times": {
+          "Sullust": [
+            [
+              9,
+              "Controlled(Alliance)"
+            ],
+            [
+              400,
+              "Uncontrolled"
+            ],
+            [
+              554,
+              "Controlled(Empire)"
+            ]
+          ],
+          "Bpfassh": [
+            [
+              264,
+              "Controlled(Empire)"
+            ],
+            [
+              296,
+              "Uncontrolled"
+            ],
+            [
+              315,
+              "Controlled(Empire)"
+            ]
+          ]
+        },
+        "uprising_began": 4,
+        "uprising_ended": 2,
+        "uprising_incident": 18,
+        "uprising_support": {
+          "-1": 39
+        },
+        "blockade_support": {},
+        "smuggling_percent": 4,
+        "garrison_required": 17
+      }
+    },
+    "2": {
+      "head": {
+        "control_changed": 13,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 4,
+        "uprising_ended": 0,
+        "uprising_incident": 17,
+        "uprising_support": {},
+        "blockade_support": {},
+        "smuggling_percent": 3,
+        "garrison_required": 14
+      },
+      "new": {
+        "control_changed": 17,
+        "systems_changing_3_or_more_times": {
+          "Talus": [
+            [
+              270,
+              "Controlled(Empire)"
+            ],
+            [
+              302,
+              "Uncontrolled"
+            ],
+            [
+              350,
+              "Controlled(Empire)"
+            ]
+          ],
+          "Balmorra": [
+            [
+              351,
+              "Controlled(Empire)"
+            ],
+            [
+              383,
+              "Uncontrolled"
+            ],
+            [
+              497,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 5,
+        "uprising_ended": 4,
+        "uprising_incident": 8,
+        "uprising_support": {
+          "-1": 23
+        },
+        "blockade_support": {},
+        "smuggling_percent": 3,
+        "garrison_required": 23
+      }
+    },
+    "3": {
+      "head": {
+        "control_changed": 19,
+        "systems_changing_3_or_more_times": {
+          "Sluis Van": [
+            [
+              9,
+              "Controlled(Alliance)"
+            ],
+            [
+              70,
+              "Controlled(Empire)"
+            ],
+            [
+              109,
+              "Controlled(Alliance)"
+            ],
+            [
+              144,
+              "Controlled(Empire)"
+            ],
+            [
+              428,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 9,
+        "uprising_ended": 0,
+        "uprising_incident": 59,
+        "uprising_support": {
+          "-1": 38
+        },
+        "blockade_support": {},
+        "smuggling_percent": 26,
+        "garrison_required": 25
+      },
+      "new": {
+        "control_changed": 42,
+        "systems_changing_3_or_more_times": {
+          "Sluis Van": [
+            [
+              9,
+              "Controlled(Alliance)"
+            ],
+            [
+              70,
+              "Controlled(Empire)"
+            ],
+            [
+              109,
+              "Controlled(Alliance)"
+            ],
+            [
+              144,
+              "Controlled(Empire)"
+            ],
+            [
+              441,
+              "Controlled(Alliance)"
+            ],
+            [
+              446,
+              "Controlled(Empire)"
+            ],
+            [
+              524,
+              "Controlled(Alliance)"
+            ],
+            [
+              538,
+              "Controlled(Empire)"
+            ]
+          ],
+          "Corsin": [
+            [
+              52,
+              "Controlled(Empire)"
+            ],
+            [
+              389,
+              "Uncontrolled"
+            ],
+            [
+              525,
+              "Controlled(Empire)"
+            ],
+            [
+              557,
+              "Uncontrolled"
+            ]
+          ],
+          "Balmorra": [
+            [
+              139,
+              "Controlled(Empire)"
+            ],
+            [
+              275,
+              "Uncontrolled"
+            ],
+            [
+              362,
+              "Controlled(Empire)"
+            ]
+          ],
+          "Chandrila": [
+            [
+              170,
+              "Controlled(Empire)"
+            ],
+            [
+              232,
+              "Uncontrolled"
+            ],
+            [
+              527,
+              "Controlled(Empire)"
+            ],
+            [
+              559,
+              "Uncontrolled"
+            ]
+          ],
+          "Corellia": [
+            [
+              187,
+              "Controlled(Empire)"
+            ],
+            [
+              425,
+              "Uncontrolled"
+            ],
+            [
+              523,
+              "Controlled(Empire)"
+            ]
+          ],
+          "Duros": [
+            [
+              190,
+              "Controlled(Empire)"
+            ],
+            [
+              282,
+              "Uncontrolled"
+            ],
+            [
+              365,
+              "Controlled(Empire)"
+            ],
+            [
+              488,
+              "Uncontrolled"
+            ],
+            [
+              494,
+              "Controlled(Empire)"
+            ],
+            [
+              566,
+              "Uncontrolled"
+            ]
+          ],
+          "Corfai": [
+            [
+              193,
+              "Controlled(Empire)"
+            ],
+            [
+              225,
+              "Uncontrolled"
+            ],
+            [
+              462,
+              "Controlled(Alliance)"
+            ]
+          ],
+          "Praesitlyn": [
+            [
+              277,
+              "Controlled(Empire)"
+            ],
+            [
+              369,
+              "Uncontrolled"
+            ],
+            [
+              397,
+              "Controlled(Empire)"
+            ]
+          ]
+        },
+        "uprising_began": 15,
+        "uprising_ended": 11,
+        "uprising_incident": 39,
+        "uprising_support": {
+          "-1": 86
+        },
+        "blockade_support": {},
+        "smuggling_percent": 35,
+        "garrison_required": 59
+      }
+    },
+    "7": {
+      "head": {
+        "control_changed": 14,
+        "systems_changing_3_or_more_times": {
+          "Bothawui": [
+            [
+              11,
+              "Controlled(Alliance)"
+            ],
+            [
+              191,
+              "Uncontrolled"
+            ],
+            [
+              304,
+              "Controlled(Empire)"
+            ]
+          ]
+        },
+        "uprising_began": 8,
+        "uprising_ended": 1,
+        "uprising_incident": 25,
+        "uprising_support": {
+          "-1": 22
+        },
+        "blockade_support": {},
+        "smuggling_percent": 30,
+        "garrison_required": 19
+      },
+      "new": {
+        "control_changed": 18,
+        "systems_changing_3_or_more_times": {
+          "Duros": [
+            [
+              334,
+              "Controlled(Empire)"
+            ],
+            [
+              564,
+              "Uncontrolled"
+            ],
+            [
+              573,
+              "Controlled(Empire)"
+            ]
+          ]
+        },
+        "uprising_began": 7,
+        "uprising_ended": 2,
+        "uprising_incident": 34,
+        "uprising_support": {
+          "-1": 69
+        },
+        "blockade_support": {
+          "-1": 19
+        },
+        "smuggling_percent": 26,
+        "garrison_required": 23
+      }
+    },
+    "13": {
+      "head": {
+        "control_changed": 14,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 4,
+        "uprising_ended": 0,
+        "uprising_incident": 22,
+        "uprising_support": {
+          "-1": 15
+        },
+        "blockade_support": {},
+        "smuggling_percent": 15,
+        "garrison_required": 13
+      },
+      "new": {
+        "control_changed": 20,
+        "systems_changing_3_or_more_times": {
+          "Uvena": [
+            [
+              123,
+              "Controlled(Empire)"
+            ],
+            [
+              377,
+              "Uncontrolled"
+            ],
+            [
+              387,
+              "Controlled(Empire)"
+            ]
+          ],
+          "Kothlis": [
+            [
+              322,
+              "Controlled(Empire)"
+            ],
+            [
+              384,
+              "Uncontrolled"
+            ],
+            [
+              406,
+              "Controlled(Empire)"
+            ]
+          ],
+          "Umgul": [
+            [
+              322,
+              "Controlled(Alliance)"
+            ],
+            [
+              341,
+              "Controlled(Empire)"
+            ],
+            [
+              356,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 4,
+        "uprising_ended": 2,
+        "uprising_incident": 15,
+        "uprising_support": {
+          "-1": 32
+        },
+        "blockade_support": {},
+        "smuggling_percent": 43,
+        "garrison_required": 19
+      }
+    },
+    "42": {
+      "head": {
+        "control_changed": 17,
+        "systems_changing_3_or_more_times": {
+          "Drall": [
+            [
+              206,
+              "Controlled(Alliance)"
+            ],
+            [
+              208,
+              "Controlled(Empire)"
+            ],
+            [
+              374,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 9,
+        "uprising_ended": 0,
+        "uprising_incident": 36,
+        "uprising_support": {
+          "-1": 19
+        },
+        "blockade_support": {},
+        "smuggling_percent": 16,
+        "garrison_required": 26
+      },
+      "new": {
+        "control_changed": 18,
+        "systems_changing_3_or_more_times": {
+          "Drall": [
+            [
+              206,
+              "Controlled(Alliance)"
+            ],
+            [
+              208,
+              "Controlled(Empire)"
+            ],
+            [
+              458,
+              "Controlled(Alliance)"
+            ]
+          ],
+          "Kothlis": [
+            [
+              242,
+              "Controlled(Empire)"
+            ],
+            [
+              274,
+              "Uncontrolled"
+            ],
+            [
+              275,
+              "Controlled(Empire)"
+            ]
+          ]
+        },
+        "uprising_began": 9,
+        "uprising_ended": 3,
+        "uprising_incident": 34,
+        "uprising_support": {
+          "-1": 75
+        },
+        "blockade_support": {},
+        "smuggling_percent": 20,
+        "garrison_required": 32
+      }
+    },
+    "47": {
+      "head": {
+        "control_changed": 16,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 10,
+        "uprising_ended": 0,
+        "uprising_incident": 52,
+        "uprising_support": {
+          "-1": 24
+        },
+        "blockade_support": {},
+        "smuggling_percent": 24,
+        "garrison_required": 25
+      },
+      "new": {
+        "control_changed": 22,
+        "systems_changing_3_or_more_times": {
+          "Bothawui": [
+            [
+              184,
+              "Controlled(Empire)"
+            ],
+            [
+              462,
+              "Uncontrolled"
+            ],
+            [
+              525,
+              "Controlled(Empire)"
+            ]
+          ],
+          "Talus": [
+            [
+              259,
+              "Controlled(Empire)"
+            ],
+            [
+              343,
+              "Uncontrolled"
+            ],
+            [
+              460,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 11,
+        "uprising_ended": 7,
+        "uprising_incident": 38,
+        "uprising_support": {
+          "-1": 89
+        },
+        "blockade_support": {
+          "-1": 8
+        },
+        "smuggling_percent": 28,
+        "garrison_required": 40
+      }
+    }
+  }
+}

@@ -2192,6 +2192,16 @@ cross-runtime proof remain open
   `v1:8790fcc409096722` -> `v1:07eb8ba0a9c5f765`
   (`evidence/2026-10-17-support-timers/`). The hook cadence (step 3) and
   `+0x88` bit 11 stand.
+- 2026-10-17, step 3a: `+0x88` bit 11 is DeathStarNearby
+  (`FUN_0050a890`), set on every system of a sector holding an active
+  Death Star (`FUN_005178b0`), not the port's "support above 40". It is
+  ported as `economy::death_star_nearby` for the four rules that read it
+  (`FUN_00559b60`, `FUN_00559ce0`, `FUN_00559fe0`, `FUN_00559be0`). The
+  hook map is read (`ghidra/notes/economy-cadence.md`): `FUN_005109f0` is
+  the support's hook, `FUN_00511740` bit 11's. Golden final
+  `v1:07eb8ba0a9c5f765` -> `v1:cdf8f5db1e744a60`
+  (`evidence/2026-10-17-death-star-nearby/`). The hook cadence (step 3b)
+  stands.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

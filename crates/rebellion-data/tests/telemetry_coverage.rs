@@ -195,6 +195,30 @@ fn telemetry_coverage_all_sys_constants_emit() {
         }
     }
 
+    // REPAIR: Damage one ship of a fleet that starts at a system with a
+    // shipyard, so the repair system fires whatever battles the campaign
+    // happens to fight.
+    let docked = world
+        .systems
+        .values()
+        .filter(|sys| !sys.manufacturing_facilities.is_empty())
+        .flat_map(|sys| sys.fleets.iter().copied())
+        .find(|fleet| {
+            world.fleets[*fleet]
+                .capital_ships
+                .iter()
+                .any(|ship| ship.alive && world.capital_ship_classes[ship.class].damage_control > 0)
+        });
+    if let Some(fleet) = docked {
+        let classes = &world.capital_ship_classes;
+        let ship = world.fleets[fleet]
+            .capital_ships
+            .iter_mut()
+            .find(|ship| ship.alive && classes[ship.class].damage_control > 0)
+            .expect("the fleet was chosen for a repairable ship");
+        ship.hull_current /= 2;
+    }
+
     // ── End fixture injections ──────────────────────────────────────────
 
     let config = GameConfig::default();
