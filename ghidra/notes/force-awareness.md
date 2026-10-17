@@ -126,7 +126,9 @@ hook's Force base roll, and `Character::force_discoverer` (`+0xa4`, by
 record). Over seven 600-day and five 3000-day dual-AI campaigns no
 discovery happens: Vader qualifies, but the Empire's latent characters
 are recruited away and never stand free beside him, and Luke stays at
-Force 50. The message `0x362` is not ported yet. Evidence:
+Force 50. The message `0x362` followed the same day
+(`story_messages::force_user_discovered`,
+`evidence/2026-10-18-force-discovery-message/`). Evidence:
 `docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-discovery/`.
 
 ## Against the port
@@ -144,5 +146,5 @@ exists. Porting this replaces part of `jedi.rs`.
 - `FUN_0058a2c0` (who calls the detection) and `FUN_0055ff60`.
 - When `FUN_00560200` sets Luke's `KnowsHeritage` (the heritage
   encounter); the port's story events set `heritage_known` on their own.
-- The message `0x362` (Future Jedi Discovered, Leia Uses Force).
+- The builder's `+0x28`, `+0x30` and `+0x32` fields.
 - Which objects the subclasses `0x006657f0` and `0x00665be0` make.

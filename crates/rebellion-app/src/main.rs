@@ -2713,14 +2713,16 @@ async fn main() {
                 ..rebellion_core::force_discovery::ForceDiscoverySystem::roll_budget(&world))
                 .map(|_| sim_rng.gen::<f64>())
                 .collect();
-            for found in &rebellion_core::force_discovery::ForceDiscoverySystem::advance(
+            let discovered = rebellion_core::force_discovery::ForceDiscoverySystem::advance(
                 &mut force_discovery_state,
                 &world,
                 &tick_events,
                 &discovery_rolls,
-            ) {
+            );
+            for found in &discovered {
                 rebellion_core::force_discovery::apply(&mut world, found);
             }
+            push_force_discoveries(&mut msg_log, &world, &discovered, &message_texts);
 
             // ── Informants: each held system's timer 0x38e ──────────────────
             let informant_rolls: Vec<f64> =
@@ -7654,7 +7656,7 @@ fn push_character_health(
                 "{} Healed: {} has been healed of all injuries.",
                 c.name, c.name
             ),
-            pictures::healed((c.dat_id, c.is_alliance)),
+            pictures::healed((c.dat_id, c.is_major)),
         )
     };
     log.push(filed(
@@ -7662,6 +7664,27 @@ fn push_character_health(
         MessageRail::Mission,
         character_audience(world, character),
     ));
+}
+
+/// Notification `0x362` for each Force discovery (timer `0x389`), built as
+/// `FUN_0048f1e0` (`story_messages::force_user_discovered`).
+fn push_force_discoveries(
+    log: &mut MessageLog,
+    world: &GameWorld,
+    discovered: &[rebellion_core::force_discovery::ForceDiscovered],
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    for found in discovered {
+        if let Some(message) = rebellion_render::story_messages::force_user_discovered(
+            world,
+            found.discoverer,
+            found.character,
+            found.tick,
+            texts,
+        ) {
+            log.push(message);
+        }
+    }
 }
 
 fn apply_mission_result(
@@ -9374,5 +9397,68 @@ mod character_health_tests {
             "Han Solo Healed: Han Solo has been healed of all injuries."
         );
         assert_eq!(messages[1].picture.map(|p| p.background), Some(0x41b));
+        // The Healed picture carries the character's portrait
+        // (FUN_004c5000), found by its record and major flag: Vader is an
+        // Empire major character (MJCHARSD 641).
+        let vader = world.characters.insert(rebellion_core::world::Character {
+            dat_id: rebellion_core::ids::DatId::new(0x281),
+            name: "Darth Vader".into(),
+            is_empire: true,
+            is_major: true,
+            ..rebellion_core::world::Character::default()
+        });
+        push_character_health(&mut log, &world, vader, 10);
+        let portrait = log.messages()[2].picture.and_then(|p| p.foreground);
+        assert!(portrait.is_some());
+        assert_eq!(
+            portrait,
+            rebellion_render::story_messages::character_portrait(
+                rebellion_core::ids::DatId::new(0x281),
+                true
+            )
+        );
+    }
+
+    #[test]
+    fn a_force_discovery_posts_future_jedi_discovered_to_the_trainers_side() {
+        // FUN_0048f1e0 (notification 0x362): 0x7178 with 0x717a below Force
+        // 100 (GNPRTB 2581, absent here, so 0), on the Empire's rail only.
+        let mut world = GameWorld::default();
+        let vader = world.characters.insert(rebellion_core::world::Character {
+            dat_id: rebellion_core::ids::DatId::new(0x281),
+            name: "Darth Vader".into(),
+            is_empire: true,
+            is_major: true,
+            is_jedi_trainer: true,
+            force_base: 120,
+            ..rebellion_core::world::Character::default()
+        });
+        let klev = world.characters.insert(rebellion_core::world::Character {
+            name: "Klev".into(),
+            is_empire: true,
+            ..rebellion_core::world::Character::default()
+        });
+        let texts = std::collections::HashMap::from([
+            (0x7178, "Future Jedi Discovered".to_owned()),
+            (0x7179, "I have detected that {1:1} has the ability to use the Force.  We should consider allowing me to conduct training in the way of the Force.".to_owned()),
+        ]);
+        let mut log = MessageLog::new(8);
+        push_force_discoveries(
+            &mut log,
+            &world,
+            &[rebellion_core::force_discovery::ForceDiscovered {
+                character: klev,
+                discoverer: vader,
+                force_base: None,
+                learns_heritage: false,
+                tick: 4,
+            }],
+            &texts,
+        );
+        let messages = log.messages();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].title.as_deref(), Some("Future Jedi Discovered"));
+        assert!(messages[0].text.starts_with("I have detected that Klev"));
+        assert_eq!(messages[0].audience, RailAudience::Empire);
     }
 }

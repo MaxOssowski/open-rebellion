@@ -158,7 +158,8 @@ pub fn story_message(
     let parameters: Vec<MessageParameter<'_>> = subject
         .map(|character| MessageParameter::Character {
             name: &character.name,
-            force_ranking: crate::status_window::force_ranking(character.jedi_level.base),
+            // The Force ranking reads the Force level +0x8c (FUN_004eee40).
+            force_ranking: crate::status_window::force_ranking(character.force_level()),
         })
         .into_iter()
         .collect();
@@ -170,6 +171,87 @@ pub fn story_message(
         side,
         subject.map(|character| (character.dat_id, character.is_major)),
     ))
+}
+
+/// GNPRTB 2581 (`DAT_006b90dc`) = 100: the Force level at which a trainer
+/// may train others (`FUN_004ed310` -> `FUN_0053eb90`), the rank of Jedi
+/// Knight.
+const GNPRTB_TRAINING_FORCE: u16 = 2581;
+
+/// Leia's record (`0x31000241`), tested by `FUN_0048f1e0`.
+const LEIA: u32 = 0x241;
+
+/// Notification `0x362`, `CharacterForceUserDiscoveredKeyNotif`, which the
+/// discoverer field `+0xa4` sends when a trainer finds `found`'s Force
+/// (timer `0x389`, `FUN_004f0940`). Its builder `FUN_0048f1e0`:
+///
+/// - shows only to the trainer's side (`FUN_004edc80`), on the side's
+///   background (`(side != 1) + 0x412`);
+/// - for Leia (`0x31000241`), "Leia Uses Force" (TEXTSTRA `0x71d8` /
+///   `0x71d9`) with her portrait;
+/// - for anyone else, "Future Jedi Discovered" (`0x7178`) with the
+///   trainer's portrait (`FUN_004c5000`), the trainer telling of `found`
+///   (`{1:1}`): `0x7179` (train now) when the trainer trains Jedi at Force
+///   GNPRTB 2581 (100) or more (`FUN_004ed310`), else `0x717a` (once a
+///   Jedi Knight).
+///
+/// port: the builder's `+0x28`, `+0x30` and `+0x32` (a per-character id and
+/// two resources) are not read; the message keeps the Mission rail of the
+/// story classes (`FUN_0048f0e0`).
+#[must_use]
+pub fn force_user_discovered(
+    world: &GameWorld,
+    trainer: CharacterKey,
+    found: CharacterKey,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let teacher = world.characters.get(trainer)?;
+    let pupil = world.characters.get(found)?;
+    let (side, audience) = if teacher.is_alliance {
+        (CockpitFaction::Alliance, RailAudience::Alliance)
+    } else if teacher.is_empire {
+        (CockpitFaction::Empire, RailAudience::Empire)
+    } else {
+        return None;
+    };
+    let (title, body, speaker) = if pupil.dat_id.index() == LEIA {
+        (0x71d8, 0x71d9, pupil)
+    } else {
+        let knight = i64::from(teacher.force_level())
+            >= i64::from(
+                world
+                    .gnprtb
+                    .value(GNPRTB_TRAINING_FORCE, world.difficulty_index),
+            );
+        let body = if teacher.is_jedi_trainer && knight {
+            0x7179
+        } else {
+            0x717a
+        };
+        (0x7178, body, teacher)
+    };
+    let parameters = [
+        MessageParameter::Character {
+            name: &pupil.name,
+            force_ranking: crate::status_window::force_ranking(pupil.force_level()),
+        },
+        MessageParameter::Character {
+            name: &teacher.name,
+            force_ranking: crate::status_window::force_ranking(teacher.force_level()),
+        },
+    ];
+    let title = fill_message_text(texts.get(&title)?, &parameters);
+    let body = fill_message_text(texts.get(&body)?, &parameters);
+    Some(
+        GameMessage::new(tick, body, MessageCategory::Event)
+            .on_rail(STORY_RAIL, audience)
+            .with_title(title)
+            .with_picture(MessagePicture {
+                background: side_background(side),
+                foreground: character_portrait(speaker.dat_id, speaker.is_major),
+            }),
+    )
 }
 
 /// One of a message's four parameters (`FUN_0060b9d0`): an object whose
@@ -265,6 +347,118 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn discovery_texts() -> HashMap<u16, String> {
+        HashMap::from([
+            (0x7178, "Future Jedi Discovered".to_owned()),
+            (0x7179, "I have detected that {1:1} has the ability to use the Force.  We should consider allowing me to conduct training in the way of the Force.".to_owned()),
+            (0x717a, "I have detected that {1:1} has the ability to use the Force.  Once I reach the rank of Jedi Knight, I should conduct training in the use of the Force.".to_owned()),
+            (0x71d8, "Leia Uses Force".to_owned()),
+            (0x71d9, "My heritage as a member of the Skywalker family has given me the ability to use the Force, as it has my brother and father.".to_owned()),
+        ])
+    }
+
+    fn discovery_world(
+        teacher_force: u16,
+    ) -> (GameWorld, CharacterKey, CharacterKey, CharacterKey) {
+        use rebellion_core::world::{Character, GnprtbEntry, GnprtbParams};
+        let mut world = GameWorld {
+            gnprtb: GnprtbParams::new(vec![GnprtbEntry {
+                parameter_id: 2581,
+                development: 100,
+                alliance_sp_easy: 100,
+                alliance_sp_medium: 100,
+                alliance_sp_hard: 100,
+                empire_sp_easy: 100,
+                empire_sp_medium: 100,
+                empire_sp_hard: 100,
+                multiplayer: 100,
+            }]),
+            ..GameWorld::default()
+        };
+        let vader = world.characters.insert(Character {
+            dat_id: DatId::new(0x281),
+            name: "Darth Vader".into(),
+            is_empire: true,
+            is_major: true,
+            is_jedi_trainer: true,
+            force_base: teacher_force,
+            ..Character::default()
+        });
+        let klev = world.characters.insert(Character {
+            dat_id: DatId::new(0x3a0),
+            name: "Klev".into(),
+            is_empire: true,
+            ..Character::default()
+        });
+        let leia = world.characters.insert(Character {
+            dat_id: DatId::new(0x241),
+            name: "Leia Organa".into(),
+            is_alliance: true,
+            is_major: true,
+            ..Character::default()
+        });
+        (world, vader, klev, leia)
+    }
+
+    #[test]
+    fn a_discovery_tells_the_trainers_side_what_it_found() {
+        // FUN_0048f1e0: 0x7178 with the trainer's portrait on its side's
+        // background (0x413 for the Empire), the found character as {1:1};
+        // 0x7179 at Force GNPRTB 2581 (100) or more (FUN_004ed310), shown
+        // only to the trainer's side (FUN_004edc80).
+        let (world, vader, klev, _) = discovery_world(120);
+        let message =
+            force_user_discovered(&world, vader, klev, 9, &discovery_texts()).expect("a message");
+        assert_eq!(message.title.as_deref(), Some("Future Jedi Discovered"));
+        assert_eq!(
+            message.text,
+            "I have detected that Klev has the ability to use the Force.  We should consider allowing me to conduct training in the way of the Force."
+        );
+        assert_eq!(message.audience, RailAudience::Empire);
+        let picture = message.picture.expect("a picture");
+        assert_eq!(picture.background, 0x413);
+        assert_eq!(
+            picture.foreground,
+            character_portrait(DatId::new(0x281), true)
+        );
+        assert!(picture.foreground.is_some());
+        // At exactly 100 FUN_0053eb90 (2581 <= Force) holds.
+        let (world, vader, klev, _) = discovery_world(100);
+        let message = force_user_discovered(&world, vader, klev, 9, &discovery_texts()).unwrap();
+        assert!(message.text.contains("We should consider allowing me"));
+        // Below 100: "Once I reach the rank of Jedi Knight".
+        let (world, vader, klev, _) = discovery_world(99);
+        let message = force_user_discovered(&world, vader, klev, 9, &discovery_texts()).unwrap();
+        assert!(message
+            .text
+            .contains("Once I reach the rank of Jedi Knight"));
+    }
+
+    #[test]
+    fn leia_found_uses_the_force_in_her_own_words() {
+        // FUN_0048f1e0: 0x31000241 takes 0x71d8 / 0x71d9 and her portrait.
+        let (mut world, _, _, leia) = discovery_world(80);
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(0x242),
+            name: "Luke Skywalker".into(),
+            is_alliance: true,
+            is_major: true,
+            is_jedi_trainer: true,
+            force_base: 80,
+            ..Default::default()
+        });
+        let message = force_user_discovered(&world, luke, leia, 9, &discovery_texts()).unwrap();
+        assert_eq!(message.title.as_deref(), Some("Leia Uses Force"));
+        assert!(message.text.starts_with("My heritage as a member"));
+        assert_eq!(message.audience, RailAudience::Alliance);
+        let picture = message.picture.unwrap();
+        assert_eq!(picture.background, 0x412);
+        assert_eq!(
+            picture.foreground,
+            character_portrait(DatId::new(0x241), true)
+        );
+    }
 
     #[test]
     fn story_texts_come_from_the_players_message_texts_with_names_filled() {

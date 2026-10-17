@@ -2349,6 +2349,15 @@ cross-runtime proof remain open
   `v1:5531248a4edc88bb` -> `v1:461650933b75014c`
   (`evidence/2026-10-18-force-discovery/`). Open: message `0x362`,
   `+0x90`, `+0x92`.
+- 2026-10-18: each discovery posts notification `0x362` as
+  `FUN_0048f1e0` builds it, to the trainer's side: "Future Jedi Discovered"
+  with the trainer's portrait and `0x7179`/`0x717a` by Force 100 (GNPRTB
+  2581), or "Leia Uses Force" with hers. Both seen in the fixture build
+  (scenario 55, both readers). The Healed picture's portrait lookup (side
+  passed for the major flag) and the Force Growth ranking (template for
+  the Force level) are fixed with it. Simulation unchanged
+  (`evidence/2026-10-18-force-discovery-message/`). Open: `+0x90`,
+  `+0x92`.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
