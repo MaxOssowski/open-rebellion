@@ -2699,6 +2699,9 @@ async fn main() {
                 &tick_events,
             ) {
                 rebellion_core::healing::apply(&mut world, heal);
+                if heal.injury == 0 {
+                    push_character_health(&mut msg_log, &world, heal.character, heal.tick);
+                }
             }
 
             // ── Informants: each held system's timer 0x38e ──────────────────
@@ -2829,6 +2832,17 @@ async fn main() {
                     system_audience(&world, system),
                 ));
                 rebellion_core::uprising::apply_uprising_event(&mut world, evt);
+                if let UprisingEvent::UprisingIncident { losses, .. } = evt {
+                    for loss in losses {
+                        if let rebellion_core::uprising::IncidentLoss::CharacterInjured {
+                            character,
+                            ..
+                        } = loss
+                        {
+                            push_character_health(&mut msg_log, &world, *character, tick);
+                        }
+                    }
+                }
             }
 
             // ── Betrayal ─────────────────────────────────────────────────────
@@ -7591,6 +7605,43 @@ fn apply_panel_action(
     clippy::too_many_lines,
     reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
 )]
+/// Notification `0x106`, Character Injured or Healed (`FUN_0048fdf0`,
+/// TEXTSTRA `0x7160`..`0x7163`): Injured while the injury `+0x94` is not 0,
+/// Healed when it is.
+///
+/// hyp: the builder runs on every change of the injury; the port posts it
+/// when an injury is added and when the healing ends, not on each day of
+/// healing.
+fn push_character_health(
+    log: &mut MessageLog,
+    world: &GameWorld,
+    character: rebellion_core::ids::CharacterKey,
+    tick: u64,
+) {
+    let Some(c) = world.characters.get(character) else {
+        return;
+    };
+    let (text, picture) = if c.injury != 0 {
+        (
+            format!("{} Injured: {} has been injured.", c.name, c.name),
+            pictures::injured(),
+        )
+    } else {
+        (
+            format!(
+                "{} Healed: {} has been healed of all injuries.",
+                c.name, c.name
+            ),
+            pictures::healed((c.dat_id, c.is_alliance)),
+        )
+    };
+    log.push(filed(
+        GameMessage::new(tick, text, MessageCategory::Event).with_picture_if(Some(picture)),
+        MessageRail::Mission,
+        character_audience(world, character),
+    ));
+}
+
 fn apply_mission_result(
     result: &rebellion_core::missions::MissionResult,
     world: &mut GameWorld,
@@ -7799,11 +7850,13 @@ fn apply_mission_result(
             MissionEffect::SpecialForceDestroyed { unit } => {
                 rebellion_core::missions::destroy_special_force(world, *unit);
             }
-            // port: the port stores no injury (F-026).
             MissionEffect::CharacterInjured { character, injury } => {
                 // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.injure(*injury);
+                }
+                if *injury > 0 {
+                    push_character_health(log, world, *character, result.tick);
                 }
             }
             MissionEffect::CharacterRescued {
@@ -9265,5 +9318,39 @@ mod launch_mute_tests {
         for off in ["", "0", "false", "no", "off", "muted"] {
             assert!(!env_flag_on(off), "{off:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod character_health_tests {
+    use super::*;
+
+    #[test]
+    fn an_injury_posts_injured_and_full_healing_posts_healed() {
+        // FUN_0048fdf0 (notification 0x106): TEXTSTRA 0x7160/0x7161 with a
+        // non-zero +0x94, 0x7162/0x7163 at 0; pictures 0x41a and 0x41b.
+        let mut world = GameWorld::default();
+        let character = world.characters.insert(rebellion_core::world::Character {
+            name: "Han Solo".into(),
+            is_alliance: true,
+            injury: 7,
+            ..rebellion_core::world::Character::default()
+        });
+        let mut log = MessageLog::new(8);
+        push_character_health(&mut log, &world, character, 3);
+        world.characters[character].injury = 0;
+        push_character_health(&mut log, &world, character, 9);
+        let messages = log.messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(
+            messages[0].text,
+            "Han Solo Injured: Han Solo has been injured."
+        );
+        assert_eq!(messages[0].picture.map(|p| p.background), Some(0x41a));
+        assert_eq!(
+            messages[1].text,
+            "Han Solo Healed: Han Solo has been healed of all injuries."
+        );
+        assert_eq!(messages[1].picture.map(|p| p.background), Some(0x41b));
     }
 }

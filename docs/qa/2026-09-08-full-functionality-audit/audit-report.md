@@ -2300,6 +2300,11 @@ cross-runtime proof remain open
   open here: the injury's resign request, command clearing and the
   Injured/Healed messages; timer `0x389` (`0x38a`, captive escape, was
   ported 2026-10-14); Jedi, betrayal and the story events.
+- 2026-10-17: the Character Injured / Healed messages (`0x106`,
+  `FUN_0048fdf0`) are posted when an injury is added and when healing ends
+  (`evidence/2026-10-17-injury-messages/`). The injury's resign request
+  needs no port; the command clearing and `Damaged` stay open, as the port
+  keeps no command.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

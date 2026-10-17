@@ -69,6 +69,18 @@ The Status window shows "Injured" for a non-zero `+0x94`
   system, whose side is its holder; a character with neither stands for
   "en route".
 
-Not ported yet: the resign request, the command clearing, the `Damaged`
-bit, death by injury for the `0x00665be0` subclass, and the Character
-Injured / Healed messages (`0x106`).
+The Character Injured / Healed messages (`0x106`, `FUN_0048fdf0`) are
+ported in the app (2026-10-17): Injured (TEXTSTRA `0x7160`/`0x7161`,
+picture `0x41a`) while `+0x94` is not 0, Healed (`0x7162`/`0x7163`, picture
+`0x41b` with the portrait) at 0. hyp: the builder runs on every change of
+`+0x94`; the app posts it when an injury is added and when healing ends,
+not on each day of healing.
+
+The resign request needs no port: the port's missions already resign an
+evading member, a captured one leaves, and the uprising incident only
+injures characters outside missions (`usable_at`, as `FUN_00539f70`
+walks).
+
+Not ported yet: the command clearing (the port keeps no command
+`+0x96`), the `Damaged` bit, and death by injury for the `0x00665be0`
+subclass.
