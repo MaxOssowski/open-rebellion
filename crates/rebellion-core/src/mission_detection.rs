@@ -28,6 +28,18 @@ const SHIPPED_DETECTION_OFFSET: i64 = -1;
 const SHIPPED_INJURY_MIN_CHANCE: i64 = 1;
 /// GNPRTB 2566 as shipped: the injury roll's base.
 const SHIPPED_INJURY_BASE: i64 = 1;
+/// GNPRTB 3081 (`DAT_006bb758`): Luke's Force experience for an evade
+/// (`FUN_0056f8b0`).
+const GNPRTB_LUKE_EVADE_FORCE: u16 = 3081;
+/// GNPRTB 3082 (`DAT_006bb744`): Leia's (`FUN_0056ffa0`).
+const GNPRTB_LEIA_EVADE_FORCE: u16 = 3082;
+/// Both ship as 1.
+const SHIPPED_EVADE_FORCE: i64 = 1;
+/// Luke's record (`0x32000242`), whose class `0x00665fd8` overrides slot
+/// `+0x208` with `FUN_0056f8b0`.
+const LUKE: u32 = 0x242;
+/// Leia's record (`0x31000241`), class `0x006663e0`, `FUN_0056ffa0`.
+const LEIA: u32 = 0x241;
 /// GNPRTB 2567 as shipped: the injury roll's spread.
 const SHIPPED_INJURY_SPREAD: i64 = 29;
 
@@ -353,10 +365,13 @@ impl Run<'_> {
     ) {
         let combat = self.skill(member, Skill::Combat);
         match (table_roll(self.world, RLEVADTB, combat, rng), member) {
-            // Slot +0x208: evade. A character also rolls the injury.
+            // Slot +0x208: evade. A character also rolls the injury; Luke
+            // and Leia then gain Force experience (FUN_0056f8b0,
+            // FUN_0056ffa0).
             (Some(true), MissionMember::Character(character)) => {
                 self.request_resign(mission, member);
                 self.injure(character, combat, rng, out);
+                self.evade_force(character, out);
             }
             (Some(true), MissionMember::SpecialForce(_)) => {
                 self.request_resign(mission, member);
@@ -397,6 +412,21 @@ impl Run<'_> {
         if self.can_resign && !mission.resigning.contains(&member) {
             mission.resigning.push(member);
         }
+    }
+
+    /// Luke's and Leia's slot `+0x208` (`FUN_0056f8b0`, `FUN_0056ffa0`):
+    /// after the base evade (`FUN_004ef450`), `ForceExperience` `+0x8e` gains
+    /// GNPRTB 3081 (Luke) or 3082 (Leia).
+    fn evade_force(&self, character: crate::ids::CharacterKey, out: &mut Vec<MissionEffect>) {
+        let Some(c) = self.world.characters.get(character) else {
+            return;
+        };
+        let amount = match c.dat_id.index() {
+            LUKE => param(self.world, GNPRTB_LUKE_EVADE_FORCE, SHIPPED_EVADE_FORCE),
+            LEIA => param(self.world, GNPRTB_LEIA_EVADE_FORCE, SHIPPED_EVADE_FORCE),
+            _ => return,
+        };
+        out.push(MissionEffect::ForceExperienceGained { character, amount });
     }
 
     /// Slot `+0x2e4` `FUN_004ef5f0`: the injury roll `FUN_0053e990`.
@@ -1045,6 +1075,66 @@ mod tests {
             out.as_slice(),
             [MissionEffect::CharacterInjured { character: c, .. }] if *c == character(lead)
         ));
+    }
+
+    #[test]
+    fn luke_and_leia_gain_force_experience_when_they_evade() {
+        // Slot +0x208 of Luke's class (FUN_0056f8b0) and Leia's
+        // (FUN_0056ffa0): after the base evade and its injury roll,
+        // ForceExperience +0x8e gains GNPRTB 3081 / 3082 (shipped 1).
+        for (record, gains) in [(LUKE, true), (LEIA, true), (0x240, false)] {
+            let (mut world, here) = world_with(imperial());
+            imperial_regiment(&mut world, here);
+            table(&mut world, FOILTB, 100);
+            table(&mut world, RLEVADTB, 100);
+            let lead = agent(&mut world, here, 100);
+            world.characters[character(lead)].dat_id = crate::ids::DatId::new(record);
+            let mut mission = sabotage(vec![lead], here, 2);
+
+            let out = run_once(&mut mission, &world);
+
+            let gained: Vec<_> = out
+                .iter()
+                .filter_map(|effect| match effect {
+                    MissionEffect::ForceExperienceGained { character, amount } => {
+                        Some((*character, *amount))
+                    }
+                    _ => None,
+                })
+                .collect();
+            let expected = if gains {
+                vec![(character(lead), 1)]
+            } else {
+                vec![]
+            };
+            assert_eq!(gained, expected, "{record:#x}");
+            // The gain follows the injury roll.
+            if gains {
+                assert!(matches!(
+                    out.as_slice(),
+                    [
+                        MissionEffect::CharacterInjured { .. },
+                        MissionEffect::ForceExperienceGained { .. }
+                    ]
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn a_luke_captured_gains_no_force_experience() {
+        // Slot +0x20c (captured) has no override in Luke's class.
+        let (mut world, here) = world_with(imperial());
+        imperial_regiment(&mut world, here);
+        table(&mut world, FOILTB, 100);
+        table(&mut world, RLEVADTB, 0);
+        let lead = agent(&mut world, here, 100);
+        world.characters[character(lead)].dat_id = crate::ids::DatId::new(LUKE);
+        let mut mission = sabotage(vec![lead], here, 2);
+        let out = run_once(&mut mission, &world);
+        assert!(!out
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::ForceExperienceGained { .. })));
     }
 
     #[test]

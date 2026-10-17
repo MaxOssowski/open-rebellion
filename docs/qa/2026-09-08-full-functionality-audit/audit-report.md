@@ -2366,6 +2366,14 @@ cross-runtime proof remain open
   ForceExperience grows when Luke or Leia evade capture (+1, GNPRTB
   3081/3082), at Dagobah's end (+60%, or days/2 percent; GNPRTB
   6174/6175) and in the Luke-Vader encounter. None exists in the port.
+- 2026-10-18: Luke and Leia gain GNPRTB 3081/3082 (1) ForceExperience when
+  they evade capture in a mission's detection (slot `+0x208`,
+  `FUN_0056f8b0`, `FUN_0056ffa0`; `MissionEffect::ForceExperienceGained`).
+  Defect fixed with it: the detection's injuries were never applied
+  (`apply_advance_effects` ignored `CharacterInjured`), so no mission
+  injury had landed since the injury step. Seven 600-day campaigns now
+  land 19 injuries and Leia gains up to 6 Force. Golden unchanged
+  (`evidence/2026-10-18-evade-force/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

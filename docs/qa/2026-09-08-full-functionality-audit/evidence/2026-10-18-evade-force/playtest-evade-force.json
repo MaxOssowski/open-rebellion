@@ -1,0 +1,262 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks N --dual-ai",
+ "baseline": "fc5c6602",
+ "runs": {
+  "head-1": {
+   "counts": {
+    "character_health:None": 12
+   },
+   "force_experience": []
+  },
+  "head-2": {
+   "counts": {
+    "character_health:None": 26
+   },
+   "force_experience": []
+  },
+  "head-3": {
+   "counts": {
+    "character_health:None": 27
+   },
+   "force_experience": []
+  },
+  "head-7": {
+   "counts": {
+    "character_health:None": 39
+   },
+   "force_experience": []
+  },
+  "head-13": {
+   "counts": {
+    "character_health:None": 18
+   },
+   "force_experience": []
+  },
+  "head-42": {
+   "counts": {
+    "character_health:None": 26
+   },
+   "force_experience": []
+  },
+  "head-47": {
+   "counts": {
+    "character_health:None": 33
+   },
+   "force_experience": []
+  },
+  "new-1": {
+   "counts": {
+    "character_health:None": 24,
+    "character_health:mission_injury": 4,
+    "character_health:healing": 122
+   },
+   "force_experience": [
+    [
+     167,
+     "Leia Organa",
+     1
+    ],
+    [
+     171,
+     "Leia Organa",
+     2
+    ],
+    [
+     175,
+     "Leia Organa",
+     3
+    ]
+   ]
+  },
+  "new-2": {
+   "counts": {
+    "character_health:None": 26
+   },
+   "force_experience": []
+  },
+  "new-3": {
+   "counts": {
+    "character_health:None": 27
+   },
+   "force_experience": []
+  },
+  "new-7": {
+   "counts": {
+    "character_health:None": 34,
+    "character_health:mission_injury": 5
+   },
+   "force_experience": [
+    [
+     107,
+     "Leia Organa",
+     1
+    ],
+    [
+     110,
+     "Leia Organa",
+     2
+    ],
+    [
+     114,
+     "Leia Organa",
+     3
+    ],
+    [
+     117,
+     "Leia Organa",
+     4
+    ],
+    [
+     540,
+     "Leia Organa",
+     5
+    ]
+   ]
+  },
+  "new-13": {
+   "counts": {
+    "character_health:None": 18,
+    "character_health:mission_injury": 2
+   },
+   "force_experience": []
+  },
+  "new-42": {
+   "counts": {
+    "character_health:None": 26,
+    "character_health:mission_injury": 1,
+    "character_health:healing": 17
+   },
+   "force_experience": [
+    [
+     169,
+     "Leia Organa",
+     1
+    ],
+    [
+     174,
+     "Leia Organa",
+     2
+    ]
+   ]
+  },
+  "new-47": {
+   "counts": {
+    "character_health:None": 22,
+    "character_health:mission_injury": 7,
+    "character_health:healing": 35
+   },
+   "force_experience": [
+    [
+     98,
+     "Leia Organa",
+     1
+    ],
+    [
+     102,
+     "Leia Organa",
+     2
+    ],
+    [
+     106,
+     "Leia Organa",
+     3
+    ],
+    [
+     110,
+     "Leia Organa",
+     4
+    ],
+    [
+     113,
+     "Leia Organa",
+     5
+    ],
+    [
+     463,
+     "Leia Organa",
+     6
+    ]
+   ]
+  },
+  "long-1": {
+   "counts": {
+    "character_health:None": 124,
+    "character_health:mission_injury": 32,
+    "character_health:healing": 176
+   },
+   "force_experience": [
+    [
+     167,
+     "Leia Organa",
+     1
+    ],
+    [
+     171,
+     "Leia Organa",
+     2
+    ],
+    [
+     175,
+     "Leia Organa",
+     3
+    ],
+    [
+     772,
+     "Leia Organa",
+     4
+    ],
+    [
+     1145,
+     "Leia Organa",
+     5
+    ],
+    [
+     1332,
+     "Leia Organa",
+     6
+    ],
+    [
+     1593,
+     "Leia Organa",
+     7
+    ],
+    [
+     1633,
+     "Leia Organa",
+     8
+    ],
+    [
+     1639,
+     "Leia Organa",
+     9
+    ],
+    [
+     1645,
+     "Leia Organa",
+     10
+    ],
+    [
+     1736,
+     "Leia Organa",
+     11
+    ]
+   ]
+  },
+  "long-2": {
+   "counts": {
+    "character_health:None": 106,
+    "character_health:mission_injury": 36,
+    "character_health:healing": 438
+   },
+   "force_experience": []
+  },
+  "long-3": {
+   "counts": {
+    "character_health:None": 146,
+    "character_health:mission_injury": 21,
+    "character_health:healing": 330
+   },
+   "force_experience": []
+  }
+ }
+}

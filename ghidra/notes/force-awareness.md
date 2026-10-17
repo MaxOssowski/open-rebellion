@@ -96,7 +96,9 @@ What writes them:
 
 So in the original Luke grows by evading capture, by Dagobah, by the
 encounter, and by Jedi Training once someone of his side reaches Force
-100. None of these exists in the port.
+100. Ported: the mission detection's evade gain (2026-10-18,
+`MissionEffect::ForceExperienceGained`,
+`evidence/2026-10-18-evade-force/`).
 
 ## Discovering others (timer `0x389`)
 

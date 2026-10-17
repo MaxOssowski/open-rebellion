@@ -27,7 +27,7 @@ use rebellion_core::game_events::{
     EVT_CAPTURE, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
-    EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_GARRISON_REQUIRED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL, EVT_JEDI_CHECK,
+    EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_EXPERIENCE, EVT_GARRISON_REQUIRED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL, EVT_JEDI_CHECK,
     EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE,
     EVT_MISSION_DISPATCHED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
@@ -642,6 +642,56 @@ impl PerceptionIntegrator {
                     "injury": heal.injury,
                 }),
             ));
+        }
+    }
+
+    /// Record the mission detection's character effects, which
+    /// `missions::apply_advance_effects` has applied: a `character_health`
+    /// event for each injury and a `force_experience` event for each Force
+    /// gain.
+    pub fn record_advance_character_effects(
+        &mut self,
+        world: &GameWorld,
+        effects: &[MissionEffect],
+        tick: u64,
+    ) {
+        let name = |key| {
+            world
+                .characters
+                .get(key)
+                .map_or_else(String::new, |c| c.name.clone())
+        };
+        for effect in effects {
+            match effect {
+                MissionEffect::CharacterInjured { character, injury } if *injury > 0 => {
+                    self.events.push(GameEventRecord::new(
+                        tick,
+                        self.wall_ms,
+                        SYS_MISSIONS,
+                        EVT_CHARACTER_HEALTH,
+                        serde_json::json!({
+                            "character": name(*character),
+                            "cause": "mission_injury",
+                            "dealt": injury,
+                            "injury": world.characters.get(*character).map_or(0, |c| c.injury),
+                        }),
+                    ));
+                }
+                MissionEffect::ForceExperienceGained { character, amount } => {
+                    self.events.push(GameEventRecord::new(
+                        tick,
+                        self.wall_ms,
+                        SYS_JEDI,
+                        EVT_FORCE_EXPERIENCE,
+                        serde_json::json!({
+                            "character": name(*character),
+                            "gain": amount,
+                            "force": world.characters.get(*character).map_or(0, rebellion_core::world::Character::force_level),
+                        }),
+                    ));
+                }
+                _ => {}
+            }
         }
     }
 
@@ -1845,7 +1895,14 @@ fn apply_mission_effects_inner(
             MissionEffect::SpecialForceDestroyed { unit } => {
                 rebellion_core::missions::destroy_special_force(world, *unit);
             }
-            // port: the port stores no injury (F-026).
+            // The detection's injuries and Force gains come with the
+            // advance (`missions::apply_advance_effects`); a result that
+            // carries one applies it the same way.
+            MissionEffect::ForceExperienceGained { character, amount } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.add_force_experience(*amount);
+                }
+            }
             MissionEffect::CharacterInjured { character, injury } => {
                 // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
                 if let Some(c) = world.characters.get_mut(*character) {
@@ -2490,6 +2547,43 @@ mod tests {
     use rebellion_core::missions::MissionOutcome;
     use rebellion_core::world::{CapitalShipClass, Sector, System};
 
+
+    #[test]
+    fn the_detection_s_injuries_and_force_gains_are_recorded() {
+        let mut world = GameWorld::default();
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            name: "Luke".into(),
+            injury: 3,
+            force_base: 51,
+            ..Default::default()
+        });
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.record_advance_character_effects(
+            &world,
+            &[
+                MissionEffect::CharacterInjured {
+                    character: luke,
+                    injury: 0,
+                },
+                MissionEffect::CharacterInjured {
+                    character: luke,
+                    injury: 3,
+                },
+                MissionEffect::ForceExperienceGained {
+                    character: luke,
+                    amount: 1,
+                },
+            ],
+            9,
+        );
+        assert_eq!(integrator.events.len(), 2);
+        assert_eq!(integrator.events[0].event_type, EVT_CHARACTER_HEALTH);
+        assert_eq!(integrator.events[0].details["cause"], "mission_injury");
+        assert_eq!(integrator.events[0].details["dealt"], 3);
+        assert_eq!(integrator.events[1].event_type, EVT_FORCE_EXPERIENCE);
+        assert_eq!(integrator.events[1].details["force"], 51);
+        assert_eq!(integrator.events[1].details["gain"], 1);
+    }
 
     #[test]
     fn a_force_discovery_makes_the_character_aware_and_records_it() {

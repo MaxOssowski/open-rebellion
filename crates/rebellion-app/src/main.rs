@@ -2145,6 +2145,7 @@ async fn main() {
             );
             // Member moves and releases come before the results.
             rebellion_core::missions::apply_advance_effects(&mut world, &mission_advance.effects);
+            push_advance_injuries(&mut msg_log, &world, &mission_advance.effects, current_tick);
             ai_state.free_mission_members(&mission_advance.effects);
             if let Some(second_ai) = secondary_ai_state.as_mut() {
                 second_ai.free_mission_members(&mission_advance.effects);
@@ -7666,6 +7667,24 @@ fn push_character_health(
     ));
 }
 
+/// The Character Injured message (`0x106`) for each injury the mission
+/// detection dealt, after [`rebellion_core::missions::apply_advance_effects`]
+/// stored it.
+fn push_advance_injuries(
+    log: &mut MessageLog,
+    world: &GameWorld,
+    effects: &[MissionEffect],
+    tick: u64,
+) {
+    for effect in effects {
+        if let MissionEffect::CharacterInjured { character, injury } = effect {
+            if *injury > 0 {
+                push_character_health(log, world, *character, tick);
+            }
+        }
+    }
+}
+
 /// Notification `0x362` for each Force discovery (timer `0x389`), built as
 /// `FUN_0048f1e0` (`story_messages::force_user_discovered`).
 fn push_force_discoveries(
@@ -7902,6 +7921,13 @@ fn apply_mission_result(
                 }
                 if *injury > 0 {
                     push_character_health(log, world, *character, result.tick);
+                }
+            }
+            // The detection's Force gains come with the advance
+            // (`apply_advance_effects`); a result applies one the same way.
+            MissionEffect::ForceExperienceGained { character, amount } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.add_force_experience(*amount);
                 }
             }
             MissionEffect::CharacterRescued {
@@ -9416,6 +9442,42 @@ mod character_health_tests {
                 rebellion_core::ids::DatId::new(0x281),
                 true
             )
+        );
+    }
+
+    #[test]
+    fn a_detection_injury_posts_character_injured() {
+        // FUN_0048fdf0: an injury the detection deals (advance effects)
+        // posts 0x7160/0x7161; a zero roll posts nothing.
+        let mut world = GameWorld::default();
+        let han = world.characters.insert(rebellion_core::world::Character {
+            name: "Han Solo".into(),
+            is_alliance: true,
+            ..rebellion_core::world::Character::default()
+        });
+        let wedge = world.characters.insert(rebellion_core::world::Character {
+            name: "Wedge Antilles".into(),
+            is_alliance: true,
+            ..rebellion_core::world::Character::default()
+        });
+        let effects = [
+            MissionEffect::CharacterInjured {
+                character: wedge,
+                injury: 0,
+            },
+            MissionEffect::CharacterInjured {
+                character: han,
+                injury: 4,
+            },
+        ];
+        rebellion_core::missions::apply_advance_effects(&mut world, &effects);
+        let mut log = MessageLog::new(8);
+        push_advance_injuries(&mut log, &world, &effects, 5);
+        assert_eq!(world.characters[han].injury, 4);
+        assert_eq!(log.messages().len(), 1);
+        assert_eq!(
+            log.messages()[0].text,
+            "Han Solo Injured: Han Solo has been injured."
         );
     }
 

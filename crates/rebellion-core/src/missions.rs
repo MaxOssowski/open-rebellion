@@ -1106,8 +1106,9 @@ pub fn move_member(world: &mut GameWorld, member: MissionMember, to: Option<Syst
 }
 
 /// Apply [`MissionAdvance::effects`] in order: member moves and releases,
-/// and the detection's captures, lost special forces, and injuries. The
-/// native and browser app shares this with the headless integrator.
+/// and the detection's captures, lost special forces, injuries and Force
+/// gains. The native and browser app shares this with the headless
+/// integrator.
 pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
     for effect in effects {
         match effect {
@@ -1119,6 +1120,16 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
                 at_system,
             } => capture_character(world, *character, *captured_by, *at_system),
             MissionEffect::SpecialForceDestroyed { unit } => destroy_special_force(world, *unit),
+            MissionEffect::CharacterInjured { character, injury } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.injure(*injury);
+                }
+            }
+            MissionEffect::ForceExperienceGained { character, amount } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.add_force_experience(*amount);
+                }
+            }
             _ => {}
         }
     }
@@ -1659,12 +1670,19 @@ pub enum MissionEffect {
     /// `FUN_00503eb0` -> slot `+0xac(9)`).
     SpecialForceDestroyed { unit: crate::ids::SpecialForceKey },
 
-    /// A character took the injury roll `FUN_004ef5f0` (health `+0x94`).
-    /// port: the port stores no injury (F-026), so applying it changes
-    /// nothing.
+    /// A character took the injury roll `FUN_004ef5f0`; slot `+0x2f0`
+    /// (`FUN_004ef6d0`) adds it to `+0x94`.
     CharacterInjured {
         character: CharacterKey,
         injury: i32,
+    },
+
+    /// Luke or Leia evaded capture: their slot `+0x208` (`FUN_0056f8b0`,
+    /// `FUN_0056ffa0`) adds GNPRTB 3081 or 3082 (1) to `ForceExperience`
+    /// `+0x8e` (`FUN_004ee150`).
+    ForceExperienceGained {
+        character: CharacterKey,
+        amount: i32,
     },
 }
 
@@ -7429,6 +7447,42 @@ mod tests {
         assert_eq!(character.current_system, Some(to));
         assert!(!character.on_mission);
         assert!(!character.is_killed);
+    }
+
+    #[test]
+    fn detection_effects_injure_and_raise_the_force_experience() {
+        // The detection's effects reach the character: slot +0x2f0
+        // (FUN_004ef6d0) adds the injury, FUN_004ee150 the Force
+        // experience, clamped to 0x7fff.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let luke = agent_at(&mut world, here, true);
+        world.characters[luke].force_base = 50;
+        apply_advance_effects(
+            &mut world,
+            &[
+                MissionEffect::CharacterInjured {
+                    character: luke,
+                    injury: 7,
+                },
+                MissionEffect::ForceExperienceGained {
+                    character: luke,
+                    amount: 1,
+                },
+            ],
+        );
+        assert_eq!(world.characters[luke].injury, 7);
+        assert_eq!(world.characters[luke].force_base, 51);
+        assert_eq!(world.characters[luke].force_level(), 51);
+        world.characters[luke].force_base = 0x7fff;
+        apply_advance_effects(
+            &mut world,
+            &[MissionEffect::ForceExperienceGained {
+                character: luke,
+                amount: 1,
+            }],
+        );
+        assert_eq!(world.characters[luke].force_base, 0x7fff);
     }
 
     #[test]

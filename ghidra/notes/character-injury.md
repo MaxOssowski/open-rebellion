@@ -85,3 +85,10 @@ walks).
 Not ported yet: the command clearing (the port keeps no command
 `+0x96`), the `Damaged` bit, and death by injury for the `0x00665be0`
 subclass.
+
+## Correction (2026-10-18)
+
+The port's first version applied mission injuries only from mission
+results, but the detection that rolls them reports them with the
+advance, which ignored them. From 2026-10-18 `apply_advance_effects`
+stores them (`evidence/2026-10-18-evade-force/`).

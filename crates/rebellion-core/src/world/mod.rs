@@ -774,6 +774,13 @@ impl Character {
         self.force_base = u16::try_from(value).unwrap_or(0x7fff);
     }
 
+    /// Add `amount` to `ForceExperience` `+0x8e` (the port's `force_base`)
+    /// through its setter `FUN_004ee150`, clamped to `0..=0x7fff`.
+    pub fn add_force_experience(&mut self, amount: i32) {
+        let value = (i32::from(self.force_base) + amount).clamp(0, 0x7fff);
+        self.force_base = u16::try_from(value).unwrap_or(0x7fff);
+    }
+
     /// Add `injury` points through slot `+0x2f0` (`FUN_004ef6d0`): a
     /// positive amount raises `+0x94`, clamped to `0x7fff`.
     pub fn injure(&mut self, injury: i32) {

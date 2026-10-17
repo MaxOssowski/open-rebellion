@@ -319,6 +319,11 @@ pub fn run_simulation_tick(
         &mission_rolls,
     );
     rebellion_core::missions::apply_advance_effects(world, &mission_advance.effects);
+    integrator.record_advance_character_effects(
+        world,
+        &mission_advance.effects,
+        tick_events.last().map_or(0, |event| event.tick),
+    );
     states.ai.free_mission_members(&mission_advance.effects);
     if let Some(ref mut ai2) = states.ai2 {
         ai2.free_mission_members(&mission_advance.effects);
