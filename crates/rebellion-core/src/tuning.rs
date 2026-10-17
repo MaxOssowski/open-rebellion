@@ -33,25 +33,6 @@ pub struct AiConfig {
     /// Maximum construction yards per system. **Parity.**
     pub max_construction_yards: usize,
 
-    /// Maximum simultaneous attack fronts (capped at fleet count). **Augmentation.**
-    pub max_attack_fronts: usize,
-
-    /// Battle cooldown decay ticks — full recovery after this many ticks. **Augmentation.**
-    pub battle_cooldown_ticks: f64,
-
-    /// Proximity divisor for attack scoring (higher = less distance penalty). **Augmentation.**
-    pub proximity_divisor: f64,
-
-    // ── Attack scoring weights (must sum to 1.0) ── **Augmentation.**
-    /// Weight for target weakness in attack scoring.
-    pub weight_weakness: f64,
-    /// Weight for proximity in attack scoring.
-    pub weight_proximity: f64,
-    /// Weight for deconfliction in attack scoring.
-    pub weight_deconfliction: f64,
-    /// Weight for battle freshness in attack scoring.
-    pub weight_freshness: f64,
-
     /// Minimum troop garrison count before a controlled system is considered
     /// a troop deployment receiver. Systems with fewer than this many friendly
     /// troops will receive reinforcements from donor systems. **Augmentation.**
@@ -73,13 +54,6 @@ impl Default for AiConfig {
             diplomacy_target_popularity_cap: 0.8,
             max_covert_ops_per_eval: 3,
             max_construction_yards: 5,
-            max_attack_fronts: 3,
-            battle_cooldown_ticks: 100.0,
-            proximity_divisor: 100.0,
-            weight_weakness: 0.30,
-            weight_proximity: 0.30,
-            weight_deconfliction: 0.25,
-            weight_freshness: 0.15,
             troop_garrison_min: 1,
             troop_garrison_donor_threshold: 3,
             max_recon_per_eval: 2,

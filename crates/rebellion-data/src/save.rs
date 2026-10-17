@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 59;
+pub const SAVE_VERSION: u32 = 60;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1018,7 +1018,7 @@ mod tests {
         state.ai2.as_mut().unwrap().orders_today = 7;
         let system = state.world.systems.keys().next().unwrap();
         state.combat_cooldowns.insert(system, 61);
-        state.game_config.ai.max_attack_fronts = 13;
+        state.game_config.ai.troop_garrison_min = 13;
         state.campaign_config.galaxy_size = rebellion_core::dat::GalaxySize::Huge;
         state.campaign_config.difficulty = rebellion_core::world::SeedDifficulty::Hard;
         state.campaign_config.victory_conditions =
@@ -1088,7 +1088,7 @@ mod tests {
         assert_eq!(loaded_rolls, expected_rolls);
         assert_eq!(loaded.ai2.as_ref().unwrap().orders_today, 7);
         assert_eq!(loaded.combat_cooldowns.get(&system), Some(&61));
-        assert_eq!(loaded.game_config.ai.max_attack_fronts, 13);
+        assert_eq!(loaded.game_config.ai.troop_garrison_min, 13);
         assert_eq!(loaded.campaign_config, state.campaign_config);
         assert!(loaded.repair.is_repairing(fleet));
         assert_eq!(loaded.troop_transport.cargo(fleet), &[troop]);
@@ -1147,7 +1147,7 @@ mod tests {
         let mut rng_changed = original.clone();
         rng_changed.sim_rng.next_u64();
         let mut config_changed = original.clone();
-        config_changed.game_config.ai.max_attack_fronts += 1;
+        config_changed.game_config.ai.troop_garrison_min += 1;
         let mut campaign_changed = original.clone();
         campaign_changed.campaign_config.victory_conditions =
             rebellion_core::world::VictoryConditions::HeadquartersOnly;

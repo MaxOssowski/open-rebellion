@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v59, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v60, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-16
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v59, and it is the only one
+serializable snapshot. The current format is v60, and it is the only one
 that loads.
 
-## Native format (v59)
+## Native format (v60)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -63,7 +63,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `repair` | `RepairState` |
 | `production` | `ProductionState`: each side's raw and refined stockpiles, the refineries waiting for raw material, and every mine's and refinery's cycle and upkeep allocation (v33); the yards waiting for refined material and every yard's cycle (v34) |
 | `combat_cooldowns` | `HashMap<SystemKey, u64>` |
-| `game_config` | `GameConfig` (v59 drops `AiConfig`'s `alliance_deploy_budget`, `empire_deploy_budget` and `ds_retreat_strength_ratio`) |
+| `game_config` | `GameConfig` (v59 drops `AiConfig`'s `alliance_deploy_budget`, `empire_deploy_budget` and `ds_retreat_strength_ratio`; v60 its `max_attack_fronts`, `battle_cooldown_ticks`, `proximity_divisor` and the four `weight_*` attack scoring weights) |
 | `campaign_config` | `CampaignConfig` |
 | `troop_transport` | `TroopTransportState`; it keeps the squadrons travelling on their own (v47); v59 drops the fleets' hold |
 | `deliveries` | `DeliveryState` |
