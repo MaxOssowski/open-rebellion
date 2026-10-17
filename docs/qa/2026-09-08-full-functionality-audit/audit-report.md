@@ -2166,6 +2166,15 @@ cross-runtime proof remain open
   system's regiments change. Systems flipping back and forth fall from 5
   to 2 over seven 600-day seeds. Golden final `v1:9234ac6ef0f26a8a` ->
   `v1:ef80035d2be8099a` (`evidence/2026-10-17-system-control/`).
+- 2026-10-17: the economy's cadence read (`ghidra/notes/economy-cadence.md`).
+  The port's per-tick support drift applies `FUN_00559c40`, which is the
+  system's SmugglingPercent (`+0x6c`, `FUN_00509ec0`): the original never
+  moves support with it. Support moves only through `FUN_0050c9f0`, from
+  missions, events and the timers `0x384` (uprising, -1) and `0x386`
+  (blockade, ±1). The other derived fields are recomputed by the field
+  hooks (`FUN_005109f0`, `FUN_00510820`, `FUN_00511740`, `FUN_00511300`),
+  not each tick. The port's "collection rate" is ProductionModifier
+  (`+0x70`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 
