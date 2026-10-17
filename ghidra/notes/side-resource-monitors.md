@@ -44,7 +44,7 @@ The side object is `FUN_004f3dd0(side)`, id family `0xf3`.
 | `+0x78` | `FUN_0052ef90` | Raw materials on hand. |
 | `+0x7c` | `FUN_0052eff0` | Refined materials on hand. |
 | `+0x80`, `+0x84` | | Refineries and builders waiting for raw / refined material (`FUN_0052fbf0`, `FUN_0052fd30`). |
-| `+0x90/+0x94/+0x98` | `FUN_0052f130/1a0/210` | Per-system list sums, timer `0x381` (`FUN_00530460`). |
+| `+0x90/+0x94/+0x98` | `FUN_0052f130/1a0/210` | Research points for ships, troops, facilities (`mission-lifecycle.md`, "Research"). Timer `0x381` (`FUN_00530460`) adds the side's active yards to them. |
 
 `FUN_0052f670` raises the side's over-limit flag (`FUN_0052f3d0`) when
 `+0x70` or `+0x74` exceeds `+0x58`; timer `0x382` (`FUN_00530350`) then

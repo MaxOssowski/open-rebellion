@@ -543,6 +543,18 @@ facilities, `+0x94` troops; levels `+0x9c` ShipyardRdOrder, `+0xa4`
 ConstructionYardRdOrder, `+0xa0` TrainingFacilRdOrder; Done `+0xac`,
 `+0xb4`, `+0xb0`.
 
+**The yards research too** (read 2026-10-17). The side's timer `0x381`
+(`FUN_00532350` arms it when the side comes into play; record `+0xd4`,
+GNPRTB 7169 (30) + rand(0..=7170 (30)) days, redrawn each time) runs
+`FUN_00530460`. For each system with the side's side bits it takes the
+managers of areas 0, 2 and 1 (`FUN_00509670`) and counts, through
+`FUN_00528040`, their yards that `FUN_0052bde0` accepts (the manager's
+area, usable `+0x50` bit 0, the manager's side) and that are not suspended
+(`+0x60` bit 0). The three sums go to `+0x90`, `+0x94` and `+0x98`
+through the setters, which run the points hook below. If a system lacks
+any of the three managers the walk stops and nothing is added. Ported as
+`ResearchSystem::advance_tally`.
+
 **Points hook.** Setting the points runs `FUN_005326f0` (ships) or its
 siblings: `FUN_00530a20` -> `FUN_0051cc30`/`cc60`/`cc90` ->
 `FUN_0051cb90(side, family 0x28/0x2a/0x29, level)` -> `FUN_00567ba0`. That

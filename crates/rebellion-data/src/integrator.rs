@@ -642,6 +642,26 @@ impl PerceptionIntegrator {
         }
     }
 
+    /// Record the yards' research (timer `0x381`): one `research_unlocked`
+    /// record per level reached.
+    pub fn record_research_tallies(&mut self, tallies: &[rebellion_core::research::ResearchTally]) {
+        for tally in tallies {
+            for level in &tally.reached {
+                self.emit(
+                    SYS_RESEARCH,
+                    EVT_RESEARCH_UNLOCKED,
+                    serde_json::json!({
+                        "faction_is_alliance": tally.faction_is_alliance,
+                        "tech_type": format!("{:?}", tally.tech),
+                        "new_level": level,
+                        "cause": "yards",
+                        "points": tally.points,
+                    }),
+                );
+            }
+        }
+    }
+
     /// Apply the side's autoscraps (timer `0x382`): remove each object,
     /// refund its side, and record the Maintenance Shortfall
     /// (`GameObjDestroyedAutoscrap`, `0x304`).
@@ -2854,6 +2874,24 @@ mod tests {
             .events
             .iter()
             .any(|e| e.event_type == EVT_BLOCKADE_SUPPORT && e.tick == 31));
+    }
+
+    #[test]
+    fn a_level_the_yards_reach_is_recorded_as_research_unlocked() {
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.record_research_tallies(&[rebellion_core::research::ResearchTally {
+            faction_is_alliance: true,
+            tech: rebellion_core::research::TechType::Ship,
+            points: 2,
+            reached: vec![1, 2],
+        }]);
+        let levels: Vec<_> = integrator
+            .events
+            .iter()
+            .filter(|e| e.event_type == EVT_RESEARCH_UNLOCKED)
+            .map(|e| e.details["new_level"].clone())
+            .collect();
+        assert_eq!(levels, vec![serde_json::json!(1), serde_json::json!(2)]);
     }
 
     #[test]

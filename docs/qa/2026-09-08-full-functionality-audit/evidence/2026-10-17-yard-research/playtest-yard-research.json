@@ -1,0 +1,251 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against a2807d36",
+  "seeds": {
+    "1": {
+      "head": {
+        "research_unlocked": 23,
+        "manufacturing_complete": 431,
+        "control_changed": 25,
+        "combat_space": 2,
+        "uprising_began": 5,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 6,
+          "Empire Troop": 2,
+          "Alliance Facility": 4,
+          "Alliance Ship": 6
+        },
+        "levels_from_yards": 0,
+        "first_yard_level_tick": null
+      },
+      "new": {
+        "research_unlocked": 27,
+        "manufacturing_complete": 388,
+        "control_changed": 30,
+        "combat_space": 0,
+        "uprising_began": 7,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 7,
+          "Empire Troop": 2,
+          "Alliance Facility": 6,
+          "Alliance Ship": 5,
+          "Alliance Troop": 2
+        },
+        "levels_from_yards": 5,
+        "first_yard_level_tick": 81
+      }
+    },
+    "2": {
+      "head": {
+        "research_unlocked": 15,
+        "manufacturing_complete": 373,
+        "control_changed": 17,
+        "combat_space": 4,
+        "uprising_began": 8,
+        "final_levels": {
+          "Empire Facility": 2,
+          "Empire Ship": 6,
+          "Empire Troop": 2,
+          "Alliance Ship": 4,
+          "Alliance Troop": 1
+        },
+        "levels_from_yards": 0,
+        "first_yard_level_tick": null
+      },
+      "new": {
+        "research_unlocked": 24,
+        "manufacturing_complete": 410,
+        "control_changed": 15,
+        "combat_space": 4,
+        "uprising_began": 6,
+        "final_levels": {
+          "Empire Facility": 5,
+          "Empire Ship": 6,
+          "Empire Troop": 2,
+          "Alliance Facility": 4,
+          "Alliance Ship": 5,
+          "Alliance Troop": 3
+        },
+        "levels_from_yards": 7,
+        "first_yard_level_tick": 157
+      }
+    },
+    "3": {
+      "head": {
+        "research_unlocked": 18,
+        "manufacturing_complete": 454,
+        "control_changed": 29,
+        "combat_space": 1,
+        "uprising_began": 11,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 7,
+          "Empire Troop": 2,
+          "Alliance Ship": 3
+        },
+        "levels_from_yards": 0,
+        "first_yard_level_tick": null
+      },
+      "new": {
+        "research_unlocked": 25,
+        "manufacturing_complete": 444,
+        "control_changed": 31,
+        "combat_space": 3,
+        "uprising_began": 13,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 8,
+          "Empire Troop": 2,
+          "Alliance Facility": 4,
+          "Alliance Ship": 5,
+          "Alliance Troop": 1
+        },
+        "levels_from_yards": 14,
+        "first_yard_level_tick": 91
+      }
+    },
+    "7": {
+      "head": {
+        "research_unlocked": 21,
+        "manufacturing_complete": 328,
+        "control_changed": 20,
+        "combat_space": 9,
+        "uprising_began": 8,
+        "final_levels": {
+          "Empire Facility": 5,
+          "Empire Ship": 5,
+          "Empire Troop": 2,
+          "Alliance Facility": 2,
+          "Alliance Ship": 4,
+          "Alliance Troop": 3
+        },
+        "levels_from_yards": 0,
+        "first_yard_level_tick": null
+      },
+      "new": {
+        "research_unlocked": 20,
+        "manufacturing_complete": 309,
+        "control_changed": 21,
+        "combat_space": 9,
+        "uprising_began": 9,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 6,
+          "Empire Troop": 2,
+          "Alliance Facility": 2,
+          "Alliance Ship": 3,
+          "Alliance Troop": 1
+        },
+        "levels_from_yards": 8,
+        "first_yard_level_tick": 77
+      }
+    },
+    "13": {
+      "head": {
+        "research_unlocked": 27,
+        "manufacturing_complete": 490,
+        "control_changed": 10,
+        "combat_space": 12,
+        "uprising_began": 3,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 6,
+          "Empire Troop": 2,
+          "Alliance Facility": 6,
+          "Alliance Ship": 5,
+          "Alliance Troop": 3
+        },
+        "levels_from_yards": 0,
+        "first_yard_level_tick": null
+      },
+      "new": {
+        "research_unlocked": 29,
+        "manufacturing_complete": 472,
+        "control_changed": 15,
+        "combat_space": 5,
+        "uprising_began": 3,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 7,
+          "Empire Troop": 2,
+          "Alliance Facility": 6,
+          "Alliance Ship": 6,
+          "Alliance Troop": 3
+        },
+        "levels_from_yards": 8,
+        "first_yard_level_tick": 132
+      }
+    },
+    "42": {
+      "head": {
+        "research_unlocked": 15,
+        "manufacturing_complete": 371,
+        "control_changed": 26,
+        "combat_space": 2,
+        "uprising_began": 11,
+        "final_levels": {
+          "Empire Facility": 4,
+          "Empire Ship": 6,
+          "Empire Troop": 2,
+          "Alliance Facility": 1,
+          "Alliance Ship": 1,
+          "Alliance Troop": 1
+        },
+        "levels_from_yards": 0,
+        "first_yard_level_tick": null
+      },
+      "new": {
+        "research_unlocked": 22,
+        "manufacturing_complete": 398,
+        "control_changed": 23,
+        "combat_space": 2,
+        "uprising_began": 10,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 7,
+          "Empire Troop": 2,
+          "Alliance Facility": 2,
+          "Alliance Ship": 3,
+          "Alliance Troop": 2
+        },
+        "levels_from_yards": 10,
+        "first_yard_level_tick": 146
+      }
+    },
+    "47": {
+      "head": {
+        "research_unlocked": 16,
+        "manufacturing_complete": 455,
+        "control_changed": 17,
+        "combat_space": 4,
+        "uprising_began": 6,
+        "final_levels": {
+          "Empire Facility": 4,
+          "Empire Ship": 7,
+          "Empire Troop": 1,
+          "Alliance Ship": 4
+        },
+        "levels_from_yards": 0,
+        "first_yard_level_tick": null
+      },
+      "new": {
+        "research_unlocked": 25,
+        "manufacturing_complete": 457,
+        "control_changed": 21,
+        "combat_space": 2,
+        "uprising_began": 8,
+        "final_levels": {
+          "Empire Facility": 6,
+          "Empire Ship": 8,
+          "Empire Troop": 2,
+          "Alliance Facility": 2,
+          "Alliance Ship": 5,
+          "Alliance Troop": 2
+        },
+        "levels_from_yards": 13,
+        "first_yard_level_tick": 134
+      }
+    }
+  }
+}

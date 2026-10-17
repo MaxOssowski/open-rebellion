@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v64, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v65, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-17
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v64, and it is the only one
+serializable snapshot. The current format is v65, and it is the only one
 that loads.
 
-## Native format (v64)
+## Native format (v65)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -53,7 +53,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `blockade` | `BlockadeState`; v62 adds the support timer `0x386` of each blockaded system |
 | `uprising` | `UprisingState`; v62 adds each revolt's support timer `0x384`, v63 its side |
 | `death_star` | `DeathStarState` |
-| `research` | `ResearchState`: each side's level, points and Done flag per tree; research runs only as missions, so the invented projects are gone (v36) |
+| `research` | `ResearchState`: each side's level, points and Done flag per tree; the invented projects are gone (v36); v65 adds each side's yard research timer `0x381` |
 | `jedi` | `JediState` |
 | `victory` | `VictoryState` |
 | `betrayal` | `BetrayalState` |

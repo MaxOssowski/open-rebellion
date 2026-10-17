@@ -2589,6 +2589,42 @@ async fn main() {
                 &production_rolls,
             );
 
+            // ── The yards' own research: each side's timer 0x381 ────────────
+            let tally_rolls = [sim_rng.gen::<f64>(), sim_rng.gen::<f64>()];
+            let tallies = rebellion_core::research::ResearchSystem::advance_tally(
+                &mut research_state,
+                &world,
+                |system| blockade_state.is_blockaded(system) || uprising_state.is_uprising(system),
+                &tick_events,
+                &tally_rolls,
+            );
+            for tally in &tallies {
+                let faction_name = if tally.faction_is_alliance {
+                    "Alliance"
+                } else {
+                    "Empire"
+                };
+                let tree_name = match tally.tech {
+                    rebellion_core::research::TechType::Ship => "Ship",
+                    rebellion_core::research::TechType::Troop => "Troop",
+                    rebellion_core::research::TechType::Facility => "Facility",
+                };
+                let tick = tick_events.last().map_or(0, |event| event.tick);
+                for level in &tally.reached {
+                    // Notification 5, Research Report.
+                    msg_log.push(filed(
+                        GameMessage::new(
+                            tick,
+                            format!("{faction_name} {tree_name} tech advanced to level {level}"),
+                            MessageCategory::Event,
+                        )
+                        .with_picture_if(Some(pictures::research())),
+                        MessageRail::Manufacturing,
+                        Some(RailAudience::side(tally.faction_is_alliance)),
+                    ));
+                }
+            }
+
             // ── Maintenance shortfall: each side's autoscrap timer 0x382 ────
             let autoscrap_rolls = [sim_rng.gen::<f64>(), sim_rng.gen::<f64>()];
             let autoscraps = rebellion_core::autoscrap::AutoscrapSystem::advance(

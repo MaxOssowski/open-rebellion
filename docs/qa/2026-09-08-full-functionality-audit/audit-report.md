@@ -2233,6 +2233,16 @@ cross-runtime proof remain open
   games and never autoscrap. Golden final `v1:99cb09fad4a57148` ->
   `v1:c23f38a8242bca8f` (`evidence/2026-10-17-autoscrap/`). Still open:
   timer `0x381` (the side's per-system list sums).
+- 2026-10-17: timer `0x381` is the yards' own research. Every GNPRTB 7169
+  (30) + rand(0..=7170 (30)) days, `FUN_00530460` adds the side's usable,
+  unsuspended yards of each area, in the systems it holds, to its research
+  points (`+0x90` ships, `+0x94` troops, `+0x98` facilities), whose hook
+  raises the levels. Ported as `ResearchSystem::advance_tally` (save v65).
+  Golden final `v1:c23f38a8242bca8f` -> `v1:21ecf34ac9e1f828`
+  (`evidence/2026-10-17-yard-research/`). With it, F-037's economy timers
+  (`0x381`..`0x386`) are ported. Still open in F-037: none of the economy
+  bullets. The informant (`0x38e`) and resource (`0x390`) incidents stay
+  under F-029.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

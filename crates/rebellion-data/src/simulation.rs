@@ -654,6 +654,17 @@ pub fn run_simulation_tick(
         &autoscraps,
     );
 
+    // ── 13d. The yards' own research: each side's timer 0x381 ───────────
+    let tally_rolls = take_rolls(2);
+    let tallies = rebellion_core::research::ResearchSystem::advance_tally(
+        &mut states.research,
+        world,
+        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
+        tick_events,
+        &tally_rolls,
+    );
+    integrator.record_research_tallies(&tallies);
+
     // port: a fleet that gained its side's flagship class this tick, by a
     // build or a join on arrival, takes its signature name (fleet_name_bank).
     world.name_flagship_fleets();
@@ -1047,6 +1058,52 @@ mod tests {
         };
         assert_eq!(timer_after_a_day(false), None);
         assert_eq!(timer_after_a_day(true), Some(2));
+    }
+
+    #[test]
+    fn a_shipyard_in_a_system_in_revolt_does_no_research() {
+        // FUN_00528040 skips a yard with +0x60 bit 0, which FUN_0050bbb0
+        // sets in a system in uprising; timer 0x381 (FUN_00530460) adds the
+        // rest to the Ship points. This world's empty GNPRTB gives the
+        // timer its 1-day floor.
+        use rebellion_core::research::TechType;
+        use rebellion_core::world::ManufacturingFacilityInstance;
+        let ship_points_after_two_days = |uprising: bool| {
+            let (mut world, mut states, _, _) = world_with_loading_fleet();
+            let system = world.systems.keys().next().unwrap();
+            let yard = world
+                .manufacturing_facilities
+                .insert(ManufacturingFacilityInstance {
+                    class_dat_id: DatId::new(0x2800_0001),
+                    side: Faction::Alliance,
+                    is_shipyard: true,
+                });
+            world.systems[system].manufacturing_facilities.push(yard);
+            if uprising {
+                states.uprising.active_uprisings.insert(
+                    system,
+                    rebellion_core::uprising::ActiveUprising {
+                        started_tick: 0,
+                        next_incident_tick: Some(u64::MAX),
+                        next_support_tick: Some(u64::MAX),
+                        side: Some(Faction::Alliance),
+                    },
+                );
+            }
+            for tick in 1..=2 {
+                run_simulation_tick(
+                    &mut world,
+                    &mut states,
+                    &[TickEvent { tick }],
+                    &[0.0; 2048],
+                    10,
+                    &rebellion_core::tuning::GameConfig::default(),
+                );
+            }
+            states.research.progress(true, TechType::Ship).points
+        };
+        assert_eq!(ship_points_after_two_days(false), 1);
+        assert_eq!(ship_points_after_two_days(true), 0);
     }
 
     #[test]

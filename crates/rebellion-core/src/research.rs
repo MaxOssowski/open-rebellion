@@ -11,13 +11,25 @@
 //!
 //! A class is buildable once its tree's level reaches its research order
 //! (`FUN_0052e580`).
+//!
+//! The side's yards also research on their own: timer `0x381`, armed when
+//! the side comes into play (`FUN_00532350`) and repeating every GNPRTB 7169
+//! (30) plus rand(0..=7170 (30)) days, adds to each tree's points the side's
+//! usable, unsuspended yards of that tree's area in its systems
+//! (`FUN_00530460`, `FUN_00528040`; [`ResearchSystem::advance_tally`]).
 
 use serde::{Deserialize, Serialize};
 
 use crate::build_selection::research_classes;
-use crate::ids::FighterKey;
+use crate::ids::{FighterKey, SystemKey};
 use crate::manufacturing::ProductionArea;
 use crate::world::{GameWorld, Skill};
+
+/// GNPRTB 7169 (`DAT_006bb510`) = 30: timer `0x381`'s minimum
+/// (`FUN_00532350`, side record `+0xd4`).
+const GNPRTB_TALLY_MIN: u16 = 7169;
+/// GNPRTB 7170 (`DAT_006bb508`) = 30: timer `0x381`'s spread.
+const GNPRTB_TALLY_SPREAD: u16 = 7170;
 
 /// `DAT_00661a88`: the divisor of a level's cost (`FUN_0053e190`).
 const COST_DIVISOR: u32 = 100;
@@ -150,6 +162,11 @@ pub struct ResearchState {
     pub alliance_progress: ResearchProgress,
     /// The Empire's points and Done flags.
     pub empire_progress: ResearchProgress,
+    /// The tick the Alliance's timer `0x381` next fires; drawn on the first
+    /// advance (v65).
+    pub alliance_tally: Option<u64>,
+    /// The same for the Empire.
+    pub empire_tally: Option<u64>,
 }
 
 impl ResearchState {
@@ -273,10 +290,109 @@ pub fn level_cost(world: &GameWorld, difficulty: u32) -> u32 {
 // ResearchSystem
 // ---------------------------------------------------------------------------
 
-/// Class availability by research level.
+/// One tree's share of a fired timer `0x381`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResearchTally {
+    pub faction_is_alliance: bool,
+    pub tech: TechType,
+    /// The yards counted.
+    pub points: u32,
+    /// Each level reached.
+    pub reached: Vec<u32>,
+}
+
+/// Class availability by research level, and the yards' own research.
 pub struct ResearchSystem;
 
 impl ResearchSystem {
+    /// `FUN_00528040` over the side's systems (`FUN_00530460`): the side's
+    /// yards of `tech`'s area in the systems it holds (side bits `+0x24`),
+    /// usable and not suspended (`+0x60` bit 0, which `FUN_0050bbb0` sets
+    /// in a system in uprising or blockaded: `blocked`).
+    ///
+    /// port: every yard in the world is usable, and a system always has
+    /// its three managers (`FUN_00530460` adds nothing when one lacks any).
+    #[must_use]
+    pub fn yard_points(
+        world: &GameWorld,
+        faction_is_alliance: bool,
+        tech: TechType,
+        blocked: impl Fn(SystemKey) -> bool,
+    ) -> u32 {
+        let side = crate::dat::Faction::of_alliance(faction_is_alliance);
+        let family = crate::build_selection::area_family(tech.area());
+        let mut points = 0;
+        for (key, system) in &world.systems {
+            if system.control.faction() != Some(side) || blocked(key) {
+                continue;
+            }
+            for yard in system
+                .manufacturing_facilities
+                .iter()
+                .filter_map(|yard| world.manufacturing_facilities.get(*yard))
+            {
+                if yard.side == side && yard.class_dat_id.family() == family {
+                    points += 1;
+                }
+            }
+        }
+        points
+    }
+
+    /// Fire each side's timer `0x381` that is due by the last tick: add its
+    /// yards to each tree's points (`FUN_0052f130` ships `+0x90`,
+    /// `FUN_0052f1a0` troops `+0x94`, `FUN_0052f210` facilities `+0x98`) and
+    /// run the points hook ([`ResearchState::add_points`]). A tree that
+    /// gains nothing is unchanged, so its hook does not run. The timer
+    /// reschedules with a fresh delay (`FUN_005862a0`); each delay takes the
+    /// next of `rolls`.
+    pub fn advance_tally(
+        state: &mut ResearchState,
+        world: &GameWorld,
+        blocked: impl Fn(SystemKey) -> bool,
+        tick_events: &[crate::tick::TickEvent],
+        rolls: &[f64],
+    ) -> Vec<ResearchTally> {
+        let Some(last) = tick_events.last() else {
+            return Vec::new();
+        };
+        let tick = last.tick;
+        let min = world.gnprtb.value(GNPRTB_TALLY_MIN, world.difficulty_index);
+        let spread = world
+            .gnprtb
+            .value(GNPRTB_TALLY_SPREAD, world.difficulty_index);
+        let mut rolls = rolls.iter().copied();
+        let mut delay =
+            || crate::uprising::one_roll_timer_delay(min, spread, rolls.next().unwrap_or(0.0));
+        let mut tallies = Vec::new();
+        for faction_is_alliance in [true, false] {
+            let timer = if faction_is_alliance {
+                &mut state.alliance_tally
+            } else {
+                &mut state.empire_tally
+            };
+            let due = *timer.get_or_insert_with(|| tick + delay());
+            if due > tick {
+                continue;
+            }
+            *timer = Some(due + delay());
+            for tech in [TechType::Ship, TechType::Troop, TechType::Facility] {
+                let points = Self::yard_points(world, faction_is_alliance, tech, &blocked);
+                if points == 0 {
+                    continue;
+                }
+                let reached = state.add_points(world, faction_is_alliance, tech, points);
+                tallies.push(ResearchTally {
+                    faction_is_alliance,
+                    tech,
+                    points,
+                    reached,
+                });
+            }
+        }
+        tallies
+    }
+
     /// True if a capital ship class is available for this faction at the given
     /// research level.
     #[must_use]
@@ -585,5 +701,133 @@ mod tests {
         assert!(ResearchSystem::fighter_class_is_available(
             &world, &state, true, class_key
         ));
+    }
+
+    /// Four systems: the Alliance's with two shipyards, a training
+    /// facility and an Imperial shipyard; the Alliance's in revolt with a
+    /// shipyard; the Empire's with a shipyard; a neutral one with an
+    /// Alliance shipyard. GNPRTB 7169 = 30, 7170 = 30.
+    fn yards_world() -> (GameWorld, Vec<SystemKey>) {
+        use crate::dat::Faction::{Alliance, Empire};
+        use crate::world::{ControlKind, GnprtbEntry, GnprtbParams, ManufacturingFacilityInstance};
+        let mut world = galaxy(4);
+        world.gnprtb = GnprtbParams::new(
+            [(7169, 30), (7170, 30)]
+                .into_iter()
+                .map(|(parameter_id, value)| GnprtbEntry {
+                    parameter_id,
+                    development: value,
+                    alliance_sp_easy: value,
+                    alliance_sp_medium: value,
+                    alliance_sp_hard: value,
+                    empire_sp_easy: value,
+                    empire_sp_medium: value,
+                    empire_sp_hard: value,
+                    multiplayer: value,
+                })
+                .collect(),
+        );
+        let systems: Vec<SystemKey> = world.systems.keys().collect();
+        let holders = [
+            ControlKind::Controlled(Alliance),
+            ControlKind::Controlled(Alliance),
+            ControlKind::Controlled(Empire),
+            ControlKind::Uncontrolled,
+        ];
+        for (system, holder) in systems.iter().zip(holders) {
+            world.systems[*system].control = holder;
+        }
+        let yards = [
+            (0, 0x2800_0001, Alliance),
+            (0, 0x2800_0001, Alliance),
+            (0, 0x2900_0001, Alliance),
+            (0, 0x2800_0001, Empire),
+            (1, 0x2800_0001, Alliance),
+            (2, 0x2800_0001, Empire),
+            (3, 0x2800_0001, Alliance),
+        ];
+        for (at, class, side) in yards {
+            let key = world
+                .manufacturing_facilities
+                .insert(ManufacturingFacilityInstance {
+                    class_dat_id: DatId::new(class),
+                    side,
+                    is_shipyard: class >> 24 == 0x28,
+                });
+            world.systems[systems[at]]
+                .manufacturing_facilities
+                .push(key);
+        }
+        (world, systems)
+    }
+
+    #[test]
+    fn a_side_s_yards_count_in_the_systems_it_holds_unless_suspended() {
+        // FUN_00530460 walks the side's systems (side bits +0x24) and
+        // FUN_00528040 counts each manager's yards that FUN_0052bde0 accepts
+        // (its area, usable, the side's) and that are not suspended (+0x60
+        // bit 0, set in uprising or blockade by FUN_0050bbb0).
+        let (world, systems) = yards_world();
+        let blocked = |system| system == systems[1];
+        let points = |alliance, tech| ResearchSystem::yard_points(&world, alliance, tech, blocked);
+        assert_eq!(points(true, TechType::Ship), 2);
+        assert_eq!(points(true, TechType::Troop), 1);
+        assert_eq!(points(true, TechType::Facility), 0);
+        assert_eq!(points(false, TechType::Ship), 1);
+        assert_eq!(
+            ResearchSystem::yard_points(&world, true, TechType::Ship, |_| false),
+            3
+        );
+    }
+
+    #[test]
+    fn the_yards_research_every_thirty_to_sixty_days() {
+        // FUN_00532350 arms timer 0x381 with record +0xd4: GNPRTB 7169 (30)
+        // + rand(0..=7170 (30)) (FUN_00586130), drawn again on each fire.
+        // Ship class order 1 at difficulty 50 costs 50 * 4 / 100 = 2.
+        let (mut world, systems) = yards_world();
+        add_ship_class(&mut world, 1, 50, true);
+        let mut state = ResearchState::new();
+        let tick = |state: &mut ResearchState, tick, roll| {
+            ResearchSystem::advance_tally(
+                state,
+                &world,
+                |system| system == systems[1],
+                &[crate::tick::TickEvent { tick }],
+                &[roll, roll],
+            )
+        };
+        assert_eq!(tick(&mut state, 1, 0.0), vec![]);
+        assert_eq!(state.alliance_tally, Some(31));
+        for day in 2..=30 {
+            assert_eq!(tick(&mut state, day, 0.0), vec![]);
+        }
+        let fired = tick(&mut state, 31, 0.999_999);
+        assert_eq!(
+            fired,
+            vec![
+                ResearchTally {
+                    faction_is_alliance: true,
+                    tech: TechType::Ship,
+                    points: 2,
+                    reached: vec![1],
+                },
+                ResearchTally {
+                    faction_is_alliance: true,
+                    tech: TechType::Troop,
+                    points: 1,
+                    reached: vec![],
+                },
+                ResearchTally {
+                    faction_is_alliance: false,
+                    tech: TechType::Ship,
+                    points: 1,
+                    reached: vec![],
+                },
+            ]
+        );
+        assert_eq!(state.level(true, TechType::Ship), 1);
+        assert_eq!(state.progress(true, TechType::Troop).points, 1);
+        assert_eq!(state.alliance_tally, Some(91));
     }
 }
