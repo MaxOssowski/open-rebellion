@@ -2358,6 +2358,14 @@ cross-runtime proof remain open
   the Force level) are fixed with it. Simulation unchanged
   (`evidence/2026-10-18-force-discovery-message/`). Open: `+0x90`,
   `+0x92`.
+- 2026-10-18: Force growth read (`ghidra/notes/force-awareness.md`).
+  `+0x8e` is ForceExperience and `+0x90` ForceTraining; Force is their sum.
+  ForceTraining comes only from the Jedi Training mission (`0x58`,
+  `FUN_005712b0`): a teacher at Force 100+ gives each pupil a teacher -
+  pupil percent chance of rand(0..=(teacher - pupil) / 2) Force.
+  ForceExperience grows when Luke or Leia evade capture (+1, GNPRTB
+  3081/3082), at Dagobah's end (+60%, or days/2 percent; GNPRTB
+  6174/6175) and in the Luke-Vader encounter. None exists in the port.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

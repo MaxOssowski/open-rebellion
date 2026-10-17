@@ -49,6 +49,55 @@ the effective skills are recomputed (`FUN_004eee60`..`FUN_004eede0`).
 
 So an unaware character has Force 0, whatever its class template.
 
+## Force growth (read 2026-10-18)
+
+The notifier names settle the three shorts: `+0x8c` is `Force`
+(`CharacterForceNotif`, slot `+0x394`, sync `FUN_004f0220`), `+0x8e` is
+`ForceExperience` (`+0x398`, `FUN_004f02b0`, setter `FUN_004ee150`) and
+`+0x90` is `ForceTraining` (`+0x39c`, `FUN_004f0340`, setter
+`FUN_004ee1d0`). Force = ForceExperience + ForceTraining (`FUN_004eee40`).
+The port's `force_base` is ForceExperience.
+
+What writes them:
+
+- **ForceTraining** has one writer, the Jedi Training mission (`0x58`,
+  vtable `0x006667d8`, slot `+0x27c` `FUN_005712b0`):
+  - the teacher (mission `+0xa8`, `MissionJediTrainingTeacherKeyNotif`) is
+    the first member that trains Jedi at Force GNPRTB 2581 (100) or more
+    (`FUN_00570e40`, `FUN_004ed310`); the side must be 1 or 2;
+  - each other member's chance is teacher Force - pupil Force percent
+    (`+0x274` `FUN_005710b0` -> `FUN_0055c7c0`, rolled with
+    `FUN_0053e2f0`);
+  - on a hit the pupil's Force becomes Force + rand(0..=(teacher - pupil)
+    x GNPRTB 6173 (50) / 100) (`FUN_0055ca20`), the gain going into
+    ForceTraining;
+  - rules (`FUN_00570690`, `FUN_00570940` running, `FUN_00570bc0` at
+    creation on the class records): no teacher refuses `0x40`/`0x90`;
+    a pupil at Force 0 (class template base + variance 0 at creation)
+    refuses `0x40`/5; a pupil not below the teacher's Force refuses
+    `0x40`/`0xd`; fewer than two members refuses `0x40`/`0x94`;
+  - MISSNSD `0x58`: own-side system, 60 + rand(0..=30) days, no repeat,
+    detection on, resign allowed, characters of both sides.
+- **ForceExperience**:
+  - the creation roll (`FUN_004eee60`, above);
+  - Luke and Leia evading capture: their slot `+0x208` (`FUN_0056f8b0`,
+    `FUN_0056ffa0`) runs the base evade (`FUN_004ef450`, the resign
+    request) and adds GNPRTB 3081 (Luke, 1) or 3082 (Leia, 1). The evade
+    is the RLEVADTB roll `FUN_005349e0` of mission detection, the bounty
+    hunters (`FUN_00575de0`) and the encounter (`FUN_00560200`);
+  - the Dagobah mission's end (`0x71`, slot `+0x1f4` `FUN_005751d0`, step
+    `0xb` after phase 8): Luke's Force becomes Force + Force x GNPRTB 6174
+    (60) / 100 on a success (`+0x60` = 3, `FUN_0055ca60`), else Force +
+    Force x (days since the first training day / GNPRTB 6175 (2)) / 100
+    (`FUN_0055ca90`); the difference goes into ForceExperience and Luke's
+    `DagobahCompleted` is set;
+  - the Luke-Vader encounter (`FUN_00560200`), with GNPRTB 3084..3087: not
+    read in detail.
+
+So in the original Luke grows by evading capture, by Dagobah, by the
+encounter, and by Jedi Training once someone of his side reaches Force
+100. None of these exists in the port.
+
 ## Discovering others (timer `0x389`)
 
 - `DiscoveringForceUser` (`FUN_004ef070`) holds for a trainer
@@ -140,8 +189,8 @@ exists. Porting this replaces part of `jedi.rs`.
 
 ## Open
 
-- How the Force level `+0x8c` grows: what writes `+0x90` (training
-  missions?).
+- The Luke-Vader encounter `FUN_00560200` (GNPRTB 3084..3087), and who
+  sends the Dagobah mission (notification `0x221`).
 - Leadership's share of `+0x92` (`FUN_004eede0`): what `+0x92` holds.
 - `FUN_0058a2c0` (who calls the detection) and `FUN_0055ff60`.
 - When `FUN_00560200` sets Luke's `KnowsHeritage` (the heritage
