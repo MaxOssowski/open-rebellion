@@ -1,0 +1,132 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai",
+ "baseline": "137f2480",
+ "seeds": {
+  "1": {
+   "head": {
+    "Diplomacy:Success": 67,
+    "Diplomacy:Failure": 43,
+    "Espionage:Success": 40,
+    "Espionage:Failure": 47,
+    "combat_space": 8,
+    "control_changed": 21
+   },
+   "new": {
+    "Diplomacy:Success": 45,
+    "Diplomacy:Failure": 43,
+    "Espionage:Success": 40,
+    "Espionage:Failure": 35,
+    "combat_space": 4,
+    "control_changed": 17
+   }
+  },
+  "2": {
+   "head": {
+    "Diplomacy:Success": 57,
+    "Diplomacy:Failure": 28,
+    "Espionage:Success": 50,
+    "Espionage:Failure": 41,
+    "combat_space": 28,
+    "control_changed": 13
+   },
+   "new": {
+    "Diplomacy:Success": 50,
+    "Diplomacy:Failure": 33,
+    "Espionage:Success": 42,
+    "Espionage:Failure": 34,
+    "combat_space": 5,
+    "control_changed": 12
+   }
+  },
+  "3": {
+   "head": {
+    "Diplomacy:Success": 58,
+    "Diplomacy:Failure": 36,
+    "Espionage:Success": 49,
+    "Espionage:Failure": 21,
+    "combat_space": 20,
+    "control_changed": 11
+   },
+   "new": {
+    "Diplomacy:Success": 85,
+    "Diplomacy:Failure": 65,
+    "Espionage:Success": 34,
+    "Espionage:Failure": 34,
+    "combat_space": 18,
+    "control_changed": 15
+   }
+  },
+  "7": {
+   "head": {
+    "Diplomacy:Success": 61,
+    "Diplomacy:Failure": 28,
+    "Espionage:Success": 45,
+    "Espionage:Failure": 48,
+    "combat_space": 6,
+    "control_changed": 35
+   },
+   "new": {
+    "Diplomacy:Success": 55,
+    "Diplomacy:Failure": 35,
+    "Espionage:Success": 54,
+    "Espionage:Failure": 42,
+    "combat_space": 3,
+    "control_changed": 21
+   }
+  },
+  "13": {
+   "head": {
+    "Diplomacy:Success": 61,
+    "Diplomacy:Failure": 34,
+    "Espionage:Success": 49,
+    "Espionage:Failure": 37,
+    "combat_space": 6,
+    "control_changed": 15
+   },
+   "new": {
+    "Diplomacy:Success": 58,
+    "Diplomacy:Failure": 30,
+    "Espionage:Success": 43,
+    "Espionage:Failure": 31,
+    "combat_space": 6,
+    "control_changed": 12
+   }
+  },
+  "42": {
+   "head": {
+    "Diplomacy:Success": 86,
+    "Diplomacy:Failure": 49,
+    "Espionage:Success": 39,
+    "Espionage:Failure": 20,
+    "combat_space": 17,
+    "control_changed": 12
+   },
+   "new": {
+    "Diplomacy:Success": 71,
+    "Diplomacy:Failure": 34,
+    "Espionage:Success": 56,
+    "Espionage:Failure": 34,
+    "combat_space": 3,
+    "control_changed": 9
+   }
+  },
+  "47": {
+   "head": {
+    "Diplomacy:Success": 72,
+    "Diplomacy:Failure": 44,
+    "Espionage:Success": 46,
+    "Espionage:Failure": 49,
+    "combat_space": 24,
+    "control_changed": 21
+   },
+   "new": {
+    "Diplomacy:Success": 55,
+    "Diplomacy:Failure": 44,
+    "Espionage:Success": 58,
+    "Espionage:Failure": 37,
+    "combat_space": 5,
+    "control_changed": 12
+   }
+  }
+ }
+}

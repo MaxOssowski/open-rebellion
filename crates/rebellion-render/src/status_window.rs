@@ -12,7 +12,7 @@
 use egui_macroquad::egui;
 use rebellion_core::ids::CharacterKey;
 use rebellion_core::missions::{MemberTransit, MissionMember};
-use rebellion_core::world::GameWorld;
+use rebellion_core::world::{GameWorld, Skill};
 
 use crate::bmp_cache::BmpCache;
 use crate::cockpit::{CockpitFaction, CockpitLayout};
@@ -141,8 +141,16 @@ pub fn character_rows(
     rows.extend([
         // +0x8c, the Force level (FUN_004eee40).
         row("Force Ranking:", force_ranking(character.force_level())),
-        row("Diplomacy Rating:", character.diplomacy.base.to_string()),
-        row("Espionage Rating:", character.espionage.base.to_string()),
+        // +0x7c and +0x7e, the effective diplomacy and espionage (slots
+        // +0x1dc, +0x1e0) with the Force share.
+        row(
+            "Diplomacy Rating:",
+            character.effective_skill(Skill::Diplomacy).to_string(),
+        ),
+        row(
+            "Espionage Rating:",
+            character.effective_skill(Skill::Espionage).to_string(),
+        ),
         // +0x86, the effective combat (slot +0x1f0).
         row("Combat Rating:", character.effective_combat().to_string()),
         row("Leadership Rating:", character.leadership.base.to_string()),
@@ -472,15 +480,15 @@ mod tests {
             is_alliance: true,
             is_empire: false,
             is_major: true,
-            diplomacy: skill(75),
-            espionage: skill(75),
+            diplomacy: skill(50),
+            espionage: skill(50),
             ship_design: skill(0),
             troop_training: skill(0),
             facility_design: skill(0),
-            // Fig. 3.46 shows the effective combat +0x86 (FUN_0053e900):
-            // 90 + 90 * 50 / 100 = 135 at Force 50, a Trainee (20..79). The
-            // figure does not give the two values; these are one pair that
-            // matches it.
+            // MJCHARSD 578. Fig. 3.46 shows the effective values: diplomacy
+            // and espionage 50 + 50 * 50 / 100 = 75 (FUN_0053e940), combat
+            // 90 + 90 * 50 / 100 = 135 (FUN_0053e900), at Force 50, a
+            // Trainee (20..79).
             combat: skill(90),
             leadership: skill(70),
             loyalty: skill(100),

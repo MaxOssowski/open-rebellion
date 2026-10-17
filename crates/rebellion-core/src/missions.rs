@@ -935,17 +935,15 @@ pub(crate) fn member_location_kind(world: &GameWorld, member: MissionMember) -> 
 #[must_use]
 pub fn member_skill(world: &GameWorld, member: MissionMember, skill: Skill) -> Option<u32> {
     match member {
-        MissionMember::Character(key) => world.characters.get(key).map(|c| {
-            // Combat is read through slot +0x1f0, the effective combat +0x86
-            // that the Force level raises and the injury lowers.
-            if skill == Skill::Combat {
-                return c.effective_combat();
-            }
-            let pair = c.skill(skill);
-            // port: seeding rolls every character's variance into its base
-            // (FUN_00535e40); half of an unrolled variance matches skill_score.
-            pair.base + pair.variance / 2
-        }),
+        // The missions read a character's skills through its slots, the
+        // effective values: diplomacy +0x7c (slot +0x1dc, FUN_00573ff0),
+        // espionage +0x7e (+0x1e0, FUN_00573090) and combat +0x86 (+0x1f0)
+        // carry the Force share, combat also the injury.
+        // port: seeding rolls every character's variance into its base
+        // (FUN_00535e40); half of an unrolled variance matches skill_score.
+        MissionMember::Character(key) => {
+            world.characters.get(key).map(|c| c.effective_skill(skill))
+        }
         MissionMember::SpecialForce(key) => world
             .special_forces
             .get(key)
@@ -3205,10 +3203,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_mission_reads_a_character_s_effective_combat() {
+    fn a_mission_reads_a_character_s_effective_skills() {
         // Combat goes through slot +0x1f0, the effective combat +0x86
-        // (FUN_0053e900): 90 + 90 * 50 / 100 - 10. Other skills stay the
-        // rolled template.
+        // (FUN_0053e900): 90 + 90 * 50 / 100 - 10. Diplomacy goes through
+        // slot +0x1dc, +0x7c (FUN_00573ff0): 65 + 65 * 50 / 100. Leadership
+        // stays the rolled template.
         let mut world = GameWorld::default();
         let key = world.characters.insert(crate::world::Character {
             combat: crate::world::SkillPair {
@@ -3226,7 +3225,12 @@ mod tests {
         });
         let member = MissionMember::Character(key);
         assert_eq!(member_skill(&world, member, Skill::Combat), Some(125));
-        assert_eq!(member_skill(&world, member, Skill::Diplomacy), Some(65));
+        assert_eq!(member_skill(&world, member, Skill::Diplomacy), Some(97));
+        world.characters[key].leadership = crate::world::SkillPair {
+            base: 60,
+            variance: 10,
+        };
+        assert_eq!(member_skill(&world, member, Skill::Leadership), Some(65));
     }
     use crate::ids::{CharacterKey, SystemKey};
     use crate::uprising::UprisingState;

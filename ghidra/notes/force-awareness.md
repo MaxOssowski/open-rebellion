@@ -96,6 +96,14 @@ the effective combat, `FastHeal` and the Force Ranking read the level.
 Potential no longer makes a character aware. Evidence:
 `docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-force-potential/`.
 
+## Ported (stage 1b, 2026-10-18)
+
+`Character::effective_skill`: diplomacy `+0x7c` and espionage `+0x7e`
+with the Force share (slots `+0x1dc`, `+0x1e0`), read by the missions
+(`FUN_00573ff0`, `FUN_00573090`) and the Status window. Luke's data (50,
+50, 90 at Force 50) gives Figure 3.46's 75, 75 and 135. Evidence:
+`docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-share/`.
+
 ## Against the port
 
 `jedi.rs` keeps `force_tier`, `force_experience`, `is_discovered_jedi` and
@@ -107,7 +115,7 @@ exists. Porting this replaces part of `jedi.rs`.
 
 - How the Force level `+0x8c` grows: what writes `+0x90` (training
   missions?).
-- The Force share of diplomacy and espionage is not ported.
+- Leadership's share of `+0x92` (`FUN_004eede0`): what `+0x92` holds.
 - `FUN_0058a2c0` (who calls the detection) and `FUN_0055ff60`.
 - What Luke's `+0xb0` bit 0 means, and who sets it.
 - Which objects the subclasses `0x006657f0` and `0x00665be0` make.

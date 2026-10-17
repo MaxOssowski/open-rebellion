@@ -1520,6 +1520,31 @@ impl Character {
         }
     }
 
+    /// The effective value of `skill`, as the slots `+0x1dc..+0x1f8` read
+    /// it. Diplomacy (`+0x7c`) and espionage (`+0x7e`) gain the Force share
+    /// (`FUN_004eecb0`, `FUN_004eecf0` -> `FUN_0053e940`: skill + skill ×
+    /// Force level / 100, set through `FUN_004edcb0`, `FUN_004edd30`,
+    /// clamped to `0..=0x7fff`); combat is [`Character::effective_combat`].
+    /// The others are the skill itself (`FUN_004eed30`..`FUN_004eed70`).
+    ///
+    /// port: a skill is its rolled template, base plus half the variance,
+    /// as `missions::member_skill` reads it. Leadership's share of `+0x92`
+    /// (`FUN_004eede0`) is not ported; `+0x92` is not read yet.
+    #[must_use]
+    pub fn effective_skill(&self, skill: Skill) -> u32 {
+        let pair = self.skill(skill);
+        let value = pair.base + pair.variance / 2;
+        match skill {
+            Skill::Combat => self.effective_combat(),
+            Skill::Diplomacy | Skill::Espionage => {
+                let value = u64::from(value);
+                let shared = value * u64::from(self.force_level()) / 100 + value;
+                u32::try_from(shared.min(0x7fff)).unwrap_or(0x7fff)
+            }
+            _ => value,
+        }
+    }
+
     /// The skill pair for `skill`, to change it.
     pub fn skill_mut(&mut self, skill: Skill) -> &mut SkillPair {
         match skill {
@@ -2596,6 +2621,64 @@ mod tests {
             ..Character::default()
         };
         assert_eq!(c.effective_combat(), 90);
+    }
+
+    #[test]
+    fn diplomacy_and_espionage_gain_the_force_share() {
+        // FUN_004eecb0 / FUN_004eecf0 -> FUN_0053e940: skill + skill * Force
+        // / 100, clamped to 0x7fff (FUN_004edcb0, FUN_004edd30). MJCHARSD
+        // 578 (Luke): 50 and 50 at Force 50 give the 75 and 75 of the
+        // manual's Figure 3.46 (p. 101).
+        let luke = Character {
+            diplomacy: SkillPair {
+                base: 50,
+                variance: 0,
+            },
+            espionage: SkillPair {
+                base: 50,
+                variance: 0,
+            },
+            leadership: SkillPair {
+                base: 70,
+                variance: 0,
+            },
+            force_base: 50,
+            ..Character::default()
+        };
+        assert_eq!(luke.effective_skill(Skill::Diplomacy), 75);
+        assert_eq!(luke.effective_skill(Skill::Espionage), 75);
+        // Leadership takes no Force share (FUN_004eede0 reads +0x92).
+        assert_eq!(luke.effective_skill(Skill::Leadership), 70);
+        // No Force, no share; port: an unrolled template reads base + half.
+        let plain = Character {
+            diplomacy: SkillPair {
+                base: 60,
+                variance: 10,
+            },
+            ..Character::default()
+        };
+        assert_eq!(plain.effective_skill(Skill::Diplomacy), 65);
+        // The clamp: 0x7000 + 0x7000 * 100 / 100 tops out at 0x7fff.
+        let strong = Character {
+            espionage: SkillPair {
+                base: 0x7000,
+                variance: 0,
+            },
+            force_base: 100,
+            ..Character::default()
+        };
+        assert_eq!(strong.effective_skill(Skill::Espionage), 0x7fff);
+        // Combat stays the effective combat, with its injury.
+        let fighter = Character {
+            combat: SkillPair {
+                base: 90,
+                variance: 0,
+            },
+            force_base: 50,
+            injury: 10,
+            ..Character::default()
+        };
+        assert_eq!(fighter.effective_skill(Skill::Combat), 125);
     }
 
     #[test]

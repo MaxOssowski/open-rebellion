@@ -2327,6 +2327,15 @@ cross-runtime proof remain open
   no longer makes a character aware. Golden final `v1:29ab46197f1887c6` ->
   `v1:aa49f78d3f06cc2f` (`evidence/2026-10-17-force-potential/`). Open:
   timer `0x389`, the Force share of diplomacy and espionage, `+0x90`.
+- 2026-10-18, Force stage 1b: diplomacy `+0x7c` and espionage `+0x7e`
+  carry the Force share, skill + skill × Force / 100 (`FUN_004eecb0`,
+  `FUN_004eecf0`, `FUN_0053e940`). The missions read them through slots
+  `+0x1dc` and `+0x1e0` (`FUN_00573ff0`, `FUN_00573090`), and so does the
+  Status window. Luke's data (50, 50, 90 at Force 50) gives the 75, 75
+  and 135 of the manual's Figure 3.46. No save change; golden final
+  `v1:aa49f78d3f06cc2f` -> `v1:5531248a4edc88bb`
+  (`evidence/2026-10-18-force-share/`). Open: timer `0x389`, `+0x90`,
+  `+0x92`.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
