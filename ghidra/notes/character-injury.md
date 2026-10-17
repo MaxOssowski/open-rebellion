@@ -17,9 +17,10 @@ Character `+0x94` is the injury, a short set by `FUN_004ee2d0` (clamped to
   destroyed with reason 10.
 - **Death.** For the class Character (vtable `0x0065ca70`) slot `+0x2e0` is
   `FUN_006158b0`, which returns 0: a character never dies of an injury.
-  The subclass at `0x00665be0` (among the mission vtables) returns GNPRTB
-  2577 (25), so any injury kills it. Which objects that subclass makes is
-  not traced.
+  The subclass at `0x00665be0` (among the mission vtables) calls
+  `FUN_0053eb30`, a `FUN_0053e2f0(GNPRTB 2577)` roll: an injury kills it
+  with 25 percent (`force-awareness.md`). Which objects that subclass
+  makes is not traced.
 
 ## What the injury does
 

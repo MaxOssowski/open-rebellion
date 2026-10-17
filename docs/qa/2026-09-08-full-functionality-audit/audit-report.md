@@ -2305,6 +2305,13 @@ cross-runtime proof remain open
   (`evidence/2026-10-17-injury-messages/`). The injury's resign request
   needs no port; the command clearing and `Damaged` stay open, as the port
   keeps no command.
+- 2026-10-17: Force awareness read (`ghidra/notes/force-awareness.md`).
+  `ForcePotential` is rolled once from `jedi_probability`, `ForceAware`
+  starts as `is_known_jedi`, and timer `0x389` (100 + rand(0..=1000) days)
+  lets a trainer with Force 80+ (Luke later, the Emperor) make the free
+  characters of its side beside it aware. Force detection between sides
+  is `force1 + force2 - 100` percent (`FUN_0055e4d0`). None of it exists in
+  `jedi.rs` yet.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
