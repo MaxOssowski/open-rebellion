@@ -424,6 +424,7 @@ struct LiveCampaign<'a> {
     repair: &'a mut RepairState,
     production: &'a mut ProductionState,
     autoscrap: &'a mut rebellion_core::autoscrap::AutoscrapState,
+    informant: &'a mut rebellion_core::informant::InformantState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -458,6 +459,7 @@ impl LiveCampaign<'_> {
             repair: self.repair.clone(),
             production: self.production.clone(),
             autoscrap: self.autoscrap.clone(),
+            informant: self.informant.clone(),
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -495,6 +497,7 @@ impl LiveCampaign<'_> {
         *self.repair = state.repair;
         *self.production = state.production;
         *self.autoscrap = state.autoscrap;
+        *self.informant = state.informant;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -1072,6 +1075,7 @@ async fn main() {
     let mut repair_state = RepairState::default();
     let mut production_state = ProductionState::new();
     let mut autoscrap_state = rebellion_core::autoscrap::AutoscrapState::default();
+    let mut informant_state = rebellion_core::informant::InformantState::default();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -2702,6 +2706,41 @@ async fn main() {
                 &tick_events,
                 &uprising_rolls,
             );
+            // ── Informants: each held system's timer 0x38e ──────────────────
+            let informant_rolls: Vec<f64> =
+                (0..rebellion_core::informant::InformantSystem::roll_budget(&world))
+                    .map(|_| sim_rng.gen::<f64>())
+                    .collect();
+            for report in &rebellion_core::informant::InformantSystem::advance(
+                &mut informant_state,
+                &world,
+                &tick_events,
+                &informant_rolls,
+            ) {
+                let recipient_is_alliance = report.recipient == Faction::Alliance;
+                if recipient_is_alliance {
+                    fog_alliance_state.reveal(report.system);
+                } else {
+                    fog_empire_state.reveal(report.system);
+                }
+                let name = world
+                    .systems
+                    .get(report.system)
+                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                // Notification 0x153, Informants Provide Information
+                // (TEXTSTRA 29008-29009).
+                msg_log.push(filed(
+                    GameMessage::at_system(
+                        report.tick,
+                        format!("Informants have provided us with information about {name}."),
+                        MessageCategory::Event,
+                        report.system,
+                    )
+                    .with_picture_if(Some(pictures::informants())),
+                    MessageRail::PopularSupport,
+                    Some(RailAudience::side(recipient_is_alliance)),
+                ));
+            }
             for evt in &uprising_events {
                 use rebellion_core::uprising::UprisingEvent;
                 // Timer 0x384 only sets the support (FUN_0050c9f0); it
@@ -3447,6 +3486,7 @@ async fn main() {
                                     production_state = ProductionState::new();
                                     autoscrap_state =
                                         rebellion_core::autoscrap::AutoscrapState::default();
+                                    informant_state = rebellion_core::informant::InformantState::default();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -5882,6 +5922,7 @@ async fn main() {
                         repair: &mut repair_state,
                         production: &mut production_state,
                         autoscrap: &mut autoscrap_state,
+                        informant: &mut informant_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -5954,6 +5995,7 @@ async fn main() {
                                 repair: &mut repair_state,
                                 production: &mut production_state,
                                 autoscrap: &mut autoscrap_state,
+                                informant: &mut informant_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,

@@ -133,6 +133,7 @@ fn telemetry_coverage_all_sys_constants_emit() {
         repair: rebellion_core::repair::RepairState::default(),
         production: rebellion_core::production_cycle::ProductionState::new(),
         autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
+        informant: rebellion_core::informant::InformantState::default(),
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         combat_cooldowns: HashMap::new(),

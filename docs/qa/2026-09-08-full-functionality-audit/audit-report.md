@@ -1588,6 +1588,16 @@ cross-runtime proof remain open
   (GNPRTB 7719/7720) through `FUN_00556be0` and RESRCTB; informant (bit 17) on
   a per-system timer (`+0x40`, GNPRTB 7703/7704) that rolls support in
   `FUN_0050cbe0` before INFORMTB (`FUN_0050d510`).
+- 2026-10-17: the informant incident is ported (`informant.rs`,
+  `ghidra/notes/informant-incident.md`). Each held system's timer `0x38e`
+  (GNPRTB 7703 (30) + rand(0..=7704 (970)) days, `FUN_0050c820`) fires it
+  with `100 - support` percent (`FUN_0050cbe0`, `FUN_00559f90`). INFORMTB
+  at 1 + rand(0..=7) (`FUN_00559db0`) then tells the other side about the
+  system (`FUN_0050d510`, `FUN_0050d5a0`): the port reveals it in that
+  side's fog and posts the Informants message (`0x153`). The troop-deficit
+  trigger is gone. Save v66; golden final `v1:21ecf34ac9e1f828` ->
+  `v1:e212b88bcf82db21` (`evidence/2026-10-17-informant-incident/`). The
+  resource incident stands.
 - Acceptance: both incidents follow their recovered timers and tables with
   failing-without tests.
 

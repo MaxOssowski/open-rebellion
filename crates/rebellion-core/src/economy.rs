@@ -91,8 +91,9 @@ pub struct IncidentFlags {
     /// `UprisingSystem`; always clear here, kept for the save layout.
     pub uprising: bool,
     /// Bit 17 (0x20000), `FUN_0050aac0`; views get
-    /// `SystemInformantIncidentNotif` (`FUN_005125d0`). Our trigger has no
-    /// source (F-029).
+    /// `SystemInformantIncidentNotif` (`FUN_005125d0`). Raised by the
+    /// informant timer (`informant.rs`); always clear here, kept for the
+    /// save layout.
     pub informant: bool,
     /// Bit 18 (0x40000), `FUN_0050ab30`; views get
     /// `SystemDisasterIncidentNotif` (`FUN_00512620`). Raised by
@@ -555,16 +556,11 @@ impl EconomySystem {
 
             // 7. Incident state + uprising visibility (FUN_0050bb00).
             // The uprising and disaster incidents are timer events that
-            // `UprisingSystem` raises (F-026). The informant and resource
-            // triggers below have no recovered source (F-029).
-            let new_flags = evaluate_incident_flags(&eco.summary, eco);
+            // `UprisingSystem` raises (F-026), and the informant incident is
+            // timer 0x38e (`informant.rs`). The resource trigger below has
+            // no recovered source (F-029).
+            let new_flags = evaluate_incident_flags(eco);
             let old_flags = &eco.incident_flags;
-            if new_flags.informant && !old_flags.informant {
-                events.push(EconomyEvent::IncidentTriggered {
-                    system: sys_key,
-                    incident_type: "informant",
-                });
-            }
             if new_flags.resource && !old_flags.resource {
                 // NOTE: this is the legacy "grid overcap" incident, not K3.
                 // K3 (EVT_RESOURCE_DISCOVERY) fires above on positive
@@ -1033,17 +1029,17 @@ pub(crate) fn death_star_nearby(world: &GameWorld, sys: &crate::world::System) -
 // Incident evaluation
 // ---------------------------------------------------------------------------
 
-/// Evaluate the informant and resource incident flags for a system.
+/// Evaluate the resource incident flag for a system.
 ///
-/// Neither trigger has a recovered source (audit finding F-029): the original
-/// raises the informant incident from a per-system timer (event `0x38e`,
-/// `FUN_0050cbe0`) and the resource incident from a galaxy timer (event
-/// `0x390`, `FUN_00556be0`). The uprising and disaster incidents are raised by
-/// `UprisingSystem`, so their flags stay clear.
-fn evaluate_incident_flags(summary: &SystemSummary, eco: &SystemEconomy) -> IncidentFlags {
+/// The resource trigger has no recovered source (audit finding F-029): the
+/// original raises the resource incident from a galaxy timer (event
+/// `0x390`, `FUN_00556be0`). The informant incident is the per-system timer
+/// `0x38e` (`informant.rs`); the uprising and disaster incidents are raised
+/// by `UprisingSystem`. Their flags stay clear.
+fn evaluate_incident_flags(eco: &SystemEconomy) -> IncidentFlags {
     IncidentFlags {
         uprising: false,
-        informant: summary.troop_surplus < 0,
+        informant: false,
         disaster: false,
         resource: eco.energy_overcapped || eco.raw_material_overcapped,
     }
@@ -2311,60 +2307,6 @@ mod tests {
     // -----------------------------------------------------------------------
     // Phase 3b: Incident state tests
     // -----------------------------------------------------------------------
-
-    #[test]
-    fn informant_incident_on_garrison_shortfall() {
-        let mut world = GameWorld {
-            gnprtb: stock_gnprtb(),
-            ..Default::default()
-        };
-        let sector_key = world.sectors.insert(crate::world::Sector {
-            dat_id: DatId(0),
-            name: "S".into(),
-            group: crate::dat::SectorGroup::Core,
-            x: 0,
-            y: 0,
-            systems: vec![],
-        });
-        // System with low support (garrison > 0) but no troops (deficit)
-        world.systems.insert(crate::world::System {
-            dat_id: DatId(0),
-            name: "Undermanned".into(),
-            sector: sector_key,
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.4,
-            popularity_empire: 0.6,
-            is_populated: true,
-            total_energy: 10,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
-        });
-
-        let mut state = EconomyState::default();
-        let events = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
-        assert!(
-            events.iter().any(|e| matches!(
-                e,
-                EconomyEvent::IncidentTriggered {
-                    incident_type: "informant",
-                    ..
-                }
-            )),
-            "Should fire informant incident on garrison shortfall"
-        );
-    }
 
     // -----------------------------------------------------------------------
     // Phase 3b: System summary tests

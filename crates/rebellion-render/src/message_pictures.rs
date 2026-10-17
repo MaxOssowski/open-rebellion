@@ -225,6 +225,12 @@ pub const fn system_incident(disaster: bool) -> MessagePicture {
     }
 }
 
+/// Informants Provide Information (`FUN_00491060`, notification `0x153`).
+#[must_use]
+pub const fn informants() -> MessagePicture {
+    background(0x3e8)
+}
+
 /// Character Injured (`FUN_0048fdf0`, notification `0x106`).
 #[must_use]
 pub const fn injured() -> MessagePicture {

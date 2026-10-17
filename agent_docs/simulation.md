@@ -40,6 +40,7 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | 8 | **Combat** | `combat.rs`, `assault.rs` | `resolve_space()`; `assault::resolve` (Planetary Assault only) | Phase gate: `ACTIVE && !PHASES_ENABLED` (inverted) |
 | 9 | **Blockade** | `blockade.rs` | `advance(state, world, ticks)` | Hostile fleet + no defender = blockade; timer `0x386` shifts the blockader's support every GNPRTB 7694 days (`FUN_0050cb20`) |
 | 10 | **Uprising** | `uprising.rs` | `advance(state, world, economy, missions, ticks, rolls)` | Needs the economy summary; incidents, disasters and the revolt's support timer `0x384` (`FUN_0050caa0`) run on recovered timers |
+| 10b | **Informants** | `informant.rs` | `advance(state, world, ticks, rolls)` | Each held system's timer `0x38e` (30-1000 days): with `100 - support` percent, INFORMTB tells the other side about the system (`ghidra/notes/informant-incident.md`) |
 | 11 | **Death Star** | `death_star.rs` | `advance(state, world, ticks)` | Self-clears construction on completion |
 | 12 | **Research** | `research.rs` | `advance_tally(state, world, blocked, ticks, rolls)` after the production cycle; research missions resolve in step 5 | `MissionEffect::ResearchPoints` -> `ResearchState::add_points` (2026-10-14); timer `0x381` adds the side's active yards to each tree every 30-60 days (2026-10-17) |
 | 13 | **Jedi** | `jedi.rs` | `advance(state, world, ticks, rolls)` | XP stored in `JediTrainingRecord`, not world |

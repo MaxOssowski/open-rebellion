@@ -68,6 +68,8 @@ pub struct SimulationStates {
     pub production: ProductionState,
     /// Each side's autoscrap timer `0x382` (the maintenance shortfall).
     pub autoscrap: rebellion_core::autoscrap::AutoscrapState,
+    /// Each held system's informant timer `0x38e`.
+    pub informant: rebellion_core::informant::InformantState,
     pub troop_transport: TroopTransportState,
     /// Manufactured objects travelling to their destination (F-030).
     pub deliveries: DeliveryState,
@@ -544,6 +546,18 @@ pub fn run_simulation_tick(
     );
     integrator.apply_uprising_events(world, &uprising_events);
 
+    // ── 9b. Informants: each held system's timer 0x38e ──────────────────
+    let informant_rolls = take_rolls(rebellion_core::informant::InformantSystem::roll_budget(
+        world,
+    ));
+    let informant_reports = rebellion_core::informant::InformantSystem::advance(
+        &mut states.informant,
+        world,
+        tick_events,
+        &informant_rolls,
+    );
+    integrator.apply_informant_reports(world, &mut states.fog, &informant_reports);
+
     // ── 10. Betrayal ─────────────────────────────────────────────────────
     let betrayal_rolls = take_rolls(world.characters.len());
     let loyalty_tb = world.mission_tables.get("UPRIS1TB").unwrap_or(&empty_table);
@@ -810,6 +824,7 @@ mod tests {
             repair: RepairState::default(),
             production: ProductionState::new(),
             autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
+            informant: rebellion_core::informant::InformantState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1286,6 +1301,7 @@ mod tests {
                 repair: RepairState::default(),
                 production: ProductionState::new(),
                 autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
+                informant: rebellion_core::informant::InformantState::default(),
                 troop_transport: TroopTransportState::default(),
                 deliveries: DeliveryState::default(),
                 combat_cooldowns: HashMap::new(),
@@ -1415,6 +1431,7 @@ mod tests {
             repair: RepairState::default(),
             production: ProductionState::new(),
             autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
+            informant: rebellion_core::informant::InformantState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1598,6 +1615,7 @@ mod tests {
             repair: RepairState::default(),
             production: ProductionState::new(),
             autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
+            informant: rebellion_core::informant::InformantState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1742,6 +1760,7 @@ mod tests {
             repair: RepairState::default(),
             production: ProductionState::new(),
             autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
+            informant: rebellion_core::informant::InformantState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1901,6 +1920,7 @@ mod tests {
             repair: RepairState::default(),
             production: ProductionState::new(),
             autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
+            informant: rebellion_core::informant::InformantState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),

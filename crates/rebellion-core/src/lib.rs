@@ -31,6 +31,7 @@ pub mod fleet_name_bank;
 pub mod fog;
 pub mod game_events;
 pub mod ids;
+pub mod informant;
 pub mod jedi;
 pub mod manufacturing;
 mod mission_detection;

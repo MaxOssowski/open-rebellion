@@ -36,23 +36,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:affc307d4c23c84d";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:21ecf34ac9e1f828";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:5dc07c1880d3a9b6";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:e212b88bcf82db21";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:e71b945e445ecc2d"),
-    (2, 0, "v1:5b2ceeff784cafbe"),
-    (3, 5, "v1:bb496f9bb567c4ef"),
-    (4, 10, "v1:abb48f73e76b2e7b"),
-    (5, 15, "v1:4da84db6fed341a0"),
-    (6, 20, "v1:768d99b4c472f7c4"),
-    (7, 25, "v1:78ae141acf3fd251"),
-    (8, 25, "v1:21ecf34ac9e1f828"),
-    (9, 25, "v1:21ecf34ac9e1f828"),
+    (1, 0, "v1:46fb4b6a5648d3ce"),
+    (2, 0, "v1:e0c5f38e7a66563b"),
+    (3, 5, "v1:51de73465cf38abc"),
+    (4, 10, "v1:b95747346a42ef18"),
+    (5, 15, "v1:c9fa4ec649d1eac6"),
+    (6, 20, "v1:509938d7fe16ef5c"),
+    (7, 25, "v1:c43266fca267196a"),
+    (8, 25, "v1:e212b88bcf82db21"),
+    (9, 25, "v1:e212b88bcf82db21"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -201,6 +201,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         repair: RepairState::default(),
         production: ProductionState::new(),
         autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
+        informant: rebellion_core::informant::InformantState::default(),
         combat_cooldowns: std::collections::HashMap::new(),
         game_config: GameConfig::default(),
         campaign_config: CampaignConfig::from_seed_options(options, VictoryConditions::Standard),

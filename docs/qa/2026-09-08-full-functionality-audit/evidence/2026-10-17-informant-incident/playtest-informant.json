@@ -1,0 +1,174 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against cbc32820",
+  "seeds": {
+    "1": {
+      "head": {
+        "old_informant_incidents": 15,
+        "informant_reports": {},
+        "codes": {},
+        "control_changed": 30,
+        "manufacturing_complete": 388,
+        "combat_space": 0
+      },
+      "new": {
+        "old_informant_incidents": 0,
+        "informant_reports": {
+          "Alliance": 2,
+          "Empire": 2
+        },
+        "codes": {
+          "7": 1,
+          "8": 1,
+          "9": 1,
+          "10": 1
+        },
+        "control_changed": 22,
+        "manufacturing_complete": 423,
+        "combat_space": 1
+      }
+    },
+    "2": {
+      "head": {
+        "old_informant_incidents": 13,
+        "informant_reports": {},
+        "codes": {},
+        "control_changed": 15,
+        "manufacturing_complete": 410,
+        "combat_space": 4
+      },
+      "new": {
+        "old_informant_incidents": 0,
+        "informant_reports": {
+          "Alliance": 2
+        },
+        "codes": {
+          "1": 1,
+          "2": 1
+        },
+        "control_changed": 15,
+        "manufacturing_complete": 389,
+        "combat_space": 5
+      }
+    },
+    "3": {
+      "head": {
+        "old_informant_incidents": 16,
+        "informant_reports": {},
+        "codes": {},
+        "control_changed": 31,
+        "manufacturing_complete": 444,
+        "combat_space": 3
+      },
+      "new": {
+        "old_informant_incidents": 0,
+        "informant_reports": {
+          "Alliance": 2
+        },
+        "codes": {
+          "3": 1,
+          "9": 1
+        },
+        "control_changed": 27,
+        "manufacturing_complete": 450,
+        "combat_space": 15
+      }
+    },
+    "7": {
+      "head": {
+        "old_informant_incidents": 13,
+        "informant_reports": {},
+        "codes": {},
+        "control_changed": 21,
+        "manufacturing_complete": 309,
+        "combat_space": 9
+      },
+      "new": {
+        "old_informant_incidents": 0,
+        "informant_reports": {
+          "Empire": 2,
+          "Alliance": 4
+        },
+        "codes": {
+          "1": 1,
+          "4": 1,
+          "7": 1,
+          "8": 2,
+          "10": 1
+        },
+        "control_changed": 24,
+        "manufacturing_complete": 323,
+        "combat_space": 8
+      }
+    },
+    "13": {
+      "head": {
+        "old_informant_incidents": 5,
+        "informant_reports": {},
+        "codes": {},
+        "control_changed": 15,
+        "manufacturing_complete": 472,
+        "combat_space": 5
+      },
+      "new": {
+        "old_informant_incidents": 0,
+        "informant_reports": {
+          "Empire": 1
+        },
+        "codes": {
+          "3": 1
+        },
+        "control_changed": 9,
+        "manufacturing_complete": 489,
+        "combat_space": 10
+      }
+    },
+    "42": {
+      "head": {
+        "old_informant_incidents": 13,
+        "informant_reports": {},
+        "codes": {},
+        "control_changed": 23,
+        "manufacturing_complete": 398,
+        "combat_space": 2
+      },
+      "new": {
+        "old_informant_incidents": 0,
+        "informant_reports": {
+          "Empire": 1,
+          "Alliance": 3
+        },
+        "codes": {
+          "4": 1,
+          "7": 1,
+          "8": 1,
+          "9": 1
+        },
+        "control_changed": 17,
+        "manufacturing_complete": 372,
+        "combat_space": 2
+      }
+    },
+    "47": {
+      "head": {
+        "old_informant_incidents": 16,
+        "informant_reports": {},
+        "codes": {},
+        "control_changed": 21,
+        "manufacturing_complete": 457,
+        "combat_space": 2
+      },
+      "new": {
+        "old_informant_incidents": 0,
+        "informant_reports": {
+          "Alliance": 2
+        },
+        "codes": {
+          "1": 2
+        },
+        "control_changed": 16,
+        "manufacturing_complete": 412,
+        "combat_space": 4
+      }
+    }
+  }
+}

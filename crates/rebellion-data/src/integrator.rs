@@ -642,6 +642,33 @@ impl PerceptionIntegrator {
         }
     }
 
+    /// Apply informant incidents (timer `0x38e`): the recipient learns about
+    /// the system. `fog` is the one side whose view the simulation keeps.
+    pub fn apply_informant_reports(
+        &mut self,
+        world: &GameWorld,
+        fog: &mut rebellion_core::fog::FogState,
+        reports: &[rebellion_core::informant::InformantReport],
+    ) {
+        for report in reports {
+            if fog.faction == report.recipient {
+                fog.reveal(report.system);
+            }
+            self.events.push(GameEventRecord::new(
+                report.tick,
+                self.wall_ms,
+                SYS_ECONOMY,
+                EVT_INFORMANT_INTEL,
+                serde_json::json!({
+                    "system": sys_name(world, report.system),
+                    "cause": "informants",
+                    "recipient": format!("{:?}", report.recipient),
+                    "code": report.code,
+                }),
+            ));
+        }
+    }
+
     /// Record the yards' research (timer `0x381`): one `research_unlocked`
     /// record per level reached.
     pub fn record_research_tallies(&mut self, tallies: &[rebellion_core::research::ResearchTally]) {
@@ -2874,6 +2901,31 @@ mod tests {
             .events
             .iter()
             .any(|e| e.event_type == EVT_BLOCKADE_SUPPORT && e.tick == 31));
+    }
+
+    #[test]
+    fn informants_reveal_the_system_to_the_side_they_tell() {
+        // FUN_0050d5a0 passes the system's objects to the other side.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Naboo");
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        let report = rebellion_core::informant::InformantReport {
+            system,
+            holder: Faction::Empire,
+            recipient: Faction::Alliance,
+            code: 3,
+            tick: 40,
+        };
+        let mut empire_fog = rebellion_core::fog::FogState::new(Faction::Empire);
+        integrator.apply_informant_reports(&world, &mut empire_fog, std::slice::from_ref(&report));
+        assert!(!empire_fog.is_visible(system));
+        let mut alliance_fog = rebellion_core::fog::FogState::new(Faction::Alliance);
+        integrator.apply_informant_reports(&world, &mut alliance_fog, &[report]);
+        assert!(alliance_fog.is_visible(system));
+        assert!(integrator
+            .events
+            .iter()
+            .any(|e| e.event_type == EVT_INFORMANT_INTEL && e.tick == 40));
     }
 
     #[test]

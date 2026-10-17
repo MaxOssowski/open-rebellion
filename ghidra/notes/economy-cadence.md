@@ -94,8 +94,8 @@ ProductionModifier.
   holder, whose support the revolt timer then wore down.
 - TroopRegRequired and the holder have every input among their hooks'
   triggers, so the daily recompute gives the original's values.
-- Not ported: the side hook's informant timer `0x38e` (`FUN_0050c820`);
-  the port's informant incident has no source (F-029).
+- The side hook's informant timer `0x38e` (`FUN_0050c820`) is ported in
+  `informant.rs` (2026-10-17, `informant-incident.md`).
 
 ### ProductionModifier reaches the facilities (2026-10-17)
 
