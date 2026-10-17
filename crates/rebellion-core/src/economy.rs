@@ -58,6 +58,9 @@ const GNPRTB_SMUGGLING_BASE_LOW: u16 = 7737;
 const GNPRTB_GARRISON_THRESHOLD: u16 = 7761;
 const GNPRTB_GARRISON_DIVISOR: u16 = 7762;
 const GNPRTB_COLLECTION_RATE_BASE: u16 = 7763;
+/// `FUN_0050b2c0`'s value with no holder, and the facility default
+/// (`FUN_0055a600`).
+const FULL_PRODUCTION_MODIFIER: i32 = 100;
 
 // Phase 3b: new constants from source tree cross-reference
 const GNPRTB_EMPIRE_TROOP_MULT: u16 = 7680; // =2: Empire regiments doubled, garrison halved near a Death Star (+0x88 bit 11)
@@ -216,7 +219,8 @@ pub struct SystemEconomy {
     pub hook_inputs: Option<HookInputs>,
     /// System `+0x6c` `SmugglingPercent`, -100..100 (`FUN_0050b230`).
     pub smuggling_percent: i32,
-    /// Resource collection rate, inversely proportional to support.
+    /// System `+0x70` `ProductionModifier` ([`production_modifier`]), kept
+    /// under its old name and type for the save layout.
     pub collection_rate: f32,
     /// Number of troops required to prevent uprising.
     pub garrison_requirement: u32,
@@ -503,15 +507,21 @@ impl EconomySystem {
                 }
             }
 
-            // 2. Calculate collection rate (ProductionModifier, FUN_0050b2c0),
-            // recomputed by the support hook only.
+            // 2. ProductionModifier (FUN_0050b2c0), recomputed by the
+            // support hook only.
             let controlling_support = match sys.control {
                 ControlKind::Controlled(crate::dat::Faction::Alliance) => sys.popularity_alliance,
                 ControlKind::Controlled(crate::dat::Faction::Empire) => sys.popularity_empire,
                 _ => 0.5, // Neutral/contested: baseline
             };
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "The modifier is at most 10000 times GNPRTB 7763."
+            )]
             let new_rate = if support_changed {
-                calculate_collection_rate(controlling_support, gnprtb, difficulty)
+                let holder_support = crate::uprising::holder(sys)
+                    .map(|side| crate::uprising::support_points(sys, side));
+                production_modifier(holder_support, gnprtb, difficulty) as f32
             } else {
                 eco.collection_rate
             };
@@ -1118,27 +1128,37 @@ fn evaluate_incident_flags(summary: &SystemSummary, eco: &SystemEconomy) -> Inci
     }
 }
 
-/// Calculate resource collection rate from popular support.
-///
-/// Formula: `(GNPRTB[7763] * 100) / max(support_pct, 1)`.
-/// Higher support means a lower collection rate (less taxation needed).
+/// `FUN_0050b2c0` -> `FUN_00559c10`: system `+0x70` `ProductionModifier`,
+/// the port's "collection rate". With no holder (side bits 0 or 3) it is
+/// 100; else GNPRTB 7763 (100) times 100 (`DAT_00661a88`) over the holder's
+/// support (`FUN_00507270`), 0 counting as 1, in integers (`FUN_0053e170`,
+/// `FUN_0053e150`). `FUN_0050c2b0` copies it to the system's mines and
+/// refineries, whose cycles it lengthens (`production_cycle.rs`).
+#[must_use]
+pub fn production_modifier(
+    holder_support: Option<i32>,
+    gnprtb: &GnprtbParams,
+    difficulty: u8,
+) -> i32 {
+    let Some(support) = holder_support else {
+        return FULL_PRODUCTION_MODIFIER;
+    };
+    let support = if support == 0 { 1 } else { support };
+    gnprtb.value(GNPRTB_COLLECTION_RATE_BASE, difficulty) * 100 / support
+}
+
+/// The `ProductionModifier` (`+0x70`) the economy last stored for `system`,
+/// or 100 before it has run there.
+#[must_use]
 #[expect(
     clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
+    reason = "The stored value is a whole number held as f32 for the save layout."
 )]
-fn calculate_collection_rate(support: f32, gnprtb: &GnprtbParams, difficulty: u8) -> f32 {
-    // Original: FUN_0053e170(GNPRTB[7763], 100, support)
-    //         = (100 * GNPRTB[7763]) / max(support_int, 1)
-    //         = 10000 / support_int  (with stock GNPRTB[7763]=100)
-    // Note: FUN_0053e190(a,b) = FUN_0053e170(a,b,100) = a*b/100.
-    // Result: integer percentage (100 at full support, 10000 at near-zero).
-    // Higher values = higher taxation burden on the system.
-    let base = gnprtb.value(GNPRTB_COLLECTION_RATE_BASE, difficulty).max(1);
-    let support_int = (support * 100.0).round() as i32;
-    let support_clamped = support_int.max(1);
-    let rate = (100 * base) / support_clamped;
-    rate.max(1) as f32
+pub fn production_modifier_at(economy: &EconomyState, system: SystemKey) -> i32 {
+    economy
+        .per_system
+        .get(&system)
+        .map_or(FULL_PRODUCTION_MODIFIER, |eco| eco.collection_rate as i32)
 }
 
 // ---------------------------------------------------------------------------
@@ -1738,18 +1758,36 @@ mod tests {
 
     #[test]
     fn collection_rate_high_support() {
+        // FUN_00559c10: GNPRTB 7763 (100) * 100 / 80.
         let gnprtb = stock_gnprtb();
-        let rate = calculate_collection_rate(0.8, &gnprtb, 2);
-        // (100 * 100) / 80 = 125
-        assert!((rate - 125.0).abs() < 0.01, "expected 125.0, got {rate}");
+        assert_eq!(production_modifier(Some(80), &gnprtb, 2), 125);
+        // Integer division: 10000 / 70.
+        assert_eq!(production_modifier(Some(70), &gnprtb, 2), 142);
+    }
+
+    #[test]
+    fn a_system_without_a_holder_has_a_production_modifier_of_100() {
+        // FUN_0050b2c0 stores 100 when the side bits name no side.
+        let gnprtb = stock_gnprtb();
+        assert_eq!(production_modifier(None, &gnprtb, 2), 100);
+        let (mut world, sys) = smuggling_world(false);
+        world.systems[sys].control = ControlKind::Uncontrolled;
+        let mut state = EconomyState::default();
+        EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        assert_eq!(production_modifier_at(&state, sys), 100);
+        // A side in revolt still holds the system: 10000 / 10.
+        world.systems[sys].control = ControlKind::Uprising(crate::dat::Faction::Alliance);
+        let mut state = EconomyState::default();
+        EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        assert_eq!(production_modifier_at(&state, sys), 1000);
+        assert_eq!(production_modifier_at(&EconomyState::default(), sys), 100);
     }
 
     #[test]
     fn collection_rate_low_support() {
         let gnprtb = stock_gnprtb();
-        let rate = calculate_collection_rate(0.1, &gnprtb, 2);
-        // (100 * 100) / 10 = 1000
-        assert!((rate - 1000.0).abs() < 0.1, "expected 1000.0, got {rate}");
+        // FUN_00559c10: (100 * 100) / 10.
+        assert_eq!(production_modifier(Some(10), &gnprtb, 2), 1000);
     }
 
     #[test]
@@ -2861,12 +2899,8 @@ mod tests {
     #[test]
     fn collection_rate_at_zero_support() {
         let gnprtb = stock_gnprtb();
-        let rate = calculate_collection_rate(0.0, &gnprtb, 2);
-        // At zero support: (100 * 100) / max(0, 1) = 10000
-        assert!(
-            (rate - 10000.0).abs() < f32::EPSILON,
-            "zero support should yield max rate: {rate}"
-        );
+        // FUN_00559c10 counts support 0 as 1: (100 * 100) / 1.
+        assert_eq!(production_modifier(Some(0), &gnprtb, 2), 10000);
     }
 
     // --- Task #46: Fleet posture is_contested + strengthen telemetry ---

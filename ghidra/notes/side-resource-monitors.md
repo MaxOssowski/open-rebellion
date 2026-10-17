@@ -527,8 +527,9 @@ yard cycle, and idle yards neither run nor draw.
   `0x300..0x305`.
 - `rebellion-core/src/production_cycle.rs`: both stockpiles, the upkeep
   allocation, the mine and refinery cycles and the raw request queue,
-  advanced once per day. A cycle's length is fixed when it starts, and the
-  ProductionModifier stays 100.
+  advanced once per day. A cycle's length is fixed when it starts. Since
+  2026-10-17 it takes the system's ProductionModifier (`+0x70`), which
+  `FUN_0050c2b0` copies to each mine and refinery (`economy-cadence.md`).
 - `rebellion-render/src/resource_monitors.rs`: the three monitors. Browser captures of day 0 are in
   `docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-maintenance-monitor/`.
 - `production_cycle::advance_yards`: each yard's cycle, its refined intake

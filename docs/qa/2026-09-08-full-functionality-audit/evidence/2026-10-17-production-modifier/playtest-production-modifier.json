@@ -1,0 +1,369 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against 95ce5276",
+  "seeds": {
+    "1": {
+      "head": {
+        "manufacturing_complete": 468,
+        "units_deployed": 468,
+        "control_changed": 17,
+        "uprising_began": 4,
+        "combat_space": 2,
+        "snapshot_rates": [
+          [
+            200,
+            31
+          ],
+          [
+            100,
+            9
+          ],
+          [
+            144,
+            3
+          ],
+          [
+            153,
+            2
+          ]
+        ]
+      },
+      "new": {
+        "manufacturing_complete": 431,
+        "units_deployed": 431,
+        "control_changed": 25,
+        "uprising_began": 5,
+        "combat_space": 2,
+        "snapshot_rates": [
+          [
+            100,
+            39
+          ],
+          [
+            144,
+            3
+          ],
+          [
+            102,
+            2
+          ],
+          [
+            153,
+            2
+          ]
+        ]
+      }
+    },
+    "2": {
+      "head": {
+        "manufacturing_complete": 406,
+        "units_deployed": 406,
+        "control_changed": 17,
+        "uprising_began": 5,
+        "combat_space": 1,
+        "snapshot_rates": [
+          [
+            200,
+            27
+          ],
+          [
+            100,
+            6
+          ],
+          [
+            121,
+            3
+          ],
+          [
+            120,
+            2
+          ]
+        ]
+      },
+      "new": {
+        "manufacturing_complete": 373,
+        "units_deployed": 373,
+        "control_changed": 17,
+        "uprising_began": 8,
+        "combat_space": 4,
+        "snapshot_rates": [
+          [
+            100,
+            32
+          ],
+          [
+            121,
+            3
+          ],
+          [
+            120,
+            2
+          ],
+          [
+            140,
+            2
+          ]
+        ]
+      }
+    },
+    "3": {
+      "head": {
+        "manufacturing_complete": 487,
+        "units_deployed": 487,
+        "control_changed": 34,
+        "uprising_began": 13,
+        "combat_space": 1,
+        "snapshot_rates": [
+          [
+            200,
+            29
+          ],
+          [
+            100,
+            7
+          ],
+          [
+            140,
+            2
+          ],
+          [
+            161,
+            2
+          ]
+        ]
+      },
+      "new": {
+        "manufacturing_complete": 454,
+        "units_deployed": 454,
+        "control_changed": 29,
+        "uprising_began": 11,
+        "combat_space": 1,
+        "snapshot_rates": [
+          [
+            100,
+            38
+          ],
+          [
+            140,
+            2
+          ],
+          [
+            161,
+            2
+          ],
+          [
+            500,
+            1
+          ]
+        ]
+      }
+    },
+    "7": {
+      "head": {
+        "manufacturing_complete": 383,
+        "units_deployed": 383,
+        "control_changed": 15,
+        "uprising_began": 8,
+        "combat_space": 8,
+        "snapshot_rates": [
+          [
+            200,
+            40
+          ],
+          [
+            100,
+            6
+          ],
+          [
+            217,
+            3
+          ],
+          [
+            135,
+            2
+          ]
+        ]
+      },
+      "new": {
+        "manufacturing_complete": 328,
+        "units_deployed": 328,
+        "control_changed": 20,
+        "uprising_began": 8,
+        "combat_space": 9,
+        "snapshot_rates": [
+          [
+            100,
+            45
+          ],
+          [
+            135,
+            2
+          ],
+          [
+            232,
+            2
+          ],
+          [
+            147,
+            1
+          ]
+        ]
+      }
+    },
+    "13": {
+      "head": {
+        "manufacturing_complete": 601,
+        "units_deployed": 601,
+        "control_changed": 19,
+        "uprising_began": 6,
+        "combat_space": 4,
+        "snapshot_rates": [
+          [
+            200,
+            26
+          ],
+          [
+            100,
+            11
+          ],
+          [
+            129,
+            2
+          ],
+          [
+            128,
+            1
+          ]
+        ]
+      },
+      "new": {
+        "manufacturing_complete": 490,
+        "units_deployed": 490,
+        "control_changed": 10,
+        "uprising_began": 3,
+        "combat_space": 12,
+        "snapshot_rates": [
+          [
+            100,
+            35
+          ],
+          [
+            129,
+            2
+          ],
+          [
+            144,
+            2
+          ],
+          [
+            128,
+            1
+          ]
+        ]
+      }
+    },
+    "42": {
+      "head": {
+        "manufacturing_complete": 454,
+        "units_deployed": 454,
+        "control_changed": 18,
+        "uprising_began": 11,
+        "combat_space": 2,
+        "snapshot_rates": [
+          [
+            200,
+            22
+          ],
+          [
+            100,
+            4
+          ],
+          [
+            185,
+            3
+          ],
+          [
+            227,
+            2
+          ]
+        ]
+      },
+      "new": {
+        "manufacturing_complete": 371,
+        "units_deployed": 371,
+        "control_changed": 26,
+        "uprising_began": 11,
+        "combat_space": 2,
+        "snapshot_rates": [
+          [
+            100,
+            26
+          ],
+          [
+            133,
+            2
+          ],
+          [
+            238,
+            2
+          ],
+          [
+            217,
+            1
+          ]
+        ]
+      }
+    },
+    "47": {
+      "head": {
+        "manufacturing_complete": 451,
+        "units_deployed": 451,
+        "control_changed": 26,
+        "uprising_began": 14,
+        "combat_space": 3,
+        "snapshot_rates": [
+          [
+            200,
+            33
+          ],
+          [
+            100,
+            5
+          ],
+          [
+            196,
+            1
+          ],
+          [
+            149,
+            1
+          ]
+        ]
+      },
+      "new": {
+        "manufacturing_complete": 455,
+        "units_deployed": 455,
+        "control_changed": 17,
+        "uprising_began": 6,
+        "combat_space": 4,
+        "snapshot_rates": [
+          [
+            100,
+            41
+          ],
+          [
+            222,
+            2
+          ],
+          [
+            227,
+            1
+          ],
+          [
+            149,
+            1
+          ]
+        ]
+      }
+    }
+  }
+}

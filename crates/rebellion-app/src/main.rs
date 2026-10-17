@@ -2605,6 +2605,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                 &world,
                 &mfg_state,
                 |system| blockade_state.is_blockaded(system) || uprising_state.is_uprising(system),
+                |system| rebellion_core::economy::production_modifier_at(&economy_state, system),
                 &tick_events,
                 &production_rolls,
             );

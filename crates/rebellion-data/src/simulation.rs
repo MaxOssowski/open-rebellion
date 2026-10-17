@@ -629,6 +629,7 @@ pub fn run_simulation_tick(
         world,
         &states.manufacturing,
         |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
+        |system| rebellion_core::economy::production_modifier_at(&states.economy, system),
         tick_events,
         &production_rolls,
     );

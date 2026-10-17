@@ -16,7 +16,7 @@ slot (`ghidra/generated/setters.tsv`).
 | Field | Setter | Computed by | Value | Port |
 |---|---|---|---|---|
 | `+0x6c` SmugglingPercent (-100..100) | `FUN_00509ec0` | `FUN_0050b230` → `FUN_00559c40` | see below | step 1, ported 2026-10-17 (it had been misread as a support drift) |
-| `+0x70` ProductionModifier | `FUN_00509f40` | `FUN_0050b2c0` → `FUN_00559c10` | GNPRTB `DAT_006bb44c` × 100 / support (1 for 0); 100 when neutral | "collection rate" (step 2) |
+| `+0x70` ProductionModifier | `FUN_00509f40` | `FUN_0050b2c0` → `FUN_00559c10` | GNPRTB 7763 (`DAT_006bb44c`, 100) × 100 / the holder's support (1 for 0), integer division; 100 with no holder | `economy::production_modifier`, the field `collection_rate`; feeds the mines' and refineries' cycles (2026-10-17) |
 | `+0x80` TroopRegRequired | `FUN_0050a290` | `FUN_0050b5a0` → `FUN_00559fe0` | `FUN_0055a050(support)`, ÷ `DAT_006bb3dc` for an Empire system with `+0x88` bit 11, × `DAT_006bb3e4` in uprising (bit 2) | garrison requirement (step 3) |
 | `+0x84` holder | `FUN_0050a300` | `FUN_0050b610` | `system-control.md` | step 5, ported 2026-10-17 |
 | the withdraw percent | | `FUN_0050b310` | `blockade-troop-withdrawal.md` | step 4 |
@@ -96,6 +96,28 @@ ProductionModifier.
   triggers, so the daily recompute gives the original's values.
 - Not ported: the side hook's informant timer `0x38e` (`FUN_0050c820`);
   the port's informant incident has no source (F-029).
+
+### ProductionModifier reaches the facilities (2026-10-17)
+
+The field's hook (slot `+0x1e8`, `FUN_00510b60`) runs `FUN_0050c2b0`. It
+walks the system's processing facilities (`FUN_0055b260`, families
+`0x2c..0x30`: mines and refineries) and gives each the system's value
+(`FUN_0050c560` -> `FUN_0055a7a0`, facility `+0x6c`). A facility joining
+the system gets it too (`FUN_00508660`). The facility's own hook runs
+`FUN_0055abf0`, which writes the next cycle's period
+(`FUN_0055e2b0`: `(rate + extra) × modifier / 100`) into the timer record
+without cancelling the running timer, so the change applies from the next
+cycle. Shipyards (`0x28..0x2a`) are not in the walk.
+
+So support drives the mines and refineries: at 100 support a cycle takes
+its base length, at 50 twice that, at 10 ten times. A system with no
+holder runs at 100. The port had set 200 for a system with no holder and
+kept every facility at 100.
+
+Port: `economy::production_modifier`, `production_modifier_at`, and
+`ProductionSystem::advance`'s `modifier`; a cycle takes its system's value
+when it starts. port: a system the economy has not yet run (none before the
+first day) counts 100.
 
 So the original recomputes:
 - SmugglingPercent only when the support or bit 11 changes (and in

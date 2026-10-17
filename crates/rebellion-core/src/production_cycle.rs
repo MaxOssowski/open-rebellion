@@ -4,7 +4,8 @@
 //! A mine or refinery runs a cycle: a mine ends it with one raw material, a
 //! refinery starts it by taking one raw material and ends it with one
 //! refined material. The cycle lengthens as the side's upkeep is allocated
-//! to the facility.
+//! to the facility, and with its system's `ProductionModifier`, which falls
+//! as the holder's support rises (`economy::production_modifier`).
 //!
 //! A yard starts its cycle by taking one refined material and ends it with
 //! one build point for its production manager, which keeps no more yards
@@ -37,7 +38,10 @@ use crate::world::GameWorld;
 pub const CYCLE_STEP_PERCENT_PARAM: u16 = 0x1000;
 
 /// Facility `+0x6c`, the ProductionModifier `FUN_0055a600` starts at 100.
-/// port: nothing changes it yet (`FUN_0055a7a0`'s callers are not traced).
+/// `FUN_0050c2b0` (the system's `+0x70` hook) and `FUN_00508660` (a
+/// facility joining) set it to the system's `ProductionModifier` through
+/// `FUN_0050c560` -> `FUN_0055a7a0`; the caller of
+/// [`ProductionSystem::advance`] supplies that value.
 const PRODUCTION_MODIFIER: i32 = 100;
 
 /// One side's stockpiles (side `+0x78`, `+0x7c`), the refineries waiting
@@ -299,6 +303,8 @@ struct Day<'a, 'r> {
     free_raw: bool,
     rolls: &'a mut Rolls<'r>,
     events: &'a mut Vec<ProductionEvent>,
+    /// Each facility's `+0x6c`, its system's `ProductionModifier`.
+    modifiers: &'a HashMap<ProductionFacilityKey, i32>,
 }
 
 impl Day<'_, '_> {
@@ -314,7 +320,10 @@ impl Day<'_, '_> {
             rate,
             cycle.allocated,
             self.step_percent,
-            PRODUCTION_MODIFIER,
+            self.modifiers
+                .get(&key)
+                .copied()
+                .unwrap_or(PRODUCTION_MODIFIER),
         );
         if cycle.randomise {
             period = randomised_period(period, self.rolls.draw());
@@ -380,12 +389,16 @@ pub struct ProductionSystem;
 
 impl ProductionSystem {
     /// Advance one day per tick event. `blocked` tells whether a system is
-    /// in uprising or blockaded (`FUN_0050bbb0`).
+    /// in uprising or blockaded (`FUN_0050bbb0`); `modifier` gives a
+    /// system's `ProductionModifier` (`+0x70`), which a cycle takes when it
+    /// starts (`FUN_0055abf0` writes the next period without cancelling the
+    /// running timer).
     pub fn advance(
         state: &mut ProductionState,
         world: &GameWorld,
         manufacturing: &ManufacturingState,
         blocked: impl Fn(SystemKey) -> bool,
+        modifier: impl Fn(SystemKey) -> i32,
         tick_events: &[TickEvent],
         rolls: &[f64],
     ) -> Vec<ProductionEvent> {
@@ -402,8 +415,10 @@ impl ProductionSystem {
             for side in [Faction::Alliance, Faction::Empire] {
                 // The side's counted facilities, and the rest of its own.
                 let (mut mines, mut refineries, mut idle) = (Vec::new(), Vec::new(), Vec::new());
+                let mut modifiers = HashMap::new();
                 for (system, value) in &world.systems {
                     let counted = !blocked(system);
+                    let system_modifier = modifier(system);
                     for &key in &value.production_facilities {
                         let Some(facility) = world.production_facilities.get(key) else {
                             continue;
@@ -411,6 +426,7 @@ impl ProductionSystem {
                         if facility.side != side {
                             continue;
                         }
+                        modifiers.insert(key, system_modifier);
                         if !counted {
                             idle.push(key);
                         } else if facility.is_mine {
@@ -445,6 +461,7 @@ impl ProductionSystem {
                     free_raw: !state.started,
                     rolls: &mut rolls,
                     events: &mut events,
+                    modifiers: &modifiers,
                 };
                 let walk = mines
                     .iter()
@@ -903,6 +920,7 @@ mod tests {
                 world,
                 &ManufacturingState::new(),
                 |_| false,
+                |_| PRODUCTION_MODIFIER,
                 &[TickEvent { tick }],
                 &[roll; 16],
             ));
@@ -975,6 +993,52 @@ mod tests {
         // The next cycles are not randomised: a low roll changes nothing.
         run(&mut state, &world, 7..=16, 0.0);
         assert_eq!(alliance(&state), (3, 0));
+    }
+
+    #[test]
+    fn a_mine_takes_its_system_s_production_modifier_when_a_cycle_starts() {
+        // FUN_0050c2b0 copies system +0x70 to each mine and refinery
+        // (FUN_0050c560 -> FUN_0055a7a0); FUN_0055e2b0 scales the period by
+        // it. At 50 support the modifier is 200: 5 days become 10.
+        let mut world = world();
+        let here = system(&mut world);
+        let mine = facility(&mut world, here, MINE);
+        let mut state = ProductionState::new();
+        let mut modifier = 200;
+        let day = |state: &mut ProductionState, tick, modifier| {
+            ProductionSystem::advance(
+                state,
+                &world,
+                &ManufacturingState::new(),
+                |_| false,
+                |system| if system == here { modifier } else { 100 },
+                &[TickEvent { tick }],
+                &[0.5; 4],
+            )
+        };
+        // The randomised first cycle: 0.5 of 0..=10 is 5, plus 10 / 2.
+        for tick in 1..=10 {
+            assert_eq!(day(&mut state, tick, modifier), vec![]);
+        }
+        assert_eq!(
+            day(&mut state, 11, modifier),
+            vec![ProductionEvent::RawMined {
+                side: Faction::Alliance,
+                facility: mine
+            }]
+        );
+        // A change applies from the next cycle (FUN_0055abf0 writes the
+        // next period only): this cycle started on day 11 at 10 days.
+        modifier = 100;
+        for tick in 12..=20 {
+            assert_eq!(day(&mut state, tick, modifier), vec![]);
+        }
+        assert_eq!(day(&mut state, 21, modifier).len(), 1);
+        // The next one takes 5 days.
+        for tick in 22..=25 {
+            assert_eq!(day(&mut state, tick, modifier), vec![]);
+        }
+        assert_eq!(day(&mut state, 26, modifier).len(), 1);
     }
 
     #[test]
@@ -1136,6 +1200,7 @@ mod tests {
                 &world,
                 &ManufacturingState::new(),
                 |system| system == here,
+                |_| PRODUCTION_MODIFIER,
                 &[TickEvent { tick }],
                 &[0.5; 4],
             )
@@ -1193,6 +1258,7 @@ mod tests {
                 &world,
                 &ManufacturingState::new(),
                 |_| false,
+                |_| PRODUCTION_MODIFIER,
                 &[TickEvent { tick }],
                 &[0.0, 0.999_999],
             )
@@ -1227,6 +1293,7 @@ mod tests {
                 &world,
                 &ManufacturingState::new(),
                 |system| blocked && system == refineries,
+                |_| PRODUCTION_MODIFIER,
                 &[TickEvent { tick }],
                 &[0.5; 8],
             );

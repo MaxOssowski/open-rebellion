@@ -2215,6 +2215,14 @@ cross-runtime proof remain open
   and the derived fields follow their hooks. Still open: the maintenance
   counter `0x304` (F-029), timer `0x381` and the collection rate's
   neutral value (`FUN_00559c10` gives 100, the port 200).
+- 2026-10-17: the "collection rate" is the system's ProductionModifier
+  (`+0x70`, `FUN_0050b2c0`): 100 with no holder, else GNPRTB 7763 × 100
+  over the holder's support. Its hook `FUN_0050c2b0` copies it to the
+  system's mines and refineries, whose cycles it lengthens
+  (`FUN_0055e2b0`). Both are ported; builds fall by up to 19% over seven
+  600-day seeds. Golden final `v1:653ff1b1bbff8904` ->
+  `v1:99cb09fad4a57148` (`evidence/2026-10-17-production-modifier/`).
+  Still open: the maintenance counter `0x304` (F-029) and timer `0x381`.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 
