@@ -1,0 +1,234 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against 6646fa3b",
+  "seeds": {
+    "1": {
+      "head": {
+        "support_drift": 235,
+        "smuggling_percent": 0,
+        "control_changed": 18,
+        "systems_changing_3_or_more_times": {
+          "Sullust": [
+            [
+              9,
+              "Controlled(Alliance)"
+            ],
+            [
+              57,
+              null
+            ],
+            [
+              102,
+              "Controlled(Alliance)"
+            ],
+            [
+              112,
+              null
+            ],
+            [
+              293,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 7,
+        "uprising_incident": 40,
+        "support_change": 38
+      },
+      "new": {
+        "support_drift": 0,
+        "smuggling_percent": 4,
+        "control_changed": 14,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 6,
+        "uprising_incident": 33,
+        "support_change": 31,
+        "smuggling_range": [
+          -50,
+          0
+        ]
+      }
+    },
+    "2": {
+      "head": {
+        "support_drift": 192,
+        "smuggling_percent": 0,
+        "control_changed": 12,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 6,
+        "uprising_incident": 28,
+        "support_change": 29
+      },
+      "new": {
+        "support_drift": 0,
+        "smuggling_percent": 3,
+        "control_changed": 13,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 4,
+        "uprising_incident": 17,
+        "support_change": 36,
+        "smuggling_range": [
+          -19,
+          0
+        ]
+      }
+    },
+    "3": {
+      "head": {
+        "support_drift": 440,
+        "smuggling_percent": 0,
+        "control_changed": 17,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 9,
+        "uprising_incident": 59,
+        "support_change": 32
+      },
+      "new": {
+        "support_drift": 0,
+        "smuggling_percent": 23,
+        "control_changed": 20,
+        "systems_changing_3_or_more_times": {
+          "Sluis Van": [
+            [
+              9,
+              "Controlled(Alliance)"
+            ],
+            [
+              70,
+              null
+            ],
+            [
+              109,
+              "Controlled(Alliance)"
+            ],
+            [
+              144,
+              null
+            ],
+            [
+              461,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 9,
+        "uprising_incident": 55,
+        "support_change": 36,
+        "smuggling_range": [
+          -75,
+          0
+        ]
+      }
+    },
+    "7": {
+      "head": {
+        "support_drift": 15,
+        "smuggling_percent": 0,
+        "control_changed": 16,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 7,
+        "uprising_incident": 41,
+        "support_change": 37
+      },
+      "new": {
+        "support_drift": 0,
+        "smuggling_percent": 13,
+        "control_changed": 15,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 7,
+        "uprising_incident": 36,
+        "support_change": 33,
+        "smuggling_range": [
+          -19,
+          0
+        ]
+      }
+    },
+    "13": {
+      "head": {
+        "support_drift": 446,
+        "smuggling_percent": 0,
+        "control_changed": 13,
+        "systems_changing_3_or_more_times": {
+          "Umgul": [
+            [
+              309,
+              "Controlled(Alliance)"
+            ],
+            [
+              354,
+              null
+            ],
+            [
+              491,
+              "Controlled(Alliance)"
+            ]
+          ]
+        },
+        "uprising_began": 3,
+        "uprising_incident": 20,
+        "support_change": 33
+      },
+      "new": {
+        "support_drift": 0,
+        "smuggling_percent": 15,
+        "control_changed": 13,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 4,
+        "uprising_incident": 23,
+        "support_change": 33,
+        "smuggling_range": [
+          -25,
+          0
+        ]
+      }
+    },
+    "42": {
+      "head": {
+        "support_drift": 341,
+        "smuggling_percent": 0,
+        "control_changed": 13,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 9,
+        "uprising_incident": 36,
+        "support_change": 30
+      },
+      "new": {
+        "support_drift": 0,
+        "smuggling_percent": 9,
+        "control_changed": 15,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 8,
+        "uprising_incident": 36,
+        "support_change": 32,
+        "smuggling_range": [
+          -50,
+          0
+        ]
+      }
+    },
+    "47": {
+      "head": {
+        "support_drift": 526,
+        "smuggling_percent": 0,
+        "control_changed": 10,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 7,
+        "uprising_incident": 31,
+        "support_change": 30
+      },
+      "new": {
+        "support_drift": 0,
+        "smuggling_percent": 22,
+        "control_changed": 16,
+        "systems_changing_3_or_more_times": {},
+        "uprising_began": 10,
+        "uprising_incident": 52,
+        "support_change": 34,
+        "smuggling_range": [
+          -46,
+          19
+        ]
+      }
+    }
+  }
+}

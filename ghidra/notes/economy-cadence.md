@@ -1,8 +1,8 @@
 # The economy's cadence: what changes a system, and when
 
 Read 2026-10-17 for F-037. Every tick the port runs `EconomySystem`,
-which rebuilds each system and drifts its support. The original has no
-such loop:
+which rebuilds each system (until 2026-10-17 it also drifted its
+support). The original has no such loop:
 - `FUN_00508250` (system slot `+0xc0`) runs once, in the setup stage
   `0x17` (`timer-scheduler.md`).
 - After that a system changes only through its field hooks (when an input
@@ -15,7 +15,7 @@ slot (`ghidra/generated/setters.tsv`).
 
 | Field | Setter | Computed by | Value | Port |
 |---|---|---|---|---|
-| `+0x6c` SmugglingPercent (-100..100) | `FUN_00509ec0` | `FUN_0050b230` → `FUN_00559c40` | see below | misread as the support drift (step 1) |
+| `+0x6c` SmugglingPercent (-100..100) | `FUN_00509ec0` | `FUN_0050b230` → `FUN_00559c40` | see below | step 1, ported 2026-10-17 (it had been misread as a support drift) |
 | `+0x70` ProductionModifier | `FUN_00509f40` | `FUN_0050b2c0` → `FUN_00559c10` | GNPRTB `DAT_006bb44c` × 100 / support (1 for 0); 100 when neutral | "collection rate" (step 2) |
 | `+0x80` TroopRegRequired | `FUN_0050a290` | `FUN_0050b5a0` → `FUN_00559fe0` | `FUN_0055a050(support)`, ÷ `DAT_006bb3dc` for an Empire system with `+0x88` bit 11, × `DAT_006bb3e4` in uprising (bit 2) | garrison requirement (step 3) |
 | `+0x84` holder | `FUN_0050a300` | `FUN_0050b610` | `system-control.md` | step 5, ported 2026-10-17 |
@@ -29,10 +29,29 @@ is the smuggling percent:
 - negative for the Empire;
 - else 0.
 
-The port's `calculate_support_drift` reads exactly this function. It
-applies the result to the support every tick, but the original stores it
-as SmugglingPercent and never changes the support with it. That support
-drift has no source.
+The port's `calculate_support_drift` read exactly this function, but
+applied the result to the support every tick. The original stores it as
+SmugglingPercent and never changes the support with it, so that support
+drift had no source.
+
+`FUN_00509ec0` rejects a value outside -100..100 (`FUN_0053fc90`), and
+stores and notifies (`+0x1e4`, `SystemSmugglingPercentNotif`) only when the
+value changes.
+
+### Port (2026-10-17)
+
+- `economy::smuggling_formula` is `FUN_00559c40`, and
+  `economy::smuggling_percent` is `FUN_0050b230`. The inputs are the
+  holder's alive capital ships in its fleets (`FUN_00509090`), its
+  squadrons on the planet only (`FUN_00508fb0`), its regiments
+  (`FUN_00509020`) and the Death Stars in its fleets (`FUN_00509140`, CAPSHPSD
+  family `0x18`).
+- Step 1 stores the result in `SystemEconomy::smuggling_percent` (save
+  v61) and emits `SmugglingPercentChanged` on a change. Nothing moves the
+  support with it.
+- port: the economy loop still skips unpopulated systems, so a system held
+  only by regiments keeps 0.
+- port: bit 11 of `+0x88` is still the port's `strong_support` guess.
 
 ## The hooks
 
@@ -73,8 +92,8 @@ same path (`uprising.rs`, `support_change`).
 
 ## Against the port
 
-- Step 1, the support drift, is invented: it applies the smuggling percent
-  to the support every tick.
+- Step 1, the support drift, was invented: it applied the smuggling
+  percent to the support every tick. Removed 2026-10-17.
 - Steps 0a, 2, 3, 4 and 6 recompute every tick what the original
   recomputes on a change. Their values only change with their inputs, so
   the per-tick run gives the same numbers, except where a value feeds back
@@ -82,9 +101,9 @@ same path (`uprising.rs`, `support_change`).
 - Step 7's incidents and the maintenance shortfall (`0x304`, a 30-tick
   counter) have their own sources (`uprising-incident.md`, F-029); the
   counter is the port's.
-- SmugglingPercent itself is not ported. It is read by the manufacturing
-  cycle's discarded roll (`side-resource-monitors.md`) and the Smuggling
-  message (`0x145`).
+- SmugglingPercent is ported (step 1). Its readers are not: the
+  manufacturing cycle's discarded roll (`side-resource-monitors.md`) and
+  the Smuggling message (`0x145`, `message-pictures.md`).
 
 ## Open
 

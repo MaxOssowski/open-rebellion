@@ -97,7 +97,7 @@ pub const EVT_FOG_REVEALED: &str = "fog_revealed";
 pub const EVT_CONTROL_CHANGED: &str = "control_changed";
 pub const EVT_CAMPAIGN_SNAPSHOT: &str = "campaign_snapshot";
 pub const EVT_ECONOMY_TICK: &str = "economy_tick";
-pub const EVT_SUPPORT_DRIFT: &str = "support_drift";
+pub const EVT_SMUGGLING_PERCENT: &str = "smuggling_percent";
 pub const EVT_COLLECTION_RATE: &str = "collection_rate";
 pub const EVT_GARRISON_REQUIRED: &str = "garrison_required";
 pub const EVT_SHIP_REPAIRED: &str = "ship_repaired";
@@ -206,7 +206,7 @@ mod tests {
             EVT_CONTROL_CHANGED,
             EVT_CAMPAIGN_SNAPSHOT,
             EVT_ECONOMY_TICK,
-            EVT_SUPPORT_DRIFT,
+            EVT_SMUGGLING_PERCENT,
             EVT_COLLECTION_RATE,
             EVT_GARRISON_REQUIRED,
             EVT_SHIP_REPAIRED,

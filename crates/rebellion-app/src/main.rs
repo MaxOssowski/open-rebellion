@@ -1706,18 +1706,6 @@ async fn main() {
             );
             for ev in &economy_events {
                 match ev {
-                    EconomyEvent::SupportDrifted {
-                        system,
-                        alliance_delta,
-                        empire_delta,
-                    } => {
-                        if let Some(sys) = world.systems.get_mut(*system) {
-                            sys.popularity_alliance =
-                                (sys.popularity_alliance + alliance_delta).clamp(0.0, 1.0);
-                            sys.popularity_empire =
-                                (sys.popularity_empire + empire_delta).clamp(0.0, 1.0);
-                        }
-                    }
                     EconomyEvent::ControlResolved {
                         system,
                         new_control,

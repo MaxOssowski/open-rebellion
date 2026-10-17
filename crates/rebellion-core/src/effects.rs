@@ -78,11 +78,6 @@ pub enum MessageCategoryTag {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GameEffect {
     // ── Economy (Phase 0) ────────────────────────────────────────────
-    SupportDrifted {
-        system: SystemKey,
-        alliance_delta: f32,
-        empire_delta: f32,
-    },
     CollectionRateChanged {
         system: SystemKey,
         new_rate: f32,
@@ -275,8 +270,7 @@ impl GameEffect {
     #[must_use]
     pub fn phase(&self) -> EffectPhase {
         match self {
-            Self::SupportDrifted { .. }
-            | Self::CollectionRateChanged { .. }
+            Self::CollectionRateChanged { .. }
             | Self::GarrisonRequirementChanged { .. }
             | Self::MaintenanceShortfall { .. } => EffectPhase::Economy,
 
@@ -337,15 +331,6 @@ impl GameEffect {
                 alliance_delta,
                 empire_delta,
             } => Some(Self::PopularityShifted {
-                system: *system,
-                alliance_delta: -alliance_delta,
-                empire_delta: -empire_delta,
-            }),
-            Self::SupportDrifted {
-                system,
-                alliance_delta,
-                empire_delta,
-            } => Some(Self::SupportDrifted {
                 system: *system,
                 alliance_delta: -alliance_delta,
                 empire_delta: -empire_delta,
@@ -481,10 +466,9 @@ mod tests {
 
     #[test]
     fn system_name_matches_phase() {
-        let eco = GameEffect::SupportDrifted {
+        let eco = GameEffect::CollectionRateChanged {
             system: SystemKey::default(),
-            alliance_delta: 0.0,
-            empire_delta: 0.0,
+            new_rate: 0.0,
         };
         assert_eq!(eco.system_name(), "economy");
 

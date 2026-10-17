@@ -30,7 +30,7 @@ use rebellion_core::game_events::{
     EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE,
     EVT_MISSION_DISPATCHED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
-    EVT_SUPPORT_CHANGE, EVT_SUPPORT_DRIFT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
+    EVT_SUPPORT_CHANGE, EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
     EVT_UPRISING_INCIDENT, EVT_VICTORY, EVT_VICTORY_CHECK, SYS_AI, SYS_BETRAYAL, SYS_BLOCKADE,
     SYS_COMBAT, SYS_DEATH_STAR, SYS_ECONOMY, SYS_EVENTS, SYS_FOG, SYS_JEDI, SYS_MANUFACTURING,
@@ -507,7 +507,7 @@ impl PerceptionIntegrator {
 
     // ── Step 2: Economy section ───────────────────────────────────────────
 
-    /// Apply economy events: world mutations (support drift, control) + telemetry.
+    /// Apply economy events: world mutations (control) + telemetry.
     #[expect(
         clippy::too_many_lines,
         reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
@@ -515,24 +515,13 @@ impl PerceptionIntegrator {
     pub fn apply_economy_events(&mut self, world: &mut GameWorld, economy_events: &[EconomyEvent]) {
         for ev in economy_events {
             match ev {
-                EconomyEvent::SupportDrifted {
-                    system,
-                    alliance_delta,
-                    empire_delta,
-                } => {
-                    if let Some(sys) = world.systems.get_mut(*system) {
-                        sys.popularity_alliance =
-                            (sys.popularity_alliance + alliance_delta).clamp(0.0, 1.0);
-                        sys.popularity_empire =
-                            (sys.popularity_empire + empire_delta).clamp(0.0, 1.0);
-                    }
+                EconomyEvent::SmugglingPercentChanged { system, percent } => {
                     self.emit(
                         SYS_ECONOMY,
-                        EVT_SUPPORT_DRIFT,
+                        EVT_SMUGGLING_PERCENT,
                         serde_json::json!({
                             "system": sys_name(world, *system),
-                            "alliance_delta": alliance_delta,
-                            "empire_delta": empire_delta,
+                            "percent": percent,
                         }),
                     );
                 }
@@ -2789,20 +2778,31 @@ mod tests {
     }
 
     #[test]
-    fn support_drift_moves_both_sides_popularity() {
+    fn a_smuggling_change_leaves_the_support_alone() {
+        // FUN_00509ec0 only stores +0x6c and notifies its views.
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Naboo");
+        world.systems[system].popularity_alliance = 0.5;
+        world.systems[system].popularity_empire = 0.5;
+        let before = (
+            world.systems[system].popularity_alliance,
+            world.systems[system].popularity_empire,
+        );
         let mut integrator = PerceptionIntegrator::new(1, 0);
         integrator.apply_economy_events(
             &mut world,
-            &[EconomyEvent::SupportDrifted {
+            &[EconomyEvent::SmugglingPercentChanged {
                 system,
-                alliance_delta: 0.25,
-                empire_delta: -0.25,
+                percent: 75,
             }],
         );
-        assert!((world.systems[system].popularity_alliance - 0.25).abs() < 1e-6);
-        assert!((world.systems[system].popularity_empire - 0.75).abs() < 1e-6);
+        assert_eq!(
+            (
+                world.systems[system].popularity_alliance,
+                world.systems[system].popularity_empire,
+            ),
+            before
+        );
     }
 
     #[test]

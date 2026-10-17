@@ -152,7 +152,7 @@ def evaluate(events: list[dict], golden: dict) -> dict:
         build_presence_checks(
             events,
             "economy",
-            ["economy_tick", "support_drift", "collection_rate", "garrison_required", "control_changed"],
+            ["economy_tick", "smuggling_percent", "collection_rate", "garrison_required", "control_changed"],
         )
     )
     checks.extend(

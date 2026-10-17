@@ -2175,6 +2175,14 @@ cross-runtime proof remain open
   hooks (`FUN_005109f0`, `FUN_00510820`, `FUN_00511740`, `FUN_00511300`),
   not each tick. The port's "collection rate" is ProductionModifier
   (`+0x70`).
+- 2026-10-17, step 1: the support drift is removed. `FUN_0050b230` ->
+  `FUN_00559c40` is ported as the system's smuggling percent
+  (`economy::smuggling_percent`, save v61): the holder's capital ships,
+  planet squadrons and regiments against its support band, gated by its
+  Death Stars, and nothing moves support with it. Golden final
+  `v1:6f20d000b67b9f3a` -> `v1:8790fcc409096722`
+  (`evidence/2026-10-17-smuggling-percent/`). The timers `0x384` and
+  `0x386` (step 2) and the hook cadence (step 3) stand.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

@@ -3,22 +3,23 @@
 //! Implements the 18 sub-functions from the original `FUN_00508250`
 //! (the community dump calls it `FUN_005073d0_adjust_and_deploy_each_system`).
 //! The port runs it every tick for every system; the original runs it once at
-//! setup (`ghidra/notes/timer-scheduler.md`). Governs popular support drift,
-//! collection rates, garrison requirements, and resource allocation.
+//! setup (`ghidra/notes/timer-scheduler.md`). Governs//! the smuggling percent, collection rates, garrison requirements, and
+//! resource allocation. It never moves popular support
+//! (`ghidra/notes/economy-cadence.md`).
 //!
 //! Open Souls mapping: this is a "cognitive step" — a pure function that transforms
 //! economy state + read-only `GameWorld` into a Vec of effects.
 //!
 //! GNPRTB parameters used:
-//!   7686 = 10 (fleet influence on support drift)
-//!   7687 = 5  (fighter influence on support drift)
-//!   7688 = 2  (troop influence on support drift)
-//!   7732 = 40 (support drift threshold)
-//!   7733 = 25 (drift base, mid bracket)
-//!   7734 = 30 (drift threshold 2)
-//!   7735 = 50 (drift base, low-mid bracket)
-//!   7736 = 20 (drift threshold 1)
-//!   7737 = 75 (drift base, low bracket)
+//!   7686 = 10 (smuggling: per capital ship)
+//!   7687 = 5  (smuggling: per squadron)
+//!   7688 = 2  (smuggling: per regiment)
+//!   7732 = 40 (smuggling: support ceiling)
+//!   7733 = 25 (smuggling base above 30 support)
+//!   7734 = 30 (smuggling: middle band's top)
+//!   7735 = 50 (smuggling base from 21 to 30 support)
+//!   7736 = 20 (smuggling: low band's top)
+//!   7737 = 75 (smuggling base up to 20 support)
 //!   7761 = 60 (garrison requirement threshold)
 //!   7762 = -10 (garrison requirement divisor)
 //!   7763 = 100 (collection rate base)
@@ -35,15 +36,25 @@ use crate::world::{ControlKind, GameWorld, GnprtbParams};
 // GNPRTB parameter IDs
 // ---------------------------------------------------------------------------
 
-const GNPRTB_FLEET_INFLUENCE: u16 = 7686;
-const GNPRTB_FIGHTER_INFLUENCE: u16 = 7687;
-const GNPRTB_TROOP_INFLUENCE: u16 = 7688;
-const GNPRTB_DRIFT_THRESHOLD: u16 = 7732;
-const GNPRTB_DRIFT_BASE_MID: u16 = 7733;
-const GNPRTB_DRIFT_THRESHOLD_2: u16 = 7734;
-const GNPRTB_DRIFT_BASE_LOW_MID: u16 = 7735;
-const GNPRTB_DRIFT_THRESHOLD_1: u16 = 7736;
-const GNPRTB_DRIFT_BASE_LOW: u16 = 7737;
+// FUN_00559c40's weights, bands and bases (`parameters.tsv`).
+/// `DAT_006bb3f4` (10): per capital ship (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_CAPITAL_SHIP: u16 = 7686;
+/// `DAT_006bb3c0` (5): per squadron (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_SQUADRON: u16 = 7687;
+/// `DAT_006bb3bc` (2): per regiment (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_REGIMENT: u16 = 7688;
+/// `DAT_006bb478` (40): the most support that smuggles (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_SUPPORT_CEILING: u16 = 7732;
+/// `DAT_006bb3f8` (25): the base above the middle band (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_BASE_HIGH: u16 = 7733;
+/// `DAT_006bb434` (30): the middle band's top (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_MID_BAND: u16 = 7734;
+/// `DAT_006bb4b0` (50): the middle band's base (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_BASE_MID: u16 = 7735;
+/// `DAT_006bb438` (20): the low band's top (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_LOW_BAND: u16 = 7736;
+/// `DAT_006bb424` (75): the low band's base (`FUN_00559c40`).
+const GNPRTB_SMUGGLING_BASE_LOW: u16 = 7737;
 const GNPRTB_GARRISON_THRESHOLD: u16 = 7761;
 const GNPRTB_GARRISON_DIVISOR: u16 = 7762;
 const GNPRTB_COLLECTION_RATE_BASE: u16 = 7763;
@@ -131,7 +142,7 @@ pub struct SystemSummary {
     pub fighter_posture: FighterPosture,
     /// Bit 11 of original `field_0x88`: "strong support" flag.
     /// When true AND Empire-controlled, troop suppression is doubled (GNPRTB[7680]).
-    /// Set when controlling faction's support > drift threshold (GNPRTB[7732]=40).
+    /// Set when controlling faction's support > GNPRTB[7732] (40).
     pub strong_support: bool,
 }
 
@@ -144,7 +155,7 @@ pub struct SystemSummary {
 ///   Low:      21–30          (GNPRTB[7734])
 ///   Moderate: 31–40          (GNPRTB[7732])
 ///   High:     41–60          (GNPRTB[7761] — garrison stable band)
-///   Secure:   > 60           (no drift, garrison = 0)
+///   Secure:   > 60           (no smuggling, garrison = 0)
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum SupportTier {
@@ -186,6 +197,8 @@ impl SupportTier {
     reason = "These independent flags preserve the existing state and serialization model."
 )]
 pub struct SystemEconomy {
+    /// System `+0x6c` `SmugglingPercent`, -100..100 (`FUN_0050b230`).
+    pub smuggling_percent: i32,
     /// Resource collection rate, inversely proportional to support.
     pub collection_rate: f32,
     /// Number of troops required to prevent uprising.
@@ -225,6 +238,7 @@ pub struct SystemEconomy {
 impl Default for SystemEconomy {
     fn default() -> Self {
         Self {
+            smuggling_percent: 0,
             collection_rate: 1.0,
             garrison_requirement: 0,
             production_modifier: 0,
@@ -271,12 +285,9 @@ pub struct EconomyState {
 /// Events produced by the economy tick.
 #[derive(Debug, Clone)]
 pub enum EconomyEvent {
-    /// Popular support shifted at a system.
-    SupportDrifted {
-        system: SystemKey,
-        alliance_delta: f32,
-        empire_delta: f32,
-    },
+    /// The system's smuggling percent changed (`FUN_00509ec0`, which
+    /// notifies only on a change).
+    SmugglingPercentChanged { system: SystemKey, percent: i32 },
     /// Collection rate recalculated.
     CollectionRateChanged { system: SystemKey, new_rate: f32 },
     /// Garrison requirement recalculated.
@@ -445,21 +456,15 @@ impl EconomySystem {
                 });
             }
 
-            // 1. Calculate and apply popular support drift.
-            // Pass previous tick's strong_support flag (bit 11 of field_0x88).
-            let (alliance_delta, empire_delta) = calculate_support_drift(
-                sys,
-                &presence,
-                gnprtb,
-                difficulty,
-                eco.summary.strong_support,
-            );
-
-            if alliance_delta.abs() > f32::EPSILON || empire_delta.abs() > f32::EPSILON {
-                events.push(EconomyEvent::SupportDrifted {
+            // 1. The smuggling percent (FUN_0050b230), with the previous
+            // tick's bit 11 of +0x88. It does not move the support.
+            let percent =
+                smuggling_percent(world, sys, eco.summary.strong_support, gnprtb, difficulty);
+            if percent != eco.smuggling_percent {
+                eco.smuggling_percent = percent;
+                events.push(EconomyEvent::SmugglingPercentChanged {
                     system: sys_key,
-                    alliance_delta,
-                    empire_delta,
+                    percent,
                 });
             }
 
@@ -661,7 +666,7 @@ impl EconomySystem {
 // Military presence counting
 // ---------------------------------------------------------------------------
 
-/// Military presence at a system, used by support drift and KDY calculations.
+/// Military presence at a system, used by the holder, summary and KDY calculations.
 struct MilitaryPresence {
     alliance_fleets: u32,
     empire_fleets: u32,
@@ -727,131 +732,118 @@ fn count_military_presence(world: &GameWorld, sys: &crate::world::System) -> Mil
 }
 
 // ---------------------------------------------------------------------------
-// Popular support drift (FUN_00559c40)
+// Smuggling percent (FUN_0050b230 -> FUN_00559c40)
 // ---------------------------------------------------------------------------
 
-/// Calculate support drift for a system based on military presence.
+/// `FUN_00559c40(side, support, bit 11, capital ships, squadrons, regiments,
+/// Death Stars)`: system `+0x6c` `SmugglingPercent`.
 ///
-/// From the decompiled `FUN_00559c40` (the community dump calls it calculate_adjusted_support_value):
-/// ```text
-/// if support <= 40 AND no_friendly_fleet:
-///     if support > 20 AND support <= 30: base = 50
-///     elif support > 20: base = 25
-///     else: base = 75
-///     drift = clamp(base - fighters*5 - troops*2 - fleet_presence*10, 0, 100)
-/// if empire_controlled: drift = -drift
-/// ```
+/// With no Death Star and the holder's support at most GNPRTB 7732 (40), a
+/// base by support band (7737: 75 up to 7736 (20), 7735: 50 up to 7734 (30),
+/// else 7733: 25) less 7686 (10) per capital ship, 7687 (5) per squadron and
+/// 7688 (2) per regiment, clamped to 0..100 (`FUN_0053e0d0`). The Empire's
+/// regiments count GNPRTB 7680 (2) times with `+0x88` bit 11
+/// (`FUN_00559b60`). Negative for the Empire; otherwise 0.
 #[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
+    clippy::too_many_arguments,
+    reason = "Mirrors the original function's seven parameters."
 )]
-fn calculate_support_drift(
-    sys: &crate::world::System,
-    presence: &MilitaryPresence,
+fn smuggling_formula(
+    side: crate::dat::Faction,
+    support: i32,
+    bit_11: bool,
+    capital_ships: i32,
+    squadrons: i32,
+    regiments: i32,
+    death_stars: i32,
     gnprtb: &GnprtbParams,
     difficulty: u8,
-    strong_support: bool,
-) -> (f32, f32) {
-    // All computation in integer 0-100 to match original (FUN_00559c40).
-    // Our popularity fields are f32 0.0-1.0; convert at boundary.
-    let fleet_influence = gnprtb.value(GNPRTB_FLEET_INFLUENCE, difficulty).max(1);
-    let fighter_influence = gnprtb.value(GNPRTB_FIGHTER_INFLUENCE, difficulty).max(1);
-    let troop_influence = gnprtb.value(GNPRTB_TROOP_INFLUENCE, difficulty).max(1);
-    let drift_threshold = gnprtb.value(GNPRTB_DRIFT_THRESHOLD, difficulty); // 40
-    let threshold_1 = gnprtb.value(GNPRTB_DRIFT_THRESHOLD_1, difficulty); // 20
-    let threshold_2 = gnprtb.value(GNPRTB_DRIFT_THRESHOLD_2, difficulty); // 30
-    let base_low = gnprtb.value(GNPRTB_DRIFT_BASE_LOW, difficulty); // 75
-    let base_low_mid = gnprtb.value(GNPRTB_DRIFT_BASE_LOW_MID, difficulty); // 50
-    let base_mid = gnprtb.value(GNPRTB_DRIFT_BASE_MID, difficulty); // 25
-
-    let is_alliance_controlled = matches!(
-        sys.control,
-        ControlKind::Controlled(crate::dat::Faction::Alliance)
-    );
-    let is_empire_controlled = matches!(
-        sys.control,
-        ControlKind::Controlled(crate::dat::Faction::Empire)
-    );
-
-    if !is_alliance_controlled && !is_empire_controlled {
-        return (0.0, 0.0);
-    }
-
-    let (controlling_support_f32, friendly_fleets, friendly_fighters, friendly_troops) =
-        if is_alliance_controlled {
-            (
-                sys.popularity_alliance,
-                presence.alliance_fleets,
-                presence.alliance_fighters,
-                presence.alliance_troops,
-            )
+) -> i32 {
+    let empire = side == crate::dat::Faction::Empire;
+    let regiments = if bit_11 && empire {
+        regiments * gnprtb.value(GNPRTB_EMPIRE_TROOP_MULT, difficulty)
+    } else {
+        regiments
+    };
+    let mut percent = 0;
+    if support <= gnprtb.value(GNPRTB_SMUGGLING_SUPPORT_CEILING, difficulty) && death_stars == 0 {
+        let base = if support <= gnprtb.value(GNPRTB_SMUGGLING_LOW_BAND, difficulty) {
+            gnprtb.value(GNPRTB_SMUGGLING_BASE_LOW, difficulty)
+        } else if support <= gnprtb.value(GNPRTB_SMUGGLING_MID_BAND, difficulty) {
+            gnprtb.value(GNPRTB_SMUGGLING_BASE_MID, difficulty)
         } else {
-            (
-                sys.popularity_empire,
-                presence.empire_fleets,
-                presence.empire_fighters,
-                presence.empire_troops,
-            )
+            gnprtb.value(GNPRTB_SMUGGLING_BASE_HIGH, difficulty)
         };
-
-    // Convert f32 0.0-1.0 to integer 0-100 for computation
-    let support = (controlling_support_f32 * 100.0).round() as i32;
-
-    // Only drift if support is below threshold AND no friendly fleet present.
-    // Original: if (support <= GNPRTB[7732]) && (fleet1 == 0)
-    if support > drift_threshold || friendly_fleets > 0 {
-        return (0.0, 0.0);
+        percent = (base
+            - capital_ships * gnprtb.value(GNPRTB_SMUGGLING_CAPITAL_SHIP, difficulty)
+            - squadrons * gnprtb.value(GNPRTB_SMUGGLING_SQUADRON, difficulty)
+            - regiments * gnprtb.value(GNPRTB_SMUGGLING_REGIMENT, difficulty))
+        .clamp(0, 100);
     }
+    if empire { -percent } else { percent }
+}
 
-    // Determine base drift rate based on support bracket.
-    // Original bracket logic from FUN_00559c40:
-    //   if threshold_1 < support <= threshold_2: base = base_low_mid (50)
-    //   elif support > threshold_1: base = base_mid (25)
-    //   else: base = base_low (75)
-    let base = if support <= threshold_1 {
-        base_low // ≤20: strong drift (75)
-    } else if support <= threshold_2 {
-        base_low_mid // 21-30: moderate drift (50)
-    } else {
-        base_mid // 31-40: mild drift (25)
+/// `FUN_0050b230`: the system's `SmugglingPercent` for its holder, or 0 for a
+/// system no side holds.
+///
+/// The inputs are the holder's capital ships in its fleets (`FUN_00509090`),
+/// its squadrons on the planet (`FUN_00508fb0`, not those aboard fleets), its
+/// regiments (`FUN_00509020`), the Death Stars in its fleets
+/// (`FUN_00509140`), and its support (`FUN_00507270`).
+///
+/// It only sets the field: the support never moves with it
+/// (`ghidra/notes/economy-cadence.md`).
+#[expect(
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    reason = "Unit counts at one system are far below i32::MAX."
+)]
+fn smuggling_percent(
+    world: &GameWorld,
+    sys: &crate::world::System,
+    bit_11: bool,
+    gnprtb: &GnprtbParams,
+    difficulty: u8,
+) -> i32 {
+    use crate::dat::Faction;
+    let Some(side @ (Faction::Alliance | Faction::Empire)) = sys.control.faction() else {
+        return 0;
     };
-
-    // Empire troop doubling via FUN_00559b60 (the community dump calls it adjust_value_for_strong_support):
-    // When side==Empire (side==2) AND strong_support bit (field_0x88 bit 11) is set,
-    // troop count is multiplied by GNPRTB[7680] (=2).
-    // This doubles troop suppression effectiveness for the Empire.
-    let adjusted_troops = if is_empire_controlled && strong_support {
-        let empire_mult = gnprtb.value(GNPRTB_EMPIRE_TROOP_MULT, difficulty).max(1);
-        friendly_troops.cast_signed() * empire_mult
-    } else {
-        friendly_troops.cast_signed()
-    };
-
-    // port: FUN_0050b230 passes FUN_00559c40 the side's squadrons on the
-    // planet alone (FUN_00508fb0 -> FUN_00503a50), its fleets' capital ships
-    // (FUN_00509090) and, for the gate, their Death Stars (FUN_00509140);
-    // this counts the squadrons aboard fleets too, and the fleets themselves
-    // (ghidra/notes/planet-squadrons.md).
-    // Military suppression: integer subtraction matching original exactly.
-    // Original: clamp(base - fighters*GNPRTB[7687] - troops_adj*GNPRTB[7688] - fleet*GNPRTB[7686], 0, 100)
-    let suppression = friendly_fighters.cast_signed() * fighter_influence
-        + adjusted_troops * troop_influence
-        + friendly_fleets.cast_signed() * fleet_influence;
-
-    let drift = (base - suppression).clamp(0, 100);
-
-    // Convert drift back to f32 0.0-1.0 delta.
-    // Original applies full drift as integer per game-day; we store as f32 0.0-1.0.
-    let delta = drift as f32 / 100.0;
-
-    // Drift direction: support moves AWAY from controlling faction.
-    // If Empire controlled, drift is negated (support moves toward Alliance).
-    if is_alliance_controlled {
-        (-delta, delta)
-    } else {
-        (delta, -delta)
+    let alliance = side == Faction::Alliance;
+    let (mut capital_ships, mut death_stars) = (0, 0);
+    for fleet in sys.fleets.iter().filter_map(|key| world.fleets.get(*key)) {
+        if fleet.is_alliance != alliance {
+            continue;
+        }
+        for ship in fleet.capital_ships.iter().filter(|ship| ship.alive) {
+            capital_ships += 1;
+            if world
+                .capital_ship_classes
+                .get(ship.class)
+                .is_some_and(crate::world::CapitalShipClass::is_death_star)
+            {
+                death_stars += 1;
+            }
+        }
     }
+    let squadrons: u32 = sys
+        .fighters
+        .iter()
+        .filter(|entry| crate::squadrons::is_alliance(world, entry.class) == Some(alliance))
+        .map(|entry| entry.count)
+        .sum();
+    let regiments = crate::uprising::regiments(world, sys, side).len();
+    smuggling_formula(
+        side,
+        crate::uprising::support_points(sys, side),
+        bit_11,
+        capital_ships,
+        squadrons as i32,
+        regiments as i32,
+        death_stars,
+        gnprtb,
+        difficulty,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1044,7 +1036,7 @@ fn compute_system_summary(
 }
 
 /// Bit 11 of field_0x88: "strong support" — set when controlling faction's
-/// support exceeds the drift threshold. Controls Empire troop doubling in
+/// support exceeds GNPRTB 7732 (40). Controls Empire troop doubling in
 /// FUN_00559b60 (the community dump calls it adjust_value_for_strong_support).
 #[expect(
     clippy::cast_possible_truncation,
@@ -1055,7 +1047,7 @@ pub(crate) fn is_strong_support(
     gnprtb: &GnprtbParams,
     difficulty: u8,
 ) -> bool {
-    let drift_threshold = gnprtb.value(GNPRTB_DRIFT_THRESHOLD, difficulty);
+    let drift_threshold = gnprtb.value(GNPRTB_SMUGGLING_SUPPORT_CEILING, difficulty);
     let controlling_support = match sys.control {
         ControlKind::Controlled(crate::dat::Faction::Alliance) => {
             (sys.popularity_alliance * 100.0).round() as i32
@@ -1460,151 +1452,142 @@ mod tests {
     }
 
     #[test]
-    fn support_drift_no_garrison_low_support() {
-        let gnprtb = stock_gnprtb();
-        let sys = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.8,
-            is_populated: true,
-            total_energy: 5,
-            raw_materials: 5,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+    fn smuggling_takes_the_support_band_s_base_less_the_weighted_forces() {
+        // FUN_00559c40 with GNPRTB 7732..7737 and 7686..7688 (stock values).
+        use crate::dat::Faction::Alliance;
+        let g = stock_gnprtb();
+        let f = |support, ships, squadrons, regiments| {
+            smuggling_formula(
+                Alliance, support, false, ships, squadrons, regiments, 0, &g, 2,
+            )
         };
-        let presence = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 0,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let (a_delta, e_delta) = calculate_support_drift(&sys, &presence, &gnprtb, 2, true);
-        // Low alliance support (0.1 < 0.40 threshold), no fleet → should drift away
-        assert!(a_delta < 0.0, "alliance support should decrease: {a_delta}");
-        assert!(e_delta > 0.0, "empire support should increase: {e_delta}");
+        assert_eq!(f(20, 0, 0, 0), 75);
+        assert_eq!(f(21, 0, 0, 0), 50);
+        assert_eq!(f(30, 0, 0, 0), 50);
+        assert_eq!(f(31, 0, 0, 0), 25);
+        assert_eq!(f(40, 0, 0, 0), 25);
+        assert_eq!(f(41, 0, 0, 0), 0);
+        // 75 - 1 * 10 - 2 * 5 - 3 * 2.
+        assert_eq!(f(10, 1, 2, 3), 49);
+        assert_eq!(f(40, 3, 0, 0), 0);
     }
 
     #[test]
-    fn support_drift_with_fleet_suppresses() {
-        let gnprtb = stock_gnprtb();
-        let sys = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.8,
-            is_populated: true,
-            total_energy: 5,
-            raw_materials: 5,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
-        };
-        let presence = MilitaryPresence {
-            alliance_fleets: 1,
-            empire_fleets: 0, // Friendly fleet present
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 0,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let (a_delta, e_delta) = calculate_support_drift(&sys, &presence, &gnprtb, 2, true);
-        // Fleet present → no drift
-        assert!(
-            a_delta.abs() < f32::EPSILON,
-            "should not drift with fleet: {a_delta}"
-        );
-        assert!(
-            e_delta.abs() < f32::EPSILON,
-            "should not drift with fleet: {e_delta}"
-        );
+    fn the_empire_smuggles_negative_and_counts_its_regiments_twice_with_bit_11() {
+        // FUN_00559c40 negates for side 2; FUN_00559b60 multiplies side 2's
+        // regiments by GNPRTB 7680 (2) when +0x88 bit 11 is set.
+        use crate::dat::Faction::{Alliance, Empire};
+        let g = stock_gnprtb();
+        let f = |side, bit_11| smuggling_formula(side, 10, bit_11, 0, 0, 3, 0, &g, 2);
+        // 75 - 3 * 2, and 75 - 3 * 2 * 2.
+        assert_eq!(f(Empire, false), -69);
+        assert_eq!(f(Empire, true), -63);
+        assert_eq!(f(Alliance, true), 69);
     }
 
     #[test]
-    fn support_drift_with_troops_reduces() {
-        let gnprtb = stock_gnprtb();
-        let sys = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.15,
-            popularity_empire: 0.7,
-            is_populated: true,
-            total_energy: 5,
-            raw_materials: 5,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+    fn a_death_star_in_the_holder_s_fleets_stops_smuggling() {
+        // FUN_00559c40: the base applies only when FUN_00509140 counts none.
+        use crate::dat::Faction::Alliance;
+        let g = stock_gnprtb();
+        assert_eq!(smuggling_formula(Alliance, 10, false, 1, 0, 0, 1, &g, 2), 0);
+    }
+
+    /// An Alliance system at 10 support with one fleet of one capital ship
+    /// carrying 4 squadrons, 1 squadron on the planet, and 1 regiment.
+    fn smuggling_world(death_star: bool) -> (GameWorld, SystemKey) {
+        use crate::world::{CapitalShipClass, FighterClass, FighterEntry, Fleet, ShipInstance};
+        let mut world = GameWorld {
+            gnprtb: stock_gnprtb(),
+            ..Default::default()
         };
-        let no_troops = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 0,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
+        let sys = world.systems.insert(held_system(
+            10.0,
+            ControlKind::Controlled(crate::dat::Faction::Alliance),
+        ));
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: if death_star {
+                DatId::new(crate::world::DEATH_STAR_CLASS_ID)
+            } else {
+                DatId::new(0)
+            },
+            ..CapitalShipClass::default()
+        });
+        let squadron = world.fighter_classes.insert(FighterClass {
+            is_alliance: true,
+            ..FighterClass::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: sys,
+            capital_ships: vec![ShipInstance::new(class, 100, false)],
+            fighters: vec![FighterEntry {
+                class: squadron,
+                count: 4,
+            }],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: death_star,
+        });
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId(0),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let system = &mut world.systems[sys];
+        system.fleets.push(fleet);
+        system.ground_units.push(troop);
+        system.fighters.push(FighterEntry {
+            class: squadron,
+            count: 1,
+        });
+        (world, sys)
+    }
+
+    #[test]
+    fn smuggling_counts_the_holder_s_ships_planet_squadrons_and_regiments() {
+        // FUN_0050b230: capital ships in fleets (FUN_00509090), squadrons on
+        // the planet only (FUN_00508fb0 -> FUN_00503a50), regiments
+        // (FUN_00509020), Death Stars (FUN_00509140). 75 - 10 - 5 - 2.
+        let (world, sys) = smuggling_world(false);
+        let s = &world.systems[sys];
+        assert_eq!(smuggling_percent(&world, s, false, &world.gnprtb, 2), 58);
+        let (world, sys) = smuggling_world(true);
+        let s = &world.systems[sys];
+        assert_eq!(smuggling_percent(&world, s, false, &world.gnprtb, 2), 0);
+    }
+
+    #[test]
+    fn a_system_no_side_holds_smuggles_nothing() {
+        // FUN_0050b230 passes 0 when the side bits name no side.
+        let (mut world, sys) = smuggling_world(false);
+        world.systems[sys].control = ControlKind::Uncontrolled;
+        let s = &world.systems[sys];
+        assert_eq!(smuggling_percent(&world, s, false, &world.gnprtb, 2), 0);
+    }
+
+    #[test]
+    fn the_economy_stores_the_smuggling_percent_and_leaves_the_support_alone() {
+        // FUN_0050b230 stores +0x6c through FUN_00509ec0, which notifies
+        // only on a change; nothing in it moves the support
+        // (ghidra/notes/economy-cadence.md).
+        let (world, sys) = smuggling_world(false);
+        let mut state = EconomyState::default();
+        let changes = |events: Vec<EconomyEvent>| {
+            events
+                .into_iter()
+                .filter_map(|event| match event {
+                    EconomyEvent::SmugglingPercentChanged { system, percent } => {
+                        Some((system, percent))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
         };
-        let with_troops = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 5,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let (a_no, _) = calculate_support_drift(&sys, &no_troops, &gnprtb, 2, true);
-        let (a_with, _) = calculate_support_drift(&sys, &with_troops, &gnprtb, 2, true);
-        // Troops should reduce drift magnitude
-        assert!(
-            a_with.abs() < a_no.abs(),
-            "troops should reduce drift: with={a_with} vs without={a_no}"
-        );
+        let first = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        assert_eq!(changes(first), vec![(sys, 58)]);
+        assert_eq!(state.per_system[&sys].smuggling_percent, 58);
+        let second = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 2 }], 2);
+        assert_eq!(changes(second), vec![]);
     }
 
     #[test]
@@ -2655,96 +2638,6 @@ mod tests {
         assert_eq!(system_holder(&world, &sys), ControlKind::Uncontrolled);
     }
 
-    // --- Task #42: Empire troop doubling in support drift ---
-
-    #[test]
-    fn support_drift_empire_troop_doubling() {
-        let gnprtb = stock_gnprtb();
-        // Alliance-controlled system with low support and 2 troops
-        let sys_alliance = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.8,
-            is_populated: true,
-            total_energy: 10,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
-        };
-        let presence_alliance = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 2,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let (a_delta_alliance, _) =
-            calculate_support_drift(&sys_alliance, &presence_alliance, &gnprtb, 2, true);
-
-        // Empire-controlled system with same setup and 2 troops
-        let sys_empire = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.8,
-            popularity_empire: 0.1,
-            is_populated: true,
-            total_energy: 10,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        };
-        let presence_empire = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 0,
-            empire_troops: 2,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let (_, e_delta_empire) =
-            calculate_support_drift(&sys_empire, &presence_empire, &gnprtb, 2, true);
-
-        // Empire troops get doubled via GNPRTB[7680]=2, so Empire drift should be
-        // less (more suppression) than Alliance drift with same troop count.
-        // Both deltas are negative (drift away from controller).
-        assert!(
-            e_delta_empire.abs() < a_delta_alliance.abs(),
-            "Empire should have less drift (more suppression) due to troop doubling: empire={e_delta_empire}, alliance={a_delta_alliance}"
-        );
-    }
-
     // --- Task #43: Unpopulated system skipping ---
 
     #[test]
@@ -2815,7 +2708,7 @@ mod tests {
         );
     }
 
-    // --- Task #45: Collection rate at zero support + drift at threshold boundary ---
+    // --- Task #45: Collection rate at zero support ---
 
     #[test]
     fn collection_rate_at_zero_support() {
@@ -2825,57 +2718,6 @@ mod tests {
         assert!(
             (rate - 10000.0).abs() < f32::EPSILON,
             "zero support should yield max rate: {rate}"
-        );
-    }
-
-    #[test]
-    fn support_drift_at_exact_threshold() {
-        let gnprtb = stock_gnprtb();
-        // Support at exactly 0.40 (threshold = 40 in integer)
-        let sys = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.40,
-            popularity_empire: 0.5,
-            is_populated: true,
-            total_energy: 10,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
-        };
-        let presence = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 0,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let (a_delta, e_delta) = calculate_support_drift(&sys, &presence, &gnprtb, 2, true);
-        // At exactly threshold (40), integer comparison: 40 > 40 is false → drift occurs.
-        // Original: `if (support <= GNPRTB[7732])` means 40 <= 40 passes → drift.
-        assert!(
-            a_delta != 0.0,
-            "at threshold boundary drift should occur: {a_delta}"
-        );
-        assert!(
-            e_delta != 0.0,
-            "at threshold boundary drift should occur: {e_delta}"
         );
     }
 

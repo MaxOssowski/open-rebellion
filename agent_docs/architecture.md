@@ -64,7 +64,7 @@ crates/rebellion-core/src/
 ├── commands.rs       — Shared command registry (16 CommandDef entries) for GUI palette + CLI
 ├── game_events.rs    — GameEventRecord struct + 57 event type constants for JSONL telemetry
 ├── effects.rs        — GameEffect enum (39 variants), EffectPhase ordering, monoidal composition, inversion
-├── economy.rs        — Full 18-function economy tick (FUN_00508250, the community dump calls it adjust_and_deploy_each_system; the original runs it once at setup, not per tick: `ghidra/notes/timer-scheduler.md`): resource caps, support drift, collection rate, KDY modifier, troop-based side resolution, garrison, troop/fleet summary (SystemSummary), incident state (IncidentFlags), uprising visibility. 17 GNPRTB indices. ~1200 LOC.
+├── economy.rs        — Full 18-function economy tick (FUN_00508250, the community dump calls it adjust_and_deploy_each_system; the original runs it once at setup, not per tick: `ghidra/notes/timer-scheduler.md`): resource caps, smuggling percent (FUN_0050b230; it never moves support), collection rate, KDY modifier, troop-based side resolution, garrison, troop/fleet summary (SystemSummary), incident state (IncidentFlags), uprising visibility. 17 GNPRTB indices. ~1200 LOC.
 └── repair.rs         — Ship repair framework: RepairSystem at shipyard systems, damage_control rate
 ```
 
@@ -211,7 +211,7 @@ run_simulation_tick():
 Interactive game (main.rs):
   tick_events = clock.advance(dt)
   if tick_events not empty:
-    EconomySystem::advance → apply support drift + control resolution
+    EconomySystem::advance → smuggling percent + control resolution
     ManufacturingSystem::advance → apply_build_completion_inner() + message log
     MovementSystem::advance → update fleet.location + system.fleets
     (remaining systems identical to simulation.rs pattern)
