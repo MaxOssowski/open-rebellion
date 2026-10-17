@@ -70,7 +70,6 @@ const GNPRTB_KDY_FIGHTER_PENALTY: u16 = 7685; // =2: KDY production penalty per 
 /// GNPRTB 7760 (60, `DAT_006bb4c0`): the support a side needs to hold a
 /// system without regiments (`FUN_0055a080`).
 const GNPRTB_SUPPORT_CONTROL_THRESHOLD: u16 = 7760;
-const GNPRTB_MAINTENANCE_RATE_CONTROLLED: u16 = 7694; // =30: ticks between maintenance checks (controlled)
 
 // ---------------------------------------------------------------------------
 // Economy state
@@ -280,12 +279,8 @@ impl Default for SystemEconomy {
 /// Economy state across all systems.
 ///
 /// Simulation state (not world state). Saved via `SaveState::economy`
-/// since Dabora 1 (#F2) to close the incident re-fire bug. The two
-/// `*_maintenance_cooldown` counters implement the per-faction 30-tick
-/// `EVT_MAINTENANCE_SHORTFALL_EVENT` (0x304) timer from the plan's #K4
-/// — they decrement each tick in `EconomySystem::advance` and emit +
-/// reset to `GNPRTB[7694]` when they reach zero **and** at least one
-/// controlled system has a garrison deficit.
+/// since Dabora 1 (#F2) to close the incident re-fire bug. The
+/// maintenance shortfall is the side's autoscrap timer (`autoscrap.rs`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EconomyState {
     #[serde(
@@ -293,11 +288,6 @@ pub struct EconomyState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub per_system: HashMap<SystemKey, SystemEconomy>,
-    /// Ticks until the next Alliance maintenance-shortfall check fires.
-    /// Initialized lazily to `GNPRTB[7694]` (30) on the first tick.
-    pub alliance_maintenance_cooldown: u32,
-    /// Ticks until the next Empire maintenance-shortfall check fires.
-    pub empire_maintenance_cooldown: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -352,13 +342,6 @@ pub enum EconomyEvent {
     /// `eco.raw_material_allocated` (after the `resource_discovery_armed`
     /// gate disarms the seed tick).
     ResourceDiscovered { system: SystemKey, new_output: u32 },
-    /// K4: `EVT_MAINTENANCE_SHORTFALL_EVENT` (0x304) — the per-faction
-    /// 30-tick timer fired AND the faction has at least one controlled
-    /// system with a garrison deficit.
-    MaintenanceShortfall {
-        faction_is_alliance: bool,
-        deficit_system_count: u32,
-    },
 }
 
 // ---------------------------------------------------------------------------
@@ -414,12 +397,6 @@ impl EconomySystem {
 
         let gnprtb = &world.gnprtb;
         let mut events = Vec::new();
-
-        // Per-faction maintenance-shortfall deficit tally (K4 intra-tick scratch).
-        // Counted during the per-system loop and checked against the 30-tick
-        // cooldown at the end of `advance`.
-        let mut alliance_deficit_systems: u32 = 0;
-        let mut empire_deficit_systems: u32 = 0;
 
         // Collect system keys first to avoid borrow issues.
         let system_keys: Vec<SystemKey> = world.systems.keys().collect();
@@ -605,21 +582,6 @@ impl EconomySystem {
                 && uprisings.is_uprising(sys_key)
                 && eco.summary.troop_surplus >= 0;
 
-            // K4 pre-tally: track per-faction controlled systems with a
-            // garrison deficit. The actual emission happens after the loop
-            // when the 30-tick cooldown fires.
-            if eco.summary.troop_surplus < 0 {
-                match sys.control {
-                    ControlKind::Controlled(crate::dat::Faction::Alliance) => {
-                        alliance_deficit_systems += 1;
-                    }
-                    ControlKind::Controlled(crate::dat::Faction::Empire) => {
-                        empire_deficit_systems += 1;
-                    }
-                    _ => {}
-                }
-            }
-
             // K1: EVT_SUPPORT_CHANGE (0x100).
             // Compare previous tier (cached in eco) against the freshly-
             // computed current tier. Emit on any transition; update the
@@ -658,47 +620,6 @@ impl EconomySystem {
                     new_requirement: new_garrison,
                 });
             }
-        }
-
-        // K4: EVT_MAINTENANCE_SHORTFALL_EVENT (0x304) per-faction 30-tick
-        // timer. Ticks elapsed this frame = tick_events.len(). If any of
-        // our counters reach zero AND the faction has at least one
-        // deficit system, emit and reset to GNPRTB[7694] (30).
-        let elapsed = tick_events.len() as u32;
-        let maintenance_rate = gnprtb
-            .value(GNPRTB_MAINTENANCE_RATE_CONTROLLED, difficulty)
-            .max(1) as u32;
-
-        // Initialize lazily on first tick — `EconomyState::default()`
-        // leaves cooldowns at 0, which is the "fire immediately on
-        // first eval" state. Arm to one full cycle so the first
-        // emission happens after `maintenance_rate` ticks.
-        if state.alliance_maintenance_cooldown == 0 && elapsed > 0 && alliance_deficit_systems == 0
-        {
-            state.alliance_maintenance_cooldown = maintenance_rate;
-        }
-        if state.empire_maintenance_cooldown == 0 && elapsed > 0 && empire_deficit_systems == 0 {
-            state.empire_maintenance_cooldown = maintenance_rate;
-        }
-
-        state.alliance_maintenance_cooldown =
-            state.alliance_maintenance_cooldown.saturating_sub(elapsed);
-        state.empire_maintenance_cooldown =
-            state.empire_maintenance_cooldown.saturating_sub(elapsed);
-
-        if state.alliance_maintenance_cooldown == 0 && alliance_deficit_systems > 0 {
-            events.push(EconomyEvent::MaintenanceShortfall {
-                faction_is_alliance: true,
-                deficit_system_count: alliance_deficit_systems,
-            });
-            state.alliance_maintenance_cooldown = maintenance_rate;
-        }
-        if state.empire_maintenance_cooldown == 0 && empire_deficit_systems > 0 {
-            events.push(EconomyEvent::MaintenanceShortfall {
-                faction_is_alliance: false,
-                deficit_system_count: empire_deficit_systems,
-            });
-            state.empire_maintenance_cooldown = maintenance_rate;
         }
 
         events
@@ -2973,7 +2894,7 @@ mod tests {
     // -----------------------------------------------------------------------
     // Knesset Shamash-Bet Dabora 2 #K7: parameterized notification
     // idempotency tests for the state-transition events (K1
-    // SupportChanged, K3 ResourceDiscovered, K4 MaintenanceShortfall) —
+    // SupportChanged, K3 ResourceDiscovered) —
     // each must fire exactly ONCE per transition, not once per tick. K2's
     // support-based disaster was removed: the disaster is a galaxy timer
     // event (FUN_00556b50) that UprisingSystem raises.
@@ -3108,77 +3029,5 @@ mod tests {
             .filter(|e| matches!(e, EconomyEvent::ResourceDiscovered { .. }))
             .count();
         assert_eq!(count3, 0, "K3: stable resource count must not re-fire");
-    }
-
-    #[test]
-    fn k4_maintenance_shortfall_fires_on_30_tick_cooldown() {
-        // Garrison deficit condition (low support, no troops).
-        // Cooldown is 30 ticks (GNPRTB[7694]). First eval: the cooldown
-        // starts at 0 (EconomyState::default()), so the initial deficit
-        // fires immediately and then arms the 30-tick cooldown. The
-        // idempotency contract is that subsequent ticks within the
-        // cooldown window do NOT re-fire, and the next fire only
-        // happens after the full 30 ticks elapse.
-        let (world, _sys) = make_singleton_world(
-            0.3,
-            0.7,
-            ControlKind::Controlled(crate::dat::Faction::Alliance),
-            true,
-        );
-        let mut state = EconomyState::default();
-        // Tick 1: default cooldown=0, deficit present → immediate fire,
-        // cooldown armed to 30.
-        let events1 = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
-        let count1 = events1
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::MaintenanceShortfall { .. }))
-            .count();
-        assert_eq!(
-            count1, 1,
-            "K4: first tick with deficit should emit exactly once"
-        );
-        assert_eq!(
-            state.alliance_maintenance_cooldown, 30,
-            "K4: cooldown should be armed to 30 after fire"
-        );
-
-        // Burn 29 ticks — cooldown 30 → 1, no fire.
-        let batch29: Vec<TickEvent> = (2..=30).map(|n| TickEvent { tick: n }).collect();
-        let events_batch = EconomySystem::advance(&mut state, &world, &batch29, 2);
-        let count_batch = events_batch
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::MaintenanceShortfall { .. }))
-            .count();
-        assert_eq!(
-            count_batch, 0,
-            "K4: partial-cooldown batch must not re-fire"
-        );
-        assert_eq!(
-            state.alliance_maintenance_cooldown, 1,
-            "K4: cooldown should have one tick left after 29-tick batch"
-        );
-
-        // One more tick drops the counter to 0 and fires again.
-        let events_fire = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 31 }], 2);
-        let count_fire = events_fire
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::MaintenanceShortfall { .. }))
-            .count();
-        assert_eq!(
-            count_fire, 1,
-            "K4: cooldown expiry should re-emit exactly once"
-        );
-
-        // Immediately after firing, the cooldown resets — next tick
-        // must not re-fire.
-        let events_next = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 32 }], 2);
-        let count_next = events_next
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::MaintenanceShortfall { .. }))
-            .count();
-        assert_eq!(
-            count_next, 0,
-            "K4: reset cooldown must not re-emit immediately"
-        );
     }
 }

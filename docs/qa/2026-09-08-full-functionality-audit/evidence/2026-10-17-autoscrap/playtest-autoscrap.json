@@ -1,0 +1,131 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against 0d041834",
+  "seeds": {
+    "1": {
+      "head": {
+        "maintenance_shortfall": 15,
+        "manufacturing_complete": 431,
+        "control_changed": 25,
+        "uprising_began": 5,
+        "combat_space": 2
+      },
+      "new": {
+        "maintenance_shortfall": 0,
+        "manufacturing_complete": 431,
+        "control_changed": 25,
+        "uprising_began": 5,
+        "combat_space": 2,
+        "scrapped": {},
+        "first_autoscrap_tick": null
+      }
+    },
+    "2": {
+      "head": {
+        "maintenance_shortfall": 12,
+        "manufacturing_complete": 373,
+        "control_changed": 17,
+        "uprising_began": 8,
+        "combat_space": 4
+      },
+      "new": {
+        "maintenance_shortfall": 0,
+        "manufacturing_complete": 373,
+        "control_changed": 17,
+        "uprising_began": 8,
+        "combat_space": 4,
+        "scrapped": {},
+        "first_autoscrap_tick": null
+      }
+    },
+    "3": {
+      "head": {
+        "maintenance_shortfall": 19,
+        "manufacturing_complete": 454,
+        "control_changed": 29,
+        "uprising_began": 11,
+        "combat_space": 1
+      },
+      "new": {
+        "maintenance_shortfall": 0,
+        "manufacturing_complete": 454,
+        "control_changed": 29,
+        "uprising_began": 11,
+        "combat_space": 1,
+        "scrapped": {},
+        "first_autoscrap_tick": null
+      }
+    },
+    "7": {
+      "head": {
+        "maintenance_shortfall": 17,
+        "manufacturing_complete": 328,
+        "control_changed": 20,
+        "uprising_began": 8,
+        "combat_space": 9
+      },
+      "new": {
+        "maintenance_shortfall": 0,
+        "manufacturing_complete": 328,
+        "control_changed": 20,
+        "uprising_began": 8,
+        "combat_space": 9,
+        "scrapped": {},
+        "first_autoscrap_tick": null
+      }
+    },
+    "13": {
+      "head": {
+        "maintenance_shortfall": 16,
+        "manufacturing_complete": 490,
+        "control_changed": 10,
+        "uprising_began": 3,
+        "combat_space": 12
+      },
+      "new": {
+        "maintenance_shortfall": 0,
+        "manufacturing_complete": 490,
+        "control_changed": 10,
+        "uprising_began": 3,
+        "combat_space": 12,
+        "scrapped": {},
+        "first_autoscrap_tick": null
+      }
+    },
+    "42": {
+      "head": {
+        "maintenance_shortfall": 20,
+        "manufacturing_complete": 371,
+        "control_changed": 26,
+        "uprising_began": 11,
+        "combat_space": 2
+      },
+      "new": {
+        "maintenance_shortfall": 0,
+        "manufacturing_complete": 371,
+        "control_changed": 26,
+        "uprising_began": 11,
+        "combat_space": 2,
+        "scrapped": {},
+        "first_autoscrap_tick": null
+      }
+    },
+    "47": {
+      "head": {
+        "maintenance_shortfall": 20,
+        "manufacturing_complete": 455,
+        "control_changed": 17,
+        "uprising_began": 6,
+        "combat_space": 4
+      },
+      "new": {
+        "maintenance_shortfall": 0,
+        "manufacturing_complete": 455,
+        "control_changed": 17,
+        "uprising_began": 6,
+        "combat_space": 4,
+        "scrapped": {},
+        "first_autoscrap_tick": null
+      }
+    }
+  }
+}

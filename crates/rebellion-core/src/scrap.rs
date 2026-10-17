@@ -230,8 +230,16 @@ pub fn scrap(
 /// room for are lost with the next cargo check
 /// ([`crate::troop_transport::TroopTransportState::destroy_untransportable_cargo`]).
 pub(crate) fn remove_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, index: usize) {
-    let value = &mut world.fleets[fleet];
-    value.capital_ships.remove(index);
+    world.fleets[fleet].capital_ships.remove(index);
+    disband_if_empty(world, fleet);
+}
+
+/// Disband `fleet` when it holds no ship, squadron or character
+/// (`FUN_004fe630`).
+pub(crate) fn disband_if_empty(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
+    let Some(value) = world.fleets.get(fleet) else {
+        return;
+    };
     if !(value.capital_ships.is_empty() && value.fighters.is_empty() && value.characters.is_empty())
     {
         return;

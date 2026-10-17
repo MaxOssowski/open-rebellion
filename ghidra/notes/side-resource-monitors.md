@@ -48,8 +48,8 @@ The side object is `FUN_004f3dd0(side)`, id family `0xf3`.
 
 `FUN_0052f670` raises the side's over-limit flag (`FUN_0052f3d0`) when
 `+0x70` or `+0x74` exceeds `+0x58`; timer `0x382` (`FUN_00530350`) then
-locks one random completed object. This is the manual's "maintenance below
-zero" scrapping (manual p. 81).
+autoscraps one random completed object every 10 days ("Autoscrap" below).
+This is the manual's "maintenance below zero" scrapping (manual p. 81).
 
 `FUN_0052f6b0` and `FUN_0052f8f0` rebalance the allocated halves of the mine
 and refinery pairs toward `+0x70` / `+0x74`, one facility at a time, through
@@ -538,10 +538,10 @@ yard cycle, and idle yards neither run nor draw.
   (`manufacturing-manager.md`, "The port").
 - All three monitors read; the day-0 capture is
   `browser-alliance-day0-three-monitors.png` in the same folder.
-- The refund is ported for the Scrap order (`scrap.rs`). Not ported: the
-  refund for reasons `0x15` and `0x16`; the over-limit
-  lock (timer `0x382`); and the cycle-end roll's random draw. `economy.rs`
-  still runs its own maintenance-shortfall cooldown.
+- The refund is ported for the Scrap order (`scrap.rs`) and for the
+  autoscrap (`autoscrap.rs`, 2026-10-17, below). Not ported: the refund for
+  reason `0x16` and the cycle-end roll's random draw. The economy's own
+  30-day maintenance-shortfall cooldown, which had no source, is gone.
 
 ## Names recovered from the notifier strings (2026-10-13)
 
@@ -572,5 +572,35 @@ setters used above. What that changes here:
 1. **The remaining negative openings** (1 seed in 12): whether the
    original can also open below zero, or the port's upkeep or seeded forces
    still differ.
-2. **What an autoscrap request does next**: who reads `+0x50` `0x2000` and
-   scraps the object, and the `0x382` period.
+2. Answered 2026-10-17 ("Autoscrap" below).
+
+## Autoscrap (2026-10-17)
+
+- **The flag.** `FUN_0052f670` sets the side's over-limit flag `+0xa8`
+  (`FUN_0052f3d0`) to whether `+0x70` or `+0x74` exceeds `+0x58`. The
+  setter notifies side slot `+0x1f8`, `FUN_005329f0`, which arms timer
+  `0x382` with the flag on record `+0xcc` (disassembly `0x5329f0`).
+- **The period.** `FUN_00532350` sets record `+0xcc`'s minimum to GNPRTB
+  7168 (10) and record `+0xd4` (timer `0x381`) to 7169 (30) plus spread
+  7170 (30) (disassembly `0x53236c`..`0x53239a`). So while the side is
+  over its limit, `0x382` fires every 10 days, and lowering the flag
+  cancels it.
+- **The pick.** `FUN_00530350` walks the objects of types `0x10..0x40`
+  (`FUN_00505340`, `FUN_0052e8b0`): regiments, capital ships, squadrons,
+  facilities, characters and special forces. It counts those
+  `FUN_0052e530` accepts: Existing (`+0x50` bit `0x40`,
+  `GameObj_SetExisting`), of the side, completed (bit 2), and with a class
+  maintenance cost. It draws `FUN_0053e290(count - 1)` and calls
+  `FUN_004f7950(1)`, `GameObj_SetAutoscrapRequest`, on that object.
+- **The scrap.** The request's notifier (slot `+0x140`, `FUN_004fbaa0`)
+  calls slot `+0xe0`, `FUN_004f8850`: an Existing object with the request
+  is destroyed at once through slot `+0xac` with reason `0x15`. The side
+  refunds half its refined cost (`FUN_00530270`, reasons `0x14..0x16`), and
+  the destruction (`GameObjDestroyedAutoscrap`, `0x304`) is the
+  notification of the Maintenance Shortfall message (TEXTSTRA 28800-28802,
+  `story-message-classes.md`).
+
+Port: `autoscrap.rs`, run daily after the production cycle. port: the
+walk within a type follows the world's key order, with a fleet's
+squadrons before the planets'; the flag is read once a day.
+

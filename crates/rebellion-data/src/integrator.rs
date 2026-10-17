@@ -638,21 +638,34 @@ impl PerceptionIntegrator {
                         }),
                     );
                 }
-                EconomyEvent::MaintenanceShortfall {
-                    faction_is_alliance,
-                    deficit_system_count,
-                } => {
-                    // K4: EVT_MAINTENANCE_SHORTFALL_EVENT (0x304).
-                    self.emit(
-                        SYS_ECONOMY,
-                        EVT_MAINTENANCE_SHORTFALL,
-                        serde_json::json!({
-                            "faction": if *faction_is_alliance { "Alliance" } else { "Empire" },
-                            "deficit_systems": deficit_system_count,
-                        }),
-                    );
-                }
             }
+        }
+    }
+
+    /// Apply the side's autoscraps (timer `0x382`): remove each object,
+    /// refund its side, and record the Maintenance Shortfall
+    /// (`GameObjDestroyedAutoscrap`, `0x304`).
+    pub fn apply_autoscraps(
+        &mut self,
+        world: &mut GameWorld,
+        production: &mut rebellion_core::production_cycle::ProductionState,
+        transport: &mut TroopTransportState,
+        scraps: &[rebellion_core::autoscrap::Autoscrap],
+    ) {
+        for scrap in scraps {
+            let refund = rebellion_core::autoscrap::apply(world, production, transport, scrap);
+            self.events.push(GameEventRecord::new(
+                scrap.tick,
+                self.wall_ms,
+                SYS_ECONOMY,
+                EVT_MAINTENANCE_SHORTFALL,
+                serde_json::json!({
+                    "faction": format!("{:?}", scrap.side),
+                    "unit": scrap.unit,
+                    "system": scrap.system.map(|system| sys_name(world, system)),
+                    "refund": refund,
+                }),
+            ));
         }
     }
 
@@ -2841,6 +2854,38 @@ mod tests {
             .events
             .iter()
             .any(|e| e.event_type == EVT_BLOCKADE_SUPPORT && e.tick == 31));
+    }
+
+    #[test]
+    fn an_autoscrap_removes_the_object_and_records_a_maintenance_shortfall() {
+        // FUN_004f8850 destroys with reason 0x15; GameObjDestroyedAutoscrap
+        // (0x304) is the Maintenance Shortfall message.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Naboo");
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.apply_autoscraps(
+            &mut world,
+            &mut rebellion_core::production_cycle::ProductionState::new(),
+            &mut TroopTransportState::default(),
+            &[rebellion_core::autoscrap::Autoscrap {
+                side: Faction::Alliance,
+                target: rebellion_core::autoscrap::AutoscrapTarget::Troop(troop),
+                unit: "Regiment".into(),
+                system: Some(system),
+                tick: 11,
+            }],
+        );
+        assert!(world.troops.is_empty());
+        assert!(integrator
+            .events
+            .iter()
+            .any(|e| e.event_type == EVT_MAINTENANCE_SHORTFALL && e.tick == 11));
     }
 
     #[test]

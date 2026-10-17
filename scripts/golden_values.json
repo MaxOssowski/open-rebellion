@@ -1761,7 +1761,7 @@
         "min": 0,
         "max": 40,
         "baseline_observed": 1,
-        "description": "K4 EVT_MAINTENANCE_SHORTFALL_EVENT (0x304) fires on per-faction 30-tick polled deficit. Low cardinality is expected — the AI typically resolves deficits between polls."
+        "description": "One record per autoscrapped object (GameObjDestroyedAutoscrap 0x304, side timer 0x382 every GNPRTB 7168 days while maintenance exceeds capacity; autoscrap.rs). Zero while every side stays within its limit."
       },
       "units_deployed": {
         "min": 500,

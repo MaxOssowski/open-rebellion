@@ -66,6 +66,8 @@ pub struct SimulationStates {
     pub repair: RepairState,
     /// Mines, refineries and each side's stockpiles.
     pub production: ProductionState,
+    /// Each side's autoscrap timer `0x382` (the maintenance shortfall).
+    pub autoscrap: rebellion_core::autoscrap::AutoscrapState,
     pub troop_transport: TroopTransportState,
     /// Manufactured objects travelling to their destination (F-030).
     pub deliveries: DeliveryState,
@@ -634,6 +636,24 @@ pub fn run_simulation_tick(
         &production_rolls,
     );
 
+    // ── 13c. Maintenance shortfall: each side's autoscrap timer 0x382 ───
+    let autoscrap_rolls = take_rolls(2);
+    let autoscraps = rebellion_core::autoscrap::AutoscrapSystem::advance(
+        &mut states.autoscrap,
+        world,
+        &states.troop_transport,
+        &states.manufacturing,
+        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
+        tick_events,
+        &autoscrap_rolls,
+    );
+    integrator.apply_autoscraps(
+        world,
+        &mut states.production,
+        &mut states.troop_transport,
+        &autoscraps,
+    );
+
     // port: a fleet that gained its side's flagship class this tick, by a
     // build or a join on arrival, takes its signature name (fleet_name_bank).
     world.name_flagship_fleets();
@@ -778,6 +798,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
+            autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -984,6 +1005,51 @@ mod tests {
     }
 
     #[test]
+    fn mines_in_a_system_in_revolt_give_no_capacity_and_start_the_autoscrap_timer() {
+        // FUN_0050bbb0 suspends the facilities of a system in uprising, so
+        // FUN_0052fff0 leaves them out of the capacity; FUN_0052f670 then
+        // raises the over-limit flag and FUN_005329f0 arms timer 0x382
+        // (GNPRTB 7168; this world's empty table gives the 1-day floor).
+        use rebellion_core::world::{BuildableClass, ProductionFacilityInstance};
+        let timer_after_a_day = |uprising: bool| {
+            let (mut world, mut states, _, troop) = world_with_loading_fleet();
+            let system = world.systems.keys().next().unwrap();
+            world.buildable_classes.insert(
+                world.troops[troop].class_dat_id,
+                BuildableClass {
+                    maintenance_cost: 1,
+                    ..BuildableClass::default()
+                },
+            );
+            for (id, is_mine) in [(0x2c00_0001, true), (0x2d00_0001, false)] {
+                let key = world
+                    .production_facilities
+                    .insert(ProductionFacilityInstance {
+                        class_dat_id: DatId::new(id),
+                        side: Faction::Alliance,
+                        is_mine,
+                    });
+                world.systems[system].production_facilities.push(key);
+            }
+            if uprising {
+                states.uprising.active_uprisings.insert(
+                    system,
+                    rebellion_core::uprising::ActiveUprising {
+                        started_tick: 0,
+                        next_incident_tick: Some(u64::MAX),
+                        next_support_tick: Some(u64::MAX),
+                        side: Some(Faction::Alliance),
+                    },
+                );
+            }
+            run_one_tick(&mut world, &mut states);
+            states.autoscrap.alliance
+        };
+        assert_eq!(timer_after_a_day(false), None);
+        assert_eq!(timer_after_a_day(true), Some(2));
+    }
+
+    #[test]
     fn a_shipyard_without_refined_material_does_not_advance_its_build() {
         // FUN_00530820: a yard takes one refined material to start a cycle
         // and waits when the side has none.
@@ -1162,6 +1228,7 @@ mod tests {
                 economy: EconomyState::default(),
                 repair: RepairState::default(),
                 production: ProductionState::new(),
+                autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
                 troop_transport: TroopTransportState::default(),
                 deliveries: DeliveryState::default(),
                 combat_cooldowns: HashMap::new(),
@@ -1290,6 +1357,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
+            autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1472,6 +1540,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
+            autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1615,6 +1684,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
+            autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1773,6 +1843,7 @@ mod tests {
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
+            autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),

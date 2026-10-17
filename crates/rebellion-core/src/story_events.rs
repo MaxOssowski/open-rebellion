@@ -821,7 +821,7 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
     // system's field_0x88 are compared against neutral galaxy state; incidents
     // fire only when these bits differ (state change).
     //
-    // Maintenance shortfall fires every GNPRTB[7694]=30 ticks via event timer.
+    // Maintenance shortfall is the side's autoscrap timer 0x382 (autoscrap.rs).
     // Saboteur/traitor are triggered by mission/loyalty systems, not random events.
     //
     // These will be wired into the economy tick in Phase 3b implementation.

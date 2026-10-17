@@ -423,6 +423,7 @@ struct LiveCampaign<'a> {
     ai2: &'a mut Option<AIState>,
     repair: &'a mut RepairState,
     production: &'a mut ProductionState,
+    autoscrap: &'a mut rebellion_core::autoscrap::AutoscrapState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -456,6 +457,7 @@ impl LiveCampaign<'_> {
             ai2: self.ai2.clone(),
             repair: self.repair.clone(),
             production: self.production.clone(),
+            autoscrap: self.autoscrap.clone(),
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -492,6 +494,7 @@ impl LiveCampaign<'_> {
         *self.ai2 = state.ai2;
         *self.repair = state.repair;
         *self.production = state.production;
+        *self.autoscrap = state.autoscrap;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -1068,6 +1071,7 @@ async fn main() {
     let mut betrayal_state = BetrayalState::new();
     let mut repair_state = RepairState::default();
     let mut production_state = ProductionState::new();
+    let mut autoscrap_state = rebellion_core::autoscrap::AutoscrapState::default();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -1733,31 +1737,6 @@ async fn main() {
                             MessageRail::Resource,
                             system_audience(&world, *system),
                         ));
-                    }
-                    EconomyEvent::MaintenanceShortfall {
-                        faction_is_alliance,
-                        deficit_system_count,
-                    } => {
-                        let faction_str = if *faction_is_alliance {
-                            "Alliance"
-                        } else {
-                            "Empire"
-                        };
-                        // Notification 0xc, Maintenance Shortfall.
-                        msg_log.push(filed(
-GameMessage::new(
-                            economy_tick,
-                            format!(
-                                "{faction_str} reports maintenance shortfall across {deficit_system_count} systems"
-                            ),
-                            MessageCategory::Event,
-                        )
-                        .with_picture_if(Some(pictures::units_destroyed(
-                            pictures::reader(*faction_is_alliance),
-                        ))),
-MessageRail::Manufacturing,
-Some(RailAudience::side(*faction_is_alliance)),
-));
                     }
                     _ => {} // Telemetry-only events (collection rate, garrison, incidents, support change tier)
                 }
@@ -2610,6 +2589,50 @@ Some(RailAudience::side(*faction_is_alliance)),
                 &production_rolls,
             );
 
+            // ── Maintenance shortfall: each side's autoscrap timer 0x382 ────
+            let autoscrap_rolls = [sim_rng.gen::<f64>(), sim_rng.gen::<f64>()];
+            let autoscraps = rebellion_core::autoscrap::AutoscrapSystem::advance(
+                &mut autoscrap_state,
+                &world,
+                &troop_transport_state,
+                &mfg_state,
+                |system| blockade_state.is_blockaded(system) || uprising_state.is_uprising(system),
+                &tick_events,
+                &autoscrap_rolls,
+            );
+            for scrap in &autoscraps {
+                rebellion_core::autoscrap::apply(
+                    &mut world,
+                    &mut production_state,
+                    &mut troop_transport_state,
+                    scrap,
+                );
+                let alliance = scrap.side == Faction::Alliance;
+                let name = scrap
+                    .system
+                    .and_then(|system| world.systems.get(system))
+                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                // Notification 0x304 (GameObjDestroyedAutoscrap), Maintenance
+                // Shortfall: TEXTSTRA 28800-28802.
+                let text = format!(
+                    "Maintenance Shortfall: the following units have been destroyed at {name} due to a maintenance shortfall: {}",
+                    scrap.unit
+                );
+                let message = match scrap.system {
+                    Some(system) => {
+                        GameMessage::at_system(scrap.tick, text, MessageCategory::Event, system)
+                    }
+                    None => GameMessage::new(scrap.tick, text, MessageCategory::Event),
+                };
+                msg_log.push(filed(
+                    message.with_picture_if(Some(pictures::units_destroyed(pictures::reader(
+                        alliance,
+                    )))),
+                    MessageRail::Manufacturing,
+                    Some(RailAudience::side(alliance)),
+                ));
+            }
+
             // ── Repair ──────────────────────────────────────────────────────
             let repair_events = RepairSystem::advance(&mut repair_state, &world, &tick_events);
             for evt in &repair_events {
@@ -3386,6 +3409,8 @@ Some(RailAudience::side(*faction_is_alliance)),
                                     betrayal_state = BetrayalState::new();
                                     repair_state = RepairState::default();
                                     production_state = ProductionState::new();
+                                    autoscrap_state =
+                                        rebellion_core::autoscrap::AutoscrapState::default();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -5820,6 +5845,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                         ai2: &mut secondary_ai_state,
                         repair: &mut repair_state,
                         production: &mut production_state,
+                        autoscrap: &mut autoscrap_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -5891,6 +5917,7 @@ Some(RailAudience::side(*faction_is_alliance)),
                                 ai2: &mut secondary_ai_state,
                                 repair: &mut repair_state,
                                 production: &mut production_state,
+                                autoscrap: &mut autoscrap_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,

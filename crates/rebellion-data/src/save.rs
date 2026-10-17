@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 63;
+pub const SAVE_VERSION: u32 = 64;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -238,6 +238,8 @@ pub struct SaveState {
     /// Mines, refineries, yards and each side's raw and refined stockpiles
     /// (v33; yard cycles and build points in the queues, v34).
     pub production: ProductionState,
+    /// Each side's autoscrap timer `0x382`, the maintenance shortfall (v64).
+    pub autoscrap: rebellion_core::autoscrap::AutoscrapState,
     /// Last automatic-combat tick per system.
     #[serde(
         serialize_with = "rebellion_core::serde_ordered::serialize_hash_map",
@@ -966,6 +968,7 @@ mod tests {
             ai2: None,
             repair: RepairState::default(),
             production: ProductionState::new(),
+            autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
             combat_cooldowns: std::collections::HashMap::new(),
             game_config: GameConfig::default(),
             campaign_config: CampaignConfig::default(),

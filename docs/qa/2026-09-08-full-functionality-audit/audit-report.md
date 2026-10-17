@@ -2223,6 +2223,16 @@ cross-runtime proof remain open
   600-day seeds. Golden final `v1:653ff1b1bbff8904` ->
   `v1:99cb09fad4a57148` (`evidence/2026-10-17-production-modifier/`).
   Still open: the maintenance counter `0x304` (F-029) and timer `0x381`.
+- 2026-10-17: the maintenance shortfall (`0x304`) is
+  `GameObjDestroyedAutoscrap`. While a side's maintenance exceeds its
+  capacity, its timer `0x382` (GNPRTB 7168, 10 days; `FUN_005329f0`,
+  `FUN_00530350`) autoscraps one random maintained object with reason
+  `0x15` and a half refund (`FUN_004f8850`, `FUN_00530270`). Ported as
+  `autoscrap.rs` (save v64), replacing the economy's invented 30-day
+  garrison-deficit counter. The seven 600-day campaigns play the same
+  games and never autoscrap. Golden final `v1:99cb09fad4a57148` ->
+  `v1:c23f38a8242bca8f` (`evidence/2026-10-17-autoscrap/`). Still open:
+  timer `0x381` (the side's per-system list sums).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

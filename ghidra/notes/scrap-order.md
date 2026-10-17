@@ -108,5 +108,6 @@ port:
 - Scrap for ships, fighter squadrons, fleets and regiments aboard a fleet
   (`FUN_005575f0`, `FUN_004fdbc0` → `FUN_004ffa70`).
 - The player's menu item: `object_menu.rs` still draws Scrap disabled.
-- Reasons `0x15` and `0x16` do not refund yet (autoscrap, queue scrap).
+- Reason `0x16` (queue scrap) does not refund yet. Reason `0x15` does,
+  in `autoscrap.rs` (2026-10-17).
 - The autorouting of characters in a scrapped fleet (`FUN_004ef2e0`).

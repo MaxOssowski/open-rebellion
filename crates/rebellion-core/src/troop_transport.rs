@@ -817,6 +817,23 @@ impl TroopTransportState {
         cargo
     }
 
+    /// Drop `troop`'s journey, when it is destroyed on the way. Returns
+    /// whether it was travelling.
+    pub fn forget_transit(&mut self, troop: TroopKey) -> bool {
+        let before = self.transit.len();
+        self.transit.retain(|transit| transit.troop != troop);
+        self.transit.len() != before
+    }
+
+    /// The fleet carrying `troop`, if any.
+    #[must_use]
+    pub fn carrier(&self, troop: TroopKey) -> Option<FleetKey> {
+        self.cargo
+            .iter()
+            .find(|(_, cargo)| cargo.contains(&troop))
+            .map(|(&fleet, _)| fleet)
+    }
+
     /// Destroy one embarked regiment, removing it from its fleet's cargo and
     /// from the arena. Returns `false` if it was not aboard any fleet.
     pub fn destroy_embarked(&mut self, world: &mut GameWorld, troop: TroopKey) -> bool {
@@ -1492,6 +1509,35 @@ mod tests {
         assert_eq!(state.advance_transit(&mut world, 30).arrived, vec![transit]);
         assert!(world.systems[destination].ground_units.contains(&troops[0]));
         assert!(state.transits().is_empty());
+    }
+
+    // An autoscrapped regiment (FUN_004f8850) leaves its journey and its
+    // fleet with it.
+    #[test]
+    fn a_regiment_destroyed_on_its_way_never_arrives() {
+        let (mut world, _, destination, _, troops) = alliance_world(1);
+        let mut state = TroopTransportState::new();
+        move_to(
+            &mut state,
+            &mut world,
+            troops[0],
+            RegimentTarget::System(destination),
+        )
+        .unwrap();
+        assert!(state.forget_transit(troops[0]));
+        assert!(!state.forget_transit(troops[0]));
+        world.troops.remove(troops[0]);
+        assert_eq!(state.advance_transit(&mut world, 30).arrived, vec![]);
+        assert_eq!(world.systems[destination].ground_units, vec![]);
+    }
+
+    #[test]
+    fn the_carrier_is_the_fleet_holding_the_regiment() {
+        let (mut world, _, _, fleet, troops) = alliance_world(1);
+        let mut state = TroopTransportState::new();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
+        assert_eq!(state.carrier(troops[0]), Some(fleet));
+        assert_eq!(state.carrier(troops[1]), None);
     }
 
     // FUN_00578d00: the move command's validation runs the same checks as

@@ -210,9 +210,10 @@ same path (`uprising.rs`, `support_change`).
   recomputes on a change. Their values only change with their inputs, so
   the per-tick run gives the same numbers, except where a value feeds back
   into the next tick (the support).
-- Step 7's incidents and the maintenance shortfall (`0x304`, a 30-tick
-  counter) have their own sources (`uprising-incident.md`, F-029); the
-  counter is the port's.
+- Step 7's incidents have their own sources (`uprising-incident.md`,
+  F-029). The maintenance shortfall (`0x304`) is the side's autoscrap
+  timer `0x382` (`side-resource-monitors.md`, "Autoscrap"); the port's
+  30-tick counter, which had no source, is gone (2026-10-17).
 - SmugglingPercent is ported (step 1). Its readers are not: the
   manufacturing cycle's discarded roll (`side-resource-monitors.md`) and
   the Smuggling message (`0x145`, `message-pictures.md`).

@@ -367,6 +367,7 @@ fn main() -> anyhow::Result<()> {
         economy: rebellion_core::economy::EconomyState::default(),
         repair: rebellion_core::repair::RepairState::default(),
         production: rebellion_core::production_cycle::ProductionState::new(),
+        autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         combat_cooldowns: HashMap::new(),
