@@ -426,6 +426,7 @@ struct LiveCampaign<'a> {
     autoscrap: &'a mut rebellion_core::autoscrap::AutoscrapState,
     informant: &'a mut rebellion_core::informant::InformantState,
     healing: &'a mut rebellion_core::healing::HealingState,
+    force_discovery: &'a mut rebellion_core::force_discovery::ForceDiscoveryState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -462,6 +463,7 @@ impl LiveCampaign<'_> {
             autoscrap: self.autoscrap.clone(),
             informant: self.informant.clone(),
             healing: self.healing.clone(),
+            force_discovery: self.force_discovery.clone(),
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -501,6 +503,7 @@ impl LiveCampaign<'_> {
         *self.autoscrap = state.autoscrap;
         *self.informant = state.informant;
         *self.healing = state.healing;
+        *self.force_discovery = state.force_discovery;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -1080,6 +1083,7 @@ async fn main() {
     let mut autoscrap_state = rebellion_core::autoscrap::AutoscrapState::default();
     let mut informant_state = rebellion_core::informant::InformantState::default();
     let mut healing_state = rebellion_core::healing::HealingState::default();
+    let mut force_discovery_state = rebellion_core::force_discovery::ForceDiscoveryState::default();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -2704,6 +2708,20 @@ async fn main() {
                 }
             }
 
+            // ── Force discovery: each discovering trainer's timer 0x389 ────
+            let discovery_rolls: Vec<f64> = (0
+                ..rebellion_core::force_discovery::ForceDiscoverySystem::roll_budget(&world))
+                .map(|_| sim_rng.gen::<f64>())
+                .collect();
+            for found in &rebellion_core::force_discovery::ForceDiscoverySystem::advance(
+                &mut force_discovery_state,
+                &world,
+                &tick_events,
+                &discovery_rolls,
+            ) {
+                rebellion_core::force_discovery::apply(&mut world, found);
+            }
+
             // ── Informants: each held system's timer 0x38e ──────────────────
             let informant_rolls: Vec<f64> =
                 (0..rebellion_core::informant::InformantSystem::roll_budget(&world))
@@ -3525,6 +3543,8 @@ async fn main() {
                                         rebellion_core::autoscrap::AutoscrapState::default();
                                     informant_state = rebellion_core::informant::InformantState::default();
                                     healing_state = rebellion_core::healing::HealingState::default();
+                                    force_discovery_state =
+                                        rebellion_core::force_discovery::ForceDiscoveryState::default();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -5962,6 +5982,7 @@ async fn main() {
                         autoscrap: &mut autoscrap_state,
                         informant: &mut informant_state,
                         healing: &mut healing_state,
+                        force_discovery: &mut force_discovery_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -6036,6 +6057,7 @@ async fn main() {
                                 autoscrap: &mut autoscrap_state,
                                 informant: &mut informant_state,
                                 healing: &mut healing_state,
+                                force_discovery: &mut force_discovery_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,

@@ -728,6 +728,9 @@ pub struct Character {
     /// 0 until `FUN_004eee60` rolls it for a character with both
     /// `force_potential` and `force_aware` ([`Character::force_base_due`]).
     pub force_base: u16,
+    /// Character `+0xa4`: the trainer who discovered this character's Force
+    /// (`FUN_004ee680`, timer `0x389`), by record.
+    pub force_discoverer: Option<DatId>,
 }
 
 impl Character {
@@ -879,6 +882,7 @@ impl Default for Character {
             force_potential: false,
             force_aware: false,
             force_base: 0,
+            force_discoverer: None,
         }
     }
 }
@@ -2722,7 +2726,8 @@ mod tests {
     fn serde_backward_compat_missing_new_fields() {
         // Simulate deserializing a save file that lacks fields added before v8.
         // NOTE: `heritage_known` and `is_killed` (v8), `recruited` (v21) and
-        // `injury` (v68) and the Force flags and base (v69) are required here because they have no `#[serde(default)]` — the save
+        // `injury` (v68), the Force flags and base (v69) and the Force
+        // discoverer (v70) are required here because they have no `#[serde(default)]` — the save
         // bump is the migration boundary, not serde field-default. This test still exercises
         // the `#[serde(default)]` path for earlier fields that legitimately have
         // the attribute.
@@ -2751,7 +2756,8 @@ mod tests {
             "injury": 0,
             "force_potential": false,
             "force_aware": false,
-            "force_base": 0
+            "force_base": 0,
+            "force_discoverer": null
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

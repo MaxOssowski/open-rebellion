@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 69;
+pub const SAVE_VERSION: u32 = 70;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -244,6 +244,8 @@ pub struct SaveState {
     pub informant: rebellion_core::informant::InformantState,
     /// Each healing character's timer `0x388` (v68).
     pub healing: rebellion_core::healing::HealingState,
+    /// Each discovering trainer's timer `0x389` (v70).
+    pub force_discovery: rebellion_core::force_discovery::ForceDiscoveryState,
     /// Last automatic-combat tick per system.
     #[serde(
         serialize_with = "rebellion_core::serde_ordered::serialize_hash_map",
@@ -975,6 +977,7 @@ mod tests {
             autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
             informant: rebellion_core::informant::InformantState::default(),
             healing: rebellion_core::healing::HealingState::default(),
+            force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
             combat_cooldowns: std::collections::HashMap::new(),
             game_config: GameConfig::default(),
             campaign_config: CampaignConfig::default(),

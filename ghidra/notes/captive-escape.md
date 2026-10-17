@@ -51,8 +51,9 @@ every tick. The unit is the one the port already uses for timer `0x38d` in
 
 The same function fills two neighbouring records: `+0x18` minimum from
 `DAT_006b9068` or `DAT_006b9064` (by `+0xac` bit 2, FastHeal), and `+0x20`
-from GNPRTB 2582 (min, 1) and 2583 (spread, 0). Those are the healing timers
-and are not part of escape.
+from GNPRTB 2582 (min, 1) and 2583 (spread, 0). `+0x18` is the healing timer
+`0x388` and `+0x20` the Force discovery timer `0x389`
+(`force-awareness.md`). Neither is part of escape.
 
 ## Roll
 

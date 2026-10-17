@@ -907,6 +907,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         force_potential: false,
         force_aware: dat.is_known_jedi != 0,
         force_base: 0,
+        force_discoverer: None,
     }
 }
 

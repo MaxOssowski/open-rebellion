@@ -8,7 +8,7 @@ does, as the base for replacing it.
 
 | Where | Name | Meaning |
 |---|---|---|
-| character `+0x8c` | Force level | short; Luke starts at 50, Leia at 10, Vader 150, the Emperor 120 (MJCHARSD `jedi_level`) |
+| character `+0x8c` | Force level | short; Luke starts at 50, Leia at 10, the Emperor 150, Vader 120 (MJCHARSD `jedi_level`) |
 | character `+0xac` bit `0x10` | `ForceAware` | the character knows its Force (`FUN_004ee950`) |
 | character `+0xac` bit `0x20` | `ForcePotential` | the character has the Force (`FUN_004ee9c0`) |
 | character `+0xac` bit `0x80` | `DiscoveringForceUser` | it can find the Force in others (`FUN_004eeaa0`) |
@@ -18,8 +18,10 @@ does, as the base for replacing it.
 | class `+0xb8` | `is_jedi_trainer` | file `0x94` |
 
 MJCHARSD: 577 (`0x241`, family `0x31`) is Leia, 578 (`0x242`, family
-`0x32`) Luke (trainer, Force 50), 640 Vader (Force 150), 641 the Emperor
-(trainer, Force 120).
+`0x32`) Luke (trainer, Force 50), 640 (`0x280`, family `0x34`) the Emperor
+(Force 150), 641 (`0x281`, family `0x35`) Vader (trainer, Force 120). The
+names come from TEXTSTRA; an earlier version of this note swapped the
+last two.
 
 ## At creation
 
@@ -55,20 +57,30 @@ So an unaware character has Force 0, whatever its class template.
   is recomputed when those change (slots `+0x110`, `+0x268`, `+0x31c`,
   `+0x34c`) and at creation.
 - Its hook (slot `+0x364`, `FUN_004f1b70`) arms timer `0x389` with it, on
-  record `+0x54`+`0x20`: GNPRTB 2584 (100) + rand(0..=2585 (1000)) days
-  (`FUN_004ef750`, disassembly order).
+  record `+0x54`+`0x20`: GNPRTB 2582 (1) + rand(0..=2583 (0)) days
+  (`FUN_004ef750`, disassembly `0x4ef7aa..0x4ef7c8`: `ecx = [esi+0x54] +
+  0x20`). So it fires every day. An earlier version of this note gave
+  2584/2585; those fill record `+0x28`, the captive escape timer `0x38a`.
 - Each fire (`FUN_00560a30`) walks the characters of the discoverer's side
   in its container (`FUN_004f2640(container, 1, side)`). For each one not
   captured, not on a mission, not itself, with `ForcePotential` and without
   `ForceAware`:
   - Leia (`0x31000241`) only when the discoverer is Luke (`0x32000242`)
-    with its `+0xb0` bit 0, and then `FUN_0056fe90(1)` sets Leia's `+0xb0`
-    bit 0 (slot `+0x3ec`);
+    with its `+0xb0` bit 0, `KnowsHeritage` (Luke's setter `FUN_0056f650`,
+    called from `FUN_00560200`), and then `FUN_0056fe90(1)` sets Leia's
+    `KnowsHeritage` (`+0xb0` bit 0, slot `+0x3ec`);
   - anyone else at once;
   - then `ForceAware` is set and `+0xa4` stores the discoverer.
 
-So only Luke (from Force 80) and the Emperor discover, every 100 to 1100
-days, the Force of the free characters of their side beside them.
+So only Vader, and Luke once his Force reaches 80, discover, each day, the
+Force of the free characters of their side beside them.
+
+- Setting the discoverer `+0xa4` syncs to the side views (`FUN_004f0940`),
+  which send notification `0x362` (slot `+0x3bc`, `FUN_004f20e0`,
+  `CharacterForceUserDiscoveredKeyNotif`). Its builder `FUN_0048f1e0` makes
+  "Future Jedi Discovered" (TEXTSTRA `0x7178` with `0x7179` or `0x717a` by
+  `FUN_004ed310`, GNPRTB 2581), or "Leia Uses Force" (`0x71d8`/`0x71d9`)
+  for Leia, shown to the character's side.
 
 ## Force detection between sides (`FUN_0058a3f0`, "force_detect")
 
@@ -104,6 +116,19 @@ with the Force share (slots `+0x1dc`, `+0x1e0`), read by the missions
 50, 90 at Force 50) gives Figure 3.46's 75, 75 and 135. Evidence:
 `docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-share/`.
 
+## Ported (stage 2, 2026-10-18)
+
+`force_discovery.rs`: `discovering_force_user`, timer `0x389` per trainer
+(`ForceDiscoveryState`, save v70), the walk of the trainer's container
+(its fleet, else the characters at its system in no fleet), Leia's rule
+on Luke's `heritage_known` (the port's `KnowsHeritage`), the awareness
+hook's Force base roll, and `Character::force_discoverer` (`+0xa4`, by
+record). Over seven 600-day and five 3000-day dual-AI campaigns no
+discovery happens: Vader qualifies, but the Empire's latent characters
+are recruited away and never stand free beside him, and Luke stays at
+Force 50. The message `0x362` is not ported yet. Evidence:
+`docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-discovery/`.
+
 ## Against the port
 
 `jedi.rs` keeps `force_tier`, `force_experience`, `is_discovered_jedi` and
@@ -117,5 +142,7 @@ exists. Porting this replaces part of `jedi.rs`.
   missions?).
 - Leadership's share of `+0x92` (`FUN_004eede0`): what `+0x92` holds.
 - `FUN_0058a2c0` (who calls the detection) and `FUN_0055ff60`.
-- What Luke's `+0xb0` bit 0 means, and who sets it.
+- When `FUN_00560200` sets Luke's `KnowsHeritage` (the heritage
+  encounter); the port's story events set `heritage_known` on their own.
+- The message `0x362` (Future Jedi Discovered, Leia Uses Force).
 - Which objects the subclasses `0x006657f0` and `0x00665be0` make.

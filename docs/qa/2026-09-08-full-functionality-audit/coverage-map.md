@@ -36,7 +36,7 @@ with a fresh delay, and dies when its target's state record changes
 | `0x386` | `FUN_00565d90` -> `FUN_0050cb20` | support shift GNPRTB 7693 (+1) or 7695 (-1) under bit 5 | same as above; 7693 and 7695 only in test fixtures; `events.rs:101` also names `0x386` `EVT_SIDE_CHANGE` | partial, and an id collision (see Misreads) |
 | `0x387` | `FUN_0057bf80` -> `FUN_004f7fc0` | object arrival after Euclidean travel time (`build-delivery.md`) | `movement.rs` transit for fleets only, with its own formula; built objects arrive instantly (`manufacturing.rs`, F-030); `events.rs:102` names `0x387` `EVT_JABBA_CAPTURES_CHEWIE` | partial, and an id collision |
 | `0x388` | `FUN_0057cca0` -> `FUN_004ef100` | character injury `+0x94` (`uprising-incident.md:141`) recovers by GNPRTB 2563 (2) or 2564 (1) per firing | none; the port has no injury field (`uprising-incident.md:192`) | missing |
-| `0x389` | `FUN_0057cff0` -> `FUN_00560a30` | character timer, action unread | none known | missing (semantics open) |
+| `0x389` | `FUN_0057cff0` -> `FUN_00560a30` | a trainer with Force 80+ makes the latent characters of its side beside it Force aware, daily (GNPRTB 2582/2583) | `force_discovery.rs` | matched (2026-10-18, F-038) |
 | `0x38a` | `FUN_0057d330` -> `FUN_004ef150` | character `+0xac` bit 10 pulse while bit 8 | none known | missing (semantics open) |
 | `0x38b` | `FUN_0054d6c0` -> `FUN_00522a10` | mission in state 8 sets `+0xa4` bit 0 | `missions.rs` resolves by `ticks_remaining`, with no mission state machine | missing (semantics open) |
 | `0x38c` | `FUN_0054da10` -> `FUN_00522a30` | mission in state 11 calls slot `+0xac(0x14)` | same | missing (semantics open) |

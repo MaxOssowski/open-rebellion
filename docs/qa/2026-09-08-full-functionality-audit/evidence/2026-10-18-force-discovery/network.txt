@@ -1,0 +1,4 @@
+[5C2C3EB994B5FA74CF7EB4BEF4D9F89F] GET http://127.0.0.1:18447/ (Document) 200
+[2771063.2] GET http://127.0.0.1:18447/gl.js (Script) 200
+[2771063.4] GET http://127.0.0.1:18447/open-rebellion.wasm (Fetch) 200
+[2771063.5] GET http://127.0.0.1:18447/data/runtime.orpk (XHR) 200

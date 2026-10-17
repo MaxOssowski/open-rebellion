@@ -1065,6 +1065,7 @@ mod tests {
             force_potential: false,
             force_aware: false,
             force_base: 0,
+            force_discoverer: None,
         }
     }
 

@@ -370,6 +370,7 @@ fn main() -> anyhow::Result<()> {
         autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
         informant: rebellion_core::informant::InformantState::default(),
         healing: rebellion_core::healing::HealingState::default(),
+        force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         combat_cooldowns: HashMap::new(),

@@ -27,7 +27,7 @@ use rebellion_core::game_events::{
     EVT_CAPTURE, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
-    EVT_FOG_REVEALED, EVT_GARRISON_REQUIRED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL, EVT_JEDI_CHECK,
+    EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_GARRISON_REQUIRED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL, EVT_JEDI_CHECK,
     EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE,
     EVT_MISSION_DISPATCHED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
@@ -640,6 +640,36 @@ impl PerceptionIntegrator {
                     "character": name,
                     "cause": "healing",
                     "injury": heal.injury,
+                }),
+            ));
+        }
+    }
+
+    /// Apply Force discoveries (timer `0x389`): one `force_discovered`
+    /// event each.
+    pub fn apply_force_discoveries(
+        &mut self,
+        world: &mut GameWorld,
+        discovered: &[rebellion_core::force_discovery::ForceDiscovered],
+    ) {
+        for found in discovered {
+            rebellion_core::force_discovery::apply(world, found);
+            let name = |key| {
+                world
+                    .characters
+                    .get(key)
+                    .map_or_else(String::new, |c| c.name.clone())
+            };
+            self.events.push(GameEventRecord::new(
+                found.tick,
+                self.wall_ms,
+                SYS_JEDI,
+                EVT_FORCE_DISCOVERED,
+                serde_json::json!({
+                    "character": name(found.character),
+                    "discoverer": name(found.discoverer),
+                    "force_base": found.force_base,
+                    "learns_heritage": found.learns_heritage,
                 }),
             ));
         }
@@ -2460,6 +2490,43 @@ mod tests {
     use rebellion_core::missions::MissionOutcome;
     use rebellion_core::world::{CapitalShipClass, Sector, System};
 
+
+    #[test]
+    fn a_force_discovery_makes_the_character_aware_and_records_it() {
+        // FUN_00560a30: ForceAware, the discoverer (+0xa4), the Force base
+        // the awareness hook rolls (FUN_004eee60) and Leia's heritage.
+        let mut world = GameWorld::default();
+        let trainer = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId(0x242),
+            name: "Luke".into(),
+            ..Default::default()
+        });
+        let found = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId(0x241),
+            name: "Leia".into(),
+            force_potential: true,
+            ..Default::default()
+        });
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.apply_force_discoveries(
+            &mut world,
+            &[rebellion_core::force_discovery::ForceDiscovered {
+                character: found,
+                discoverer: trainer,
+                force_base: Some(10),
+                learns_heritage: true,
+                tick: 7,
+            }],
+        );
+        let c = &world.characters[found];
+        assert!(c.force_aware && c.heritage_known);
+        assert_eq!(c.force_base, 10);
+        assert_eq!(c.force_discoverer, Some(DatId(0x242)));
+        let event = integrator.events.last().expect("a record");
+        assert_eq!(event.event_type, EVT_FORCE_DISCOVERED);
+        assert_eq!(event.details["character"], "Leia");
+        assert_eq!(event.details["discoverer"], "Luke");
+    }
 
     #[test]
     fn a_story_jedi_level_change_moves_the_force_base() {

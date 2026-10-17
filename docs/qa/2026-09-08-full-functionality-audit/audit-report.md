@@ -2336,6 +2336,19 @@ cross-runtime proof remain open
   `v1:aa49f78d3f06cc2f` -> `v1:5531248a4edc88bb`
   (`evidence/2026-10-18-force-share/`). Open: timer `0x389`, `+0x90`,
   `+0x92`.
+- 2026-10-18, Force stage 2: timer `0x389` is ported
+  (`force_discovery.rs`, save v70). A trainer with Force 80+ that is free
+  makes the latent characters of its side beside it aware each day
+  (GNPRTB 2582/2583, record `+0x20`; `FUN_00560a30`), with Leia only for
+  Luke once he knows his heritage. Two corrections to the 2026-10-17
+  reading: the timer fires daily (2584/2585 belong to the escape timer
+  `0x38a`), and the trainer at the start is Vader (MJCHARSD 641, Force
+  120), the Emperor being 640 (Force 150, no trainer). No discovery
+  happens in seven 600-day or five 3000-day campaigns. Golden initial
+  `v1:9c1efa24f4e2cd19` -> `v1:58473b5bf4582374`, final
+  `v1:5531248a4edc88bb` -> `v1:461650933b75014c`
+  (`evidence/2026-10-18-force-discovery/`). Open: message `0x362`,
+  `+0x90`, `+0x92`.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

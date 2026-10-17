@@ -522,6 +522,7 @@ mod tests {
             force_potential: true,
             force_aware: true,
             force_base: 50,
+            force_discoverer: None,
         }
     }
 
