@@ -77,10 +77,10 @@ landing regiments (attack / 5 percent each); each attacking regiment duels a
 drawn defender (a 0..10 draw plus TROOPSD attack less defense; the attacker
 falls at or below 4, the defender at or above 6); each duel may destroy a
 facility, energy or raw unit (8%); with no defender left up to 6 attackers
-land. Regiments carried to a system land only on their side's standing,
-unblockaded planet (`FUN_005073d0`); one side's regiments alone take a
-planet (port: the occupation, `simulation.rs` step 3b and
-`tactical_flow::land_and_occupy`). The AI orders it with
+land. Carried regiments stay aboard until a Move lands them, and a planet
+accepts a regiment on the terms of `FUN_005073d0`; one side's regiments
+alone take a planet (port: the occupation, `simulation.rs` step 3b and
+`tactical_flow::occupy`). The AI orders it with
 `AIAction::Assault`. See `ghidra/notes/planetary-assault.md`.
 
 ## Effect Application (main.rs)

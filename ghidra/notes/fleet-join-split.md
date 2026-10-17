@@ -152,8 +152,8 @@ Fleet 2, etc."); untraced.
 - port: a fleet that joins on arrival comes in after the other arrivals of
   its pass, so a target arriving in the same pass is already there.
 - port: cargo that joins a fleet holding regiments loaded where it orbits
-  shares that hold, so the automatic landing (itself unsourced, roadmap)
-  skips it until the fleet next arrives somewhere.
+  shares that hold. The hold kept the port's automatic landing off such
+  cargo; that landing was retired on 2026-10-17 (`regiment-unload.md`).
 - port: no spare fleets. The port creates the fleet when Create Fleet
   executes; the result a player sees, a new fleet of the selected ships in
   their system, is the same.

@@ -2541,6 +2541,8 @@ struct FleetLoadObservation {
     held: bool,
     cargo: usize,
     troop_system_dat_id: Option<u32>,
+    /// The system the fleet stands at.
+    fleet_system_dat_id: Option<u32>,
     in_transit: bool,
     regiment_travelling: bool,
     confirmation_open: bool,
@@ -2633,6 +2635,11 @@ fn fleet_load_observation(
         cargo: transport.carried_count(fleet),
         troop_system_dat_id: regiment_system(world, regiment)
             .and_then(|system| world.systems.get(system))
+            .map(|system| system.dat_id.raw()),
+        fleet_system_dat_id: world
+            .fleets
+            .get(fleet)
+            .and_then(|value| world.systems.get(value.location))
             .map(|system| system.dat_id.raw()),
         in_transit: movement.is_in_transit(fleet),
         regiment_travelling: transport

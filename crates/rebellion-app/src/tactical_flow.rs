@@ -289,59 +289,16 @@ pub(crate) fn reconcile_death_star_result(
     true
 }
 
-/// Regiments carried to a system land when its planet is their side's,
-/// standing and not blockaded (`FUN_005073d0`); elsewhere they stay aboard.
-/// A held fleet keeps its cargo. A planet with one side's regiments alone
-/// then passes to that side, and two sides' regiments stand together: the
-/// original fights on the ground only in a Planetary Assault
-/// (`ghidra/notes/planetary-assault.md`). The simulation's step 3b
-/// (`rebellion_data::simulation`) does the same. port: the occupation is the
-/// port's.
-pub(crate) fn land_and_occupy(
-    world: &mut GameWorld,
-    troop_transport: &mut TroopTransportState,
-    tick: u64,
-    log: &mut MessageLog,
-) {
+/// A planet with one side's regiments alone passes to that side, and two
+/// sides' regiments stand together: the original fights on the ground only
+/// in a Planetary Assault (`ghidra/notes/planetary-assault.md`). Carried
+/// regiments stay aboard until an order moves them: nothing in the original
+/// lands cargo without one (`ghidra/notes/regiment-unload.md`). The
+/// simulation's step 3b (`rebellion_data::simulation`) does the same. port:
+/// the occupation is the port's.
+pub(crate) fn occupy(world: &mut GameWorld, tick: u64, log: &mut MessageLog) {
     let systems: Vec<SystemKey> = world.systems.keys().collect();
     for system in systems {
-        let Some(value) = world.systems.get(system) else {
-            continue;
-        };
-        let holder = GameWorld::facility_holder(value.control);
-        let lands = !value.is_destroyed
-            && !rebellion_core::blockade::BlockadeSystem::system_is_blockaded(world, value);
-        let fleets: Vec<FleetKey> = value
-            .fleets
-            .iter()
-            .copied()
-            .filter(|fleet| {
-                lands
-                    && world
-                        .fleets
-                        .get(*fleet)
-                        .is_some_and(|f| Some(Faction::of_alliance(f.is_alliance)) == holder)
-                    && troop_transport.landing_count(*fleet) > 0
-            })
-            .collect();
-        let mut landed = 0;
-        for fleet in fleets {
-            landed += troop_transport
-                .disembark_all(world, fleet, system)
-                .map_or(0, |troops| troops.len());
-        }
-        if landed > 0 {
-            let name = world
-                .systems
-                .get(system)
-                .map_or("unknown", |value| value.name.as_str());
-            log.push(GameMessage::at_system(
-                tick,
-                format!("{landed} regiment(s) landed at {name}"),
-                MessageCategory::Event,
-                system,
-            ));
-        }
         let (alliance, empire) = world.systems.get(system).map_or((false, false), |value| {
             value
                 .ground_units
@@ -551,53 +508,25 @@ mod tests {
     }
 
     #[test]
-    fn a_transport_lands_only_on_its_side_s_planet_and_a_held_fleet_keeps_its_cargo() {
-        // FUN_005073d0: a regiment lands on its side's planet; on another
-        // side's it stays aboard for a Planetary Assault
-        // (ghidra/notes/planetary-assault.md).
-        let (mut world, system, fleet, attacker, mut transport) =
-            transport_fixture(ControlKind::Controlled(Faction::Alliance), false);
-        let mut messages = MessageLog::default();
-        land_and_occupy(&mut world, &mut transport, 41, &mut messages);
-        assert_eq!(transport.carried_count(fleet), 0);
-        assert!(world.systems[system].ground_units.contains(&attacker));
-        assert!(messages
-            .messages()
-            .iter()
-            .any(|message| message.text.contains("regiment(s) landed")));
+    fn carried_regiments_stay_aboard_without_an_order() {
+        // Nothing in the original lands cargo without an order
+        // (ghidra/notes/regiment-unload.md, "What happens to the rest of the
+        // cargo"); the port's automatic landing went on 2026-10-17. Over the
+        // side's planet, another side's and a neutral one the regiment stays
+        // aboard, and no planet changes hands.
         for control in [
+            ControlKind::Controlled(Faction::Alliance),
             ControlKind::Controlled(Faction::Empire),
             ControlKind::Uncontrolled,
         ] {
-            let (mut world, system, fleet, attacker, mut transport) =
-                transport_fixture(control, false);
+            let (mut world, system, fleet, attacker, transport) = transport_fixture(control, false);
             let mut messages = MessageLog::default();
-            land_and_occupy(&mut world, &mut transport, 41, &mut messages);
+            occupy(&mut world, 41, &mut messages);
             assert_eq!(transport.cargo(fleet), &[attacker]);
+            assert!(!world.systems[system].ground_units.contains(&attacker));
             assert_eq!(world.systems[system].control, control);
-            assert!(!messages
-                .messages()
-                .iter()
-                .any(|message| message.text.contains("landed")));
+            assert!(messages.messages().is_empty());
         }
-        // A destroyed planet takes no regiment.
-        let (mut world, system, fleet, attacker, mut transport) =
-            transport_fixture(ControlKind::Controlled(Faction::Alliance), false);
-        world.systems[system].is_destroyed = true;
-        land_and_occupy(&mut world, &mut transport, 41, &mut MessageLog::default());
-        assert_eq!(transport.cargo(fleet), &[attacker]);
-        // port: a fleet holding regiments loaded by order keeps them aboard
-        // (TroopTransportState::load).
-        let (mut world, system, fleet, attacker, mut transport) =
-            transport_fixture(ControlKind::Controlled(Faction::Alliance), false);
-        transport
-            .disembark_all(&mut world, fleet, system)
-            .expect("fixture regiment lands");
-        transport
-            .load(&mut world, fleet, &[attacker])
-            .expect("fixture troop loads");
-        land_and_occupy(&mut world, &mut transport, 41, &mut MessageLog::default());
-        assert_eq!(transport.cargo(fleet), &[attacker]);
     }
 
     #[test]
@@ -605,19 +534,22 @@ mod tests {
         // No ground battle outside a Planetary Assault
         // (ghidra/notes/planetary-assault.md); port: one side's regiments
         // alone occupy the planet.
-        let (mut world, system, _, _, mut transport) =
+        let (mut world, system, _, _, _) =
             transport_fixture(ControlKind::Controlled(Faction::Empire), true);
-        land_and_occupy(&mut world, &mut transport, 42, &mut MessageLog::default());
+        occupy(&mut world, 42, &mut MessageLog::default());
         assert_eq!(
             world.systems[system].control,
             ControlKind::Controlled(Faction::Empire)
         );
         assert_eq!(world.systems[system].ground_units.len(), 1);
-        // Both sides' regiments on the planet: no change, no casualties.
+        // Both sides' regiments on the planet (the Alliance's landed by its
+        // order): no change, no casualties.
         let (mut world, system, fleet, attacker, mut transport) =
             transport_fixture(ControlKind::Controlled(Faction::Alliance), true);
-        land_and_occupy(&mut world, &mut transport, 42, &mut MessageLog::default());
-        assert_eq!(transport.carried_count(fleet), 0);
+        transport
+            .disembark_selected(&mut world, fleet, system, &[attacker])
+            .expect("the regiment lands");
+        occupy(&mut world, 42, &mut MessageLog::default());
         assert_eq!(world.systems[system].ground_units.len(), 2);
         assert!(world.troops.contains_key(attacker));
         assert_eq!(
@@ -631,7 +563,7 @@ mod tests {
             .disembark_selected(&mut world, fleet, system, &[attacker])
             .expect("the regiment lands");
         let mut messages = MessageLog::default();
-        land_and_occupy(&mut world, &mut transport, 43, &mut messages);
+        occupy(&mut world, 43, &mut messages);
         assert_eq!(
             world.systems[system].control,
             ControlKind::Controlled(Faction::Alliance)
@@ -640,19 +572,19 @@ mod tests {
             message.rail == Some(MessageRail::PopularSupport)
                 && message.text.contains("occupied by Alliance")
         }));
-        // The Empire's regiment alone on an Alliance planet takes it; a
-        // regiment at strength 0 does not count.
-        let (mut world, system, fleet, attacker, mut transport) =
+        // The Empire's regiment alone on an Alliance planet takes it, the
+        // Alliance's still aboard not counting; a regiment at strength 0
+        // does not count either.
+        let (mut world, system, fleet, _, transport) =
             transport_fixture(ControlKind::Controlled(Faction::Alliance), true);
-        let _ = transport.destroy_embarked(&mut world, attacker);
-        assert_eq!(transport.carried_count(fleet), 0);
+        assert_eq!(transport.carried_count(fleet), 1);
         let spent = world.troops.insert(TroopUnit {
             class_dat_id: DatId::new(14),
             is_alliance: true,
             regiment_strength: 0,
         });
         world.systems[system].ground_units.push(spent);
-        land_and_occupy(&mut world, &mut transport, 44, &mut MessageLog::default());
+        occupy(&mut world, 44, &mut MessageLog::default());
         assert_eq!(
             world.systems[system].control,
             ControlKind::Controlled(Faction::Empire)

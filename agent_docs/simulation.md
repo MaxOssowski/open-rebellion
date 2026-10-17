@@ -82,7 +82,7 @@ run_simulation_tick():
   1. completions     = production_cycle::advance_yards() → integrator.apply_build_completions()
   2. arrivals        = MovementSystem::advance()       → integrator.apply_arrivals()
   3. combat triggers → CombatSystem::resolve_space()   → integrator.apply_space_combat()
-  3b. landing on own planets, occupation (no ground battle outside Planetary Assault)
+  3b. occupation; carried regiments stay aboard until ordered (no ground battle outside Planetary Assault)
   4. reveals         = FogSystem::advance()             → integrator.emit_fog_reveals()
   5. results         = MissionSystem::advance()         → integrator.apply_mission_result()
   5b. escapes        = MissionSystem::advance_escapes() → integrator.apply_escape_effects()

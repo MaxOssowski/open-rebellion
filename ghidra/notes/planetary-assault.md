@@ -177,6 +177,12 @@ port:
   out.
 - The draws come from the tick's `SplitMix64` stream (`BombardEnv`).
 
+## Retired (2026-10-17): the automatic landing
+
+The port landed carried regiments on their side's planet by itself (step
+3b). The original lands cargo only on an order (`regiment-unload.md`),
+so the automatic landing is gone: regiments stay aboard until a Move.
+
 ## Ported (2026-10-17): the player's order
 
 The object pop-up menu's Planetary Assault, on a fleet or a sector

@@ -534,10 +534,11 @@ const cases = [
     },
   },
   {
-    name: "move-and-land",
+    name: "move-and-carry",
     code: FLEET_LOAD,
-    // The fleet's Move to the target; on arrival the regiment lands on the
-    // player's empty planet (apply_fleet_arrival releases the hold).
+    // The fleet's Move to the target; on arrival the hold ends
+    // (apply_fleet_arrival) and the regiment stays aboard: nothing in the
+    // original lands cargo without an order (ghidra/notes/regiment-unload.md).
     async run(page, faction, setup, directory) {
       const { loaded } = await loadRegiment(page, setup, directory);
       const origin = { x: loaded.origin[0], y: loaded.origin[1] };
@@ -551,11 +552,16 @@ const cases = [
       const departed = await until(page, "the fleet departs", (o) => o.in_transit);
       assert.ok(departed.aboard, "the regiment left the fleet before it departed");
       const speed = await runFast(page, setup);
-      const landed = await until(page, "the regiment lands at the target",
-        (o, target) => !o.aboard && !o.held && !o.in_transit && o.troop_system_dat_id === target,
+      const arrived = await until(page, "the fleet arrives at the target",
+        (o, target) => !o.held && !o.in_transit && o.fleet_system_dat_id === target,
         setup.target_dat_id, 90_000);
-      assert.equal(landed.cargo, 0);
-      return { loaded, menu, departed, speed, landed };
+      assert.ok(arrived.aboard, `the regiment stays aboard: ${JSON.stringify(arrived)}`);
+      assert.equal(arrived.cargo, 1);
+      assert.equal(arrived.troop_system_dat_id, null);
+      await frames(page, 30);
+      const later = (await observations(page)).at(-1);
+      assert.ok(later.aboard, `the regiment does not land later: ${JSON.stringify(later)}`);
+      return { loaded, menu, departed, speed, arrived, later };
     },
   },
   {

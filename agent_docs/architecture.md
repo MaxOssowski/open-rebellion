@@ -192,7 +192,7 @@ run_simulation_tick():
   0. EconomySystem::advance       → integrator.apply_economy_events()
   1. ManufacturingSystem::advance  → integrator.apply_build_completions()
   2. MovementSystem::advance       → integrator.apply_arrivals()
-  3. CombatSystem::resolve_space   → integrator.apply_space_combat(); 3b. landing and occupation
+  3. CombatSystem::resolve_space   → integrator.apply_space_combat(); 3b. occupation (carried regiments stay aboard until ordered)
   4. FogSystem::advance            → integrator.emit_fog_reveals()
   5. MissionSystem::advance        → integrator.apply_mission_result()
   5b. advance_escapes()            → integrator.apply_escape_effects()

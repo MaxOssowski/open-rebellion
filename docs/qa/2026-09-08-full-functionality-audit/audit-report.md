@@ -2100,6 +2100,16 @@ cross-runtime proof remain open
   to 6 has no plan object and ends its cycle. The campaigns are identical.
   Save v58; golden `v1:a8343f6c6630924e` -> `v1:51f96ff9faae705b`
   (`evidence/2026-10-17-stand-in-removed/`).
+- 2026-10-17, by the user's choice: the port's automatic landing of
+  carried regiments is retired. Nothing in the original lands cargo
+  without an order (`ghidra/notes/regiment-unload.md`), so regiments stay
+  aboard until a Move: the simulation's step 3b and the app's
+  `tactical_flow::occupy` only occupy now. Module `0xc`'s heuristic sends
+  a regiment by its own Move instead of aboard a fleet. Campaigns change
+  in five of seven seeds; the occupation's clash with the economy's
+  troop-based control (`FUN_0050b610`) now shows as neutral planets
+  flipping back and forth. Golden final `v1:d2e439b6e18aff1f` ->
+  `v1:3bb9a6063ff07d84` (`evidence/2026-10-17-landing-retired/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

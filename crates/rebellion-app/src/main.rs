@@ -2126,16 +2126,11 @@ Some(RailAudience::side(*faction_is_alliance)),
                 audio_engine.play_sfx(SfxKind::CombatStart, &audio_vol);
             }
 
-            // Regiments land on their side's planets, and one side's
-            // regiments alone take a planet (the simulation's step 3b); no
-            // ground battle outside a Planetary Assault
+            // One side's regiments alone take a planet (the simulation's
+            // step 3b); carried regiments stay aboard until ordered, and no
+            // ground battle happens outside a Planetary Assault
             // (ghidra/notes/planetary-assault.md).
-            tactical_flow::land_and_occupy(
-                &mut world,
-                &mut troop_transport_state,
-                current_tick,
-                &mut msg_log,
-            );
+            tactical_flow::occupy(&mut world, current_tick, &mut msg_log);
 
             // Observe embarked regiments after arrivals and landings, so a
             // fleet that arrives and is ordered away again this tick still

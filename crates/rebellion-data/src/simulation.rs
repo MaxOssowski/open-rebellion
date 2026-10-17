@@ -254,36 +254,16 @@ pub fn run_simulation_tick(
     let destroyed_cargo = states.troop_transport.destroy_untransportable_cargo(world);
     integrator.emit_destroyed_transport_cargo(&destroyed_cargo);
 
-    // ── 3b. Troop landing and occupation ────────────────────────────────
-    // Regiments carried to a system land when its planet is their side's,
-    // standing and not blockaded (FUN_005073d0); elsewhere they stay aboard.
-    // The original fights on the ground only in a Planetary Assault
-    // (ghidra/notes/planetary-assault.md), so a planet with one side's
-    // regiments alone passes to that side and two sides' regiments stand
-    // together. port: the occupation is the port's.
+    // ── 3b. Occupation ──────────────────────────────────────────────────
+    // Carried regiments stay aboard until an order moves them: nothing in
+    // the original lands cargo without one (ghidra/notes/regiment-unload.md,
+    // "What happens to the rest of the cargo"). The original fights on the
+    // ground only in a Planetary Assault (ghidra/notes/planetary-assault.md),
+    // so a planet with one side's regiments alone passes to that side and
+    // two sides' regiments stand together. port: the occupation is the
+    // port's.
     let ground_systems: Vec<_> = world.systems.keys().collect();
     for sys_key in ground_systems {
-        let Some(system) = world.systems.get(sys_key) else {
-            continue;
-        };
-        let holder = GameWorld::facility_holder(system.control);
-        let lands = !system.is_destroyed && !BlockadeSystem::system_is_blockaded(world, system);
-        let landing_fleets: Vec<_> = system
-            .fleets
-            .iter()
-            .copied()
-            .filter(|fleet| {
-                lands
-                    && world.fleets.get(*fleet).is_some_and(|value| {
-                        Some(Faction::of_alliance(value.is_alliance)) == holder
-                    })
-                    && !states.troop_transport.is_held(*fleet)
-            })
-            .collect();
-        for fleet in landing_fleets {
-            integrator.apply_troop_landing(world, &mut states.troop_transport, fleet, sys_key);
-        }
-
         let (alliance_troops, empire_troops) = world
             .systems
             .get(sys_key)
@@ -892,7 +872,10 @@ mod tests {
         assert!(states.troop_transport.is_held(fleet));
         assert!(!world.systems[system].ground_units.contains(&troop));
 
-        // The control: cargo embarked for a departure lands here.
+        // Cargo embarked for a departure, not held, stays aboard too:
+        // nothing in the original lands cargo without an order
+        // (ghidra/notes/regiment-unload.md). It landed here until the
+        // port's automatic landing was retired (2026-10-17).
         let (mut world, mut states, fleet, troop) = world_with_loading_fleet();
         states
             .troop_transport
@@ -901,8 +884,9 @@ mod tests {
 
         run_one_tick(&mut world, &mut states);
 
-        assert!(states.troop_transport.cargo(fleet).is_empty());
-        assert!(world.systems[system].ground_units.contains(&troop));
+        assert_eq!(states.troop_transport.cargo(fleet), [troop]);
+        assert!(!states.troop_transport.is_held(fleet));
+        assert!(!world.systems[system].ground_units.contains(&troop));
     }
 
     /// The first system, Alliance-held, with one yard of `yard_class`
@@ -1071,10 +1055,11 @@ mod tests {
     }
 
     #[test]
-    fn carried_regiments_land_only_on_their_side_s_standing_unblockaded_planet() {
-        // FUN_005073d0: a planet takes a regiment when it is the regiment's
-        // side's, not destroyed and not blockaded; elsewhere the regiment
-        // stays aboard (ghidra/notes/regiment-unload.md).
+    fn carried_regiments_stay_aboard_over_any_planet_without_an_order() {
+        // Nothing in the original lands cargo without an order
+        // (ghidra/notes/regiment-unload.md, "What happens to the rest of the
+        // cargo"). Until the port's automatic landing was retired
+        // (2026-10-17) a regiment landed on its side's standing planet.
         let run = |control: ControlKind, destroyed: bool| {
             let mut world = GameWorld::default();
             let make = |dat_id, control| System {
@@ -1166,12 +1151,10 @@ mod tests {
             states.troop_transport.cargo(fleet).is_empty()
                 && world.systems[target].ground_units.contains(&troop)
         };
-        assert!(run(ControlKind::Controlled(Faction::Alliance), false));
-        // A destroyed planet: stays aboard. (A blockade of the planet needs
-        // an enemy fleet with none of the side's, so the carrying fleet
-        // there rules it out, BlockadeSystem::system_is_blockaded.)
+        // The side's planet, standing or destroyed, another side's, or a
+        // neutral one: it stays aboard.
+        assert!(!run(ControlKind::Controlled(Faction::Alliance), false));
         assert!(!run(ControlKind::Controlled(Faction::Alliance), true));
-        // Another side's or a neutral planet: stays aboard.
         assert!(!run(ControlKind::Controlled(Faction::Empire), false));
         assert!(!run(ControlKind::Uncontrolled, false));
     }

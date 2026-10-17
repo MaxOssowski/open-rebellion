@@ -907,7 +907,6 @@ struct ModuleInputs<'a> {
     world: &'a GameWorld,
     mfg_state: &'a ManufacturingState,
     mission_state: &'a MissionState,
-    movement: &'a crate::movement::MovementState,
     transport: &'a crate::troop_transport::TroopTransportState,
     tick: u64,
     config: &'a GameConfig,
@@ -1038,7 +1037,6 @@ impl AISystem {
             world,
             mfg_state,
             mission_state,
-            movement,
             transport: troop_transport,
             tick,
             config,
@@ -1364,7 +1362,6 @@ impl AISystem {
             world,
             mfg_state,
             mission_state,
-            movement,
             config,
             research_state,
             uprisings,
@@ -1392,7 +1389,7 @@ impl AISystem {
             ),
             4 => Self::mission_step(state, planner, ctx, actions),
             0xa => production(actions),
-            0xc => Self::evaluate_troop_deployment(world, movement, faction, config, actions),
+            0xc => Self::evaluate_troop_deployment(world, faction, config, actions),
             _ => {}
         }
     }
@@ -2502,13 +2499,9 @@ impl AISystem {
     ///    receive troops from donor systems.
     ///
     /// Donor threshold and receiver minimum are configurable via `AiConfig`.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-    )]
+    /// Each move is one regiment's own Move to the receiver.
     fn evaluate_troop_deployment(
         world: &GameWorld,
-        movement: &crate::movement::MovementState,
         faction: AiFaction,
         config: &GameConfig,
         actions: &mut Vec<AIAction>,
@@ -2581,124 +2574,24 @@ impl AISystem {
         // Sort receivers by priority (lowest number = highest priority).
         receivers.sort_by_key(|(_, priority)| *priority);
 
-        // Fleet orders created by the deployment pass are the only legal way
-        // for troops to leave a planet. Fill attack transports first, leaving
-        // the configured minimum garrison behind. Friendly reinforcement
-        // orders carry one regiment when their destination needs it.
+        // Each weak system takes one regiment from an oversupplied donor,
+        // which travels on its own (Move 0x201 of the regiment, as module
+        // 6's moves give; port: the heuristic stands in for module 0xc).
         let mut reserved_troops = HashSet::new();
-        let mut moved_fleets = HashSet::new();
-        let mut reinforced_systems = HashSet::new();
-        for action in actions.iter_mut() {
-            let AIAction::MoveFleet {
-                fleet,
-                to_system,
-                reason,
-                troops,
-            } = action
-            else {
-                continue;
-            };
-            moved_fleets.insert(*fleet);
-
-            let Some(fleet_value) = world.fleets.get(*fleet) else {
-                continue;
-            };
-            let capacity = fleet_value
-                .capital_ships
-                .iter()
-                .filter(|ship| ship.alive)
-                .filter_map(|ship| world.capital_ship_classes.get(ship.class))
-                .map(|class| class.troop_capacity)
-                .sum::<u32>() as usize;
-            if capacity == 0 {
-                continue;
-            }
-
-            let Some(origin) = world.systems.get(fleet_value.location) else {
-                continue;
-            };
-            let mut available: Vec<_> = origin
-                .ground_units
-                .iter()
-                .copied()
-                .filter(|troop| !reserved_troops.contains(troop))
-                .filter(|troop| {
-                    world
-                        .troops
-                        .get(*troop)
-                        .is_some_and(|value| value.is_alliance == is_alliance)
-                })
-                .collect();
-            available.sort_unstable();
-
-            let limit = match reason {
-                FleetMoveReason::Attack => available
-                    .len()
-                    .saturating_sub(config.ai.troop_garrison_min)
-                    .min(capacity),
-                FleetMoveReason::Reinforce => {
-                    let needs_reinforcement =
-                        receivers.iter().any(|(receiver, _)| receiver == to_system);
-                    let donor_has_surplus =
-                        available.len() > config.ai.troop_garrison_donor_threshold;
-                    usize::from(needs_reinforcement && donor_has_surplus)
-                }
-            };
-            troops.extend(available.into_iter().rev().take(limit));
-            troops.sort_unstable();
-            reserved_troops.extend(troops.iter().copied());
-            if !troops.is_empty() && matches!(reason, FleetMoveReason::Reinforce) {
-                reinforced_systems.insert(*to_system);
-            }
-        }
-
-        // If strategic fleet deployment did not already cover a weak friendly
-        // system, pair it with an unused transport at an oversupplied donor.
         for (receiver, _) in receivers {
-            if reinforced_systems.contains(&receiver) {
-                continue;
-            }
-            let Some((fleet, troop)) = donors.iter().find_map(|(donor, troops)| {
-                let troop = troops
+            let Some(troop) = donors.iter().find_map(|(_, troops)| {
+                troops
                     .iter()
                     .rev()
                     .copied()
-                    .find(|troop| !reserved_troops.contains(troop))?;
-                let fleet = world
-                    .systems
-                    .get(*donor)?
-                    .fleets
-                    .iter()
-                    .copied()
-                    .find(|fleet| {
-                        if moved_fleets.contains(fleet) || movement.is_in_transit(*fleet) {
-                            return false;
-                        }
-                        let Some(value) = world.fleets.get(*fleet) else {
-                            return false;
-                        };
-                        value.is_alliance == is_alliance
-                            && !value.is_empty()
-                            && value.capital_ships.iter().any(|ship| {
-                                ship.alive
-                                    && world
-                                        .capital_ship_classes
-                                        .get(ship.class)
-                                        .is_some_and(|class| class.troop_capacity > 0)
-                            })
-                    })?;
-                Some((fleet, troop))
+                    .find(|troop| !reserved_troops.contains(troop))
             }) else {
                 continue;
             };
-
-            actions.push(AIAction::MoveFleet {
-                fleet,
-                to_system: receiver,
-                reason: FleetMoveReason::Reinforce,
+            actions.push(AIAction::MoveRegiments {
                 troops: vec![troop],
+                to: receiver,
             });
-            moved_fleets.insert(fleet);
             reserved_troops.insert(troop);
         }
     }
@@ -3164,7 +3057,6 @@ mod tests {
                 world,
                 &ManufacturingState::new(),
                 &MissionState::new(),
-                &crate::movement::MovementState::new(),
                 &ticks(7),
                 &GameConfig::default(),
                 &crate::research::ResearchState::new(),
@@ -3224,7 +3116,6 @@ mod tests {
             &world,
             &ManufacturingState::new(),
             &MissionState::new(),
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &research,
@@ -3335,18 +3226,15 @@ mod tests {
         // 0xa's shipyard placement (FUN_004cc9c0); its other modules' kinds
         // are not 0xa's.
         let (world, sys_key, research, faction) = ground_world(true, 0, 2);
-        let (missions, mfg, movement, config, uprisings) = (
+        let (missions, mfg, config, uprisings) = (
             MissionState::new(),
             ManufacturingState::new(),
-            crate::movement::MovementState::new(),
             GameConfig::default(),
             crate::uprising::UprisingState::default(),
         );
         let ctx = ModuleInputs {
             faction,
-            ..inputs(
-                &world, &missions, &research, &mfg, &movement, &config, &uprisings,
-            )
+            ..inputs(&world, &missions, &research, &mfg, &config, &uprisings)
         };
         let busy = HashSet::new();
         let mut planner = Planner::new(&world, &missions, &busy, true, 7);
@@ -3408,7 +3296,6 @@ mod tests {
         world: &GameWorld,
         mfg_state: &ManufacturingState,
         mission_state: &MissionState,
-        movement: &crate::movement::MovementState,
         tick_events: &[TickEvent],
         config: &GameConfig,
         research_state: &ResearchState,
@@ -3429,7 +3316,6 @@ mod tests {
             world,
             mfg_state,
             mission_state,
-            movement,
             transport: Box::leak(Box::default()),
             tick: last.tick,
             config,
@@ -3506,7 +3392,6 @@ mod tests {
         missions: &'a MissionState,
         research: &'a ResearchState,
         mfg: &'a ManufacturingState,
-        movement: &'a crate::movement::MovementState,
         config: &'a GameConfig,
         uprisings: &'a crate::uprising::UprisingState,
     ) -> ModuleInputs<'a> {
@@ -3514,7 +3399,6 @@ mod tests {
             world,
             mfg_state: mfg,
             mission_state: missions,
-            movement,
             transport: Box::leak(Box::default()),
             tick: 7,
             config,
@@ -3568,7 +3452,6 @@ mod tests {
             world,
             &ManufacturingState::new(),
             &MissionState::new(),
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -3691,7 +3574,6 @@ mod tests {
             &world,
             &mfg,
             &missions,
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -3723,7 +3605,6 @@ mod tests {
             &world,
             &mfg,
             &missions,
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -3864,7 +3745,6 @@ mod tests {
             &world,
             &mfg,
             &missions,
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -3950,7 +3830,6 @@ mod tests {
             &world,
             &mfg,
             &missions,
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -4030,7 +3909,6 @@ mod tests {
             &world,
             &ManufacturingState::new(),
             &MissionState::new(),
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &research,
@@ -4112,7 +3990,6 @@ mod tests {
             &world,
             &ManufacturingState::new(),
             &MissionState::new(),
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -4162,7 +4039,6 @@ mod tests {
             &world,
             &ManufacturingState::new(),
             &MissionState::new(),
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
@@ -4207,7 +4083,6 @@ mod tests {
             &world,
             &ManufacturingState::new(),
             &MissionState::new(),
-            &movement,
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
@@ -4261,7 +4136,6 @@ mod tests {
             &world,
             &ManufacturingState::new(),
             &MissionState::new(),
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &ResearchState::new(),
@@ -4411,7 +4285,6 @@ mod tests {
             &world,
             &mfg,
             &missions,
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -4501,7 +4374,6 @@ mod tests {
             &world,
             &mfg,
             &missions,
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -4571,7 +4443,6 @@ mod tests {
             &world,
             &mfg,
             &missions,
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -4654,7 +4525,6 @@ mod tests {
             &world,
             &mfg,
             &missions,
-            &crate::movement::MovementState::new(),
             &ticks(7),
             &GameConfig::default(),
             &crate::research::ResearchState::new(),
@@ -4754,19 +4624,6 @@ mod tests {
             });
             world.systems[donor_sys].ground_units.push(tk);
         }
-        let transport_class = world.capital_ship_classes.insert(CapitalShipClass {
-            troop_capacity: 1,
-            ..CapitalShipClass::default()
-        });
-        let transport = world.fleets.insert(Fleet {
-            location: donor_sys,
-            capital_ships: ShipInstance::make(transport_class, 100, false, 1),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-        });
-        world.systems[donor_sys].fleets.push(transport);
 
         // Frontline receiver: 0 troops, near enemy territory.
         let frontline_sys = world.systems.insert(System {
@@ -4847,30 +4704,21 @@ mod tests {
         });
 
         let mut actions = Vec::new();
-        AISystem::evaluate_troop_deployment(
-            &world,
-            &crate::movement::MovementState::new(),
-            AiFaction::Empire,
-            &config,
-            &mut actions,
-        );
+        AISystem::evaluate_troop_deployment(&world, AiFaction::Empire, &config, &mut actions);
 
         // Should dispatch at least one troop move.
         assert!(!actions.is_empty(), "expected troop deployment actions");
 
         // Module 0xc, the movement planners, issues the troop moves.
-        let (missions, research, mfg, movement, uprisings) = (
+        let (missions, research, mfg, uprisings) = (
             MissionState::new(),
             ResearchState::new(),
             ManufacturingState::new(),
-            crate::movement::MovementState::new(),
             crate::uprising::UprisingState::default(),
         );
         let ctx = ModuleInputs {
             faction: AiFaction::Empire,
-            ..inputs(
-                &world, &missions, &research, &mfg, &movement, &config, &uprisings,
-            )
+            ..inputs(&world, &missions, &research, &mfg, &config, &uprisings)
         };
         let busy = HashSet::new();
         let mut planner = Planner::new(&world, &missions, &busy, false, 7);
@@ -4884,28 +4732,21 @@ mod tests {
         );
         assert_eq!(by_module, actions);
 
-        // First troop move should go to the frontline system (higher priority).
-        if let AIAction::MoveFleet {
-            fleet,
-            to_system,
-            reason: FleetMoveReason::Reinforce,
-            troops,
-        } = &actions[0]
-        {
-            assert_eq!(*fleet, transport);
-            assert_eq!(
-                *to_system, frontline_sys,
-                "first troop deployment should target frontline system"
-            );
-            assert_eq!(troops.len(), 1);
-        } else {
-            panic!("expected transport-backed MoveFleet action");
-        }
+        // The first troop move goes to the frontline system (higher
+        // priority): one donor regiment's own Move (0x201). It rode a
+        // transport fleet until the port's automatic landing was retired
+        // (2026-10-17): carried regiments now stay aboard without an order
+        // (ghidra/notes/regiment-unload.md).
+        let AIAction::MoveRegiments { troops, to } = &actions[0] else {
+            panic!("expected a regiment's own Move: {actions:?}");
+        };
+        assert_eq!(
+            *to, frontline_sys,
+            "first troop deployment should target frontline system"
+        );
+        assert_eq!(troops.len(), 1);
+        assert!(world.systems[donor_sys].ground_units.contains(&troops[0]));
     }
-
-    // -----------------------------------------------------------------------
-    // D3: Death Star multi-target and retreat tests
-    // -----------------------------------------------------------------------
 
     // -----------------------------------------------------------------------
     // D5: Reconnaissance test
@@ -5443,17 +5284,14 @@ mod tests {
     ) -> Vec<AIAction> {
         let mut planner = Planner::new(world, missions, &state.busy_characters.clone(), true, tick);
         let mut actions = Vec::new();
-        let (mfg, movement, config, uprisings) = (
+        let (mfg, config, uprisings) = (
             ManufacturingState::new(),
-            crate::movement::MovementState::new(),
             GameConfig::default(),
             crate::uprising::UprisingState::default(),
         );
         let ctx = ModuleInputs {
             tick,
-            ..inputs(
-                world, missions, research, &mfg, &movement, &config, &uprisings,
-            )
+            ..inputs(world, missions, research, &mfg, &config, &uprisings)
         };
         research_all(state, &mut planner, &ctx, &mut actions);
         actions
@@ -6356,19 +6194,16 @@ mod tests {
         // modules 7 and 0xb build squadrons and ships (FUN_004d46e0,
         // FUN_004ca910); modules 2, 3, 5, 6, 0xa and 0xb issue nothing.
         let (world, _) = fighter_world();
-        let (missions, research, mfg, movement, config, uprisings) = (
+        let (missions, research, mfg, config, uprisings) = (
             MissionState::new(),
             ResearchState::new(),
             ManufacturingState::new(),
-            crate::movement::MovementState::new(),
             GameConfig::default(),
             crate::uprising::UprisingState::default(),
         );
         let ctx = ModuleInputs {
             faction: AiFaction::Empire,
-            ..inputs(
-                &world, &missions, &research, &mfg, &movement, &config, &uprisings,
-            )
+            ..inputs(&world, &missions, &research, &mfg, &config, &uprisings)
         };
         let busy = HashSet::new();
         let mut planner = Planner::new(&world, &missions, &busy, false, 7);
@@ -7901,17 +7736,14 @@ mod tests {
         let first = designer(&mut world, TechType::Ship, 60);
         let second = designer(&mut world, TechType::Ship, 40);
         let mut state = AIState::new(AiFaction::Alliance);
-        let (missions, research, mfg, movement, config, uprisings) = (
+        let (missions, research, mfg, config, uprisings) = (
             MissionState::new(),
             ResearchState::new(),
             ManufacturingState::new(),
-            crate::movement::MovementState::new(),
             GameConfig::default(),
             crate::uprising::UprisingState::default(),
         );
-        let ctx = inputs(
-            &world, &missions, &research, &mfg, &movement, &config, &uprisings,
-        );
+        let ctx = inputs(&world, &missions, &research, &mfg, &config, &uprisings);
         let busy = state.busy_characters.clone();
         let mut planner = Planner::new(&world, &missions, &busy, true, 7);
         AISystem::research_strategy(

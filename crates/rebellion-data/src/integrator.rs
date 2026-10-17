@@ -836,32 +836,6 @@ impl PerceptionIntegrator {
         );
     }
 
-    /// Land every regiment carried by a fleet and emit one movement record.
-    pub fn apply_troop_landing(
-        &mut self,
-        world: &mut GameWorld,
-        troop_transport: &mut TroopTransportState,
-        fleet: FleetKey,
-        system: SystemKey,
-    ) -> Vec<TroopKey> {
-        let landed = troop_transport
-            .disembark_all(world, fleet, system)
-            .unwrap_or_default();
-        if !landed.is_empty() {
-            self.emit(
-                SYS_MOVEMENT,
-                EVT_TROOP_MOVED,
-                serde_json::json!({
-                    "system": sys_name(world, system),
-                    "fleet": format!("{:?}", fleet),
-                    "regiments": landed.len(),
-                    "status": "landed",
-                }),
-            );
-        }
-        landed
-    }
-
     /// Record regiments whose own transit ended (`FUN_00556430`, event
     /// `0x387`): one movement record each, arrived or lost on arrival
     /// (`FUN_004fc080`).

@@ -159,7 +159,10 @@ The order moves only the selected regiments; each is its own command object
 (`+0x3c`). Regiments left aboard stay in their ship's container. Nothing in
 the original lands cargo without an order: the port's automatic landing
 (F-007E, "cargo lands only when its faction is the sole orbital faction") has
-no source in this trace.
+no source in this trace, and was retired on 2026-10-17. Carried regiments
+now stay aboard until a Move lands them. The fleet's hold (`load`,
+`release`) only kept the automatic landing off a fleet that loaded by
+order, so it no longer changes anything; it stays in the save.
 
 ## Port notes
 

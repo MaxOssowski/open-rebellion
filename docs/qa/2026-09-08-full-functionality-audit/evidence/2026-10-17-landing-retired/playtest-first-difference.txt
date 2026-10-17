@@ -1,0 +1,7 @@
+1 differs at line 135 tick 2
+2 differs at line 147 tick 2
+3 differs at line 151 tick 2
+7 differs at line 160 tick 2
+13 differs at line 127 tick 1
+42 differs at line 1070 tick 105
+47 identical

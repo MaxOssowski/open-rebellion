@@ -574,11 +574,12 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   where it ran 4, 4, 9, 9, 15, 15. Teach the AI to avoid lone-ship fleets,
   or join them by condition, and measure against that run (Tom,
   2026-10-05).
-- [ ] Source or retire the port's automatic landing (F-007E: cargo lands
+- [x] Source or retire the port's automatic landing (F-007E: cargo lands
   when its side alone orbits a system). The unloading trace finds no
   original path that lands cargo without an order
   (`ghidra/notes/regiment-unload.md`, "What happens to the rest of the
-  cargo"); it stays until traced (Tom, 2026-10-04).
+  cargo"). Retired 2026-10-17 by the user's choice: carried regiments stay
+  aboard until an order moves them.
 - [ ] Port targeting of characters and objects (`+0x68` hit test, the walk up
   from a team member) so the dialog offers Rescue, Assassination, and
   Abduction (F-019).

@@ -1,0 +1,391 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against 522555db",
+  "seeds": {
+    "1": {
+      "control_changed": [
+        8,
+        10
+      ],
+      "ai_action_types_changed": {
+        "BoardRegiments": [
+          0,
+          4
+        ],
+        "Build": [
+          73,
+          132
+        ],
+        "CreateFleet": [
+          9,
+          31
+        ],
+        "DispatchMission": [
+          140,
+          225
+        ],
+        "JoinFleet": [
+          3,
+          8
+        ],
+        "MoveFleet": [
+          1,
+          0
+        ],
+        "MoveRegiments": [
+          6,
+          19
+        ],
+        "MoveShips": [
+          12,
+          17
+        ],
+        "MoveSquadronTeam": [
+          2,
+          3
+        ],
+        "MoveSquadrons": [
+          0,
+          1
+        ],
+        "Scrap": [
+          8,
+          10
+        ],
+        "SetDestination": [
+          57,
+          95
+        ]
+      },
+      "ground_occupations_new": [
+        [
+          27,
+          "Commenor",
+          "Controlled(Empire)"
+        ],
+        [
+          52,
+          "Commenor",
+          "Controlled(Empire)"
+        ]
+      ]
+    },
+    "2": {
+      "control_changed": [
+        9,
+        11
+      ],
+      "ai_action_types_changed": {
+        "BoardRegiments": [
+          0,
+          1
+        ],
+        "Build": [
+          86,
+          114
+        ],
+        "CreateFleet": [
+          16,
+          18
+        ],
+        "DispatchMission": [
+          122,
+          133
+        ],
+        "EnqueueProduction": [
+          10,
+          7
+        ],
+        "JoinFleet": [
+          3,
+          1
+        ],
+        "MoveFleet": [
+          1,
+          0
+        ],
+        "MoveRegiments": [
+          16,
+          22
+        ],
+        "MoveShips": [
+          11,
+          6
+        ],
+        "Scrap": [
+          14,
+          19
+        ],
+        "SetDestination": [
+          79,
+          101
+        ]
+      },
+      "ground_occupations_new": [
+        [
+          123,
+          "Yavin",
+          "Controlled(Alliance)"
+        ]
+      ]
+    },
+    "3": {
+      "control_changed": [
+        11,
+        19
+      ],
+      "ai_action_types_changed": {
+        "BoardRegiments": [
+          3,
+          1
+        ],
+        "Bombard": [
+          3,
+          1
+        ],
+        "Build": [
+          63,
+          40
+        ],
+        "CreateFleet": [
+          12,
+          10
+        ],
+        "DispatchMission": [
+          241,
+          235
+        ],
+        "JoinFleet": [
+          4,
+          2
+        ],
+        "MoveFleet": [
+          2,
+          0
+        ],
+        "MoveRegiments": [
+          12,
+          16
+        ],
+        "MoveShips": [
+          18,
+          6
+        ],
+        "Scrap": [
+          11,
+          13
+        ],
+        "SetDestination": [
+          58,
+          36
+        ]
+      },
+      "ground_occupations_new": [
+        [
+          27,
+          "Xyquine",
+          "Controlled(Empire)"
+        ],
+        [
+          52,
+          "Xyquine",
+          "Controlled(Empire)"
+        ],
+        [
+          126,
+          "Yavin",
+          "Controlled(Alliance)"
+        ],
+        [
+          292,
+          "Yavin",
+          "Controlled(Alliance)"
+        ],
+        [
+          414,
+          "Yavin",
+          "Controlled(Alliance)"
+        ]
+      ]
+    },
+    "7": {
+      "control_changed": [
+        10,
+        13
+      ],
+      "ai_action_types_changed": {
+        "AbortMission": [
+          2,
+          1
+        ],
+        "Build": [
+          33,
+          15
+        ],
+        "CreateFleet": [
+          19,
+          9
+        ],
+        "DispatchMission": [
+          179,
+          185
+        ],
+        "EnqueueProduction": [
+          8,
+          11
+        ],
+        "JoinFleet": [
+          3,
+          1
+        ],
+        "MoveFleet": [
+          1,
+          0
+        ],
+        "MoveRegiments": [
+          6,
+          10
+        ],
+        "Scrap": [
+          35,
+          15
+        ],
+        "SetDestination": [
+          33,
+          15
+        ]
+      },
+      "ground_occupations_new": [
+        [
+          77,
+          "Praesitlyn",
+          "Controlled(Empire)"
+        ],
+        [
+          152,
+          "Praesitlyn",
+          "Controlled(Empire)"
+        ]
+      ]
+    },
+    "13": {
+      "control_changed": [
+        11,
+        11
+      ],
+      "ai_action_types_changed": {
+        "AbortMission": [
+          1,
+          2
+        ],
+        "Build": [
+          2,
+          40
+        ],
+        "CreateFleet": [
+          2,
+          14
+        ],
+        "DispatchMission": [
+          286,
+          188
+        ],
+        "JoinFleet": [
+          0,
+          1
+        ],
+        "MoveFleet": [
+          3,
+          0
+        ],
+        "MoveShips": [
+          0,
+          1
+        ],
+        "MoveSquadrons": [
+          0,
+          6
+        ],
+        "Scrap": [
+          9,
+          7
+        ],
+        "SetDestination": [
+          2,
+          40
+        ]
+      },
+      "ground_occupations_new": [
+        [
+          88,
+          "Yavin",
+          "Controlled(Alliance)"
+        ]
+      ]
+    },
+    "42": {
+      "control_changed": [
+        6,
+        6
+      ],
+      "ai_action_types_changed": {
+        "BoardRegiments": [
+          6,
+          7
+        ],
+        "Bombard": [
+          6,
+          2
+        ],
+        "Build": [
+          251,
+          231
+        ],
+        "CreateFleet": [
+          39,
+          48
+        ],
+        "DispatchMission": [
+          288,
+          294
+        ],
+        "EnqueueProduction": [
+          6,
+          0
+        ],
+        "JoinFleet": [
+          1,
+          12
+        ],
+        "MoveRegiments": [
+          36,
+          39
+        ],
+        "MoveShips": [
+          14,
+          30
+        ],
+        "MoveSquadrons": [
+          6,
+          7
+        ],
+        "Scrap": [
+          16,
+          17
+        ],
+        "SetDestination": [
+          165,
+          149
+        ]
+      },
+      "ground_occupations_new": []
+    },
+    "47": {
+      "control_changed": [
+        8,
+        8
+      ],
+      "ai_action_types_changed": {},
+      "ground_occupations_new": []
+    }
+  }
+}
