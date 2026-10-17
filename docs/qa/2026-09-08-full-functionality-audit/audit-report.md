@@ -2152,6 +2152,20 @@ cross-runtime proof remain open
   of the tree's family, costing the class difficulty times side `+0xc0`
   over 100, with tests citing them. The research bullet is closed; the
   economy bullets stand.
+- 2026-10-17: who holds a system (`FUN_0050b610`) read and ported
+  (`ghidra/notes/system-control.md`):
+  - the regiments' side holds the system; with both sides' regiments the
+    previous side keeps it;
+  - without regiments the side whose support reaches GNPRTB 7760 (60,
+    `FUN_0055a080`) holds it;
+  - an unpopulated system follows only its regiments.
+  The port had misread GNPRTB 7760 as an energy test, returned
+  `Contested`, and made every unpopulated system neutral. That clashed
+  with the occupation in step 3b, which now uses the same rule
+  (`economy::system_holder`), as the original's handlers do when a
+  system's regiments change. Systems flipping back and forth fall from 5
+  to 2 over seven 600-day seeds. Golden final `v1:9234ac6ef0f26a8a` ->
+  `v1:ef80035d2be8099a` (`evidence/2026-10-17-system-control/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

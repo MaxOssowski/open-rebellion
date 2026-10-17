@@ -1123,15 +1123,20 @@ fn place_loading_fleet(
     else {
         return;
     };
+    // Both stay the player's without regiments: a side holds such a system
+    // with its support at GNPRTB 7760 (60; economy::resolve_system_control,
+    // FUN_0050b610, FUN_0055a080).
+    let support = if player == Faction::Alliance {
+        0.9
+    } else {
+        0.1
+    };
     for system in [primary, target] {
-        world.systems[system].control = ControlKind::Controlled(player);
-        world.systems[system].exploration_status = ExplorationStatus::Explored;
+        let value = &mut world.systems[system];
+        value.control = ControlKind::Controlled(player);
+        value.exploration_status = ExplorationStatus::Explored;
+        (value.popularity_alliance, value.popularity_empire) = (support, 1.0 - support);
     }
-    // The empty target stays the player's until the fleet arrives: without
-    // regiments a system keeps its holder only with energy at GNPRTB 7760
-    // (60; economy::resolve_system_control, FUN_0050b610), and a carried
-    // regiment lands only on its side's planet (FUN_005073d0).
-    world.systems[target].total_energy = world.systems[target].total_energy.max(60);
     for (key, value) in &mut world.fleets {
         if key != fleet
             && Some(key) != second

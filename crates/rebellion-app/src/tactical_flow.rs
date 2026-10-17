@@ -289,35 +289,27 @@ pub(crate) fn reconcile_death_star_result(
     true
 }
 
-/// A planet with one side's regiments alone passes to that side, and two
-/// sides' regiments stand together: the original fights on the ground only
-/// in a Planetary Assault (`ghidra/notes/planetary-assault.md`). Carried
-/// regiments stay aboard until an order moves them: nothing in the original
-/// lands cargo without one (`ghidra/notes/regiment-unload.md`). The
-/// simulation's step 3b (`rebellion_data::simulation`) does the same. port:
-/// the occupation is the port's.
+/// A planet with regiments takes the holder the economy gives it
+/// (`rebellion_core::economy::system_holder`, `FUN_0050b610`, which the
+/// original runs as soon as a system's regiments change, `FUN_005109f0`):
+/// one side's regiments alone take it, two sides' keep the previous side.
+/// The original fights on the ground only in a Planetary Assault
+/// (`ghidra/notes/planetary-assault.md`). Carried regiments stay aboard
+/// until an order moves them (`ghidra/notes/regiment-unload.md`). The
+/// simulation's step 3b (`rebellion_data::simulation`) does the same.
 pub(crate) fn occupy(world: &mut GameWorld, tick: u64, log: &mut MessageLog) {
     let systems: Vec<SystemKey> = world.systems.keys().collect();
     for system in systems {
-        let (alliance, empire) = world.systems.get(system).map_or((false, false), |value| {
-            value
-                .ground_units
-                .iter()
-                .filter_map(|troop| world.troops.get(*troop))
-                .filter(|troop| troop.regiment_strength > 0)
-                .fold((false, false), |(a, e), troop| {
-                    (a || troop.is_alliance, e || !troop.is_alliance)
-                })
-        });
-        let winner = match (alliance, empire) {
-            (true, false) => Some(Faction::Alliance),
-            (false, true) => Some(Faction::Empire),
-            _ => None,
+        let Some(value) = world.systems.get(system) else {
+            continue;
         };
-        if let Some(winner) = winner {
-            if world.systems.get(system).map(|value| value.control)
-                != Some(ControlKind::Controlled(winner))
-            {
+        if value.ground_units.is_empty() {
+            continue;
+        }
+        if let ControlKind::Controlled(winner) =
+            rebellion_core::economy::system_holder(world, value)
+        {
+            if value.control != ControlKind::Controlled(winner) {
                 apply_system_occupation(world, system, winner, tick, log);
             }
         }
@@ -573,21 +565,30 @@ mod tests {
                 && message.text.contains("occupied by Alliance")
         }));
         // The Empire's regiment alone on an Alliance planet takes it, the
-        // Alliance's still aboard not counting; a regiment at strength 0
-        // does not count either.
+        // Alliance's still aboard not counting.
         let (mut world, system, fleet, _, transport) =
             transport_fixture(ControlKind::Controlled(Faction::Alliance), true);
         assert_eq!(transport.carried_count(fleet), 1);
+        occupy(&mut world, 44, &mut MessageLog::default());
+        assert_eq!(
+            world.systems[system].control,
+            ControlKind::Controlled(Faction::Empire)
+        );
+        // FUN_0050b610 counts every regiment (FUN_00504cc0), one at
+        // strength 0 too: with both sides' the holder stays. (The port's
+        // occupation skipped it until 2026-10-17.)
+        let (mut world, system, _, _, _) =
+            transport_fixture(ControlKind::Controlled(Faction::Alliance), true);
         let spent = world.troops.insert(TroopUnit {
             class_dat_id: DatId::new(14),
             is_alliance: true,
             regiment_strength: 0,
         });
         world.systems[system].ground_units.push(spent);
-        occupy(&mut world, 44, &mut MessageLog::default());
+        occupy(&mut world, 45, &mut MessageLog::default());
         assert_eq!(
             world.systems[system].control,
-            ControlKind::Controlled(Faction::Empire)
+            ControlKind::Controlled(Faction::Alliance)
         );
     }
 

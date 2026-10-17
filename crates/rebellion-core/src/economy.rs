@@ -53,7 +53,9 @@ const GNPRTB_EMPIRE_TROOP_MULT: u16 = 7680; // =2: Empire troop doubling + garri
 const GNPRTB_UPRISING_GARRISON_MULT: u16 = 7682; // =2: garrison doubles during uprising
 const GNPRTB_KDY_CAPSHIP_PENALTY: u16 = 7684; // =5: KDY production penalty per capital ship
 const GNPRTB_KDY_FIGHTER_PENALTY: u16 = 7685; // =2: KDY production penalty per fighter
-const GNPRTB_ENERGY_CONTROL_THRESHOLD: u16 = 7760; // =60: energy needed for control eligibility
+/// GNPRTB 7760 (60, `DAT_006bb4c0`): the support a side needs to hold a
+/// system without regiments (`FUN_0055a080`).
+const GNPRTB_SUPPORT_CONTROL_THRESHOLD: u16 = 7760;
 const GNPRTB_MAINTENANCE_RATE_CONTROLLED: u16 = 7694; // =30: ticks between maintenance checks (controlled)
 
 // ---------------------------------------------------------------------------
@@ -493,11 +495,15 @@ impl EconomySystem {
                 (100 - total_capships * capship_penalty - total_fighters * fighter_penalty)
                     .clamp(0, 100) as i8;
 
-            // 5. Troop-based side resolution (FUN_0050b610).
-            // Original resolves controlling faction every tick from troop presence.
-            // If Alliance troops only: Alliance controls. Empire only: Empire controls.
-            // Both: keep existing (contested). Neither: uncontrolled.
-            let resolved_control = resolve_system_control(sys, &presence, gnprtb, difficulty);
+            // 5. The holder (FUN_0050b610): the regiments' side, else the
+            // support side.
+            let resolved_control = resolve_system_control(
+                sys,
+                presence.alliance_troops > 0,
+                presence.empire_troops > 0,
+                gnprtb,
+                difficulty,
+            );
             if resolved_control != sys.control {
                 events.push(EconomyEvent::ControlResolved {
                     system: sys_key,
@@ -887,47 +893,84 @@ fn calculate_resource_allocation(world: &GameWorld, sys: &crate::world::System) 
 // Troop-based side resolution (FUN_0050b610)
 // ---------------------------------------------------------------------------
 
-/// Resolve which faction controls a system based on troop presence.
+/// Which side holds `sys` (`FUN_0050b610`, word `+0x84`):
+/// - the regiments' side (bits 4-5): the Alliance's or the Empire's
+///   regiments alone (`FUN_00504cc0` with side 1, 2), the previous side
+///   with both, none without any;
+/// - the support side (bits 2-3, `FUN_0055a080`): none for an unpopulated
+///   system (`+0x88` bit 0 clear, 3); the Alliance when its support
+///   (`+0x58`) reaches GNPRTB 7760, the Empire when 100 less it does, else
+///   none;
+/// - the holder (bits 0-1, `FUN_005588f0`): the regiments' side when there
+///   is one, else the support side.
 ///
-/// Original logic (`FUN_0050b610`):
-/// - If system not populated: Uncontrolled
-/// - If only Alliance troops: Alliance controls
-/// - If only Empire troops: Empire controls
-/// - If both: keep existing control (Contested)
-/// - If neither: Uncontrolled
+/// hyp: the port keeps no regiment bits, so with both sides' regiments the
+/// previous side is the side holding the system, if any. port: a side's
+/// uprising (`ControlKind::Uprising`) stays while that side holds the
+/// system.
 #[expect(
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
+    reason = "GNPRTB values are small integers."
 )]
-fn resolve_system_control(
+#[must_use]
+pub fn resolve_system_control(
     sys: &crate::world::System,
-    presence: &MilitaryPresence,
+    alliance_troops: bool,
+    empire_troops: bool,
     gnprtb: &GnprtbParams,
     difficulty: u8,
 ) -> ControlKind {
-    if !sys.is_populated {
-        return ControlKind::Uncontrolled;
-    }
-
-    let has_alliance = presence.alliance_troops > 0;
-    let has_empire = presence.empire_troops > 0;
-
-    match (has_alliance, has_empire) {
-        (true, false) => ControlKind::Controlled(crate::dat::Faction::Alliance),
-        (false, true) => ControlKind::Controlled(crate::dat::Faction::Empire),
-        (true, true) => ControlKind::Contested,
-        (false, false) => {
-            // No troops — original checks energy vs GNPRTB[7760] threshold.
-            // If system energy meets threshold, preserve existing control; else uncontrolled.
-            let threshold = gnprtb.value(GNPRTB_ENERGY_CONTROL_THRESHOLD, difficulty) as u8;
-            if sys.total_energy >= threshold {
-                sys.control
-            } else {
-                ControlKind::Uncontrolled
-            }
+    use crate::dat::Faction;
+    let held = sys
+        .control
+        .faction()
+        .filter(|&side| side != Faction::Neutral);
+    let regiments = match (alliance_troops, empire_troops) {
+        (true, false) => Some(Faction::Alliance),
+        (false, true) => Some(Faction::Empire),
+        (true, true) => held,
+        (false, false) => None,
+    };
+    let support = if sys.is_populated {
+        let threshold = gnprtb.value(GNPRTB_SUPPORT_CONTROL_THRESHOLD, difficulty) as i32;
+        let alliance = crate::uprising::support_points(sys, Faction::Alliance);
+        if alliance >= threshold {
+            Some(Faction::Alliance)
+        } else if 100 - alliance >= threshold {
+            Some(Faction::Empire)
+        } else {
+            None
         }
+    } else {
+        None
+    };
+    match regiments.or(support) {
+        Some(side) if sys.control == ControlKind::Uprising(side) => sys.control,
+        Some(side) => ControlKind::Controlled(side),
+        None if sys.control == ControlKind::Controlled(Faction::Neutral) => sys.control,
+        None => ControlKind::Uncontrolled,
     }
+}
+
+/// [`resolve_system_control`] with `sys`'s regiments counted as
+/// `FUN_0050b610` counts them: any regiment of a side on the planet.
+#[must_use]
+pub fn system_holder(world: &GameWorld, sys: &crate::world::System) -> ControlKind {
+    let side = |alliance: bool| {
+        sys.ground_units.iter().any(|key| {
+            world
+                .troops
+                .get(*key)
+                .is_some_and(|troop| troop.is_alliance == alliance)
+        })
+    };
+    resolve_system_control(
+        sys,
+        side(true),
+        side(false),
+        &world.gnprtb,
+        world.difficulty_index,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -2444,18 +2487,18 @@ mod tests {
     // Phase 3b: Troop-based side resolution tests
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn side_resolution_alliance_troops_only() {
-        let gnprtb = stock_gnprtb();
-        let sys = crate::world::System {
+    /// A populated system at 10 energy with the Alliance's support
+    /// `alliance` percent, held as `control`.
+    fn held_system(alliance: f32, control: ControlKind) -> crate::world::System {
+        crate::world::System {
             dat_id: DatId(0),
             name: "Test".into(),
             sector: crate::ids::SectorKey::default(),
             x: 0,
             y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.5,
-            popularity_empire: 0.5,
+            popularity_alliance: alliance / 100.0,
+            popularity_empire: 1.0 - alliance / 100.0,
             is_populated: true,
             total_energy: 10,
             raw_materials: 10,
@@ -2469,148 +2512,147 @@ mod tests {
             fighters: Vec::new(),
             is_headquarters: false,
             is_destroyed: false,
-            control: ControlKind::Uncontrolled,
-        };
-        let presence = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 3,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let result = resolve_system_control(&sys, &presence, &gnprtb, 2);
+            control,
+        }
+    }
+
+    #[test]
+    fn regiments_of_one_side_alone_hold_the_system_and_both_keep_the_holder() {
+        // FUN_0050b610: bits 4-5 from FUN_00504cc0(side 1, side 2): one
+        // side's regiments alone give that side; both keep the previous
+        // side; the holder (bits 0-1) is that side whatever the support.
+        use crate::dat::Faction::{Alliance, Empire};
+        let gnprtb = stock_gnprtb();
+        let empire = held_system(90.0, ControlKind::Controlled(Empire));
+        let holder =
+            |sys: &crate::world::System, a, e| resolve_system_control(sys, a, e, &gnprtb, 2);
         assert_eq!(
-            result,
-            ControlKind::Controlled(crate::dat::Faction::Alliance)
+            holder(&empire, true, false),
+            ControlKind::Controlled(Alliance)
         );
+        assert_eq!(
+            holder(&empire, false, true),
+            ControlKind::Controlled(Empire)
+        );
+        // Both: the previous side (it was ControlKind::Contested before
+        // FUN_0050b610 was read, 2026-10-17).
+        assert_eq!(holder(&empire, true, true), ControlKind::Controlled(Empire));
+        // Both with no side before: the support side.
+        let neutral = held_system(90.0, ControlKind::Uncontrolled);
+        assert_eq!(
+            holder(&neutral, true, true),
+            ControlKind::Controlled(Alliance)
+        );
+        // An unpopulated system follows its regiments too.
+        let mut bare = held_system(90.0, ControlKind::Uncontrolled);
+        bare.is_populated = false;
+        assert_eq!(holder(&bare, false, true), ControlKind::Controlled(Empire));
+        assert_eq!(holder(&bare, false, false), ControlKind::Uncontrolled);
     }
 
     #[test]
-    fn side_resolution_both_troops_contested() {
+    fn without_regiments_the_side_with_60_support_holds_the_system() {
+        // FUN_0055a080 on +0x58 (the Alliance's support) against GNPRTB
+        // 7760 (DAT_006bb4c0, 60): at least 60 gives the Alliance, 100
+        // less it at least 60 the Empire, else no side (3). The energy
+        // plays no part (the port compared it with 7760 until 2026-10-17).
+        use crate::dat::Faction::{Alliance, Empire};
         let gnprtb = stock_gnprtb();
-        let sys = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: crate::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.5,
-            popularity_empire: 0.5,
-            is_populated: true,
-            total_energy: 10,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
+        let holder = |alliance: f32, control: ControlKind| {
+            resolve_system_control(&held_system(alliance, control), false, false, &gnprtb, 2)
         };
-        let presence = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 2,
-            empire_troops: 3,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let result = resolve_system_control(&sys, &presence, &gnprtb, 2);
-        assert_eq!(result, ControlKind::Contested);
+        let empire = ControlKind::Controlled(Empire);
+        assert_eq!(holder(60.0, empire), ControlKind::Controlled(Alliance));
+        assert_eq!(holder(59.0, empire), ControlKind::Uncontrolled);
+        assert_eq!(holder(41.0, empire), ControlKind::Uncontrolled);
+        assert_eq!(holder(40.0, ControlKind::Uncontrolled), empire);
+        let mut rich = held_system(50.0, empire);
+        rich.total_energy = 200;
+        assert_eq!(
+            resolve_system_control(&rich, false, false, &gnprtb, 2),
+            ControlKind::Uncontrolled
+        );
+        // port: an uprising of the holding side stays, and a neutral holder
+        // keeps its kind.
+        assert_eq!(
+            holder(80.0, ControlKind::Uprising(Alliance)),
+            ControlKind::Uprising(Alliance)
+        );
+        assert_eq!(
+            holder(80.0, ControlKind::Uprising(Empire)),
+            ControlKind::Controlled(Alliance)
+        );
+        let neutral = ControlKind::Controlled(crate::dat::Faction::Neutral);
+        assert_eq!(holder(50.0, neutral), neutral);
     }
 
     #[test]
-    fn side_resolution_no_troops_energy_above_threshold_preserves() {
-        let gnprtb = stock_gnprtb();
-        let sys = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: crate::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.5,
-            popularity_empire: 0.5,
-            is_populated: true,
-            total_energy: 60,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
+    fn the_economy_s_run_gives_a_system_to_the_side_of_its_regiments() {
+        // FUN_00508250 -> FUN_0050b610: one side's regiments alone take a
+        // system the other side holds, whatever the support; with both
+        // sides', the holder keeps it; with none, the support decides.
+        use crate::dat::Faction::{Alliance, Empire};
+        let run = |alliance: bool, empire: bool, holder| {
+            let mut world = GameWorld::default();
+            world.gnprtb = stock_gnprtb();
+            let sys = world
+                .systems
+                .insert(held_system(90.0, ControlKind::Controlled(holder)));
+            for side in [alliance, empire]
+                .into_iter()
+                .zip([true, false])
+                .filter_map(|(present, side)| present.then_some(side))
+            {
+                let troop = world.troops.insert(crate::world::TroopUnit {
+                    class_dat_id: DatId(0),
+                    is_alliance: side,
+                    regiment_strength: 100,
+                });
+                world.systems[sys].ground_units.push(troop);
+            }
+            let mut state = EconomyState::default();
+            EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2)
+                .into_iter()
+                .find_map(|event| match event {
+                    EconomyEvent::ControlResolved { new_control, .. } => Some(new_control),
+                    _ => None,
+                })
         };
-        let presence = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 0,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let result = resolve_system_control(&sys, &presence, &gnprtb, 2);
-        // No troops but energy >= GNPRTB[7760](60) — preserves existing control
-        assert_eq!(result, ControlKind::Controlled(crate::dat::Faction::Empire));
+        assert_eq!(
+            run(false, true, Alliance),
+            Some(ControlKind::Controlled(Empire))
+        );
+        assert_eq!(run(true, true, Alliance), None);
+        assert_eq!(run(true, false, Alliance), None);
+        assert_eq!(run(false, false, Alliance), None);
+        // The Alliance's regiment alone takes an Empire system; with the
+        // Empire's too, the Empire keeps it.
+        assert_eq!(
+            run(true, false, Empire),
+            Some(ControlKind::Controlled(Alliance))
+        );
+        assert_eq!(run(true, true, Empire), None);
     }
 
     #[test]
-    fn side_resolution_no_troops_low_energy_becomes_uncontrolled() {
-        let gnprtb = stock_gnprtb();
-        let sys = crate::world::System {
-            dat_id: DatId(0),
-            name: "Test".into(),
-            sector: crate::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.5,
-            popularity_empire: 0.5,
-            is_populated: true,
-            total_energy: 10,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        };
-        let presence = MilitaryPresence {
-            alliance_fleets: 0,
-            empire_fleets: 0,
-            alliance_fighters: 0,
-            empire_fighters: 0,
-            alliance_troops: 0,
-            empire_troops: 0,
-            alliance_capships: 0,
-            empire_capships: 0,
-        };
-        let result = resolve_system_control(&sys, &presence, &gnprtb, 2);
-        // No troops and energy < GNPRTB[7760](60) — becomes uncontrolled
-        assert_eq!(result, ControlKind::Uncontrolled);
+    fn the_holder_counts_any_regiment_on_the_planet() {
+        // FUN_0050b610 counts each side's regiments with FUN_00504cc0, at
+        // any strength.
+        let mut world = GameWorld::default();
+        world.gnprtb = stock_gnprtb();
+        let mut sys = held_system(50.0, ControlKind::Uncontrolled);
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId(0),
+            is_alliance: false,
+            regiment_strength: 0,
+        });
+        sys.ground_units.push(troop);
+        assert_eq!(
+            system_holder(&world, &sys),
+            ControlKind::Controlled(crate::dat::Faction::Empire)
+        );
+        sys.ground_units.clear();
+        assert_eq!(system_holder(&world, &sys), ControlKind::Uncontrolled);
     }
 
     // --- Task #42: Empire troop doubling in support drift ---

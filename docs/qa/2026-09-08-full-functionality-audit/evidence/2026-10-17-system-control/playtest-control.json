@@ -1,0 +1,259 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against c4b8cfa4",
+  "seeds": {
+    "1": {
+      "head": {
+        "control_changed": 10,
+        "systems": 7,
+        "systems_changing_3_or_more_times": {
+          "Commenor": [
+            [
+              3,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              27,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ],
+            [
+              28,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              52,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ]
+          ]
+        }
+      },
+      "new": {
+        "control_changed": 18,
+        "systems": 14,
+        "systems_changing_3_or_more_times": {
+          "Sullust": [
+            [
+              9,
+              "economy",
+              "Controlled(Alliance)"
+            ],
+            [
+              57,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ],
+            [
+              102,
+              "economy",
+              "Controlled(Alliance)"
+            ],
+            [
+              112,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ],
+            [
+              293,
+              "economy",
+              "Controlled(Alliance)"
+            ]
+          ]
+        }
+      }
+    },
+    "2": {
+      "head": {
+        "control_changed": 11,
+        "systems": 9,
+        "systems_changing_3_or_more_times": {
+          "Yavin": [
+            [
+              3,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              123,
+              "ground_occupation",
+              "Controlled(Alliance)"
+            ],
+            [
+              140,
+              "economy",
+              "Uncontrolled"
+            ]
+          ]
+        }
+      },
+      "new": {
+        "control_changed": 12,
+        "systems": 11,
+        "systems_changing_3_or_more_times": {}
+      }
+    },
+    "3": {
+      "head": {
+        "control_changed": 19,
+        "systems": 11,
+        "systems_changing_3_or_more_times": {
+          "Xyquine": [
+            [
+              3,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              27,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ],
+            [
+              28,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              52,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ]
+          ],
+          "Yavin": [
+            [
+              5,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              126,
+              "ground_occupation",
+              "Controlled(Alliance)"
+            ],
+            [
+              171,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              292,
+              "ground_occupation",
+              "Controlled(Alliance)"
+            ],
+            [
+              293,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              414,
+              "ground_occupation",
+              "Controlled(Alliance)"
+            ]
+          ]
+        }
+      },
+      "new": {
+        "control_changed": 17,
+        "systems": 17,
+        "systems_changing_3_or_more_times": {}
+      }
+    },
+    "7": {
+      "head": {
+        "control_changed": 13,
+        "systems": 9,
+        "systems_changing_3_or_more_times": {
+          "Praesitlyn": [
+            [
+              3,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              77,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ],
+            [
+              78,
+              "economy",
+              "Uncontrolled"
+            ],
+            [
+              152,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ],
+            [
+              305,
+              "economy",
+              "Uncontrolled"
+            ]
+          ]
+        }
+      },
+      "new": {
+        "control_changed": 16,
+        "systems": 16,
+        "systems_changing_3_or_more_times": {}
+      }
+    },
+    "13": {
+      "head": {
+        "control_changed": 11,
+        "systems": 10,
+        "systems_changing_3_or_more_times": {}
+      },
+      "new": {
+        "control_changed": 13,
+        "systems": 11,
+        "systems_changing_3_or_more_times": {
+          "Umgul": [
+            [
+              309,
+              "economy",
+              "Controlled(Alliance)"
+            ],
+            [
+              354,
+              "ground_occupation",
+              "Controlled(Empire)"
+            ],
+            [
+              491,
+              "economy",
+              "Controlled(Alliance)"
+            ]
+          ]
+        }
+      }
+    },
+    "42": {
+      "head": {
+        "control_changed": 6,
+        "systems": 6,
+        "systems_changing_3_or_more_times": {}
+      },
+      "new": {
+        "control_changed": 13,
+        "systems": 13,
+        "systems_changing_3_or_more_times": {}
+      }
+    },
+    "47": {
+      "head": {
+        "control_changed": 8,
+        "systems": 8,
+        "systems_changing_3_or_more_times": {}
+      },
+      "new": {
+        "control_changed": 10,
+        "systems": 10,
+        "systems_changing_3_or_more_times": {}
+      }
+    }
+  }
+}

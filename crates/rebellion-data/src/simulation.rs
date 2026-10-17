@@ -10,7 +10,6 @@ use crate::integrator::{resolve_system_space_combat, PerceptionIntegrator};
 use rebellion_core::ai::{AIState, AISystem};
 use rebellion_core::betrayal::{BetrayalState, BetrayalSystem};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
-use rebellion_core::dat::Faction;
 use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyState, EconomySystem};
@@ -32,6 +31,7 @@ use rebellion_core::tick::{GameClock, TickEvent};
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
 use rebellion_core::victory::{VictoryState, VictorySystem};
+use rebellion_core::world::ControlKind;
 use rebellion_core::world::{CampaignConfig, GameWorld, MstbTable};
 
 const COMBAT_RETRY_TICKS: u64 = 5;
@@ -257,41 +257,24 @@ pub fn run_simulation_tick(
     // ── 3b. Occupation ──────────────────────────────────────────────────
     // Carried regiments stay aboard until an order moves them: nothing in
     // the original lands cargo without one (ghidra/notes/regiment-unload.md,
-    // "What happens to the rest of the cargo"). The original fights on the
-    // ground only in a Planetary Assault (ghidra/notes/planetary-assault.md),
-    // so a planet with one side's regiments alone passes to that side and
-    // two sides' regiments stand together. port: the occupation is the
-    // port's.
+    // "What happens to the rest of the cargo"). A system's holder follows
+    // its regiments as soon as they change (FUN_005109f0 -> FUN_0050b610),
+    // so a planet with regiments takes the holder the economy gives it
+    // (economy::system_holder): one side's regiments alone take it, two
+    // sides' keep the previous side. The original fights on the ground only
+    // in a Planetary Assault (ghidra/notes/planetary-assault.md).
     let ground_systems: Vec<_> = world.systems.keys().collect();
     for sys_key in ground_systems {
-        let (alliance_troops, empire_troops) = world
-            .systems
-            .get(sys_key)
-            .map(|system| {
-                system
-                    .ground_units
-                    .iter()
-                    .fold((0_usize, 0_usize), |counts, troop| {
-                        match world.troops.get(*troop) {
-                            Some(value) if value.regiment_strength > 0 && value.is_alliance => {
-                                (counts.0 + 1, counts.1)
-                            }
-                            Some(value) if value.regiment_strength > 0 => (counts.0, counts.1 + 1),
-                            _ => counts,
-                        }
-                    })
-            })
-            .unwrap_or_default();
-
-        let occupying_faction = match (alliance_troops > 0, empire_troops > 0) {
-            (true, false) => Some(Faction::Alliance),
-            (false, true) => Some(Faction::Empire),
-            _ => None,
+        let Some(system) = world.systems.get(sys_key) else {
+            continue;
         };
-
-        if let Some(winner) = occupying_faction {
-            let control = world.systems.get(sys_key).map(|system| system.control);
-            if control != Some(rebellion_core::world::ControlKind::Controlled(winner)) {
+        if system.ground_units.is_empty() {
+            continue;
+        }
+        if let ControlKind::Controlled(winner) =
+            rebellion_core::economy::system_holder(world, system)
+        {
+            if system.control != ControlKind::Controlled(winner) {
                 integrator.apply_ground_occupation(world, sys_key, winner, current_tick);
             }
         }
@@ -855,6 +838,67 @@ mod tests {
         assert_eq!(world.fleets[fleet].capital_ships[0].id, 1);
     }
 
+    /// GNPRTB 7760 (60, `DAT_006bb4c0`): a side holds a system without
+    /// regiments on its support (`FUN_0055a080`); the fixtures give each
+    /// system its holder's support.
+    fn control_threshold() -> rebellion_core::world::GnprtbParams {
+        rebellion_core::world::GnprtbParams::new(vec![rebellion_core::world::GnprtbEntry {
+            parameter_id: 7760,
+            development: 60,
+            alliance_sp_easy: 60,
+            alliance_sp_medium: 60,
+            alliance_sp_hard: 60,
+            empire_sp_easy: 60,
+            empire_sp_medium: 60,
+            empire_sp_hard: 60,
+            multiplayer: 60,
+        }])
+    }
+
+    #[test]
+    fn a_regiment_arriving_takes_its_planet_the_same_day() {
+        // FUN_005109f0 -> FUN_0050b610 as the system's regiments change:
+        // the holder follows them at once (step 3b, economy::system_holder),
+        // before the economy's next run. Here a regiment's own Move reaches
+        // an explored, unpopulated, neutral planet (FUN_005073d0).
+        let (mut world, mut states, _, troop) = world_with_loading_fleet();
+        world.gnprtb = control_threshold();
+        let mut keys = world.systems.keys();
+        let (home, target) = (keys.next().unwrap(), keys.next().unwrap());
+        world.systems[home].popularity_alliance = 0.9;
+        world.systems[target].is_populated = false;
+        world.systems[target].control = ControlKind::Uncontrolled;
+        let moved = states.troop_transport.move_regiment(
+            &mut world,
+            &states.movement,
+            &std::collections::HashSet::new(),
+            troop,
+            rebellion_core::troop_transport::RegimentTarget::System(target),
+            0,
+        );
+        assert!(moved.is_ok(), "{moved:?}");
+        let mut landed_at = None;
+        for tick in 1..200 {
+            run_simulation_tick(
+                &mut world,
+                &mut states,
+                &[TickEvent { tick }],
+                &[0.99; 2048],
+                10,
+                &rebellion_core::tuning::GameConfig::default(),
+            );
+            if world.systems[target].ground_units.contains(&troop) {
+                landed_at = Some(tick);
+                break;
+            }
+        }
+        assert!(landed_at.is_some());
+        assert_eq!(
+            world.systems[target].control,
+            ControlKind::Controlled(Faction::Alliance)
+        );
+    }
+
     #[test]
     fn a_carried_regiment_stays_aboard_at_its_system() {
         // Nothing in the original lands cargo without an order
@@ -1323,6 +1367,7 @@ mod tests {
         // ghidra/notes/bombardment-order.md); the port's automatic one was
         // invented (F-032).
         let mut world = GameWorld::default();
+        world.gnprtb = control_threshold();
         let make_system = |dat_id, name: &str, control, is_headquarters| System {
             dat_id: DatId::new(dat_id),
             name: name.into(),
@@ -1330,8 +1375,16 @@ mod tests {
             x: dat_id as u16 * 100,
             y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.5,
-            popularity_empire: 0.5,
+            popularity_alliance: if control == ControlKind::Controlled(Faction::Alliance) {
+                0.9
+            } else {
+                0.1
+            },
+            popularity_empire: if control == ControlKind::Controlled(Faction::Alliance) {
+                0.1
+            } else {
+                0.9
+            },
             is_populated: true,
             total_energy: 0,
             raw_materials: 0,
@@ -1458,6 +1511,7 @@ mod tests {
         // campaign the regiment stays aboard, the HQ stays the Alliance's
         // and nothing bombards (ghidra/notes/bombardment-order.md).
         let mut world = GameWorld::default();
+        world.gnprtb = control_threshold();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
                 dat_id: DatId::new(dat_id),
@@ -1466,8 +1520,16 @@ mod tests {
                 x: dat_id as u16 * 100,
                 y: 0,
                 exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
-                popularity_alliance: 0.5,
-                popularity_empire: 0.5,
+                popularity_alliance: if control == ControlKind::Controlled(Faction::Alliance) {
+                    0.9
+                } else {
+                    0.1
+                },
+                popularity_empire: if control == ControlKind::Controlled(Faction::Alliance) {
+                    0.1
+                } else {
+                    0.9
+                },
                 is_populated: true,
                 total_energy: 0,
                 raw_materials: 0,
@@ -1608,6 +1670,7 @@ mod tests {
         // capture and victory; on the same campaign the fleet arrives and
         // nothing else happens.
         let mut world = GameWorld::default();
+        world.gnprtb = control_threshold();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
                 dat_id: DatId::new(dat_id),
