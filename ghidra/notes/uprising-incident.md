@@ -203,5 +203,5 @@ non-zero. `FUN_00511930` then:
 
 - Slot `+0x1bc` / `+0x1c4` of the object the decoy roll checks
   (see `decoy-roll.md`).
-- The character injury at `+0x94` has no port field; the port reports it
-  but does not store it.
+- The character injury at `+0x94` is stored since 2026-10-17
+  (`character-injury.md`).

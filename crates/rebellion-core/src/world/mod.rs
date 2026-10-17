@@ -711,9 +711,38 @@ pub struct Character {
     /// picks among the side's characters without it (`FUN_0055ef30`,
     /// `FUN_0055fc80`) and sets it (`FUN_0055fe70` via `FUN_004f7480`).
     pub recruited: bool,
+
+    /// Character `+0x94`, the injury (`FUN_004ee2d0`, clamped to
+    /// `0..=0x7fff`): set by the injury roll `FUN_0053e990` and lowered by
+    /// the healing timer `0x388` (`ghidra/notes/character-injury.md`).
+    pub injury: u16,
 }
 
 impl Character {
+    /// Slot `+0x1f0`: effective combat `+0x86` (`FUN_004eed90` ->
+    /// `FUN_0053e900`): combat plus combat times the Force level (`+0x8c`)
+    /// over 100 (`FUN_0053e190`), less the injury, at least 0
+    /// (`FUN_0053e120`) and at most `0x7fff` (`FUN_004edf30`).
+    ///
+    /// port: the combat and the Force level are the rolled templates, base
+    /// plus half the variance, as `missions::member_skill` reads skills.
+    #[must_use]
+    pub fn effective_combat(&self) -> u32 {
+        let combat = i64::from(self.combat.base + self.combat.variance / 2);
+        let force = i64::from(self.jedi_level.base + self.jedi_level.variance / 2);
+        let value = (combat * force / 100 + combat - i64::from(self.injury)).clamp(0, 0x7fff);
+        u32::try_from(value).unwrap_or(0)
+    }
+
+    /// Add `injury` points through slot `+0x2f0` (`FUN_004ef6d0`): a
+    /// positive amount raises `+0x94`, clamped to `0x7fff`.
+    pub fn injure(&mut self, injury: i32) {
+        if injury > 0 {
+            let total = i32::from(self.injury).saturating_add(injury).min(0x7fff);
+            self.injury = u16::try_from(total).unwrap_or(0x7fff);
+        }
+    }
+
     /// Mark this character as killed and clear all "alive" state so that
     /// other systems filter it out correctly.
     ///
@@ -809,6 +838,7 @@ impl Default for Character {
             heritage_known: false,
             is_killed: false,
             recruited: false,
+            injury: 0,
         }
     }
 }
@@ -2480,10 +2510,51 @@ mod tests {
     }
 
     #[test]
+    fn effective_combat_adds_the_force_share_and_takes_the_injury() {
+        // FUN_0053e900: combat + combat * force / 100 (FUN_0053e190) - injury,
+        // at least 0 (FUN_0053e120); slot +0x2f0 (FUN_004ef6d0) adds a
+        // positive injury, clamped to 0x7fff (FUN_004ee2d0).
+        let mut c = Character {
+            combat: SkillPair {
+                base: 90,
+                variance: 0,
+            },
+            jedi_level: SkillPair {
+                base: 50,
+                variance: 0,
+            },
+            ..Character::default()
+        };
+        assert_eq!(c.effective_combat(), 135);
+        c.injure(35);
+        assert_eq!(c.effective_combat(), 100);
+        c.injure(-5);
+        assert_eq!(c.injury, 35);
+        c.injure(1000);
+        assert_eq!(c.effective_combat(), 0);
+        c.injure(i32::MAX);
+        assert_eq!(c.injury, 0x7fff);
+        // port: the rolled templates, base plus half the variance:
+        // 80 + 80 * 40 / 100 = 112.
+        let c = Character {
+            combat: SkillPair {
+                base: 70,
+                variance: 20,
+            },
+            jedi_level: SkillPair {
+                base: 30,
+                variance: 20,
+            },
+            ..Character::default()
+        };
+        assert_eq!(c.effective_combat(), 112);
+    }
+
+    #[test]
     fn serde_backward_compat_missing_new_fields() {
         // Simulate deserializing a save file that lacks fields added before v8.
-        // NOTE: `heritage_known` and `is_killed` (v8) and `recruited` (v21) are
-        // required here because they have no `#[serde(default)]` — the save
+        // NOTE: `heritage_known` and `is_killed` (v8), `recruited` (v21) and
+        // `injury` (v68) are required here because they have no `#[serde(default)]` — the save
         // bump is the migration boundary, not serde field-default. This test still exercises
         // the `#[serde(default)]` path for earlier fields that legitimately have
         // the attribute.
@@ -2508,7 +2579,8 @@ mod tests {
             "can_be_general": true,
             "heritage_known": false,
             "is_killed": false,
-            "recruited": false
+            "recruited": false,
+            "injury": 0
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

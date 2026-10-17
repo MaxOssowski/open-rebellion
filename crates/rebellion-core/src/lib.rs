@@ -30,6 +30,7 @@ pub mod fleet_join;
 pub mod fleet_name_bank;
 pub mod fog;
 pub mod game_events;
+pub mod healing;
 pub mod ids;
 pub mod informant;
 pub mod jedi;

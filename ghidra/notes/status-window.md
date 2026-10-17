@@ -594,7 +594,8 @@ The labels are 34418..34421, not the Character Status strings 34598..34601.
   only over itself, as the move confirmation does.
 - port: Commanding is always "None": the port keeps no command assignment
   (`+0xa8`).
-- port: "Injured" never shows: the port keeps no injury (`+0x94`).
+- "Injured" shows for a non-zero injury (`+0x94`, ported 2026-10-17,
+  `character-injury.md`), and the Combat Rating is the effective combat.
 - port: a character is en route while its mission transit lasts
   (`MissionState::en_route`). Its ETA is that transit's arrival day, and
   Attached names the transit's destination.

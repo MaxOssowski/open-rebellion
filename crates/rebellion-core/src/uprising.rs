@@ -148,7 +148,7 @@ pub enum IncidentLoss {
     /// Code 2: a regiment of the holding side is destroyed (reason 8).
     Regiment(TroopKey),
     /// Code 3: a free character of the holding side is injured (slot
-    /// `+0x2e4`, `FUN_004ef5f0`). We do not store injury (F-026).
+    /// `+0x2e4`, `FUN_004ef5f0`); it adds to the character's injury.
     CharacterInjured {
         character: CharacterKey,
         injury: i32,
@@ -851,7 +851,7 @@ fn apply_code(
                         && !c.is_captive
                         && sides_match(c.is_alliance, c.is_empire, side)
                 })
-                .map(|(k, c)| (k, (c.combat.base + c.combat.variance / 2).cast_signed()))
+                .map(|(k, c)| (k, c.effective_combat().cast_signed()))
                 .collect();
             if let Some(i) = rolls.pick(free.len()) {
                 let (character, combat) = free[i];
@@ -1152,7 +1152,12 @@ pub fn apply_uprising_event(world: &mut GameWorld, event: &UprisingEvent) {
                         }
                         world.troops.remove(*troop);
                     }
-                    IncidentLoss::CharacterInjured { .. } => {}
+                    IncidentLoss::CharacterInjured { character, injury } => {
+                        // Slot +0x2f0 (FUN_004ef6d0) adds it to +0x94.
+                        if let Some(c) = world.characters.get_mut(*character) {
+                            c.injure(*injury);
+                        }
+                    }
                     IncidentLoss::PrisonerFreed(character) => {
                         if let Some(c) = world.characters.get_mut(*character) {
                             c.is_captive = false;

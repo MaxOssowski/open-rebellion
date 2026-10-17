@@ -936,6 +936,11 @@ pub(crate) fn member_location_kind(world: &GameWorld, member: MissionMember) -> 
 pub fn member_skill(world: &GameWorld, member: MissionMember, skill: Skill) -> Option<u32> {
     match member {
         MissionMember::Character(key) => world.characters.get(key).map(|c| {
+            // Combat is read through slot +0x1f0, the effective combat +0x86
+            // that the Force level raises and the injury lowers.
+            if skill == Skill::Combat {
+                return c.effective_combat();
+            }
             let pair = c.skill(skill);
             // port: seeding rolls every character's variance into its base
             // (FUN_00535e40); half of an unrolled variance matches skill_score.
@@ -3198,6 +3203,33 @@ fn escape_destination(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mission_reads_a_character_s_effective_combat() {
+        // Combat goes through slot +0x1f0, the effective combat +0x86
+        // (FUN_0053e900): 90 + 90 * 50 / 100 - 10. Other skills stay the
+        // rolled template.
+        let mut world = GameWorld::default();
+        let key = world.characters.insert(crate::world::Character {
+            combat: crate::world::SkillPair {
+                base: 90,
+                variance: 0,
+            },
+            diplomacy: crate::world::SkillPair {
+                base: 60,
+                variance: 10,
+            },
+            jedi_level: crate::world::SkillPair {
+                base: 50,
+                variance: 0,
+            },
+            injury: 10,
+            ..crate::world::Character::default()
+        });
+        let member = MissionMember::Character(key);
+        assert_eq!(member_skill(&world, member, Skill::Combat), Some(125));
+        assert_eq!(member_skill(&world, member, Skill::Diplomacy), Some(65));
+    }
     use crate::ids::{CharacterKey, SystemKey};
     use crate::uprising::UprisingState;
     use crate::world::{Character, GameWorld, SkillPair};

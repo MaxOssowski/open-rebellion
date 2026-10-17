@@ -618,6 +618,33 @@ impl PerceptionIntegrator {
         }
     }
 
+    /// Apply injury recovery (timer `0x388`) with a `character_health` record
+    /// for each healing.
+    pub fn apply_healing(
+        &mut self,
+        world: &mut GameWorld,
+        healed: &[rebellion_core::healing::Healed],
+    ) {
+        for heal in healed {
+            rebellion_core::healing::apply(world, heal);
+            let name = world
+                .characters
+                .get(heal.character)
+                .map_or_else(String::new, |c| c.name.clone());
+            self.events.push(GameEventRecord::new(
+                heal.tick,
+                self.wall_ms,
+                SYS_MISSIONS,
+                EVT_CHARACTER_HEALTH,
+                serde_json::json!({
+                    "character": name,
+                    "cause": "healing",
+                    "injury": heal.injury,
+                }),
+            ));
+        }
+    }
+
     /// Apply informant incidents (timer `0x38e`): the recipient learns about
     /// the system. `fog` is the one side whose view the simulation keeps.
     pub fn apply_informant_reports(
@@ -1789,7 +1816,12 @@ fn apply_mission_effects_inner(
                 rebellion_core::missions::destroy_special_force(world, *unit);
             }
             // port: the port stores no injury (F-026).
-            MissionEffect::CharacterInjured { .. } => {}
+            MissionEffect::CharacterInjured { character, injury } => {
+                // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.injure(*injury);
+                }
+            }
             // Applied by apply_mission_result, which reports the levels.
             MissionEffect::ResearchPoints { .. } => {}
             MissionEffect::CharacterRescued {
@@ -2893,6 +2925,40 @@ mod tests {
             .events
             .iter()
             .any(|e| e.event_type == EVT_BLOCKADE_SUPPORT && e.tick == 31));
+    }
+
+    #[test]
+    fn a_mission_injury_adds_to_the_character_and_healing_records_it() {
+        // Slot +0x2f0 (FUN_004ef6d0) adds the injury; timer 0x388 lowers it.
+        let mut world = GameWorld::default();
+        let character = world.characters.insert(rebellion_core::world::Character {
+            injury: 4,
+            ..rebellion_core::world::Character::default()
+        });
+        apply_mission_effects_inner(
+            &[MissionEffect::CharacterInjured {
+                character,
+                injury: 6,
+            }],
+            &mut world,
+            1,
+            &mut UprisingState::default(),
+        );
+        assert_eq!(world.characters[character].injury, 10);
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.apply_healing(
+            &mut world,
+            &[rebellion_core::healing::Healed {
+                character,
+                injury: 9,
+                tick: 2,
+            }],
+        );
+        assert_eq!(world.characters[character].injury, 9);
+        assert!(integrator
+            .events
+            .iter()
+            .any(|e| e.event_type == EVT_CHARACTER_HEALTH && e.tick == 2));
     }
 
     #[test]

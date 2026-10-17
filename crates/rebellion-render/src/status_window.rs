@@ -84,8 +84,8 @@ pub const fn force_ranking(value: u32) -> &'static str {
 /// The Character Status rows (`FUN_004486f0`). `en_route` is the mission
 /// transits (`MissionState::en_route`).
 ///
-/// port: Commanding (`+0xa8`) is always "None" and "Injured" (`+0x94`)
-/// never shows: the port keeps neither. A character is en route while its
+/// port: Commanding (`+0xa8`) is always "None": the port keeps no command
+/// field. A character is en route while its
 /// mission transit lasts; Attached then names the transit's destination,
 /// the container of an object in hyperspace (`FUN_00556390`).
 #[must_use]
@@ -119,6 +119,8 @@ pub fn character_rows(
         "Enroute"
     } else if character.is_captive {
         "Captured"
+    } else if character.injury != 0 {
+        "Injured"
     } else if character.on_mission && !character.on_hidden_mission {
         "On Mission"
     } else {
@@ -140,7 +142,8 @@ pub fn character_rows(
         row("Force Ranking:", force_ranking(character.jedi_level.base)),
         row("Diplomacy Rating:", character.diplomacy.base.to_string()),
         row("Espionage Rating:", character.espionage.base.to_string()),
-        row("Combat Rating:", character.combat.base.to_string()),
+        // +0x86, the effective combat (slot +0x1f0).
+        row("Combat Rating:", character.effective_combat().to_string()),
         row("Leadership Rating:", character.leadership.base.to_string()),
         // TEXTSTRA 34608 "R&&D Capabilities", DrawText's escape for "&".
         row("R&D Capabilities", ""),
@@ -473,11 +476,15 @@ mod tests {
             ship_design: skill(0),
             troop_training: skill(0),
             facility_design: skill(0),
-            combat: skill(135),
+            // Fig. 3.46 shows the effective combat +0x86 (FUN_0053e900):
+            // 90 + 90 * 50 / 100 = 135 at Force 50, a Trainee (20..79). The
+            // figure does not give the two values; these are one pair that
+            // matches it.
+            combat: skill(90),
             leadership: skill(70),
             loyalty: skill(100),
             jedi_probability: 0,
-            jedi_level: skill(40),
+            jedi_level: skill(50),
             can_be_admiral: true,
             can_be_commander: true,
             can_be_general: false,
@@ -500,6 +507,7 @@ mod tests {
             heritage_known: false,
             is_killed: false,
             recruited: true,
+            injury: 0,
         }
     }
 
@@ -642,6 +650,12 @@ mod tests {
         world.characters[key].on_hidden_mission = false;
         world.characters[key].is_captive = true;
         assert_eq!(status(&world), "Captured");
+        // Injured (+0x94 non-zero) comes after captured and before a
+        // mission.
+        world.characters[key].injury = 5;
+        assert_eq!(status(&world), "Captured");
+        world.characters[key].is_captive = false;
+        assert_eq!(status(&world), "Injured");
     }
 
     #[test]

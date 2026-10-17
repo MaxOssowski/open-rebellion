@@ -2289,6 +2289,17 @@ cross-runtime proof remain open
     the unarmed 0x396
   - Nine notification ids match their decompiles
   - evidence/invention-review-r1/characters.md
+- 2026-10-17: injury recovery (timer `0x388`) is ported
+  (`ghidra/notes/character-injury.md`). Characters keep their injury
+  (`+0x94`, save v68) from missions and the uprising incident; the
+  effective combat (`+0x86`: combat + combat × Force / 100 - injury) is
+  what missions, the injury roll and the Status window read; a character
+  with its own side heals 1 point a day, 2 at Force 80+ (GNPRTB
+  2560..2564, `healing.rs`). Golden final `v1:c02d4ee44749e195` ->
+  `v1:29ab46197f1887c6` (`evidence/2026-10-17-character-injury/`). Still
+  open here: the injury's resign request, command clearing and the
+  Injured/Healed messages; timer `0x389` (`0x38a`, captive escape, was
+  ported 2026-10-14); Jedi, betrayal and the story events.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

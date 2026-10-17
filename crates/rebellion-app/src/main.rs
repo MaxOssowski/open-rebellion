@@ -425,6 +425,7 @@ struct LiveCampaign<'a> {
     production: &'a mut ProductionState,
     autoscrap: &'a mut rebellion_core::autoscrap::AutoscrapState,
     informant: &'a mut rebellion_core::informant::InformantState,
+    healing: &'a mut rebellion_core::healing::HealingState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -460,6 +461,7 @@ impl LiveCampaign<'_> {
             production: self.production.clone(),
             autoscrap: self.autoscrap.clone(),
             informant: self.informant.clone(),
+            healing: self.healing.clone(),
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -498,6 +500,7 @@ impl LiveCampaign<'_> {
         *self.production = state.production;
         *self.autoscrap = state.autoscrap;
         *self.informant = state.informant;
+        *self.healing = state.healing;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -1076,6 +1079,7 @@ async fn main() {
     let mut production_state = ProductionState::new();
     let mut autoscrap_state = rebellion_core::autoscrap::AutoscrapState::default();
     let mut informant_state = rebellion_core::informant::InformantState::default();
+    let mut healing_state = rebellion_core::healing::HealingState::default();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -2688,6 +2692,15 @@ async fn main() {
                 &tick_events,
                 &uprising_rolls,
             );
+            // ── Injury recovery: each healing character's timer 0x388 ───────
+            for heal in &rebellion_core::healing::HealingSystem::advance(
+                &mut healing_state,
+                &world,
+                &tick_events,
+            ) {
+                rebellion_core::healing::apply(&mut world, heal);
+            }
+
             // ── Informants: each held system's timer 0x38e ──────────────────
             let informant_rolls: Vec<f64> =
                 (0..rebellion_core::informant::InformantSystem::roll_budget(&world))
@@ -3497,6 +3510,7 @@ async fn main() {
                                     autoscrap_state =
                                         rebellion_core::autoscrap::AutoscrapState::default();
                                     informant_state = rebellion_core::informant::InformantState::default();
+                                    healing_state = rebellion_core::healing::HealingState::default();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -5933,6 +5947,7 @@ async fn main() {
                         production: &mut production_state,
                         autoscrap: &mut autoscrap_state,
                         informant: &mut informant_state,
+                        healing: &mut healing_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -6006,6 +6021,7 @@ async fn main() {
                                 production: &mut production_state,
                                 autoscrap: &mut autoscrap_state,
                                 informant: &mut informant_state,
+                                healing: &mut healing_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,
@@ -7784,7 +7800,12 @@ fn apply_mission_result(
                 rebellion_core::missions::destroy_special_force(world, *unit);
             }
             // port: the port stores no injury (F-026).
-            MissionEffect::CharacterInjured { .. } => {}
+            MissionEffect::CharacterInjured { character, injury } => {
+                // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.injure(*injury);
+                }
+            }
             MissionEffect::CharacterRescued {
                 character,
                 returned_to,

@@ -1,0 +1,145 @@
+{
+  "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai, against 47c282d5",
+  "seeds": {
+    "1": {
+      "head": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 414,
+          "Failure": 340
+        },
+        "control_changed": 31
+      },
+      "new": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 396,
+          "Failure": 426
+        },
+        "control_changed": 20
+      }
+    },
+    "2": {
+      "head": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 325,
+          "Failure": 239
+        },
+        "control_changed": 23
+      },
+      "new": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 335,
+          "Failure": 317
+        },
+        "control_changed": 23
+      }
+    },
+    "3": {
+      "head": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 392,
+          "Failure": 249
+        },
+        "control_changed": 31
+      },
+      "new": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 370,
+          "Failure": 216
+        },
+        "control_changed": 32
+      }
+    },
+    "7": {
+      "head": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Failure": 216,
+          "Success": 343
+        },
+        "control_changed": 16
+      },
+      "new": {
+        "healings": 41,
+        "characters_healed": 1,
+        "mission_outcomes": {
+          "Failure": 216,
+          "Success": 323
+        },
+        "control_changed": 18
+      }
+    },
+    "13": {
+      "head": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 462,
+          "Failure": 267
+        },
+        "control_changed": 26
+      },
+      "new": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 459,
+          "Failure": 281
+        },
+        "control_changed": 20
+      }
+    },
+    "42": {
+      "head": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 344,
+          "Failure": 246
+        },
+        "control_changed": 20
+      },
+      "new": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Success": 334,
+          "Failure": 269
+        },
+        "control_changed": 23
+      }
+    },
+    "47": {
+      "head": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Failure": 304,
+          "Success": 393
+        },
+        "control_changed": 20
+      },
+      "new": {
+        "healings": 0,
+        "characters_healed": 0,
+        "mission_outcomes": {
+          "Failure": 240,
+          "Success": 266
+        },
+        "control_changed": 21
+      }
+    }
+  }
+}

@@ -901,6 +901,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         heritage_known: false,
         is_killed: false,
         recruited: false,
+        injury: 0,
     }
 }
 

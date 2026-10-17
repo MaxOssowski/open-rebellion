@@ -36,23 +36,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:5f3d9fa492b06b98";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:c02d4ee44749e195";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:27f93b3cb81b6605";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:29ab46197f1887c6";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:658fa5a8840266bc"),
-    (2, 0, "v1:cd05dd7033c3ea7b"),
-    (3, 5, "v1:48a1a344a31aef10"),
-    (4, 10, "v1:65d031a1128d8c32"),
-    (5, 15, "v1:6b6cb2c025aae336"),
-    (6, 20, "v1:cadb05aeeb84451c"),
-    (7, 25, "v1:1771effbde3c5640"),
-    (8, 25, "v1:c02d4ee44749e195"),
-    (9, 25, "v1:c02d4ee44749e195"),
+    (1, 0, "v1:cffbf5c942678db9"),
+    (2, 0, "v1:5f01bd7cef48da14"),
+    (3, 5, "v1:9163d0b02fd58d5b"),
+    (4, 10, "v1:d5e74c1b57af829d"),
+    (5, 15, "v1:7384cc42f1c1e6c3"),
+    (6, 20, "v1:7bd7f7bfb26af89b"),
+    (7, 25, "v1:9314997bfe4a7db9"),
+    (8, 25, "v1:29ab46197f1887c6"),
+    (9, 25, "v1:29ab46197f1887c6"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +202,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         production: ProductionState::new(),
         autoscrap: rebellion_core::autoscrap::AutoscrapState::default(),
         informant: rebellion_core::informant::InformantState::default(),
+        healing: rebellion_core::healing::HealingState::default(),
         combat_cooldowns: std::collections::HashMap::new(),
         game_config: GameConfig::default(),
         campaign_config: CampaignConfig::from_seed_options(options, VictoryConditions::Standard),

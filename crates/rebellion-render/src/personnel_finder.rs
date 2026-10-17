@@ -1061,6 +1061,7 @@ mod tests {
             heritage_known: false,
             is_killed: false,
             recruited: true,
+            injury: 0,
         }
     }
 
