@@ -98,7 +98,7 @@ impl HealingSystem {
                 state.timers.remove(&key);
                 continue;
             }
-            let force = c.jedi_level.base + c.jedi_level.variance / 2;
+            let force = c.force_level();
             let fast = i64::from(force) >= i64::from(param(GNPRTB_FAST_HEAL_FORCE));
             let period = u64::try_from(
                 param(if fast {
@@ -141,7 +141,7 @@ pub fn apply(world: &mut GameWorld, healed: &Healed) {
 mod tests {
     use super::*;
     use crate::ids::{DatId, SystemKey};
-    use crate::world::{ControlKind, Fleet, GnprtbEntry, GnprtbParams, SkillPair, System};
+    use crate::world::{ControlKind, Fleet, GnprtbEntry, GnprtbParams, System};
 
     /// An Alliance-held system, an Empire-held one, the shipped GNPRTB
     /// 2560..2564, and an Alliance character with `injury` at the first,
@@ -196,10 +196,7 @@ mod tests {
         let enemy = system(ControlKind::Controlled(Faction::Empire));
         let character = world.characters.insert(Character {
             is_alliance: true,
-            jedi_level: SkillPair {
-                base: force,
-                variance: 0,
-            },
+            force_base: u16::try_from(force).unwrap(),
             injury,
             current_system: Some(own),
             ..Character::default()
@@ -247,15 +244,10 @@ mod tests {
         let mut state = HealingState::default();
         days(&mut state, &mut world, 1..=2);
         assert_eq!(world.characters[character].injury, 2);
-        // port: the Force level is the rolled template, 70 + 20 / 2 = 80.
-        let (mut world, character, ..) = setup(3, 70);
-        world.characters[character].jedi_level.variance = 20;
-        let mut state = HealingState::default();
-        days(&mut state, &mut world, 1..=2);
-        assert_eq!(world.characters[character].injury, 1);
-        // 60 + 30 / 2 = 75 heals slowly.
-        let (mut world, character, ..) = setup(3, 60);
-        world.characters[character].jedi_level.variance = 30;
+        // The class Force template is not the Force level (+0x8c,
+        // FUN_004eee40): a template of 90 with no Force base heals slowly.
+        let (mut world, character, ..) = setup(3, 0);
+        world.characters[character].jedi_level.base = 90;
         let mut state = HealingState::default();
         days(&mut state, &mut world, 1..=2);
         assert_eq!(world.characters[character].injury, 2);

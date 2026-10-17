@@ -902,6 +902,11 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         is_killed: false,
         recruited: false,
         injury: 0,
+        // FUN_004f11f0: ForceAware is the class is_known_jedi; ForcePotential
+        // and the Force base are rolled with the skills (seeds.rs).
+        force_potential: false,
+        force_aware: dat.is_known_jedi != 0,
+        force_base: 0,
     }
 }
 

@@ -27,6 +27,26 @@ Slot `+0x114` (`FUN_004f11f0`): `ForceAware` = class `is_known_jedi`;
 `ForcePotential` = `FUN_0053e2f0(jedi_probability)`, a percent roll; then
 the effective skills are recomputed (`FUN_004eee60`..`FUN_004eede0`).
 
+## The Force base and level
+
+- `FUN_004eee60` (run at creation and by both flags' hooks, slots
+  `+0x358` and `+0x35c`, `FUN_004f1b30`): with no Force base `+0x8e` and
+  both `ForcePotential` and `ForceAware`, the base becomes the class
+  `+0xa0` plus `FUN_0053e290(class +0xa4)`, a draw from `0..=` the
+  variance. `FUN_004ee150` sets it, clamped to `0..=0x7fff`.
+- The base's hook (slot `+0x320`, `FUN_004f1700`) sets the Force level
+  `+0x8c` to `+0x8e + +0x90` (`FUN_004eee40`, `FUN_004ee0d0`). `+0x90` is
+  not read yet.
+- The level's hook (slot `+0x31c`, `FUN_004f16a0`) recomputes the
+  effective diplomacy (`FUN_004eecb0`, `+0x58` plus its Force share), the
+  effective espionage (`FUN_004eecf0`, `+0x5a`), the effective combat
+  (`FUN_004eed90`), `FastHeal` (`FUN_004eeff0`) and
+  `DiscoveringForceUser` (`FUN_004ef070`). The share is `FUN_0053e940`:
+  skill + skill × Force / 100.
+- The Status window's Force Ranking reads `+0x8c` (`FUN_004486f0`).
+
+So an unaware character has Force 0, whatever its class template.
+
 ## Discovering others (timer `0x389`)
 
 - `DiscoveringForceUser` (`FUN_004ef070`) holds for a trainer
@@ -67,6 +87,15 @@ Its slot `+0x2e0` (`FUN_0056f160`) calls `FUN_0053eb30`, which is
 `FUN_0053e2f0(GNPRTB 2577)`: a 25 percent roll. That subclass dies of an
 injury with 25 percent.
 
+## Ported (stage 1, 2026-10-17)
+
+`Character::force_potential`, `force_aware`, `force_base` (save v69),
+`force_base_due`, `roll_force_base` and `force_level` (`+0x90` kept 0).
+Seeding rolls the potential for every character and the base when due;
+the effective combat, `FastHeal` and the Force Ranking read the level.
+Potential no longer makes a character aware. Evidence:
+`docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-force-potential/`.
+
 ## Against the port
 
 `jedi.rs` keeps `force_tier`, `force_experience`, `is_discovered_jedi` and
@@ -76,8 +105,9 @@ exists. Porting this replaces part of `jedi.rs`.
 
 ## Open
 
-- How the Force level `+0x8c` grows (training missions, its setter and
-  slot `+0x31c`).
+- How the Force level `+0x8c` grows: what writes `+0x90` (training
+  missions?).
+- The Force share of diplomacy and espionage is not ported.
 - `FUN_0058a2c0` (who calls the detection) and `FUN_0055ff60`.
 - What Luke's `+0xb0` bit 0 means, and who sets it.
 - Which objects the subclasses `0x006657f0` and `0x00665be0` make.

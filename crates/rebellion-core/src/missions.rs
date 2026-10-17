@@ -3219,10 +3219,8 @@ mod tests {
                 base: 60,
                 variance: 10,
             },
-            jedi_level: crate::world::SkillPair {
-                base: 50,
-                variance: 0,
-            },
+            // The Force level +0x8c comes from the Force base +0x8e.
+            force_base: 50,
             injury: 10,
             ..crate::world::Character::default()
         });

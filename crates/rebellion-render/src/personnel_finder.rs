@@ -1062,6 +1062,9 @@ mod tests {
             is_killed: false,
             recruited: true,
             injury: 0,
+            force_potential: false,
+            force_aware: false,
+            force_base: 0,
         }
     }
 

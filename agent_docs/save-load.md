@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v68, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v69, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-17
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v68, and it is the only one
+serializable snapshot. The current format is v69, and it is the only one
 that loads.
 
-## Native format (v68)
+## Native format (v69)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -41,7 +41,7 @@ Every mutable campaign subsystem required by the app is serialized:
 
 | Field | Type |
 |-------|------|
-| `world` | `GameWorld`; each system keeps the squadrons on its planet (v46); each capital ship its id and the world the last id given (v51) |
+| `world` | `GameWorld`; each system keeps the squadrons on its planet (v46); each capital ship its id and the world the last id given (v51); each character its `ForcePotential`, `ForceAware` and Force base `+0x8e` (v69) |
 | `clock` | `GameClock` |
 | `manufacturing` | `ManufacturingState`: one queue and one Destination per system and production area (v30); a queue keeps its build points and each unit its cost in points (v34) |
 | `missions` | `MissionState`: missions, travelling members, and each captive's escape timer and escaped characters on the road (v35) |

@@ -2317,6 +2317,16 @@ cross-runtime proof remain open
   characters of its side beside it aware. Force detection between sides
   is `force1 + force2 - 100` percent (`FUN_0055e4d0`). None of it exists in
   `jedi.rs` yet.
+- 2026-10-17, Force stage 1: characters keep `ForcePotential`,
+  `ForceAware` and the Force base `+0x8e` (save v69). Seeding rolls the
+  potential from `jedi_probability` for every character, and the base
+  (class base + rand(0..=variance), `FUN_004eee60`) only for one both
+  potential and aware. The Force level `+0x8c` is the base, so only Luke,
+  Vader and the Emperor start with Force, not every minor character. The
+  effective combat, `FastHeal` and the Force Ranking read it. Potential
+  no longer makes a character aware. Golden final `v1:29ab46197f1887c6` ->
+  `v1:aa49f78d3f06cc2f` (`evidence/2026-10-17-force-potential/`). Open:
+  timer `0x389`, the Force share of diplomacy and espionage, `+0x90`.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

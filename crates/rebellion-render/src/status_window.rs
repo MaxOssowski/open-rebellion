@@ -139,7 +139,8 @@ pub fn character_rows(
         rows.push(row("ETA Destination:", format!("Day {}", transit.arrival)));
     }
     rows.extend([
-        row("Force Ranking:", force_ranking(character.jedi_level.base)),
+        // +0x8c, the Force level (FUN_004eee40).
+        row("Force Ranking:", force_ranking(character.force_level())),
         row("Diplomacy Rating:", character.diplomacy.base.to_string()),
         row("Espionage Rating:", character.espionage.base.to_string()),
         // +0x86, the effective combat (slot +0x1f0).
@@ -483,7 +484,7 @@ mod tests {
             combat: skill(90),
             leadership: skill(70),
             loyalty: skill(100),
-            jedi_probability: 0,
+            jedi_probability: 100,
             jedi_level: skill(50),
             can_be_admiral: true,
             can_be_commander: true,
@@ -508,6 +509,11 @@ mod tests {
             is_killed: false,
             recruited: true,
             injury: 0,
+            // Luke is known and potential (MJCHARSD 578), so his Force base
+            // is the class 50 (FUN_004f11f0, FUN_004eee60).
+            force_potential: true,
+            force_aware: true,
+            force_base: 50,
         }
     }
 

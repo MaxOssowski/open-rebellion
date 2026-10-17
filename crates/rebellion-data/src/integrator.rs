@@ -1990,7 +1990,10 @@ pub fn apply_event_action_to_world(
                         SkillField::Combat => c.combat.base = apply(c.combat.base, d),
                         SkillField::Leadership => c.leadership.base = apply(c.leadership.base, d),
                         SkillField::Loyalty => c.loyalty.base = apply(c.loyalty.base, d),
-                        SkillField::JediLevel => c.jedi_level.base = apply(c.jedi_level.base, d),
+                        SkillField::JediLevel => {
+                            let level = apply(c.force_level(), d).min(0x7fff);
+                            c.force_base = u16::try_from(level).unwrap_or(0x7fff);
+                        }
                     }
                 }
             }
@@ -2456,6 +2459,39 @@ mod tests {
     use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
     use rebellion_core::missions::MissionOutcome;
     use rebellion_core::world::{CapitalShipClass, Sector, System};
+
+
+    #[test]
+    fn a_story_jedi_level_change_moves_the_force_base() {
+        // port: the story events' JediLevel skill now moves the Force base
+        // +0x8e, which the Force level +0x8c reads (FUN_004eee40); the
+        // class template stays.
+        let mut world = GameWorld::default();
+        let key = world.characters.insert(rebellion_core::world::Character {
+            force_base: 30,
+            jedi_level: rebellion_core::world::SkillPair {
+                base: 10,
+                variance: 40,
+            },
+            ..Default::default()
+        });
+        let mut effects = Vec::new();
+        let movement = MovementState::default();
+        let change = |base_delta| {
+            [EventAction::ModifyCharacterSkill {
+                character: key,
+                skill: rebellion_core::events::SkillField::JediLevel,
+                base_delta,
+            }]
+        };
+        apply_event_action_to_world(&change(25), &mut world, &mut effects, 1, &movement);
+        assert_eq!(world.characters[key].force_base, 55);
+        assert_eq!(world.characters[key].jedi_level.base, 10);
+        apply_event_action_to_world(&change(-100), &mut world, &mut effects, 2, &movement);
+        assert_eq!(world.characters[key].force_base, 0);
+        apply_event_action_to_world(&change(i32::MAX), &mut world, &mut effects, 3, &movement);
+        assert_eq!(world.characters[key].force_base, 0x7fff);
+    }
 
     fn add_system(world: &mut GameWorld, name: &str) -> SystemKey {
         let sector = world.sectors.insert(Sector {

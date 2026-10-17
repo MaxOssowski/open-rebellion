@@ -52,7 +52,7 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
 use rebellion_core::ids::{CapitalShipKey, DatId, FighterKey, SystemKey};
 use rebellion_core::world::{
-    ControlKind, DefenseFacilityInstance, FighterEntry, Fleet, ForceTier, GameWorld,
+    ControlKind, DefenseFacilityInstance, FighterEntry, Fleet, GameWorld,
     ManufacturingFacilityInstance, ProductionFacilityInstance, SeedOptions, ShipInstance,
     SkillPair, SpecialForceUnit, TroopUnit,
 };
@@ -2062,16 +2062,15 @@ fn roll_character_stats<R: Rng + ?Sized>(world: &mut GameWorld, rng: &mut R) {
         roll_skill_pair(&mut character.leadership, rng);
         roll_skill_pair(&mut character.loyalty, rng);
 
-        // Roll Jedi level
-        roll_skill_pair(&mut character.jedi_level, rng);
-
-        // Roll Jedi probability: if the character isn't already a known Jedi,
-        // check if they become Force-sensitive.
-        if !character.is_known_jedi && character.jedi_probability > 0 {
-            let roll: u32 = rng.gen_range(0..100);
-            if roll < character.jedi_probability {
-                character.force_tier = ForceTier::Aware;
-            }
+        // FUN_004f11f0 (slot +0x114), after the skills (Role_vt114):
+        // ForcePotential is a percent roll on the class jedi_probability
+        // (FUN_0053e2f0: rand(0..=99) < p), and FUN_004eee60 then rolls the
+        // Force base for a character both potential and aware. The class
+        // jedi_level stays the template the later rolls read.
+        character.force_potential = rng.gen_range(0..100) < character.jedi_probability;
+        if character.force_base_due() {
+            let roll = rng.gen_range(0..=character.jedi_level.variance);
+            character.roll_force_base(roll);
         }
     }
 }
@@ -2226,24 +2225,85 @@ mod tests {
     }
 
     #[test]
-    fn game_start_makes_characters_force_aware_by_their_jedi_probability() {
+    fn game_start_rolls_force_potential_and_a_force_base_only_for_the_aware() {
+        // FUN_004f11f0: ForceAware is the class is_known_jedi (set when the
+        // character is converted), ForcePotential a FUN_0053e2f0 roll on
+        // jedi_probability; FUN_004eee60 gives a Force base only to a
+        // character with both, base + rand(0..=variance) (FUN_0053e290).
+        // Potential alone leaves the character unaware, at Force 0.
         let mut world = GameWorld::default();
-        let mut add = |jedi_probability, is_known_jedi| {
+        let mut add = |jedi_probability, force_aware, base, variance| {
             world.characters.insert(rebellion_core::world::Character {
                 jedi_probability,
-                is_known_jedi,
+                force_aware,
+                jedi_level: rebellion_core::world::SkillPair { base, variance },
                 ..Default::default()
             })
         };
-        let certain = add(100, false);
-        let never = add(0, false);
-        let known = add(100, true);
+        let latent = add(100, false, 10, 0);
+        let never = add(0, false, 10, 40);
+        let known = add(100, true, 50, 0);
+        let rolled = add(100, true, 10, 40);
+        let known_without_potential = add(0, true, 120, 0);
 
         roll_character_stats(&mut world, &mut Xoshiro256PlusPlus::seed_from_u64(7));
 
-        assert_eq!(world.characters[certain].force_tier, ForceTier::Aware);
-        assert_eq!(world.characters[never].force_tier, ForceTier::None);
-        assert_eq!(world.characters[known].force_tier, ForceTier::None);
+        let c = &world.characters;
+        assert!(c[latent].force_potential && !c[latent].force_aware);
+        assert_eq!(c[latent].force_base, 0);
+        assert_eq!(c[latent].force_tier, rebellion_core::world::ForceTier::None);
+        assert!(!c[never].force_potential);
+        assert_eq!(c[never].force_base, 0);
+        assert_eq!(c[known].force_base, 50);
+        assert!((10..=50).contains(&c[rolled].force_base));
+        assert!(!c[known_without_potential].force_potential);
+        assert_eq!(c[known_without_potential].force_base, 0);
+        // The class template stays for later rolls.
+        assert_eq!(c[rolled].jedi_level.base, 10);
+        assert_eq!(c[rolled].jedi_level.variance, 40);
+    }
+
+    #[test]
+    fn a_zero_jedi_probability_never_gives_force_potential() {
+        // FUN_0053e2f0: rand(0..=99) < p, so p = 0 never passes and p = 1
+        // passes on a draw of 0.
+        let mut potential = [0_u32; 2];
+        for seed in 0..1000 {
+            let mut world = GameWorld::default();
+            let keys = [0, 1].map(|jedi_probability| {
+                world.characters.insert(rebellion_core::world::Character {
+                    jedi_probability,
+                    ..Default::default()
+                })
+            });
+            roll_character_stats(&mut world, &mut Xoshiro256PlusPlus::seed_from_u64(seed));
+            for (count, key) in potential.iter_mut().zip(keys) {
+                *count += u32::from(world.characters[key].force_potential);
+            }
+        }
+        assert_eq!(potential[0], 0);
+        assert!((1..=40).contains(&potential[1]), "{potential:?}");
+    }
+
+    #[test]
+    fn the_force_base_roll_draws_across_the_class_variance() {
+        // FUN_0053e290(variance): 0..=variance, so base + variance appears.
+        let mut seen = std::collections::BTreeSet::new();
+        for seed in 0..400 {
+            let mut world = GameWorld::default();
+            let key = world.characters.insert(rebellion_core::world::Character {
+                jedi_probability: 100,
+                force_aware: true,
+                jedi_level: rebellion_core::world::SkillPair {
+                    base: 10,
+                    variance: 2,
+                },
+                ..Default::default()
+            });
+            roll_character_stats(&mut world, &mut Xoshiro256PlusPlus::seed_from_u64(seed));
+            seen.insert(world.characters[key].force_base);
+        }
+        assert_eq!(seen.into_iter().collect::<Vec<_>>(), vec![10, 11, 12]);
     }
 
     fn bare_system(world: &mut GameWorld, control: ControlKind) -> SystemKey {

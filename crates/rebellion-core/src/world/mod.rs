@@ -716,6 +716,18 @@ pub struct Character {
     /// `0..=0x7fff`): set by the injury roll `FUN_0053e990` and lowered by
     /// the healing timer `0x388` (`ghidra/notes/character-injury.md`).
     pub injury: u16,
+
+    /// Character `+0xac` bit `0x20`, `ForcePotential` (`FUN_004ee9c0`):
+    /// rolled once at creation from the class `jedi_probability`
+    /// (`FUN_004f11f0`, `ghidra/notes/force-awareness.md`).
+    pub force_potential: bool,
+    /// Character `+0xac` bit `0x10`, `ForceAware` (`FUN_004ee950`): the class
+    /// `is_known_jedi` at creation (`FUN_004f11f0`).
+    pub force_aware: bool,
+    /// Character `+0x8e`, the Force base (`FUN_004ee150`, `0..=0x7fff`):
+    /// 0 until `FUN_004eee60` rolls it for a character with both
+    /// `force_potential` and `force_aware` ([`Character::force_base_due`]).
+    pub force_base: u16,
 }
 
 impl Character {
@@ -724,14 +736,39 @@ impl Character {
     /// over 100 (`FUN_0053e190`), less the injury, at least 0
     /// (`FUN_0053e120`) and at most `0x7fff` (`FUN_004edf30`).
     ///
-    /// port: the combat and the Force level are the rolled templates, base
-    /// plus half the variance, as `missions::member_skill` reads skills.
+    /// port: the combat is the rolled template, base plus half the
+    /// variance, as `missions::member_skill` reads skills.
     #[must_use]
     pub fn effective_combat(&self) -> u32 {
         let combat = i64::from(self.combat.base + self.combat.variance / 2);
-        let force = i64::from(self.jedi_level.base + self.jedi_level.variance / 2);
+        let force = i64::from(self.force_level());
         let value = (combat * force / 100 + combat - i64::from(self.injury)).clamp(0, 0x7fff);
         u32::try_from(value).unwrap_or(0)
+    }
+
+    /// `+0x8c`, the Force level: the Force base `+0x8e` plus `+0x90`
+    /// (`FUN_004eee40`, run by the base's hook, slot `+0x320`).
+    ///
+    /// port: `+0x90` is not read yet; the port keeps it 0.
+    #[must_use]
+    pub fn force_level(&self) -> u32 {
+        u32::from(self.force_base)
+    }
+
+    /// `FUN_004eee60`'s guard: a character with no Force base, with both
+    /// `ForcePotential` and `ForceAware`, gets one. It runs at creation and
+    /// from both flags' hooks (slots `+0x358`, `+0x35c`: `FUN_004f1b30`).
+    #[must_use]
+    pub fn force_base_due(&self) -> bool {
+        self.force_base == 0 && self.force_potential && self.force_aware
+    }
+
+    /// `FUN_004eee60`'s roll: the class Force base (`+0xa0`) plus `roll`,
+    /// a draw from `0..=` the class variance (`+0xa4`, `FUN_0053e290`),
+    /// set through `FUN_004ee150`, clamped to `0..=0x7fff`.
+    pub fn roll_force_base(&mut self, roll: u32) {
+        let value = self.jedi_level.base.saturating_add(roll).min(0x7fff);
+        self.force_base = u16::try_from(value).unwrap_or(0x7fff);
     }
 
     /// Add `injury` points through slot `+0x2f0` (`FUN_004ef6d0`): a
@@ -839,6 +876,9 @@ impl Default for Character {
             is_killed: false,
             recruited: false,
             injury: 0,
+            force_potential: false,
+            force_aware: false,
+            force_base: 0,
         }
     }
 }
@@ -2519,10 +2559,7 @@ mod tests {
                 base: 90,
                 variance: 0,
             },
-            jedi_level: SkillPair {
-                base: 50,
-                variance: 0,
-            },
+            force_base: 50,
             ..Character::default()
         };
         assert_eq!(c.effective_combat(), 135);
@@ -2534,27 +2571,75 @@ mod tests {
         assert_eq!(c.effective_combat(), 0);
         c.injure(i32::MAX);
         assert_eq!(c.injury, 0x7fff);
-        // port: the rolled templates, base plus half the variance:
+        // port: the rolled combat template, base plus half the variance:
         // 80 + 80 * 40 / 100 = 112.
         let c = Character {
             combat: SkillPair {
                 base: 70,
                 variance: 20,
             },
-            jedi_level: SkillPair {
-                base: 30,
-                variance: 20,
-            },
+            force_base: 40,
             ..Character::default()
         };
         assert_eq!(c.effective_combat(), 112);
+        // The class Force template is not the Force level: with no Force
+        // base, combat gains nothing (FUN_004eee40 sums +0x8e and +0x90).
+        let c = Character {
+            combat: SkillPair {
+                base: 90,
+                variance: 0,
+            },
+            jedi_level: SkillPair {
+                base: 50,
+                variance: 0,
+            },
+            ..Character::default()
+        };
+        assert_eq!(c.effective_combat(), 90);
+    }
+
+    #[test]
+    fn only_a_potential_and_aware_character_without_a_force_base_rolls_one() {
+        // FUN_004eee60: +0x8e == 0 and +0xac bits 0x20 and 0x10.
+        let due = |force_potential, force_aware, force_base| {
+            Character {
+                force_potential,
+                force_aware,
+                force_base,
+                ..Character::default()
+            }
+            .force_base_due()
+        };
+        assert!(due(true, true, 0));
+        assert!(!due(false, true, 0));
+        assert!(!due(true, false, 0));
+        assert!(!due(true, true, 1));
+    }
+
+    #[test]
+    fn the_force_base_roll_adds_the_draw_to_the_class_base_up_to_0x7fff() {
+        // FUN_004eee60: class +0xa0 plus the draw, through FUN_004ee150's
+        // clamp to 0..=0x7fff (FUN_0053e0f0).
+        let mut c = Character {
+            jedi_level: SkillPair {
+                base: 10,
+                variance: 40,
+            },
+            ..Character::default()
+        };
+        c.roll_force_base(25);
+        assert_eq!(c.force_base, 35);
+        assert_eq!(c.force_level(), 35);
+        c.jedi_level.base = 0x7ff0;
+        c.roll_force_base(0x20);
+        assert_eq!(c.force_base, 0x7fff);
     }
 
     #[test]
     fn serde_backward_compat_missing_new_fields() {
         // Simulate deserializing a save file that lacks fields added before v8.
         // NOTE: `heritage_known` and `is_killed` (v8), `recruited` (v21) and
-        // `injury` (v68) are required here because they have no `#[serde(default)]` — the save
+        // `injury` (v68) and the Force flags and base (v69) are required here because they have no `#[serde(default)]` — the save
         // bump is the migration boundary, not serde field-default. This test still exercises
         // the `#[serde(default)]` path for earlier fields that legitimately have
         // the attribute.
@@ -2580,7 +2665,10 @@ mod tests {
             "heritage_known": false,
             "is_killed": false,
             "recruited": false,
-            "injury": 0
+            "injury": 0,
+            "force_potential": false,
+            "force_aware": false,
+            "force_base": 0
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

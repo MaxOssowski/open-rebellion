@@ -1,0 +1,222 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 600 --dual-ai",
+ "baseline": "dd2b360c",
+ "seeds": {
+  "1": {
+   "head": {
+    "combat_space": 1,
+    "mission_success": 396,
+    "missions_resolved": 822,
+    "character_health": 38,
+    "control_changed": 20
+   },
+   "new": {
+    "combat_space": 8,
+    "mission_success": 332,
+    "missions_resolved": 629,
+    "character_health": 108,
+    "control_changed": 21
+   },
+   "var": {
+    "combat_space": 8,
+    "mission_success": 332,
+    "missions_resolved": 629,
+    "character_health": 108,
+    "control_changed": 21
+   },
+   "varb": {
+    "combat_space": 6,
+    "mission_success": 411,
+    "missions_resolved": 731,
+    "character_health": 27,
+    "control_changed": 34
+   }
+  },
+  "2": {
+   "head": {
+    "combat_space": 5,
+    "mission_success": 335,
+    "missions_resolved": 652,
+    "character_health": 37,
+    "control_changed": 23
+   },
+   "new": {
+    "combat_space": 28,
+    "mission_success": 324,
+    "missions_resolved": 548,
+    "character_health": 34,
+    "control_changed": 13
+   },
+   "var": {
+    "combat_space": 28,
+    "mission_success": 324,
+    "missions_resolved": 548,
+    "character_health": 34,
+    "control_changed": 13
+   },
+   "varb": {
+    "combat_space": 25,
+    "mission_success": 312,
+    "missions_resolved": 574,
+    "character_health": 38,
+    "control_changed": 13
+   }
+  },
+  "3": {
+   "head": {
+    "combat_space": 2,
+    "mission_success": 370,
+    "missions_resolved": 586,
+    "character_health": 21,
+    "control_changed": 32
+   },
+   "new": {
+    "combat_space": 20,
+    "mission_success": 363,
+    "missions_resolved": 578,
+    "character_health": 18,
+    "control_changed": 11
+   },
+   "var": {
+    "combat_space": 20,
+    "mission_success": 363,
+    "missions_resolved": 578,
+    "character_health": 18,
+    "control_changed": 11
+   },
+   "varb": {
+    "combat_space": 13,
+    "mission_success": 402,
+    "missions_resolved": 694,
+    "character_health": 35,
+    "control_changed": 19
+   }
+  },
+  "7": {
+   "head": {
+    "combat_space": 6,
+    "mission_success": 323,
+    "missions_resolved": 539,
+    "character_health": 64,
+    "control_changed": 18
+   },
+   "new": {
+    "combat_space": 6,
+    "mission_success": 372,
+    "missions_resolved": 612,
+    "character_health": 81,
+    "control_changed": 35
+   },
+   "var": {
+    "combat_space": 6,
+    "mission_success": 372,
+    "missions_resolved": 612,
+    "character_health": 81,
+    "control_changed": 35
+   },
+   "varb": {
+    "combat_space": 17,
+    "mission_success": 349,
+    "missions_resolved": 666,
+    "character_health": 37,
+    "control_changed": 33
+   }
+  },
+  "13": {
+   "head": {
+    "combat_space": 5,
+    "mission_success": 459,
+    "missions_resolved": 740,
+    "character_health": 31,
+    "control_changed": 20
+   },
+   "new": {
+    "combat_space": 6,
+    "mission_success": 350,
+    "missions_resolved": 571,
+    "character_health": 33,
+    "control_changed": 15
+   },
+   "var": {
+    "combat_space": 6,
+    "mission_success": 350,
+    "missions_resolved": 571,
+    "character_health": 33,
+    "control_changed": 15
+   },
+   "varb": {
+    "combat_space": 3,
+    "mission_success": 358,
+    "missions_resolved": 580,
+    "character_health": 21,
+    "control_changed": 10
+   }
+  },
+  "42": {
+   "head": {
+    "combat_space": 2,
+    "mission_success": 334,
+    "missions_resolved": 603,
+    "character_health": 47,
+    "control_changed": 23
+   },
+   "new": {
+    "combat_space": 17,
+    "mission_success": 380,
+    "missions_resolved": 555,
+    "character_health": 18,
+    "control_changed": 12
+   },
+   "var": {
+    "combat_space": 17,
+    "mission_success": 380,
+    "missions_resolved": 555,
+    "character_health": 18,
+    "control_changed": 12
+   },
+   "varb": {
+    "combat_space": 2,
+    "mission_success": 321,
+    "missions_resolved": 541,
+    "character_health": 20,
+    "control_changed": 21
+   }
+  },
+  "47": {
+   "head": {
+    "combat_space": 7,
+    "mission_success": 266,
+    "missions_resolved": 506,
+    "character_health": 28,
+    "control_changed": 21
+   },
+   "new": {
+    "combat_space": 24,
+    "mission_success": 379,
+    "missions_resolved": 777,
+    "character_health": 43,
+    "control_changed": 21
+   },
+   "var": {
+    "combat_space": 24,
+    "mission_success": 379,
+    "missions_resolved": 777,
+    "character_health": 43,
+    "control_changed": 21
+   },
+   "varb": {
+    "combat_space": 0,
+    "mission_success": 278,
+    "missions_resolved": 494,
+    "character_health": 13,
+    "control_changed": 23
+   }
+  }
+ },
+ "variants": {
+  "head": "dd2b360c",
+  "new": "this change",
+  "var": "this change, potential also sets force_tier Aware as before",
+  "varb": "this change, Force base rolled for every character as before"
+ }
+}
