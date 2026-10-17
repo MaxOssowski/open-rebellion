@@ -160,9 +160,9 @@ The order moves only the selected regiments; each is its own command object
 the original lands cargo without an order: the port's automatic landing
 (F-007E, "cargo lands only when its faction is the sole orbital faction") has
 no source in this trace, and was retired on 2026-10-17. Carried regiments
-now stay aboard until a Move lands them. The fleet's hold (`load`,
-`release`) only kept the automatic landing off a fleet that loaded by
-order, so it no longer changes anything; it stays in the save.
+now stay aboard until a Move lands them. The fleet's hold, which only
+kept the automatic landing off a fleet that loaded by order, went with it
+(save v59).
 
 ## Port notes
 
@@ -184,9 +184,6 @@ order, so it no longer changes anything; it stays in the save.
 - port: a regiment leaving a planet on its own takes no departure roll. Its
   withdraw percent is 100 unless it entered the planet while blockaded,
   which a Move cannot do (`FUN_005073d0`'s `0x90`/4).
-- The hold (port:) is per fleet: a hand unload takes regiments out of the
-  cargo, and the hold ends once the fleet carries none. A regiment boarding
-  by order holds its fleet, as a load does.
 - The Fleet window's Troops tab is a drag source (`FUN_006083c0`'s distance
   and list rules); `main.rs` hit-tests the drop with the release windows'
   `+0x70` and issues the move. A surface regiment's pop-up Move does the

@@ -792,9 +792,6 @@ pub fn apply_fleet_arrival(
         destination.fleets.sort_unstable();
         destination.fleets.dedup();
     }
-    // port: an arrival ends a hold (`TroopTransportState::load`).
-    troop_transport.release(arrival.fleet);
-
     let target = arrival.join.filter(|&target| {
         target != arrival.fleet
             && crate::fleet_join::joins_on_arrival(
@@ -1406,10 +1403,10 @@ mod tests {
         assert_eq!(world.fleets[target].ship_count(), 1);
     }
 
-    // port: an arrival ends a hold (`TroopTransportState::load`), so the
-    // regiment lands where the fleet goes.
+    // Nothing in the original lands cargo without an order
+    // (ghidra/notes/regiment-unload.md): the regiment arrives aboard.
     #[test]
-    fn a_held_fleet_arriving_elsewhere_releases_its_cargo_to_land() {
+    fn a_fleet_arriving_elsewhere_keeps_its_cargo_aboard() {
         let (mut world, origin, destination) = make_transit_world(0, 0, 30, 40);
         let ship_key = world.capital_ship_classes.insert(test_ship_class(80));
         let fleet = add_test_fleet(&mut world, origin, ship_key);
@@ -1420,7 +1417,7 @@ mod tests {
         });
         world.systems[origin].ground_units.push(troop);
         let mut transport = TroopTransportState::default();
-        transport.load(&mut world, fleet, &[troop]).unwrap();
+        transport.embark(&mut world, fleet, &[troop]).unwrap();
         let mut movement = MovementState::new();
         assert!(begin_fleet_transit(
             &mut movement,
@@ -1429,13 +1426,13 @@ mod tests {
             destination,
             5,
         ));
-        assert!(transport.is_held(fleet));
 
         let arrival = MovementSystem::advance(&mut movement, &ticks(5)).remove(0);
         apply_fleet_arrival(&mut world, &movement, &mut transport, &arrival).unwrap();
 
-        assert!(!transport.is_held(fleet));
-        assert_eq!(transport.landing_count(fleet), 1);
+        assert_eq!(world.fleets[fleet].location, destination);
+        assert_eq!(transport.cargo(fleet), [troop]);
+        assert!(!world.systems[destination].ground_units.contains(&troop));
     }
 
     #[test]

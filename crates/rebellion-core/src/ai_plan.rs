@@ -3738,7 +3738,7 @@ mod tests {
                 t
             })
             .collect();
-        fx.transport.load(&mut fx.world, f, &troops).unwrap();
+        fx.transport.embark(&mut fx.world, f, &troops).unwrap();
         crate::ai_planner::tests::rebuild(&mut fx);
         let id = ship_id(&fx, f, 0);
         with(&mut fx, |io| {

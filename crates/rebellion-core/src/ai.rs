@@ -7393,7 +7393,7 @@ mod tests {
             regiment_strength: 100,
         });
         world.systems[system].ground_units.push(troop);
-        transport.load(&mut world, empire, &[troop]).unwrap();
+        transport.embark(&mut world, empire, &[troop]).unwrap();
         assert!(ok(&world, &transport, vec![empire]));
         assert!(!ok(&world, &transport, vec![ours]));
         assert!(!ok(&world, &transport, vec![]));

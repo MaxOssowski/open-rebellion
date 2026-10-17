@@ -2428,7 +2428,7 @@ pub(crate) mod tests {
             FleetWindowTab::CapitalShips
         ));
 
-        transport.load(&mut world, fleet, &[troop]).unwrap();
+        transport.embark(&mut world, fleet, &[troop]).unwrap();
 
         assert!(tab_enabled(
             &world,
@@ -3024,7 +3024,7 @@ pub(crate) mod tests {
         let fleet = add_fleet(&mut world, system, true, 2);
         let troop = add_troop(&mut world, system);
         let mut transport = TroopTransportState::default();
-        transport.load(&mut world, fleet, &[troop]).unwrap();
+        transport.embark(&mut world, fleet, &[troop]).unwrap();
         (world, transport, system, fleet, troop)
     }
 
@@ -3122,7 +3122,7 @@ pub(crate) mod tests {
         let fleet = add_fleet(&mut world, system, true, 4);
         let troops: Vec<_> = (0..4).map(|_| add_troop(&mut world, system)).collect();
         let mut transport = TroopTransportState::default();
-        transport.load(&mut world, fleet, &troops).unwrap();
+        transport.embark(&mut world, fleet, &troops).unwrap();
 
         let (actions, _, held) = drag_from_tab(
             &world,
@@ -3484,7 +3484,7 @@ pub(crate) mod tests {
         let fleet = add_fleet(&mut world, system, true, 2);
         let troop = add_troop(&mut world, system);
         let mut transport = TroopTransportState::default();
-        transport.load(&mut world, fleet, &[troop]).unwrap();
+        transport.embark(&mut world, fleet, &[troop]).unwrap();
         let mut state = opened(&world, system);
 
         let selected = run(
@@ -3673,7 +3673,7 @@ pub(crate) mod tests {
             let fleet = add_fleet(&mut world, system, true, 2);
             let troop = add_troop(&mut world, system);
             let mut transport = TroopTransportState::default();
-            transport.load(&mut world, fleet, &[troop]).unwrap();
+            transport.embark(&mut world, fleet, &[troop]).unwrap();
             let mut state = FleetWindowState::default();
             assert!(state.open(&world, system, ORIGIN, faction, scaled()));
             if let Some(window) = state.window_mut(system) {
@@ -3990,7 +3990,7 @@ pub(crate) mod tests {
             .collect();
         let troops: Vec<_> = (0..5).map(|_| add_troop(&mut world, system)).collect();
         let mut transport = TroopTransportState::default();
-        transport.load(&mut world, fleets[0], &troops).unwrap();
+        transport.embark(&mut world, fleets[0], &troops).unwrap();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
             window.selected = Some(FleetWindowEntry::Fleet(fleets[0]));

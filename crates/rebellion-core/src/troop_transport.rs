@@ -27,10 +27,6 @@ pub struct TroopTransportState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     cargo: HashMap<FleetKey, Vec<TroopKey>>,
-    /// Fleets holding regiments loaded by order where they orbit, in key
-    /// order. port: the automatic landing skips them until they next arrive
-    /// somewhere, so a regiment loaded at its own system stays aboard.
-    held: Vec<FleetKey>,
     /// Regiments travelling on their own, in departure order.
     transit: Vec<RegimentTransit>,
     /// Squadrons travelling on their own ([`crate::squadrons`]).
@@ -194,46 +190,6 @@ impl TroopTransportState {
         self.cargo.values().any(|cargo| cargo.contains(&troop))
     }
 
-    /// Regiments the automatic landing may put down from `fleet`: none while
-    /// the fleet holds cargo loaded by order at the system it orbits.
-    #[must_use]
-    pub fn landing_count(&self, fleet: FleetKey) -> usize {
-        if self.is_held(fleet) {
-            0
-        } else {
-            self.carried_count(fleet)
-        }
-    }
-
-    #[must_use]
-    pub fn is_held(&self, fleet: FleetKey) -> bool {
-        self.held.binary_search(&fleet).is_ok()
-    }
-
-    /// Put surface regiments of `fleet`'s system aboard it and hold them
-    /// there, as a regiment's Move onto the fleet does within one system
-    /// ([`Self::move_regiment`]).
-    ///
-    /// The refusals are [`Self::embark`]'s: a regiment of the other side, one
-    /// in another system, or more than the fleet's room (`FUN_00500b40`:
-    /// capacity minus regiments aboard). port: the room is the whole fleet's,
-    /// where the original's leg builder fills one ship at a time.
-    ///
-    /// # Errors
-    /// Returns [`Self::embark`]'s error, and then nothing changes.
-    pub fn load(
-        &mut self,
-        world: &mut GameWorld,
-        fleet: FleetKey,
-        troops: &[TroopKey],
-    ) -> Result<(), TroopTransportError> {
-        self.embark(world, fleet, troops)?;
-        if let Err(index) = self.held.binary_search(&fleet) {
-            self.held.insert(index, fleet);
-        }
-        Ok(())
-    }
-
     /// Whether a regiment's pop-up menu enables Move: a regiment of the
     /// player's side on a planet's surface. The move command's object check
     /// (`FUN_00578c00` → slot `+0x6c`, `FUN_00504350`) is `FUN_004f9860`;
@@ -288,8 +244,8 @@ impl TroopTransportState {
     ///
     /// Within one system the regiment changes container at once
     /// (`FUN_00556390`). Across systems it travels at the default speed, the
-    /// GNPRTB 1 rate of `FUN_004f63f0`. A regiment boarding a fleet is held
-    /// aboard, as by [`Self::load`].
+    /// GNPRTB 1 rate of `FUN_004f63f0`. A regiment that boards a fleet stays
+    /// aboard until a Move lands it.
     ///
     /// A neutral planet (side bits `0xc0`), explored (`+0x88` bit 2) and
     /// unpopulated (`+0x88` bit 1 clear), takes a regiment too
@@ -615,26 +571,14 @@ impl TroopTransportState {
         Ok(RegimentMove::Departed(transit))
     }
 
-    /// Put `troop` aboard `fleet` and hold the fleet's cargo there.
+    /// Put `troop` aboard `fleet`.
     fn board(&mut self, fleet: FleetKey, troop: TroopKey) {
         insert_sorted(self.cargo.entry(fleet).or_default(), troop);
-        if let Err(index) = self.held.binary_search(&fleet) {
-            self.held.insert(index, fleet);
-        }
-    }
-
-    /// End `fleet`'s hold. A fleet arriving anywhere releases its cargo to
-    /// the automatic landing.
-    pub fn release(&mut self, fleet: FleetKey) {
-        self.held.retain(|&key| key != fleet);
     }
 
     fn forget_if_empty(&mut self, fleet: FleetKey) {
         if self.cargo.get(&fleet).is_some_and(Vec::is_empty) {
             self.cargo.remove(&fleet);
-        }
-        if !self.cargo.contains_key(&fleet) {
-            self.release(fleet);
         }
     }
 
@@ -757,7 +701,6 @@ impl TroopTransportState {
             .ok_or(TroopTransportError::MissingSystem)?;
 
         let mut landed = self.cargo.remove(&fleet).unwrap_or_default();
-        self.release(fleet);
         landed.retain(|troop| world.troops.contains_key(*troop));
         landed.sort_unstable();
         landed.dedup();
@@ -826,7 +769,6 @@ impl TroopTransportState {
                 transit.leg = RegimentLeg::Fleet(to);
             }
         }
-        self.release(from);
         let Some(mut moved) = self.cargo.remove(&from) else {
             return;
         };
@@ -836,8 +778,7 @@ impl TroopTransportState {
         cargo.dedup();
     }
 
-    /// Move `troops`, regiments aboard `from`, aboard `to`. A hold at the
-    /// loading system goes with them, as both fleets orbit it.
+    /// Move `troops`, regiments aboard `from`, aboard `to`.
     pub fn transfer_some(&mut self, from: FleetKey, to: FleetKey, troops: &[TroopKey]) {
         let Some(cargo) = self.cargo.get_mut(&from) else {
             return;
@@ -851,14 +792,8 @@ impl TroopTransportState {
             return;
         }
         cargo.retain(|troop| !moved.contains(troop));
-        let held = self.is_held(from);
         for troop in moved {
             insert_sorted(self.cargo.entry(to).or_default(), troop);
-        }
-        if held {
-            if let Err(index) = self.held.binary_search(&to) {
-                self.held.insert(index, to);
-            }
         }
         self.forget_if_empty(from);
     }
@@ -869,7 +804,6 @@ impl TroopTransportState {
     /// has already put it in the ship's container (`FUN_00556390`).
     pub fn destroy_fleet_cargo(&mut self, world: &mut GameWorld, fleet: FleetKey) -> Vec<TroopKey> {
         let mut cargo = self.cargo.remove(&fleet).unwrap_or_default();
-        self.release(fleet);
         self.transit.retain(|transit| {
             let bound = transit.leg == RegimentLeg::Fleet(fleet);
             if bound {
@@ -1199,29 +1133,34 @@ mod tests {
         assert_eq!(decoded.cargo(first), state.cargo(first));
         assert_eq!(decoded.cargo(second), state.cargo(second));
     }
-    // port: a regiment loaded by order stays aboard where it loaded
-    // (`TroopTransportState::load`, `ghidra/notes/fleet-window.md`).
+    // An embarked regiment leaves the planet for the fleet's cargo.
     #[test]
-    fn a_loaded_regiment_is_held_aboard_at_the_system_it_loaded_at() {
+    fn an_embarked_regiment_leaves_the_planet_for_the_fleet() {
         let (mut world, origin, _, fleet, troops) = fixture(2);
         let mut state = TroopTransportState::new();
 
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
 
         assert_eq!(state.cargo(fleet), &troops[..1]);
         assert_eq!(world.systems[origin].ground_units, troops[1..]);
-        assert_eq!(state.landing_count(fleet), 0);
         assert_eq!(state.carried_count(fleet), 1);
     }
 
+    // A fleet unloaded of its last regiment carries nothing, and the state
+    // keeps no empty cargo for it.
     #[test]
-    fn embarking_for_a_departure_does_not_hold_the_cargo() {
-        let (mut world, _, _, fleet, troops) = fixture(2);
+    fn unloading_the_last_regiment_leaves_no_cargo_behind() {
+        let (mut world, origin, _, fleet, troops) = fixture(2);
         let mut state = TroopTransportState::new();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
+        assert!(!state.is_empty());
 
-        state.embark(&mut world, fleet, &troops[..2]).unwrap();
+        state
+            .disembark_selected(&mut world, fleet, origin, &troops[..1])
+            .unwrap();
 
-        assert_eq!(state.landing_count(fleet), 2);
+        assert!(state.cargo(fleet).is_empty());
+        assert!(state.is_empty());
     }
 
     // FUN_00500b40: the room is the capacity minus the regiments aboard.
@@ -1229,10 +1168,10 @@ mod tests {
     fn a_full_fleet_refuses_a_regiment_and_nothing_moves() {
         let (mut world, origin, _, fleet, troops) = fixture(1);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
 
         assert_eq!(
-            state.load(&mut world, fleet, &troops[1..2]),
+            state.embark(&mut world, fleet, &troops[1..2]),
             Err(TroopTransportError::CapacityExceeded {
                 capacity: 1,
                 requested: 2,
@@ -1254,44 +1193,14 @@ mod tests {
         let mut state = TroopTransportState::new();
 
         assert_eq!(
-            state.load(&mut world, fleet, &troops[..1]),
+            state.embark(&mut world, fleet, &troops[..1]),
             Err(TroopTransportError::TroopNotAtFleetSystem)
         );
-        assert!(!state.is_held(fleet));
+        assert!(state.cargo(fleet).is_empty());
     }
 
     #[test]
-    fn releasing_a_hold_lets_the_cargo_land() {
-        let (mut world, _, _, fleet, troops) = fixture(2);
-        let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..2]).unwrap();
-
-        state.release(fleet);
-
-        assert_eq!(state.landing_count(fleet), 2);
-    }
-
-    #[test]
-    fn landing_or_losing_the_cargo_ends_the_hold() {
-        let (mut world, origin, _, fleet, troops) = fixture(3);
-        let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
-        state.disembark_all(&mut world, fleet, origin).unwrap();
-        assert!(!state.is_held(fleet));
-
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
-        state
-            .disembark_selected(&mut world, fleet, origin, &troops[..1])
-            .unwrap();
-        assert!(!state.is_held(fleet));
-
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
-        state.destroy_fleet_cargo(&mut world, fleet);
-        assert!(!state.is_held(fleet));
-    }
-
-    #[test]
-    fn a_held_fleet_absorbed_into_another_passes_on_no_hold() {
+    fn a_fleet_absorbed_into_another_passes_on_its_cargo() {
         let (mut world, origin, _, first, troops) = fixture(3);
         let second = world.fleets.insert(Fleet {
             location: origin,
@@ -1302,14 +1211,14 @@ mod tests {
             has_death_star: false,
         });
         let mut state = TroopTransportState::new();
-        state.load(&mut world, first, &troops[..1]).unwrap();
+        state.embark(&mut world, first, &troops[..1]).unwrap();
 
         state.transfer_fleet(first, second);
 
-        assert!(!state.is_held(first));
-        assert!(!state.is_held(second));
-        assert_eq!(state.landing_count(second), 1);
+        assert!(state.cargo(first).is_empty());
+        assert_eq!(state.cargo(second), &troops[..1]);
     }
+
     #[test]
     fn a_regiments_move_is_enabled_for_its_side_on_the_surface() {
         let (mut world, _, _, fleet, troops) = fixture(1);
@@ -1317,7 +1226,7 @@ mod tests {
 
         assert!(state.regiment_move_enabled(&world, troops[0], true));
         assert!(!state.regiment_move_enabled(&world, troops[0], false));
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
         assert!(!state.regiment_move_enabled(&world, troops[0], true));
     }
 
@@ -1374,7 +1283,7 @@ mod tests {
     fn a_regiment_unloaded_in_orbit_lands_on_its_sides_planet_at_once() {
         let (mut world, origin, _, fleet, troops) = alliance_world(2);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
 
         let moved = move_to(
             &mut state,
@@ -1389,16 +1298,15 @@ mod tests {
         );
         assert!(world.systems[origin].ground_units.contains(&troops[0]));
         assert!(state.cargo(fleet).is_empty());
-        assert!(!state.is_held(fleet));
         assert!(state.transits().is_empty());
     }
 
     // FUN_00556390: each command moves only its own object.
     #[test]
-    fn unloading_one_regiment_leaves_the_rest_aboard_and_held() {
+    fn unloading_one_regiment_leaves_the_rest_aboard() {
         let (mut world, origin, _, fleet, troops) = alliance_world(2);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..2]).unwrap();
+        state.embark(&mut world, fleet, &troops[..2]).unwrap();
 
         move_to(
             &mut state,
@@ -1409,7 +1317,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.cargo(fleet), &troops[1..2]);
-        assert!(state.is_held(fleet));
     }
 
     // FUN_0053d430: 1/0x28 for another side's destination unless it is an
@@ -1418,7 +1325,7 @@ mod tests {
     fn a_populated_planet_of_another_side_refuses_a_regiment() {
         let (mut world, origin, _, fleet, troops) = alliance_world(2);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
         world.systems[origin].control = ControlKind::Controlled(Faction::Empire);
 
         let moved = move_to(
@@ -1441,7 +1348,7 @@ mod tests {
     fn an_unpopulated_planet_of_another_side_sends_a_regiment_aboard_a_fleet_with_room() {
         let (mut world, origin, _, full, troops) = alliance_world(1);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, full, &troops[..1]).unwrap();
+        state.embark(&mut world, full, &troops[..1]).unwrap();
         let roomy = add_fleet(&mut world, origin, 2);
         world.systems[origin].control = ControlKind::Controlled(Faction::Empire);
         world.systems[origin].is_populated = false;
@@ -1456,7 +1363,6 @@ mod tests {
         assert_eq!(moved, Ok(RegimentMove::Placed(RegimentLeg::Fleet(roomy))));
         assert!(state.cargo(full).is_empty());
         assert_eq!(state.cargo(roomy), &troops[..1]);
-        assert!(state.is_held(roomy));
     }
 
     // FUN_005073d0 lifts FUN_00553410's refusal for a regiment (0x204,
@@ -1472,7 +1378,7 @@ mod tests {
         let (mut world, origin, _, fleet, troops) = alliance_world(1);
         neutral(&mut world, origin);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
         let moved = move_to(
             &mut state,
             &mut world,
@@ -1490,7 +1396,7 @@ mod tests {
         neutral(&mut world, origin);
         world.systems[origin].control = ControlKind::Controlled(Faction::Neutral);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
         let moved = move_to(
             &mut state,
             &mut world,
@@ -1512,7 +1418,7 @@ mod tests {
             neutral(&mut world, origin);
             edit(&mut world.systems[origin]);
             let mut state = TroopTransportState::new();
-            state.load(&mut world, fleet, &troops[..1]).unwrap();
+            state.embark(&mut world, fleet, &troops[..1]).unwrap();
             let moved = move_to(
                 &mut state,
                 &mut world,
@@ -1524,7 +1430,7 @@ mod tests {
         let (mut world, origin, _, fleet, troops) = alliance_world(1);
         neutral(&mut world, origin);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
         let moved = state.move_regiment(
             &mut world,
             &MovementState::new(),
@@ -1542,7 +1448,7 @@ mod tests {
     fn a_blockaded_planet_refuses_a_regiment_with_no_room_aboard() {
         let (mut world, origin, _, fleet, troops) = alliance_world(1);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
         let blockaded = HashSet::from([origin]);
 
         let moved = state.move_regiment(
@@ -1652,7 +1558,7 @@ mod tests {
     fn a_regiment_aboard_a_fleet_in_hyperspace_cannot_move() {
         let (mut world, origin, destination, fleet, troops) = alliance_world(1);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
         let mut movement = MovementState::new();
         movement.order(fleet, origin, destination, 5);
 
@@ -1721,7 +1627,6 @@ mod tests {
         assert_eq!(state.incoming_count(fleet), 1);
         state.advance_transit(&mut world, 30);
         assert_eq!(state.cargo(fleet), &troops[..1]);
-        assert!(state.is_held(fleet));
     }
 
     // The regiment rides in the ship's container, so it ends its trip
@@ -1835,7 +1740,7 @@ mod tests {
     fn moving_a_regiment_onto_the_fleet_it_is_aboard_changes_nothing() {
         let (mut world, _, _, fleet, troops) = alliance_world(2);
         let mut state = TroopTransportState::new();
-        state.load(&mut world, fleet, &troops[..1]).unwrap();
+        state.embark(&mut world, fleet, &troops[..1]).unwrap();
 
         let moved = move_to(
             &mut state,
@@ -1849,7 +1754,7 @@ mod tests {
     }
 
     #[test]
-    fn a_regiment_boarding_from_its_planet_is_held_aboard() {
+    fn a_regiment_boarding_from_its_planet_goes_aboard() {
         let (mut world, origin, _, fleet, troops) = alliance_world(2);
         let mut state = TroopTransportState::new();
 
@@ -1862,7 +1767,7 @@ mod tests {
 
         assert_eq!(moved, Ok(RegimentMove::Placed(RegimentLeg::Fleet(fleet))));
         assert!(!world.systems[origin].ground_units.contains(&troops[0]));
-        assert_eq!(state.landing_count(fleet), 0);
+        assert_eq!(state.cargo(fleet), &troops[..1]);
     }
 
     #[test]

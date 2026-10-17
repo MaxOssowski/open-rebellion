@@ -52,16 +52,6 @@ pub struct AiConfig {
     /// Weight for battle freshness in attack scoring.
     pub weight_freshness: f64,
 
-    /// Alliance deployment budget — fraction of `max_attack_fronts` the Alliance uses.
-    /// **Parity** (`FUN_00506ea0`: Alliance evaluator at +0xc4 on global struct).
-    /// Alliance is more conservative, opening fewer attack fronts.
-    pub alliance_deploy_budget: f64,
-
-    /// Empire deployment budget — fraction of `max_attack_fronts` the Empire uses.
-    /// **Parity** (`FUN_00506ea0`: Empire evaluator at +0xc8 on global struct).
-    /// Empire is more aggressive, opening more attack fronts.
-    pub empire_deploy_budget: f64,
-
     /// Minimum troop garrison count before a controlled system is considered
     /// a troop deployment receiver. Systems with fewer than this many friendly
     /// troops will receive reinforcements from donor systems. **Augmentation.**
@@ -71,11 +61,6 @@ pub struct AiConfig {
     /// Systems with more than this many friendly troops will send excess to
     /// undersupplied systems. **Augmentation.**
     pub troop_garrison_donor_threshold: usize,
-
-    /// Death Star retreat threshold — if enemy fleet strength at the DS location
-    /// exceeds this multiple of friendly escort strength, the DS retreats to
-    /// the nearest friendly system. **Augmentation.**
-    pub ds_retreat_strength_ratio: f64,
 
     /// Maximum reconnaissance missions the AI will queue per evaluation cycle.
     /// Prevents over-investing in intelligence gathering. **Augmentation.**
@@ -95,11 +80,8 @@ impl Default for AiConfig {
             weight_proximity: 0.30,
             weight_deconfliction: 0.25,
             weight_freshness: 0.15,
-            alliance_deploy_budget: 0.6,
-            empire_deploy_budget: 0.8,
             troop_garrison_min: 1,
             troop_garrison_donor_threshold: 3,
-            ds_retreat_strength_ratio: 2.0,
             max_recon_per_eval: 2,
         }
     }

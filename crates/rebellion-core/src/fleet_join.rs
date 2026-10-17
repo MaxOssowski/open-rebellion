@@ -1169,8 +1169,8 @@ mod tests {
             })
             .collect();
         troops.sort_unstable();
-        // Loaded by order where the fleet orbits, so held there.
-        transport.load(&mut setup.world, source, &troops).unwrap();
+        // Loaded by order where the fleet orbits.
+        transport.embark(&mut setup.world, source, &troops).unwrap();
         let chosen = roster(&setup.world, source).unwrap();
 
         let created = create_fleet(
@@ -1187,8 +1187,6 @@ mod tests {
         assert_eq!(hulls(&setup.world, source), [10]);
         assert!(transport.cargo(source).is_empty());
         assert_eq!(transport.cargo(created), troops.as_slice());
-        assert!(transport.is_held(created));
-        assert!(!transport.is_held(source));
         assert!(transport
             .destroy_untransportable_cargo(&mut setup.world)
             .is_empty());

@@ -3364,7 +3364,7 @@ mod tests {
         });
         world.systems[kuat].ground_units.push(regiment);
         let mut transport = TroopTransportState::new();
-        transport.load(&mut world, fleet, &[regiment]).unwrap();
+        transport.embark(&mut world, fleet, &[regiment]).unwrap();
         let mut env = BombardEnv::new(7, None);
         let applied = apply_ai_actions_inner(
             &[AIAction::Assault {

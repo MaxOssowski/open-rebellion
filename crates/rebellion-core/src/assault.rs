@@ -597,7 +597,9 @@ mod tests {
                 t
             })
             .collect();
-        fx.transport.load(&mut fx.world, fx.fleet, &troops).unwrap();
+        fx.transport
+            .embark(&mut fx.world, fx.fleet, &troops)
+            .unwrap();
         troops
     }
 

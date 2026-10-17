@@ -2110,6 +2110,13 @@ cross-runtime proof remain open
   troop-based control (`FUN_0050b610`) now shows as neutral planets
   flipping back and forth. Golden final `v1:d2e439b6e18aff1f` ->
   `v1:3bb9a6063ff07d84` (`evidence/2026-10-17-landing-retired/`).
+- 2026-10-17, by the user's decision: the fleets' hold
+  (`TroopTransportState::load`/`release`) and `AiConfig`'s
+  `alliance_deploy_budget`, `empire_deploy_budget` and
+  `ds_retreat_strength_ratio`, unused since the two changes above, are
+  removed. The campaigns are identical. Save v59; golden
+  `v1:51f96ff9faae705b` -> `v1:e47089c0adbf9615`
+  (`evidence/2026-10-17-hold-and-config-removed/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

@@ -370,11 +370,10 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
   counting regiments on their way, refuses a full fleet ("troop capacity
   exceeded"). A fleet's Move released on a Fleet window is refused
   ("joining fleets is not ported").
-- **The hold** (port:). The original keeps a loaded regiment in its ship's
-  container until a landing order. The port lands cargo at any uncontested
-  system each tick, so `TroopTransportState` holds a fleet loaded by order
-  while it orbits the loading system; any arrival releases it, and the cargo
-  lands as before. The hold is saved (save v24, no migration).
+- **Cargo stays aboard.** The original keeps a loaded regiment in its ship's
+  container until a landing order. The port's automatic landing and the
+  hold that kept it off a fleet loaded by order went on 2026-10-17 (save
+  v59).
 - **Port rules.** The left list follows the system window's fog rule; one
   entry is selected at a time; there are no scroll bars; a listed ship
   stands for its fleet as a release target and draws no selected look; the

@@ -134,7 +134,7 @@ Fleet 2, etc."); untraced.
   unless every ship leaves. The regiments the staying ships have no room
   for (counting regiments on their way to board) go with the ships that
   leave, the last in key order first, so the capacity cleanup
-  (`destroy_untransportable_cargo`) loses none; a hold goes with them.
+  (`destroy_untransportable_cargo`) loses none.
   port: which ship carries which fighter or regiment is not modelled.
 - port: a Death Star whose class is a capital ship's
   (`CapitalShipClass::is_death_star`) carries the fleet's Death Star flag
@@ -151,9 +151,6 @@ Fleet 2, etc."); untraced.
   (`FUN_00487cc0`, `join_confirms`). port: a ship's own Move never asks.
 - port: a fleet that joins on arrival comes in after the other arrivals of
   its pass, so a target arriving in the same pass is already there.
-- port: cargo that joins a fleet holding regiments loaded where it orbits
-  shares that hold. The hold kept the port's automatic landing off such
-  cargo; that landing was retired on 2026-10-17 (`regiment-unload.md`).
 - port: no spare fleets. The port creates the fleet when Create Fleet
   executes; the result a player sees, a new fleet of the selected ships in
   their system, is the same.

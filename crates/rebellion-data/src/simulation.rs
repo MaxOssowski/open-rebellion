@@ -856,27 +856,12 @@ mod tests {
     }
 
     #[test]
-    fn a_regiment_loaded_by_order_stays_aboard_at_the_system_it_loaded_at() {
-        // port: the hold (ghidra/notes/fleet-window.md, "Port notes"); the
-        // original keeps a loaded regiment in its ship until a landing order.
+    fn a_carried_regiment_stays_aboard_at_its_system() {
+        // Nothing in the original lands cargo without an order
+        // (ghidra/notes/regiment-unload.md). Until 2026-10-17 the port's
+        // automatic landing put it down unless a hold kept it aboard.
         let (mut world, mut states, fleet, troop) = world_with_loading_fleet();
         let system = world.fleets[fleet].location;
-        states
-            .troop_transport
-            .load(&mut world, fleet, &[troop])
-            .unwrap();
-
-        run_one_tick(&mut world, &mut states);
-
-        assert_eq!(states.troop_transport.cargo(fleet), [troop]);
-        assert!(states.troop_transport.is_held(fleet));
-        assert!(!world.systems[system].ground_units.contains(&troop));
-
-        // Cargo embarked for a departure, not held, stays aboard too:
-        // nothing in the original lands cargo without an order
-        // (ghidra/notes/regiment-unload.md). It landed here until the
-        // port's automatic landing was retired (2026-10-17).
-        let (mut world, mut states, fleet, troop) = world_with_loading_fleet();
         states
             .troop_transport
             .embark(&mut world, fleet, &[troop])
@@ -885,7 +870,6 @@ mod tests {
         run_one_tick(&mut world, &mut states);
 
         assert_eq!(states.troop_transport.cargo(fleet), [troop]);
-        assert!(!states.troop_transport.is_held(fleet));
         assert!(!world.systems[system].ground_units.contains(&troop));
     }
 

@@ -1225,7 +1225,7 @@ fn place_loading_fleet(
         };
         world.systems[target].control = ControlKind::Controlled(enemy);
         world.systems[target].is_populated = true;
-        let _ = troop_transport.load(world, fleet, &[troop]);
+        let _ = troop_transport.embark(world, fleet, &[troop]);
     }
     // The destination variant: a shipyard of the player's, so the facility
     // icon's menu offers Destination (0x214, FUN_00512700 kind 4).
@@ -1250,7 +1250,7 @@ fn place_loading_fleet(
                 key
             })
             .collect();
-        let _ = troop_transport.load(world, fleet, &aboard);
+        let _ = troop_transport.embark(world, fleet, &aboard);
     }
 
     // The squadron variant: two of the player's squadrons, of its side's
@@ -1292,7 +1292,7 @@ fn place_loading_fleet(
     if request.scenario == Scenario::FleetAssault {
         let key = world.troops.insert(regiment());
         world.systems[primary].ground_units.push(key);
-        let _ = troop_transport.load(world, fleet, &[key]);
+        let _ = troop_transport.embark(world, fleet, &[key]);
     }
 
     let layout = cockpit.layout_for(640.0, 480.0);
@@ -2538,7 +2538,6 @@ struct FleetLoadObservation {
     troops_tab: Option<(f32, f32)>,
     first_item: Option<(f32, f32)>,
     aboard: bool,
-    held: bool,
     cargo: usize,
     troop_system_dat_id: Option<u32>,
     /// The system the fleet stands at.
@@ -2631,7 +2630,6 @@ fn fleet_load_observation(
             .item_screen_rect(layout, primary, 0)
             .map(screen_center),
         aboard: transport.cargo(fleet).contains(&regiment),
-        held: transport.is_held(fleet),
         cargo: transport.carried_count(fleet),
         troop_system_dat_id: regiment_system(world, regiment)
             .and_then(|system| world.systems.get(system))
@@ -4081,9 +4079,8 @@ mod tests {
 
             applied
                 .transport
-                .load(&mut applied.world, fleet, &[regiment])
+                .embark(&mut applied.world, fleet, &[regiment])
                 .unwrap();
-            assert!(applied.transport.is_held(fleet));
         }
     }
 
@@ -4289,7 +4286,6 @@ mod tests {
                 panic!("{faction:?}: one regiment starts aboard");
             };
             assert_eq!(world.troops[*regiment].is_alliance, is_alliance);
-            assert!(applied.transport.is_held(fleet));
             assert_eq!(applied.defenses.window_count(), 1);
             assert!(applied.defenses.is_open(target));
 
@@ -4314,7 +4310,7 @@ mod tests {
                     &[],
                 )
                 .unwrap();
-            assert!(start.aboard && start.held, "{faction:?}");
+            assert!(start.aboard, "{faction:?}");
             assert_eq!((start.cargo, start.troop_system_dat_id), (1, None));
         }
     }
@@ -4491,7 +4487,7 @@ mod tests {
 
         let start = next(&applied, &fleets).unwrap();
         assert_eq!(start.status, "fleet-load");
-        assert!(!start.window_open && !start.aboard && !start.held);
+        assert!(!start.window_open && !start.aboard);
         assert_eq!(
             start.troop_system_dat_id,
             Some(applied.world.systems[here].dat_id.raw())
@@ -4519,10 +4515,10 @@ mod tests {
 
         applied
             .transport
-            .load(&mut applied.world, fleet, &[regiment])
+            .embark(&mut applied.world, fleet, &[regiment])
             .unwrap();
         let loaded = next(&applied, &fleets).unwrap();
-        assert!(loaded.aboard && loaded.held);
+        assert!(loaded.aboard);
         assert_eq!((loaded.cargo, loaded.troop_system_dat_id), (1, None));
 
         let moving = FixtureRequest {
@@ -4609,13 +4605,12 @@ mod tests {
             let fleet = applied.world.fleets.keys().next().unwrap();
             let capacity = TroopTransportState::fleet_capacity(&applied.world, fleet).unwrap();
             assert_eq!(applied.transport.carried_count(fleet), capacity as usize);
-            assert!(applied.transport.is_held(fleet), "{faction:?}");
             let regiment = loading_regiment(&applied.world, here).unwrap();
             assert_eq!(applied.world.systems[here].ground_units, [regiment]);
             assert_eq!(
                 applied
                     .transport
-                    .load(&mut applied.world, fleet, &[regiment]),
+                    .embark(&mut applied.world, fleet, &[regiment]),
                 Err(
                     rebellion_core::troop_transport::TroopTransportError::CapacityExceeded {
                         capacity,

@@ -897,7 +897,9 @@ mod tests {
         });
         galaxy.world.systems[yavin].ground_units.push(troop);
         let mut transport = TroopTransportState::default();
-        transport.load(&mut galaxy.world, fleet, &[troop]).unwrap();
+        transport
+            .embark(&mut galaxy.world, fleet, &[troop])
+            .unwrap();
 
         let listed = rows(&galaxy.world, TroopTab::Alliance, &transport);
 
