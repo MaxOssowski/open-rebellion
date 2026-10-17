@@ -708,6 +708,17 @@ Open for the port (closed by stage 6b below):
 - whether the port's regiment move lets a regiment land on a neutral
   planet (`FUN_005073d0`'s test for a Move `0x201` to a system).
 
+## Removed (2026-10-17, save v58): the stand-in fleet heuristics
+
+With every plan kind ported, the port's fleet heuristics that stood in for
+a plan object (`evaluate_fleet_deployment`, `evaluate_ds_escort`,
+`select_ds_target` and their helpers, `PlannerStep::StandIn`, `Step8::Plan`,
+`Module8::decided`, the battle cooldowns) are gone. A planner of a kind
+outside 1 to 6 has no plan object and ends its cycle, as kind 0 does. The
+unused `AiConfig` fields `alliance_deploy_budget`, `empire_deploy_budget`
+and `ds_retreat_strength_ratio` stay, so the config file format does not
+change.
+
 ## Ported (2026-10-16, save v57): kind 6's plan object
 
 `ai_planner::ported_kind` takes kind 6. Every kind that `FUN_00477630`

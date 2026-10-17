@@ -129,9 +129,6 @@ pub enum PlannerStep {
     Order(AIAction, bool),
     /// The cycle ended without an order.
     Done,
-    /// A planner of a kind not ported: the port's heuristics stand in for
-    /// its cycle.
-    StandIn,
 }
 
 /// The ship record values a held ship adds to the counts
@@ -302,14 +299,11 @@ impl SectorPlanner {
             self.sync_fleets(io);
             self.resync = false;
         }
-        if self.kind == 0 {
-            return PlannerStep::Done;
-        }
-        // port: FUN_00477630 makes kinds 1 to 6 only, all ported; a
-        // planner of any other kind runs the port's heuristics for its
-        // whole cycle.
+        // A planner without a plan object (+0x5c), kind 0, ends its cycle;
+        // FUN_00477630 makes kinds 1 to 6 only, so any other kind has none
+        // either.
         if !ported_kind(self.kind) {
-            return PlannerStep::StandIn;
+            return PlannerStep::Done;
         }
         let mut done = false;
         let order = match self.state {
@@ -369,13 +363,6 @@ impl SectorPlanner {
             None if done => PlannerStep::Done,
             None => PlannerStep::Pending,
         }
-    }
-
-    /// The stand-in for another kind's planner finished: its cycle ends
-    /// (port: kinds outside 1 to 6 have no plan object).
-    pub fn plan_done(&mut self) {
-        self.state = 1;
-        self.resync = true;
     }
 
     /// `FUN_00477a40`: the first held fleet with a damaged ship (`0x3000`,
@@ -1067,9 +1054,9 @@ impl SectorPlanner {
     }
 }
 
-/// The plan kinds whose plan object's slots are ported: 1 (vtable
-/// `0x65c2c0`), 2 (`0x65c268`), 3 (`0x65c160`), 4 (`0x65c210`), 5
-/// (`0x65c108`) and 6 (`0x65c1b8`), every kind `FUN_00477630` makes.
+/// The plan kinds with a plan object: 1 (vtable `0x65c2c0`), 2
+/// (`0x65c268`), 3 (`0x65c160`), 4 (`0x65c210`), 5 (`0x65c108`) and 6
+/// (`0x65c1b8`), every kind `FUN_00477630` makes.
 pub(crate) fn ported_kind(kind: u32) -> bool {
     matches!(kind, 1..=6)
 }
@@ -1443,15 +1430,18 @@ pub(crate) mod tests {
         // sector's own system (0x20000), something asked and nothing
         // held: gave up (0x10000).
         assert_eq!(p.flags, CYCLED | REVIEWED | 0x2_0000 | 0x1_0000);
-        // Another kind's planner stands in for its whole cycle.
-        let mut other = SectorPlanner {
-            kind: 7,
-            ..planner(&fx)
-        };
-        assert_eq!(with(&mut fx, |io| other.step(io)), PlannerStep::StandIn);
-        other.state = 5;
-        other.plan_done();
-        assert_eq!((other.state, other.resync), (1, true));
+        // A planner without a plan object (kind 0) ends its cycle at once,
+        // and so does a kind FUN_00477630 never makes (the port's stand-in
+        // heuristics ran for it until they were removed, 2026-10-17).
+        for kind in [0, 7] {
+            let mut other = SectorPlanner {
+                kind,
+                state: 5,
+                ..planner(&fx)
+            };
+            assert_eq!(with(&mut fx, |io| other.step(io)), PlannerStep::Done);
+            assert_eq!(other.state, 5);
+        }
     }
 
     #[test]
@@ -2330,14 +2320,14 @@ pub(crate) mod tests {
         p.flags = 0;
         with(&mut fx, |io| p.report(io));
         assert_eq!(p.flags & 0x2_0000, 0x2_0000);
-        // A kind FUN_00477630 never makes has no plan object: it hands
-        // over (kinds 4, 5 and 6 until stages 5g, 6b and 6d of module 8).
+        // A kind FUN_00477630 never makes has no plan object: its cycle
+        // ends (the stand-in ran it until 2026-10-17).
         let mut seven = SectorPlanner {
             kind: 7,
             ..planner(&fx)
         };
         seven.resync = false;
-        assert_eq!(with(&mut fx, |io| seven.step(io)), PlannerStep::StandIn);
+        assert_eq!(with(&mut fx, |io| seven.step(io)), PlannerStep::Done);
     }
 
     #[test]

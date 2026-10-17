@@ -3,7 +3,7 @@ title: "AI Parity Tracker"
 description: "Comprehensive mapping of original REBEXE.EXE AI functions to Open Rebellion implementation status"
 category: "agent-docs"
 created: 2026-03-21
-updated: 2026-09-10
+updated: 2026-10-17
 tags: [ai, parity, ghidra, fleet-deployment]
 ---
 
@@ -30,8 +30,8 @@ campaign balance open even where an individual function mapping is complete.
 | # | Original Function | Lines | Purpose | Our Code | Status | Notes |
 |---|---|---|---|---|---|---|
 | 1 | `FUN_00519d00` | 252 | Galaxy-wide system bucketing into 7 categories | `evaluate_galaxy_state()` ai.rs | DONE | 7 buckets + control_ratio + aggression scaling |
-| 2 | `FUN_00537180` | 381 | Primary system-level entity deployment | `evaluate_fleet_deployment()` ai.rs | PARTIAL | Per-fleet scoring and bounded dispatch work, but the five-seed F-007E gate still shows strong Empire bias and insufficient battle spread. |
-| 3 | `FUN_005385f0` | 252 | Secondary deployment pass (redistribution) | Pass 2 in `evaluate_fleet_deployment()` ai.rs | AUGMENTED | Original calls FUN_0052e970 (capacity check) + FUN_00506ea0 (faction evaluator). Our redistribution keeps the stronger aggression model but now honors faction-specific deploy budgets (Alliance 0.6, Empire 0.8). |
+| 2 | `FUN_00537180` | 381 | Primary system-level entity deployment | removed 2026-10-17 | REPLACED | The port's `evaluate_fleet_deployment()` stood in for module 8's plan objects and was removed once kinds 1 to 6 were ported (`ghidra/notes/ai-sector-plans.md`). The fleets now move only through the sector planners. |
+| 3 | `FUN_005385f0` | 252 | Secondary deployment pass (redistribution) | removed 2026-10-17 | REPLACED | Went with `evaluate_fleet_deployment()`; see row 2. |
 | 4 | `FUN_00502020` | 897 | Garrison strength assessment (ships+troops+fac) | `system_strength()` ai.rs | PARTIAL | Saturating approximation covers ships, troops, and facilities. Exact weighting remains unverified. |
 | 5 | `FUN_00508250` | 139 | Action validation (18 AND-chained checks) | `can_dispatch()` + `can_dispatch_to_system()` + `can_dispatch_fleet()` ai.rs | AUGMENTED | 15 of 18 checks represented (Tammuz D1). Remaining 3 (#2, #3, #4) are C++ allocation budget tracking that our per-cycle caps replace. |
 | 6 | `FUN_00520580` | 9 | Movement order issuance (2-field struct setter) | `AIAction::MoveFleet` + simulation.rs | DONE | Original is just a command setter — `*(this) = cmd_type; *(this+4) = param`. |
@@ -46,7 +46,7 @@ campaign balance open even where an individual function mapping is complete.
 | `FUN_005039d0` | — | Facility iteration | `sys.defense_facilities.len()` | DONE | — |
 | `FUN_00504c40` | — | Troop iteration | `sys.ground_units.iter()` | DONE | — |
 | `FUN_0052e970` | 53 | **Secondary pass capacity check** | `score_attack_target()` | AUGMENTED | **Not a scoring function.** Checks if entity (family 0x10-0x3f) fits deployment budget (`this+0x58 - this+0x5c`). Calls FUN_0053b870 (reads +0x4c = capacity). Dispatches cmd 0xf3 if room. **Our 4-factor model is superior.** |
-| `FUN_00506ea0` | 13 | Faction-specific evaluator pointer | `AiConfig::{alliance_deploy_budget, empire_deploy_budget}` + `evaluate_fleet_deployment()` | DONE | Returns evaluator from global `DAT_006b2bb0`: Alliance at +0xc4, Empire at +0xc8. Rust now mirrors this with faction-specific deployment budgets. |
+| `FUN_00506ea0` | 13 | Faction-specific evaluator pointer | `AiConfig::{alliance_deploy_budget, empire_deploy_budget}`, unused since 2026-10-17 | MISSING | Returns evaluator from global `DAT_006b2bb0`: Alliance at +0xc4, Empire at +0xc8. The budgets went unused with the fleet heuristics (2026-10-17). |
 | `FUN_00508660` | 304 | Entity dispatch (10+ type handlers) | `evaluate_officers()` + `evaluate_production()` + `evaluate_research()` | DONE | Routes by family byte: fleets (0x08-0x0f), troops (0x10), capital ships (0x14, Death Star 0x18), fighters (0x1c), defense facilities (0x22-0x25), characters (0x30-0x38), special forces (0x3c). Our split into 3 functions is cleaner. |
 | `FUN_005202d0` | 39 | System pre-validation wrapper | `can_dispatch()` | DONE | Exception-handling wrapper around FUN_00520580 + FUN_0051fcb0. |
 | `FUN_004927c0` | 2098 | Notification `0x1f0` text handler (loads message strings) | None; it is not AI code | REFUTED | Earlier read as master turn processing driven by a `0x1f0` day tick. It is neither: `0x1f0` is a mission notification with a UI factory only (`ghidra/notes/timer-scheduler.md`). `AISystem::advance()` has no recovered counterpart; the original AI cadence is open (audit F-036). |
@@ -68,7 +68,7 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | 1 | `FUN_0051ebb0` | 7 | **Always returns 1** (no-op gate) | DONE (elided) |
 | 2 | `FUN_0050ad60` | 13 | Capacity check: `this+0x5c < this+0x64` → validate overflow | CLOSED — per-cycle caps (`max_covert_ops_per_eval`, `max_recon_per_eval`) are the Rust equivalent of C++ allocation budget tracking. No behavioral gap. |
 | 3 | `FUN_0050ad80` | 139 | Fleet entity count vs capacity at `+0x5c` (most complex validator) | CLOSED — fleet-level checks in `can_dispatch_fleet()` cover the fleet side; per-cycle evaluation limits prevent over-dispatch. |
-| 4 | `FUN_0050b0b0` | 65 | Entity count via vtable+0x1c8 vs budget at `+0x64` | CLOSED — global deployment budget replaced by per-cycle caps + faction-specific deploy budgets (`alliance_deploy_budget=0.6`, `empire_deploy_budget=0.8`). |
+| 4 | `FUN_0050b0b0` | 65 | Entity count via vtable+0x1c8 vs budget at `+0x64` | OPEN — the port's per-cycle caps and deploy budgets went with the fleet heuristics (2026-10-17); the original's budget is not ported. |
 | 5 | `FUN_0050b230` | 36 | Faction check (+0x24>>6&3) + status bits (+0x88>>11) + multi-param scoring | DONE (faction gate + is_busy/on_mission checks cover status bits) |
 | 6 | `FUN_0050b2c0` | 27 | Faction check + loyalty scoring via FUN_00559c10 | DONE for population-facing actions; not applied as a military target veto |
 | 7 | `FUN_0050b310` | 73 | Ship type compatibility: fleet count + facility count + bit5 of +0x88 | DONE (alive-ship check in can_dispatch_fleet approximates compatibility) |
@@ -99,7 +99,7 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | Fleet movement model | **FUN_00520580 is just a struct setter** (not transit calc) | Euclidean distance-based | AUGMENTED | Transit calc is elsewhere in event chain. Our model is intentional upgrade. |
 | Character assignment | Family-byte routing (FUN_00508660): fleets (0x08-0x0f), troops (0x10), capital ships (0x14), fighters (0x1c), defense facilities (0x22-0x25), characters (0x30-0x38), special forces (0x3c) | Role-based (Jedi, diplomat, espionage) + production priority | AUGMENTED | Original routes by entity type. Our skill-based dispatch is cleaner. |
 | Production priority | Implicit in entity handler routing order | Capital ships > fighters > yards > troops > defenses | AUGMENTED | Original doesn't have explicit priority — it handles whatever entity type the iterator yields. |
-| Faction-specific budgets | **Alliance +0xc4, Empire +0xc8** on evaluator object — different deployment budget thresholds | `alliance_deploy_budget=0.6`, `empire_deploy_budget=0.8` | DONE | `AiConfig` now mirrors the original asymmetric thresholds. |
+| Faction-specific budgets | **Alliance +0xc4, Empire +0xc8** on evaluator object — different deployment budget thresholds | `alliance_deploy_budget=0.6`, `empire_deploy_budget=0.8`, unused since 2026-10-17 | MISSING | The fleet heuristics that read them were removed. |
 | Mission probability | Composite input formulas per mission type (wiki: sub_55ae50 etc.) | Composite input (ported 2026-03-23) | DONE | Diplomacy, recruitment, subdue, DS sabotage formulas ported from TheArchitect2018 wiki. |
 
 ## Strategic AI Behaviors Added In Resheph + Tammuz
@@ -107,8 +107,8 @@ All 18 sub-functions decompiled 2026-03-23 via Ghidra MCP. Each returns bool; al
 | Behavior | Our Code | Status | Notes |
 |---|---|---|---|
 | Uprising prevention | `evaluate_uprising_prevention()` | AUGMENTED | Sends diplomats to low-support systems we already control, closing the "AI waits for uprisings" gap called out in the cross-reference report. |
-| Death Star escort + retreat | `evaluate_ds_escort()` | AUGMENTED | Routes the nearest available fleet to the DS; retreats the DS when outgunned (Tammuz D3). |
-| Death Star multi-target | `select_ds_target()` | AUGMENTED | DS targets highest-value enemy system (HQ > strength > proximity) instead of always-HQ (Tammuz D3). |
+| Death Star escort + retreat | removed 2026-10-17 | REMOVED | The port's `evaluate_ds_escort()` went with the stand-in fleet heuristics; module `0xb` sends the Death Star home (`FUN_004c94c0`) and the plan objects bind it to Destroy System. |
+| Death Star multi-target | removed 2026-10-17 | REMOVED | `select_ds_target()` went with `evaluate_ds_escort()`. |
 | Troop deployment | `evaluate_troop_deployment()` | AUGMENTED | Frontline-aware redistribution: prioritizes systems adjacent to enemy territory. Config-driven thresholds (Tammuz D2). |
 | Reconnaissance | `evaluate_reconnaissance()` | AUGMENTED | Scouts explored enemy-controlled systems for intelligence updates, targeting highest-value systems first (Tammuz D5). |
 

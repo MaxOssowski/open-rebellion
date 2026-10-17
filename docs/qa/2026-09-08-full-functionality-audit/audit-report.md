@@ -2092,6 +2092,14 @@ cross-runtime proof remain open
   Every plan kind is now ported. In seed 47 (1000 days) the kind 6 plan
   assaults Triton on day 770. No save change; golden unchanged
   (`evidence/2026-10-16-ai-plan-kind6/`).
+- 2026-10-17, by the user's decision: the port's fleet heuristics that
+  stood in for module 8's plan objects are removed
+  (`evaluate_fleet_deployment`, `evaluate_ds_escort`, `select_ds_target`
+  and their helpers, `PlannerStep::StandIn`, `Step8::Plan`,
+  `Module8::decided`, the battle cooldowns). A planner of a kind outside 1
+  to 6 has no plan object and ends its cycle. The campaigns are identical.
+  Save v58; golden `v1:a8343f6c6630924e` -> `v1:51f96ff9faae705b`
+  (`evidence/2026-10-17-stand-in-removed/`).
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.

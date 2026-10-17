@@ -247,12 +247,6 @@ pub fn run_simulation_tick(
                 current_tick
             },
         );
-        // Record battle for AI target scoring (battle repeat penalty)
-        AISystem::record_battle(&mut states.ai, sys_key, current_tick);
-        if let Some(ref mut ai2) = states.ai2 {
-            AISystem::record_battle(ai2, sys_key, current_tick);
-        }
-
         // No bombardment follows a battle: the original bombards only on the
         // Fleet menu's orders 0x220..0x223 (ghidra/notes/bombardment-order.md).
     }

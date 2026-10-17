@@ -96,9 +96,6 @@ pub enum Step8 {
     Pending,
     /// Complete without an order.
     Done,
-    /// State 4 for a planner with a plan object: its step
-    /// (`FUN_004774c0`).
-    Plan,
     /// An order, complete; the priority rises while the cycle goes on.
     Order(crate::ai::AIAction, bool),
 }
@@ -117,9 +114,6 @@ pub struct Module8 {
     pub planners: Vec<SectorPlanner>,
     /// The list's next id (`FUN_005f52c0` starts it at 1).
     pub next_id: u32,
-    /// port: the fleet heuristics standing in for the plan object have
-    /// decided this cycle's orders.
-    pub decided: bool,
 }
 
 impl Default for Module8 {
@@ -130,7 +124,6 @@ impl Default for Module8 {
             next: 0,
             planners: Vec::new(),
             next_id: 1,
-            decided: false,
         }
     }
 }
@@ -218,7 +211,6 @@ impl Module8 {
                 match self.planners[i].step(&mut pio) {
                     PlannerStep::Pending => Step8::Pending,
                     PlannerStep::Done => self.end(),
-                    PlannerStep::StandIn => Step8::Plan,
                     PlannerStep::Order(order, done) => {
                         if done {
                             self.end();
@@ -237,13 +229,11 @@ impl Module8 {
     /// A refused order (slot `+0x18`, `FUN_004dd810`).
     pub fn refused(&mut self) {
         self.state = 0;
-        self.decided = false;
     }
 
     /// The cycle's end: `+0x3c = 0`, complete.
     pub fn end(&mut self) -> Step8 {
         self.state = 0;
-        self.decided = false;
         Step8::Done
     }
 
@@ -779,7 +769,7 @@ mod tests {
         );
         assert_eq!(g.sectors[0].planner, 1);
         assert_eq!(m.end(), Step8::Done);
-        assert_eq!((m.state, m.decided), (0, false));
+        assert_eq!(m.state, 0);
         // Another planner's plan object does not count for this one.
         let mut two = Module8 {
             state: 4,
