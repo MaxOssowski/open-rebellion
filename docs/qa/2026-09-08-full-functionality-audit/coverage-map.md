@@ -41,9 +41,9 @@ with a fresh delay, and dies when its target's state record changes
 | `0x38b` | `FUN_0054d6c0` -> `FUN_00522a10` | mission in state 8 sets `+0xa4` bit 0 | `missions.rs` resolves by `ticks_remaining`, with no mission state machine | missing (semantics open) |
 | `0x38c` | `FUN_0054da10` -> `FUN_00522a30` | mission in state 11 calls slot `+0xac(0x14)` | same | missing (semantics open) |
 | `0x38d` | `FUN_005660c0` -> `FUN_0050cb80` | uprising incident every 30 + rand(70) days | `uprising.rs` (event `0x38d`, `FUN_00510f20`) | matched (commit e101e6c) |
-| `0x38e` | `FUN_00566410` -> `FUN_0050cbe0` | informant incident per held system | `economy.rs:1018` `evaluate_incident_flags` sets `informant` from `troop_surplus < 0`, with no source | port-invented trigger (F-029) |
+| `0x38e` | `FUN_00566410` -> `FUN_0050cbe0` | informant incident per held system | `informant.rs` (timer `0x38e`, `FUN_0050c820`) | matched (2026-10-17, F-029) |
 | `0x38f` | `FUN_00566760` -> `FUN_00556b50` | disaster on a random existing system every 1 + rand(399) days | `uprising.rs` `resolve_disaster`, `next_disaster_tick` | matched |
-| `0x390` | `FUN_00566a90` -> `FUN_00556be0` | resource incident every 1 + rand(499) days (GNPRTB 7719/7720) | `economy.rs:1018` sets `resource` from overcapped energy or raw materials, with no source; 7719/7720 appear nowhere in `crates/` | port-invented trigger (F-029) |
+| `0x390` | `FUN_00566a90` -> `FUN_00556be0` | resource incident every 1 + rand(499) days (GNPRTB 7719/7720) | `uprising.rs` `resolve_resource`, `next_resource_tick` | matched (2026-10-17, F-029) |
 | `0x392` | `FUN_0054e620` -> `FUN_00543af0(1)` | galaxy manager `+0x58` bit 0 every 300 + rand(100) days (GNPRTB 6146/6147) | none; 6146..6149 appear nowhere in `crates/` | missing (semantics open) |
 | `0x393` | `FUN_0054e970` -> `FUN_00546fa0` | galaxy manager timer, 300 + rand(300) days (inference), action unread | none | missing (semantics open) |
 | `0x394` | `FUN_00578700` -> `FUN_0053aa20` | type `0x28..0x30` object in state 2 sets `+0x60` bit 2 | none known | missing (semantics open) |

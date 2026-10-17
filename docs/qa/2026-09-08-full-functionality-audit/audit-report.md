@@ -1580,7 +1580,7 @@ cross-runtime proof remain open
 ### F-029: The informant and resource incidents fire on invented triggers
 
 - Severity: P3
-- Status: open
+- Status: remediated; browser verified, native GUI check pending
 - Evidence: `economy.rs` `evaluate_incident_flags` raises the informant and
   resource flags from a troop deficit and from overcapped energy or raw
   materials. The original runs them
@@ -1608,6 +1608,11 @@ cross-runtime proof remain open
   -> `v1:c02d4ee44749e195` (`evidence/2026-10-17-resource-incident/`).
   Both incidents of this finding now follow their recovered timers and
   tables.
+- 2026-10-18, closed by the user's decision: the informant incident runs on
+  each held system's timer `0x38e` with the `100 - support` roll and
+  INFORMTB, and the resource incident on event `0x390` with RESRCTB, each
+  with failing-without tests and browser runs. Native GUI acceptance was
+  not run.
 - Acceptance: both incidents follow their recovered timers and tables with
   failing-without tests.
 
