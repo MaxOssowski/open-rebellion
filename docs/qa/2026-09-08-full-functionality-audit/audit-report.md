@@ -2498,6 +2498,15 @@ cross-runtime proof remain open
   `v1:978a2af596955f63`, final `v1:e811b12322f7e20e` ->
   `v1:8c0677e665d1d127` (`evidence/2026-10-18-final-battle/`). Open:
   DarthPickup and the Pickup mission (Jabba's palace).
+- 2026-10-18: Jabba's palace read (`ghidra/notes/jabba-palace.md`).
+  BountyHuntersActive arms timer `0x393` (300 + rand(300) days); its
+  fire creates a Bounty Hunters unit in the palace and the Bounty mission
+  (`0x65`) on Han, whose capture sends him to Jabba's Palace by
+  autorouting. HanCapturedAtPalace then sends Luke, Leia and Chewbacca on
+  Palace missions (`0x64`, chance espionage/3 + combat/3): a success
+  frees Han and the palace's prisoners, a failure leaves the rescuers
+  captive for good. The port's own chain (`0x380`..`0x39b`, `0x212`,
+  `0x231`) runs on tick thresholds instead.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
