@@ -2584,6 +2584,14 @@ cross-runtime proof remain open
   initial `v1:5474ae69134d1255` -> `v1:d8f4a9b46e07169c`, final
   `v1:4cd75bad1e5062b8` -> `v1:fd4bcf87c87325d6`
   (`evidence/2026-10-18-seat-of-power/`).
+- 2026-10-18: the victory conditions word read
+  (`ghidra/notes/victory-conditions.md`). `FUN_005180e0` builds galaxy
+  `+0x74` from the HQ, the four victory characters' captures and
+  Coruscant, with the wins by game type (`+0x60`: 0 standard, 1
+  headquarters). Both sides copy it to `+0xbc`, and each change posts
+  `0x128`, which drives rows 20 (Coruscant Captured) and 21 (Alliance
+  Headquarters Destroyed). The port's `victory.rs` has none of this, and
+  porting the rows needs a save format change (v79).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
