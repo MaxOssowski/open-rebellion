@@ -168,6 +168,48 @@ Luke, Leia or Chewbacca.
 - Not ported: DarthPickup, the Pickup mission and Jabba Delivers
   Prisoners (plan 4).
 
+## The Pickup (plan 4), read 2026-10-18
+
+The DarthPickup check and the Pickup record are in `final-battle.md`. In
+addition:
+
+- The hook `FUN_0054abc0` creates the mission (`FUN_005479c0`) with
+  target the palace `0x98000481`, record `0x73000082` and member Vader
+  `0x35000281`.
+- The hit (`FUN_0056da80`), with the target container (`FUN_00521070`)
+  and the galaxy (`thunk_FUN_00506e80`) found:
+  - sets PickupInProgress (`FUN_0055f6c0(1)`, character manager `+0x58`
+    bit 2). Its notifications go to both sides (`FUN_00539fd0(1)`, `(2)`)
+    and then slot `+0x1dc`;
+  - walks the palace's characters of the mission's side
+    (`FUN_004f2640(palace, 1, side)`, the side bits of `+0x24`; a
+    prisoner's side is its captor's). Each one that is captured (`+0xac`
+    bit 0) and on no mission (`+0x78` bit 7 clear):
+    - joins the mission (slot `+0x1cc(key, 0)`);
+    - takes the mission's `+0x70` as its own `+0x70` (`FUN_00535760`,
+      `FUN_00534390`, which notifies both sides and calls slot `+0x244`);
+    - and the result is 3 (`FUN_00521880(3)`);
+  - clears PickupInProgress (`FUN_0055f6c0(0)`).
+- Jabba Delivers Prisoners (`FUN_0048b6e0`): notification `0x231` with
+  its argument set, once per message object (`+100`):
+  - background `0x42a` and media `0x479`, or `0x42b` and `0x47a` when the
+    side record's (`FUN_004f3e50(side)`) `+0xb0` bit 8 is set;
+  - speaker `0x1b`, subject Vader `0x35000281`;
+  - TEXTSTRA `0x7200` "Jabba Delivers Prisoners" and `0x7201` "Jabba has
+    deliverd Luke, Han, Chewbacca and Leia to Darth Vader. They are now
+    prisoners of the Empire." (sic), with no arguments.
+
+Open for plan 4:
+
+- What a character's and a mission's `+0x70` hold. `FUN_00543360` copies
+  a character's `+0x70` when its `+0x74` is a system (family
+  `0x90..0x97`); `captive-escape.md` reads `+0x70` as the autorouting
+  object. So the prisoners probably autoroute to the Pickup mission's
+  `+0x70` once it ends. This is not confirmed.
+- How Vader and the prisoners leave the palace. Vader is of the palace's
+  side, so `FUN_004ef260` does not autoroute him.
+- The side record's `+0xb0` bit 8, which picks the `0x231` background.
+
 ## Plan
 
 1. Captive autorouting as far as the palace needs it: a character
