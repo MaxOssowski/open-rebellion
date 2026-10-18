@@ -1085,6 +1085,18 @@ impl AISystem {
             matches!(faction, AiFaction::Alliance),
             tick,
         );
+        // FUN_004198a0, FUN_00419870, FUN_004197b0: the controller's bit for
+        // each tree the side has finished.
+        planner.research_done(
+            [TechType::Ship, TechType::Troop, TechType::Facility].map(|tech| {
+                ai_research_done(
+                    world,
+                    research_state,
+                    matches!(faction, AiFaction::Alliance),
+                    tech,
+                )
+            }),
+        );
         // FUN_0047b610: a held designer, or a mission planner's member, is
         // out of every other query.
         for p in &state.research_planners {

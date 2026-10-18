@@ -115,6 +115,7 @@ pub(crate) const KINDS: [MissionKind; 14] = [
 
 /// The three Research records (`0x53000020`, `0x53000022`, `0x53000021`;
 /// capability bits `0x800`, `0x1000`, `0x2000`; `FUN_00402720`).
+#[cfg(test)]
 const RESEARCH_RECORDS: [u32; 3] = [0x5300_0020, 0x5300_0022, 0x5300_0021];
 
 /// The six main characters (`FUN_004025f0`), as record ids.
@@ -133,10 +134,33 @@ struct AgentRecord {
     /// port: an earlier plan in this evaluation sent the object, or a
     /// research planner holds it ([`Planner::hold`]).
     sent: bool,
+    /// `FUN_00402230`'s Diplomacy reserve: Diplomacy-capable with
+    /// diplomacy above 79.
+    diplomat: bool,
     /// The object stands, not en route, at a blockaded system: its
     /// location (`+0x38`) is a system whose record has `+0x28` bit `0x2`
     /// (`FUN_00433e40`, system `+0x88` bit `0x20`).
     at_blockade: bool,
+}
+
+impl AgentRecord {
+    /// `FUN_00402230`: reserved (`0x8000000`) when able for a research tree
+    /// (capability `0x800`, `0x1000`, `0x2000`) whose controller bit
+    /// (`0x2000000`, `0x4000000`, `0x8000000`) is clear, or when a
+    /// diplomat above 79. `done` is the ship, troop and facility trees'
+    /// bits, which `FUN_004198a0`, `FUN_00419870` and `FUN_004197b0` set
+    /// once the side's research order reaches its target (`+0x140..+0x148`).
+    fn reserve(&mut self, done: [bool; 3]) {
+        let research = [0x800, 0x1000, 0x2000]
+            .into_iter()
+            .zip(done)
+            .any(|(bit, done)| self.caps & bit != 0 && !done);
+        if research || self.diplomat {
+            self.flags |= RESERVED;
+        } else {
+            self.flags &= !RESERVED;
+        }
+    }
 }
 
 /// One candidate query (`FUN_00403460` and `FUN_004035d0`).
@@ -290,6 +314,16 @@ impl<'a> Planner<'a> {
             records: records(world, missions, busy, alliance),
             world: std::marker::PhantomData,
             rng: MissionRng::seeded(0.0, tick.wrapping_mul(2) + u64::from(alliance)),
+        }
+    }
+
+    /// The controller's research bits (`FUN_004198a0`, `FUN_00419870`,
+    /// `FUN_004197b0`): the ship, troop and facility trees the side has
+    /// finished. A record able only for finished trees is no longer
+    /// reserved for research (`FUN_00402230`).
+    pub(crate) fn research_done(&mut self, done: [bool; 3]) {
+        for record in &mut self.records {
+            record.reserve(done);
         }
     }
 
@@ -688,30 +722,21 @@ fn agent_record(
             caps |= bit;
         }
     }
-    let mut flags = flags;
-    // FUN_00402230: an object legal for a Research record is reserved while
-    // the side controller's matching +4 bit (0x2000000, 0x4000000,
-    // 0x8000000) is clear. hyp: those bits' writers (FUN_004198a0,
-    // FUN_00419870, FUN_004197b0) are untraced; they are read as clear,
-    // their constructor value. port: with no Research record there is no
-    // research to reserve for.
-    let research = RESEARCH_RECORDS.iter().any(|&raw| {
-        world
-            .mission_record(crate::ids::DatId::new(raw))
-            .is_some_and(|record| members_allowed(world, record.members, [member]))
-    });
-    // FUN_00402230: a Diplomacy-capable object with diplomacy above 79.
-    if research || (caps & 0x1 != 0 && skills[Skill::Diplomacy as usize] > 79) {
-        flags |= RESERVED;
-    }
-    AgentRecord {
+    // FUN_00402230: a Diplomacy-capable object with diplomacy above 79 is
+    // reserved, and so is one able for a research tree the side has not
+    // finished ([`Planner::research_done`]); until told, no tree is done.
+    let diplomat = caps & 0x1 != 0 && skills[Skill::Diplomacy as usize] > 79;
+    let mut record = AgentRecord {
         member,
         flags,
         caps,
         skills,
         sent: false,
+        diplomat,
         at_blockade: false,
-    }
+    };
+    record.reserve([false; 3]);
+    record
 }
 
 #[cfg(test)]
@@ -998,19 +1023,41 @@ mod tests {
     }
 
     #[test]
-    fn a_character_free_for_research_is_reserved_from_sabotage() {
-        // FUN_00402230 reserves an object legal for a Research record while
-        // the side's research bit is clear. hyp: the bit is read as clear.
+    fn a_character_able_for_an_unfinished_research_tree_is_reserved_from_sabotage() {
+        // FUN_00402230 (lines 72-93): an object with a research capability
+        // (+0x34 bit 0x800, 0x1000, 0x2000) is reserved while the
+        // controller's bit for that tree is clear; FUN_004198a0 and its
+        // siblings set it once the tree is finished.
+        let mut world = world();
+        let _ = agent(&mut world, 1, |c| {
+            c.combat = pair(90);
+            c.espionage = pair(90);
+            c.ship_design = pair(10);
+        });
+        world.mission_records = research_records();
+        assert_eq!(planner(&world).plan(MissionKind::Sabotage), None);
+
+        // Another tree done keeps it; its own tree done frees it.
+        let mut p = planner(&world);
+        p.research_done([false, true, true]);
+        assert_eq!(p.plan(MissionKind::Sabotage), None);
+        let mut p = planner(&world);
+        p.research_done([true, false, false]);
+        assert!(p.plan(MissionKind::Sabotage).is_some());
+    }
+
+    #[test]
+    fn a_character_with_no_research_skill_is_not_reserved_for_research() {
+        // FUN_00402720 builds the capability through FUN_0054c440, whose
+        // research check needs a nonzero skill in the tree (FUN_0056c820),
+        // so such a character has no research bit to reserve it.
         let mut world = world();
         let _ = agent(&mut world, 1, |c| {
             c.combat = pair(90);
             c.espionage = pair(90);
         });
-        assert!(planner(&world).plan(MissionKind::Sabotage).is_some());
-
         world.mission_records = research_records();
-
-        assert_eq!(planner(&world).plan(MissionKind::Sabotage), None);
+        assert!(planner(&world).plan(MissionKind::Sabotage).is_some());
     }
 
     #[test]

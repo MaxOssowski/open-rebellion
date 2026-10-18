@@ -1,0 +1,2 @@
+    mission_planning::tests::a_character_able_for_an_unfinished_research_tree_is_reserved_from_sabotage
+test result: FAILED. 33 passed; 1 failed; 0 ignored; 0 measured; 1331 filtered out; finished in 0.00s

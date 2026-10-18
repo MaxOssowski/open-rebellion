@@ -761,10 +761,11 @@ original as follows:
 - port: the tie draws come from a stream seeded by the day and the side;
 - hyp: the posture that sets `+0xbc` is not ported, so the four posture-cap
   kinds take one decoy;
-- hyp: the controller's leader and research bits are read as clear, their
-  constructor values, so the four leaders stay off Incite, Rescue, Sabotage,
-  Assassination, and DS Sabotage teams, and every character legal for
-  Research is reserved from Incite, Rescue, Sabotage, and Abduction teams;
+- hyp: the controller's leader bit is read as clear, its constructor
+  value, so the four leaders stay off Incite, Rescue, Sabotage,
+  Assassination, and DS Sabotage teams;
+- (2026-10-18) the research bits follow the side's finished trees (see
+  "The research reserve" below);
 - hyp: the port has no officer rank, so a character in a fleet holds one;
 - port: Espionage takes the class for subtypes other than 6 and Abduction
   its default class (side `+0x31c` is untraced); the mission kind and target
@@ -841,12 +842,34 @@ The user approved the save change and the AI change.
   different systems go together; 297 two-unit teams went in 8 seeds of
   800 days.
 
+## The research reserve (2026-10-18)
+
+- `FUN_00402230` (lines 72-93) reserves a record (`0x8000000`) for each
+  research capability it has (`+0x34` bits `0x800`, `0x1000`, `0x2000`)
+  whose controller bit (`0x2000000`, `0x4000000`, `0x8000000`) is clear.
+- `FUN_004198a0`, `FUN_00419870` and `FUN_004197b0` set the bits once the
+  side's research order reaches the controller's target (`+0x140..+0x148`,
+  "The Done bits" above). That is the port's `ai_research_done`.
+- The capability comes through `FUN_0054c440` and so needs a nonzero skill
+  in the tree (`FUN_0056c820`). A character with no skill in any tree is
+  never reserved.
+- Ported: `AgentRecord::reserve` and `Planner::research_done`, which the
+  AI calls with the three trees each evaluation. The port had reserved
+  every character a Research record admits, for the whole game.
+- Campaigns: 24 seeds of 1500 days, against the persistent-planner
+  commit.
+  - Teams with two characters: 0 before, 613 after.
+  - Covert teams with characters: Sabotage 1,467, Incite 615, Rescue 187,
+    Abduction 95.
+  - Dispatched missions: 13,590 before, 12,217 after.
+  - Successes: 14,889 before, 12,030 after.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
 - The posture (`FUN_00478000`, `FUN_004b7150`) and its sector bits.
-- When the controller's research bits (`FUN_004198a0`, `FUN_00419870`,
-  `FUN_004197b0`) and leader bit (`FUN_004182a0`) are set.
+- When the controller's leader bit (`FUN_004182a0`, a game setting read
+  through `FUN_004fce50`) is set.
 - Whether the per-system record's `+0x34` is a DatId or coordinates: it is
   the system's map position (2026-10-14, see above).
 

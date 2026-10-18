@@ -1,0 +1,42 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": {
+  "Abduction_characters_0": 302,
+  "Assassination_characters_0": 785,
+  "Diplomacy_characters_1": 1760,
+  "Espionage_characters_0": 2509,
+  "FacilityDesignResearch_characters_1": 237,
+  "InciteUprising_characters_0": 1185,
+  "Recruitment_characters_1": 1454,
+  "Rescue_characters_0": 260,
+  "Sabotage_characters_0": 2872,
+  "ShipDesignResearch_characters_1": 1952,
+  "TroopTrainingResearch_characters_1": 274,
+  "missions": 13590,
+  "resolved_Failure": 9916,
+  "resolved_Success": 14889
+ },
+ "after": {
+  "Abduction_characters_0": 338,
+  "Abduction_characters_1": 92,
+  "Abduction_characters_2": 3,
+  "Assassination_characters_0": 830,
+  "Diplomacy_characters_1": 1442,
+  "Espionage_characters_0": 2217,
+  "FacilityDesignResearch_characters_1": 359,
+  "InciteUprising_characters_0": 228,
+  "InciteUprising_characters_1": 615,
+  "Recruitment_characters_1": 1023,
+  "Rescue_characters_0": 256,
+  "Rescue_characters_1": 126,
+  "Rescue_characters_2": 61,
+  "Sabotage_characters_0": 1346,
+  "Sabotage_characters_1": 918,
+  "Sabotage_characters_2": 549,
+  "ShipDesignResearch_characters_1": 1283,
+  "TroopTrainingResearch_characters_1": 531,
+  "missions": 12217,
+  "resolved_Failure": 8826,
+  "resolved_Success": 12030
+ }
+}

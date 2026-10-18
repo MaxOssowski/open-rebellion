@@ -2623,6 +2623,13 @@ cross-runtime proof remain open
   special forces. Golden initial `v1:e8ceaa386f41cc96` ->
   `v1:5ba66653ae1fb76d`, final `v1:475c0c0f35968fba` ->
   `v1:7869f8168ab1782f` (`evidence/2026-10-18-mission-planners/`).
+- 2026-10-18 (F-036): the AI's research reserve follows the side's
+  finished trees (`FUN_00402230`, `FUN_004198a0` and siblings). Before,
+  the port reserved every character for research for the whole game, so
+  none went on covert missions. In 24 campaigns, teams with two
+  characters rise from 0 to 613, and characters join Sabotage, Incite,
+  Rescue and Abduction. Golden final `v1:7869f8168ab1782f` ->
+  `v1:2d45f0777ed8cd0d` (`evidence/2026-10-18-research-reserve/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
