@@ -2384,6 +2384,15 @@ cross-runtime proof remain open
   are unchanged. Golden initial `v1:58473b5bf4582374` ->
   `v1:d077dd4c3c2b7247`, final `v1:461650933b75014c` ->
   `v1:1d8dbb48d17c03de` (`evidence/2026-10-18-jedi-training/`).
+- 2026-10-18: Luke's Dagobah mission read (`ghidra/notes/dagobah.md`).
+  Timer `0x392` (GNPRTB 6146/6147, 300 to 400 days) sets
+  `LukeDagobahRequired`; once Luke is free and Han is not held at
+  Jabba's palace, `LukeDagobah` (notification `0x221`) creates mission
+  `0x71000043` for Luke to the Dagobah abode `0x98000441` (ABODESD 1089),
+  100 days. Its end raises Luke's Force by 60 percent on success, else by
+  days / 2 percent, and sets `DagobahCompleted` (`0x210`). The abodes
+  (two jails, Dagobah, Hermitage, Jabba's Palace) sit in the galaxy, not in
+  systems, and the port loads none of them.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

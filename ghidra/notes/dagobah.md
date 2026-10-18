@@ -1,0 +1,89 @@
+# Luke's Dagobah mission
+
+Read 2026-10-18 for F-038 and F-040. The port's Dagobah chain lives in
+`story_events.rs` and is invented (Yoda, tick thresholds, Force tiers).
+This note records the original.
+
+## The trigger: timer `0x392` and LukeDagobahRequired
+
+- The mission manager's setup (`FUN_00549d60`) arms timer `0x392` on its
+  record `+0x5c`, with minimum GNPRTB 6146 (300) and spread 6147 (100), so it
+  fires once, 300 to 400 days into the game. The setup only arms it when
+  the manager's `+0x24` bits `0x30` are clear (game type, not traced). The
+  same setup also sets up `BountyHuntersActive`'s timer `0x393` (GNPRTB
+  6148/6149, 300 + rand(300)).
+- The fire (`FUN_0054e620` -> `FUN_00546f80`) sets the manager's `+0x58`
+  bit 0, `LukeDagobahRequired` (`FUN_00543af0`). Its hook (slot `+0x1c0`,
+  `FUN_0054a800`) runs the Dagobah check (`FUN_00544030`) and disarms the
+  timer.
+
+## The Dagobah check (`FUN_00544030`)
+
+With `LukeDagobahRequired` set and `HanCapturedAtPalace` (`+0x58` bit
+`0x40`) clear:
+- Luke (`0x32000242`) must exist and have a location (`FUN_005434b0`,
+  `FUN_00507010`, `FUN_004f6b50`);
+- he must be free (`FUN_005439e0` -> `FUN_005439b0`): not captured (`+0xac`
+  bit 0), usable (`+0x50` bit 0), not autorouting (`+0x50` bit `0x1000`),
+  not adrift (`+0x78` bit `0x40`), not on a mission (`+0x78` bit `0x80`);
+- then `LukeDagobah` (`+0x58` bit 2) pulses 1 then 0 (`FUN_00543b60`),
+  which sends notification `0x221` (Luke Goes to Dagobah, `FUN_0048d190`,
+  TEXTSTRA `0x71b8`/`0x71b9`).
+
+The check is one of the mission manager's story checks
+(`FUN_00549910`), which its handlers run on many events (`FUN_00545240`,
+`FUN_005457f0`, `FUN_00545540`, `FUN_00545df0`, `FUN_00545e90`,
+`FUN_00546370`, `FUN_00546e30`, `FUN_00548840`). So once required, Luke
+leaves at the first such event that finds him free.
+
+## The mission
+
+`LukeDagobah`'s hook (slot `+0x1c4`, `FUN_0054a860`) creates it
+(`FUN_005479c0`): record `0x71000043`, target `0x98000441`, member Luke.
+
+- MISSNSD `0x71000043` (TEXTSTRA 11331 "Dagobah"): Alliance only, hidden,
+  100 + rand(0..=0) days, detection on, no resigning; the target is of
+  "another" side.
+- The target `0x98000441` is the Dagobah abode (ABODESD 1089). The galaxy's
+  setup (`FUN_00519910`) creates five abodes as children of the galaxy, not
+  of a system: Alliance Jail `0x98000440` (side 1), Dagobah `0x98000441`
+  (side 3), Hermitage `0x98000442` (3), Empire Jail `0x98000480` (2) and
+  Jabba's Palace `0x98000481` (2), stored at galaxy `+0xc0..+0xdc`. The port
+  loads none of them.
+- Class `DagobahMission` (vtable `0x00667f38`): chance `+0x274` 100
+  (`FUN_00575060`); hit `+0x27c` sets 3 (`FUN_00572470`); `+0x280` sets 2
+  when unset (`FUN_00572490`).
+- Its phase slot `+0x1f4` (`FUN_005751d0`):
+  - phase 8: `FirstTrainingDay` `+0xa8` = today
+    (`DagobahMission_SetFirstTrainingDay`);
+  - phase `0xb`, once phase 8 was reached and with a first training day:
+    Luke's Force becomes Force + Force x GNPRTB 6174 (60) / 100 on a
+    success (`FUN_0055ca60`), else Force + Force x ((today - first day) /
+    GNPRTB 6175 (2)) / 100 (`FUN_0055ca90`). The difference goes to
+    ForceExperience `+0x8e` (`FUN_004ee150`), and Luke's
+    `DagobahCompleted` (`+0xb0` bit `0x8`, `FUN_0056f730`) is set, whose
+    notification is `0x210` (Luke Leaves Dagobah, `FUN_0048d0f0`).
+
+## Luke's `+0xb0`
+
+Bit 0 `KnowsHeritage` (`FUN_0056f650`), bit 1 `FinalBattleReady`
+(`FUN_0056f6c0`), bit 3 `DagobahCompleted` (`FUN_0056f730`). Leia's bit 0
+is her own `KnowsHeritage`. Han's bits are `BountyAttack` (0) and
+`CapturedByBountyHunters` (1).
+
+## Against the port
+
+- The port has no abodes, so the mission has no target to travel to.
+- `story_events.rs` starts "Dagobah" from invented conditions (Luke at
+  Force tier Aware, tick 50) with Yoda, and advances Force tiers.
+- Needed to port: the five abodes (load ABODESD, place them in the galaxy,
+  let missions target and reach them), timer `0x392`, the Dagobah check,
+  the mission with its phase-8 and phase-`0xb` slots, `DagobahCompleted`,
+  and the two messages.
+
+## Open
+
+- The manager's `+0x24` bits `0x30` (when the timer is not armed).
+- `FUN_004ece40`'s test inside the check.
+- How a member travels to an abode (no system position), and its
+  transit time.
