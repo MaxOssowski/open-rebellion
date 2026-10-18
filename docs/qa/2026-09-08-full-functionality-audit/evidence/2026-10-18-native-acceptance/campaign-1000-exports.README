@@ -1,0 +1,3 @@
+# Start game: Alliance, Toggle Dual AI, then 1000 lines "Advance 1 tick"
+# with "Export Game Log" after every 200th, written by:
+# { printf 'Start game: Alliance\nToggle Dual AI\n'; for i in $(seq 1000); do echo "Advance 1 tick"; [ $((i % 200)) -eq 0 ] && echo "Export Game Log"; done; }

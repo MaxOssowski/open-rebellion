@@ -1,0 +1,7 @@
+name = "zz-native-needs-absent"
+version = "1.0.0"
+author = "native check"
+description = "Requires a mod that is not installed."
+
+[dependencies]
+zz-native-absent = ">=1.0.0"

@@ -1,0 +1,121 @@
+{
+ "source": "three Export Game Log files (days 71-400, 482-798, 765-1000; the log keeps 500 messages), merged without duplicates",
+ "messages": 1350,
+ "days": [
+  71,
+  1000
+ ],
+ "counts": {
+  "scrapped": 14,
+  "Injured": 14,
+  "tech advanced": 22,
+  "Informants": 3,
+  "New Resources": 1
+ },
+ "lines": [
+  {
+   "tick": 186,
+   "text": "Alliance Ship tech advanced to level 1"
+  },
+  {
+   "tick": 269,
+   "text": "Alliance Ship tech advanced to level 2"
+  },
+  {
+   "tick": 286,
+   "text": "Informants have provided us with information about Svivren."
+  },
+  {
+   "tick": 324,
+   "text": "Alliance Troop tech advanced to level 1"
+  },
+  {
+   "tick": 341,
+   "text": "Alliance Ship tech advanced to level 3"
+  },
+  {
+   "tick": 382,
+   "text": "Empire Facility tech advanced to level 1"
+  },
+  {
+   "tick": 503,
+   "text": "Alliance Ship tech advanced to level 5"
+  },
+  {
+   "tick": 520,
+   "text": "Informants have provided us with information about Corfai."
+  },
+  {
+   "tick": 524,
+   "text": "Alliance Troop tech advanced to level 3"
+  },
+  {
+   "tick": 549,
+   "text": "Empire Facility tech advanced to level 2"
+  },
+  {
+   "tick": 575,
+   "text": "Alliance Facility tech advanced to level 2"
+  },
+  {
+   "tick": 583,
+   "text": "Empire Facility tech advanced to level 3"
+  },
+  {
+   "tick": 605,
+   "text": "Alliance Ship tech advanced to level 6"
+  },
+  {
+   "tick": 682,
+   "text": "Empire Facility tech advanced to level 4"
+  },
+  {
+   "tick": 701,
+   "text": "Alliance Facility tech advanced to level 4"
+  },
+  {
+   "tick": 708,
+   "text": "Alliance Ship tech advanced to level 7"
+  },
+  {
+   "tick": 747,
+   "text": "Informants have provided us with information about Praesitlyn."
+  },
+  {
+   "tick": 776,
+   "text": "New Resources on Jerijador: new sources of system energy have been discovered on Jerijador."
+  },
+  {
+   "tick": 790,
+   "text": "Empire Facility tech advanced to level 5"
+  },
+  {
+   "tick": 798,
+   "text": "Empire Troop tech advanced to level 1"
+  },
+  {
+   "tick": 811,
+   "text": "Alliance Facility tech advanced to level 5"
+  },
+  {
+   "tick": 821,
+   "text": "Alliance Ship tech advanced to level 8"
+  },
+  {
+   "tick": 868,
+   "text": "Empire Facility tech advanced to level 6"
+  },
+  {
+   "tick": 904,
+   "text": "Alliance Facility tech advanced to level 6"
+  },
+  {
+   "tick": 915,
+   "text": "Empire Troop tech advanced to level 2"
+  },
+  {
+   "tick": 926,
+   "text": "Alliance Ship tech advanced to level 9"
+  }
+ ]
+}

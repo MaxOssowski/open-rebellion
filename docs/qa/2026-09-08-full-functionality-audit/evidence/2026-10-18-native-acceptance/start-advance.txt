@@ -1,0 +1,2 @@
+Start game: Alliance
+Advance 100 ticks

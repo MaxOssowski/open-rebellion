@@ -183,7 +183,7 @@ cross-runtime proof remain open
 ### F-001: Save, Load, and Delete UI wiring
 
 - Severity: P0
-- Status: remediated; browser UI gate passes, native GUI smoke remains
+- Status: remediated; browser and native GUI verified (2026-10-18)
 - Evidence: the app now handles `PanelAction::SaveGame`, `LoadGame`, and
   `DeleteSave` against the full live campaign before the general action
   dispatcher. Main-menu Load Game opens the slot picker.
@@ -198,6 +198,10 @@ cross-runtime proof remain open
 - Acceptance: perform UI-driven save, restart, load, compare full campaign
   state, delete the slot, and verify disk/browser storage changes. Browser is
   verified; retain a native GUI restart smoke test in P31.
+- 2026-10-18 (native): the release build saved a day-100 campaign to slot 2
+  from the in-game panel (`saves/1.reb`), restarted, loaded it from the
+  Game Options screen with the same fingerprint `v1:60b8fee5fbe796af`, and
+  deleted it (the file is gone) (`evidence/2026-10-18-native-acceptance/`).
 
 ### F-002: Native faithful-HD acceptance remains open
 
@@ -1353,7 +1357,7 @@ cross-runtime proof remain open
 ### F-020: A mod with a missing dependency fails silently
 
 - Severity: P2
-- Status: remediated; native GUI check pending (mods do not load in the browser)
+- Status: remediated; native GUI verified (2026-10-18)
 - Evidence: `ModRuntime::enabled_sorted` (`crates/rebellion-data/src/mods.rs`)
   prints load-order errors to stderr and returns an empty list;
   `ModError::MissingDependency` was never constructed, so `ModRuntime::errors`
@@ -1368,6 +1372,10 @@ cross-runtime proof remain open
   mutant in the new code.
 - Acceptance: missing-dependency and version-mismatch failures reach
   `ModRuntime::errors` and the Mod Manager names the mod and dependency.
+- 2026-10-18 (native): with three test mods, the Mod Manager names the
+  missing dependency, the version mismatch (">=2.0.0, but 1.0.0 is
+  enabled"), and a disabled dependency as not installed and enabled
+  (`evidence/2026-10-18-native-acceptance/`).
 
 ### F-021: The blockade troop-destruction event is never raised
 
@@ -1580,7 +1588,7 @@ cross-runtime proof remain open
 ### F-029: The informant and resource incidents fire on invented triggers
 
 - Severity: P3
-- Status: remediated; browser verified, native GUI check pending
+- Status: remediated; browser and native GUI verified (2026-10-18)
 - Evidence: `economy.rs` `evaluate_incident_flags` raises the informant and
   resource flags from a troop deficit and from overcapped energy or raw
   materials. The original runs them
@@ -1613,6 +1621,9 @@ cross-runtime proof remain open
   INFORMTB, and the resource incident on event `0x390` with RESRCTB, each
   with failing-without tests and browser runs. Native GUI acceptance was
   not run.
+- 2026-10-18 (native): a 1000-day release-build campaign posted
+  Informants on days 286, 520 and 747 and New Resources on day 776
+  (`evidence/2026-10-18-native-acceptance/`).
 - Acceptance: both incidents follow their recovered timers and tables with
   failing-without tests.
 
@@ -2149,7 +2160,7 @@ cross-runtime proof remain open
 ### F-037: Economy and research run on an invented cadence and miss recovered terms
 
 - Severity: P2
-- Status: remediated; browser verified, native GUI check pending
+- Status: remediated; browser and native GUI verified (2026-10-18)
 - Evidence:
   - The port recomputes support every tick; the original runs FUN_00508250
     once at setup (stage 0x17) and then updates through field hooks
@@ -2275,6 +2286,9 @@ cross-runtime proof remain open
   shortfall is the autoscrap timer `0x382`, and the yards research through
   timer `0x381`, each with failing-without tests and browser runs. Native
   GUI acceptance was not run.
+- 2026-10-18 (native): the same 1000-day release-build campaign raised
+  research levels 22 times and refunded 14 autoscrapped units
+  (`evidence/2026-10-18-native-acceptance/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

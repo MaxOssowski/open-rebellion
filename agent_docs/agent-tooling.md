@@ -92,8 +92,17 @@ cua-driver serve &             # standard permission mode
   `capture_not_found`).
 - Left, right and double clicks (`count: 2`) and keys work in the background
   (`XSendEvent`). `mouse_drag` moved no game window.
-- The window is 950 by 514 for a 640 by 480 canvas: window = (132.5 + 1.0708 x,
-  1.0708 y). `evidence/2026-10-14-native-mission-targets/nat.sh` wraps this.
+- The window size depends on the compositor's tiling: 950 by 514 on
+  2026-10-14 (window = (132.5 + 1.0708 x, 1.0708 y)), 948 by 1026 on
+  2026-10-18 (window = (1.48125 x, 157.5 + 1.48125 y)). Read the size from
+  `list_windows` and the first capture. `nat.sh`
+  (`evidence/2026-10-18-native-acceptance/`) takes `SCALE`, `OX` and `OY`;
+  with all three at their identity values it clicks capture pixels.
+- A script line waits while a battle alert is up, so a long `Advance`
+  script needs the alert answered; that evidence's `battle-loop.sh`
+  auto-resolves each alert from the capture's pixels.
+- Export Game Log keeps the last 500 messages; export several times
+  during a long run.
 - Wait about 15 seconds after launch before the first menu click.
 
 ### Run a check

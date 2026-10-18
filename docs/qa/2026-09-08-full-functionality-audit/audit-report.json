@@ -171,7 +171,7 @@
     {
       "id": "F-001",
       "severity": "P0",
-      "status": "remediated_browser_verified_native_gui_pending",
+      "status": "remediated",
       "title": "Save, Load, and Delete UI wiring",
       "evidence": [
         "the app handles SaveGame, LoadGame, and DeleteSave before the general panel-action dispatcher",
@@ -179,7 +179,8 @@
         "Astra medium r1 passed 27 of 28 checks and exposed empty-slot Load activation",
         "the focused guard disables empty load rows and requires an occupied selection",
         "486 workspace tests pass, including 3 focused save-panel regressions",
-        "Astra medium r2 passed 33 of 33 save, delete, reload, bitmap, storage, network, and error assertions"
+        "Astra medium r2 passed 33 of 33 save, delete, reload, bitmap, storage, network, and error assertions",
+        "2026-10-18 (native): the release build saved a day-100 campaign to slot 2 from the in-game panel (saves/1.reb), restarted, loaded it from the Game Options screen with the same fingerprint v1:60b8fee5fbe796af, and deleted it (the file is gone) (evidence/2026-10-18-native-acceptance/)."
       ],
       "verified_tranches": [
         {
@@ -1751,7 +1752,7 @@
     {
       "id": "F-020",
       "severity": "P2",
-      "status": "remediated_native_gui_pending",
+      "status": "remediated",
       "title": "A mod with a missing dependency fails silently",
       "evidence": [
         "crates/rebellion-data/src/mods.rs: enabled_sorted() prints load-order errors and returns an empty list",
@@ -1759,7 +1760,8 @@
         "2026-09-25 fix: ModRuntime::discover, toggle_mod, and refresh record MissingDependency and VersionMismatch for each enabled mod; a disabled dependency counts as missing",
         "The Mod Manager matches errors by ModError::mod_name() and shows the Display text naming the dependency, replacing a Debug-string contains() match",
         "Review fix: a dependency cycle or duplicate name among enabled mods records a LoadOrder error on every enabled mod it blocks, since resolution failure loads none of them",
-        "Five mods.rs tests fail without the change; scoped cargo mutants catch every mutant in the new code (the only survivors are wasm32 stubs and pre-existing watcher and loader paths)"
+        "Five mods.rs tests fail without the change; scoped cargo mutants catch every mutant in the new code (the only survivors are wasm32 stubs and pre-existing watcher and loader paths)",
+        "2026-10-18 (native): with three test mods, the Mod Manager names the missing dependency, the version mismatch (>=2.0.0, but 1.0.0 is enabled), and a disabled dependency as not installed and enabled (evidence/2026-10-18-native-acceptance/)."
       ],
       "acceptance": "Missing-dependency and version-mismatch failures reach ModRuntime::errors and the Mod Manager names the mod and dependency."
     },
@@ -1877,14 +1879,15 @@
     {
       "id": "F-029",
       "severity": "P3",
-      "status": "remediated_browser_verified_native_gui_pending",
+      "status": "remediated",
       "title": "The informant and resource incidents fire on invented triggers",
       "evidence": [
         "economy.rs evaluate_incident_flags raises the informant flag from a troop deficit and the resource flag from overcapped energy or raw materials",
         "The original runs them on timers: resource (bit 19) on event 0x390 every 1 to 500 ticks (GNPRTB 7719/7720) through FUN_00556be0 and RESRCTB; informant (bit 17) on a per-system timer (+0x40, GNPRTB 7703/7704) that rolls support in FUN_0050cbe0 before INFORMTB (FUN_0050d510)",
         "2026-10-17: the informant incident is ported (informant.rs, ghidra/notes/informant-incident.md). Each held system's timer 0x38e (GNPRTB 7703 (30) + rand(0..=7704 (970)) days, FUN_0050c820) fires it with 100 - support percent (FUN_0050cbe0, FUN_00559f90). INFORMTB at 1 + rand(0..=7) (FUN_00559db0) then tells the other side about the system (FUN_0050d510, FUN_0050d5a0): the port reveals it in that side's fog and posts the Informants message (0x153). The troop-deficit trigger is gone. Save v66; golden final v1:21ecf34ac9e1f828 -> v1:e212b88bcf82db21 (evidence/2026-10-17-informant-incident/). The resource incident stands.",
         "2026-10-17: the resource incident is ported (uprising.rs, resolve_resource). Event 0x390 every GNPRTB 7719 (1) + rand(0..=7720 (499)) days picks a random existing system (FUN_00556be0), and RESRCTB at rand(0..=99) (FUN_00559ee0) moves its raw materials or energy by one within GNPRTB 7711-7714, posting New Resources or Resources Depleted (0x155). The economy's overcap incident and its \"resource discovery\" on rising output are gone. Save v67; golden final v1:e212b88bcf82db21 -> v1:c02d4ee44749e195 (evidence/2026-10-17-resource-incident/). Both incidents of this finding now follow their recovered timers and tables.",
-        "2026-10-18, closed by the user's decision: the informant incident runs on each held system's timer 0x38e with the 100 - support roll and INFORMTB, and the resource incident on event 0x390 with RESRCTB, each with failing-without tests and browser runs. Native GUI acceptance was not run."
+        "2026-10-18, closed by the user's decision: the informant incident runs on each held system's timer 0x38e with the 100 - support roll and INFORMTB, and the resource incident on event 0x390 with RESRCTB, each with failing-without tests and browser runs. Native GUI acceptance was not run.",
+        "2026-10-18 (native): a 1000-day release-build campaign posted Informants on days 286, 520 and 747 and New Resources on day 776 (evidence/2026-10-18-native-acceptance/)."
       ],
       "acceptance": "Both incidents follow their recovered timers and tables with failing-without tests."
     },
@@ -2029,7 +2032,7 @@
     {
       "id": "F-037",
       "severity": "P2",
-      "status": "remediated_browser_verified_native_gui_pending",
+      "status": "remediated",
       "title": "Economy and research run on an invented cadence and miss recovered terms",
       "evidence": [
         "The port recomputes support every tick; the original runs FUN_00508250 once at setup (stage 0x17) and then updates through field hooks (FUN_00510820, FUN_005109f0, FUN_00511740) and timers 0x381, 0x383-0x386",
@@ -2049,7 +2052,8 @@
         "2026-10-17: the \"collection rate\" is the system's ProductionModifier (+0x70, FUN_0050b2c0): 100 with no holder, else GNPRTB 7763 x 100 over the holder's support. Its hook FUN_0050c2b0 copies it to the system's mines and refineries, whose cycles it lengthens (FUN_0055e2b0). Both are ported; builds fall by up to 19% over seven 600-day seeds. Golden final v1:653ff1b1bbff8904 -> v1:99cb09fad4a57148 (evidence/2026-10-17-production-modifier/). Still open: the maintenance counter 0x304 (F-029) and timer 0x381.",
         "2026-10-17: the maintenance shortfall (0x304) is GameObjDestroyedAutoscrap. While a side's maintenance exceeds its capacity, its timer 0x382 (GNPRTB 7168, 10 days; FUN_005329f0, FUN_00530350) autoscraps one random maintained object with reason 0x15 and a half refund (FUN_004f8850, FUN_00530270). Ported as autoscrap.rs (save v64), replacing the economy's invented 30-day garrison-deficit counter. The seven 600-day campaigns play the same games and never autoscrap. Golden final v1:99cb09fad4a57148 -> v1:c23f38a8242bca8f (evidence/2026-10-17-autoscrap/). Still open: timer 0x381 (the side's per-system list sums).",
         "2026-10-17: timer 0x381 is the yards' own research. Every GNPRTB 7169 (30) + rand(0..=7170 (30)) days, FUN_00530460 adds the side's usable, unsuspended yards of each area, in the systems it holds, to its research points (+0x90 ships, +0x94 troops, +0x98 facilities), whose hook raises the levels. Ported as ResearchSystem::advance_tally (save v65). Golden final v1:c23f38a8242bca8f -> v1:21ecf34ac9e1f828 (evidence/2026-10-17-yard-research/). With it, F-037's economy timers (0x381..0x386) are ported. Still open in F-037: none of the economy bullets. The informant (0x38e) and resource (0x390) incidents stay under F-029.",
-        "2026-10-17, closed by the user's decision: support moves only through FUN_0050c9f0 (missions, incidents and the timers 0x384, 0x386), the derived fields follow their hooks, bit 11 is DeathStarNearby, the ProductionModifier drives the mines and refineries, the maintenance shortfall is the autoscrap timer 0x382, and the yards research through timer 0x381, each with failing-without tests and browser runs. Native GUI acceptance was not run."
+        "2026-10-17, closed by the user's decision: support moves only through FUN_0050c9f0 (missions, incidents and the timers 0x384, 0x386), the derived fields follow their hooks, bit 11 is DeathStarNearby, the ProductionModifier drives the mines and refineries, the maintenance shortfall is the autoscrap timer 0x382, and the yards research through timer 0x381, each with failing-without tests and browser runs. Native GUI acceptance was not run.",
+        "2026-10-18 (native): the same 1000-day release-build campaign raised research levels 22 times and refunded 14 autoscrapped units (evidence/2026-10-18-native-acceptance/)."
       ],
       "acceptance": "Support follows the hook and timer chain with failing-without tests, and research is recovered or tagged."
     },

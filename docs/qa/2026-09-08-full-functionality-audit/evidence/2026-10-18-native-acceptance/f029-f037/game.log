@@ -1,0 +1,2029 @@
+[assets] render_profile=original-parity
+Loaded: 100 systems, 10 sectors, 30 ship classes, 8 fighter classes, 60 characters
+[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69
+[audio] loaded 4 original cockpit SFX from data/base/COMMON.DLL
+[audio] loaded 22 original tactical SFX from data/base/TACTICAL.DLL
+Underrun occured: -EPIPE, attempting recover
+ALSA lib pcm.c:8787:(snd_pcm_recover) [error.pcm] underrun occurred
+[audio] loaded 153 original tactical voices from data/base/VOICEFXA.DLL
+[audio] loaded 132 original tactical voices from data/base/VOICEFXE.DLL
+Underrun occured: -EPIPE, attempting recover
+ALSA lib pcm.c:8787:(snd_pcm_recover) [error.pcm] underrun occurred
+[cutscene] opened path=assets/references/ref-videos/000.webm
+[audio] music_volume=0.00 muted=true music_muted=true
+[dev-command] sent "Start game: Alliance"
+[audio] menu_sfx=MenuSelect resource=8004
+[campaign] fleet_naming=Original
+[campaign] faction=Rebel Alliance configuration=Easy, Small Galaxy, Standard Game
+[campaign] reset generation=1 tick=0 missions=0 movements=0 cooldowns=0 dual_ai=false second_ai=false event_definitions=31
+[dev-command] sent "Toggle Dual AI"
+[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16
+[dev-command] sent "Advance 1 tick"
+[ai] day=1 speed=Paused passes=4 orders=4 second_orders=4 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=2 speed=Paused passes=4 orders=4 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=3 speed=Paused passes=4 orders=3 second_orders=4 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=4 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=5 speed=Paused passes=4 orders=3 second_orders=2 ms=0.4
+[dev-command] sent "Advance 1 tick"
+[ai] day=6 speed=Paused passes=4 orders=3 second_orders=0 ms=0.4
+[dev-command] sent "Advance 1 tick"
+[ai] day=7 speed=Paused passes=4 orders=0 second_orders=4 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=8 speed=Paused passes=4 orders=1 second_orders=4 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=9 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=10 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=11 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=12 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=13 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=14 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=15 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=16 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=17 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=18 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=19 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=20 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=21 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=22 speed=Paused passes=4 orders=2 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=23 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=24 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=25 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=26 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=27 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=28 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=29 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=30 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=31 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=32 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=33 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=34 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=35 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=36 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=37 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=38 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=39 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=40 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=41 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=42 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=43 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=44 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=45 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=46 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[battle_alert] command=simulate resource=10716 status=routed
+[audio] context=combat track=Battle mdata=307 loaded=true muted=true
+[audio] context=combat voice_event=BattleLost source_event=0x99 wave=14122 faction=Alliance routed=true loaded=true muted=true
+[dev-command] sent "Advance 1 tick"
+[ai] day=47 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=48 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=49 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=50 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=51 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=52 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=53 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=54 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=55 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=56 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=57 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=58 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=59 speed=Paused passes=4 orders=4 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=60 speed=Paused passes=4 orders=4 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=61 speed=Paused passes=4 orders=2 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=62 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=63 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=64 speed=Paused passes=4 orders=3 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=65 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=66 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=67 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=68 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=69 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=70 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=71 speed=Paused passes=4 orders=1 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=72 speed=Paused passes=4 orders=3 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=73 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=74 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=75 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=76 speed=Paused passes=4 orders=2 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=77 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=78 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=79 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=80 speed=Paused passes=4 orders=2 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=81 speed=Paused passes=4 orders=1 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=82 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=83 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=84 speed=Paused passes=4 orders=2 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=85 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=86 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=87 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=88 speed=Paused passes=4 orders=1 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=89 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=90 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=91 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=92 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=93 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=94 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=95 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=96 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=97 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=98 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=99 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=100 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=101 speed=Paused passes=4 orders=1 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=102 speed=Paused passes=4 orders=1 second_orders=0 ms=0.4
+[dev-command] sent "Advance 1 tick"
+[ai] day=103 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=104 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=105 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=106 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=107 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=108 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=109 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=110 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=111 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=112 speed=Paused passes=4 orders=3 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=113 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=114 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=115 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=116 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=117 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=118 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=119 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=120 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=121 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=122 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=123 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=124 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=125 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=126 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=127 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=128 speed=Paused passes=4 orders=1 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=129 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=130 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=131 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=132 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=133 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=134 speed=Paused passes=4 orders=1 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=135 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=136 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=137 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=138 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=139 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=140 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=141 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=142 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=143 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=144 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=145 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=146 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=147 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=148 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=149 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=150 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=151 speed=Paused passes=4 orders=2 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=152 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=153 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=154 speed=Paused passes=4 orders=1 second_orders=3 ms=0.4
+[dev-command] sent "Advance 1 tick"
+[ai] day=155 speed=Paused passes=4 orders=1 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=156 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=157 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=158 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=159 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=160 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=161 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=162 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=163 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=164 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=165 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=166 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=167 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=168 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=169 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=170 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=171 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=172 speed=Paused passes=4 orders=2 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=173 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=174 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=175 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=176 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=177 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=178 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=179 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=180 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=181 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=182 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=183 speed=Paused passes=4 orders=2 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=184 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=185 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=186 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=187 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=188 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=189 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=190 speed=Paused passes=4 orders=2 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=191 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=192 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=193 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=194 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=195 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=196 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=197 speed=Paused passes=4 orders=3 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=198 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=199 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=200 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[dev-command] sent "Export Game Log"
+[dev-command] sent "Advance 1 tick"
+[ai] day=201 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=202 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=203 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=204 speed=Paused passes=4 orders=1 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=205 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=206 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=207 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=208 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=209 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=210 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=211 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=212 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=213 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=214 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=215 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=216 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=217 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=218 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=219 speed=Paused passes=4 orders=1 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=220 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=221 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=222 speed=Paused passes=4 orders=2 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=223 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=224 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=225 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=226 speed=Paused passes=4 orders=2 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=227 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=228 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=229 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=230 speed=Paused passes=4 orders=3 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=231 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=232 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=233 speed=Paused passes=4 orders=2 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=234 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=235 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=236 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=237 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=238 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=239 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=240 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=241 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=242 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=243 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=244 speed=Paused passes=4 orders=4 second_orders=3 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=245 speed=Paused passes=4 orders=3 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=246 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=247 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=248 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=249 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=250 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=251 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=252 speed=Paused passes=4 orders=1 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=253 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=254 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=255 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=256 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=257 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=258 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=259 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=260 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=261 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=262 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=263 speed=Paused passes=4 orders=1 second_orders=3 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=264 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=265 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=266 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=267 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=268 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=269 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=270 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=271 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=272 speed=Paused passes=4 orders=0 second_orders=3 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=273 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=274 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=275 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=276 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=277 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=278 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=279 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=280 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=281 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=282 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=283 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=284 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=285 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=286 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=287 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=288 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=289 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=290 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=291 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=292 speed=Paused passes=4 orders=0 second_orders=4 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=293 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=294 speed=Paused passes=4 orders=0 second_orders=3 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=295 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=296 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=297 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=298 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=299 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=300 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=301 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=302 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=303 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=304 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=305 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=306 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=307 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=308 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=309 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=310 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=311 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=312 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=313 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=314 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=315 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=316 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=317 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=318 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=319 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=320 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=321 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=322 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=323 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=324 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=325 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=326 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=327 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=328 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=329 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=330 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=331 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=332 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=333 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=334 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=335 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=336 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=337 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=338 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=339 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=340 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=341 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=342 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=343 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=344 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=345 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=346 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=347 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=348 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=349 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=350 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=351 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=352 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=353 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=354 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=355 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=356 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=357 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=358 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=359 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=360 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=361 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=362 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=363 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=364 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=365 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=366 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=367 speed=Paused passes=4 orders=0 second_orders=4 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=368 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=369 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=370 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=371 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=372 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=373 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=374 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=375 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=376 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=377 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=378 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=379 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=380 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=381 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=382 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=383 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=384 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=385 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=386 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=387 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=388 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=389 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=390 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=391 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=392 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=393 speed=Paused passes=4 orders=1 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=394 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=395 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=396 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=397 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=398 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=399 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=400 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Export Game Log"
+[dev-command] sent "Advance 1 tick"
+[ai] day=401 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=402 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=403 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=404 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=405 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=406 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=407 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=408 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=409 speed=Paused passes=4 orders=0 second_orders=3 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=410 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=411 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=412 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=413 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=414 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=415 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=416 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=417 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=418 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=419 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=420 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=421 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=422 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=423 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=424 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=425 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=426 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=427 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=428 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=429 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=430 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=431 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=432 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=433 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=434 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=435 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=436 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=437 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=438 speed=Paused passes=4 orders=1 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=439 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=440 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=441 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=442 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=443 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=444 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=445 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=446 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=447 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=448 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=449 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=450 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=451 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=452 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=453 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=454 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=455 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=456 speed=Paused passes=4 orders=2 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=457 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=458 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=459 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=460 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=461 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=462 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=463 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=464 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=465 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=466 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=467 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=468 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=469 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=470 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=471 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=472 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=473 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=474 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=475 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=476 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=477 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=478 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=479 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=480 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=481 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=482 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=483 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=484 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=485 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=486 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=487 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=488 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=489 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=490 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=491 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=492 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=493 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=494 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=495 speed=Paused passes=4 orders=0 second_orders=3 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=496 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=497 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=498 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=499 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=500 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=501 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=502 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=503 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=504 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=505 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=506 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=507 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=508 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=509 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=510 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=511 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=512 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=513 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=514 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=515 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=516 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=517 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=518 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=519 speed=Paused passes=4 orders=2 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=520 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=521 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=522 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=523 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=524 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=525 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=526 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=527 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=528 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=529 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=530 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=531 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=532 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=533 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=534 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=535 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=536 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=537 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=538 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=539 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=540 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=541 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=542 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=543 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=544 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=545 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=546 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=547 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=548 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=549 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=550 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=551 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=552 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=553 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=554 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=555 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=556 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=557 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=558 speed=Paused passes=4 orders=3 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=559 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=560 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=561 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=562 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=563 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=564 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=565 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=566 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=567 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=568 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=569 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=570 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=571 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=572 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=573 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=574 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=575 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=576 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=577 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=578 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=579 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=580 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=581 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=582 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=583 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=584 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=585 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=586 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=587 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=588 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=589 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=590 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=591 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=592 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=593 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=594 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=595 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=596 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=597 speed=Paused passes=4 orders=1 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=598 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=599 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=600 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Export Game Log"
+[dev-command] sent "Advance 1 tick"
+[ai] day=601 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=602 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=603 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=604 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=605 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=606 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=607 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=608 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=609 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=610 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=611 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=612 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=613 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=614 speed=Paused passes=4 orders=1 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=615 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=616 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=617 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=618 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=619 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=620 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=621 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=622 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=623 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=624 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=625 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=626 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=627 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=628 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=629 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=630 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=631 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=632 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=633 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=634 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=635 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=636 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=637 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=638 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=639 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=640 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=641 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=642 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=643 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=644 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=645 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=646 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=647 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=648 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=649 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=650 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=651 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=652 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=653 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=654 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=655 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=656 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=657 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=658 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=659 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=660 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=661 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=662 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=663 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=664 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=665 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=666 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=667 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=668 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=669 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=670 speed=Paused passes=4 orders=2 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=671 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=672 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=673 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=674 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=675 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=676 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=677 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=678 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=679 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=680 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=681 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=682 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=683 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=684 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=685 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=686 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=687 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=688 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=689 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=690 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=691 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=692 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=693 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=694 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=695 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=696 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=697 speed=Paused passes=4 orders=0 second_orders=4 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=698 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=699 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=700 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=701 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=702 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=703 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=704 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=705 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=706 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=707 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=708 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=709 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=710 speed=Paused passes=4 orders=3 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=711 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=712 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=713 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=714 speed=Paused passes=4 orders=2 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=715 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=716 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=717 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=718 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=719 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=720 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=721 speed=Paused passes=4 orders=2 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=722 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=723 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=724 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=725 speed=Paused passes=4 orders=2 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=726 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=727 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=728 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=729 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=730 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=731 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=732 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=733 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=734 speed=Paused passes=4 orders=2 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=735 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=736 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=737 speed=Paused passes=4 orders=2 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=738 speed=Paused passes=4 orders=4 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=739 speed=Paused passes=4 orders=4 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=740 speed=Paused passes=4 orders=1 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=741 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=742 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=743 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=744 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=745 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=746 speed=Paused passes=4 orders=3 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=747 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=748 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=749 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=750 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=751 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=752 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=753 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=754 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=755 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=756 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=757 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=758 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=759 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=760 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=761 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=762 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=763 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=764 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=765 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=766 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=767 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=768 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=769 speed=Paused passes=4 orders=0 second_orders=3 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=770 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=771 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=772 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=773 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=774 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=775 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=776 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=777 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=778 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=779 speed=Paused passes=4 orders=4 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=780 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=781 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=782 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=783 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=784 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=785 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=786 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=787 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=788 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=789 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=790 speed=Paused passes=4 orders=1 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=791 speed=Paused passes=4 orders=0 second_orders=1 ms=0.8
+[dev-command] sent "Advance 1 tick"
+[ai] day=792 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=793 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=794 speed=Paused passes=4 orders=1 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=795 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=796 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=797 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=798 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=799 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=800 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Export Game Log"
+[dev-command] sent "Advance 1 tick"
+[ai] day=801 speed=Paused passes=4 orders=2 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=802 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=803 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=804 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=805 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=806 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=807 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=808 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=809 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=810 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=811 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=812 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=813 speed=Paused passes=4 orders=2 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=814 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=815 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=816 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=817 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=818 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=819 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=820 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=821 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=822 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=823 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=824 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=825 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=826 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=827 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=828 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=829 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=830 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=831 speed=Paused passes=4 orders=3 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=832 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=833 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=834 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=835 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=836 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=837 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=838 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=839 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=840 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=841 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=842 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=843 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=844 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=845 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=846 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=847 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=848 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=849 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=850 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=851 speed=Paused passes=4 orders=0 second_orders=2 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=852 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=853 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=854 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=855 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=856 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=857 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=858 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=859 speed=Paused passes=4 orders=2 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=860 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=861 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=862 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=863 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=864 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=865 speed=Paused passes=4 orders=3 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=866 speed=Paused passes=4 orders=3 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=867 speed=Paused passes=4 orders=3 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=868 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=869 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=870 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=871 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=872 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=873 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=874 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=875 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=876 speed=Paused passes=4 orders=0 second_orders=0 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=877 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=878 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=879 speed=Paused passes=4 orders=2 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=880 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=881 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=882 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=883 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=884 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=885 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=886 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=887 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=888 speed=Paused passes=4 orders=2 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=889 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=890 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=891 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=892 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=893 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=894 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=895 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=896 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=897 speed=Paused passes=4 orders=3 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=898 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=899 speed=Paused passes=4 orders=2 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=900 speed=Paused passes=4 orders=3 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=901 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=902 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=903 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=904 speed=Paused passes=4 orders=0 second_orders=4 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=905 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=906 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=907 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=908 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=909 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=910 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=911 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=912 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=913 speed=Paused passes=4 orders=2 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=914 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=915 speed=Paused passes=4 orders=2 second_orders=3 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=916 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=917 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=918 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=919 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=920 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=921 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=922 speed=Paused passes=4 orders=1 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=923 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=924 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=925 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=926 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=927 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=928 speed=Paused passes=4 orders=0 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=929 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=930 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=931 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=932 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=933 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=934 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=935 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=936 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=937 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=938 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=939 speed=Paused passes=4 orders=2 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=940 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=941 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=942 speed=Paused passes=4 orders=3 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=943 speed=Paused passes=4 orders=3 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=944 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=945 speed=Paused passes=4 orders=0 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=946 speed=Paused passes=4 orders=0 second_orders=1 ms=0.5
+[dev-command] sent "Advance 1 tick"
+[ai] day=947 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=948 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=949 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=950 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=951 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=952 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=953 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=954 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=955 speed=Paused passes=4 orders=1 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=956 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=957 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=958 speed=Paused passes=4 orders=0 second_orders=0 ms=0.8
+[dev-command] sent "Advance 1 tick"
+[ai] day=959 speed=Paused passes=4 orders=0 second_orders=3 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=960 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=961 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=962 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=963 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=964 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=965 speed=Paused passes=4 orders=2 second_orders=0 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=966 speed=Paused passes=4 orders=0 second_orders=3 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=967 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=968 speed=Paused passes=4 orders=0 second_orders=0 ms=0.8
+[dev-command] sent "Advance 1 tick"
+[ai] day=969 speed=Paused passes=4 orders=2 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=970 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=971 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=972 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=973 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=974 speed=Paused passes=4 orders=0 second_orders=1 ms=0.8
+[dev-command] sent "Advance 1 tick"
+[ai] day=975 speed=Paused passes=4 orders=0 second_orders=2 ms=0.8
+[dev-command] sent "Advance 1 tick"
+[ai] day=976 speed=Paused passes=4 orders=0 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=977 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=978 speed=Paused passes=4 orders=4 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=979 speed=Paused passes=4 orders=4 second_orders=1 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=980 speed=Paused passes=4 orders=3 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=981 speed=Paused passes=4 orders=0 second_orders=3 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=982 speed=Paused passes=4 orders=1 second_orders=1 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=983 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=984 speed=Paused passes=4 orders=0 second_orders=0 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=985 speed=Paused passes=4 orders=3 second_orders=3 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=986 speed=Paused passes=4 orders=3 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=987 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=988 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=989 speed=Paused passes=4 orders=0 second_orders=3 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=990 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=991 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=992 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=993 speed=Paused passes=4 orders=0 second_orders=2 ms=0.8
+[dev-command] sent "Advance 1 tick"
+[ai] day=994 speed=Paused passes=4 orders=0 second_orders=3 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=995 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=996 speed=Paused passes=4 orders=0 second_orders=3 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=997 speed=Paused passes=4 orders=0 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=998 speed=Paused passes=4 orders=0 second_orders=2 ms=0.7
+[dev-command] sent "Advance 1 tick"
+[ai] day=999 speed=Paused passes=4 orders=2 second_orders=2 ms=0.6
+[dev-command] sent "Advance 1 tick"
+[ai] day=1000 speed=Paused passes=4 orders=0 second_orders=3 ms=0.7
+[dev-command] sent "Export Game Log"
+[dev-command] done

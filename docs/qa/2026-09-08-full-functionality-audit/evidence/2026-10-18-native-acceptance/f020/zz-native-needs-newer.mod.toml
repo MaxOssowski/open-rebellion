@@ -1,0 +1,7 @@
+name = "zz-native-needs-newer"
+version = "1.0.0"
+author = "native check"
+description = "Requires zz-native-base 2.0.0 or later."
+
+[dependencies]
+zz-native-base = ">=2.0.0"

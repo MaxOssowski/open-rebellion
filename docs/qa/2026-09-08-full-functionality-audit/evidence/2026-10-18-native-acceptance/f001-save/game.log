@@ -1,0 +1,125 @@
+[assets] render_profile=original-parity
+Loaded: 100 systems, 10 sectors, 30 ship classes, 8 fighter classes, 60 characters
+[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69
+[audio] loaded 4 original cockpit SFX from data/base/COMMON.DLL
+[audio] loaded 22 original tactical SFX from data/base/TACTICAL.DLL
+Underrun occured: -EPIPE, attempting recover
+ALSA lib pcm.c:8787:(snd_pcm_recover) [error.pcm] underrun occurred
+[audio] loaded 153 original tactical voices from data/base/VOICEFXA.DLL
+[audio] loaded 132 original tactical voices from data/base/VOICEFXE.DLL
+Underrun occured: -EPIPE, attempting recover
+ALSA lib pcm.c:8787:(snd_pcm_recover) [error.pcm] underrun occurred
+[cutscene] opened path=assets/references/ref-videos/000.webm
+[audio] music_volume=0.00 muted=true music_muted=true
+[dev-command] sent "Start game: Alliance"
+[audio] menu_sfx=MenuSelect resource=8004
+[campaign] fleet_naming=Original
+[campaign] faction=Rebel Alliance configuration=Easy, Small Galaxy, Standard Game
+[campaign] reset generation=1 tick=0 missions=0 movements=0 cooldowns=0 dual_ai=false second_ai=false event_definitions=31
+[dev-command] sent "Advance 100 ticks"
+[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16
+[ai] day=1 speed=Paused passes=4 orders=4 second_orders=0 ms=0.2
+[dev-command] done
+[ai] day=2 speed=Paused passes=4 orders=4 second_orders=0 ms=0.3
+[ai] day=3 speed=Paused passes=4 orders=3 second_orders=0 ms=0.4
+[ai] day=4 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=5 speed=Paused passes=4 orders=3 second_orders=0 ms=0.3
+[ai] day=6 speed=Paused passes=4 orders=3 second_orders=0 ms=0.3
+[ai] day=7 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=8 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=9 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=10 speed=Paused passes=4 orders=1 second_orders=0 ms=0.4
+[ai] day=11 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=12 speed=Paused passes=4 orders=2 second_orders=0 ms=0.3
+[ai] day=13 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=14 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=15 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=16 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=17 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=18 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=19 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=20 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=21 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=22 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=23 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=24 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=25 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=26 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=27 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=28 speed=Paused passes=4 orders=4 second_orders=0 ms=0.4
+[ai] day=29 speed=Paused passes=4 orders=4 second_orders=0 ms=0.3
+[ai] day=30 speed=Paused passes=4 orders=3 second_orders=0 ms=0.3
+[ai] day=31 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=32 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=33 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=34 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=35 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=36 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=37 speed=Paused passes=4 orders=1 second_orders=0 ms=0.4
+[ai] day=38 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=39 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=40 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=41 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=42 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=43 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=44 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=45 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=46 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[battle_alert] command=simulate resource=10716 status=routed
+[audio] context=combat track=Battle mdata=307 loaded=true muted=true
+[audio] context=combat voice_event=BattleLost source_event=0x99 wave=14122 faction=Alliance routed=true loaded=true muted=true
+[ai] day=47 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=48 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=49 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=50 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=51 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=52 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=53 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=54 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=55 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=56 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=57 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=58 speed=Paused passes=4 orders=0 second_orders=0 ms=0.2
+[ai] day=59 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=60 speed=Paused passes=4 orders=2 second_orders=0 ms=0.3
+[ai] day=61 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=62 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=63 speed=Paused passes=4 orders=1 second_orders=0 ms=0.4
+[ai] day=64 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=65 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=66 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=67 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=68 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=69 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=70 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=71 speed=Paused passes=4 orders=2 second_orders=0 ms=0.3
+[ai] day=72 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=73 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=74 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=75 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=76 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=77 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=78 speed=Paused passes=4 orders=2 second_orders=0 ms=0.3
+[ai] day=79 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=80 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=81 speed=Paused passes=4 orders=1 second_orders=0 ms=0.3
+[ai] day=82 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=83 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=84 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=85 speed=Paused passes=4 orders=2 second_orders=0 ms=0.3
+[ai] day=86 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=87 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=88 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=89 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=90 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=91 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=92 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=93 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=94 speed=Paused passes=4 orders=0 second_orders=0 ms=0.2
+[ai] day=95 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=96 speed=Paused passes=4 orders=0 second_orders=0 ms=0.2
+[ai] day=97 speed=Paused passes=4 orders=2 second_orders=0 ms=0.4
+[ai] day=98 speed=Paused passes=4 orders=0 second_orders=0 ms=0.4
+[ai] day=99 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+[ai] day=100 speed=Paused passes=4 orders=0 second_orders=0 ms=0.3
+save_state_fingerprint slot=1 tick=100 fingerprint=v1:60b8fee5fbe796af
