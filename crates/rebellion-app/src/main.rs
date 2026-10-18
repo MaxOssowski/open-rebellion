@@ -2246,7 +2246,24 @@ async fn main() {
                 &tick_events,
                 &jabba_rolls,
             ) {
-                rebellion_core::jabba::perform(&step, &mut mission_state, &mut world);
+                let dispatched =
+                    rebellion_core::jabba::perform(&step, &mut mission_state, &mut world);
+                // Notification 0x200 (FUN_0048c4c0), Rescue Attempt.
+                // port: posted as the Palace mission is dispatched; the
+                // original posts it as the rescuer sets out (EnrouteActive).
+                if let (rebellion_core::jabba::JabbaStep::Rescue { rescuer, .. }, Some(_)) =
+                    (step, dispatched)
+                {
+                    if let Some(message) = world.characters.get(rescuer).and_then(|c| {
+                        rebellion_render::story_messages::rescue_attempt_message(
+                            c,
+                            current_tick,
+                            &message_texts,
+                        )
+                    }) {
+                        msg_log.push(message);
+                    }
+                }
             }
             // ── SeatOfPower (FUN_005617b0): notification 0x230, Emperor
             // Arrives at Coruscant (FUN_0048ce80) when set ──────────────

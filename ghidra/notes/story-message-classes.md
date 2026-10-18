@@ -67,7 +67,7 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 10 | Han Solo Attacked by Bounty Hunters | `0x212`, arg 0 | `FUN_0048fa00` (`0x65b5a8`) | `0x41c` | `0x7168` / `0x7169` | Alliance | mapped 2026-10-18 (`bounty_messages`, the Bounty mission's hit) |
 | 11 | Bounty Hunters Locate Solo | `0x212`, arg 0 | `FUN_0048fa00` | `0x41e` | `0x716a` / `0x716b` (system) | Empire | mapped 2026-10-18 (`bounty_messages`) |
 | 12 | Han Solo Captured by Bounty Hunters | `0x212`, arg 0 | `FUN_0048fa00` | `0x41d` | `0x716c` / `0x716d` | both | mapped 2026-10-18 (`bounty_messages`) |
-| 13 | Rescue Attempt | `0x200` | `FUN_0048c4c0` (`0x65b2a8`) | side, the rescuer's portrait | `0x71ea` / `0x71eb` | — | missing |
+| 13 | Rescue Attempt | `0x200` | `FUN_0048c4c0` (`0x65b2a8`) | side, the rescuer's portrait | `0x71ea` / `0x71eb` | Alliance only | mapped 2026-10-18 (`rescue_attempt_message`, the Palace mission's dispatch; see below) |
 | 14 | Jabba Captures a character | `0x1e0` case 5 | `FUN_00490340` (`0x65b638`) | `0x429` | `0x7156` / `0x7157` | — | mapped 2026-10-18 (`jabba_captures_message`, the Palace mission's failed rescuer) |
 | 15 | Jabba Delivers Prisoners | `0x231`, arg set, once | `FUN_0048b6e0` (`0x65b1d0`) | `0x42a`, or `0x42b` | `0x7200` / `0x7201` | both | mapped 2026-10-18 (`jabba_delivers_message`, the Pickup's hit) |
 | 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | mapped 2026-10-18 (`emperor_arrives_message`, SeatOfPower in `seat_of_power.rs`, save v78) |
@@ -310,3 +310,25 @@ handlers). A change is notification `0x230`, and when it is set the app
 posts `story_messages::emperor_arrives_message` to the Empire. hyp: the
 first check stores the bit silently, because the setup places the Emperor
 at Coruscant before play. The port's own `0x230` story event is removed.
+
+## Row 13, Rescue Attempt (2026-10-18)
+
+- `FUN_0048c4c0` answers `0x200` (`RoleEnrouteActiveNotif`, a role
+  setting out or arriving, `FUN_005365b0`).
+- It is shown when all of these hold:
+  - the view is the Alliance's;
+  - the character is of family `0x30`..`0x3b`;
+  - the new value (record `+0x28`) is set;
+  - the record's second key (`+0x2c`) is of family `0x64`, a Palace
+    mission. Ghidra dropped this test as unreachable; it is at
+    `0x48c5d9`..`0x48c610`;
+  - record `+0x30` is non-zero.
+- Background `(side != 1) + 0x412`, media `0x47c`/`0x47d`, a speaker by
+  character (Leia's and Luke's with their own media), the portrait
+  (`FUN_004c5000`). TEXTSTRA `0x71ea` "{1:1} Rescue Attempt" / `0x71eb`
+  "Han Solo has been captured by bounty hunters and taken to Jabba's
+  palace. I will be departing immediately to attempt a rescue."
+- Ported: `story_messages::rescue_attempt_message`. The app posts it when
+  a `JabbaStep::Rescue` dispatches the Palace mission. port: the dispatch
+  stands in for the rescuer's EnrouteActive, which the original sets as
+  the rescuer leaves.

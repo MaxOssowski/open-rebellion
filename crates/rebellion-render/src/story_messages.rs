@@ -453,6 +453,38 @@ pub fn jabba_captures_message(
     )
 }
 
+/// Rescue Attempt (`FUN_0048c4c0`): notification `0x200`
+/// (`RoleEnrouteActiveNotif`), a character setting out (EnrouteActive)
+/// whose second key, at record `+0x2c`, is a Palace mission (family
+/// `0x64`, checked at `0x48c5d9`). The Alliance alone reads TEXTSTRA
+/// `0x71ea` / `0x71eb` with the rescuer's name, on its side background
+/// (`0x412`) with the rescuer's portrait (`FUN_004c5000`).
+///
+/// port: the speaker (`+0x28` by character) and media are not read.
+#[must_use]
+pub fn rescue_attempt_message(
+    rescuer: &rebellion_core::world::Character,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let parameters = [MessageParameter::Named {
+        name: &rescuer.name,
+    }];
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&0x71eb)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(STORY_RAIL, RailAudience::Alliance)
+        .with_title(fill_message_text(texts.get(&0x71ea)?, &parameters))
+        .with_picture(MessagePicture {
+            background: side_background(CockpitFaction::Alliance),
+            foreground: character_portrait(rescuer.dat_id, rescuer.is_major),
+        }),
+    )
+}
+
 /// Notification `0x128`, a change of the victory conditions word
 /// (`ghidra/notes/victory-conditions.md`), for both sides:
 ///
@@ -1538,6 +1570,37 @@ mod tests {
         let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
         assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
         assert_eq!(lost.picture.expect("a picture").background, 0x428);
+    }
+
+    #[test]
+    fn a_rescue_attempt_names_the_rescuer_for_the_alliance_with_his_portrait() {
+        // FUN_0048c4c0: 0x71ea / 0x71eb with the rescuer, background 0x412
+        // and the portrait (FUN_004c5000), the Alliance only.
+        let texts: HashMap<u16, String> = [
+            (0x71ea, "{1:1} Rescue Attempt"),
+            (0x71eb, "Han Solo has been captured by bounty hunters and taken to Jabba's palace.  I will be departing immediately to attempt a rescue."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let luke = rebellion_core::world::Character {
+            name: "Luke Skywalker".into(),
+            dat_id: DatId::new(0x242),
+            is_major: true,
+            ..Default::default()
+        };
+        let message = rescue_attempt_message(&luke, 5, &texts).expect("message");
+        assert_eq!(
+            message.title.as_deref(),
+            Some("Luke Skywalker Rescue Attempt")
+        );
+        assert!(message.text.starts_with("Han Solo has been captured"));
+        assert_eq!(message.audience, RailAudience::Alliance);
+        let picture = message.picture.expect("a picture");
+        assert_eq!(picture.background, 0x412);
+        assert_eq!(picture.foreground, character_portrait(luke.dat_id, true));
+        assert!(picture.foreground.is_some());
+        assert!(rescue_attempt_message(&luke, 5, &HashMap::new()).is_none());
     }
 
     #[test]

@@ -2601,6 +2601,12 @@ cross-runtime proof remain open
   `v1:d8f4a9b46e07169c` -> `v1:e8ceaa386f41cc96`, final
   `v1:fd4bcf87c87325d6` -> `v1:475c0c0f35968fba`
   (`evidence/2026-10-18-victory-conditions/`).
+- 2026-10-18: Rescue Attempt (row 13, `FUN_0048c4c0`) is ported. It
+  follows notification `0x200` for a character setting out on a Palace
+  mission (the family-`0x64` test at `0x48c5d9`, which Ghidra dropped).
+  The app posts it to the Alliance with the rescuer's portrait when a
+  Palace mission is dispatched. 20 of 21 story message classes are now
+  mapped (`evidence/2026-10-18-rescue-attempt/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

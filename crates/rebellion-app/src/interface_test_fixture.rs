@@ -1828,6 +1828,14 @@ pub fn post_story_messages(
         .iter()
         .find(|(_, character)| character.is_empire && !character.is_major)
         .map(|(key, _)| key);
+    // Rescue Attempt (FUN_0048c4c0): Chewbacca sets out for the palace.
+    if let Some(message) = rebellion_render::story_messages::rescue_attempt_message(
+        &world.characters[chewbacca],
+        0,
+        texts,
+    ) {
+        log.push(message);
+    }
     // Notification 0x128 with the HQ lost and Coruscant the Alliance's.
     for message in rebellion_render::story_messages::victory_conditions_messages(0x101, 0, texts) {
         log.push(message);
