@@ -1788,7 +1788,7 @@ pub fn post_story_messages(
     if request.scenario != Scenario::StoryMessages {
         return;
     }
-    use rebellion_core::events::{EventAction, EVT_JABBA_CAPTURES_CHEWIE, EVT_LEIA_FORCE};
+    use rebellion_core::events::{EventAction, EVT_LEIA_FORCE};
     let named = |needle: &str| {
         world
             .characters
@@ -1799,24 +1799,14 @@ pub fn post_story_messages(
     let (Some(leia), Some(chewbacca)) = (named("leia"), named("chewbacca")) else {
         return;
     };
-    let posts = [
-        (
-            EVT_LEIA_FORCE,
-            vec![EventAction::ModifyForceTier {
-                character: leia,
-                new_tier: rebellion_core::world::ForceTier::Aware,
-            }],
-            "Princess Leia has discovered her connection to the Force!",
-        ),
-        (
-            EVT_JABBA_CAPTURES_CHEWIE,
-            vec![EventAction::CaptureCharacter {
-                character: chewbacca,
-                captor_faction: Faction::Empire,
-            }],
-            "Chewbacca has been captured by Jabba's guards!",
-        ),
-    ];
+    let posts = [(
+        EVT_LEIA_FORCE,
+        vec![EventAction::ModifyForceTier {
+            character: leia,
+            new_tier: rebellion_core::world::ForceTier::Aware,
+        }],
+        "Princess Leia has discovered her connection to the Force!",
+    )];
     for (event_id, actions, port_text) in posts {
         log.push(rebellion_render::story_messages::story_message(
             world,
@@ -1838,6 +1828,14 @@ pub fn post_story_messages(
         .iter()
         .find(|(_, character)| character.is_empire && !character.is_major)
         .map(|(key, _)| key);
+    // Jabba Captures (FUN_00490340 case 5): Chewbacca, a failed rescuer.
+    if let Some(message) = rebellion_render::story_messages::jabba_captures_message(
+        &world.characters[chewbacca],
+        0,
+        texts,
+    ) {
+        log.push(message);
+    }
     let discoveries = [
         (named("vader"), empire_minor),
         (named("luke"), Some(leia)),

@@ -1,0 +1,349 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai",
+ "runs": {
+  "1-1500": [
+   [
+    331,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    334,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "2-1500": [
+   [
+    497,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Bothawui"
+    }
+   ],
+   [
+    500,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Bothawui"
+    }
+   ]
+  ],
+  "3-1500": [
+   [
+    561,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Vagran"
+    }
+   ],
+   [
+    564,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Vagran"
+    }
+   ]
+  ],
+  "4-1500": [
+   [
+    376,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Woostri"
+    }
+   ],
+   [
+    379,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Woostri"
+    }
+   ]
+  ],
+  "5-1500": [
+   [
+    330,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    333,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "6-1500": [],
+  "7-1500": [],
+  "8-1500": [],
+  "9-1500": [
+   [
+    360,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    363,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "10-1500": [
+   [
+    327,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    330,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "11-1500": [
+   [
+    591,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Bpfassh"
+    }
+   ],
+   [
+    594,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Bpfassh"
+    }
+   ]
+  ],
+  "12-1500": [
+   [
+    504,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    507,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "13-1500": [],
+  "14-1500": [
+   [
+    498,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Alk'lellish III"
+    }
+   ],
+   [
+    501,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Alk'lellish III"
+    }
+   ]
+  ],
+  "15-1500": [],
+  "16-1500": [],
+  "17-1500": [
+   [
+    310,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    313,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "18-1500": [],
+  "19-1500": [
+   [
+    568,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    571,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "20-1500": [
+   [
+    437,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    440,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "21-1500": [],
+  "22-1500": [
+   [
+    316,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    319,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ],
+  "23-1500": [
+   [
+    498,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Ghorman"
+    }
+   ],
+   [
+    501,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Ghorman"
+    }
+   ]
+  ],
+  "24-1500": [
+   [
+    336,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    339,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ]
+  ]
+ }
+}

@@ -28,7 +28,7 @@ Events are registered in `EventState` by `define_story_events(&mut state, &world
 The port's `0x393`..`0x396` and `0x220` events are gone (save v76). The mission manager's FinalBattleReady path runs in `final_battle.rs` (`ghidra/notes/final-battle.md`), and the encounter class posts The Final Battle (`story_messages::final_battle_message`). Only Luke's confrontation with Vader (`FUN_00560200`) and Leia's discovery set `heritage_known` (save v75). DarthPickup and the Pickup mission (`0x73`) wait for Jabba's palace.
 
 ### Chains 3 and 4: Bounty Hunters and Jabba's Palace (removed)
-The port's `0x397`..`0x39b`, `0x380`..`0x387`, `0x212`, `0x200`, `0x231` and carbonite `0x39c`..`0x3a0` events are gone (save v77). The mission manager's BountyHuntersActive path runs in `jabba.rs` (`ghidra/notes/jabba-palace.md`): timer `0x393`, the Bounty Hunters unit, the Bounty mission (`0x65000083`) and Han's trip to the palace. The app posts notification `0x212` (`story_messages::bounty_messages`). HanCapturedAtPalace, the Palace missions and the Pickup are not ported yet.
+The port's `0x397`..`0x39b`, `0x380`..`0x387`, `0x212`, `0x200`, `0x231` and carbonite `0x39c`..`0x3a0` events are gone (save v77). The mission manager's BountyHuntersActive path runs in `jabba.rs` (`ghidra/notes/jabba-palace.md`): timer `0x393`, the Bounty Hunters unit, the Bounty mission (`0x65000083`) and Han's trip to the palace. The app posts notification `0x212` (`story_messages::bounty_messages`). HanCapturedAtPalace and the Palace missions (`0x64000044`) are ported too, with Jabba Captures (`story_messages::jabba_captures_message`); the Pickup is not ported yet.
 
 ## Key Patterns
 
@@ -40,4 +40,4 @@ Since `EventCondition` uses AND logic, OR semantics require multiple event defin
 
 ## Constants (events.rs)
 
-`EVT_BOUNTY_ATTACK` (0x212), `EVT_HAN_RESCUE` (0x200), `EVT_JABBA_PRISONERS` (0x231), `EVT_JABBA_CAPTURES_CHEWIE` (0x387) and `EVT_HAN_PERMANENT_FREEZE`/`EVT_HAN_CARBONITE_FAIL_1..5` (0x39b..0x3a0) remain as ids, but no story event defines them since save v77. `story_messages::story_class` still maps `0x387` to Jabba Captures, which waits for the Palace mission's failure (`ghidra/notes/jabba-palace.md`, plan 3).
+`EVT_BOUNTY_ATTACK` (0x212), `EVT_HAN_RESCUE` (0x200), `EVT_JABBA_PRISONERS` (0x231), `EVT_JABBA_CAPTURES_CHEWIE` (0x387) and `EVT_HAN_PERMANENT_FREEZE`/`EVT_HAN_CARBONITE_FAIL_1..5` (0x39b..0x3a0) remain as ids, but no story event defines them since save v77. Jabba Captures is posted for the Palace mission's failed rescuer (`story_messages::jabba_captures_message`), not for `0x387`.

@@ -2264,7 +2264,9 @@ async fn main() {
                     #[cfg(not(target_arch = "wasm32"))]
                     &audio_vol,
                 );
-                // Notification 0x212 (FUN_0048fa00), after Han's capture.
+                // Notification 0x212 (FUN_0048fa00), after Han's capture;
+                // notification 0x1e0 case 5 (FUN_00490340) for a rescuer
+                // the Palace mission's failure leaves with Jabba.
                 for effect in &result.effects {
                     if let MissionEffect::BountyAttack { character, .. } = effect {
                         for message in rebellion_render::story_messages::bounty_messages(
@@ -2274,6 +2276,19 @@ async fn main() {
                             &message_texts,
                         ) {
                             msg_log.push(message);
+                        }
+                    }
+                    if let MissionEffect::CharacterCaptured { character, .. } = effect {
+                        if rebellion_core::jabba::held_at_palace(&world, *character) {
+                            if let Some(message) =
+                                rebellion_render::story_messages::jabba_captures_message(
+                                    &world.characters[*character],
+                                    current_tick,
+                                    &message_texts,
+                                )
+                            {
+                                msg_log.push(message);
+                            }
                         }
                     }
                 }
@@ -7377,6 +7392,7 @@ fn apply_panel_action(
                 MissionKind::JediTraining => "Jedi Training",
                 MissionKind::Dagobah => "Dagobah",
                 MissionKind::Bounty => "Bounty",
+                MissionKind::Palace => "Palace",
             };
             msg_log.push(GameMessage::at_system(
                 clock.tick,
@@ -7865,6 +7881,7 @@ fn apply_mission_result(
         MissionKind::JediTraining => "Jedi Training",
         MissionKind::Dagobah => "Dagobah",
         MissionKind::Bounty => "Bounty",
+        MissionKind::Palace => "Palace",
     };
     let sys_name = world
         .systems
@@ -7894,7 +7911,8 @@ fn apply_mission_result(
         | MissionKind::Move
         | MissionKind::JediTraining
         | MissionKind::Dagobah
-        | MissionKind::Bounty => MessageCategory::Mission,
+        | MissionKind::Bounty
+        | MissionKind::Palace => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.
     let picture = {
@@ -8087,7 +8105,8 @@ fn apply_mission_result(
             MissionEffect::EncounterBegan { .. }
             | MissionEffect::EncounterEnded { .. }
             | MissionEffect::HeritageLearned { .. }
-            | MissionEffect::CapturedByBountyHunters { .. } => {
+            | MissionEffect::CapturedByBountyHunters { .. }
+            | MissionEffect::EscapeBarred { .. } => {
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             }
             // Notification 0x212: its messages are posted with the result.

@@ -1,0 +1,8 @@
+    dagobah::tests::luke_stays_while_han_is_held_at_jabba_s_palace
+    jabba::tests::han_held_at_the_palace_cancels_the_hunters_and_sends_his_friends
+    missions::tests::a_failed_palace_rescue_leaves_the_rescuer_captive_there_for_good
+    missions::tests::a_palace_rescue_frees_han_and_every_prisoner_there
+    missions::tests::the_palace_chance_is_espionage_and_combat_each_over_three
+test result: FAILED. 19 passed; 5 failed; 0 ignored; 0 measured; 1322 filtered out; finished in 0.00s
+    missions::tests::the_palace_mission_ends_once_han_is_no_longer_held_there
+test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 1334 filtered out; finished in 0.00s

@@ -159,6 +159,14 @@ pub enum MissionKind {
     /// Han (`FUN_00546fa0`). Its hit (`FUN_00575de0`) makes Han roll RLEVADTB
     /// against them; a captured Han is taken to the palace.
     Bounty,
+
+    /// The Palace mission (MISSNSD `0x64000044`, TEXTSTRA 11332, class
+    /// `0x006652e8`; `ghidra/notes/jabba-palace.md`): the mission manager
+    /// sends Luke, Leia or Chewbacca to Jabba's Palace for the captive Han
+    /// (`FUN_0054a910`, `FUN_0054aa60`, `FUN_0054ab10`). A success frees
+    /// Han and every prisoner of the palace (`FUN_0056e650`); a failure
+    /// leaves the rescuer captive there for good (`FUN_0056e870`).
+    Palace,
 }
 
 impl MissionKind {
@@ -186,7 +194,8 @@ impl MissionKind {
             | MissionKind::Move
             | MissionKind::JediTraining
             | MissionKind::Dagobah
-            | MissionKind::Bounty => None,
+            | MissionKind::Bounty
+            | MissionKind::Palace => None,
         }
     }
 
@@ -233,6 +242,8 @@ impl MissionKind {
             MissionKind::Dagobah => (100, 100),
             // MISSNSD 0x65000083: 0 + rand(0..=0) days.
             MissionKind::Bounty => (0, 0),
+            // MISSNSD 0x64000044: 5 + rand(0..=10) days.
+            MissionKind::Palace => (5, 15),
         }
     }
 }
@@ -1183,6 +1194,21 @@ pub fn member_chance(
         // FUN_00575060: DAT_00661a88, 100 (Dagobah's and Bounty's slot
         // +0x274).
         MissionKind::Dagobah | MissionKind::Bounty => return 100,
+        // FUN_0056e620 -> FUN_0055c910: espionage (slot +0x1e0) / GNPRTB
+        // 6154 + combat (slot +0x1f0) / GNPRTB 6155, in integers.
+        MissionKind::Palace => {
+            let share = |id, value: i32| {
+                let divisor = i32::try_from(crate::movement::gnprtb_or_shipped(
+                    world,
+                    id,
+                    SHIPPED_PALACE_DIVISOR,
+                ))
+                .unwrap_or(0);
+                value.checked_div(divisor).unwrap_or(0)
+            };
+            return share(GNPRTB_PALACE_ESPIONAGE_DIVISOR, skill(Skill::Espionage))
+                + share(GNPRTB_PALACE_COMBAT_DIVISOR, skill(Skill::Combat));
+        }
     };
     let (Some(input), Some(table)) = (
         input,
@@ -1337,6 +1363,11 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
                     c.bounty_captured = true;
                 }
             }
+            MissionEffect::EscapeBarred { character } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.escape_barred = true;
+                }
+            }
             _ => {}
         }
     }
@@ -1439,7 +1470,10 @@ pub fn capture_character(
     if let Some(c) = world.characters.get_mut(character) {
         c.is_captive = true;
         c.captured_by = Some(captured_by.into());
-        c.current_system = Some(at_system);
+        // A character taken in an abode stays there (FUN_0056e870).
+        if c.current_abode.is_none() {
+            c.current_system = Some(at_system);
+        }
         c.current_fleet = None;
         // FUN_004f1a80: a capture sets CanEscape.
         c.escape_barred = false;
@@ -2022,6 +2056,9 @@ pub enum MissionEffect {
     /// The Bounty mission captured Han (`FUN_00575de0`): `CanEscape` cleared
     /// (`FUN_004eeb10(0)`) and `CapturedByBountyHunters` set (`FUN_00572700`).
     CapturedByBountyHunters { character: CharacterKey },
+    /// A prisoner loses `CanEscape` (`FUN_004eeb10(0)`): a rescuer the
+    /// Palace mission's failure leaves captive (`FUN_0056e870`).
+    EscapeBarred { character: CharacterKey },
 
     /// Force detection (`FUN_0058a3f0` -> `FUN_0055ff60`): `member` and
     /// `defender` name each other in `Encounter` `+0x9c` and record `day`.
@@ -2116,8 +2153,20 @@ const GNPRTB_DS_SABOTAGE_COMBAT_RAISE: u16 = 6168;
 /// GNPRTB 6158 (`Gnprtb_6158`): a research member's raise of its skill in
 /// the tree (`FUN_0056cdb0`).
 const GNPRTB_RESEARCH_RAISE: u16 = 6158;
-/// The shipped value of every skill raise, GNPRTB 6156..6168.
+/// The shipped value of every skill raise, GNPRTB 6156..6170.
 const SHIPPED_SKILL_RAISE: i64 = 1;
+/// GNPRTB 6154 (`DAT_006bb524`): the Palace chance's espionage divisor
+/// (`FUN_0055c910`).
+const GNPRTB_PALACE_ESPIONAGE_DIVISOR: u16 = 6154;
+/// GNPRTB 6155 (`DAT_006bb5b4`): its combat divisor.
+const GNPRTB_PALACE_COMBAT_DIVISOR: u16 = 6155;
+/// GNPRTB 6154 and 6155 as shipped.
+const SHIPPED_PALACE_DIVISOR: i64 = 3;
+/// GNPRTB 6169 (`Gnprtb_6169`): a Palace rescuer's espionage raise
+/// (`FUN_0056e650`).
+const GNPRTB_PALACE_ESPIONAGE_RAISE: u16 = 6169;
+/// GNPRTB 6170 (`Gnprtb_6170`): its combat raise.
+const GNPRTB_PALACE_COMBAT_RAISE: u16 = 6170;
 /// GNPRTB 6171 (`DAT_006bb5c4`, shipped 1): a research success's minimum
 /// points (`FUN_0055c9f0`).
 const GNPRTB_RESEARCH_POINTS_MIN: u16 = 6171;
@@ -2180,6 +2229,7 @@ impl MissionKind {
             MissionKind::JediTraining => 0x5800_0042,
             MissionKind::Dagobah => 0x7100_0043,
             MissionKind::Bounty => 0x6500_0083,
+            MissionKind::Palace => 0x6400_0044,
             MissionKind::Autoscrap => return None,
         };
         Some(crate::ids::DatId::new(raw))
@@ -2215,6 +2265,9 @@ impl MissionKind {
             // FUN_00592aa0, FUN_00575900) are not read; the prisoner columns
             // stand in.
             MissionKind::Bounty => TargetRules::Character,
+            // An opponent's prisoner (MISSNSD 0x64000044), held in the
+            // palace, its abode target.
+            MissionKind::Palace => TargetRules::Character,
         }
     }
 }
@@ -2415,8 +2468,16 @@ pub(crate) fn running_end_code(
     // port: an abode target (Dagobah) is a place no rule below can lose: it
     // is never destroyed, never travels and has its own side (3 for
     // Dagobah, "another" for the Dagobah record).
-    if mission.target_abode.is_some() {
-        return 0;
+    if let Some(abode) = mission.target_abode {
+        // FUN_00523450 rules 5 and 6 for the Palace mission's prisoner,
+        // who must stay captive in the abode (MISSNSD 0x64000044, col 20).
+        let lost = mission.target_character.is_some_and(|key| {
+            world
+                .characters
+                .get(key)
+                .is_none_or(|c| c.is_killed || !c.is_captive || c.current_abode != Some(abode))
+        });
+        return if lost { 6 } else { 0 };
     }
     let rules = record.rules;
     // FUN_00523450 rule 1: a missing target or container skips the rest.
@@ -2855,6 +2916,9 @@ impl MissionSystem {
     /// the abode's, autoroutes (`FUN_00543040`) and leaves after 1 day
     /// (`FUN_00555b30`).
     ///
+    /// A prisoner the mission freed there (`FUN_004ef510`: state 3, whose
+    /// change sets Autorouting, `FUN_004f18e0`) autoroutes out the same way.
+    ///
     /// port: the autorouting origin (`FUN_005431e0`'s `+0x74`) is the
     /// system the members left from.
     fn leave_abode(
@@ -2872,20 +2936,50 @@ impl MissionSystem {
             .origin
             .and_then(|key| world.systems.get(key))
             .map_or((0, 0), |s| (i64::from(s.x), i64::from(s.y)));
-        for member in mission.members() {
+        let own_effects = || {
+            out.results
+                .iter()
+                .filter(|result| result.mission_id == mission.id)
+                .flat_map(|result| &result.effects)
+        };
+        let freed = own_effects()
+            .filter_map(|effect| match effect {
+                MissionEffect::CharacterRescued { character, .. } => {
+                    Some(MissionMember::Character(*character))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for member in mission.members().chain(freed.iter().copied()) {
             let MissionMember::Character(key) = member else {
                 continue;
             };
             let Some(c) = world.characters.get(key) else {
                 continue;
             };
-            let side = if c.is_alliance {
+            let own = if c.is_alliance {
                 crate::dat::Faction::Alliance
             } else if c.is_empire {
                 crate::dat::Faction::Empire
             } else {
                 crate::dat::Faction::Neutral
             };
+            // A prisoner's side +0x24 is its captor's (FUN_004eec60): one
+            // taken this step, or held and not freed this step, stays
+            // where its captor's abode holds it. port: a captive's slot
+            // +0x218 (FUN_004ef260) is not read.
+            let taken = own_effects().find_map(|effect| match effect {
+                MissionEffect::CharacterCaptured {
+                    character,
+                    captured_by,
+                    ..
+                } if *character == key => Some(crate::dat::Faction::from(*captured_by)),
+                _ => None,
+            });
+            let held = c
+                .captured_by
+                .filter(|_| c.is_captive && !freed.contains(&member));
+            let side = taken.or(held).unwrap_or(own);
             let arrived = out.effects.iter().any(|effect| {
                 matches!(effect, MissionEffect::MemberEnteredAbode { member: m, .. } if *m == member)
             });
@@ -3324,6 +3418,49 @@ impl MissionSystem {
                         }
                     }
                 }
+                // FUN_0056e650: 3, the member's base combat and espionage
+                // rise by GNPRTB 6170 and 6169 (slot +0x1d8), the member
+                // frees the target (slot +0x210, FUN_004ef510), then every
+                // other prisoner in the target's container (FUN_00521050),
+                // the palace. port: a freed prisoner keeps its own side.
+                MissionKind::Palace => {
+                    result = 3;
+                    effects.extend(raise(Skill::Combat, GNPRTB_PALACE_COMBAT_RAISE));
+                    effects.extend(raise(Skill::Espionage, GNPRTB_PALACE_ESPIONAGE_RAISE));
+                    if !target_taken {
+                        target_taken = true;
+                        let freed = mission.target_character.into_iter().chain(
+                            mission.target_abode.into_iter().flat_map(|abode| {
+                                world
+                                    .characters
+                                    .iter()
+                                    .filter(move |(_, c)| {
+                                        c.is_captive
+                                            && !c.is_killed
+                                            && c.current_abode == Some(abode)
+                                    })
+                                    .map(|(key, _)| key)
+                                    .filter(|&key| Some(key) != mission.target_character)
+                            }),
+                        );
+                        for character in freed {
+                            let own = if world
+                                .characters
+                                .get(character)
+                                .is_some_and(|c| c.is_empire && !c.is_alliance)
+                            {
+                                MissionFaction::Empire
+                            } else {
+                                mission.faction
+                            };
+                            effects.push(MissionEffect::CharacterRescued {
+                                character,
+                                returned_to: own,
+                                at_system: target,
+                            });
+                        }
+                    }
+                }
                 // FUN_00576eb0: the target's slot +0x20c takes it prisoner.
                 MissionKind::Abduction => {
                     result = 3;
@@ -3497,6 +3634,34 @@ impl MissionSystem {
                     tech,
                     points,
                 });
+            }
+        }
+        // FUN_0056e870 (the Palace's slot +0x280): with no success, every
+        // member is taken prisoner with the mission's captor key (slot
+        // +0x20c) and loses CanEscape. port: the captor is the palace's
+        // side.
+        if result == 0 && mission.kind == MissionKind::Palace {
+            let captor = mission
+                .target_abode
+                .and_then(|abode| world.abodes.get(abode))
+                .map_or(crate::dat::Faction::Empire, |abode| abode.side);
+            let captor = if captor == crate::dat::Faction::Alliance {
+                MissionFaction::Alliance
+            } else {
+                MissionFaction::Empire
+            };
+            for &member in &mission.team {
+                if member_state(world, member).is_none() {
+                    continue;
+                }
+                if let Some(character) = member.character() {
+                    effects.push(MissionEffect::CharacterCaptured {
+                        character,
+                        captured_by: captor,
+                        at_system: target,
+                    });
+                    effects.push(MissionEffect::EscapeBarred { character });
+                }
             }
         }
         if result == 0 {
@@ -8462,6 +8627,248 @@ mod tests {
             special_forces: Vec::new(),
         });
         (world, home, han, palace)
+    }
+
+    /// MISSNSD `0x64000044` (Palace): Alliance only, hidden, an opponent's
+    /// prisoner as target. port: the test fixes the timer at 5 days.
+    fn palace_record() -> crate::world::MissionRecord {
+        crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x6400_0044),
+            timer_min_days: 5,
+            timer_spread_days: 0,
+            repeats: false,
+            hidden: true,
+            detection_phases: true,
+            can_resign: false,
+            rules: crate::world::MissionTargetRules {
+                container_loss_ends: false,
+                needs_populated_container: false,
+                target_loss_ends: true,
+                own_side_target: false,
+                other_side_target: false,
+                opponent_target: true,
+                revolting_target: false,
+                calm_target: false,
+                prisoner_target: true,
+                free_target: false,
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: false,
+                special_force_mask: 0,
+                character_mask: 0x1_0000,
+            },
+        }
+    }
+
+    /// Han held in Jabba's Palace (the Empire's), another prisoner there,
+    /// and Luke at an Alliance system with `espionage` and `combat`.
+    fn palace_world(
+        espionage: u32,
+        combat: u32,
+    ) -> (
+        GameWorld,
+        SystemKey,
+        CharacterKey,
+        CharacterKey,
+        CharacterKey,
+        crate::ids::AbodeKey,
+    ) {
+        let mut world = minimal_world();
+        let home = system_at(&mut world, 0);
+        world.systems[home].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.mission_records = vec![palace_record()];
+        let palace = world.abodes.insert(crate::world::Abode {
+            dat_id: crate::ids::DatId::new(0x481),
+            name: "Jabba's Palace".into(),
+            side: crate::dat::Faction::Empire,
+            special_forces: Vec::new(),
+        });
+        let held = |world: &mut GameWorld, index: u32| {
+            let key = agent_at(world, home, true);
+            let c = &mut world.characters[key];
+            c.dat_id = crate::ids::DatId::new(index);
+            c.is_captive = true;
+            c.captured_by = Some(crate::dat::Faction::Empire);
+            c.escape_barred = true;
+            c.current_system = None;
+            c.current_abode = Some(palace);
+            key
+        };
+        let han = held(&mut world, 0x243);
+        let other = held(&mut world, 0x343);
+        let luke = agent_at(&mut world, home, true);
+        let c = &mut world.characters[luke];
+        c.dat_id = crate::ids::DatId::new(0x242);
+        c.espionage.base = espionage;
+        c.combat.base = combat;
+        (world, home, han, other, luke, palace)
+    }
+
+    /// Run the Palace mission from `day` until it ends, applying its
+    /// effects (a rescue as the integrator does); returns its results.
+    fn run_palace(state: &mut MissionState, world: &mut GameWorld, day: u64) -> Vec<MissionResult> {
+        let mut results = Vec::new();
+        for today in day..day + 30 {
+            let advance = step(state, world, today, &[]);
+            for result in &advance.results {
+                apply_advance_effects(world, &result.effects);
+                for effect in &result.effects {
+                    if let MissionEffect::CharacterRescued { character, .. } = effect {
+                        world.characters[*character].is_captive = false;
+                        world.characters[*character].captured_by = None;
+                    }
+                }
+            }
+            apply_advance_effects(world, &advance.effects);
+            results.extend(advance.results);
+            if !advance.ended.is_empty() {
+                break;
+            }
+        }
+        results
+    }
+
+    #[test]
+    fn the_palace_chance_is_espionage_and_combat_each_over_three() {
+        // FUN_0056e620 -> FUN_0055c910: espionage / GNPRTB 6154 (3) +
+        // combat / GNPRTB 6155 (3), in integers.
+        let (world, home, han, _, luke, _) = palace_world(50, 41);
+        assert_eq!(
+            member_chance(
+                &world,
+                MissionKind::Palace,
+                MissionFaction::Alliance,
+                home,
+                Some(han),
+                MissionMember::Character(luke),
+            ),
+            16 + 13
+        );
+    }
+
+    #[test]
+    fn a_palace_rescue_frees_han_and_every_prisoner_there() {
+        // FUN_0056e650: on a success the rescuer's base combat and
+        // espionage rise by GNPRTB 6170 and 6169 (1), he frees Han (slot
+        // +0x210) and every other prisoner of the palace (FUN_00521050);
+        // the freed and the rescuer of another side than the palace's
+        // autoroute out (FUN_004ef260).
+        let (mut world, home, han, other, luke, palace) = palace_world(300, 0);
+        // An Empire prisoner keeps its side; the killed, a free guest and
+        // a prisoner held elsewhere are not freed.
+        world.characters[other].is_alliance = false;
+        world.characters[other].is_empire = true;
+        let mut extra = |edit: fn(&mut Character)| {
+            let key = agent_at(&mut world, home, true);
+            let c = &mut world.characters[key];
+            c.is_captive = true;
+            c.current_system = None;
+            c.current_abode = Some(palace);
+            edit(c);
+            key
+        };
+        let killed = extra(|c| c.is_killed = true);
+        let guest = extra(|c| c.is_captive = false);
+        let elsewhere = extra(|c| c.current_abode = None);
+        let neutral = extra(|c| c.is_alliance = false);
+        let mut state = MissionState::new();
+        let rescue = crate::jabba::JabbaStep::Rescue {
+            rescuer: luke,
+            han,
+            from: home,
+            palace,
+            tick: 1,
+        };
+        crate::jabba::perform(&rescue, &mut state, &mut world).expect("dispatched");
+        assert_eq!(state.missions()[0].kind, MissionKind::Palace);
+        assert_eq!(state.missions()[0].target_abode, Some(palace));
+        let results = run_palace(&mut state, &mut world, 1);
+        let effects: Vec<&MissionEffect> = results.iter().flat_map(|r| &r.effects).collect();
+        for (character, side) in [
+            (han, MissionFaction::Alliance),
+            (other, MissionFaction::Empire),
+            (neutral, MissionFaction::Alliance),
+        ] {
+            assert!(effects.iter().any(|effect| matches!(effect,
+                MissionEffect::CharacterRescued { character: c, returned_to, .. }
+                    if *c == character && *returned_to == side)));
+        }
+        for character in [killed, guest, elsewhere] {
+            assert!(!effects.iter().any(|effect| matches!(effect,
+                MissionEffect::CharacterRescued { character: c, .. } if *c == character)));
+        }
+        assert!(effects.contains(&&MissionEffect::SkillRaised {
+            character: luke,
+            skill: Skill::Combat,
+            amount: 1,
+        }));
+        assert!(effects.contains(&&MissionEffect::SkillRaised {
+            character: luke,
+            skill: Skill::Espionage,
+            amount: 1,
+        }));
+        for character in [han, luke] {
+            assert!(state.is_autorouting(character), "{character:?} leaves");
+        }
+        // Of the palace's own side, the freed Empire prisoner stays.
+        assert!(!state.is_autorouting(other));
+        assert!(!world.characters[luke].is_captive);
+    }
+
+    #[test]
+    fn a_failed_palace_rescue_leaves_the_rescuer_captive_there_for_good() {
+        // FUN_0056e870: with no success, each member is taken by the
+        // mission's captor (slot +0x20c) and loses CanEscape; held for the
+        // palace's side, he does not leave it (FUN_004ef260).
+        let (mut world, home, han, _, luke, palace) = palace_world(0, 0);
+        let mut state = MissionState::new();
+        let rescue = crate::jabba::JabbaStep::Rescue {
+            rescuer: luke,
+            han,
+            from: home,
+            palace,
+            tick: 1,
+        };
+        crate::jabba::perform(&rescue, &mut state, &mut world).expect("dispatched");
+        let results = run_palace(&mut state, &mut world, 1);
+        let effects: Vec<&MissionEffect> = results.iter().flat_map(|r| &r.effects).collect();
+        assert!(effects.contains(&&MissionEffect::CharacterCaptured {
+            character: luke,
+            captured_by: MissionFaction::Empire,
+            at_system: home,
+        }));
+        let c = &world.characters[luke];
+        assert!(c.is_captive && c.escape_barred);
+        assert_eq!(c.captured_by, Some(crate::dat::Faction::Empire));
+        assert_eq!(c.current_abode, Some(palace));
+        assert_eq!(c.current_system, None);
+        assert!(!state.is_autorouting(luke));
+        assert!(world.characters[han].is_captive);
+    }
+
+    #[test]
+    fn the_palace_mission_ends_once_han_is_no_longer_held_there() {
+        // FUN_00523450 rules 5 and 6: the target must stay in the
+        // mission's container.
+        let (mut world, home, han, _, luke, palace) = palace_world(300, 0);
+        let mut state = MissionState::new();
+        let rescue = crate::jabba::JabbaStep::Rescue {
+            rescuer: luke,
+            han,
+            from: home,
+            palace,
+            tick: 1,
+        };
+        crate::jabba::perform(&rescue, &mut state, &mut world).expect("dispatched");
+        world.characters[han].is_captive = false;
+        let results = run_palace(&mut state, &mut world, 1);
+        assert!(results
+            .iter()
+            .flat_map(|r| &r.effects)
+            .all(|effect| !matches!(effect, MissionEffect::CharacterRescued { .. })));
+        assert!(!world.characters[luke].is_captive);
     }
 
     #[test]

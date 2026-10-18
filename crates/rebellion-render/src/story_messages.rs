@@ -8,9 +8,7 @@
 
 use std::collections::HashMap;
 
-use rebellion_core::events::{
-    EventAction, EVT_CHARACTER_FORCE, EVT_JABBA_CAPTURES_CHEWIE, EVT_LEIA_FORCE, EVT_LUKE_DAGOBAH,
-};
+use rebellion_core::events::{EventAction, EVT_CHARACTER_FORCE, EVT_LEIA_FORCE, EVT_LUKE_DAGOBAH};
 use rebellion_core::ids::{CharacterKey, DatId};
 use rebellion_core::world::GameWorld;
 
@@ -79,24 +77,17 @@ impl StoryClass {
 /// The message class a fired port story event is posted as.
 ///
 /// `0x221` and `0x1e1` share the original's ids. The port's Leia Force
-/// discovery (`0x363`) is the original's `0x362` for Leia. Its `0x387`
-/// is the original's Jabba capture only where the event captures someone:
-/// the port also uses that id for Han's rescue. The port's Final Battle
+/// discovery (`0x363`) is the original's `0x362` for Leia. Jabba's
+/// capture is posted by [`jabba_captures_message`] since the port's own
+/// `0x387` went (save v77). The port's Final Battle
 /// (`0x220`) fires as the battle begins and the original's message
 /// (`FUN_0048e3c0`) reports its outcome, so it has no class.
 #[must_use]
-pub fn story_class(event_id: u32, actions: &[EventAction]) -> Option<StoryClass> {
+pub fn story_class(event_id: u32) -> Option<StoryClass> {
     match event_id {
         EVT_LUKE_DAGOBAH => Some(StoryClass::LukeGoesToDagobah),
         EVT_CHARACTER_FORCE => Some(StoryClass::ForceGrowth),
         EVT_LEIA_FORCE => Some(StoryClass::LeiaUsesForce),
-        EVT_JABBA_CAPTURES_CHEWIE
-            if actions
-                .iter()
-                .any(|action| matches!(action, EventAction::CaptureCharacter { .. })) =>
-        {
-            Some(StoryClass::JabbaCaptures)
-        }
         _ => None,
     }
 }
@@ -151,7 +142,7 @@ pub fn story_message(
 ) -> GameMessage {
     let mut message =
         GameMessage::new(tick, port_text, category).on_rail(STORY_RAIL, RailAudience::Both);
-    let Some(class) = story_class(event_id, actions) else {
+    let Some(class) = story_class(event_id) else {
         return message;
     };
     let subject = story_subject(world, class, actions).and_then(|key| world.characters.get(key));
@@ -429,6 +420,36 @@ pub fn final_battle_message(
                 background: if luke.dagobah_completed { 0x428 } else { 0x427 },
                 foreground: None,
             }),
+    )
+}
+
+/// Jabba Captures (`FUN_00490340` case 5): notification `0x1e0` for a
+/// character captured with Jabba's Palace (`0x98000481`) as its captor,
+/// the Palace mission's failed rescuer (`FUN_0056e870`). TEXTSTRA
+/// `0x7156` / `0x7157` name it (`+0x30`) on background `0x429`.
+///
+/// port: posted to both sides, as the class's case 5 reads no side; the
+/// media ids `+0x30`, `+0x32` and the speaker `+0x28` are not read.
+#[must_use]
+pub fn jabba_captures_message(
+    character: &rebellion_core::world::Character,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let class = StoryClass::JabbaCaptures;
+    let (title, body) = class.text_ids();
+    let parameters = [MessageParameter::Named {
+        name: &character.name,
+    }];
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&body)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(STORY_RAIL, RailAudience::Both)
+        .with_title(fill_message_text(texts.get(&title)?, &parameters))
+        .with_picture(class.picture(CockpitFaction::Alliance, None)),
     )
 }
 
@@ -1010,23 +1031,18 @@ mod tests {
     fn port_story_events_map_to_their_original_classes_where_they_mean_the_same() {
         // ghidra/notes/message-index-rows.md: 0x221 and 0x1e1 share the
         // original's ids; the port's 0x363 is the original's 0x362 for
-        // Leia; 0x387 is Jabba's capture only when it captures someone;
-        // the Final Battle (0x220) and the gates have no class.
+        // Leia; the port's 0x387 is gone (save v77), and the Final Battle
+        // (0x220) and the gates have no class.
         let (mut world, character) = (GameWorld::default(), CharacterKey::default());
         let capture = [EventAction::CaptureCharacter {
             character,
             captor_faction: rebellion_core::dat::Faction::Empire,
         }];
-        assert_eq!(story_class(0x221, &[]), Some(StoryClass::LukeGoesToDagobah));
-        assert_eq!(story_class(0x1e1, &[]), Some(StoryClass::ForceGrowth));
-        assert_eq!(story_class(0x363, &[]), Some(StoryClass::LeiaUsesForce));
-        assert_eq!(
-            story_class(0x387, &capture),
-            Some(StoryClass::JabbaCaptures)
-        );
-        assert_eq!(story_class(0x387, &[]), None);
-        for unmapped in [0x220, 0x200, 0x212, 0x362, 0x399] {
-            assert_eq!(story_class(unmapped, &[]), None, "{unmapped:#x}");
+        assert_eq!(story_class(0x221), Some(StoryClass::LukeGoesToDagobah));
+        assert_eq!(story_class(0x1e1), Some(StoryClass::ForceGrowth));
+        assert_eq!(story_class(0x363), Some(StoryClass::LeiaUsesForce));
+        for unmapped in [0x220, 0x200, 0x212, 0x362, 0x387, 0x399] {
+            assert_eq!(story_class(unmapped), None, "{unmapped:#x}");
         }
 
         // The subject is the character the actions name, else Luke for
@@ -1386,6 +1402,35 @@ mod tests {
         let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
         assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
         assert_eq!(lost.picture.expect("a picture").background, 0x428);
+    }
+
+    #[test]
+    fn jabba_captures_names_the_failed_rescuer_on_the_palace_picture() {
+        // FUN_00490340 case 5: TEXTSTRA 0x7156 / 0x7157 with the
+        // character's name (+0x30), background 0x429.
+        let chewbacca = rebellion_core::world::Character {
+            name: "Chewbacca".into(),
+            ..Default::default()
+        };
+        let texts: HashMap<u16, String> = [
+            (0x7156, "Jabba Captures {1:1}"),
+            (
+                0x7157,
+                "{1:1} was captured by Jabba while attempting to rescue Han Solo.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let message = jabba_captures_message(&chewbacca, 9, &texts).expect("message");
+        assert_eq!(message.title.as_deref(), Some("Jabba Captures Chewbacca"));
+        assert_eq!(
+            message.text,
+            "Chewbacca was captured by Jabba while attempting to rescue Han Solo."
+        );
+        assert_eq!(message.picture.map(|p| p.background), Some(0x429));
+        assert_eq!(message.tick, 9);
+        assert!(jabba_captures_message(&chewbacca, 9, &HashMap::new()).is_none());
     }
 
     #[test]

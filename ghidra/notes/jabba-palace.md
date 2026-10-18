@@ -137,8 +137,36 @@ Luke, Leia or Chewbacca.
     stay where they are captured (`FUN_00543360` not read).
 - The port's invented chain (`0x380`..`0x39b`, `0x212`, `0x200`, `0x231`)
   is gone, since its trigger was the port's own `0x212`.
-- Not ported: HanCapturedAtPalace, the Palace missions, Jabba Captures,
-  DarthPickup and the Pickup mission.
+- Ported 2026-10-18 (plan 3):
+  - `jabba::han_captured_at_palace` (`FUN_005442f0`), derived each day;
+    its hook clears BountyHuntersActive and timer `0x393`;
+  - the Luke, Leia and Chewbacca checks send each free rescuer on no
+    mission on a Palace mission (`MissionKind::Palace`, record
+    `0x64000044`), aimed at the palace;
+  - the chance espionage / 3 + combat / 3 (`FUN_0056e620`);
+  - the hit (`FUN_0056e650`): the skill raises, then Han and every other
+    prisoner of the palace freed. The freed of another side than the
+    palace's autoroute out with the rescuer (`FUN_004ef260`);
+  - the failure (`FUN_0056e870`): each member captured for the palace's
+    side, `CanEscape` cleared; held for the palace's side, the rescuer
+    stays (`FUN_004ef260` compares the captor's side);
+  - the mission ends (code 6) once Han is no longer held there;
+  - the Dagobah check waits while Han is held (`FUN_00544030`);
+  - Jabba Captures (`FUN_00490340` case 5, `story_messages::
+    jabba_captures_message`) for a character captured in the palace.
+- port (plan 3):
+  - "usable" (`+0x50` bit 0) has no port field;
+  - the Alliance's observation of Han's location on HanCapturedAtPalace
+    is not ported, as an abode has no system;
+  - Luke's branch on the Dagobah mission in phase 8 (slot `+0x1d8`) is
+    not read;
+  - no one detects a mission at an abode, as the port models no defenders
+    there;
+  - a freed prisoner keeps its own side; a neutral one goes to the
+    rescuer's;
+  - Jabba Captures goes to both sides.
+- Not ported: DarthPickup, the Pickup mission and Jabba Delivers
+  Prisoners (plan 4).
 
 ## Plan
 

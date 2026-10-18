@@ -1,11 +1,13 @@
-//! Jabba's palace, first part: the bounty hunters
+//! Jabba's palace: the bounty hunters and the rescues
 //! (`ghidra/notes/jabba-palace.md`).
 //!
 //! The mission manager's setup sets `BountyHuntersActive`, whose hook arms
 //! timer `0x393`. When it fires, a Bounty Hunters unit is created in
 //! Jabba's Palace and sent after Han on the Bounty mission
 //! (`FUN_00546fa0`). A Han the mission captures autoroutes to the palace
-//! (`FUN_00543040`).
+//! (`FUN_00543040`). Once he is held there (`HanCapturedAtPalace`), Luke,
+//! Leia and Chewbacca each go on a Palace mission to free him
+//! (`FUN_00544130`, `FUN_005443f0`, `FUN_005444e0`).
 //!
 //! port: the original runs the autorouting from the manager's handlers;
 //! the port starts it each day.
@@ -19,6 +21,10 @@ use crate::world::GameWorld;
 
 /// Han's record (`0x33000243`, `FUN_005435f0` -> `FUN_00506f50`).
 const HAN: u32 = 0x243;
+/// The rescuers the Palace hooks send, in `FUN_00549910`'s order: Luke
+/// (`0x32000242`, `FUN_0054a910`), Leia (`0x31000241`, `FUN_0054aa60`) and
+/// Chewbacca (`0x38000343`, `FUN_0054ab10`).
+const RESCUERS: [u32; 3] = [0x242, 0x241, 0x343];
 /// Jabba's Palace (`0x98000481`, the galaxy's `+0xdc`, `FUN_00506ed0`).
 const JABBAS_PALACE: u32 = 0x481;
 /// The Bounty Hunters class (SPECFCSD `0x3c000009`, `FUN_00546fa0`).
@@ -61,6 +67,15 @@ pub enum JabbaStep {
         at: SystemKey,
         tick: u64,
     },
+    /// `LukePalace`, `LeiaPalace` or `ChewbaccaPalace` pulses: `rescuer` goes on
+    /// a Palace mission (`0x64000044`) from `from` for the captive Han.
+    Rescue {
+        rescuer: CharacterKey,
+        han: CharacterKey,
+        from: SystemKey,
+        palace: AbodeKey,
+        tick: u64,
+    },
     /// A captive of the Bounty mission autoroutes from `from` to the
     /// palace (`FUN_00543040`).
     ToPalace {
@@ -87,6 +102,45 @@ fn standing(world: &GameWorld, key: CharacterKey) -> Option<SystemKey> {
         Some(fleet) => world.fleets.get(fleet).map(|f| f.location),
         None => c.current_system,
     }
+}
+
+fn find(world: &GameWorld, index: u32) -> Option<CharacterKey> {
+    world
+        .characters
+        .iter()
+        .find(|(_, c)| c.dat_id.index() == index && !c.is_killed)
+        .map(|(key, _)| key)
+}
+
+/// Whether `character` is a prisoner held in Jabba's Palace: one Jabba
+/// captured (`FUN_00490340` case 5 compares the captor with `0x98000481`).
+#[must_use]
+pub fn held_at_palace(world: &GameWorld, character: CharacterKey) -> bool {
+    world.characters.get(character).is_some_and(|c| {
+        c.is_captive
+            && !c.is_killed
+            && c.current_abode.is_some()
+            && c.current_abode == palace(world)
+    })
+}
+
+/// `HanCapturedAtPalace` (`FUN_005442f0`, `+0x58` bit `0x40`): Han is
+/// captured, on no mission and not adrift (`+0x78 & 0xc0`), not
+/// autorouting, and held in Jabba's Palace.
+///
+/// port: derived each day from its inputs; "usable" (`+0x50` bit 0) has
+/// no port field.
+#[must_use]
+pub fn han_captured_at_palace(world: &GameWorld, missions: &MissionState) -> bool {
+    let (Some(han), Some(palace)) = (find(world, HAN), palace(world)) else {
+        return false;
+    };
+    let c = &world.characters[han];
+    c.is_captive
+        && !c.on_mission
+        && !c.on_mandatory_mission
+        && !missions.is_autorouting(han)
+        && c.current_abode == Some(palace)
 }
 
 /// Stateless system for the bounty hunters.
@@ -136,11 +190,16 @@ impl JabbaSystem {
         let Some(palace) = palace(world) else {
             return steps;
         };
-        let han = world
-            .characters
-            .iter()
-            .find(|(_, c)| c.dat_id.index() == HAN && !c.is_killed)
-            .map(|(key, _)| key);
+        let han = find(world, HAN);
+        let held = han_captured_at_palace(world, missions);
+        // FUN_0054a9c0, HanCapturedAtPalace's hook: BountyHuntersActive
+        // clears, which cancels timer 0x393. port: the Alliance's
+        // observation of Han's location (FUN_00556c70(Han, 1)) is not
+        // ported, as an abode has no system to reveal.
+        if held {
+            state.bounty_hunters_active = false;
+            state.bounty_due = None;
+        }
         if state.bounty_hunters_active && state.bounty_due.is_some_and(|due| due <= tick) {
             state.bounty_due = None;
             let chance = crate::movement::gnprtb_or_shipped(
@@ -160,6 +219,36 @@ impl JabbaSystem {
                         han,
                         palace,
                         at,
+                        tick,
+                    });
+                }
+            }
+        }
+        // FUN_00544130, FUN_005443f0, FUN_005444e0: with Han held, each
+        // rescuer located and free (FUN_005439b0: not captured, not
+        // autorouting, not adrift) and on no mission (FUN_005439e0) pulses
+        // its flag, whose hook sends it on the Palace mission.
+        // port: Luke's other branch, on the Dagobah mission in phase 8
+        // (slot +0x1d8), is not read.
+        if let Some(han) = han.filter(|_| held) {
+            for index in RESCUERS {
+                let Some(rescuer) = find(world, index) else {
+                    continue;
+                };
+                let c = &world.characters[rescuer];
+                if c.is_captive
+                    || c.on_mission
+                    || c.on_mandatory_mission
+                    || missions.is_autorouting(rescuer)
+                {
+                    continue;
+                }
+                if let Some(from) = standing(world, rescuer) {
+                    steps.push(JabbaStep::Rescue {
+                        rescuer,
+                        han,
+                        from,
+                        palace,
                         tick,
                     });
                 }
@@ -240,6 +329,27 @@ pub fn perform(
                 tick,
             };
             missions.dispatch_guarded(request, world).ok()
+        }
+        JabbaStep::Rescue {
+            rescuer,
+            han,
+            from,
+            palace,
+            tick,
+        } => {
+            // FUN_005479c0: record 0x64000044, target Han, member the
+            // rescuer; the mission travels to the palace (FUN_00555b30).
+            let request = MissionRequest::single(
+                MissionKind::Palace,
+                MissionFaction::Alliance,
+                rescuer,
+                from,
+                Some(han),
+                tick,
+            );
+            let id = missions.dispatch_guarded(request, world).ok()?;
+            missions.aim_at_abode(id, palace);
+            Some(id)
         }
         JabbaStep::ToPalace {
             captive,
@@ -370,6 +480,131 @@ mod tests {
         world.characters[han].is_killed = false;
         world.abodes.remove(palace);
         assert_eq!(fire(&world, true), []);
+    }
+
+    /// Han held in the palace, with Luke, Leia and Chewbacca at `home`.
+    fn held_world() -> (
+        GameWorld,
+        CharacterKey,
+        SystemKey,
+        AbodeKey,
+        [CharacterKey; 3],
+    ) {
+        let (mut world, han, home, palace) = world();
+        let c = &mut world.characters[han];
+        c.is_captive = true;
+        c.captured_by = Some(Faction::Empire);
+        c.current_system = None;
+        c.current_abode = Some(palace);
+        let rescuers = RESCUERS.map(|index| {
+            world.characters.insert(Character {
+                dat_id: DatId::new(index),
+                is_alliance: true,
+                current_system: Some(home),
+                ..Character::default()
+            })
+        });
+        (world, han, home, palace, rescuers)
+    }
+
+    #[test]
+    fn han_captured_at_palace_needs_him_held_there_and_settled() {
+        // FUN_005442f0: captured, on no mission and not adrift, not
+        // autorouting, located in Jabba's Palace 0x98000481.
+        let (mut world, han, home, _, _) = held_world();
+        let missions = MissionState::new();
+        assert!(han_captured_at_palace(&world, &missions));
+        let unsettled: [fn(&mut Character); 4] = [
+            |c| c.is_captive = false,
+            |c| c.on_mission = true,
+            |c| c.on_mandatory_mission = true,
+            |c| c.current_abode = None,
+        ];
+        for edit in unsettled {
+            let mut w = world.clone();
+            edit(&mut w.characters[han]);
+            assert!(!han_captured_at_palace(&w, &missions));
+        }
+        let mut routing = MissionState::new();
+        routing.push_escapee(crate::missions::EscapeeTransit {
+            character: han,
+            to: home,
+            arrival: 9,
+            abode: None,
+        });
+        assert!(!han_captured_at_palace(&world, &routing));
+        world.characters[han].is_killed = true;
+        assert!(!han_captured_at_palace(&world, &missions));
+    }
+
+    #[test]
+    fn only_a_prisoner_in_the_palace_is_held_by_jabba() {
+        // FUN_00490340 case 5 compares the captor with 0x98000481.
+        let (mut world, han, _, _, rescuers) = held_world();
+        assert!(held_at_palace(&world, han));
+        assert!(!held_at_palace(&world, rescuers[0]));
+        world.characters[han].is_killed = true;
+        assert!(!held_at_palace(&world, han));
+        world.characters[han].is_killed = false;
+        world.characters[han].is_captive = false;
+        assert!(!held_at_palace(&world, han));
+        world.characters[rescuers[0]].is_captive = true;
+        assert!(!held_at_palace(&world, rescuers[0]), "held elsewhere");
+    }
+
+    #[test]
+    fn han_held_at_the_palace_cancels_the_hunters_and_sends_his_friends() {
+        // FUN_0054a9c0 clears BountyHuntersActive (timer 0x393 goes);
+        // FUN_00544130, FUN_005443f0 and FUN_005444e0 send Luke, Leia and
+        // Chewbacca in that order, each free and on no mission.
+        let (world, han, home, palace, rescuers) = held_world();
+        let mut state = JabbaState {
+            armed: true,
+            bounty_hunters_active: true,
+            bounty_due: Some(50),
+        };
+        let steps = day(&mut state, &world, 7, &[0.5]);
+        assert!(!state.bounty_hunters_active);
+        assert_eq!(state.bounty_due, None);
+        assert_eq!(
+            steps,
+            rescuers.map(|rescuer| JabbaStep::Rescue {
+                rescuer,
+                han,
+                from: home,
+                palace,
+                tick: 7,
+            })
+        );
+        let busy: [fn(&mut Character); 4] = [
+            |c| c.is_captive = true,
+            |c| c.on_mission = true,
+            |c| c.on_mandatory_mission = true,
+            |c| c.current_system = None,
+        ];
+        for edit in busy {
+            let mut w = world.clone();
+            edit(&mut w.characters[rescuers[1]]);
+            let steps = day(&mut state, &w, 8, &[]);
+            assert_eq!(steps.len(), 2);
+            assert!(!steps.iter().any(
+                |s| matches!(s, JabbaStep::Rescue { rescuer, .. } if *rescuer == rescuers[1])
+            ));
+        }
+        let mut routing = MissionState::new();
+        routing.push_escapee(crate::missions::EscapeeTransit {
+            character: rescuers[0],
+            to: home,
+            arrival: 9,
+            abode: None,
+        });
+        let steps =
+            JabbaSystem::advance(&mut state, &world, &routing, &[TickEvent { tick: 8 }], &[]);
+        assert_eq!(steps.len(), 2);
+        // No rescue while Han is free.
+        let mut free = world.clone();
+        free.characters[han].is_captive = false;
+        assert_eq!(day(&mut state, &free, 9, &[]), []);
     }
 
     #[test]

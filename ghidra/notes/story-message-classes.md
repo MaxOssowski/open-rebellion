@@ -68,7 +68,7 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 11 | Bounty Hunters Locate Solo | `0x212`, arg 0 | `FUN_0048fa00` | `0x41e` | `0x716a` / `0x716b` (system) | Empire | mapped 2026-10-18 (`bounty_messages`) |
 | 12 | Han Solo Captured by Bounty Hunters | `0x212`, arg 0 | `FUN_0048fa00` | `0x41d` | `0x716c` / `0x716d` | both | mapped 2026-10-18 (`bounty_messages`) |
 | 13 | Rescue Attempt | `0x200` | `FUN_0048c4c0` (`0x65b2a8`) | side, the rescuer's portrait | `0x71ea` / `0x71eb` | — | missing |
-| 14 | Jabba Captures a character | `0x1e0` case 5 | `FUN_00490340` (`0x65b638`) | `0x429` | `0x7156` / `0x7157` | — | mapped; no caller since the port's `0x387` went (2026-10-18), waits for the Palace mission |
+| 14 | Jabba Captures a character | `0x1e0` case 5 | `FUN_00490340` (`0x65b638`) | `0x429` | `0x7156` / `0x7157` | — | mapped 2026-10-18 (`jabba_captures_message`, the Palace mission's failed rescuer) |
 | 15 | Jabba Delivers Prisoners | `0x231`, arg set, once | `FUN_0048b6e0` (`0x65b1d0`) | `0x42a`, or `0x42b` | `0x7200` / `0x7201` | both | missing |
 | 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | missing |
 | 17 | Character Discovers Traitor | `0x361` | `FUN_0048c9c0` (`0x65b2f0`) | side, the discoverer's portrait | `0x71e8` / `0x71e9` | one side, by `FUN_004edc80` | missing |

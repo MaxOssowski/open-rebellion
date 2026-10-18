@@ -823,8 +823,8 @@ impl PerceptionIntegrator {
         ));
     }
 
-    /// Record a bounty step (`jabba.rs`): the hunters sent after Han, or a
-    /// captive autorouting to Jabba's Palace.
+    /// Record a Jabba step (`jabba.rs`): the hunters sent after Han, a
+    /// rescuer sent to the palace, or a captive autorouting there.
     pub fn record_jabba_step(
         &mut self,
         world: &GameWorld,
@@ -839,6 +839,20 @@ impl PerceptionIntegrator {
                     "step": "bounty_hunt",
                     "character": char_name(world, han),
                     "system": sys_name(world, at),
+                    "dispatched": dispatched,
+                }),
+            ),
+            JabbaStep::Rescue {
+                rescuer,
+                from,
+                tick,
+                ..
+            } => (
+                tick,
+                serde_json::json!({
+                    "step": "rescue",
+                    "character": char_name(world, rescuer),
+                    "from": sys_name(world, from),
                     "dispatched": dispatched,
                 }),
             ),
@@ -2099,7 +2113,8 @@ fn apply_mission_effects_inner(
             MissionEffect::EncounterBegan { .. }
             | MissionEffect::EncounterEnded { .. }
             | MissionEffect::HeritageLearned { .. }
-            | MissionEffect::CapturedByBountyHunters { .. } => {
+            | MissionEffect::CapturedByBountyHunters { .. }
+            | MissionEffect::EscapeBarred { .. } => {
                 rebellion_core::missions::apply_advance_effects(
                     world,
                     std::slice::from_ref(effect),

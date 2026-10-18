@@ -85,8 +85,8 @@ impl DagobahSystem {
     ///
     /// port: the original runs the check from the mission manager's
     /// handlers (`FUN_00549910`, on many events); the port runs it each day.
-    /// The port has no Jabba's palace capture, so `HanCapturedAtPalace`
-    /// (`+0x58` bit `0x40`) is never set.
+    /// `HanCapturedAtPalace` (`+0x58` bit `0x40`) is derived each day
+    /// ([`crate::jabba::han_captured_at_palace`]).
     pub fn advance(
         state: &mut DagobahState,
         world: &GameWorld,
@@ -118,7 +118,7 @@ impl DagobahSystem {
         if c.dagobah_completed {
             state.required = false;
         }
-        if !state.required {
+        if !state.required || crate::jabba::han_captured_at_palace(world, missions) {
             return None;
         }
         // FUN_005439b0: not captured, usable, not autorouting, not adrift,
@@ -366,5 +366,34 @@ mod tests {
             required: true,
         };
         assert_eq!(day(&mut state, &world, 5, 0.0), None);
+    }
+
+    #[test]
+    fn luke_stays_while_han_is_held_at_jabba_s_palace() {
+        // FUN_00544030 needs HanCapturedAtPalace (+0x58 bit 0x40) clear.
+        let (mut world, luke, _) = setup();
+        let mut state = DagobahState {
+            armed: true,
+            timer_due: None,
+            required: true,
+        };
+        assert!(day(&mut state, &world, 5, 0.0).is_some());
+        let palace = world.abodes.insert(crate::world::Abode {
+            dat_id: crate::ids::DatId::new(0x481),
+            name: "Jabba's Palace".into(),
+            side: crate::dat::Faction::Empire,
+            special_forces: Vec::new(),
+        });
+        let han = world.characters.insert(Character {
+            dat_id: crate::ids::DatId::new(0x243),
+            is_alliance: true,
+            is_captive: true,
+            current_abode: Some(palace),
+            ..Character::default()
+        });
+        assert_eq!(day(&mut state, &world, 5, 0.0), None);
+        assert!(state.required);
+        world.characters[han].is_captive = false;
+        assert_eq!(day(&mut state, &world, 5, 0.0).map(|p| p.luke), Some(luke));
     }
 }

@@ -2518,6 +2518,16 @@ cross-runtime proof remain open
   -> `v1:5474ae69134d1255`, final `v1:8c0677e665d1d127` ->
   `v1:4cd75bad1e5062b8` (`evidence/2026-10-18-bounty-hunters/`). Open:
   HanCapturedAtPalace, the Palace missions and the Pickup.
+- 2026-10-18: the Palace rescue is ported (`jabba.rs`, `missions.rs`):
+  HanCapturedAtPalace cancels the hunters and sends Luke, Leia and
+  Chewbacca on Palace missions (`0x64000044`, espionage/3 + combat/3). A
+  success frees Han and every prisoner of the palace; a failure leaves the
+  rescuer captive there, and Jabba Captures is posted. The Dagobah check
+  waits while Han is held. No save change; the golden is unchanged. In
+  24 seeds of 1500 days Han evades the hunters every time (his combat
+  against their 0), so the rescue is shown by tests and the fixture
+  (`evidence/2026-10-18-palace-rescue/`). Open: DarthPickup and the
+  Pickup mission.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

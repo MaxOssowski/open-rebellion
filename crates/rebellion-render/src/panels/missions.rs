@@ -165,5 +165,6 @@ fn mission_kind_display(kind: MissionKind) -> (&'static str, Color32) {
         MissionKind::JediTraining => ("[JEDI]", Color32::from_rgb(120, 200, 140)),
         MissionKind::Dagobah => ("[DAGO]", Color32::from_rgb(120, 200, 140)),
         MissionKind::Bounty => ("[BNTY]", Color32::from_rgb(200, 160, 90)),
+        MissionKind::Palace => ("[PLCE]", Color32::from_rgb(200, 140, 110)),
     }
 }

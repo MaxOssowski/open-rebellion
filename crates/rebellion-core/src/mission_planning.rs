@@ -89,6 +89,9 @@ fn capability(kind: MissionKind) -> Option<u32> {
         MissionKind::Dagobah => return None,
         // The bounty timer sends the Bounty mission (FUN_00546fa0).
         MissionKind::Bounty => return None,
+        // The mission manager sends the Palace missions (FUN_0054a910,
+        // FUN_0054aa60, FUN_0054ab10).
+        MissionKind::Palace => return None,
     })
 }
 
@@ -247,7 +250,8 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         MissionKind::Move
         | MissionKind::JediTraining
         | MissionKind::Dagobah
-        | MissionKind::Bounty => return None,
+        | MissionKind::Bounty
+        | MissionKind::Palace => return None,
         // FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900: Recruitment's selector
         // shape, with no decoy selector.
         MissionKind::ShipDesignResearch => (SHIP_RESEARCH, 1, None),

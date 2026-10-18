@@ -1231,8 +1231,11 @@ pub(crate) fn run(
     }
     // FUN_00520ad0 picks the target location +0x78 past phase 4, else the
     // members' location (FUN_00520f40).
+    // port: past phase 4 an abode target (the Palace mission's) is the
+    // location; the port models no defenders in an abode, so no one
+    // detects there.
     let location = if mission.phase > 4 {
-        Some(mission.target_system)
+        mission.target_abode.is_none().then_some(mission.target_system)
     } else {
         mission.origin
     };
