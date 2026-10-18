@@ -2725,6 +2725,12 @@ cross-runtime proof remain open
   weakest enemy characters, is removed. Golden final
   `v1:75f7a5f65cee3222` -> `v1:03a36c82837d1ce1`
   (`evidence/2026-10-19-abduction-planner/`).
+- 2026-10-19 (F-036): a prisoner counts on its home side in the AI's
+  records. `FUN_00401d20` flips the side test for a prisoner, and a
+  capture turns the object's side to its captor's (`FUN_004eec60`). The
+  port had read the home side and flipped it, putting a prisoner on its
+  captor's side. Golden unchanged
+  (`evidence/2026-10-19-prisoner-side/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

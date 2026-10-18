@@ -638,8 +638,20 @@ fn records(
         let member = MissionMember::Character(key);
         let id = c.dat_id.raw();
         let mut flags = UNASSIGNED | CHARACTER;
-        // FUN_00401d20: a prisoner counts on the side that holds it.
-        flags |= if (c.is_alliance == alliance) != c.is_captive {
+        // FUN_00401d20 compares the object's side (+0x24) with the
+        // record's, flipped for a prisoner (+0xac bit 0). A Captured
+        // character carries the side opposite its home (FUN_004eec60), so
+        // a prisoner counts on its home side.
+        let home = match (c.is_alliance, c.is_empire) {
+            (true, false) => Some(true),
+            (false, true) => Some(false),
+            _ => None,
+        };
+        let side = match home {
+            Some(h) if c.is_captive => Some(!h),
+            h => h,
+        };
+        flags |= if (side == Some(alliance)) != c.is_captive {
             OWN_SIDE
         } else {
             OTHER_SIDE
@@ -866,6 +878,27 @@ mod tests {
 
     fn planner(world: &GameWorld) -> Planner<'_> {
         Planner::new(world, &MissionState::new(), &HashSet::new(), true, 1)
+    }
+
+    #[test]
+    fn a_prisoner_counts_on_its_home_side() {
+        // FUN_00401d20 flips the side test for a prisoner (+0xac bit 0)
+        // and compares the object's +0x24, which a capture turns to the
+        // captor's side (FUN_004eec60): so a prisoner is the home side's
+        // (+0x30 2) and the captor's other (4), both with 0x40.
+        let mut world = world();
+        let free = agent(&mut world, 0x2c0, |_| {});
+        let held = agent(&mut world, 0x2c1, |c| {
+            c.is_captive = true;
+            c.captured_by = Some(crate::dat::Faction::Empire);
+        });
+        let alliance = Planner::new(&world, &MissionState::new(), &HashSet::new(), true, 1);
+        let empire = Planner::new(&world, &MissionState::new(), &HashSet::new(), false, 1);
+        let sides = |p: &Planner<'_>, m| p.flags(m).map(|f| f & (OWN_SIDE | OTHER_SIDE | PRISONER));
+        assert_eq!(sides(&alliance, free), Some(OWN_SIDE));
+        assert_eq!(sides(&empire, free), Some(OTHER_SIDE));
+        assert_eq!(sides(&alliance, held), Some(OWN_SIDE | PRISONER));
+        assert_eq!(sides(&empire, held), Some(OTHER_SIDE | PRISONER));
     }
 
     #[test]

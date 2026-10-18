@@ -1,0 +1,3 @@
+test mission_planning::tests::a_prisoner_counts_on_its_home_side ... FAILED
+    mission_planning::tests::a_prisoner_counts_on_its_home_side
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1380 filtered out; finished in 0.00s

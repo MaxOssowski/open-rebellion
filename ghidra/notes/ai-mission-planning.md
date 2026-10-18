@@ -1363,6 +1363,32 @@ Campaigns: 24 seeds of 1500 days, against the report-slots commit.
 - Systems held at the end, summed over the seeds: Alliance 607 and 599,
   Empire 539 and 540.
 
+## A prisoner's side in the records (fixed 2026-10-19)
+
+`FUN_00401d20` compares the object's side `+0x24` with the record's side
+(`param_1[8]`):
+- the same side sets `+0x30` 2, or 4 for a prisoner (`+0xac` bit 0);
+- another side sets 4, or 2 for a prisoner.
+
+A capture turns `+0x24` to the side opposite the character's home
+(`FUN_004eec60`, `captive-escape.md`). So the two flips cancel, and a
+prisoner counts on its home side, with `0x40`.
+
+The port read `(is_alliance == side) != captive` on the home side, so it
+put a prisoner on its captor's side. Fixed in `mission_planning::records`.
+
+With the fix:
+- `FUN_0041bc10`'s controller bit `0x200` (row 10, Rescue) reads "a
+  character of the side is a prisoner", as `ai-mission-planning.md`
+  says;
+- the system bit `0x4000` marks an own prisoner held there, Rescue's
+  target.
+
+Campaigns: 24 seeds of 1500 days, against the Abduction commit. The
+results barely move: Rescue orders 409 and 429, Abduction 558 and 552.
+Systems held at the end, summed over the seeds: Alliance 599 and 607,
+Empire 540 and 536.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

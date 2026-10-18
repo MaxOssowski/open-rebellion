@@ -7776,10 +7776,10 @@ mod tests {
         assert_eq!(picks, HashSet::from([luke, leia]));
 
         // Luke gone, and Vader a prisoner of the Alliance there: his
-        // record reads 8, 4 and 0x40 (a prisoner counts on the side holding
-        // it, FUN_00401d20), so no free one is on the planet (no 0x1000)
-        // and only Leia aboard is left. A planner aimed at Vader picks again
-        // (not 0x60).
+        // record reads 8, 2 and 0x40 (a prisoner counts on its home side,
+        // FUN_00401d20), so no opponent's main character is free on the
+        // planet (no 0x1000) and only Leia aboard is left. A planner aimed
+        // at Vader picks again.
         let mut world = world;
         world.characters[luke].current_system = None;
         world.characters[vader].is_captive = true;
