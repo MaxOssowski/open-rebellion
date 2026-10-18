@@ -148,6 +148,30 @@ fn every_port_mission_kind_names_its_shipped_record_and_target_columns() {
             (1, 1, false),
             [0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
         ),
+        // The mission manager's story missions (ghidra/notes/dagobah.md,
+        // jabba-palace.md): Dagobah 0x71000043, Bounty 0x65000083, Palace
+        // 0x64000044 and Pickup 0x73000082. None repeats, so the bounty
+        // hunters strike Han once a game.
+        (
+            MissionKind::Dagobah,
+            (100, 0, false),
+            [1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
+        ),
+        (
+            MissionKind::Bounty,
+            (0, 0, false),
+            [0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+        ),
+        (
+            MissionKind::Palace,
+            (5, 10, false),
+            [1, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+        ),
+        (
+            MissionKind::Pickup,
+            (0, 0, false),
+            [1, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+        ),
     ];
     for (kind, (min, spread, repeats), columns) in expected {
         let id = kind.record_id().expect("an original mission kind");
@@ -201,4 +225,21 @@ fn characters_placed_at_game_start_are_recruited_and_the_rest_form_each_side_s_p
     }
     assert!(!world.recruit_pool_empty(rebellion_core::dat::Faction::Alliance));
     assert!(!world.recruit_pool_empty(rebellion_core::dat::Faction::Empire));
+}
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn han_evades_the_bounty_hunters_ninety_eight_times_in_a_hundred() {
+    // FUN_00575de0 -> FUN_005349e0 -> FUN_0055bfa0: RLEVADTB (table 13) at
+    // Han's effective combat less the hunters' 0. MJCHARSD gives Han combat
+    // 100 with no variance, and RLEVADTB's row at 91 holds 98.
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+    let han = world
+        .characters
+        .values()
+        .find(|c| c.dat_id.index() == 0x243)
+        .expect("Han Solo");
+    assert_eq!((han.combat.base, han.combat.variance), (100, 0));
+    let table = world.mission_tables.get("RLEVADTB").expect("RLEVADTB");
+    assert_eq!(table.step_lookup(100), 98);
 }

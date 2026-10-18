@@ -172,6 +172,24 @@ Luke, Leia or Chewbacca.
 - Not ported: DarthPickup, the Pickup mission and Jabba Delivers
   Prisoners (plan 4).
 
+## Han's odds against the hunters (checked 2026-10-18)
+
+- The hit calls `FUN_005349e0` on Han (`ECX` is the target at
+  `0x575eaf`) with captor combat 0. `FUN_0055bfa0` looks up RLEVADTB
+  (table 13) at Han's effective combat less 0.
+- MJCHARSD gives Han combat 100 with no variance. RLEVADTB's rows run
+  from (-20, 15) to (101, 99), and the row at 91 holds 98. So Han evades
+  98 times in 100.
+- MISSNSD `0x65000083` does not repeat, and timer `0x393` fires once. So
+  the hunters strike once a game and capture Han about 1 game in 50, when
+  they fire at all (GNPRTB 6150 is 100).
+- The port's campaigns agree: in 24 seeds the hunters struck 16 times and
+  Han evaded each time. The rest of the palace story follows only after a
+  capture, so it is rare in play too.
+- Pinned by `rebellion-data/tests/mission_records.rs`
+  (`han_evades_the_bounty_hunters_ninety_eight_times_in_a_hundred`, and
+  the story missions' records).
+
 ## The Pickup (plan 4), read 2026-10-18
 
 The DarthPickup check and the Pickup record are in `final-battle.md`. In

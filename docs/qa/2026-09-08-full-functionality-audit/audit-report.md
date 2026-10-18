@@ -2536,6 +2536,11 @@ cross-runtime proof remain open
   and Jabba's story now runs on the original's paths end to end, but no
   campaign reaches the palace, because Han evades the hunters. No save
   change; the golden is unchanged (`evidence/2026-10-18-pickup/`).
+- 2026-10-18: Han's escapes from the bounty hunters are the original's.
+  The hit rolls RLEVADTB at Han's combat 100 less the hunters' 0, which
+  gives 98, and the Bounty record does not repeat. So Han is captured in
+  about 1 game in 50. The data test pins Han's combat, the RLEVADTB row
+  and the four story missions' records (`ghidra/notes/jabba-palace.md`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
