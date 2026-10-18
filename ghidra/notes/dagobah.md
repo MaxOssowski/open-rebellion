@@ -64,6 +64,25 @@ leaves at the first such event that finds him free.
     `DagobahCompleted` (`+0xb0` bit `0x8`, `FUN_0056f730`) is set, whose
     notification is `0x210` (Luke Leaves Dagobah, `FUN_0048d0f0`).
 
+## When the requirement clears, and how Luke comes back (read 2026-10-18)
+
+- The mission manager's phase notice `FUN_00548840` watches record
+  `0x71000043`: entering phase 8 runs the story checks (`FUN_00549910`);
+  entering phase `0xb` after phase 8 or later (`FUN_00520ac0() >= 8`) clears
+  `LukeDagobahRequired` (`FUN_00543af0(0)`). A Dagobah mission that ends
+  before its timer (Luke captured on the way, say) leaves it set, and the
+  next check sends him again.
+- `FUN_00544030`'s third out value is Luke's location key, which
+  `FUN_004ece40` only tests for the null key (disassembly
+  `0x544087..0x5440af`). No other guard stops a second trip.
+- The members stay at Dagobah when the mission ends. The manager's
+  handler `FUN_00546370` then calls each member's slot `+0xb0`: for a
+  character not on a mission and not destroyed, `FUN_004ef260` sets
+  Autorouting (`+0x50` bit `0x1000`) when its container's side differs
+  from its own. Dagobah is side 3, so Luke autoroutes: event `0x307` ->
+  `FUN_0054c7d0` -> `FUN_00543040` picks his destination, as for an escaped
+  captive (`captive-escape.md`), and the trip from an abode takes 1 day.
+
 ## Abodes and travel to them (read 2026-10-18)
 
 - Class: the object factory's registry (`FUN_00540540`, filled by

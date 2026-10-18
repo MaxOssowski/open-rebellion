@@ -2406,6 +2406,12 @@ cross-runtime proof remain open
   Golden initial `v1:d077dd4c3c2b7247` -> `v1:c4aa6c7fc51080c1`, final
   `v1:1d8dbb48d17c03de` -> `v1:0e985b5a40e2bfa8`
   (`evidence/2026-10-18-abodes/`).
+- 2026-10-18: Dagobah's end and Luke's return read
+  (`ghidra/notes/dagobah.md`). `FUN_00548840` clears `LukeDagobahRequired`
+  only when the Dagobah mission ends after phase 8, so an interrupted trip
+  repeats. When the mission ends, `FUN_00546370` runs each member's slot
+  `+0xb0` (`FUN_004ef260`): a character in a container of another side
+  autoroutes home (`FUN_00543040`), as an escaped captive does.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
