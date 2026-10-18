@@ -1828,6 +1828,10 @@ pub fn post_story_messages(
         .iter()
         .find(|(_, character)| character.is_empire && !character.is_major)
         .map(|(key, _)| key);
+    // Emperor Arrives at Coruscant (FUN_0048ce80), the Empire's.
+    if let Some(message) = rebellion_render::story_messages::emperor_arrives_message(0, texts) {
+        log.push(message);
+    }
     // Killed by Imperial Assassins (FUN_0048b050) and Death Star
     // Sabotaged (FUN_0048d470).
     if let Some(message) = rebellion_render::story_messages::assassins_message(

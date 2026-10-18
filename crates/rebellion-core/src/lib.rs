@@ -23,6 +23,7 @@ pub mod commands;
 pub mod dagobah;
 pub mod final_battle;
 pub mod jabba;
+pub mod seat_of_power;
 pub mod dat;
 pub mod death_star;
 pub mod delivery;

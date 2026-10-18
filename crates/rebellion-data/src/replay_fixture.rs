@@ -36,23 +36,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:5474ae69134d1255";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:4cd75bad1e5062b8";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:d8f4a9b46e07169c";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:fd4bcf87c87325d6";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:4181edc00ec669bd"),
-    (2, 0, "v1:bd7022f970e9a626"),
-    (3, 5, "v1:adc2c7154410185a"),
-    (4, 10, "v1:04837c1ab62c81e1"),
-    (5, 15, "v1:1fd264625725ba14"),
-    (6, 20, "v1:78bdcf1d296f0178"),
-    (7, 25, "v1:a5cba21ac6c4bc68"),
-    (8, 25, "v1:4cd75bad1e5062b8"),
-    (9, 25, "v1:4cd75bad1e5062b8"),
+    (1, 0, "v1:9556b9b744aff7cc"),
+    (2, 0, "v1:e0dd777f2f28598b"),
+    (3, 5, "v1:50718b49270531a9"),
+    (4, 10, "v1:5ba5254eaeb92182"),
+    (5, 15, "v1:061ef3af5c1507bf"),
+    (6, 20, "v1:0ae54afc792ad3e2"),
+    (7, 25, "v1:a3bba01a9327b846"),
+    (8, 25, "v1:fd4bcf87c87325d6"),
+    (9, 25, "v1:fd4bcf87c87325d6"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -207,6 +207,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         dagobah: rebellion_core::dagobah::DagobahState::default(),
         final_battle: rebellion_core::final_battle::FinalBattleState::default(),
         jabba: rebellion_core::jabba::JabbaState::default(),
+        seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
         combat_cooldowns: std::collections::HashMap::new(),
         game_config: GameConfig::default(),
         campaign_config: CampaignConfig::from_seed_options(options, VictoryConditions::Standard),

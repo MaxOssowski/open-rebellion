@@ -1,0 +1,3 @@
+    seat_of_power::tests::only_a_change_after_the_first_check_notifies
+    seat_of_power::tests::the_seat_of_power_needs_a_free_emperor_in_an_empire_held_coruscant
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1353 filtered out; finished in 0.00s

@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 77;
+pub const SAVE_VERSION: u32 = 78;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -252,6 +252,8 @@ pub struct SaveState {
     pub final_battle: rebellion_core::final_battle::FinalBattleState,
     /// The mission manager's `BountyHuntersActive` and timer `0x393` (v77).
     pub jabba: rebellion_core::jabba::JabbaState,
+    /// The character manager's `SeatOfPower` bit (v78).
+    pub seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState,
     /// Last automatic-combat tick per system.
     #[serde(
         serialize_with = "rebellion_core::serde_ordered::serialize_hash_map",
@@ -987,6 +989,7 @@ mod tests {
             dagobah: rebellion_core::dagobah::DagobahState::default(),
             final_battle: rebellion_core::final_battle::FinalBattleState::default(),
             jabba: rebellion_core::jabba::JabbaState::default(),
+            seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
             combat_cooldowns: std::collections::HashMap::new(),
             game_config: GameConfig::default(),
             campaign_config: CampaignConfig::default(),

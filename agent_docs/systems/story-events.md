@@ -30,6 +30,9 @@ The port's `0x393`..`0x396` and `0x220` events are gone (save v76). The mission 
 ### Chains 3 and 4: Bounty Hunters and Jabba's Palace (removed)
 The port's `0x397`..`0x39b`, `0x380`..`0x387`, `0x212`, `0x200`, `0x231` and carbonite `0x39c`..`0x3a0` events are gone (save v77). The mission manager's BountyHuntersActive path runs in `jabba.rs` (`ghidra/notes/jabba-palace.md`): timer `0x393`, the Bounty Hunters unit, the Bounty mission (`0x65000083`) and Han's trip to the palace. The app posts notification `0x212` (`story_messages::bounty_messages`). HanCapturedAtPalace and the Palace missions (`0x64000044`) are ported too, with Jabba Captures (`story_messages::jabba_captures_message`); DarthPickup and the Pickup mission (`0x73000082`) follow, with Jabba Delivers Prisoners (`story_messages::jabba_delivers_message`).
 
+### Emperor Arrival (removed)
+The port's `0x230` (day 90 and 100 Empire systems) is gone (save v78). The character manager's SeatOfPower runs in `seat_of_power.rs`, and the app posts Emperor Arrives at Coruscant (`story_messages::emperor_arrives_message`).
+
 ## Key Patterns
 
 ### OR-branch consolidator

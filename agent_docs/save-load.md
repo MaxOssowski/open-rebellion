@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v77, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v78, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-18
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v77, and it is the only one
+serializable snapshot. The current format is v78, and it is the only one
 that loads.
 
-## Native format (v77)
+## Native format (v78)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -65,6 +65,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `dagobah` | `DagobahState`: timer `0x392` and `LukeDagobahRequired` (v73) |
 | `final_battle` | `FinalBattleState`: the mission manager's FinalBattleReady and FinalBattle bits (v76) |
 | `jabba` | `JabbaState`: the mission manager's BountyHuntersActive bit and timer `0x393` (v77) |
+| `seat_of_power` | `SeatOfPowerState`: the character manager's SeatOfPower bit (`+0x58` bit 1) and whether its first check ran (v78) |
 | `sim_rng` | `Xoshiro256PlusPlus` |
 | `ai2` | `Option<AIState>` |
 | `repair` | `RepairState` |

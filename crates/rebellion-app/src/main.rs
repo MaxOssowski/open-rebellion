@@ -430,6 +430,7 @@ struct LiveCampaign<'a> {
     dagobah: &'a mut rebellion_core::dagobah::DagobahState,
     final_battle: &'a mut rebellion_core::final_battle::FinalBattleState,
     jabba: &'a mut rebellion_core::jabba::JabbaState,
+    seat_of_power: &'a mut rebellion_core::seat_of_power::SeatOfPowerState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -470,6 +471,7 @@ impl LiveCampaign<'_> {
             dagobah: self.dagobah.clone(),
             final_battle: *self.final_battle,
             jabba: *self.jabba,
+            seat_of_power: *self.seat_of_power,
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -513,6 +515,7 @@ impl LiveCampaign<'_> {
         *self.dagobah = state.dagobah;
         *self.final_battle = state.final_battle;
         *self.jabba = state.jabba;
+        *self.seat_of_power = state.seat_of_power;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -1097,6 +1100,7 @@ async fn main() {
     let mut dagobah_state = rebellion_core::dagobah::DagobahState::default();
     let mut final_battle_state = rebellion_core::final_battle::FinalBattleState::default();
     let mut jabba_state = rebellion_core::jabba::JabbaState::default();
+    let mut seat_of_power_state = rebellion_core::seat_of_power::SeatOfPowerState::default();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -2243,6 +2247,20 @@ async fn main() {
                 &jabba_rolls,
             ) {
                 rebellion_core::jabba::perform(&step, &mut mission_state, &mut world);
+            }
+            // ── SeatOfPower (FUN_005617b0): notification 0x230, Emperor
+            // Arrives at Coruscant (FUN_0048ce80) when set ──────────────
+            if rebellion_core::seat_of_power::SeatOfPowerSystem::advance(
+                &mut seat_of_power_state,
+                &world,
+            ) == Some(true)
+            {
+                if let Some(message) = rebellion_render::story_messages::emperor_arrives_message(
+                    current_tick,
+                    &message_texts,
+                ) {
+                    msg_log.push(message);
+                }
             }
             ai_state.free_mission_members(&mission_advance.effects);
             if let Some(second_ai) = secondary_ai_state.as_mut() {
@@ -3737,6 +3755,7 @@ async fn main() {
                                     final_battle_state =
                                         rebellion_core::final_battle::FinalBattleState::default();
                                     jabba_state = rebellion_core::jabba::JabbaState::default();
+                                    seat_of_power_state = rebellion_core::seat_of_power::SeatOfPowerState::default();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -6178,6 +6197,7 @@ async fn main() {
                         dagobah: &mut dagobah_state,
                         final_battle: &mut final_battle_state,
                         jabba: &mut jabba_state,
+                        seat_of_power: &mut seat_of_power_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -6256,6 +6276,7 @@ async fn main() {
                                 dagobah: &mut dagobah_state,
                                 final_battle: &mut final_battle_state,
                                 jabba: &mut jabba_state,
+                                seat_of_power: &mut seat_of_power_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,

@@ -110,6 +110,7 @@ pub const EVT_DECOY_TRIGGERED: &str = "decoy_triggered";
 pub const EVT_DS_SHIELD_STATUS: &str = "death_star_shield_status";
 pub const EVT_CHARACTER_COMBAT_RATING: &str = "character_combat_rating";
 pub const EVT_STORY_JABBA: &str = "story_jabba";
+pub const EVT_STORY_SEAT_OF_POWER: &str = "story_seat_of_power";
 pub const EVT_STORY_FINAL_BATTLE: &str = "story_final_battle";
 pub const EVT_MAINTENANCE_SHORTFALL: &str = "maintenance_shortfall";
 
@@ -235,6 +236,7 @@ mod tests {
             EVT_DS_SHIELD_STATUS,
             EVT_CHARACTER_COMBAT_RATING,
             EVT_STORY_JABBA,
+            EVT_STORY_SEAT_OF_POWER,
             EVT_STORY_FINAL_BATTLE,
             EVT_MAINTENANCE_SHORTFALL,
             // Phase 3

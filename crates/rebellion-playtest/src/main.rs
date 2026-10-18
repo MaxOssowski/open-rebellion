@@ -374,6 +374,7 @@ fn main() -> anyhow::Result<()> {
         dagobah: rebellion_core::dagobah::DagobahState::default(),
         final_battle: rebellion_core::final_battle::FinalBattleState::default(),
         jabba: rebellion_core::jabba::JabbaState::default(),
+        seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         combat_cooldowns: HashMap::new(),

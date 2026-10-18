@@ -70,7 +70,7 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 13 | Rescue Attempt | `0x200` | `FUN_0048c4c0` (`0x65b2a8`) | side, the rescuer's portrait | `0x71ea` / `0x71eb` | — | missing |
 | 14 | Jabba Captures a character | `0x1e0` case 5 | `FUN_00490340` (`0x65b638`) | `0x429` | `0x7156` / `0x7157` | — | mapped 2026-10-18 (`jabba_captures_message`, the Palace mission's failed rescuer) |
 | 15 | Jabba Delivers Prisoners | `0x231`, arg set, once | `FUN_0048b6e0` (`0x65b1d0`) | `0x42a`, or `0x42b` | `0x7200` / `0x7201` | both | mapped 2026-10-18 (`jabba_delivers_message`, the Pickup's hit) |
-| 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | missing; trigger read 2026-10-18 (SeatOfPower, `FUN_005617b0`, see "Delivery") |
+| 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | mapped 2026-10-18 (`emperor_arrives_message`, SeatOfPower in `seat_of_power.rs`, save v78) |
 | 17 | Character Discovers Traitor | `0x361` | `FUN_0048c9c0` (`0x65b2f0`) | side, the discoverer's portrait | `0x71e8` / `0x71e9` | one side, by `FUN_004edc80` | missing |
 | 18 | Killed by Imperial Assassins | `0x306` | `FUN_0048b050` (`0x65b140`) | `0x42e` | `0x7208` / `0x7209` | Alliance only | mapped 2026-10-18 (`assassins_message`, an assassination that kills; "Delivery") |
 | 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | both | mapped 2026-10-18 (`death_star_sabotaged_message`, a DS Sabotage that destroys it; "Delivery") |
@@ -303,3 +303,10 @@ Ported 2026-10-18: rows 18 and 19 (`story_messages::assassins_message`,
 result. Row 18 needs the character kept in the arena, so the app now
 marks a killed character (`missions::kill_character`) as the integrator
 does, instead of removing it.
+
+Ported 2026-10-18 (save v78): row 16. `seat_of_power.rs` keeps the bit
+and checks it each day (port: daily in place of the character manager's
+handlers). A change is notification `0x230`, and when it is set the app
+posts `story_messages::emperor_arrives_message` to the Empire. hyp: the
+first check stores the bit silently, because the setup places the Emperor
+at Coruscant before play. The port's own `0x230` story event is removed.

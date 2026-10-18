@@ -2576,6 +2576,14 @@ cross-runtime proof remain open
   integrator does. Row 16's trigger is SeatOfPower (`FUN_005617b0`): the
   Emperor free at an Empire-held Coruscant. Its port needs a save format
   change. The port's own `0x230` event is invented.
+- 2026-10-18: Emperor Arrives at Coruscant is ported (`seat_of_power.rs`,
+  save v78): SeatOfPower holds while the Emperor stands free at an
+  Empire-held Coruscant, and the Empire reads the message when it is set.
+  The port's own `0x230` story event is removed. In 24 campaigns the
+  Emperor leaves Coruscant by day 15 and returns 0 to 4 times. Golden
+  initial `v1:5474ae69134d1255` -> `v1:d8f4a9b46e07169c`, final
+  `v1:4cd75bad1e5062b8` -> `v1:fd4bcf87c87325d6`
+  (`evidence/2026-10-18-seat-of-power/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

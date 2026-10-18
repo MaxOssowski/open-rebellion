@@ -453,6 +453,25 @@ pub fn jabba_captures_message(
     )
 }
 
+/// Emperor Arrives at Coruscant (`FUN_0048ce80`): notification `0x230`
+/// with its argument set, as `SeatOfPower` is set. The Empire alone reads
+/// TEXTSTRA `0x71c8` / `0x71c9` on background `0x42c`.
+///
+/// port: the speaker `0x1a`, the media `0x47b` and `FUN_004c4990(0x130)`
+/// are not read.
+#[must_use]
+pub fn emperor_arrives_message(tick: u64, texts: &HashMap<u16, String>) -> Option<GameMessage> {
+    Some(
+        GameMessage::new(tick, texts.get(&0x71c9)?.clone(), MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::Empire)
+            .with_title(texts.get(&0x71c8)?.clone())
+            .with_picture(MessagePicture {
+                background: 0x42c,
+                foreground: None,
+            }),
+    )
+}
+
 /// Killed by Imperial Assassins (`FUN_0048b050`): notification `0x306`,
 /// which `FUN_004fc080` posts for an object destroyed with reason 7 (the
 /// assassination's injury), with the object and its location. TEXTSTRA
@@ -1486,6 +1505,30 @@ mod tests {
         let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
         assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
         assert_eq!(lost.picture.expect("a picture").background, 0x428);
+    }
+
+    #[test]
+    fn the_emperor_arrives_at_coruscant_for_the_empire_on_its_picture() {
+        // FUN_0048ce80: 0x71c8 / 0x71c9, background 0x42c, Empire only.
+        let texts: HashMap<u16, String> = [
+            (0x71c8, "Emperor Arrives at Coruscant"),
+            (0x71c9, "I have returned to the Seat of Power at Coruscant."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let message = emperor_arrives_message(3, &texts).expect("message");
+        assert_eq!(
+            message.title.as_deref(),
+            Some("Emperor Arrives at Coruscant")
+        );
+        assert_eq!(
+            message.text,
+            "I have returned to the Seat of Power at Coruscant."
+        );
+        assert_eq!(message.audience, RailAudience::Empire);
+        assert_eq!(message.picture.map(|p| p.background), Some(0x42c));
+        assert!(emperor_arrives_message(3, &HashMap::new()).is_none());
     }
 
     #[test]

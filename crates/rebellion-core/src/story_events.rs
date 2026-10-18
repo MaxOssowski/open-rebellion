@@ -5,7 +5,7 @@
 
 use crate::events::{
     EventAction, EventCondition, EventState, GameEvent, SystemTag, EVT_CHARACTER_FORCE,
-    EVT_EMPEROR_ARRIVAL, EVT_FORCE_TRAINING, EVT_LEIA_FORCE,
+    EVT_FORCE_TRAINING, EVT_LEIA_FORCE,
 };
 use crate::ids::CharacterKey;
 use crate::world::{ForceTier, GameWorld};
@@ -32,7 +32,6 @@ fn find_character(world: &GameWorld, needle: &str) -> Option<CharacterKey> {
 pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
     let luke = find_character(world, "Luke");
     let leia = find_character(world, "Leia");
-    let emperor = find_character(world, "Palpatine").or_else(|| find_character(world, "Emperor"));
 
     // -----------------------------------------------------------------------
     // Force milestone events (Task 3)
@@ -121,29 +120,9 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
             });
         }
 
-        // -------------------------------------------------------------------
-        // Emperor Arrival (0x230) — Emperor travels to the front
-        // -------------------------------------------------------------------
-        if let Some(emperor) = emperor {
-            state.define(GameEvent {
-                id: EVT_EMPEROR_ARRIVAL,
-                name: "Emperor Arrives".into(),
-                conditions: vec![
-                    EventCondition::CharacterExists { character: emperor },
-                    EventCondition::TickAtLeast { tick: 90 },
-                    EventCondition::FactionControlsNSystems {
-                        faction: crate::dat::Faction::Empire,
-                        min_count: 100,
-                    },
-                ],
-                actions: vec![EventAction::DisplayMessage {
-                    text: "The Emperor has arrived to oversee operations personally.".into(),
-                }],
-                is_repeatable: false,
-                enabled: true,
-                system_tag: SystemTag::Story,
-            });
-        }
+        // The port's Emperor Arrival (0x230: day 90 and 100 Empire systems)
+        // is gone: the character manager's SeatOfPower sends 0x230
+        // (crate::seat_of_power, story-message-classes.md row 16).
 
         // The Jabba's palace chain (0x380..0x386, 0x399, 0x39a, 0x231,
         // 0x200) and the bounty hunters (0x397, 0x212, 0x398, the carbonite
@@ -190,7 +169,6 @@ mod tests {
     use crate::events::EVT_TRAITOR_REVEALED;
     use crate::events::{EventState, EventSystem};
     use crate::tick::TickEvent;
-    use crate::world::ControlKind;
     use crate::world::{Character, ForceTier};
 
     fn tick(n: u64) -> Vec<TickEvent> {
@@ -544,77 +522,18 @@ mod tests {
     // Notification events moved to economy tick state-transition model.
 
     #[test]
-    fn emperor_palpatine_adds_emperor_specific_events() {
+    fn the_invented_emperor_arrival_is_gone() {
+        // story-message-classes.md row 16: 0x230 is SeatOfPower
+        // (FUN_005617b0), not a day-90 dominance gate.
         let mut world = make_world_with_characters();
         world.characters.insert(make_character(
             "Emperor Palpatine",
             ForceTier::Experienced,
             false,
         ));
-
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
-
-        // Verify Emperor Arrival event (0x230) is registered
-        assert!(
-            state.events().iter().any(|e| e.id == EVT_EMPEROR_ARRIVAL),
-            "EVT_EMPEROR_ARRIVAL should be registered when Emperor exists"
-        );
-    }
-
-    #[test]
-    fn emperor_arrival_fires_with_empire_dominance() {
-        let mut world = make_world_with_characters();
-        world.characters.insert(make_character(
-            "Emperor Palpatine",
-            ForceTier::Experienced,
-            false,
-        ));
-
-        // Need 100+ Empire systems
-        let sector_key = world.sectors.insert(crate::world::Sector {
-            dat_id: crate::ids::DatId::new(0),
-            name: "Sector".into(),
-            group: crate::dat::SectorGroup::Core,
-            x: 0,
-            y: 0,
-            systems: vec![],
-        });
-        for i in 0..110 {
-            world.systems.insert(crate::world::System {
-                dat_id: crate::ids::DatId::new(i),
-                name: format!("System_{i}"),
-                sector: sector_key,
-                x: 0,
-                y: 0,
-                exploration_status: crate::dat::ExplorationStatus::Explored,
-                popularity_alliance: 0.3,
-                popularity_empire: 0.7,
-                is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
-                control: ControlKind::Controlled(crate::dat::Faction::Empire),
-            });
-        }
-
-        let mut state = EventState::new();
-        define_story_events(&mut state, &world);
-
-        let fired = EventSystem::advance(&mut state, &world, &tick(90), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == EVT_EMPEROR_ARRIVAL),
-            "Emperor Arrival should fire at tick 90 with 110 Empire systems"
-        );
+        assert!(!state.events().iter().any(|e| e.id == 0x230));
     }
 
     /// CI guard: notification events must NEVER use `EventCondition::Random`.

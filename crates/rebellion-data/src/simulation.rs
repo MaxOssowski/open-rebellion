@@ -80,6 +80,8 @@ pub struct SimulationStates {
     pub final_battle: rebellion_core::final_battle::FinalBattleState,
     /// The bounty hunters (`jabba.rs`).
     pub jabba: rebellion_core::jabba::JabbaState,
+    /// `SeatOfPower` (`seat_of_power.rs`).
+    pub seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState,
     pub troop_transport: TroopTransportState,
     /// Manufactured objects travelling to their destination (F-030).
     pub deliveries: DeliveryState,
@@ -369,6 +371,15 @@ pub fn run_simulation_tick(
     ) {
         let mission = rebellion_core::jabba::perform(&step, &mut states.missions, world);
         integrator.record_jabba_step(world, &step, mission.is_some());
+    }
+
+    // ── 5e. `SeatOfPower` (FUN_005617b0, notification 0x230) ───────────────
+    if let Some(held) =
+        rebellion_core::seat_of_power::SeatOfPowerSystem::advance(&mut states.seat_of_power, world)
+    {
+        if let Some(tick) = tick_events.last().map(|event| event.tick) {
+            integrator.record_seat_of_power(held, tick);
+        }
     }
     states.ai.free_mission_members(&mission_advance.effects);
     if let Some(ref mut ai2) = states.ai2 {
@@ -901,6 +912,7 @@ mod tests {
             dagobah: rebellion_core::dagobah::DagobahState::default(),
             final_battle: rebellion_core::final_battle::FinalBattleState::default(),
             jabba: rebellion_core::jabba::JabbaState::default(),
+            seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1383,6 +1395,7 @@ mod tests {
                 dagobah: rebellion_core::dagobah::DagobahState::default(),
                 final_battle: rebellion_core::final_battle::FinalBattleState::default(),
                 jabba: rebellion_core::jabba::JabbaState::default(),
+                seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
                 troop_transport: TroopTransportState::default(),
                 deliveries: DeliveryState::default(),
                 combat_cooldowns: HashMap::new(),
@@ -1518,6 +1531,7 @@ mod tests {
             dagobah: rebellion_core::dagobah::DagobahState::default(),
             final_battle: rebellion_core::final_battle::FinalBattleState::default(),
             jabba: rebellion_core::jabba::JabbaState::default(),
+            seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1707,6 +1721,7 @@ mod tests {
             dagobah: rebellion_core::dagobah::DagobahState::default(),
             final_battle: rebellion_core::final_battle::FinalBattleState::default(),
             jabba: rebellion_core::jabba::JabbaState::default(),
+            seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1857,6 +1872,7 @@ mod tests {
             dagobah: rebellion_core::dagobah::DagobahState::default(),
             final_battle: rebellion_core::final_battle::FinalBattleState::default(),
             jabba: rebellion_core::jabba::JabbaState::default(),
+            seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -2022,6 +2038,7 @@ mod tests {
             dagobah: rebellion_core::dagobah::DagobahState::default(),
             final_battle: rebellion_core::final_battle::FinalBattleState::default(),
             jabba: rebellion_core::jabba::JabbaState::default(),
+            seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
