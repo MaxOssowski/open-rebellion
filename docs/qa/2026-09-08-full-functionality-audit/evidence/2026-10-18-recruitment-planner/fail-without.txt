@@ -1,0 +1,5 @@
+test ai::tests::a_recruitment_target_is_the_recruiter_s_calm_system_else_by_count_and_support_else_by_distance ... FAILED
+test ai::tests::the_strategy_keeps_two_recruiters_and_none_go_once_the_pool_is_empty ... FAILED
+    ai::tests::a_recruitment_target_is_the_recruiter_s_calm_system_else_by_count_and_support_else_by_distance
+    ai::tests::the_strategy_keeps_two_recruiters_and_none_go_once_the_pool_is_empty
+test result: FAILED. 109 passed; 2 failed; 0 ignored; 0 measured; 1256 filtered out; finished in 0.00s

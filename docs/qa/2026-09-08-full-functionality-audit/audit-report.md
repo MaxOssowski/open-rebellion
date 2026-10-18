@@ -2652,6 +2652,15 @@ cross-runtime proof remain open
   Golden initial `v1:5ba66653ae1fb76d` -> `v1:6f750b483b72f71f`, final
   `v1:f7fe1a11ab5f9ffd` -> `v1:bec91e71a20394cd`
   (`evidence/2026-10-18-diplomacy-planner/`).
+- 2026-10-18 (F-036): the AI's Recruitment planner is the original's. The
+  strategy keeps two planners while the side has minor characters
+  (`FUN_004e8290` row 1). Each targets the recruiter's own calm system or
+  the nearest one (`FUN_0047dcc0`). Side `+0xa4` (`minor_classes`) counted
+  none in a real game, because loaded characters carry no family byte;
+  fixed. A research re-order fault that was already there now shows in
+  22 of 24 campaigns: one designer is ordered to the same site every few
+  days. Golden final `v1:bec91e71a20394cd` -> `v1:4a2572231a842e24`
+  (`evidence/2026-10-18-recruitment-planner/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

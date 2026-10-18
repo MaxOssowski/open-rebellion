@@ -968,6 +968,73 @@ Campaigns: 24 seeds of 1500 days, against the F-005 commit.
 - Systems held at the end, summed over the seeds: Alliance 557 and 531,
   Empire 347 and 340.
 
+## The Recruitment planner (read and ported 2026-10-18)
+
+The Recruitment planner class has vtable `0x0065a6b8`:
+
+| Slot | Function | Meaning |
+|---|---|---|
+| `+0x18` | `FUN_0047da30` | the cancel key: the team's records' `+0x58` summed (leadership) |
+| `+0x30` | `FUN_0047dad0` | the Mission Report |
+| `+0x40` | `FUN_0047a470` | 0: the count `S+0x320` |
+| `+0x48` | `FUN_0047db40` | the team selector (leadership 80..10000) |
+| `+0x50` | `FUN_0047dcc0` | state 5, the target |
+
+**The want.** Row 1 of `FUN_004e8290` asks while `S+0x320 < 2` and
+`S+0xa4 > 0`, and cancels while `S+0x320 > 2`, or while `S+0xa4 == 0` and
+`S+0x320 > 0`. `S+0xa4` is the side's MNCHARSD classes, counted once at
+setup (`FUN_0042dd00`), so the side keeps two Recruitment planners all
+game.
+
+**The target, `FUN_0047dcc0`.** Without a member it empties `+0x34` and
+returns 0. With one, it keeps `+0x34` while its record still has `+0x2c`
+bit 2: the side's system, with no uprising or blockade, while `S+0xa4 >
+0`. Otherwise it takes, the first that gives a system:
+
+1. the system the first team member stands in. The walk goes up the
+   member's containers with `FUN_004f2d10`, from the record's `+0x38`.
+   It takes that system when its record has bit 2.
+2. With `+0x38` a system: `FUN_00419b80(+0x38, 0, 8, 0, ...)`, order 2,
+   gives the nearest sector with such a system. Then `FUN_0041a400(sector,
+   +0x38, 0, 2, 0, ...)`, order 2, gives its such system nearest `+0x38`.
+3. Otherwise `FUN_00419a00(0, 8, 0, 0, 0, 0, key 0x3c)`, order 1, gives
+   the sector with the most such systems (`+0x160`). Then
+   `FUN_0041a340(sector, 0, 2, 0, 0, 0, 0, key 0)`, order 1, gives its
+   best supported such system.
+
+It claims nothing.
+
+**Ported** in `ai.rs`:
+- `AISystem::mission_strategy` keeps rows 1 and 5 through
+  `keep_planners`.
+- `recruitment_target` is `FUN_0047dcc0`.
+- The port's heuristic Recruitment is removed. It sent a recruiter to the
+  side's most popular system for each character left in the pool.
+- port: a standing Recruitment planner orders nothing while the side's
+  pool is empty. Such a mission would end at once (code `0x10`,
+  `FUN_0056b370`).
+
+**Fixed with it: side `+0xa4`.** `minor_classes` counted characters whose
+DatId family was `0x38..0x3b`. The loader keeps a character's record
+index without its family byte, so in a real game it counted none. Then
+no system record had `+0x2c` bit 2, and sector `+0x28` bit 8 and
+`+0x160` stayed empty. It now counts the side's minor characters.
+
+Campaigns: 24 seeds of 1500 days, against the Diplomacy commit.
+- Recruitment orders: 1,703 before, 1,679 after. Results: 1,117 successes
+  and 345 failures before, 1,224 and 409 after.
+- Research orders rose: ship 2,275 to 10,312, troop 686 to 3,941,
+  facility 744 to 4,161.
+- Research successes rose: ship 3,041 to 4,922, troop 276 to 1,044,
+  facility 420 to 1,677.
+- Missions: 11,366 before, 26,519 after.
+- Systems held at the end, summed over the seeds: Alliance 531 and 487,
+  Empire 340 and 363.
+- The research orders show a fault that was already there. In 13 of the
+  24 seeds before this change, and 22 of 24 after, one designer is
+  ordered to the same site again every few days, 35 to 394 times. Each
+  of those missions ends without a result. Not yet traced.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

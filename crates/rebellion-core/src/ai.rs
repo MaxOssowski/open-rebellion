@@ -1039,12 +1039,13 @@ struct RecordInputs<'a> {
 ///
 /// hyp: each MNCHARSD record is one of the world's minor characters
 /// (`rebellion-data` loads one per record), and a class serves the sides
-/// its record names.
+/// its record names. The loader keeps a character's record index without
+/// its family byte, so a minor character is one that is not major.
 fn minor_classes(world: &GameWorld, is_alliance: bool) -> i32 {
     let count = world
         .characters
         .values()
-        .filter(|c| (0x38..=0x3b).contains(&c.dat_id.family()))
+        .filter(|c| !c.is_major)
         .filter(|c| {
             if is_alliance {
                 c.is_alliance
@@ -1523,7 +1524,7 @@ impl AISystem {
                     faction,
                     actions,
                 );
-                Self::diplomacy_strategy(state, world, galaxy);
+                Self::mission_strategy(state, world, galaxy);
             }
             4 => Self::mission_step(state, planner, ctx, galaxy, actions),
             0xa => production(actions),
@@ -1663,7 +1664,7 @@ impl AISystem {
     ///   can no longer keep is dropped; a planner with no team left ends
     ///   (`FUN_0047aff0`);
     /// - state 5 (slot `+0x50`): a standing planner's target
-    ///   ([`diplomacy_target`]);
+    ///   ([`recruitment_target`], [`diplomacy_target`]);
     /// - state 6 ([`staging_point`]): the gathering place;
     /// - state 7 (`FUN_004bd570`): each free member away from it gets a
     ///   Move order there (`0x201`, the Move pseudo-mission);
@@ -1705,7 +1706,10 @@ impl AISystem {
             p.team.extend(team);
             p.decoys.extend(decoys);
             if p.standing {
-                p.target_system = diplomacy_target(p, planner, galaxy, claims);
+                p.target_system = match p.kind {
+                    MissionKind::Recruitment => recruitment_target(p, planner, world, galaxy),
+                    _ => diplomacy_target(p, planner, galaxy, claims),
+                };
             }
             if p.team.is_empty() {
                 return p.standing;
@@ -1735,7 +1739,11 @@ impl AISystem {
                 }
             }
             let free = p.team.iter().chain(&p.decoys).all(|&m| planner.sendable(m));
-            if !(gathered && free) {
+            // port: a Recruitment ordered while the side's pool is empty
+            // ends at once (code 0x10, FUN_0056b370); the planner waits.
+            let side = crate::dat::Faction::of_alliance(is_alliance);
+            let futile = p.kind == MissionKind::Recruitment && world.recruit_pool_empty(side);
+            if !(gathered && free) || futile {
                 return true;
             }
             actions.push(AIAction::DispatchMission {
@@ -1750,46 +1758,82 @@ impl AISystem {
         });
     }
 
-    /// Row 5 of the strategy's requests (`FUN_004e8290`): the side keeps
-    /// as many Diplomacy planners as it wants (side `+0x214`, from
-    /// [`diplomacy_wanted`]). Fewer ask for one more (`FUN_004d2580`
-    /// builds it, count `+0x34c`); more cancel the one whose team has the
-    /// least diplomacy (slot `+0x18`, `FUN_00481500`; `FUN_004e5710`), the
-    /// earlier on a tie. A cancelled planner frees its members and its
-    /// claim (`FUN_0047aff0`, slot `+0x38` `FUN_00481fe0`); its mission
-    /// runs on.
+    /// The strategy's rows for the standing planners (`FUN_004e8290`), each
+    /// kept at its want by [`Self::keep_planners`]:
     ///
-    /// port: the strategy's other rows are not yet ported, so this row is
-    /// not ordered behind them, and the count reaches the want within one
-    /// step (the original asks once per strategy pass).
-    fn diplomacy_strategy(
+    /// - row 1, Recruitment (count `+0x320`, slot `+0x40` 0,
+    ///   `FUN_0047a470`): two while the side has MNCHARSD classes (side
+    ///   `+0xa4`), else none; the weakest by leadership goes first (slot
+    ///   `+0x18`, `FUN_0047da30`: the team's record `+0x58`);
+    /// - row 5, Diplomacy (count `+0x34c`, slot `+0x40` 0xb,
+    ///   `FUN_004814f0`): [`diplomacy_wanted`]; the weakest by diplomacy
+    ///   (`FUN_00481500`: record `+0x40`).
+    ///
+    /// port: rows 2 to 4 are the research planners
+    /// ([`Self::research_strategy`]) and rows 6 to 12 are not yet ported,
+    /// so the rows are not ordered behind each other, and each count
+    /// reaches its want within one step (the original asks once per
+    /// strategy pass).
+    fn mission_strategy(
         state: &mut AIState,
         world: &GameWorld,
         galaxy: &mut crate::ai_records::Galaxy,
     ) {
-        let wanted = diplomacy_wanted(galaxy);
+        use crate::world::Skill;
+        let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
+        let recruiters = if minor_classes(world, is_alliance) > 0 {
+            2
+        } else {
+            0
+        };
+        Self::keep_planners(
+            state,
+            world,
+            galaxy,
+            (MissionKind::Recruitment, recruiters, Skill::Leadership),
+        );
+        let diplomats = diplomacy_wanted(galaxy);
+        Self::keep_planners(
+            state,
+            world,
+            galaxy,
+            (MissionKind::Diplomacy, diplomats, Skill::Diplomacy),
+        );
+    }
+
+    /// One row of the strategy (`FUN_004e8290`): while the side has fewer
+    /// standing planners of `kind` than `wanted`, ask for one more
+    /// (`FUN_004d2580` builds it); while more, cancel the one whose team
+    /// has the least `skill` (slot `+0x18`; `FUN_004e5710`), the earlier
+    /// on a tie. A cancelled planner frees its members and its claim
+    /// (`FUN_0047aff0`, slot `+0x38`, `FUN_00481fe0` for Diplomacy); its
+    /// mission runs on.
+    fn keep_planners(
+        state: &mut AIState,
+        world: &GameWorld,
+        galaxy: &mut crate::ai_records::Galaxy,
+        (kind, wanted, skill): (MissionKind, usize, crate::world::Skill),
+    ) {
         let count = |state: &AIState| {
             state
                 .mission_planners
                 .iter()
-                .filter(|p| p.standing && p.kind == MissionKind::Diplomacy)
+                .filter(|p| p.standing && p.kind == kind)
                 .count()
         };
         while count(state) > wanted {
-            let skill = |p: &MissionPlanner| -> u32 {
+            let team_skill = |p: &MissionPlanner| -> u32 {
                 p.team
                     .iter()
-                    .filter_map(|&m| {
-                        crate::missions::member_skill(world, m, crate::world::Skill::Diplomacy)
-                    })
+                    .filter_map(|&m| crate::missions::member_skill(world, m, skill))
                     .sum()
             };
             let Some(at) = state
                 .mission_planners
                 .iter()
                 .enumerate()
-                .filter(|(_, p)| p.standing && p.kind == MissionKind::Diplomacy)
-                .min_by_key(|&(at, p)| (skill(p), at))
+                .filter(|(_, p)| p.standing && p.kind == kind)
+                .min_by_key(|&(at, p)| (team_skill(p), at))
                 .map(|(at, _)| at)
             else {
                 break;
@@ -1804,7 +1848,7 @@ impl AISystem {
             state.next_planner_id += 1;
             state.mission_planners.push(MissionPlanner {
                 id,
-                kind: MissionKind::Diplomacy,
+                kind,
                 team: Vec::new(),
                 decoys: Vec::new(),
                 target_system: None,
@@ -1846,18 +1890,15 @@ impl AISystem {
         true
     }
 
-    /// Incite and Recruitment orders. Diplomacy is the strategy's
-    /// ([`Self::diplomacy_strategy`], [`diplomacy_target`]).
+    /// Incite orders. Diplomacy and Recruitment are the strategy's
+    /// ([`Self::mission_strategy`]).
     ///
-    /// port: the strategy's other rows (`FUN_004e8290`) are not yet
-    /// ported, so the port picks these targets; the original planners pick
-    /// the members.
-    /// - Incite: the enemy system where the enemy is most popular, when
-    ///   its record admits it ([`crate::missions::record_admits_system`]);
-    ///   a refused target would end its mission at once and be ordered
-    ///   again each pass.
-    /// - Recruitment: the side's most popular system, while its recruit pool
-    ///   holds anyone and the planner finds a recruiter.
+    /// port: the strategy's Incite row (`FUN_004e8290` row 7) is not yet
+    /// ported, so the port picks the target, the enemy system where the
+    /// enemy is most popular, when its record admits it
+    /// ([`crate::missions::record_admits_system`]); a refused target would
+    /// end its mission at once and be ordered again each pass. The
+    /// original planner picks the members.
     fn evaluate_officers(
         planner: &mut Planner<'_>,
         world: &GameWorld,
@@ -1885,38 +1926,6 @@ impl AISystem {
                 actions,
             );
         }
-
-        let side = crate::dat::Faction::from(faction.as_mission_faction());
-        let mut pool = crate::missions::recruit_pool(world, side).len();
-        if let Some(base) = Self::find_friendly_system(world, faction) {
-            while pool > 0 && !world.recruit_pool_empty(side) {
-                if !Self::dispatch_planned(
-                    planner,
-                    MissionKind::Recruitment,
-                    (base, None),
-                    None,
-                    actions,
-                ) {
-                    break;
-                }
-                pool -= 1;
-            }
-        }
-    }
-
-    /// Find a system that the AI faction has relatively high popularity in —
-    /// used as a recruitment base.
-    fn find_friendly_system(world: &GameWorld, faction: AiFaction) -> Option<SystemKey> {
-        world
-            .systems
-            .iter()
-            .max_by(|(_, a), (_, b)| {
-                faction
-                    .system_popularity(a)
-                    .partial_cmp(&faction.system_popularity(b))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .map(|(k, _)| k)
     }
 
     /// Find an enemy-controlled system suitable for inciting uprising.
@@ -3372,6 +3381,70 @@ fn diplomacy_target(
     target.and_then(|t| claim(p, galaxy, claims, t))
 }
 
+/// State 5 of a Recruitment planner (slot `+0x50`, `FUN_0047dcc0`): its
+/// target `+0x34`, a system whose record has `+0x2c` bit 2 (the side's,
+/// with no uprising or blockade, while the side has MNCHARSD classes).
+///
+/// Without a team it has none. With one it keeps its target while that
+/// still has bit 2. Otherwise it takes, the first that gives one:
+///
+/// 1. the system where the first team member stands (the walk up its
+///    containers, `FUN_004f2d10`), when it has bit 2;
+/// 2. from the previous gathering place `+0x38`: the nearest sector with
+///    such a system (`FUN_00419b80`, sector `+0x28` 8, order 2), then its
+///    one nearest `+0x38` (`FUN_0041a400`, order 2);
+/// 3. with no `+0x38`: the sector with the most such systems (key
+///    `+0x160`, `FUN_00419a00` order 1), then its one with the highest
+///    support (`FUN_0041a340`, key `v[0]`, order 1).
+///
+/// A Recruitment planner claims nothing.
+fn recruitment_target(
+    p: &MissionPlanner,
+    planner: &mut Planner<'_>,
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+) -> Option<SystemKey> {
+    use crate::ai_records::{pick, sector_at, Mask, Order};
+    let first = *p.team.first()?;
+    let any = Mask::new(0, 0);
+    let calm = |system: SystemKey| galaxy.system(system).is_some_and(|r| r.summary & 2 != 0);
+    if let Some(t) = p.target_system.filter(|&t| calm(t)) {
+        return Some(t);
+    }
+    if let Some(here) = crate::mission_planning::standing_system(world, first).filter(|&s| calm(s))
+    {
+        return Some(here);
+    }
+    let mut coin = || planner.coin();
+    let systems = Mask::new(2, 0);
+    if let Some(prev) = p.staging {
+        let sectors = galaxy.sectors_by_distance(
+            prev,
+            [any, Mask::new(8, 0), any],
+            Order::Descending,
+            &mut coin,
+        );
+        let sector = pick(&[sectors])?;
+        let near = galaxy.systems_by_distance(
+            sector,
+            prev,
+            [any, systems, any],
+            Order::Descending,
+            &mut coin,
+        );
+        return pick(&[near]);
+    }
+    let sectors = galaxy.sector_query(
+        [any, Mask::new(8, 0), any],
+        sector_at(0x160),
+        Order::Ascending,
+        &mut coin,
+    );
+    let sector = pick(&[sectors])?;
+    let best = galaxy.system_query(sector, [any, systems, any], 0, Order::Ascending, &mut coin);
+    pick(&[best])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3980,26 +4053,38 @@ mod tests {
 
     #[test]
     fn a_recruiter_needs_leadership_of_80_and_someone_left_to_recruit() {
-        // FUN_0047db40: one member, leadership 80..=10000. FUN_0055fc80
-        // recruits from the side's unrecruited minor characters.
+        // FUN_0047db40: one member, leadership 80..=10000. FUN_004e8290
+        // row 1 wants Recruitment planners only while the side has
+        // MNCHARSD classes (side +0xa4, FUN_0042dd00).
         let mut world = empty_world();
         let sector = add_sector(&mut world);
-        let _sys = add_system(&mut world, sector, 0.1, 0.9);
+        let sys = add_system(&mut world, sector, 0.1, 0.9);
+        world.systems[sys].control = ControlKind::Controlled(crate::dat::Faction::Empire);
         let recruiter = add_character(&mut world, false, true, 30);
         world.characters[recruiter].leadership.base = 80;
         let weaker = add_character(&mut world, false, true, 30);
         world.characters[weaker].leadership.base = 79;
+        for c in [recruiter, weaker] {
+            world.characters[c].current_system = Some(sys);
+        }
         let mut state = AIState::new(AiFaction::Empire);
 
         assert_eq!(
-            team_of(&advance_once(&mut state, &world), MissionKind::Recruitment),
+            team_of(
+                &strategy_pass(&mut state, &world, 1),
+                MissionKind::Recruitment
+            ),
             None
         );
 
         let recruit = add_character(&mut world, false, false, 30);
         world.characters[recruit].recruited = false;
+        world.characters[recruit].dat_id = DatId(0x3800_0001);
         let mut state = AIState::new(AiFaction::Empire);
-        let team = team_of(&advance_once(&mut state, &world), MissionKind::Recruitment);
+        let team = team_of(
+            &strategy_pass(&mut state, &world, 1),
+            MissionKind::Recruitment,
+        );
 
         assert_eq!(
             team,
@@ -4007,9 +4092,9 @@ mod tests {
         );
     }
 
-    /// One day of the Diplomacy rows: the side's records (phase 4), the
-    /// strategy's row 5 and every mission planner's cycle.
-    fn diplomacy_pass(state: &mut AIState, world: &GameWorld, tick: u64) -> Vec<AIAction> {
+    /// One day of the standing planners: the side's records (phase 4), the
+    /// strategy's rows 1 and 5 and every mission planner's cycle.
+    fn strategy_pass(state: &mut AIState, world: &GameWorld, tick: u64) -> Vec<AIAction> {
         let missions = MissionState::new();
         let busy = HashSet::new();
         let economy = crate::economy::EconomyState::default();
@@ -4035,7 +4120,7 @@ mod tests {
             transport: &transport,
         };
         let mut galaxy = AISystem::records(state, &planner, &inputs);
-        AISystem::diplomacy_strategy(state, world, &mut galaxy);
+        AISystem::mission_strategy(state, world, &mut galaxy);
         let mut actions = Vec::new();
         AISystem::mission_planner_cycle(
             state,
@@ -4063,7 +4148,9 @@ mod tests {
         let keys = diplomats
             .iter()
             .map(|&d| {
-                let c = add_character(&mut world, false, false, d);
+                // Major, so the side has no MNCHARSD class and no
+                // Recruitment planner (side +0xa4 = 0).
+                let c = add_character(&mut world, false, true, d);
                 world.characters[c].current_system = Some(home);
                 c
             })
@@ -4079,7 +4166,7 @@ mod tests {
 
         assert_eq!(
             team_of(
-                &diplomacy_pass(&mut state, &world, 1),
+                &strategy_pass(&mut state, &world, 1),
                 MissionKind::Diplomacy
             ),
             None
@@ -4088,7 +4175,7 @@ mod tests {
         let (world, _, _, keys) = diplomacy_world(90.0, &[69]);
         let mut state = AIState::new(AiFaction::Empire);
         let team = team_of(
-            &diplomacy_pass(&mut state, &world, 1),
+            &strategy_pass(&mut state, &world, 1),
             MissionKind::Diplomacy,
         );
 
@@ -4111,7 +4198,7 @@ mod tests {
         world.systems[rebel].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
         let mut state = AIState::new(AiFaction::Empire);
 
-        let actions = diplomacy_pass(&mut state, &world, 1);
+        let actions = strategy_pass(&mut state, &world, 1);
 
         let targets: Vec<_> = orders(&actions, MissionKind::Diplomacy)
             .into_iter()
@@ -4133,7 +4220,7 @@ mod tests {
                 add_system(&mut world, sector, 0.4, 0.4);
             }
             let mut state = AIState::new(AiFaction::Empire);
-            diplomacy_pass(&mut state, &world, 1);
+            strategy_pass(&mut state, &world, 1);
             state
                 .mission_planners
                 .iter()
@@ -4149,7 +4236,7 @@ mod tests {
         // diplomacy); FUN_00481fe0 releases the record's claim.
         let (world, _, neutral, keys) = diplomacy_world(90.0, &[90]);
         let mut state = AIState::new(AiFaction::Empire);
-        diplomacy_pass(&mut state, &world, 1);
+        strategy_pass(&mut state, &world, 1);
         assert_eq!(state.record_claims.get(&neutral), Some(&0x2000_0000));
         let weak = MissionPlanner {
             id: 99,
@@ -4158,7 +4245,7 @@ mod tests {
         };
         state.mission_planners.insert(0, weak);
         let strong = state.mission_planners[1].clone();
-        diplomacy_pass(&mut state, &world, 2);
+        strategy_pass(&mut state, &world, 2);
         assert_eq!(state.mission_planners.len(), 1);
         assert_eq!(state.mission_planners[0].id, strong.id);
         assert_eq!(
@@ -4170,7 +4257,7 @@ mod tests {
         let mut world = world;
         world.systems[neutral].control = ControlKind::Controlled(crate::dat::Faction::Empire);
         world.systems[neutral].popularity_empire = 0.9;
-        diplomacy_pass(&mut state, &world, 3);
+        strategy_pass(&mut state, &world, 3);
         assert!(state.mission_planners.is_empty());
         assert!(state.record_claims.is_empty());
     }
@@ -4187,12 +4274,12 @@ mod tests {
                 .map(|(_, target, _)| target)
                 .collect()
         };
-        assert_eq!(targets(&diplomacy_pass(&mut state, &world, 1)), vec![home]);
+        assert_eq!(targets(&strategy_pass(&mut state, &world, 1)), vec![home]);
 
         let (world, _, _, _) = diplomacy_world(70.0, &[90]);
         let mut state = AIState::new(AiFaction::Empire);
         assert_eq!(
-            targets(&diplomacy_pass(&mut state, &world, 1)),
+            targets(&strategy_pass(&mut state, &world, 1)),
             vec![neutral]
         );
     }
@@ -4213,7 +4300,7 @@ mod tests {
             .chain((0..3).map(|_| add_system(&mut world, far, 0.4, 0.4)))
             .collect();
         let mut state = AIState::new(AiFaction::Empire);
-        let first = diplomacy_pass(&mut state, &world, 1);
+        let first = strategy_pass(&mut state, &world, 1);
         let targets: Vec<SystemKey> = state
             .mission_planners
             .iter()
@@ -4236,7 +4323,7 @@ mod tests {
         }
 
         // The next day each keeps its own.
-        diplomacy_pass(&mut state, &world, 2);
+        strategy_pass(&mut state, &world, 2);
         let kept: Vec<SystemKey> = state
             .mission_planners
             .iter()
@@ -4247,7 +4334,7 @@ mod tests {
         // Once its target is no candidate (own at 90), the planner takes
         // another and frees the old claim.
         world.systems[home].popularity_empire = 0.9;
-        diplomacy_pass(&mut state, &world, 3);
+        strategy_pass(&mut state, &world, 3);
         assert_ne!(state.mission_planners[0].target_system, Some(home));
         assert!(!state.record_claims.contains_key(&home));
     }
@@ -4258,10 +4345,10 @@ mod tests {
         // its claim, and no target is picked.
         let (mut world, _, neutral, keys) = diplomacy_world(90.0, &[90]);
         let mut state = AIState::new(AiFaction::Empire);
-        diplomacy_pass(&mut state, &world, 1);
+        strategy_pass(&mut state, &world, 1);
         assert_eq!(state.mission_planners[0].claimed, Some(neutral));
         world.characters[keys[0]].mark_killed();
-        diplomacy_pass(&mut state, &world, 2);
+        strategy_pass(&mut state, &world, 2);
         let p = &state.mission_planners[0];
         assert!(p.team.is_empty());
         assert_eq!(p.claimed, None);
@@ -4280,7 +4367,7 @@ mod tests {
         let rich = add_system(&mut world, sector, 0.0, 1.0);
         world.systems[rich].control = ControlKind::Controlled(crate::dat::Faction::Empire);
         let mut state = AIState::new(AiFaction::Empire);
-        diplomacy_pass(&mut state, &world, 1);
+        strategy_pass(&mut state, &world, 1);
         assert_eq!(state.mission_planners[0].target_system, Some(neutral));
     }
 
@@ -4339,7 +4426,7 @@ mod tests {
         // 0x40 with nothing else to take keeps no claim (+0x30).
         let (world, home, neutral, _) = diplomacy_world(90.0, &[90]);
         let mut state = AIState::new(AiFaction::Empire);
-        diplomacy_pass(&mut state, &world, 1);
+        strategy_pass(&mut state, &world, 1);
         let missions = MissionState::new();
         let busy = HashSet::new();
         let economy = crate::economy::EconomyState::default();
@@ -4407,7 +4494,7 @@ mod tests {
         state
             .mission_planners
             .push(heuristic(50, MissionMember::Character(keys[0])));
-        diplomacy_pass(&mut state, &world, 1);
+        strategy_pass(&mut state, &world, 1);
         assert_eq!(
             state
                 .mission_planners
@@ -4423,7 +4510,7 @@ mod tests {
             sys.control = ControlKind::Controlled(crate::dat::Faction::Empire);
             sys.popularity_empire = 0.9;
         }
-        diplomacy_pass(&mut state, &world, 2);
+        strategy_pass(&mut state, &world, 2);
         assert_eq!(
             state
                 .mission_planners
@@ -4462,7 +4549,7 @@ mod tests {
             .push(other(MissionKind::Rescue, true));
         state.next_planner_id = 3;
         let mut galaxy = crate::ai_records::Galaxy::default();
-        AISystem::diplomacy_strategy(&mut state, &world, &mut galaxy);
+        AISystem::mission_strategy(&mut state, &world, &mut galaxy);
         assert_eq!(state.mission_planners.len(), 2);
         let _ = neutral;
 
@@ -4474,7 +4561,7 @@ mod tests {
         }
         let mut state = AIState::new(AiFaction::Empire);
         state.next_planner_id = 3;
-        diplomacy_pass(&mut state, &world, 1);
+        strategy_pass(&mut state, &world, 1);
         let ids: Vec<u64> = state.mission_planners.iter().map(|p| p.id).collect();
         assert_eq!(ids, vec![3, 4]);
         assert_eq!(state.next_planner_id, 5);
@@ -6128,38 +6215,164 @@ mod tests {
     }
 
     #[test]
-    fn recruitment_sends_one_recruiter_per_character_left_to_recruit() {
-        // FUN_0055fc80 recruits from the side's pool; once the side has
-        // recruited its last (FUN_0052f590), no Recruitment goes out.
+    fn the_strategy_keeps_two_recruiters_and_none_go_once_the_pool_is_empty() {
+        // FUN_004e8290 row 1: two Recruitment planners while side +0xa4 >
+        // 0. FUN_0047dcc0 targets the system the recruiter stands in when
+        // its record has +0x2c bit 2. Once the side has recruited its last
+        // (FUN_0052f590), a Recruitment would end at once (0x10,
+        // FUN_0056b370), and port: none goes out.
         let mut world = empty_world();
         let sector = add_sector(&mut world);
-        let _ = add_system(&mut world, sector, 0.1, 0.9);
+        let sys = add_system(&mut world, sector, 0.1, 0.9);
+        world.systems[sys].control = ControlKind::Controlled(crate::dat::Faction::Empire);
         for _ in 0..3 {
             let recruiter = add_character(&mut world, false, true, 30);
             world.characters[recruiter].leadership.base = 90;
+            world.characters[recruiter].current_system = Some(sys);
         }
         for _ in 0..2 {
             let recruit = add_character(&mut world, false, false, 30);
             world.characters[recruit].recruited = false;
+            world.characters[recruit].dat_id = DatId(0x3800_0001);
         }
         let run = |world: &GameWorld| {
-            let mut planner = planner_for(world, AiFaction::Empire);
-            let mut actions = Vec::new();
-            AISystem::evaluate_officers(
-                &mut planner,
-                world,
-                &crate::uprising::UprisingState::default(),
-                AiFaction::Empire,
-                &mut actions,
-            );
-            orders(&actions, MissionKind::Recruitment).len()
+            let mut state = AIState::new(AiFaction::Empire);
+            let actions = strategy_pass(&mut state, world, 1);
+            let planners = state
+                .mission_planners
+                .iter()
+                .filter(|p| p.standing && p.kind == MissionKind::Recruitment)
+                .count();
+            (planners, orders(&actions, MissionKind::Recruitment))
         };
 
-        assert_eq!(run(&world), 2);
+        let (planners, sent) = run(&world);
+        assert_eq!(planners, 2);
+        assert_eq!(sent.len(), 2);
+        assert!(sent.iter().all(|(_, target, _)| *target == sys));
 
         world.set_recruit_pool_empty(crate::dat::Faction::Empire);
 
-        assert_eq!(run(&world), 0);
+        let (planners, sent) = run(&world);
+        assert_eq!(planners, 2);
+        assert!(sent.is_empty());
+    }
+
+    #[test]
+    fn the_port_s_incite_goes_where_the_enemy_is_most_popular() {
+        // port: FUN_004e8290 row 7 is not yet ported; the heuristic picks
+        // the target and FUN_0047ff90's selector (leadership 49..) the
+        // member.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let warm = add_system(&mut world, sector, 0.6, 0.2);
+        let hot = add_system(&mut world, sector, 0.9, 0.1);
+        for s in [warm, hot] {
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        }
+        let agent = add_character(&mut world, false, true, 30);
+        world.characters[agent].leadership.base = 60;
+        let mut planner = planner_for(&world, AiFaction::Empire);
+        let mut actions = Vec::new();
+        AISystem::evaluate_officers(
+            &mut planner,
+            &world,
+            &crate::uprising::UprisingState::default(),
+            AiFaction::Empire,
+            &mut actions,
+        );
+        assert_eq!(
+            orders(&actions, MissionKind::InciteUprising),
+            vec![(vec![MissionMember::Character(agent)], hot, None)]
+        );
+    }
+
+    /// The side's records (phase 4) for `world`, as `state` keeps them.
+    fn galaxy_of(state: &AIState, world: &GameWorld) -> crate::ai_records::Galaxy {
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let economy = crate::economy::EconomyState::default();
+        let uprisings = crate::uprising::UprisingState::default();
+        let manufacturing = ManufacturingState::new();
+        let research = ResearchState::new();
+        let movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
+        let planner = Planner::new(world, &missions, &busy, is_alliance, 7);
+        let inputs = RecordInputs {
+            world,
+            economy: &economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            movement: &movement,
+            transport: &transport,
+        };
+        AISystem::records(state, &planner, &inputs)
+    }
+
+    #[test]
+    fn a_recruitment_target_is_the_recruiter_s_calm_system_else_by_count_and_support_else_by_distance(
+    ) {
+        // FUN_0047dcc0: a system with record +0x2c bit 2. The recruiter
+        // stands in a neutral system. Without +0x38: the sector with the
+        // most such systems (key +0x160, order 1), then its best supported
+        // (v[0], order 1). With +0x38: the nearest sector with one (order
+        // 2), then its system nearest +0x38.
+        let mut world = empty_world();
+        let near = add_sector(&mut world);
+        let far = add_sector(&mut world);
+        world.sectors[far].x = 900;
+        let own = |world: &mut GameWorld, sector, support: f32, x: u16| {
+            let s = add_system(world, sector, 0.0, support);
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+            world.systems[s].x = x;
+            s
+        };
+        let lone = own(&mut world, near, 0.95, 10);
+        let low = own(&mut world, far, 0.6, 900);
+        let high = own(&mut world, far, 0.8, 990);
+        let neutral = add_system(&mut world, near, 0.3, 0.3);
+        let recruiter = add_character(&mut world, false, true, 30);
+        world.characters[recruiter].current_system = Some(neutral);
+        let minor = add_character(&mut world, false, false, 30);
+        world.characters[minor].dat_id = DatId(0x3800_0001);
+        world.characters[minor].current_system = Some(lone);
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        let mut p = MissionPlanner {
+            id: 1,
+            kind: MissionKind::Recruitment,
+            team: vec![MissionMember::Character(recruiter)],
+            decoys: Vec::new(),
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: None,
+            standing: true,
+            claimed: None,
+        };
+        let busy = HashSet::new();
+        let missions = MissionState::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let mut target = |p: &MissionPlanner| recruitment_target(p, &mut planner, &world, &galaxy);
+
+        assert_eq!(target(&p), Some(high));
+        p.staging = Some(neutral);
+        assert_eq!(target(&p), Some(lone));
+        p.staging = Some(low);
+        assert_eq!(target(&p), Some(low));
+        // A kept target and the recruiter's own calm system come first.
+        p.target_system = Some(high);
+        assert_eq!(target(&p), Some(high));
+        p.target_system = Some(neutral);
+        p.staging = None;
+        p.team = vec![MissionMember::Character(minor)];
+        assert_eq!(target(&p), Some(lone));
+        p.team.clear();
+        assert_eq!(target(&p), None);
     }
 
     #[test]
@@ -8827,7 +9040,8 @@ mod tests {
     #[test]
     fn a_side_s_minor_classes_are_its_minor_characters() {
         // Side +0xa4 counts the side's MNCHARSD (family 0x38) classes.
-        // hyp: one minor character per MNCHARSD record.
+        // hyp: one minor character per MNCHARSD record. The loader's minor
+        // characters carry no family byte, so the last counts too.
         let mut world = empty_world();
         for (raw, alliance) in [
             (0x3800_0001, true),
@@ -8840,9 +9054,11 @@ mod tests {
         let both = add_character(&mut world, true, false, 0);
         world.characters[both].dat_id = DatId(0x3800_0003);
         world.characters[both].is_empire = true;
+        let loaded = add_character(&mut world, false, false, 0);
+        world.characters[loaded].dat_id = DatId(0x2c7);
 
         assert_eq!(minor_classes(&world, true), 3);
-        assert_eq!(minor_classes(&world, false), 1);
+        assert_eq!(minor_classes(&world, false), 2);
     }
 
     #[test]

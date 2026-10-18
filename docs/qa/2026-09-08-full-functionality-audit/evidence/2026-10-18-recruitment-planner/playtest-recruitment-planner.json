@@ -1,0 +1,49 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": {
+  "moves": 28181,
+  "missions": 11366,
+  "team_size_1": 7701,
+  "team_size_2": 3665,
+  "resolved_Success": 11484,
+  "resolved_Failure": 8065,
+  "dispatched_Recruitment": 1703,
+  "Recruitment_Success": 1117,
+  "Recruitment_Failure": 345,
+  "dispatched_Diplomacy": 789,
+  "dispatched_ShipDesignResearch": 2275,
+  "dispatched_TroopTrainingResearch": 686,
+  "dispatched_FacilityDesignResearch": 744,
+  "ShipDesignResearch_Success": 3041,
+  "TroopTrainingResearch_Success": 276,
+  "FacilityDesignResearch_Success": 420
+ },
+ "after": {
+  "moves": 30327,
+  "missions": 26519,
+  "team_size_1": 22382,
+  "team_size_2": 4137,
+  "resolved_Success": 16582,
+  "resolved_Failure": 9148,
+  "dispatched_Recruitment": 1679,
+  "Recruitment_Success": 1224,
+  "Recruitment_Failure": 409,
+  "dispatched_Diplomacy": 842,
+  "dispatched_ShipDesignResearch": 10312,
+  "dispatched_TroopTrainingResearch": 3941,
+  "dispatched_FacilityDesignResearch": 4161,
+  "ShipDesignResearch_Success": 4922,
+  "TroopTrainingResearch_Success": 1044,
+  "FacilityDesignResearch_Success": 1677
+ },
+ "systems_at_day_1500": {
+  "before": {
+   "alliance": 531,
+   "empire": 340
+  },
+  "after": {
+   "alliance": 487,
+   "empire": 363
+  }
+ }
+}
