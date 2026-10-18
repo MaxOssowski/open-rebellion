@@ -2435,6 +2435,19 @@ cross-runtime proof remain open
   injuries and a combat raise, Luke's `KnowsHeritage` and his wound at the
   first meeting with Vader, and a Force gain for Luke or Leia from Vader or
   the Emperor (GNPRTB 3072..3087). None of it exists in the port.
+- 2026-10-18: Force detection and the encounter are ported
+  (`mission_detection.rs`, save v74). Force users meet before betrayal;
+  a hit detects the mission and sets both `Encounter` keys and the day; a
+  detected member with a key confronts its partner (the duel, the combat
+  raise, Luke's heritage and wound, and the Force lessons from Vader and
+  the Emperor). The loader's characters carry no family byte, so the
+  detection now reads `is_major` for the major and minor sets and the
+  exposure order. Over 1200-day campaigns Luke meets Vader 7 times (seeds
+  2 and 3) and the Emperor meets Luke twice (seed 47). The invented "Final
+  Battle Imminent" (`0x396`) still sets Luke's heritage at Dagobah's end,
+  before every first meeting. Golden initial `v1:7de82effa8207c75` ->
+  `v1:57115a2a37530826`, final `v1:ab2d9eddde745c32` ->
+  `v1:e6bb717f2403b483` (`evidence/2026-10-18-encounter/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

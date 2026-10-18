@@ -8001,6 +8001,13 @@ fn apply_mission_result(
                     c.add_force_training(*amount);
                 }
             }
+            // The encounter's keys and Luke's heritage, set by the mission
+            // detection (`missions::apply_advance_effects`).
+            MissionEffect::EncounterBegan { .. }
+            | MissionEffect::EncounterEnded { .. }
+            | MissionEffect::HeritageLearned { .. } => {
+                rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
+            }
             MissionEffect::CharacterRescued {
                 character,
                 returned_to,

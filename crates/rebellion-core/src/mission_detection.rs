@@ -6,10 +6,10 @@
 //! The run reads the world and returns its changes as [`MissionEffect`]s;
 //! the mission's own end code and resign requests change in place.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::dat::Faction;
-use crate::ids::{FleetKey, SystemKey, TroopKey};
+use crate::ids::{CharacterKey, DatId, FleetKey, SystemKey, TroopKey};
 use crate::missions::{
     member_location_kind, member_skill, running_end_code, ActiveMission, MemberTransit,
     MissionEffect, MissionFaction, MissionMember,
@@ -42,6 +42,53 @@ const LUKE: u32 = 0x242;
 const LEIA: u32 = 0x241;
 /// GNPRTB 2567 as shipped: the injury roll's spread.
 const SHIPPED_INJURY_SPREAD: i64 = 29;
+/// Vader's record (`0x35000281`, `FUN_0058a9e0`).
+const VADER: u32 = 0x281;
+/// The Emperor's record (`0x34000280`, `FUN_00560200`).
+const EMPEROR: u32 = 0x280;
+
+/// GNPRTB 3586 (`DAT_006bb704`): the least Force of a defender in Force
+/// detection (`FUN_0055e590` from `FUN_00588840`).
+const GNPRTB_FORCE_DETECTOR: u16 = 3586;
+/// GNPRTB 3586 as shipped (`FUN_0055e340`).
+const SHIPPED_FORCE_DETECTOR: i64 = 60;
+/// GNPRTB 3587 (`DAT_006bb718`): the Force detection offset
+/// (`FUN_0055e4d0`).
+const GNPRTB_FORCE_DETECTION_OFFSET: u16 = 3587;
+/// GNPRTB 3587 as shipped (`FUN_0055e340`).
+const SHIPPED_FORCE_DETECTION_OFFSET: i64 = -100;
+/// GNPRTB 2571 (`DAT_006b90d0`): the duel injury's least chance
+/// (`FUN_0053ea70`).
+const GNPRTB_DUEL_MIN_CHANCE: u16 = 2571;
+/// GNPRTB 2571 as shipped.
+const SHIPPED_DUEL_MIN_CHANCE: i64 = 1;
+/// GNPRTB 2572 (`DAT_006b90d4`): the duel injury's base (`FUN_0053ea70`).
+const GNPRTB_DUEL_BASE: u16 = 2572;
+/// GNPRTB 2572 as shipped.
+const SHIPPED_DUEL_BASE: i64 = 1;
+/// GNPRTB 2573 (`DAT_006b90b8`): the duel injury's spread
+/// (`FUN_0053ea70`).
+const GNPRTB_DUEL_SPREAD: u16 = 2573;
+/// GNPRTB 2573 as shipped.
+const SHIPPED_DUEL_SPREAD: i64 = 29;
+/// GNPRTB 2578 (`DAT_006b9060`): the base combat a duel's victor gains
+/// (`FUN_005340a0` from `FUN_00560200`).
+const GNPRTB_DUEL_COMBAT_GAIN: u16 = 2578;
+/// GNPRTB 2578 as shipped.
+const SHIPPED_DUEL_COMBAT_GAIN: i64 = 1;
+/// GNPRTB 3077 (`DAT_006bb74c`): below this Force, Luke's first meeting
+/// with Vader wounds him (`FUN_00560200`).
+const GNPRTB_LUKE_WOUND_FORCE: u16 = 3077;
+/// GNPRTB 3077 as shipped.
+const SHIPPED_LUKE_WOUND_FORCE: i64 = 80;
+/// GNPRTB 3079 (`DAT_006bb734`): the wound's base (`FUN_0055e810`).
+const GNPRTB_LUKE_WOUND_BASE: u16 = 3079;
+/// GNPRTB 3079 as shipped.
+const SHIPPED_LUKE_WOUND_BASE: i64 = 1;
+/// GNPRTB 3080 (`DAT_006bb750`): the wound's spread (`FUN_0055e810`).
+const GNPRTB_LUKE_WOUND_SPREAD: u16 = 3080;
+/// GNPRTB 3080 as shipped.
+const SHIPPED_LUKE_WOUND_SPREAD: i64 = 99;
 
 /// Table ids 10..13 of `FUN_0058b420` (`uprising-incident.md`).
 const TDECOYTB: &str = "TDECOYTB";
@@ -273,6 +320,20 @@ fn param(world: &GameWorld, id: u16, shipped: i64) -> i32 {
     i32::try_from(crate::movement::gnprtb_or_shipped(world, id, shipped)).unwrap_or(0)
 }
 
+/// A character's record family: `0x30..0x37` for the major characters
+/// (MJCHARSD), `0x38..0x3b` for the minor ones (MNCHARSD).
+///
+/// port: the loader keeps a character's record index without the family
+/// byte (`DatId::new(dat.id)`), so a family of 0 reads `is_major`: MJCHARSD
+/// ships families `0x30..0x35`, MNCHARSD `0x38`.
+fn character_family(c: &crate::world::Character) -> u8 {
+    match c.dat_id.family() {
+        0 if c.is_major => 0x30,
+        0 => 0x38,
+        family => family,
+    }
+}
+
 /// One run's state: the manager and its pool.
 struct Run<'a> {
     world: &'a GameWorld,
@@ -287,7 +348,44 @@ struct Run<'a> {
     team: i32,
     decoys: i32,
     detected: bool,
+    /// Today, the day an encounter records (`FUN_004fd2f0`).
+    day: u64,
+    /// port: the run reads the world and applies its effects after, so it
+    /// keeps the `Encounter` keys (`+0x9c`) and days it set or cleared, which
+    /// the original writes at once.
+    encounters: HashMap<CharacterKey, Option<(DatId, u64)>>,
 }
+
+/// A confrontation's Force lesson (`FUN_00560200`): the GNPRTB least gain,
+/// the GNPRTB percent of the Force gap, and their shipped values.
+struct Lesson {
+    least: (u16, i64),
+    percent: (u16, i64),
+}
+
+/// Luke against Vader: GNPRTB 3084 (`DAT_006bb73c`, 1), 3072
+/// (`DAT_006bb72c`, 25).
+const LUKE_VADER: Lesson = Lesson {
+    least: (3084, 1),
+    percent: (3072, 25),
+};
+/// Luke against the Emperor: 3085 (`DAT_006bb71c`, 1), 3073 (`DAT_006bb720`,
+/// 20).
+const LUKE_EMPEROR: Lesson = Lesson {
+    least: (3085, 1),
+    percent: (3073, 20),
+};
+/// Leia against Vader: 3086 (`DAT_006bb724`, 1), 3074 (`DAT_006bb728`, 20).
+const LEIA_VADER: Lesson = Lesson {
+    least: (3086, 1),
+    percent: (3074, 20),
+};
+/// Leia against the Emperor: 3087 (`DAT_006bb738`, 1), 3075
+/// (`DAT_006bb754`, 20).
+const LEIA_EMPEROR: Lesson = Lesson {
+    least: (3087, 1),
+    percent: (3075, 20),
+};
 
 /// Which list a walk visits.
 #[derive(Debug, Clone, Copy)]
@@ -363,25 +461,51 @@ impl Run<'_> {
         rng: &mut MissionRng,
         out: &mut Vec<MissionEffect>,
     ) {
+        self.evade_or_capture(mission, member, 0, defender.side, rng, out);
+        self.request_resign(mission, member);
+        // port: a resigning team member also leaves the team count, which
+        // nothing reads once the team is exposed; the port drops it.
+        if mission.resigning.contains(&member) && mission.decoys.contains(&member) {
+            self.decoys -= 1;
+        }
+    }
+
+    /// `FUN_005349e0`: the member rolls RLEVADTB at its effective combat
+    /// less the captor's, evading or captured by `captor`'s side. Returns
+    /// the injury the roll dealt, or 0.
+    fn evade_or_capture(
+        &mut self,
+        mission: &mut ActiveMission,
+        member: MissionMember,
+        captor_combat: i32,
+        captor: Faction,
+        rng: &mut MissionRng,
+        out: &mut Vec<MissionEffect>,
+    ) -> i32 {
         let combat = self.skill(member, Skill::Combat);
-        match (table_roll(self.world, RLEVADTB, combat, rng), member) {
+        match (
+            table_roll(self.world, RLEVADTB, combat - captor_combat, rng),
+            member,
+        ) {
             // Slot +0x208: evade. A character also rolls the injury; Luke
             // and Leia then gain Force experience (FUN_0056f8b0,
             // FUN_0056ffa0).
             (Some(true), MissionMember::Character(character)) => {
                 self.request_resign(mission, member);
-                self.injure(character, combat, rng, out);
+                let injury = self.injure(character, combat, rng, out);
                 self.evade_force(character, out);
+                injury
             }
             (Some(true), MissionMember::SpecialForce(_)) => {
                 self.request_resign(mission, member);
+                0
             }
-            // Slot +0x20c: captured by the defender's side.
+            // Slot +0x20c: captured by the captor's side.
             (Some(false), MissionMember::Character(character)) => {
-                self.injure(character, combat, rng, out);
+                let injury = self.injure(character, combat, rng, out);
                 out.push(MissionEffect::CharacterCaptured {
                     character,
-                    captured_by: match defender.side {
+                    captured_by: match captor {
                         Faction::Alliance => MissionFaction::Alliance,
                         _ => MissionFaction::Empire,
                     },
@@ -390,19 +514,15 @@ impl Run<'_> {
                 // port: the capture applies after the run, so the run marks
                 // the prisoner gone from its lists now.
                 self.gone.insert(member);
+                injury
             }
             // FUN_00503eb0: a captured special force is destroyed.
             (Some(false), MissionMember::SpecialForce(unit)) => {
                 out.push(MissionEffect::SpecialForceDestroyed { unit });
                 self.gone.insert(member);
+                0
             }
-            (None, _) => {}
-        }
-        self.request_resign(mission, member);
-        // port: a resigning team member also leaves the team count, which
-        // nothing reads once the team is exposed; the port drops it.
-        if mission.resigning.contains(&member) && mission.decoys.contains(&member) {
-            self.decoys -= 1;
+            (None, _) => 0,
         }
     }
 
@@ -429,15 +549,16 @@ impl Run<'_> {
         out.push(MissionEffect::ForceExperienceGained { character, amount });
     }
 
-    /// Slot `+0x2e4` `FUN_004ef5f0`: the injury roll `FUN_0053e990`.
+    /// Slot `+0x2e4` `FUN_004ef5f0`: the injury roll `FUN_0053e990`, which
+    /// returns the injury dealt, or 0.
     fn injure(
         &self,
         character: crate::ids::CharacterKey,
         combat: i32,
         rng: &mut MissionRng,
         out: &mut Vec<MissionEffect>,
-    ) {
-        if let Some(injury) = roll_injury(
+    ) -> i32 {
+        let Some(injury) = roll_injury(
             combat,
             param(
                 self.world,
@@ -447,9 +568,11 @@ impl Run<'_> {
             param(self.world, GNPRTB_INJURY_SPREAD, SHIPPED_INJURY_SPREAD),
             param(self.world, GNPRTB_INJURY_BASE, SHIPPED_INJURY_BASE),
             rng,
-        ) {
-            out.push(MissionEffect::CharacterInjured { character, injury });
-        }
+        ) else {
+            return 0;
+        };
+        out.push(MissionEffect::CharacterInjured { character, injury });
+        injury
     }
 
     /// `FUN_0058a020`, one walk: each defender not decoyed meets a random
@@ -565,12 +688,451 @@ impl Run<'_> {
         }
     }
 
+    /// A character's `Encounter` key and day, as this run left them.
+    fn encounter(&self, key: CharacterKey) -> Option<(DatId, u64)> {
+        match self.encounters.get(&key) {
+            Some(&state) => state,
+            None => self
+                .world
+                .characters
+                .get(key)
+                .and_then(|c| c.encounter.map(|partner| (partner, c.encounter_day))),
+        }
+    }
+
+    /// A character's Force `+0x8c` now: the world's, plus the Force
+    /// experience this run already gave it, each clamped to `0..=0x7fff` as
+    /// `FUN_004ee150` stores it.
+    fn force(&self, key: CharacterKey, out: &[MissionEffect]) -> i32 {
+        let Some(c) = self.world.characters.get(key) else {
+            return 0;
+        };
+        let gained: i32 = out
+            .iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::ForceExperienceGained { character, amount } if *character == key => {
+                    Some(*amount)
+                }
+                _ => None,
+            })
+            .sum();
+        let base = (i32::from(c.force_base) + gained).clamp(0, 0x7fff);
+        (base + i32::from(c.force_training)).min(0x7fff)
+    }
+
+    /// `FUN_0058a6c0`: the defenders' Force users, the major characters
+    /// (`+0x68`, families `0x30..0x37`) and the minor ones (`+0x60`,
+    /// `0x38..0x3b`), at the system with the system flag and aboard its
+    /// fleets with the fleet flag (`FUN_0058a7e0`). Each counts
+    /// (`FUN_00588840`) with Force at least GNPRTB 3586 (60), free, and of
+    /// the other side.
+    ///
+    /// port: each set is a keyed tree (`FUN_004f44b0` -> `FUN_005f4f10`)
+    /// whose in-order list the picks walk; the port reads it in record
+    /// order. Without the family byte ([`character_family`]) the index
+    /// order is the key order for the shipped records.
+    fn force_defenders(&self, side: Faction, out: &[MissionEffect]) -> [Vec<CharacterKey>; 2] {
+        let least = param(self.world, GNPRTB_FORCE_DETECTOR, SHIPPED_FORCE_DETECTOR);
+        let mut sets: [Vec<(u32, CharacterKey)>; 2] = [Vec::new(), Vec::new()];
+        for (key, c) in &self.world.characters {
+            let here = match c.current_fleet {
+                Some(fleet) => {
+                    self.flags.fleets
+                        && self
+                            .world
+                            .fleets
+                            .get(fleet)
+                            .is_some_and(|f| f.location == self.location)
+                }
+                None => self.flags.system && c.current_system == Some(self.location),
+            };
+            let other_side = crate::missions::character_side(c).is_some_and(|s| s != side);
+            if !here || c.is_killed || c.is_captive || !other_side {
+                continue;
+            }
+            if self.force(key, out) < least {
+                continue;
+            }
+            match character_family(c) {
+                0x30..=0x37 => sets[0].push((c.dat_id.raw(), key)),
+                0x38..=0x3b => sets[1].push((c.dat_id.raw(), key)),
+                _ => {}
+            }
+        }
+        sets.map(|mut set| {
+            set.sort_unstable_by_key(|&(id, _)| id);
+            set.into_iter().map(|(_, key)| key).collect()
+        })
+    }
+
+    /// `FUN_0058a5f0`: the mission's Force users, its major characters
+    /// (`+0x50`, `FUN_00587fc0`) and minor ones (`+0x58`, `FUN_00587fe0`),
+    /// team and decoys, each counted by `FUN_005883b0`. port: in record
+    /// order, as [`Self::force_defenders`].
+    fn force_members(&self, mission: &ActiveMission) -> [Vec<CharacterKey>; 2] {
+        let mut sets: [Vec<(u32, CharacterKey)>; 2] = [Vec::new(), Vec::new()];
+        for &member in mission.team.iter().chain(&mission.decoys) {
+            let MissionMember::Character(key) = member else {
+                continue;
+            };
+            let Some(c) = self.world.characters.get(key) else {
+                continue;
+            };
+            if !self.counts(mission, member) {
+                continue;
+            }
+            match character_family(c) {
+                0x30..=0x37 => sets[0].push((c.dat_id.raw(), key)),
+                0x38..=0x3b => sets[1].push((c.dat_id.raw(), key)),
+                _ => {}
+            }
+        }
+        sets.map(|mut set| {
+            set.sort_unstable_by_key(|&(id, _)| id);
+            set.dedup_by_key(|&mut (id, _)| id);
+            set.into_iter().map(|(_, key)| key).collect()
+        })
+    }
+
+    /// `FUN_0058a9e0` and `FUN_0058ab00`: the next pick from a pair of sets.
+    /// Luke (`FUN_0058ac50`), then Vader, when in the first set; else a
+    /// random one of the first set (`FUN_0058aca0`, `draw(0..count-1)`),
+    /// else of the second. A pick is taken (`+0x1c`) until the sets reset.
+    fn pick(
+        &self,
+        sets: &[Vec<CharacterKey>; 2],
+        taken: &HashSet<CharacterKey>,
+        rng: &mut MissionRng,
+    ) -> Option<CharacterKey> {
+        for fixed in [LUKE, VADER] {
+            let named = sets[0].iter().copied().find(|&key| {
+                !taken.contains(&key)
+                    && self
+                        .world
+                        .characters
+                        .get(key)
+                        .is_some_and(|c| c.dat_id.index() == fixed)
+            });
+            if named.is_some() {
+                return named;
+            }
+        }
+        for set in sets {
+            let open: Vec<CharacterKey> = set
+                .iter()
+                .copied()
+                .filter(|key| !taken.contains(key))
+                .collect();
+            if open.is_empty() {
+                continue;
+            }
+            let pick = rng.draw(i32::try_from(open.len()).unwrap_or(i32::MAX) - 1);
+            return usize::try_from(pick)
+                .ok()
+                .and_then(|index| open.get(index).copied());
+        }
+        None
+    }
+
+    /// `FUN_00589e40`: Force detection. Each defending Force user in turn
+    /// (`FUN_0058a9e0`) meets the mission's Force users (`FUN_0058a2c0`)
+    /// until it holds an `Encounter` key: with both Forces above 0, a
+    /// chance of their sum plus GNPRTB 3587 (-100) (`FUN_0058a3f0`,
+    /// `FUN_0055e4d0`). A hit detects the mission unless the member is a
+    /// decoy, starts their encounter (`FUN_0055ff60`), and takes both out of
+    /// the sets (`FUN_0058a530`).
+    fn force_detect(
+        &mut self,
+        mission: &ActiveMission,
+        rng: &mut MissionRng,
+        out: &mut Vec<MissionEffect>,
+    ) {
+        let side = Faction::from(mission.faction);
+        let defenders = self.force_defenders(side, out);
+        let members = self.force_members(mission);
+        let offset = param(
+            self.world,
+            GNPRTB_FORCE_DETECTION_OFFSET,
+            SHIPPED_FORCE_DETECTION_OFFSET,
+        );
+        let mut defenders_taken = HashSet::new();
+        let mut removed = HashSet::new();
+        while let Some(defender) = self.pick(&defenders, &defenders_taken, rng) {
+            defenders_taken.insert(defender);
+            // FUN_0058a3b0 resets the members' picks, not their removal.
+            let mut members_taken = removed.clone();
+            while let Some(member) = self.pick(&members, &members_taken, rng) {
+                members_taken.insert(member);
+                let (f_member, f_defender) = (self.force(member, out), self.force(defender, out));
+                let chance = if f_member != 0 && f_defender != 0 {
+                    f_member + f_defender + offset
+                } else {
+                    0
+                };
+                // FUN_0055e4d0 draws only for a positive chance.
+                if chance > 0 && rng.chance(chance) {
+                    if !mission.decoys.contains(&MissionMember::Character(member)) {
+                        self.detected = true;
+                    }
+                    self.begin_encounter(member, defender, out);
+                    removed.insert(member);
+                    removed.insert(defender);
+                }
+                // The do-while in FUN_0058a2c0 stops once the defender holds
+                // an Encounter key.
+                if self.encounter(defender).is_some() {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// `FUN_0055ff60(member, defender)`: when neither holds an `Encounter`
+    /// key, both sides observe the system at level 6 (`FUN_0050d5a0(6, 1)`,
+    /// `(6, 2)`), each names the other (`FUN_004ee500`) and both record today
+    /// (`FUN_004ef1c0`).
+    ///
+    /// port: the observation reveals the system to both sides, as
+    /// Espionage's level 10 does; `FUN_004f9510` is not read.
+    fn begin_encounter(
+        &mut self,
+        member: CharacterKey,
+        defender: CharacterKey,
+        out: &mut Vec<MissionEffect>,
+    ) {
+        if self.encounter(member).is_some() || self.encounter(defender).is_some() {
+            return;
+        }
+        let (Some(m), Some(d)) = (
+            self.world.characters.get(member),
+            self.world.characters.get(defender),
+        ) else {
+            return;
+        };
+        if member_location_kind(self.world, MissionMember::Character(member)) == Some(false) {
+            for faction in [MissionFaction::Alliance, MissionFaction::Empire] {
+                out.push(MissionEffect::SystemIntelligenceGathered {
+                    system: self.location,
+                    faction,
+                });
+            }
+        }
+        self.encounters.insert(member, Some((d.dat_id, self.day)));
+        self.encounters.insert(defender, Some((m.dat_id, self.day)));
+        out.push(MissionEffect::EncounterBegan {
+            member,
+            defender,
+            day: self.day,
+        });
+    }
+
+    /// `FUN_00588d30` -> `FUN_00560200(member, partner)`: the confrontation
+    /// of a detected member holding an `Encounter` key, when each names the
+    /// other and both share the encounter day.
+    ///
+    /// 1. The member rolls RLEVADTB against the partner's effective combat
+    ///    (`FUN_005349e0`). A member it did not injure takes the duel roll
+    ///    `FUN_0053ea70`; so does the partner, the other way round. The side
+    ///    that injured the other raises its base combat `+0x62` by GNPRTB
+    ///    2578 (`FUN_005340a0`).
+    /// 2. Both keys and days clear (`FUN_004ee500`, `FUN_004ef1c0(0)`).
+    /// 3. Luke against Vader learns his heritage the first time
+    ///    (`FUN_0056f650`) and, free with Force below GNPRTB 3077, is wounded
+    ///    (`FUN_00561b60`); free, he learns Force from the gap. Luke against
+    ///    the Emperor, and Leia free and Force aware against either, learn
+    ///    the same way ([`Lesson`]).
+    fn confront(
+        &mut self,
+        mission: &mut ActiveMission,
+        member: CharacterKey,
+        rng: &mut MissionRng,
+        out: &mut Vec<MissionEffect>,
+    ) {
+        let Some((partner_id, day)) = self.encounter(member) else {
+            return;
+        };
+        let Some((partner, p)) = self
+            .world
+            .characters
+            .iter()
+            .find(|(_, c)| c.dat_id == partner_id && !c.is_killed)
+        else {
+            return;
+        };
+        let Some(m) = self.world.characters.get(member) else {
+            return;
+        };
+        let mutual = self
+            .encounter(partner)
+            .is_some_and(|(id, partner_day)| id == m.dat_id && partner_day == day);
+        if !mutual || day == 0 {
+            return;
+        }
+        let member_combat = self.skill(MissionMember::Character(member), Skill::Combat);
+        let partner_combat = self.skill(MissionMember::Character(partner), Skill::Combat);
+        let captor = crate::missions::character_side(p).unwrap_or(Faction::Neutral);
+        let mut member_injury = self.evade_or_capture(
+            mission,
+            MissionMember::Character(member),
+            partner_combat,
+            captor,
+            rng,
+            out,
+        );
+        let duel = |rng: &mut MissionRng, own: i32, other: i32| {
+            // FUN_0053ea70(own, other): a chance of max(2571, other - own).
+            roll_injury(
+                100 - (other - own),
+                param(self.world, GNPRTB_DUEL_MIN_CHANCE, SHIPPED_DUEL_MIN_CHANCE),
+                param(self.world, GNPRTB_DUEL_SPREAD, SHIPPED_DUEL_SPREAD),
+                param(self.world, GNPRTB_DUEL_BASE, SHIPPED_DUEL_BASE),
+                rng,
+            )
+            .unwrap_or(0)
+        };
+        if member_injury == 0 {
+            member_injury = duel(rng, member_combat, partner_combat);
+            if member_injury != 0 {
+                out.push(MissionEffect::CharacterInjured {
+                    character: member,
+                    injury: member_injury,
+                });
+            }
+        }
+        let partner_injury = duel(rng, partner_combat, member_combat);
+        if partner_injury != 0 {
+            out.push(MissionEffect::CharacterInjured {
+                character: partner,
+                injury: partner_injury,
+            });
+        }
+        let gain = param(
+            self.world,
+            GNPRTB_DUEL_COMBAT_GAIN,
+            SHIPPED_DUEL_COMBAT_GAIN,
+        );
+        for (victor, won) in [(member, partner_injury != 0), (partner, member_injury != 0)] {
+            if won {
+                out.push(MissionEffect::SkillRaised {
+                    character: victor,
+                    skill: Skill::Combat,
+                    amount: gain,
+                });
+            }
+        }
+        self.encounters.insert(member, None);
+        self.encounters.insert(partner, None);
+        out.push(MissionEffect::EncounterEnded { member, partner });
+        self.lessons(member, partner, rng, out);
+    }
+
+    /// `FUN_00560200`'s Jedi steps, by the pair's records.
+    fn lessons(
+        &self,
+        a: CharacterKey,
+        b: CharacterKey,
+        rng: &mut MissionRng,
+        out: &mut Vec<MissionEffect>,
+    ) {
+        let role = |index: u32| {
+            [a, b].into_iter().find(|&key| {
+                self.world
+                    .characters
+                    .get(key)
+                    .is_some_and(|c| c.dat_id.index() == index)
+            })
+        };
+        let (luke, leia, vader, emperor) = (role(LUKE), role(LEIA), role(VADER), role(EMPEROR));
+        // +0xac bit 0: held captive, here or by this run's capture.
+        let free = |key: CharacterKey| {
+            !self.gone.contains(&MissionMember::Character(key))
+                && self
+                    .world
+                    .characters
+                    .get(key)
+                    .is_some_and(|c| !c.is_captive)
+        };
+        if let Some(luke) = luke {
+            if let Some(vader) = vader {
+                let knows = self
+                    .world
+                    .characters
+                    .get(luke)
+                    .is_some_and(|c| c.heritage_known);
+                if !knows {
+                    out.push(MissionEffect::HeritageLearned { character: luke });
+                    let least = param(
+                        self.world,
+                        GNPRTB_LUKE_WOUND_FORCE,
+                        SHIPPED_LUKE_WOUND_FORCE,
+                    );
+                    if free(luke) && self.force(luke, out) < least {
+                        // FUN_0055e810: rand(0..=3080) + 3079.
+                        let injury =
+                            rng.draw(param(
+                                self.world,
+                                GNPRTB_LUKE_WOUND_SPREAD,
+                                SHIPPED_LUKE_WOUND_SPREAD,
+                            )) + param(self.world, GNPRTB_LUKE_WOUND_BASE, SHIPPED_LUKE_WOUND_BASE);
+                        out.push(MissionEffect::CharacterInjured {
+                            character: luke,
+                            injury,
+                        });
+                    }
+                }
+                if free(luke) {
+                    self.learn(luke, vader, &LUKE_VADER, out);
+                }
+            }
+            if let Some(emperor) = emperor {
+                if free(luke) {
+                    self.learn(luke, emperor, &LUKE_EMPEROR, out);
+                }
+            }
+        }
+        if let Some(leia) = leia {
+            let aware = self
+                .world
+                .characters
+                .get(leia)
+                .is_some_and(|c| c.force_aware);
+            if free(leia) && aware {
+                if let Some(vader) = vader {
+                    self.learn(leia, vader, &LEIA_VADER, out);
+                }
+                if let Some(emperor) = emperor {
+                    self.learn(leia, emperor, &LEIA_EMPEROR, out);
+                }
+            }
+        }
+    }
+
+    /// The pupil's `ForceExperience` `+0x8e` gains max(least, (master's
+    /// Force - pupil's) x percent / 100) (`FUN_0053e130`, `FUN_0053e190`,
+    /// `FUN_004ee150`).
+    fn learn(
+        &self,
+        pupil: CharacterKey,
+        master: CharacterKey,
+        lesson: &Lesson,
+        out: &mut Vec<MissionEffect>,
+    ) {
+        let mut amount = param(self.world, lesson.least.0, lesson.least.1);
+        let gap = self.force(master, out) - self.force(pupil, out);
+        if gap > 0 {
+            amount = amount.max(gap * param(self.world, lesson.percent.0, lesson.percent.1) / 100);
+        }
+        out.push(MissionEffect::ForceExperienceGained {
+            character: pupil,
+            amount,
+        });
+    }
+
     /// `FUN_0058a1c0`'s walks: every team character (families `0x30..0x37`,
     /// then `0x38..0x3b`), then every team special force, not decoying, faces
-    /// a random defender (`FUN_00588650`) until none is left.
-    ///
-    /// port: a member holding a key at `+0x9c` takes `FUN_00588d30`, which is
-    /// not read; the port holds no such key.
+    /// a random defender (`FUN_00588650`) until none is left. A member
+    /// holding an `Encounter` key confronts its partner instead
+    /// (`FUN_00589360` -> `FUN_005892a0`, [`Self::confront`]).
     fn expose_team(
         &mut self,
         mission: &mut ActiveMission,
@@ -587,7 +1149,7 @@ impl Run<'_> {
             member
                 .character()
                 .and_then(|key| self.world.characters.get(key))
-                .map_or(0, |c| c.dat_id.raw() >> 24)
+                .map_or(0, character_family)
         };
         let characters = self.members(mission, lists);
         let (early, late): (Vec<_>, Vec<_>) = characters
@@ -602,6 +1164,12 @@ impl Run<'_> {
             },
         );
         for member in early.into_iter().chain(late).chain(special_forces) {
+            if let MissionMember::Character(key) = member {
+                if self.encounter(key).is_some() {
+                    self.confront(mission, key, rng, out);
+                    continue;
+                }
+            }
             if self.defenders <= 0 {
                 return;
             }
@@ -626,12 +1194,17 @@ impl Run<'_> {
 /// phases 3 and 7 mode 1, phase 9 mode 4, else 0. The second pass
 /// (`+0x44` clear) sets skip for modes 1, 2, and 4, so only its validator
 /// acts.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The run reads the mission's world, rules, transits and day."
+)]
 pub(crate) fn run(
     mission: &mut ActiveMission,
     world: &GameWorld,
     uprisings: &UprisingState,
     research: &crate::research::ResearchState,
     en_route: &[MemberTransit],
+    day: u64,
     rng: &mut MissionRng,
     out: &mut Vec<MissionEffect>,
 ) {
@@ -653,7 +1226,7 @@ pub(crate) fn run(
             mission.end_code = running_end_code(mission, world, uprisings, research, en_route);
         }
     };
-    first_pass(mission, world, location, rng, out, &validate);
+    first_pass(mission, world, location, day, rng, out, &validate);
     validate(mission);
     // FUN_004f9510 tells the opponent of a mission that ended here; not read.
 }
@@ -662,6 +1235,7 @@ fn first_pass(
     mission: &mut ActiveMission,
     world: &GameWorld,
     location: SystemKey,
+    day: u64,
     rng: &mut MissionRng,
     out: &mut Vec<MissionEffect>,
     validate: &dyn Fn(&mut ActiveMission),
@@ -747,6 +1321,8 @@ fn first_pass(
         team: 0,
         decoys: 0,
         detected: false,
+        day,
+        encounters: HashMap::new(),
     };
     // FUN_005885f0.
     run.defenders = i32::try_from(walk(world, location, flags, ALL).len()).unwrap_or(i32::MAX);
@@ -770,7 +1346,8 @@ fn first_pass(
             decoys: true,
         },
     );
-    // FUN_00589e40, the phase for two fixed characters: not read.
+    // FUN_00589e40: Force detection.
+    run.force_detect(mission, rng, out);
     if mission.phase == PHASE_BETRAYAL {
         run.betray(mission, rng);
     }
@@ -1026,6 +1603,7 @@ mod tests {
             &UprisingState::default(),
             &crate::research::ResearchState::default(),
             &[],
+            1,
             &mut rng,
             &mut out,
         );
@@ -1553,6 +2131,34 @@ mod tests {
     }
 
     #[test]
+    fn a_loaded_major_character_is_exposed_before_a_minor_one() {
+        // The loader keeps the record index without the family byte
+        // (MJCHARSD 0x240, MNCHARSD 0x340), so is_major places the major
+        // first (FUN_0058a1c0).
+        let (mut world, here) = world_with(imperial());
+        imperial_regiment(&mut world, here);
+        table(&mut world, FOILTB, 100);
+        table(&mut world, RLEVADTB, 0);
+        let minor = skilled(&mut world, here, 0, 0, 0);
+        world.characters[character(minor)].dat_id = DatId::new(0x340);
+        let major = skilled(&mut world, here, 0, 0, 0);
+        world.characters[character(major)].dat_id = DatId::new(0x240);
+        world.characters[character(major)].is_major = true;
+        let mut mission = sabotage(vec![minor, major], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        let order: Vec<CharacterKey> = out
+            .iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::CharacterCaptured { character, .. } => Some(*character),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(order, [character(major), character(minor)]);
+    }
+
+    #[test]
     fn an_alliance_defender_captures_for_the_alliance() {
         // Slot +0x20c: the captor is the defender's side.
         let (mut world, here) = world_with(ControlKind::Controlled(Faction::Alliance));
@@ -1749,5 +2355,697 @@ mod tests {
         run_once(&mut mission, &world);
 
         assert_eq!(mission.end_code, 4);
+    }
+
+    /// A Force user of record `raw` at `at`: Alliance or Empire, with Force
+    /// base `force` and combat `combat`.
+    fn force_user(
+        world: &mut GameWorld,
+        at: SystemKey,
+        raw: u32,
+        is_alliance: bool,
+        force: u16,
+        combat: u32,
+    ) -> CharacterKey {
+        world.characters.insert(Character {
+            dat_id: DatId::new(raw),
+            name: format!("{raw:#x}"),
+            is_alliance,
+            is_empire: !is_alliance,
+            is_major: true,
+            loyalty: SkillPair {
+                base: 100,
+                variance: 0,
+            },
+            combat: SkillPair {
+                base: combat,
+                variance: 0,
+            },
+            force_base: force,
+            current_system: Some(at),
+            ..Default::default()
+        })
+    }
+
+    /// Luke `0x32000242`, Leia `0x31000241`, Vader `0x35000281` and the
+    /// Emperor `0x34000280` (TEXTSTRA names, `encounter.md`).
+    const LUKE_ID: u32 = 0x3200_0242;
+    const LEIA_ID: u32 = 0x3100_0241;
+    const VADER_ID: u32 = 0x3500_0281;
+    const EMPEROR_ID: u32 = 0x3400_0280;
+
+    /// Give `a` and `b` each other's `Encounter` key on `day`.
+    fn encountered(world: &mut GameWorld, a: CharacterKey, b: CharacterKey, day: u64) {
+        crate::missions::begin_encounter(world, a, b, day);
+    }
+
+    fn encounters_begun(out: &[MissionEffect]) -> Vec<(CharacterKey, CharacterKey)> {
+        out.iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::EncounterBegan {
+                    member, defender, ..
+                } => Some((*member, *defender)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn force_gains(out: &[MissionEffect], who: CharacterKey) -> Vec<i32> {
+        out.iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::ForceExperienceGained { character, amount } if *character == who => {
+                    Some(*amount)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn vader_detects_luke_by_their_force_and_starts_their_encounter() {
+        // FUN_0058a3f0 / FUN_0055e4d0: a chance of 100 + 120 - 100 (GNPRTB
+        // 3587) detects the mission; FUN_0055ff60 sets the keys on today and
+        // both sides observe the system (FUN_0050d5a0(6, 1), (6, 2)).
+        let (mut world, here) = world_with(imperial());
+        world.systems[here].exploration_status = crate::dat::ExplorationStatus::Unexplored;
+        let luke = force_user(&mut world, here, LUKE_ID, true, 100, 50);
+        let vader = force_user(&mut world, here, VADER_ID, false, 120, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), [(luke, vader)]);
+        assert!(out.contains(&MissionEffect::EncounterBegan {
+            member: luke,
+            defender: vader,
+            day: 1,
+        }));
+        for faction in [MissionFaction::Alliance, MissionFaction::Empire] {
+            assert!(out.contains(&MissionEffect::SystemIntelligenceGathered {
+                system: here,
+                faction,
+            }));
+        }
+        // Detected: slot +0x1dc receives 3 in phase 2.
+        assert_eq!(mission.end_code, 3);
+        // The detected Luke confronts Vader at once (FUN_00589360).
+        assert!(out.contains(&MissionEffect::EncounterEnded {
+            member: luke,
+            partner: vader,
+        }));
+        crate::missions::apply_advance_effects(&mut world, &out);
+        assert_eq!(world.characters[luke].encounter, None);
+        assert_eq!(world.characters[luke].encounter_day, 0);
+        assert!(world.characters[luke].heritage_known);
+        assert_eq!(
+            world.systems[here].exploration_status,
+            crate::dat::ExplorationStatus::Explored
+        );
+    }
+
+    #[test]
+    fn loaded_force_users_without_a_family_byte_still_meet() {
+        // The loader's Luke is 0x242 and Vader 0x281 (MJCHARSD), both
+        // major characters of the sets +0x50 and +0x68 (FUN_0058a5f0,
+        // FUN_0058a6c0).
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, 0x242, true, 100, 50);
+        let vader = force_user(&mut world, here, 0x281, false, 120, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), [(luke, vader)]);
+        assert!(out.contains(&MissionEffect::HeritageLearned { character: luke }));
+    }
+
+    #[test]
+    fn a_minor_force_user_defends_after_the_major_ones() {
+        // FUN_0058a9e0: a random member of +0x68 (major) before +0x60
+        // (minor, MNCHARSD); the minor one never meets Luke once the major
+        // one paired with him.
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 100, 50);
+        let minor = force_user(&mut world, here, 0x340, false, 200, 50);
+        world.characters[minor].is_major = false;
+        let major = force_user(&mut world, here, 0x3400_0001, false, 120, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), [(luke, major)]);
+    }
+
+    #[test]
+    fn a_defender_below_force_sixty_detects_no_force_user() {
+        // FUN_00588840: a defender counts with Force >= GNPRTB 3586 (60).
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 200, 50);
+        force_user(&mut world, here, VADER_ID, false, 59, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), []);
+        assert_eq!(mission.end_code, 0);
+    }
+
+    #[test]
+    fn force_users_whose_forces_sum_to_100_or_less_never_meet() {
+        // FUN_0055e4d0: 40 + 60 + GNPRTB 3587 (-100) is no chance, and no
+        // draw; Force exactly GNPRTB 3586 (60) still defends (FUN_0055e590:
+        // 60 <= force).
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 40, 50);
+        force_user(&mut world, here, VADER_ID, false, 60, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), []);
+        world.characters[luke].force_base = 200;
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+        let out = run_once(&mut mission, &world);
+        assert_eq!(encounters_begun(&out).len(), 1);
+    }
+
+    #[test]
+    fn a_zero_force_chance_draws_nothing() {
+        // FUN_0055e4d0 rolls FUN_0053e2f0 only for a positive chance, so a
+        // pair whose chance is 0 (40 + 60 - 100) leaves the run's later
+        // draws as if Vader stood elsewhere.
+        for roll in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] {
+            let outcome = |vader_here: bool| {
+                let (mut world, here) = world_with(imperial());
+                imperial_regiment(&mut world, here);
+                table(&mut world, FOILTB, 50);
+                table(&mut world, RLEVADTB, 50);
+                let luke = force_user(&mut world, here, LUKE_ID, true, 40, 50);
+                let vader = force_user(&mut world, here, VADER_ID, false, 60, 50);
+                if !vader_here {
+                    world.characters[vader].current_system = None;
+                }
+                let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+                let out = run_seeded(&mut mission, &world, roll);
+                (mission.end_code, out)
+            };
+            assert_eq!(outcome(true), outcome(false), "roll {roll}");
+        }
+    }
+
+    #[test]
+    fn force_training_counts_toward_a_defender_s_force() {
+        // Force +0x8c = ForceExperience +0x8e + ForceTraining +0x90: 40 + 30
+        // reaches GNPRTB 3586 (60).
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 200, 50);
+        let vader = force_user(&mut world, here, VADER_ID, false, 40, 50);
+        world.characters[vader].force_training = 30;
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), [(luke, vader)]);
+    }
+
+    #[test]
+    fn a_force_user_aboard_a_fleet_defends_only_with_the_fleet_flag() {
+        // FUN_0058a6c0 walks the fleets' ships only with +0x24: mode 1 sets
+        // it when only the opponent has a fleet at the origin (phase 3,
+        // bound elsewhere); mode 2 (phase 2) never does.
+        let (mut world, here) = world_with(imperial());
+        let there = system(&mut world, ControlKind::Uncontrolled);
+        let fleet = imperial_fleet(&mut world, here, false);
+        let vader = force_user(&mut world, here, VADER_ID, false, 120, 50);
+        world.characters[vader].current_fleet = Some(fleet);
+        world.characters[vader].current_system = None;
+        world.fleets[fleet].characters.push(vader);
+        let luke = force_user(&mut world, here, LUKE_ID, true, 100, 50);
+
+        let mut bound = sabotage(vec![MissionMember::Character(luke)], there, 3);
+        bound.origin = Some(here);
+        let out = run_once(&mut bound, &world);
+        assert_eq!(encounters_begun(&out), [(luke, vader)]);
+
+        let mut local = sabotage(vec![MissionMember::Character(luke)], here, 2);
+        let out = run_once(&mut local, &world);
+        assert_eq!(encounters_begun(&out), []);
+
+        // A fleet at another system is not walked.
+        world.fleets[fleet].location = there;
+        let mut bound = sabotage(vec![MissionMember::Character(luke)], there, 3);
+        bound.origin = Some(here);
+        let out = run_once(&mut bound, &world);
+        assert_eq!(encounters_begun(&out), []);
+    }
+
+    #[test]
+    fn a_force_user_at_a_system_defends_only_with_the_system_flag() {
+        // Mode 2 sets +0x20 only when the opponent holds the system.
+        let (mut world, here) = world_with(ControlKind::Uncontrolled);
+        let luke = force_user(&mut world, here, LUKE_ID, true, 100, 50);
+        force_user(&mut world, here, VADER_ID, false, 120, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), []);
+    }
+
+    #[test]
+    fn a_killed_force_user_defends_no_more() {
+        // port: the port keeps a killed character in the arena
+        // (Character::mark_killed); the original deletes it.
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 200, 50);
+        let vader = force_user(&mut world, here, VADER_ID, false, 200, 50);
+        world.characters[vader].is_killed = true;
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), []);
+    }
+
+    #[test]
+    fn minor_force_users_defend_and_are_detected() {
+        // +0x60 and +0x58 hold the minor characters (MNCHARSD, 0x38..0x3b).
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 100, 50);
+        let inquisitor = force_user(&mut world, here, 0x340, false, 120, 50);
+        world.characters[inquisitor].is_major = false;
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+        let out = run_once(&mut mission, &world);
+        assert_eq!(encounters_begun(&out), [(luke, inquisitor)]);
+
+        let (mut world, here) = world_with(imperial());
+        let pupil = force_user(&mut world, here, 0x341, true, 100, 50);
+        world.characters[pupil].is_major = false;
+        let vader = force_user(&mut world, here, VADER_ID, false, 120, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(pupil)], here, 2);
+        let out = run_once(&mut mission, &world);
+        assert_eq!(encounters_begun(&out), [(pupil, vader)]);
+    }
+
+    #[test]
+    fn a_captive_or_same_side_force_user_detects_nothing() {
+        // FUN_00588840: free (+0xac bit 0 clear) and of the other side.
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 200, 50);
+        let vader = force_user(&mut world, here, VADER_ID, false, 200, 50);
+        world.characters[vader].is_captive = true;
+        world.characters[vader].captured_by = Some(Faction::Alliance);
+        force_user(&mut world, here, LEIA_ID, true, 200, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), []);
+    }
+
+    #[test]
+    fn a_member_without_force_is_never_rolled_against() {
+        // FUN_0055e4d0: no chance unless both Forces are non-zero.
+        let (mut world, here) = world_with(imperial());
+        let agent = force_user(&mut world, here, 0x3000_0001, true, 0, 50);
+        force_user(&mut world, here, VADER_ID, false, 200, 50);
+        let mut mission = sabotage(vec![MissionMember::Character(agent)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), []);
+        assert_eq!(mission.end_code, 0);
+    }
+
+    #[test]
+    fn a_decoy_detected_by_force_starts_an_encounter_without_detecting_the_mission() {
+        // FUN_0058a3f0: a member with +0x78 bit 0 (a decoy) leaves +0x4c.
+        let (mut world, here) = world_with(imperial());
+        let lead = agent(&mut world, here, 100);
+        let luke = force_user(&mut world, here, LUKE_ID, true, 100, 50);
+        let vader = force_user(&mut world, here, VADER_ID, false, 120, 50);
+        let mut mission = sabotage(vec![lead], here, 2);
+        mission.decoys.push(MissionMember::Character(luke));
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), [(luke, vader)]);
+        assert_eq!(mission.end_code, 0);
+        assert!(!out
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::EncounterEnded { .. })));
+    }
+
+    #[test]
+    fn vader_meets_luke_before_any_other_member() {
+        // FUN_0058ab00: Luke (FUN_0058ac50) is picked before the random
+        // members of +0x50, whatever the draw.
+        for roll in [0.0, 0.3, 0.6, 0.9] {
+            let (mut world, here) = world_with(imperial());
+            let mut team: Vec<MissionMember> = (1..=4)
+                .map(|n| {
+                    MissionMember::Character(force_user(
+                        &mut world,
+                        here,
+                        0x3000_0000 | n,
+                        true,
+                        100,
+                        50,
+                    ))
+                })
+                .collect();
+            let luke = force_user(&mut world, here, LUKE_ID, true, 100, 50);
+            team.push(MissionMember::Character(luke));
+            let vader = force_user(&mut world, here, VADER_ID, false, 120, 50);
+            let mut mission = sabotage(team, here, 2);
+
+            let out = run_seeded(&mut mission, &world, roll);
+
+            assert_eq!(encounters_begun(&out), [(luke, vader)], "roll {roll}");
+        }
+    }
+
+    #[test]
+    fn a_defender_holding_an_encounter_meets_only_one_member() {
+        // FUN_0058a2c0's do-while stops once the defender holds +0x9c; a hit
+        // on two holders starts nothing new (FUN_0055ff60) but detects.
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 100, 50);
+        let other = force_user(&mut world, here, 0x3000_0001, true, 100, 50);
+        let vader = force_user(&mut world, here, VADER_ID, false, 120, 50);
+        let elsewhere = force_user(&mut world, here, 0x3500_0001, false, 0, 50);
+        encountered(&mut world, vader, elsewhere, 3);
+        let mut mission = sabotage(
+            vec![
+                MissionMember::Character(other),
+                MissionMember::Character(luke),
+            ],
+            here,
+            2,
+        );
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(encounters_begun(&out), []);
+        assert_eq!(mission.end_code, 3);
+    }
+
+    #[test]
+    fn the_confrontation_needs_both_keys_on_the_same_day() {
+        // FUN_00560200 returns before the duel unless each names the other
+        // and both encounter days (FUN_004ed300) match; the member then
+        // faces no random defender either (FUN_00589360).
+        let (mut world, here) = world_with(imperial());
+        imperial_regiment(&mut world, here);
+        table(&mut world, FOILTB, 100);
+        table(&mut world, RLEVADTB, 0);
+        let luke = force_user(&mut world, here, LUKE_ID, true, 0, 50);
+        let vader = force_user(&mut world, here, VADER_ID, false, 0, 50);
+        encountered(&mut world, luke, vader, 4);
+        world.characters[vader].encounter_day = 5;
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(mission.end_code, 3);
+        assert!(!out.iter().any(|effect| matches!(
+            effect,
+            MissionEffect::EncounterEnded { .. } | MissionEffect::CharacterCaptured { .. }
+        )));
+    }
+
+    #[test]
+    fn the_confrontation_s_evasion_reads_combat_less_the_partner_s() {
+        // FUN_005349e0: RLEVADTB at the member's effective combat less the
+        // partner's slot +0x1f0 (+0x86, with the Force share); a band at
+        // that difference evades, else the partner captures.
+        let (mut world, here) = world_with(imperial());
+        let member = force_user(&mut world, here, 0x3000_0001, true, 100, 50);
+        let partner = force_user(&mut world, here, 0x3500_0001, false, 120, 80);
+        let effective = |key: CharacterKey| {
+            i32::try_from(world.characters[key].effective_skill(Skill::Combat)).unwrap()
+        };
+        let x = effective(member) - effective(partner);
+        assert!(x < 0);
+        band(&mut world, RLEVADTB, x, x);
+        let mut mission = sabotage(vec![MissionMember::Character(member)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert!(out.contains(&MissionEffect::EncounterEnded { member, partner }));
+        assert!(!out
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::CharacterCaptured { .. })));
+        assert!(mission.resigning.contains(&MissionMember::Character(member)));
+    }
+
+    #[test]
+    fn the_stronger_duelist_injures_the_weaker_and_gains_combat() {
+        // FUN_0053ea70: the member's chance is max(GNPRTB 2571, partner -
+        // member); the injury rand(0..=chance) + rand(0..=2573) + 2572 goes
+        // through slot +0x2f0, and the partner's base combat +0x62 rises by
+        // GNPRTB 2578 (FUN_005340a0).
+        let (mut world, here) = world_with(imperial());
+        imperial_regiment(&mut world, here);
+        table(&mut world, FOILTB, 100);
+        let member = force_user(&mut world, here, 0x3000_0001, true, 0, 0);
+        let partner = force_user(&mut world, here, 0x3500_0001, false, 0, 200);
+        encountered(&mut world, member, partner, 2);
+        let mut mission = sabotage(vec![MissionMember::Character(member)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        let injury = out.iter().find_map(|effect| match effect {
+            MissionEffect::CharacterInjured { character, injury } if *character == member => {
+                Some(*injury)
+            }
+            _ => None,
+        });
+        assert!(injury.is_some_and(|injury| (1..=230).contains(&injury)));
+        assert!(out.contains(&MissionEffect::SkillRaised {
+            character: partner,
+            skill: Skill::Combat,
+            amount: 1,
+        }));
+        assert!(!out.iter().any(|effect| matches!(
+            effect,
+            MissionEffect::SkillRaised { character, .. } if *character == member
+        )));
+        assert!(!out.iter().any(|effect| matches!(
+            effect,
+            MissionEffect::CharacterInjured { character, .. } if *character == partner
+        )));
+        assert!(out.contains(&MissionEffect::EncounterEnded { member, partner }));
+        crate::missions::apply_advance_effects(&mut world, &out);
+        assert_eq!(world.characters[partner].combat.base, 201);
+        assert_eq!(world.characters[partner].encounter, None);
+    }
+
+    #[test]
+    fn luke_s_first_meeting_with_vader_wounds_him_and_teaches_him_force() {
+        // FUN_00560200: Luke learns KnowsHeritage (FUN_0056f650); free with
+        // Force below GNPRTB 3077 (80) he is wounded by rand(0..=3080 (99))
+        // + 3079 (1) (FUN_00561b60); then he gains max(3084 (1), (Vader -
+        // Luke) x 3072 (25) / 100). His evade (slot +0x208, FUN_0056f8b0)
+        // first adds GNPRTB 3081 (1), so the gap is 200 - 61.
+        let (mut world, here) = world_with(imperial());
+        table(&mut world, RLEVADTB, 100);
+        let luke = force_user(&mut world, here, LUKE_ID, true, 60, 100);
+        let vader = force_user(&mut world, here, VADER_ID, false, 200, 100);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert!(out.contains(&MissionEffect::EncounterEnded {
+            member: luke,
+            partner: vader,
+        }));
+        assert!(out.contains(&MissionEffect::HeritageLearned { character: luke }));
+        assert_eq!(force_gains(&out, luke), [1, 139 * 25 / 100]);
+        let heritage = out
+            .iter()
+            .position(|effect| matches!(effect, MissionEffect::HeritageLearned { .. }))
+            .expect("heritage");
+        let wound = out[heritage..].iter().find_map(|effect| match effect {
+            MissionEffect::CharacterInjured { character, injury } if *character == luke => {
+                Some(*injury)
+            }
+            _ => None,
+        });
+        assert!(wound.is_some_and(|injury| (1..=100).contains(&injury)));
+    }
+
+    #[test]
+    fn luke_who_knows_his_heritage_or_has_force_eighty_is_not_wounded() {
+        // The wound sits inside the heritage step and needs Force < 80.
+        for (knows, force) in [(true, 60), (false, 80)] {
+            let (mut world, here) = world_with(imperial());
+            table(&mut world, RLEVADTB, 100);
+            let luke = force_user(&mut world, here, LUKE_ID, true, force, 100);
+            world.characters[luke].heritage_known = knows;
+            let vader = force_user(&mut world, here, VADER_ID, false, 200, 100);
+            encountered(&mut world, luke, vader, 1);
+            let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+            let out = run_once(&mut mission, &world);
+
+            let ended = out
+                .iter()
+                .position(|effect| matches!(effect, MissionEffect::EncounterEnded { .. }))
+                .expect("a confrontation");
+            assert!(
+                !out[ended..].iter().any(|effect| matches!(
+                    effect,
+                    MissionEffect::CharacterInjured { character, .. } if *character == luke
+                )),
+                "knows {knows}, force {force}"
+            );
+            assert_eq!(
+                out.contains(&MissionEffect::HeritageLearned { character: luke }),
+                !knows
+            );
+        }
+    }
+
+    #[test]
+    fn luke_s_wound_is_rand_3080_plus_3079_and_needs_force_below_80() {
+        // FUN_0055e810: rand(0..=GNPRTB 3080) + 3079, here 1 and 50; Force
+        // 80 is not below GNPRTB 3077. No RLEVADTB, so no evade adds Force.
+        for roll in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] {
+            for (force, wounded) in [(60, true), (80, false)] {
+                let (mut world, here) = world_with(imperial());
+                world.gnprtb = crate::world::GnprtbParams::uniform(&[(3080, 1), (3079, 50)]);
+                let luke = force_user(&mut world, here, LUKE_ID, true, force, 100);
+                let vader = force_user(&mut world, here, VADER_ID, false, 200, 100);
+                encountered(&mut world, luke, vader, 1);
+                let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+                let out = run_seeded(&mut mission, &world, roll);
+
+                let ended = out
+                    .iter()
+                    .position(|effect| matches!(effect, MissionEffect::EncounterEnded { .. }))
+                    .expect("a confrontation");
+                let wound = out[ended..].iter().find_map(|effect| match effect {
+                    MissionEffect::CharacterInjured { character, injury } if *character == luke => {
+                        Some(*injury)
+                    }
+                    _ => None,
+                });
+                if wounded {
+                    assert!(matches!(wound, Some(50 | 51)), "roll {roll}: {wound:?}");
+                } else {
+                    assert_eq!(wound, None, "roll {roll}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_captured_luke_learns_his_heritage_but_no_force() {
+        // A failed RLEVADTB roll captures Luke (slot +0x20c), so +0xac bit
+        // 0 skips the wound and the lesson.
+        let (mut world, here) = world_with(imperial());
+        table(&mut world, RLEVADTB, 0);
+        let luke = force_user(&mut world, here, LUKE_ID, true, 60, 100);
+        let vader = force_user(&mut world, here, VADER_ID, false, 200, 100);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert!(out.contains(&MissionEffect::CharacterCaptured {
+            character: luke,
+            captured_by: MissionFaction::Empire,
+            at_system: here,
+        }));
+        assert!(out.contains(&MissionEffect::HeritageLearned { character: luke }));
+        assert_eq!(force_gains(&out, luke), [0; 0]);
+        assert!(out.contains(&MissionEffect::EncounterEnded {
+            member: luke,
+            partner: vader,
+        }));
+    }
+
+    #[test]
+    fn luke_learns_a_fifth_of_the_gap_from_the_emperor() {
+        // GNPRTB 3085 (1) and 3073 (20): (190 - 91) x 20 / 100 after the
+        // evade's 1.
+        let (mut world, here) = world_with(imperial());
+        table(&mut world, RLEVADTB, 100);
+        let luke = force_user(&mut world, here, LUKE_ID, true, 90, 100);
+        force_user(&mut world, here, EMPEROR_ID, false, 190, 100);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(force_gains(&out, luke), [1, 99 * 20 / 100]);
+        assert!(!out.contains(&MissionEffect::HeritageLearned { character: luke }));
+    }
+
+    #[test]
+    fn a_force_aware_leia_learns_from_vader_and_an_unaware_one_does_not() {
+        // GNPRTB 3086 (1) and 3074 (20), for Leia free and ForceAware
+        // (+0xac bit 0x10); the evade gives 3082 (1) first.
+        for aware in [true, false] {
+            let (mut world, here) = world_with(imperial());
+            table(&mut world, RLEVADTB, 100);
+            let leia = force_user(&mut world, here, LEIA_ID, true, 60, 100);
+            world.characters[leia].force_aware = aware;
+            force_user(&mut world, here, VADER_ID, false, 161, 100);
+            let mut mission = sabotage(vec![MissionMember::Character(leia)], here, 2);
+
+            let out = run_once(&mut mission, &world);
+
+            let expected: &[i32] = if aware { &[1, 20] } else { &[1] };
+            assert_eq!(force_gains(&out, leia), expected, "aware {aware}");
+        }
+    }
+
+    #[test]
+    fn a_weaker_master_still_teaches_the_least_gain() {
+        // max(GNPRTB 3084 (1), gap x 25 / 100) for a gap at or below 0.
+        let (mut world, here) = world_with(imperial());
+        table(&mut world, RLEVADTB, 100);
+        let luke = force_user(&mut world, here, LUKE_ID, true, 150, 100);
+        world.characters[luke].heritage_known = true;
+        force_user(&mut world, here, VADER_ID, false, 120, 100);
+        let mut mission = sabotage(vec![MissionMember::Character(luke)], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert_eq!(force_gains(&out, luke), [1, 1]);
+    }
+
+    #[test]
+    fn the_encounter_keys_and_heritage_apply_to_the_world() {
+        let (mut world, here) = world_with(imperial());
+        let luke = force_user(&mut world, here, LUKE_ID, true, 0, 0);
+        let vader = force_user(&mut world, here, VADER_ID, false, 0, 0);
+
+        crate::missions::apply_advance_effects(
+            &mut world,
+            &[MissionEffect::EncounterBegan {
+                member: luke,
+                defender: vader,
+                day: 7,
+            }],
+        );
+        assert_eq!(world.characters[luke].encounter, Some(DatId::new(VADER_ID)));
+        assert_eq!(world.characters[vader].encounter, Some(DatId::new(LUKE_ID)));
+        assert_eq!(world.characters[vader].encounter_day, 7);
+
+        crate::missions::apply_advance_effects(
+            &mut world,
+            &[
+                MissionEffect::EncounterEnded {
+                    member: luke,
+                    partner: vader,
+                },
+                MissionEffect::HeritageLearned { character: luke },
+            ],
+        );
+        assert_eq!(world.characters[vader].encounter, None);
+        assert_eq!(world.characters[luke].encounter_day, 0);
+        assert!(world.characters[luke].heritage_known);
     }
 }

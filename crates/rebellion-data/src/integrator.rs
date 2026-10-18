@@ -27,9 +27,12 @@ use rebellion_core::game_events::{
     EVT_CAPTURE, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
-    EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_EXPERIENCE, EVT_GARRISON_REQUIRED, EVT_LUKE_DAGOBAH, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL, EVT_JEDI_CHECK,
-    EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE,
-    EVT_MISSION_DISPATCHED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
+    EVT_CONFRONTATION, EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_ENCOUNTER,
+    EVT_FORCE_EXPERIENCE,
+    EVT_GARRISON_REQUIRED, EVT_HERITAGE_LEARNED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL,
+    EVT_JEDI_CHECK, EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_LUKE_DAGOBAH,
+    EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
+    EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
     EVT_SUPPORT_CHANGE, EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
@@ -647,8 +650,8 @@ impl PerceptionIntegrator {
 
     /// Record the mission detection's character effects, which
     /// `missions::apply_advance_effects` has applied: a `character_health`
-    /// event for each injury and a `force_experience` event for each Force
-    /// gain.
+    /// event for each injury, a `force_experience` event for each Force
+    /// gain, and the Force encounters, confrontations and Luke's heritage.
     pub fn record_advance_character_effects(
         &mut self,
         world: &GameWorld,
@@ -705,6 +708,44 @@ impl PerceptionIntegrator {
                             "gain": amount,
                             "force": world.characters.get(*character).map_or(0, rebellion_core::world::Character::force_level),
                         }),
+                    ));
+                }
+                MissionEffect::EncounterBegan {
+                    member,
+                    defender,
+                    day,
+                } => {
+                    self.events.push(GameEventRecord::new(
+                        tick,
+                        self.wall_ms,
+                        SYS_JEDI,
+                        EVT_FORCE_ENCOUNTER,
+                        serde_json::json!({
+                            "member": name(*member),
+                            "defender": name(*defender),
+                            "day": day,
+                        }),
+                    ));
+                }
+                MissionEffect::EncounterEnded { member, partner } => {
+                    self.events.push(GameEventRecord::new(
+                        tick,
+                        self.wall_ms,
+                        SYS_JEDI,
+                        EVT_CONFRONTATION,
+                        serde_json::json!({
+                            "member": name(*member),
+                            "partner": name(*partner),
+                        }),
+                    ));
+                }
+                MissionEffect::HeritageLearned { character } => {
+                    self.events.push(GameEventRecord::new(
+                        tick,
+                        self.wall_ms,
+                        SYS_JEDI,
+                        EVT_HERITAGE_LEARNED,
+                        serde_json::json!({ "character": name(*character) }),
                     ));
                 }
                 _ => {}
@@ -1960,6 +2001,16 @@ fn apply_mission_effects_inner(
                     c.add_force_training(*amount);
                 }
             }
+            // The encounter's keys and Luke's heritage, set by the mission
+            // detection (`missions::apply_advance_effects`).
+            MissionEffect::EncounterBegan { .. }
+            | MissionEffect::EncounterEnded { .. }
+            | MissionEffect::HeritageLearned { .. } => {
+                rebellion_core::missions::apply_advance_effects(
+                    world,
+                    std::slice::from_ref(effect),
+                );
+            }
             MissionEffect::CharacterInjured { character, injury } => {
                 // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
                 if let Some(c) = world.characters.get_mut(*character) {
@@ -2717,6 +2768,49 @@ mod tests {
         assert_eq!(integrator.events[1].event_type, EVT_FORCE_EXPERIENCE);
         assert_eq!(integrator.events[1].details["force"], 51);
         assert_eq!(integrator.events[1].details["gain"], 1);
+    }
+
+    #[test]
+    fn the_force_encounter_confrontation_and_heritage_are_recorded() {
+        let mut world = GameWorld::default();
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            name: "Luke".into(),
+            ..Default::default()
+        });
+        let vader = world.characters.insert(rebellion_core::world::Character {
+            name: "Vader".into(),
+            ..Default::default()
+        });
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.record_advance_character_effects(
+            &world,
+            &[
+                MissionEffect::EncounterBegan {
+                    member: luke,
+                    defender: vader,
+                    day: 40,
+                },
+                MissionEffect::EncounterEnded {
+                    member: luke,
+                    partner: vader,
+                },
+                MissionEffect::HeritageLearned { character: luke },
+            ],
+            40,
+        );
+        let kinds: Vec<&str> = integrator
+            .events
+            .iter()
+            .map(|event| event.event_type)
+            .collect();
+        assert_eq!(
+            kinds,
+            [EVT_FORCE_ENCOUNTER, EVT_CONFRONTATION, EVT_HERITAGE_LEARNED]
+        );
+        assert_eq!(integrator.events[0].details["defender"], "Vader");
+        assert_eq!(integrator.events[0].details["day"], 40);
+        assert_eq!(integrator.events[1].details["partner"], "Vader");
+        assert_eq!(integrator.events[2].details["character"], "Luke");
     }
 
     #[test]

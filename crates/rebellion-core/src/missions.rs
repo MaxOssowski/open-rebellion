@@ -1273,8 +1273,58 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
                     c.dagobah_completed = true;
                 }
             }
+            MissionEffect::SkillRaised {
+                character,
+                skill,
+                amount,
+            } => raise_skill(world, *character, *skill, *amount),
+            MissionEffect::SystemIntelligenceGathered { system, .. } => {
+                if let Some(sys) = world.systems.get_mut(*system) {
+                    sys.exploration_status = crate::dat::ExplorationStatus::Explored;
+                }
+            }
+            MissionEffect::EncounterBegan {
+                member,
+                defender,
+                day,
+            } => begin_encounter(world, *member, *defender, *day),
+            MissionEffect::EncounterEnded { member, partner } => {
+                for key in [member, partner] {
+                    if let Some(c) = world.characters.get_mut(*key) {
+                        c.encounter = None;
+                        c.encounter_day = 0;
+                    }
+                }
+            }
+            MissionEffect::HeritageLearned { character } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.heritage_known = true;
+                }
+            }
             _ => {}
         }
+    }
+}
+
+/// `FUN_0055ff60`'s keys: `member` and `defender` name each other in
+/// `Encounter` `+0x9c` and record `day` ([`MissionEffect::EncounterBegan`]).
+pub fn begin_encounter(
+    world: &mut GameWorld,
+    member: CharacterKey,
+    defender: CharacterKey,
+    day: u64,
+) {
+    let ids = (
+        world.characters.get(member).map(|c| c.dat_id),
+        world.characters.get(defender).map(|c| c.dat_id),
+    );
+    let (Some(member_id), Some(defender_id)) = ids else {
+        return;
+    };
+    for (key, partner) in [(member, defender_id), (defender, member_id)] {
+        let c = &mut world.characters[key];
+        c.encounter = Some(partner);
+        c.encounter_day = day;
     }
 }
 
@@ -1895,6 +1945,23 @@ pub enum MissionEffect {
         character: CharacterKey,
         amount: i32,
     },
+
+    /// Force detection (`FUN_0058a3f0` -> `FUN_0055ff60`): `member` and
+    /// `defender` name each other in `Encounter` `+0x9c` and record `day`.
+    EncounterBegan {
+        member: CharacterKey,
+        defender: CharacterKey,
+        day: u64,
+    },
+    /// The confrontation (`FUN_00560200`) cleared both `Encounter` keys and
+    /// days.
+    EncounterEnded {
+        member: CharacterKey,
+        partner: CharacterKey,
+    },
+    /// Luke met Vader and learned his heritage (`FUN_0056f650`,
+    /// `KnowsHeritage`, `+0xb0` bit 0).
+    HeritageLearned { character: CharacterKey },
 }
 
 // ---------------------------------------------------------------------------
@@ -2676,6 +2743,7 @@ impl MissionSystem {
                 ctx.uprisings,
                 ctx.research,
                 &state.en_route,
+                now,
                 &mut draws.stream,
                 &mut out.effects,
             );

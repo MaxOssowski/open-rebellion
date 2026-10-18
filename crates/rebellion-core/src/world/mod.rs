@@ -740,6 +740,14 @@ pub struct Character {
     /// Luke's `DagobahCompleted` (`+0xb0` bit `0x8`, `FUN_0056f730`), set at
     /// the Dagobah mission's end (`FUN_005751d0`; save v73).
     pub dagobah_completed: bool,
+    /// Character `+0x9c`, the `Encounter` key (`FUN_004ee500`): the Force
+    /// user this one detected or was detected by on a mission
+    /// (`FUN_0055ff60`), by record, until their confrontation clears it
+    /// (`FUN_00560200`; save v74).
+    pub encounter: Option<DatId>,
+    /// The encounter day (`FUN_004ef1c0`, record `+0x54` -> `+0x34`), 0
+    /// without an encounter (save v74).
+    pub encounter_day: u64,
 }
 
 impl Character {
@@ -909,6 +917,8 @@ impl Default for Character {
             force_training: 0,
             current_abode: None,
             dagobah_completed: false,
+            encounter: None,
+            encounter_day: 0,
         }
     }
 }
@@ -2823,7 +2833,9 @@ mod tests {
             "force_discoverer": null,
             "force_training": 0,
             "current_abode": null,
-            "dagobah_completed": false
+            "dagobah_completed": false,
+            "encounter": null,
+            "encounter_day": 0
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

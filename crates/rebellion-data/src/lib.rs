@@ -940,6 +940,8 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         force_training: 0,
         current_abode: None,
         dagobah_completed: false,
+        encounter: None,
+        encounter_day: 0,
     }
 }
 
