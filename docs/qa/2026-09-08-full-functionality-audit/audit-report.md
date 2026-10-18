@@ -2528,6 +2528,14 @@ cross-runtime proof remain open
   against their 0), so the rescue is shown by tests and the fixture
   (`evidence/2026-10-18-palace-rescue/`). Open: DarthPickup and the
   Pickup mission.
+- 2026-10-18: Vader's Pickup is ported (`jabba.rs`, `missions.rs`):
+  DarthPickup (Luke, Leia and Han held, Chewbacca held or destroyed, a
+  prisoner in the palace, Vader free) sends the Pickup mission
+  (`0x73000082`). It takes the palace's prisoners, who autoroute, still
+  captive, to Vader's home, and Jabba Delivers Prisoners is posted. Han's
+  and Jabba's story now runs on the original's paths end to end, but no
+  campaign reaches the palace, because Han evades the hunters. No save
+  change; the golden is unchanged (`evidence/2026-10-18-pickup/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

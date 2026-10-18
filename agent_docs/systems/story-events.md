@@ -25,10 +25,10 @@ Events are registered in `EventState` by `define_story_events(&mut state, &world
 `0x390` (prerequisite gate) → `0x392` (Yoda teacher) → `EVT_LUKE_DAGOBAH` (0x221) → `0x391` (first training) → `EVT_DAGOBAH_COMPLETED` (0x210)
 
 ### Chain 2: Final Battle (removed)
-The port's `0x393`..`0x396` and `0x220` events are gone (save v76). The mission manager's FinalBattleReady path runs in `final_battle.rs` (`ghidra/notes/final-battle.md`), and the encounter class posts The Final Battle (`story_messages::final_battle_message`). Only Luke's confrontation with Vader (`FUN_00560200`) and Leia's discovery set `heritage_known` (save v75). DarthPickup and the Pickup mission (`0x73`) wait for Jabba's palace.
+The port's `0x393`..`0x396` and `0x220` events are gone (save v76). The mission manager's FinalBattleReady path runs in `final_battle.rs` (`ghidra/notes/final-battle.md`), and the encounter class posts The Final Battle (`story_messages::final_battle_message`). Only Luke's confrontation with Vader (`FUN_00560200`) and Leia's discovery set `heritage_known` (save v75). DarthPickup and the Pickup mission (`0x73`) run in `jabba.rs`.
 
 ### Chains 3 and 4: Bounty Hunters and Jabba's Palace (removed)
-The port's `0x397`..`0x39b`, `0x380`..`0x387`, `0x212`, `0x200`, `0x231` and carbonite `0x39c`..`0x3a0` events are gone (save v77). The mission manager's BountyHuntersActive path runs in `jabba.rs` (`ghidra/notes/jabba-palace.md`): timer `0x393`, the Bounty Hunters unit, the Bounty mission (`0x65000083`) and Han's trip to the palace. The app posts notification `0x212` (`story_messages::bounty_messages`). HanCapturedAtPalace and the Palace missions (`0x64000044`) are ported too, with Jabba Captures (`story_messages::jabba_captures_message`); the Pickup is not ported yet.
+The port's `0x397`..`0x39b`, `0x380`..`0x387`, `0x212`, `0x200`, `0x231` and carbonite `0x39c`..`0x3a0` events are gone (save v77). The mission manager's BountyHuntersActive path runs in `jabba.rs` (`ghidra/notes/jabba-palace.md`): timer `0x393`, the Bounty Hunters unit, the Bounty mission (`0x65000083`) and Han's trip to the palace. The app posts notification `0x212` (`story_messages::bounty_messages`). HanCapturedAtPalace and the Palace missions (`0x64000044`) are ported too, with Jabba Captures (`story_messages::jabba_captures_message`); DarthPickup and the Pickup mission (`0x73000082`) follow, with Jabba Delivers Prisoners (`story_messages::jabba_delivers_message`).
 
 ## Key Patterns
 

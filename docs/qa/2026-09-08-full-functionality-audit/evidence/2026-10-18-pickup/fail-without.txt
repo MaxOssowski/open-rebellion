@@ -1,0 +1,5 @@
+    jabba::tests::darth_pickup_waits_for_the_four_held_and_a_free_vader
+    missions::tests::the_pickup_takes_the_palace_s_prisoners_to_where_vader_came_from
+test result: FAILED. 12 passed; 2 failed; 0 ignored; 0 measured; 1335 filtered out; finished in 0.00s
+    story_messages::tests::jabba_delivers_prisoners_reads_its_two_texts_on_its_background
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 771 filtered out; finished in 0.00s

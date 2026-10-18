@@ -148,8 +148,12 @@ Luke, Leia or Chewbacca.
     prisoner of the palace freed. The freed of another side than the
     palace's autoroute out with the rescuer (`FUN_004ef260`);
   - the failure (`FUN_0056e870`): each member captured for the palace's
-    side, `CanEscape` cleared; held for the palace's side, the rescuer
-    stays (`FUN_004ef260` compares the captor's side);
+    side, `CanEscape` cleared. The rescuer stays in the palace. Correction
+    (2026-10-18): `FUN_004ef260` compares the raw side `+0x24`, which is
+    the character's own (`FUN_004eec60` only derives the captor's side).
+    So a held rescuer is autorouted too (slot `+0x218`, status 2). hyp: a
+    prisoner's autorouting leads to its captor, the palace, where it
+    already is. The port keeps it in place by reading the captor's side;
   - the mission ends (code 6) once Han is no longer held there;
   - the Dagobah check waits while Han is held (`FUN_00544030`);
   - Jabba Captures (`FUN_00490340` case 5, `story_messages::
@@ -187,7 +191,12 @@ addition:
     bit 0) and on no mission (`+0x78` bit 7 clear):
     - joins the mission (slot `+0x1cc(key, 0)`);
     - takes the mission's `+0x70` as its own `+0x70` (`FUN_00535760`,
-      `FUN_00534390`, which notifies both sides and calls slot `+0x244`);
+      `FUN_00534390`, which notifies both sides and calls slot `+0x244`).
+      The disassembly settles whose: `FUN_00535760` is called with `ECX`
+      the hit's member (`param_2`, at `0x56dbba`), Vader. A role's `+0x70`
+      is its home object (`FUN_00536490` sets it to the role's location),
+      and slot `+0x244` (`FUN_00536300`) sets `+0x74` to that object's
+      system;
     - and the result is 3 (`FUN_00521880(3)`);
   - clears PickupInProgress (`FUN_0055f6c0(0)`).
 - Jabba Delivers Prisoners (`FUN_0048b6e0`): notification `0x231` with
@@ -199,22 +208,39 @@ addition:
     deliverd Luke, Han, Chewbacca and Leia to Darth Vader. They are now
     prisoners of the Empire." (sic), with no arguments.
 
-Open for plan 4:
+- The Pickup class's phase slot `+0x1f4` (`FUN_00594460`) only calls the
+  shared `FUN_00592f50`.
+- When the mission at the palace ends, `FUN_004ef260` runs for each
+  member. A prisoner's own side `+0x24` is not the palace's, so its slot
+  `+0x218` (`FUN_004ef5b0`, status 2) runs and Autorouting is set. The
+  autorouting's candidates (`FUN_005545e0`) take the `+0x70` object
+  first after the container (`FUN_00554ab0`), which is Vader's home. So
+  the prisoners leave for Vader's home, still captive. Vader is of the
+  palace's side and stays. DarthToLuke then sends him after Luke
+  (`final-battle.md`).
+- `DarthPickup` (`FUN_005445d0`) also accepts Chewbacca destroyed
+  (`+0x50` bit 3) in place of captured. Its palace walk
+  `FUN_004f2640(palace, 1, 2)` reads the Empire's side, which matches
+  prisoners only through the captor's side.
+- Open: the side record's `+0xb0` bit 8, which picks the `0x231`
+  background.
 
-- What a character's and a mission's `+0x70` hold. `FUN_00543360` copies
-  a character's `+0x70` when its `+0x74` is a system (family
-  `0x90..0x97`); `captive-escape.md` reads `+0x70` as the autorouting
-  object. So the prisoners probably autoroute to the Pickup mission's
-  `+0x70` once it ends. This is not confirmed.
-  - hyp: `FUN_00543040` replaces a family-`0x65` destination (the Bounty
-    mission) with the palace, so a character's `+0x70` can name a mission.
-    If a mission's `+0x70` is its own key (family `0x73`), the prisoners
-    autoroute to Vader's mission, that is, they follow him.
-  - Next read: the writers of a mission's `+0x70` (creation
-    `FUN_00547ba0` does not write it) and the Pickup class's end slots.
-- How Vader and the prisoners leave the palace. Vader is of the palace's
-  side, so `FUN_004ef260` does not autoroute him.
-- The side record's `+0xb0` bit 8, which picks the `0x231` background.
+Ported 2026-10-18 (plan 4):
+
+- `jabba.rs`: the DarthPickup check and `JabbaStep::Pickup`, which
+  dispatches the Pickup mission (`MissionKind::Pickup`, record
+  `0x73000082`) aimed at the palace.
+- `missions.rs`:
+  - the hit: `PickupInProgress`, then `PrisonerPickedUp` for each
+    prisoner held for the mission's side and on no mission (result 3);
+  - at the end, each picked-up prisoner autoroutes, still captive, to
+    the system the mission left from.
+- `story_messages::jabba_delivers_message` (0x231), posted by the app on
+  `PickupInProgress`.
+- port:
+  - Vader's home (`+0x70`) is the system he left from;
+  - Vader's resign request when he is on another mission is not ported;
+  - the message goes to both sides on `0x42a`.
 
 ## Plan
 

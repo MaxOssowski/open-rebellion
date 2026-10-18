@@ -453,6 +453,27 @@ pub fn jabba_captures_message(
     )
 }
 
+/// Jabba Delivers Prisoners (`FUN_0048b6e0`): notification `0x231` with
+/// its argument set, as the Pickup's hit sets `PickupInProgress`. TEXTSTRA
+/// `0x7200` / `0x7201` take no arguments; the background is `0x42a`, or
+/// `0x42b` when the side record's `+0xb0` bit 8 is set.
+///
+/// port: posted to both sides (`story-message-classes.md` row 15) on
+/// `0x42a`, as the side record's bit is not traced; the media ids and the
+/// speaker `0x1b` are not read.
+#[must_use]
+pub fn jabba_delivers_message(tick: u64, texts: &HashMap<u16, String>) -> Option<GameMessage> {
+    Some(
+        GameMessage::new(tick, texts.get(&0x7201)?.clone(), MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::Both)
+            .with_title(texts.get(&0x7200)?.clone())
+            .with_picture(MessagePicture {
+                background: 0x42a,
+                foreground: None,
+            }),
+    )
+}
+
 /// Notification `0x212` (`FUN_0048fa00`), Han's `BountyAttack`, for each
 /// side:
 ///
@@ -1402,6 +1423,31 @@ mod tests {
         let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
         assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
         assert_eq!(lost.picture.expect("a picture").background, 0x428);
+    }
+
+    #[test]
+    fn jabba_delivers_prisoners_reads_its_two_texts_on_its_background() {
+        // FUN_0048b6e0: TEXTSTRA 0x7200 / 0x7201 with no arguments, on
+        // background 0x42a.
+        let texts: HashMap<u16, String> = [
+            (0x7200, "Jabba Delivers Prisoners"),
+            (
+                0x7201,
+                "Jabba has deliverd Luke, Han, Chewbacca and Leia to Darth Vader.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let message = jabba_delivers_message(4, &texts).expect("message");
+        assert_eq!(message.title.as_deref(), Some("Jabba Delivers Prisoners"));
+        assert_eq!(
+            message.text,
+            "Jabba has deliverd Luke, Han, Chewbacca and Leia to Darth Vader."
+        );
+        assert_eq!(message.picture.map(|p| p.background), Some(0x42a));
+        assert_eq!(message.audience, RailAudience::Both);
+        assert!(jabba_delivers_message(4, &HashMap::new()).is_none());
     }
 
     #[test]

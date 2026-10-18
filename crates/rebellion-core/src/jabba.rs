@@ -25,6 +25,15 @@ const HAN: u32 = 0x243;
 /// (`0x32000242`, `FUN_0054a910`), Leia (`0x31000241`, `FUN_0054aa60`) and
 /// Chewbacca (`0x38000343`, `FUN_0054ab10`).
 const RESCUERS: [u32; 3] = [0x242, 0x241, 0x343];
+/// Luke, Leia, Han and Chewbacca, whom `DarthPickup` waits to see held
+/// (`FUN_005445d0`).
+const LUKE: u32 = 0x242;
+/// Leia (`0x31000241`, `FUN_00543550`).
+const LEIA: u32 = 0x241;
+/// Chewbacca (`0x38000343`, `FUN_00543690`).
+const CHEWBACCA: u32 = 0x343;
+/// Vader (`0x35000281`), the Pickup's member (`FUN_0054abc0`).
+const VADER: u32 = 0x281;
 /// Jabba's Palace (`0x98000481`, the galaxy's `+0xdc`, `FUN_00506ed0`).
 const JABBAS_PALACE: u32 = 0x481;
 /// The Bounty Hunters class (SPECFCSD `0x3c000009`, `FUN_00546fa0`).
@@ -72,6 +81,14 @@ pub enum JabbaStep {
     Rescue {
         rescuer: CharacterKey,
         han: CharacterKey,
+        from: SystemKey,
+        palace: AbodeKey,
+        tick: u64,
+    },
+    /// `DarthPickup` pulses: Vader goes from `from` on the Pickup mission
+    /// (`0x73000082`) to collect the palace's prisoners.
+    Pickup {
+        vader: CharacterKey,
         from: SystemKey,
         palace: AbodeKey,
         tick: u64,
@@ -141,6 +158,58 @@ pub fn han_captured_at_palace(world: &GameWorld, missions: &MissionState) -> boo
         && !c.on_mandatory_mission
         && !missions.is_autorouting(han)
         && c.current_abode == Some(palace)
+}
+
+/// `DarthPickup` (`FUN_005445d0`): Luke, Leia and Han captured,
+/// Chewbacca captured or destroyed (`+0x50` bit 3), some prisoner in the
+/// palace (`FUN_004f2640(palace, 1, 2)`: of the Empire's side, as a
+/// prisoner's side is its captor's), and Vader located, free
+/// (`FUN_005439b0`) and on no mission.
+///
+/// port: when Vader is on another mission than a Pickup, the original
+/// asks him to resign it (`FUN_00534640`); the port does not.
+fn darth_pickup(
+    world: &GameWorld,
+    missions: &MissionState,
+    palace: AbodeKey,
+    tick: u64,
+) -> Option<JabbaStep> {
+    let any = |index: u32| {
+        world
+            .characters
+            .iter()
+            .find(|(_, c)| c.dat_id.index() == index)
+            .map(|(_, c)| c)
+    };
+    let held = |index: u32| any(index).is_some_and(|c| c.is_captive && !c.is_killed);
+    if !(held(LUKE) && held(LEIA) && held(HAN)) {
+        return None;
+    }
+    if !any(CHEWBACCA).is_some_and(|c| c.is_killed || c.is_captive) {
+        return None;
+    }
+    let prisoner = world.characters.values().any(|c| {
+        c.is_captive
+            && !c.is_killed
+            && c.current_abode == Some(palace)
+            && c.captured_by == Some(crate::dat::Faction::Empire)
+    });
+    let vader = find(world, VADER)?;
+    let c = &world.characters[vader];
+    if !prisoner
+        || c.is_captive
+        || c.on_mission
+        || c.on_mandatory_mission
+        || missions.is_autorouting(vader)
+    {
+        return None;
+    }
+    Some(JabbaStep::Pickup {
+        vader,
+        from: standing(world, vader)?,
+        palace,
+        tick,
+    })
 }
 
 /// Stateless system for the bounty hunters.
@@ -254,6 +323,7 @@ impl JabbaSystem {
                 }
             }
         }
+        steps.extend(darth_pickup(world, missions, palace, tick));
         // FUN_004f18e0 sets Autorouting on the capture; FUN_00543040 sends
         // a captive of the Bounty mission to the palace.
         for (key, c) in &world.characters {
@@ -345,6 +415,26 @@ pub fn perform(
                 rescuer,
                 from,
                 Some(han),
+                tick,
+            );
+            let id = missions.dispatch_guarded(request, world).ok()?;
+            missions.aim_at_abode(id, palace);
+            Some(id)
+        }
+        JabbaStep::Pickup {
+            vader,
+            from,
+            palace,
+            tick,
+        } => {
+            // FUN_0054abc0 -> FUN_005479c0: record 0x73000082, target the
+            // palace, member Vader.
+            let request = MissionRequest::single(
+                MissionKind::Pickup,
+                MissionFaction::Empire,
+                vader,
+                from,
+                None,
                 tick,
             );
             let id = missions.dispatch_guarded(request, world).ok()?;
@@ -535,6 +625,71 @@ mod tests {
         assert!(!han_captured_at_palace(&world, &routing));
         world.characters[han].is_killed = true;
         assert!(!han_captured_at_palace(&world, &missions));
+    }
+
+    #[test]
+    fn darth_pickup_waits_for_the_four_held_and_a_free_vader() {
+        // FUN_005445d0: Luke, Leia and Han captured, Chewbacca captured or
+        // destroyed (+0x50 bit 3), a prisoner held for the Empire in the
+        // palace, Vader free (FUN_005439b0) and on no mission.
+        let (mut world, han, home, palace, rescuers) = held_world();
+        for key in rescuers {
+            world.characters[key].is_captive = true;
+            world.characters[key].captured_by = Some(Faction::Empire);
+        }
+        let vader = world.characters.insert(Character {
+            dat_id: DatId::new(VADER),
+            is_empire: true,
+            current_system: Some(home),
+            ..Character::default()
+        });
+        let missions = MissionState::new();
+        let pickup = Some(JabbaStep::Pickup {
+            vader,
+            from: home,
+            palace,
+            tick: 3,
+        });
+        assert_eq!(darth_pickup(&world, &missions, palace, 3), pickup);
+        // Chewbacca destroyed instead of held.
+        let mut w = world.clone();
+        w.characters[rescuers[2]].is_captive = false;
+        w.characters[rescuers[2]].is_killed = true;
+        assert_eq!(darth_pickup(&w, &missions, palace, 3), pickup);
+        type Edit = fn(&mut GameWorld, CharacterKey, [CharacterKey; 3], CharacterKey);
+        let unready: [Edit; 9] = [
+            |w, _, r, _| w.characters[r[0]].is_captive = false,
+            |w, _, r, _| w.characters[r[1]].is_captive = false,
+            |w, h, _, _| w.characters[h].is_captive = false,
+            |w, _, r, _| w.characters[r[2]].is_captive = false,
+            |w, h, _, _| w.characters[h].captured_by = Some(Faction::Alliance),
+            |w, _, _, v| w.characters[v].is_captive = true,
+            |w, _, _, v| w.characters[v].on_mission = true,
+            |w, _, _, v| w.characters[v].on_mandatory_mission = true,
+            |w, _, _, v| w.characters[v].current_system = None,
+        ];
+        for (i, edit) in unready.into_iter().enumerate() {
+            let mut w = world.clone();
+            edit(&mut w, han, rescuers, vader);
+            assert_eq!(darth_pickup(&w, &missions, palace, 3), None, "case {i}");
+        }
+        let mut routing = MissionState::new();
+        routing.push_escapee(crate::missions::EscapeeTransit {
+            character: vader,
+            to: home,
+            arrival: 9,
+            abode: None,
+        });
+        assert_eq!(darth_pickup(&world, &routing, palace, 3), None);
+        // The day's advance sends it after the rescues (none: all held).
+        let mut state = JabbaState {
+            armed: true,
+            ..JabbaState::default()
+        };
+        assert_eq!(
+            day(&mut state, &world, 3, &[]),
+            pickup.into_iter().collect::<Vec<_>>()
+        );
     }
 
     #[test]

@@ -161,13 +161,13 @@ member Vader.
 - Jabba's palace is ported (`jabba-palace.md`, plans 1 to 3): the Bounty
   Hunters, Han's capture and trip to the palace, HanCapturedAtPalace, and
   the Palace missions (`0x64`).
-- Not ported: DarthPickup, the Pickup mission (`0x73`) and Jabba
-  Delivers Prisoners (`0x231`).
+- Ported 2026-10-18 (`jabba-palace.md`, plan 4): DarthPickup, the Pickup
+  mission (`0x73`) and Jabba Delivers Prisoners (`0x231`).
 
 ## Plan
 
 1. Done: the FinalBattleReady path.
-2. DarthPickup and the Pickup mission (`jabba-palace.md` plan 4).
+2. Done: DarthPickup and the Pickup mission (`jabba-palace.md` plan 4).
 
 ## Open
 

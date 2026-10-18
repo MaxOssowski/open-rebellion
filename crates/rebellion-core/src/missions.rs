@@ -167,6 +167,13 @@ pub enum MissionKind {
     /// Han and every prisoner of the palace (`FUN_0056e650`); a failure
     /// leaves the rescuer captive there for good (`FUN_0056e870`).
     Palace,
+
+    /// The Pickup mission (MISSNSD `0x73000082`, TEXTSTRA 11394, class
+    /// `0x00665058`; `ghidra/notes/jabba-palace.md`): `DarthPickup` sends
+    /// Vader to Jabba's Palace (`FUN_0054abc0`), and the hit
+    /// (`FUN_0056da80`) takes the palace's prisoners into the Empire's
+    /// hands.
+    Pickup,
 }
 
 impl MissionKind {
@@ -195,7 +202,8 @@ impl MissionKind {
             | MissionKind::JediTraining
             | MissionKind::Dagobah
             | MissionKind::Bounty
-            | MissionKind::Palace => None,
+            | MissionKind::Palace
+            | MissionKind::Pickup => None,
         }
     }
 
@@ -244,6 +252,8 @@ impl MissionKind {
             MissionKind::Bounty => (0, 0),
             // MISSNSD 0x64000044: 5 + rand(0..=10) days.
             MissionKind::Palace => (5, 15),
+            // MISSNSD 0x73000082: 0 + rand(0..=0) days.
+            MissionKind::Pickup => (0, 0),
         }
     }
 }
@@ -1191,9 +1201,9 @@ pub fn member_chance(
         // FUN_005710b0 reads the mission's teacher +0xa8: phase 10 takes
         // the chance from [`jedi_training_chance`].
         MissionKind::JediTraining => return 0,
-        // FUN_00575060: DAT_00661a88, 100 (Dagobah's and Bounty's slot
-        // +0x274).
-        MissionKind::Dagobah | MissionKind::Bounty => return 100,
+        // FUN_00575060: DAT_00661a88, 100 (Dagobah's, Bounty's and
+        // Pickup's slot +0x274).
+        MissionKind::Dagobah | MissionKind::Bounty | MissionKind::Pickup => return 100,
         // FUN_0056e620 -> FUN_0055c910: espionage (slot +0x1e0) / GNPRTB
         // 6154 + combat (slot +0x1f0) / GNPRTB 6155, in integers.
         MissionKind::Palace => {
@@ -2059,6 +2069,14 @@ pub enum MissionEffect {
     /// A prisoner loses `CanEscape` (`FUN_004eeb10(0)`): a rescuer the
     /// Palace mission's failure leaves captive (`FUN_0056e870`).
     EscapeBarred { character: CharacterKey },
+    /// The Pickup's hit set and cleared the character manager's
+    /// `PickupInProgress` (`FUN_0055f6c0`, notification `0x231`: Jabba
+    /// Delivers Prisoners).
+    PickupInProgress,
+    /// A prisoner of Jabba's Palace joined the Pickup mission
+    /// (`FUN_0056da80`, slot `+0x1cc`) and took Vader's `+0x70`
+    /// (`FUN_00534390`).
+    PrisonerPickedUp { character: CharacterKey },
 
     /// Force detection (`FUN_0058a3f0` -> `FUN_0055ff60`): `member` and
     /// `defender` name each other in `Encounter` `+0x9c` and record `day`.
@@ -2230,6 +2248,7 @@ impl MissionKind {
             MissionKind::Dagobah => 0x7100_0043,
             MissionKind::Bounty => 0x6500_0083,
             MissionKind::Palace => 0x6400_0044,
+            MissionKind::Pickup => 0x7300_0082,
             MissionKind::Autoscrap => return None,
         };
         Some(crate::ids::DatId::new(raw))
@@ -2268,6 +2287,9 @@ impl MissionKind {
             // An opponent's prisoner (MISSNSD 0x64000044), held in the
             // palace, its abode target.
             MissionKind::Palace => TargetRules::Character,
+            // Its target is the palace, the Empire's own (MISSNSD
+            // 0x73000082).
+            MissionKind::Pickup => TargetRules::Place,
         }
     }
 }
@@ -2950,6 +2972,31 @@ impl MissionSystem {
                 _ => None,
             })
             .collect::<Vec<_>>();
+        // A picked-up prisoner is a member of another side than the
+        // palace's (its own side +0x24): FUN_004ef260 runs its slot +0x218
+        // (FUN_004ef5b0, status 2) and sets Autorouting, and the
+        // autorouting's first fitting candidate is its +0x70
+        // (FUN_00554ab0), Vader's. port: Vader's +0x70 is the system he
+        // left from.
+        if let Some(home) = mission
+            .origin
+            .filter(|_| mission.kind == MissionKind::Pickup)
+        {
+            for effect in own_effects() {
+                if let MissionEffect::PrisonerPickedUp { character } = *effect {
+                    out.effects.push(MissionEffect::MemberMoved {
+                        member: MissionMember::Character(character),
+                        to: None,
+                    });
+                    state.escapees.push(EscapeeTransit {
+                        character,
+                        to: home,
+                        arrival: now + 1,
+                        abode: None,
+                    });
+                }
+            }
+        }
         for member in mission.members().chain(freed.iter().copied()) {
             let MissionMember::Character(key) = member else {
                 continue;
@@ -2964,10 +3011,12 @@ impl MissionSystem {
             } else {
                 crate::dat::Faction::Neutral
             };
-            // A prisoner's side +0x24 is its captor's (FUN_004eec60): one
-            // taken this step, or held and not freed this step, stays
-            // where its captor's abode holds it. port: a captive's slot
-            // +0x218 (FUN_004ef260) is not read.
+            // A prisoner taken this step, or held and not freed this step,
+            // stays where its captor's abode holds it. hyp: FUN_004ef260
+            // compares its own side +0x24 and autoroutes it (slot +0x218,
+            // status 2), but a prisoner's autorouting leads to its captor,
+            // the abode it is in; the port reads the captor's side
+            // (FUN_004eec60) instead.
             let taken = own_effects().find_map(|effect| match effect {
                 MissionEffect::CharacterCaptured {
                     character,
@@ -3458,6 +3507,29 @@ impl MissionSystem {
                                 returned_to: own,
                                 at_system: target,
                             });
+                        }
+                    }
+                }
+                // FUN_0056da80: PickupInProgress set; each prisoner of the
+                // palace of the mission's side (FUN_004f2640: a prisoner's
+                // side is its captor's) on no mission joins the mission
+                // (slot +0x1cc) and takes the member's +0x70
+                // (FUN_00535760 on the member, FUN_00534390), and the
+                // result is 3; PickupInProgress cleared.
+                MissionKind::Pickup => {
+                    if let Some(abode) = mission.target_abode.filter(|_| !target_taken) {
+                        target_taken = true;
+                        effects.push(MissionEffect::PickupInProgress);
+                        for (character, c) in &world.characters {
+                            if c.current_abode == Some(abode)
+                                && c.is_captive
+                                && !c.is_killed
+                                && !c.on_mission
+                                && c.captured_by == Some(side)
+                            {
+                                effects.push(MissionEffect::PrisonerPickedUp { character });
+                                result = 3;
+                            }
                         }
                     }
                 }
@@ -8728,6 +8800,87 @@ mod tests {
             }
         }
         results
+    }
+
+    /// MISSNSD `0x73000082` (Pickup): Empire only, hidden, 0 + rand(0..=0)
+    /// days, the Empire's own target.
+    fn pickup_record() -> crate::world::MissionRecord {
+        let mut record = palace_record();
+        record.dat_id = crate::ids::DatId::new(0x7300_0082);
+        record.timer_min_days = 0;
+        record.rules.opponent_target = false;
+        record.rules.own_side_target = true;
+        record.members.alliance = false;
+        record.members.empire = true;
+        record
+    }
+
+    #[test]
+    fn the_pickup_takes_the_palace_s_prisoners_to_where_vader_came_from() {
+        // FUN_0056da80: PickupInProgress (notification 0x231); each prisoner
+        // of the palace held for the Empire and on no mission joins the
+        // mission and takes Vader's +0x70; FUN_004ef260 then autoroutes it
+        // there (FUN_00554ab0). Vader, of the palace's side, stays.
+        let (mut world, home, han, other, _, palace) = palace_world(0, 0);
+        world.mission_records = vec![pickup_record()];
+        world.characters[other].on_mission = true;
+        let rescuer = agent_at(&mut world, home, true);
+        world.characters[rescuer].is_captive = true;
+        world.characters[rescuer].captured_by = Some(crate::dat::Faction::Alliance);
+        world.characters[rescuer].current_system = None;
+        world.characters[rescuer].current_abode = Some(palace);
+        let vader = agent_at(&mut world, home, false);
+        world.characters[vader].dat_id = crate::ids::DatId::new(0x281);
+        let mut state = MissionState::new();
+        let pickup = crate::jabba::JabbaStep::Pickup {
+            vader,
+            from: home,
+            palace,
+            tick: 1,
+        };
+        crate::jabba::perform(&pickup, &mut state, &mut world).expect("dispatched");
+        assert_eq!(state.missions()[0].kind, MissionKind::Pickup);
+        let mut results = Vec::new();
+        let mut ended_on = None;
+        for today in 1..10 {
+            let advance = step(&mut state, &world, today, &[]);
+            for result in &advance.results {
+                apply_advance_effects(&mut world, &result.effects);
+            }
+            apply_advance_effects(&mut world, &advance.effects);
+            results.extend(advance.results);
+            if !advance.ended.is_empty() {
+                ended_on = Some(today);
+                break;
+            }
+        }
+        let effects: Vec<&MissionEffect> = results.iter().flat_map(|r| &r.effects).collect();
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|e| matches!(e, MissionEffect::PickupInProgress))
+                .count(),
+            1
+        );
+        assert!(effects.contains(&&MissionEffect::PrisonerPickedUp { character: han }));
+        for absent in [other, rescuer] {
+            assert!(!effects.contains(&&MissionEffect::PrisonerPickedUp { character: absent }));
+        }
+        assert_eq!(
+            results.last().map(|r| r.outcome),
+            Some(MissionOutcome::Success)
+        );
+        let day = ended_on.expect("ended");
+        assert!(state.is_autorouting(han));
+        let transit = state.escapees.iter().find(|t| t.character == han).unwrap();
+        assert_eq!((transit.to, transit.arrival), (home, day + 1));
+        assert!(!state.is_autorouting(vader));
+        assert!(world.characters[han].is_captive);
+        let arrived = MissionSystem::advance_escapes(&mut state, &world, day + 1, &[]);
+        apply_advance_effects(&mut world, &arrived);
+        let c = &world.characters[han];
+        assert!(c.is_captive);
+        assert_eq!((c.current_system, c.current_abode), (Some(home), None));
     }
 
     #[test]

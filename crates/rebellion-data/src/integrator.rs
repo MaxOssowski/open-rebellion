@@ -856,6 +856,17 @@ impl PerceptionIntegrator {
                     "dispatched": dispatched,
                 }),
             ),
+            JabbaStep::Pickup {
+                vader, from, tick, ..
+            } => (
+                tick,
+                serde_json::json!({
+                    "step": "pickup",
+                    "character": char_name(world, vader),
+                    "from": sys_name(world, from),
+                    "dispatched": dispatched,
+                }),
+            ),
             JabbaStep::ToPalace {
                 captive,
                 from,
@@ -2120,8 +2131,11 @@ fn apply_mission_effects_inner(
                     std::slice::from_ref(effect),
                 );
             }
-            // Notification 0x212 carries no state of its own.
-            MissionEffect::BountyAttack { .. } => {}
+            // Notifications 0x212 and 0x231 carry no state of their own; a
+            // pickup's prisoners leave as the mission ends.
+            MissionEffect::BountyAttack { .. }
+            | MissionEffect::PickupInProgress
+            | MissionEffect::PrisonerPickedUp { .. } => {}
             MissionEffect::CharacterInjured { character, injury } => {
                 // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
                 if let Some(c) = world.characters.get_mut(*character) {

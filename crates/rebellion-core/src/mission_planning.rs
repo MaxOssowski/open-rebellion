@@ -92,6 +92,8 @@ fn capability(kind: MissionKind) -> Option<u32> {
         // The mission manager sends the Palace missions (FUN_0054a910,
         // FUN_0054aa60, FUN_0054ab10).
         MissionKind::Palace => return None,
+        // DarthPickup's hook sends the Pickup (FUN_0054abc0).
+        MissionKind::Pickup => return None,
     })
 }
 
@@ -251,7 +253,8 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         | MissionKind::JediTraining
         | MissionKind::Dagobah
         | MissionKind::Bounty
-        | MissionKind::Palace => return None,
+        | MissionKind::Palace
+        | MissionKind::Pickup => return None,
         // FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900: Recruitment's selector
         // shape, with no decoy selector.
         MissionKind::ShipDesignResearch => (SHIP_RESEARCH, 1, None),

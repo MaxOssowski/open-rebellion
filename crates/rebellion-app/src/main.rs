@@ -2278,6 +2278,18 @@ async fn main() {
                             msg_log.push(message);
                         }
                     }
+                    // Notification 0x231 (FUN_0048b6e0) as the Pickup sets
+                    // PickupInProgress.
+                    if matches!(effect, MissionEffect::PickupInProgress) {
+                        if let Some(message) =
+                            rebellion_render::story_messages::jabba_delivers_message(
+                                current_tick,
+                                &message_texts,
+                            )
+                        {
+                            msg_log.push(message);
+                        }
+                    }
                     if let MissionEffect::CharacterCaptured { character, .. } = effect {
                         if rebellion_core::jabba::held_at_palace(&world, *character) {
                             if let Some(message) =
@@ -7393,6 +7405,7 @@ fn apply_panel_action(
                 MissionKind::Dagobah => "Dagobah",
                 MissionKind::Bounty => "Bounty",
                 MissionKind::Palace => "Palace",
+                MissionKind::Pickup => "Pickup",
             };
             msg_log.push(GameMessage::at_system(
                 clock.tick,
@@ -7882,6 +7895,7 @@ fn apply_mission_result(
         MissionKind::Dagobah => "Dagobah",
         MissionKind::Bounty => "Bounty",
         MissionKind::Palace => "Palace",
+        MissionKind::Pickup => "Pickup",
     };
     let sys_name = world
         .systems
@@ -7912,7 +7926,8 @@ fn apply_mission_result(
         | MissionKind::JediTraining
         | MissionKind::Dagobah
         | MissionKind::Bounty
-        | MissionKind::Palace => MessageCategory::Mission,
+        | MissionKind::Palace
+        | MissionKind::Pickup => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.
     let picture = {
@@ -8109,8 +8124,12 @@ fn apply_mission_result(
             | MissionEffect::EscapeBarred { .. } => {
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             }
-            // Notification 0x212: its messages are posted with the result.
-            MissionEffect::BountyAttack { .. } => {}
+            // Notifications 0x212 and 0x231: their messages are posted
+            // with the result; a pickup's prisoners leave as the mission
+            // ends.
+            MissionEffect::BountyAttack { .. }
+            | MissionEffect::PickupInProgress
+            | MissionEffect::PrisonerPickedUp { .. } => {}
             MissionEffect::CharacterRescued {
                 character,
                 returned_to,

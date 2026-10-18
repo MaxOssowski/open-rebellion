@@ -1828,7 +1828,11 @@ pub fn post_story_messages(
         .iter()
         .find(|(_, character)| character.is_empire && !character.is_major)
         .map(|(key, _)| key);
-    // Jabba Captures (FUN_00490340 case 5): Chewbacca, a failed rescuer.
+    // Jabba Delivers Prisoners (FUN_0048b6e0), then Jabba Captures
+    // (FUN_00490340 case 5): Chewbacca, a failed rescuer.
+    if let Some(message) = rebellion_render::story_messages::jabba_delivers_message(0, texts) {
+        log.push(message);
+    }
     if let Some(message) = rebellion_render::story_messages::jabba_captures_message(
         &world.characters[chewbacca],
         0,

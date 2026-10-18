@@ -359,6 +359,7 @@ const fn kind_text_id(kind: MissionKind) -> u16 {
         MissionKind::Dagobah => 11331,
         MissionKind::Bounty => 11395,
         MissionKind::Palace => 11332,
+        MissionKind::Pickup => 11394,
         MissionKind::Autoscrap => 0,
     }
 }
@@ -386,6 +387,7 @@ pub const fn kind_name(kind: MissionKind) -> &'static str {
         MissionKind::Dagobah => "Dagobah",
         MissionKind::Bounty => "Bounty",
         MissionKind::Palace => "Palace",
+        MissionKind::Pickup => "Pickup",
         MissionKind::Autoscrap => "",
     }
 }
