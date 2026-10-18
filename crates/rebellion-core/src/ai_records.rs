@@ -457,6 +457,39 @@ pub fn apply_fleet_holds(
     }
 }
 
+/// The system record `+0x2c` bits the refresh keeps (`FUN_00433e40`:
+/// `+0x2c & 0x60000000`): the mission planners' claims on their targets.
+pub const KEPT_CLAIMS: u32 = 0x6000_0000;
+
+/// System record `+0x2c` bit `0x20000000`: a Diplomacy planner has taken
+/// the system as its target (`FUN_00481720`); its slot `+0x38`
+/// (`FUN_00481fe0`) releases it.
+pub const CLAIM_DIPLOMACY: u32 = 0x2000_0000;
+
+/// The refresh's kept `+0x2c` claims ([`KEPT_CLAIMS`]): each system record
+/// takes its claims, and each sector record's `+0x28` bit `0x4000000`
+/// (a system with `+0x2c` bit `0x40` and no Diplomacy claim,
+/// `FUN_00432350`) is summed again.
+pub fn apply_claims(
+    galaxy: &mut Galaxy,
+    claims: &std::collections::HashMap<crate::ids::SystemKey, u32>,
+) {
+    for sector in &mut galaxy.sectors {
+        let mut open = false;
+        for r in &mut sector.systems {
+            if let Some(bits) = claims.get(&r.system) {
+                r.summary |= bits & KEPT_CLAIMS;
+            }
+            open |= r.summary & 0x40 != 0 && r.summary & CLAIM_DIPLOMACY == 0;
+        }
+        if open {
+            sector.state |= 0x400_0000;
+        } else {
+            sector.state &= !0x400_0000;
+        }
+    }
+}
+
 /// Ship record `+0x24` bit `0x20000`: no planner holds the ship. The
 /// record's constructor sets it (`FUN_00484230`); a planner taking the
 /// ship clears it (`FUN_00478e00`) and releasing it sets it again
@@ -2334,6 +2367,15 @@ impl Galaxy {
     pub fn update_kind(&mut self, system: crate::ids::SystemKey, set: u32, clear: u32) {
         if let Some(r) = self.system_mut(system) {
             r.kind = (r.kind & !clear) | set;
+        }
+    }
+
+    /// Set and clear bits of `system`'s record summary `+0x2c` (a
+    /// planner's claim, seen at once; the sector records wait for the next
+    /// refresh).
+    pub fn update_summary(&mut self, system: crate::ids::SystemKey, set: u32, clear: u32) {
+        if let Some(r) = self.system_mut(system) {
+            r.summary = (r.summary & !clear) | set;
         }
     }
 

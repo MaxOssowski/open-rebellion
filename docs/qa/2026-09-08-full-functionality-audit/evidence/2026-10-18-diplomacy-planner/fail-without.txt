@@ -1,0 +1,9 @@
+test ai::tests::a_diplomacy_planner_takes_an_own_system_below_70_before_a_neutral_one ... FAILED
+test ai::tests::a_diplomacy_planner_keeps_its_claimed_target_and_another_takes_the_next ... FAILED
+test ai::tests::a_surplus_diplomacy_planner_with_the_weakest_team_is_cancelled_and_frees_its_claim ... FAILED
+test ai::tests::the_strategy_keeps_one_diplomacy_planner_and_one_more_per_five_candidates ... FAILED
+    ai::tests::a_diplomacy_planner_keeps_its_claimed_target_and_another_takes_the_next
+    ai::tests::a_diplomacy_planner_takes_an_own_system_below_70_before_a_neutral_one
+    ai::tests::a_surplus_diplomacy_planner_with_the_weakest_team_is_cancelled_and_frees_its_claim
+    ai::tests::the_strategy_keeps_one_diplomacy_planner_and_one_more_per_five_candidates
+test result: FAILED. 100 passed; 4 failed; 0 ignored; 0 measured; 1256 filtered out; finished in 0.00s

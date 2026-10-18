@@ -2642,6 +2642,16 @@ cross-runtime proof remain open
   two-member teams rise to 38% of missions (3,233 of 8,605). Golden final
   `v1:2d45f0777ed8cd0d` -> `v1:f7fe1a11ab5f9ffd`
   (`evidence/2026-10-18-planner-refill/`).
+- 2026-10-18 (F-036, save v81): the AI's Diplomacy planner is the
+  original's. The strategy keeps one planner and one more per five
+  candidates (`FUN_004e8290` row 5, `S+0x214`). Each planner picks and
+  claims its target (`FUN_00481720`): own systems below 70 support first,
+  then neutral ones. The port's popularity-cap and uprising-prevention
+  heuristics are removed. In 24 campaigns, Diplomacy orders fall from
+  1,381 to 789 with as many results, and research and recruitment rise.
+  Golden initial `v1:5ba66653ae1fb76d` -> `v1:6f750b483b72f71f`, final
+  `v1:f7fe1a11ab5f9ffd` -> `v1:bec91e71a20394cd`
+  (`evidence/2026-10-18-diplomacy-planner/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

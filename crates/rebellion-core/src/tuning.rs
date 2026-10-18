@@ -25,6 +25,9 @@ pub struct GameConfig {
 #[serde(default)]
 pub struct AiConfig {
     /// Maximum popularity at which AI still sends diplomacy missions. **Augmentation.**
+    /// Unread since 2026-10-18: the AI's Diplomacy planner takes systems
+    /// below 70 support or neutral (`FUN_00481720`, record `+0x2c` bit
+    /// `0x40`). Kept so the save layout and saved configs still load.
     pub diplomacy_target_popularity_cap: f32,
 
     /// Maximum covert operations dispatched per evaluation cycle. **Augmentation.**

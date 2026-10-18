@@ -328,7 +328,7 @@ fn accepts(
 /// planners: officers, espionage, rescue, reconnaissance, uprisings.
 ///
 /// port: the original's list holds one planner per request (`FUN_004d2730`).
-const MISSION_GROUPS: u8 = 5;
+const MISSION_GROUPS: u8 = 4;
 
 /// The module whose step issues the production heuristic's order for
 /// `kind`: `0xa` a manufacturing facility; none for the rest.
@@ -560,6 +560,14 @@ pub struct AIState {
     /// `FUN_004317b0`).
     #[serde(default)]
     pub swept: Vec<crate::ids::SectorKey>,
+    /// The system record `+0x2c` claims the mission planners keep
+    /// ([`crate::ai_records::KEPT_CLAIMS`]; save v81).
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub record_claims: HashMap<SystemKey, u32>,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -615,8 +623,9 @@ pub struct MissionPlanner {
     /// The team (`+0x3c`) and decoys (`+0x44`) it holds.
     pub team: Vec<crate::missions::MissionMember>,
     pub decoys: Vec<crate::missions::MissionMember>,
-    /// The target (`+0x2c`): system, character and object.
-    pub target_system: SystemKey,
+    /// The target (`+0x2c`; a standing planner's `+0x34`): system,
+    /// character and object. A standing planner may have none yet.
+    pub target_system: Option<SystemKey>,
     pub target_character: Option<CharacterKey>,
     pub target_object: Option<crate::missions::MissionTarget>,
     /// The day it was made.
@@ -628,6 +637,15 @@ pub struct MissionPlanner {
     /// Where it gathers its team (`+0x38`, state 6 `FUN_004bd0a0`).
     #[serde(default)]
     pub staging: Option<SystemKey>,
+    /// Made by the strategy's request (`FUN_004d2580`): it lives until the
+    /// strategy cancels it, picks its target each cycle (state 5, slot
+    /// `+0x50`), and orders its mission again once the team is free.
+    #[serde(default)]
+    pub standing: bool,
+    /// The system whose record it claims (`+0x30`; record `+0x2c` bit
+    /// `0x20000000` for Diplomacy).
+    #[serde(default)]
+    pub claimed: Option<SystemKey>,
 }
 
 /// State 6 (`FUN_004bd0a0`): the planner's gathering place `+0x38`. It
@@ -718,6 +736,7 @@ impl AIState {
             fleet_holds: HashMap::new(),
             seen: HashMap::new(),
             swept: Vec::new(),
+            record_claims: HashMap::new(),
         }
     }
 
@@ -1278,6 +1297,7 @@ impl AISystem {
         );
         crate::ai_records::apply_ship_holds(&mut galaxy, &state.ship_holds);
         crate::ai_records::apply_fleet_holds(&mut galaxy, &state.fleet_holds);
+        crate::ai_records::apply_claims(&mut galaxy, &state.record_claims);
         crate::ai_module8::mark_planners(&mut galaxy, &state.module8.planners);
         crate::ai_strategy::mark_plans(&mut galaxy, &state.strategy.plans);
         crate::ai_strategy::mark_swept(&mut galaxy, &state.swept);
@@ -1373,7 +1393,14 @@ impl AISystem {
         }
         if state.module_pending[module].is_empty() {
             let mut decided = Vec::new();
-            Self::run_module(MODULE_IDS[module], state, planner, ctx, &mut decided);
+            Self::run_module(
+                MODULE_IDS[module],
+                state,
+                planner,
+                ctx,
+                galaxy,
+                &mut decided,
+            );
             state.module_pending[module] = decided;
         }
         let order = (!state.module_pending[module].is_empty())
@@ -1463,6 +1490,7 @@ impl AISystem {
         state: &mut AIState,
         planner: &mut Planner<'_>,
         ctx: &ModuleInputs<'_>,
+        galaxy: &mut crate::ai_records::Galaxy,
         actions: &mut Vec<AIAction>,
     ) {
         let ModuleInputs {
@@ -1484,17 +1512,20 @@ impl AISystem {
             }));
         };
         match id {
-            0xd => Self::research_strategy(
-                state,
-                planner,
-                world,
-                mission_state,
-                research_state,
-                uprisings,
-                faction,
-                actions,
-            ),
-            4 => Self::mission_step(state, planner, ctx, actions),
+            0xd => {
+                Self::research_strategy(
+                    state,
+                    planner,
+                    world,
+                    mission_state,
+                    research_state,
+                    uprisings,
+                    faction,
+                    actions,
+                );
+                Self::diplomacy_strategy(state, world, galaxy);
+            }
+            4 => Self::mission_step(state, planner, ctx, galaxy, actions),
             0xa => production(actions),
             0xc => Self::evaluate_troop_deployment(world, faction, config, actions),
             _ => {}
@@ -1509,6 +1540,7 @@ impl AISystem {
         state: &mut AIState,
         planner: &mut Planner<'_>,
         ctx: &ModuleInputs<'_>,
+        galaxy: &mut crate::ai_records::Galaxy,
         actions: &mut Vec<AIAction>,
     ) {
         let ModuleInputs {
@@ -1547,21 +1579,18 @@ impl AISystem {
                 }
             }
             MissionEntry::Group(0) => {
-                Self::evaluate_officers(planner, world, uprisings, faction, config, actions);
+                Self::evaluate_officers(planner, world, uprisings, faction, actions);
             }
             MissionEntry::Group(1) => {
                 Self::evaluate_espionage(planner, world, faction, config, actions);
             }
             MissionEntry::Group(2) => Self::evaluate_rescue(planner, world, faction, actions),
-            MissionEntry::Group(3) => {
-                Self::evaluate_reconnaissance(planner, world, faction, config, actions);
-            }
             MissionEntry::Group(_) => {
-                Self::evaluate_uprising_prevention(planner, world, faction, actions);
+                Self::evaluate_reconnaissance(planner, world, faction, config, actions);
             }
         }
         Self::adopt_mission_orders(state, ctx.tick, start, actions);
-        Self::mission_planner_cycle(state, planner, world, ctx.tick, actions);
+        Self::mission_planner_cycle(state, planner, world, galaxy, ctx.tick, actions);
     }
 
     /// The heuristics' orders become mission planners (`FUN_0042f830`) that
@@ -1590,7 +1619,7 @@ impl AISystem {
                 } if !matches!(kind, MissionKind::Move) && kind.research_tech().is_none() => {
                     let running = state.mission_planners.iter().any(|p| {
                         p.kind == kind
-                            && p.target_system == target_system
+                            && p.target_system == Some(target_system)
                             && p.target_character == target_character
                             && p.target_object == target_object
                     });
@@ -1611,12 +1640,14 @@ impl AISystem {
                             kind,
                             team,
                             decoys,
-                            target_system,
+                            target_system: Some(target_system),
                             target_character,
                             target_object,
                             created: tick,
                             last_cycle: 0,
                             staging: None,
+                            standing: false,
+                            claimed: None,
                         });
                     }
                 }
@@ -1631,32 +1662,38 @@ impl AISystem {
     /// - state 2 (`FUN_0047b110` -> `FUN_0047ba40`): a member the planner
     ///   can no longer keep is dropped; a planner with no team left ends
     ///   (`FUN_0047aff0`);
+    /// - state 5 (slot `+0x50`): a standing planner's target
+    ///   ([`diplomacy_target`]);
     /// - state 6 ([`staging_point`]): the gathering place;
     /// - state 7 (`FUN_004bd570`): each free member away from it gets a
     ///   Move order there (`0x201`, the Move pseudo-mission);
     /// - state 8 (`FUN_0047b360`): once the team and the decoys all stand
-    ///   there, the mission order on the target; the planner then ends.
+    ///   there, the mission order on the target. A standing planner goes
+    ///   on; another ends.
     ///
     /// States 3 and 4 ([`Planner::refill`]) add members up to the class's
     /// sizes after state 2.
     ///
-    /// port: a planner whose team is still empty after state 3 ends, and
-    /// one older than [`MISSION_PLANNER_DAYS`] ends.
+    /// port: a planner of the heuristics whose team is still empty after
+    /// state 3 ends, and one older than [`MISSION_PLANNER_DAYS`] ends. A
+    /// standing planner lives until the strategy cancels it.
     fn mission_planner_cycle(
         state: &mut AIState,
         planner: &mut Planner<'_>,
         world: &GameWorld,
+        galaxy: &mut crate::ai_records::Galaxy,
         tick: u64,
         actions: &mut Vec<AIAction>,
     ) {
         use crate::mission_planning::standing_system;
         let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
+        let claims = &mut state.record_claims;
         state.mission_planners.retain_mut(|p| {
-            if tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
+            if !p.standing && tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
                 return false;
             }
             if p.last_cycle == tick {
-                return !p.team.is_empty();
+                return p.standing || !p.team.is_empty();
             }
             p.last_cycle = tick;
             p.team.retain(|&m| planner.keeps(m));
@@ -1667,10 +1704,15 @@ impl AISystem {
             let (team, decoys) = planner.refill(p.kind, p.team.len(), p.decoys.len());
             p.team.extend(team);
             p.decoys.extend(decoys);
-            if p.team.is_empty() {
-                return false;
+            if p.standing {
+                p.target_system = diplomacy_target(p, planner, galaxy, claims);
             }
-            let target = p.target_system;
+            if p.team.is_empty() {
+                return p.standing;
+            }
+            let Some(target) = p.target_system else {
+                return true;
+            };
             p.staging = staging_point(world, is_alliance, p.staging, target, &p.team);
             let Some(staging) = p.staging else {
                 return true;
@@ -1704,8 +1746,77 @@ impl AISystem {
                 target_character: p.target_character,
                 target_object: p.target_object,
             });
-            false
+            p.standing
         });
+    }
+
+    /// Row 5 of the strategy's requests (`FUN_004e8290`): the side keeps
+    /// as many Diplomacy planners as it wants (side `+0x214`, from
+    /// [`diplomacy_wanted`]). Fewer ask for one more (`FUN_004d2580`
+    /// builds it, count `+0x34c`); more cancel the one whose team has the
+    /// least diplomacy (slot `+0x18`, `FUN_00481500`; `FUN_004e5710`), the
+    /// earlier on a tie. A cancelled planner frees its members and its
+    /// claim (`FUN_0047aff0`, slot `+0x38` `FUN_00481fe0`); its mission
+    /// runs on.
+    ///
+    /// port: the strategy's other rows are not yet ported, so this row is
+    /// not ordered behind them, and the count reaches the want within one
+    /// step (the original asks once per strategy pass).
+    fn diplomacy_strategy(
+        state: &mut AIState,
+        world: &GameWorld,
+        galaxy: &mut crate::ai_records::Galaxy,
+    ) {
+        let wanted = diplomacy_wanted(galaxy);
+        let count = |state: &AIState| {
+            state
+                .mission_planners
+                .iter()
+                .filter(|p| p.standing && p.kind == MissionKind::Diplomacy)
+                .count()
+        };
+        while count(state) > wanted {
+            let skill = |p: &MissionPlanner| -> u32 {
+                p.team
+                    .iter()
+                    .filter_map(|&m| {
+                        crate::missions::member_skill(world, m, crate::world::Skill::Diplomacy)
+                    })
+                    .sum()
+            };
+            let Some(at) = state
+                .mission_planners
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.standing && p.kind == MissionKind::Diplomacy)
+                .min_by_key(|&(at, p)| (skill(p), at))
+                .map(|(at, _)| at)
+            else {
+                break;
+            };
+            let p = state.mission_planners.remove(at);
+            if let Some(system) = p.claimed {
+                release_claim(&mut state.record_claims, galaxy, system);
+            }
+        }
+        while count(state) < wanted {
+            let id = state.next_planner_id;
+            state.next_planner_id += 1;
+            state.mission_planners.push(MissionPlanner {
+                id,
+                kind: MissionKind::Diplomacy,
+                team: Vec::new(),
+                decoys: Vec::new(),
+                target_system: None,
+                target_character: None,
+                target_object: None,
+                created: 0,
+                last_cycle: 0,
+                staging: None,
+                standing: true,
+                claimed: None,
+            });
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1735,20 +1846,16 @@ impl AISystem {
         true
     }
 
-    /// Incite, Diplomacy, and Recruitment orders.
+    /// Incite and Recruitment orders. Diplomacy is the strategy's
+    /// ([`Self::diplomacy_strategy`], [`diplomacy_target`]).
     ///
-    /// port: the side's strategic choice of mission and target (side
-    /// `+0x318`, `+0x31c`) is untraced, so the port picks the targets; the
-    /// original planners pick the members.
-    /// - Incite: the enemy system where the enemy is most popular.
-    /// - Diplomacy: each system below the popularity cap, least popular
-    ///   first, while the planner finds a diplomat.
-    ///
-    /// Both take only a system their record admits
-    /// ([`crate::missions::record_admits_system`]): the planner rows of
-    /// `FUN_004e8290` count only neutral and own systems for Diplomacy, and
-    /// a refused target would end its mission at once and be ordered again
-    /// each pass.
+    /// port: the strategy's other rows (`FUN_004e8290`) are not yet
+    /// ported, so the port picks these targets; the original planners pick
+    /// the members.
+    /// - Incite: the enemy system where the enemy is most popular, when
+    ///   its record admits it ([`crate::missions::record_admits_system`]);
+    ///   a refused target would end its mission at once and be ordered
+    ///   again each pass.
     /// - Recruitment: the side's most popular system, while its recruit pool
     ///   holds anyone and the planner finds a recruiter.
     fn evaluate_officers(
@@ -1756,7 +1863,6 @@ impl AISystem {
         world: &GameWorld,
         uprisings: &crate::uprising::UprisingState,
         faction: AiFaction,
-        config: &GameConfig,
         actions: &mut Vec<AIAction>,
     ) {
         let admits = |kind: MissionKind, system: SystemKey| {
@@ -1778,27 +1884,6 @@ impl AISystem {
                 None,
                 actions,
             );
-        }
-
-        let cap = config.ai.diplomacy_target_popularity_cap;
-        let mut diplomacy_targets: Vec<(SystemKey, f32)> = world
-            .systems
-            .iter()
-            .map(|(key, system)| (key, faction.system_popularity(system)))
-            .filter(|&(key, popularity)| popularity < cap && admits(MissionKind::Diplomacy, key))
-            .collect();
-        diplomacy_targets
-            .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        for (target, _) in diplomacy_targets {
-            if !Self::dispatch_planned(
-                planner,
-                MissionKind::Diplomacy,
-                (target, None),
-                None,
-                actions,
-            ) {
-                break;
-            }
         }
 
         let side = crate::dat::Faction::from(faction.as_mission_faction());
@@ -2849,76 +2934,6 @@ impl AISystem {
             reserved_troops.insert(troop);
         }
     }
-
-    /// Strategic: send diplomats to low-support controlled systems to prevent uprisings.
-    ///
-    /// Scans systems where our popularity < 0.4 and sends the Diplomacy
-    /// planner's diplomat (`FUN_004815a0`) to the two lowest, to stabilize
-    /// support before an uprising can trigger (uprising threshold is
-    /// popularity-dependent via UPRIS1TB).
-    fn evaluate_uprising_prevention(
-        planner: &mut Planner<'_>,
-        world: &GameWorld,
-        faction: AiFaction,
-        actions: &mut Vec<AIAction>,
-    ) {
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        let our_faction = if is_alliance {
-            crate::dat::Faction::Alliance
-        } else {
-            crate::dat::Faction::Empire
-        };
-
-        // Find controlled systems with dangerously low support.
-        let mut at_risk: Vec<SystemKey> = Vec::new();
-        for (sys_key, system) in &world.systems {
-            if !system.control.is_controlled_by(our_faction) {
-                continue;
-            }
-            let support = if is_alliance {
-                system.popularity_alliance
-            } else {
-                system.popularity_empire
-            };
-            if support < 0.4 {
-                at_risk.push(sys_key);
-            }
-        }
-
-        if at_risk.is_empty() {
-            return;
-        }
-
-        // Sort by lowest support first (most urgent).
-        at_risk.sort_by(|a, b| {
-            let sup_a = if is_alliance {
-                world.systems[*a].popularity_alliance
-            } else {
-                world.systems[*a].popularity_empire
-            };
-            let sup_b = if is_alliance {
-                world.systems[*b].popularity_alliance
-            } else {
-                world.systems[*b].popularity_empire
-            };
-            sup_a
-                .partial_cmp(&sup_b)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        // Limit to 2 uprising-prevention diplomats per cycle.
-        for &target in at_risk.iter().take(2) {
-            if !Self::dispatch_planned(
-                planner,
-                MissionKind::Diplomacy,
-                (target, None),
-                None,
-                actions,
-            ) {
-                break;
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3118,6 +3133,243 @@ fn research_site_choice(
             true,
         )
     }
+}
+
+/// Side `+0x214` (`FUN_0041b7e0`, `FUN_00418500`): the Diplomacy planners
+/// the strategy wants. The sector records' `+0x168` (their systems with
+/// record `+0x2c` bit `0x40`: own below 70 support, or neutral, with no
+/// fleet of the side and no uprising) summed, then `/ 5 + 1` when above 0.
+fn diplomacy_wanted(galaxy: &crate::ai_records::Galaxy) -> usize {
+    let sum: i32 = galaxy
+        .sectors
+        .iter()
+        .map(|s| s.values[crate::ai_records::sector_at(0x168)])
+        .sum();
+    let wanted = if sum > 0 { sum / 5 + 1 } else { sum };
+    usize::try_from(wanted).unwrap_or(0)
+}
+
+/// Slot `+0x38` (`FUN_00481fe0`): clear `system`'s Diplomacy claim (record
+/// `+0x2c` bit `0x20000000`).
+fn release_claim(
+    claims: &mut HashMap<SystemKey, u32>,
+    galaxy: &mut crate::ai_records::Galaxy,
+    system: SystemKey,
+) {
+    use crate::ai_records::CLAIM_DIPLOMACY;
+    if let Some(bits) = claims.get_mut(&system) {
+        *bits &= !CLAIM_DIPLOMACY;
+        if *bits == 0 {
+            claims.remove(&system);
+        }
+    }
+    galaxy.update_summary(system, 0, CLAIM_DIPLOMACY);
+}
+
+/// Claim `system` for Diplomacy (record `+0x2c` `|= 0x20000000`).
+fn take_claim(
+    claims: &mut HashMap<SystemKey, u32>,
+    galaxy: &mut crate::ai_records::Galaxy,
+    system: SystemKey,
+) {
+    use crate::ai_records::CLAIM_DIPLOMACY;
+    *claims.entry(system).or_insert(0) |= CLAIM_DIPLOMACY;
+    galaxy.update_summary(system, CLAIM_DIPLOMACY, 0);
+}
+
+/// `FUN_0041a1d0`: the sectors whose `+0x24`, `+0x28`, `+0x2c` pass
+/// `masks`, each keyed on a draw below 20 (`FUN_0041cd80(0x14)`) as it goes
+/// into the list, so the key draws and the tie coins interleave.
+fn random_sectors(
+    planner: &mut Planner<'_>,
+    galaxy: &crate::ai_records::Galaxy,
+    masks: [crate::ai_records::Mask; 3],
+    order: crate::ai_records::Order,
+) -> Vec<crate::ids::SectorKey> {
+    let sectors: Vec<crate::ids::SectorKey> = galaxy
+        .sectors
+        .iter()
+        .filter(|s| s.admitted(masks))
+        .map(|s| s.sector)
+        .collect();
+    let draws = std::cell::RefCell::new(planner);
+    let items = sectors
+        .into_iter()
+        .map(|s| (s, draws.borrow_mut().random(0x14)));
+    crate::ai_records::ranked(items, order, &mut || draws.borrow_mut().coin())
+}
+
+/// `FUN_0041a460` -> `FUN_00431f40`: of `sector`'s systems whose `+0x28`,
+/// `+0x2c`, `+0x30` pass `masks`, each keyed on a draw below 10 as it goes
+/// into the list, the one picked (`FUN_004357b0`).
+fn random_system(
+    planner: &mut Planner<'_>,
+    galaxy: &crate::ai_records::Galaxy,
+    sector: Option<crate::ids::SectorKey>,
+    masks: [crate::ai_records::Mask; 3],
+    order: crate::ai_records::Order,
+) -> Option<SystemKey> {
+    let systems: Vec<SystemKey> = galaxy
+        .sector(sector?)?
+        .systems
+        .iter()
+        .filter(|r| {
+            masks[0].admits(r.state) && masks[1].admits(r.summary) && masks[2].admits(r.kind)
+        })
+        .map(|r| r.system)
+        .collect();
+    let draws = std::cell::RefCell::new(planner);
+    let items = systems
+        .into_iter()
+        .map(|s| (s, draws.borrow_mut().random(10)));
+    let list = crate::ai_records::ranked(items, order, &mut || draws.borrow_mut().coin());
+    crate::ai_records::pick(&[list])
+}
+
+/// State 5 of a Diplomacy planner (slot `+0x50`, `FUN_00481720`): its
+/// target `+0x34`, claimed in its record (`+0x2c` bit `0x20000000`).
+///
+/// Without a team it releases its target's claim and picks none. With
+/// one it keeps its target while the record still has `+0x2c` bit `0x40`
+/// and no enemy fleet (`+0x30` bit `0x200`). Otherwise, the first that
+/// gives a system:
+///
+/// 1. the sector with own systems and an unclaimed candidate (`+0x28`
+///    `0x4000020`, `+0x2c` 4) of the lowest average own support (key
+///    `+0x8c`, order 2); below 70, a random own unclaimed candidate there
+///    (`+0x2c` `0x40`, `+0x30` 1, order 2);
+/// 2. from the previous gathering place `+0x38`: the nearest sector with
+///    neutral systems and an unclaimed candidate (`+0x2c` `0x10`, order
+///    2), then a random neutral unclaimed candidate there (`+0x30` 2);
+/// 3. from `+0x38`: the unclaimed candidate nearest it in the sector last
+///    picked (`FUN_0041a400`, order 2);
+/// 4. the sector ranked by its own and its neutral systems and a draw
+///    (keys `+0x7c`, `+0x84`, `FUN_0041a1d0`, order 1), then a random
+///    neutral unclaimed candidate (order 1);
+/// 5. the sector ranked by its own systems and a draw over every sector
+///    with a candidate (`+0x28` `0x20`), then a random unclaimed candidate
+///    of any side (order 2).
+fn diplomacy_target(
+    p: &mut MissionPlanner,
+    planner: &mut Planner<'_>,
+    galaxy: &mut crate::ai_records::Galaxy,
+    claims: &mut HashMap<SystemKey, u32>,
+) -> Option<SystemKey> {
+    use crate::ai_records::{pick, sector_at, Mask, Order, CLAIM_DIPLOMACY};
+    let any = Mask::new(0, 0);
+    let current = p.target_system;
+    if p.team.is_empty() {
+        if let Some(t) = current {
+            release_claim(claims, galaxy, t);
+            if p.claimed == Some(t) {
+                p.claimed = None;
+            }
+        }
+        return current;
+    }
+    let claim = |p: &mut MissionPlanner,
+                 galaxy: &mut crate::ai_records::Galaxy,
+                 claims: &mut HashMap<SystemKey, u32>,
+                 t: SystemKey| {
+        take_claim(claims, galaxy, t);
+        p.claimed = Some(t);
+        Some(t)
+    };
+    if let Some(t) = current {
+        if let Some(r) = galaxy.system(t) {
+            if r.summary & 0x40 != 0 && r.kind & 0x200 == 0 {
+                return claim(p, galaxy, claims, t);
+            }
+        }
+        release_claim(claims, galaxy, t);
+        if p.claimed == Some(t) {
+            p.claimed = None;
+        }
+    }
+    let candidate = Mask::new(0x40, CLAIM_DIPLOMACY);
+    let open = Mask::new(0x400_0020, 0);
+    let previous = p.staging;
+    let coin_of = |planner: &mut Planner<'_>| planner.coin();
+    let sectors = galaxy.sector_query(
+        [any, open, Mask::new(4, 0)],
+        7,
+        Order::Descending,
+        &mut || coin_of(planner),
+    );
+    let mut last = pick(&[sectors]);
+    let low = last
+        .and_then(|s| galaxy.sector(s))
+        .is_some_and(|r| r.values[sector_at(0x8c)] < 70);
+    let mut target = None;
+    if low {
+        target = random_system(
+            planner,
+            galaxy,
+            last,
+            [any, candidate, Mask::new(1, 0)],
+            Order::Descending,
+        );
+    }
+    if let (None, Some(prev)) = (target, previous) {
+        let sectors = galaxy.sectors_by_distance(
+            prev,
+            [any, open, Mask::new(0x10, 0)],
+            Order::Descending,
+            &mut || coin_of(planner),
+        );
+        last = pick(&[sectors]);
+        target = random_system(
+            planner,
+            galaxy,
+            last,
+            [any, candidate, Mask::new(2, 0)],
+            Order::Descending,
+        );
+    }
+    if let (None, Some(prev), Some(sector)) = (target, previous, last) {
+        let systems = galaxy.systems_by_distance(
+            sector,
+            prev,
+            [any, candidate, any],
+            Order::Descending,
+            &mut || coin_of(planner),
+        );
+        target = pick(&[systems]);
+    }
+    if target.is_none() {
+        let masks = [any, open, Mask::new(0x10, 0)];
+        let own = galaxy.sector_query(masks, 3, Order::Ascending, &mut || coin_of(planner));
+        let neutral = galaxy.sector_query(masks, 5, Order::Ascending, &mut || coin_of(planner));
+        let drawn = random_sectors(planner, galaxy, masks, Order::Ascending);
+        let sector = pick(&[own, neutral, drawn]);
+        target = random_system(
+            planner,
+            galaxy,
+            sector,
+            [any, candidate, Mask::new(2, 0)],
+            Order::Ascending,
+        );
+    }
+    if target.is_none() {
+        let own = galaxy.sector_query([any, open, any], 3, Order::Ascending, &mut || {
+            coin_of(planner)
+        });
+        let drawn = random_sectors(
+            planner,
+            galaxy,
+            [any, Mask::new(0x20, 0), any],
+            Order::Ascending,
+        );
+        let sector = pick(&[own, drawn]);
+        target = random_system(
+            planner,
+            galaxy,
+            sector,
+            [any, candidate, any],
+            Order::Descending,
+        );
+    }
+    target.and_then(|t| claim(p, galaxy, claims, t))
 }
 
 #[cfg(test)]
@@ -3493,7 +3745,14 @@ mod tests {
         let busy = HashSet::new();
         let mut planner = Planner::new(&world, &missions, &busy, true, 7);
         let mut actions = Vec::new();
-        AISystem::run_module(0xa, &mut AIState::new(faction), &mut planner, &ctx, &mut actions);
+        AISystem::run_module(
+            0xa,
+            &mut AIState::new(faction),
+            &mut planner,
+            &ctx,
+            &mut crate::ai_records::Galaxy::default(),
+            &mut actions,
+        );
         assert!(matches!(
             actions.as_slice(),
             [AIAction::EnqueueProduction {
@@ -3579,14 +3838,7 @@ mod tests {
         };
         let mut actions = Vec::new();
         research_all(state, &mut planner, &ctx, &mut actions);
-        AISystem::evaluate_officers(
-            &mut planner,
-            world,
-            uprisings,
-            faction,
-            config,
-            &mut actions,
-        );
+        AISystem::evaluate_officers(&mut planner, world, uprisings, faction, &mut actions);
         AISystem::evaluate_espionage(&mut planner, world, faction, config, &mut actions);
         AISystem::evaluate_rescue(&mut planner, world, faction, &mut actions);
         AISystem::evaluate_reconnaissance(&mut planner, world, faction, config, &mut actions);
@@ -3598,9 +3850,22 @@ mod tests {
             config,
             &mut actions,
         );
-        AISystem::evaluate_uprising_prevention(&mut planner, world, faction, &mut actions);
-        AISystem::run_module(8, state, &mut planner, &ctx, &mut actions);
-        AISystem::run_module(0xc, state, &mut planner, &ctx, &mut actions);
+        AISystem::run_module(
+            8,
+            state,
+            &mut planner,
+            &ctx,
+            &mut crate::ai_records::Galaxy::default(),
+            &mut actions,
+        );
+        AISystem::run_module(
+            0xc,
+            state,
+            &mut planner,
+            &ctx,
+            &mut crate::ai_records::Galaxy::default(),
+            &mut actions,
+        );
         actions
     }
 
@@ -3742,72 +4007,477 @@ mod tests {
         );
     }
 
+    /// One day of the Diplomacy rows: the side's records (phase 4), the
+    /// strategy's row 5 and every mission planner's cycle.
+    fn diplomacy_pass(state: &mut AIState, world: &GameWorld, tick: u64) -> Vec<AIAction> {
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let economy = crate::economy::EconomyState::default();
+        let uprisings = crate::uprising::UprisingState::default();
+        let manufacturing = ManufacturingState::new();
+        let research = ResearchState::new();
+        let movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
+        let mut planner = Planner::new(world, &missions, &busy, is_alliance, 7);
+        for p in &state.mission_planners {
+            for &member in p.team.iter().chain(&p.decoys) {
+                planner.hold(member);
+            }
+        }
+        let inputs = RecordInputs {
+            world,
+            economy: &economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            movement: &movement,
+            transport: &transport,
+        };
+        let mut galaxy = AISystem::records(state, &planner, &inputs);
+        AISystem::diplomacy_strategy(state, world, &mut galaxy);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_cycle(
+            state,
+            &mut planner,
+            world,
+            &mut galaxy,
+            tick,
+            &mut actions,
+        );
+        actions
+    }
+
+    /// An Empire system at `support` (percent) where `diplomats` (by
+    /// diplomacy) stand, and a neutral system, both explored, in one
+    /// sector.
+    fn diplomacy_world(
+        support: f32,
+        diplomats: &[u32],
+    ) -> (GameWorld, SystemKey, SystemKey, Vec<CharacterKey>) {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let home = add_system(&mut world, sector, 0.1, support / 100.0);
+        world.systems[home].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let neutral = add_system(&mut world, sector, 0.4, 0.4);
+        let keys = diplomats
+            .iter()
+            .map(|&d| {
+                let c = add_character(&mut world, false, false, d);
+                world.characters[c].current_system = Some(home);
+                c
+            })
+            .collect();
+        (world, home, neutral, keys)
+    }
+
     #[test]
     fn a_diplomat_needs_diplomacy_of_69() {
         // FUN_004815a0: one member, diplomacy 69..=10000.
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let _ = add_system(&mut world, sector, 0.1, 0.2);
-        let _ = add_character(&mut world, false, false, 68);
+        let (world, _, _, _) = diplomacy_world(90.0, &[68]);
         let mut state = AIState::new(AiFaction::Empire);
 
         assert_eq!(
-            team_of(&advance_once(&mut state, &world), MissionKind::Diplomacy),
+            team_of(
+                &diplomacy_pass(&mut state, &world, 1),
+                MissionKind::Diplomacy
+            ),
             None
         );
 
-        let diplomat = add_character(&mut world, false, false, 69);
+        let (world, _, _, keys) = diplomacy_world(90.0, &[69]);
         let mut state = AIState::new(AiFaction::Empire);
-        let team = team_of(&advance_once(&mut state, &world), MissionKind::Diplomacy);
+        let team = team_of(
+            &diplomacy_pass(&mut state, &world, 1),
+            MissionKind::Diplomacy,
+        );
 
         assert_eq!(
             team,
-            Some(vec![crate::missions::MissionMember::Character(diplomat)])
+            Some(vec![crate::missions::MissionMember::Character(keys[0])])
         );
     }
 
     #[test]
     fn a_diplomat_is_sent_only_where_the_diplomacy_record_admits_the_target() {
         // MISSNSD Diplomacy (cols 15..17): own and third-side targets, no
-        // opponent's (FUN_00523450 rule 3, end 8); the planner rows of
-        // FUN_004e8290 count only neutral and own systems. The opponent's
-        // system is the least popular, yet the neutral one is the target.
-        let mut world = empty_world();
-        world.mission_records = vec![crate::world::MissionRecord {
-            dat_id: MissionKind::Diplomacy.record_id().unwrap(),
-            timer_min_days: 5,
-            timer_spread_days: 10,
-            repeats: true,
-            hidden: false,
-            detection_phases: true,
-            can_resign: true,
-            rules: crate::world::MissionTargetRules {
-                own_side_target: true,
-                other_side_target: true,
-                calm_target: true,
-                ..Default::default()
-            },
-            members: crate::world::MissionMemberRules {
-                alliance: true,
-                empire: true,
-                special_force_mask: 0,
-                character_mask: 0x1_0000,
-            },
-        }];
-        let sector = add_sector(&mut world);
+        // opponent's (FUN_00523450 rule 3, end 8). FUN_00481720 takes only
+        // a system with record +0x2c bit 0x40, own or neutral
+        // (FUN_00433e40). The opponent's system is the least popular, yet
+        // the neutral one is the target.
+        let (mut world, _, neutral, _) = diplomacy_world(90.0, &[90]);
+        let sector = world.systems[neutral].sector;
         let rebel = add_system(&mut world, sector, 0.9, 0.1);
         world.systems[rebel].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
-        let neutral = add_system(&mut world, sector, 0.5, 0.3);
-        let _ = add_character(&mut world, false, false, 90);
         let mut state = AIState::new(AiFaction::Empire);
 
-        let actions = advance_once(&mut state, &world);
+        let actions = diplomacy_pass(&mut state, &world, 1);
 
         let targets: Vec<_> = orders(&actions, MissionKind::Diplomacy)
             .into_iter()
             .map(|(_, target, _)| target)
             .collect();
         assert_eq!(targets, vec![neutral]);
+    }
+
+    #[test]
+    fn the_strategy_keeps_one_diplomacy_planner_and_one_more_per_five_candidates() {
+        // FUN_004e8290 row 5: a request while +0x34c < +0x214, a
+        // cancellation while above; +0x214 is the candidates (record +0x2c
+        // 0x40) / 5 + 1 when any (FUN_0041b7e0, FUN_00418500).
+        let count = |candidates: usize| {
+            let (mut world, home, neutral, _) = diplomacy_world(90.0, &[]);
+            let sector = world.systems[home].sector;
+            world.systems.remove(neutral);
+            for _ in 0..candidates {
+                add_system(&mut world, sector, 0.4, 0.4);
+            }
+            let mut state = AIState::new(AiFaction::Empire);
+            diplomacy_pass(&mut state, &world, 1);
+            state
+                .mission_planners
+                .iter()
+                .filter(|p| p.standing && p.kind == MissionKind::Diplomacy)
+                .count()
+        };
+        assert_eq!([0, 1, 4, 5, 9, 10].map(count), [0, 1, 1, 2, 2, 3]);
+    }
+
+    #[test]
+    fn a_surplus_diplomacy_planner_with_the_weakest_team_is_cancelled_and_frees_its_claim() {
+        // FUN_004e5710: the least slot +0x18 (FUN_00481500, the team's
+        // diplomacy); FUN_00481fe0 releases the record's claim.
+        let (world, _, neutral, keys) = diplomacy_world(90.0, &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        diplomacy_pass(&mut state, &world, 1);
+        assert_eq!(state.record_claims.get(&neutral), Some(&0x2000_0000));
+        let weak = MissionPlanner {
+            id: 99,
+            team: Vec::new(),
+            ..state.mission_planners[0].clone()
+        };
+        state.mission_planners.insert(0, weak);
+        let strong = state.mission_planners[1].clone();
+        diplomacy_pass(&mut state, &world, 2);
+        assert_eq!(state.mission_planners.len(), 1);
+        assert_eq!(state.mission_planners[0].id, strong.id);
+        assert_eq!(
+            state.mission_planners[0].team,
+            vec![MissionMember::Character(keys[0])]
+        );
+
+        // With no candidate left, the last planner goes and frees its claim.
+        let mut world = world;
+        world.systems[neutral].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.systems[neutral].popularity_empire = 0.9;
+        diplomacy_pass(&mut state, &world, 3);
+        assert!(state.mission_planners.is_empty());
+        assert!(state.record_claims.is_empty());
+    }
+
+    #[test]
+    fn a_diplomacy_planner_takes_an_own_system_below_70_before_a_neutral_one() {
+        // FUN_00481720: first the sector of the lowest average own support
+        // (key +0x8c) when it is below 70, and an own candidate there.
+        let (world, home, neutral, _) = diplomacy_world(50.0, &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        let targets = |actions: &[AIAction]| -> Vec<SystemKey> {
+            orders(actions, MissionKind::Diplomacy)
+                .into_iter()
+                .map(|(_, target, _)| target)
+                .collect()
+        };
+        assert_eq!(targets(&diplomacy_pass(&mut state, &world, 1)), vec![home]);
+
+        let (world, _, _, _) = diplomacy_world(70.0, &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        assert_eq!(
+            targets(&diplomacy_pass(&mut state, &world, 1)),
+            vec![neutral]
+        );
+    }
+
+    #[test]
+    fn a_diplomacy_planner_keeps_its_claimed_target_and_another_takes_the_next() {
+        // FUN_00481720 keeps +0x34 while its record has +0x2c 0x40 and no
+        // enemy fleet; the claim (+0x2c 0x20000000) keeps the second
+        // planner's queries off it at once. The home system is the only
+        // own candidate (support 30), so without the claim both would take
+        // it; four neutral candidates in another sector make five, two
+        // planners.
+        let (mut world, home, neutral, _) = diplomacy_world(30.0, &[90, 80]);
+        let far = add_sector(&mut world);
+        world.sectors[far].x = 500;
+        world.systems[neutral].sector = far;
+        let neutrals: Vec<SystemKey> = std::iter::once(neutral)
+            .chain((0..3).map(|_| add_system(&mut world, far, 0.4, 0.4)))
+            .collect();
+        let mut state = AIState::new(AiFaction::Empire);
+        let first = diplomacy_pass(&mut state, &world, 1);
+        let targets: Vec<SystemKey> = state
+            .mission_planners
+            .iter()
+            .filter_map(|p| p.target_system)
+            .collect();
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0], home);
+        assert!(neutrals.contains(&targets[1]));
+        assert_eq!(orders(&first, MissionKind::Diplomacy).len(), 2);
+        for t in &targets {
+            assert_eq!(state.record_claims.get(t), Some(&0x2000_0000));
+            assert_eq!(
+                state
+                    .mission_planners
+                    .iter()
+                    .filter(|p| p.claimed == Some(*t))
+                    .count(),
+                1
+            );
+        }
+
+        // The next day each keeps its own.
+        diplomacy_pass(&mut state, &world, 2);
+        let kept: Vec<SystemKey> = state
+            .mission_planners
+            .iter()
+            .filter_map(|p| p.target_system)
+            .collect();
+        assert_eq!(kept, targets);
+
+        // Once its target is no candidate (own at 90), the planner takes
+        // another and frees the old claim.
+        world.systems[home].popularity_empire = 0.9;
+        diplomacy_pass(&mut state, &world, 3);
+        assert_ne!(state.mission_planners[0].target_system, Some(home));
+        assert!(!state.record_claims.contains_key(&home));
+    }
+
+    #[test]
+    fn a_diplomacy_planner_without_a_team_frees_its_claim() {
+        // FUN_00481720 with +0x20 bit 1 clear: the record of +0x34 loses
+        // its claim, and no target is picked.
+        let (mut world, _, neutral, keys) = diplomacy_world(90.0, &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        diplomacy_pass(&mut state, &world, 1);
+        assert_eq!(state.mission_planners[0].claimed, Some(neutral));
+        world.characters[keys[0]].mark_killed();
+        diplomacy_pass(&mut state, &world, 2);
+        let p = &state.mission_planners[0];
+        assert!(p.team.is_empty());
+        assert_eq!(p.claimed, None);
+        assert_eq!(p.target_system, Some(neutral));
+        assert!(state.record_claims.is_empty());
+    }
+
+    #[test]
+    fn the_own_sector_counts_by_its_average_support_below_70() {
+        // FUN_00481720: the sector record's +0x8c (its own systems' support
+        // over their count, FUN_004321e0) must be below 70. Own systems at
+        // 40 and 100 average 70, so the own candidate waits and the
+        // neutral one is taken.
+        let (mut world, home, neutral, _) = diplomacy_world(40.0, &[90]);
+        let sector = world.systems[home].sector;
+        let rich = add_system(&mut world, sector, 0.0, 1.0);
+        world.systems[rich].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let mut state = AIState::new(AiFaction::Empire);
+        diplomacy_pass(&mut state, &world, 1);
+        assert_eq!(state.mission_planners[0].target_system, Some(neutral));
+    }
+
+    #[test]
+    fn the_refresh_keeps_the_planners_claims_and_a_sector_with_none_open_loses_0x4000000() {
+        // FUN_00433e40 keeps +0x2c & 0x60000000; FUN_00432350 sets sector
+        // +0x28 0x4000000 for a system with +0x2c 0x40 and no
+        // 0x20000000.
+        let (world, home, neutral, _) = diplomacy_world(90.0, &[]);
+        let sector = world.systems[home].sector;
+        let galaxy_with = |claims: &[(SystemKey, u32)]| {
+            let mut state = AIState::new(AiFaction::Empire);
+            state.record_claims = claims.iter().copied().collect();
+            let missions = MissionState::new();
+            let busy = HashSet::new();
+            let economy = crate::economy::EconomyState::default();
+            let uprisings = crate::uprising::UprisingState::default();
+            let manufacturing = ManufacturingState::new();
+            let research = ResearchState::new();
+            let movement = crate::movement::MovementState::new();
+            let transport = crate::troop_transport::TroopTransportState::new();
+            let planner = Planner::new(&world, &missions, &busy, false, 7);
+            let inputs = RecordInputs {
+                world: &world,
+                economy: &economy,
+                uprisings: &uprisings,
+                manufacturing: &manufacturing,
+                research: &research,
+                movement: &movement,
+                transport: &transport,
+            };
+            AISystem::records(&state, &planner, &inputs)
+        };
+        let open = |g: &crate::ai_records::Galaxy| g.sector(sector).unwrap().state & 0x400_0000;
+
+        let g = galaxy_with(&[]);
+        assert_eq!(open(&g), 0x400_0000);
+        assert_eq!(g.system(neutral).unwrap().summary & 0xe000_0000, 0);
+
+        let g = galaxy_with(&[(neutral, 0xffff_ffff)]);
+        assert_eq!(
+            g.system(neutral).unwrap().summary & 0xe000_0000,
+            0x6000_0000
+        );
+        assert_eq!(open(&g), 0);
+
+        // Another claim (0x40000000) leaves the system open.
+        let g = galaxy_with(&[(neutral, 0x4000_0000)]);
+        assert_eq!(open(&g), 0x400_0000);
+    }
+
+    #[test]
+    fn a_claim_is_seen_at_once_and_a_planner_left_with_no_candidate_holds_no_claim() {
+        // FUN_00481720 sets and clears record +0x2c 0x20000000 in place
+        // (seen by the next query), and a planner whose target lost +0x2c
+        // 0x40 with nothing else to take keeps no claim (+0x30).
+        let (world, home, neutral, _) = diplomacy_world(90.0, &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        diplomacy_pass(&mut state, &world, 1);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let economy = crate::economy::EconomyState::default();
+        let uprisings = crate::uprising::UprisingState::default();
+        let manufacturing = ManufacturingState::new();
+        let research = ResearchState::new();
+        let movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let inputs = RecordInputs {
+            world: &world,
+            economy: &economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            movement: &movement,
+            transport: &transport,
+        };
+        let mut galaxy = AISystem::records(&state, &planner, &inputs);
+        let before = galaxy.system(neutral).unwrap().summary;
+        assert_eq!(before & 0x2000_0000, 0x2000_0000);
+        galaxy.update_summary(neutral, 0, 0x2000_0000);
+        assert_eq!(
+            galaxy.system(neutral).unwrap().summary,
+            before & !0x2000_0000
+        );
+        galaxy.update_summary(neutral, 0x2000_0000, 0);
+        assert_eq!(galaxy.system(neutral).unwrap().summary, before);
+        galaxy.update_summary(neutral, 0x2000_0000, 0);
+        assert_eq!(galaxy.system(neutral).unwrap().summary, before);
+
+        for system in [home, neutral] {
+            galaxy.update_summary(system, 0, 0x40);
+        }
+        let mut p = state.mission_planners[0].clone();
+        let target = diplomacy_target(&mut p, &mut planner, &mut galaxy, &mut state.record_claims);
+        assert_eq!(target, None);
+        assert_eq!(p.claimed, None);
+        assert!(state.record_claims.is_empty());
+    }
+
+    #[test]
+    fn the_strategy_adds_and_cancels_only_standing_diplomacy_planners() {
+        // FUN_004e5710 picks among the planners of the cancelled kind;
+        // the heuristic planner holds a minor of diplomacy 50 and the
+        // standing one takes the diplomat of 90, so the heuristic one is the
+        // weaker;
+        // FUN_004e8290 row 5 counts only +0x34c.
+        let heuristic = |id, member| MissionPlanner {
+            id,
+            kind: MissionKind::Diplomacy,
+            team: vec![member],
+            decoys: Vec::new(),
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 1,
+            last_cycle: 0,
+            staging: None,
+            standing: false,
+            claimed: None,
+        };
+        let (world, _, _, keys) = diplomacy_world(90.0, &[50, 90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        state
+            .mission_planners
+            .push(heuristic(50, MissionMember::Character(keys[0])));
+        diplomacy_pass(&mut state, &world, 1);
+        assert_eq!(
+            state
+                .mission_planners
+                .iter()
+                .map(|p| p.standing)
+                .collect::<Vec<_>>(),
+            vec![false, true]
+        );
+
+        // No candidate: the standing one goes, the other stays.
+        let mut world = world;
+        for sys in world.systems.values_mut() {
+            sys.control = ControlKind::Controlled(crate::dat::Faction::Empire);
+            sys.popularity_empire = 0.9;
+        }
+        diplomacy_pass(&mut state, &world, 2);
+        assert_eq!(
+            state
+                .mission_planners
+                .iter()
+                .map(|p| p.id)
+                .collect::<Vec<_>>(),
+            vec![50]
+        );
+    }
+
+    #[test]
+    fn only_standing_diplomacy_planners_count_against_the_want_and_each_has_its_own_id() {
+        // FUN_004e8290 row 5 counts +0x34c, the live Diplomacy planners
+        // (slot +0x40 = 0xb, FUN_004814f0).
+        let (world, home, neutral, _) = diplomacy_world(90.0, &[]);
+        let mut state = AIState::new(AiFaction::Empire);
+        let other = |kind, standing| MissionPlanner {
+            id: 50,
+            kind,
+            team: Vec::new(),
+            decoys: Vec::new(),
+            target_system: Some(home),
+            target_character: None,
+            target_object: None,
+            created: 1,
+            last_cycle: 0,
+            staging: None,
+            standing,
+            claimed: None,
+        };
+        state
+            .mission_planners
+            .push(other(MissionKind::Diplomacy, false));
+        state
+            .mission_planners
+            .push(other(MissionKind::Rescue, true));
+        state.next_planner_id = 3;
+        let mut galaxy = crate::ai_records::Galaxy::default();
+        AISystem::diplomacy_strategy(&mut state, &world, &mut galaxy);
+        assert_eq!(state.mission_planners.len(), 2);
+        let _ = neutral;
+
+        // Five candidates want two.
+        let (mut world, home, _, _) = diplomacy_world(90.0, &[]);
+        let sector = world.systems[home].sector;
+        for _ in 0..4 {
+            add_system(&mut world, sector, 0.4, 0.4);
+        }
+        let mut state = AIState::new(AiFaction::Empire);
+        state.next_planner_id = 3;
+        diplomacy_pass(&mut state, &world, 1);
+        let ids: Vec<u64> = state.mission_planners.iter().map(|p| p.id).collect();
+        assert_eq!(ids, vec![3, 4]);
+        assert_eq!(state.next_planner_id, 5);
     }
 
     #[test]
@@ -4982,6 +5652,7 @@ mod tests {
             &mut AIState::new(AiFaction::Empire),
             &mut planner,
             &ctx,
+            &mut crate::ai_records::Galaxy::default(),
             &mut by_module,
         );
         assert_eq!(by_module, actions);
@@ -5125,6 +5796,7 @@ mod tests {
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
+            &mut crate::ai_records::Galaxy::default(),
             2,
             &mut actions,
         );
@@ -5140,6 +5812,7 @@ mod tests {
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
+            &mut crate::ai_records::Galaxy::default(),
             2,
             &mut again,
         );
@@ -5153,6 +5826,7 @@ mod tests {
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
+            &mut crate::ai_records::Galaxy::default(),
             3,
             &mut actions,
         );
@@ -5165,6 +5839,7 @@ mod tests {
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
+            &mut crate::ai_records::Galaxy::default(),
             4,
             &mut actions,
         );
@@ -5202,6 +5877,7 @@ mod tests {
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
+            &mut crate::ai_records::Galaxy::default(),
             2,
             &mut actions,
         );
@@ -5215,6 +5891,7 @@ mod tests {
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
+            &mut crate::ai_records::Galaxy::default(),
             3,
             &mut actions,
         );
@@ -5385,6 +6062,7 @@ mod tests {
                 state,
                 &mut planner_for(world, AiFaction::Empire),
                 world,
+                &mut crate::ai_records::Galaxy::default(),
                 tick,
                 &mut actions,
             );
@@ -5450,41 +6128,6 @@ mod tests {
     }
 
     #[test]
-    fn each_diplomat_goes_to_another_system_below_the_cap_least_popular_first() {
-        // port: the targets are the port's; FUN_004815a0 picks the best
-        // diplomat for each.
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let warmer = add_system(&mut world, sector, 0.1, 0.3);
-        let coldest = add_system(&mut world, sector, 0.1, 0.1);
-        let _capped = add_system(&mut world, sector, 0.1, 0.8);
-        let best = add_character(&mut world, false, false, 90);
-        let next = add_character(&mut world, false, false, 80);
-        // A third diplomat is left idle: the capped system is no target.
-        let _idle = add_character(&mut world, false, false, 70);
-        let mut planner = planner_for(&world, AiFaction::Empire);
-        let mut actions = Vec::new();
-
-        AISystem::evaluate_officers(
-            &mut planner,
-            &world,
-            &crate::uprising::UprisingState::default(),
-            AiFaction::Empire,
-            &GameConfig::default(),
-            &mut actions,
-        );
-
-        let character = MissionMember::Character;
-        assert_eq!(
-            orders(&actions, MissionKind::Diplomacy),
-            vec![
-                (vec![character(best)], coldest, None),
-                (vec![character(next)], warmer, None),
-            ]
-        );
-    }
-
-    #[test]
     fn recruitment_sends_one_recruiter_per_character_left_to_recruit() {
         // FUN_0055fc80 recruits from the side's pool; once the side has
         // recruited its last (FUN_0052f590), no Recruitment goes out.
@@ -5507,7 +6150,6 @@ mod tests {
                 world,
                 &crate::uprising::UprisingState::default(),
                 AiFaction::Empire,
-                &GameConfig::default(),
                 &mut actions,
             );
             orders(&actions, MissionKind::Recruitment).len()
@@ -5764,61 +6406,6 @@ mod tests {
         let mut expected = vec![first, second];
         expected.sort();
         assert_eq!(targets, expected);
-    }
-
-    #[test]
-    fn uprising_prevention_sends_diplomats_to_our_systems_below_40_percent() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let ours = |world: &mut GameWorld, support| {
-            let system = add_system(world, sector, support, 0.5);
-            world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
-            system
-        };
-        let lowest = ours(&mut world, 0.2);
-        let low = ours(&mut world, 0.3);
-        let _steady = ours(&mut world, 0.4);
-        let _lower = ours(&mut world, 0.35);
-        let enemy = add_system(&mut world, sector, 0.1, 0.5);
-        world.systems[enemy].control = ControlKind::Controlled(crate::dat::Faction::Empire);
-        for _ in 0..3 {
-            add_character(&mut world, true, false, 90);
-        }
-        let mut planner = planner_for(&world, AiFaction::Alliance);
-        let mut actions = Vec::new();
-
-        AISystem::evaluate_uprising_prevention(
-            &mut planner,
-            &world,
-            AiFaction::Alliance,
-            &mut actions,
-        );
-
-        let targets: Vec<_> = orders(&actions, MissionKind::Diplomacy)
-            .into_iter()
-            .map(|(_, system, _)| system)
-            .collect();
-        assert_eq!(targets, vec![lowest, low]);
-    }
-
-    #[test]
-    fn uprising_prevention_skips_a_system_at_exactly_40_percent() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let steady = add_system(&mut world, sector, 0.4, 0.5);
-        world.systems[steady].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
-        add_character(&mut world, true, false, 90);
-        let mut planner = planner_for(&world, AiFaction::Alliance);
-        let mut actions = Vec::new();
-
-        AISystem::evaluate_uprising_prevention(
-            &mut planner,
-            &world,
-            AiFaction::Alliance,
-            &mut actions,
-        );
-
-        assert!(orders(&actions, MissionKind::Diplomacy).is_empty());
     }
 
     /// An Alliance system holding a yard of `family` (MANFACSD `0x28`
@@ -6799,7 +7386,14 @@ mod tests {
         let mut state = AIState::new(AiFaction::Empire);
         let mut run = |id| {
             let mut actions = Vec::new();
-            AISystem::run_module(id, &mut state, &mut planner, &ctx, &mut actions);
+            AISystem::run_module(
+                id,
+                &mut state,
+                &mut planner,
+                &ctx,
+                &mut crate::ai_records::Galaxy::default(),
+                &mut actions,
+            );
             actions
         };
 
@@ -8350,7 +8944,13 @@ mod tests {
         let ids: Vec<u64> = state.research_planners.iter().map(|p| p.id).collect();
         let mut step = |state: &mut AIState| {
             let mut actions = Vec::new();
-            AISystem::mission_step(state, &mut planner, &ctx, &mut actions);
+            AISystem::mission_step(
+                state,
+                &mut planner,
+                &ctx,
+                &mut crate::ai_records::Galaxy::default(),
+                &mut actions,
+            );
             orders(&actions, MissionKind::Move)
         };
 

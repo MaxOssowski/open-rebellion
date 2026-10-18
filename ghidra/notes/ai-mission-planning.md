@@ -882,6 +882,92 @@ The user approved the save change and the AI change.
   - Systems held at the end are alike: Alliance 579 and 557, Empire 352
     and 347, summed over seeds.
 
+## The Diplomacy planner (read and ported 2026-10-18, save v81)
+
+The Diplomacy planner class has vtable `0x0065a900`:
+
+| Slot | Function | Meaning |
+|---|---|---|
+| `+0x18` | `FUN_00481500` | the cancel key: the team's records' `+0x40` summed (diplomacy), 0 with `+0x20` bit `0x20` |
+| `+0x30` | `FUN_0047c890` | the Mission Report, shared with the research planners |
+| `+0x34` | `FUN_00481eb0` | the abort test: the target record still has `+0x2c` bit `0x40` |
+| `+0x38` | `FUN_00481fe0` | release: clear the claim `0x20000000` on the record of `+0x30` |
+| `+0x3c` | `FUN_00481ef0` | a better free diplomat exists (not read further) |
+| `+0x40` | `FUN_004814f0` | 0xb: the count `S+0x320 + 4*0xb` = `S+0x34c` |
+| `+0x48` | `FUN_004815a0` | the team selector (diplomacy 69..10000) |
+| `+0x4c` | `FUN_0047f500` | the decoy selector |
+| `+0x50` | `FUN_00481720` | state 5, the target |
+
+**The want.** `FUN_0041b7e0` sums the sector records' `+0x168` (their
+systems with record `+0x2c` bit `0x40`) into `S+0x214`, and
+`FUN_00418500` then sets it to `/ 5 + 1` only when it is above 0. With no
+candidate the side wants no Diplomacy planner. `S+0x218` (Incite) is the
+sectors' `+0x178` (record `+0x2c` `0x100`) `/ 6 + 1` the same way, and
+`S+0x21c` (Subdue) the sectors' `+0x164` (record `+0x2c` `0x20`).
+
+**The target, `FUN_00481720`.** The function first clears `+0x20` bit
+`0x10`.
+
+Without a member (`+0x20` bit 1 clear), it clears the claim `0x20000000`
+on the record of `+0x34` and returns 0.
+
+With a member, it keeps `+0x34` while the record still has `+0x2c` bit
+`0x40` and lacks `+0x30` bit `0x200` (an enemy fleet). Otherwise it clears
+that record's claim and empties `+0x34`. It then tries these in order
+until one gives a system:
+
+1. `FUN_00419a00(0, 0x4000020, 4, 0, 0, 0, key 7)`, order 2. The pick is
+   the sector with own systems and an unclaimed candidate, with the lowest
+   average own support (`+0x8c`). When that sector's record (controller
+   `+0x44`, at `0x4818ed`) has `+0x8c < 70`, `FUN_0041a460(sector, 0, 0x40,
+   1, 0, 0x20000000, 0)`, order 2, gives a random own unclaimed candidate.
+2. With `+0x38` a system: `FUN_00419b80(+0x38, 0, 0x4000020, 0x10, ...)`,
+   order 2, gives the nearest sector with neutral systems. Then
+   `FUN_0041a460(sector, 0, 0x40, 2, 0, 0x20000000, 0)`, order 2, gives a
+   random neutral unclaimed candidate.
+3. With `+0x38` a system: `FUN_0041a400(last sector, +0x38, 0, 0x40, 0, 0,
+   0x20000000, 0)`, order 2, gives the candidate nearest `+0x38`.
+4. Merge `FUN_00419a00(0, 0x4000020, 0x10, ..., key 3)`, the same with key
+   5, and `FUN_0041a1d0(0, 0x4000020, 0x10, ...)`, all order 1. Then a
+   random neutral unclaimed candidate, order 1.
+5. Merge `FUN_00419a00(0, 0x4000020, 0, ..., key 3)` and
+   `FUN_0041a1d0(0, 0x20, 0, ...)`, order 1. Then a random unclaimed
+   candidate of any side, order 2.
+
+A target is copied to `+0x30` and claimed (record `+0x2c |= 0x20000000`),
+and the function returns 1. The refresh keeps the claim
+(`FUN_00433e40`: `+0x2c & 0x60000000`), and the sector's `+0x28` bit
+`0x4000000` counts only unclaimed candidates (`FUN_00432350`).
+
+**Ported** in `ai.rs`:
+- `AISystem::diplomacy_strategy` is row 5 of `FUN_004e8290` with the
+  cancellation of `FUN_004e5710`.
+- `diplomacy_target` is `FUN_00481720`, and `diplomacy_wanted` gives
+  `S+0x214`.
+- `MissionPlanner::standing` and `claimed`, and `AIState::record_claims`
+  (save v81).
+- `ai_records::apply_claims` keeps the claims across refreshes.
+- The port's heuristic Diplomacy orders (popularity cap) and its uprising
+  prevention (two diplomats a pass to own systems below 40%) are removed.
+
+port:
+- the request and cancellation reach the want within one step;
+- the strategy's other rows are not yet ported, so row 5 is not ordered
+  behind rows 1 to 4;
+- slots `+0x30`, `+0x34` and `+0x3c` (Mission Reports, the abort and a
+  better diplomat) are not ported for Diplomacy.
+
+Campaigns: 24 seeds of 1500 days, against the F-005 commit.
+- Diplomacy orders: 1,381 before, 789 after.
+- Diplomacy results: 3,667 successes and 1,862 failures before, 3,610 and
+  1,780 after. A Diplomacy mission repeats, so it reports many times.
+- The freed diplomats research and recruit. Ship, troop and facility
+  research orders: 1,247/44/134 before, 2,275/686/744 after. Recruitment:
+  862 before, 1,703 after.
+- Missions: 8,605 before, 11,366 after.
+- Systems held at the end, summed over the seeds: Alliance 557 and 531,
+  Empire 347 and 340.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
