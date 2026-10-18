@@ -1055,6 +1055,57 @@ Campaigns: 24 seeds of 1500 days, against the Diplomacy commit.
   - research successes rose from 7,643 to 8,300;
   - no seed repeats a designer's order more than 20 times.
 
+## The Incite planner (read and ported 2026-10-18)
+
+The Incite planner class has vtable `0x0065a808`:
+
+| Slot | Function | Meaning |
+|---|---|---|
+| `+0x18` | `FUN_0047fef0` | the cancel key: the team's records' `+0x58` summed (leadership) |
+| `+0x30` | `FUN_0047c890` | the Mission Report, shared with Diplomacy and research |
+| `+0x34` | `FUN_004806d0` | the abort test: the target record still has `+0x2c` bit `0x100` |
+| `+0x40` | `FUN_0047fee0` | 0xc: the count `S+0x350` |
+| `+0x48` | `FUN_0047ff90` | the team selector (leadership 49..) |
+| `+0x4c` | `FUN_00480110` | the decoy selector |
+| `+0x50` | `FUN_00480370` | state 5, the target |
+
+**The want.** Row 7 asks while `S+0x350 < S+0x218` and cancels while
+above. `S+0x218` is the sectors' `+0x178`, which counts systems with
+record `+0x2c` bit `0x100`. Those are the opponent's systems where the
+side's support is above 50. The sum becomes `/ 6 + 1` when above 0
+(`FUN_00418500`).
+
+**The target, `FUN_00480370`.** Without a member it empties `+0x34`.
+With one, it keeps `+0x34` while the record has `+0x2c` `0x100` and
+lacks `+0x30` `0x200`. Otherwise it takes, the first that gives a
+system:
+
+1. With `+0x38` a system: `FUN_00419b80(+0x38, 0, 0x200, 8, ...)`,
+   order 2, gives the nearest sector with a candidate and opponent
+   systems. Then `FUN_0041a400(sector, +0x38, 0, 0x100, 4, ...)`, order
+   2, gives its candidate nearest `+0x38`.
+2. Otherwise merge `FUN_00419a00(0, 0x200, 8, 0, 0, 0, key 4)` (the
+   opponent systems `+0x80`) and `FUN_0041a1d0(0, 0x200, 8, ...)`, both
+   order 1. Then `FUN_0041a340(sector, 0, 0x100, 4, 0, 0, 0, key 0)`,
+   order 1, gives the candidate with the side's highest support.
+
+It claims nothing.
+
+**Ported**:
+- `incite_wanted` gives `S+0x218`, and `incite_target` is
+  `FUN_00480370`;
+- `mission_strategy` keeps row 7;
+- the port's heuristic Incite is removed. It went to the enemy system
+  where the enemy was most popular. With it went `evaluate_officers`
+  and the first mission group.
+
+Campaigns: 24 seeds of 1500 days, against the research-order fix.
+- Incite orders: 659 before, 404 after.
+- Incite results: 300 successes and 3,691 failures before, 56 and 436
+  after.
+- Systems held at the end, summed over the seeds: Alliance 500 and 487,
+  Empire 340 and 351.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

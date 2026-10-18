@@ -1,0 +1,35 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": {
+  "missions": 8728,
+  "moves": 29797,
+  "team_size_1": 4637,
+  "team_size_2": 4091,
+  "resolved_Success": 16866,
+  "resolved_Failure": 8839,
+  "dispatched_InciteUprising": 659,
+  "InciteUprising_Success": 300,
+  "InciteUprising_Failure": 3691
+ },
+ "after": {
+  "missions": 8893,
+  "moves": 28960,
+  "team_size_1": 4382,
+  "team_size_2": 4511,
+  "resolved_Success": 16140,
+  "resolved_Failure": 5654,
+  "dispatched_InciteUprising": 404,
+  "InciteUprising_Success": 56,
+  "InciteUprising_Failure": 436
+ },
+ "systems_at_day_1500": {
+  "before": {
+   "alliance": 500,
+   "empire": 340
+  },
+  "after": {
+   "alliance": 487,
+   "empire": 351
+  }
+ }
+}

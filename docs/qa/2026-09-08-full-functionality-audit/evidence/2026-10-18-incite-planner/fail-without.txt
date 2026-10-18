@@ -1,0 +1,5 @@
+test ai::tests::an_incite_target_is_kept_else_the_nearest_else_the_best_supported ... FAILED
+test ai::tests::the_strategy_keeps_one_incite_planner_and_one_more_per_six_candidates ... FAILED
+    ai::tests::an_incite_target_is_kept_else_the_nearest_else_the_best_supported
+    ai::tests::the_strategy_keeps_one_incite_planner_and_one_more_per_six_candidates
+test result: FAILED. 112 passed; 2 failed; 0 ignored; 0 measured; 1256 filtered out; finished in 0.00s

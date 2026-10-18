@@ -328,7 +328,7 @@ fn accepts(
 /// planners: officers, espionage, rescue, reconnaissance, uprisings.
 ///
 /// port: the original's list holds one planner per request (`FUN_004d2730`).
-const MISSION_GROUPS: u8 = 4;
+const MISSION_GROUPS: u8 = 3;
 
 /// The module whose step issues the production heuristic's order for
 /// `kind`: `0xa` a manufacturing facility; none for the rest.
@@ -1580,12 +1580,9 @@ impl AISystem {
                 }
             }
             MissionEntry::Group(0) => {
-                Self::evaluate_officers(planner, world, uprisings, faction, actions);
-            }
-            MissionEntry::Group(1) => {
                 Self::evaluate_espionage(planner, world, faction, config, actions);
             }
-            MissionEntry::Group(2) => Self::evaluate_rescue(planner, world, faction, actions),
+            MissionEntry::Group(1) => Self::evaluate_rescue(planner, world, faction, actions),
             MissionEntry::Group(_) => {
                 Self::evaluate_reconnaissance(planner, world, faction, config, actions);
             }
@@ -1664,7 +1661,8 @@ impl AISystem {
     ///   can no longer keep is dropped; a planner with no team left ends
     ///   (`FUN_0047aff0`);
     /// - state 5 (slot `+0x50`): a standing planner's target
-    ///   ([`recruitment_target`], [`diplomacy_target`]);
+    ///   ([`recruitment_target`], [`diplomacy_target`],
+    ///   [`incite_target`]);
     /// - state 6 ([`staging_point`]): the gathering place;
     /// - state 7 (`FUN_004bd570`): each free member away from it gets a
     ///   Move order there (`0x201`, the Move pseudo-mission);
@@ -1708,6 +1706,7 @@ impl AISystem {
             if p.standing {
                 p.target_system = match p.kind {
                     MissionKind::Recruitment => recruitment_target(p, planner, world, galaxy),
+                    MissionKind::InciteUprising => incite_target(p, planner, galaxy),
                     _ => diplomacy_target(p, planner, galaxy, claims),
                 };
             }
@@ -1767,10 +1766,14 @@ impl AISystem {
     ///   `+0x18`, `FUN_0047da30`: the team's record `+0x58`);
     /// - row 5, Diplomacy (count `+0x34c`, slot `+0x40` 0xb,
     ///   `FUN_004814f0`): [`diplomacy_wanted`]; the weakest by diplomacy
-    ///   (`FUN_00481500`: record `+0x40`).
+    ///   (`FUN_00481500`: record `+0x40`);
+    /// - row 7, Incite (count `+0x350`, slot `+0x40` 0xc, `FUN_0047fee0`):
+    ///   [`incite_wanted`]; the weakest by leadership (`FUN_0047fef0`:
+    ///   record `+0x58`).
     ///
     /// port: rows 2 to 4 are the research planners
-    /// ([`Self::research_strategy`]) and rows 6 to 12 are not yet ported,
+    /// ([`Self::research_strategy`]) and rows 6 and 8 to 12 are not yet
+    /// ported,
     /// so the rows are not ordered behind each other, and each count
     /// reaches its want within one step (the original asks once per
     /// strategy pass).
@@ -1798,6 +1801,13 @@ impl AISystem {
             world,
             galaxy,
             (MissionKind::Diplomacy, diplomats, Skill::Diplomacy),
+        );
+        let inciters = incite_wanted(galaxy);
+        Self::keep_planners(
+            state,
+            world,
+            galaxy,
+            (MissionKind::InciteUprising, inciters, Skill::Leadership),
         );
     }
 
@@ -1888,73 +1898,6 @@ impl AISystem {
             target_object,
         });
         true
-    }
-
-    /// Incite orders. Diplomacy and Recruitment are the strategy's
-    /// ([`Self::mission_strategy`]).
-    ///
-    /// port: the strategy's Incite row (`FUN_004e8290` row 7) is not yet
-    /// ported, so the port picks the target, the enemy system where the
-    /// enemy is most popular, when its record admits it
-    /// ([`crate::missions::record_admits_system`]); a refused target would
-    /// end its mission at once and be ordered again each pass. The
-    /// original planner picks the members.
-    fn evaluate_officers(
-        planner: &mut Planner<'_>,
-        world: &GameWorld,
-        uprisings: &crate::uprising::UprisingState,
-        faction: AiFaction,
-        actions: &mut Vec<AIAction>,
-    ) {
-        let admits = |kind: MissionKind, system: SystemKey| {
-            crate::missions::record_admits_system(
-                world,
-                uprisings,
-                kind,
-                faction.as_mission_faction(),
-                system,
-            )
-        };
-        if let Some(target) = Self::find_incite_target(world, faction)
-            .filter(|&target| admits(MissionKind::InciteUprising, target))
-        {
-            Self::dispatch_planned(
-                planner,
-                MissionKind::InciteUprising,
-                (target, None),
-                None,
-                actions,
-            );
-        }
-    }
-
-    /// Find an enemy-controlled system suitable for inciting uprising.
-    /// Targets systems where the enemy has high popularity (firmly controlled).
-    fn find_incite_target(world: &GameWorld, faction: AiFaction) -> Option<SystemKey> {
-        world
-            .systems
-            .iter()
-            .filter(|(_, s)| {
-                let enemy_pop = match faction {
-                    AiFaction::Alliance => s.popularity_empire,
-                    AiFaction::Empire => s.popularity_alliance,
-                };
-                enemy_pop > 0.5
-            })
-            .max_by(|(_, a), (_, b)| {
-                let enemy_a = match faction {
-                    AiFaction::Alliance => a.popularity_empire,
-                    AiFaction::Empire => a.popularity_alliance,
-                };
-                let enemy_b = match faction {
-                    AiFaction::Alliance => b.popularity_empire,
-                    AiFaction::Empire => b.popularity_alliance,
-                };
-                enemy_a
-                    .partial_cmp(&enemy_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .map(|(k, _)| k)
     }
 
     // -----------------------------------------------------------------------
@@ -3390,6 +3333,83 @@ fn diplomacy_target(
     target.and_then(|t| claim(p, galaxy, claims, t))
 }
 
+/// Side `+0x218` (`FUN_0041b7e0`, `FUN_00418500`): the Incite planners the
+/// strategy wants. The sector records' `+0x178` (their systems with record
+/// `+0x2c` bit `0x100`: the opponent's, where the side's support is above
+/// 50) summed, then `/ 6 + 1` when above 0.
+fn incite_wanted(galaxy: &crate::ai_records::Galaxy) -> usize {
+    let sum: i32 = galaxy
+        .sectors
+        .iter()
+        .map(|s| s.values[crate::ai_records::sector_at(0x178)])
+        .sum();
+    let wanted = if sum > 0 { sum / 6 + 1 } else { sum };
+    usize::try_from(wanted).unwrap_or(0)
+}
+
+/// State 5 of an Incite planner (slot `+0x50`, `FUN_00480370`): its target
+/// `+0x34`, an opponent's system whose record has `+0x2c` bit `0x100`.
+///
+/// Without a team it has none. With one it keeps its target while the
+/// record still has `0x100` and no enemy fleet (`+0x30` bit `0x200`).
+/// Otherwise, the first that gives one:
+///
+/// 1. from the previous gathering place `+0x38`: the nearest sector with
+///    such a system and opponent systems (`FUN_00419b80`, `+0x28`
+///    `0x200`, `+0x2c` 8, order 2), then its such system nearest `+0x38`
+///    (`FUN_0041a400`, `+0x2c` `0x100`, `+0x30` 4, order 2);
+/// 2. the sector ranked by its opponent systems (key `+0x80`) and a draw
+///    (`FUN_0041a1d0`), both order 1, then its such system with the
+///    highest support of the side (`FUN_0041a340`, key `v[0]`, order 1).
+///
+/// An Incite planner claims nothing.
+fn incite_target(
+    p: &MissionPlanner,
+    planner: &mut Planner<'_>,
+    galaxy: &crate::ai_records::Galaxy,
+) -> Option<SystemKey> {
+    use crate::ai_records::{pick, sector_at, Mask, Order};
+    p.team.first()?;
+    let any = Mask::new(0, 0);
+    if let Some(t) = p.target_system.filter(|&t| {
+        galaxy
+            .system(t)
+            .is_some_and(|r| r.summary & 0x100 != 0 && r.kind & 0x200 == 0)
+    }) {
+        return Some(t);
+    }
+    let sectors = [any, Mask::new(0x200, 0), Mask::new(8, 0)];
+    let systems = [any, Mask::new(0x100, 0), Mask::new(4, 0)];
+    let mut target = None;
+    if let Some(prev) = p.staging {
+        let near =
+            galaxy.sectors_by_distance(prev, sectors, Order::Descending, &mut || planner.coin());
+        let sector = pick(&[near]);
+        target = sector.and_then(|sector| {
+            pick(&[galaxy.systems_by_distance(
+                sector,
+                prev,
+                systems,
+                Order::Descending,
+                &mut || planner.coin(),
+            )])
+        });
+    }
+    if target.is_none() {
+        let most = galaxy.sector_query(sectors, sector_at(0x80), Order::Ascending, &mut || {
+            planner.coin()
+        });
+        let drawn = random_sectors(planner, galaxy, sectors, Order::Ascending);
+        let sector = pick(&[most, drawn]);
+        target = sector.and_then(|sector| {
+            pick(&[
+                galaxy.system_query(sector, systems, 0, Order::Ascending, &mut || planner.coin())
+            ])
+        });
+    }
+    target
+}
+
 /// State 5 of a Recruitment planner (slot `+0x50`, `FUN_0047dcc0`): its
 /// target `+0x34`, a system whose record has `+0x2c` bit 2 (the side's,
 /// with no uprising or blockade, while the side has MNCHARSD classes).
@@ -3920,7 +3940,6 @@ mod tests {
         };
         let mut actions = Vec::new();
         research_all(state, &mut planner, &ctx, &mut actions);
-        AISystem::evaluate_officers(&mut planner, world, uprisings, faction, &mut actions);
         AISystem::evaluate_espionage(&mut planner, world, faction, config, &mut actions);
         AISystem::evaluate_rescue(&mut planner, world, faction, &mut actions);
         AISystem::evaluate_reconnaissance(&mut planner, world, faction, config, &mut actions);
@@ -4045,19 +4064,6 @@ mod tests {
             AIAction::DispatchMission { kind: k, team, .. } if *k == kind => Some(team.clone()),
             _ => None,
         })
-    }
-
-    fn advance_once(state: &mut AIState, world: &GameWorld) -> Vec<AIAction> {
-        evaluate(
-            state,
-            world,
-            &ManufacturingState::new(),
-            &MissionState::new(),
-            &ticks(7),
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        )
     }
 
     #[test]
@@ -6267,33 +6273,123 @@ mod tests {
         assert!(sent.is_empty());
     }
 
-    #[test]
-    fn the_port_s_incite_goes_where_the_enemy_is_most_popular() {
-        // port: FUN_004e8290 row 7 is not yet ported; the heuristic picks
-        // the target and FUN_0047ff90's selector (leadership 49..) the
-        // member.
+    /// An Empire home system where `agents` (major, by leadership) stand,
+    /// and Alliance systems in two sectors at the given Empire support
+    /// (percent): `near` at x 0, `far` at x 900.
+    fn incite_world(
+        agents: &[u32],
+        near: &[f32],
+        far: &[f32],
+    ) -> (
+        GameWorld,
+        SystemKey,
+        Vec<SystemKey>,
+        Vec<SystemKey>,
+        Vec<CharacterKey>,
+    ) {
         let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let warm = add_system(&mut world, sector, 0.6, 0.2);
-        let hot = add_system(&mut world, sector, 0.9, 0.1);
-        for s in [warm, hot] {
+        let home_sector = add_sector(&mut world);
+        let home = add_system(&mut world, home_sector, 0.1, 0.9);
+        world.systems[home].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let far_sector = add_sector(&mut world);
+        world.sectors[far_sector].x = 900;
+        let rebel = |world: &mut GameWorld, sector, support: &f32, x| {
+            let s = add_system(world, sector, 0.2, support / 100.0);
             world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
-        }
-        let agent = add_character(&mut world, false, true, 30);
-        world.characters[agent].leadership.base = 60;
-        let mut planner = planner_for(&world, AiFaction::Empire);
-        let mut actions = Vec::new();
-        AISystem::evaluate_officers(
-            &mut planner,
-            &world,
-            &crate::uprising::UprisingState::default(),
-            AiFaction::Empire,
-            &mut actions,
-        );
+            world.systems[s].x = x;
+            s
+        };
+        let near: Vec<SystemKey> = near
+            .iter()
+            .enumerate()
+            .map(|(i, sup)| rebel(&mut world, home_sector, sup, 10 * (i as u16 + 1)))
+            .collect();
+        let far: Vec<SystemKey> = far
+            .iter()
+            .enumerate()
+            .map(|(i, sup)| rebel(&mut world, far_sector, sup, 900 + 10 * i as u16))
+            .collect();
+        let keys = agents
+            .iter()
+            .map(|&lead| {
+                let c = add_character(&mut world, false, true, 30);
+                world.characters[c].leadership.base = lead;
+                world.characters[c].current_system = Some(home);
+                c
+            })
+            .collect();
+        (world, home, near, far, keys)
+    }
+
+    #[test]
+    fn the_strategy_keeps_one_incite_planner_and_one_more_per_six_candidates() {
+        // FUN_004e8290 row 7: +0x350 against +0x218, the opponent systems
+        // where the side's support is above 50 (record +0x2c 0x100,
+        // sector +0x178) / 6 + 1 when any (FUN_00418500).
+        let count = |n: usize| {
+            let (world, _, _, _, _) = incite_world(&[], &vec![60.0; n], &[]);
+            let mut state = AIState::new(AiFaction::Empire);
+            strategy_pass(&mut state, &world, 1);
+            state
+                .mission_planners
+                .iter()
+                .filter(|p| p.standing && p.kind == MissionKind::InciteUprising)
+                .count()
+        };
+        assert_eq!([0, 1, 5, 6, 12].map(count), [0, 1, 1, 2, 3]);
+        // The planner's cycle orders the Incite on its target.
+        let (world, _, near, _, keys) = incite_world(&[60], &[60.0], &[]);
+        let mut state = AIState::new(AiFaction::Empire);
+        let actions = strategy_pass(&mut state, &world, 1);
         assert_eq!(
             orders(&actions, MissionKind::InciteUprising),
-            vec![(vec![MissionMember::Character(agent)], hot, None)]
+            vec![(vec![MissionMember::Character(keys[0])], near[0], None)]
         );
+        // At 50 the side's support is no candidate.
+        let (world, _, _, _, _) = incite_world(&[], &[50.0], &[]);
+        let mut state = AIState::new(AiFaction::Empire);
+        strategy_pass(&mut state, &world, 1);
+        assert!(state.mission_planners.is_empty());
+    }
+
+    #[test]
+    fn an_incite_target_is_kept_else_the_nearest_else_the_best_supported() {
+        // FUN_00480370. Only the far sector holds candidates, so the
+        // sector draws (FUN_0041a1d0) cannot change the sector.
+        let (world, home, _, far, keys) = incite_world(&[60], &[], &[60.0, 90.0]);
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        let busy = HashSet::new();
+        let missions = MissionState::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let mut p = MissionPlanner {
+            id: 1,
+            kind: MissionKind::InciteUprising,
+            team: vec![MissionMember::Character(keys[0])],
+            decoys: Vec::new(),
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: None,
+            standing: true,
+            claimed: None,
+        };
+        let mut target = |p: &MissionPlanner| incite_target(p, &mut planner, &galaxy);
+        // Without +0x38: the best supported (v[0], order 1).
+        assert_eq!(target(&p), Some(far[1]));
+        // From the home system: the nearest to it.
+        p.staging = Some(home);
+        assert_eq!(target(&p), Some(far[0]));
+        // A kept target stays.
+        p.target_system = Some(far[1]);
+        assert_eq!(target(&p), Some(far[1]));
+        // Not a candidate (own): replaced.
+        p.target_system = Some(home);
+        assert_eq!(target(&p), Some(far[0]));
+        p.team.clear();
+        assert_eq!(target(&p), None);
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.

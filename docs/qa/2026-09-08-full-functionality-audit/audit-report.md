@@ -2668,6 +2668,15 @@ cross-runtime proof remain open
   ended with `0xc`. In 24 campaigns research orders fall from 18,414 to
   602, and research successes rise from 7,643 to 8,300. Golden unchanged
   (`evidence/2026-10-18-research-order-target/`).
+- 2026-10-18 (F-036): the AI's Incite planner is the original's. The
+  strategy keeps one planner and one more per six candidates
+  (`FUN_004e8290` row 7). A candidate is an opponent's system where the
+  side's support is above 50. The planner targets the candidate nearest
+  its last gathering place, or the best supported (`FUN_00480370`). The
+  heuristic went where the enemy was most popular. In 24 campaigns
+  Incite failures fall from 3,691 to 436. Golden final
+  `v1:4a2572231a842e24` -> `v1:1f09d2d3d2c77cf3`
+  (`evidence/2026-10-18-incite-planner/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
