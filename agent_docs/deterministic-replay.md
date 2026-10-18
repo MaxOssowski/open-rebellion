@@ -117,7 +117,7 @@ It records a nine-command, 25-tick campaign on the full 200-system galaxy
 must load through it), reloads its initial state through the current save
 format, and checks every command-prefix
 fingerprint against a cross-process golden, which currently runs
-`v1:cb9430c7635d6e7e` -> `v1:fe6f9d2ef366dfd9`. Any save layout or
+`v1:530e248f2599b293` -> `v1:45ce6a74e7ac0f51`. Any save layout or
 simulation change moves every fingerprint; regenerate the golden only for a
 named cause and name it in the commit. The v13 goldens did not reproduce
 even at their own commit `e8d4945`; that cause remains open. The unit tests use

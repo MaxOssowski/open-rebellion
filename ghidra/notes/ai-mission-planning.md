@@ -1258,6 +1258,46 @@ Campaigns: 24 seeds of 1500 days, against the Reconnaissance commit.
 - Systems held at the end, summed over the seeds: Alliance 483 and 415,
   Empire 476 and 412.
 
+## Mission Reports of the standing planners (ported 2026-10-18, save v83)
+
+The Diplomacy, Incite and Subdue classes share slot `+0x30`,
+`FUN_0047c890`, with the research planners:
+- result 2 (failed) runs `FUN_0047ae20`. It counts `+0x6c` against slot
+  `+0x24`: 5 for Diplomacy and Subdue (`FUN_00404c20`), 10 for Incite
+  (`FUN_004820c0`). Past it, the planner sets `+0x20` `0x80` and
+  `0x20000000` (abort) and clears the count; otherwise `0x40000000`
+  (check).
+- result 3 (succeeded) clears the count and sets the check.
+- Both run `FUN_0047b950`, which clears `0x80000000` and readies the
+  mission's record.
+
+State 1 (`FUN_0047b250`) runs only while the planner's mission `+0x28`
+runs (`FUN_004f3000`, `FUN_00520b30`):
+- the check asks slot `+0x34` whether the target still qualifies:
+  `FUN_00481eb0` (Diplomacy, record `+0x2c` `0x40`), `FUN_004806d0`
+  (Incite, `0x100`) or `FUN_0047d320` (Subdue, `0x20`). If not, the check
+  turns into the abort;
+- the abort builds order `0x250` on the mission (end code 2);
+- then both bits clear. With no running mission they wait.
+
+**Ported**:
+- `AISystem::mission_planner_reports`, run before the planners' cycles;
+- `MissionPlanner::mission`, `report`, `failures` and `pending` (save
+  v83);
+- `AIState::bind_mission` and `note_mission_results` now reach the
+  standing planners.
+- port: the `0x80` bit is not kept, and no reader of it is traced.
+- Recruitment (`FUN_0047dad0`), Reconnaissance (`FUN_0047f720`) and
+  Espionage (`FUN_00480eb0`) have their own report slots, not ported.
+
+Campaigns: 24 seeds of 1500 days, against the Espionage commit.
+- Aborts: 216 before, 871 after.
+- Diplomacy results: 3,572 successes and 1,829 failures before, 2,471 and
+  1,338 after.
+- Incite failures: 413 before, 203 after.
+- Systems held at the end, summed over the seeds: Alliance 415 and 399,
+  Empire 412 and 416.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

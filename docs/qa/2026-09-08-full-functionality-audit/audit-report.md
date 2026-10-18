@@ -2702,6 +2702,14 @@ cross-runtime proof remain open
   heuristic Espionage on unexplored systems is removed. Golden final
   `v1:3c9e4e1739d78f43` -> `v1:fe6f9d2ef366dfd9`
   (`evidence/2026-10-18-espionage-planner/`).
+- 2026-10-19 (F-036, save v83): the standing Diplomacy, Incite and
+  Subdue planners read their Mission Reports (`FUN_0047c890`). A
+  success, or a failure within 5 or 10, checks the target. Past the
+  limit, or with a target that no longer qualifies, the planner aborts
+  its running mission (`FUN_0047b250`, order `0x250`). In 24 campaigns
+  aborts rise from 216 to 871. Golden initial `v1:cb9430c7635d6e7e` ->
+  `v1:530e248f2599b293`, final `v1:fe6f9d2ef366dfd9` ->
+  `v1:45ce6a74e7ac0f51` (`evidence/2026-10-19-planner-reports/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

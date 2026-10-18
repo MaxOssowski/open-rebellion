@@ -1,0 +1,5 @@
+test ai::tests::a_diplomacy_planner_aborts_its_mission_once_the_target_is_no_candidate_or_after_five_failures ... FAILED
+test ai::tests::incite_bears_ten_failures_and_subdue_checks_its_revolt ... FAILED
+    ai::tests::a_diplomacy_planner_aborts_its_mission_once_the_target_is_no_candidate_or_after_five_failures
+    ai::tests::incite_bears_ten_failures_and_subdue_checks_its_revolt
+test result: FAILED. 120 passed; 2 failed; 0 ignored; 0 measured; 1255 filtered out; finished in 0.00s

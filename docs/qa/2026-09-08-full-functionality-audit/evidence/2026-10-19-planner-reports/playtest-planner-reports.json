@@ -1,0 +1,47 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": {
+  "missions": 12213,
+  "moves": 29351,
+  "resolved_Success": 19015,
+  "resolved_Failure": 7163,
+  "dispatched_Diplomacy": 767,
+  "Diplomacy_Success": 3572,
+  "Diplomacy_Failure": 1829,
+  "dispatched_InciteUprising": 218,
+  "InciteUprising_Success": 13,
+  "InciteUprising_Failure": 413,
+  "dispatched_SubdueUprising": 307,
+  "SubdueUprising_Success": 284,
+  "SubdueUprising_Failure": 1433
+ },
+ "after": {
+  "missions": 12198,
+  "moves": 29017,
+  "resolved_Success": 18217,
+  "resolved_Failure": 6603,
+  "dispatched_Diplomacy": 816,
+  "Diplomacy_Success": 2471,
+  "Diplomacy_Failure": 1338,
+  "dispatched_InciteUprising": 215,
+  "InciteUprising_Success": 15,
+  "InciteUprising_Failure": 203,
+  "dispatched_SubdueUprising": 437,
+  "SubdueUprising_Success": 274,
+  "SubdueUprising_Failure": 1433
+ },
+ "abort_orders": {
+  "before": 216,
+  "after": 871
+ },
+ "systems_at_day_1500": {
+  "before": {
+   "alliance": 415,
+   "empire": 412
+  },
+  "after": {
+   "alliance": 399,
+   "empire": 416
+  }
+ }
+}

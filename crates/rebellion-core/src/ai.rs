@@ -657,6 +657,21 @@ pub struct MissionPlanner {
     /// record `+0x28` bit `0x10000000`; save v82).
     #[serde(default)]
     pub sector: Option<crate::ids::SectorKey>,
+    /// The mission its last order created (`+0x28`; save v83).
+    #[serde(default)]
+    pub mission: Option<u64>,
+    /// That mission's last Mission Report (`0x1f0`) not yet read.
+    #[serde(default)]
+    pub report: Option<crate::missions::MissionOutcome>,
+    /// Failed results counted against slot `+0x24` (`FUN_0047ae20`,
+    /// `+0x6c`).
+    #[serde(default)]
+    pub failures: u32,
+    /// `+0x20` bits `0x40000000` (check the target) and `0x20000000`
+    /// (abort) that the report set (`FUN_0047c890`) and state 1 reads
+    /// (`FUN_0047b250`).
+    #[serde(default)]
+    pub pending: u32,
 }
 
 /// State 6 (`FUN_004bd0a0`): the planner's gathering place `+0x38`. It
@@ -788,12 +803,26 @@ impl AIState {
                     p.report = Some(result.outcome);
                 }
             }
+            for p in &mut self.mission_planners {
+                if p.mission == Some(result.mission_id) {
+                    p.report = Some(result.outcome);
+                }
+            }
         }
     }
 
     /// An applied research order binds its mission to the planner that
     /// sent it (`FUN_0047b360` stores the order in planner `+0x28`).
     pub fn bind_mission(&mut self, kind: MissionKind, member: CharacterKey, mission_id: u64) {
+        let lead = crate::missions::MissionMember::Character(member);
+        if let Some(p) = self
+            .mission_planners
+            .iter_mut()
+            .find(|p| p.standing && p.kind == kind && p.team.first() == Some(&lead))
+        {
+            p.mission = Some(mission_id);
+            p.report = None;
+        }
         let Some(tech) = kind.research_tech() else {
             return;
         };
@@ -1598,6 +1627,7 @@ impl AISystem {
             MissionEntry::Group(_) => Self::evaluate_rescue(planner, world, faction, actions),
         }
         Self::adopt_mission_orders(state, ctx.tick, start, actions);
+        Self::mission_planner_reports(state, galaxy, ctx.mission_state, actions);
         Self::mission_planner_cycle(state, planner, world, galaxy, ctx.tick, actions);
     }
 
@@ -1657,6 +1687,10 @@ impl AISystem {
                             standing: false,
                             claimed: None,
                             sector: None,
+                            mission: None,
+                            report: None,
+                            failures: 0,
+                            pending: 0,
                         });
                     }
                 }
@@ -1776,6 +1810,81 @@ impl AISystem {
             });
             p.standing
         });
+    }
+
+    /// The Mission Reports of the standing Diplomacy, Incite and Subdue
+    /// planners (slot `+0x30`, `FUN_0047c890`) and state 1's abort
+    /// (`FUN_0047b250`):
+    ///
+    /// - a failure counts against slot `+0x24` (`FUN_0047ae20`: 5 for
+    ///   Diplomacy, `FUN_00404c20`, and Subdue; 10 for Incite,
+    ///   `FUN_004820c0`); past it the planner aborts (`0x20000000`), else it
+    ///   checks its target (`0x40000000`);
+    /// - a success clears the count and checks the target;
+    /// - while the planner's mission runs, a target its slot `+0x34` no
+    ///   longer admits turns the check into an abort, and the abort orders
+    ///   `0x250` on the mission (end code 2). The bits then clear; with no
+    ///   running mission they wait.
+    ///
+    /// port: slot `+0x34` reads the target record's bit: `0x40`
+    /// (Diplomacy, `FUN_00481eb0`), `0x100` (Incite, `FUN_004806d0`), `0x20`
+    /// (Subdue, `FUN_0047d320`).
+    fn mission_planner_reports(
+        state: &mut AIState,
+        galaxy: &crate::ai_records::Galaxy,
+        missions: &MissionState,
+        actions: &mut Vec<AIAction>,
+    ) {
+        const CHECK: u32 = 0x4000_0000;
+        const ABORT: u32 = 0x2000_0000;
+        for p in state.mission_planners.iter_mut().filter(|p| p.standing) {
+            let (limit, bit) = match p.kind {
+                MissionKind::Diplomacy => (5, 0x40),
+                MissionKind::SubdueUprising => (5, 0x20),
+                MissionKind::InciteUprising => (10, 0x100),
+                _ => continue,
+            };
+            match p.report.take() {
+                Some(crate::missions::MissionOutcome::Failure) => {
+                    p.failures += 1;
+                    if p.failures > limit {
+                        p.failures = 0;
+                        p.pending |= ABORT;
+                    } else {
+                        p.pending |= CHECK;
+                    }
+                }
+                Some(crate::missions::MissionOutcome::Success) => {
+                    p.failures = 0;
+                    p.pending |= CHECK;
+                }
+                None => {}
+            }
+            if p.pending & (CHECK | ABORT) == 0 {
+                continue;
+            }
+            let Some(id) = p.mission.filter(|&id| {
+                missions
+                    .missions()
+                    .iter()
+                    .any(|m| m.id == id && m.end_code == 0)
+            }) else {
+                continue;
+            };
+            if p.pending & CHECK != 0 {
+                let admitted = p
+                    .target_system
+                    .and_then(|t| galaxy.system(t))
+                    .is_some_and(|r| r.summary & bit != 0);
+                if !admitted {
+                    p.pending = (p.pending & !CHECK) | ABORT;
+                }
+            }
+            if p.pending & ABORT != 0 {
+                actions.push(AIAction::AbortMission { mission_id: id });
+            }
+            p.pending &= !(CHECK | ABORT);
+        }
     }
 
     /// The strategy's rows for the standing planners (`FUN_004e8290`), each
@@ -1933,6 +2042,10 @@ impl AISystem {
                 standing: true,
                 claimed: None,
                 sector: None,
+                mission: None,
+                report: None,
+                failures: 0,
+                pending: 0,
             });
         }
     }
@@ -4667,6 +4780,241 @@ mod tests {
     }
 
     #[test]
+    fn a_diplomacy_planner_aborts_its_mission_once_the_target_is_no_candidate_or_after_five_failures(
+    ) {
+        // FUN_0047c890: a result sets the target check (0x40000000), and a
+        // failure past slot +0x24 (FUN_00404c20, 5; FUN_0047ae20) the abort
+        // (0x20000000). FUN_0047b250 turns a failed check (FUN_00481eb0:
+        // record +0x2c 0x40) into the abort and orders 0x250 while the
+        // mission runs.
+        let (mut world, _, neutral, keys) = diplomacy_world(90.0, &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        strategy_pass(&mut state, &world, 1);
+        let mut missions = MissionState::new();
+        let id = missions.dispatch(crate::missions::MissionRequest {
+            kind: MissionKind::Diplomacy,
+            faction: MissionFaction::Empire,
+            team: vec![MissionMember::Character(keys[0])],
+            decoys: Vec::new(),
+            target_system: neutral,
+            target_character: None,
+            target_object: None,
+            tick: 1,
+        });
+        state.bind_mission(MissionKind::Diplomacy, keys[0], id);
+        assert_eq!(state.mission_planners[0].mission, Some(id));
+        let result = |outcome| result(id, outcome);
+        let reports = |state: &mut AIState, world: &GameWorld| {
+            let galaxy = galaxy_of(state, world);
+            let mut actions = Vec::new();
+            AISystem::mission_planner_reports(state, &galaxy, &missions, &mut actions);
+            aborted(&actions)
+        };
+
+        // A success with the target still a candidate: nothing.
+        state.note_mission_results(&[result(crate::missions::MissionOutcome::Success)]);
+        assert!(reports(&mut state, &world).is_empty());
+        // Five failures are borne; the sixth aborts.
+        for _ in 0..5 {
+            state.note_mission_results(&[result(crate::missions::MissionOutcome::Failure)]);
+            assert!(reports(&mut state, &world).is_empty());
+        }
+        state.note_mission_results(&[result(crate::missions::MissionOutcome::Failure)]);
+        assert_eq!(reports(&mut state, &world), vec![id]);
+        assert_eq!(state.mission_planners[0].failures, 0);
+
+        // The target taken by the side at 90 support: the next result
+        // aborts.
+        world.systems[neutral].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.systems[neutral].popularity_empire = 0.9;
+        state.note_mission_results(&[result(crate::missions::MissionOutcome::Success)]);
+        assert_eq!(reports(&mut state, &world), vec![id]);
+        // No report, no check.
+        assert!(reports(&mut state, &world).is_empty());
+    }
+
+    #[test]
+    fn a_report_binds_to_its_standing_planner_and_a_failure_also_checks_the_target() {
+        // bind_mission takes the standing planner of the order's kind whose
+        // lead the order names; FUN_0047c890 sets the check on a failure
+        // within the count too, and FUN_0047b250 acts only on a running
+        // mission, keeping the bits until then.
+        let (mut world, _, neutral, keys) = diplomacy_world(90.0, &[90, 80]);
+        let mut state = AIState::new(AiFaction::Empire);
+        strategy_pass(&mut state, &world, 1);
+        let lead = state.mission_planners[0].team[0].character().unwrap();
+        let other = keys.iter().copied().find(|&k| k != lead).unwrap();
+        let mut heuristic = state.mission_planners[0].clone();
+        heuristic.id = 77;
+        heuristic.standing = false;
+        state.mission_planners.insert(0, heuristic);
+        state.bind_mission(MissionKind::Diplomacy, other, 5);
+        state.bind_mission(MissionKind::InciteUprising, lead, 6);
+        assert!(state.mission_planners.iter().all(|p| p.mission.is_none()));
+        state.bind_mission(MissionKind::Diplomacy, lead, 7);
+        assert_eq!(
+            state
+                .mission_planners
+                .iter()
+                .map(|p| p.mission)
+                .collect::<Vec<_>>(),
+            vec![None, Some(7)]
+        );
+
+        let mut missions = MissionState::new();
+        let id = missions.dispatch(crate::missions::MissionRequest {
+            kind: MissionKind::Diplomacy,
+            faction: MissionFaction::Empire,
+            team: vec![MissionMember::Character(lead)],
+            decoys: Vec::new(),
+            target_system: neutral,
+            target_character: None,
+            target_object: None,
+            tick: 1,
+        });
+        // The heuristic planner names the same mission: it is not read.
+        state.mission_planners[0].mission = Some(id);
+        state.mission_planners[0].report = Some(crate::missions::MissionOutcome::Failure);
+        state.mission_planners[0].failures = 9;
+        state.bind_mission(MissionKind::Diplomacy, lead, id);
+        world.systems[neutral].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.systems[neutral].popularity_empire = 0.9;
+        let galaxy = galaxy_of(&state, &world);
+        // A failure within the count, the target no candidate: abort.
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Failure)]);
+        state.mission_planners[0].report = Some(crate::missions::MissionOutcome::Failure);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_reports(&mut state, &galaxy, &missions, &mut actions);
+        assert_eq!(aborted(&actions), vec![id]);
+        assert_eq!(state.mission_planners[0].failures, 9);
+
+        // A report for a mission that has ended waits for a running one.
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Success)]);
+        let mut ended = missions.clone();
+        assert!(ended.abort(id));
+        let mut actions = Vec::new();
+        AISystem::mission_planner_reports(&mut state, &galaxy, &ended, &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(state.mission_planners[1].pending, 0x4000_0000);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_reports(&mut state, &galaxy, &missions, &mut actions);
+        assert_eq!(aborted(&actions), vec![id]);
+        assert_eq!(state.mission_planners[1].pending, 0);
+
+        // An abort waiting with no running mission, then a check: both
+        // bits wait, and the running mission is aborted once.
+        state.mission_planners[1].failures = 5;
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Failure)]);
+        AISystem::mission_planner_reports(&mut state, &galaxy, &ended, &mut Vec::new());
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Success)]);
+        AISystem::mission_planner_reports(&mut state, &galaxy, &ended, &mut Vec::new());
+        assert_eq!(state.mission_planners[1].pending, 0x6000_0000);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_reports(&mut state, &galaxy, &missions, &mut actions);
+        assert_eq!(aborted(&actions), vec![id]);
+    }
+
+    #[test]
+    fn incite_bears_ten_failures_and_subdue_checks_its_revolt() {
+        // Slot +0x24: 10 for Incite (FUN_004820c0), 5 for Subdue
+        // (FUN_00404c20); slot +0x34: +0x2c 0x20 for Subdue (FUN_0047d320).
+        let run = |state: &mut AIState,
+                   world: &GameWorld,
+                   uprisings: &crate::uprising::UprisingState,
+                   kind: MissionKind,
+                   outcomes: &[crate::missions::MissionOutcome]| {
+            let p = state
+                .mission_planners
+                .iter()
+                .find(|p| p.kind == kind)
+                .unwrap();
+            let (lead, target) = (p.team[0], p.target_system.unwrap());
+            let mut missions = MissionState::new();
+            let id = missions.dispatch(crate::missions::MissionRequest {
+                kind,
+                faction: MissionFaction::Empire,
+                team: vec![lead],
+                decoys: Vec::new(),
+                target_system: target,
+                target_character: None,
+                target_object: None,
+                tick: 1,
+            });
+            state.bind_mission(kind, lead.character().unwrap(), id);
+            let missions_ref = &missions;
+            outcomes
+                .iter()
+                .map(|&o| {
+                    state.note_mission_results(&[result(id, o)]);
+                    let missions_state = MissionState::new();
+                    let economy = crate::economy::EconomyState::default();
+                    let manufacturing = ManufacturingState::new();
+                    let research = ResearchState::new();
+                    let movement = crate::movement::MovementState::new();
+                    let transport = crate::troop_transport::TroopTransportState::new();
+                    let busy = HashSet::new();
+                    let planner = Planner::new(world, &missions_state, &busy, false, 7);
+                    let inputs = RecordInputs {
+                        world,
+                        economy: &economy,
+                        uprisings,
+                        manufacturing: &manufacturing,
+                        research: &research,
+                        movement: &movement,
+                        transport: &transport,
+                    };
+                    let galaxy = AISystem::records(state, &planner, &inputs);
+                    let mut actions = Vec::new();
+                    AISystem::mission_planner_reports(state, &galaxy, missions_ref, &mut actions);
+                    !aborted(&actions).is_empty()
+                })
+                .collect::<Vec<bool>>()
+        };
+        use crate::missions::MissionOutcome::{Failure, Success};
+        let (world, _, _, _, _) = incite_world(&[60], &[60.0], &[]);
+        let mut state = AIState::new(AiFaction::Empire);
+        strategy_pass(&mut state, &world, 1);
+        let calm = crate::uprising::UprisingState::default();
+        let mut expected = vec![false; 10];
+        expected.push(true);
+        assert_eq!(
+            run(
+                &mut state,
+                &world,
+                &calm,
+                MissionKind::InciteUprising,
+                &[Failure; 11]
+            ),
+            expected
+        );
+
+        let (world, uprisings, _, _) =
+            subdue_world(&[(90.0, false, false), (30.0, true, false)], &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        strategy_pass_in(&mut state, &world, 1, &uprisings);
+        assert_eq!(
+            run(
+                &mut state,
+                &world,
+                &uprisings,
+                MissionKind::SubdueUprising,
+                &[Success]
+            ),
+            vec![false]
+        );
+        assert_eq!(
+            run(
+                &mut state,
+                &world,
+                &calm,
+                MissionKind::SubdueUprising,
+                &[Success]
+            ),
+            vec![true]
+        );
+    }
+
+    #[test]
     fn the_strategy_adds_and_cancels_only_standing_diplomacy_planners() {
         // FUN_004e5710 picks among the planners of the cancelled kind;
         // the heuristic planner holds a minor of diplomacy 50 and the
@@ -4687,6 +5035,10 @@ mod tests {
             standing: false,
             claimed: None,
             sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
         };
         let (world, _, _, keys) = diplomacy_world(90.0, &[50, 90]);
         let mut state = AIState::new(AiFaction::Empire);
@@ -4740,6 +5092,10 @@ mod tests {
             standing,
             claimed: None,
             sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
         };
         state
             .mission_planners
@@ -6434,6 +6790,10 @@ mod tests {
             standing: true,
             claimed: None,
             sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
         };
         let mut target = |p: &MissionPlanner| incite_target(p, &mut planner, &galaxy);
         // Without +0x38: the best supported (v[0], order 1).
@@ -6586,6 +6946,10 @@ mod tests {
             standing: true,
             claimed: None,
             sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
         };
         let mut target = |p: &MissionPlanner| subdue_target(p, &mut planner, &galaxy);
         // The far sector has two uprisings; its best supported.
@@ -6745,6 +7109,10 @@ mod tests {
             standing: true,
             claimed: None,
             sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
         };
         let mut claims = HashMap::new();
         let mut seen = state.seen.clone();
@@ -6860,6 +7228,10 @@ mod tests {
             standing: true,
             claimed: None,
             sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
         };
         let mut claims = HashMap::new();
         let seen = HashMap::new();
@@ -6974,6 +7346,10 @@ mod tests {
             standing: true,
             claimed: None,
             sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
         };
         let busy = HashSet::new();
         let missions = MissionState::new();
