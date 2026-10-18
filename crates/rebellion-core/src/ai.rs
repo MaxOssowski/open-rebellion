@@ -811,10 +811,16 @@ impl AIState {
         }
     }
 
-    /// An applied research order binds its mission to the planner that
-    /// sent it (`FUN_0047b360` stores the order in planner `+0x28`).
-    pub fn bind_mission(&mut self, kind: MissionKind, member: CharacterKey, mission_id: u64) {
-        let lead = crate::missions::MissionMember::Character(member);
+    /// An applied order binds its mission to the planner that sent it
+    /// (`FUN_0047b360` stores the order in planner `+0x28`): the standing
+    /// planner of its kind whose team `lead` leads, or the research planner
+    /// of its tree whose designer `lead` is.
+    pub fn bind_mission(
+        &mut self,
+        kind: MissionKind,
+        lead: crate::missions::MissionMember,
+        mission_id: u64,
+    ) {
         if let Some(p) = self
             .mission_planners
             .iter_mut()
@@ -823,7 +829,7 @@ impl AIState {
             p.mission = Some(mission_id);
             p.report = None;
         }
-        let Some(tech) = kind.research_tech() else {
+        let (Some(tech), Some(member)) = (kind.research_tech(), lead.character()) else {
             return;
         };
         if let Some(p) = self
@@ -1627,7 +1633,7 @@ impl AISystem {
             MissionEntry::Group(_) => Self::evaluate_rescue(planner, world, faction, actions),
         }
         Self::adopt_mission_orders(state, ctx.tick, start, actions);
-        Self::mission_planner_reports(state, galaxy, ctx.mission_state, actions);
+        Self::mission_planner_reports(state, galaxy, (ctx.mission_state, ctx.tick), actions);
         Self::mission_planner_cycle(state, planner, world, galaxy, ctx.tick, actions);
     }
 
@@ -1829,15 +1835,62 @@ impl AISystem {
     /// port: slot `+0x34` reads the target record's bit: `0x40`
     /// (Diplomacy, `FUN_00481eb0`), `0x100` (Incite, `FUN_004806d0`), `0x20`
     /// (Subdue, `FUN_0047d320`).
+    ///
+    /// The other classes read their reports in their own slots `+0x30`:
+    ///
+    /// - Recruitment (`FUN_0047dad0`): a success clears the count and,
+    ///   when the target is still the side's with no enemy fleet, makes it
+    ///   the gathering place `+0x38`; a failure counts against slot `+0x24`
+    ///   (`FUN_00480df0`, 1000) and sets nothing else;
+    /// - Reconnaissance (`FUN_0047f720`) and Espionage (`FUN_00480eb0`): a
+    ///   success marks the target seen today (record `+0x44`,
+    ///   `FUN_00433dc0`) and clears the count; either result clears the
+    ///   target `+0x34`, and Espionage also its gathering place `+0x38`.
     fn mission_planner_reports(
         state: &mut AIState,
         galaxy: &crate::ai_records::Galaxy,
-        missions: &MissionState,
+        (missions, day): (&MissionState, u64),
         actions: &mut Vec<AIAction>,
     ) {
+        use crate::missions::MissionOutcome;
         const CHECK: u32 = 0x4000_0000;
         const ABORT: u32 = 0x2000_0000;
+        let seen = &mut state.seen;
         for p in state.mission_planners.iter_mut().filter(|p| p.standing) {
+            match (p.kind, p.report) {
+                (MissionKind::Recruitment, Some(MissionOutcome::Success)) => {
+                    p.report = None;
+                    p.failures = 0;
+                    let own = p
+                        .target_system
+                        .and_then(|t| galaxy.system(t))
+                        .is_some_and(|r| r.kind & 1 != 0 && r.kind & 0x200 == 0);
+                    if own {
+                        p.staging = p.target_system;
+                    }
+                }
+                (MissionKind::Recruitment, Some(MissionOutcome::Failure)) => {
+                    p.report = None;
+                    p.failures = p.failures.saturating_add(1);
+                    if p.failures > 1000 {
+                        p.failures = 0;
+                    }
+                }
+                (MissionKind::Reconnaissance | MissionKind::Espionage, Some(outcome)) => {
+                    p.report = None;
+                    if outcome == MissionOutcome::Success {
+                        if let Some(t) = p.target_system.filter(|&t| galaxy.system(t).is_some()) {
+                            seen.insert(t, day);
+                        }
+                        p.failures = 0;
+                    }
+                    p.target_system = None;
+                    if p.kind == MissionKind::Espionage {
+                        p.staging = None;
+                    }
+                }
+                _ => {}
+            }
             let (limit, bit) = match p.kind {
                 MissionKind::Diplomacy => (5, 0x40),
                 MissionKind::SubdueUprising => (5, 0x20),
@@ -4801,13 +4854,17 @@ mod tests {
             target_object: None,
             tick: 1,
         });
-        state.bind_mission(MissionKind::Diplomacy, keys[0], id);
+        state.bind_mission(
+            MissionKind::Diplomacy,
+            MissionMember::Character(keys[0]),
+            id,
+        );
         assert_eq!(state.mission_planners[0].mission, Some(id));
         let result = |outcome| result(id, outcome);
         let reports = |state: &mut AIState, world: &GameWorld| {
             let galaxy = galaxy_of(state, world);
             let mut actions = Vec::new();
-            AISystem::mission_planner_reports(state, &galaxy, &missions, &mut actions);
+            AISystem::mission_planner_reports(state, &galaxy, (&missions, 1), &mut actions);
             aborted(&actions)
         };
 
@@ -4848,10 +4905,14 @@ mod tests {
         heuristic.id = 77;
         heuristic.standing = false;
         state.mission_planners.insert(0, heuristic);
-        state.bind_mission(MissionKind::Diplomacy, other, 5);
-        state.bind_mission(MissionKind::InciteUprising, lead, 6);
+        state.bind_mission(MissionKind::Diplomacy, MissionMember::Character(other), 5);
+        state.bind_mission(
+            MissionKind::InciteUprising,
+            MissionMember::Character(lead),
+            6,
+        );
         assert!(state.mission_planners.iter().all(|p| p.mission.is_none()));
-        state.bind_mission(MissionKind::Diplomacy, lead, 7);
+        state.bind_mission(MissionKind::Diplomacy, MissionMember::Character(lead), 7);
         assert_eq!(
             state
                 .mission_planners
@@ -4876,7 +4937,7 @@ mod tests {
         state.mission_planners[0].mission = Some(id);
         state.mission_planners[0].report = Some(crate::missions::MissionOutcome::Failure);
         state.mission_planners[0].failures = 9;
-        state.bind_mission(MissionKind::Diplomacy, lead, id);
+        state.bind_mission(MissionKind::Diplomacy, MissionMember::Character(lead), id);
         world.systems[neutral].control = ControlKind::Controlled(crate::dat::Faction::Empire);
         world.systems[neutral].popularity_empire = 0.9;
         let galaxy = galaxy_of(&state, &world);
@@ -4884,7 +4945,7 @@ mod tests {
         state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Failure)]);
         state.mission_planners[0].report = Some(crate::missions::MissionOutcome::Failure);
         let mut actions = Vec::new();
-        AISystem::mission_planner_reports(&mut state, &galaxy, &missions, &mut actions);
+        AISystem::mission_planner_reports(&mut state, &galaxy, (&missions, 1), &mut actions);
         assert_eq!(aborted(&actions), vec![id]);
         assert_eq!(state.mission_planners[0].failures, 9);
 
@@ -4893,11 +4954,11 @@ mod tests {
         let mut ended = missions.clone();
         assert!(ended.abort(id));
         let mut actions = Vec::new();
-        AISystem::mission_planner_reports(&mut state, &galaxy, &ended, &mut actions);
+        AISystem::mission_planner_reports(&mut state, &galaxy, (&ended, 1), &mut actions);
         assert!(actions.is_empty());
         assert_eq!(state.mission_planners[1].pending, 0x4000_0000);
         let mut actions = Vec::new();
-        AISystem::mission_planner_reports(&mut state, &galaxy, &missions, &mut actions);
+        AISystem::mission_planner_reports(&mut state, &galaxy, (&missions, 1), &mut actions);
         assert_eq!(aborted(&actions), vec![id]);
         assert_eq!(state.mission_planners[1].pending, 0);
 
@@ -4905,13 +4966,118 @@ mod tests {
         // bits wait, and the running mission is aborted once.
         state.mission_planners[1].failures = 5;
         state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Failure)]);
-        AISystem::mission_planner_reports(&mut state, &galaxy, &ended, &mut Vec::new());
+        AISystem::mission_planner_reports(&mut state, &galaxy, (&ended, 1), &mut Vec::new());
         state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Success)]);
-        AISystem::mission_planner_reports(&mut state, &galaxy, &ended, &mut Vec::new());
+        AISystem::mission_planner_reports(&mut state, &galaxy, (&ended, 1), &mut Vec::new());
         assert_eq!(state.mission_planners[1].pending, 0x6000_0000);
         let mut actions = Vec::new();
-        AISystem::mission_planner_reports(&mut state, &galaxy, &missions, &mut actions);
+        AISystem::mission_planner_reports(&mut state, &galaxy, (&missions, 1), &mut actions);
         assert_eq!(aborted(&actions), vec![id]);
+    }
+
+    #[test]
+    fn recon_espionage_and_recruitment_read_their_own_reports() {
+        // FUN_0047f720 / FUN_00480eb0: a success marks the target seen
+        // today (FUN_00433dc0, record +0x44); either result clears +0x34,
+        // and Espionage +0x38 too. FUN_0047dad0: a success makes an own
+        // calm target the gathering place +0x38.
+        use crate::missions::MissionOutcome::{Failure, Success};
+        let (world, home, rebels, _) = recon_world(0, true);
+        let spy = add_commando(&mut GameWorld::default(), false, 60, 0);
+        let mut state = AIState::new(AiFaction::Empire);
+        let planner = |id, kind, lead| MissionPlanner {
+            id,
+            kind,
+            team: vec![lead],
+            decoys: Vec::new(),
+            target_system: Some(rebels[0]),
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: Some(home),
+            standing: true,
+            claimed: None,
+            sector: None,
+            mission: None,
+            report: None,
+            failures: 3,
+            pending: 0,
+        };
+        let scout =
+            MissionMember::Character(add_character(&mut GameWorld::default(), false, true, 0));
+        state.mission_planners = vec![
+            planner(1, MissionKind::Reconnaissance, scout),
+            planner(2, MissionKind::Espionage, spy),
+            MissionPlanner {
+                target_system: Some(home),
+                staging: None,
+                ..planner(3, MissionKind::Recruitment, scout)
+            },
+        ];
+        state.bind_mission(MissionKind::Reconnaissance, scout, 10);
+        state.bind_mission(MissionKind::Espionage, spy, 11);
+        state.bind_mission(MissionKind::Recruitment, scout, 12);
+        assert_eq!(
+            state
+                .mission_planners
+                .iter()
+                .map(|p| p.mission)
+                .collect::<Vec<_>>(),
+            vec![Some(10), Some(11), Some(12)]
+        );
+        let galaxy = galaxy_of(&state, &world);
+        state.note_mission_results(&[
+            result(10, Success),
+            result(11, Failure),
+            result(12, Success),
+        ]);
+        AISystem::mission_planner_reports(
+            &mut state,
+            &galaxy,
+            (&MissionState::new(), 40),
+            &mut Vec::new(),
+        );
+        let [recon, espionage, recruit] = [0, 1, 2].map(|i| state.mission_planners[i].clone());
+        assert_eq!(
+            (recon.target_system, recon.staging, recon.failures),
+            (None, Some(home), 0)
+        );
+        assert_eq!(state.seen.get(&rebels[0]), Some(&40));
+        assert_eq!(
+            (
+                espionage.target_system,
+                espionage.staging,
+                espionage.failures
+            ),
+            (None, None, 3)
+        );
+        assert_eq!((recruit.staging, recruit.failures), (Some(home), 0));
+        assert!(state.mission_planners.iter().all(|p| p.report.is_none()));
+
+        // A Recruitment target not the side's does not become the
+        // gathering place; failures count against 1000 (FUN_0047ae20 with
+        // FUN_00480df0) and wrap past it.
+        let read = |state: &mut AIState, outcome| {
+            state.note_mission_results(&[result(12, outcome)]);
+            AISystem::mission_planner_reports(
+                state,
+                &galaxy,
+                (&MissionState::new(), 41),
+                &mut Vec::new(),
+            );
+            (
+                state.mission_planners[2].staging,
+                state.mission_planners[2].failures,
+            )
+        };
+        state.mission_planners[2].staging = None;
+        state.mission_planners[2].target_system = Some(rebels[1]);
+        assert_eq!(read(&mut state, Success), (None, 0));
+        assert_eq!(read(&mut state, Failure), (None, 1));
+        state.mission_planners[2].failures = 999;
+        assert_eq!(read(&mut state, Failure), (None, 1000));
+        assert_eq!(read(&mut state, Failure), (None, 0));
     }
 
     #[test]
@@ -4940,7 +5106,7 @@ mod tests {
                 target_object: None,
                 tick: 1,
             });
-            state.bind_mission(kind, lead.character().unwrap(), id);
+            state.bind_mission(kind, lead, id);
             let missions_ref = &missions;
             outcomes
                 .iter()
@@ -4965,7 +5131,12 @@ mod tests {
                     };
                     let galaxy = AISystem::records(state, &planner, &inputs);
                     let mut actions = Vec::new();
-                    AISystem::mission_planner_reports(state, &galaxy, missions_ref, &mut actions);
+                    AISystem::mission_planner_reports(
+                        state,
+                        &galaxy,
+                        (missions_ref, 1),
+                        &mut actions,
+                    );
                     !aborted(&actions).is_empty()
                 })
                 .collect::<Vec<bool>>()
@@ -7645,7 +7816,7 @@ mod tests {
                 world,
             )
             .unwrap();
-        state.bind_mission(kind, member.character().unwrap(), id);
+        state.bind_mission(kind, member, id);
         id
     }
 
@@ -7937,11 +8108,19 @@ mod tests {
         ship.member = Some(b);
         state.research_planners = vec![troop, ship];
 
-        state.bind_mission(MissionKind::ShipDesignResearch, a, 7);
+        state.bind_mission(
+            MissionKind::ShipDesignResearch,
+            MissionMember::Character(a),
+            7,
+        );
         assert!(state.research_planners.iter().all(|p| p.mission.is_none()));
-        state.bind_mission(MissionKind::Diplomacy, b, 7);
+        state.bind_mission(MissionKind::Diplomacy, MissionMember::Character(b), 7);
         assert!(state.research_planners.iter().all(|p| p.mission.is_none()));
-        state.bind_mission(MissionKind::ShipDesignResearch, b, 7);
+        state.bind_mission(
+            MissionKind::ShipDesignResearch,
+            MissionMember::Character(b),
+            7,
+        );
         assert_eq!(state.research_planners[1].mission, Some(7));
         assert_eq!(state.research_planners[0].mission, None);
 

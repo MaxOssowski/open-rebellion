@@ -2710,6 +2710,13 @@ cross-runtime proof remain open
   aborts rise from 216 to 871. Golden initial `v1:cb9430c7635d6e7e` ->
   `v1:530e248f2599b293`, final `v1:fe6f9d2ef366dfd9` ->
   `v1:45ce6a74e7ac0f51` (`evidence/2026-10-19-planner-reports/`).
+- 2026-10-19 (F-036): the Recruitment, Reconnaissance and Espionage
+  planners read their own report slots (`FUN_0047dad0`, `FUN_0047f720`,
+  `FUN_00480eb0`). After a result, scouts and spies drop their target and
+  mark it seen. `bind_mission` takes special-force leads, so Espionage
+  missions now report to their planners. Golden final
+  `v1:45ce6a74e7ac0f51` -> `v1:75f7a5f65cee3222`
+  (`evidence/2026-10-19-report-slots/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

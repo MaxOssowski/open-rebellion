@@ -1,0 +1,3 @@
+test ai::tests::recon_espionage_and_recruitment_read_their_own_reports ... FAILED
+    ai::tests::recon_espionage_and_recruitment_read_their_own_reports
+test result: FAILED. 123 passed; 1 failed; 0 ignored; 0 measured; 1255 filtered out; finished in 0.00s

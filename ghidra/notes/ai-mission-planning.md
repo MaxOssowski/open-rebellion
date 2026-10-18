@@ -1287,8 +1287,20 @@ runs (`FUN_004f3000`, `FUN_00520b30`):
 - `AIState::bind_mission` and `note_mission_results` now reach the
   standing planners.
 - port: the `0x80` bit is not kept, and no reader of it is traced.
-- Recruitment (`FUN_0047dad0`), Reconnaissance (`FUN_0047f720`) and
-  Espionage (`FUN_00480eb0`) have their own report slots, not ported.
+
+The other classes' report slots (ported 2026-10-19):
+- Recruitment, `FUN_0047dad0` (at `0x47dad0`):
+  - a success clears the count, and while the target record is the
+    side's with no enemy fleet (`+0x30` 1, not `0x200`) copies `+0x34`
+    into `+0x38`;
+  - a failure only counts against slot `+0x24` (`FUN_00480df0`, 1000).
+- Reconnaissance, `FUN_0047f720`:
+  - a success marks the target record seen today (`FUN_00433dc0`:
+    `+0x44` = the day, `FUN_004fcf00`) and clears the count;
+  - either result empties `+0x34`.
+- Espionage, `FUN_00480eb0`: the same, and it also empties `+0x38`.
+- Espionage teams are special forces, so `bind_mission` now takes the
+  order's first member of any kind.
 
 Campaigns: 24 seeds of 1500 days, against the Espionage commit.
 - Aborts: 216 before, 871 after.

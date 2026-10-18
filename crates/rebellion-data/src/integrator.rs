@@ -2588,7 +2588,7 @@ fn apply_ai_actions_inner(
                     for character in team.iter().chain(decoys).filter_map(|m| m.character()) {
                         ai_state.mark_busy(character);
                     }
-                    if let Some(lead) = team.first().and_then(|m| m.character()) {
+                    if let Some(&lead) = team.first() {
                         ai_state.bind_mission(*kind, lead, id);
                     }
                 }
