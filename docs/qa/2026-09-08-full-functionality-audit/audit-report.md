@@ -2477,6 +2477,16 @@ cross-runtime proof remain open
   `FUN_0048d7f0` gather them, with their recovered texts and pictures, seen
   in the fixture build (`evidence/2026-10-18-encounter-messages/`). 12 of
   the 21 story message classes remain unmapped.
+- 2026-10-18: the original Final Battle read (`ghidra/notes/final-battle.md`).
+  The mission manager sets FinalBattleReady once a captured Luke, not in
+  Jabba's Palace, knows his heritage and has Force 60 or more (GNPRTB
+  3078), with Vader and the Emperor free. It then sends Vader to Luke and
+  both to the Emperor by Move orders, and fights the battle when the three
+  meet: Luke with Force below GNPRTB 6151 (100) is injured and stays
+  captive; otherwise he goes free and captures Vader and the Emperor. The
+  Final Battle message (`0x71e0`..`0x71e2`) follows. DarthPickup sends
+  Vader to collect the prisoners of Jabba's Palace (mission `0x73`). The
+  port's own chain (`0x393`..`0x396`, `0x220`) has none of this.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
