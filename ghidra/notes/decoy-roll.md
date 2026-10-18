@@ -344,6 +344,11 @@ if pool +0x38 holds a member:            // FUN_0048a640
             member.+0xa0 = traitor       // FUN_004ee5c0 twice (clear, then set), slot +0x340
 ```
 
+(2026-10-18: `+0x8c` is the Force level (`character-injury.md`), and the
+learning posts `0x361`, Character Discovers Traitor
+(`story-message-classes.md`, row 17); ported as
+`MissionEffect::TraitorIdentified`.)
+
 So a disloyal member betrays the mission before the decoys act. Setting
 detected skips the decoy phase and detection, and sends the whole team to
 `FUN_0058a1c0` (exposure). Each other member may learn the traitor

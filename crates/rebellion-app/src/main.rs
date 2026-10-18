@@ -2163,6 +2163,25 @@ async fn main() {
             // Member moves and releases come before the results.
             rebellion_core::missions::apply_advance_effects(&mut world, &mission_advance.effects);
             push_advance_injuries(&mut msg_log, &world, &mission_advance.effects, current_tick);
+            // Notification 0x361 (FUN_0048c9c0): a member learned the traitor.
+            for effect in &mission_advance.effects {
+                if let MissionEffect::TraitorIdentified { character, traitor } = effect {
+                    if let (Some(discoverer), Some(traitor)) =
+                        (world.characters.get(*character), world.characters.get(*traitor))
+                    {
+                        if let Some(message) =
+                            rebellion_render::story_messages::discovers_traitor_message(
+                                discoverer,
+                                traitor,
+                                current_tick,
+                                &message_texts,
+                            )
+                        {
+                            msg_log.push(message);
+                        }
+                    }
+                }
+            }
             // The encounter class (vtable 0x65b408): Force detection and the
             // confrontation's 0x360 and Luke's 0x211.
             for message in rebellion_render::story_messages::EncounterNotes::gather(
@@ -8229,7 +8248,8 @@ fn apply_mission_result(
             // ends.
             MissionEffect::BountyAttack { .. }
             | MissionEffect::PickupInProgress
-            | MissionEffect::PrisonerPickedUp { .. } => {}
+            | MissionEffect::PrisonerPickedUp { .. }
+            | MissionEffect::TraitorIdentified { .. } => {}
             MissionEffect::CharacterRescued {
                 character,
                 returned_to,

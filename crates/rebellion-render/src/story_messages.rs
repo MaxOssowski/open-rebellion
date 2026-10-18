@@ -453,6 +453,50 @@ pub fn jabba_captures_message(
     )
 }
 
+/// Character Discovers Traitor (`FUN_0048c9c0`): notification `0x361`,
+/// a character's TraitorDiscovered key set to a traitor (`FUN_00588e80`).
+/// The discoverer's side reads TEXTSTRA `0x71e8` "{1:1} Discovers Traitor"
+/// / `0x71e9` with the traitor (2) and the other side's name (3,
+/// `FUN_004f3dd0`), on its side background with the discoverer's portrait.
+///
+/// port: the side names are "Alliance" and "Empire" (the side records'
+/// `+0x30` names are not loaded); the speakers and media are not read.
+#[must_use]
+pub fn discovers_traitor_message(
+    discoverer: &rebellion_core::world::Character,
+    traitor: &rebellion_core::world::Character,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let (side, audience, other) = if discoverer.is_alliance {
+        (CockpitFaction::Alliance, RailAudience::Alliance, "Empire")
+    } else {
+        (CockpitFaction::Empire, RailAudience::Empire, "Alliance")
+    };
+    let parameters = [
+        MessageParameter::Named {
+            name: &discoverer.name,
+        },
+        MessageParameter::Named {
+            name: &traitor.name,
+        },
+        MessageParameter::Named { name: other },
+    ];
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&0x71e9)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(STORY_RAIL, audience)
+        .with_title(fill_message_text(texts.get(&0x71e8)?, &parameters))
+        .with_picture(MessagePicture {
+            background: side_background(side),
+            foreground: character_portrait(discoverer.dat_id, discoverer.is_major),
+        }),
+    )
+}
+
 /// Rescue Attempt (`FUN_0048c4c0`): notification `0x200`
 /// (`RoleEnrouteActiveNotif`), a character setting out (EnrouteActive)
 /// whose second key, at record `+0x2c`, is a Palace mission (family
@@ -1570,6 +1614,55 @@ mod tests {
         let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
         assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
         assert_eq!(lost.picture.expect("a picture").background, 0x428);
+    }
+
+    #[test]
+    fn a_traitor_discovery_names_both_and_the_other_side_for_the_discoverer_s_side() {
+        // FUN_0048c9c0: 0x71e8 with the discoverer (1), 0x71e9 with the
+        // traitor (2) and the other side (3); the discoverer's side,
+        // background (side != 1) + 0x412, the discoverer's portrait.
+        let texts: HashMap<u16, String> = [
+            (0x71e8, "{1:1} Discovers Traitor"),
+            (0x71e9, "Through the use of the Force, I have discovered that {2:1} has betrayed us to the {3:1}."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let luke = rebellion_core::world::Character {
+            name: "Luke Skywalker".into(),
+            dat_id: DatId::new(0x242),
+            is_major: true,
+            is_alliance: true,
+            ..Default::default()
+        };
+        let traitor = rebellion_core::world::Character {
+            name: "Bria Tharen".into(),
+            is_alliance: true,
+            ..Default::default()
+        };
+        let message = discovers_traitor_message(&luke, &traitor, 6, &texts).expect("message");
+        assert_eq!(
+            message.title.as_deref(),
+            Some("Luke Skywalker Discovers Traitor")
+        );
+        assert_eq!(
+            message.text,
+            "Through the use of the Force, I have discovered that Bria Tharen has betrayed us to the Empire."
+        );
+        assert_eq!(message.audience, RailAudience::Alliance);
+        let picture = message.picture.expect("a picture");
+        assert_eq!(picture.background, 0x412);
+        assert_eq!(picture.foreground, character_portrait(luke.dat_id, true));
+        let vader = rebellion_core::world::Character {
+            name: "Darth Vader".into(),
+            is_empire: true,
+            ..Default::default()
+        };
+        let message = discovers_traitor_message(&vader, &traitor, 6, &texts).expect("message");
+        assert_eq!(message.audience, RailAudience::Empire);
+        assert!(message.text.ends_with("to the Alliance."));
+        assert_eq!(message.picture.map(|p| p.background), Some(0x413));
+        assert!(discovers_traitor_message(&luke, &traitor, 6, &HashMap::new()).is_none());
     }
 
     #[test]

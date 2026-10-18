@@ -1828,6 +1828,16 @@ pub fn post_story_messages(
         .iter()
         .find(|(_, character)| character.is_empire && !character.is_major)
         .map(|(key, _)| key);
+    // Character Discovers Traitor (FUN_0048c9c0): Leia learns Chewbacca's
+    // betrayal.
+    if let Some(message) = rebellion_render::story_messages::discovers_traitor_message(
+        &world.characters[leia],
+        &world.characters[chewbacca],
+        0,
+        texts,
+    ) {
+        log.push(message);
+    }
     // Rescue Attempt (FUN_0048c4c0): Chewbacca sets out for the palace.
     if let Some(message) = rebellion_render::story_messages::rescue_attempt_message(
         &world.characters[chewbacca],

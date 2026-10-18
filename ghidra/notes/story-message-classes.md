@@ -71,7 +71,7 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 14 | Jabba Captures a character | `0x1e0` case 5 | `FUN_00490340` (`0x65b638`) | `0x429` | `0x7156` / `0x7157` | — | mapped 2026-10-18 (`jabba_captures_message`, the Palace mission's failed rescuer) |
 | 15 | Jabba Delivers Prisoners | `0x231`, arg set, once | `FUN_0048b6e0` (`0x65b1d0`) | `0x42a`, or `0x42b` | `0x7200` / `0x7201` | both | mapped 2026-10-18 (`jabba_delivers_message`, the Pickup's hit) |
 | 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | mapped 2026-10-18 (`emperor_arrives_message`, SeatOfPower in `seat_of_power.rs`, save v78) |
-| 17 | Character Discovers Traitor | `0x361` | `FUN_0048c9c0` (`0x65b2f0`) | side, the discoverer's portrait | `0x71e8` / `0x71e9` | one side, by `FUN_004edc80` | missing |
+| 17 | Character Discovers Traitor | `0x361` | `FUN_0048c9c0` (`0x65b2f0`) | side, the discoverer's portrait | `0x71e8` / `0x71e9` | one side, by `FUN_004edc80` | mapped 2026-10-18 (`discovers_traitor_message`, the betrayal's learners, `FUN_00588e80`) |
 | 18 | Killed by Imperial Assassins | `0x306` | `FUN_0048b050` (`0x65b140`) | `0x42e` | `0x7208` / `0x7209` | Alliance only | mapped 2026-10-18 (`assassins_message`, an assassination that kills; "Delivery") |
 | 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | both | mapped 2026-10-18 (`death_star_sabotaged_message`, a DS Sabotage that destroys it; "Delivery") |
 | 20 | Coruscant Captured | `0x128` | `FUN_0048f790` (`0x65b568`) | — | `0x7170` / `0x7171` | when the Alliance holds `0x90000109` | mapped 2026-10-18 (`victory_conditions_messages`, the word's `0x128`, save v79) |
@@ -332,3 +332,33 @@ at Coruscant before play. The port's own `0x230` story event is removed.
   a `JabbaStep::Rescue` dispatches the Palace mission. port: the dispatch
   stands in for the rescuer's EnrouteActive, which the original sets as
   the rescuer leaves.
+
+## Row 17, Character Discovers Traitor (2026-10-18)
+
+- The sender is the betrayal phase (`FUN_00589f10`, `decoy-roll.md`).
+  After a member betrays, each other member (`FUN_00589490` ->
+  `FUN_00588e80`) learns the traitor with a chance of its Force `+0x8c`
+  (`FUN_0055e550`). Its TraitorDiscovered key `+0xa0` becomes the traitor
+  (`FUN_004ee5c0`, set twice: cleared, then set), and slot `+0x3b8`
+  (`FUN_004f2090`) posts `0x361` with both keys (`FUN_0053fe40`).
+- `FUN_0048c9c0` shows it when both keys are characters, to the
+  discoverer's side only:
+  - background `(side != 1) + 0x412`, media `0x47c`/`0x47d`;
+  - the discoverer's portrait;
+  - TEXTSTRA `0x71e8` "{1:1} Discovers Traitor" / `0x71e9` "Through the
+    use of the Force, I have discovered that {2:1} has betrayed us to the
+    {3:1}.", where 3 is the other side's name (`FUN_004f3dd0`, side
+    objects `0xf300000f`/`0xf3000010`).
+- Ported:
+  - `mission_detection::betray` reports `MissionEffect::TraitorIdentified`
+    for each learner;
+  - the app posts `story_messages::discovers_traitor_message`;
+  - the telemetry records `traitor_revealed` with the traitor.
+- port:
+  - only characters learn;
+  - `+0xa0` is not stored, as no reader of it is traced;
+  - the side names are "Alliance" and "Empire".
+- In 24 AI campaigns (41,805 missions) the AI never sent two characters
+  on one mission, so no one can learn. A player's multi-character team
+  can.
+- All 21 story message classes are now mapped.

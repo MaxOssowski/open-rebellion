@@ -2080,6 +2080,13 @@ pub enum MissionEffect {
     /// The Bounty mission captured Han (`FUN_00575de0`): `CanEscape` cleared
     /// (`FUN_004eeb10(0)`) and `CapturedByBountyHunters` set (`FUN_00572700`).
     CapturedByBountyHunters { character: CharacterKey },
+    /// A mission member learned through the Force who betrayed its mission
+    /// (`FUN_00588e80`; its TraitorDiscovered key `+0xa0`, notification
+    /// `0x361`: Character Discovers Traitor).
+    TraitorIdentified {
+        character: CharacterKey,
+        traitor: CharacterKey,
+    },
     /// An injury killed a minor character: slot `+0x2f0` (`FUN_004ef6d0`)
     /// destroys it when slot `+0x2e0` says so
     /// ([`crate::mission_detection::dies_of_injury`]).

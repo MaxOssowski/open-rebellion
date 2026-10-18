@@ -680,6 +680,18 @@ impl PerceptionIntegrator {
                         }),
                     ));
                 }
+                MissionEffect::TraitorIdentified { character, traitor } => {
+                    self.events.push(GameEventRecord::new(
+                        tick,
+                        self.wall_ms,
+                        SYS_MISSIONS,
+                        EVT_TRAITOR_REVEALED,
+                        serde_json::json!({
+                            "character": name(*character),
+                            "traitor": name(*traitor),
+                        }),
+                    ));
+                }
                 MissionEffect::DiedOfInjury { character } => {
                     self.events.push(GameEventRecord::new(
                         tick,
@@ -2181,7 +2193,8 @@ fn apply_mission_effects_inner(
             // pickup's prisoners leave as the mission ends.
             MissionEffect::BountyAttack { .. }
             | MissionEffect::PickupInProgress
-            | MissionEffect::PrisonerPickedUp { .. } => {}
+            | MissionEffect::PrisonerPickedUp { .. }
+            | MissionEffect::TraitorIdentified { .. } => {}
             MissionEffect::CharacterInjured { character, injury } => {
                 // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
                 if let Some(c) = world.characters.get_mut(*character) {

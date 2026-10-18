@@ -759,19 +759,46 @@ impl Run<'_> {
 
     /// `FUN_00589f10`: the first team or decoy member not decoying that
     /// fails `draw(0..99) < 100 - loyalty` betrays the mission
-    /// (`FUN_00588da0`, `FUN_0055e520`). port: the other members' learning
-    /// the traitor (`+0xa0`, `FUN_00588e80`) is not ported.
-    fn betray(&mut self, mission: &ActiveMission, rng: &mut MissionRng) {
+    /// (`FUN_00588da0`, `FUN_0055e520`). Then each other member
+    /// (`FUN_00589490` -> `FUN_00588e80`) learns the traitor with a chance
+    /// of its Force `+0x8c` (`FUN_0055e550`): its `TraitorDiscovered` key
+    /// `+0xa0` becomes the traitor (`FUN_004ee5c0`, notification `0x361`).
+    ///
+    /// port: only characters learn (the walk reads `+0x8c`, a character's
+    /// Force); the key `+0xa0` is not stored, as no reader of it is traced;
+    /// the learning is reported as [`MissionEffect::TraitorIdentified`].
+    fn betray(
+        &mut self,
+        mission: &ActiveMission,
+        rng: &mut MissionRng,
+        out: &mut Vec<MissionEffect>,
+    ) {
         let lists = Lists {
             chars: true,
             sforces: true,
             team: true,
             decoys: true,
         };
-        for member in self.members(mission, lists) {
-            if rng.chance(100 - self.skill(member, Skill::Loyalty)) {
-                self.detected = true;
-                return;
+        let members = self.members(mission, lists);
+        let Some(&traitor) = members
+            .iter()
+            .find(|&&member| rng.chance(100 - self.skill(member, Skill::Loyalty)))
+        else {
+            return;
+        };
+        self.detected = true;
+        for &member in &members {
+            let MissionMember::Character(learner) = member else {
+                continue;
+            };
+            if member == traitor || !rng.chance(self.force(learner, out)) {
+                continue;
+            }
+            if let MissionMember::Character(traitor) = traitor {
+                out.push(MissionEffect::TraitorIdentified {
+                    character: learner,
+                    traitor,
+                });
             }
         }
     }
@@ -1450,7 +1477,7 @@ fn first_pass(
     // FUN_00589e40: Force detection.
     run.force_detect(mission, rng, out);
     if mission.phase == PHASE_BETRAYAL {
-        run.betray(mission, rng);
+        run.betray(mission, rng, out);
     }
     if !run.detected {
         if flags.system {
@@ -1992,6 +2019,41 @@ mod tests {
 
             assert_eq!(mission.end_code, end_code, "loyalty {loyalty}");
         }
+    }
+
+    #[test]
+    fn the_other_members_learn_the_traitor_on_their_force() {
+        // FUN_00589490 -> FUN_00588e80: after a betrayal, each other member
+        // learns the traitor with a chance of its Force +0x8c
+        // (FUN_0055e550): Force 100 always, Force 0 never; the traitor
+        // itself draws nothing.
+        let (mut world, here) = world_with(imperial());
+        let traitor = agent(&mut world, here, 0);
+        let seer = agent(&mut world, here, 100);
+        let blind = agent(&mut world, here, 100);
+        world.characters[character(seer)].force_base = 100;
+        let mut mission = sabotage(vec![traitor, seer, blind], here, PHASE_BETRAYAL);
+
+        let out = run_once(&mut mission, &world);
+
+        let learned: Vec<_> = out
+            .iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::TraitorIdentified { character, traitor } => {
+                    Some((*character, *traitor))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(learned, [(character(seer), character(traitor))]);
+
+        // No betrayal, no learning.
+        world.characters[character(traitor)].loyalty.base = 100;
+        let mut mission = sabotage(vec![traitor, seer, blind], here, PHASE_BETRAYAL);
+        let out = run_once(&mut mission, &world);
+        assert!(!out
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::TraitorIdentified { .. })));
     }
 
     #[test]

@@ -2607,6 +2607,12 @@ cross-runtime proof remain open
   The app posts it to the Alliance with the rescuer's portrait when a
   Palace mission is dispatched. 20 of 21 story message classes are now
   mapped (`evidence/2026-10-18-rescue-attempt/`).
+- 2026-10-18: Character Discovers Traitor (row 17, `FUN_0048c9c0`) is
+  ported. After a betrayal each other member learns the traitor with a
+  chance of its Force (`FUN_00588e80`), which posts `0x361`, and the
+  discoverer's side reads the message. The AI never sends two characters
+  on one mission, so it shows only for a player's teams. All 21 story
+  message classes are now mapped (`evidence/2026-10-18-discovers-traitor/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
