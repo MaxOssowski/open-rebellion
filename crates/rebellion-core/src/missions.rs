@@ -3546,20 +3546,34 @@ impl MissionSystem {
                         });
                     }
                 }
-                // FUN_00576620: slot +0x2ec kills the target; the result and
-                // the raise need it destroyed (+0x50 bit 3). port: the kill
-                // always destroys.
+                // FUN_00576620: each successful member injures the target
+                // through its slot +0x2ec (FUN_004ef690: the injury of
+                // FUN_0053eae0, then slot +0x2f0 with reason 7, which
+                // destroys it when slot +0x2e0 says the injury kills). The
+                // result 3 and the raise need it destroyed (+0x50 bit 3),
+                // which only a minor character can be.
                 MissionKind::Assassination => {
                     if let Some(character) = mission.target_character {
                         if !target_taken {
-                            target_taken = true;
-                            effects.push(MissionEffect::CharacterKilled {
-                                character,
-                                faction: mission.faction,
-                            });
+                            if let Some(injury) =
+                                crate::mission_detection::assassination_injury(world, stream)
+                            {
+                                effects.push(MissionEffect::CharacterInjured { character, injury });
+                                if crate::mission_detection::dies_of_injury(
+                                    world, character, stream,
+                                ) {
+                                    target_taken = true;
+                                    effects.push(MissionEffect::CharacterKilled {
+                                        character,
+                                        faction: mission.faction,
+                                    });
+                                }
+                            }
                         }
-                        result = 3;
-                        effects.extend(raise(Skill::Combat, GNPRTB_ASSASSINATION_RAISE));
+                        if target_taken {
+                            result = 3;
+                            effects.extend(raise(Skill::Combat, GNPRTB_ASSASSINATION_RAISE));
+                        }
                     }
                 }
                 // FUN_00571a60: the uprising incident, then 2 while the
@@ -6093,12 +6107,55 @@ mod tests {
     }
 
     #[test]
-    fn an_assassination_kills_its_target_once_and_raises_every_successful_member() {
-        // FUN_00576620: slot +0x2ec kills; with the target destroyed each
-        // success sets 3 and raises combat (G6164).
+    fn an_assassination_only_injures_a_major_character() {
+        // FUN_00576620: each successful member injures the target (slot
+        // +0x2ec, FUN_004ef690); a major character's slot +0x2e0
+        // (FUN_006158b0) never lets the injury kill, so the target is not
+        // destroyed, the result stays unset (2) and no one is raised.
         let mut world = minimal_world();
         let here = system_at(&mut world, 0);
         always(&mut world, MissionKind::Assassination, 100);
+        let (a, b) = (
+            agent_at(&mut world, here, true),
+            agent_at(&mut world, here, true),
+        );
+        let target = agent_at(&mut world, here, false);
+        world.characters[target].is_major = true;
+        let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
+
+        let result = phase_ten(&world, MissionKind::Assassination, team, here, Some(target));
+
+        let injuries: Vec<i32> = result
+            .effects
+            .iter()
+            .filter_map(|effect| match effect {
+                MissionEffect::CharacterInjured { character, injury } if *character == target => {
+                    Some(*injury)
+                }
+                _ => None,
+            })
+            .collect();
+        // FUN_0053eae0: chance 2574 (100), rand(0..=100) + rand(0..=29) + 1.
+        assert_eq!(injuries.len(), 2);
+        assert!(injuries.iter().all(|injury| (1..=130).contains(injury)));
+        assert!(!result
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::CharacterKilled { .. })));
+        assert!(raised(&result).is_empty());
+        assert_eq!(result.outcome, MissionOutcome::Failure);
+    }
+
+    #[test]
+    fn an_assassination_kills_a_minor_character_its_injury_kills() {
+        // FUN_0056f160 -> FUN_0053eb30: a minor character dies of an
+        // injury with GNPRTB 2577 (100 here); once it is destroyed every
+        // success sets 3 and raises combat (G6164), and no one injures it
+        // again.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::Assassination, 100);
+        world.gnprtb = crate::world::GnprtbParams::uniform(&[(2577, 100)]);
         let (a, b) = (
             agent_at(&mut world, here, true),
             agent_at(&mut world, here, true),
@@ -6108,12 +6165,15 @@ mod tests {
 
         let result = phase_ten(&world, MissionKind::Assassination, team, here, Some(target));
 
-        let kills = result
-            .effects
-            .iter()
-            .filter(|effect| matches!(effect, MissionEffect::CharacterKilled { .. }))
-            .count();
-        assert_eq!(kills, 1);
+        let count = |f: fn(&MissionEffect) -> bool| result.effects.iter().filter(|e| f(e)).count();
+        assert_eq!(
+            count(|e| matches!(e, MissionEffect::CharacterInjured { .. })),
+            1
+        );
+        assert_eq!(
+            count(|e| matches!(e, MissionEffect::CharacterKilled { .. })),
+            1
+        );
         assert_eq!(
             raised(&result),
             vec![(a, Skill::Combat, 1), (b, Skill::Combat, 1)]

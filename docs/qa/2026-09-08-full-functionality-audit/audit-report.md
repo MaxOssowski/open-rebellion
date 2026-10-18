@@ -2541,6 +2541,15 @@ cross-runtime proof remain open
   gives 98, and the Bounty record does not repeat. So Han is captured in
   about 1 game in 50. The data test pins Han's combat, the RLEVADTB row
   and the four story missions' records (`ghidra/notes/jabba-palace.md`).
+- 2026-10-18: the assassination is the original's (`FUN_00576620`,
+  `FUN_004ef690`, `FUN_0053eae0`). It injures its target, and only a
+  minor character can die of the injury (GNPRTB 2577, 25 percent). A
+  major character never dies, as the manual says (p. 105). The port had
+  always killed: in 24 campaigns of 1500 days the AI had killed Han 22
+  times, Mon Mothma 21, Leia 18 and Luke 5. Now it kills none, and Han's
+  palace story happens in play (seeds 16 and 19). The golden is unchanged
+  (`evidence/2026-10-18-assassination/`). Open: death by injury after the
+  other injuries.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

@@ -83,8 +83,8 @@ injures characters outside missions (`usable_at`, as `FUN_00539f70`
 walks).
 
 Not ported yet: the command clearing (the port keeps no command
-`+0x96`), the `Damaged` bit, and death by injury for the `0x00665be0`
-subclass.
+`+0x96`) and the `Damaged` bit. Death by injury for the `0x00665be0`
+subclass is ported for the assassination only (below).
 
 ## Correction (2026-10-18)
 
@@ -92,3 +92,31 @@ The port's first version applied mission injuries only from mission
 results, but the detection that rolls them reports them with the
 advance, which ignored them. From 2026-10-18 `apply_advance_effects`
 stores them (`evidence/2026-10-18-evade-force/`).
+
+## Assassination and death by injury (2026-10-18)
+
+- The Assassination hit (`FUN_00576620`): each member that wins its
+  chance calls the target's slot `+0x2ec` (`FUN_004ef690`). That rolls
+  `FUN_0053eae0`: with a chance of GNPRTB 2574 (100), the injury is
+  rand(0..=2574) + rand(0..=2576 (29)) + 2575 (1). It is added through
+  slot `+0x2f0` with reason 7.
+- Slot `+0x2f0` (`FUN_004ef6d0`) then asks slot `+0x2e0` whether the
+  injury kills:
+  - the major characters' class (vtable `0x006657f0`, family `0x30`)
+    answers `FUN_006158b0`, 0: never;
+  - the minor characters' class (vtable `0x00665be0`, family `0x38`)
+    answers `FUN_0056f160` -> `FUN_0053eb30`, a GNPRTB 2577 (25) roll.
+
+  A killed character is destroyed (slot `+0xac`).
+- The result 3 and the combat raise (GNPRTB 6164) need the target
+  destroyed (`+0x50` bit 3). An assassination of a major character only
+  injures it. The manual agrees (mission table, p. 105): "You cannot kill
+  primary characters such as Luke Skywalker, but injuring them makes them
+  easier to capture."
+- Ported 2026-10-18 for the assassination
+  (`mission_detection::assassination_injury`, `dies_of_injury`). Before
+  this, the port's assassination always killed. In 24 campaigns of 1500
+  days it had killed Han 22 times, Mon Mothma 21, Leia 18 and Luke 5.
+- Not ported yet: the same death roll after the other injuries (the
+  detection's evasion and capture injuries, the Force duel, the uprising
+  incident).

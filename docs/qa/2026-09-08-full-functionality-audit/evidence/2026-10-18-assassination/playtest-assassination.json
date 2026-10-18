@@ -1,0 +1,69 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": {
+  "totals": {
+   "assassination_Failure": 422,
+   "assassination_Success": 66,
+   "killed Mon Mothma": 21,
+   "Bounty_Failure": 16,
+   "killed Han Solo": 22,
+   "killed Leia Organa": 18,
+   "killed Luke Skywalker": 5
+  },
+  "palace_story": {}
+ },
+ "after": {
+  "totals": {
+   "assassination_Failure": 1039,
+   "Bounty_Failure": 22,
+   "Bounty_Success": 2,
+   "Palace_Success": 2
+  },
+  "palace_story": {
+   "16": [
+    [
+     399,
+     "Bounty",
+     "Success"
+    ],
+    [
+     400,
+     "to_palace",
+     "Han Solo"
+    ],
+    [
+     402,
+     "rescue",
+     "Chewbacca"
+    ],
+    [
+     412,
+     "Palace",
+     "Success"
+    ]
+   ],
+   "19": [
+    [
+     571,
+     "Bounty",
+     "Success"
+    ],
+    [
+     572,
+     "to_palace",
+     "Han Solo"
+    ],
+    [
+     574,
+     "rescue",
+     "Luke Skywalker"
+    ],
+    [
+     584,
+     "Palace",
+     "Success"
+    ]
+   ]
+  }
+ }
+}

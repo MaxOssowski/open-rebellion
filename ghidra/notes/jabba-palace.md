@@ -186,6 +186,11 @@ Luke, Leia or Chewbacca.
 - The port's campaigns agree: in 24 seeds the hunters struck 16 times and
   Han evaded each time. The rest of the palace story follows only after a
   capture, so it is rare in play too.
+- After the assassination fix (2026-10-18, `character-injury.md`), Han
+  survives the AI's assassins. In 24 seeds the hunters struck 24 times
+  and captured Han twice. Seed 16: Bounty day 399, Han in the palace day
+  400, Chewbacca's rescue day 412. Seed 19: day 571, 572, then Luke's
+  rescue day 584.
 - Pinned by `rebellion-data/tests/mission_records.rs`
   (`han_evades_the_bounty_hunters_ninety_eight_times_in_a_hundred`, and
   the story missions' records).

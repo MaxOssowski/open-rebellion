@@ -1,0 +1,2 @@
+    missions::tests::an_assassination_only_injures_a_major_character
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 1347 filtered out; finished in 0.00s

@@ -334,6 +334,72 @@ pub(crate) fn injury_roll(world: &GameWorld, combat: i32, rng: &mut MissionRng) 
     )
 }
 
+/// GNPRTB 2574 (`DAT_006b9070`): the assassination injury's chance and its
+/// first spread (`FUN_0053eae0`).
+const GNPRTB_ASSASSINATION_INJURY_CHANCE: u16 = 2574;
+/// GNPRTB 2574 as shipped.
+const SHIPPED_ASSASSINATION_INJURY_CHANCE: i64 = 100;
+/// GNPRTB 2575 (`DAT_006b9090`): its base.
+const GNPRTB_ASSASSINATION_INJURY_BASE: u16 = 2575;
+/// GNPRTB 2575 as shipped.
+const SHIPPED_ASSASSINATION_INJURY_BASE: i64 = 1;
+/// GNPRTB 2576 (`DAT_006b90cc`): its second spread.
+const GNPRTB_ASSASSINATION_INJURY_SPREAD: u16 = 2576;
+/// GNPRTB 2576 as shipped.
+const SHIPPED_ASSASSINATION_INJURY_SPREAD: i64 = 29;
+/// GNPRTB 2577 (`DAT_006b90c8`): the chance an injury kills a minor
+/// character (`FUN_0053eb30`).
+const GNPRTB_MINOR_INJURY_DEATH: u16 = 2577;
+/// GNPRTB 2577 as shipped.
+const SHIPPED_MINOR_INJURY_DEATH: i64 = 25;
+
+/// The assassination's injury, slot `+0x2ec` (`FUN_004ef690` ->
+/// `FUN_0053eae0`): with a chance of GNPRTB 2574, `rand(0..=2574) +
+/// rand(0..=2576) + 2575`.
+pub(crate) fn assassination_injury(world: &GameWorld, draws: &mut impl Draws) -> Option<i32> {
+    let spread = param(
+        world,
+        GNPRTB_ASSASSINATION_INJURY_CHANCE,
+        SHIPPED_ASSASSINATION_INJURY_CHANCE,
+    );
+    if !draws.chance(spread) {
+        return None;
+    }
+    let first = draws.draw(spread);
+    let second = draws.draw(param(
+        world,
+        GNPRTB_ASSASSINATION_INJURY_SPREAD,
+        SHIPPED_ASSASSINATION_INJURY_SPREAD,
+    ));
+    Some(
+        second
+            + first
+            + param(
+                world,
+                GNPRTB_ASSASSINATION_INJURY_BASE,
+                SHIPPED_ASSASSINATION_INJURY_BASE,
+            ),
+    )
+}
+
+/// Whether an injury kills `character`, slot `+0x2e0` after slot `+0x2f0`
+/// (`FUN_004ef6d0`): a minor character (family `0x38`, vtable
+/// `0x00665be0`, `FUN_0056f160` -> `FUN_0053eb30`) dies with a chance of
+/// GNPRTB 2577; a major one (vtable `0x006657f0`, `FUN_006158b0`) never.
+/// Draws nothing for a major character.
+pub(crate) fn dies_of_injury(
+    world: &GameWorld,
+    character: CharacterKey,
+    draws: &mut impl Draws,
+) -> bool {
+    world.characters.get(character).is_some_and(|c| !c.is_major)
+        && draws.chance(param(
+            world,
+            GNPRTB_MINOR_INJURY_DEATH,
+            SHIPPED_MINOR_INJURY_DEATH,
+        ))
+}
+
 fn param(world: &GameWorld, id: u16, shipped: i64) -> i32 {
     i32::try_from(crate::movement::gnprtb_or_shipped(world, id, shipped)).unwrap_or(0)
 }
@@ -1235,7 +1301,10 @@ pub(crate) fn run(
     // location; the port models no defenders in an abode, so no one
     // detects there.
     let location = if mission.phase > 4 {
-        mission.target_abode.is_none().then_some(mission.target_system)
+        mission
+            .target_abode
+            .is_none()
+            .then_some(mission.target_system)
     } else {
         mission.origin
     };
@@ -1414,6 +1483,45 @@ fn first_pass(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_assassination_injury_and_a_minor_character_s_death_follow_their_rolls() {
+        struct Counted(f64, usize);
+        impl Draws for Counted {
+            fn draw(&mut self, n: i32) -> i32 {
+                self.1 += 1;
+                let mut rolls = crate::uprising::Rolls::new(std::slice::from_ref(&self.0));
+                Draws::draw(&mut rolls, n)
+            }
+            fn chance(&mut self, percent: i32) -> bool {
+                self.draw(99) < percent
+            }
+        }
+        // FUN_0053eae0: chance GNPRTB 2574 (100), then rand(0..=2574) +
+        // rand(0..=2576 (29)) + 2575 (1). FUN_0053eb30: a minor character
+        // dies with GNPRTB 2577 (25); a major one draws nothing.
+        let world = GameWorld::default();
+        let roll = |rolls: &[f64]| {
+            let mut draws = crate::uprising::Rolls::new(rolls);
+            assassination_injury(&world, &mut draws)
+        };
+        assert_eq!(roll(&[0.0, 0.0, 0.0]), Some(1));
+        assert_eq!(roll(&[0.0, 0.999, 0.999]), Some(130));
+        let mut world = GameWorld::default();
+        let minor = world.characters.insert(crate::world::Character::default());
+        let major = world.characters.insert(crate::world::Character {
+            is_major: true,
+            ..Default::default()
+        });
+        let dies = |key, roll: f64| {
+            let mut draws = Counted(roll, 0);
+            let died = dies_of_injury(&world, key, &mut draws);
+            (died, draws.1)
+        };
+        assert_eq!(dies(minor, 0.24), (true, 1));
+        assert_eq!(dies(minor, 0.26), (false, 1));
+        assert_eq!(dies(major, 0.0), (false, 0));
+    }
     use crate::ids::{CharacterKey, DatId, SpecialForceKey};
     use crate::missions::MissionKind;
     use crate::world::{
