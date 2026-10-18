@@ -2557,6 +2557,13 @@ cross-runtime proof remain open
   26 minor characters die, and seed 16 shows a failed rescue at Jabba's
   palace followed by Luke's success. The golden is unchanged
   (`evidence/2026-10-18-death-by-injury/`).
+- 2026-10-18: `story-message-classes.md` corrected. Events `0x305` and
+  `0x306` come from the system's blockade hook (`FUN_00511300`) and from
+  an autorouting arrival (`FUN_004fba10`) through `FUN_0053f950`, with a
+  flag pair as arguments. They are not an assassination or a sabotage.
+  The builders of rows 18 (Killed by Imperial Assassins) and 19 (Death
+  Star Sabotaged) need object keys that this path cannot carry, so their
+  triggers are open. Row 16's (`0x230`) trigger is open too.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

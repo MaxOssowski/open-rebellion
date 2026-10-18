@@ -72,8 +72,8 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 15 | Jabba Delivers Prisoners | `0x231`, arg set, once | `FUN_0048b6e0` (`0x65b1d0`) | `0x42a`, or `0x42b` | `0x7200` / `0x7201` | both | mapped 2026-10-18 (`jabba_delivers_message`, the Pickup's hit) |
 | 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | missing |
 | 17 | Character Discovers Traitor | `0x361` | `FUN_0048c9c0` (`0x65b2f0`) | side, the discoverer's portrait | `0x71e8` / `0x71e9` | one side, by `FUN_004edc80` | missing |
-| 18 | Killed by Imperial Assassins | `0x306` | `FUN_0048b050` (`0x65b140`) | `0x42e` | `0x7208` / `0x7209` | Alliance only | missing |
-| 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | — | missing |
+| 18 | Killed by Imperial Assassins | `0x306` | `FUN_0048b050` (`0x65b140`) | `0x42e` | `0x7208` / `0x7209` | Alliance only | missing; trigger unresolved (see Correction 2026-10-18) |
+| 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | — | missing; trigger unresolved (see Correction 2026-10-18) |
 | 20 | Coruscant Captured | `0x128` | `FUN_0048f790` (`0x65b568`) | — | `0x7170` / `0x7171` | when the Alliance holds `0x90000109` | missing |
 | 21 | Alliance Headquarters Destroyed | `0x128`, arg bit 0 | `FUN_0048e5a0` (`0x65b450`) | — | `0x7188` / `0x7189` | both | missing |
 
@@ -165,8 +165,8 @@ is the droid's advice: its texts are `0x6001 + 3n` (Alliance) and
 | `0x154` | `FUN_00512620` | `SystemDisasterIncidentNotif` / `DisasterIncident` |
 | `0x155` | `FUN_00512670` | `SystemResourceIncidentNotif` / `ResourceIncident` |
 | `0x1e0` | `FUN_004f1fd0` | — |
-| `0x305` | `FUN_00511300` | — |
-| `0x306` | `FUN_004fba10` | also arms timer `0x387` (`FUN_0053fa60`) |
+| `0x305` | `FUN_00511300` | — (corrected below: the system's blockade hook) |
+| `0x306` | `FUN_004fba10` | — (corrected below: an autorouting arrival) |
 | `0x360` | `FUN_004f2040` | `CharacterEncounterKeyNotif` / `Encounter` |
 | `0x361` | `FUN_004f2090` | `CharacterTraitorDiscoveredKeyNotif` / `TraitorDiscovered` |
 | `0x362` | `FUN_004f20e0` | `CharacterForceUserDiscoveredKeyNotif` / `ForceUserDiscovered` |
@@ -185,11 +185,45 @@ chains above: `LukeDagobahRequired`, `LukePalace`, `HanCapturedAtPalace`,
 ## Port gaps
 
 - `events.rs` comments name `0x305` "saboteur detected" and `0x306`
-  "character killed in action". The original's `0x305` is a unit destroyed
-  by sabotage and `0x306` an assassination.
+  "character killed in action". Neither matches the original's senders
+  (Correction 2026-10-18 below).
 - `EVT_NATURAL_DISASTER` (`0x154`) and `EVT_RESOURCE_DISCOVERY` (`0x155`)
   are marked unverified in `events.rs`; `FUN_00512620` and `FUN_00512670`
   raise them under the names above.
 - Port events that share an original id and meaning and so could take
   their class next: `0x210` (row 2), `0x212` (rows 10-12), `0x230`
   (row 16), `0x231` (row 15), `0x361` (row 17).
+
+## Correction (2026-10-18): the `0x305` and `0x306` senders
+
+The senders table paired `0x305` with `FUN_00511300` and `0x306` with
+`FUN_004fba10`, and rows 18 and 19 read them as an assassination and a
+sabotage. The senders do not support that reading.
+
+- There are two posting paths:
+  - `FUN_0053fdd0` posts the notifications `0x100`..`0x242` (the named
+    `...Notif` senders, such as `0x212` and `0x230`);
+  - `FUN_0053f950` (through `FUN_0053f9c0`) posts the events
+    `0x300`..`0x31f`. Its record holds `+0x4c` = (value == 0) and `+0x50`
+    = value.
+- The executable holds `0x305` and `0x306` as literals only in their
+  senders and in two registries of event classes (`FUN_0051ef80`,
+  `FUN_0041e580`, which make the record objects).
+- `0x305` comes from `FUN_00511300`, the System's slot `+0x228`, the
+  blockade hook (`blockade-troop-withdrawal.md`). It also arms timer
+  `0x386`. Its value is the blockade bit.
+- `0x306` comes from `FUN_004fba10`, the game objects' slot `+0x138`. That
+  slot runs when `FUN_004f7870` changes `+0x50` bit `0x800` (Autorouting):
+  the arrival `FUN_004f7fc0` and the transit `FUN_00556430`. It also
+  cancels timer `0x387` (`build-delivery.md`, "Arrival"). Its value is the
+  bit.
+- The builders `FUN_0048b050` (row 18) and `FUN_0048d470` (row 19) look
+  their two arguments up as objects (`FUN_004f2d10`). Row 19 also wants a
+  unit of family `0x18`..`0x1b`. A 0 or 1 cannot satisfy them.
+- So either the message manager receives these codes through another
+  path, or rows 18 and 19 never post in the shipped game. Both are open.
+  The port maps neither.
+- Row 16 (`0x230`, `CharacterMgrSeatOfPowerNotif`, `FUN_00562450`) is a
+  virtual sender with no direct caller. `FUN_0055f7b0` places the Emperor
+  at Coruscant (`0x90000109`) at game setup, but it does not raise
+  `0x230`. Its trigger is open too.
