@@ -151,7 +151,7 @@ Structs that exactly match .DAT file field layout. Used only for import/export. 
 
 ### Layer 2: Runtime world (`rebellion-core/src/world/`)
 Rich types used by game logic, rendering, save/load. Slotmap keys for all inter-entity references.
-- `GameWorld` -- root aggregate, 11 SlotMap arenas (systems, sectors, capital_ship_classes, fighter_classes, characters, fleets, troops, special_forces, defense_facilities, manufacturing_facilities, production_facilities) + `GnprtbParams` + `mission_tables: HashMap<String, MstbTable>`
+- `GameWorld` -- root aggregate, 12 SlotMap arenas (systems, sectors, capital_ship_classes, fighter_classes, characters, fleets, troops, special_forces, defense_facilities, manufacturing_facilities, production_facilities, abodes) + `GnprtbParams` + `mission_tables: HashMap<String, MstbTable>`. Abodes (ABODESD, family `0x98`) are galaxy places outside every system, with no position (`ghidra/notes/dagobah.md`).
 - `System` -- position, sector ref, popularity (alliance/empire f32), asset lists (fleets, units, facilities), `espionage_rating: f32` (reduces incite uprising probability)
 - `Sector` -- named region, SectorGroup, position, child system list
 - `CapitalShipClass` / `FighterClass` -- class templates, not instances

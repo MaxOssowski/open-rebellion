@@ -2399,6 +2399,13 @@ cross-runtime proof remain open
   as a target. A trip between two different places takes 1 day unless both
   are systems (`FUN_00555b30`), so reaching or leaving an abode always takes
   1 day.
+- 2026-10-18: abodes, first stage (save v72): `GameWorld::abodes` loads the
+  five ABODESD places with the sides `FUN_00519910` gives them, a
+  character can be in one (`Character::current_abode`), and the Status
+  window names it. Missions do not target them yet; campaigns unchanged.
+  Golden initial `v1:d077dd4c3c2b7247` -> `v1:c4aa6c7fc51080c1`, final
+  `v1:1d8dbb48d17c03de` -> `v1:0e985b5a40e2bfa8`
+  (`evidence/2026-10-18-abodes/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

@@ -1122,6 +1122,7 @@ mod tests {
             recruit_pool_empty: [false; 2],
             fleet_names: crate::world::FleetNames::default(),
             last_ship_id: 0,
+            abodes: slotmap::SlotMap::with_key(),
         }
     }
 

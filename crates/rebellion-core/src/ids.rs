@@ -52,6 +52,10 @@ new_key_type! {
     /// Handle to a sector (multi-system region) in the world arena.
     pub struct SectorKey;
 
+    /// Handle to an abode (ABODESD, family `0x98`): a place in the galaxy
+    /// outside every system, such as Dagobah or Jabba's Palace.
+    pub struct AbodeKey;
+
     /// Handle to a capital ship class definition.
     pub struct CapitalShipKey;
 

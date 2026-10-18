@@ -1067,6 +1067,7 @@ mod tests {
             force_base: 0,
             force_discoverer: None,
             force_training: 0,
+            current_abode: None,
         }
     }
 

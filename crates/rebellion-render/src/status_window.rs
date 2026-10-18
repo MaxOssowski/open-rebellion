@@ -112,6 +112,13 @@ pub fn character_rows(
                 .and_then(|system| world.systems.get(system))
                 .map(|system| system.name.clone())
         })
+        // An abode is a container like a system (FUN_00556390).
+        .or_else(|| {
+            character
+                .current_abode
+                .and_then(|abode| world.abodes.get(abode))
+                .map(|abode| abode.name.clone())
+        })
         .unwrap_or_default();
     // The first that holds: en route (+0x50 bit 4), captured (+0xac bit 0),
     // injured (+0x94), a mission that is not hidden (FUN_00520b70).
@@ -524,6 +531,7 @@ mod tests {
             force_base: 50,
             force_discoverer: None,
             force_training: 0,
+            current_abode: None,
         }
     }
 
@@ -576,6 +584,23 @@ mod tests {
         rows.iter()
             .map(|row| (row.label.as_str(), row.value.as_str()))
             .collect()
+    }
+
+    #[test]
+    fn a_character_in_an_abode_is_attached_to_it() {
+        // An abode is the character's container like a system, so Attached
+        // names it (FUN_0044a2e0 reads the container's name).
+        let (mut world, key, ..) = world_with_luke();
+        let dagobah = world.abodes.insert(rebellion_core::world::Abode {
+            dat_id: DatId::new(0x441),
+            name: "Dagobah".into(),
+            side: Faction::Neutral,
+        });
+        let luke = &mut world.characters[key];
+        luke.current_system = None;
+        luke.current_abode = Some(dagobah);
+        let rows = character_rows(&world, &[], key).expect("rows");
+        assert!(pairs(&rows).contains(&("Attached: ", "Dagobah")));
     }
 
     #[test]

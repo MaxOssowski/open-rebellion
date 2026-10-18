@@ -564,6 +564,7 @@ const OPTIONAL_WASM_DATA: &[&str] = &[
     "TDECOYTB.DAT",
     "MISSNSD.DAT",
     "SPECFCSD.DAT",
+    "ABODESD.DAT",
 ];
 
 #[cfg(test)]

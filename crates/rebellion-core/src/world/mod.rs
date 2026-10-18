@@ -734,6 +734,9 @@ pub struct Character {
     /// Character `+0x90`, `ForceTraining` (`FUN_004ee1d0`, `0..=0x7fff`):
     /// what Jedi Training added (`FUN_005712b0`).
     pub force_training: u16,
+    /// The abode the character is in, when its container is an abode
+    /// (family `0x98`); its system and fleet are then `None` (save v72).
+    pub current_abode: Option<crate::ids::AbodeKey>,
 }
 
 impl Character {
@@ -901,6 +904,7 @@ impl Default for Character {
             force_base: 0,
             force_discoverer: None,
             force_training: 0,
+            current_abode: None,
         }
     }
 }
@@ -1654,6 +1658,24 @@ pub struct GameWorld {
     /// The last id [`Self::number_ships`] gave a capital ship.
     #[serde(default)]
     pub last_ship_id: u64,
+    /// The abodes (ABODESD), children of the galaxy (`FUN_00519910`), in
+    /// file order (save v72).
+    pub abodes: slotmap::SlotMap<crate::ids::AbodeKey, Abode>,
+}
+
+/// An abode (ABODESD, family `0x98`, class vtable `0x00669260` built by
+/// `FUN_00577530`): a place in the galaxy outside every system, with no
+/// position (`ghidra/notes/dagobah.md`, "Abodes and travel to them").
+/// Missions treat it as a place like a system (`FUN_00521070`), and a trip
+/// to or from it takes 1 day (`FUN_00555b30`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Abode {
+    pub dat_id: DatId,
+    pub name: String,
+    /// The side the galaxy's setup gives it (`FUN_00519910`): the Alliance
+    /// Jail the Alliance, the Empire Jail and Jabba's Palace the Empire,
+    /// Dagobah and the Hermitage none.
+    pub side: crate::dat::Faction,
 }
 
 /// The fleet record's name (`+0x34`, TEXTSTRA 11523): a fleet's name until
@@ -2795,7 +2817,8 @@ mod tests {
             "force_aware": false,
             "force_base": 0,
             "force_discoverer": null,
-            "force_training": 0
+            "force_training": 0,
+            "current_abode": null
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

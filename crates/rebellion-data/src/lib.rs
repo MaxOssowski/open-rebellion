@@ -9,6 +9,7 @@ use dat_dumper::dat_record::DatRecord;
 use dat_dumper::types::all_facilities::AllFacilitiesFile;
 use dat_dumper::types::capital_ships::CapitalShipsFile;
 use dat_dumper::types::defense_facilities::DefenseFacilitiesFile;
+use dat_dumper::types::entity_table::EntityTableFile;
 use dat_dumper::types::fighters::FightersFile;
 use dat_dumper::types::general_params::GeneralParamsFile;
 use dat_dumper::types::int_table::IntTableFile;
@@ -157,6 +158,7 @@ pub fn load_game_data_with_options(
         recruit_pool_empty: [false; 2],
         fleet_names: rebellion_core::world::FleetNames::default(),
         last_ship_id: 0,
+        abodes: slotmap::SlotMap::with_key(),
     };
 
     // ── 1. Sectors ───────────────────────────────────────────────────────────
@@ -365,6 +367,20 @@ pub fn load_game_data_with_options(
     for dat in &minor_file.characters {
         let name = lookup(dat.text_stra_dll_id, "Character");
         world.characters.insert(convert_character(dat, false, name));
+    }
+
+    // ── 6b. Abodes (ABODESD.DAT) ─────────────────────────────────────────────
+    // FUN_00519910 creates each as a galaxy child with its side.
+    let abodes_path = gdata_path.join("ABODESD.DAT");
+    if file_available(&abodes_path) {
+        let abodes: EntityTableFile = read_dat_file(&abodes_path)?;
+        for entry in &abodes.entries {
+            world.abodes.insert(rebellion_core::world::Abode {
+                dat_id: DatId::new(entry.id),
+                name: lookup(entry.text_stra_dll_id, "Abode"),
+                side: abode_side(entry.id),
+            });
+        }
     }
 
     // ── 7. GNPRTB / SDPRTB seeding parameters ───────────────────────────────
@@ -831,6 +847,19 @@ fn mission_record(m: &Mission) -> MissionRecord {
 }
 
 /// Convert a DAT character entry into a world Character.
+/// The side `FUN_00519910` creates an abode with: `0x98000440` (Alliance
+/// Jail) 1, `0x98000441` (Dagobah) and `0x98000442` (Hermitage) 3,
+/// `0x98000480` (Empire Jail) and `0x98000481` (Jabba's Palace) 2.
+///
+/// port: an abode the setup does not name has no side.
+fn abode_side(id: u32) -> rebellion_core::dat::Faction {
+    match id {
+        0x440 => rebellion_core::dat::Faction::Alliance,
+        0x480 | 0x481 => rebellion_core::dat::Faction::Empire,
+        _ => rebellion_core::dat::Faction::Neutral,
+    }
+}
+
 fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Character {
     Character {
         dat_id: DatId::new(dat.id),
@@ -909,6 +938,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         force_base: 0,
         force_discoverer: None,
         force_training: 0,
+        current_abode: None,
     }
 }
 
@@ -1015,6 +1045,18 @@ pub fn parse_dat_bytes<T: DatRecord>(data: &[u8], name: &str) -> anyhow::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_abode_takes_the_side_the_galaxy_setup_gives_it() {
+        // FUN_00519910: 0x98000440 side 1, 0x98000441 and 0x98000442 side 3,
+        // 0x98000480 and 0x98000481 side 2.
+        use rebellion_core::dat::Faction;
+        assert_eq!(abode_side(0x440), Faction::Alliance);
+        assert_eq!(abode_side(0x441), Faction::Neutral);
+        assert_eq!(abode_side(0x442), Faction::Neutral);
+        assert_eq!(abode_side(0x480), Faction::Empire);
+        assert_eq!(abode_side(0x481), Faction::Empire);
+    }
 
     /// A one-record DAT file: a 16-byte header, then `record`.
     fn one_record_file(family_id: u32, record: &[u32]) -> Vec<u8> {
