@@ -272,7 +272,8 @@
       "title": "Victory modal is unreachable in normal play",
       "evidence": [
         "crates/rebellion-app/src/main.rs:2993",
-        "crates/rebellion-app/src/main.rs:5791"
+        "crates/rebellion-app/src/main.rs:5791",
+        "2026-10-18: the game is decided by the victory conditions word (FUN_005180e0): VictorySystem::check reads its game-over and win bits. Where the binary differs from the manual and the 2026-09-10 contract, the port follows the binary: no Imperial assault after the HQ is destroyed, a destroyed Coruscant counts for the Alliance, and any captor counts. In 24 campaigns of 1500 days no game ends, as before. Golden unchanged (evidence/2026-10-18-victory-word/)."
       ],
       "acceptance": "Every win/loss route reaches the accepted result UI and clean transition sequence."
     },

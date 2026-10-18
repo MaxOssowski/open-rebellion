@@ -1,0 +1,262 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai",
+ "seeds": [
+  {
+   "seed": 1,
+   "last_tick": 1500,
+   "events": {},
+   "final_word": null
+  },
+  {
+   "seed": 2,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 4
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 3,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 0,
+    "old": 8192
+   }
+  },
+  {
+   "seed": 4,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 5,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 1
+   },
+   "final_word": {
+    "new": 32,
+    "old": 0
+   }
+  },
+  {
+   "seed": 6,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 8
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 7,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 0,
+    "old": 16
+   }
+  },
+  {
+   "seed": 8,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 4
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 9,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 4
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 10,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 11,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 0,
+    "old": 8192
+   }
+  },
+  {
+   "seed": 12,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 13,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 4
+   },
+   "final_word": {
+    "new": 0,
+    "old": 16
+   }
+  },
+  {
+   "seed": 14,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 3
+   },
+   "final_word": {
+    "new": 4096,
+    "old": 0
+   }
+  },
+  {
+   "seed": 15,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 3
+   },
+   "final_word": {
+    "new": 8192,
+    "old": 0
+   }
+  },
+  {
+   "seed": 16,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 4
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 17,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 3
+   },
+   "final_word": {
+    "new": 32,
+    "old": 0
+   }
+  },
+  {
+   "seed": 18,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 0,
+    "old": 8192
+   }
+  },
+  {
+   "seed": 19,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 20,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 2
+   },
+   "final_word": {
+    "new": 32,
+    "old": 8224
+   }
+  },
+  {
+   "seed": 21,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 4
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 22,
+   "last_tick": 1500,
+   "events": {},
+   "final_word": null
+  },
+  {
+   "seed": 23,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 4
+   },
+   "final_word": {
+    "new": 0,
+    "old": 32
+   }
+  },
+  {
+   "seed": 24,
+   "last_tick": 1500,
+   "events": {
+    "victory_conditions": 1
+   },
+   "final_word": {
+    "new": 32,
+    "old": 0
+   }
+  }
+ ],
+ "totals": {
+  "victory_conditions": 65
+ }
+}

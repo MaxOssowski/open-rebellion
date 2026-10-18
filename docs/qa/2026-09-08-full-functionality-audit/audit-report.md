@@ -261,6 +261,13 @@ cross-runtime proof remain open
     without resolving the game or opening the modal.
   - Whether Continue leaves a clean menu (no stale campaign state on the next
     New Game) is untested, and no browser or native pass has run.
+- 2026-10-18: the game is decided by the victory conditions word
+  (`FUN_005180e0`): `VictorySystem::check` reads its game-over and win
+  bits. Where the binary differs from the manual and the 2026-09-10
+  contract, the port follows the binary: no Imperial assault after the
+  HQ is destroyed, a destroyed Coruscant counts for the Alliance, and any
+  captor counts. In 24 campaigns of 1500 days no game ends, as before.
+  Golden unchanged (`evidence/2026-10-18-victory-word/`).
 - Acceptance: every win and loss route reaches the result UI, freezes play,
   follows the accepted cutscene policy, and returns cleanly to the menu.
 

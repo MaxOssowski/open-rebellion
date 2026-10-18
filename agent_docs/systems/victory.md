@@ -3,7 +3,7 @@ title: "Victory System"
 description: "Game-ending condition detection for Alliance and Empire"
 category: "agent-docs"
 created: 2026-03-14
-updated: 2026-10-16
+updated: 2026-10-18
 tags: [victory, hq-capture, death-star, simulation]
 ---
 
@@ -15,7 +15,7 @@ tags: [victory, hq-capture, death-star, simulation]
 
 | Type | Purpose |
 |------|---------|
-| `VictoryState` | `{ alliance_hq, empire_hq, death_star_active, death_star_location, resolved }` |
+| `VictoryState` | `{ alliance_hq, empire_hq, death_star_active, death_star_location, resolved, conditions_word }` |
 | `VictoryOutcome` | HqCaptured / HqDestroyed / DeathStarVictory |
 
 ## API
@@ -35,41 +35,55 @@ if let Some(outcome) = VictorySystem::check(
 
 ## Implemented Contract
 
-The 2026-09-10 victory checkpoint implements the asymmetric contract in the
-[official campaign reference](../../docs/reference/campaign-history/official-campaign-contract.md#standard-victory).
+Since 2026-10-18 (F-005) the game is decided by the victory conditions
+word (`conditions_word`, `FUN_005180e0`; `ghidra/notes/victory-conditions.md`).
+`VictorySystem::check` reads the word on a day with events: with its
+game-over bit `0x10000000` set, the Alliance win bit `0x1000000` gives
+`HqCaptured`, else the Empire wins by `DeathStarVictory` when the Alliance
+HQ system is destroyed, or `HqDestroyed`.
+
+The word is missing (and no game ends) while Luke, Mon Mothma, Vader, the
+Emperor or Coruscant is absent.
 
 ## Current Victory Conditions
 
-The active `VictoryConditions` selects one of two rule sets.
+The active `VictoryConditions` (galaxy `+0x60`) selects one of two rule
+sets.
 
 ### Standard
 
-Both the headquarters objective and principal leaders are required:
-
-- **Alliance victory**: Alliance controls `empire_hq` (Coruscant) and holds
-  Emperor Palpatine and Darth Vader captive.
-- **Empire bombardment victory**: an Imperial bombardment order whose shot
-  destroys the headquarters object (ALLFACSD 1, bombardment defense 9) clears
-  the current Alliance HQ's `is_headquarters` flag; the Empire controls that
-  system and holds Luke Skywalker and Mon Mothma captive. No battle bombards
-  on its own (`ghidra/notes/bombardment-order.md`).
-- **Empire Death Star victory**: `alliance_hq.is_destroyed` is true and the
-  Empire holds Luke Skywalker and Mon Mothma captive. Planet destruction does
-  not require a subsequent ground occupation.
-
-Holding the leaders without the headquarters, using the wrong captor, or
-occupying the headquarters without both leaders does not end a Standard game.
+- **Alliance**: Vader and the Emperor captured, and Coruscant held by the
+  Alliance or destroyed.
+- **Empire**: Luke and Mon Mothma captured, and the Alliance headquarters
+  lost. The HQ is lost when its system is destroyed (Death Star) or no
+  longer holds the HQ: an Imperial bombardment that destroys the
+  headquarters object (ALLFACSD 1, bombardment defense 9) clears it
+  (`ghidra/notes/bombardment-order.md`).
+- A captive is any captured character (`+0xac` bit 0), whoever holds him.
 
 ### Headquarters Only
 
-- Alliance control of `empire_hq` is sufficient.
-- Empire control of `alliance_hq` is sufficient only after the mobile HQ has
-  been destroyed by bombardment.
-- Death Star destruction of the Alliance-HQ system is sufficient.
-- Principal-leader custody is omitted. Death Star loss remains nonterminal.
+- **Alliance**: Coruscant held or destroyed.
+- **Empire**: the Alliance headquarters lost.
 
-Both modes evaluate from the first simulation tick. There is no uncited
-campaign grace period.
+When both sides would win on one day, the win already in the stored word
+stands; with none, the Alliance's.
+
+### Against the manual and the earlier contract
+
+The manual ("On to Victory!") says the Empire must destroy the HQ by
+bombardment *and take control of the system with an assault*, or destroy
+the system with a Death Star, and that the Alliance must hold Coruscant.
+`FUN_005180e0` tests only the HQ object's destroyed flag (`+0x50` bit 3)
+and Coruscant's side or destruction, so the port follows the binary:
+
+- no Imperial assault is needed after the bombardment;
+- a destroyed Coruscant counts for the Alliance;
+- the leaders may be held by any captor.
+
+The 2026-09-10 contract in the
+[official campaign reference](../../docs/reference/campaign-history/official-campaign-contract.md#standard-victory)
+follows the manual and is superseded on these points.
 
 ## Initialization
 
@@ -85,6 +99,7 @@ campaign grace period.
 
 - `entity-system.md §4.2` — `SideVictoryConditionsNotif`, `FinalBattle`
 - Event IDs `0x12c`/`0x180`
+- `FUN_005180e0` (the word), `FUN_00518460` (notification `0x128`)
 - `System::is_headquarters` flag
 - [`main-menu-parity.md`](../main-menu-parity.md) — original game-type selector and setup contract
 - [F-016B evidence](../../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-game-setup-propagation.md)

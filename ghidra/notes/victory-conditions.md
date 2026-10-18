@@ -85,5 +85,8 @@ The function stores the word in galaxy `+0x74` and marks it changed
   - the headquarters is the Alliance HQ system, lost when it is
     destroyed or no longer holds the HQ;
   - the check runs daily.
-- Not ported: deciding the game by the word's win bits. The port's
-  `VictorySystem::check` still decides it (F-005).
+- Ported 2026-10-18 (F-005): `VictorySystem::check` decides the game by
+  the word's game-over and win bits. The Empire's outcome is
+  `DeathStarVictory` when the HQ system is destroyed, else `HqDestroyed`.
+  The manual's Imperial assault after the bombardment is not needed, and
+  a destroyed Coruscant counts for the Alliance, as in the binary.

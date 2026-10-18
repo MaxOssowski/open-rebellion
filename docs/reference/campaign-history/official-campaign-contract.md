@@ -56,6 +56,13 @@ Empire must bombard and destroy the headquarters and then take the system by
 assault, or destroy the entire headquarters system with a Death Star.
 [Preserved manual, On to Victory](archive/star-wars-rebellion-manual.pdf).
 
+The binary differs (2026-10-18, F-005). The victory check `FUN_005180e0`
+counts the Alliance headquarters lost once its object is destroyed
+(`+0x50` bit 3), with no Imperial assault after the bombardment, and counts
+a destroyed Coruscant for the Alliance as well as a held one. The port
+follows the binary; see `ghidra/notes/victory-conditions.md` and
+`agent_docs/systems/victory.md`.
+
 This is a conjunction, not a score threshold. Winning battles and gaining
 popular support help, but neither substitutes for all selected victory targets.
 In Standard mode, Death Star fire can satisfy the Imperial headquarters
@@ -144,6 +151,8 @@ play but the same slow campaign format.
 - Alliance control of Coruscant and Imperial destruction of the mobile
   Alliance headquarters must remain distinct mechanics. Occupation alone is
   not proof that the Alliance headquarters was destroyed.
+  The binary needs no occupation after the headquarters is destroyed
+  (`FUN_005180e0`).
 - Death Star destruction is a strategic event, not an independent Alliance win.
 - A parity profile must not impose an uncited minimum campaign day before
   checking otherwise valid victory conditions.
