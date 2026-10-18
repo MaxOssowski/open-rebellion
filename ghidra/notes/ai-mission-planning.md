@@ -789,24 +789,57 @@ original as follows:
     in AI play, such as learning a traitor (row 17);
   - teams are weaker than the original's.
 
-## Plan: persistent mission planners (needs consent)
+## Persistent mission planners (ported 2026-10-18, save v80)
 
-1. Keep planners in `AIState` (side `+0xa8`): kind, subtype, target,
-   team, decoys, state `+0x1c`, flags `+0x20`, priority. This is a save
-   format change (v80) and a change to the AI's architecture, so it waits
-   for the user.
-2. Run `FUN_004bced0` each AI tick:
-   - state 2 drops members that fail `FUN_0047ba40`;
-   - states 3 and 4 run the selectors already ported;
-   - state 6 picks the target;
-   - state 7 sends Move orders (`FUN_004bd570`, through the ported Move
-     pseudo-mission);
-   - state 8 emits the order (`FUN_0047b360`).
-3. Hold members (`FUN_0047b610`: record `+0x24` the planner, `+0x2c` its
-   priority, `0x800000` cleared), so other planners skip them. Release
-   them on cancel (`FUN_0047aff0`).
-4. Replace `members_together` and the one-cycle `plan`, then check in
-   campaigns that two-character teams appear.
+The user approved the save change and the AI change.
+
+- State 6 (`FUN_004bd0a0`) picks the gathering place `+0x38`, in this
+  order:
+  - the previous place, while it is the side's (system record `+0x30`
+    bit 1, `+0x28` bit 2 clear);
+  - else the target `+0x34`, when it is the side's;
+  - else the side's system that the nearness query (`FUN_0041a460`) finds
+    from the target;
+  - else the system the first team member stands in.
+
+  A Move to another side's system ends at once with code 8, so the team
+  never gathers at an enemy target.
+- `AIState::mission_planners` holds each `MissionPlanner`:
+  - kind, team, decoys and target;
+  - `created`, `last_cycle` and `staging`.
+- `AISystem::adopt_mission_orders` turns the heuristics' orders into
+  planners (`FUN_0042f830`):
+  - one already running for the same kind and target takes the new one's
+    place;
+  - a member another planner holds is left out (`FUN_0047b610`).
+- `AISystem::mission_planner_cycle`, once per day per planner, runs these
+  states:
+  - state 2 drops a member the planner cannot keep (`FUN_0047ba40`), and
+    an empty team ends the planner (`FUN_0047aff0`);
+  - state 6 is `staging_point`;
+  - state 7 gives each free member away from the place a Move order;
+  - state 8 orders the mission once all stand there.
+- The evaluation's `Planner` holds every planner's members, as it holds
+  the research planners' designers.
+- `Planner::plan` keeps both picks wherever they stand; `members_together`
+  is gone.
+- port:
+  - the heuristics stand in for the strategy (`+0x318`, `+0x31c`);
+  - state 3 runs its selector once (no refill);
+  - a planner older than `MISSION_PLANNER_DAYS` (60) ends;
+  - the nearness query is read as the side's unblockaded system nearest
+    the target.
+- Campaigns: 24 seeds of 1500 days, before and after.
+  - Dispatched missions: 41,485 before, 13,590 after.
+  - Successes: 17,811 before, 14,889 after.
+  - Move orders: 320 before, 23,522 after.
+  - Systems held at the end are alike: Alliance 26.3 and 26.6, Empire
+    19.8 and 17.0.
+- Still no AI team holds two characters: the covert selectors find only
+  special forces, and characters go on one-member missions (Diplomacy,
+  Recruitment, Research). The gathering now lets a two-member team from
+  different systems go together; 297 two-unit teams went in 8 seeds of
+  800 days.
 
 ## Still open
 

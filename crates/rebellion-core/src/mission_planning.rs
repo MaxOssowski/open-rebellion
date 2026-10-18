@@ -18,9 +18,7 @@ use std::collections::HashSet;
 
 use crate::ids::{CharacterKey, SystemKey};
 use crate::mission_detection::MissionRng;
-use crate::missions::{
-    member_skill, members_allowed, members_together, MissionKind, MissionMember, MissionState,
-};
+use crate::missions::{member_skill, members_allowed, MissionKind, MissionMember, MissionState};
 use crate::uprising::Draws;
 use crate::world::{GameWorld, Skill};
 
@@ -270,8 +268,9 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
 
 /// One side's planners for one AI evaluation.
 pub(crate) struct Planner<'a> {
-    world: &'a GameWorld,
     records: Vec<AgentRecord>,
+    /// The evaluation's world, which the records were built from.
+    world: std::marker::PhantomData<&'a GameWorld>,
     rng: MissionRng,
 }
 
@@ -288,8 +287,8 @@ impl<'a> Planner<'a> {
         tick: u64,
     ) -> Self {
         Self {
-            world,
             records: records(world, missions, busy, alliance),
+            world: std::marker::PhantomData,
             rng: MissionRng::seeded(0.0, tick.wrapping_mul(2) + u64::from(alliance)),
         }
     }
@@ -438,20 +437,11 @@ impl<'a> Planner<'a> {
                 .map(|index| records[index].member)
                 .collect()
         };
-        // port: the original planner moves every member to the target
-        // (state 7, FUN_004bd570) and emits the order once all are there,
-        // so FUN_0054c200 finds them together. The port does not gather
-        // them; the order keeps the members standing with its first.
+        // The planner then holds them; the AI's mission planners move them
+        // to the target (state 7, FUN_004bd570) and order the mission once
+        // all are there (AISystem::mission_planner_cycle).
         let team = sent(team, &self.records);
-        let lead = team[0];
-        let together = |members: Vec<MissionMember>| -> Vec<MissionMember> {
-            members
-                .into_iter()
-                .filter(|&member| members_together(self.world, lead, member))
-                .collect()
-        };
-        let team = together(team);
-        let decoys = together(sent(decoys, &self.records));
+        let decoys = sent(decoys, &self.records);
         for record in &mut self.records {
             if team.contains(&record.member) || decoys.contains(&record.member) {
                 record.sent = true;
@@ -1024,10 +1014,10 @@ mod tests {
     }
 
     #[test]
-    fn an_order_keeps_only_the_members_standing_with_its_first() {
-        // FUN_0054c200 refuses a member away from the first free one. port:
-        // the planner's gathering move (state 7) is not ported, so the
-        // second pick, elsewhere, is left out.
+    fn a_plan_keeps_both_picks_wherever_they_stand() {
+        // FUN_0047e270 picks a team of two; the planner holds both and
+        // gathers them at the target (state 7, FUN_004bd570) before its
+        // order, so a pick standing elsewhere stays on the team.
         let mut world = world();
         let mut places: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
         let (here, there) = (places.insert(()), places.insert(()));
@@ -1035,7 +1025,7 @@ mod tests {
             c.combat = pair(90);
             c.current_system = Some(here);
         });
-        let _away = agent(&mut world, 2, |c| {
+        let away = agent(&mut world, 2, |c| {
             c.combat = pair(80);
             c.current_system = Some(there);
         });
@@ -1046,7 +1036,7 @@ mod tests {
 
         let plan = planner(&world).plan(MissionKind::Rescue);
 
-        assert_eq!(plan, Some((vec![first], vec![])));
+        assert_eq!(plan, Some((vec![first, away], vec![])));
     }
 
     #[test]

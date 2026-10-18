@@ -2613,6 +2613,16 @@ cross-runtime proof remain open
   discoverer's side reads the message. The AI never sends two characters
   on one mission, so it shows only for a player's teams. All 21 story
   message classes are now mapped (`evidence/2026-10-18-discovers-traitor/`).
+- 2026-10-18 (F-036): the AI's mission planners persist (save v80). A
+  planner holds its team, gathers it at the target or the side's system
+  nearest it (`FUN_004bd0a0`), moves the members there (`FUN_004bd570`),
+  and orders the mission once all stand there (`FUN_0047b360`). In 24
+  campaigns, missions fall from 41,485 to 13,590 and two-member teams
+  rise from 3% to 13%; successes go from 17,811 to 14,889. No AI team
+  holds two characters yet, because the covert selectors find only
+  special forces. Golden initial `v1:e8ceaa386f41cc96` ->
+  `v1:5ba66653ae1fb76d`, final `v1:475c0c0f35968fba` ->
+  `v1:7869f8168ab1782f` (`evidence/2026-10-18-mission-planners/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

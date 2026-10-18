@@ -482,6 +482,11 @@ pub struct AIState {
     pub research_planners: Vec<ResearchPlanner>,
     /// The id the next research planner takes.
     pub next_planner_id: u64,
+    /// The mission planners of the port's mission heuristics (side
+    /// `+0xa8`): each gathers its team at the target before it orders the
+    /// mission (`FUN_004bced0` states 7 and 8; save v80).
+    #[serde(default)]
+    pub mission_planners: Vec<MissionPlanner>,
     /// The yard marks the modules keep on the side's system records
     /// (`+0x28 & 0x3e00000`, [`YARD_MARKS`]). The record refresh
     /// (`FUN_00433e40`) keeps them; only the modules set and clear them.
@@ -599,6 +604,89 @@ pub struct ResearchPlanner {
     pub failures: u32,
 }
 
+/// A mission planner (`FUN_0042f830`, run by `FUN_004bced0`): the members
+/// its selectors picked and hold (`FUN_0047b610`), and the order it waits
+/// to give once they all stand at the target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MissionPlanner {
+    /// Its id (planner `+0x18`).
+    pub id: u64,
+    pub kind: MissionKind,
+    /// The team (`+0x3c`) and decoys (`+0x44`) it holds.
+    pub team: Vec<crate::missions::MissionMember>,
+    pub decoys: Vec<crate::missions::MissionMember>,
+    /// The target (`+0x2c`): system, character and object.
+    pub target_system: SystemKey,
+    pub target_character: Option<CharacterKey>,
+    pub target_object: Option<crate::missions::MissionTarget>,
+    /// The day it was made.
+    pub created: u64,
+    /// The last day it ran a cycle: the AI ticks several times a day, and
+    /// a Move order is not applied before the day's end.
+    #[serde(default)]
+    pub last_cycle: u64,
+    /// Where it gathers its team (`+0x38`, state 6 `FUN_004bd0a0`).
+    #[serde(default)]
+    pub staging: Option<SystemKey>,
+}
+
+/// State 6 (`FUN_004bd0a0`): the planner's gathering place `+0x38`. It
+/// keeps its previous one while that is still the side's (system record
+/// `+0x30` bit 1, `+0x28` bit 2 clear); else it takes the target `+0x34`
+/// when that is the side's; else a system of the side picked by the
+/// nearness query from the target (`FUN_0041a460`); else the system the
+/// first team member stands in.
+///
+/// hyp: the nearness query's arguments (`1, 2`) read as the side's
+/// systems, nearest first; the port takes the side's unblockaded system
+/// nearest the target by map distance.
+fn staging_point(
+    world: &GameWorld,
+    is_alliance: bool,
+    previous: Option<SystemKey>,
+    target: SystemKey,
+    team: &[crate::missions::MissionMember],
+) -> Option<SystemKey> {
+    let side = crate::dat::Faction::of_alliance(is_alliance);
+    let own = |system: SystemKey| {
+        world.systems.get(system).is_some_and(|sys| {
+            crate::uprising::holder(sys) == Some(side)
+                && !sys.is_destroyed
+                && !crate::blockade::BlockadeSystem::system_is_blockaded(world, sys)
+        })
+    };
+    if let Some(previous) = previous.filter(|&p| own(p)) {
+        return Some(previous);
+    }
+    if own(target) {
+        return Some(target);
+    }
+    let at = world
+        .systems
+        .get(target)
+        .map(|sys| (i64::from(sys.x), i64::from(sys.y)));
+    let nearest = at.and_then(|(x, y)| {
+        world
+            .systems
+            .iter()
+            .filter(|&(key, _)| own(key))
+            .min_by_key(|(_, sys)| {
+                let (dx, dy) = (i64::from(sys.x) - x, i64::from(sys.y) - y);
+                dx * dx + dy * dy
+            })
+            .map(|(key, _)| key)
+    });
+    nearest.or_else(|| {
+        team.first()
+            .and_then(|&m| crate::mission_planning::standing_system(world, m))
+    })
+}
+
+/// port: a mission planner that has not ordered its mission within this
+/// many days is dropped and frees its members. The original's strategy
+/// cancels a planner (`FUN_0042f690`) on rules not traced.
+pub const MISSION_PLANNER_DAYS: u64 = 60;
+
 impl AIState {
     #[must_use]
     pub fn new(faction: AiFaction) -> Self {
@@ -613,6 +701,7 @@ impl AIState {
             busy_characters: HashSet::new(),
             research_planners: Vec::new(),
             next_planner_id: 0,
+            mission_planners: Vec::new(),
             yard_marks: HashMap::new(),
             record_kinds: HashMap::new(),
             controller: crate::ai_module1::Controller::default(),
@@ -996,10 +1085,16 @@ impl AISystem {
             matches!(faction, AiFaction::Alliance),
             tick,
         );
-        // FUN_0047b610: a held designer is out of every other query.
+        // FUN_0047b610: a held designer, or a mission planner's member, is
+        // out of every other query.
         for p in &state.research_planners {
             if let Some(c) = p.member {
                 planner.hold(crate::missions::MissionMember::Character(c));
+            }
+        }
+        for p in &state.mission_planners {
+            for &member in p.team.iter().chain(&p.decoys) {
+                planner.hold(member);
             }
         }
         let mut galaxy = Self::records(
@@ -1423,6 +1518,7 @@ impl AISystem {
             .position(|&e| Some(e) == state.mission_next)
             .unwrap_or(0);
         state.mission_next = entries.get(at + 1).copied();
+        let start = actions.len();
         match entries[at] {
             MissionEntry::Research(id) => {
                 let is_alliance = matches!(faction, AiFaction::Alliance);
@@ -1452,6 +1548,140 @@ impl AISystem {
                 Self::evaluate_uprising_prevention(planner, world, faction, actions);
             }
         }
+        Self::adopt_mission_orders(state, ctx.tick, start, actions);
+        Self::mission_planner_cycle(state, planner, world, ctx.tick, actions);
+    }
+
+    /// The heuristics' orders become mission planners (`FUN_0042f830`) that
+    /// hold the members their selectors picked. A planner for the same kind
+    /// and target already running takes the place of a new one, which
+    /// frees the new one's members.
+    ///
+    /// port: the side's strategy (`+0x318`, `+0x31c`) is untraced, so the
+    /// port's heuristics stand in for it and name the kind and target.
+    fn adopt_mission_orders(
+        state: &mut AIState,
+        tick: u64,
+        start: usize,
+        actions: &mut Vec<AIAction>,
+    ) {
+        let mut kept = Vec::new();
+        for action in actions.drain(start..) {
+            match action {
+                AIAction::DispatchMission {
+                    kind,
+                    team,
+                    decoys,
+                    target_system,
+                    target_character,
+                    target_object,
+                } if !matches!(kind, MissionKind::Move) && kind.research_tech().is_none() => {
+                    let running = state.mission_planners.iter().any(|p| {
+                        p.kind == kind
+                            && p.target_system == target_system
+                            && p.target_character == target_character
+                            && p.target_object == target_object
+                    });
+                    // FUN_0047b610: a member another planner holds (record
+                    // +0x24) is not this one's.
+                    let held: Vec<crate::missions::MissionMember> = state
+                        .mission_planners
+                        .iter()
+                        .flat_map(|p| p.team.iter().chain(&p.decoys).copied())
+                        .collect();
+                    let team: Vec<_> = team.into_iter().filter(|m| !held.contains(m)).collect();
+                    let decoys: Vec<_> = decoys.into_iter().filter(|m| !held.contains(m)).collect();
+                    if !running && !team.is_empty() {
+                        let id = state.next_planner_id;
+                        state.next_planner_id += 1;
+                        state.mission_planners.push(MissionPlanner {
+                            id,
+                            kind,
+                            team,
+                            decoys,
+                            target_system,
+                            target_character,
+                            target_object,
+                            created: tick,
+                            last_cycle: 0,
+                            staging: None,
+                        });
+                    }
+                }
+                other => kept.push(other),
+            }
+        }
+        actions.extend(kept);
+    }
+
+    /// One cycle of every mission planner (`FUN_004bced0`):
+    ///
+    /// - state 2 (`FUN_0047b110` -> `FUN_0047ba40`): a member the planner
+    ///   can no longer keep is dropped; a planner with no team left ends
+    ///   (`FUN_0047aff0`);
+    /// - state 6 ([`staging_point`]): the gathering place;
+    /// - state 7 (`FUN_004bd570`): each free member away from it gets a
+    ///   Move order there (`0x201`, the Move pseudo-mission);
+    /// - state 8 (`FUN_0047b360`): once the team and the decoys all stand
+    ///   there, the mission order on the target; the planner then ends.
+    ///
+    /// port: the planner does not refill its team (state 3 runs its
+    /// selector once); a planner older than [`MISSION_PLANNER_DAYS`] ends.
+    fn mission_planner_cycle(
+        state: &mut AIState,
+        planner: &Planner<'_>,
+        world: &GameWorld,
+        tick: u64,
+        actions: &mut Vec<AIAction>,
+    ) {
+        use crate::mission_planning::standing_system;
+        let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
+        state.mission_planners.retain_mut(|p| {
+            p.team.retain(|&m| planner.keeps(m));
+            p.decoys.retain(|&m| planner.keeps(m));
+            if p.team.is_empty() || tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
+                return false;
+            }
+            if p.last_cycle == tick {
+                return true;
+            }
+            p.last_cycle = tick;
+            let target = p.target_system;
+            p.staging = staging_point(world, is_alliance, p.staging, target, &p.team);
+            let Some(staging) = p.staging else {
+                return true;
+            };
+            let mut gathered = true;
+            for &member in p.team.iter().chain(&p.decoys) {
+                if standing_system(world, member) == Some(staging) {
+                    continue;
+                }
+                gathered = false;
+                if planner.sendable(member) {
+                    actions.push(AIAction::DispatchMission {
+                        kind: MissionKind::Move,
+                        team: vec![member],
+                        decoys: Vec::new(),
+                        target_system: staging,
+                        target_character: None,
+                        target_object: None,
+                    });
+                }
+            }
+            let free = p.team.iter().chain(&p.decoys).all(|&m| planner.sendable(m));
+            if !(gathered && free) {
+                return true;
+            }
+            actions.push(AIAction::DispatchMission {
+                kind: p.kind,
+                team: p.team.clone(),
+                decoys: p.decoys.clone(),
+                target_system: target,
+                target_character: p.target_character,
+                target_object: p.target_object,
+            });
+            false
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -4820,6 +5050,279 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use crate::missions::MissionMember;
+
+    /// An Empire world with two characters at `here` and `there`, and a
+    /// target system.
+    fn gathering_world() -> (GameWorld, [CharacterKey; 2], [SystemKey; 3]) {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let places = [0, 1, 2].map(|_| add_system(&mut world, sector, 0.2, 0.8));
+        // The target is the Empire's, so the team gathers there (state 6).
+        world.systems[places[2]].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let chars = [places[0], places[1]].map(|at| {
+            let c = add_character(&mut world, false, false, 60);
+            world.characters[c].current_system = Some(at);
+            c
+        });
+        (world, chars, places)
+    }
+
+    fn rescue_order(team: Vec<MissionMember>, target: SystemKey) -> AIAction {
+        AIAction::DispatchMission {
+            kind: MissionKind::Rescue,
+            team,
+            decoys: Vec::new(),
+            target_system: target,
+            target_character: None,
+            target_object: None,
+        }
+    }
+
+    #[test]
+    fn a_mission_planner_gathers_its_team_before_the_order() {
+        // FUN_004bced0: state 7 (FUN_004bd570) moves each member away from
+        // the target there (Move 0x201); state 8 (FUN_0047b360) orders the
+        // mission once all stand there.
+        let (mut world, [a, b], [_, _, target]) = gathering_world();
+        let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut actions = vec![rescue_order(team.clone(), target)];
+        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(state.mission_planners.len(), 1);
+        // The same order again is the running planner's.
+        let mut again = vec![rescue_order(team.clone(), target)];
+        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut again);
+        assert!(again.is_empty());
+        assert_eq!(state.mission_planners.len(), 1);
+
+        let mut actions = Vec::new();
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &planner_for(&world, AiFaction::Empire),
+            &world,
+            2,
+            &mut actions,
+        );
+        let moves: Vec<_> = orders(&actions, MissionKind::Move)
+            .into_iter()
+            .map(|(team, to, _)| (team, to))
+            .collect();
+        assert_eq!(moves, [(vec![team[0]], target), (vec![team[1]], target)]);
+        assert_eq!(state.mission_planners.len(), 1);
+
+        // One there, one still away: no order yet.
+        world.characters[a].current_system = Some(target);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &planner_for(&world, AiFaction::Empire),
+            &world,
+            3,
+            &mut actions,
+        );
+        assert!(orders(&actions, MissionKind::Rescue).is_empty());
+        assert_eq!(orders(&actions, MissionKind::Move).len(), 1);
+
+        world.characters[b].current_system = Some(target);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &planner_for(&world, AiFaction::Empire),
+            &world,
+            4,
+            &mut actions,
+        );
+        assert_eq!(
+            orders(&actions, MissionKind::Rescue),
+            [(team, target, None)]
+        );
+        assert!(state.mission_planners.is_empty());
+    }
+
+    #[test]
+    fn a_mission_planner_gathers_at_the_side_s_system_nearest_an_enemy_target() {
+        // FUN_004bd0a0: the previous place while it is the side's; else the
+        // target when it is; else the side's system nearest the target
+        // (FUN_0041a460); else the first member's system.
+        let (mut world, [a, _], [here, there, target]) = gathering_world();
+        let team = [MissionMember::Character(a)];
+        world.systems[target].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.systems[target].x = 100;
+        world.systems[here].x = 10;
+        world.systems[there].x = 90;
+        assert_eq!(
+            staging_point(&world, false, None, target, &team),
+            Some(here),
+            "none own yet"
+        );
+        world.systems[here].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.systems[there].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        assert_eq!(
+            staging_point(&world, false, None, target, &team),
+            Some(there)
+        );
+        assert_eq!(
+            staging_point(&world, false, Some(here), target, &team),
+            Some(here)
+        );
+        world.systems[target].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        assert_eq!(
+            staging_point(&world, false, None, target, &team),
+            Some(target)
+        );
+        // The distance counts both axes (squared).
+        world.systems[target].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.systems[target].y = 100;
+        world.systems[here].x = 100;
+        world.systems[here].y = 10;
+        world.systems[there].x = 100;
+        world.systems[there].y = 120;
+        assert_eq!(
+            staging_point(&world, false, None, target, &team),
+            Some(there)
+        );
+        world.systems[here].y = 95;
+        assert_eq!(
+            staging_point(&world, false, None, target, &team),
+            Some(here)
+        );
+        world.systems[here].x = 140;
+        world.systems[here].y = 100;
+        world.systems[there].x = 100;
+        world.systems[there].y = 70;
+        assert_eq!(
+            staging_point(&world, false, None, target, &team),
+            Some(there)
+        );
+    }
+
+    #[test]
+    fn each_order_is_its_own_planner_unless_one_runs_for_it_and_held_members_stay_put() {
+        // FUN_0042f830 makes one planner per order; the port's heuristics
+        // repeat their orders, so one already running for the same kind
+        // and target takes the new one's place. FUN_0047b610: a member
+        // another planner holds is not taken again.
+        let (_, [a, b], [here, there, target]) = gathering_world();
+        let (ma, mb) = (MissionMember::Character(a), MissionMember::Character(b));
+        let order =
+            |kind, team: Vec<MissionMember>, system, character, object| AIAction::DispatchMission {
+                kind,
+                team,
+                decoys: Vec::new(),
+                target_system: system,
+                target_character: character,
+                target_object: object,
+            };
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut actions = vec![
+            order(MissionKind::Rescue, vec![ma], target, None, None),
+            // The same member again: held, so no planner.
+            order(MissionKind::Sabotage, vec![ma], here, None, None),
+            order(MissionKind::Rescue, vec![mb], here, None, None),
+        ];
+        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut actions);
+        assert_eq!(state.mission_planners.len(), 2);
+        assert_eq!(state.mission_planners[0].team, [ma]);
+        assert_eq!(state.mission_planners[1].team, [mb]);
+        assert_ne!(state.mission_planners[0].id, state.mission_planners[1].id);
+        // A held decoy is dropped, a free one kept.
+        let free = MissionMember::SpecialForce(crate::ids::SpecialForceKey::default());
+        let mut actions = vec![AIAction::DispatchMission {
+            kind: MissionKind::Espionage,
+            team: vec![free],
+            decoys: vec![ma, MissionMember::Character(CharacterKey::default())],
+            target_system: there,
+            target_character: None,
+            target_object: None,
+        }];
+        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut actions);
+        assert_eq!(
+            state.mission_planners[2].decoys,
+            [MissionMember::Character(CharacterKey::default())]
+        );
+        // A planner per differing kind, system, character or object.
+        let object = Some(crate::missions::MissionTarget::DeathStar(
+            crate::ids::FleetKey::default(),
+        ));
+        let mut state = AIState::new(AiFaction::Empire);
+        for (kind, system, character, object) in [
+            (MissionKind::Rescue, target, None, None),
+            (MissionKind::Abduction, target, None, None),
+            (MissionKind::Rescue, there, None, None),
+            (MissionKind::Rescue, target, Some(b), None),
+            (MissionKind::Rescue, target, None, object),
+        ] {
+            AISystem::adopt_mission_orders(
+                &mut state,
+                1,
+                0,
+                &mut vec![order(kind, vec![ma], system, character, object)],
+            );
+            // Free the member for the next variant.
+            if let Some(p) = state.mission_planners.last_mut() {
+                p.team.clear();
+            }
+        }
+        assert_eq!(state.mission_planners.len(), 5);
+        let ids: HashSet<u64> = state.mission_planners.iter().map(|p| p.id).collect();
+        assert_eq!(ids.len(), 5);
+        // An order for a running planner's kind and target adds none.
+        let mut state = AIState::new(AiFaction::Empire);
+        for member in [ma, mb] {
+            AISystem::adopt_mission_orders(
+                &mut state,
+                1,
+                0,
+                &mut vec![order(MissionKind::Rescue, vec![member], target, None, None)],
+            );
+        }
+        assert_eq!(state.mission_planners.len(), 1);
+        // Other actions pass through untouched.
+        let mut passing = vec![order(MissionKind::Move, vec![mb], here, None, None)];
+        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut passing);
+        assert_eq!(passing.len(), 1);
+    }
+
+    #[test]
+    fn a_mission_planner_drops_members_it_cannot_keep_and_ends_when_empty_or_old() {
+        // State 2 (FUN_0047b110 -> FUN_0047ba40) drops a member that is no
+        // longer the side's live record; an empty team ends the planner
+        // (FUN_0047aff0). port: so does an age past MISSION_PLANNER_DAYS.
+        let (mut world, [a, b], [_, _, target]) = gathering_world();
+        let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut actions = vec![rescue_order(team, target)];
+        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut actions);
+        world.characters[a].mark_killed();
+        let cycle = |state: &mut AIState, world: &GameWorld, tick| {
+            let mut actions = Vec::new();
+            AISystem::mission_planner_cycle(
+                state,
+                &planner_for(world, AiFaction::Empire),
+                world,
+                tick,
+                &mut actions,
+            );
+            actions
+        };
+        cycle(&mut state, &world, 2);
+        assert_eq!(
+            state.mission_planners[0].team,
+            [MissionMember::Character(b)]
+        );
+        world.characters[b].mark_killed();
+        cycle(&mut state, &world, 3);
+        assert!(state.mission_planners.is_empty());
+
+        let (world, [a, _], [_, _, target]) = gathering_world();
+        let mut actions = vec![rescue_order(vec![MissionMember::Character(a)], target)];
+        AISystem::adopt_mission_orders(&mut state, 10, 0, &mut actions);
+        cycle(&mut state, &world, 10 + MISSION_PLANNER_DAYS);
+        assert_eq!(state.mission_planners.len(), 1);
+        cycle(&mut state, &world, 11 + MISSION_PLANNER_DAYS);
+        assert!(state.mission_planners.is_empty());
+    }
 
     fn planner_for(world: &GameWorld, faction: AiFaction) -> Planner<'_> {
         Planner::new(

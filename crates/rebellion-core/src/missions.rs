@@ -1082,15 +1082,6 @@ pub fn available_kinds(
         .collect()
 }
 
-/// Whether two present members stand at the same location, as
-/// `FUN_0054c200` requires of every member after the first free one.
-pub(crate) fn members_together(world: &GameWorld, a: MissionMember, b: MissionMember) -> bool {
-    match (member_state(world, a), member_state(world, b)) {
-        (Some(a), Some(b)) => a.location == b.location,
-        _ => false,
-    }
-}
-
 /// Whether a present member stands in a fleet (`Some(true)`) or at a system
 /// (`Some(false)`); `None` without a location.
 pub(crate) fn member_location_kind(world: &GameWorld, member: MissionMember) -> Option<bool> {

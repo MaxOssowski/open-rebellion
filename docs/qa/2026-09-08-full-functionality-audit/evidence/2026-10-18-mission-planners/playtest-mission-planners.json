@@ -1,0 +1,21 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": "target/claude-tmp/trt1 (commit 2d551f1d)",
+ "after": "this change",
+ "before_totals": {
+  "mission": 41485,
+  "team_size_1": 40253,
+  "team_size_2": 1232,
+  "resolved_Failure": 14197,
+  "resolved_Success": 17811,
+  "move": 320
+ },
+ "after_totals": {
+  "move": 23522,
+  "mission": 13590,
+  "team_size_1": 11767,
+  "team_size_2": 1823,
+  "resolved_Success": 14889,
+  "resolved_Failure": 9916
+ }
+}
