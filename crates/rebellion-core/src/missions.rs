@@ -146,6 +146,12 @@ pub enum MissionKind {
     /// teacher who trains Jedi at Force GNPRTB 2581 (100) or more trains the
     /// other members, each gaining `ForceTraining` `+0x90`.
     JediTraining,
+
+    /// Luke's Dagobah mission (MISSNSD `0x71000043`, TEXTSTRA 11331, class
+    /// `DagobahMission` vtable `0x00667f38`; `ghidra/notes/dagobah.md`): the
+    /// mission manager creates it for Luke when `LukeDagobah` pulses
+    /// (`FUN_0054a860`), with the Dagobah abode `0x98000441` as its target.
+    Dagobah,
 }
 
 impl MissionKind {
@@ -171,7 +177,8 @@ impl MissionKind {
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch
             | MissionKind::Move
-            | MissionKind::JediTraining => None,
+            | MissionKind::JediTraining
+            | MissionKind::Dagobah => None,
         }
     }
 
@@ -214,6 +221,8 @@ impl MissionKind {
             MissionKind::Move => (0, 0),
             // The shipped record's 60 + rand(0..=30).
             MissionKind::JediTraining => (60, 90),
+            // The shipped record's 100 + rand(0..=0).
+            MissionKind::Dagobah => (100, 100),
         }
     }
 }
@@ -318,6 +327,15 @@ pub struct ActiveMission {
     /// chosen on entering phase 2 (`FUN_00571410` -> `FUN_00570e40`,
     /// `FUN_005703b0`).
     pub teacher: Option<CharacterKey>,
+    /// The abode the mission targets (`+0x78` of family `0x98`), in place of
+    /// a system. port: `target_system` then keeps the members' starting
+    /// system, which no rule reads.
+    pub target_abode: Option<crate::ids::AbodeKey>,
+    /// Dagobah's `FirstTrainingDay` `+0xa8`, set on entering phase 8
+    /// (`FUN_005751d0`).
+    pub first_training_day: Option<u64>,
+    /// Phase 10's result `+0x60` was 3 (`FUN_00521880`).
+    pub succeeded: bool,
 }
 
 /// The phase that starts every member's transit (`FUN_00520b20`).
@@ -362,6 +380,9 @@ impl ActiveMission {
             container_loss_seen: false,
             resigning: Vec::new(),
             teacher: None,
+            target_abode: None,
+            first_training_day: None,
+            succeeded: false,
         }
     }
 
@@ -1133,6 +1154,8 @@ pub fn member_chance(
         // FUN_005710b0 reads the mission's teacher +0xa8: phase 10 takes
         // the chance from [`jedi_training_chance`].
         MissionKind::JediTraining => return 0,
+        // FUN_00575060: DAT_00661a88, 100.
+        MissionKind::Dagobah => return 100,
     };
     let (Some(input), Some(table)) = (
         input,
@@ -1197,6 +1220,7 @@ pub fn move_member(world: &mut GameWorld, member: MissionMember, to: Option<Syst
             let character = &mut world.characters[key];
             character.current_fleet = None;
             character.current_system = to;
+            character.current_abode = None;
         }
         MissionMember::SpecialForce(key) => {
             if !world.special_forces.contains_key(key) {
@@ -1237,9 +1261,39 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
                     c.add_force_experience(*amount);
                 }
             }
+            MissionEffect::MemberEnteredAbode { member, abode } => {
+                enter_abode(world, *member, *abode);
+            }
+            MissionEffect::DagobahCompleted {
+                character,
+                force_gain,
+            } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.add_force_experience(*force_gain);
+                    c.dagobah_completed = true;
+                }
+            }
             _ => {}
         }
     }
+}
+
+/// Put a character member into `abode`, out of every system and fleet
+/// (`FUN_00556390`). port: a special force never goes to an abode.
+pub fn enter_abode(world: &mut GameWorld, member: MissionMember, abode: crate::ids::AbodeKey) {
+    let MissionMember::Character(key) = member else {
+        return;
+    };
+    if world.characters.get(key).is_none_or(|c| c.is_killed) || !world.abodes.contains_key(abode) {
+        return;
+    }
+    for (_, fleet) in &mut world.fleets {
+        fleet.characters.retain(|&c| c != key);
+    }
+    let character = &mut world.characters[key];
+    character.current_fleet = None;
+    character.current_system = None;
+    character.current_abode = Some(abode);
 }
 
 /// Raise `character`'s base `skill` by `amount` ([`MissionEffect::SkillRaised`]).
@@ -1326,6 +1380,8 @@ pub struct MemberTransit {
     pub to: SystemKey,
     /// The day it arrives.
     pub arrival: u64,
+    /// The abode it travels to, in place of `to` (`FUN_00555b30`: 1 day).
+    pub abode: Option<crate::ids::AbodeKey>,
 }
 
 /// A captive's escape timer `0x38a` (`ghidra/notes/captive-escape.md`).
@@ -1403,6 +1459,32 @@ impl MissionState {
     #[must_use]
     pub fn is_en_route(&self, member: MissionMember) -> bool {
         self.en_route.iter().any(|transit| transit.member == member)
+    }
+
+    /// Aim mission `id` at `abode` instead of its system (the Dagobah
+    /// mission, `FUN_0054a860`). Returns whether the mission exists.
+    pub fn aim_at_abode(&mut self, id: u64, abode: crate::ids::AbodeKey) -> bool {
+        match self.missions.iter_mut().find(|mission| mission.id == id) {
+            Some(mission) => {
+                mission.target_abode = Some(abode);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Whether `character` is autorouting to safety (`+0x50` bit `0x1000`).
+    #[must_use]
+    pub fn is_autorouting(&self, character: CharacterKey) -> bool {
+        self.escapees
+            .iter()
+            .any(|transit| transit.character == character)
+    }
+
+    /// Put `character` on the autorouting road, for other modules' tests.
+    #[cfg(test)]
+    pub(crate) fn push_escapee(&mut self, transit: EscapeeTransit) {
+        self.escapees.push(transit);
     }
 
     /// Put `transit` on the road, for other modules' tests.
@@ -1784,6 +1866,21 @@ pub enum MissionEffect {
         injury: i32,
     },
 
+    /// A member reached the abode its mission targets (`FUN_00556390`, a
+    /// 1-day trip).
+    MemberEnteredAbode {
+        member: MissionMember,
+        abode: crate::ids::AbodeKey,
+    },
+
+    /// Dagobah's end (`FUN_005751d0`): Luke's Force rose by `force_gain`
+    /// into `ForceExperience` `+0x8e`, and `DagobahCompleted` (`+0xb0` bit
+    /// `0x8`) is set.
+    DagobahCompleted {
+        character: CharacterKey,
+        force_gain: i32,
+    },
+
     /// A Jedi Training pupil gained `amount` `ForceTraining` `+0x90`
     /// (`FUN_005712b0` -> `FUN_004ee1d0`).
     ForceTrainingGained {
@@ -1937,6 +2034,7 @@ impl MissionKind {
             MissionKind::TroopTrainingResearch => 0x5300_0022,
             MissionKind::Move => 0x4100_0001,
             MissionKind::JediTraining => 0x5800_0042,
+            MissionKind::Dagobah => 0x7100_0043,
             MissionKind::Autoscrap => return None,
         };
         Some(crate::ids::DatId::new(raw))
@@ -1965,6 +2063,8 @@ impl MissionKind {
             MissionKind::Move => TargetRules::Place,
             // FUN_00570690: the system rules, then its own.
             MissionKind::JediTraining => TargetRules::System,
+            // Its target is an abode, a place (FUN_00521070).
+            MissionKind::Dagobah => TargetRules::Place,
         }
     }
 }
@@ -2147,6 +2247,12 @@ pub(crate) fn running_end_code(
         .filter_map(|member| member_state(world, member).map(|state| state.is_alliance))
         .collect();
     if sides.contains(&true) && sides.contains(&false) {
+        return 0;
+    }
+    // port: an abode target (Dagobah) is a place no rule below can lose: it
+    // is never destroyed, never travels and has its own side (3 for
+    // Dagobah, "another" for the Dagobah record).
+    if mission.target_abode.is_some() {
         return 0;
     }
     let rules = record.rules;
@@ -2390,14 +2496,17 @@ impl MissionSystem {
                 .into_iter()
                 .partition(|transit| transit.arrival <= now);
             state.en_route = travelling;
-            out.effects.extend(
-                arrived
-                    .into_iter()
-                    .map(|transit| MissionEffect::MemberMoved {
+            out.effects
+                .extend(arrived.into_iter().map(|transit| match transit.abode {
+                    Some(abode) => MissionEffect::MemberEnteredAbode {
+                        member: transit.member,
+                        abode,
+                    },
+                    None => MissionEffect::MemberMoved {
                         member: transit.member,
                         to: Some(transit.to),
-                    }),
-            );
+                    },
+                }));
 
             let missions = std::mem::take(&mut state.missions);
             let ctx = StepContext {
@@ -2437,6 +2546,11 @@ impl MissionSystem {
                             .members()
                             .map(|member| MissionEffect::MemberAvailable { member }),
                     );
+                    // FUN_00546370 -> slot +0xb0 (FUN_004ef260): a member
+                    // left in an abode of another side autoroutes home.
+                    if let Some(abode) = mission.target_abode {
+                        Self::leave_abode(&mission, abode, world, state, &mut out, now);
+                    }
                     out.ended.push(MissionEnded {
                         mission_id: mission.id,
                         kind: mission.kind,
@@ -2461,6 +2575,7 @@ impl MissionSystem {
         // target's check may repeat: the validator either ends the mission
         // (a dead target has no location, rule 6) or skips every rule.
         let container_lost = !mission.container_loss_seen
+            && mission.target_abode.is_none()
             && ctx
                 .world
                 .systems
@@ -2571,6 +2686,61 @@ impl MissionSystem {
         }
     }
 
+    /// `FUN_00546370` -> slot `+0xb0` (`FUN_004ef260`) when a mission at an
+    /// abode ends: each character member in the abode, of another side than
+    /// the abode's, autoroutes (`FUN_00543040`) and leaves after 1 day
+    /// (`FUN_00555b30`).
+    ///
+    /// port: the autorouting origin (`FUN_005431e0`'s `+0x74`) is the
+    /// system the members left from.
+    fn leave_abode(
+        mission: &ActiveMission,
+        abode: crate::ids::AbodeKey,
+        world: &GameWorld,
+        state: &mut MissionState,
+        out: &mut MissionAdvance,
+        now: u64,
+    ) {
+        let Some(place) = world.abodes.get(abode) else {
+            return;
+        };
+        let origin = mission
+            .origin
+            .and_then(|key| world.systems.get(key))
+            .map_or((0, 0), |s| (i64::from(s.x), i64::from(s.y)));
+        for member in mission.members() {
+            let MissionMember::Character(key) = member else {
+                continue;
+            };
+            let Some(c) = world.characters.get(key) else {
+                continue;
+            };
+            let side = if c.is_alliance {
+                crate::dat::Faction::Alliance
+            } else if c.is_empire {
+                crate::dat::Faction::Empire
+            } else {
+                crate::dat::Faction::Neutral
+            };
+            let arrived = out.effects.iter().any(|effect| {
+                matches!(effect, MissionEffect::MemberEnteredAbode { member: m, .. } if *m == member)
+            });
+            if c.is_killed || place.side == side || (c.current_abode != Some(abode) && !arrived) {
+                continue;
+            }
+            let Some(to) = autoroute_destination(world, key, origin, None) else {
+                continue;
+            };
+            out.effects
+                .push(MissionEffect::MemberMoved { member, to: None });
+            state.escapees.push(EscapeeTransit {
+                character: key,
+                to,
+                arrival: now + 1,
+            });
+        }
+    }
+
     /// The phase handler `FUN_00524b70`: leave `previous`, enter the
     /// mission's new phase.
     fn enter(
@@ -2649,17 +2819,32 @@ impl MissionSystem {
                 };
                 mission.wait_start = now;
                 mission.timer_due = Some(now + delay);
+                // FUN_005751d0 in phase 8: FirstTrainingDay +0xa8 = today.
+                if mission.kind == MissionKind::Dagobah {
+                    mission.first_training_day = Some(now);
+                }
             }
             // The Move class's base handler FUN_00524b70 runs nothing here.
             PHASE_OUTCOME if mission.kind == MissionKind::Move => {}
             PHASE_OUTCOME => {
                 let result = Self::roll_members(mission, ctx, now, &mut draws.stream, &out.results);
+                mission.succeeded = result.outcome == MissionOutcome::Success;
                 out.results.push(result);
             }
             PHASE_END => {
                 validate(mission, state);
                 if mission.end_code == 0 {
                     mission.end_code = 1;
+                }
+                // FUN_005751d0 in phase 0xb, after phase 8 (FUN_00520ac0).
+                // hyp: FUN_00520ac0 reads the phase the mission leaves.
+                if mission.kind == MissionKind::Dagobah && previous >= PHASE_TIMER {
+                    out.effects.extend(crate::dagobah::training_end(
+                        world,
+                        mission.first_training_day,
+                        mission.succeeded,
+                        now,
+                    ));
                 }
                 // Slot +0x284 (FUN_00592c80) raises observation level 6 at
                 // the target for the mission's side. port: left to the
@@ -2713,6 +2898,19 @@ impl MissionSystem {
             if member_state(world, member).is_none() {
                 continue;
             }
+            // FUN_00555b30: a trip to an abode takes 1 day.
+            if let Some(abode) = mission.target_abode {
+                out.effects
+                    .push(MissionEffect::MemberMoved { member, to: None });
+                state.en_route.push(MemberTransit {
+                    member,
+                    mission_id: mission.id,
+                    to,
+                    arrival: now + 1,
+                    abode: Some(abode),
+                });
+                continue;
+            }
             let days = crate::movement::transit_ticks_between(
                 world,
                 position(from),
@@ -2733,6 +2931,7 @@ impl MissionSystem {
                     mission_id: mission.id,
                     to,
                     arrival: now + u64::from(days),
+                    abode: None,
                 });
             }
         }
@@ -2994,6 +3193,8 @@ impl MissionSystem {
                 MissionKind::Move => {}
                 // FUN_0056bec0: 3, with no skill raise.
                 MissionKind::Reconnaissance => result = 3,
+                // FUN_00572470: 3.
+                MissionKind::Dagobah => result = 3,
                 // FUN_005712b0: a character pupil's Force becomes Force +
                 // rand(0..=(teacher - pupil) x GNPRTB 6173 / 100)
                 // (FUN_0055ca20); the gain goes to ForceTraining +0x90
@@ -3312,7 +3513,6 @@ fn escape_destination(
     from: SystemKey,
 ) -> Option<SystemKey> {
     use crate::dat::Faction;
-    use crate::world::ControlKind;
 
     let c = world.characters.get(character)?;
     let side = if c.is_alliance {
@@ -3326,11 +3526,37 @@ fn escape_destination(
     if !here.is_destroyed && here.control.faction() == Some(side) {
         return None;
     }
-    let origin = (i64::from(here.x), i64::from(here.y));
+    autoroute_destination(
+        world,
+        character,
+        (i64::from(here.x), i64::from(here.y)),
+        Some(from),
+    )
+}
+
+/// [`escape_destination`]'s search from `origin`, leaving out `exclude`:
+/// `FUN_005545e0`'s candidates in order, nearest first.
+fn autoroute_destination(
+    world: &GameWorld,
+    character: CharacterKey,
+    origin: (i64, i64),
+    exclude: Option<SystemKey>,
+) -> Option<SystemKey> {
+    use crate::dat::Faction;
+    use crate::world::ControlKind;
+
+    let c = world.characters.get(character)?;
+    let side = if c.is_alliance {
+        Faction::Alliance
+    } else if c.is_empire {
+        Faction::Empire
+    } else {
+        Faction::Neutral
+    };
     let mut nearest: Vec<(i64, SystemKey)> = world
         .systems
         .iter()
-        .filter(|(key, s)| *key != from && !s.is_destroyed)
+        .filter(|(key, s)| Some(*key) != exclude && !s.is_destroyed)
         .map(|(key, s)| {
             let (dx, dy) = (i64::from(s.x) - origin.0, i64::from(s.y) - origin.1);
             (crate::movement::original_isqrt(dx * dx + dy * dy), key)
@@ -4354,6 +4580,7 @@ mod tests {
             mission_id: 7,
             to: there,
             arrival: 10,
+            abode: None,
         });
         assert!(!travelling.mission_order_enabled(&world, MissionFaction::Alliance, &[agent]));
 
@@ -5910,7 +6137,8 @@ mod tests {
                 member,
                 mission_id: mission.id,
                 to,
-                arrival: 20
+                arrival: 20,
+                abode: None,
             }]
         );
         assert_eq!(
@@ -7276,6 +7504,7 @@ mod tests {
             mission_id: 99,
             to: state.missions()[0].target_system,
             arrival: 100,
+            abode: None,
         });
 
         let advance = step(&mut state, &world, 11, &[0.99]);
@@ -7860,6 +8089,246 @@ mod tests {
     // --- The dialog's mission list (FUN_004f5380, FUN_005422f0) ---
 
     /// An Alliance envoy at an Alliance system, with records in `records`.
+    /// The shipped MISSNSD Dagobah record `0x71000043`: Alliance only,
+    /// hidden, 100 days, no resigning, an "other side" target.
+    fn dagobah_record() -> crate::world::MissionRecord {
+        crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x7100_0043),
+            timer_min_days: 100,
+            timer_spread_days: 0,
+            repeats: false,
+            hidden: true,
+            detection_phases: true,
+            can_resign: false,
+            rules: crate::world::MissionTargetRules {
+                container_loss_ends: true,
+                needs_populated_container: false,
+                target_loss_ends: true,
+                own_side_target: false,
+                other_side_target: true,
+                opponent_target: false,
+                revolting_target: false,
+                calm_target: false,
+                prisoner_target: false,
+                free_target: false,
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: false,
+                special_force_mask: 0,
+                character_mask: 0x1_0000,
+            },
+        }
+    }
+
+    /// Luke (Force 50) at an Alliance system, a second Alliance system
+    /// further off, the Dagobah abode and the Dagobah record.
+    fn dagobah_world() -> (
+        GameWorld,
+        SystemKey,
+        SystemKey,
+        CharacterKey,
+        crate::ids::AbodeKey,
+    ) {
+        let mut world = minimal_world();
+        let home = system_at(&mut world, 0);
+        let far = system_at(&mut world, 500);
+        for system in [home, far] {
+            world.systems[system].control =
+                crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        }
+        world.mission_records = vec![dagobah_record()];
+        let luke = agent_at(&mut world, home, true);
+        world.characters[luke].dat_id = crate::ids::DatId::new(0x242);
+        world.characters[luke].force_base = 50;
+        let dagobah = world.abodes.insert(crate::world::Abode {
+            dat_id: crate::ids::DatId::new(0x441),
+            name: "Dagobah".into(),
+            side: crate::dat::Faction::Neutral,
+        });
+        (world, home, far, luke, dagobah)
+    }
+
+    #[test]
+    fn luke_trains_on_dagobah_for_100_days_and_autoroutes_home() {
+        // FUN_0054a860 creates mission 0x71000043 for Luke to the Dagobah
+        // abode; the trip takes 1 day (FUN_00555b30); phase 8 records the
+        // first training day and waits 100 days; phase 10 succeeds
+        // (FUN_00575060 100, FUN_00572470 3); phase 0xb after phase 8 raises
+        // Luke's Force by GNPRTB 6174 (60) percent and sets DagobahCompleted
+        // (FUN_005751d0); then slot +0xb0 (FUN_004ef260) autoroutes him out
+        // of the side-3 abode to his side's nearest system, 1 day away.
+        let (mut world, home, _, luke, dagobah) = dagobah_world();
+        let mut state = MissionState::new();
+        let pulse = crate::dagobah::LukeDagobah {
+            luke,
+            from: home,
+            abode: dagobah,
+            tick: 10,
+        };
+        let id = crate::dagobah::dispatch(&mut state, &mut world, &pulse).expect("dispatched");
+        assert!(world.characters[luke].on_mission);
+        let mut entered = None;
+        let mut completed = None;
+        for day in 10..=130 {
+            let advance = step(&mut state, &world, day, &[]);
+            apply_advance_effects(&mut world, &advance.effects);
+            // FUN_00555b30: the trip to the abode takes exactly 1 day.
+            if let Some(transit) = state.en_route.first() {
+                assert_eq!(transit.arrival, day + 1);
+                assert_eq!(transit.abode, Some(dagobah));
+            }
+            // And the autorouting trip out of it.
+            if completed.is_none() {
+                if let Some(escape) = state.escapees.first() {
+                    assert_eq!(escape.arrival, day + 1);
+                    assert_eq!(escape.to, home);
+                }
+            }
+            if entered.is_none() && world.characters[luke].current_abode == Some(dagobah) {
+                entered = Some(day);
+                assert_eq!(world.characters[luke].current_system, None);
+                assert_eq!(state.missions()[0].first_training_day, Some(day));
+            }
+            if advance.effects.iter().any(|effect| {
+                matches!(effect,
+                MissionEffect::DagobahCompleted { character, force_gain: 30 } if *character == luke)
+            }) {
+                completed = Some(day);
+            }
+            let escapes = MissionSystem::advance_escapes(&mut state, &world, day, &[]);
+            apply_advance_effects(&mut world, &escapes);
+        }
+        let entered = entered.expect("Luke reached Dagobah");
+        assert_eq!(entered, 11);
+        assert_eq!(completed, Some(entered + 100));
+        let c = &world.characters[luke];
+        assert!(c.dagobah_completed);
+        assert_eq!(c.force_level(), 80);
+        assert_eq!(c.current_abode, None);
+        assert_eq!(c.current_system, Some(home));
+        assert!(!c.on_mission);
+        assert!(state.missions().iter().all(|mission| mission.id != id));
+    }
+
+    #[test]
+    fn only_a_member_of_another_side_than_the_abode_s_autoroutes_out() {
+        // FUN_004ef260: Autorouting only when the container's side differs
+        // from the character's, and never for a destroyed one.
+        let run = |edit: fn(&mut GameWorld, CharacterKey, crate::ids::AbodeKey)| {
+            let (mut world, home, _, luke, dagobah) = dagobah_world();
+            let mut mission = ActiveMission::timed(
+                0,
+                MissionKind::Dagobah,
+                MissionFaction::Alliance,
+                vec![MissionMember::Character(luke)],
+                home,
+                1,
+            );
+            mission.target_abode = Some(dagobah);
+            mission.origin = Some(home);
+            enter_abode(&mut world, MissionMember::Character(luke), dagobah);
+            edit(&mut world, luke, dagobah);
+            let mut state = MissionState::new();
+            state.push_timed(mission);
+            let mut leaving = 0;
+            for day in 1..=3 {
+                let advance = step(&mut state, &world, day, &[]);
+                leaving += state.escapees.len();
+                apply_advance_effects(&mut world, &advance.effects);
+            }
+            leaving
+        };
+        assert!(run(|_, _, _| {}) > 0);
+        assert_eq!(
+            run(|world, _, abode| world.abodes[abode].side = crate::dat::Faction::Alliance),
+            0
+        );
+        assert_eq!(
+            run(|world, luke, _| world.characters[luke].is_killed = true),
+            0
+        );
+        assert_eq!(
+            run(|world, luke, _| world.characters[luke].current_abode = None),
+            0
+        );
+    }
+
+    #[test]
+    fn only_dagobah_ended_after_phase_8_completes_dagobah() {
+        // FUN_005751d0 belongs to the Dagobah class and acts in phase 0xb
+        // only after phase 8 (FUN_00520ac0 >= 8).
+        let (world, home, _, luke, _) = dagobah_world();
+        let completes = |kind, phase: u8| {
+            let mut mission = ActiveMission::timed(
+                0,
+                kind,
+                MissionFaction::Alliance,
+                vec![MissionMember::Character(luke)],
+                home,
+                1,
+            );
+            mission.first_training_day = Some(0);
+            mission.phase = phase;
+            mission.end_code = 2;
+            let mut state = MissionState::new();
+            state.push_timed(mission);
+            step(&mut state, &world, 1, &[])
+                .effects
+                .iter()
+                .any(|effect| matches!(effect, MissionEffect::DagobahCompleted { .. }))
+        };
+        assert!(completes(MissionKind::Dagobah, PHASE_TIMER));
+        assert!(!completes(MissionKind::Dagobah, 5));
+        assert!(!completes(MissionKind::Diplomacy, PHASE_TIMER));
+    }
+
+    #[test]
+    fn a_killed_character_or_an_unknown_abode_takes_no_one_in() {
+        let (mut world, _, _, luke, dagobah) = dagobah_world();
+        let member = MissionMember::Character(luke);
+        world.characters[luke].is_killed = true;
+        enter_abode(&mut world, member, dagobah);
+        assert_eq!(world.characters[luke].current_abode, None);
+        world.characters[luke].is_killed = false;
+        let gone = world.abodes.remove(dagobah).map(|_| dagobah).unwrap();
+        enter_abode(&mut world, member, gone);
+        assert_eq!(world.characters[luke].current_abode, None);
+        assert!(world.characters[luke].current_system.is_some());
+        // A character entering from a fleet leaves its roster.
+        let (mut world, home, _, luke, dagobah) = dagobah_world();
+        let other = agent_at(&mut world, home, true);
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: home,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![luke, other],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.characters[luke].current_fleet = Some(fleet);
+        enter_abode(&mut world, MissionMember::Character(luke), dagobah);
+        assert_eq!(world.fleets[fleet].characters, vec![other]);
+        assert_eq!(world.characters[luke].current_fleet, None);
+        assert_eq!(world.characters[luke].current_abode, Some(dagobah));
+    }
+
+    #[test]
+    fn an_unfinished_dagobah_changes_no_force() {
+        // FUN_005751d0 needs phase 8 or later and a first training day.
+        let (world, _, _, _, _) = dagobah_world();
+        assert_eq!(crate::dagobah::training_end(&world, None, true, 50), []);
+        // Without success: Force x ((today - first) / GNPRTB 6175 (2)) / 100:
+        // 50 x (41 / 2) / 100 = 10.
+        assert_eq!(
+            crate::dagobah::training_end(&world, Some(10), false, 51),
+            vec![MissionEffect::DagobahCompleted {
+                character: world.characters.keys().next().unwrap(),
+                force_gain: 10,
+            }]
+        );
+    }
+
     /// The shipped MISSNSD Jedi Training record `0x58000042`: an own-side
     /// system, timer (60, 30), no repeat, characters of both sides.
     fn jedi_training_record() -> crate::world::MissionRecord {

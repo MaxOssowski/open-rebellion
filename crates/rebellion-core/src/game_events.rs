@@ -141,6 +141,8 @@ pub const EVT_FORCE_DISCOVERED: &str = "force_discovered";
 /// A character's `ForceExperience` (`+0x8e`) grew (Luke's or Leia's evade,
 /// `FUN_0056f8b0`, `FUN_0056ffa0`).
 pub const EVT_FORCE_EXPERIENCE: &str = "force_experience";
+/// `LukeDagobah` pulsed (notification `0x221`, `FUN_00544030`).
+pub const EVT_LUKE_DAGOBAH: &str = "luke_dagobah";
 pub const EVT_SIDE_CHANGE: &str = "side_change";
 pub const EVT_EMPEROR_ARRIVAL: &str = "emperor_arrival";
 pub const EVT_JABBA_PRISONERS: &str = "jabba_prisoners";
@@ -243,6 +245,7 @@ mod tests {
             EVT_LEIA_FORCE,
             EVT_FORCE_DISCOVERED,
             EVT_FORCE_EXPERIENCE,
+            EVT_LUKE_DAGOBAH,
             EVT_SIDE_CHANGE,
             EVT_EMPEROR_ARRIVAL,
             EVT_JABBA_PRISONERS,

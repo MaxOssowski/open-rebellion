@@ -74,6 +74,8 @@ pub struct SimulationStates {
     pub healing: rebellion_core::healing::HealingState,
     /// Each discovering trainer's timer `0x389` (v70).
     pub force_discovery: rebellion_core::force_discovery::ForceDiscoveryState,
+    /// The mission manager's Dagobah trigger, timer `0x392` (v73).
+    pub dagobah: rebellion_core::dagobah::DagobahState,
     pub troop_transport: TroopTransportState,
     /// Manufactured objects travelling to their destination (F-030).
     pub deliveries: DeliveryState,
@@ -324,6 +326,19 @@ pub fn run_simulation_tick(
         &mission_advance.effects,
         tick_events.last().map_or(0, |event| event.tick),
     );
+
+    // ── 5b. Dagobah: timer 0x392 and the check FUN_00544030 ──────────────
+    let dagobah_rolls = take_rolls(rebellion_core::dagobah::DagobahSystem::roll_budget());
+    if let Some(pulse) = rebellion_core::dagobah::DagobahSystem::advance(
+        &mut states.dagobah,
+        world,
+        &states.missions,
+        tick_events,
+        &dagobah_rolls,
+    ) {
+        let mission = rebellion_core::dagobah::dispatch(&mut states.missions, world, &pulse);
+        integrator.record_luke_dagobah(world, &pulse, mission.is_some());
+    }
     states.ai.free_mission_members(&mission_advance.effects);
     if let Some(ref mut ai2) = states.ai2 {
         ai2.free_mission_members(&mission_advance.effects);
@@ -852,6 +867,7 @@ mod tests {
             informant: rebellion_core::informant::InformantState::default(),
             healing: rebellion_core::healing::HealingState::default(),
             force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
+            dagobah: rebellion_core::dagobah::DagobahState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1331,6 +1347,7 @@ mod tests {
                 informant: rebellion_core::informant::InformantState::default(),
                 healing: rebellion_core::healing::HealingState::default(),
                 force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
+                dagobah: rebellion_core::dagobah::DagobahState::default(),
                 troop_transport: TroopTransportState::default(),
                 deliveries: DeliveryState::default(),
                 combat_cooldowns: HashMap::new(),
@@ -1463,6 +1480,7 @@ mod tests {
             informant: rebellion_core::informant::InformantState::default(),
             healing: rebellion_core::healing::HealingState::default(),
             force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
+            dagobah: rebellion_core::dagobah::DagobahState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1649,6 +1667,7 @@ mod tests {
             informant: rebellion_core::informant::InformantState::default(),
             healing: rebellion_core::healing::HealingState::default(),
             force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
+            dagobah: rebellion_core::dagobah::DagobahState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1796,6 +1815,7 @@ mod tests {
             informant: rebellion_core::informant::InformantState::default(),
             healing: rebellion_core::healing::HealingState::default(),
             force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
+            dagobah: rebellion_core::dagobah::DagobahState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),
@@ -1958,6 +1978,7 @@ mod tests {
             informant: rebellion_core::informant::InformantState::default(),
             healing: rebellion_core::healing::HealingState::default(),
             force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
+            dagobah: rebellion_core::dagobah::DagobahState::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             combat_cooldowns: HashMap::new(),

@@ -1,0 +1,123 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks N --dual-ai",
+ "baseline": "bcf6b772",
+ "runs": {
+  "1-1200": {
+   "dagobah": [],
+   "luke_killed": [
+    393,
+    "assassination"
+   ]
+  },
+  "2-1200": {
+   "dagobah": [
+    [
+     513,
+     "luke_dagobah",
+     {
+      "character": "Luke Skywalker",
+      "dispatched": true,
+      "from": "Chalcedon"
+     }
+    ],
+    [
+     615,
+     "force_experience",
+     {
+      "cause": "dagobah",
+      "character": "Luke Skywalker",
+      "force": 80,
+      "gain": 30
+     }
+    ]
+   ],
+   "luke_killed": null
+  },
+  "3-1200": {
+   "dagobah": [],
+   "luke_killed": [
+    345,
+    "assassination"
+   ]
+  },
+  "7-1200": {
+   "dagobah": [
+    [
+     306,
+     "luke_dagobah",
+     {
+      "character": "Luke Skywalker",
+      "dispatched": true,
+      "from": "Tralus"
+     }
+    ],
+    [
+     408,
+     "force_experience",
+     {
+      "cause": "dagobah",
+      "character": "Luke Skywalker",
+      "force": 80,
+      "gain": 30
+     }
+    ]
+   ],
+   "luke_killed": null
+  },
+  "13-1200": {
+   "dagobah": [
+    [
+     302,
+     "luke_dagobah",
+     {
+      "character": "Luke Skywalker",
+      "dispatched": true,
+      "from": "Mon Calamari"
+     }
+    ],
+    [
+     404,
+     "force_experience",
+     {
+      "cause": "dagobah",
+      "character": "Luke Skywalker",
+      "force": 80,
+      "gain": 30
+     }
+    ]
+   ],
+   "luke_killed": null
+  },
+  "42-1200": {
+   "dagobah": [],
+   "luke_killed": [
+    322,
+    "assassination"
+   ]
+  },
+  "47-1200": {
+   "dagobah": [
+    [
+     471,
+     "luke_dagobah",
+     {
+      "character": "Luke Skywalker",
+      "dispatched": true,
+      "from": "Fwillsving"
+     }
+    ],
+    [
+     573,
+     "force_experience",
+     {
+      "cause": "dagobah",
+      "character": "Luke Skywalker",
+      "force": 80,
+      "gain": 30
+     }
+    ]
+   ],
+   "luke_killed": null
+  }
+ }
+}

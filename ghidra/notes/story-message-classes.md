@@ -56,7 +56,7 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | # | Story line | Notification | Builder (vtable) | Background | Title / body | Shown to | Port |
 |---|---|---|---|---|---|---|---|
 | 1 | Luke Goes to Dagobah | `0x221` | `FUN_0048d190` (`0x65b380`) | `0x421` | `0x71b8` / `0x71b9` | — | mapped |
-| 2 | Luke Leaves Dagobah | `0x210`, arg set | `FUN_0048d0f0` (`0x65b380`) | `0x412`, Luke's portrait | `0x71ba` / `0x71bb` | Alliance only | missing |
+| 2 | Luke Leaves Dagobah | `0x210`, arg set | `FUN_0048d0f0` (`0x65b380`) | `0x412`, Luke's portrait | `0x71ba` / `0x71bb` | Alliance only | mapped 2026-10-18 (`luke_leaves_dagobah`, the Dagobah mission's end) |
 | 3 | Force Growth | `0x1e1` | `FUN_0048ed80` (`0x65b4d8`) | side `0x412`/`0x413`, portrait | `0x7180` / `0x7181` | — | mapped |
 | 4 | Future Jedi Discovered | `0x362` | `FUN_0048f1e0` (`0x65b520`) | side, the teacher's portrait | `0x7178` / `0x7179` or `0x717a` | the teacher's side | mapped 2026-10-18 (`force_user_discovered`, timer `0x389`) |
 | 5 | Leia Uses Force | `0x362`, Leia | `FUN_0048f1e0` | side, Leia's portrait | `0x71d8` / `0x71d9` | — | mapped |

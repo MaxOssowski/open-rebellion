@@ -1851,6 +1851,17 @@ pub fn post_story_messages(
             }
         }
     }
+    // Luke's Dagobah messages (0x221, 0x210), for the Alliance reader.
+    if let Some(message) = rebellion_render::story_messages::luke_goes_to_dagobah(0, texts) {
+        log.push(message);
+    }
+    if let Some(luke) = named("luke") {
+        if let Some(message) =
+            rebellion_render::story_messages::luke_leaves_dagobah(world, luke, 0, texts)
+        {
+            log.push(message);
+        }
+    }
 }
 
 /// The event-message scenario's messages: one per report class whose

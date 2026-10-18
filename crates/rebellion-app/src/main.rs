@@ -427,6 +427,7 @@ struct LiveCampaign<'a> {
     informant: &'a mut rebellion_core::informant::InformantState,
     healing: &'a mut rebellion_core::healing::HealingState,
     force_discovery: &'a mut rebellion_core::force_discovery::ForceDiscoveryState,
+    dagobah: &'a mut rebellion_core::dagobah::DagobahState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -464,6 +465,7 @@ impl LiveCampaign<'_> {
             informant: self.informant.clone(),
             healing: self.healing.clone(),
             force_discovery: self.force_discovery.clone(),
+            dagobah: self.dagobah.clone(),
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -504,6 +506,7 @@ impl LiveCampaign<'_> {
         *self.informant = state.informant;
         *self.healing = state.healing;
         *self.force_discovery = state.force_discovery;
+        *self.dagobah = state.dagobah;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -1085,6 +1088,7 @@ async fn main() {
     let mut informant_state = rebellion_core::informant::InformantState::default();
     let mut healing_state = rebellion_core::healing::HealingState::default();
     let mut force_discovery_state = rebellion_core::force_discovery::ForceDiscoveryState::default();
+    let mut dagobah_state = rebellion_core::dagobah::DagobahState::default();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -2147,6 +2151,43 @@ async fn main() {
             // Member moves and releases come before the results.
             rebellion_core::missions::apply_advance_effects(&mut world, &mission_advance.effects);
             push_advance_injuries(&mut msg_log, &world, &mission_advance.effects, current_tick);
+            // ── Dagobah: timer 0x392 and the check FUN_00544030 ─────────────
+            let dagobah_rolls: Vec<f64> =
+                (0..rebellion_core::dagobah::DagobahSystem::roll_budget())
+                    .map(|_| sim_rng.gen::<f64>())
+                    .collect();
+            if let Some(pulse) = rebellion_core::dagobah::DagobahSystem::advance(
+                &mut dagobah_state,
+                &world,
+                &mission_state,
+                &tick_events,
+                &dagobah_rolls,
+            ) {
+                if rebellion_core::dagobah::dispatch(&mut mission_state, &mut world, &pulse)
+                    .is_some()
+                {
+                    if let Some(message) = rebellion_render::story_messages::luke_goes_to_dagobah(
+                        pulse.tick,
+                        &message_texts,
+                    ) {
+                        msg_log.push(message);
+                    }
+                }
+            }
+            // Notification 0x210 when the Dagobah mission sets
+            // DagobahCompleted (FUN_005751d0).
+            for effect in &mission_advance.effects {
+                if let MissionEffect::DagobahCompleted { character, .. } = effect {
+                    if let Some(message) = rebellion_render::story_messages::luke_leaves_dagobah(
+                        &world,
+                        *character,
+                        current_tick,
+                        &message_texts,
+                    ) {
+                        msg_log.push(message);
+                    }
+                }
+            }
             ai_state.free_mission_members(&mission_advance.effects);
             if let Some(second_ai) = secondary_ai_state.as_mut() {
                 second_ai.free_mission_members(&mission_advance.effects);
@@ -3549,6 +3590,8 @@ async fn main() {
                                     healing_state = rebellion_core::healing::HealingState::default();
                                     force_discovery_state =
                                         rebellion_core::force_discovery::ForceDiscoveryState::default();
+                                    dagobah_state =
+                                        rebellion_core::dagobah::DagobahState::default();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -5987,6 +6030,7 @@ async fn main() {
                         informant: &mut informant_state,
                         healing: &mut healing_state,
                         force_discovery: &mut force_discovery_state,
+                        dagobah: &mut dagobah_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -6062,6 +6106,7 @@ async fn main() {
                                 informant: &mut informant_state,
                                 healing: &mut healing_state,
                                 force_discovery: &mut force_discovery_state,
+                                dagobah: &mut dagobah_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,
@@ -7252,6 +7297,7 @@ fn apply_panel_action(
                 MissionKind::Autoscrap => "Autoscrap",
                 MissionKind::Move => "Move",
                 MissionKind::JediTraining => "Jedi Training",
+                MissionKind::Dagobah => "Dagobah",
             };
             msg_log.push(GameMessage::at_system(
                 clock.tick,
@@ -7738,6 +7784,7 @@ fn apply_mission_result(
         MissionKind::Autoscrap => "Autoscrap",
         MissionKind::Move => "Move",
         MissionKind::JediTraining => "Jedi Training",
+        MissionKind::Dagobah => "Dagobah",
     };
     let sys_name = world
         .systems
@@ -7765,7 +7812,8 @@ fn apply_mission_result(
         | MissionKind::TroopTrainingResearch
         | MissionKind::Autoscrap
         | MissionKind::Move
-        | MissionKind::JediTraining => MessageCategory::Mission,
+        | MissionKind::JediTraining
+        | MissionKind::Dagobah => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.
     let picture = {
@@ -7932,6 +7980,19 @@ fn apply_mission_result(
             MissionEffect::ForceExperienceGained { character, amount } => {
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.add_force_experience(*amount);
+                }
+            }
+            // The advance's effects (`apply_advance_effects`).
+            MissionEffect::MemberEnteredAbode { member, abode } => {
+                rebellion_core::missions::enter_abode(world, *member, *abode);
+            }
+            MissionEffect::DagobahCompleted {
+                character,
+                force_gain,
+            } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.add_force_experience(*force_gain);
+                    c.dagobah_completed = true;
                 }
             }
             // FUN_005712b0 -> FUN_004ee1d0: a Jedi Training gain.

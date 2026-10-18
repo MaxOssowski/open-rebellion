@@ -1068,6 +1068,7 @@ mod tests {
             force_discoverer: None,
             force_training: 0,
             current_abode: None,
+            dagobah_completed: false,
         }
     }
 

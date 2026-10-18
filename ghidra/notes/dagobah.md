@@ -113,7 +113,13 @@ is her own `KnowsHeritage`. Han's bits are `BountyAttack` (0) and
 
 - Abodes, first stage (2026-10-18): `GameWorld::abodes` from ABODESD with
   the setup's sides, and `Character::current_abode`
-  (`evidence/2026-10-18-abodes/`). Missions do not target them yet.
+  (`evidence/2026-10-18-abodes/`).
+- Dagobah (2026-10-18, save v73): `dagobah.rs` (timer `0x392`, the check,
+  the mission's creation and end), `MissionKind::Dagobah` with an abode
+  target and 1-day trips, the autorouting out of the abode, the two
+  messages, and `Character::dagobah_completed`. The invented story chain is
+  gone (`evidence/2026-10-18-dagobah/`). Not ported: Han's capture at the
+  palace (`HanCapturedAtPalace`).
 - `story_events.rs` starts "Dagobah" from invented conditions (Luke at
   Force tier Aware, tick 50) with Yoda, and advances Force tiers.
 - Needed to port: the five abodes (load ABODESD, place them in the galaxy,

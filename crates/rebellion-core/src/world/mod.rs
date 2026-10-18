@@ -737,6 +737,9 @@ pub struct Character {
     /// The abode the character is in, when its container is an abode
     /// (family `0x98`); its system and fleet are then `None` (save v72).
     pub current_abode: Option<crate::ids::AbodeKey>,
+    /// Luke's `DagobahCompleted` (`+0xb0` bit `0x8`, `FUN_0056f730`), set at
+    /// the Dagobah mission's end (`FUN_005751d0`; save v73).
+    pub dagobah_completed: bool,
 }
 
 impl Character {
@@ -905,6 +908,7 @@ impl Default for Character {
             force_discoverer: None,
             force_training: 0,
             current_abode: None,
+            dagobah_completed: false,
         }
     }
 }
@@ -2818,7 +2822,8 @@ mod tests {
             "force_base": 0,
             "force_discoverer": null,
             "force_training": 0,
-            "current_abode": null
+            "current_abode": null,
+            "dagobah_completed": false
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

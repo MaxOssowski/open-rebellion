@@ -136,6 +136,7 @@ fn telemetry_coverage_all_sys_constants_emit() {
         informant: rebellion_core::informant::InformantState::default(),
         healing: rebellion_core::healing::HealingState::default(),
         force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
+        dagobah: rebellion_core::dagobah::DagobahState::default(),
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         combat_cooldowns: HashMap::new(),

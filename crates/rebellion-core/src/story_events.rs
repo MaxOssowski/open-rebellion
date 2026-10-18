@@ -5,11 +5,10 @@
 
 use crate::events::{
     EventAction, EventCondition, EventState, GameEvent, SystemTag, EVT_BOUNTY_ATTACK,
-    EVT_CHARACTER_FORCE, EVT_DAGOBAH_COMPLETED, EVT_EMPEROR_ARRIVAL, EVT_FINAL_BATTLE,
-    EVT_FORCE_TRAINING, EVT_HAN_CARBONITE_FAIL_1, EVT_HAN_CARBONITE_FAIL_2,
-    EVT_HAN_CARBONITE_FAIL_3, EVT_HAN_CARBONITE_FAIL_4, EVT_HAN_CARBONITE_FAIL_5,
-    EVT_HAN_PERMANENT_FREEZE, EVT_HAN_RESCUE, EVT_JABBA_CAPTURES_CHEWIE, EVT_JABBA_PRISONERS,
-    EVT_LEIA_FORCE, EVT_LUKE_DAGOBAH,
+    EVT_CHARACTER_FORCE, EVT_EMPEROR_ARRIVAL, EVT_FINAL_BATTLE, EVT_FORCE_TRAINING,
+    EVT_HAN_CARBONITE_FAIL_1, EVT_HAN_CARBONITE_FAIL_2, EVT_HAN_CARBONITE_FAIL_3,
+    EVT_HAN_CARBONITE_FAIL_4, EVT_HAN_CARBONITE_FAIL_5, EVT_HAN_PERMANENT_FREEZE, EVT_HAN_RESCUE,
+    EVT_JABBA_CAPTURES_CHEWIE, EVT_JABBA_PRISONERS, EVT_LEIA_FORCE,
 };
 use crate::ids::CharacterKey;
 use crate::world::{ForceTier, GameWorld};
@@ -47,7 +46,6 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
     let han = find_character(world, "Han");
     let leia = find_character(world, "Leia");
     let chewbacca = find_character(world, "Chew");
-    let yoda = find_character(world, "Yoda");
     let emperor = find_character(world, "Palpatine").or_else(|| find_character(world, "Emperor"));
 
     // -----------------------------------------------------------------------
@@ -97,121 +95,11 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
         // Chain 1: Luke Dagobah Training (with enrichment — Task 4)
         // -------------------------------------------------------------------
 
-        // Dagobah prerequisite gate (0x390)
-        if let Some(yoda) = yoda {
-            state.define(GameEvent {
-                id: 0x390,
-                name: "Dagobah Calls".into(),
-                conditions: vec![
-                    EventCondition::CharacterHasForceLevel {
-                        character: luke,
-                        min_tier: ForceTier::Aware,
-                    },
-                    EventCondition::TickAtLeast { tick: 30 },
-                    EventCondition::CharacterExists { character: yoda },
-                ],
-                actions: vec![EventAction::DisplayMessage {
-                    text: "Yoda senses Luke's awakening... Dagobah calls.".into(),
-                }],
-                is_repeatable: false,
-                enabled: true,
-                system_tag: SystemTag::Story,
-            });
-
-            // Yoda teacher assignment (0x392)
-            state.define(GameEvent {
-                id: 0x392,
-                name: "Yoda Agrees to Train Luke".into(),
-                conditions: vec![
-                    EventCondition::EventFired { id: 0x390 },
-                    EventCondition::CharacterIsJediTrainer { character: yoda },
-                ],
-                actions: vec![EventAction::DisplayMessage {
-                    text: "Yoda agrees to train Luke in the ways of the Force.".into(),
-                }],
-                is_repeatable: false,
-                enabled: true,
-                system_tag: SystemTag::Story,
-            });
-        }
-
-        // EVT_LUKE_DAGOBAH (0x221): Luke begins Jedi training
-        state.define(GameEvent {
-            id: EVT_LUKE_DAGOBAH,
-            name: "Luke Dagobah Training".into(),
-            conditions: vec![
-                EventCondition::CharacterExists { character: luke },
-                EventCondition::CharacterHasForceLevel {
-                    character: luke,
-                    min_tier: ForceTier::Aware,
-                },
-                EventCondition::TickAtLeast { tick: 50 },
-            ],
-            actions: vec![
-                EventAction::SetMandatoryMission {
-                    character: luke,
-                    mandatory: true,
-                },
-                EventAction::StartJediTraining { character: luke },
-                EventAction::DisplayMessage {
-                    text: "Luke Skywalker travels to Dagobah for Jedi training...".into(),
-                },
-            ],
-            is_repeatable: false,
-            enabled: true,
-            system_tag: SystemTag::Story,
-        });
-
-        // First training day (0x391) — fires after Dagobah starts
-        state.define(GameEvent {
-            id: 0x391,
-            name: "First Training Day".into(),
-            conditions: vec![
-                EventCondition::EventFired {
-                    id: EVT_LUKE_DAGOBAH,
-                },
-                EventCondition::TickAtLeast { tick: 55 },
-            ],
-            actions: vec![
-                EventAction::AccumulateForceExperience {
-                    character: luke,
-                    amount: 10,
-                },
-                EventAction::DisplayMessage {
-                    text: "Luke's first day of training on Dagobah begins.".into(),
-                },
-            ],
-            is_repeatable: false,
-            enabled: true,
-            system_tag: SystemTag::Story,
-        });
-
-        // EVT_DAGOBAH_COMPLETED (0x210): Luke completes training
-        state.define(GameEvent {
-            id: EVT_DAGOBAH_COMPLETED,
-            name: "Dagobah Training Complete".into(),
-            conditions: vec![
-                EventCondition::EventFired {
-                    id: EVT_LUKE_DAGOBAH,
-                },
-                EventCondition::CharacterHasForceLevel {
-                    character: luke,
-                    min_tier: ForceTier::Experienced,
-                },
-            ],
-            actions: vec![
-                EventAction::SetMandatoryMission {
-                    character: luke,
-                    mandatory: false,
-                },
-                EventAction::DisplayMessage {
-                    text: "Luke has completed his Jedi training on Dagobah.".into(),
-                },
-            ],
-            is_repeatable: false,
-            enabled: true,
-            system_tag: SystemTag::Story,
-        });
+        // The Dagobah chain (0x390 "Dagobah Calls", 0x392 "Yoda Agrees", 0x221,
+        // 0x391 "First Training Day", 0x210) is gone: the mission manager
+        // sends Luke to Dagobah on timer 0x392 (crate::dagobah,
+        // ghidra/notes/dagobah.md), and the events that waited for 0x210 wait
+        // for Luke's DagobahCompleted.
 
         // -------------------------------------------------------------------
         // Chain 2: Final Battle — multi-phase (Task 5)
@@ -223,9 +111,7 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
                 id: 0x393,
                 name: "Vader Dispatched".into(),
                 conditions: vec![
-                    EventCondition::EventFired {
-                        id: EVT_DAGOBAH_COMPLETED,
-                    },
+                    EventCondition::CharacterDagobahCompleted { character: luke },
                     EventCondition::CharacterExists { character: vader },
                 ],
                 actions: vec![
@@ -363,9 +249,7 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
                 conditions: vec![
                     EventCondition::CharacterExists { character: leia },
                     // Luke must have completed training first
-                    EventCondition::EventFired {
-                        id: EVT_DAGOBAH_COMPLETED,
-                    },
+                    EventCondition::CharacterDagobahCompleted { character: luke },
                     EventCondition::TickAtLeast { tick: 80 },
                 ],
                 actions: vec![
@@ -950,54 +834,20 @@ mod tests {
     }
 
     #[test]
-    fn luke_dagobah_chain_fires_in_sequence() {
-        let mut world = make_world_with_characters();
+    fn the_invented_dagobah_chain_is_gone() {
+        // The mission manager sends Luke to Dagobah on timer 0x392
+        // (FUN_00549d60, FUN_00544030, FUN_0054a860; ghidra/notes/dagobah.md),
+        // so the port's own 0x390, 0x392, 0x221, 0x391 and 0x210 events,
+        // which no original code raises this way, are no longer defined.
+        let world = make_world_with_characters();
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
-
-        // Dagobah prerequisite gate fires at tick 30 (Yoda exists, Luke Aware)
-        let fired = EventSystem::advance(&mut state, &world, &tick(30), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == 0x390),
-            "Dagobah prerequisite gate should fire at tick 30"
-        );
-
-        // Yoda teacher assignment should also chain-fire (0x392)
-        assert!(
-            fired.iter().any(|f| f.event_id == 0x392),
-            "Yoda teacher assignment should chain-fire"
-        );
-
-        // Before tick 50: Luke Dagobah should NOT fire
-        let fired = EventSystem::advance(&mut state, &world, &tick(49), &[]);
-        assert!(
-            !fired.iter().any(|f| f.event_id == EVT_LUKE_DAGOBAH),
-            "should not fire before tick 50"
-        );
-
-        // At tick 50: Luke Dagobah fires (Luke is Aware, exists, tick >= 50)
-        let fired = EventSystem::advance(&mut state, &world, &tick(50), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == EVT_LUKE_DAGOBAH),
-            "Luke Dagobah should fire at tick 50"
-        );
-
-        // First training day fires at tick 55
-        let fired = EventSystem::advance(&mut state, &world, &tick(55), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == 0x391),
-            "First training day should fire at tick 55"
-        );
-
-        // Dagobah completed requires Luke to be Experienced
-        let luke_key = find_character(&world, "Luke").unwrap();
-        world.characters.get_mut(luke_key).unwrap().force_tier = ForceTier::Experienced;
-
-        let fired = EventSystem::advance(&mut state, &world, &tick(56), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == EVT_DAGOBAH_COMPLETED),
-            "Dagobah completed should fire after Luke reaches Experienced"
-        );
+        for id in [0x390, 0x392, 0x221, 0x391, 0x210] {
+            assert!(
+                state.events().iter().all(|event| event.id != id),
+                "{id:#x} is still defined"
+            );
+        }
     }
 
     #[test]
@@ -1006,11 +856,11 @@ mod tests {
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
 
-        // Fire Luke Dagobah at tick 50
+        // Fire the Force Awakening milestone (Luke is Aware) at tick 50
         let fired1 = EventSystem::advance(&mut state, &world, &tick(50), &[]);
         let count1 = fired1
             .iter()
-            .filter(|f| f.event_id == EVT_LUKE_DAGOBAH)
+            .filter(|f| f.event_id == EVT_CHARACTER_FORCE)
             .count();
         assert_eq!(count1, 1);
 
@@ -1018,7 +868,7 @@ mod tests {
         let fired2 = EventSystem::advance(&mut state, &world, &tick(51), &[]);
         let count2 = fired2
             .iter()
-            .filter(|f| f.event_id == EVT_LUKE_DAGOBAH)
+            .filter(|f| f.event_id == EVT_CHARACTER_FORCE)
             .count();
         assert_eq!(count2, 0, "one-shot event should not fire again");
     }
@@ -1199,16 +1049,17 @@ mod tests {
             "Final Battle should not fire before Dagobah completion"
         );
 
-        // Complete Dagobah by making Luke Experienced
+        // Complete Dagobah: the mission's end sets Luke's DagobahCompleted
+        // (FUN_005751d0).
         let luke_key = find_character(&world, "Luke").unwrap();
-        world.characters.get_mut(luke_key).unwrap().force_tier = ForceTier::Experienced;
+        world
+            .characters
+            .get_mut(luke_key)
+            .unwrap()
+            .dagobah_completed = true;
 
-        // Dagobah completed + Vader dispatched should chain
+        // Vader dispatched should chain off Luke's DagobahCompleted
         let fired = EventSystem::advance(&mut state, &world, &tick(61), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == EVT_DAGOBAH_COMPLETED),
-            "Dagobah completed should fire"
-        );
         assert!(
             fired.iter().any(|f| f.event_id == 0x393),
             "Vader dispatched should chain off Dagobah completion"
@@ -1931,15 +1782,17 @@ mod tests {
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
 
-        // Advance through Dagobah prerequisite and training
         EventSystem::advance(&mut state, &world, &tick(30), &[]);
         EventSystem::advance(&mut state, &world, &tick(50), &[]);
 
-        // Complete Dagobah by making Luke Experienced
+        // Complete Dagobah: the mission's end sets Luke's DagobahCompleted
+        // (FUN_005751d0).
         let luke_key = find_character(&world, "Luke").unwrap();
-        world.characters.get_mut(luke_key).unwrap().force_tier = ForceTier::Experienced;
-
-        // Dagobah completed fires
+        world
+            .characters
+            .get_mut(luke_key)
+            .unwrap()
+            .dagobah_completed = true;
         EventSystem::advance(&mut state, &world, &tick(60), &[]);
 
         // Leia Force discovery (0x362) fires at tick 80 after Dagobah complete

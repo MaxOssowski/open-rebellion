@@ -178,6 +178,10 @@ pub enum EventCondition {
     /// Character is a Force user (any tier above None).
     CharacterIsForceUser { character: CharacterKey },
 
+    /// Luke's `DagobahCompleted` (`+0xb0` bit `0x8`), which the Dagobah
+    /// mission's end sets (`FUN_005751d0`, `crate::dagobah`).
+    CharacterDagobahCompleted { character: CharacterKey },
+
     /// Character exists in the world (not killed/removed).
     CharacterExists { character: CharacterKey },
 
@@ -638,6 +642,11 @@ fn evaluate_condition(
             .characters
             .get(*character)
             .is_some_and(|c| c.force_tier > ForceTier::None),
+
+        EventCondition::CharacterDagobahCompleted { character } => world
+            .characters
+            .get(*character)
+            .is_some_and(|c| c.dagobah_completed),
 
         EventCondition::CharacterExists { character } => world.characters.contains_key(*character),
 

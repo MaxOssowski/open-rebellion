@@ -44,7 +44,7 @@ with a fresh delay, and dies when its target's state record changes
 | `0x38e` | `FUN_00566410` -> `FUN_0050cbe0` | informant incident per held system | `informant.rs` (timer `0x38e`, `FUN_0050c820`) | matched (2026-10-17, F-029) |
 | `0x38f` | `FUN_00566760` -> `FUN_00556b50` | disaster on a random existing system every 1 + rand(399) days | `uprising.rs` `resolve_disaster`, `next_disaster_tick` | matched |
 | `0x390` | `FUN_00566a90` -> `FUN_00556be0` | resource incident every 1 + rand(499) days (GNPRTB 7719/7720) | `uprising.rs` `resolve_resource`, `next_resource_tick` | matched (2026-10-17, F-029) |
-| `0x392` | `FUN_0054e620` -> `FUN_00543af0(1)` | the mission manager's `LukeDagobahRequired`, once, 300 + rand(100) days in (GNPRTB 6146/6147); its hook disarms the timer (`ghidra/notes/dagobah.md`) | none | missing (read 2026-10-18) |
+| `0x392` | `FUN_0054e620` -> `FUN_00543af0(1)` | the mission manager's `LukeDagobahRequired`, once, 300 + rand(100) days in (GNPRTB 6146/6147); its hook disarms the timer (`ghidra/notes/dagobah.md`) | `dagobah.rs` | matched (2026-10-18, F-038) |
 | `0x393` | `FUN_0054e970` -> `FUN_00546fa0` | galaxy manager timer, 300 + rand(300) days (inference), action unread | none | missing (semantics open) |
 | `0x394` | `FUN_00578700` -> `FUN_0053aa20` | type `0x28..0x30` object in state 2 sets `+0x60` bit 2 | none known | missing (semantics open) |
 

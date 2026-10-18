@@ -173,6 +173,46 @@ pub fn story_message(
     ))
 }
 
+/// Notification `0x221`, Luke Goes to Dagobah (`FUN_0048d190`): built for
+/// the Alliance view (`+0x20` == 1) once Luke's mission is the Dagobah one
+/// (family `0x71`), titled and worded from TEXTSTRA `0x71b8`/`0x71b9` on
+/// picture `0x421`.
+#[must_use]
+pub fn luke_goes_to_dagobah(tick: u64, texts: &HashMap<u16, String>) -> Option<GameMessage> {
+    let (title, body) = story_text(StoryClass::LukeGoesToDagobah, texts, &[])?;
+    Some(
+        GameMessage::new(tick, body, MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::Alliance)
+            .with_title(title)
+            .with_picture(StoryClass::LukeGoesToDagobah.picture(CockpitFaction::Alliance, None)),
+    )
+}
+
+/// Notification `0x210`, Luke Leaves Dagobah (`FUN_0048d0f0`): when Luke's
+/// `DagobahCompleted` is set, for the Alliance view only, TEXTSTRA
+/// `0x71ba`/`0x71bb` on background `0x412` with Luke's portrait
+/// (`FUN_004f3e50(1)`, `FUN_004c5000`).
+#[must_use]
+pub fn luke_leaves_dagobah(
+    world: &GameWorld,
+    luke: CharacterKey,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let luke = world.characters.get(luke)?;
+    let title = fill_message_text(texts.get(&0x71ba)?, &[]);
+    let body = fill_message_text(texts.get(&0x71bb)?, &[]);
+    Some(
+        GameMessage::new(tick, body, MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::Alliance)
+            .with_title(title)
+            .with_picture(MessagePicture {
+                background: 0x412,
+                foreground: character_portrait(luke.dat_id, luke.is_major),
+            }),
+    )
+}
+
 /// GNPRTB 2581 (`DAT_006b90dc`) = 100: the Force level at which a trainer
 /// may train others (`FUN_004ed310` -> `FUN_0053eb90`), the rank of Jedi
 /// Knight.
@@ -399,6 +439,45 @@ mod tests {
             ..Character::default()
         });
         (world, vader, klev, leia)
+    }
+
+    #[test]
+    fn luke_s_dagobah_messages_go_to_the_alliance_only() {
+        // FUN_0048d190 (0x221): 0x71b8/0x71b9 on picture 0x421; FUN_0048d0f0
+        // (0x210): 0x71ba/0x71bb on 0x412 with Luke's portrait; both for
+        // the Alliance view (+0x20 == 1).
+        let texts = HashMap::from([
+            (0x71b8, "Luke Goes to Dagobah".to_owned()),
+            (
+                0x71b9,
+                "Luke has been sent to Dagobah to be trained by Yoda.".to_owned(),
+            ),
+            (0x71ba, "Luke Leaves Dagobah".to_owned()),
+            (0x71bb, "I have finished my training with Yoda.".to_owned()),
+        ]);
+        let goes = luke_goes_to_dagobah(4, &texts).expect("a message");
+        assert_eq!(goes.title.as_deref(), Some("Luke Goes to Dagobah"));
+        assert_eq!(goes.audience, RailAudience::Alliance);
+        assert_eq!(goes.picture.map(|p| p.background), Some(0x421));
+        let mut world = GameWorld::default();
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(0x242),
+            name: "Luke Skywalker".into(),
+            is_alliance: true,
+            is_major: true,
+            ..Default::default()
+        });
+        let leaves = luke_leaves_dagobah(&world, luke, 9, &texts).expect("a message");
+        assert_eq!(leaves.title.as_deref(), Some("Luke Leaves Dagobah"));
+        assert_eq!(leaves.text, "I have finished my training with Yoda.");
+        assert_eq!(leaves.audience, RailAudience::Alliance);
+        let picture = leaves.picture.expect("a picture");
+        assert_eq!(picture.background, 0x412);
+        assert!(picture.foreground.is_some());
+        assert_eq!(
+            picture.foreground,
+            character_portrait(DatId::new(0x242), true)
+        );
     }
 
     #[test]

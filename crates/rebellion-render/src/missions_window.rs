@@ -1443,6 +1443,7 @@ mod tests {
             mission_id: 0,
             to: system,
             arrival: 9,
+            abode: None,
         };
         let listed = |transits: &[rebellion_core::missions::MemberTransit]| {
             listed_members(&world, &unseen(), transits, Faction::Alliance, system)
@@ -1485,6 +1486,7 @@ mod tests {
                 mission_id: 0,
                 to: system,
                 arrival: 9,
+                abode: None,
             })
             .collect();
         let listed = |fog: &FogState| {

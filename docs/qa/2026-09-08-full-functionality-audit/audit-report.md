@@ -2412,6 +2412,19 @@ cross-runtime proof remain open
   repeats. When the mission ends, `FUN_00546370` runs each member's slot
   `+0xb0` (`FUN_004ef260`): a character in a container of another side
   autoroutes home (`FUN_00543040`), as an escaped captive does.
+- 2026-10-18: Luke's Dagobah is ported (`dagobah.rs`,
+  `MissionKind::Dagobah`, save v73). Timer `0x392` (300 to 400 days)
+  requires it; once Luke is free the mission manager sends him to the
+  Dagobah abode (1-day trip), he trains 100 days, his Force rises 60
+  percent (or days / 2 percent), `DagobahCompleted` is set, and he
+  autoroutes home; messages `0x221` and `0x210` are posted and were seen
+  in the fixture build. The invented story chain (`0x390`, `0x392`,
+  `0x221`, `0x391`, `0x210`) is gone; the events that waited for `0x210`
+  wait for `DagobahCompleted`. Over 1200-day campaigns Luke goes on 4 of 7
+  seeds and ends at Force 80; on the other 3 an assassination kills him
+  first. Golden initial `v1:c4aa6c7fc51080c1` -> `v1:7de82effa8207c75`,
+  final `v1:0e985b5a40e2bfa8` -> `v1:ab2d9eddde745c32`
+  (`evidence/2026-10-18-dagobah/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
@@ -2512,6 +2525,9 @@ cross-runtime proof remain open
   of `FUN_00570690`, the chance `FUN_005710b0` and the `ForceTraining` gain
   `FUN_005712b0` (F-038). No AI planner sends it yet
   (`evidence/2026-10-18-jedi-training/`). Open: Palace, Bounty, Dagobah,
+  Vacation, Pickup, Return, Autorouting, Adrift.
+- 2026-10-18: Dagobah (`0x71`) runs through the lifecycle with an abode
+  target (F-038, `evidence/2026-10-18-dagobah/`). Open: Palace, Bounty,
   Vacation, Pickup, Return, Autorouting, Adrift.
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as

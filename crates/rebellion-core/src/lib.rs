@@ -20,6 +20,7 @@ pub mod bombardment;
 pub mod build_selection;
 pub mod combat;
 pub mod commands;
+pub mod dagobah;
 pub mod dat;
 pub mod death_star;
 pub mod delivery;

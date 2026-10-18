@@ -79,7 +79,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 72;
+pub const SAVE_VERSION: u32 = 73;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -246,6 +246,8 @@ pub struct SaveState {
     pub healing: rebellion_core::healing::HealingState,
     /// Each discovering trainer's timer `0x389` (v70).
     pub force_discovery: rebellion_core::force_discovery::ForceDiscoveryState,
+    /// The mission manager's Dagobah trigger, timer `0x392` (v73).
+    pub dagobah: rebellion_core::dagobah::DagobahState,
     /// Last automatic-combat tick per system.
     #[serde(
         serialize_with = "rebellion_core::serde_ordered::serialize_hash_map",
@@ -978,6 +980,7 @@ mod tests {
             informant: rebellion_core::informant::InformantState::default(),
             healing: rebellion_core::healing::HealingState::default(),
             force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
+            dagobah: rebellion_core::dagobah::DagobahState::default(),
             combat_cooldowns: std::collections::HashMap::new(),
             game_config: GameConfig::default(),
             campaign_config: CampaignConfig::default(),

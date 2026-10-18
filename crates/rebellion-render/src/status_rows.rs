@@ -1667,6 +1667,7 @@ mod tests {
                 mission_id: 1,
                 to: there,
                 arrival: 15,
+                abode: None,
             },
         );
 
@@ -1702,6 +1703,7 @@ mod tests {
             mission_id,
             to: here,
             arrival,
+            abode: None,
         };
         states.missions = with_entry(&states.missions, "en_route", transit(id + 1, 50));
         states.missions = with_entry(&states.missions, "en_route", transit(id, 30));

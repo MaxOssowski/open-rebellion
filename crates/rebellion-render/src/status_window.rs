@@ -532,6 +532,7 @@ mod tests {
             force_discoverer: None,
             force_training: 0,
             current_abode: None,
+            dagobah_completed: false,
         }
     }
 
@@ -660,6 +661,7 @@ mod tests {
             mission_id: 3,
             to: hoth,
             arrival: 42,
+            abode: None,
         };
         let rows = character_rows(&world, &[transit], key).expect("rows");
         assert_eq!(

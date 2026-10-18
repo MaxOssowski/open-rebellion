@@ -27,7 +27,7 @@ use rebellion_core::game_events::{
     EVT_CAPTURE, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
-    EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_EXPERIENCE, EVT_GARRISON_REQUIRED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL, EVT_JEDI_CHECK,
+    EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_EXPERIENCE, EVT_GARRISON_REQUIRED, EVT_LUKE_DAGOBAH, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL, EVT_JEDI_CHECK,
     EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE,
     EVT_MISSION_DISPATCHED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
@@ -677,6 +677,23 @@ impl PerceptionIntegrator {
                         }),
                     ));
                 }
+                MissionEffect::DagobahCompleted {
+                    character,
+                    force_gain,
+                } => {
+                    self.events.push(GameEventRecord::new(
+                        tick,
+                        self.wall_ms,
+                        SYS_JEDI,
+                        EVT_FORCE_EXPERIENCE,
+                        serde_json::json!({
+                            "character": name(*character),
+                            "cause": "dagobah",
+                            "gain": force_gain,
+                            "force": world.characters.get(*character).map_or(0, rebellion_core::world::Character::force_level),
+                        }),
+                    ));
+                }
                 MissionEffect::ForceExperienceGained { character, amount } => {
                     self.events.push(GameEventRecord::new(
                         tick,
@@ -693,6 +710,27 @@ impl PerceptionIntegrator {
                 _ => {}
             }
         }
+    }
+
+    /// Record a `LukeDagobah` pulse (notification `0x221`) and whether the
+    /// Dagobah mission started.
+    pub fn record_luke_dagobah(
+        &mut self,
+        world: &GameWorld,
+        pulse: &rebellion_core::dagobah::LukeDagobah,
+        dispatched: bool,
+    ) {
+        self.events.push(GameEventRecord::new(
+            pulse.tick,
+            self.wall_ms,
+            SYS_STORY,
+            EVT_LUKE_DAGOBAH,
+            serde_json::json!({
+                "character": world.characters.get(pulse.luke).map_or_else(String::new, |c| c.name.clone()),
+                "from": sys_name(world, pulse.from),
+                "dispatched": dispatched,
+            }),
+        ));
     }
 
     /// Apply Force discoveries (timer `0x389`): one `force_discovered`
@@ -1903,6 +1941,19 @@ fn apply_mission_effects_inner(
                     c.add_force_experience(*amount);
                 }
             }
+            // The advance's effects (`missions::apply_advance_effects`).
+            MissionEffect::MemberEnteredAbode { member, abode } => {
+                rebellion_core::missions::enter_abode(world, *member, *abode);
+            }
+            MissionEffect::DagobahCompleted {
+                character,
+                force_gain,
+            } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.add_force_experience(*force_gain);
+                    c.dagobah_completed = true;
+                }
+            }
             // FUN_005712b0 -> FUN_004ee1d0: a Jedi Training gain.
             MissionEffect::ForceTrainingGained { character, amount } => {
                 if let Some(c) = world.characters.get_mut(*character) {
@@ -2574,6 +2625,61 @@ mod tests {
         );
         assert_eq!(world.characters[pupil].force_training, 12);
         assert_eq!(world.characters[pupil].force_level(), 32);
+    }
+
+    #[test]
+    fn a_luke_dagobah_pulse_is_recorded() {
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Yavin");
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            name: "Luke".into(),
+            ..Default::default()
+        });
+        let abode = world.abodes.insert(rebellion_core::world::Abode {
+            dat_id: DatId(0x441),
+            name: "Dagobah".into(),
+            side: Faction::Neutral,
+        });
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.record_luke_dagobah(
+            &world,
+            &rebellion_core::dagobah::LukeDagobah {
+                luke,
+                from: system,
+                abode,
+                tick: 351,
+            },
+            true,
+        );
+        let event = integrator.events.last().expect("a record");
+        assert_eq!(event.event_type, EVT_LUKE_DAGOBAH);
+        assert_eq!(event.details["character"], "Luke");
+        assert_eq!(event.details["from"], "Yavin");
+        assert_eq!(event.details["dispatched"], true);
+    }
+
+    #[test]
+    fn dagobah_s_end_is_recorded_with_luke_s_new_force() {
+        let mut world = GameWorld::default();
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            name: "Luke".into(),
+            force_base: 80,
+            ..Default::default()
+        });
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.record_advance_character_effects(
+            &world,
+            &[MissionEffect::DagobahCompleted {
+                character: luke,
+                force_gain: 30,
+            }],
+            111,
+        );
+        let event = integrator.events.last().expect("a record");
+        assert_eq!(event.event_type, EVT_FORCE_EXPERIENCE);
+        assert_eq!(event.details["cause"], "dagobah");
+        assert_eq!(event.details["gain"], 30);
+        assert_eq!(event.details["force"], 80);
     }
 
     #[test]
