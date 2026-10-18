@@ -1106,6 +1106,50 @@ Campaigns: 24 seeds of 1500 days, against the research-order fix.
 - Systems held at the end, summed over the seeds: Alliance 500 and 487,
   Empire 340 and 351.
 
+## The Subdue planner (read and ported 2026-10-18)
+
+The Subdue planner class has vtable `0x0065a618`:
+
+| Slot | Function | Meaning |
+|---|---|---|
+| `+0x18` | `FUN_0047ce40` | the cancel key: the team's records' `+0x58` summed (leadership) |
+| `+0x34` | `FUN_0047d320` | the abort test: the target record still has `+0x2c` bit `0x20` |
+| `+0x40` | `FUN_0047ce30` | 4: the count `S+0x330` |
+| `+0x48` | `FUN_0047cee0` | the team selector (leadership 49..) |
+| `+0x50` | `FUN_0047d060` | state 5, the target |
+
+**The want.** Row 6 asks while controller bit `0x100` is set and
+`S+0x330 < S+0x21c + 1`. It cancels while `S+0x21c + 1 < S+0x330`, or
+while the bit is clear and `S+0x330 > 0`. `FUN_0041b7e0` sets bit `0x100`
+for a sector record with own systems (`+0x2c` 4) and `+0x28` bit
+`0x8000000`, which marks an own system below 70 support. `S+0x21c` sums
+the sectors' `+0x164`: own systems in an uprising with no own fleet
+(record `+0x2c` `0x20`).
+
+**The target, `FUN_0047d060`.** Without a member it has none. With one,
+it keeps `+0x34` while the record has `+0x2c` `0x20`. Otherwise:
+- With `+0x38` a system: `FUN_00419b80(+0x38, 0, 0x10, 0, ...)`, order
+  2, then `FUN_0041a400(sector, +0x38, 0, 0x20, 0, ...)`, order 2.
+- Otherwise: `FUN_00419a00(0, 0x10, 0, 0, 0, 0, key 0x3d)`, the sector
+  with the most uprisings (`+0x164`), order 1. Then `FUN_0041a340(sector,
+  0, 0x20, 0, 0, 0, 0, key 0)`, its best supported revolt, order 1.
+
+The two branches do not fall through to each other. It claims nothing.
+
+**Ported**:
+- `subdue_wanted`, `subdue_target`, and row 6 in `mission_strategy`.
+- Before this, the port's AI sent no Subdue at all.
+- With the last heuristic Diplomacy and Incite gone,
+  `missions::record_admits_system` had no caller. It and its test are
+  removed.
+
+Campaigns: 24 seeds of 1500 days, against the Incite commit.
+- Subdue orders: 0 before, 330 after (Empire 299, Alliance 31). Results:
+  288 successes and 1,802 failures.
+- Systems that fell to no side: 184 before, 27 after.
+- Systems held at the end, summed over the seeds: Alliance 487 and 376,
+  Empire 351 and 462.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

@@ -575,37 +575,37 @@
     {
       "tick": 5,
       "command_count": 3,
-      "state_fingerprint": "v1:e46043260029c74f"
+      "state_fingerprint": "v1:60432fef7ce3a56d"
     },
     {
       "tick": 10,
       "command_count": 4,
-      "state_fingerprint": "v1:a2d5b35bce38d229"
+      "state_fingerprint": "v1:4df90a0f9be1f89a"
     },
     {
       "tick": 15,
       "command_count": 5,
-      "state_fingerprint": "v1:55ee9910163663eb"
+      "state_fingerprint": "v1:ce14013f28e58c76"
     },
     {
       "tick": 20,
       "command_count": 6,
-      "state_fingerprint": "v1:471beb461e8c2ead"
+      "state_fingerprint": "v1:57cd251fad31be02"
     },
     {
       "tick": 25,
       "command_count": 7,
-      "state_fingerprint": "v1:e7b228629c33aa4b"
+      "state_fingerprint": "v1:f7b313f6f7a52882"
     },
     {
       "tick": 25,
       "command_count": 8,
-      "state_fingerprint": "v1:1f09d2d3d2c77cf3"
+      "state_fingerprint": "v1:7ed462ebd95b759a"
     },
     {
       "tick": 25,
       "command_count": 9,
-      "state_fingerprint": "v1:1f09d2d3d2c77cf3"
+      "state_fingerprint": "v1:7ed462ebd95b759a"
     }
   ]
 }

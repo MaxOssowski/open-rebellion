@@ -2677,6 +2677,14 @@ cross-runtime proof remain open
   Incite failures fall from 3,691 to 436. Golden final
   `v1:4a2572231a842e24` -> `v1:1f09d2d3d2c77cf3`
   (`evidence/2026-10-18-incite-planner/`).
+- 2026-10-18 (F-036): the AI's Subdue planner is the original's. The
+  strategy keeps one planner per own uprising, plus one, while an own
+  system is below 70 support (`FUN_004e8290` row 6). The planner targets
+  the nearest revolt, or the best supported one in the busiest sector
+  (`FUN_0047d060`). The port's AI sent no Subdue before. In 24 campaigns
+  there are 330 Subdue orders, and systems falling to no side drop from
+  184 to 27. Golden final `v1:1f09d2d3d2c77cf3` -> `v1:7ed462ebd95b759a`
+  (`evidence/2026-10-18-subdue-planner/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

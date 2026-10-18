@@ -1662,7 +1662,7 @@ impl AISystem {
     ///   (`FUN_0047aff0`);
     /// - state 5 (slot `+0x50`): a standing planner's target
     ///   ([`recruitment_target`], [`diplomacy_target`],
-    ///   [`incite_target`]);
+    ///   [`incite_target`], [`subdue_target`]);
     /// - state 6 ([`staging_point`]): the gathering place;
     /// - state 7 (`FUN_004bd570`): each free member away from it gets a
     ///   Move order there (`0x201`, the Move pseudo-mission);
@@ -1707,6 +1707,7 @@ impl AISystem {
                 p.target_system = match p.kind {
                     MissionKind::Recruitment => recruitment_target(p, planner, world, galaxy),
                     MissionKind::InciteUprising => incite_target(p, planner, galaxy),
+                    MissionKind::SubdueUprising => subdue_target(p, planner, galaxy),
                     _ => diplomacy_target(p, planner, galaxy, claims),
                 };
             }
@@ -1767,13 +1768,15 @@ impl AISystem {
     /// - row 5, Diplomacy (count `+0x34c`, slot `+0x40` 0xb,
     ///   `FUN_004814f0`): [`diplomacy_wanted`]; the weakest by diplomacy
     ///   (`FUN_00481500`: record `+0x40`);
+    /// - row 6, Subdue (count `+0x330`, slot `+0x40` 4, `FUN_0047ce30`):
+    ///   [`subdue_wanted`]; the weakest by leadership (`FUN_0047ce40`:
+    ///   record `+0x58`);
     /// - row 7, Incite (count `+0x350`, slot `+0x40` 0xc, `FUN_0047fee0`):
     ///   [`incite_wanted`]; the weakest by leadership (`FUN_0047fef0`:
     ///   record `+0x58`).
     ///
     /// port: rows 2 to 4 are the research planners
-    /// ([`Self::research_strategy`]) and rows 6 and 8 to 12 are not yet
-    /// ported,
+    /// ([`Self::research_strategy`]) and rows 8 to 12 are not yet ported,
     /// so the rows are not ordered behind each other, and each count
     /// reaches its want within one step (the original asks once per
     /// strategy pass).
@@ -1801,6 +1804,13 @@ impl AISystem {
             world,
             galaxy,
             (MissionKind::Diplomacy, diplomats, Skill::Diplomacy),
+        );
+        let subduers = subdue_wanted(galaxy);
+        Self::keep_planners(
+            state,
+            world,
+            galaxy,
+            (MissionKind::SubdueUprising, subduers, Skill::Leadership),
         );
         let inciters = incite_wanted(galaxy);
         Self::keep_planners(
@@ -3333,6 +3343,73 @@ fn diplomacy_target(
     target.and_then(|t| claim(p, galaxy, claims, t))
 }
 
+/// Row 6's want (`FUN_004e8290`): the side's uprisings plus one (side
+/// `+0x21c`, the sector records' `+0x164`: systems with record `+0x2c` bit
+/// `0x20`, an own uprising with no own fleet; `FUN_0041b7e0`) while
+/// controller bit `0x100` is set, else none. The bit is set when a sector
+/// record has `+0x28` bit `0x8000000`, an own system below 70 support.
+fn subdue_wanted(galaxy: &crate::ai_records::Galaxy) -> usize {
+    let flagged = galaxy.sectors.iter().any(|s| s.state & 0x800_0000 != 0);
+    if !flagged {
+        return 0;
+    }
+    let uprisings: i32 = galaxy
+        .sectors
+        .iter()
+        .map(|s| s.values[crate::ai_records::sector_at(0x164)])
+        .sum();
+    usize::try_from(uprisings + 1).unwrap_or(0)
+}
+
+/// State 5 of a Subdue planner (slot `+0x50`, `FUN_0047d060`): its target
+/// `+0x34`, an own system in an uprising with no own fleet (record `+0x2c`
+/// bit `0x20`).
+///
+/// Without a team it has none. With one it keeps its target while the
+/// record has `0x20`. Otherwise:
+///
+/// - from the previous gathering place `+0x38`: the nearest sector with
+///   such a system (`FUN_00419b80`, sector `+0x28` `0x10`, order 2), then
+///   its such system nearest `+0x38` (`FUN_0041a400`, order 2);
+/// - with no `+0x38`: the sector with the most of them (key `+0x164`,
+///   order 1), then its such system with the highest support
+///   (`FUN_0041a340`, key `v[0]`, order 1).
+///
+/// A Subdue planner claims nothing.
+fn subdue_target(
+    p: &MissionPlanner,
+    planner: &mut Planner<'_>,
+    galaxy: &crate::ai_records::Galaxy,
+) -> Option<SystemKey> {
+    use crate::ai_records::{pick, sector_at, Mask, Order};
+    p.team.first()?;
+    let any = Mask::new(0, 0);
+    let revolt = [any, Mask::new(0x20, 0), any];
+    if let Some(t) = p
+        .target_system
+        .filter(|&t| galaxy.system(t).is_some_and(|r| r.summary & 0x20 != 0))
+    {
+        return Some(t);
+    }
+    let sectors = [any, Mask::new(0x10, 0), any];
+    if let Some(prev) = p.staging {
+        let near =
+            galaxy.sectors_by_distance(prev, sectors, Order::Descending, &mut || planner.coin());
+        let sector = pick(&[near])?;
+        let systems =
+            galaxy.systems_by_distance(sector, prev, revolt, Order::Descending, &mut || {
+                planner.coin()
+            });
+        return pick(&[systems]);
+    }
+    let most = galaxy.sector_query(sectors, sector_at(0x164), Order::Ascending, &mut || {
+        planner.coin()
+    });
+    let sector = pick(&[most])?;
+    let systems = galaxy.system_query(sector, revolt, 0, Order::Ascending, &mut || planner.coin());
+    pick(&[systems])
+}
+
 /// Side `+0x218` (`FUN_0041b7e0`, `FUN_00418500`): the Incite planners the
 /// strategy wants. The sector records' `+0x178` (their systems with record
 /// `+0x2c` bit `0x100`: the opponent's, where the side's support is above
@@ -4110,10 +4187,24 @@ mod tests {
     /// One day of the standing planners: the side's records (phase 4), the
     /// strategy's rows 1 and 5 and every mission planner's cycle.
     fn strategy_pass(state: &mut AIState, world: &GameWorld, tick: u64) -> Vec<AIAction> {
+        strategy_pass_in(
+            state,
+            world,
+            tick,
+            &crate::uprising::UprisingState::default(),
+        )
+    }
+
+    /// [`strategy_pass`] with `uprisings` in progress.
+    fn strategy_pass_in(
+        state: &mut AIState,
+        world: &GameWorld,
+        tick: u64,
+        uprisings: &crate::uprising::UprisingState,
+    ) -> Vec<AIAction> {
         let missions = MissionState::new();
         let busy = HashSet::new();
         let economy = crate::economy::EconomyState::default();
-        let uprisings = crate::uprising::UprisingState::default();
         let manufacturing = ManufacturingState::new();
         let research = ResearchState::new();
         let movement = crate::movement::MovementState::new();
@@ -4128,7 +4219,7 @@ mod tests {
         let inputs = RecordInputs {
             world,
             economy: &economy,
-            uprisings: &uprisings,
+            uprisings,
             manufacturing: &manufacturing,
             research: &research,
             movement: &movement,
@@ -6388,6 +6479,155 @@ mod tests {
         // Not a candidate (own): replaced.
         p.target_system = Some(home);
         assert_eq!(target(&p), Some(far[0]));
+        p.team.clear();
+        assert_eq!(target(&p), None);
+    }
+
+    /// Empire systems at the given support (percent), the first `revolts`
+    /// of them in an uprising, in sectors `near` (x 0) and `far` (x 900)
+    /// by `in_far`; `agents` (major, leadership) stand at a calm one.
+    fn subdue_world(
+        systems: &[(f32, bool, bool)],
+        agents: &[u32],
+    ) -> (
+        GameWorld,
+        crate::uprising::UprisingState,
+        Vec<SystemKey>,
+        Vec<CharacterKey>,
+    ) {
+        let mut world = empty_world();
+        let near = add_sector(&mut world);
+        let far = add_sector(&mut world);
+        world.sectors[far].x = 900;
+        let mut uprisings = crate::uprising::UprisingState::default();
+        let keys: Vec<SystemKey> = systems
+            .iter()
+            .enumerate()
+            .map(|(i, &(support, revolt, in_far))| {
+                let sector = if in_far { far } else { near };
+                let s = add_system(&mut world, sector, 0.1, support / 100.0);
+                world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+                world.systems[s].x = if in_far { 900 } else { 0 } + 10 * i as u16;
+                if revolt {
+                    uprisings.active_uprisings.insert(
+                        s,
+                        crate::uprising::ActiveUprising {
+                            started_tick: 0,
+                            next_incident_tick: None,
+                            next_support_tick: None,
+                            side: None,
+                        },
+                    );
+                }
+                s
+            })
+            .collect();
+        let calm = systems.iter().position(|&(_, revolt, _)| !revolt);
+        let people = agents
+            .iter()
+            .map(|&lead| {
+                let c = add_character(&mut world, false, true, 30);
+                world.characters[c].leadership.base = lead;
+                world.characters[c].current_system = calm.map(|i| keys[i]);
+                c
+            })
+            .collect();
+        (world, uprisings, keys, people)
+    }
+
+    #[test]
+    fn the_strategy_keeps_a_subdue_planner_per_uprising_and_one_while_support_is_low() {
+        // FUN_004e8290 row 6: while controller bit 0x100 (a sector with
+        // +0x28 0x8000000, an own system below 70) is set, +0x330 against
+        // +0x21c + 1 (own uprisings, sector +0x164); without the bit, none.
+        let count = |systems: &[(f32, bool, bool)]| {
+            let (world, uprisings, _, _) = subdue_world(systems, &[]);
+            let mut state = AIState::new(AiFaction::Empire);
+            strategy_pass_in(&mut state, &world, 1, &uprisings);
+            state
+                .mission_planners
+                .iter()
+                .filter(|p| p.standing && p.kind == MissionKind::SubdueUprising)
+                .count()
+        };
+        assert_eq!(count(&[(90.0, false, false)]), 0);
+        assert_eq!(count(&[(60.0, false, false)]), 1);
+        assert_eq!(count(&[(60.0, true, false), (40.0, true, true)]), 3);
+
+        // The planner's cycle gathers its team at the target (the side's
+        // system, FUN_004bd0a0), then orders the Subdue there.
+        let (mut world, uprisings, keys, people) =
+            subdue_world(&[(90.0, false, false), (30.0, true, false)], &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        let agent = vec![MissionMember::Character(people[0])];
+        let actions = strategy_pass_in(&mut state, &world, 1, &uprisings);
+        assert_eq!(
+            orders(&actions, MissionKind::Move),
+            vec![(agent.clone(), keys[1], None)]
+        );
+        world.characters[people[0]].current_system = Some(keys[1]);
+        let actions = strategy_pass_in(&mut state, &world, 2, &uprisings);
+        assert_eq!(
+            orders(&actions, MissionKind::SubdueUprising),
+            vec![(agent, keys[1], None)]
+        );
+    }
+
+    #[test]
+    fn a_subdue_target_is_kept_else_the_nearest_else_the_best_supported_in_the_busiest_sector() {
+        // FUN_0047d060: an own uprising with no own fleet (+0x2c 0x20).
+        let (world, uprisings, keys, people) = subdue_world(
+            &[
+                (90.0, false, false),
+                (30.0, true, false),
+                (40.0, true, true),
+                (60.0, true, true),
+            ],
+            &[60],
+        );
+        let state = AIState::new(AiFaction::Empire);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let economy = crate::economy::EconomyState::default();
+        let manufacturing = ManufacturingState::new();
+        let research = ResearchState::new();
+        let movement = crate::movement::MovementState::new();
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let inputs = RecordInputs {
+            world: &world,
+            economy: &economy,
+            uprisings: &uprisings,
+            manufacturing: &manufacturing,
+            research: &research,
+            movement: &movement,
+            transport: &transport,
+        };
+        let galaxy = AISystem::records(&state, &planner, &inputs);
+        let mut p = MissionPlanner {
+            id: 1,
+            kind: MissionKind::SubdueUprising,
+            team: vec![MissionMember::Character(people[0])],
+            decoys: Vec::new(),
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: None,
+            standing: true,
+            claimed: None,
+        };
+        let mut target = |p: &MissionPlanner| subdue_target(p, &mut planner, &galaxy);
+        // The far sector has two uprisings; its best supported.
+        assert_eq!(target(&p), Some(keys[3]));
+        // From the calm home: the nearest sector, its revolt.
+        p.staging = Some(keys[0]);
+        assert_eq!(target(&p), Some(keys[1]));
+        p.target_system = Some(keys[2]);
+        assert_eq!(target(&p), Some(keys[2]));
+        p.target_system = Some(keys[0]);
+        assert_eq!(target(&p), Some(keys[1]));
         p.team.clear();
         assert_eq!(target(&p), None);
     }

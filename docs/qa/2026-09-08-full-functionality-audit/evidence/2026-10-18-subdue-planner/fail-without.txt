@@ -1,0 +1,5 @@
+test ai::tests::a_subdue_target_is_kept_else_the_nearest_else_the_best_supported_in_the_busiest_sector ... FAILED
+test ai::tests::the_strategy_keeps_a_subdue_planner_per_uprising_and_one_while_support_is_low ... FAILED
+    ai::tests::a_subdue_target_is_kept_else_the_nearest_else_the_best_supported_in_the_busiest_sector
+    ai::tests::the_strategy_keeps_a_subdue_planner_per_uprising_and_one_while_support_is_low
+test result: FAILED. 114 passed; 2 failed; 0 ignored; 0 measured; 1255 filtered out; finished in 0.00s
