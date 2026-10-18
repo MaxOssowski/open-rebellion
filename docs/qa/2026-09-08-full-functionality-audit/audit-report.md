@@ -2694,6 +2694,14 @@ cross-runtime proof remain open
   `v1:6f750b483b72f71f` -> `v1:cb9430c7635d6e7e`, final
   `v1:7ed462ebd95b759a` -> `v1:3c9e4e1739d78f43`
   (`evidence/2026-10-18-recon-planner/`).
+- 2026-10-18 (F-036): the AI's Espionage planner (subtype 6) is the
+  original's. The strategy keeps one planner per sector holding an
+  opponent's system, less the sector planners (`FUN_004e8290` row 12).
+  Each claims a sector and spies on the opponent's system seen longest
+  ago (`FUN_00481110`), with one special force (`FUN_00480f30`). The
+  heuristic Espionage on unexplored systems is removed. Golden final
+  `v1:3c9e4e1739d78f43` -> `v1:fe6f9d2ef366dfd9`
+  (`evidence/2026-10-18-espionage-planner/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

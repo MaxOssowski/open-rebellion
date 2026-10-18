@@ -220,9 +220,8 @@ const fn decoys(req_caps: u32, cap: DecoyCap) -> Option<(Query, DecoyCap)> {
 
 /// The selectors of `kind`'s planner (`FUN_0042f830`).
 ///
-/// port: the AI's subtype (side `+0x31c`) is untraced. Espionage takes the
-/// class for subtypes other than 6 (the posture `FUN_004b7150` names no
-/// subtype for it), and Abduction takes its default class.
+/// Espionage takes the class of subtype 6, which the strategy requests
+/// (`FUN_004e8290` row 12). port: Abduction takes its default class.
 fn selectors(kind: MissionKind) -> Option<Selectors> {
     use Skill::{
         Combat, Diplomacy, Espionage, FacilityDesign, Leadership, ShipDesign, TroopTraining,
@@ -250,8 +249,11 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
     let (team, team_size, decoys) = match kind {
         // FUN_004815a0; FUN_0047f500 takes no decoys.
         MissionKind::Diplomacy => (DIPLOMACY, 1, None),
-        // FUN_004808c0, FUN_00480aa0.
-        MissionKind::Espionage => (ESPIONAGE, 2, decoys(0x8, DecoyCap::Posture)),
+        // FUN_00480f30, the strategy's subtype 6 (FUN_004e8290 row 12): one
+        // member; slot +0x4c (FUN_00481100) takes no decoys. The class for
+        // other subtypes (FUN_004808c0, FUN_00480aa0: two members and a
+        // decoy) has no request the port makes.
+        MissionKind::Espionage => (ESPIONAGE, 1, None),
         // FUN_0047db40; the class has no decoy selector.
         MissionKind::Recruitment => (RECRUITMENT, 1, None),
         // FUN_0047ff90, FUN_00480110.

@@ -1,6 +1,5 @@
 {
   "items": {
-    "crates/rebellion-core/src/ai.rs::AISystem::system_strength": 1,
     "crates/rebellion-core/src/ai.rs::DIPLOMACY_SKILL_THRESHOLD": 1,
     "crates/rebellion-core/src/ai.rs::DIPLOMACY_TARGET_POPULARITY_CAP": 1,
     "crates/rebellion-core/src/ai.rs::MAX_CONSTRUCTION_YARDS": 1,

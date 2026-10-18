@@ -1212,6 +1212,52 @@ Campaigns: 24 seeds of 1500 days, against the Subdue commit.
 - Systems held at the end, summed over the seeds: Alliance 376 and 483,
   Empire 462 and 476.
 
+## The Espionage planner of subtype 6 (read and ported 2026-10-18)
+
+The strategy asks for Espionage with subtype 6 (`FUN_004e8290` row 12).
+That class has vtable `0x0065a8a8`:
+
+| Slot | Function | Meaning |
+|---|---|---|
+| `+0x18` | `FUN_00480e10` | the cancel key: the team's records' `+0x44` summed (espionage) |
+| `+0x38` | `FUN_00481420` | release: clear the claim `0x20000000` on sector record `+0x70` |
+| `+0x40` | `FUN_00480e00` | 10: the count `S+0x348` |
+| `+0x48` | `FUN_00480f30` | the team: one special force (`0x10800002`) able for Espionage with espionage 51.. |
+| `+0x4c` | `FUN_00481100` | no decoys |
+| `+0x50` | `FUN_00481110` | state 5, the target |
+
+**The want.** Row 12 asks while `S+0x348 < S+0x1bc - |+0xd8|`, and
+cancels while above. `S+0x1bc` counts the sector records with an
+opponent's system (`+0x2c` 8, `FUN_0041b7e0`), and `+0xd8` is module 8's
+sector planners.
+
+**The target, `FUN_00481110`.** It does not test for a team. It keeps
+`+0x34` while the record has `+0x30` 4 and `+0x2c` `0x200` (the
+opponent's, explored). Otherwise it releases its sector `+0x70`. It then
+picks a sector:
+- near `+0x38` (`FUN_00419b80(+0x38, 0, 0x400, 8, 0, 0x20000000,
+  0x4000000)`, order 2);
+- or drawn (`FUN_0041a1d0` with the same masks, order 1).
+
+The target is that sector's opponent system seen longest ago
+(`FUN_0041a3a0(+0x70, 0, 0x200, 4, 0, 0, 0)`, order 1). The planner then
+claims the sector (`+0x28 |= 0x20000000`).
+
+**Ported**:
+- `espionage_target`, row 12 in `mission_strategy`, and the claim bit
+  `CLAIM_ESPIONAGE`;
+- the Espionage selector is now subtype 6's: one member, no decoys. The
+  class for other subtypes (`FUN_004808c0`, two members and a decoy) has
+  no request the port makes;
+- the heuristic Espionage on unexplored systems is removed. So are
+  `system_strength`, which had lost its caller, and a stale doc comment.
+
+Campaigns: 24 seeds of 1500 days, against the Reconnaissance commit.
+- Espionage orders: 1,296 before, 1,840 after. Results: 2,460 successes
+  and 602 failures before, 1,697 and 687 after.
+- Systems held at the end, summed over the seeds: Alliance 483 and 415,
+  Empire 476 and 412.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

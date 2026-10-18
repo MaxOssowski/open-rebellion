@@ -499,6 +499,10 @@ pub const KEPT_SECTOR_CLAIMS: u32 = 0x3000_0000;
 /// it.
 pub const CLAIM_RECON: u32 = 0x1000_0000;
 
+/// Sector record `+0x28` bit `0x20000000`: an Espionage planner works the
+/// sector (`FUN_00481110`); its slot `+0x38` (`FUN_00481420`) releases it.
+pub const CLAIM_ESPIONAGE: u32 = 0x2000_0000;
+
 /// The refresh's kept sector `+0x28` claims ([`KEPT_SECTOR_CLAIMS`]).
 pub fn apply_sector_claims(
     galaxy: &mut Galaxy,

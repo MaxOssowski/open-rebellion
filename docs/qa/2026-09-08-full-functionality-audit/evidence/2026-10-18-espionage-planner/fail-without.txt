@@ -1,0 +1,7 @@
+test ai::tests::a_recon_planner_claims_its_sector_and_a_second_finds_none_there ... FAILED
+test ai::tests::an_espionage_planner_takes_the_enemy_system_seen_longest_ago_and_claims_its_sector ... FAILED
+test ai::tests::the_strategy_keeps_an_espionage_planner_per_enemy_sector_beyond_the_sector_planners ... FAILED
+    ai::tests::a_recon_planner_claims_its_sector_and_a_second_finds_none_there
+    ai::tests::an_espionage_planner_takes_the_enemy_system_seen_longest_ago_and_claims_its_sector
+    ai::tests::the_strategy_keeps_an_espionage_planner_per_enemy_sector_beyond_the_sector_planners
+test result: FAILED. 116 passed; 3 failed; 0 ignored; 0 measured; 1255 filtered out; finished in 0.00s
