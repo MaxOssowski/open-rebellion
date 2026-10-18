@@ -139,6 +139,15 @@ The release build ran with `agent-browser` (headless Chromium, 640 by
 | Fast | 3601 | 0.6 ms | 1.5 ms | 3.1 ms |
 
 - No frame took over 50 ms.
+- The two performance screenshots show original artwork. They were
+  removed from the repository on 2026-10-18 and kept in
+  `target/acceptance/dagobah-perf/`:
+
+```
+f5c0796cf13ff14b29beb7ae520b651968d6681d6e4b0de51cf00f03a38b21b2  1-veryslow.png
+e4dc89c703a9ae4ab2a9f4b5fc2e1fb69f44d7b1f1a65a51904db1f435d79757  2-fast.png
+```
+
 - The console has 152 `[ai]` lines and 0 errors.
 - `network.txt` lists 4 requests, all HTTP 200.
 - Native GUI acceptance was not run.

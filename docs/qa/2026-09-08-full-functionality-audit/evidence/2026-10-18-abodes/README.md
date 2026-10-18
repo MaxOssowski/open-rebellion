@@ -65,6 +65,15 @@ The release build ran with `agent-browser` (headless Chromium, 640 by
 | Fast | 3601 | 0.5 ms | 1.5 ms | 3.4 ms |
 
 - No frame took over 50 ms.
+- The two performance screenshots show original artwork. They were
+  removed from the repository on 2026-10-18 and kept in
+  `target/acceptance/abodes-perf/`:
+
+```
+f5c0796cf13ff14b29beb7ae520b651968d6681d6e4b0de51cf00f03a38b21b2  1-veryslow.png
+b1ddf6f5bc8ad834785e49effd215269d127db0f273a8a55f1127129cd846d7c  2-fast.png
+```
+
 - The console has 152 `[ai]` lines and 0 errors.
 - `network.txt` lists 4 requests, all HTTP 200.
 - Native GUI acceptance was not run.
