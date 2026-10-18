@@ -770,6 +770,44 @@ original as follows:
   its default class (side `+0x31c` is untraced); the mission kind and target
   are the port's (side `+0x318`).
 
+## Why the port's AI sends no two-character team (2026-10-18)
+
+- In 24 campaigns of 1500 days (41,805 missions) the port's AI dispatched
+  1,232 two-member teams (Sabotage, Assassination, Rescue, Espionage,
+  Abduction), all of special forces. No team held two characters.
+- The cause is the port's one-cycle planner (`mission_planning.rs`,
+  `plan`). The selectors pick a team of two, but the order keeps only the
+  members already standing with the first (`members_together`). The
+  original's planner lives across ticks instead:
+  - state 7 (`FUN_004bd570`) gives each member not at the target a Move
+    order;
+  - state 8 emits once flags 8 and `0x10` say the team and decoys are
+    there.
+  So two characters from different systems meet and go together.
+- Consequences:
+  - mechanics that need several characters on one mission never happen
+    in AI play, such as learning a traitor (row 17);
+  - teams are weaker than the original's.
+
+## Plan: persistent mission planners (needs consent)
+
+1. Keep planners in `AIState` (side `+0xa8`): kind, subtype, target,
+   team, decoys, state `+0x1c`, flags `+0x20`, priority. This is a save
+   format change (v80) and a change to the AI's architecture, so it waits
+   for the user.
+2. Run `FUN_004bced0` each AI tick:
+   - state 2 drops members that fail `FUN_0047ba40`;
+   - states 3 and 4 run the selectors already ported;
+   - state 6 picks the target;
+   - state 7 sends Move orders (`FUN_004bd570`, through the ported Move
+     pseudo-mission);
+   - state 8 emits the order (`FUN_0047b360`).
+3. Hold members (`FUN_0047b610`: record `+0x24` the planner, `+0x2c` its
+   priority, `0x800000` cleared), so other planners skip them. Release
+   them on cancel (`FUN_0047aff0`).
+4. Replace `members_together` and the one-cycle `plan`, then check in
+   campaigns that two-character teams appear.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
