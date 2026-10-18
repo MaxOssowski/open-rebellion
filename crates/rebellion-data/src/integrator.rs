@@ -28,7 +28,7 @@ use rebellion_core::game_events::{
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
     EVT_CONFRONTATION, EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_ENCOUNTER,
-    EVT_FORCE_EXPERIENCE, EVT_STORY_FINAL_BATTLE,
+    EVT_FORCE_EXPERIENCE, EVT_STORY_FINAL_BATTLE, EVT_STORY_JABBA,
     EVT_GARRISON_REQUIRED, EVT_HERITAGE_LEARNED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL,
     EVT_JEDI_CHECK, EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
@@ -823,6 +823,48 @@ impl PerceptionIntegrator {
         ));
     }
 
+    /// Record a bounty step (`jabba.rs`): the hunters sent after Han, or a
+    /// captive autorouting to Jabba's Palace.
+    pub fn record_jabba_step(
+        &mut self,
+        world: &GameWorld,
+        step: &rebellion_core::jabba::JabbaStep,
+        dispatched: bool,
+    ) {
+        use rebellion_core::jabba::JabbaStep;
+        let (tick, details) = match *step {
+            JabbaStep::BountyHunt { han, at, tick, .. } => (
+                tick,
+                serde_json::json!({
+                    "step": "bounty_hunt",
+                    "character": char_name(world, han),
+                    "system": sys_name(world, at),
+                    "dispatched": dispatched,
+                }),
+            ),
+            JabbaStep::ToPalace {
+                captive,
+                from,
+                tick,
+                ..
+            } => (
+                tick,
+                serde_json::json!({
+                    "step": "to_palace",
+                    "character": char_name(world, captive),
+                    "from": sys_name(world, from),
+                }),
+            ),
+        };
+        self.events.push(GameEventRecord::new(
+            tick,
+            self.wall_ms,
+            SYS_STORY,
+            EVT_STORY_JABBA,
+            details,
+        ));
+    }
+
     /// Apply Force discoveries (timer `0x389`): one `force_discovered`
     /// event each.
     pub fn apply_force_discoveries(
@@ -1392,6 +1434,8 @@ impl PerceptionIntegrator {
         for effect in effects {
             if let MissionEffect::MemberMoved { member, to } = effect {
                 rebellion_core::missions::move_member(world, *member, *to);
+            } else if let MissionEffect::MemberEnteredAbode { member, abode } = effect {
+                rebellion_core::missions::enter_abode(world, *member, *abode);
             } else if let MissionEffect::CharacterEscaped {
                 character,
                 escaped_to_alliance,
@@ -2054,12 +2098,15 @@ fn apply_mission_effects_inner(
             // detection (`missions::apply_advance_effects`).
             MissionEffect::EncounterBegan { .. }
             | MissionEffect::EncounterEnded { .. }
-            | MissionEffect::HeritageLearned { .. } => {
+            | MissionEffect::HeritageLearned { .. }
+            | MissionEffect::CapturedByBountyHunters { .. } => {
                 rebellion_core::missions::apply_advance_effects(
                     world,
                     std::slice::from_ref(effect),
                 );
             }
+            // Notification 0x212 carries no state of its own.
+            MissionEffect::BountyAttack { .. } => {}
             MissionEffect::CharacterInjured { character, injury } => {
                 // Slot +0x2f0 (FUN_004ef6d0) adds the injury to +0x94.
                 if let Some(c) = world.characters.get_mut(*character) {
@@ -2715,6 +2762,7 @@ mod tests {
             dat_id: DatId(0x441),
             name: "Dagobah".into(),
             side: Faction::Neutral,
+            special_forces: Vec::new(),
         });
         let mut integrator = PerceptionIntegrator::new(1, 0);
         integrator.record_luke_dagobah(

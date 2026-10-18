@@ -1072,6 +1072,7 @@ mod tests {
             encounter: None,
             encounter_day: 0,
             escape_barred: false,
+            bounty_captured: false,
         }
     }
 

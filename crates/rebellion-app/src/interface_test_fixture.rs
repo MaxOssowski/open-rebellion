@@ -1893,6 +1893,13 @@ pub fn post_story_messages(
             }
         }
     }
+    // Notification 0x212 (FUN_0048fa00) with Han free: the Alliance reads
+    // that he was attacked, the Empire where the hunters found him.
+    if let Some(han) = named("han solo") {
+        for message in rebellion_render::story_messages::bounty_messages(world, han, 0, texts) {
+            log.push(message);
+        }
+    }
     // The Final Battle (FUN_0048e3c0), with Luke free: he overcame the
     // Emperor.
     if let Some(luke) = named("luke") {

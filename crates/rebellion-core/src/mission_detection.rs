@@ -316,6 +316,24 @@ fn table_roll(world: &GameWorld, table: &str, x: i32, rng: &mut MissionRng) -> O
     Some(rng.chance(value))
 }
 
+/// `FUN_005349e0`'s roll: RLEVADTB at `x`, the member's effective combat
+/// less its captor's; `Some(true)` evades, `None` without the table.
+pub(crate) fn rlevadtb_evades(world: &GameWorld, x: i32, rng: &mut MissionRng) -> Option<bool> {
+    table_roll(world, RLEVADTB, x, rng)
+}
+
+/// Slot `+0x2e4` `FUN_004ef5f0`: the injury roll `FUN_0053e990` for a
+/// character of effective `combat`.
+pub(crate) fn injury_roll(world: &GameWorld, combat: i32, rng: &mut MissionRng) -> Option<i32> {
+    roll_injury(
+        combat,
+        param(world, GNPRTB_INJURY_MIN_CHANCE, SHIPPED_INJURY_MIN_CHANCE),
+        param(world, GNPRTB_INJURY_SPREAD, SHIPPED_INJURY_SPREAD),
+        param(world, GNPRTB_INJURY_BASE, SHIPPED_INJURY_BASE),
+        rng,
+    )
+}
+
 fn param(world: &GameWorld, id: u16, shipped: i64) -> i32 {
     i32::try_from(crate::movement::gnprtb_or_shipped(world, id, shipped)).unwrap_or(0)
 }

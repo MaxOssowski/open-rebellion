@@ -138,6 +138,7 @@ fn telemetry_coverage_all_sys_constants_emit() {
         force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
         dagobah: rebellion_core::dagobah::DagobahState::default(),
         final_battle: rebellion_core::final_battle::FinalBattleState::default(),
+        jabba: rebellion_core::jabba::JabbaState::default(),
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         combat_cooldowns: HashMap::new(),

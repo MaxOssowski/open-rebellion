@@ -1,0 +1,202 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1200 --dual-ai",
+ "runs": {
+  "1-1200": [
+   [
+    331,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Yavin"
+    }
+   ],
+   [
+    334,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Yavin"
+    }
+   ],
+   [
+    348,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "character": "Han Solo",
+     "faction": "Empire"
+    }
+   ],
+   [
+    348,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "dat_id": 579,
+     "name": "Han Solo"
+    }
+   ]
+  ],
+  "2-1200": [
+   [
+    497,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Bothawui"
+    }
+   ],
+   [
+    500,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Bothawui"
+    }
+   ],
+   [
+    521,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "character": "Han Solo",
+     "faction": "Empire"
+    }
+   ],
+   [
+    521,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "dat_id": 579,
+     "name": "Han Solo"
+    }
+   ]
+  ],
+  "3-1200": [
+   [
+    561,
+    "story_jabba",
+    {
+     "character": "Han Solo",
+     "dispatched": true,
+     "step": "bounty_hunt",
+     "system": "Vagran"
+    }
+   ],
+   [
+    564,
+    "mission_resolved",
+    {
+     "kind": "Bounty",
+     "outcome": "Failure",
+     "target_system": "Vagran"
+    }
+   ],
+   [
+    621,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "character": "Han Solo",
+     "faction": "Empire"
+    }
+   ],
+   [
+    621,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "dat_id": 579,
+     "name": "Han Solo"
+    }
+   ]
+  ],
+  "7-1200": [
+   [
+    227,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "character": "Han Solo",
+     "faction": "Empire"
+    }
+   ],
+   [
+    227,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "dat_id": 579,
+     "name": "Han Solo"
+    }
+   ]
+  ],
+  "13-1200": [
+   [
+    286,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "character": "Han Solo",
+     "faction": "Empire"
+    }
+   ],
+   [
+    286,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "dat_id": 579,
+     "name": "Han Solo"
+    }
+   ]
+  ],
+  "42-1200": [
+   [
+    371,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "character": "Han Solo",
+     "faction": "Empire"
+    }
+   ],
+   [
+    371,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "dat_id": 579,
+     "name": "Han Solo"
+    }
+   ]
+  ],
+  "47-1200": [
+   [
+    119,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "character": "Han Solo",
+     "faction": "Empire"
+    }
+   ],
+   [
+    119,
+    "character_killed",
+    {
+     "cause": "assassination",
+     "dat_id": 579,
+     "name": "Han Solo"
+    }
+   ]
+  ]
+ }
+}

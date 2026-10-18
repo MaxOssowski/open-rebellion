@@ -753,6 +753,9 @@ pub struct Character {
     /// `FUN_0054b040`) until a new capture sets it again (`FUN_004f1a80`;
     /// save v76).
     pub escape_barred: bool,
+    /// Han's `CapturedByBountyHunters` (`+0xb0` bit 2, `FUN_00572700`),
+    /// set when the Bounty mission captures him (`FUN_00575de0`; save v77).
+    pub bounty_captured: bool,
 }
 
 impl Character {
@@ -925,6 +928,7 @@ impl Default for Character {
             encounter: None,
             encounter_day: 0,
             escape_barred: false,
+            bounty_captured: false,
         }
     }
 }
@@ -1696,6 +1700,9 @@ pub struct Abode {
     /// Jail the Alliance, the Empire Jail and Jabba's Palace the Empire,
     /// Dagobah and the Hermitage none.
     pub side: crate::dat::Faction,
+    /// The special forces it holds: the Bounty Hunters the bounty timer
+    /// creates in Jabba's Palace (`FUN_00546fa0`, `FUN_004f7d50`; save v77).
+    pub special_forces: Vec<crate::ids::SpecialForceKey>,
 }
 
 /// The fleet record's name (`+0x34`, TEXTSTRA 11523): a fleet's name until
@@ -2842,7 +2849,8 @@ mod tests {
             "dagobah_completed": false,
             "encounter": null,
             "encounter_day": 0,
-            "escape_barred": false
+            "escape_barred": false,
+            "bounty_captured": false
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

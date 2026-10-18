@@ -268,6 +268,7 @@ mod tests {
             dat_id: DatId::new(DAGOBAH),
             name: "Dagobah".into(),
             side: Faction::Neutral,
+            special_forces: Vec::new(),
         });
         (world, luke, home)
     }
@@ -336,6 +337,7 @@ mod tests {
             character: luke,
             to: world.characters[luke].current_system.unwrap(),
             arrival: 9,
+            abode: None,
         });
         assert_eq!(
             DagobahSystem::advance(

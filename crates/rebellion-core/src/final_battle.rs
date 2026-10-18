@@ -614,6 +614,7 @@ mod tests {
             dat_id: DatId::new(JABBAS_PALACE),
             name: "Jabba's Palace".into(),
             side: Faction::Empire,
+            special_forces: Vec::new(),
         });
         cast.world.characters[cast.luke].current_abode = Some(palace);
         let mut state = FinalBattleState::default();

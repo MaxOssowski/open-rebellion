@@ -152,6 +152,13 @@ pub enum MissionKind {
     /// mission manager creates it for Luke when `LukeDagobah` pulses
     /// (`FUN_0054a860`), with the Dagobah abode `0x98000441` as its target.
     Dagobah,
+
+    /// The Bounty mission (MISSNSD `0x65000083`, TEXTSTRA 11395, class
+    /// `0x006685c0`; `ghidra/notes/jabba-palace.md`): the Bounty Hunters
+    /// timer `0x393` sends the Bounty Hunters unit from Jabba's Palace after
+    /// Han (`FUN_00546fa0`). Its hit (`FUN_00575de0`) makes Han roll RLEVADTB
+    /// against them; a captured Han is taken to the palace.
+    Bounty,
 }
 
 impl MissionKind {
@@ -178,7 +185,8 @@ impl MissionKind {
             | MissionKind::TroopTrainingResearch
             | MissionKind::Move
             | MissionKind::JediTraining
-            | MissionKind::Dagobah => None,
+            | MissionKind::Dagobah
+            | MissionKind::Bounty => None,
         }
     }
 
@@ -223,6 +231,8 @@ impl MissionKind {
             MissionKind::JediTraining => (60, 90),
             // The shipped record's 100 + rand(0..=0).
             MissionKind::Dagobah => (100, 100),
+            // MISSNSD 0x65000083: 0 + rand(0..=0) days.
+            MissionKind::Bounty => (0, 0),
         }
     }
 }
@@ -336,6 +346,10 @@ pub struct ActiveMission {
     pub first_training_day: Option<u64>,
     /// Phase 10's result `+0x60` was 3 (`FUN_00521880`).
     pub succeeded: bool,
+    /// The abode the members stood in when phase 2 settled the location
+    /// (`+0x6c` of family `0x98`), in place of [`Self::origin`]: the Bounty
+    /// Hunters leave Jabba's Palace (save v77).
+    pub origin_abode: Option<crate::ids::AbodeKey>,
 }
 
 /// The phase that starts every member's transit (`FUN_00520b20`).
@@ -381,6 +395,7 @@ impl ActiveMission {
             resigning: Vec::new(),
             teacher: None,
             target_abode: None,
+            origin_abode: None,
             first_training_day: None,
             succeeded: false,
         }
@@ -1165,8 +1180,9 @@ pub fn member_chance(
         // FUN_005710b0 reads the mission's teacher +0xa8: phase 10 takes
         // the chance from [`jedi_training_chance`].
         MissionKind::JediTraining => return 0,
-        // FUN_00575060: DAT_00661a88, 100.
-        MissionKind::Dagobah => return 100,
+        // FUN_00575060: DAT_00661a88, 100 (Dagobah's and Bounty's slot
+        // +0x274).
+        MissionKind::Dagobah | MissionKind::Bounty => return 100,
     };
     let (Some(input), Some(table)) = (
         input,
@@ -1240,6 +1256,9 @@ pub fn move_member(world: &mut GameWorld, member: MissionMember, to: Option<Syst
             for (_, system) in &mut world.systems {
                 system.special_forces.retain(|&unit| unit != key);
             }
+            for (_, abode) in &mut world.abodes {
+                abode.special_forces.retain(|&unit| unit != key);
+            }
             if let Some(system) = to.and_then(|to| world.systems.get_mut(to)) {
                 system.special_forces.push(key);
             }
@@ -1310,6 +1329,12 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
             MissionEffect::HeritageLearned { character } => {
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.heritage_known = true;
+                }
+            }
+            MissionEffect::CapturedByBountyHunters { character } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.escape_barred = true;
+                    c.bounty_captured = true;
                 }
             }
             _ => {}
@@ -1462,6 +1487,10 @@ pub struct EscapeeTransit {
     pub to: SystemKey,
     /// The day it arrives.
     pub arrival: u64,
+    /// The abode it travels to, in place of `to` (`FUN_00543040` maps a
+    /// Bounty mission destination, family `0x65`, to Jabba's Palace; a trip
+    /// to an abode takes 1 day, `FUN_00555b30`; save v77).
+    pub abode: Option<crate::ids::AbodeKey>,
 }
 
 /// All active missions across the galaxy.
@@ -1542,6 +1571,24 @@ impl MissionState {
         self.escapees
             .iter()
             .any(|transit| transit.character == character)
+    }
+
+    /// `FUN_00543040` for a character whose destination is an abode: it
+    /// autoroutes there from `from`, arriving the next day (`FUN_00555b30`).
+    /// The caller takes it off the map.
+    pub fn autoroute_to_abode(
+        &mut self,
+        character: CharacterKey,
+        from: SystemKey,
+        abode: crate::ids::AbodeKey,
+        now: u64,
+    ) {
+        self.escapees.push(EscapeeTransit {
+            character,
+            to: from,
+            arrival: now + 1,
+            abode: Some(abode),
+        });
     }
 
     /// Put `character` on the autorouting road, for other modules' tests.
@@ -1966,6 +2013,16 @@ pub enum MissionEffect {
         amount: i32,
     },
 
+    /// The Bounty mission attacked Han (`FUN_00572690`, `BountyAttack`,
+    /// notification `0x212`); `captured` when he did not evade.
+    BountyAttack {
+        character: CharacterKey,
+        captured: bool,
+    },
+    /// The Bounty mission captured Han (`FUN_00575de0`): `CanEscape` cleared
+    /// (`FUN_004eeb10(0)`) and `CapturedByBountyHunters` set (`FUN_00572700`).
+    CapturedByBountyHunters { character: CharacterKey },
+
     /// Force detection (`FUN_0058a3f0` -> `FUN_0055ff60`): `member` and
     /// `defender` name each other in `Encounter` `+0x9c` and record `day`.
     EncounterBegan {
@@ -2122,6 +2179,7 @@ impl MissionKind {
             MissionKind::Move => 0x4100_0001,
             MissionKind::JediTraining => 0x5800_0042,
             MissionKind::Dagobah => 0x7100_0043,
+            MissionKind::Bounty => 0x6500_0083,
             MissionKind::Autoscrap => return None,
         };
         Some(crate::ids::DatId::new(raw))
@@ -2152,6 +2210,11 @@ impl MissionKind {
             MissionKind::JediTraining => TargetRules::System,
             // Its target is an abode, a place (FUN_00521070).
             MissionKind::Dagobah => TargetRules::Place,
+            // An opponent's free character (MISSNSD 0x65000083).
+            // port: the class's own rules (slot +0x1bc FUN_005757f0:
+            // FUN_00592aa0, FUN_00575900) are not read; the prisoner columns
+            // stand in.
+            MissionKind::Bounty => TargetRules::Character,
         }
     }
 }
@@ -2174,6 +2237,19 @@ fn character_location(world: &GameWorld, character: &Character) -> Option<System
 }
 
 /// A member's location key, as [`character_location`] reads a character.
+/// The abode a member stands in: a character's container of family `0x98`,
+/// or the abode holding a special force.
+fn member_abode(world: &GameWorld, member: MissionMember) -> Option<crate::ids::AbodeKey> {
+    match member {
+        MissionMember::Character(key) => world.characters.get(key)?.current_abode,
+        MissionMember::SpecialForce(key) => world
+            .abodes
+            .iter()
+            .find(|(_, abode)| abode.special_forces.contains(&key))
+            .map(|(abode, _)| abode),
+    }
+}
+
 fn member_location(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {
     match member_state(world, member)?.location {
         MemberLocation::Fleet(fleet) => world.fleets.get(fleet).map(|f| f.location),
@@ -2825,6 +2901,7 @@ impl MissionSystem {
                 character: key,
                 to,
                 arrival: now + 1,
+                abode: None,
             });
         }
     }
@@ -2859,6 +2936,13 @@ impl MissionSystem {
                     .members()
                     .find_map(|member| member_location(world, member));
                 mission.origin = origin;
+                mission.origin_abode = if origin.is_none() {
+                    mission
+                        .members()
+                        .find_map(|member| member_abode(world, member))
+                } else {
+                    None
+                };
                 mission.speed = Self::character_speed(mission, world);
                 // FUN_00571410 (Jedi Training's slot +0x1f4) in phase 2: the
                 // teacher +0xa8 is the first member who may teach.
@@ -2977,11 +3061,28 @@ impl MissionSystem {
         out: &mut MissionAdvance,
         now: u64,
     ) {
+        let to = mission.target_system;
         let Some(from) = mission.origin else {
+            // FUN_00555b30: a trip from an abode takes 1 day.
+            if mission.origin_abode.is_some() {
+                for member in mission.members() {
+                    if member_state(world, member).is_none() {
+                        continue;
+                    }
+                    out.effects
+                        .push(MissionEffect::MemberMoved { member, to: None });
+                    state.en_route.push(MemberTransit {
+                        member,
+                        mission_id: mission.id,
+                        to,
+                        arrival: now + 1,
+                        abode: mission.target_abode,
+                    });
+                }
+            }
             return;
         };
         let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
-        let to = mission.target_system;
         for member in mission.members() {
             if member_state(world, member).is_none() {
                 continue;
@@ -3171,6 +3272,56 @@ impl MissionSystem {
                             returned_to: mission.faction,
                             at_system: target,
                         });
+                    }
+                }
+                // FUN_00575de0: the target of family 0x33 (Han) is
+                // attacked (BountyAttack, notification 0x212) and rolls
+                // RLEVADTB against the bounty hunters (FUN_005349e0, captor
+                // combat 0): he evades (slot +0x208, the injury roll) or is
+                // captured (slot +0x20c, the injury roll first). A captured
+                // Han loses CanEscape and gets CapturedByBountyHunters, and
+                // the result is 3; otherwise 2.
+                // port: the evade's resign request from Han's own mission
+                // (FUN_00534c20) is not ported.
+                MissionKind::Bounty => {
+                    let han = mission.target_character.filter(|&key| {
+                        !target_taken
+                            && world
+                                .characters
+                                .get(key)
+                                .is_some_and(|c| c.dat_id.index() == HAN_SOLO & 0x00ff_ffff)
+                    });
+                    if let Some(han) = han {
+                        target_taken = true;
+                        let combat = skill_of(world, han, Skill::Combat);
+                        let evades =
+                            crate::mission_detection::rlevadtb_evades(world, combat, stream);
+                        let captured = evades == Some(false);
+                        if evades.is_some() {
+                            if let Some(injury) =
+                                crate::mission_detection::injury_roll(world, combat, stream)
+                            {
+                                effects.push(MissionEffect::CharacterInjured {
+                                    character: han,
+                                    injury,
+                                });
+                            }
+                        }
+                        effects.push(MissionEffect::BountyAttack {
+                            character: han,
+                            captured,
+                        });
+                        if captured {
+                            effects.push(MissionEffect::CharacterCaptured {
+                                character: han,
+                                captured_by: mission.faction,
+                                at_system: target,
+                            });
+                            effects.push(MissionEffect::CapturedByBountyHunters { character: han });
+                            result = 3;
+                        } else {
+                            result = 2;
+                        }
                     }
                 }
                 // FUN_00576eb0: the target's slot +0x20c takes it prisoner.
@@ -3452,14 +3603,16 @@ impl MissionSystem {
             .into_iter()
             .partition(|transit| transit.arrival <= now);
         state.escapees = travelling;
-        effects.extend(
-            arrived
-                .into_iter()
-                .map(|transit| MissionEffect::MemberMoved {
-                    member: MissionMember::Character(transit.character),
-                    to: Some(transit.to),
-                }),
-        );
+        effects.extend(arrived.into_iter().map(|transit| match transit.abode {
+            Some(abode) => MissionEffect::MemberEnteredAbode {
+                member: MissionMember::Character(transit.character),
+                abode,
+            },
+            None => MissionEffect::MemberMoved {
+                member: MissionMember::Character(transit.character),
+                to: Some(transit.to),
+            },
+        }));
 
         // CanEscape (+0xac bit 0x100) follows Captured (FUN_004f1a80); the
         // Final Battle clears it while the character stays held
@@ -3540,6 +3693,7 @@ impl MissionSystem {
                     character: key,
                     to,
                     arrival: now + u64::from(days),
+                    abode: None,
                 });
             }
         }
@@ -8236,8 +8390,225 @@ mod tests {
             dat_id: crate::ids::DatId::new(0x441),
             name: "Dagobah".into(),
             side: crate::dat::Faction::Neutral,
+            special_forces: Vec::new(),
         });
         (world, home, far, luke, dagobah)
+    }
+
+    /// MISSNSD `0x65000083` (Bounty): Empire only, hidden, 0 + rand(0..=0)
+    /// days, no detection, special forces of mask `0x1000`, an opponent's
+    /// free character.
+    fn bounty_record() -> crate::world::MissionRecord {
+        crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x6500_0083),
+            timer_min_days: 0,
+            timer_spread_days: 0,
+            repeats: false,
+            hidden: true,
+            detection_phases: false,
+            can_resign: false,
+            rules: crate::world::MissionTargetRules {
+                container_loss_ends: false,
+                needs_populated_container: false,
+                target_loss_ends: true,
+                own_side_target: false,
+                other_side_target: false,
+                opponent_target: true,
+                revolting_target: false,
+                calm_target: false,
+                prisoner_target: false,
+                free_target: true,
+            },
+            members: crate::world::MissionMemberRules {
+                alliance: false,
+                empire: true,
+                special_force_mask: 0x1000,
+                character_mask: 0x1_0000,
+            },
+        }
+    }
+
+    /// Han at an Alliance system, Jabba's Palace, the Bounty Hunters class
+    /// and record, and an RLEVADTB of `evade` percent.
+    fn bounty_world(evade: u32) -> (GameWorld, SystemKey, CharacterKey, crate::ids::AbodeKey) {
+        let mut world = minimal_world();
+        let home = system_at(&mut world, 0);
+        world.systems[home].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.mission_records = vec![bounty_record()];
+        world.mission_tables.insert(
+            "RLEVADTB".into(),
+            crate::world::MstbTable::new(vec![crate::world::MstbEntry {
+                threshold: 0,
+                value: evade,
+            }]),
+        );
+        world.special_force_classes.insert(
+            crate::ids::DatId::new(0x3c00_0009),
+            crate::world::SpecialForceClassDef {
+                skills: [crate::world::SkillPair {
+                    base: 0,
+                    variance: 0,
+                }; 8],
+                mission_mask: 0x1000,
+            },
+        );
+        let han = agent_at(&mut world, home, true);
+        world.characters[han].dat_id = crate::ids::DatId::new(0x243);
+        let palace = world.abodes.insert(crate::world::Abode {
+            dat_id: crate::ids::DatId::new(0x481),
+            name: "Jabba's Palace".into(),
+            side: crate::dat::Faction::Empire,
+            special_forces: Vec::new(),
+        });
+        (world, home, han, palace)
+    }
+
+    #[test]
+    fn the_bounty_hit_acts_only_on_han() {
+        // FUN_00575de0 acts on a target of family 0x33 alone.
+        let (mut world, home, han, palace) = bounty_world(0);
+        world.characters[han].dat_id = crate::ids::DatId::new(0x242);
+        let mut state = MissionState::new();
+        let hunt = crate::jabba::JabbaStep::BountyHunt {
+            han,
+            palace,
+            at: home,
+            tick: 1,
+        };
+        crate::jabba::perform(&hunt, &mut state, &mut world).expect("dispatched");
+        for day in 1..=10 {
+            let advance = step(&mut state, &world, day, &[]);
+            apply_advance_effects(&mut world, &advance.effects);
+            for result in &advance.results {
+                assert!(!result
+                    .effects
+                    .iter()
+                    .any(|effect| matches!(effect, MissionEffect::BountyAttack { .. })));
+            }
+        }
+        assert!(!world.characters[han].is_captive);
+    }
+
+    #[test]
+    fn a_han_who_evades_the_bounty_hunters_stays_free() {
+        // FUN_00575de0: an evade (RLEVADTB 100) leaves the result 2 and Han
+        // free; BountyAttack still fires (notification 0x212).
+        let (mut world, home, han, palace) = bounty_world(100);
+        let mut state = MissionState::new();
+        let hunt = crate::jabba::JabbaStep::BountyHunt {
+            han,
+            palace,
+            at: home,
+            tick: 1,
+        };
+        crate::jabba::perform(&hunt, &mut state, &mut world).expect("dispatched");
+        let mut seen = None;
+        for day in 1..=10 {
+            let advance = step(&mut state, &world, day, &[]);
+            apply_advance_effects(&mut world, &advance.effects);
+            for result in &advance.results {
+                apply_advance_effects(&mut world, &result.effects);
+                seen = Some(result.clone());
+            }
+        }
+        let result = seen.expect("the hunters reached Han");
+        assert!(result.effects.contains(&MissionEffect::BountyAttack {
+            character: han,
+            captured: false,
+        }));
+        assert_eq!(result.outcome, MissionOutcome::Failure);
+        let c = &world.characters[han];
+        assert!(!c.is_captive && !c.bounty_captured && !c.escape_barred);
+    }
+
+    #[test]
+    fn the_bounty_hunters_leave_the_palace_capture_han_and_take_him_there() {
+        // FUN_00546fa0 creates the Bounty Hunters (SPECFCSD 0x3c000009) in
+        // Jabba's Palace and sends them on mission 0x65000083 after Han; the
+        // trip from the abode takes 1 day (FUN_00555b30). The hit
+        // FUN_00575de0 makes Han roll RLEVADTB (0 here: captured); captured,
+        // he loses CanEscape and gets CapturedByBountyHunters, and
+        // FUN_00543040 autoroutes him to the palace, 1 day away.
+        let (mut world, home, han, palace) = bounty_world(0);
+        let mut state = MissionState::new();
+        let hunt = crate::jabba::JabbaStep::BountyHunt {
+            han,
+            palace,
+            at: home,
+            tick: 10,
+        };
+        crate::jabba::perform(&hunt, &mut state, &mut world).expect("dispatched");
+        let unit = world.abodes[palace].special_forces[0];
+        assert_eq!(state.missions()[0].kind, MissionKind::Bounty);
+        assert_eq!(
+            state.missions()[0].team,
+            [MissionMember::SpecialForce(unit)]
+        );
+
+        let mut attacked = None;
+        for day in 10..=20 {
+            let advance = step(&mut state, &world, day, &[]);
+            apply_advance_effects(&mut world, &advance.effects);
+            if let Some(transit) = state.en_route.first() {
+                assert_eq!(transit.arrival, day + 1, "the trip from the abode");
+            }
+            for result in &advance.results {
+                apply_advance_effects(&mut world, &result.effects);
+                if result.effects.contains(&MissionEffect::BountyAttack {
+                    character: han,
+                    captured: true,
+                }) {
+                    attacked = Some(day);
+                }
+            }
+            if attacked.is_some() {
+                break;
+            }
+        }
+        assert!(attacked.is_some(), "the hunters reached Han");
+        assert!(world.abodes[palace].special_forces.is_empty());
+        let c = &world.characters[han];
+        assert!(c.is_captive && c.escape_barred && c.bounty_captured);
+
+        let mut jabba = crate::jabba::JabbaState {
+            armed: true,
+            bounty_hunters_active: false,
+            bounty_due: None,
+        };
+        let day = attacked.unwrap() + 1;
+        let steps = crate::jabba::JabbaSystem::advance(
+            &mut jabba,
+            &world,
+            &state,
+            &[TickEvent { tick: day }],
+            &[],
+        );
+        assert_eq!(
+            steps,
+            [crate::jabba::JabbaStep::ToPalace {
+                captive: han,
+                from: home,
+                palace,
+                tick: day,
+            }]
+        );
+        crate::jabba::perform(&steps[0], &mut state, &mut world);
+        assert!(state.is_autorouting(han));
+        // FUN_00555b30: the trip to the abode takes exactly 1 day.
+        assert_eq!(state.escapees[0].arrival, day + 1);
+        assert_eq!(world.characters[han].current_system, None);
+        let arrived = MissionSystem::advance_escapes(&mut state, &world, day + 1, &[]);
+        assert_eq!(
+            arrived,
+            [MissionEffect::MemberEnteredAbode {
+                member: MissionMember::Character(han),
+                abode: palace,
+            }]
+        );
+        apply_advance_effects(&mut world, &arrived);
+        assert_eq!(world.characters[han].current_abode, Some(palace));
+        assert!(world.characters[han].is_captive);
     }
 
     #[test]

@@ -379,6 +379,7 @@ pub fn load_game_data_with_options(
                 dat_id: DatId::new(entry.id),
                 name: lookup(entry.text_stra_dll_id, "Abode"),
                 side: abode_side(entry.id),
+                special_forces: Vec::new(),
             });
         }
     }
@@ -943,6 +944,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         encounter: None,
         encounter_day: 0,
         escape_barred: false,
+        bounty_captured: false,
     }
 }
 

@@ -87,6 +87,8 @@ fn capability(kind: MissionKind) -> Option<u32> {
         MissionKind::JediTraining => return None,
         // The mission manager sends Dagobah (FUN_0054a860), not a planner.
         MissionKind::Dagobah => return None,
+        // The bounty timer sends the Bounty mission (FUN_00546fa0).
+        MissionKind::Bounty => return None,
     })
 }
 
@@ -242,7 +244,10 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         // FUN_0047f320 and FUN_0047f500) are not ported, so the AI sends none.
         MissionKind::Autoscrap | MissionKind::Reconnaissance => return None,
         // The Move pseudo-mission has no selectors (FUN_004bd570 builds it).
-        MissionKind::Move | MissionKind::JediTraining | MissionKind::Dagobah => return None,
+        MissionKind::Move
+        | MissionKind::JediTraining
+        | MissionKind::Dagobah
+        | MissionKind::Bounty => return None,
         // FUN_0047bcd0, FUN_0047c2b0, FUN_0047c900: Recruitment's selector
         // shape, with no decoy selector.
         MissionKind::ShipDesignResearch => (SHIP_RESEARCH, 1, None),

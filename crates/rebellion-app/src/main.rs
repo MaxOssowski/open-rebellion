@@ -429,6 +429,7 @@ struct LiveCampaign<'a> {
     force_discovery: &'a mut rebellion_core::force_discovery::ForceDiscoveryState,
     dagobah: &'a mut rebellion_core::dagobah::DagobahState,
     final_battle: &'a mut rebellion_core::final_battle::FinalBattleState,
+    jabba: &'a mut rebellion_core::jabba::JabbaState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -468,6 +469,7 @@ impl LiveCampaign<'_> {
             force_discovery: self.force_discovery.clone(),
             dagobah: self.dagobah.clone(),
             final_battle: *self.final_battle,
+            jabba: *self.jabba,
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -510,6 +512,7 @@ impl LiveCampaign<'_> {
         *self.force_discovery = state.force_discovery;
         *self.dagobah = state.dagobah;
         *self.final_battle = state.final_battle;
+        *self.jabba = state.jabba;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -1093,6 +1096,7 @@ async fn main() {
     let mut force_discovery_state = rebellion_core::force_discovery::ForceDiscoveryState::default();
     let mut dagobah_state = rebellion_core::dagobah::DagobahState::default();
     let mut final_battle_state = rebellion_core::final_battle::FinalBattleState::default();
+    let mut jabba_state = rebellion_core::jabba::JabbaState::default();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -2227,6 +2231,19 @@ async fn main() {
                     }
                 }
             }
+            // ── The bounty hunters: timer 0x393 (FUN_00546fa0) ─────────────
+            let jabba_rolls: Vec<f64> = (0..rebellion_core::jabba::JabbaSystem::roll_budget())
+                .map(|_| sim_rng.gen::<f64>())
+                .collect();
+            for step in rebellion_core::jabba::JabbaSystem::advance(
+                &mut jabba_state,
+                &world,
+                &mission_state,
+                &tick_events,
+                &jabba_rolls,
+            ) {
+                rebellion_core::jabba::perform(&step, &mut mission_state, &mut world);
+            }
             ai_state.free_mission_members(&mission_advance.effects);
             if let Some(second_ai) = secondary_ai_state.as_mut() {
                 second_ai.free_mission_members(&mission_advance.effects);
@@ -2247,6 +2264,19 @@ async fn main() {
                     #[cfg(not(target_arch = "wasm32"))]
                     &audio_vol,
                 );
+                // Notification 0x212 (FUN_0048fa00), after Han's capture.
+                for effect in &result.effects {
+                    if let MissionEffect::BountyAttack { character, .. } = effect {
+                        for message in rebellion_render::story_messages::bounty_messages(
+                            &world,
+                            *character,
+                            current_tick,
+                            &message_texts,
+                        ) {
+                            msg_log.push(message);
+                        }
+                    }
+                }
                 for ended in rebellion_data::integrator::apply_mission_state_effects(
                     &result.effects,
                     &world,
@@ -2300,6 +2330,8 @@ async fn main() {
             for effect in &escape_effects {
                 if let MissionEffect::MemberMoved { member, to } = effect {
                     rebellion_core::missions::move_member(&mut world, *member, *to);
+                } else if let MissionEffect::MemberEnteredAbode { member, abode } = effect {
+                    rebellion_core::missions::enter_abode(&mut world, *member, *abode);
                 } else if let MissionEffect::CharacterEscaped {
                     character,
                     escaped_to_alliance,
@@ -3633,6 +3665,7 @@ async fn main() {
                                         rebellion_core::dagobah::DagobahState::default();
                                     final_battle_state =
                                         rebellion_core::final_battle::FinalBattleState::default();
+                                    jabba_state = rebellion_core::jabba::JabbaState::default();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -6073,6 +6106,7 @@ async fn main() {
                         force_discovery: &mut force_discovery_state,
                         dagobah: &mut dagobah_state,
                         final_battle: &mut final_battle_state,
+                        jabba: &mut jabba_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -6150,6 +6184,7 @@ async fn main() {
                                 force_discovery: &mut force_discovery_state,
                                 dagobah: &mut dagobah_state,
                                 final_battle: &mut final_battle_state,
+                                jabba: &mut jabba_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,
@@ -7341,6 +7376,7 @@ fn apply_panel_action(
                 MissionKind::Move => "Move",
                 MissionKind::JediTraining => "Jedi Training",
                 MissionKind::Dagobah => "Dagobah",
+                MissionKind::Bounty => "Bounty",
             };
             msg_log.push(GameMessage::at_system(
                 clock.tick,
@@ -7828,6 +7864,7 @@ fn apply_mission_result(
         MissionKind::Move => "Move",
         MissionKind::JediTraining => "Jedi Training",
         MissionKind::Dagobah => "Dagobah",
+        MissionKind::Bounty => "Bounty",
     };
     let sys_name = world
         .systems
@@ -7856,7 +7893,8 @@ fn apply_mission_result(
         | MissionKind::Autoscrap
         | MissionKind::Move
         | MissionKind::JediTraining
-        | MissionKind::Dagobah => MessageCategory::Mission,
+        | MissionKind::Dagobah
+        | MissionKind::Bounty => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.
     let picture = {
@@ -8048,9 +8086,12 @@ fn apply_mission_result(
             // detection (`missions::apply_advance_effects`).
             MissionEffect::EncounterBegan { .. }
             | MissionEffect::EncounterEnded { .. }
-            | MissionEffect::HeritageLearned { .. } => {
+            | MissionEffect::HeritageLearned { .. }
+            | MissionEffect::CapturedByBountyHunters { .. } => {
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             }
+            // Notification 0x212: its messages are posted with the result.
+            MissionEffect::BountyAttack { .. } => {}
             MissionEffect::CharacterRescued {
                 character,
                 returned_to,

@@ -536,6 +536,7 @@ mod tests {
             encounter: None,
             encounter_day: 0,
             escape_barred: false,
+            bounty_captured: false,
         }
     }
 
@@ -599,6 +600,7 @@ mod tests {
             dat_id: DatId::new(0x441),
             name: "Dagobah".into(),
             side: Faction::Neutral,
+            special_forces: Vec::new(),
         });
         let luke = &mut world.characters[key];
         luke.current_system = None;

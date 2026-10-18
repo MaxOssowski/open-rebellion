@@ -432,6 +432,70 @@ pub fn final_battle_message(
     )
 }
 
+/// Notification `0x212` (`FUN_0048fa00`), Han's `BountyAttack`, for each
+/// side:
+///
+/// - Han captured (`+0xac` bit 0): Han Solo Captured by Bounty Hunters
+///   (`0x716c` / `0x716d`, background `0x41d`) for both;
+/// - otherwise the Alliance reads Han Solo Attacked by Bounty Hunters
+///   (`0x7168` / `0x7169`, `0x41c`), and the Empire Bounty Hunters Locate
+///   Solo (`0x716a` / `0x716b` with the system Han stands at, `0x41e`) when
+///   his containers reach a system.
+///
+/// port: the media ids `+0x30`, `+0x32` and the speaker `+0x28` are not
+/// read.
+#[must_use]
+pub fn bounty_messages(
+    world: &GameWorld,
+    han: CharacterKey,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Vec<GameMessage> {
+    let Some(c) = world.characters.get(han) else {
+        return Vec::new();
+    };
+    let message =
+        |title: u16, body: u16, parameters: &[MessageParameter<'_>], background, audience| {
+            Some(
+                GameMessage::new(
+                    tick,
+                    fill_message_text(texts.get(&body)?, parameters),
+                    MessageCategory::Event,
+                )
+                .on_rail(STORY_RAIL, audience)
+                .with_title(fill_message_text(texts.get(&title)?, parameters))
+                .with_picture(MessagePicture {
+                    background,
+                    foreground: None,
+                }),
+            )
+        };
+    if c.is_captive {
+        return message(0x716c, 0x716d, &[], 0x41d, RailAudience::Both)
+            .into_iter()
+            .collect();
+    }
+    let system = c
+        .current_fleet
+        .and_then(|fleet| world.fleets.get(fleet))
+        .map(|fleet| fleet.location)
+        .or(c.current_system)
+        .and_then(|key| world.systems.get(key));
+    let mut out: Vec<GameMessage> = message(0x7168, 0x7169, &[], 0x41c, RailAudience::Alliance)
+        .into_iter()
+        .collect();
+    if let Some(system) = system {
+        out.extend(message(
+            0x716a,
+            0x716b,
+            &[MessageParameter::Named { name: &system.name }],
+            0x41e,
+            RailAudience::Empire,
+        ));
+    }
+    out
+}
+
 fn character_parameter(c: &rebellion_core::world::Character) -> MessageParameter<'_> {
     MessageParameter::Character {
         name: &c.name,
@@ -582,6 +646,8 @@ pub enum MessageParameter<'a> {
         name: &'a str,
         force_ranking: &'a str,
     },
+    /// Any other named object, such as a system: kind 1 its name.
+    Named { name: &'a str },
 }
 
 impl MessageParameter<'_> {
@@ -591,6 +657,7 @@ impl MessageParameter<'_> {
         match (self, kind) {
             (Self::Character { name, .. }, 1) => Some(name),
             (Self::Character { force_ranking, .. }, 7) => Some(force_ranking),
+            (Self::Named { name }, 1) => Some(name),
             _ => None,
         }
     }
@@ -1319,6 +1386,86 @@ mod tests {
         let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
         assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
         assert_eq!(lost.picture.expect("a picture").background, 0x428);
+    }
+
+    #[test]
+    fn the_bounty_attack_messages_follow_han_s_capture() {
+        // FUN_0048fa00 on 0x212: captured, both read 0x716c/0x716d on
+        // 0x41d; otherwise the Alliance reads 0x7168/0x7169 on 0x41c and the
+        // Empire 0x716a/0x716b with Han's system on 0x41e.
+        let mut world = GameWorld::default();
+        let tatooine = world.systems.insert(rebellion_core::world::System {
+            dat_id: DatId::new(0x9000_0001),
+            name: "Tatooine".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Uncontrolled,
+        });
+        let han = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(0x243),
+            name: "Han Solo".into(),
+            is_alliance: true,
+            current_system: Some(tatooine),
+            ..Default::default()
+        });
+        let texts: HashMap<u16, String> = [
+            (0x7168, "Han Solo Attacked by Bounty Hunters"),
+            (
+                0x7169,
+                "Han Solo was attacked by bounty hunters, who failed to capture him.",
+            ),
+            (0x716a, "Bounty Hunters Locate Solo"),
+            (
+                0x716b,
+                "Bounty hunters have reported that Han Solo is located on {1:1}.",
+            ),
+            (0x716c, "Han Solo Captured by Bounty Hunters"),
+            (
+                0x716d,
+                "Han Solo was captured by bounty hunters and taken to Jabba's Palace.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+
+        let attacked = bounty_messages(&world, han, 3, &texts);
+        assert_eq!(attacked.len(), 2);
+        assert_eq!(attacked[0].audience, RailAudience::Alliance);
+        assert_eq!(
+            attacked[0].title.as_deref(),
+            Some("Han Solo Attacked by Bounty Hunters")
+        );
+        assert_eq!(attacked[0].picture.expect("a picture").background, 0x41c);
+        assert_eq!(attacked[1].audience, RailAudience::Empire);
+        assert_eq!(
+            attacked[1].text,
+            "Bounty hunters have reported that Han Solo is located on Tatooine."
+        );
+        assert_eq!(attacked[1].picture.expect("a picture").background, 0x41e);
+
+        world.characters[han].is_captive = true;
+        let captured = bounty_messages(&world, han, 3, &texts);
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].audience, RailAudience::Both);
+        assert_eq!(captured[0].picture.expect("a picture").background, 0x41d);
     }
 
     #[test]

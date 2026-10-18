@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v76, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v77, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-18
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v76, and it is the only one
+serializable snapshot. The current format is v77, and it is the only one
 that loads.
 
-## Native format (v76)
+## Native format (v77)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -41,10 +41,10 @@ Every mutable campaign subsystem required by the app is serialized:
 
 | Field | Type |
 |-------|------|
-| `world` | `GameWorld`; each system keeps the squadrons on its planet (v46); each capital ship its id and the world the last id given (v51); each character its `ForcePotential`, `ForceAware` and Force base `+0x8e` (v69) its Force discoverer `+0xa4` (v70) and `ForceTraining` `+0x90` (v71), and its abode; the world's abodes from ABODESD (v72); Luke's `DagobahCompleted` (v73); each character's `Encounter` key `+0x9c` and encounter day (v74), and its barred escape (`CanEscape` cleared by the Final Battle, v76) |
+| `world` | `GameWorld`; each system keeps the squadrons on its planet (v46); each capital ship its id and the world the last id given (v51); each character its `ForcePotential`, `ForceAware` and Force base `+0x8e` (v69) its Force discoverer `+0xa4` (v70) and `ForceTraining` `+0x90` (v71), and its abode; the world's abodes from ABODESD (v72); Luke's `DagobahCompleted` (v73); each character's `Encounter` key `+0x9c` and encounter day (v74), and its barred escape (`CanEscape` cleared by the Final Battle, v76); each abode's special forces and Han's CapturedByBountyHunters (`+0xb0` bit 2) (v77) |
 | `clock` | `GameClock` |
 | `manufacturing` | `ManufacturingState`: one queue and one Destination per system and production area (v30); a queue keeps its build points and each unit its cost in points (v34) |
-| `missions` | `MissionState`: missions, travelling members, and each captive's escape timer and escaped characters on the road (v35); each mission's Jedi Training teacher `+0xa8` (v71); its abode target, first training day and phase-10 success, and each member transit's abode (v73) |
+| `missions` | `MissionState`: missions, travelling members, and each captive's escape timer and escaped characters on the road (v35); each mission's Jedi Training teacher `+0xa8` (v71); its abode target, first training day and phase-10 success, and each member transit's abode (v73); each mission's origin abode and each escapee transit's abode, for Han's trip to Jabba's Palace (v77) |
 | `events` | `EventState`; v75 drops the port's `SetHeritageKnown` action |
 | `ai` | `AIState`: busy characters (the battle cooldowns of the port's fleet heuristics went in v58), the strategy's research planners with their held designer, site, target, mission, unread report and failures (v37), the day's order count and the round robin's module (v38; the evaluation tick is gone), the priority scan's cursor, each module's priority and undecided orders, and the mission module's next entry (v39), the yard marks the modules keep on system records (v40), the kept record `+0x30` bits, the controller's yard token and module 1's fields and sites (v41), module 2's fields and sites (v42), and module 3's fields and sites and the controller's shield goal `+0x374` (v43), module 5's fields and sites (v44), module 6's fields and sites (v45), module 7's fields and sites and the controller's squadron goals `+0x388..+0x390` (v47), module `0xb`'s fields and sites (v48), and the strategy's posture, kind, growth flags and sector plans, the controller's garrison goals `+0x37c..+0x384`, and the day each system was last seen (record `+0x44`) (v49), module 8's fields and sector planners (v50), the AI's ship record holds by ship id (v51), its fleet record holds and each sector planner's ships, fleets, counts, requests and plan wants (v52), each plan object's fleet and search cursor (v53), each fleet record hold's plan target `+0x2c` (v54), each plan object's walk cursor `+0x30` (v55), kind 2's visited systems `+0x5c` and the swept sectors (sector record `+0x2c` `0x20000000`) (v56), and kind 4's target system `+0x5c` (v57); v58 drops module 8's `decided` flag with the stand-in fleet heuristics it served |
 | `movement` | `MovementState` |
@@ -64,6 +64,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `force_discovery` | `ForceDiscoveryState`: each discovering trainer's timer `0x389` (v70) |
 | `dagobah` | `DagobahState`: timer `0x392` and `LukeDagobahRequired` (v73) |
 | `final_battle` | `FinalBattleState`: the mission manager's FinalBattleReady and FinalBattle bits (v76) |
+| `jabba` | `JabbaState`: the mission manager's BountyHuntersActive bit and timer `0x393` (v77) |
 | `sim_rng` | `Xoshiro256PlusPlus` |
 | `ai2` | `Option<AIState>` |
 | `repair` | `RepairState` |

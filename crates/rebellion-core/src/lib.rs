@@ -22,6 +22,7 @@ pub mod combat;
 pub mod commands;
 pub mod dagobah;
 pub mod final_battle;
+pub mod jabba;
 pub mod dat;
 pub mod death_star;
 pub mod delivery;

@@ -2507,6 +2507,17 @@ cross-runtime proof remain open
   frees Han and the palace's prisoners, a failure leaves the rescuers
   captive for good. The port's own chain (`0x380`..`0x39b`, `0x212`,
   `0x231`) runs on tick thresholds instead.
+- 2026-10-18: the bounty hunters are ported (`jabba.rs`, save v77):
+  BountyHuntersActive and timer `0x393`, the Bounty Hunters unit leaving
+  Jabba's Palace on the Bounty mission against Han, his RLEVADTB roll
+  against the hunters, the capture with a barred escape, and his trip to
+  the palace. The app posts the three `0x212` messages. The port's own
+  palace chain (`0x380`..`0x39b`, `0x212`, `0x200`, `0x231`) is gone. In
+  1200-day campaigns the hunters strike on seeds 1, 2 and 3 (days 331, 497
+  and 561), and Han evades each time. Golden initial `v1:978a2af596955f63`
+  -> `v1:5474ae69134d1255`, final `v1:8c0677e665d1d127` ->
+  `v1:4cd75bad1e5062b8` (`evidence/2026-10-18-bounty-hunters/`). Open:
+  HanCapturedAtPalace, the Palace missions and the Pickup.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

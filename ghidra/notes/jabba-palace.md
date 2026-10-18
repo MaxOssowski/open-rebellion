@@ -116,13 +116,29 @@ Luke, Leia or Chewbacca.
 
 ## Against the port
 
-- None of the flags, timer `0x393`, the Bounty Hunters unit, the Bounty or
-  Palace missions, Han's flags, or the palace autorouting exist in the
-  port. The port's captives stay where they are captured; the original's
-  autorouting of captives (to the captor's location or, for the Bounty
-  mission, the palace) is not ported.
-- The port's own chain `0x380`..`0x39b` and `0x212`, `0x231` runs on tick
-  thresholds and random gates instead.
+- Ported 2026-10-18 (plan 1 and 2 together, save v77):
+  - `jabba.rs`: BountyHuntersActive from the start, timer `0x393` with
+    GNPRTB 6148 + rand(6149) days, firing once; the chance 6150; the
+    Bounty Hunters unit in the palace's special forces; the Empire's view
+    of Han's system; the Bounty mission (`MissionKind::Bounty`, record
+    `0x65000083`);
+  - the Bounty hit in `missions.rs` phase 10: Han only, RLEVADTB against
+    combat 0 (`mission_detection::rlevadtb_evades`), the injury, then
+    BountyAttack and, when captured, `escape_barred` and
+    `Character::bounty_captured`;
+  - the captured Han autoroutes to the palace (`autoroute_to_abode`, a
+    1-day abode trip) and enters it;
+  - the app posts notification `0x212` (`story_messages::bounty_messages`).
+- port:
+  - the Bounty Hunters unit takes its class's base skills;
+  - the mission leaves from the palace on a 1-day abode trip, as the
+    Dagobah mission does;
+  - only the Bounty mission's captive autoroutes; other captives still
+    stay where they are captured (`FUN_00543360` not read).
+- The port's invented chain (`0x380`..`0x39b`, `0x212`, `0x200`, `0x231`)
+  is gone, since its trigger was the port's own `0x212`.
+- Not ported: HanCapturedAtPalace, the Palace missions, Jabba Captures,
+  DarthPickup and the Pickup mission.
 
 ## Plan
 
