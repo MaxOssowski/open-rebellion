@@ -766,6 +766,14 @@ pub fn run_simulation_tick(
     world.name_flagship_fleets();
 
     // ── 14. Victory check ────────────────────────────────────────────────
+    // The victory conditions word (FUN_005180e0) and its 0x128.
+    if let Some((old, new)) = rebellion_core::victory::advance_conditions_word(
+        &mut states.victory,
+        world,
+        states.campaign_config.victory_conditions,
+    ) {
+        integrator.record_victory_conditions(old, new, current_tick);
+    }
     integrator.emit_victory_check(&states.victory);
     if let Some(outcome) = VictorySystem::check(
         &states.victory,

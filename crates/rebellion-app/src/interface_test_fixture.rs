@@ -1828,6 +1828,10 @@ pub fn post_story_messages(
         .iter()
         .find(|(_, character)| character.is_empire && !character.is_major)
         .map(|(key, _)| key);
+    // Notification 0x128 with the HQ lost and Coruscant the Alliance's.
+    for message in rebellion_render::story_messages::victory_conditions_messages(0x101, 0, texts) {
+        log.push(message);
+    }
     // Emperor Arrives at Coruscant (FUN_0048ce80), the Empire's.
     if let Some(message) = rebellion_render::story_messages::emperor_arrives_message(0, texts) {
         log.push(message);

@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v78, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v79, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-18
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v78, and it is the only one
+serializable snapshot. The current format is v79, and it is the only one
 that loads.
 
-## Native format (v78)
+## Native format (v79)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -55,7 +55,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `death_star` | `DeathStarState` |
 | `research` | `ResearchState`: each side's level, points and Done flag per tree; the invented projects are gone (v36); v65 adds each side's yard research timer `0x381` |
 | `jedi` | `JediState` |
-| `victory` | `VictoryState` |
+| `victory` | `VictoryState`; v79 adds the victory conditions word (galaxy `+0x74`, `victory::conditions_word`) |
 | `betrayal` | `BetrayalState` |
 | `economy` | `EconomyState`; v61 adds each system's smuggling percent (`+0x6c`), v63 the hook inputs last seen, v64 drops the invented maintenance cooldowns, v67 the incident flags and the resource-discovery arming |
 | `autoscrap` | `AutoscrapState`: each side's autoscrap timer `0x382` (v64) |

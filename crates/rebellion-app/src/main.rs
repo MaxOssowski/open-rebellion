@@ -3252,6 +3252,25 @@ async fn main() {
             }
 
             // ── Victory check ────────────────────────────────────────────────
+            // The victory conditions word (FUN_005180e0): each change is
+            // 0x128, Alliance Headquarters Destroyed (FUN_0048e5a0) with
+            // bit 0x1 and Coruscant Captured (FUN_0048f790) while the
+            // Alliance holds Coruscant.
+            if !tick_events.is_empty() {
+                if let Some((_, new)) = rebellion_core::victory::advance_conditions_word(
+                    &mut victory_state,
+                    &world,
+                    campaign_config.victory_conditions,
+                ) {
+                    for message in rebellion_render::story_messages::victory_conditions_messages(
+                        new,
+                        current_tick,
+                        &message_texts,
+                    ) {
+                        msg_log.push(message);
+                    }
+                }
+            }
             if let Some(outcome) = VictorySystem::check(
                 &victory_state,
                 &world,

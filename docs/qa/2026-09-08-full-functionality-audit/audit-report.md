@@ -2592,6 +2592,15 @@ cross-runtime proof remain open
   `0x128`, which drives rows 20 (Coruscant Captured) and 21 (Alliance
   Headquarters Destroyed). The port's `victory.rs` has none of this, and
   porting the rows needs a save format change (v79).
+- 2026-10-18: the victory conditions word is ported (`victory.rs`, save
+  v79). It is checked daily, its changes are notification `0x128`, and
+  the app posts Coruscant Captured and Alliance Headquarters Destroyed.
+  In 24 campaigns the word changed 292 times from the victory
+  characters' captures, but neither the HQ nor Coruscant fell. Deciding
+  the game by its win bits stays with F-005. Golden initial
+  `v1:d8f4a9b46e07169c` -> `v1:e8ceaa386f41cc96`, final
+  `v1:fd4bcf87c87325d6` -> `v1:475c0c0f35968fba`
+  (`evidence/2026-10-18-victory-conditions/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

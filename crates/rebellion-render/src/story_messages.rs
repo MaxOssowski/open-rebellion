@@ -453,6 +453,39 @@ pub fn jabba_captures_message(
     )
 }
 
+/// Notification `0x128`, a change of the victory conditions word
+/// (`ghidra/notes/victory-conditions.md`), for both sides:
+///
+/// - Alliance Headquarters Destroyed (`FUN_0048e5a0`) when the new word
+///   has bit `0x1`: TEXTSTRA `0x7188` / `0x7189`;
+/// - Coruscant Captured (`FUN_0048f790`) while Coruscant is the
+///   Alliance's (bit `0x100`): `0x7170` / `0x7171`.
+///
+/// Neither has a once flag. port: their `+0x5c` (`0x73`, `0x74`; hyp: a
+/// film) and speakers are not read, and they set no background.
+#[must_use]
+pub fn victory_conditions_messages(
+    word: u32,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Vec<GameMessage> {
+    let message = |title: u16, body: u16| {
+        Some(
+            GameMessage::new(tick, texts.get(&body)?.clone(), MessageCategory::Event)
+                .on_rail(STORY_RAIL, RailAudience::Both)
+                .with_title(texts.get(&title)?.clone()),
+        )
+    };
+    let mut out = Vec::new();
+    if word & rebellion_core::victory::WORD_HQ_LOST != 0 {
+        out.extend(message(0x7188, 0x7189));
+    }
+    if word & rebellion_core::victory::WORD_CORUSCANT_ALLIANCE != 0 {
+        out.extend(message(0x7170, 0x7171));
+    }
+    out
+}
+
 /// Emperor Arrives at Coruscant (`FUN_0048ce80`): notification `0x230`
 /// with its argument set, as `SeatOfPower` is set. The Empire alone reads
 /// TEXTSTRA `0x71c8` / `0x71c9` on background `0x42c`.
@@ -1505,6 +1538,47 @@ mod tests {
         let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
         assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
         assert_eq!(lost.picture.expect("a picture").background, 0x428);
+    }
+
+    #[test]
+    fn a_victory_conditions_change_posts_the_hq_and_coruscant_messages() {
+        // FUN_0048e5a0 on bit 0x1, FUN_0048f790 while Coruscant is the
+        // Alliance's (bit 0x100); both sides read them.
+        let texts: HashMap<u16, String> = [
+            (0x7188, "Alliance Headquarters Destroyed"),
+            (
+                0x7189,
+                "The Empire has destroyed the Alliance Headquarters.",
+            ),
+            (0x7170, "Coruscant Captured"),
+            (
+                0x7171,
+                "The Alliance has seized the Imperial capital system of Coruscant.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let titles = |word| {
+            victory_conditions_messages(word, 4, &texts)
+                .into_iter()
+                .map(|m| (m.title.unwrap_or_default(), m.audience))
+                .collect::<Vec<_>>()
+        };
+        assert!(titles(0x10).is_empty());
+        assert_eq!(
+            titles(0x1),
+            [(
+                "Alliance Headquarters Destroyed".to_owned(),
+                RailAudience::Both
+            )]
+        );
+        assert_eq!(
+            titles(0x100),
+            [("Coruscant Captured".to_owned(), RailAudience::Both)]
+        );
+        assert_eq!(titles(0x101).len(), 2);
+        assert!(victory_conditions_messages(0x101, 4, &HashMap::new()).is_empty());
     }
 
     #[test]

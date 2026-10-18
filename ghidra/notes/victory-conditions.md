@@ -70,8 +70,20 @@ The function stores the word in galaxy `+0x74` and marks it changed
 
 ## Against the port
 
-- The port's `victory.rs` keeps its own conditions (`VictoryState`:
-  headquarters keys, Death Star, `resolved`). It has no word, no game
-  type `+0x60` and no `0x128`.
-- Porting rows 20 and 21 needs the word kept between days, which is a
-  save format change (v79). Porting the win rules above is F-005's.
+- The port's `victory.rs` keeps its own win conditions (`VictoryState`:
+  headquarters keys, Death Star, `resolved`). Before 2026-10-18 it had no
+  word and no `0x128`; the game type is `VictoryConditions`.
+- Ported 2026-10-18 (save v79):
+  - `victory::conditions_word` (`FUN_005180e0`) and
+    `advance_conditions_word`;
+  - the word lives in `VictoryState::conditions_word`;
+  - simulation step 14 and the app check it daily before the port's
+    victory check, and record `victory_conditions` (old, new);
+  - the app posts `story_messages::victory_conditions_messages` (rows 20
+    and 21) on each change.
+- port:
+  - the headquarters is the Alliance HQ system, lost when it is
+    destroyed or no longer holds the HQ;
+  - the check runs daily.
+- Not ported: deciding the game by the word's win bits. The port's
+  `VictorySystem::check` still decides it (F-005).

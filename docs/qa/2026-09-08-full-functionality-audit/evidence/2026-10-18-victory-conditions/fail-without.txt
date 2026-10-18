@@ -1,0 +1,4 @@
+    victory::tests::a_change_of_the_word_is_reported_once
+    victory::tests::the_word_s_wins_follow_the_game_type
+    victory::tests::when_both_would_win_the_recorded_win_stands
+test result: FAILED. 14 passed; 3 failed; 0 ignored; 0 measured; 1342 filtered out; finished in 0.00s

@@ -84,6 +84,10 @@ pub struct VictoryState {
     /// Set `true` once a `VictoryOutcome` has been returned to suppress
     /// re-firing on subsequent ticks.
     pub resolved: bool,
+    /// The victory conditions word, galaxy `+0x74` (`FUN_005180e0`), that
+    /// both sides copy to `+0xbc` (`FUN_00518460`; save v79).
+    #[serde(default)]
+    pub conditions_word: u32,
 }
 
 impl VictoryState {
@@ -95,8 +99,135 @@ impl VictoryState {
             death_star_active: false,
             death_star_location: None,
             resolved: false,
+            conditions_word: 0,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// The victory conditions word (`ghidra/notes/victory-conditions.md`)
+// ---------------------------------------------------------------------------
+
+/// Bit `0x1`: the Alliance headquarters is gone or destroyed (`FUN_005180e0`).
+pub const WORD_HQ_LOST: u32 = 0x1;
+/// Bit `0x10`: Luke captured (`FUN_005180e0`).
+pub const WORD_LUKE_CAPTURED: u32 = 0x10;
+/// Bit `0x20`: Mon Mothma captured (`FUN_005180e0`).
+pub const WORD_MON_MOTHMA_CAPTURED: u32 = 0x20;
+/// Bit `0x100`: Coruscant is the Alliance's (`FUN_005180e0`).
+pub const WORD_CORUSCANT_ALLIANCE: u32 = 0x100;
+/// Bit `0x200`: Coruscant destroyed (`FUN_005180e0`).
+pub const WORD_CORUSCANT_DESTROYED: u32 = 0x200;
+/// Bit `0x1000`: Vader captured (`FUN_005180e0`).
+pub const WORD_VADER_CAPTURED: u32 = 0x1000;
+/// Bit `0x2000`: the Emperor captured (`FUN_005180e0`).
+pub const WORD_EMPEROR_CAPTURED: u32 = 0x2000;
+/// Bit `0x100000`: the Empire wins (`FUN_005180e0`).
+pub const WORD_EMPIRE_WINS: u32 = 0x10_0000;
+/// Bit `0x1000000`: the Alliance wins (`FUN_005180e0`).
+pub const WORD_ALLIANCE_WINS: u32 = 0x100_0000;
+/// Bit `0x10000000`: the game is over (`FUN_005180e0`).
+pub const WORD_GAME_OVER: u32 = 0x1000_0000;
+
+/// Luke `0x32000242` (`FUN_005180e0`).
+const LUKE: u32 = 0x242;
+/// Mon Mothma `0x30000240` (`FUN_005180e0`).
+const MON_MOTHMA: u32 = 0x240;
+/// Vader `0x35000281` (`FUN_005180e0`).
+const VADER: u32 = 0x281;
+/// The Emperor `0x34000280` (`FUN_005180e0`).
+const EMPEROR: u32 = 0x280;
+/// Coruscant `0x90000109` (`FUN_005180e0`).
+const CORUSCANT: u32 = 0x109;
+
+/// `FUN_005180e0`: the word, or `None` while one of its characters or
+/// Coruscant is missing. `old` is the stored word, which settles a day on
+/// which both sides would win.
+///
+/// port: the headquarters (`FUN_00506110`) is the Alliance HQ system; it
+/// is lost when the system is destroyed or no longer holds the HQ. A
+/// captive is any captured character (`+0xac` bit 0), as in the original.
+#[must_use]
+pub fn conditions_word(
+    state: &VictoryState,
+    world: &GameWorld,
+    victory_conditions: VictoryConditions,
+) -> Option<u32> {
+    let captured = |index: u32| {
+        world
+            .characters
+            .values()
+            .find(|c| c.dat_id.index() == index)
+            .map(|c| c.is_captive)
+    };
+    let (luke, mon_mothma, vader, emperor) = (
+        captured(LUKE)?,
+        captured(MON_MOTHMA)?,
+        captured(VADER)?,
+        captured(EMPEROR)?,
+    );
+    let coruscant = world
+        .systems
+        .values()
+        .find(|s| s.dat_id.index() == CORUSCANT)?;
+    let hq_lost = world
+        .systems
+        .get(state.alliance_hq)
+        .is_none_or(|sys| sys.is_destroyed || !sys.is_headquarters);
+    let coruscant_alliance = coruscant.control.is_controlled_by(Faction::Alliance);
+    let coruscant_destroyed = coruscant.is_destroyed;
+    let coruscant_taken = coruscant_alliance || coruscant_destroyed;
+    let (mut alliance_wins, mut empire_wins) = match victory_conditions {
+        VictoryConditions::Standard => (
+            vader && emperor && coruscant_taken,
+            luke && mon_mothma && hq_lost,
+        ),
+        VictoryConditions::HeadquartersOnly => (coruscant_taken, hq_lost),
+    };
+    if alliance_wins && empire_wins {
+        // The win already recorded stands; with none, the Alliance's.
+        let old = state.conditions_word;
+        let empire_first = old & WORD_ALLIANCE_WINS == 0 && old & WORD_EMPIRE_WINS != 0;
+        alliance_wins = !empire_first;
+        empire_wins = empire_first;
+    }
+    let bits = [
+        (hq_lost, WORD_HQ_LOST),
+        (luke, WORD_LUKE_CAPTURED),
+        (mon_mothma, WORD_MON_MOTHMA_CAPTURED),
+        (coruscant_alliance, WORD_CORUSCANT_ALLIANCE),
+        (coruscant_destroyed, WORD_CORUSCANT_DESTROYED),
+        (vader, WORD_VADER_CAPTURED),
+        (emperor, WORD_EMPEROR_CAPTURED),
+        (empire_wins, WORD_EMPIRE_WINS),
+        (alliance_wins, WORD_ALLIANCE_WINS),
+        (alliance_wins || empire_wins, WORD_GAME_OVER),
+    ];
+    Some(
+        bits.iter()
+            .filter(|(set, _)| *set)
+            .fold(0, |word, (_, bit)| word | bit),
+    )
+}
+
+/// The day's check of the word (`FUN_005180e0`, copied to both sides by
+/// `FUN_00518460`). Returns `(old, new)` when it changed: notification
+/// `0x128` (`FUN_00532f90`).
+///
+/// port: the original runs the check from its galaxy handlers; the port
+/// runs it each day.
+pub fn advance_conditions_word(
+    state: &mut VictoryState,
+    world: &GameWorld,
+    victory_conditions: VictoryConditions,
+) -> Option<(u32, u32)> {
+    let new = conditions_word(state, world, victory_conditions)?;
+    let old = state.conditions_word;
+    if new == old {
+        return None;
+    }
+    state.conditions_word = new;
+    Some((old, new))
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +421,139 @@ mod tests {
             captured_by: Some(captured_by),
             ..Character::default()
         });
+    }
+
+    /// `make_world` with Coruscant as `0x90000109` and the four victory
+    /// characters, free.
+    fn word_world() -> (GameWorld, VictoryState, [crate::ids::CharacterKey; 4]) {
+        let (mut world, a_hq, e_hq) = make_world();
+        world.systems[e_hq].dat_id = DatId::new(CORUSCANT);
+        let keys = [LUKE, MON_MOTHMA, VADER, EMPEROR].map(|index| {
+            world.characters.insert(Character {
+                dat_id: DatId::new(index),
+                ..Character::default()
+            })
+        });
+        (world, VictoryState::new(a_hq, e_hq), keys)
+    }
+
+    #[test]
+    fn the_victory_conditions_word_carries_its_bits() {
+        // FUN_005180e0: 0x1 HQ lost, 0x10 Luke, 0x20 Mon Mothma, 0x100
+        // Coruscant the Alliance's, 0x200 destroyed, 0x1000 Vader, 0x2000
+        // the Emperor.
+        let (mut world, state, [luke, mon, vader, emperor]) = word_world();
+        let word = |w: &GameWorld| conditions_word(&state, w, VictoryConditions::Standard);
+        assert_eq!(word(&world), Some(0));
+        let cases: [(
+            fn(&mut GameWorld, &VictoryState, [crate::ids::CharacterKey; 4]),
+            u32,
+        ); 7] = [
+            (
+                |w, s, _| w.systems[s.alliance_hq].is_headquarters = false,
+                WORD_HQ_LOST,
+            ),
+            (
+                |w, _, k| w.characters[k[0]].is_captive = true,
+                WORD_LUKE_CAPTURED,
+            ),
+            (
+                |w, _, k| w.characters[k[1]].is_captive = true,
+                WORD_MON_MOTHMA_CAPTURED,
+            ),
+            (
+                |w, s, _| {
+                    w.systems[s.empire_hq].control = ControlKind::Controlled(Faction::Alliance)
+                },
+                WORD_CORUSCANT_ALLIANCE,
+            ),
+            (
+                |w, s, _| w.systems[s.empire_hq].is_destroyed = true,
+                WORD_CORUSCANT_DESTROYED,
+            ),
+            (
+                |w, _, k| w.characters[k[2]].is_captive = true,
+                WORD_VADER_CAPTURED,
+            ),
+            (
+                |w, _, k| w.characters[k[3]].is_captive = true,
+                WORD_EMPEROR_CAPTURED,
+            ),
+        ];
+        for (edit, bit) in cases {
+            let mut w = world.clone();
+            edit(&mut w, &state, [luke, mon, vader, emperor]);
+            assert_eq!(word(&w), Some(bit), "{bit:#x}");
+        }
+        world.systems[state.alliance_hq].is_destroyed = true;
+        assert_eq!(word(&world), Some(WORD_HQ_LOST));
+        world.characters.remove(vader);
+        assert_eq!(word(&world), None, "a missing character builds no word");
+    }
+
+    #[test]
+    fn the_word_s_wins_follow_the_game_type() {
+        // FUN_005180e0, galaxy +0x60: 0 needs the leaders captured, 1 only
+        // the HQ or Coruscant.
+        let (mut world, state, [luke, mon, vader, emperor]) = word_world();
+        world.systems[state.alliance_hq].is_headquarters = false;
+        let word = |w: &GameWorld, c| conditions_word(&state, w, c).unwrap();
+        let over = WORD_EMPIRE_WINS | WORD_GAME_OVER;
+        assert_eq!(
+            word(&world, VictoryConditions::HeadquartersOnly) & over,
+            over
+        );
+        assert_eq!(word(&world, VictoryConditions::Standard) & over, 0);
+        world.characters[luke].is_captive = true;
+        assert_eq!(word(&world, VictoryConditions::Standard) & over, 0);
+        world.characters[mon].is_captive = true;
+        assert_eq!(word(&world, VictoryConditions::Standard) & over, over);
+
+        let (mut world, state, _) = word_world();
+        world.systems[state.empire_hq].is_destroyed = true;
+        let over = WORD_ALLIANCE_WINS | WORD_GAME_OVER;
+        assert_eq!(
+            conditions_word(&state, &world, VictoryConditions::HeadquartersOnly).unwrap() & over,
+            over
+        );
+        world.characters[vader].is_captive = true;
+        world.characters[emperor].is_captive = true;
+        assert_eq!(
+            conditions_word(&state, &world, VictoryConditions::Standard).unwrap() & over,
+            over
+        );
+    }
+
+    #[test]
+    fn when_both_would_win_the_recorded_win_stands() {
+        // FUN_005180e0: with both wins, 0x1000000 in the old word keeps the
+        // Alliance's, else 0x100000 the Empire's, else the Alliance's.
+        let (mut world, mut state, _) = word_world();
+        world.systems[state.alliance_hq].is_headquarters = false;
+        world.systems[state.empire_hq].is_destroyed = true;
+        let wins = |state: &VictoryState| {
+            conditions_word(state, &world, VictoryConditions::HeadquartersOnly).unwrap()
+                & (WORD_ALLIANCE_WINS | WORD_EMPIRE_WINS)
+        };
+        assert_eq!(wins(&state), WORD_ALLIANCE_WINS);
+        state.conditions_word = WORD_EMPIRE_WINS;
+        assert_eq!(wins(&state), WORD_EMPIRE_WINS);
+        state.conditions_word = WORD_EMPIRE_WINS | WORD_ALLIANCE_WINS;
+        assert_eq!(wins(&state), WORD_ALLIANCE_WINS);
+    }
+
+    #[test]
+    fn a_change_of_the_word_is_reported_once() {
+        // FUN_00532f90 posts 0x128 on a change of +0xbc (old, new).
+        let (mut world, mut state, [luke, ..]) = word_world();
+        let advance = |state: &mut VictoryState, w: &GameWorld| {
+            advance_conditions_word(state, w, VictoryConditions::Standard)
+        };
+        assert_eq!(advance(&mut state, &world), None);
+        world.characters[luke].is_captive = true;
+        assert_eq!(advance(&mut state, &world), Some((0, WORD_LUKE_CAPTURED)));
+        assert_eq!(state.conditions_word, WORD_LUKE_CAPTURED);
+        assert_eq!(advance(&mut state, &world), None);
     }
 
     #[test]

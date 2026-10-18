@@ -74,8 +74,8 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 17 | Character Discovers Traitor | `0x361` | `FUN_0048c9c0` (`0x65b2f0`) | side, the discoverer's portrait | `0x71e8` / `0x71e9` | one side, by `FUN_004edc80` | missing |
 | 18 | Killed by Imperial Assassins | `0x306` | `FUN_0048b050` (`0x65b140`) | `0x42e` | `0x7208` / `0x7209` | Alliance only | mapped 2026-10-18 (`assassins_message`, an assassination that kills; "Delivery") |
 | 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | both | mapped 2026-10-18 (`death_star_sabotaged_message`, a DS Sabotage that destroys it; "Delivery") |
-| 20 | Coruscant Captured | `0x128` | `FUN_0048f790` (`0x65b568`) | — | `0x7170` / `0x7171` | when the Alliance holds `0x90000109` | missing; trigger read 2026-10-18 (`victory-conditions.md`, the 0x128 word), port needs save v79 |
-| 21 | Alliance Headquarters Destroyed | `0x128`, arg bit 0 | `FUN_0048e5a0` (`0x65b450`) | — | `0x7188` / `0x7189` | both | missing; trigger read 2026-10-18 (`victory-conditions.md`, the 0x128 word), port needs save v79 |
+| 20 | Coruscant Captured | `0x128` | `FUN_0048f790` (`0x65b568`) | — | `0x7170` / `0x7171` | when the Alliance holds `0x90000109` | mapped 2026-10-18 (`victory_conditions_messages`, the word's `0x128`, save v79) |
+| 21 | Alliance Headquarters Destroyed | `0x128`, arg bit 0 | `FUN_0048e5a0` (`0x65b450`) | — | `0x7188` / `0x7189` | both | mapped 2026-10-18 (`victory_conditions_messages`, the word's `0x128`, save v79) |
 
 Notes on the rows:
 

@@ -28,7 +28,7 @@ use rebellion_core::game_events::{
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
     EVT_CONFRONTATION, EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_ENCOUNTER,
-    EVT_FORCE_EXPERIENCE, EVT_STORY_FINAL_BATTLE, EVT_STORY_JABBA, EVT_STORY_SEAT_OF_POWER,
+    EVT_FORCE_EXPERIENCE, EVT_STORY_FINAL_BATTLE, EVT_STORY_JABBA, EVT_STORY_SEAT_OF_POWER, EVT_VICTORY_CONDITIONS,
     EVT_GARRISON_REQUIRED, EVT_HERITAGE_LEARNED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL,
     EVT_JEDI_CHECK, EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
@@ -832,6 +832,18 @@ impl PerceptionIntegrator {
             SYS_STORY,
             EVT_STORY_FINAL_BATTLE,
             details,
+        ));
+    }
+
+    /// Record a change of the victory conditions word (notification
+    /// `0x128`, `victory::advance_conditions_word`).
+    pub fn record_victory_conditions(&mut self, old: u32, new: u32, tick: u64) {
+        self.events.push(GameEventRecord::new(
+            tick,
+            self.wall_ms,
+            SYS_VICTORY,
+            EVT_VICTORY_CONDITIONS,
+            serde_json::json!({ "old": old, "new": new }),
         ));
     }
 
