@@ -1,0 +1,146 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "deaths_by_injury": {
+  "1": [
+   [
+    489,
+    "Jerjerrod"
+   ],
+   [
+    738,
+    "Bin Essada"
+   ],
+   [
+    989,
+    "Vanden Willard"
+   ]
+  ],
+  "2": [
+   [
+    1103,
+    "Pellaeon"
+   ]
+  ],
+  "3": [
+   [
+    964,
+    "Drayson"
+   ],
+   [
+    1221,
+    "Pter Thanas"
+   ]
+  ],
+  "5": [
+   [
+    1419,
+    "Jerjerrod"
+   ]
+  ],
+  "7": [
+   [
+    1359,
+    "Pter Thanas"
+   ]
+  ],
+  "10": [
+   [
+    677,
+    "Jerjerrod"
+   ],
+   [
+    1441,
+    "Bin Essada"
+   ]
+  ],
+  "11": [
+   [
+    1069,
+    "Bevel Lemelisk"
+   ]
+  ],
+  "12": [
+   [
+    379,
+    "Carlist Rieekan"
+   ],
+   [
+    1043,
+    "Piett"
+   ],
+   [
+    1209,
+    "Pter Thanas"
+   ],
+   [
+    1471,
+    "Bin Essada"
+   ]
+  ],
+  "13": [
+   [
+    1232,
+    "Jerjerrod"
+   ]
+  ],
+  "14": [
+   [
+    1098,
+    "Jan Dodonna"
+   ],
+   [
+    1433,
+    "Piett"
+   ]
+  ],
+  "16": [
+   [
+    552,
+    "Pter Thanas"
+   ]
+  ],
+  "18": [
+   [
+    744,
+    "Pellaeon"
+   ],
+   [
+    750,
+    "Pter Thanas"
+   ]
+  ],
+  "21": [
+   [
+    1267,
+    "Pellaeon"
+   ]
+  ],
+  "22": [
+   [
+    626,
+    "Drayson"
+   ],
+   [
+    1099,
+    "Bin Essada"
+   ],
+   [
+    1144,
+    "Jerjerrod"
+   ]
+  ],
+  "23": [
+   [
+    1157,
+    "Bin Essada"
+   ]
+  ]
+ },
+ "totals": {
+  "Bounty_Failure": 22,
+  "killed_injury": 26,
+  "Bounty_Success": 2,
+  "Palace_Failure": 1,
+  "Palace_Success": 2
+ }
+}

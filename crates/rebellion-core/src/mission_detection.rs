@@ -656,6 +656,10 @@ impl Run<'_> {
             return 0;
         };
         out.push(MissionEffect::CharacterInjured { character, injury });
+        // Slot +0x2f0 (FUN_004ef6d0, reason 10) then asks slot +0x2e0.
+        if dies_of_injury(self.world, character, rng) {
+            out.push(MissionEffect::DiedOfInjury { character });
+        }
         injury
     }
 
@@ -1081,6 +1085,10 @@ impl Run<'_> {
                     character: member,
                     injury: member_injury,
                 });
+                // Slot +0x2f0 asks slot +0x2e0 whether the injury kills.
+                if dies_of_injury(self.world, member, rng) {
+                    out.push(MissionEffect::DiedOfInjury { character: member });
+                }
             }
         }
         let partner_injury = duel(rng, partner_combat, member_combat);
@@ -1089,6 +1097,9 @@ impl Run<'_> {
                 character: partner,
                 injury: partner_injury,
             });
+            if dies_of_injury(self.world, partner, rng) {
+                out.push(MissionEffect::DiedOfInjury { character: partner });
+            }
         }
         let gain = param(
             self.world,
@@ -2201,10 +2212,42 @@ mod tests {
     }
 
     #[test]
+    fn an_injured_minor_member_dies_on_the_death_roll_and_a_major_one_never() {
+        // Slot +0x2f0 (FUN_004ef6d0, reason 10) after the evasion injury:
+        // slot +0x2e0 kills a minor character with GNPRTB 2577 (100 here);
+        // a major character's (FUN_006158b0) never does.
+        let (mut world, here) = world_with(imperial());
+        imperial_regiment(&mut world, here);
+        table(&mut world, FOILTB, 100);
+        table(&mut world, RLEVADTB, 100);
+        world.gnprtb = crate::world::GnprtbParams::uniform(&[(2565, 100), (2577, 100)]);
+        let lead = skilled(&mut world, here, 0x30, 0, 30);
+        let mut mission = sabotage(vec![lead], here, 2);
+        let out = run_seeded(&mut mission, &world, 0.0);
+        assert!(out.contains(&MissionEffect::DiedOfInjury {
+            character: character(lead)
+        }));
+
+        let MissionMember::Character(key) = lead else {
+            unreachable!()
+        };
+        world.characters[key].is_major = true;
+        let mut mission = sabotage(vec![lead], here, 2);
+        let out = run_seeded(&mut mission, &world, 0.0);
+        assert!(out
+            .iter()
+            .any(|e| matches!(e, MissionEffect::CharacterInjured { .. })));
+        assert!(!out
+            .iter()
+            .any(|e| matches!(e, MissionEffect::DiedOfInjury { .. })));
+    }
+
+    #[test]
     fn an_evading_member_s_injury_draws_after_the_detection_and_evasion_rolls() {
         // FUN_0053e990 with combat 30: chance max(G2565, 70) = 70, injury
         // rand(70) + rand(G2567 = 29) + G2566 = 1. Before it the run draws
-        // FOILTB's chance, the defender pick draw(0), and RLEVADTB's chance.
+        // FOILTB's chance, the defender pick draw(0), and RLEVADTB's chance;
+        // after it slot +0x2e0 rolls a minor character's death (G2577, 25).
         let (mut world, here) = world_with(imperial());
         imperial_regiment(&mut world, here);
         table(&mut world, FOILTB, 100);
@@ -2220,13 +2263,16 @@ mod tests {
         expected.draw(99);
         assert!(expected.chance(70), "the seed should reach the injury");
         let injury = expected.draw(70) + expected.draw(29) + 1;
-        assert_eq!(
-            out,
-            vec![MissionEffect::CharacterInjured {
+        let mut effects = vec![MissionEffect::CharacterInjured {
+            character: character(lead),
+            injury,
+        }];
+        if expected.chance(25) {
+            effects.push(MissionEffect::DiedOfInjury {
                 character: character(lead),
-                injury
-            }]
-        );
+            });
+        }
+        assert_eq!(out, effects);
     }
 
     #[test]

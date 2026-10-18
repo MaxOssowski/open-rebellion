@@ -153,6 +153,9 @@ pub enum IncidentLoss {
         character: CharacterKey,
         injury: i32,
     },
+    /// Code 3's injury killed a minor character: slot `+0x2f0`
+    /// (`FUN_004ef6d0`) destroys it when slot `+0x2e0` says so.
+    CharacterKilled(CharacterKey),
     /// Codes 4 and 5: a prisoner the holding side keeps at the system goes
     /// free (slot `+0x214`, `FUN_004ef570`).
     PrisonerFreed(CharacterKey),
@@ -343,9 +346,10 @@ pub(crate) fn roll_injury(
 /// Stateless uprising and disaster evaluator.
 pub struct UprisingSystem;
 
-/// The most draws one incident takes: two score draws, up to four per outcome
-/// code (the code 3 pick, chance and two injury draws), and the next delay.
-const INCIDENT_ROLLS: usize = 11;
+/// The most draws one incident takes: two score draws, up to five per outcome
+/// code (the code 3 pick, chance, two injury draws and the death roll), and
+/// the next delay.
+const INCIDENT_ROLLS: usize = 13;
 
 impl UprisingSystem {
     /// The most rolls [`Self::advance`] can draw at `tick`, for the caller to
@@ -863,6 +867,9 @@ fn apply_code(
                     rolls,
                 ) {
                     losses.push(IncidentLoss::CharacterInjured { character, injury });
+                    if crate::mission_detection::dies_of_injury(world, character, rolls) {
+                        losses.push(IncidentLoss::CharacterKilled(character));
+                    }
                 }
             }
         }
@@ -1157,6 +1164,9 @@ pub fn apply_uprising_event(world: &mut GameWorld, event: &UprisingEvent) {
                         if let Some(c) = world.characters.get_mut(*character) {
                             c.injure(*injury);
                         }
+                    }
+                    IncidentLoss::CharacterKilled(character) => {
+                        crate::missions::kill_character(world, *character);
                     }
                     IncidentLoss::PrisonerFreed(character) => {
                         if let Some(c) = world.characters.get_mut(*character) {
@@ -2628,9 +2638,10 @@ mod tests {
         let mut state = in_revolt(system, 5);
         state.next_disaster_tick = Some(5);
         let budget = UprisingSystem::roll_budget(&state, &world, 5);
-        // One system, one due incident (11), and the disaster: pick and delay
-        // (2), 12 raw, 9 energy and four facilities.
-        assert_eq!(budget, 1 + 11 + 2 + 12 + 9 + 4);
+        // One system, one due incident (13, with code 3's death roll), and
+        // the disaster: pick and delay (2), 12 raw, 9 energy and four
+        // facilities.
+        assert_eq!(budget, 1 + 13 + 2 + 12 + 9 + 4);
         let mut quiet = in_revolt(system, 6);
         quiet.next_disaster_tick = None;
         assert_eq!(UprisingSystem::roll_budget(&quiet, &world, 5), 1 + 1);
@@ -2757,6 +2768,62 @@ mod tests {
         assert_eq!(codes, &[1, 3]);
         assert_eq!(
             losses,
+            &[IncidentLoss::CharacterInjured {
+                character: agent,
+                injury: 70
+            }]
+        );
+    }
+
+    #[test]
+    fn code_three_s_injury_kills_a_minor_character_on_the_death_roll() {
+        // Slot +0x2f0 (FUN_004ef6d0) asks slot +0x2e0: a minor character
+        // (FUN_0056f160 -> FUN_0053eb30) dies with GNPRTB 2577 (25), here
+        // on a draw of 0; a major one draws nothing and lives.
+        let (mut world, system) = world_with(Faction::Alliance, 0.0);
+        let agent = world.characters.insert(Character {
+            is_alliance: true,
+            current_system: Some(system),
+            combat: SkillPair {
+                base: 50,
+                variance: 20,
+            },
+            ..Character::default()
+        });
+        let rolls = [0.0, 0.15, 0.999, d(39), 0.999, 0.999, 0.0];
+        let run = |world: &GameWorld| {
+            let mut state = in_revolt(system, 5);
+            UprisingSystem::advance(
+                &mut state,
+                world,
+                &short_of_troops(system, -1),
+                &MissionState::new(),
+                &at(5),
+                &rolls,
+            )
+        };
+        let events = run(&world);
+        assert_eq!(
+            incident(&events).1,
+            &[
+                IncidentLoss::CharacterInjured {
+                    character: agent,
+                    injury: 70
+                },
+                IncidentLoss::CharacterKilled(agent)
+            ]
+        );
+        for event in &events {
+            apply_uprising_event(&mut world, event);
+        }
+        assert!(world.characters[agent].is_killed);
+
+        world.characters[agent].is_killed = false;
+        world.characters[agent].current_system = Some(system);
+        world.characters[agent].injury = 0;
+        world.characters[agent].is_major = true;
+        assert_eq!(
+            incident(&run(&world)).1,
             &[IncidentLoss::CharacterInjured {
                 character: agent,
                 injury: 70

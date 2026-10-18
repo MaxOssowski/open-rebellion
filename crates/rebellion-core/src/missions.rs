@@ -1378,6 +1378,7 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
                     c.escape_barred = true;
                 }
             }
+            MissionEffect::DiedOfInjury { character } => kill_character(world, *character),
             _ => {}
         }
     }
@@ -1490,6 +1491,19 @@ pub fn capture_character(
     }
     for (_, fleet) in &mut world.fleets {
         fleet.characters.retain(|&k| k != character);
+    }
+}
+
+/// A character destroyed: off every fleet roster, out of its abode, and
+/// marked killed (kept in the arena for lookups, as the integrator's
+/// assassination arm does).
+pub fn kill_character(world: &mut GameWorld, character: CharacterKey) {
+    for (_, fleet) in &mut world.fleets {
+        fleet.characters.retain(|&k| k != character);
+    }
+    if let Some(c) = world.characters.get_mut(character) {
+        c.mark_killed();
+        c.current_abode = None;
     }
 }
 
@@ -2066,6 +2080,10 @@ pub enum MissionEffect {
     /// The Bounty mission captured Han (`FUN_00575de0`): `CanEscape` cleared
     /// (`FUN_004eeb10(0)`) and `CapturedByBountyHunters` set (`FUN_00572700`).
     CapturedByBountyHunters { character: CharacterKey },
+    /// An injury killed a minor character: slot `+0x2f0` (`FUN_004ef6d0`)
+    /// destroys it when slot `+0x2e0` says so
+    /// ([`crate::mission_detection::dies_of_injury`]).
+    DiedOfInjury { character: CharacterKey },
     /// A prisoner loses `CanEscape` (`FUN_004eeb10(0)`): a rescuer the
     /// Palace mission's failure leaves captive (`FUN_0056e870`).
     EscapeBarred { character: CharacterKey },
@@ -6104,6 +6122,36 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_character_dead_of_its_injury_leaves_its_fleet_and_abode() {
+        // Slot +0x2f0's destruction: the port marks the character killed
+        // and takes it off every roster.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let victim = agent_at(&mut world, here, true);
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: here,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![victim],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.characters[victim].current_fleet = Some(fleet);
+        world.characters[victim].current_abode = Some(crate::ids::AbodeKey::default());
+        apply_advance_effects(
+            &mut world,
+            &[MissionEffect::DiedOfInjury { character: victim }],
+        );
+        let c = &world.characters[victim];
+        assert!(c.is_killed);
+        assert_eq!(
+            (c.current_fleet, c.current_abode, c.current_system),
+            (None, None, None)
+        );
+        assert!(world.fleets[fleet].characters.is_empty());
     }
 
     #[test]

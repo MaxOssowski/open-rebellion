@@ -680,6 +680,18 @@ impl PerceptionIntegrator {
                         }),
                     ));
                 }
+                MissionEffect::DiedOfInjury { character } => {
+                    self.events.push(GameEventRecord::new(
+                        tick,
+                        self.wall_ms,
+                        SYS_MISSIONS,
+                        EVT_CHARACTER_KILLED,
+                        serde_json::json!({
+                            "character": name(*character),
+                            "cause": "injury",
+                        }),
+                    ));
+                }
                 MissionEffect::DagobahCompleted {
                     character,
                     force_gain,
@@ -1724,6 +1736,15 @@ impl PerceptionIntegrator {
                         "system": sys_name(world, *system),
                         "codes": codes,
                         "losses": losses.len(),
+                        "killed": losses
+                            .iter()
+                            .filter_map(|loss| match loss {
+                                rebellion_core::uprising::IncidentLoss::CharacterKilled(c) => {
+                                    Some(char_name(world, *c))
+                                }
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>(),
                         "support_delta": support_delta,
                     }),
                 ),
@@ -2125,7 +2146,8 @@ fn apply_mission_effects_inner(
             | MissionEffect::EncounterEnded { .. }
             | MissionEffect::HeritageLearned { .. }
             | MissionEffect::CapturedByBountyHunters { .. }
-            | MissionEffect::EscapeBarred { .. } => {
+            | MissionEffect::EscapeBarred { .. }
+            | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(
                     world,
                     std::slice::from_ref(effect),

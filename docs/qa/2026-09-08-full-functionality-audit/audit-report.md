@@ -2550,6 +2550,13 @@ cross-runtime proof remain open
   palace story happens in play (seeds 16 and 19). The golden is unchanged
   (`evidence/2026-10-18-assassination/`). Open: death by injury after the
   other injuries.
+- 2026-10-18: death by injury is ported for every injury that passes
+  slot `+0x2f0`: the detection's evasion and capture injuries, the Force
+  duel, the uprising incident and the assassination. A minor character
+  dies with GNPRTB 2577 (25 percent), a major one never. In 24 campaigns
+  26 minor characters die, and seed 16 shows a failed rescue at Jabba's
+  palace followed by Luke's success. The golden is unchanged
+  (`evidence/2026-10-18-death-by-injury/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

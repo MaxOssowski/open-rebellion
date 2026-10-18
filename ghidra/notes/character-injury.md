@@ -84,7 +84,7 @@ walks).
 
 Not ported yet: the command clearing (the port keeps no command
 `+0x96`) and the `Damaged` bit. Death by injury for the `0x00665be0`
-subclass is ported for the assassination only (below).
+subclass is ported for every injury (below).
 
 ## Correction (2026-10-18)
 
@@ -117,6 +117,11 @@ stores them (`evidence/2026-10-18-evade-force/`).
   (`mission_detection::assassination_injury`, `dies_of_injury`). Before
   this, the port's assassination always killed. In 24 campaigns of 1500
   days it had killed Han 22 times, Mon Mothma 21, Leia 18 and Luke 5.
-- Not ported yet: the same death roll after the other injuries (the
-  detection's evasion and capture injuries, the Force duel, the uprising
-  incident).
+- Ported later the same day: the same death roll after the other
+  injuries that pass slot `+0x2f0`. These are the detection's evasion and
+  capture injuries (`FUN_004ef5f0`, reason 10), the Force duel
+  (`FUN_0053ea70`), and the uprising incident's code 3. A death is
+  `MissionEffect::DiedOfInjury` or `IncidentLoss::CharacterKilled`
+  (`missions::kill_character`), and the telemetry records
+  `character_killed` with cause `injury`. Luke's wound, the Final Battle
+  and the Bounty hit only injure major characters, which draw nothing.

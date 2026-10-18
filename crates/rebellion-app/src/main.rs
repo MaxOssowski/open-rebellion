@@ -8121,7 +8121,8 @@ fn apply_mission_result(
             | MissionEffect::EncounterEnded { .. }
             | MissionEffect::HeritageLearned { .. }
             | MissionEffect::CapturedByBountyHunters { .. }
-            | MissionEffect::EscapeBarred { .. } => {
+            | MissionEffect::EscapeBarred { .. }
+            | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             }
             // Notifications 0x212 and 0x231: their messages are posted
