@@ -1,0 +1,35 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": {
+  "missions": 11778,
+  "moves": 27646,
+  "resolved_Success": 18695,
+  "resolved_Failure": 6829,
+  "dispatched_Abduction": 185,
+  "Abduction_Success": 129,
+  "Abduction_Failure": 8,
+  "dispatched_Espionage": 2545,
+  "dispatched_Assassination": 426
+ },
+ "after": {
+  "missions": 12351,
+  "moves": 26134,
+  "resolved_Success": 18008,
+  "resolved_Failure": 7504,
+  "dispatched_Abduction": 558,
+  "Abduction_Success": 136,
+  "Abduction_Failure": 276,
+  "dispatched_Espionage": 2639,
+  "dispatched_Assassination": 379
+ },
+ "systems_at_day_1500": {
+  "before": {
+   "alliance": 607,
+   "empire": 539
+  },
+  "after": {
+   "alliance": 599,
+   "empire": 540
+  }
+ }
+}

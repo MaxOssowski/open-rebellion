@@ -1,0 +1,3 @@
+test ai::tests::an_abduction_goes_where_the_gathered_decoys_match_half_the_defense ... FAILED
+    ai::tests::an_abduction_goes_where_the_gathered_decoys_match_half_the_defense
+test result: FAILED. 123 passed; 1 failed; 0 ignored; 0 measured; 1255 filtered out; finished in 0.00s

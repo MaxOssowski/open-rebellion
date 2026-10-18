@@ -1310,6 +1310,59 @@ Campaigns: 24 seeds of 1500 days, against the Espionage commit.
 - Systems held at the end, summed over the seeds: Alliance 415 and 399,
   Empire 412 and 416.
 
+## The Abduction planner (read and ported 2026-10-19)
+
+The Abduction planner class has vtable `0x0065a9f8`:
+
+| Slot | Function | Meaning |
+|---|---|---|
+| `+0x18` | `FUN_004831f0` | the cancel key: the team's records' `+0x54` summed (combat) |
+| `+0x40` | `FUN_004831e0` | 6: the count `S+0x338` |
+| `+0x44` | `FUN_004047d0` | 4: the decoy cap |
+| `+0x48` | `FUN_00483290` | the team (2, combat 51..) |
+| `+0x4c` | `FUN_00483410` | the decoys (special forces). It runs even without a team |
+| `+0x50` | `FUN_00483640` | state 5, the target |
+
+**The want.** Row 9 asks while `S+0x338 < 1` and cancels while above 1, so
+the side keeps one Abduction planner all game.
+
+**The target, `FUN_00483640`.** It first counts the decoys standing free
+at the gathering place `+0x38` (`FUN_004bd000`, over list `+0x44`). It
+keeps its character `+0x30` while that still stands at `+0x34` (the walk
+up its containers) with record `+0x30` 8 and 4 and no `0x60`.
+Otherwise it lists the systems holding an opponent's main character:
+- the sectors with `+0x28` `0x100`, by key `+0x174`, order 1, taken in
+  turn;
+- in each, the systems with `+0x2c` `0x1000` (one on the planet), by
+  key `v[47]`, order 1, then those with `0x2000` (one aboard a fleet),
+  order 2.
+
+It takes the first system where the gathered decoys equal the cap or
+reach half the record's `+0xbc` (its defense).
+
+`FUN_00483d10` then picks the character. It lists the opponent's main
+characters (record 8 and 4):
+- on the planet, when the record has `0x1000`;
+- aboard a fleet there that is not the side's and carries one (fleet
+  record `+0x38` `0x200000`), when it has `0x2000`.
+
+It takes one by `FUN_0041cd80(count)`. System bit `0x2000` comes from a
+fleet record with `0x200000`, which a ship carrying a free opponent main
+character sets (ship `0x40000`).
+
+**Ported**:
+- `abduction_target`, `abduction_character`, and row 9 in
+  `mission_strategy`;
+- the heuristic Abduction (the weakest enemy characters first) is
+  removed.
+- port: the candidates are taken in the world's character order.
+
+Campaigns: 24 seeds of 1500 days, against the report-slots commit.
+- Abduction orders: 185 before, 558 after. Results: 129 successes and 8
+  failures before, 136 and 276 after.
+- Systems held at the end, summed over the seeds: Alliance 607 and 599,
+  Empire 539 and 540.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

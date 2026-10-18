@@ -2717,6 +2717,14 @@ cross-runtime proof remain open
   missions now report to their planners. Golden final
   `v1:45ce6a74e7ac0f51` -> `v1:75f7a5f65cee3222`
   (`evidence/2026-10-19-report-slots/`).
+- 2026-10-19 (F-036): the AI's Abduction planner is the original's. The
+  strategy keeps one all game (`FUN_004e8290` row 9). It targets the
+  first system holding an opponent's main character whose defense its
+  gathered decoys can cover (`FUN_00483640`), then a random such
+  character there (`FUN_00483d10`). The heuristic, which went for the
+  weakest enemy characters, is removed. Golden final
+  `v1:75f7a5f65cee3222` -> `v1:03a36c82837d1ce1`
+  (`evidence/2026-10-19-abduction-planner/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

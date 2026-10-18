@@ -1714,7 +1714,7 @@ impl AISystem {
     /// - state 5 (slot `+0x50`): a standing planner's target
     ///   ([`recruitment_target`], [`diplomacy_target`],
     ///   [`incite_target`], [`subdue_target`], [`recon_target`],
-    ///   [`espionage_target`]);
+    ///   [`espionage_target`], [`abduction_target`]);
     /// - state 6 ([`staging_point`]): the gathering place;
     /// - state 7 (`FUN_004bd570`): each free member away from it gets a
     ///   Move order there (`0x201`, the Move pseudo-mission);
@@ -1768,6 +1768,7 @@ impl AISystem {
                     MissionKind::Espionage => {
                         espionage_target(p, planner, galaxy, sector_claims, (tick, seen))
                     }
+                    MissionKind::Abduction => abduction_target(p, planner, world, galaxy),
                     _ => diplomacy_target(p, planner, galaxy, claims),
                 };
             }
@@ -1957,6 +1958,8 @@ impl AISystem {
     ///   [`incite_wanted`]; the weakest by leadership (`FUN_0047fef0`:
     ///   record `+0x58`).
     ///
+    /// - row 9, Abduction (count `+0x338`, slot `+0x40` 6, `FUN_004831e0`):
+    ///   one; the weakest by combat (`FUN_004831f0`: record `+0x54`);
     /// - row 11, Reconnaissance (count `+0x344`, slot `+0x40` 9,
     ///   `FUN_0047f670`): as many as the side's sector planners (controller
     ///   `+0xd8`, module 8); the weakest by espionage (`FUN_0047f680`:
@@ -1968,7 +1971,7 @@ impl AISystem {
     ///   by espionage (`FUN_00480e10`: record `+0x44`).
     ///
     /// port: rows 2 to 4 are the research planners
-    /// ([`Self::research_strategy`]) and rows 8 to 10 are not yet ported,
+    /// ([`Self::research_strategy`]) and rows 8 and 10 are not yet ported,
     /// so the rows are not ordered behind each other, and each count
     /// reaches its want within one step (the original asks once per
     /// strategy pass).
@@ -2017,6 +2020,12 @@ impl AISystem {
             world,
             galaxy,
             (MissionKind::Reconnaissance, scouts, Skill::Espionage),
+        );
+        Self::keep_planners(
+            state,
+            world,
+            galaxy,
+            (MissionKind::Abduction, 1, Skill::Combat),
         );
         let held = galaxy.sectors.iter().filter(|s| s.summary & 8 != 0).count();
         let spies = held.saturating_sub(scouts);
@@ -2134,15 +2143,15 @@ impl AISystem {
     // Espionage heuristics
     // -----------------------------------------------------------------------
 
-    /// Dispatch covert operatives on Sabotage, Assassination and Abduction
-    /// missions against the enemy faction. Espionage is the strategy's
-    /// ([`Self::mission_strategy`], [`espionage_target`]).
+    /// Dispatch covert operatives on Sabotage and Assassination missions
+    /// against the enemy faction. Espionage and Abduction are the
+    /// strategy's ([`Self::mission_strategy`]).
     ///
     /// port: the targets are the port's (side `+0x318` is untraced); the
     /// planner of each kind picks the members (`crate::mission_planning`).
     /// 1. **Sabotage**: enemy systems with manufacturing facilities, the most
     ///    first.
-    /// 2. **Assassination**, then **Abduction**: enemy characters.
+    /// 2. **Assassination**: enemy characters.
     ///
     /// At most `max_covert_ops_per_eval` covert missions are queued per pass,
     /// and a kind stops once its planner finds no team.
@@ -2210,7 +2219,7 @@ impl AISystem {
             ops_queued += 1;
         }
 
-        // ── Priority 2: Assassination, then Abduction, of enemy characters ──
+        // ── Priority 2: Assassination of enemy characters ──
         // The target chooser (FUN_004bd0a0) sends the order to the target's
         // system; a character in a fleet stands at the fleet's system.
         let whereabouts = |c: &Character| {
@@ -2228,36 +2237,12 @@ impl AISystem {
             .filter_map(|(key, c)| whereabouts(c).map(|system| (key, system)))
             .collect();
 
-        // Abduction targets: ALL enemy characters, sorted by lowest combat defense
-        // (weakest first) to maximize capture probability.
-        let mut abduction_targets: Vec<(CharacterKey, SystemKey, u32)> = world
-            .characters
-            .iter()
-            .filter(|(_, c)| !faction.owns_character(c) && !c.is_captive && !c.is_killed)
-            .filter_map(|(key, c)| {
-                let defense = c.combat.base + c.combat.variance / 2;
-                whereabouts(c).map(|system| (key, system, defense))
-            })
-            .collect();
-        abduction_targets.sort_by_key(|a| a.2);
-
         for &(target_char, target_sys) in &enemy_major_chars {
             if ops_queued >= config.ai.max_covert_ops_per_eval {
                 break;
             }
             let target = (target_sys, Some(target_char));
             if !Self::dispatch_planned(planner, MissionKind::Assassination, target, None, actions) {
-                break;
-            }
-            ops_queued += 1;
-        }
-
-        for &(target_char, target_sys, _) in &abduction_targets {
-            if ops_queued >= config.ai.max_covert_ops_per_eval {
-                break;
-            }
-            let target = (target_sys, Some(target_char));
-            if !Self::dispatch_planned(planner, MissionKind::Abduction, target, None, actions) {
                 break;
             }
             ops_queued += 1;
@@ -3602,6 +3587,140 @@ fn espionage_target(
     Some(target)
 }
 
+/// Whether `character` is an opponent's main character free in the field
+/// for the side's records (`+0x30` bits 8 and 4, `FUN_00401d20`).
+fn enemy_main(planner: &Planner<'_>, character: CharacterKey) -> bool {
+    planner
+        .flags(crate::missions::MissionMember::Character(character))
+        .is_some_and(|f| f & 0xc == 0xc)
+}
+
+/// `FUN_00483d10`: a random opponent's main character (record `+0x30` 8
+/// and 4) at `system`: on the planet when its record has `+0x2c` `0x1000`,
+/// and aboard a fleet there not the side's carrying one (fleet record
+/// `+0x38` `0x200000`) when it has `0x2000`; the draw is
+/// `FUN_0041cd80(count)`.
+///
+/// port: the candidates are taken in the world's character order.
+fn abduction_character(
+    planner: &mut Planner<'_>,
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+    system: SystemKey,
+) -> Option<CharacterKey> {
+    let record = galaxy.system(system)?;
+    let sys = world.systems.get(system)?;
+    let mut candidates: Vec<CharacterKey> = Vec::new();
+    if record.summary & 0x1000 != 0 {
+        candidates.extend(world.characters.iter().filter_map(|(key, c)| {
+            (!c.is_killed
+                && c.current_system == Some(system)
+                && c.current_fleet.is_none()
+                && enemy_main(planner, key))
+            .then_some(key)
+        }));
+    }
+    if record.summary & 0x2000 != 0 {
+        for &fleet in &sys.fleets {
+            let carrying = galaxy.fleets.get(&fleet).is_some_and(|r| {
+                r.flags & crate::ai_records::FLEET_OWN == 0 && r.flags & 0x20_0000 != 0
+            });
+            if !carrying {
+                continue;
+            }
+            candidates.extend(world.characters.iter().filter_map(|(key, c)| {
+                (!c.is_killed && c.current_fleet == Some(fleet) && enemy_main(planner, key))
+                    .then_some(key)
+            }));
+        }
+    }
+    if candidates.is_empty() {
+        return None;
+    }
+    let count = i32::try_from(candidates.len()).unwrap_or(i32::MAX);
+    let at = usize::try_from(planner.random(count)).unwrap_or(0);
+    candidates.get(at).copied()
+}
+
+/// State 5 of an Abduction planner (slot `+0x50`, `FUN_00483640`): its
+/// target character `+0x30` and system `+0x34`.
+///
+/// It keeps its character while that still stands at `+0x34` (the walk up
+/// its containers) as an opponent's main character, neither travelling
+/// nor a prisoner (record `+0x30` 8 and 4, not `0x60`). Otherwise it lists
+/// the systems holding one: the sectors with any (`+0x28` `0x100`, key
+/// `+0x174`, order 1) in turn, and in each the systems with one on the
+/// planet (`+0x2c` `0x1000`, key `v[47]`, order 1), then those with one
+/// aboard a fleet (`0x2000`, order 2). It takes the first where the decoys
+/// gathered at `+0x38` (`FUN_004bd000`, list `+0x44`) fill the decoy cap
+/// (slot `+0x44`, `FUN_004047d0`: 4) or reach half its defense (record
+/// `+0xbc`), then a character there ([`abduction_character`]).
+fn abduction_target(
+    p: &mut MissionPlanner,
+    planner: &mut Planner<'_>,
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+) -> Option<SystemKey> {
+    use crate::ai_records::{picks, sector_at, Mask, Order};
+    use crate::mission_planning::standing_system;
+    let any = Mask::new(0, 0);
+    let gathered = p
+        .decoys
+        .iter()
+        .filter(|&&m| p.staging.is_some() && standing_system(world, m) == p.staging)
+        .filter(|&&m| planner.sendable(m))
+        .count();
+    let gathered = i32::try_from(gathered).unwrap_or(i32::MAX);
+    if let (Some(system), Some(target)) = (p.target_system, p.target_character) {
+        let kept = world.characters.get(target).is_some_and(|c| {
+            let here = c.current_system.or_else(|| {
+                c.current_fleet
+                    .and_then(|f| world.fleets.get(f))
+                    .map(|f| f.location)
+            });
+            here == Some(system)
+        }) && planner
+            .flags(crate::missions::MissionMember::Character(target))
+            .is_some_and(|f| f & 0xc == 0xc && f & 0x60 == 0);
+        if kept {
+            return Some(system);
+        }
+    }
+    p.target_character = None;
+    let sectors = picks(vec![galaxy.sector_query(
+        [any, Mask::new(0x100, 0), any],
+        sector_at(0x174),
+        Order::Ascending,
+        &mut || planner.coin(),
+    )]);
+    let mut systems = Vec::new();
+    for sector in sectors {
+        let planet = galaxy.system_query(
+            sector,
+            [any, Mask::new(0x1000, 0), any],
+            47,
+            Order::Ascending,
+            &mut || planner.coin(),
+        );
+        systems.extend(picks(vec![planet]));
+        let aboard = galaxy.system_query(
+            sector,
+            [any, Mask::new(0x2000, 0), any],
+            47,
+            Order::Descending,
+            &mut || planner.coin(),
+        );
+        systems.extend(picks(vec![aboard]));
+    }
+    let system = systems.into_iter().find(|&s| {
+        galaxy
+            .system(s)
+            .is_some_and(|r| gathered == 4 || r.values[29] / 2 <= gathered)
+    })?;
+    p.target_character = abduction_character(planner, world, galaxy, system);
+    p.target_character.map(|_| system)
+}
+
 /// Row 6's want (`FUN_004e8290`): the side's uprisings plus one (side
 /// `+0x21c`, the sector records' `+0x164`: systems with record `+0x2c` bit
 /// `0x20`, an own uprising with no own fleet; `FUN_0041b7e0`) while
@@ -4442,6 +4561,16 @@ mod tests {
         );
     }
 
+    /// The planners of `kind`, in order.
+    fn only(state: &AIState, kind: MissionKind) -> Vec<MissionPlanner> {
+        state
+            .mission_planners
+            .iter()
+            .filter(|p| p.kind == kind)
+            .cloned()
+            .collect()
+    }
+
     /// One day of the standing planners: the side's records (phase 4), the
     /// strategy's rows 1 and 5 and every mission planner's cycle.
     fn strategy_pass(state: &mut AIState, world: &GameWorld, tick: u64) -> Vec<AIAction> {
@@ -4610,19 +4739,17 @@ mod tests {
         state.mission_planners.insert(0, weak);
         let strong = state.mission_planners[1].clone();
         strategy_pass(&mut state, &world, 2);
-        assert_eq!(state.mission_planners.len(), 1);
-        assert_eq!(state.mission_planners[0].id, strong.id);
-        assert_eq!(
-            state.mission_planners[0].team,
-            vec![MissionMember::Character(keys[0])]
-        );
+        let diplomats = only(&state, MissionKind::Diplomacy);
+        assert_eq!(diplomats.len(), 1);
+        assert_eq!(diplomats[0].id, strong.id);
+        assert_eq!(diplomats[0].team, vec![MissionMember::Character(keys[0])]);
 
         // With no candidate left, the last planner goes and frees its claim.
         let mut world = world;
         world.systems[neutral].control = ControlKind::Controlled(crate::dat::Faction::Empire);
         world.systems[neutral].popularity_empire = 0.9;
         strategy_pass(&mut state, &world, 3);
-        assert!(state.mission_planners.is_empty());
+        assert!(only(&state, MissionKind::Diplomacy).is_empty());
         assert!(state.record_claims.is_empty());
     }
 
@@ -4899,6 +5026,10 @@ mod tests {
         let (mut world, _, neutral, keys) = diplomacy_world(90.0, &[90, 80]);
         let mut state = AIState::new(AiFaction::Empire);
         strategy_pass(&mut state, &world, 1);
+        // The test reads the Diplomacy planner alone.
+        state
+            .mission_planners
+            .retain(|p| p.kind == MissionKind::Diplomacy);
         let lead = state.mission_planners[0].team[0].character().unwrap();
         let other = keys.iter().copied().find(|&k| k != lead).unwrap();
         let mut heuristic = state.mission_planners[0].clone();
@@ -5218,8 +5349,7 @@ mod tests {
             .push(heuristic(50, MissionMember::Character(keys[0])));
         strategy_pass(&mut state, &world, 1);
         assert_eq!(
-            state
-                .mission_planners
+            only(&state, MissionKind::Diplomacy)
                 .iter()
                 .map(|p| p.standing)
                 .collect::<Vec<_>>(),
@@ -5234,8 +5364,7 @@ mod tests {
         }
         strategy_pass(&mut state, &world, 2);
         assert_eq!(
-            state
-                .mission_planners
+            only(&state, MissionKind::Diplomacy)
                 .iter()
                 .map(|p| p.id)
                 .collect::<Vec<_>>(),
@@ -5277,7 +5406,10 @@ mod tests {
         state.next_planner_id = 3;
         let mut galaxy = crate::ai_records::Galaxy::default();
         AISystem::mission_strategy(&mut state, &world, &mut galaxy);
-        assert_eq!(state.mission_planners.len(), 2);
+        // Only row 9's Abduction planner joins (FUN_004e8290 asks for one
+        // always).
+        assert_eq!(state.mission_planners.len(), 3);
+        assert_eq!(only(&state, MissionKind::Abduction).len(), 1);
         let _ = neutral;
 
         // Five candidates want two.
@@ -5289,9 +5421,13 @@ mod tests {
         let mut state = AIState::new(AiFaction::Empire);
         state.next_planner_id = 3;
         strategy_pass(&mut state, &world, 1);
-        let ids: Vec<u64> = state.mission_planners.iter().map(|p| p.id).collect();
+        let ids: Vec<u64> = only(&state, MissionKind::Diplomacy)
+            .iter()
+            .map(|p| p.id)
+            .collect();
         assert_eq!(ids, vec![3, 4]);
-        assert_eq!(state.next_planner_id, 5);
+        // The Abduction planner takes the next id.
+        assert_eq!(state.next_planner_id, 6);
     }
 
     #[test]
@@ -7196,16 +7332,13 @@ mod tests {
         let mut state = AIState::new(AiFaction::Empire);
         state.module8.planners = vec![crate::ai_module8::SectorPlanner::default(); 2];
         let actions = strategy_pass(&mut state, &world, 1);
-        let targets: Vec<Option<SystemKey>> = state
-            .mission_planners
-            .iter()
-            .map(|p| p.target_system)
-            .collect();
+        let scouts = only(&state, MissionKind::Reconnaissance);
+        let targets: Vec<Option<SystemKey>> = scouts.iter().map(|p| p.target_system).collect();
         assert_eq!(targets.len(), 2);
         assert!(targets[0].is_some_and(|t| rebels.contains(&t)));
         assert_eq!(targets[1], None);
         let far = world.systems[rebels[0]].sector;
-        assert_eq!(state.mission_planners[0].sector, Some(far));
+        assert_eq!(scouts[0].sector, Some(far));
         assert_eq!(state.sector_claims.get(&far), Some(&0x1000_0000));
         // The scout stands at home, the side's system nearest the target,
         // so the order goes out at once.
@@ -7217,8 +7350,9 @@ mod tests {
         // The next day the first keeps its target and the claim holds.
         let kept = targets[0];
         strategy_pass(&mut state, &world, 2);
-        assert_eq!(state.mission_planners[0].target_system, kept);
-        assert_eq!(state.mission_planners[1].target_system, None);
+        let scouts = only(&state, MissionKind::Reconnaissance);
+        assert_eq!(scouts[0].target_system, kept);
+        assert_eq!(scouts[1].target_system, None);
 
         // With no sector planner left, both go and the claim with them.
         state.module8.planners.clear();
@@ -7332,6 +7466,15 @@ mod tests {
             unreachable!()
         };
         world.systems[home].special_forces.push(key);
+        // The Abduction planner, listed first, takes up to four decoys
+        // (FUN_00483410, best espionage first) even without a team; four
+        // better special forces fill it.
+        for _ in 0..4 {
+            let MissionMember::SpecialForce(other) = add_commando(&mut world, false, 90, 0) else {
+                unreachable!()
+            };
+            world.systems[home].special_forces.push(other);
+        }
         let mut state = AIState::new(AiFaction::Empire);
         state.seen.insert(rebels[1], 1);
         let actions = strategy_pass(&mut state, &world, 10);
@@ -7448,6 +7591,255 @@ mod tests {
         assert_eq!(state.mission_planners[0].target_system, None);
         assert_eq!(state.mission_planners[0].sector, None);
         assert!(state.sector_claims.is_empty());
+    }
+
+    /// An Empire home with an abductor (combat 80) and `decoys` special
+    /// forces there, and two Alliance systems in a far sector: `guarded`
+    /// with Leia (`0x241`), Luke (`0x242`) and two Alliance regiments,
+    /// `open` with Han (`0x243`) and none.
+    fn abduction_world(
+        decoys: usize,
+    ) -> (
+        GameWorld,
+        SystemKey,
+        SystemKey,
+        SystemKey,
+        [CharacterKey; 2],
+        CharacterKey,
+    ) {
+        let mut world = empty_world();
+        let home_sector = add_sector(&mut world);
+        let home = add_system(&mut world, home_sector, 0.1, 0.9);
+        world.systems[home].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let far = add_sector(&mut world);
+        world.sectors[far].x = 900;
+        let rebel = |world: &mut GameWorld, x| {
+            let s = add_system(world, far, 0.9, 0.1);
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+            world.systems[s].x = x;
+            s
+        };
+        let guarded = rebel(&mut world, 900);
+        let open = rebel(&mut world, 910);
+        for _ in 0..2 {
+            let troop = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: DatId(0),
+                is_alliance: true,
+                regiment_strength: 50,
+            });
+            world.systems[guarded].ground_units.push(troop);
+        }
+        let main = |world: &mut GameWorld, id, at| {
+            let c = add_character(world, true, true, 30);
+            world.characters[c].dat_id = DatId(id);
+            world.characters[c].current_system = Some(at);
+            c
+        };
+        let leia = main(&mut world, 0x241, guarded);
+        // Luke too, so the guarded system's v[47] (2) ranks it first.
+        main(&mut world, 0x242, guarded);
+        let han = main(&mut world, 0x243, open);
+        // Not a commander: FUN_00483290 forbids capability bits 0x7000000.
+        let abductor = add_character(&mut world, false, true, 30);
+        world.characters[abductor].combat.base = 80;
+        world.characters[abductor].can_be_commander = false;
+        world.characters[abductor].current_system = Some(home);
+        for _ in 0..decoys {
+            let MissionMember::SpecialForce(key) = add_commando(&mut world, false, 60, 0) else {
+                unreachable!()
+            };
+            world.systems[home].special_forces.push(key);
+        }
+        (world, home, guarded, open, [leia, han], abductor)
+    }
+
+    #[test]
+    fn an_abduction_goes_where_the_gathered_decoys_match_half_the_defense() {
+        // FUN_00483640: the first system holding an opponent's main
+        // character (+0x2c 0x1000) where the decoys gathered at +0x38
+        // (FUN_004bd000, list +0x44) fill the cap (4) or reach half the
+        // defense (record +0xbc); then that character (FUN_00483d10).
+        let (world, home, _, open, [_, han], abductor) = abduction_world(0);
+        let mut state = AIState::new(AiFaction::Empire);
+        let actions = strategy_pass(&mut state, &world, 1);
+        let p = only(&state, MissionKind::Abduction).remove(0);
+        assert_eq!(
+            (p.target_system, p.target_character),
+            (Some(open), Some(han))
+        );
+        assert_eq!(p.team, vec![MissionMember::Character(abductor)]);
+        assert_eq!(p.staging, Some(home));
+        assert_eq!(
+            orders(&actions, MissionKind::Abduction),
+            vec![(vec![MissionMember::Character(abductor)], open, Some(han))]
+        );
+
+        // One decoy gathered at home covers the guarded system's two
+        // regiments (2 / 2 <= 1), which comes first by key v[47].
+        let (world, home, guarded, _, [leia, _], _) = abduction_world(1);
+        let galaxy = galaxy_of(&AIState::new(AiFaction::Empire), &world);
+        assert_eq!(galaxy.system(guarded).unwrap().values[29], 2);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let decoy = world.systems[home].special_forces[0];
+        let mut p = MissionPlanner {
+            decoys: vec![MissionMember::SpecialForce(decoy)],
+            target_system: None,
+            target_character: None,
+            ..p
+        };
+        assert_eq!(
+            abduction_target(&mut p, &mut planner, &world, &galaxy),
+            Some(guarded)
+        );
+        let first = p.target_character.unwrap();
+        assert_eq!(world.characters[first].current_system, Some(guarded));
+        // Kept while the character stands there.
+        assert_eq!(
+            abduction_target(&mut p, &mut planner, &world, &galaxy),
+            Some(guarded)
+        );
+        assert_eq!(p.target_character, Some(first));
+        // A target system the character is not in: chosen again.
+        p.target_system = Some(home);
+        assert_eq!(
+            abduction_target(&mut p, &mut planner, &world, &galaxy),
+            Some(guarded)
+        );
+        // The decoy counts only where the planner gathers (+0x38).
+        p.target_system = None;
+        p.target_character = None;
+        p.staging = Some(open);
+        assert_eq!(
+            abduction_target(&mut p, &mut planner, &world, &galaxy),
+            Some(open)
+        );
+        let _ = (leia, han);
+    }
+
+    #[test]
+    fn an_abduction_takes_only_opponents_main_characters_on_the_planet_or_aboard_their_fleets() {
+        // FUN_00483d10: record +0x30 8 and 4; on the planet with +0x2c
+        // 0x1000, aboard a fleet not the side's carrying one (fleet record
+        // +0x38 0x200000) with 0x2000. FUN_00483640 keeps its character
+        // only while not a prisoner or travelling (not 0x60).
+        let mut world = empty_world();
+        let home_sector = add_sector(&mut world);
+        let home = add_system(&mut world, home_sector, 0.1, 0.9);
+        world.systems[home].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let target = add_system(&mut world, home_sector, 0.9, 0.1);
+        world.systems[target].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let person = |world: &mut GameWorld, alliance: bool, id: u32| {
+            let c = add_character(world, alliance, true, 30);
+            world.characters[c].dat_id = DatId(id);
+            world.characters[c].current_system = Some(target);
+            c
+        };
+        let luke = person(&mut world, true, 0x242);
+        let _minor = person(&mut world, true, 0x2c7);
+        let vader = person(&mut world, false, 0x281);
+        let leia = person(&mut world, true, 0x241);
+        let class = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        let fleet = world.fleets.insert(Fleet {
+            location: target,
+            capital_ships: ShipInstance::make(class, 100, true, 1),
+            fighters: vec![],
+            characters: vec![leia],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[target].fleets.push(fleet);
+        world.characters[leia].current_system = None;
+        world.characters[leia].current_fleet = Some(fleet);
+        // An Empire fleet with Vader aboard does not count.
+        let own = world.fleets.insert(Fleet {
+            location: target,
+            capital_ships: ShipInstance::make(class, 100, false, 1),
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[target].fleets.push(own);
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        assert_eq!(galaxy.system(target).unwrap().summary & 0x3000, 0x3000);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let picks: HashSet<CharacterKey> = (0..40)
+            .filter_map(|_| abduction_character(&mut planner, &world, &galaxy, target))
+            .collect();
+        assert_eq!(picks, HashSet::from([luke, leia]));
+
+        // Luke gone, and Vader a prisoner of the Alliance there: his
+        // record reads 8, 4 and 0x40 (a prisoner counts on the side holding
+        // it, FUN_00401d20), so no free one is on the planet (no 0x1000)
+        // and only Leia aboard is left. A planner aimed at Vader picks again
+        // (not 0x60).
+        let mut world = world;
+        world.characters[luke].current_system = None;
+        world.characters[vader].is_captive = true;
+        world.characters[vader].captured_by = Some(crate::dat::Faction::Alliance);
+        let galaxy = galaxy_of(&state, &world);
+        assert_eq!(galaxy.system(target).unwrap().summary & 0x3000, 0x2000);
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let picks: HashSet<CharacterKey> = (0..40)
+            .filter_map(|_| abduction_character(&mut planner, &world, &galaxy, target))
+            .collect();
+        assert_eq!(picks, HashSet::from([leia]));
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let mut p = MissionPlanner {
+            id: 1,
+            kind: MissionKind::Abduction,
+            team: Vec::new(),
+            decoys: Vec::new(),
+            target_system: Some(target),
+            target_character: Some(vader),
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: Some(home),
+            standing: true,
+            claimed: None,
+            sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
+        };
+        assert_eq!(
+            abduction_target(&mut p, &mut planner, &world, &galaxy),
+            Some(target)
+        );
+        assert_eq!(p.target_character, Some(leia));
+
+        // Two regiments now guard the system, so no new choice would take
+        // it with no decoy gathered; Leia, free aboard, is kept all the
+        // same (record 8 and 4, not 0x60).
+        for _ in 0..2 {
+            let troop = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: DatId(0),
+                is_alliance: true,
+                regiment_strength: 50,
+            });
+            world.systems[target].ground_units.push(troop);
+        }
+        let galaxy = galaxy_of(&state, &world);
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        assert_eq!(
+            abduction_target(&mut p, &mut planner, &world, &galaxy),
+            Some(target)
+        );
+        assert_eq!(p.target_character, Some(leia));
+        p.target_character = None;
+        assert_eq!(
+            abduction_target(&mut p, &mut planner, &world, &galaxy),
+            None
+        );
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.
@@ -7640,46 +8032,6 @@ mod tests {
             let expected = if character == aboard { docked } else { here };
             assert_eq!(*system, expected);
         }
-    }
-
-    #[test]
-    fn abduction_takes_the_weakest_enemy_first_up_to_the_covert_cap() {
-        // port: the port orders abduction targets by combat, base plus half
-        // the variance, weakest first.
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let here = add_system(&mut world, sector, 0.8, 0.1);
-        let enemy = |world: &mut GameWorld, base, variance| {
-            let key = add_character(world, true, false, 30);
-            world.characters[key].combat = SkillPair { base, variance };
-            at(world, key, here);
-            key
-        };
-        let middle = enemy(&mut world, 20, 6); // 23
-        let weakest = enemy(&mut world, 22, 0);
-        let strongest = enemy(&mut world, 24, 0);
-        let _spare = enemy(&mut world, 30, 0);
-        let prisoner = enemy(&mut world, 1, 0);
-        world.characters[prisoner].is_captive = true;
-        let own = add_character(&mut world, false, false, 30);
-        at(&mut world, own, here);
-        fighters(&mut world, false, 8);
-        let mut planner = planner_for(&world, AiFaction::Empire);
-        let mut actions = Vec::new();
-
-        AISystem::evaluate_espionage(
-            &mut planner,
-            &world,
-            AiFaction::Empire,
-            &GameConfig::default(),
-            &mut actions,
-        );
-
-        let targets: Vec<_> = orders(&actions, MissionKind::Abduction)
-            .into_iter()
-            .map(|(_, _, character)| character.unwrap())
-            .collect();
-        assert_eq!(targets, vec![weakest, middle, strongest]);
     }
 
     #[test]
