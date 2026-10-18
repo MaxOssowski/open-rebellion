@@ -70,10 +70,10 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 13 | Rescue Attempt | `0x200` | `FUN_0048c4c0` (`0x65b2a8`) | side, the rescuer's portrait | `0x71ea` / `0x71eb` | — | missing |
 | 14 | Jabba Captures a character | `0x1e0` case 5 | `FUN_00490340` (`0x65b638`) | `0x429` | `0x7156` / `0x7157` | — | mapped 2026-10-18 (`jabba_captures_message`, the Palace mission's failed rescuer) |
 | 15 | Jabba Delivers Prisoners | `0x231`, arg set, once | `FUN_0048b6e0` (`0x65b1d0`) | `0x42a`, or `0x42b` | `0x7200` / `0x7201` | both | mapped 2026-10-18 (`jabba_delivers_message`, the Pickup's hit) |
-| 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | missing |
+| 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | missing; trigger read 2026-10-18 (SeatOfPower, `FUN_005617b0`, see "Delivery") |
 | 17 | Character Discovers Traitor | `0x361` | `FUN_0048c9c0` (`0x65b2f0`) | side, the discoverer's portrait | `0x71e8` / `0x71e9` | one side, by `FUN_004edc80` | missing |
-| 18 | Killed by Imperial Assassins | `0x306` | `FUN_0048b050` (`0x65b140`) | `0x42e` | `0x7208` / `0x7209` | Alliance only | missing; trigger unresolved (see Correction 2026-10-18) |
-| 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | — | missing; trigger unresolved (see Correction 2026-10-18) |
+| 18 | Killed by Imperial Assassins | `0x306` | `FUN_0048b050` (`0x65b140`) | `0x42e` | `0x7208` / `0x7209` | Alliance only | mapped 2026-10-18 (`assassins_message`, an assassination that kills; "Delivery") |
+| 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | both | mapped 2026-10-18 (`death_star_sabotaged_message`, a DS Sabotage that destroys it; "Delivery") |
 | 20 | Coruscant Captured | `0x128` | `FUN_0048f790` (`0x65b568`) | — | `0x7170` / `0x7171` | when the Alliance holds `0x90000109` | missing |
 | 21 | Alliance Headquarters Destroyed | `0x128`, arg bit 0 | `FUN_0048e5a0` (`0x65b450`) | — | `0x7188` / `0x7189` | both | missing |
 
@@ -227,3 +227,79 @@ sabotage. The senders do not support that reading.
   virtual sender with no direct caller. `FUN_0055f7b0` places the Emperor
   at Coruscant (`0x90000109`) at game setup, but it does not raise
   `0x230`. Its trigger is open too.
+
+## Delivery to the message classes (2026-10-18)
+
+The message classes receive codes that were posted to the UI queue. Each
+posting function builds a record through the UI factory table
+(`FUN_0051f770` registers, `FUN_0051f730` builds, `FUN_005400f0` fills)
+and queues it (`FUN_004fd3b0`):
+
+| Poster | Codes | Arguments |
+|---|---|---|
+| `FUN_0053fdd0` | `0x100`..`0x242` | the new value (`+0x24` = value == 0, `+0x28` = value) |
+| `FUN_0053fcf0` | `0x100`..`0x242` | two values |
+| `FUN_0053fe40` | `0x300`..`0x391` | two object keys |
+| `FUN_0053feb0` | `0x400`..`0x421` | two keys |
+| `FUN_0053ff20` | `0x500`..`0x541` | two strings |
+| `FUN_0053fd60` | `0x600`..`0x621` | four values |
+
+`FUN_0053f950` (`FUN_0053f9c0`) is a different queue: the simulation's
+events (`FUN_0054f100`, registered by `FUN_0051ef80`). Its `0x305`
+handler (vtable `0x00663388`, `FUN_00564070`) only runs the blockade
+(`FUN_00515f40`). Its `0x306` handler (vtable `0x006696e8`,
+`FUN_0057ac90`) only runs the arrival (`FUN_00515a50`). Neither posts to
+the UI.
+
+`FUN_0053fe40` also takes a variable code. `FUN_004fc080`, the game
+objects' Destroyed notification, posts `0x302` (Destroyed) and `0x303`
+(Destroyed on arrival) with the object and its location. It then posts a
+third code by the object's DestroyedReason (`+0x40` low byte):
+
+| Reason | Code | Name |
+|---|---|---|
+| 6 | `0x305` | `GameObjDestroyedSabotageNotif` |
+| 7 | `0x306` | `GameObjDestroyedAssassinationNotif` |
+| `0x15` | `0x304` | `GameObjDestroyedAutoscrapNotif` |
+
+So:
+- row 18 (Killed by Imperial Assassins) follows a character destroyed by
+  the assassination's injury (reason 7, `character-injury.md`);
+- row 19 (Death Star Sabotaged) follows an object of family
+  `0x18`..`0x1b`, the Death Star, destroyed by sabotage at a fleet whose
+  container is a system. The same `0x305` also reaches Saboteurs Strike;
+- `0x304` is Maintenance Shortfall.
+
+The earlier correction's reading of `0x305` and `0x306` as only the
+simulation's events (blockade, arrival) was incomplete: the same numbers
+are also these UI notifications.
+
+Row 16, Emperor Arrives at Coruscant (`0x230`):
+
+- `FUN_005617b0` computes SeatOfPower. It is 1 when the Emperor
+  (`0x34000280`, `FUN_005070d0`) has a location, is not captured (`+0xac`
+  bit 0) and is usable (`+0x50` bit 0), stands at Coruscant
+  (`0x90000109`), and Coruscant's side (`+0x24 & 0xc0`) is the Empire's
+  (`0x80`). Otherwise it is 0.
+- `FUN_0055f650` stores it in the character manager's `+0x58` bit 1 and,
+  when it changes, calls slot `+0x1d8` (`FUN_00562450`). That posts
+  `0x230` with the new value (`FUN_0053fdd0`).
+- The callers of `FUN_005617b0` are `FUN_00560d50`, `FUN_00561340`,
+  `FUN_005615b0`, `FUN_005616a0` and `FUN_005620e0`, the character
+  manager's handlers (not read).
+- `FUN_0048ce80` builds the message only for a set value and, through
+  `+0x64`, once per message object. It is shown to the Empire only:
+  background `0x42c`, speaker `0x1a` (the Emperor), media `0x47b` and
+  `FUN_004c4990(0x130)`, TEXTSTRA `0x71c8` "Emperor Arrives at Coruscant"
+  / `0x71c9` "I have returned to the Seat of Power at Coruscant."
+- The port's own `0x230` (`story_events.rs`: day 90 and 100 Empire
+  systems, "The Emperor has arrived to oversee operations personally.")
+  has none of this.
+- A port needs the flag's previous value saved, which is a save format
+  change.
+
+Ported 2026-10-18: rows 18 and 19 (`story_messages::assassins_message`,
+`death_star_sabotaged_message`), posted by the app after the mission's
+result. Row 18 needs the character kept in the arena, so the app now
+marks a killed character (`missions::kill_character`) as the integrator
+does, instead of removing it.

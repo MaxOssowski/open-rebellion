@@ -453,6 +453,69 @@ pub fn jabba_captures_message(
     )
 }
 
+/// Killed by Imperial Assassins (`FUN_0048b050`): notification `0x306`,
+/// which `FUN_004fc080` posts for an object destroyed with reason 7 (the
+/// assassination's injury), with the object and its location. TEXTSTRA
+/// `0x7208` / `0x7209` name the character (1) and the system around its
+/// location (3), on background `0x42e`, for the Alliance only.
+///
+/// port: the location is the character's system; the media id `0x474`
+/// and the speaker `0x15` are not read.
+#[must_use]
+pub fn assassins_message(
+    character: &rebellion_core::world::Character,
+    system: &str,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let parameters = [
+        MessageParameter::Named {
+            name: &character.name,
+        },
+        MessageParameter::Named { name: system },
+        MessageParameter::Named { name: system },
+    ];
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&0x7209)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(STORY_RAIL, RailAudience::Alliance)
+        .with_title(fill_message_text(texts.get(&0x7208)?, &parameters))
+        .with_picture(MessagePicture {
+            background: 0x42e,
+            foreground: None,
+        }),
+    )
+}
+
+/// Death Star Sabotaged (`FUN_0048d470`): notification `0x305`, which
+/// `FUN_004fc080` posts for an object destroyed with reason 6 (sabotage),
+/// when the object is of family `0x18`..`0x1b` (the Death Star) and its
+/// location stands at a system. TEXTSTRA `0x71bd` / `0x71be` name the
+/// system (1); both sides are shown it.
+///
+/// port: the builder sets no background but writes `+0x5c` = `0x72`
+/// (hyp: a film, not traced); the message has no picture.
+#[must_use]
+pub fn death_star_sabotaged_message(
+    system: &str,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let parameters = [MessageParameter::Named { name: system }];
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&0x71be)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(STORY_RAIL, RailAudience::Both)
+        .with_title(fill_message_text(texts.get(&0x71bd)?, &parameters)),
+    )
+}
+
 /// Jabba Delivers Prisoners (`FUN_0048b6e0`): notification `0x231` with
 /// its argument set, as the Pickup's hit sets `PickupInProgress`. TEXTSTRA
 /// `0x7200` / `0x7201` take no arguments; the background is `0x42a`, or
@@ -1423,6 +1486,46 @@ mod tests {
         let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
         assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
         assert_eq!(lost.picture.expect("a picture").background, 0x428);
+    }
+
+    #[test]
+    fn the_assassins_and_death_star_sabotage_messages_name_their_places() {
+        // FUN_0048b050: 0x7208 / 0x7209 with the victim (1) and the system
+        // (3), background 0x42e, the Alliance only. FUN_0048d470: 0x71bd /
+        // 0x71be with the system (1), both sides.
+        let texts: HashMap<u16, String> = [
+            (0x7208, "{1:1} Killed"),
+            (0x7209, "{1:1} was killed by Imperial Assassins at {3:1}."),
+            (0x71bd, "Death Star Sabotaged"),
+            (
+                0x71be,
+                "The Rebel Alliance has sabotaged the Death Star at {1:1}.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let dodonna = rebellion_core::world::Character {
+            name: "Jan Dodonna".into(),
+            ..Default::default()
+        };
+        let killed = assassins_message(&dodonna, "Yavin", 7, &texts).expect("message");
+        assert_eq!(killed.title.as_deref(), Some("Jan Dodonna Killed"));
+        assert_eq!(
+            killed.text,
+            "Jan Dodonna was killed by Imperial Assassins at Yavin."
+        );
+        assert_eq!(killed.audience, RailAudience::Alliance);
+        assert_eq!(killed.picture.map(|p| p.background), Some(0x42e));
+        let sabotaged = death_star_sabotaged_message("Endor", 8, &texts).expect("message");
+        assert_eq!(sabotaged.title.as_deref(), Some("Death Star Sabotaged"));
+        assert_eq!(
+            sabotaged.text,
+            "The Rebel Alliance has sabotaged the Death Star at Endor."
+        );
+        assert_eq!(sabotaged.audience, RailAudience::Both);
+        assert!(assassins_message(&dodonna, "Yavin", 7, &HashMap::new()).is_none());
+        assert!(death_star_sabotaged_message("Endor", 8, &HashMap::new()).is_none());
     }
 
     #[test]

@@ -2564,6 +2564,18 @@ cross-runtime proof remain open
   The builders of rows 18 (Killed by Imperial Assassins) and 19 (Death
   Star Sabotaged) need object keys that this path cannot carry, so their
   triggers are open. Row 16's (`0x230`) trigger is open too.
+- 2026-10-18: the message classes' delivery read
+  (`story-message-classes.md`, "Delivery"). The UI queue's posters are
+  `FUN_0053fdd0`, `FUN_0053fcf0`, `FUN_0053fe40`, `FUN_0053feb0`,
+  `FUN_0053ff20` and `FUN_0053fd60`. None of them is called with `0x304`,
+  `0x305` or `0x306` as a literal. `FUN_004fc080`, the Destroyed
+  notification, posts them by the DestroyedReason: 6 sabotage (`0x305`),
+  7 assassination (`0x306`), `0x15` autoscrap (`0x304`). So rows 18
+  (Killed by Imperial Assassins) and 19 (Death Star Sabotaged) are
+  ported, and the app keeps a killed character in the arena as the
+  integrator does. Row 16's trigger is SeatOfPower (`FUN_005617b0`): the
+  Emperor free at an Empire-held Coruscant. Its port needs a save format
+  change. The port's own `0x230` event is invented.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

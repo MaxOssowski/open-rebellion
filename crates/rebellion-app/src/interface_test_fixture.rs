@@ -1828,6 +1828,21 @@ pub fn post_story_messages(
         .iter()
         .find(|(_, character)| character.is_empire && !character.is_major)
         .map(|(key, _)| key);
+    // Killed by Imperial Assassins (FUN_0048b050) and Death Star
+    // Sabotaged (FUN_0048d470).
+    if let Some(message) = rebellion_render::story_messages::assassins_message(
+        &world.characters[chewbacca],
+        "Yavin",
+        0,
+        texts,
+    ) {
+        log.push(message);
+    }
+    if let Some(message) =
+        rebellion_render::story_messages::death_star_sabotaged_message("Endor", 0, texts)
+    {
+        log.push(message);
+    }
     // Jabba Delivers Prisoners (FUN_0048b6e0), then Jabba Captures
     // (FUN_00490340 case 5): Chewbacca, a failed rescuer.
     if let Some(message) = rebellion_render::story_messages::jabba_delivers_message(0, texts) {

@@ -2278,6 +2278,50 @@ async fn main() {
                             msg_log.push(message);
                         }
                     }
+                    // FUN_004fc080: an object destroyed by an assassination
+                    // (reason 7) posts 0x306, Killed by Imperial Assassins
+                    // (FUN_0048b050); one destroyed by sabotage (reason 6)
+                    // posts 0x305, Death Star Sabotaged for the Death Star
+                    // (FUN_0048d470).
+                    let system_name = world
+                        .systems
+                        .get(result.target_system)
+                        .map(|s| s.name.clone())
+                        .unwrap_or_default();
+                    if let MissionEffect::CharacterKilled { character, .. } = effect {
+                        if result.kind == MissionKind::Assassination {
+                            if let Some(message) = world.characters.get(*character).and_then(|c| {
+                                rebellion_render::story_messages::assassins_message(
+                                    c,
+                                    &system_name,
+                                    current_tick,
+                                    &message_texts,
+                                )
+                            }) {
+                                msg_log.push(message);
+                            }
+                        }
+                    }
+                    if let MissionEffect::TargetSabotaged {
+                        target: rebellion_core::missions::MissionTarget::DeathStar(_),
+                        system,
+                    } = effect
+                    {
+                        let name = world
+                            .systems
+                            .get(*system)
+                            .map(|s| s.name.clone())
+                            .unwrap_or_default();
+                        if let Some(message) =
+                            rebellion_render::story_messages::death_star_sabotaged_message(
+                                &name,
+                                current_tick,
+                                &message_texts,
+                            )
+                        {
+                            msg_log.push(message);
+                        }
+                    }
                     // Notification 0x231 (FUN_0048b6e0) as the Pickup sets
                     // PickupInProgress.
                     if matches!(effect, MissionEffect::PickupInProgress) {
@@ -8048,12 +8092,10 @@ fn apply_mission_result(
                     ));
                 }
             }
+            // As the integrator: off every roster and marked killed, kept
+            // in the arena so its messages can still name it.
             MissionEffect::CharacterKilled { character, .. } => {
-                // Remove character from any fleet they're assigned to
-                for (_, fleet) in &mut world.fleets {
-                    fleet.characters.retain(|&k| k != *character);
-                }
-                world.characters.remove(*character);
+                rebellion_core::missions::kill_character(world, *character);
             }
             MissionEffect::CharacterCaptured {
                 character,
