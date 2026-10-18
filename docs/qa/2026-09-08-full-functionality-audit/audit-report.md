@@ -2425,6 +2425,16 @@ cross-runtime proof remain open
   first. Golden initial `v1:c4aa6c7fc51080c1` -> `v1:7de82effa8207c75`,
   final `v1:0e985b5a40e2bfa8` -> `v1:ab2d9eddde745c32`
   (`evidence/2026-10-18-dagobah/`).
+- 2026-10-18: Force detection and the Luke-Vader encounter read
+  (`ghidra/notes/encounter.md`). During a mission's detection each Force
+  user of the defenders meets each of the mission's (Luke and Vader first)
+  with `force1 + force2 - 100` percent (`FUN_0058a3f0`); a hit detects the
+  mission and sets both characters' `Encounter` keys (`FUN_0055ff60`,
+  notification `0x360`). A detected member with an `Encounter` then duels
+  its partner instead of a random defender (`FUN_00560200`): mutual
+  injuries and a combat raise, Luke's `KnowsHeritage` and his wound at the
+  first meeting with Vader, and a Force gain for Luke or Leia from Vader or
+  the Emperor (GNPRTB 3072..3087). None of it exists in the port.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
