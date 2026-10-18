@@ -1,0 +1,3 @@
+test ai::tests::the_research_order_goes_to_the_site_from_wherever_the_team_gathered ... FAILED
+    ai::tests::the_research_order_goes_to_the_site_from_wherever_the_team_gathered
+test result: FAILED. 112 passed; 1 failed; 0 ignored; 0 measured; 1256 filtered out; finished in 0.00s

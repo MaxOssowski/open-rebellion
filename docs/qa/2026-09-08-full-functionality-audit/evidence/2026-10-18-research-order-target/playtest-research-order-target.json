@@ -1,0 +1,47 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": {
+  "missions": 26519,
+  "moves": 30327,
+  "resolved_Success": 16582,
+  "resolved_Failure": 9148,
+  "dispatched_ShipDesignResearch": 10312,
+  "dispatched_TroopTrainingResearch": 3941,
+  "dispatched_FacilityDesignResearch": 4161,
+  "ShipDesignResearch_Success": 4922,
+  "ShipDesignResearch_Failure": 938,
+  "TroopTrainingResearch_Success": 1044,
+  "TroopTrainingResearch_Failure": 389,
+  "FacilityDesignResearch_Success": 1677,
+  "FacilityDesignResearch_Failure": 507
+ },
+ "after": {
+  "missions": 8728,
+  "moves": 29797,
+  "resolved_Success": 16866,
+  "resolved_Failure": 8839,
+  "dispatched_ShipDesignResearch": 281,
+  "dispatched_TroopTrainingResearch": 152,
+  "dispatched_FacilityDesignResearch": 169,
+  "ShipDesignResearch_Success": 5424,
+  "ShipDesignResearch_Failure": 963,
+  "TroopTrainingResearch_Success": 1048,
+  "TroopTrainingResearch_Failure": 383,
+  "FacilityDesignResearch_Success": 1828,
+  "FacilityDesignResearch_Failure": 598
+ },
+ "systems_at_day_1500": {
+  "before": {
+   "alliance": 487,
+   "empire": 363
+  },
+  "after": {
+   "alliance": 500,
+   "empire": 340
+  }
+ },
+ "seeds_with_a_designer_ordered_over_20_times": {
+  "before": 22,
+  "after": 0
+ }
+}

@@ -2661,6 +2661,13 @@ cross-runtime proof remain open
   22 of 24 campaigns: one designer is ordered to the same site every few
   days. Golden final `v1:bec91e71a20394cd` -> `v1:4a2572231a842e24`
   (`evidence/2026-10-18-recruitment-planner/`).
+- 2026-10-18 (F-036): the AI's research order goes to the site.
+  `FUN_0047b360` orders on `+0x30`, the site slot `+0x50` copied from
+  `+0x34`. The port ordered on the gathering place `+0x38`, so an old
+  place with no yard was ordered again every few days, and each mission
+  ended with `0xc`. In 24 campaigns research orders fall from 18,414 to
+  602, and research successes rise from 7,643 to 8,300. Golden unchanged
+  (`evidence/2026-10-18-research-order-target/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

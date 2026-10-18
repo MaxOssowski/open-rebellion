@@ -1030,10 +1030,30 @@ Campaigns: 24 seeds of 1500 days, against the Diplomacy commit.
 - Missions: 11,366 before, 26,519 after.
 - Systems held at the end, summed over the seeds: Alliance 531 and 487,
   Empire 340 and 363.
-- The research orders show a fault that was already there. In 13 of the
-  24 seeds before this change, and 22 of 24 after, one designer is
-  ordered to the same site again every few days, 35 to 394 times. Each
-  of those missions ends without a result. Not yet traced.
+- The research orders showed a fault that was already there. In 13 of
+  the 24 seeds before this change, and 22 of 24 after, one designer was
+  ordered to the same place again every few days, 35 to 394 times. Each
+  of those missions ended without a result. Traced and fixed below.
+
+## The research order's target (fixed 2026-10-18)
+
+- `FUN_0047b360` (state 8) orders the mission on the planner's `+0x30`
+  (at `0x47b3a0`).
+- The research slots `+0x50` copy the chosen site `+0x34` into `+0x30`,
+  as at `0x47c0cd` in `FUN_0047be50`. Diplomacy and Recruitment do the
+  same.
+- `+0x38` (state 6, `FUN_004bd0a0`) is only where the team gathers.
+- The port's `research_cycle` ordered the research on `+0x38`. When a
+  site's yard was scrapped or lost, `+0x38` kept the old system, which
+  was still the side's. The research went there, and the mission's
+  validator ended it the next day with code `0xc`, no research site
+  (`FUN_0056c510`). The AI ordered it again on its next cycle.
+- Fixed: the order goes to the site, and a cycle with no site ends in
+  state 5.
+- Campaigns, 24 seeds of 1500 days:
+  - research orders fell from 18,414 to 602;
+  - research successes rose from 7,643 to 8,300;
+  - no seed repeats a designer's order more than 20 times.
 
 ## Still open
 

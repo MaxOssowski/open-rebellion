@@ -2373,14 +2373,17 @@ impl AISystem {
     ///   member it can no longer keep.
     /// - State 3 (`FUN_0047bcd0` and siblings): without one it takes the
     ///   best candidate.
-    /// - State 5 ([`research_site_choice`]): the site.
-    /// - State 6 (`FUN_004bd0a0`): the previous target while it is the
-    ///   side's and not blockaded, else the site when it is.
-    /// - State 7 (`FUN_004bd570`): a free member away from the target
-    ///   (record `+0x38`, a fleet or another system) gets a Move order
-    ///   `0x201` to it, the Move pseudo-mission `0x241`.
+    /// - State 5 ([`research_site_choice`]): the site (`+0x34`, copied to
+    ///   `+0x30`); with none the cycle ends.
+    /// - State 6 (`FUN_004bd0a0`): the gathering place `+0x38`, the
+    ///   previous one while it is the side's and not blockaded, else the
+    ///   site when it is.
+    /// - State 7 (`FUN_004bd570`): a free member away from the gathering
+    ///   place (record `+0x38`, a fleet or another system) gets a Move
+    ///   order `0x201` to it, the Move pseudo-mission `0x241`.
     /// - State 8 (`FUN_0047b360`): once the member stands there, the
-    ///   research order. A member on a mission or travelling gets neither.
+    ///   research order on the site (`+0x30`). A member on a mission or
+    ///   travelling gets neither.
     fn research_cycle(
         p: &mut ResearchPlanner,
         planner: &mut Planner<'_>,
@@ -2408,6 +2411,10 @@ impl AISystem {
             return;
         };
         p.site = research_site_choice(planner, world, uprisings, research, is_alliance, p);
+        // State 5 without a site ends the cycle (slot +0x50 returns 0).
+        let Some(site) = p.site else {
+            return;
+        };
         let usable = |system: SystemKey| {
             let side = crate::dat::Faction::of_alliance(is_alliance);
             world.systems.get(system).is_some_and(|sys| {
@@ -2418,19 +2425,21 @@ impl AISystem {
         let target = p
             .target
             .filter(|&t| usable(t))
-            .or(p.site.filter(|&s| usable(s)));
+            .or(Some(site).filter(|&s| usable(s)));
         p.target = target;
         let Some(target) = target else {
             return;
         };
         let member = MissionMember::Character(member);
         if planner.sendable(member) {
+            // FUN_0047b360 orders the mission on +0x30, the site the slot
+            // copied from +0x34; +0x38 is only where the team gathers.
             let there = crate::mission_planning::standing_system(world, member) == Some(target);
             actions.push(AIAction::DispatchMission {
                 kind: if there { kind } else { MissionKind::Move },
                 team: vec![member],
                 decoys: Vec::new(),
-                target_system: target,
+                target_system: if there { site } else { target },
                 target_character: None,
                 target_object: None,
             });
@@ -7286,6 +7295,58 @@ mod tests {
             vec![id]
         );
         assert_eq!(state.research_planners[0].failures, 0);
+    }
+
+    #[test]
+    fn the_research_order_goes_to_the_site_from_wherever_the_team_gathered() {
+        // FUN_0047b360 orders on +0x30, the site the slot copied from +0x34
+        // (FUN_0047be50 at 0x47c0cd); +0x38 (FUN_004bd0a0) is only where
+        // the designer gathers. A designer gathered at a system with no
+        // shipyard is sent to research at the shipyard.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let old = add_system(&mut world, sector, 0.5, 0.5);
+        world.systems[old].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let ship = designer(&mut world, TechType::Ship, 50);
+        let MissionMember::Character(key) = ship else {
+            unreachable!()
+        };
+        world.characters[key].current_system = Some(old);
+        let mut state = AIState::new(AiFaction::Alliance);
+        research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            7,
+        );
+        state.research_planners[0].target = Some(old);
+
+        let actions = research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            14,
+        );
+        assert_eq!(
+            orders(&actions, MissionKind::ShipDesignResearch),
+            vec![(vec![ship], shipyard, None)]
+        );
+        assert!(orders(&actions, MissionKind::Move).is_empty());
+
+        // With no site at all, the cycle ends before any order.
+        world.systems[shipyard].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let actions = research_pass(
+            &mut state,
+            &world,
+            &MissionState::new(),
+            &ResearchState::new(),
+            21,
+        );
+        assert!(orders(&actions, MissionKind::ShipDesignResearch).is_empty());
+        assert!(orders(&actions, MissionKind::Move).is_empty());
     }
 
     #[test]
