@@ -206,6 +206,12 @@ Open for plan 4:
   `0x90..0x97`); `captive-escape.md` reads `+0x70` as the autorouting
   object. So the prisoners probably autoroute to the Pickup mission's
   `+0x70` once it ends. This is not confirmed.
+  - hyp: `FUN_00543040` replaces a family-`0x65` destination (the Bounty
+    mission) with the palace, so a character's `+0x70` can name a mission.
+    If a mission's `+0x70` is its own key (family `0x73`), the prisoners
+    autoroute to Vader's mission, that is, they follow him.
+  - Next read: the writers of a mission's `+0x70` (creation
+    `FUN_00547ba0` does not write it) and the Pickup class's end slots.
 - How Vader and the prisoners leave the palace. Vader is of the palace's
   side, so `FUN_004ef260` does not autoroute him.
 - The side record's `+0xb0` bit 8, which picks the `0x231` background.
