@@ -2393,6 +2393,12 @@ cross-runtime proof remain open
   days / 2 percent, and sets `DagobahCompleted` (`0x210`). The abodes
   (two jails, Dagobah, Hermitage, Jabba's Palace) sit in the galaxy, not in
   systems, and the port loads none of them.
+- 2026-10-18: travel to an abode read (`ghidra/notes/dagobah.md`). Family
+  `0x98` is its own class (vtable `0x00669260`, `FUN_00577530`); it
+  resolves to itself as a place, as a system does, and missions accept it
+  as a target. A trip between two different places takes 1 day unless both
+  are systems (`FUN_00555b30`), so reaching or leaving an abode always takes
+  1 day.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

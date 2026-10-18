@@ -64,6 +64,25 @@ leaves at the first such event that finds him free.
     `DagobahCompleted` (`+0xb0` bit `0x8`, `FUN_0056f730`) is set, whose
     notification is `0x210` (Luke Leaves Dagobah, `FUN_0048d0f0`).
 
+## Abodes and travel to them (read 2026-10-18)
+
+- Class: the object factory's registry (`FUN_00540540`, filled by
+  `FUN_0051ebf0`) maps family `0x98` to `FUN_00577530`, which builds a
+  `0x58`-byte object with vtable `0x00669260` (`GameObj_00669260`, 111
+  slots, parent `GameObj`). Its slot `+0x4` returns `0x98`; families `0x90`
+  and `0x92` (systems) and `0x80` (sectors) have their own entries.
+- Like a system, its slot `+0xc` (`FUN_00577130`, the same body as the
+  system's `FUN_00508070`) answers its own key as the place it is in, so
+  `FUN_00555540` resolves an abode to itself.
+- Missions treat systems and abodes alike as places: `FUN_00521070` and
+  `FUN_00520f40` accept a target of families `0x90..0x97` or `0x98..0x9f`.
+- Travel (`FUN_00556430` -> `FUN_00555d30` -> `FUN_00555b30`): between two
+  different places the time is set to 1 first, and only when both are
+  systems (`0x90..0x97`) does `FUN_0055d8c0` replace it with the distance
+  time. So a trip to or from an abode takes 1 day, wherever it starts.
+- An abode has no position (ABODESD holds no coordinates) and is a child
+  of the galaxy, not of a system or sector.
+
 ## Luke's `+0xb0`
 
 Bit 0 `KnowsHeritage` (`FUN_0056f650`), bit 1 `FinalBattleReady`
@@ -85,5 +104,4 @@ is her own `KnowsHeritage`. Han's bits are `BountyAttack` (0) and
 
 - The manager's `+0x24` bits `0x30` (when the timer is not armed).
 - `FUN_004ece40`'s test inside the check.
-- How a member travels to an abode (no system position), and its
-  transit time.
+- Whether and where the interface shows an abode.
