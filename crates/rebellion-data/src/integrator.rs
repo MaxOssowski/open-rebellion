@@ -28,7 +28,7 @@ use rebellion_core::game_events::{
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
     EVT_CONFRONTATION, EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_ENCOUNTER,
-    EVT_FORCE_EXPERIENCE,
+    EVT_FORCE_EXPERIENCE, EVT_STORY_FINAL_BATTLE,
     EVT_GARRISON_REQUIRED, EVT_HERITAGE_LEARNED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL,
     EVT_JEDI_CHECK, EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
@@ -771,6 +771,55 @@ impl PerceptionIntegrator {
                 "from": sys_name(world, pulse.from),
                 "dispatched": dispatched,
             }),
+        ));
+    }
+
+    /// Record a Final Battle step (`final_battle.rs`): Vader sent to Luke,
+    /// both sent to the Emperor, or the battle with its outcome.
+    pub fn record_final_battle_step(
+        &mut self,
+        world: &GameWorld,
+        step: &rebellion_core::final_battle::FinalBattleStep,
+        dispatched: bool,
+    ) {
+        use rebellion_core::final_battle::{FinalBattleStep, Outcome};
+        let (tick, details) = match *step {
+            FinalBattleStep::VaderToLuke { to, tick, .. } => (
+                tick,
+                serde_json::json!({
+                    "step": "vader_to_luke",
+                    "to": sys_name(world, to),
+                    "dispatched": dispatched,
+                }),
+            ),
+            FinalBattleStep::ToEmperor { to, tick, .. } => (
+                tick,
+                serde_json::json!({
+                    "step": "to_emperor",
+                    "to": sys_name(world, to),
+                    "dispatched": dispatched,
+                }),
+            ),
+            FinalBattleStep::Battle(battle) => (
+                battle.tick,
+                serde_json::json!({
+                    "step": "battle",
+                    "system": battle.system.map(|system| sys_name(world, system)),
+                    "luke_wins": battle.outcome == Outcome::LukeWins,
+                    "injury": match battle.outcome {
+                        Outcome::EmpireWins { injury } => injury,
+                        Outcome::LukeWins => 0,
+                    },
+                    "moved": dispatched,
+                }),
+            ),
+        };
+        self.events.push(GameEventRecord::new(
+            tick,
+            self.wall_ms,
+            SYS_STORY,
+            EVT_STORY_FINAL_BATTLE,
+            details,
         ));
     }
 
@@ -2747,9 +2796,43 @@ mod tests {
     }
 
     #[test]
-    fn final_battle_imminent_leaves_luke_s_heritage_to_the_confrontation() {
+    fn a_final_battle_step_is_recorded_with_its_outcome() {
+        use rebellion_core::final_battle::{FinalBattle, FinalBattleStep, Outcome};
+        let mut world = GameWorld::default();
+        let mut add = |name: &str| {
+            world.characters.insert(rebellion_core::world::Character {
+                name: name.into(),
+                ..Default::default()
+            })
+        };
+        let (luke, vader, emperor) = (add("Luke"), add("Vader"), add("Emperor"));
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.record_final_battle_step(
+            &world,
+            &FinalBattleStep::Battle(FinalBattle {
+                luke,
+                vader,
+                emperor,
+                system: None,
+                at_system: false,
+                outcome: Outcome::EmpireWins { injury: 64 },
+                tick: 854,
+            }),
+            false,
+        );
+        let event = integrator.events.last().expect("a record");
+        assert_eq!(event.event_type, EVT_STORY_FINAL_BATTLE);
+        assert_eq!(event.tick, 854);
+        assert_eq!(event.details["step"], "battle");
+        assert_eq!(event.details["luke_wins"], false);
+        assert_eq!(event.details["injury"], 64);
+    }
+
+    #[test]
+    fn no_story_event_reveals_luke_s_heritage() {
         // Luke learns KnowsHeritage only when he confronts Vader
-        // (FUN_00560200 -> FUN_0056f650); the port's 0x396 sets nothing.
+        // (FUN_00560200 -> FUN_0056f650); no story event sets it (the port's
+        // 0x396, which did, is gone with its Final Battle chain).
         let mut world = GameWorld::default();
         let luke = world.characters.insert(rebellion_core::world::Character {
             name: "Luke Skywalker".into(),
@@ -2766,8 +2849,7 @@ mod tests {
         rebellion_core::story_events::define_story_events(&mut state, &world);
         let movement = MovementState::default();
         let mut effects = Vec::new();
-        let mut fired_ids = Vec::new();
-        for tick in [61, 70] {
+        for tick in [61, 70, 400, 900] {
             let ticks = [rebellion_core::tick::TickEvent { tick }];
             for fired in
                 rebellion_core::events::EventSystem::advance(&mut state, &world, &ticks, &[])
@@ -2779,10 +2861,8 @@ mod tests {
                     tick,
                     &movement,
                 );
-                fired_ids.push(fired.event_id);
             }
         }
-        assert!(fired_ids.contains(&0x396), "fired {fired_ids:x?}");
         assert!(!world.characters[luke].heritage_known);
     }
 

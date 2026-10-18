@@ -2487,6 +2487,17 @@ cross-runtime proof remain open
   Final Battle message (`0x71e0`..`0x71e2`) follows. DarthPickup sends
   Vader to collect the prisoners of Jabba's Palace (mission `0x73`). The
   port's own chain (`0x393`..`0x396`, `0x220`) has none of this.
+- 2026-10-18: the Final Battle is ported (`final_battle.rs`, save v76):
+  FinalBattleReady, Vader's Move orders to Luke and to the Emperor, the
+  battle (Force GNPRTB 6151) with its injury, captures and barred escape,
+  and The Final Battle message. Prisoners take their captor's side in the
+  member checks, so the Empire's Move order carries the captive Luke. The
+  port's `0x393`..`0x396` and `0x220` events are gone. In 1500-day
+  campaigns the battle comes on seeds 13 (day 1151) and 47 (day 854); Luke,
+  below Force 100, loses both. Golden initial `v1:ad8518eb172a430f` ->
+  `v1:978a2af596955f63`, final `v1:e811b12322f7e20e` ->
+  `v1:8c0677e665d1d127` (`evidence/2026-10-18-final-battle/`). Open:
+  DarthPickup and the Pickup mission (Jabba's palace).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

@@ -5,10 +5,10 @@
 
 use crate::events::{
     EventAction, EventCondition, EventState, GameEvent, SystemTag, EVT_BOUNTY_ATTACK,
-    EVT_CHARACTER_FORCE, EVT_EMPEROR_ARRIVAL, EVT_FINAL_BATTLE, EVT_FORCE_TRAINING,
-    EVT_HAN_CARBONITE_FAIL_1, EVT_HAN_CARBONITE_FAIL_2, EVT_HAN_CARBONITE_FAIL_3,
-    EVT_HAN_CARBONITE_FAIL_4, EVT_HAN_CARBONITE_FAIL_5, EVT_HAN_PERMANENT_FREEZE, EVT_HAN_RESCUE,
-    EVT_JABBA_CAPTURES_CHEWIE, EVT_JABBA_PRISONERS, EVT_LEIA_FORCE,
+    EVT_CHARACTER_FORCE, EVT_EMPEROR_ARRIVAL, EVT_FORCE_TRAINING, EVT_HAN_CARBONITE_FAIL_1,
+    EVT_HAN_CARBONITE_FAIL_2, EVT_HAN_CARBONITE_FAIL_3, EVT_HAN_CARBONITE_FAIL_4,
+    EVT_HAN_CARBONITE_FAIL_5, EVT_HAN_PERMANENT_FREEZE, EVT_HAN_RESCUE, EVT_JABBA_CAPTURES_CHEWIE,
+    EVT_JABBA_PRISONERS, EVT_LEIA_FORCE,
 };
 use crate::ids::CharacterKey;
 use crate::world::{ForceTier, GameWorld};
@@ -42,7 +42,6 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
     ];
 
     let luke = find_character(world, "Luke");
-    let vader = find_character(world, "Vader");
     let han = find_character(world, "Han");
     let leia = find_character(world, "Leia");
     let chewbacca = find_character(world, "Chew");
@@ -101,141 +100,10 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
         // ghidra/notes/dagobah.md), and the events that waited for 0x210 wait
         // for Luke's DagobahCompleted.
 
-        // -------------------------------------------------------------------
-        // Chain 2: Final Battle — multi-phase (Task 5)
-        // -------------------------------------------------------------------
-
-        if let Some(vader) = vader {
-            // Vader dispatched (0x393)
-            state.define(GameEvent {
-                id: 0x393,
-                name: "Vader Dispatched".into(),
-                conditions: vec![
-                    EventCondition::CharacterDagobahCompleted { character: luke },
-                    EventCondition::CharacterExists { character: vader },
-                ],
-                actions: vec![
-                    EventAction::SetMandatoryMission {
-                        character: vader,
-                        mandatory: true,
-                    },
-                    EventAction::DisplayMessage {
-                        text: "Darth Vader senses Luke's completed training. He sets out to confront his son.".into(),
-                    },
-                ],
-                is_repeatable: false,
-                enabled: true,
-                system_tag: SystemTag::Story,
-            });
-
-            // Vader en route (0x394)
-            state.define(GameEvent {
-                id: 0x394,
-                name: "Vader En Route".into(),
-                conditions: vec![
-                    EventCondition::EventFired { id: 0x393 },
-                    EventCondition::TickAtLeast { tick: 70 },
-                ],
-                actions: vec![EventAction::DisplayMessage {
-                    text: "Vader's fleet approaches Luke's location...".into(),
-                }],
-                is_repeatable: false,
-                enabled: true,
-                system_tag: SystemTag::Story,
-            });
-
-            // Vader reports to Emperor (0x395) — alternate branch
-            state.define(GameEvent {
-                id: 0x395,
-                name: "Vader Reports to Emperor".into(),
-                conditions: vec![
-                    EventCondition::EventFired { id: 0x393 },
-                    EventCondition::FactionControlsNSystems {
-                        faction: crate::dat::Faction::Empire,
-                        min_count: 150,
-                    },
-                    EventCondition::EventNotFired { id: 0x394 },
-                ],
-                actions: vec![EventAction::DisplayMessage {
-                    text: "Vader reports to the Emperor before confronting Luke.".into(),
-                }],
-                is_repeatable: false,
-                enabled: true,
-                system_tag: SystemTag::Story,
-            });
-
-            // Final Battle ready (0x396) — requires either path.
-            // port: the original's Final Battle chain (DarthPickup,
-            // DarthToLukeFinalBattle, FinalBattleReady, FUN_0054ba00) is not
-            // read. Luke learns his heritage only when he confronts Vader
-            // (FUN_00560200, crate::mission_detection), so this event no
-            // longer sets it.
-            state.define(GameEvent {
-                id: 0x396,
-                name: "Final Battle Imminent".into(),
-                conditions: vec![
-                    // We use EventFired(0x394) as the primary gate.
-                    // If 0x395 fires first, 0x394 can still fire later to gate this.
-                    EventCondition::EventFired { id: 0x394 },
-                ],
-                actions: vec![EventAction::DisplayMessage {
-                    text: "The final confrontation between father and son is imminent...".into(),
-                }],
-                is_repeatable: false,
-                enabled: true,
-                system_tag: SystemTag::Story,
-            });
-
-            // EVT_FINAL_BATTLE (0x220) — requires chain completion + co-location
-            {
-                let mut final_conditions = vec![
-                    EventCondition::EventFired { id: 0x396 },
-                    EventCondition::CharacterExists { character: luke },
-                    EventCondition::CharacterExists { character: vader },
-                ];
-                let mut final_actions = vec![
-                    EventAction::SetMandatoryMission {
-                        character: vader,
-                        mandatory: true,
-                    },
-                    EventAction::SetMandatoryMission {
-                        character: luke,
-                        mandatory: true,
-                    },
-                ];
-
-                // Emperor Palpatine co-location requirement (Phase 3)
-                if let Some(emperor) = emperor {
-                    final_conditions.push(EventCondition::CharacterExists { character: emperor });
-                    final_conditions.push(EventCondition::CharactersCoLocated {
-                        characters: vec![luke, vader, emperor],
-                    });
-                    final_actions.push(EventAction::SetMandatoryMission {
-                        character: emperor,
-                        mandatory: true,
-                    });
-                    final_actions.push(EventAction::DisplayMessage {
-                        text:
-                            "Luke, Vader, and the Emperor are together. The Final Battle begins..."
-                                .into(),
-                    });
-                } else {
-                    final_actions.push(EventAction::DisplayMessage {
-                        text: "The Final Battle between Luke and Vader approaches...".into(),
-                    });
-                }
-
-                state.define(GameEvent {
-                    id: EVT_FINAL_BATTLE,
-                    name: "The Final Battle".into(),
-                    conditions: final_conditions,
-                    actions: final_actions,
-                    is_repeatable: false,
-                    enabled: true,
-                    system_tag: SystemTag::Story,
-                });
-            }
-        }
+        // The Final Battle chain (0x393 "Vader Dispatched", 0x394, 0x395,
+        // 0x396 "Final Battle Imminent", 0x220 "The Final Battle") is gone:
+        // the mission manager runs the original's FinalBattleReady path
+        // (crate::final_battle, ghidra/notes/final-battle.md).
 
         // -------------------------------------------------------------------
         // Leia Force Discovery (0x362) — Leia discovers Force sensitivity
@@ -1032,54 +900,25 @@ mod tests {
     }
 
     #[test]
-    fn final_battle_chain_requires_dagobah_completion() {
+    fn the_invented_final_battle_chain_is_gone() {
+        // The mission manager runs the original's FinalBattleReady path
+        // (FUN_00544da0 .. FUN_0054b040; ghidra/notes/final-battle.md), so
+        // the port's own 0x393, 0x394, 0x395, 0x396 and 0x220 events, which
+        // no original code raises this way, are no longer defined.
         let mut world = make_world_with_characters();
+        world.characters.insert(make_character(
+            "Emperor Palpatine",
+            ForceTier::Experienced,
+            false,
+        ));
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
-
-        // Advance through Dagobah prerequisite (tick 30) and training (tick 50)
-        EventSystem::advance(&mut state, &world, &tick(30), &[]);
-        EventSystem::advance(&mut state, &world, &tick(50), &[]);
-
-        // Final Battle should NOT fire yet — Dagobah not completed
-        let fired = EventSystem::advance(&mut state, &world, &tick(60), &[]);
-        assert!(
-            !fired.iter().any(|f| f.event_id == EVT_FINAL_BATTLE),
-            "Final Battle should not fire before Dagobah completion"
-        );
-
-        // Complete Dagobah: the mission's end sets Luke's DagobahCompleted
-        // (FUN_005751d0).
-        let luke_key = find_character(&world, "Luke").unwrap();
-        world
-            .characters
-            .get_mut(luke_key)
-            .unwrap()
-            .dagobah_completed = true;
-
-        // Vader dispatched should chain off Luke's DagobahCompleted
-        let fired = EventSystem::advance(&mut state, &world, &tick(61), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == 0x393),
-            "Vader dispatched should chain off Dagobah completion"
-        );
-
-        // Vader en route at tick 70
-        let fired = EventSystem::advance(&mut state, &world, &tick(70), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == 0x394),
-            "Vader en route should fire at tick 70"
-        );
-
-        // Final Battle ready (0x396) and then Final Battle (0x220) should chain
-        assert!(
-            fired.iter().any(|f| f.event_id == 0x396),
-            "Final Battle Imminent should fire"
-        );
-        assert!(
-            fired.iter().any(|f| f.event_id == EVT_FINAL_BATTLE),
-            "The Final Battle should fire after full chain"
-        );
+        for id in [0x393, 0x394, 0x395, 0x396, crate::events::EVT_FINAL_BATTLE] {
+            assert!(
+                !state.events().iter().any(|e| e.id == id),
+                "event {id:#x} is still defined"
+            );
+        }
     }
 
     #[test]
@@ -1840,19 +1679,6 @@ mod tests {
         assert!(
             state.events().iter().any(|e| e.id == EVT_EMPEROR_ARRIVAL),
             "EVT_EMPEROR_ARRIVAL should be registered when Emperor exists"
-        );
-
-        // Verify Final Battle event (0x220) has CharactersCoLocated condition
-        let final_battle = state.events().iter().find(|e| e.id == EVT_FINAL_BATTLE);
-        assert!(final_battle.is_some(), "Final Battle should be registered");
-        let fb = final_battle.unwrap();
-        let has_co_loc = fb
-            .conditions
-            .iter()
-            .any(|c| matches!(c, EventCondition::CharactersCoLocated { .. }));
-        assert!(
-            has_co_loc,
-            "Final Battle should have CharactersCoLocated when Emperor present"
         );
     }
 

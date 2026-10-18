@@ -718,6 +718,8 @@ struct MemberState {
     recruited: bool,
     busy: bool,
     prisoner: bool,
+    /// A prisoner's captor, `Some(true)` for the Alliance.
+    captor_is_alliance: Option<bool>,
     location: MemberLocation,
 }
 
@@ -750,6 +752,9 @@ fn member_state(world: &GameWorld, member: MissionMember) -> Option<MemberState>
                 recruited: c.recruited,
                 busy: c.on_mission || c.on_mandatory_mission,
                 prisoner: c.is_captive,
+                captor_is_alliance: c
+                    .captured_by
+                    .map(|side| side == crate::dat::Faction::Alliance),
                 location,
             })
         }
@@ -767,6 +772,7 @@ fn member_state(world: &GameWorld, member: MissionMember) -> Option<MemberState>
                 recruited: true,
                 busy: unit.on_mission,
                 prisoner: false,
+                captor_is_alliance: None,
                 location,
             })
         }
@@ -798,7 +804,12 @@ pub fn members_allowed(
                     continue;
                 };
                 characters |= CHARACTER_MISSION_BIT;
-                c.is_alliance
+                // A prisoner's side +0x24 is its captor's while Captured
+                // (FUN_004eec60, captive-escape.md).
+                match (c.is_captive, c.captured_by) {
+                    (true, Some(captor)) => captor == crate::dat::Faction::Alliance,
+                    _ => c.is_alliance,
+                }
             }
             MissionMember::SpecialForce(key) => {
                 let Some(unit) = world.special_forces.get(key) else {
@@ -1405,6 +1416,8 @@ pub fn capture_character(
         c.captured_by = Some(captured_by.into());
         c.current_system = Some(at_system);
         c.current_fleet = None;
+        // FUN_004f1a80: a capture sets CanEscape.
+        c.escape_barred = false;
     }
     for (_, fleet) in &mut world.fleets {
         fleet.characters.retain(|&k| k != character);
@@ -1622,7 +1635,14 @@ impl MissionState {
                 // port: a member still travelling to an ended mission's
                 // target is refused; the original compares its en route bit
                 // and arrival tick instead (FUN_00522b30).
-                if state.is_alliance != side_is_alliance || state.busy || self.engaged(member) {
+                // A prisoner's side is its captor's (FUN_004eec60, the
+                // side +0x24 while Captured).
+                let side_is = if state.prisoner {
+                    state.captor_is_alliance.unwrap_or(state.is_alliance)
+                } else {
+                    state.is_alliance
+                };
+                if side_is != side_is_alliance || state.busy || self.engaged(member) {
                     return Err(MissionRefusal::MemberUnavailable(member));
                 }
                 match location {
@@ -3441,11 +3461,14 @@ impl MissionSystem {
                 }),
         );
 
+        // CanEscape (+0xac bit 0x100) follows Captured (FUN_004f1a80); the
+        // Final Battle clears it while the character stays held
+        // (FUN_004eeb10(0)).
         let held = |key: CharacterKey| {
             world
                 .characters
                 .get(key)
-                .is_some_and(|c| c.is_captive && !c.is_killed)
+                .is_some_and(|c| c.is_captive && !c.is_killed && !c.escape_barred)
         };
         state.escape_timers.retain(|timer| held(timer.character));
 
@@ -3575,7 +3598,7 @@ fn escape_input(world: &GameWorld, captive: CharacterKey) -> i32 {
 /// system is the destination, not the fleet. hyp: side 3 is `Contested`, as
 /// in `blockade.rs`; equal distances keep the arena order (the original's
 /// `qsort` order is unspecified).
-fn escape_destination(
+pub(crate) fn escape_destination(
     world: &GameWorld,
     character: CharacterKey,
     from: SystemKey,

@@ -428,6 +428,7 @@ struct LiveCampaign<'a> {
     healing: &'a mut rebellion_core::healing::HealingState,
     force_discovery: &'a mut rebellion_core::force_discovery::ForceDiscoveryState,
     dagobah: &'a mut rebellion_core::dagobah::DagobahState,
+    final_battle: &'a mut rebellion_core::final_battle::FinalBattleState,
     troop_transport: &'a mut TroopTransportState,
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
@@ -466,6 +467,7 @@ impl LiveCampaign<'_> {
             healing: self.healing.clone(),
             force_discovery: self.force_discovery.clone(),
             dagobah: self.dagobah.clone(),
+            final_battle: *self.final_battle,
             combat_cooldowns: self.combat_cooldowns.clone(),
             game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
@@ -507,6 +509,7 @@ impl LiveCampaign<'_> {
         *self.healing = state.healing;
         *self.force_discovery = state.force_discovery;
         *self.dagobah = state.dagobah;
+        *self.final_battle = state.final_battle;
         *self.combat_cooldowns = state.combat_cooldowns;
         *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
@@ -1089,6 +1092,7 @@ async fn main() {
     let mut healing_state = rebellion_core::healing::HealingState::default();
     let mut force_discovery_state = rebellion_core::force_discovery::ForceDiscoveryState::default();
     let mut dagobah_state = rebellion_core::dagobah::DagobahState::default();
+    let mut final_battle_state = rebellion_core::final_battle::FinalBattleState::default();
     let mut troop_transport_state = TroopTransportState::default();
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
@@ -2192,6 +2196,31 @@ async fn main() {
                         &world,
                         *character,
                         current_tick,
+                        &message_texts,
+                    ) {
+                        msg_log.push(message);
+                    }
+                }
+            }
+            // ── The Final Battle: FUN_00544da0 .. FUN_00544fc0 ──────────────
+            let final_battle_rolls: Vec<f64> =
+                (0..rebellion_core::final_battle::FinalBattleSystem::roll_budget())
+                    .map(|_| sim_rng.gen::<f64>())
+                    .collect();
+            for step in rebellion_core::final_battle::FinalBattleSystem::advance(
+                &mut final_battle_state,
+                &world,
+                &mission_state,
+                &tick_events,
+                &final_battle_rolls,
+            ) {
+                rebellion_core::final_battle::perform(&step, &mut mission_state, &mut world);
+                // FUN_0048e3c0 on 0x220.
+                if let rebellion_core::final_battle::FinalBattleStep::Battle(battle) = step {
+                    if let Some(message) = rebellion_render::story_messages::final_battle_message(
+                        &world,
+                        battle.luke,
+                        battle.tick,
                         &message_texts,
                     ) {
                         msg_log.push(message);
@@ -3602,6 +3631,8 @@ async fn main() {
                                         rebellion_core::force_discovery::ForceDiscoveryState::default();
                                     dagobah_state =
                                         rebellion_core::dagobah::DagobahState::default();
+                                    final_battle_state =
+                                        rebellion_core::final_battle::FinalBattleState::default();
                                     troop_transport_state = TroopTransportState::default();
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
@@ -6041,6 +6072,7 @@ async fn main() {
                         healing: &mut healing_state,
                         force_discovery: &mut force_discovery_state,
                         dagobah: &mut dagobah_state,
+                        final_battle: &mut final_battle_state,
                         troop_transport: &mut troop_transport_state,
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
@@ -6117,6 +6149,7 @@ async fn main() {
                                 healing: &mut healing_state,
                                 force_discovery: &mut force_discovery_state,
                                 dagobah: &mut dagobah_state,
+                                final_battle: &mut final_battle_state,
                                 troop_transport: &mut troop_transport_state,
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,

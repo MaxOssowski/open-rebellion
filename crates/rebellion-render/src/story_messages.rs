@@ -403,6 +403,35 @@ impl EncounterNotes {
     }
 }
 
+/// The Final Battle (`FUN_0048e3c0`), which the encounter class builds
+/// when `0x220` (`MissionMgrFinalBattleNotif`) set its bit `0x10`, for each
+/// side: title `0x71e0`, body `0x71e1` with Luke free (he overcame the
+/// Emperor) or `0x71e2` with him captured, on background `0x428` once
+/// Luke's `DagobahCompleted` (`+0xb0` bit 8) is set, else `0x427`.
+///
+/// port: the media ids `+0x30` and `+0x32` are not read.
+#[must_use]
+pub fn final_battle_message(
+    world: &GameWorld,
+    luke: CharacterKey,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let luke = world.characters.get(luke)?;
+    let title = fill_message_text(texts.get(&0x71e0)?, &[]);
+    let body_id = if luke.is_captive { 0x71e2 } else { 0x71e1 };
+    let body = fill_message_text(texts.get(&body_id)?, &[]);
+    Some(
+        GameMessage::new(tick, body, MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::Both)
+            .with_title(title)
+            .with_picture(MessagePicture {
+                background: if luke.dagobah_completed { 0x428 } else { 0x427 },
+                foreground: None,
+            }),
+    )
+}
+
 fn character_parameter(c: &rebellion_core::world::Character) -> MessageParameter<'_> {
     MessageParameter::Character {
         name: &c.name,
@@ -1261,6 +1290,35 @@ mod tests {
         }];
         let later = EncounterNotes::gather(&world, &ended).messages(&world, 0, &texts);
         assert_eq!(later.len(), 1);
+    }
+
+    #[test]
+    fn the_final_battle_message_tells_luke_s_fate() {
+        // FUN_0048e3c0: 0x71e0, then 0x71e1 with Luke free or 0x71e2 with
+        // him captured (+0xac bit 0); background 0x428 once DagobahCompleted
+        // (+0xb0 bit 8) is set, else 0x427.
+        let mut world = GameWorld::default();
+        let [luke, ..] = encounter_cast(&mut world);
+        let texts: HashMap<u16, String> = [
+            (0x71e0, "The Final Battle"),
+            (0x71e1, "Luke confronted and overcame the Emperor."),
+            (0x71e2, "The Emperor confronted Luke and captured him."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+
+        let won = final_battle_message(&world, luke, 4, &texts).expect("a message");
+        assert_eq!(won.title.as_deref(), Some("The Final Battle"));
+        assert_eq!(won.text, "Luke confronted and overcame the Emperor.");
+        assert_eq!(won.audience, RailAudience::Both);
+        assert_eq!(won.picture.expect("a picture").background, 0x427);
+
+        world.characters[luke].is_captive = true;
+        world.characters[luke].dagobah_completed = true;
+        let lost = final_battle_message(&world, luke, 4, &texts).expect("a message");
+        assert_eq!(lost.text, "The Emperor confronted Luke and captured him.");
+        assert_eq!(lost.picture.expect("a picture").background, 0x428);
     }
 
     #[test]

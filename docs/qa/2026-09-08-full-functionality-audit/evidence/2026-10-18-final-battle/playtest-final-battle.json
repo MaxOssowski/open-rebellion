@@ -1,0 +1,76 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai",
+ "runs": {
+  "1-1500": [],
+  "2-1500": [
+   [
+    551,
+    "heritage_learned",
+    {
+     "character": "Luke Skywalker"
+    }
+   ]
+  ],
+  "3-1500": [],
+  "7-1500": [],
+  "13-1500": [
+   [
+    1095,
+    "heritage_learned",
+    {
+     "character": "Luke Skywalker"
+    }
+   ],
+   [
+    1140,
+    "story_final_battle",
+    {
+     "dispatched": true,
+     "step": "to_emperor",
+     "to": "Qat Chrystac"
+    }
+   ],
+   [
+    1151,
+    "story_final_battle",
+    {
+     "injury": 75,
+     "luke_wins": false,
+     "moved": false,
+     "step": "battle",
+     "system": "Qat Chrystac"
+    }
+   ]
+  ],
+  "42-1500": [],
+  "47-1500": [
+   [
+    683,
+    "heritage_learned",
+    {
+     "character": "Luke Skywalker"
+    }
+   ],
+   [
+    762,
+    "story_final_battle",
+    {
+     "dispatched": true,
+     "step": "to_emperor",
+     "to": "Denab"
+    }
+   ],
+   [
+    854,
+    "story_final_battle",
+    {
+     "injury": 64,
+     "luke_wins": false,
+     "moved": false,
+     "step": "battle",
+     "system": "Denab"
+    }
+   ]
+  ]
+ }
+}

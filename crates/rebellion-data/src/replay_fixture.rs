@@ -36,23 +36,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:ad8518eb172a430f";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:e811b12322f7e20e";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:978a2af596955f63";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:8c0677e665d1d127";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:229f0f4ec97b501b"),
-    (2, 0, "v1:41f8501461f6e8a2"),
-    (3, 5, "v1:25adb2217d189cbf"),
-    (4, 10, "v1:25fdbfc29aa8bd7d"),
-    (5, 15, "v1:86cba9a8724cfa66"),
-    (6, 20, "v1:22689f84c1e315d7"),
-    (7, 25, "v1:23444e2eb8f3c3de"),
-    (8, 25, "v1:e811b12322f7e20e"),
-    (9, 25, "v1:e811b12322f7e20e"),
+    (1, 0, "v1:8071677e696f664f"),
+    (2, 0, "v1:72c7bf245d8c99aa"),
+    (3, 5, "v1:db6027f2b1d15790"),
+    (4, 10, "v1:5f414f184d61e708"),
+    (5, 15, "v1:1b067dab258cb6af"),
+    (6, 20, "v1:8db32e2207b8de84"),
+    (7, 25, "v1:30cbe39a17311d8f"),
+    (8, 25, "v1:8c0677e665d1d127"),
+    (9, 25, "v1:8c0677e665d1d127"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,6 +205,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         healing: rebellion_core::healing::HealingState::default(),
         force_discovery: rebellion_core::force_discovery::ForceDiscoveryState::default(),
         dagobah: rebellion_core::dagobah::DagobahState::default(),
+        final_battle: rebellion_core::final_battle::FinalBattleState::default(),
         combat_cooldowns: std::collections::HashMap::new(),
         game_config: GameConfig::default(),
         campaign_config: CampaignConfig::from_seed_options(options, VictoryConditions::Standard),

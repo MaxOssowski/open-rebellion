@@ -24,10 +24,8 @@ Events are registered in `EventState` by `define_story_events(&mut state, &world
 ### Chain 1: Luke Dagobah Training
 `0x390` (prerequisite gate) → `0x392` (Yoda teacher) → `EVT_LUKE_DAGOBAH` (0x221) → `0x391` (first training) → `EVT_DAGOBAH_COMPLETED` (0x210)
 
-### Chain 2: Final Battle
-`0x393` (Vader dispatched) → `0x394` (Vader en route) / `0x395` (alt: reports to Emperor) → `0x396` (Final Battle Imminent) → `EVT_FINAL_BATTLE` (0x220)
-
-Heritage: since 2026-10-18 (save v75) only Luke's confrontation with Vader in the mission detection sets `heritage_known` (`FUN_00560200`, `ghidra/notes/encounter.md`); the port's `SetHeritageKnown` action is gone. The whole Final Battle chain is still the port's own; the original's (DarthPickup, FinalBattleReady, `FUN_0054ba00`) is not read. Story messages are read in the Message window (`story_messages.rs`); the original's Final Battle message class picks its own picture, which is not yet recovered.
+### Chain 2: Final Battle (removed)
+The port's `0x393`..`0x396` and `0x220` events are gone (save v76). The mission manager's FinalBattleReady path runs in `final_battle.rs` (`ghidra/notes/final-battle.md`), and the encounter class posts The Final Battle (`story_messages::final_battle_message`). Only Luke's confrontation with Vader (`FUN_00560200`) and Leia's discovery set `heritage_known` (save v75). DarthPickup and the Pickup mission (`0x73`) wait for Jabba's palace.
 
 ### Chain 3: Bounty Hunters → Jabba's Palace
 `0x397` (gate) → `EVT_BOUNTY_ATTACK` (0x212, **SpawnSpecialForce + CharacterAssignedToFleet**) → `0x398` (carbonite)

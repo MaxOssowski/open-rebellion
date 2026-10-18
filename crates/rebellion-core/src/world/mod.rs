@@ -748,6 +748,11 @@ pub struct Character {
     /// The encounter day (`FUN_004ef1c0`, record `+0x54` -> `+0x34`), 0
     /// without an encounter (save v74).
     pub encounter_day: u64,
+    /// `CanEscape` (`+0xac` bit `0x100`) cleared while held: the Final
+    /// Battle bars its prisoners from escaping (`FUN_004eeb10(0)`,
+    /// `FUN_0054b040`) until a new capture sets it again (`FUN_004f1a80`;
+    /// save v76).
+    pub escape_barred: bool,
 }
 
 impl Character {
@@ -919,6 +924,7 @@ impl Default for Character {
             dagobah_completed: false,
             encounter: None,
             encounter_day: 0,
+            escape_barred: false,
         }
     }
 }
@@ -2835,7 +2841,8 @@ mod tests {
             "current_abode": null,
             "dagobah_completed": false,
             "encounter": null,
-            "encounter_day": 0
+            "encounter_day": 0,
+            "escape_barred": false
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

@@ -535,6 +535,7 @@ mod tests {
             dagobah_completed: false,
             encounter: None,
             encounter_day: 0,
+            escape_barred: false,
         }
     }
 

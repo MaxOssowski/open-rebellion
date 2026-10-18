@@ -63,7 +63,7 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 6 | Force user Detects Enemy | `0x360`, then 2 | `FUN_0048e1d0` (`0x65b408`) | side, the detector's portrait | `0x71b0` / `0x71b1` | each side, its own character | mapped 2026-10-18 (`EncounterNotes`, the mission detection) |
 | 7 | Character Confronts character | `0x360`, then 2 | `FUN_0048df20` (`0x65b408`) | `0x41f`, `0x420`, `0x423`-`0x426` | `0x71a8` / `0x71a9` + `0x71aa`-`0x71ae` | both | mapped 2026-10-18 (`EncounterNotes`) |
 | 8 | Luke Discovers His Heritage | `0x360` + `0x211`, then 2 | `FUN_0048dc50` (`0x65b408`) | `0x422` | `0x71a0` / `0x71a1` + `0x71a2`-`0x71a7` | both | mapped 2026-10-18 (`EncounterNotes`; `0x71a2` needs the Final Battle pickup) |
-| 9 | The Final Battle | `0x220`, then 2 | `FUN_0048e3c0` (`0x65b408`) | `0x427`, or `0x428` | `0x71e0` / `0x71e1` or `0x71e2` | — | missing |
+| 9 | The Final Battle | `0x220`, then 2 | `FUN_0048e3c0` (`0x65b408`) | `0x427`, or `0x428` | `0x71e0` / `0x71e1` or `0x71e2` | both | mapped 2026-10-18 (`final_battle_message`, after `final_battle.rs` fights it) |
 | 10 | Han Solo Attacked by Bounty Hunters | `0x212`, arg 0 | `FUN_0048fa00` (`0x65b5a8`) | `0x41c` | `0x7168` / `0x7169` | Alliance | missing |
 | 11 | Bounty Hunters Locate Solo | `0x212`, arg 0 | `FUN_0048fa00` | `0x41e` | `0x716a` / `0x716b` (system) | Empire | missing |
 | 12 | Han Solo Captured by Bounty Hunters | `0x212`, arg 0 | `FUN_0048fa00` | `0x41d` | `0x716c` / `0x716d` | both | missing |
