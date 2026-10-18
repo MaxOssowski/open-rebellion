@@ -484,6 +484,46 @@ impl<'a> Planner<'a> {
         Some((team, decoys))
     }
 
+    /// States 3 and 4 of a running planner (slots `+0x48`, `+0x4c`): the
+    /// team and decoy selectors run again each cycle and add members up to
+    /// the class's team size and decoy cap. The new picks are held
+    /// (`FUN_0047b610`), so no other query of this evaluation takes them.
+    ///
+    /// hyp: the posture cap (`+0xbc`) reads 0, one decoy, as in
+    /// [`Self::plan`].
+    pub(crate) fn refill(
+        &mut self,
+        kind: MissionKind,
+        team: usize,
+        decoys: usize,
+    ) -> (Vec<MissionMember>, Vec<MissionMember>) {
+        let Some(selectors) = selectors(kind) else {
+            return (Vec::new(), Vec::new());
+        };
+        let new_team = self.select(selectors.team, selectors.team_size.saturating_sub(team));
+        let cap = match selectors.decoys {
+            Some((_, DecoyCap::Posture)) => 1,
+            Some((_, DecoyCap::Fixed(cap))) => cap,
+            None => 0,
+        };
+        let new_decoys = match selectors.decoys {
+            Some((query, _)) => self.select(&[query], cap.saturating_sub(decoys)),
+            None => Vec::new(),
+        };
+        let members = |picked: Vec<usize>, records: &mut [AgentRecord]| -> Vec<MissionMember> {
+            picked
+                .into_iter()
+                .map(|index| {
+                    records[index].sent = true;
+                    records[index].member
+                })
+                .collect()
+        };
+        let new_team = members(new_team, &mut self.records);
+        let new_decoys = members(new_decoys, &mut self.records);
+        (new_team, new_decoys)
+    }
+
     /// Run `queries` and take their best common hit until `size` are taken
     /// (`FUN_004357b0` in the selector loop). A taken record loses
     /// `UNASSIGNED`.

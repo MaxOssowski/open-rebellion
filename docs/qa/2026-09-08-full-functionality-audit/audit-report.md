@@ -2630,6 +2630,11 @@ cross-runtime proof remain open
   characters rise from 0 to 613, and characters join Sabotage, Incite,
   Rescue and Abduction. Golden final `v1:7869f8168ab1782f` ->
   `v1:2d45f0777ed8cd0d` (`evidence/2026-10-18-research-reserve/`).
+- 2026-10-18 (F-036): the AI's mission planners refill their teams and
+  decoys every cycle (`FUN_004bced0` states 3 and 4). In 24 campaigns
+  two-member teams rise to 38% of missions (3,233 of 8,605). Golden final
+  `v1:2d45f0777ed8cd0d` -> `v1:f7fe1a11ab5f9ffd`
+  (`evidence/2026-10-18-planner-refill/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

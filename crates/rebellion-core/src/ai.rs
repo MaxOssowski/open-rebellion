@@ -1637,11 +1637,14 @@ impl AISystem {
     /// - state 8 (`FUN_0047b360`): once the team and the decoys all stand
     ///   there, the mission order on the target; the planner then ends.
     ///
-    /// port: the planner does not refill its team (state 3 runs its
-    /// selector once); a planner older than [`MISSION_PLANNER_DAYS`] ends.
+    /// States 3 and 4 ([`Planner::refill`]) add members up to the class's
+    /// sizes after state 2.
+    ///
+    /// port: a planner whose team is still empty after state 3 ends, and
+    /// one older than [`MISSION_PLANNER_DAYS`] ends.
     fn mission_planner_cycle(
         state: &mut AIState,
-        planner: &Planner<'_>,
+        planner: &mut Planner<'_>,
         world: &GameWorld,
         tick: u64,
         actions: &mut Vec<AIAction>,
@@ -1649,15 +1652,24 @@ impl AISystem {
         use crate::mission_planning::standing_system;
         let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
         state.mission_planners.retain_mut(|p| {
-            p.team.retain(|&m| planner.keeps(m));
-            p.decoys.retain(|&m| planner.keeps(m));
-            if p.team.is_empty() || tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
+            if tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
                 return false;
             }
             if p.last_cycle == tick {
-                return true;
+                return !p.team.is_empty();
             }
             p.last_cycle = tick;
+            p.team.retain(|&m| planner.keeps(m));
+            p.decoys.retain(|&m| planner.keeps(m));
+            for &member in p.team.iter().chain(&p.decoys) {
+                planner.hold(member);
+            }
+            let (team, decoys) = planner.refill(p.kind, p.team.len(), p.decoys.len());
+            p.team.extend(team);
+            p.decoys.extend(decoys);
+            if p.team.is_empty() {
+                return false;
+            }
             let target = p.target_system;
             p.staging = staging_point(world, is_alliance, p.staging, target, &p.team);
             let Some(staging) = p.staging else {
@@ -5111,7 +5123,7 @@ mod tests {
         let mut actions = Vec::new();
         AISystem::mission_planner_cycle(
             &mut state,
-            &planner_for(&world, AiFaction::Empire),
+            &mut planner_for(&world, AiFaction::Empire),
             &world,
             2,
             &mut actions,
@@ -5122,13 +5134,24 @@ mod tests {
             .collect();
         assert_eq!(moves, [(vec![team[0]], target), (vec![team[1]], target)]);
         assert_eq!(state.mission_planners.len(), 1);
+        // A second AI tick the same day leaves the planner as it is.
+        let mut again = Vec::new();
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &mut planner_for(&world, AiFaction::Empire),
+            &world,
+            2,
+            &mut again,
+        );
+        assert!(again.is_empty());
+        assert_eq!(state.mission_planners.len(), 1);
 
         // One there, one still away: no order yet.
         world.characters[a].current_system = Some(target);
         let mut actions = Vec::new();
         AISystem::mission_planner_cycle(
             &mut state,
-            &planner_for(&world, AiFaction::Empire),
+            &mut planner_for(&world, AiFaction::Empire),
             &world,
             3,
             &mut actions,
@@ -5140,7 +5163,7 @@ mod tests {
         let mut actions = Vec::new();
         AISystem::mission_planner_cycle(
             &mut state,
-            &planner_for(&world, AiFaction::Empire),
+            &mut planner_for(&world, AiFaction::Empire),
             &world,
             4,
             &mut actions,
@@ -5150,6 +5173,55 @@ mod tests {
             [(team, target, None)]
         );
         assert!(state.mission_planners.is_empty());
+    }
+
+    #[test]
+    fn a_mission_planner_refills_its_team_to_the_class_s_size() {
+        // FUN_004bced0 state 3 (slot +0x48): the Rescue selector
+        // (FUN_0047e270, size 2) runs each cycle and replaces a member
+        // state 2 dropped; a member the planner holds is not picked twice.
+        let (mut world, [a, b], [_, _, target]) = gathering_world();
+        // FUN_0047e270 forbids the officer capabilities (0x7000000).
+        let fighter = |world: &mut GameWorld, key: CharacterKey| {
+            world.characters[key].combat = SkillPair {
+                base: 90,
+                variance: 0,
+            };
+            world.characters[key].can_be_commander = false;
+        };
+        fighter(&mut world, a);
+        fighter(&mut world, b);
+        let c = add_character(&mut world, false, false, 60);
+        world.characters[c].current_system = Some(target);
+        fighter(&mut world, c);
+        let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
+        let mut state = AIState::new(AiFaction::Empire);
+        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut vec![rescue_order(team, target)]);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &mut planner_for(&world, AiFaction::Empire),
+            &world,
+            2,
+            &mut actions,
+        );
+        assert_eq!(
+            state.mission_planners[0].team,
+            [MissionMember::Character(a), MissionMember::Character(b)],
+            "a full team takes no one"
+        );
+        world.characters[b].mark_killed();
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &mut planner_for(&world, AiFaction::Empire),
+            &world,
+            3,
+            &mut actions,
+        );
+        assert_eq!(
+            state.mission_planners[0].team,
+            [MissionMember::Character(a), MissionMember::Character(c)]
+        );
     }
 
     #[test]
@@ -5311,7 +5383,7 @@ mod tests {
             let mut actions = Vec::new();
             AISystem::mission_planner_cycle(
                 state,
-                &planner_for(world, AiFaction::Empire),
+                &mut planner_for(world, AiFaction::Empire),
                 world,
                 tick,
                 &mut actions,

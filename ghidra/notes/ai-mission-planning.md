@@ -826,7 +826,9 @@ The user approved the save change and the AI change.
   is gone.
 - port:
   - the heuristics stand in for the strategy (`+0x318`, `+0x31c`);
-  - state 3 runs its selector once (no refill);
+  - (2026-10-18) states 3 and 4 refill the team and decoys each cycle
+    (`Planner::refill`); a team still empty after state 3 ends the
+    planner (port);
   - a planner older than `MISSION_PLANNER_DAYS` (60) ends;
   - the nearness query is read as the side's unblockaded system nearest
     the target.
@@ -863,6 +865,22 @@ The user approved the save change and the AI change.
     Abduction 95.
   - Dispatched missions: 13,590 before, 12,217 after.
   - Successes: 14,889 before, 12,030 after.
+
+## The refill (2026-10-18)
+
+- States 3 and 4 (slots `+0x48`, `+0x4c`) run the team and decoy
+  selectors on every cycle. A planner whose member was dropped in state 2
+  takes another up to the class's size.
+- Ported as `Planner::refill`, called after state 2 in
+  `mission_planner_cycle`. The planner holds its own members first, so it
+  does not pick them twice.
+- Campaigns: 24 seeds of 1500 days, against the research-reserve commit.
+  - Two-member teams: 2,145 of 12,217 missions before, 3,233 of 8,605
+    after (38%).
+  - Successes: 12,030 before, 10,757 after.
+  - Failures: 8,826 before, 7,543 after.
+  - Systems held at the end are alike: Alliance 579 and 557, Empire 352
+    and 347, summed over seeds.
 
 ## Still open
 

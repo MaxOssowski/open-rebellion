@@ -1,0 +1,19 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, seeds 1-24",
+ "before": {
+  "moves": 24176,
+  "missions": 12217,
+  "team_size_1": 10072,
+  "team_size_2": 2145,
+  "resolved_Success": 12030,
+  "resolved_Failure": 8826
+ },
+ "after": {
+  "moves": 27412,
+  "missions": 8605,
+  "team_size_1": 5372,
+  "team_size_2": 3233,
+  "resolved_Success": 10757,
+  "resolved_Failure": 7543
+ }
+}
