@@ -246,6 +246,7 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
     const SHIP_RESEARCH: &[Query] = &[query(0x2, 0x800, 0x0740_0051, 0, ShipDesign, 10)];
     const TROOP_RESEARCH: &[Query] = &[query(0x2, 0x1000, 0x0740_0051, 0, TroopTraining, 10)];
     const FACILITY_RESEARCH: &[Query] = &[query(0x2, 0x2000, 0x0740_0051, 0, FacilityDesign, 10)];
+    const RECON: &[Query] = &[query(0x80_0002, 0x200, 0x0740_0051, 0, Espionage, 0)];
     let (team, team_size, decoys) = match kind {
         // FUN_004815a0; FUN_0047f500 takes no decoys.
         MissionKind::Diplomacy => (DIPLOMACY, 1, None),
@@ -267,9 +268,11 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         MissionKind::Sabotage => (SABOTAGE, 2, decoys(0x4, DecoyCap::Posture)),
         // FUN_00482180, FUN_00482330 (cap 4).
         MissionKind::DeathStarSabotage => (DS_SABOTAGE, 2, decoys(0x80, DecoyCap::Fixed(4))),
-        // port: the Recon planners (FUN_0047f790 for subtype 5, else
-        // FUN_0047f320 and FUN_0047f500) are not ported, so the AI sends none.
-        MissionKind::Autoscrap | MissionKind::Reconnaissance => return None,
+        // FUN_0047f790, the strategy's subtype 5 (FUN_004e8290 row 11): one
+        // unassigned member of the side able for Recon, by espionage 0..;
+        // slot +0x4c (FUN_00481100) takes no decoys.
+        MissionKind::Reconnaissance => (RECON, 1, None),
+        MissionKind::Autoscrap => return None,
         // The Move pseudo-mission has no selectors (FUN_004bd570 builds it).
         MissionKind::Move
         | MissionKind::JediTraining

@@ -1,0 +1,5 @@
+test ai::tests::a_recon_planner_claims_its_sector_and_a_second_finds_none_there ... FAILED
+test ai::tests::the_strategy_keeps_a_recon_planner_per_sector_planner ... FAILED
+    ai::tests::a_recon_planner_claims_its_sector_and_a_second_finds_none_there
+    ai::tests::the_strategy_keeps_a_recon_planner_per_sector_planner
+test result: FAILED. 114 passed; 2 failed; 0 ignored; 0 measured; 1255 filtered out; finished in 0.00s

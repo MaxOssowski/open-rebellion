@@ -328,7 +328,7 @@ fn accepts(
 /// planners: officers, espionage, rescue, reconnaissance, uprisings.
 ///
 /// port: the original's list holds one planner per request (`FUN_004d2730`).
-const MISSION_GROUPS: u8 = 3;
+const MISSION_GROUPS: u8 = 2;
 
 /// The module whose step issues the production heuristic's order for
 /// `kind`: `0xa` a manufacturing facility; none for the rest.
@@ -568,6 +568,14 @@ pub struct AIState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub record_claims: HashMap<SystemKey, u32>,
+    /// The sector record `+0x28` claims the mission planners keep
+    /// ([`crate::ai_records::KEPT_SECTOR_CLAIMS`]; save v82).
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub sector_claims: HashMap<crate::ids::SectorKey, u32>,
 }
 
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
@@ -646,6 +654,10 @@ pub struct MissionPlanner {
     /// `0x20000000` for Diplomacy).
     #[serde(default)]
     pub claimed: Option<SystemKey>,
+    /// The sector whose record it claims (`+0x70`; Reconnaissance, sector
+    /// record `+0x28` bit `0x10000000`; save v82).
+    #[serde(default)]
+    pub sector: Option<crate::ids::SectorKey>,
 }
 
 /// State 6 (`FUN_004bd0a0`): the planner's gathering place `+0x38`. It
@@ -737,6 +749,7 @@ impl AIState {
             seen: HashMap::new(),
             swept: Vec::new(),
             record_claims: HashMap::new(),
+            sector_claims: HashMap::new(),
         }
     }
 
@@ -1299,6 +1312,7 @@ impl AISystem {
         crate::ai_records::apply_ship_holds(&mut galaxy, &state.ship_holds);
         crate::ai_records::apply_fleet_holds(&mut galaxy, &state.fleet_holds);
         crate::ai_records::apply_claims(&mut galaxy, &state.record_claims);
+        crate::ai_records::apply_sector_claims(&mut galaxy, &state.sector_claims);
         crate::ai_module8::mark_planners(&mut galaxy, &state.module8.planners);
         crate::ai_strategy::mark_plans(&mut galaxy, &state.strategy.plans);
         crate::ai_strategy::mark_swept(&mut galaxy, &state.swept);
@@ -1582,10 +1596,7 @@ impl AISystem {
             MissionEntry::Group(0) => {
                 Self::evaluate_espionage(planner, world, faction, config, actions);
             }
-            MissionEntry::Group(1) => Self::evaluate_rescue(planner, world, faction, actions),
-            MissionEntry::Group(_) => {
-                Self::evaluate_reconnaissance(planner, world, faction, config, actions);
-            }
+            MissionEntry::Group(_) => Self::evaluate_rescue(planner, world, faction, actions),
         }
         Self::adopt_mission_orders(state, ctx.tick, start, actions);
         Self::mission_planner_cycle(state, planner, world, galaxy, ctx.tick, actions);
@@ -1646,6 +1657,7 @@ impl AISystem {
                             staging: None,
                             standing: false,
                             claimed: None,
+                            sector: None,
                         });
                     }
                 }
@@ -1662,7 +1674,7 @@ impl AISystem {
     ///   (`FUN_0047aff0`);
     /// - state 5 (slot `+0x50`): a standing planner's target
     ///   ([`recruitment_target`], [`diplomacy_target`],
-    ///   [`incite_target`], [`subdue_target`]);
+    ///   [`incite_target`], [`subdue_target`], [`recon_target`]);
     /// - state 6 ([`staging_point`]): the gathering place;
     /// - state 7 (`FUN_004bd570`): each free member away from it gets a
     ///   Move order there (`0x201`, the Move pseudo-mission);
@@ -1687,6 +1699,8 @@ impl AISystem {
         use crate::mission_planning::standing_system;
         let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
         let claims = &mut state.record_claims;
+        let sector_claims = &mut state.sector_claims;
+        let seen = &state.seen;
         state.mission_planners.retain_mut(|p| {
             if !p.standing && tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
                 return false;
@@ -1708,6 +1722,9 @@ impl AISystem {
                     MissionKind::Recruitment => recruitment_target(p, planner, world, galaxy),
                     MissionKind::InciteUprising => incite_target(p, planner, galaxy),
                     MissionKind::SubdueUprising => subdue_target(p, planner, galaxy),
+                    MissionKind::Reconnaissance => {
+                        recon_target(p, planner, galaxy, sector_claims, (tick, seen))
+                    }
                     _ => diplomacy_target(p, planner, galaxy, claims),
                 };
             }
@@ -1775,8 +1792,14 @@ impl AISystem {
     ///   [`incite_wanted`]; the weakest by leadership (`FUN_0047fef0`:
     ///   record `+0x58`).
     ///
+    /// - row 11, Reconnaissance (count `+0x344`, slot `+0x40` 9,
+    ///   `FUN_0047f670`): as many as the side's sector planners (controller
+    ///   `+0xd8`, module 8); the weakest by espionage (`FUN_0047f680`:
+    ///   record `+0x44`).
+    ///
     /// port: rows 2 to 4 are the research planners
-    /// ([`Self::research_strategy`]) and rows 8 to 12 are not yet ported,
+    /// ([`Self::research_strategy`]) and rows 8 to 10 and 12 are not yet
+    /// ported,
     /// so the rows are not ordered behind each other, and each count
     /// reaches its want within one step (the original asks once per
     /// strategy pass).
@@ -1818,6 +1841,13 @@ impl AISystem {
             world,
             galaxy,
             (MissionKind::InciteUprising, inciters, Skill::Leadership),
+        );
+        let scouts = state.module8.planners.len();
+        Self::keep_planners(
+            state,
+            world,
+            galaxy,
+            (MissionKind::Reconnaissance, scouts, Skill::Espionage),
         );
     }
 
@@ -1862,6 +1892,9 @@ impl AISystem {
             if let Some(system) = p.claimed {
                 release_claim(&mut state.record_claims, galaxy, system);
             }
+            if let Some(sector) = p.sector {
+                release_sector(&mut state.sector_claims, galaxy, sector);
+            }
         }
         while count(state) < wanted {
             let id = state.next_planner_id;
@@ -1879,6 +1912,7 @@ impl AISystem {
                 staging: None,
                 standing: true,
                 claimed: None,
+                sector: None,
             });
         }
     }
@@ -2104,75 +2138,6 @@ impl AISystem {
         for (captive_key, captive_system) in captives {
             let target = (captive_system, Some(captive_key));
             if !Self::dispatch_planned(planner, MissionKind::Rescue, target, None, actions) {
-                break;
-            }
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Reconnaissance heuristics (D5)
-    // -----------------------------------------------------------------------
-
-    /// Dispatch reconnaissance missions to gather intelligence on enemy systems.
-    ///
-    /// Unlike `evaluate_espionage`'s intelligence gathering (Priority 3), which
-    /// targets only unexplored systems, this targets explored enemy-controlled
-    /// systems to update our intelligence picture. The original game uses
-    /// mission type 0x54 for this — we reuse `MissionKind::Espionage` since
-    /// the mechanic is the same (reveal system state).
-    ///
-    /// Priority: enemy-controlled systems with the most fleets/facilities
-    /// (highest strategic value to scout).
-    fn evaluate_reconnaissance(
-        planner: &mut Planner<'_>,
-        world: &GameWorld,
-        faction: AiFaction,
-        config: &GameConfig,
-        actions: &mut Vec<AIAction>,
-    ) {
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        let enemy_faction = if is_alliance {
-            crate::dat::Faction::Empire
-        } else {
-            crate::dat::Faction::Alliance
-        };
-
-        // Find explored enemy systems worth scouting.
-        let mut recon_targets: Vec<(SystemKey, u32)> = world
-            .systems
-            .iter()
-            .filter_map(|(sys_key, system)| {
-                if !system.control.is_controlled_by(enemy_faction) {
-                    return None;
-                }
-                if system.is_destroyed {
-                    return None;
-                }
-                // Only target explored systems (unexplored are handled by
-                // evaluate_espionage). Score by total enemy assets.
-                if system.exploration_status != crate::dat::ExplorationStatus::Explored {
-                    return None;
-                }
-                let value = Self::system_strength(world, system, !is_alliance);
-                Some((sys_key, value))
-            })
-            .collect();
-
-        if recon_targets.is_empty() {
-            return;
-        }
-
-        // Sort by highest value first (most important to scout).
-        recon_targets.sort_by_key(|a| std::cmp::Reverse(a.1));
-
-        for (target_sys, _) in recon_targets.into_iter().take(config.ai.max_recon_per_eval) {
-            if !Self::dispatch_planned(
-                planner,
-                MissionKind::Espionage,
-                (target_sys, None),
-                None,
-                actions,
-            ) {
                 break;
             }
         }
@@ -3343,6 +3308,113 @@ fn diplomacy_target(
     target.and_then(|t| claim(p, galaxy, claims, t))
 }
 
+/// Slot `+0x38` of a Reconnaissance planner (`FUN_0047fe10`): clear the
+/// claim on its sector (record `+0x28` bit `0x10000000`).
+fn release_sector(
+    claims: &mut HashMap<crate::ids::SectorKey, u32>,
+    galaxy: &mut crate::ai_records::Galaxy,
+    sector: crate::ids::SectorKey,
+) {
+    use crate::ai_records::CLAIM_RECON;
+    if let Some(bits) = claims.get_mut(&sector) {
+        *bits &= !CLAIM_RECON;
+        if *bits == 0 {
+            claims.remove(&sector);
+        }
+    }
+    galaxy.update_sector_state(sector, 0, CLAIM_RECON);
+}
+
+/// State 5 of a Reconnaissance planner (slot `+0x50`, `FUN_0047f970`): its
+/// target `+0x34`, a system not the side's (record `+0x2c` bit `0x80`), and
+/// the sector `+0x70` it claims (sector record `+0x28` bit `0x10000000`).
+///
+/// It keeps its target while the record has `0x80`. Otherwise it releases
+/// its sector and picks a sector with such a system (`+0x28` `0x40`) and
+/// no claim, the near one from the previous gathering place `+0x38`
+/// (`FUN_00419b80`, order 2) or a drawn one (`FUN_0041a1d0`):
+///
+/// - while the side counts a sector without `+0x24` bit `0x40000000`
+///   (controller `+0x1c4`, `FUN_0041b7e0`): the sector must also lack
+///   `+0x28` `0x40000000` and `+0x2c` `0x4000000`; the drawn one is order
+///   2; then a random unexplored such system (`FUN_0041a460`, forbidding
+///   `+0x2c` `0x8000000`; order 1 without `+0x38`, 2 with it);
+/// - else the sector must lack `+0x2c` `0x4000000` (the drawn one order
+///   1), then the such system seen longest ago (`FUN_0041a3a0`, order 1).
+///
+/// A planner without a team still picks: `FUN_0047f970` does not test
+/// `+0x20` bit 1.
+fn recon_target(
+    p: &mut MissionPlanner,
+    planner: &mut Planner<'_>,
+    galaxy: &mut crate::ai_records::Galaxy,
+    claims: &mut HashMap<crate::ids::SectorKey, u32>,
+    (day, seen): (u64, &HashMap<SystemKey, u64>),
+) -> Option<SystemKey> {
+    use crate::ai_records::{pick, Mask, Order, CLAIM_RECON};
+    let any = Mask::new(0, 0);
+    if let Some(t) = p
+        .target_system
+        .filter(|&t| galaxy.system(t).is_some_and(|r| r.summary & 0x80 != 0))
+    {
+        return Some(t);
+    }
+    if let Some(sector) = p.sector.take() {
+        release_sector(claims, galaxy, sector);
+    }
+    let foreign = Mask::new(0x80, 0);
+    let open_sectors = galaxy
+        .sectors
+        .iter()
+        .filter(|s| s.candidates & 0x4000_0000 == 0)
+        .count();
+    let (sector, target) = if open_sectors >= 1 {
+        let masks = [any, Mask::new(0x40, 0x5000_0000), Mask::new(0, 0x400_0000)];
+        let (sectors, order) = match p.staging {
+            Some(prev) => (
+                galaxy.sectors_by_distance(prev, masks, Order::Descending, &mut || planner.coin()),
+                Order::Descending,
+            ),
+            None => (
+                random_sectors(planner, galaxy, masks, Order::Descending),
+                Order::Ascending,
+            ),
+        };
+        let sector = pick(&[sectors]);
+        let unexplored = [any, Mask::new(0x80, 0x800_0000), any];
+        (
+            sector,
+            random_system(planner, galaxy, sector, unexplored, order),
+        )
+    } else {
+        let masks = [any, Mask::new(0x40, 0x1000_0000), Mask::new(0, 0x400_0000)];
+        let sectors = match p.staging {
+            Some(prev) => {
+                galaxy.sectors_by_distance(prev, masks, Order::Descending, &mut || planner.coin())
+            }
+            None => random_sectors(planner, galaxy, masks, Order::Ascending),
+        };
+        let sector = pick(&[sectors]);
+        let target = sector.and_then(|sector| {
+            pick(&[galaxy.system_query_by_age(
+                sector,
+                [any, foreign, any],
+                (day, seen),
+                Order::Ascending,
+                &mut || planner.coin(),
+            )])
+        });
+        (sector, target)
+    };
+    let (Some(sector), Some(target)) = (sector, target) else {
+        return None;
+    };
+    *claims.entry(sector).or_insert(0) |= CLAIM_RECON;
+    galaxy.update_sector_state(sector, CLAIM_RECON, 0);
+    p.sector = Some(sector);
+    Some(target)
+}
+
 /// Row 6's want (`FUN_004e8290`): the side's uprisings plus one (side
 /// `+0x21c`, the sector records' `+0x164`: systems with record `+0x2c` bit
 /// `0x20`, an own uprising with no own fleet; `FUN_0041b7e0`) while
@@ -4019,7 +4091,6 @@ mod tests {
         research_all(state, &mut planner, &ctx, &mut actions);
         AISystem::evaluate_espionage(&mut planner, world, faction, config, &mut actions);
         AISystem::evaluate_rescue(&mut planner, world, faction, &mut actions);
-        AISystem::evaluate_reconnaissance(&mut planner, world, faction, config, &mut actions);
         AISystem::evaluate_production(
             world,
             mfg_state,
@@ -4594,6 +4665,7 @@ mod tests {
             staging: None,
             standing: false,
             claimed: None,
+            sector: None,
         };
         let (world, _, _, keys) = diplomacy_world(90.0, &[50, 90]);
         let mut state = AIState::new(AiFaction::Empire);
@@ -4646,6 +4718,7 @@ mod tests {
             staging: None,
             standing,
             claimed: None,
+            sector: None,
         };
         state
             .mission_planners
@@ -5870,69 +5943,6 @@ mod tests {
     // D5: Reconnaissance test
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn reconnaissance_targets_explored_enemy_systems() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let config = GameConfig::default();
-
-        // Explored enemy system — a recon target.
-        let enemy_sys = world.systems.insert(System {
-            dat_id: DatId(0),
-            name: "Enemy Base".into(),
-            sector,
-            x: 100,
-            y: 100,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.8,
-            popularity_empire: 0.1,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
-        });
-
-        // Empire special force for recon.
-        let spy = add_commando(&mut world, false, 70, 40);
-
-        let mut planner = Planner::new(&world, &MissionState::new(), &HashSet::new(), false, 7);
-        let mut actions = Vec::new();
-        AISystem::evaluate_reconnaissance(
-            &mut planner,
-            &world,
-            AiFaction::Empire,
-            &config,
-            &mut actions,
-        );
-
-        let recon = actions.iter().find(|a| {
-            matches!(
-                a,
-                AIAction::DispatchMission {
-                    kind: MissionKind::Espionage,
-                    team,
-                    target_system,
-                    ..
-                }
-                if *team == [spy] && *target_system == enemy_sys
-            )
-        });
-        assert!(
-            recon.is_some(),
-            "expected reconnaissance mission on explored enemy system"
-        );
-    }
-
     // -----------------------------------------------------------------------
     // Planned missions (F-019 phase 5a)
     // -----------------------------------------------------------------------
@@ -6466,6 +6476,7 @@ mod tests {
             staging: None,
             standing: true,
             claimed: None,
+            sector: None,
         };
         let mut target = |p: &MissionPlanner| incite_target(p, &mut planner, &galaxy);
         // Without +0x38: the best supported (v[0], order 1).
@@ -6617,6 +6628,7 @@ mod tests {
             staging: None,
             standing: true,
             claimed: None,
+            sector: None,
         };
         let mut target = |p: &MissionPlanner| subdue_target(p, &mut planner, &galaxy);
         // The far sector has two uprisings; its best supported.
@@ -6630,6 +6642,199 @@ mod tests {
         assert_eq!(target(&p), Some(keys[1]));
         p.team.clear();
         assert_eq!(target(&p), None);
+    }
+
+    /// An Empire home with `scouts` (major, espionage 90) standing there,
+    /// and two Alliance systems in a far sector, `explored` or not.
+    fn recon_world(
+        scouts: usize,
+        explored: bool,
+    ) -> (GameWorld, SystemKey, [SystemKey; 2], Vec<CharacterKey>) {
+        let mut world = empty_world();
+        let home_sector = add_sector(&mut world);
+        let home = add_system(&mut world, home_sector, 0.1, 0.9);
+        world.systems[home].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let far = add_sector(&mut world);
+        world.sectors[far].x = 900;
+        let rebels = [0, 1].map(|i| {
+            let s = add_system(&mut world, far, 0.9, 0.1);
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+            world.systems[s].x = 900 + 10 * i;
+            if !explored {
+                world.systems[s].exploration_status = crate::dat::ExplorationStatus::Unexplored;
+            }
+            s
+        });
+        let keys = (0..scouts)
+            .map(|_| {
+                let c = add_character(&mut world, false, true, 30);
+                world.characters[c].espionage.base = 90;
+                world.characters[c].current_system = Some(home);
+                c
+            })
+            .collect();
+        (world, home, rebels, keys)
+    }
+
+    #[test]
+    fn the_strategy_keeps_a_recon_planner_per_sector_planner() {
+        // FUN_004e8290 row 11: +0x344 against the count of controller
+        // +0xd8, the module 8 sector planners.
+        let (world, _, _, _) = recon_world(0, false);
+        let count = |planners: usize| {
+            let mut state = AIState::new(AiFaction::Empire);
+            state.module8.planners = vec![crate::ai_module8::SectorPlanner::default(); planners];
+            strategy_pass(&mut state, &world, 1);
+            state
+                .mission_planners
+                .iter()
+                .filter(|p| p.standing && p.kind == MissionKind::Reconnaissance)
+                .count()
+        };
+        assert_eq!([0, 1, 3].map(count), [0, 1, 3]);
+    }
+
+    #[test]
+    fn a_recon_planner_claims_its_sector_and_a_second_finds_none_there() {
+        // FUN_0047f970: a random unexplored system not the side's
+        // (+0x2c 0x80, not 0x8000000) in a sector with one (+0x28 0x40)
+        // and no claim (0x10000000), which it then claims. The claim keeps
+        // the second planner out; FUN_0047fe10 releases it.
+        let (world, _, rebels, keys) = recon_world(2, false);
+        let mut state = AIState::new(AiFaction::Empire);
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner::default(); 2];
+        let actions = strategy_pass(&mut state, &world, 1);
+        let targets: Vec<Option<SystemKey>> = state
+            .mission_planners
+            .iter()
+            .map(|p| p.target_system)
+            .collect();
+        assert_eq!(targets.len(), 2);
+        assert!(targets[0].is_some_and(|t| rebels.contains(&t)));
+        assert_eq!(targets[1], None);
+        let far = world.systems[rebels[0]].sector;
+        assert_eq!(state.mission_planners[0].sector, Some(far));
+        assert_eq!(state.sector_claims.get(&far), Some(&0x1000_0000));
+        // The scout stands at home, the side's system nearest the target,
+        // so the order goes out at once.
+        let sent = orders(&actions, MissionKind::Reconnaissance);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(Some(sent[0].1), targets[0]);
+        assert!(keys.contains(&sent[0].0[0].character().unwrap()));
+
+        // The next day the first keeps its target and the claim holds.
+        let kept = targets[0];
+        strategy_pass(&mut state, &world, 2);
+        assert_eq!(state.mission_planners[0].target_system, kept);
+        assert_eq!(state.mission_planners[1].target_system, None);
+
+        // With no sector planner left, both go and the claim with them.
+        state.module8.planners.clear();
+        strategy_pass(&mut state, &world, 3);
+        assert!(state.mission_planners.is_empty());
+        assert!(state.sector_claims.is_empty());
+    }
+
+    #[test]
+    fn while_a_sector_lacks_a_capital_recon_takes_only_unexplored_systems() {
+        // FUN_0047f970 with controller +0x1c4 >= 1: FUN_0041a460 forbids
+        // +0x2c 0x8000000 (explored), so explored enemy systems give none.
+        let (world, _, _, _) = recon_world(1, true);
+        let mut state = AIState::new(AiFaction::Empire);
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner::default()];
+        strategy_pass(&mut state, &world, 1);
+        assert_eq!(state.mission_planners[0].target_system, None);
+        assert!(state.sector_claims.is_empty());
+    }
+
+    #[test]
+    fn with_every_sector_holding_a_capital_recon_takes_the_system_seen_longest_ago() {
+        // FUN_0047f970 with controller +0x1c4 < 1 (no sector record without
+        // +0x24 0x40000000, set by a headquarters or Coruscant,
+        // FUN_00432350): the sector may lack only the claim (0x10000000),
+        // and the system is the one not seen for longest (FUN_0041a3a0,
+        // order 1), explored or not.
+        let (mut world, home, rebels, keys) = recon_world(1, true);
+        world.systems[home].is_headquarters = true;
+        let far = world.systems[rebels[0]].sector;
+        let capital = add_system(&mut world, far, 0.1, 0.9);
+        world.systems[capital].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.systems[capital].is_headquarters = true;
+        let mut state = AIState::new(AiFaction::Empire);
+        state.seen.insert(rebels[0], 5);
+        let galaxy = galaxy_of(&state, &world);
+        assert!(galaxy
+            .sectors
+            .iter()
+            .all(|s| s.candidates & 0x4000_0000 != 0));
+        let mut galaxy = galaxy;
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let mut p = MissionPlanner {
+            id: 1,
+            kind: MissionKind::Reconnaissance,
+            team: vec![MissionMember::Character(keys[0])],
+            decoys: Vec::new(),
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: Some(home),
+            standing: true,
+            claimed: None,
+            sector: None,
+        };
+        let mut claims = HashMap::new();
+        let mut seen = state.seen.clone();
+        let target = recon_target(&mut p, &mut planner, &mut galaxy, &mut claims, (10, &seen));
+        assert_eq!(target, Some(rebels[1]));
+        seen.insert(rebels[1], 9);
+        release_sector(&mut claims, &mut galaxy, far);
+        p.target_system = None;
+        let target = recon_target(&mut p, &mut planner, &mut galaxy, &mut claims, (10, &seen));
+        assert_eq!(target, Some(rebels[0]));
+    }
+
+    #[test]
+    fn the_refresh_keeps_the_sector_claims_and_a_claim_is_seen_at_once() {
+        // FUN_004321e0 keeps sector +0x28 & 0x30000000; the claim and its
+        // release (FUN_0047f970, FUN_0047fe10) change the record in place.
+        let (world, _, rebels, _) = recon_world(0, false);
+        let far = world.systems[rebels[0]].sector;
+        let plain = galaxy_of(&AIState::new(AiFaction::Empire), &world);
+        let before = plain.sector(far).unwrap().state;
+        let mut state = AIState::new(AiFaction::Empire);
+        state.sector_claims.insert(far, 0xffff_ffff);
+        let claimed = galaxy_of(&state, &world);
+        assert_eq!(claimed.sector(far).unwrap().state, before | 0x3000_0000);
+        let mut galaxy = plain;
+        galaxy.update_sector_state(far, 0x1000_0000, 0);
+        galaxy.update_sector_state(far, 0x1000_0000, 0);
+        assert_eq!(galaxy.sector(far).unwrap().state, before | 0x1000_0000);
+        galaxy.update_sector_state(far, 0, 0x1000_0000);
+        assert_eq!(galaxy.sector(far).unwrap().state, before);
+    }
+
+    #[test]
+    fn a_recon_target_that_becomes_the_side_s_is_dropped_and_its_sector_freed() {
+        // FUN_0047f970 keeps +0x34 only while its record has +0x2c 0x80;
+        // otherwise it releases +0x70 first.
+        let (mut world, _, rebels, _) = recon_world(1, false);
+        let mut state = AIState::new(AiFaction::Empire);
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner::default()];
+        strategy_pass(&mut state, &world, 1);
+        let first = state.mission_planners[0].target_system.unwrap();
+        for s in rebels {
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+            world.systems[s].exploration_status = crate::dat::ExplorationStatus::Explored;
+        }
+        strategy_pass(&mut state, &world, 2);
+        assert_ne!(state.mission_planners[0].target_system, Some(first));
+        assert_eq!(state.mission_planners[0].target_system, None);
+        assert_eq!(state.mission_planners[0].sector, None);
+        assert!(state.sector_claims.is_empty());
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.
@@ -6698,6 +6903,7 @@ mod tests {
             staging: None,
             standing: true,
             claimed: None,
+            sector: None,
         };
         let busy = HashSet::new();
         let missions = MissionState::new();
@@ -6918,52 +7124,6 @@ mod tests {
         assert_eq!(sent.len(), 2);
         assert!(sent.contains(&(first_prison, first)));
         assert!(sent.contains(&(second_prison, second)));
-    }
-
-    #[test]
-    fn reconnaissance_scouts_only_explored_systems_the_enemy_holds() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let held = |world: &mut GameWorld, control| {
-            let system = add_system(world, sector, 0.8, 0.1);
-            world.systems[system].control = control;
-            system
-        };
-        let first = held(
-            &mut world,
-            ControlKind::Controlled(crate::dat::Faction::Alliance),
-        );
-        let second = held(
-            &mut world,
-            ControlKind::Controlled(crate::dat::Faction::Alliance),
-        );
-        let _neutral = held(&mut world, ControlKind::Uncontrolled);
-        let _own = held(
-            &mut world,
-            ControlKind::Controlled(crate::dat::Faction::Empire),
-        );
-        for _ in 0..6 {
-            add_commando(&mut world, false, 80, 0);
-        }
-        let mut planner = planner_for(&world, AiFaction::Empire);
-        let mut actions = Vec::new();
-
-        AISystem::evaluate_reconnaissance(
-            &mut planner,
-            &world,
-            AiFaction::Empire,
-            &GameConfig::default(),
-            &mut actions,
-        );
-
-        let mut targets: Vec<_> = orders(&actions, MissionKind::Espionage)
-            .into_iter()
-            .map(|(_, system, _)| system)
-            .collect();
-        targets.sort();
-        let mut expected = vec![first, second];
-        expected.sort();
-        assert_eq!(targets, expected);
     }
 
     /// An Alliance system holding a yard of `family` (MANFACSD `0x28`
@@ -9621,50 +9781,5 @@ mod tests {
             orders(&actions, MissionKind::ShipDesignResearch),
             vec![(vec![ship], shipyard, None)]
         );
-    }
-
-    #[test]
-    fn reconnaissance_scouts_the_enemy_s_strongest_systems_first() {
-        // port: recon ranks enemy-held systems by the enemy's own assets;
-        // our regiments there do not count.
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let regiment = |world: &mut GameWorld, system, is_alliance| {
-            let troop = world.troops.insert(crate::world::TroopUnit {
-                class_dat_id: DatId(0),
-                is_alliance,
-                regiment_strength: 50,
-            });
-            world.systems[system].ground_units.push(troop);
-        };
-        let held = |world: &mut GameWorld| {
-            let system = add_system(world, sector, 0.8, 0.1);
-            world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
-            system
-        };
-        let garrisoned = held(&mut world);
-        let empty = held(&mut world);
-        let occupied = held(&mut world);
-        regiment(&mut world, garrisoned, true);
-        regiment(&mut world, occupied, false);
-        for _ in 0..4 {
-            add_commando(&mut world, false, 80, 0);
-        }
-        let mut planner = planner_for(&world, AiFaction::Empire);
-        let mut actions = Vec::new();
-
-        AISystem::evaluate_reconnaissance(
-            &mut planner,
-            &world,
-            AiFaction::Empire,
-            &GameConfig::default(),
-            &mut actions,
-        );
-
-        let targets: Vec<_> = orders(&actions, MissionKind::Espionage)
-            .into_iter()
-            .map(|(_, system, _)| system)
-            .collect();
-        assert_eq!(targets, vec![garrisoned, empty]);
     }
 }

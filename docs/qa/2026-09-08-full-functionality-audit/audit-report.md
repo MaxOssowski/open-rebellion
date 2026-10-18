@@ -2685,6 +2685,15 @@ cross-runtime proof remain open
   there are 330 Subdue orders, and systems falling to no side drop from
   184 to 27. Golden final `v1:1f09d2d3d2c77cf3` -> `v1:7ed462ebd95b759a`
   (`evidence/2026-10-18-subdue-planner/`).
+- 2026-10-18 (F-036, save v82): the AI's Reconnaissance planner is the
+  original's. The strategy keeps one planner per sector planner
+  (`FUN_004e8290` row 11). Each claims a sector and scouts a random
+  unexplored system not the side's (`FUN_0047f970`). The Recon selector
+  (`FUN_0047f790`) is ported. The heuristic sent Espionage instead. In 24
+  campaigns there are 3,006 Reconnaissance orders. Golden initial
+  `v1:6f750b483b72f71f` -> `v1:cb9430c7635d6e7e`, final
+  `v1:7ed462ebd95b759a` -> `v1:3c9e4e1739d78f43`
+  (`evidence/2026-10-18-recon-planner/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

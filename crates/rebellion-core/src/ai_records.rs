@@ -490,6 +490,27 @@ pub fn apply_claims(
     }
 }
 
+/// The sector record `+0x28` bits the refresh keeps (`FUN_004321e0`:
+/// `+0x28 & 0x30000000`).
+pub const KEPT_SECTOR_CLAIMS: u32 = 0x3000_0000;
+
+/// Sector record `+0x28` bit `0x10000000`: a Reconnaissance planner works
+/// the sector (`FUN_0047f970`); its slot `+0x38` (`FUN_0047fe10`) releases
+/// it.
+pub const CLAIM_RECON: u32 = 0x1000_0000;
+
+/// The refresh's kept sector `+0x28` claims ([`KEPT_SECTOR_CLAIMS`]).
+pub fn apply_sector_claims(
+    galaxy: &mut Galaxy,
+    claims: &std::collections::HashMap<crate::ids::SectorKey, u32>,
+) {
+    for sector in &mut galaxy.sectors {
+        if let Some(bits) = claims.get(&sector.sector) {
+            sector.state |= bits & KEPT_SECTOR_CLAIMS;
+        }
+    }
+}
+
 /// Ship record `+0x24` bit `0x20000`: no planner holds the ship. The
 /// record's constructor sets it (`FUN_00484230`); a planner taking the
 /// ship clears it (`FUN_00478e00`) and releasing it sets it again
@@ -2376,6 +2397,14 @@ impl Galaxy {
     pub fn update_summary(&mut self, system: crate::ids::SystemKey, set: u32, clear: u32) {
         if let Some(r) = self.system_mut(system) {
             r.summary = (r.summary & !clear) | set;
+        }
+    }
+
+    /// Set and clear bits of `sector`'s record state `+0x28` (a planner's
+    /// claim, seen at once).
+    pub fn update_sector_state(&mut self, sector: crate::ids::SectorKey, set: u32, clear: u32) {
+        if let Some(r) = self.sectors.iter_mut().find(|r| r.sector == sector) {
+            r.state = (r.state & !clear) | set;
         }
     }
 

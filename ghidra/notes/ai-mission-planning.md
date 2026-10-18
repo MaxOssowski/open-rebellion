@@ -1150,6 +1150,68 @@ Campaigns: 24 seeds of 1500 days, against the Incite commit.
 - Systems held at the end, summed over the seeds: Alliance 487 and 376,
   Empire 351 and 462.
 
+## The Reconnaissance planner (read and ported 2026-10-18, save v82)
+
+The Reconnaissance planner class has vtable `0x0065a7b0`:
+
+| Slot | Function | Meaning |
+|---|---|---|
+| `+0x18` | `FUN_0047f680` | the cancel key: the team's records' `+0x44` summed (espionage) |
+| `+0x38` | `FUN_0047fe10` | release: clear the claim `0x10000000` on sector record `+0x70` |
+| `+0x40` | `FUN_0047f670` | 9: the count `S+0x344` |
+| `+0x48` | `FUN_0047f790` | the team selector |
+| `+0x4c` | `FUN_00481100` | no decoys |
+| `+0x50` | `FUN_0047f970` | state 5, the target |
+
+**The want.** Row 11 asks with subtype 5 while `S+0x344` is below the
+length of controller `+0xd8`, and cancels while above. `+0xd8` is the
+list of module 8's sector planners (at `0x4e8669`), so the side keeps one
+Reconnaissance planner per sector planner.
+
+**The team, `FUN_0047f790`.** `FUN_00403460(0x800002, 0x200, 0x7400051,
+0, 1, 0, 10000, 1)` gives one unassigned member of the side able for
+Recon, by espionage. It must be a character or special force (`0x30..
+0x3f`). With `+0x38` set, the nearness query `FUN_00403750` joins it.
+
+**The target, `FUN_0047f970`.** It does not test for a team. It keeps
+`+0x34` while the record has `+0x2c` `0x80` (not the side's). Otherwise it
+releases its sector `+0x70`, then:
+
+- While controller `+0x1c4 >= 1` (a sector record without `+0x24` bit
+  `0x40000000`; that bit marks a headquarters or Coruscant):
+  - the sector is near `+0x38`
+    (`FUN_00419b80(+0x38, 0, 0x40, 0, 0, 0x50000000, 0x4000000)`, order
+    2), or drawn (`FUN_0041a1d0` with the same masks, order 2);
+  - the target is a random unexplored system not the side's
+    (`FUN_0041a460(+0x70, 0, 0x80, 0, 0, 0x8000000, 0)`), order 2 near
+    `+0x38`, else 1.
+- Otherwise:
+  - the sector masks forbid only `0x10000000` (and `+0x2c` `0x4000000`),
+    the drawn sector order 1;
+  - the target is the system not the side's seen longest ago
+    (`FUN_0041a3a0(+0x70, 0, 0x80, 0, 0, 0, 0)`, order 1).
+
+With a target it claims the sector (record `+0x28 |= 0x10000000`), which
+the refresh keeps (`FUN_004321e0`: `+0x28 & 0x30000000`).
+
+**Ported**:
+- `recon_target`, `release_sector`, and row 11 in `mission_strategy`;
+- `MissionPlanner::sector` and `AIState::sector_claims`, with
+  `ai_records::apply_sector_claims` and `update_sector_state` (save v82);
+- the Recon selector (`mission_planning`). Before, it was not ported, and
+  the AI sent no Reconnaissance.
+- The port's heuristic "reconnaissance" is removed. It sent Espionage
+  missions to explored enemy systems.
+- port: the nearness query does not join the selector, as for the other
+  classes.
+
+Campaigns: 24 seeds of 1500 days, against the Subdue commit.
+- Reconnaissance orders: 0 before, 3,006 after (2,864 successes).
+- Espionage orders: 1,194 before, 1,296 after. Results: 2,148 successes
+  and 840 failures before, 2,460 and 602 after.
+- Systems held at the end, summed over the seeds: Alliance 376 and 483,
+  Empire 462 and 476.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
