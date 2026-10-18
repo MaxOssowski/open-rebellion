@@ -115,10 +115,10 @@ confrontation teaches the weaker Jedi some Force.
     so a family of 0 reads `is_major`; the index order is the key order
     of the shipped records;
   - the observation reveals the system, as for Espionage.
-- Luke's `KnowsHeritage` is the port's `heritage_known`. The invented
-  story event "Final Battle Imminent" (`0x396`) still sets it, at the end
-  of Dagobah in the campaigns, so the confrontation finds it known. The
-  invented chain also has its own Luke-Vader confrontation.
+- Luke's `KnowsHeritage` is the port's `heritage_known`. Since save v75
+  the port's "Final Battle Imminent" (`0x396`) no longer sets it; the
+  confrontation does. The port's Final Battle chain (`0x393`..`0x396`,
+  `0x220`) is still its own.
 
 ## Open
 

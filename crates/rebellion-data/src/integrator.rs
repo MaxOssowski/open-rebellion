@@ -2347,30 +2347,6 @@ pub fn apply_event_action_to_world(
                     }
                 }
             }
-            EventAction::SetHeritageKnown { character } => {
-                // Dabora 3 #R4: flip heritage_known when 0x396 "Final Battle
-                // Imminent" fires. The render layer branches on this flag
-                // in `event_id_to_resource()` to pick between the "Student
-                // Luke" / "Knight Luke" / "Emperor + Vader vs Knight Luke"
-                // BMP variants for 0x220 EVT_FINAL_BATTLE (SIMP-H5 +
-                // ARCH-#9 + SF-#11 triple-collapse — we do NOT create
-                // 0x222).
-                //
-                // Fail loudly on missing character: a silently-dropped flip
-                // shows the wrong cutscene, which is a story-continuity bug
-                // that's extremely hard to diagnose after the fact. Matches
-                // the `SpawnSpecialForce` structured-warn pattern above.
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.heritage_known = true;
-                } else {
-                    eprintln!(
-                        "[shamash-bet] SetHeritageKnown target character {character:?} \
-                         not found in arena — heritage_known flip dropped. \
-                         Final Battle cutscene variant will not reflect the \
-                         paternity reveal.",
-                    );
-                }
-            }
         }
     }
 }
@@ -2768,6 +2744,46 @@ mod tests {
         assert_eq!(integrator.events[1].event_type, EVT_FORCE_EXPERIENCE);
         assert_eq!(integrator.events[1].details["force"], 51);
         assert_eq!(integrator.events[1].details["gain"], 1);
+    }
+
+    #[test]
+    fn final_battle_imminent_leaves_luke_s_heritage_to_the_confrontation() {
+        // Luke learns KnowsHeritage only when he confronts Vader
+        // (FUN_00560200 -> FUN_0056f650); the port's 0x396 sets nothing.
+        let mut world = GameWorld::default();
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            name: "Luke Skywalker".into(),
+            is_alliance: true,
+            dagobah_completed: true,
+            ..Default::default()
+        });
+        world.characters.insert(rebellion_core::world::Character {
+            name: "Darth Vader".into(),
+            is_empire: true,
+            ..Default::default()
+        });
+        let mut state = rebellion_core::events::EventState::new();
+        rebellion_core::story_events::define_story_events(&mut state, &world);
+        let movement = MovementState::default();
+        let mut effects = Vec::new();
+        let mut fired_ids = Vec::new();
+        for tick in [61, 70] {
+            let ticks = [rebellion_core::tick::TickEvent { tick }];
+            for fired in
+                rebellion_core::events::EventSystem::advance(&mut state, &world, &ticks, &[])
+            {
+                apply_event_action_to_world(
+                    &fired.actions,
+                    &mut world,
+                    &mut effects,
+                    tick,
+                    &movement,
+                );
+                fired_ids.push(fired.event_id);
+            }
+        }
+        assert!(fired_ids.contains(&0x396), "fired {fired_ids:x?}");
+        assert!(!world.characters[luke].heritage_known);
     }
 
     #[test]

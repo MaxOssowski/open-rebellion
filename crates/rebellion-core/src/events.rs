@@ -336,16 +336,6 @@ pub enum EventAction {
     /// the system at fire time; if the character is in transit, it falls
     /// back to the movement order's destination.
     SpawnSpecialForce { at_character: CharacterKey },
-
-    /// Flip `Character::heritage_known` to `true` on the target character.
-    ///
-    /// Applied by `0x396 "Final Battle Imminent"` — the event whose
-    /// narration already introduces the Luke–Vader paternity reveal ("father
-    /// and son").
-    ///
-    /// Does NOT create a new story event — this replaces the deleted
-    /// `0x222 EVT_FINAL_BATTLE_KNOWN` split per SIMP-H5 + ARCH-#9 + SF-#11.
-    SetHeritageKnown { character: CharacterKey },
 }
 
 /// Which skill pair `ModifyCharacterSkill` targets.

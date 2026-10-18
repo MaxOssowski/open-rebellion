@@ -8084,7 +8084,6 @@ fn apply_mission_result(
 // `rebellion_data::integrator::apply_event_action_to_world` (pub #[inline]).
 // `DisplayMessage` now routes through `GameEffect::StoryMessageDisplayed`
 // and is drained into `msg_log` at the interactive tick call site.
-// SetHeritageKnown (Dabora 3 #R4) is handled in the canonical function.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------

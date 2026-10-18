@@ -2448,6 +2448,14 @@ cross-runtime proof remain open
   before every first meeting. Golden initial `v1:7de82effa8207c75` ->
   `v1:57115a2a37530826`, final `v1:ab2d9eddde745c32` ->
   `v1:e6bb717f2403b483` (`evidence/2026-10-18-encounter/`).
+- 2026-10-18: the port's `SetHeritageKnown` action is removed (save v75).
+  "Final Battle Imminent" (`0x396`) no longer sets Luke's heritage; only
+  his confrontation with Vader (`FUN_00560200`) and Leia's discovery set
+  it. In the campaigns Luke learns it at his first meeting with Vader
+  (seeds 2 and 3, days 716 and 488). The rest of the Final Battle chain is
+  still the port's own. Golden initial `v1:57115a2a37530826` ->
+  `v1:ad8518eb172a430f`, final `v1:e6bb717f2403b483` ->
+  `v1:e811b12322f7e20e` (`evidence/2026-10-18-heritage/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

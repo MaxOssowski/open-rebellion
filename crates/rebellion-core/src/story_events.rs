@@ -165,8 +165,11 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
             });
 
             // Final Battle ready (0x396) — requires either path.
-            // "father and son" narration reveals heritage; SetHeritageKnown
-            // flips Luke's flag so the render layer picks the correct BMP.
+            // port: the original's Final Battle chain (DarthPickup,
+            // DarthToLukeFinalBattle, FinalBattleReady, FUN_0054ba00) is not
+            // read. Luke learns his heritage only when he confronts Vader
+            // (FUN_00560200, crate::mission_detection), so this event no
+            // longer sets it.
             state.define(GameEvent {
                 id: 0x396,
                 name: "Final Battle Imminent".into(),
@@ -175,13 +178,9 @@ pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
                     // If 0x395 fires first, 0x394 can still fire later to gate this.
                     EventCondition::EventFired { id: 0x394 },
                 ],
-                actions: vec![
-                    EventAction::SetHeritageKnown { character: luke },
-                    EventAction::DisplayMessage {
-                        text: "The final confrontation between father and son is imminent..."
-                            .into(),
-                    },
-                ],
+                actions: vec![EventAction::DisplayMessage {
+                    text: "The final confrontation between father and son is imminent...".into(),
+                }],
                 is_repeatable: false,
                 enabled: true,
                 system_tag: SystemTag::Story,

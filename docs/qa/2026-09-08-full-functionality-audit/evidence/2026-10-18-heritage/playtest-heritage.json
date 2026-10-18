@@ -1,0 +1,204 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1200 --dual-ai",
+ "baseline": "94c9ebef plus this change",
+ "runs": {
+  "1-1200": {
+   "encounters": [],
+   "port_0x396_day": null
+  },
+  "2-1200": {
+   "encounters": [
+    [
+     716,
+     "force_encounter",
+     {
+      "day": 715,
+      "defender": "Darth Vader",
+      "member": "Luke Skywalker"
+     }
+    ],
+    [
+     716,
+     "confrontation",
+     {
+      "member": "Luke Skywalker",
+      "partner": "Darth Vader"
+     }
+    ],
+    [
+     716,
+     "heritage_learned",
+     {
+      "character": "Luke Skywalker"
+     }
+    ],
+    [
+     820,
+     "force_encounter",
+     {
+      "day": 819,
+      "defender": "Darth Vader",
+      "member": "Luke Skywalker"
+     }
+    ],
+    [
+     820,
+     "confrontation",
+     {
+      "member": "Luke Skywalker",
+      "partner": "Darth Vader"
+     }
+    ],
+    [
+     822,
+     "force_encounter",
+     {
+      "day": 821,
+      "defender": "Darth Vader",
+      "member": "Luke Skywalker"
+     }
+    ],
+    [
+     822,
+     "confrontation",
+     {
+      "member": "Luke Skywalker",
+      "partner": "Darth Vader"
+     }
+    ],
+    [
+     883,
+     "force_encounter",
+     {
+      "day": 882,
+      "defender": "Darth Vader",
+      "member": "Luke Skywalker"
+     }
+    ],
+    [
+     883,
+     "confrontation",
+     {
+      "member": "Luke Skywalker",
+      "partner": "Darth Vader"
+     }
+    ],
+    [
+     1135,
+     "force_encounter",
+     {
+      "day": 1134,
+      "defender": "Darth Vader",
+      "member": "Luke Skywalker"
+     }
+    ],
+    [
+     1135,
+     "confrontation",
+     {
+      "member": "Luke Skywalker",
+      "partner": "Darth Vader"
+     }
+    ]
+   ],
+   "port_0x396_day": 610
+  },
+  "3-1200": {
+   "encounters": [
+    [
+     488,
+     "force_encounter",
+     {
+      "day": 487,
+      "defender": "Darth Vader",
+      "member": "Luke Skywalker"
+     }
+    ],
+    [
+     488,
+     "confrontation",
+     {
+      "member": "Luke Skywalker",
+      "partner": "Darth Vader"
+     }
+    ],
+    [
+     488,
+     "heritage_learned",
+     {
+      "character": "Luke Skywalker"
+     }
+    ],
+    [
+     589,
+     "force_encounter",
+     {
+      "day": 588,
+      "defender": "Darth Vader",
+      "member": "Luke Skywalker"
+     }
+    ],
+    [
+     589,
+     "confrontation",
+     {
+      "member": "Luke Skywalker",
+      "partner": "Darth Vader"
+     }
+    ]
+   ],
+   "port_0x396_day": 410
+  },
+  "7-1200": {
+   "encounters": [],
+   "port_0x396_day": 408
+  },
+  "13-1200": {
+   "encounters": [],
+   "port_0x396_day": 404
+  },
+  "42-1200": {
+   "encounters": [],
+   "port_0x396_day": null
+  },
+  "47-1200": {
+   "encounters": [
+    [
+     887,
+     "force_encounter",
+     {
+      "day": 886,
+      "defender": "Luke Skywalker",
+      "member": "Emperor Palpatine"
+     }
+    ],
+    [
+     887,
+     "confrontation",
+     {
+      "member": "Emperor Palpatine",
+      "partner": "Luke Skywalker"
+     }
+    ],
+    [
+     890,
+     "force_encounter",
+     {
+      "day": 889,
+      "defender": "Luke Skywalker",
+      "member": "Emperor Palpatine"
+     }
+    ],
+    [
+     890,
+     "confrontation",
+     {
+      "member": "Emperor Palpatine",
+      "partner": "Luke Skywalker"
+     }
+    ]
+   ],
+   "port_0x396_day": 493
+  }
+ }
+}

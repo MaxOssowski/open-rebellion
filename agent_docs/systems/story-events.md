@@ -25,9 +25,9 @@ Events are registered in `EventState` by `define_story_events(&mut state, &world
 `0x390` (prerequisite gate) → `0x392` (Yoda teacher) → `EVT_LUKE_DAGOBAH` (0x221) → `0x391` (first training) → `EVT_DAGOBAH_COMPLETED` (0x210)
 
 ### Chain 2: Final Battle
-`0x393` (Vader dispatched) → `0x394` (Vader en route) / `0x395` (alt: reports to Emperor) → `0x396` (Final Battle Imminent, **flips heritage_known**) → `EVT_FINAL_BATTLE` (0x220)
+`0x393` (Vader dispatched) → `0x394` (Vader en route) / `0x395` (alt: reports to Emperor) → `0x396` (Final Battle Imminent) → `EVT_FINAL_BATTLE` (0x220)
 
-Heritage gate (#R4): `0x396` action includes `SetHeritageKnown { character: luke }`. Story messages are read in the Message window (`story_messages.rs`); the original's Final Battle message class picks its own picture, which is not yet recovered.
+Heritage: since 2026-10-18 (save v75) only Luke's confrontation with Vader in the mission detection sets `heritage_known` (`FUN_00560200`, `ghidra/notes/encounter.md`); the port's `SetHeritageKnown` action is gone. The whole Final Battle chain is still the port's own; the original's (DarthPickup, FinalBattleReady, `FUN_0054ba00`) is not read. Story messages are read in the Message window (`story_messages.rs`); the original's Final Battle message class picks its own picture, which is not yet recovered.
 
 ### Chain 3: Bounty Hunters → Jabba's Palace
 `0x397` (gate) → `EVT_BOUNTY_ATTACK` (0x212, **SpawnSpecialForce + CharacterAssignedToFleet**) → `0x398` (carbonite)
