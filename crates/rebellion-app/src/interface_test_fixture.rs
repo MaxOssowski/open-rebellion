@@ -1851,6 +1851,48 @@ pub fn post_story_messages(
             }
         }
     }
+    // The encounter class (vtable 0x65b408): an Alliance minor character
+    // detected by Vader (Force user Detects Enemy, one per side), Luke
+    // confronting Vader, and Luke learning his heritage from him.
+    {
+        use rebellion_core::missions::MissionEffect;
+        let alliance_minor = world
+            .characters
+            .iter()
+            .find(|(_, character)| character.is_alliance && !character.is_major)
+            .map(|(key, _)| key);
+        let pair = |member, defender| {
+            [
+                MissionEffect::EncounterBegan {
+                    member,
+                    defender,
+                    day: 0,
+                },
+                MissionEffect::EncounterEnded {
+                    member,
+                    partner: defender,
+                },
+            ]
+        };
+        if let (Some(luke), Some(vader)) = (named("luke"), named("vader")) {
+            let mut days: Vec<Vec<MissionEffect>> = Vec::new();
+            if let Some(minor) = alliance_minor {
+                days.push(pair(minor, vader).to_vec());
+            }
+            days.push(pair(luke, vader).to_vec());
+            let mut heritage = pair(luke, vader).to_vec();
+            heritage.push(MissionEffect::HeritageLearned { character: luke });
+            days.push(heritage);
+            for effects in days {
+                for message in
+                    rebellion_render::story_messages::EncounterNotes::gather(world, &effects)
+                        .messages(world, 0, texts)
+                {
+                    log.push(message);
+                }
+            }
+        }
+    }
     // Luke's Dagobah messages (0x221, 0x210), for the Alliance reader.
     if let Some(message) = rebellion_render::story_messages::luke_goes_to_dagobah(0, texts) {
         log.push(message);

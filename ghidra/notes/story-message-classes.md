@@ -60,9 +60,9 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 3 | Force Growth | `0x1e1` | `FUN_0048ed80` (`0x65b4d8`) | side `0x412`/`0x413`, portrait | `0x7180` / `0x7181` | — | mapped |
 | 4 | Future Jedi Discovered | `0x362` | `FUN_0048f1e0` (`0x65b520`) | side, the teacher's portrait | `0x7178` / `0x7179` or `0x717a` | the teacher's side | mapped 2026-10-18 (`force_user_discovered`, timer `0x389`) |
 | 5 | Leia Uses Force | `0x362`, Leia | `FUN_0048f1e0` | side, Leia's portrait | `0x71d8` / `0x71d9` | — | mapped |
-| 6 | Force user Detects Enemy | `0x360`, then 2 | `FUN_0048e1d0` (`0x65b408`) | side, the detector's portrait | `0x71b0` / `0x71b1` | — | missing |
-| 7 | Character Confronts character | `0x360`, then 2 | `FUN_0048df20` (`0x65b408`) | `0x41f`, `0x420`, `0x423`-`0x426` | `0x71a8` / `0x71a9` + `0x71aa`-`0x71ae` | — | missing |
-| 8 | Luke Discovers His Heritage | `0x360` + `0x211`, then 2 | `FUN_0048dc50` (`0x65b408`) | `0x422` | `0x71a0` / `0x71a1` + `0x71a2`-`0x71a7` | — | missing |
+| 6 | Force user Detects Enemy | `0x360`, then 2 | `FUN_0048e1d0` (`0x65b408`) | side, the detector's portrait | `0x71b0` / `0x71b1` | each side, its own character | mapped 2026-10-18 (`EncounterNotes`, the mission detection) |
+| 7 | Character Confronts character | `0x360`, then 2 | `FUN_0048df20` (`0x65b408`) | `0x41f`, `0x420`, `0x423`-`0x426` | `0x71a8` / `0x71a9` + `0x71aa`-`0x71ae` | both | mapped 2026-10-18 (`EncounterNotes`) |
+| 8 | Luke Discovers His Heritage | `0x360` + `0x211`, then 2 | `FUN_0048dc50` (`0x65b408`) | `0x422` | `0x71a0` / `0x71a1` + `0x71a2`-`0x71a7` | both | mapped 2026-10-18 (`EncounterNotes`; `0x71a2` needs the Final Battle pickup) |
 | 9 | The Final Battle | `0x220`, then 2 | `FUN_0048e3c0` (`0x65b408`) | `0x427`, or `0x428` | `0x71e0` / `0x71e1` or `0x71e2` | — | missing |
 | 10 | Han Solo Attacked by Bounty Hunters | `0x212`, arg 0 | `FUN_0048fa00` (`0x65b5a8`) | `0x41c` | `0x7168` / `0x7169` | Alliance | missing |
 | 11 | Bounty Hunters Locate Solo | `0x212`, arg 0 | `FUN_0048fa00` | `0x41e` | `0x716a` / `0x716b` (system) | Empire | missing |
@@ -83,7 +83,12 @@ Notes on the rows:
   Yoda"); the picture is Luke over the Alliance background.
 - **6-9.** One class (vtable `0x65b408`) owns all four. Its `+0x14` slot
   `FUN_0048d9a0` takes `0x360` (`CharacterEncounterKeyNotif` / `Encounter`)
-  and files the two characters at `+0x68` and `+0x6c`. Its `+0x20` slot
+  and files the notified character by its side (`FUN_004edc80`), the
+  Alliance's at `+0x68` and the Empire's at `+0x6c`, and the view's own
+  side's also at `+0x5c` (disassembly `0x48da4b`..`0x48da88`); a notified
+  object of neither side sets `+0x64` bit `0x10000000`, which shows
+  nothing. The setter notifies when a key is set (`FUN_0055ff60`) and when
+  the confrontation clears it (`FUN_00560200`). Its `+0x20` slot
   `FUN_0048d7f0` sets bit 0 on `0x211` (`LukeKnowsHeritageNotif`) and bit
   `0x10` on `0x220` (`MissionMgrFinalBattleNotif`), then builds on
   notification 2: the Final Battle when bit `0x10` is set; otherwise, for
@@ -92,11 +97,17 @@ Notes on the rows:
 - **7.** The background is by pair: `0x41f` or `0x420` when the first
   character is not Luke (second is Vader, or not); `0x423`/`0x425` for
   Luke against Vader or another, and `0x424`/`0x426` for the same when
-  Luke's flag `+0xb0 & 8` is set. hyp: that flag is Luke's Jedi appearance,
-  since it also picks between two media ids in every Luke case.
+  Luke's `+0xb0 & 8` is set: `DagobahCompleted` (`FUN_0056f730`,
+  `dagobah.md`), so the picture shows a trained Luke.
+- **6.** The detector is the view's own character: the builder swaps the
+  pair for side 1 (`FUN_0048e1d0`), so each side reads that its character
+  detected the other.
 - **8.** Bodies: `0x71a2` Luke taken to the Emperor, `0x71a3` Luke captured,
   `0x71a4` Luke injured (`+0x94` non-zero), `0x71a5` Luke escaped; then
-  `0x71a6` Vader captured or `0x71a7` Vader injured.
+  `0x71a6` Vader captured or `0x71a7` Vader injured. `0x71a2` needs Luke
+  captive and on Vader's mission (`+0x68`, `FUN_0042d170`) whose `+0x74`
+  is Luke, with the Emperor present. The texts are appended
+  (`FUN_0060b840` writes each through `FUN_005f3240`).
 - **9.** `0x71e2` when Luke is captive (`+0xac & 1`), else `0x71e1`;
   background `0x428` when Luke's `+0xb0 & 8` is set.
 - **10-12.** One builder, by Han's captive bit (`+0xac & 1`): captured gives

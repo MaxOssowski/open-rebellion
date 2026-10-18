@@ -2151,6 +2151,16 @@ async fn main() {
             // Member moves and releases come before the results.
             rebellion_core::missions::apply_advance_effects(&mut world, &mission_advance.effects);
             push_advance_injuries(&mut msg_log, &world, &mission_advance.effects, current_tick);
+            // The encounter class (vtable 0x65b408): Force detection and the
+            // confrontation's 0x360 and Luke's 0x211.
+            for message in rebellion_render::story_messages::EncounterNotes::gather(
+                &world,
+                &mission_advance.effects,
+            )
+            .messages(&world, current_tick, &message_texts)
+            {
+                msg_log.push(message);
+            }
             // ── Dagobah: timer 0x392 and the check FUN_00544030 ─────────────
             let dagobah_rolls: Vec<f64> =
                 (0..rebellion_core::dagobah::DagobahSystem::roll_budget())

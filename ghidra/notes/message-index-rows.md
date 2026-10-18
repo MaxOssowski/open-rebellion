@@ -189,8 +189,9 @@ since the port also uses that id for Han's rescue. Unmapped: the Final
 Battle (`FUN_0048e3c0`, background `0x427`/`0x428`, body `0x71e1` or
 `0x71e2` by Luke's fate) reports the battle's outcome while the port's
 `0x220` fires as it begins; `0x200` (`FUN_0048c4c0`, a character leaving
-to rescue Han) has no port counterpart; nor do Luke's heritage
-(`FUN_0048dc50`, background `0x422`) and the generic Future Jedi.
+to rescue Han) has no port counterpart. Luke's heritage
+(`FUN_0048dc50`, background `0x422`) and the generic Future Jedi are
+mapped since 2026-10-18 (`story-message-classes.md`).
 The Final Battle class (dispatcher `0x48d7f0`) accumulates notifications
 `0x211` (bit 0) and `0x220` (bit 4) and builds on notification 2.
 

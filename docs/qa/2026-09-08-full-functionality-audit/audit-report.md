@@ -2470,6 +2470,13 @@ cross-runtime proof remain open
   still the port's own. Golden initial `v1:57115a2a37530826` ->
   `v1:ad8518eb172a430f`, final `v1:e6bb717f2403b483` ->
   `v1:e811b12322f7e20e` (`evidence/2026-10-18-heritage/`).
+- 2026-10-18: the encounter class's messages are ported
+  (`story_messages::EncounterNotes`): Force user Detects Enemy for each
+  side, Character Confronts character and Luke Discovers His Heritage,
+  built from the day's `0x360` and `0x211` as `FUN_0048d9a0` and
+  `FUN_0048d7f0` gather them, with their recovered texts and pictures, seen
+  in the fixture build (`evidence/2026-10-18-encounter-messages/`). 12 of
+  the 21 story message classes remain unmapped.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

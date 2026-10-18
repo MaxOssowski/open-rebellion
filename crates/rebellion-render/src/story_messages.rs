@@ -294,6 +294,255 @@ pub fn force_user_discovered(
     )
 }
 
+/// Luke's (`0x32000242`), Vader's (`0x35000281`) and the Emperor's
+/// (`0x34000280`) records, which `FUN_0048d7f0` tests with Leia's.
+const LUKE: u32 = 0x242;
+const VADER: u32 = 0x281;
+const EMPEROR: u32 = 0x280;
+
+/// What the encounter class (vtable `0x65b408`) gathered over a day: each
+/// notification `0x360` (`CharacterEncounterKeyNotif`, an `Encounter` key
+/// set or cleared) files its character by side, the Alliance's at `+0x68`
+/// and the Empire's at `+0x6c` (`FUN_0048d9a0`), the last one winning; and
+/// `0x211` (`LukeKnowsHeritageNotif`) sets bit 0 (`FUN_0048d7f0`).
+///
+/// port: the class builds on notification 2, once a day; the port builds
+/// once per mission advance, which runs the day's tick events together.
+/// The Final Battle bit (`0x220`, `FUN_0048e3c0`) is not gathered: the
+/// port's own `0x220` story event is not the original's notification.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EncounterNotes {
+    alliance: Option<CharacterKey>,
+    empire: Option<CharacterKey>,
+    /// `+0x64` bit `0x10000000`: a notified object was no character of
+    /// either side, so the class shows nothing.
+    suppressed: bool,
+    /// `+0x64` bit 0.
+    heritage: bool,
+}
+
+impl EncounterNotes {
+    /// Gather a mission advance's encounter notifications: the member's
+    /// key, then the defender's (`FUN_0055ff60`), or the partner's
+    /// (`FUN_00560200`), and Luke's `KnowsHeritage` (`FUN_0056f650`).
+    #[must_use]
+    pub fn gather(world: &GameWorld, effects: &[rebellion_core::missions::MissionEffect]) -> Self {
+        use rebellion_core::missions::MissionEffect;
+        let mut notes = Self::default();
+        for effect in effects {
+            match effect {
+                MissionEffect::EncounterBegan {
+                    member, defender, ..
+                } => {
+                    notes.file(world, *member);
+                    notes.file(world, *defender);
+                }
+                MissionEffect::EncounterEnded { member, partner } => {
+                    notes.file(world, *member);
+                    notes.file(world, *partner);
+                }
+                MissionEffect::HeritageLearned { .. } => notes.heritage = true,
+                _ => {}
+            }
+        }
+        notes
+    }
+
+    /// `FUN_0048d9a0`: side 1 at `+0x68`, side 2 at `+0x6c`
+    /// (`FUN_004edc80`); anything else suppresses the message.
+    fn file(&mut self, world: &GameWorld, character: CharacterKey) {
+        match world.characters.get(character) {
+            Some(c) if c.is_alliance => self.alliance = Some(character),
+            Some(c) if c.is_empire => self.empire = Some(character),
+            _ => self.suppressed = true,
+        }
+    }
+
+    /// `FUN_0048d7f0` on notification 2: for an Alliance Luke or Leia and
+    /// an Empire Vader or Emperor, Luke Discovers His Heritage
+    /// (`FUN_0048dc50`) when bit 0 is set, else Character Confronts
+    /// character (`FUN_0048df20`); for any other pair, Force user Detects
+    /// Enemy (`FUN_0048e1d0`), one per side. Each side's view builds its
+    /// own message (`+0x40` = 1).
+    #[must_use]
+    pub fn messages(
+        &self,
+        world: &GameWorld,
+        tick: u64,
+        texts: &HashMap<u16, String>,
+    ) -> Vec<GameMessage> {
+        if self.suppressed {
+            return Vec::new();
+        }
+        let (Some(alliance), Some(empire)) = (self.alliance, self.empire) else {
+            return Vec::new();
+        };
+        let (Some(a), Some(e)) = (world.characters.get(alliance), world.characters.get(empire))
+        else {
+            return Vec::new();
+        };
+        let jedi_pair =
+            matches!(a.dat_id.index(), LUKE | LEIA) && matches!(e.dat_id.index(), VADER | EMPEROR);
+        if jedi_pair {
+            let built = if self.heritage {
+                heritage_message(a, e, tick, texts)
+            } else {
+                confrontation_message(a, e, tick, texts)
+            };
+            return built.into_iter().collect();
+        }
+        [
+            (CockpitFaction::Alliance, RailAudience::Alliance, a, e),
+            (CockpitFaction::Empire, RailAudience::Empire, e, a),
+        ]
+        .into_iter()
+        .filter_map(|(side, audience, own, enemy)| {
+            detects_enemy_message(side, audience, own, enemy, tick, texts)
+        })
+        .collect()
+    }
+}
+
+fn character_parameter(c: &rebellion_core::world::Character) -> MessageParameter<'_> {
+    MessageParameter::Character {
+        name: &c.name,
+        force_ranking: crate::status_window::force_ranking(c.force_level()),
+    }
+}
+
+/// Force user Detects Enemy (`FUN_0048e1d0`): the side's own character on
+/// the side's background (`(side != 1) + 0x412`) with its portrait,
+/// TEXTSTRA `0x71b0` / `0x71b1` naming it and the enemy.
+///
+/// port: the media ids `+0x30` and `+0x32` are not read.
+fn detects_enemy_message(
+    side: CockpitFaction,
+    audience: RailAudience,
+    own: &rebellion_core::world::Character,
+    enemy: &rebellion_core::world::Character,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let parameters = [character_parameter(own), character_parameter(enemy)];
+    let title = fill_message_text(texts.get(&0x71b0)?, &parameters);
+    let body = fill_message_text(texts.get(&0x71b1)?, &parameters);
+    Some(
+        GameMessage::new(tick, body, MessageCategory::Event)
+            .on_rail(STORY_RAIL, audience)
+            .with_title(title)
+            .with_picture(MessagePicture {
+                background: side_background(side),
+                foreground: character_portrait(own.dat_id, own.is_major),
+            }),
+    )
+}
+
+/// Character Confronts character (`FUN_0048df20`): `0x71a8` / `0x71a9`
+/// naming the Alliance and the Empire character, then for each a line
+/// when captive (`+0xac` bit 0: `0x71aa`, `0x71ac`) or injured (`+0x94`:
+/// `0x71ab`, `0x71ad`), or `0x71ae` when neither is. The background:
+/// `0x41f` (against Vader) or `0x420` when the Alliance character is not
+/// Luke; for Luke `0x423` (Vader) or `0x425`, or `0x424` / `0x426` once his
+/// `+0xb0` bit 8 (`DagobahCompleted`) is set.
+fn confrontation_message(
+    a: &rebellion_core::world::Character,
+    e: &rebellion_core::world::Character,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let parameters = [character_parameter(a), character_parameter(e)];
+    let title = fill_message_text(texts.get(&0x71a8)?, &parameters);
+    let mut body = fill_message_text(texts.get(&0x71a9)?, &parameters);
+    let mut told = false;
+    for (c, captured, injured) in [(a, 0x71aa, 0x71ab), (e, 0x71ac, 0x71ad)] {
+        let line = if c.is_captive {
+            Some(captured)
+        } else if c.injury != 0 {
+            Some(injured)
+        } else {
+            None
+        };
+        if let Some(id) = line {
+            told = true;
+            body.push_str(&fill_message_text(
+                texts.get(&id)?,
+                &[character_parameter(c)],
+            ));
+        }
+    }
+    if !told {
+        body.push_str(&fill_message_text(texts.get(&0x71ae)?, &[]));
+    }
+    let against_vader = e.dat_id.index() == VADER;
+    let background = match (a.dat_id.index() == LUKE, a.dagobah_completed, against_vader) {
+        (false, _, true) => 0x41f,
+        (false, _, false) => 0x420,
+        (true, false, true) => 0x423,
+        (true, true, true) => 0x424,
+        (true, false, false) => 0x425,
+        (true, true, false) => 0x426,
+    };
+    Some(
+        GameMessage::new(tick, body, MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::Both)
+            .with_title(title)
+            .with_picture(MessagePicture {
+                background,
+                foreground: None,
+            }),
+    )
+}
+
+/// Luke Discovers His Heritage (`FUN_0048dc50`), only for Luke against
+/// Vader: `0x71a0` / `0x71a1`, then Luke's line, captured (`0x71a3`),
+/// injured (`0x71a4`) or, with Vader free, escaped (`0x71a5`), then
+/// Vader's, captured (`0x71a6`) or injured (`0x71a7`), on background
+/// `0x422`.
+///
+/// port: `0x71a2` (taken to the Emperor) needs Luke captive on the
+/// mission Vader is on with Luke as its target (`+0x68`, mission `+0x74`),
+/// the Final Battle chain's pickup, which the port does not have.
+fn heritage_message(
+    luke: &rebellion_core::world::Character,
+    vader: &rebellion_core::world::Character,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    if luke.dat_id.index() != LUKE || vader.dat_id.index() != VADER {
+        return None;
+    }
+    let title = fill_message_text(texts.get(&0x71a0)?, &[]);
+    let mut body = fill_message_text(texts.get(&0x71a1)?, &[]);
+    let luke_line = if luke.is_captive {
+        Some(0x71a3)
+    } else if luke.injury != 0 {
+        Some(0x71a4)
+    } else if !vader.is_captive {
+        Some(0x71a5)
+    } else {
+        None
+    };
+    let vader_line = if vader.is_captive {
+        Some(0x71a6)
+    } else if vader.injury != 0 {
+        Some(0x71a7)
+    } else {
+        None
+    };
+    for id in luke_line.into_iter().chain(vader_line) {
+        body.push_str(&fill_message_text(texts.get(&id)?, &[]));
+    }
+    Some(
+        GameMessage::new(tick, body, MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::Both)
+            .with_title(title)
+            .with_picture(MessagePicture {
+                background: 0x422,
+                foreground: None,
+            }),
+    )
+}
+
 /// One of a message's four parameters (`FUN_0060b9d0`): an object whose
 /// property a substitution's kind selects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -757,5 +1006,297 @@ mod tests {
             ("port text", None, None)
         );
         assert_eq!(gate.rail, Some(STORY_RAIL));
+    }
+
+    /// TEXTSTRA 0x71a0..0x71b1, the encounter class's texts.
+    fn encounter_texts() -> HashMap<u16, String> {
+        [
+            (0x71a0, "Luke Discovers His Heritage"),
+            (0x71a1, "Luke has learned that Vader is his father.  "),
+            (
+                0x71a2,
+                "Luke has been captured by Vader and taken to the Emperor.  ",
+            ),
+            (0x71a3, "Luke has been captured by Vader.  "),
+            (0x71a4, "Luke was injured during the battle.  "),
+            (0x71a5, "Luke escaped capture after the battle."),
+            (0x71a6, "Darth Vader was captured by Luke."),
+            (0x71a7, "Vader was injured during the battle."),
+            (0x71a8, "{1:1} Confronts {2:1}"),
+            (0x71a9, "{1:1} has fought {2:1}.  "),
+            (0x71aa, "{1:1} was captured.  "),
+            (0x71ab, "{1:1} was injured.  "),
+            (0x71ac, "{1:1} was captured."),
+            (0x71ad, "{1:1} was injured."),
+            (0x71ae, "Both combatants escaped uninjured."),
+            (0x71b0, "{1:1} Detects Enemy"),
+            (
+                0x71b1,
+                "{1:1} has detected {2:1} because of a disturbance in the Force.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect()
+    }
+
+    fn encounter_cast(world: &mut GameWorld) -> [CharacterKey; 5] {
+        let mut add = |raw: u32, name: &str, is_alliance: bool, is_major: bool| {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: DatId::new(raw),
+                name: name.into(),
+                is_alliance,
+                is_empire: !is_alliance,
+                is_major,
+                ..Default::default()
+            })
+        };
+        [
+            add(0x242, "Luke Skywalker", true, true),
+            add(0x241, "Leia Organa", true, true),
+            add(0x281, "Darth Vader", false, true),
+            add(0x280, "Emperor Palpatine", false, true),
+            add(0x340, "Bria Tharen", true, false),
+        ]
+    }
+
+    fn met(
+        member: CharacterKey,
+        defender: CharacterKey,
+    ) -> Vec<rebellion_core::missions::MissionEffect> {
+        use rebellion_core::missions::MissionEffect;
+        vec![
+            MissionEffect::EncounterBegan {
+                member,
+                defender,
+                day: 3,
+            },
+            MissionEffect::EncounterEnded {
+                member,
+                partner: defender,
+            },
+        ]
+    }
+
+    #[test]
+    fn luke_learning_his_heritage_from_vader_posts_the_heritage_message_to_both_sides() {
+        // FUN_0048d7f0: bit 0 (0x211) and the Luke-Vader pair build
+        // FUN_0048dc50: 0x71a0 / 0x71a1, then Luke escaped (0x71a5) with
+        // both free and uninjured, on background 0x422.
+        let mut world = GameWorld::default();
+        let [luke, _, vader, _, _] = encounter_cast(&mut world);
+        let mut effects = met(luke, vader);
+        effects.push(rebellion_core::missions::MissionEffect::HeritageLearned { character: luke });
+
+        let messages =
+            EncounterNotes::gather(&world, &effects).messages(&world, 7, &encounter_texts());
+
+        assert_eq!(messages.len(), 1);
+        let message = &messages[0];
+        assert_eq!(
+            message.title.as_deref(),
+            Some("Luke Discovers His Heritage")
+        );
+        assert_eq!(
+            message.text,
+            "Luke has learned that Vader is his father.  Luke escaped capture after the battle."
+        );
+        assert_eq!(message.audience, RailAudience::Both);
+        assert_eq!(message.picture.expect("a picture").background, 0x422);
+        assert_eq!(message.tick, 7);
+    }
+
+    #[test]
+    fn the_heritage_message_tells_luke_s_capture_and_vader_s_injury() {
+        // FUN_0048dc50: Luke captive (+0xac bit 0) -> 0x71a3; Vader injured
+        // (+0x94) -> 0x71a7; an injured, free Luke -> 0x71a4 and no escape.
+        let mut world = GameWorld::default();
+        let [luke, _, vader, _, _] = encounter_cast(&mut world);
+        world.characters[luke].is_captive = true;
+        world.characters[vader].injury = 20;
+        let mut effects = met(luke, vader);
+        effects.push(rebellion_core::missions::MissionEffect::HeritageLearned { character: luke });
+        let texts = encounter_texts();
+
+        let captured = EncounterNotes::gather(&world, &effects).messages(&world, 0, &texts);
+        assert_eq!(
+            captured[0].text,
+            "Luke has learned that Vader is his father.  Luke has been captured by Vader.  \
+             Vader was injured during the battle."
+        );
+
+        world.characters[luke].is_captive = false;
+        world.characters[luke].injury = 5;
+        world.characters[vader].injury = 0;
+        world.characters[vader].is_captive = true;
+        let injured = EncounterNotes::gather(&world, &effects).messages(&world, 0, &texts);
+        assert_eq!(
+            injured[0].text,
+            "Luke has learned that Vader is his father.  Luke was injured during the battle.  \
+             Darth Vader was captured by Luke."
+        );
+    }
+
+    #[test]
+    fn a_jedi_pair_without_the_heritage_bit_posts_the_confrontation() {
+        // FUN_0048df20: 0x71a8 / 0x71a9 naming the Alliance and the Empire
+        // character, a line per captive or injured one, else 0x71ae.
+        let mut world = GameWorld::default();
+        let [luke, _, vader, _, _] = encounter_cast(&mut world);
+        let texts = encounter_texts();
+
+        let calm = EncounterNotes::gather(&world, &met(luke, vader)).messages(&world, 0, &texts);
+        assert_eq!(calm.len(), 1);
+        assert_eq!(
+            calm[0].title.as_deref(),
+            Some("Luke Skywalker Confronts Darth Vader")
+        );
+        assert_eq!(
+            calm[0].text,
+            "Luke Skywalker has fought Darth Vader.  Both combatants escaped uninjured."
+        );
+        assert_eq!(calm[0].audience, RailAudience::Both);
+
+        world.characters[luke].injury = 9;
+        world.characters[vader].is_captive = true;
+        // The member's order does not matter: each side files its own.
+        let hurt = EncounterNotes::gather(&world, &met(vader, luke)).messages(&world, 0, &texts);
+        assert_eq!(
+            hurt[0].text,
+            "Luke Skywalker has fought Darth Vader.  Luke Skywalker was injured.  \
+             Darth Vader was captured."
+        );
+    }
+
+    #[test]
+    fn the_confrontation_background_follows_the_pair_and_luke_s_dagobah() {
+        // FUN_0048df20: 0x41f / 0x420 for a non-Luke Alliance character
+        // (Vader or not); Luke 0x423 / 0x425, or 0x424 / 0x426 once +0xb0
+        // bit 8 (DagobahCompleted) is set.
+        let mut world = GameWorld::default();
+        let [luke, leia, vader, emperor, _] = encounter_cast(&mut world);
+        let texts = encounter_texts();
+        let background = |world: &GameWorld, a, e| {
+            EncounterNotes::gather(world, &met(a, e)).messages(world, 0, &texts)[0]
+                .picture
+                .expect("a picture")
+                .background
+        };
+        assert_eq!(background(&world, leia, vader), 0x41f);
+        assert_eq!(background(&world, leia, emperor), 0x420);
+        assert_eq!(background(&world, luke, vader), 0x423);
+        assert_eq!(background(&world, luke, emperor), 0x425);
+        world.characters[luke].dagobah_completed = true;
+        assert_eq!(background(&world, luke, vader), 0x424);
+        assert_eq!(background(&world, luke, emperor), 0x426);
+    }
+
+    #[test]
+    fn any_other_pair_posts_force_user_detects_enemy_to_each_side() {
+        // FUN_0048e1d0: each side's own character, on (side != 1) + 0x412
+        // with its portrait, has detected the other (0x71b0 / 0x71b1).
+        let mut world = GameWorld::default();
+        let [_, _, vader, _, minor] = encounter_cast(&mut world);
+
+        let messages = EncounterNotes::gather(&world, &met(minor, vader)).messages(
+            &world,
+            0,
+            &encounter_texts(),
+        );
+
+        assert_eq!(messages.len(), 2);
+        let alliance = &messages[0];
+        assert_eq!(alliance.audience, RailAudience::Alliance);
+        assert_eq!(alliance.title.as_deref(), Some("Bria Tharen Detects Enemy"));
+        assert_eq!(
+            alliance.text,
+            "Bria Tharen has detected Darth Vader because of a disturbance in the Force."
+        );
+        let picture = alliance.picture.expect("a picture");
+        assert_eq!(picture.background, 0x412);
+        assert_eq!(
+            picture.foreground,
+            character_portrait(DatId::new(0x340), false)
+        );
+        let empire = &messages[1];
+        assert_eq!(empire.audience, RailAudience::Empire);
+        assert_eq!(empire.title.as_deref(), Some("Darth Vader Detects Enemy"));
+        let picture = empire.picture.expect("a picture");
+        assert_eq!(picture.background, 0x413);
+        assert_eq!(
+            picture.foreground,
+            character_portrait(DatId::new(0x281), true)
+        );
+    }
+
+    #[test]
+    fn an_encounter_begun_without_a_confrontation_still_posts() {
+        // The keys' setter notifies 0x360 when Force detection sets them
+        // (FUN_0055ff60), so a decoy's encounter posts on the day it
+        // begins.
+        let mut world = GameWorld::default();
+        let [luke, _, vader, _, minor] = encounter_cast(&mut world);
+        let texts = encounter_texts();
+        let begun = |member, defender| {
+            [rebellion_core::missions::MissionEffect::EncounterBegan {
+                member,
+                defender,
+                day: 3,
+            }]
+        };
+        let detected =
+            EncounterNotes::gather(&world, &begun(minor, vader)).messages(&world, 0, &texts);
+        assert_eq!(detected.len(), 2);
+        let confronted =
+            EncounterNotes::gather(&world, &begun(luke, vader)).messages(&world, 0, &texts);
+        assert_eq!(
+            confronted[0].title.as_deref(),
+            Some("Luke Skywalker Confronts Darth Vader")
+        );
+        // And the confrontation's clearing (FUN_00560200) notifies alone on
+        // a later day.
+        let ended = [rebellion_core::missions::MissionEffect::EncounterEnded {
+            member: luke,
+            partner: vader,
+        }];
+        let later = EncounterNotes::gather(&world, &ended).messages(&world, 0, &texts);
+        assert_eq!(later.len(), 1);
+    }
+
+    #[test]
+    fn only_luke_and_vader_have_a_heritage_message() {
+        // FUN_0048dc50 shows nothing (+0x40 = 0) unless +0x68 is Luke and
+        // +0x6c Vader, even with bit 0 set.
+        let mut world = GameWorld::default();
+        let [luke, leia, vader, emperor, _] = encounter_cast(&mut world);
+        let texts = encounter_texts();
+        for (a, e) in [(leia, vader), (luke, emperor)] {
+            let mut effects = met(a, e);
+            effects
+                .push(rebellion_core::missions::MissionEffect::HeritageLearned { character: luke });
+            assert!(EncounterNotes::gather(&world, &effects)
+                .messages(&world, 0, &texts)
+                .is_empty());
+        }
+    }
+
+    #[test]
+    fn a_neutral_or_missing_side_shows_no_encounter_message() {
+        // FUN_0048d9a0 sets +0x64 bit 0x10000000 for a character of neither
+        // side; a builder with only one side's character shows nothing.
+        let mut world = GameWorld::default();
+        let [luke, _, vader, _, _] = encounter_cast(&mut world);
+        let texts = encounter_texts();
+        assert!(EncounterNotes::gather(&world, &[])
+            .messages(&world, 0, &texts)
+            .is_empty());
+        world.characters[vader].is_empire = false;
+        assert!(EncounterNotes::gather(&world, &met(luke, vader))
+            .messages(&world, 0, &texts)
+            .is_empty());
+        let lone = [rebellion_core::missions::MissionEffect::HeritageLearned { character: luke }];
+        assert!(EncounterNotes::gather(&world, &lone)
+            .messages(&world, 0, &texts)
+            .is_empty());
     }
 }

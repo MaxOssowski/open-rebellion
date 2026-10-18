@@ -123,6 +123,7 @@ confrontation teaches the weaker Jedi some Force.
 ## Open
 
 - `FUN_004f9510` (called twice per side at both ends): not read.
-- The three `0x360` builders and when each applies.
+- The three `0x360` builders: read and ported 2026-10-18
+  (`story-message-classes.md` rows 6-8, `story_messages::EncounterNotes`).
 - `thunk_FUN_00506e80` (a global's `+0xc0`), which gates the encounter and
   the confrontation, is read as always present.
