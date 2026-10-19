@@ -1457,6 +1457,67 @@ Campaigns: 24 seeds of 1500 days, against the Rescue commit.
 - Systems held at the end, summed over the seeds: Alliance 570 and 589,
   Empire 579 and 564.
 
+## The sector planners' mission planners (read 2026-10-19, not ported)
+
+Sabotage and Assassination have no row in the strategy. They come from
+module 8's sector planners, as do a second Recon and Espionage class.
+
+**The requests.** Each plan kind's slot `+0x18` is the shared
+`FUN_004b7150`. It reads the sector planner's counts of the mission
+planners it holds (`+0xa0..+0xac`) and the sector record `+0x2c`:
+
+| Request | When | Cancel when |
+|---|---|---|
+| Recon `0x54` | fewer than 2 held (`+0xa8`) and `+0x2c & 0x18` | more than 2, or none of `0x18` with any held |
+| Espionage `0x52` | none held (`+0xa4`) | more than 1 |
+| Sabotage `0x69` | none held (`+0xac`) and `+0x2c & 8` | more than 1, or no `8` with any held |
+| `0x62` (Alliance) or `0x63` (Empire), subtype 4 | none held (`+0xa0`) and `+0x2c & 0x40008` | more than 1, or no `0x40008` with any held |
+
+The request goes to `+0xbc`/`+0xc0`, the cancellation to `+0xc4`
+(`FUN_00478000`).
+
+**The take.** The mission module's step runs `FUN_004d2610`. It walks
+the sector planners from the cursor `+0x44` to the first with a pending
+request (`FUN_00476b80`).
+
+`FUN_004d2690` then works on that planner:
+- it cancels the planner named in `+0xc4` (`FUN_0042f690`);
+- it builds the requested one (`FUN_0042f640` -> `FUN_0042f830`);
+- it hands the new planner to the sector planner (`FUN_00476ba0`), which
+  clears `+0xbc`/`+0xc0` and holds it in its list.
+
+**The classes** (`FUN_0042f830`):
+
+| Kind | Constructor | Vtable |
+|---|---|---|
+| Recon, subtype not 5 | `FUN_0047f190` | `0x0065a768` |
+| Espionage, subtype not 6 | `FUN_00480730` | `0x0065a860` |
+| Sabotage `0x69` | `FUN_0047d380` | `0x0065a670` |
+| `0x62` subtype 4 and `0x63` | `FUN_00482b30` | `0x0065a9b0` |
+
+Their vtables end at slot `+0x44`: `+0x40` is the team selector and
+`+0x44` the decoys. Slot `+0x2c` is another state machine, `FUN_004bda60`:
+
+- 1 reads the reports, as `FUN_004bced0` does;
+- 2 (`FUN_004bdbc0`) takes the target from the owning sector planner
+  `+0x70`: `FUN_00476e80(kind, &+0x34, &+0x30)` gives the plan's system
+  and object for the mission's family. Without one the cycle ends (9);
+- 3 (`FUN_004bdcd0`) picks the gathering place `+0x38`;
+- 4 keeps the members (`FUN_0047b110`);
+- 5 runs the team selector, 6 the decoys;
+- 7 moves the members (`FUN_004be230`);
+- 8 orders the mission (`FUN_0047b360`);
+- 9 (`FUN_004be4c0`) ends the cycle.
+
+**Port.** None of this is ported. The heuristic Sabotage (enemy
+manufacturing systems) and Assassination (enemy main characters) in
+`evaluate_espionage` stand in. Next:
+- the sector planners' requests (the port's `SectorPlanner::missions`
+  asks only Recon or Espionage today);
+- `FUN_004d2610`/`FUN_004d2690`, and holding the planners;
+- `FUN_00476e80` with the plan objects' targets;
+- `FUN_004bdcd0` and `FUN_004be230`.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
