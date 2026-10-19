@@ -1,0 +1,2 @@
+thread 'story_messages::tests::a_captive_luke_on_vader_s_mission_to_the_emperor_is_taken_to_him' (484430) panicked at crates/rebellion-render/src/story_messages.rs:1546:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 783 filtered out; finished in 0.00s

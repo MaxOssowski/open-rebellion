@@ -1931,7 +1931,12 @@ pub fn post_story_messages(
             for effects in days {
                 for message in
                     rebellion_render::story_messages::EncounterNotes::gather(world, &effects)
-                        .messages(world, 0, texts)
+                        .messages(
+                            world,
+                            &rebellion_core::missions::MissionState::new(),
+                            0,
+                            texts,
+                        )
                 {
                     log.push(message);
                 }

@@ -356,6 +356,7 @@ impl EncounterNotes {
     pub fn messages(
         &self,
         world: &GameWorld,
+        missions: &rebellion_core::missions::MissionState,
         tick: u64,
         texts: &HashMap<u16, String>,
     ) -> Vec<GameMessage> {
@@ -373,7 +374,13 @@ impl EncounterNotes {
             matches!(a.dat_id.index(), LUKE | LEIA) && matches!(e.dat_id.index(), VADER | EMPEROR);
         if jedi_pair {
             let built = if self.heritage {
-                heritage_message(a, e, tick, texts)
+                heritage_message(
+                    a,
+                    e,
+                    taken_to_emperor(world, missions, alliance, empire),
+                    tick,
+                    texts,
+                )
             } else {
                 confrontation_message(a, e, tick, texts)
             };
@@ -822,12 +829,12 @@ fn confrontation_message(
 /// Vader's, captured (`0x71a6`) or injured (`0x71a7`), on background
 /// `0x422`.
 ///
-/// port: `0x71a2` (taken to the Emperor) needs Luke captive on the
-/// mission Vader is on with Luke as its target (`+0x68`, mission `+0x74`),
-/// the Final Battle chain's pickup, which the port does not have.
+/// A captured Luke's line is `0x71a2` (taken to the Emperor) when
+/// `taken_to_emperor` holds, else `0x71a3`.
 fn heritage_message(
     luke: &rebellion_core::world::Character,
     vader: &rebellion_core::world::Character,
+    taken_to_emperor: bool,
     tick: u64,
     texts: &HashMap<u16, String>,
 ) -> Option<GameMessage> {
@@ -837,7 +844,7 @@ fn heritage_message(
     let title = fill_message_text(texts.get(&0x71a0)?, &[]);
     let mut body = fill_message_text(texts.get(&0x71a1)?, &[]);
     let luke_line = if luke.is_captive {
-        Some(0x71a3)
+        Some(if taken_to_emperor { 0x71a2 } else { 0x71a3 })
     } else if luke.injury != 0 {
         Some(0x71a4)
     } else if !vader.is_captive {
@@ -864,6 +871,43 @@ fn heritage_message(
                 foreground: None,
             }),
     )
+}
+
+/// `FUN_0048dc50`'s test for `0x71a2` (disassembly `0x0048dda0..`):
+/// Luke and Vader hold the same mission key (`+0x68`, `FUN_0042d170`), and
+/// that mission's target container (`+0x74`) is the Emperor's container
+/// (`[Emperor + 0x1c]`, `FUN_004025b0`); the Emperor must exist. The
+/// Final Battle's `DarthToEmperor` Move order is such a mission
+/// (`final_battle.rs`).
+fn taken_to_emperor(
+    world: &GameWorld,
+    missions: &rebellion_core::missions::MissionState,
+    luke: CharacterKey,
+    vader: CharacterKey,
+) -> bool {
+    use rebellion_core::missions::MissionMember;
+    let Some(emperor) = world
+        .characters
+        .values()
+        .find(|c| c.dat_id.index() == EMPEROR && !c.is_killed)
+    else {
+        return false;
+    };
+    let emperor_system = emperor.current_system.or_else(|| {
+        emperor
+            .current_fleet
+            .and_then(|fleet| world.fleets.get(fleet))
+            .map(|fleet| fleet.location)
+    });
+    missions.missions().iter().any(|mission| {
+        let holds = |key| mission.members().any(|m| m == MissionMember::Character(key));
+        let container = match (mission.target_abode, emperor.current_abode) {
+            (Some(abode), Some(at)) => abode == at,
+            (Some(_), None) | (None, Some(_)) => false,
+            (None, None) => Some(mission.target_system) == emperor_system,
+        };
+        holds(luke) && holds(vader) && container
+    })
 }
 
 /// One of a message's four parameters (`FUN_0060b9d0`): an object whose
@@ -1411,7 +1455,7 @@ mod tests {
         effects.push(rebellion_core::missions::MissionEffect::HeritageLearned { character: luke });
 
         let messages =
-            EncounterNotes::gather(&world, &effects).messages(&world, 7, &encounter_texts());
+            EncounterNotes::gather(&world, &effects).messages(&world, &rebellion_core::missions::MissionState::new(), 7, &encounter_texts());
 
         assert_eq!(messages.len(), 1);
         let message = &messages[0];
@@ -1429,6 +1473,122 @@ mod tests {
     }
 
     #[test]
+    fn a_captive_luke_on_vader_s_mission_to_the_emperor_is_taken_to_him() {
+        // FUN_0048dc50 (0x0048dda0..0x0048de28): Luke and Vader hold the
+        // same mission key (+0x68) whose target container (+0x74) is the
+        // Emperor's container ([Emperor + 0x1c]): 0x71a2 for 0x71a3. The
+        // Final Battle's DarthToEmperor Move order is one.
+        use rebellion_core::missions::{
+            MissionFaction, MissionKind, MissionMember, MissionRequest, MissionState,
+        };
+        let mut world = GameWorld::default();
+        let [luke, leia, vader, emperor, _] = encounter_cast(&mut world);
+        let mut place = |name: &str| {
+            world.systems.insert(rebellion_core::world::System {
+                dat_id: DatId::new(0x9000_0001),
+                name: name.into(),
+                sector: rebellion_core::ids::SectorKey::default(),
+                x: 0,
+                y: 0,
+                exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+                popularity_alliance: 0.5,
+                popularity_empire: 0.5,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: vec![],
+                is_headquarters: false,
+                is_destroyed: false,
+                control: rebellion_core::world::ControlKind::Uncontrolled,
+            })
+        };
+        let (coruscant, elsewhere) = (place("Coruscant"), place("Yavin"));
+        world.characters[emperor].current_system = Some(coruscant);
+        world.characters[luke].is_captive = true;
+        let mut effects = met(luke, vader);
+        effects.push(rebellion_core::missions::MissionEffect::HeritageLearned { character: luke });
+        let texts = encounter_texts();
+        let line = |missions: &MissionState, world: &GameWorld| {
+            EncounterNotes::gather(world, &effects).messages(world, missions, 0, &texts)[0]
+                .text
+                .clone()
+        };
+        let mut missions = MissionState::new();
+        let order = |missions: &mut MissionState, team: Vec<MissionMember>, to| {
+            missions.dispatch(MissionRequest {
+                kind: MissionKind::Move,
+                faction: MissionFaction::Empire,
+                team,
+                decoys: Vec::new(),
+                target_system: to,
+                target_character: None,
+                target_object: None,
+                tick: 0,
+            });
+        };
+        let both = vec![
+            MissionMember::Character(vader),
+            MissionMember::Character(luke),
+        ];
+        // Elsewhere, without Luke or without Vader: captured only.
+        order(&mut missions, both.clone(), elsewhere);
+        order(&mut missions, vec![MissionMember::Character(vader)], coruscant);
+        order(
+            &mut missions,
+            vec![
+                MissionMember::Character(luke),
+                MissionMember::Character(leia),
+            ],
+            coruscant,
+        );
+        assert!(line(&missions, &world).contains("Luke has been captured by Vader.  "));
+        // To the Emperor's place with both aboard: taken to the Emperor.
+        order(&mut missions, both, coruscant);
+        assert!(line(&missions, &world)
+            .contains("Luke has been captured by Vader and taken to the Emperor.  "));
+        // An Emperor in an abode: the mission's abode is his container.
+        let palace = world.abodes.insert(rebellion_core::world::Abode {
+            dat_id: DatId::new(0x481),
+            name: "Palace".into(),
+            side: rebellion_core::dat::Faction::Neutral,
+            special_forces: Vec::new(),
+        });
+        let lair = world.abodes.insert(rebellion_core::world::Abode {
+            dat_id: DatId::new(0x482),
+            name: "Lair".into(),
+            side: rebellion_core::dat::Faction::Neutral,
+            special_forces: Vec::new(),
+        });
+        world.characters[emperor].current_system = None;
+        world.characters[emperor].current_abode = Some(palace);
+        let mut abode_missions = MissionState::new();
+        order(
+            &mut abode_missions,
+            vec![
+                MissionMember::Character(vader),
+                MissionMember::Character(luke),
+            ],
+            coruscant,
+        );
+        let id = abode_missions.missions()[0].id;
+        abode_missions.aim_at_abode(id, lair);
+        assert!(line(&abode_missions, &world).contains("Luke has been captured by Vader.  "));
+        abode_missions.aim_at_abode(id, palace);
+        assert!(line(&abode_missions, &world)
+            .contains("Luke has been captured by Vader and taken to the Emperor.  "));
+        // A dead Emperor takes no one.
+        world.characters[emperor].is_killed = true;
+        assert!(line(&missions, &world).contains("Luke has been captured by Vader.  "));
+    }
+
+    #[test]
     fn the_heritage_message_tells_luke_s_capture_and_vader_s_injury() {
         // FUN_0048dc50: Luke captive (+0xac bit 0) -> 0x71a3; Vader injured
         // (+0x94) -> 0x71a7; an injured, free Luke -> 0x71a4 and no escape.
@@ -1440,7 +1600,7 @@ mod tests {
         effects.push(rebellion_core::missions::MissionEffect::HeritageLearned { character: luke });
         let texts = encounter_texts();
 
-        let captured = EncounterNotes::gather(&world, &effects).messages(&world, 0, &texts);
+        let captured = EncounterNotes::gather(&world, &effects).messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts);
         assert_eq!(
             captured[0].text,
             "Luke has learned that Vader is his father.  Luke has been captured by Vader.  \
@@ -1451,7 +1611,7 @@ mod tests {
         world.characters[luke].injury = 5;
         world.characters[vader].injury = 0;
         world.characters[vader].is_captive = true;
-        let injured = EncounterNotes::gather(&world, &effects).messages(&world, 0, &texts);
+        let injured = EncounterNotes::gather(&world, &effects).messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts);
         assert_eq!(
             injured[0].text,
             "Luke has learned that Vader is his father.  Luke was injured during the battle.  \
@@ -1467,7 +1627,7 @@ mod tests {
         let [luke, _, vader, _, _] = encounter_cast(&mut world);
         let texts = encounter_texts();
 
-        let calm = EncounterNotes::gather(&world, &met(luke, vader)).messages(&world, 0, &texts);
+        let calm = EncounterNotes::gather(&world, &met(luke, vader)).messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts);
         assert_eq!(calm.len(), 1);
         assert_eq!(
             calm[0].title.as_deref(),
@@ -1482,7 +1642,7 @@ mod tests {
         world.characters[luke].injury = 9;
         world.characters[vader].is_captive = true;
         // The member's order does not matter: each side files its own.
-        let hurt = EncounterNotes::gather(&world, &met(vader, luke)).messages(&world, 0, &texts);
+        let hurt = EncounterNotes::gather(&world, &met(vader, luke)).messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts);
         assert_eq!(
             hurt[0].text,
             "Luke Skywalker has fought Darth Vader.  Luke Skywalker was injured.  \
@@ -1499,7 +1659,7 @@ mod tests {
         let [luke, leia, vader, emperor, _] = encounter_cast(&mut world);
         let texts = encounter_texts();
         let background = |world: &GameWorld, a, e| {
-            EncounterNotes::gather(world, &met(a, e)).messages(world, 0, &texts)[0]
+            EncounterNotes::gather(world, &met(a, e)).messages(world, &rebellion_core::missions::MissionState::new(), 0, &texts)[0]
                 .picture
                 .expect("a picture")
                 .background
@@ -1522,6 +1682,7 @@ mod tests {
 
         let messages = EncounterNotes::gather(&world, &met(minor, vader)).messages(
             &world,
+            &rebellion_core::missions::MissionState::new(),
             0,
             &encounter_texts(),
         );
@@ -1567,10 +1728,10 @@ mod tests {
             }]
         };
         let detected =
-            EncounterNotes::gather(&world, &begun(minor, vader)).messages(&world, 0, &texts);
+            EncounterNotes::gather(&world, &begun(minor, vader)).messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts);
         assert_eq!(detected.len(), 2);
         let confronted =
-            EncounterNotes::gather(&world, &begun(luke, vader)).messages(&world, 0, &texts);
+            EncounterNotes::gather(&world, &begun(luke, vader)).messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts);
         assert_eq!(
             confronted[0].title.as_deref(),
             Some("Luke Skywalker Confronts Darth Vader")
@@ -1581,7 +1742,7 @@ mod tests {
             member: luke,
             partner: vader,
         }];
-        let later = EncounterNotes::gather(&world, &ended).messages(&world, 0, &texts);
+        let later = EncounterNotes::gather(&world, &ended).messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts);
         assert_eq!(later.len(), 1);
     }
 
@@ -1945,7 +2106,7 @@ mod tests {
             effects
                 .push(rebellion_core::missions::MissionEffect::HeritageLearned { character: luke });
             assert!(EncounterNotes::gather(&world, &effects)
-                .messages(&world, 0, &texts)
+                .messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts)
                 .is_empty());
         }
     }
@@ -1958,15 +2119,15 @@ mod tests {
         let [luke, _, vader, _, _] = encounter_cast(&mut world);
         let texts = encounter_texts();
         assert!(EncounterNotes::gather(&world, &[])
-            .messages(&world, 0, &texts)
+            .messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts)
             .is_empty());
         world.characters[vader].is_empire = false;
         assert!(EncounterNotes::gather(&world, &met(luke, vader))
-            .messages(&world, 0, &texts)
+            .messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts)
             .is_empty());
         let lone = [rebellion_core::missions::MissionEffect::HeritageLearned { character: luke }];
         assert!(EncounterNotes::gather(&world, &lone)
-            .messages(&world, 0, &texts)
+            .messages(&world, &rebellion_core::missions::MissionState::new(), 0, &texts)
             .is_empty());
     }
 }

@@ -2191,7 +2191,7 @@ async fn main() {
                 &world,
                 &mission_advance.effects,
             )
-            .messages(&world, current_tick, &message_texts)
+            .messages(&world, &mission_state, current_tick, &message_texts)
             {
                 msg_log.push(message);
             }

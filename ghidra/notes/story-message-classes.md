@@ -62,7 +62,7 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 5 | Leia Uses Force | `0x362`, Leia | `FUN_0048f1e0` | side, Leia's portrait | `0x71d8` / `0x71d9` | — | mapped |
 | 6 | Force user Detects Enemy | `0x360`, then 2 | `FUN_0048e1d0` (`0x65b408`) | side, the detector's portrait | `0x71b0` / `0x71b1` | each side, its own character | mapped 2026-10-18 (`EncounterNotes`, the mission detection) |
 | 7 | Character Confronts character | `0x360`, then 2 | `FUN_0048df20` (`0x65b408`) | `0x41f`, `0x420`, `0x423`-`0x426` | `0x71a8` / `0x71a9` + `0x71aa`-`0x71ae` | both | mapped 2026-10-18 (`EncounterNotes`) |
-| 8 | Luke Discovers His Heritage | `0x360` + `0x211`, then 2 | `FUN_0048dc50` (`0x65b408`) | `0x422` | `0x71a0` / `0x71a1` + `0x71a2`-`0x71a7` | both | mapped 2026-10-18 (`EncounterNotes`; `0x71a2` needs the Final Battle pickup) |
+| 8 | Luke Discovers His Heritage | `0x360` + `0x211`, then 2 | `FUN_0048dc50` (`0x65b408`) | `0x422` | `0x71a0` / `0x71a1` + `0x71a2`-`0x71a7` | both | mapped 2026-10-18 (`EncounterNotes`); `0x71a2` 2026-10-20 (`taken_to_emperor`, the DarthToEmperor Move order) |
 | 9 | The Final Battle | `0x220`, then 2 | `FUN_0048e3c0` (`0x65b408`) | `0x427`, or `0x428` | `0x71e0` / `0x71e1` or `0x71e2` | both | mapped 2026-10-18 (`final_battle_message`, after `final_battle.rs` fights it) |
 | 10 | Han Solo Attacked by Bounty Hunters | `0x212`, arg 0 | `FUN_0048fa00` (`0x65b5a8`) | `0x41c` | `0x7168` / `0x7169` | Alliance | mapped 2026-10-18 (`bounty_messages`, the Bounty mission's hit) |
 | 11 | Bounty Hunters Locate Solo | `0x212`, arg 0 | `FUN_0048fa00` | `0x41e` | `0x716a` / `0x716b` (system) | Empire | mapped 2026-10-18 (`bounty_messages`) |
@@ -105,8 +105,13 @@ Notes on the rows:
 - **8.** Bodies: `0x71a2` Luke taken to the Emperor, `0x71a3` Luke captured,
   `0x71a4` Luke injured (`+0x94` non-zero), `0x71a5` Luke escaped; then
   `0x71a6` Vader captured or `0x71a7` Vader injured. `0x71a2` needs Luke
-  captive and on Vader's mission (`+0x68`, `FUN_0042d170`) whose `+0x74`
-  is Luke, with the Emperor present. The texts are appended
+  captive, Luke and Vader holding the same mission key (`+0x68`,
+  `FUN_0042d170`), and that mission's target container (`+0x74`) the
+  Emperor's container (`[Emperor + 0x1c]` through `FUN_004025b0`,
+  disassembly `0x0048de00..0x0048de16`; read again 2026-10-20), with the
+  Emperor present. The Final Battle's DarthToEmperor Move order
+  (`final-battle.md`) is such a mission. Ported 2026-10-20
+  (`story_messages::taken_to_emperor`). The texts are appended
   (`FUN_0060b840` writes each through `FUN_005f3240`).
 - **9.** `0x71e2` when Luke is captive (`+0xac & 1`), else `0x71e1`;
   background `0x428` when Luke's `+0xb0 & 8` is set.

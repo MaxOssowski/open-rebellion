@@ -2930,6 +2930,11 @@ cross-runtime proof remain open
   units' class `+0x58`, credit the holder against the blockader; save v89
   (golden regenerated: initial `v1:29ee3368cb892d9e`, final
   `v1:fb78593dbd336659`) (`evidence/2026-10-19-loyalty-blockade/`).
+- 2026-10-20: Luke taken to the Emperor. `FUN_0048dc50`'s `0x71a2` (read
+  from the image) needs Luke and Vader on one mission whose target
+  container is the Emperor's, which the Final Battle's DarthToEmperor
+  Move order is; ported as `story_messages::taken_to_emperor`
+  (`evidence/2026-10-20-luke-taken-to-emperor/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
