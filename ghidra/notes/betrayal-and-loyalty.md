@@ -107,6 +107,17 @@ Still open:
    `betrayal_check` and `side_change`.
 3. **Read when each loyalty handler runs** (done 2026-10-19, above).
 4. **Port Coruscant's side change and the HQ's loss** (`FUN_005616a0`,
-   `FUN_00561780`).
+   `FUN_00561780`). Done 2026-10-19, `rebellion-core/src/loyalty.rs`:
+   - `shift` is `FUN_00561910` / `FUN_004ef1e0`;
+   - `watch` and `settle` compare the day's start with its end, in
+     `simulation.rs` step 13e and the app's day loop;
+   - a draw is taken only when its event happens;
+   - telemetry `loyalty_shift`.
+
+   port: two changes in one day count once.
+   hyp: the side words' bits `0x30` are read as clear.
+
+   In 24 dual-AI campaigns one shift happens: seed 9's Alliance loses its
+   headquarters, -5. Coruscant never changes hands.
 5. **Read the system record's per-side loss counters**, then port the
    battle's and the blockade's shifts.

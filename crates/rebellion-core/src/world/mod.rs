@@ -1237,6 +1237,14 @@ impl SdprtbParams {
         Self { entries }
     }
 
+    /// Whether the table has `param_id`.
+    #[must_use]
+    pub fn contains(&self, param_id: u16) -> bool {
+        self.entries
+            .iter()
+            .any(|e| e.parameter_id == u32::from(param_id))
+    }
+
     /// Return a side-aware seeding parameter for the requested difficulty column.
     #[must_use]
     pub fn value(&self, param_id: u16, difficulty: u8, faction: Faction) -> i32 {

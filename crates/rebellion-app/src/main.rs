@@ -1719,6 +1719,10 @@ async fn main() {
             // indexes before economy and manufacturing inspect fleet presence.
             reconcile_fleet_orbits(&movement_state, &mut world);
 
+            // The galaxy the day's loyalty shifts compare against.
+            let loyalty_before =
+                rebellion_core::loyalty::watch(&world, Some(victory_state.alliance_hq));
+
             // ── Economy (runs BEFORE manufacturing — affects production) ──────
             let economy_events = EconomySystem::advance_with_uprisings(
                 &mut economy_state,
@@ -3157,6 +3161,15 @@ async fn main() {
             // ── (The port's Jedi tiers are gone: the Force grows through the
             // missions, Dagobah, escapes and the encounter;
             // ghidra/notes/jedi-rs-replacement.md.)
+
+            // ── Loyalty: Coruscant taken, the Alliance HQ lost ──────────────
+            // (FUN_005616a0, FUN_00561780; ghidra/notes/betrayal-and-loyalty.md)
+            rebellion_core::loyalty::settle(
+                &mut world,
+                loyalty_before,
+                Some(victory_state.alliance_hq),
+                &mut |m| sim_rng.gen_range(0..m.max(1)),
+            );
 
             // ── Victory check ────────────────────────────────────────────────
             // The victory conditions word (FUN_005180e0): each change is

@@ -1,0 +1,401 @@
+//! Character loyalty shifts on galaxy events
+//! (`ghidra/notes/betrayal-and-loyalty.md`).
+//!
+//! [`shift`] is `FUN_00561910`: a side's gain moves every character's base
+//! loyalty `+0x66`, up for the side's own characters and down for the
+//! others. [`settle`] runs the two handlers the port can see from one day
+//! to the next: Coruscant changing side (`FUN_005616a0`) and the Alliance
+//! losing its headquarters (`FUN_00561780`).
+//!
+//! port: the original runs each handler on its own notification, as the
+//! change happens; the port compares the galaxy at the day's start
+//! ([`watch`]) with its end ([`settle`]), so two changes in one day count
+//! once.
+
+use crate::dat::Faction;
+use crate::ids::SystemKey;
+use crate::world::{Character, ControlKind, GameWorld};
+
+/// Coruscant's record index (`0x109`, `FUN_00561670`).
+const CORUSCANT: u32 = 0x109;
+
+/// SDPRTB 2561 (`Sdprtb_2561_*`): the spread of a side's gain when it takes
+/// Coruscant, the same for both sides.
+const SDPRTB_CORUSCANT_SPREAD: u16 = 2561;
+/// SDPRTB 2561 as shipped.
+const SHIPPED_CORUSCANT_SPREAD: i64 = 5;
+/// SDPRTB 2562 (`Sdprtb_2562_*`): the base of that gain.
+const SDPRTB_CORUSCANT_BASE: u16 = 2562;
+/// SDPRTB 2562 as shipped.
+const SHIPPED_CORUSCANT_BASE: i64 = 0;
+/// GNPRTB 2592: the spread of the Alliance's loss of its headquarters.
+const GNPRTB_HQ_SPREAD: u16 = 2592;
+/// GNPRTB 2592 as shipped.
+const SHIPPED_HQ_SPREAD: i64 = -5;
+/// GNPRTB 2593: the base of that loss.
+const GNPRTB_HQ_BASE: u16 = 2593;
+/// GNPRTB 2593 as shipped.
+const SHIPPED_HQ_BASE: i64 = 0;
+
+/// `FUN_004edc80`: the side a character's class serves alone, 1 Alliance
+/// or 2 Empire, else none.
+///
+/// port: the class sides are the port's `is_alliance` and `is_empire`.
+fn class_side(character: &Character) -> Option<Faction> {
+    match (character.is_alliance, character.is_empire) {
+        (true, false) => Some(Faction::Alliance),
+        (false, true) => Some(Faction::Empire),
+        _ => None,
+    }
+}
+
+/// `FUN_00561910(amount, side)`: each living character not exempt (class
+/// `+0xb4`, `is_unable_to_betray`; `FUN_004ed240`) gets `amount` added to
+/// its base loyalty when its class serves `side`, else `amount`
+/// subtracted (`FUN_004ef1e0`), clamped to `0..=100` (`FUN_0053e0d0`,
+/// `FUN_005341a0`). A neutral `side` changes nothing.
+pub fn shift(world: &mut GameWorld, side: Faction, amount: i32) {
+    if side == Faction::Neutral || amount == 0 {
+        return;
+    }
+    for c in world.characters.values_mut() {
+        if c.is_killed || c.is_unable_to_betray {
+            continue;
+        }
+        let delta = if class_side(c) == Some(side) {
+            amount
+        } else {
+            -amount
+        };
+        let base = i32::try_from(c.loyalty.base).unwrap_or(i32::MAX);
+        c.loyalty.base = u32::try_from((base + delta).clamp(0, 100)).unwrap_or(0);
+    }
+}
+
+/// What [`settle`] compares across a day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoyaltyWatch {
+    /// Coruscant's holder, when one side holds it.
+    coruscant: Option<Faction>,
+    /// Whether the Alliance still has its headquarters.
+    alliance_hq: bool,
+}
+
+/// A shift [`settle`] applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoyaltyShift {
+    pub side: Faction,
+    pub amount: i32,
+}
+
+fn side_of(control: ControlKind) -> Option<Faction> {
+    match control {
+        ControlKind::Controlled(side) | ControlKind::Uprising(side) => {
+            Some(side).filter(|s| *s != Faction::Neutral)
+        }
+        ControlKind::Uncontrolled | ControlKind::Contested => None,
+    }
+}
+
+fn hq_standing(world: &GameWorld, alliance_hq: Option<SystemKey>) -> bool {
+    alliance_hq
+        .and_then(|key| world.systems.get(key))
+        .is_some_and(|sys| sys.is_headquarters && !sys.is_destroyed)
+}
+
+/// The galaxy as [`settle`] will compare it: Coruscant's holder and the
+/// Alliance's headquarters (`alliance_hq`, the victory state's).
+#[must_use]
+pub fn watch(world: &GameWorld, alliance_hq: Option<SystemKey>) -> LoyaltyWatch {
+    LoyaltyWatch {
+        coruscant: world
+            .systems
+            .values()
+            .find(|sys| sys.dat_id.index() == CORUSCANT)
+            .and_then(|sys| side_of(sys.control)),
+        alliance_hq: hq_standing(world, alliance_hq),
+    }
+}
+
+fn param(world: &GameWorld, id: u16, shipped: i64, sdprtb: Option<Faction>) -> i32 {
+    let value = match sdprtb {
+        Some(side) if world.sdprtb.contains(id) => {
+            i64::from(world.sdprtb.value(id, world.difficulty_index, side))
+        }
+        Some(_) => shipped,
+        None => crate::movement::gnprtb_or_shipped(world, id, shipped),
+    };
+    i32::try_from(value).unwrap_or(0)
+}
+
+/// `FUN_0053e290(n)`: a draw of `0..=n`, or `n..=0` for a negative `n`,
+/// from `draw(m)` (`0..m`).
+fn upto(draw: &mut dyn FnMut(i32) -> i32, n: i32) -> i32 {
+    if n >= 0 {
+        draw(n.saturating_add(1))
+    } else {
+        -draw(1i32.saturating_sub(n))
+    }
+}
+
+/// The day's loyalty shifts since `before`:
+/// - Coruscant taken by a side (`FUN_00561670` -> `FUN_005616a0`):
+///   `rand(SDPRTB 2561) + SDPRTB 2562` (`0..=5`) for the new side
+///   (`FUN_0053ec90(new, 1)`); the old side's own call adds nothing
+///   (`FUN_0053ec90(old, 0)` is 0).
+/// - The Alliance's headquarters lost (`FUN_00561470` -> `FUN_00561780`):
+///   `rand(GNPRTB 2592) + GNPRTB 2593` (`0..=-5`) for the Alliance.
+///
+/// Each draw is taken only when its event happens. Returns the shifts.
+///
+/// hyp: the side words' bits `0x30`, which make `FUN_005616a0` give
+/// nothing, are read as clear.
+pub fn settle(
+    world: &mut GameWorld,
+    before: LoyaltyWatch,
+    alliance_hq: Option<SystemKey>,
+    draw: &mut dyn FnMut(i32) -> i32,
+) -> Vec<LoyaltyShift> {
+    let after = watch(world, alliance_hq);
+    let mut shifts = Vec::new();
+    if after.coruscant != before.coruscant {
+        if let Some(side) = after.coruscant {
+            let spread = param(
+                world,
+                SDPRTB_CORUSCANT_SPREAD,
+                SHIPPED_CORUSCANT_SPREAD,
+                Some(side),
+            );
+            let base = param(
+                world,
+                SDPRTB_CORUSCANT_BASE,
+                SHIPPED_CORUSCANT_BASE,
+                Some(side),
+            );
+            let amount = upto(draw, spread) + base;
+            shift(world, side, amount);
+            shifts.push(LoyaltyShift { side, amount });
+        }
+    }
+    if before.alliance_hq && !after.alliance_hq {
+        let spread = param(world, GNPRTB_HQ_SPREAD, SHIPPED_HQ_SPREAD, None);
+        let base = param(world, GNPRTB_HQ_BASE, SHIPPED_HQ_BASE, None);
+        let amount = upto(draw, spread) + base;
+        shift(world, Faction::Alliance, amount);
+        shifts.push(LoyaltyShift {
+            side: Faction::Alliance,
+            amount,
+        });
+    }
+    shifts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dat::ExplorationStatus;
+    use crate::ids::{DatId, SectorKey};
+    use crate::world::{SkillPair, System};
+
+    fn system(world: &mut GameWorld, index: u32, control: ControlKind) -> SystemKey {
+        world.systems.insert(System {
+            dat_id: DatId::new(0x9000_0000 | index),
+            name: format!("{index:#x}"),
+            sector: SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control,
+        })
+    }
+
+    fn person(
+        world: &mut GameWorld,
+        alliance: bool,
+        empire: bool,
+        loyalty: u32,
+    ) -> crate::ids::CharacterKey {
+        world.characters.insert(Character {
+            is_alliance: alliance,
+            is_empire: empire,
+            loyalty: SkillPair {
+                base: loyalty,
+                variance: 0,
+            },
+            ..Character::default()
+        })
+    }
+
+    fn loyalty(world: &GameWorld, key: crate::ids::CharacterKey) -> u32 {
+        world.characters[key].loyalty.base
+    }
+
+    #[test]
+    fn a_side_s_gain_raises_its_characters_and_lowers_the_others() {
+        // FUN_00561910 -> FUN_004ef1e0: the amount, negated unless the class
+        // serves the side (FUN_004edc80), clamped to 0..=100 (FUN_0053e0d0);
+        // a class with +0xb4 (is_unable_to_betray) does not move.
+        let mut world = GameWorld::default();
+        let rebel = person(&mut world, true, false, 50);
+        let imperial = person(&mut world, false, true, 50);
+        let both = person(&mut world, true, true, 50);
+        let high = person(&mut world, true, false, 98);
+        let low = person(&mut world, false, true, 2);
+        let key = person(&mut world, true, false, 50);
+        world.characters[key].is_unable_to_betray = true;
+        shift(&mut world, Faction::Alliance, 4);
+        assert_eq!(
+            [rebel, imperial, both, high, low, key].map(|k| loyalty(&world, k)),
+            [54, 46, 46, 100, 0, 50]
+        );
+        shift(&mut world, Faction::Neutral, 4);
+        assert_eq!(loyalty(&world, rebel), 54);
+    }
+
+    #[test]
+    fn the_empire_s_gain_raises_its_characters() {
+        let mut world = GameWorld::default();
+        let rebel = person(&mut world, true, false, 50);
+        let imperial = person(&mut world, false, true, 50);
+        shift(&mut world, Faction::Empire, 3);
+        assert_eq!(
+            (loyalty(&world, rebel), loyalty(&world, imperial)),
+            (47, 53)
+        );
+    }
+
+    #[test]
+    fn the_shifts_read_the_side_s_sdprtb_and_the_gnprtb() {
+        // FUN_0053ec90 reads Sdprtb_2561/2562 for the new side;
+        // FUN_0053ed00 reads Gnprtb_2592/2593.
+        use crate::world::{GnprtbParams, SdprtbEntry, SdprtbParams};
+        let row = |parameter_id, alliance, empire| SdprtbEntry {
+            parameter_id,
+            dev_alliance: alliance,
+            dev_empire: empire,
+            alliance_sp_easy_alliance: alliance,
+            alliance_sp_easy_empire: empire,
+            alliance_sp_medium_alliance: alliance,
+            alliance_sp_medium_empire: empire,
+            alliance_sp_hard_alliance: alliance,
+            alliance_sp_hard_empire: empire,
+            empire_sp_easy_alliance: alliance,
+            empire_sp_easy_empire: empire,
+            empire_sp_medium_alliance: alliance,
+            empire_sp_medium_empire: empire,
+            empire_sp_hard_alliance: alliance,
+            empire_sp_hard_empire: empire,
+            multiplayer_alliance: alliance,
+            multiplayer_empire: empire,
+        };
+        let only_base = SdprtbParams::new(vec![row(2562, 3, 7)]);
+        assert!(only_base.contains(2562) && !only_base.contains(2561));
+        let mut world = GameWorld::default();
+        world.sdprtb = SdprtbParams::new(vec![row(2561, 9, 2), row(2562, 3, 7)]);
+        world.gnprtb = GnprtbParams::uniform(&[(2592, -2), (2593, -1)]);
+        let coruscant = system(&mut world, 0x109, ControlKind::Uncontrolled);
+        let hq = system(
+            &mut world,
+            0x10a,
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        world.systems[hq].is_headquarters = true;
+        let mut sizes = Vec::new();
+        let mut draw = |m: i32| {
+            sizes.push(m);
+            1
+        };
+        let before = watch(&world, Some(hq));
+        world.systems[coruscant].control = ControlKind::Controlled(Faction::Empire);
+        world.systems[hq].is_destroyed = true;
+        let shifts = settle(&mut world, before, Some(hq), &mut draw);
+        // Empire: rand(2) + 7 = 1 + 7; Alliance: -rand(2) - 1 = -1 - 1.
+        assert_eq!(
+            shifts,
+            [
+                LoyaltyShift {
+                    side: Faction::Empire,
+                    amount: 8
+                },
+                LoyaltyShift {
+                    side: Faction::Alliance,
+                    amount: -2
+                }
+            ]
+        );
+        assert_eq!(sizes, [3, 3]);
+    }
+
+    #[test]
+    fn coruscant_taken_or_the_rebel_headquarters_lost_shift_loyalty() {
+        // FUN_005616a0 for Coruscant (0x109): rand(SDPRTB 2561 = 5) + 2562
+        // (0) for the new side; FUN_00561780 for the Alliance HQ (family
+        // 0x20..0x21): rand(GNPRTB 2592 = -5) + 2593 (0).
+        let mut world = GameWorld::default();
+        let coruscant = system(&mut world, 0x109, ControlKind::Controlled(Faction::Empire));
+        let hq = system(
+            &mut world,
+            0x10a,
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        world.systems[hq].is_headquarters = true;
+        let rebel = person(&mut world, true, false, 50);
+        let imperial = person(&mut world, false, true, 50);
+        let mut sizes = Vec::new();
+        let mut draw = |m: i32| {
+            sizes.push(m);
+            m - 1
+        };
+
+        let before = watch(&world, Some(hq));
+        assert!(settle(&mut world, before, Some(hq), &mut draw).is_empty());
+
+        world.systems[coruscant].control = ControlKind::Controlled(Faction::Alliance);
+        let shifts = settle(&mut world, before, Some(hq), &mut draw);
+        assert_eq!(
+            shifts,
+            [LoyaltyShift {
+                side: Faction::Alliance,
+                amount: 5
+            }]
+        );
+        assert_eq!(
+            (loyalty(&world, rebel), loyalty(&world, imperial)),
+            (55, 45)
+        );
+
+        // Coruscant left neutral gives nothing; the HQ lost costs the
+        // Alliance 0..=5 (here 5).
+        let before = watch(&world, Some(hq));
+        world.systems[coruscant].control = ControlKind::Uncontrolled;
+        world.systems[hq].is_headquarters = false;
+        let shifts = settle(&mut world, before, Some(hq), &mut draw);
+        assert_eq!(
+            shifts,
+            [LoyaltyShift {
+                side: Faction::Alliance,
+                amount: -5
+            }]
+        );
+        assert_eq!(
+            (loyalty(&world, rebel), loyalty(&world, imperial)),
+            (50, 50)
+        );
+        assert_eq!(sizes, [6, 6]);
+    }
+}

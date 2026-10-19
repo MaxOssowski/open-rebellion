@@ -365,6 +365,20 @@ impl PerceptionIntegrator {
         self.events.push(record);
     }
 
+    /// Telemetry for each loyalty shift (`rebellion_core::loyalty::settle`).
+    pub fn record_loyalty_shifts(&mut self, shifts: &[rebellion_core::loyalty::LoyaltyShift]) {
+        for shift in shifts {
+            self.emit(
+                SYS_EVENTS,
+                rebellion_core::game_events::EVT_LOYALTY_SHIFT,
+                serde_json::json!({
+                    "side": format!("{:?}", shift.side),
+                    "amount": shift.amount,
+                }),
+            );
+        }
+    }
+
     /// Emit a telemetry record from components.
     pub fn emit(
         &mut self,
@@ -2677,6 +2691,20 @@ mod tests {
     use rebellion_core::missions::MissionOutcome;
     use rebellion_core::world::{CapitalShipClass, Sector, System};
 
+
+    #[test]
+    fn each_loyalty_shift_is_recorded_with_its_side_and_amount() {
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.record_loyalty_shifts(&[rebellion_core::loyalty::LoyaltyShift {
+            side: Faction::Alliance,
+            amount: -5,
+        }]);
+        let events = integrator.finish();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "loyalty_shift");
+        assert_eq!(events[0].details["side"], "Alliance");
+        assert_eq!(events[0].details["amount"], -5);
+    }
 
     #[test]
     fn a_jedi_training_gain_raises_the_pupil_s_force_training() {

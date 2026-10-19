@@ -2914,6 +2914,12 @@ cross-runtime proof remain open
   regenerated (initial `v1:a2c72fbdc17546ff`, final `v1:55c055d53d7ca5b8`);
   every campaign changes through the shifted rolls, none had a defection
   (`evidence/2026-10-19-betrayal-removed/`).
+- 2026-10-19 (F-028): loyalty. `FUN_00561910` shifts every non-exempt
+  character's base loyalty for a side's gain; Coruscant taken
+  (`FUN_005616a0`, `0..=5` for the new side) and the Alliance HQ lost
+  (`FUN_00561780`, `0..=-5` for the Alliance) are ported
+  (`loyalty.rs`); 23 of 24 campaigns are unchanged, seed 9's HQ loss
+  shifts once (`evidence/2026-10-19-loyalty-coruscant-hq/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

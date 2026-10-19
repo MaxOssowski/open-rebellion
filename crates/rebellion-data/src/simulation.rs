@@ -129,6 +129,17 @@ fn planets_destroyed(
         .collect()
 }
 
+/// A draw of `0..m` from a uniform roll in `0..1` (`m` at least 1).
+fn draw_from_roll(roll: f64, m: i32) -> i32 {
+    let m = m.max(1);
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the product is floored into 0..m, which fits an i32"
+    )]
+    let value = (roll * f64::from(m)).floor() as i32;
+    value.clamp(0, m - 1)
+}
+
 pub fn run_simulation_tick(
     world: &mut GameWorld,
     states: &mut SimulationStates,
@@ -159,6 +170,10 @@ pub fn run_simulation_tick(
         v.resize(n, 1.0);
         v
     };
+
+    // The galaxy the day's loyalty shifts compare against (step 13e).
+    let loyalty_before =
+        rebellion_core::loyalty::watch(world, Some(states.victory.alliance_hq));
 
     // ── 0. Economy (runs BEFORE manufacturing — affects production) ──────
     let economy_events = EconomySystem::advance_with_uprisings(
@@ -749,6 +764,16 @@ pub fn run_simulation_tick(
     // build or a join on arrival, takes its signature name (fleet_name_bank).
     world.name_flagship_fleets();
 
+    // ── 13e. Loyalty: Coruscant taken, the Alliance HQ lost ─────────────
+    // (FUN_005616a0, FUN_00561780; ghidra/notes/betrayal-and-loyalty.md)
+    let shifts = rebellion_core::loyalty::settle(
+        world,
+        loyalty_before,
+        Some(states.victory.alliance_hq),
+        &mut |m| draw_from_roll(take_rolls(1)[0], m),
+    );
+    integrator.record_loyalty_shifts(&shifts);
+
     // ── 14. Victory check ────────────────────────────────────────────────
     // The victory conditions word (FUN_005180e0) and its 0x128.
     if let Some((old, new)) = rebellion_core::victory::advance_conditions_word(
@@ -779,6 +804,16 @@ pub fn run_simulation_tick(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_roll_draws_evenly_below_the_bound() {
+        assert_eq!(draw_from_roll(0.0, 6), 0);
+        assert_eq!(draw_from_roll(0.5, 6), 3);
+        assert_eq!(draw_from_roll(0.99, 6), 5);
+        assert_eq!(draw_from_roll(1.0, 6), 5);
+        assert_eq!(draw_from_roll(0.7, 1), 0);
+        assert_eq!(draw_from_roll(0.7, 0), 0);
+    }
 
     #[test]
     fn a_destroy_system_order_s_planet_goes_through_the_death_star_s_destruction() {
