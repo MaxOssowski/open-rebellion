@@ -30,7 +30,7 @@ use rebellion_core::game_events::{
     EVT_CONFRONTATION, EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_ENCOUNTER,
     EVT_FORCE_EXPERIENCE, EVT_STORY_FINAL_BATTLE, EVT_STORY_JABBA, EVT_STORY_SEAT_OF_POWER, EVT_VICTORY_CONDITIONS,
     EVT_GARRISON_REQUIRED, EVT_HERITAGE_LEARNED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL,
-    EVT_JEDI_CHECK, EVT_JEDI_DISCOVERED, EVT_JEDI_TIER, EVT_LUKE_DAGOBAH,
+    EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
     EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
@@ -43,7 +43,6 @@ use rebellion_core::game_events::{
 };
 use rebellion_core::ids::DatId;
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
-use rebellion_core::jedi::{JediEvent, JediState};
 use rebellion_core::manufacturing::{
     BuildableKind, CompletionEvent, ManufacturingState, QueueItem,
 };
@@ -1538,7 +1537,7 @@ impl PerceptionIntegrator {
 
     // ── Step 6: Events + Jedi training ────────────────────────────────────
 
-    /// Apply fired events: world mutations + Jedi training extraction + telemetry.
+    /// Apply fired events: world mutations + telemetry.
     ///
     /// Per Dabora 2 #F7 the `movement` parameter is required so
     /// `EventAction::SpawnSpecialForce` can resolve in-transit characters
@@ -1550,7 +1549,6 @@ impl PerceptionIntegrator {
         &mut self,
         world: &mut GameWorld,
         fired_events: &[FiredEvent],
-        jedi_state: &mut JediState,
         current_tick: u64,
         movement: &MovementState,
     ) {
@@ -1573,16 +1571,6 @@ impl PerceptionIntegrator {
                     "event_id": fired.event_id,
                 }),
             );
-        }
-        // Extract Jedi training starts from story events
-        for fired in fired_events {
-            for action in &fired.actions {
-                if let EventAction::StartJediTraining { character } = action {
-                    if let Some(c) = world.characters.get(*character) {
-                        jedi_state.start_training(*character, c.is_alliance, current_tick);
-                    }
-                }
-            }
         }
         // Flush SpecialForceSpawned telemetry. The effect queue also
         // serves as the channel into main.rs's special-forces arena
@@ -2001,68 +1989,6 @@ impl PerceptionIntegrator {
     }
 
     // ── Step 13: Jedi ─────────────────────────────────────────────────────
-
-    /// Apply jedi events: tier advancement + discovery + telemetry.
-    pub fn apply_jedi_events(
-        &mut self,
-        world: &mut GameWorld,
-        events: &[JediEvent],
-        jedi_state: &mut JediState,
-    ) {
-        // Heartbeat: emit a check event so the "jedi" system tag always appears.
-        self.events.push(GameEventRecord::new(
-            self.tick,
-            self.wall_ms,
-            SYS_JEDI,
-            EVT_JEDI_CHECK,
-            serde_json::json!({ "training": jedi_state.training.len(), "events": events.len() }),
-        ));
-        for evt in events {
-            match evt {
-                JediEvent::TierAdvanced {
-                    character,
-                    new_tier,
-                } => {
-                    if let Some(c) = world.characters.get_mut(*character) {
-                        c.force_tier = *new_tier;
-                        c.force_experience = match new_tier {
-                            rebellion_core::world::ForceTier::None => 0,
-                            rebellion_core::world::ForceTier::Aware => 1,
-                            rebellion_core::world::ForceTier::Training => {
-                                rebellion_core::jedi::XP_TO_TRAINING
-                            }
-                            rebellion_core::world::ForceTier::Experienced => {
-                                rebellion_core::jedi::XP_TO_EXPERIENCED
-                            }
-                        };
-                    }
-                    self.emit(
-                        SYS_JEDI,
-                        EVT_JEDI_TIER,
-                        serde_json::json!({
-                            "character": char_name(world, *character),
-                            "new_tier": format!("{:?}", new_tier),
-                        }),
-                    );
-                }
-                JediEvent::TrainingComplete { character } => {
-                    jedi_state.stop_training(*character);
-                }
-                JediEvent::JediDiscovered { character, .. } => {
-                    if let Some(c) = world.characters.get_mut(*character) {
-                        c.is_discovered_jedi = true;
-                    }
-                    self.emit(
-                        SYS_JEDI,
-                        EVT_JEDI_DISCOVERED,
-                        serde_json::json!({
-                            "character": char_name(world, *character),
-                        }),
-                    );
-                }
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

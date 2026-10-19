@@ -63,6 +63,15 @@ already traced, in the note cited.
      actions.
    - The fields stay, unwritten, until stage 4.
    - The campaigns change for this named cause.
+   - Done 2026-10-19: the day step (`simulation.rs` step 13, `main.rs`),
+     `apply_jedi_events`, the story events' `StartJediTraining` extraction,
+     the telemetry `jedi_check`, `jedi_tier_advanced` and
+     `jedi_discovered`, and the three story events are gone.
+     `define_story_events` now defines none.
+   - The event engine's tier variants stay until stage 4, because the save
+     keeps event definitions (`EventState::events`).
+   - The seed-42 golden is regenerated for this cause, since its state held
+     those three definitions.
 3. **The panels on the real fields.**
    - The Jedi panel shows each character's Force `+0x8c` and its ranking (the
      Status window's thresholds), `ForceAware` and the discovery.

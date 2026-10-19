@@ -90,8 +90,6 @@ pub const EVT_UPRISING_SUPPORT: &str = "uprising_support";
 pub const EVT_DS_CONSTRUCTION: &str = "death_star_construction";
 pub const EVT_DS_FIRED: &str = "death_star_fired";
 pub const EVT_RESEARCH_UNLOCKED: &str = "research_unlocked";
-pub const EVT_JEDI_TIER: &str = "jedi_tier_advanced";
-pub const EVT_JEDI_DISCOVERED: &str = "jedi_discovered";
 pub const EVT_VICTORY: &str = "victory_check";
 pub const EVT_BETRAYAL: &str = "betrayal";
 pub const EVT_ESCAPE: &str = "character_escaped";
@@ -119,7 +117,6 @@ pub const EVT_MAINTENANCE_SHORTFALL: &str = "maintenance_shortfall";
 pub const EVT_UPRISING_CHECK: &str = "uprising_check";
 pub const EVT_BETRAYAL_CHECK: &str = "betrayal_check";
 pub const EVT_DS_STATUS: &str = "death_star_status";
-pub const EVT_JEDI_CHECK: &str = "jedi_check";
 pub const EVT_VICTORY_CHECK: &str = "victory_status";
 
 // Phase 3 telemetry constants
@@ -217,8 +214,6 @@ mod tests {
             EVT_DS_CONSTRUCTION,
             EVT_DS_FIRED,
             EVT_RESEARCH_UNLOCKED,
-            EVT_JEDI_TIER,
-            EVT_JEDI_DISCOVERED,
             EVT_VICTORY,
             EVT_BETRAYAL,
             EVT_ESCAPE,
@@ -269,7 +264,6 @@ mod tests {
             EVT_UPRISING_CHECK,
             EVT_BETRAYAL_CHECK,
             EVT_DS_STATUS,
-            EVT_JEDI_CHECK,
             EVT_VICTORY_CHECK,
         ];
         let mut seen = std::collections::HashSet::new();

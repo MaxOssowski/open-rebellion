@@ -17,7 +17,7 @@ use rebellion_core::events::{EventState, EventSystem};
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::game_events::GameEventRecord;
 use rebellion_core::ids::SystemKey;
-use rebellion_core::jedi::{JediState, JediSystem};
+use rebellion_core::jedi::JediState;
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::{MissionState, MissionSystem};
 use rebellion_core::movement::{reconcile_fleet_orbits, MovementState, MovementSystem};
@@ -487,13 +487,7 @@ pub fn run_simulation_tick(
     // ── 6. Events ────────────────────────────────────────────────────────
     let event_rolls: Vec<f32> = take_rolls(16).iter().map(|&r| r as f32).collect();
     let fired_events = EventSystem::advance(&mut states.events, world, tick_events, &event_rolls);
-    integrator.apply_fired_events(
-        world,
-        &fired_events,
-        &mut states.jedi,
-        current_tick,
-        &states.movement,
-    );
+    integrator.apply_fired_events(world, &fired_events, current_tick, &states.movement);
 
     // ── 7. AI ────────────────────────────────────────────────────────────
     // Each day, as many passes as the speed has sub-ticks, one side then the
@@ -719,10 +713,9 @@ pub fn run_simulation_tick(
     let repair_events = RepairSystem::advance(&mut states.repair, world, tick_events);
     integrator.apply_repair_events(world, &repair_events);
 
-    // ── 13. Jedi training ────────────────────────────────────────────────
-    let jedi_rolls = take_rolls(states.jedi.training.len().max(1));
-    let jedi_events = JediSystem::advance(&mut states.jedi, world, tick_events, &jedi_rolls);
-    integrator.apply_jedi_events(world, &jedi_events, &mut states.jedi);
+    // ── 13. (The port's Jedi tiers are gone: the Force grows through the
+    // missions, Dagobah, escapes and the encounter; ghidra/notes/
+    // jedi-rs-replacement.md.)
 
     // ── 13b. Mines, refineries and the side stockpiles ───────────────────
     // After the other consumers so their rolls keep their positions.

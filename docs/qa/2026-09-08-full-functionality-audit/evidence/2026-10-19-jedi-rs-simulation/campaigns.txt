@@ -1,0 +1,18 @@
+24 dual-AI campaigns, 1500 days; before (seat of power stage) -> after
+  jedi_check: 36000 -> 0
+  economy_tick: 281958 -> 285789
+  ai_action: 192145 -> 189597
+  mission_dispatched: 63488 -> 61783
+  character_health: 22848 -> 21600
+  units_deployed: 43091 -> 41982
+  manufacturing_complete: 43091 -> 41982
+  ship_repaired: 1948 -> 2658
+  mission_resolved: 30891 -> 30425
+  fleet_arrived: 5388 -> 5061
+  blockade_ended: 1349 -> 1057
+  blockade_started: 1367 -> 1079
+  bombardment: 1551 -> 1286
+  combat_space: 1036 -> 847
+  manufacturing_idle: 18467 -> 18352
+  troop_moved: 53654 -> 53756
+jedi_tier_advanced / jedi_discovered before: 0 0

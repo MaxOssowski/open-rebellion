@@ -2882,6 +2882,14 @@ cross-runtime proof remain open
   missions, the command readers and the Status window read it. 21 of the
   24 campaigns change for this cause; the golden is unchanged
   (`evidence/2026-10-19-seat-of-power-leadership/`).
+- 2026-10-19: jedi.rs, stages 1 and 2. The inventory
+  (`ghidra/notes/jedi-rs-replacement.md`) finds its tiers, XP, flat
+  detection and three story events without source; the original's Force
+  rules are ported elsewhere. Stage 2 removes the day step and the three
+  events (golden regenerated for this cause: initial
+  `v1:6bc0edeba372c686`, final `v1:f2b8571c7dec63a3`); every campaign
+  changes through the shifted roll stream
+  (`evidence/2026-10-19-jedi-rs-simulation/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

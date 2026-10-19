@@ -1,16 +1,17 @@
-//! Scripted story events from the original game.
+//! The port's scripted story events.
 //!
-//! Defines the 4 story event chains as `GameEvent` data structures.
-//! Called at game start to register events in `EventState`.
+//! Every chain the port once scripted here has been replaced by the
+//! original's own rules (the comments in [`define_story_events`] name
+//! them), so it defines none. It stays as the hook a scenario's scripted
+//! events would use.
 
-use crate::events::{
-    EventAction, EventCondition, EventState, GameEvent, SystemTag, EVT_CHARACTER_FORCE,
-    EVT_FORCE_TRAINING, EVT_LEIA_FORCE,
-};
+use crate::events::EventState;
+#[cfg(test)]
 use crate::ids::CharacterKey;
-use crate::world::{ForceTier, GameWorld};
+use crate::world::GameWorld;
 
 /// Search world.characters for a character whose name contains `needle` (case-insensitive).
+#[cfg(test)]
 fn find_character(world: &GameWorld, needle: &str) -> Option<CharacterKey> {
     let needle_lower = needle.to_lowercase();
     world
@@ -20,115 +21,37 @@ fn find_character(world: &GameWorld, needle: &str) -> Option<CharacterKey> {
         .map(|(key, _)| key)
 }
 
-/// Register all scripted story event chains into `state`.
-///
-/// Characters are looked up by name from `world`. If a required character
-/// is not found, that chain is silently skipped (graceful degradation for
-/// mods or scenarios without those characters).
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-)]
+/// Register the port's scripted story events into `state`: none remain.
 pub fn define_story_events(state: &mut EventState, world: &GameWorld) {
-    let luke = find_character(world, "Luke");
-    let leia = find_character(world, "Leia");
+    let _ = (state, world);
 
-    // -----------------------------------------------------------------------
-    // Force milestone events (Task 3)
-    // -----------------------------------------------------------------------
+    // The port's Force milestones (0x1e1 "Force Awakening", 0x1e5 "Force
+    // Training Milestone") and "Leia Discovers the Force" (0x363) are gone:
+    // 0x1e1 and 0x1e5 are the original's CharacterForceNotif and
+    // CharacterForceTrainingNotif (entity-system.md), not messages; the
+    // tiers they waited for are jedi.rs's own; and Leia's discovery is the
+    // trainer's 0x362 (crate::force_discovery). See
+    // ghidra/notes/jedi-rs-replacement.md.
 
-    if let Some(luke) = luke {
-        // Force Awareness milestone — fires when Luke reaches Aware
-        state.define(GameEvent {
-            id: EVT_CHARACTER_FORCE,
-            name: "Force Awakening".into(),
-            conditions: vec![
-                EventCondition::CharacterHasForceLevel {
-                    character: luke,
-                    min_tier: ForceTier::Aware,
-                },
-                // is_repeatable: false handles one-shot — no self-ref EventNotFired needed
-            ],
-            actions: vec![EventAction::DisplayMessage {
-                text: "A disturbance in the Force... Luke's potential has been noticed.".into(),
-            }],
-            is_repeatable: false,
-            enabled: true,
-            system_tag: SystemTag::Story,
-        });
+    // The Dagobah chain (0x390 "Dagobah Calls", 0x392 "Yoda Agrees", 0x221,
+    // 0x391 "First Training Day", 0x210) is gone: the mission manager
+    // sends Luke to Dagobah on timer 0x392 (crate::dagobah,
+    // ghidra/notes/dagobah.md), and the events that waited for 0x210 wait
+    // for Luke's DagobahCompleted.
 
-        // Force Training milestone — fires when Luke reaches Training
-        state.define(GameEvent {
-            id: EVT_FORCE_TRAINING,
-            name: "Force Training Milestone".into(),
-            conditions: vec![
-                EventCondition::CharacterHasForceLevel {
-                    character: luke,
-                    min_tier: ForceTier::Training,
-                },
-                // is_repeatable: false handles one-shot
-            ],
-            actions: vec![EventAction::DisplayMessage {
-                text: "Luke's Jedi training progresses.".into(),
-            }],
-            is_repeatable: false,
-            enabled: true,
-            system_tag: SystemTag::Story,
-        });
+    // The Final Battle chain (0x393 "Vader Dispatched", 0x394, 0x395,
+    // 0x396 "Final Battle Imminent", 0x220 "The Final Battle") is gone:
+    // the mission manager runs the original's FinalBattleReady path
+    // (crate::final_battle, ghidra/notes/final-battle.md).
 
-        // -------------------------------------------------------------------
-        // Chain 1: Luke Dagobah Training (with enrichment — Task 4)
-        // -------------------------------------------------------------------
+    // The port's Emperor Arrival (0x230: day 90 and 100 Empire systems)
+    // is gone: the character manager's SeatOfPower sends 0x230
+    // (crate::seat_of_power, story-message-classes.md row 16).
 
-        // The Dagobah chain (0x390 "Dagobah Calls", 0x392 "Yoda Agrees", 0x221,
-        // 0x391 "First Training Day", 0x210) is gone: the mission manager
-        // sends Luke to Dagobah on timer 0x392 (crate::dagobah,
-        // ghidra/notes/dagobah.md), and the events that waited for 0x210 wait
-        // for Luke's DagobahCompleted.
-
-        // The Final Battle chain (0x393 "Vader Dispatched", 0x394, 0x395,
-        // 0x396 "Final Battle Imminent", 0x220 "The Final Battle") is gone:
-        // the mission manager runs the original's FinalBattleReady path
-        // (crate::final_battle, ghidra/notes/final-battle.md).
-
-        // -------------------------------------------------------------------
-        // Leia Force Discovery (0x362) — Leia discovers Force sensitivity
-        // Requires Luke's Dagobah training to be complete first
-        // -------------------------------------------------------------------
-        if let Some(leia) = leia {
-            state.define(GameEvent {
-                id: EVT_LEIA_FORCE,
-                name: "Leia Discovers the Force".into(),
-                conditions: vec![
-                    EventCondition::CharacterExists { character: leia },
-                    // Luke must have completed training first
-                    EventCondition::CharacterDagobahCompleted { character: luke },
-                    EventCondition::TickAtLeast { tick: 80 },
-                ],
-                actions: vec![
-                    EventAction::ModifyForceTier {
-                        character: leia,
-                        new_tier: ForceTier::Aware,
-                    },
-                    EventAction::DisplayMessage {
-                        text: "Princess Leia has discovered her connection to the Force!".into(),
-                    },
-                ],
-                is_repeatable: false,
-                enabled: true,
-                system_tag: SystemTag::Story,
-            });
-        }
-
-        // The port's Emperor Arrival (0x230: day 90 and 100 Empire systems)
-        // is gone: the character manager's SeatOfPower sends 0x230
-        // (crate::seat_of_power, story-message-classes.md row 16).
-
-        // The Jabba's palace chain (0x380..0x386, 0x399, 0x39a, 0x231,
-        // 0x200) and the bounty hunters (0x397, 0x212, 0x398, the carbonite
-        // countdown, 0x39b) are gone: the mission manager sends the Bounty
-        // Hunters on timer 0x393 (crate::jabba, ghidra/notes/jabba-palace.md).
-    }
+    // The Jabba's palace chain (0x380..0x386, 0x399, 0x39a, 0x231,
+    // 0x200) and the bounty hunters (0x397, 0x212, 0x398, the carbonite
+    // countdown, 0x39b) are gone: the mission manager sends the Bounty
+    // Hunters on timer 0x393 (crate::jabba, ghidra/notes/jabba-palace.md).
 
     // -----------------------------------------------------------------------
     // System notification events (non-character-specific)
@@ -167,7 +90,7 @@ mod tests {
     use crate::events::EVT_SABOTEUR_DETECTED;
     use crate::events::EVT_SUPPORT_CHANGE;
     use crate::events::EVT_TRAITOR_REVEALED;
-    use crate::events::{EventState, EventSystem};
+    use crate::events::{EventCondition, EventState, EventSystem, GameEvent, SystemTag};
     use crate::tick::TickEvent;
     use crate::world::{Character, ForceTier};
 
@@ -236,29 +159,6 @@ mod tests {
                 "{id:#x} is still defined"
             );
         }
-    }
-
-    #[test]
-    fn one_shot_story_events_do_not_refire() {
-        let world = make_world_with_characters();
-        let mut state = EventState::new();
-        define_story_events(&mut state, &world);
-
-        // Fire the Force Awakening milestone (Luke is Aware) at tick 50
-        let fired1 = EventSystem::advance(&mut state, &world, &tick(50), &[]);
-        let count1 = fired1
-            .iter()
-            .filter(|f| f.event_id == EVT_CHARACTER_FORCE)
-            .count();
-        assert_eq!(count1, 1);
-
-        // Try again at tick 51 — should NOT fire again (one-shot)
-        let fired2 = EventSystem::advance(&mut state, &world, &tick(51), &[]);
-        let count2 = fired2
-            .iter()
-            .filter(|f| f.event_id == EVT_CHARACTER_FORCE)
-            .count();
-        assert_eq!(count2, 0, "one-shot event should not fire again");
     }
 
     // --- Task 8: New condition variant tests ---
@@ -401,23 +301,20 @@ mod tests {
     }
 
     #[test]
-    fn force_milestone_events_fire_at_correct_tiers() {
-        let world = make_world_with_characters();
+    fn the_invented_force_events_are_gone() {
+        // 0x1e1 and 0x1e5 are the original's CharacterForceNotif and
+        // CharacterForceTrainingNotif (entity-system.md), raised on a field
+        // change, not messages; the tiers the port's milestones waited for
+        // have no source; Leia's discovery is the trainer's 0x362
+        // (force_discovery.rs), so the port's 0x363 is no longer defined
+        // (ghidra/notes/jedi-rs-replacement.md).
+        let mut world = make_world_with_characters();
+        let luke = find_character(&world, "Luke").unwrap();
+        world.characters[luke].dagobah_completed = true;
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
-
-        // Luke starts as Aware — Force Awakening milestone should fire
-        let fired = EventSystem::advance(&mut state, &world, &tick(1), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == EVT_CHARACTER_FORCE),
-            "Force Awakening should fire for Aware Luke"
-        );
-
-        // Force Training milestone requires Training tier — should NOT fire yet
-        assert!(
-            !fired.iter().any(|f| f.event_id == EVT_FORCE_TRAINING),
-            "Force Training should not fire while Luke is only Aware"
-        );
+        assert!(state.events().is_empty());
+        assert!(EventSystem::advance(&mut state, &world, &tick(100), &[]).is_empty());
     }
 
     #[test]
@@ -466,55 +363,6 @@ mod tests {
                 "event {id:#x} is still defined"
             );
         }
-    }
-
-    // -----------------------------------------------------------------------
-    // Phase 3 tests: Emperor, Leia Force
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn leia_force_discovery_fires_after_dagobah() {
-        let mut world = make_world_with_characters();
-        let mut state = EventState::new();
-        define_story_events(&mut state, &world);
-
-        EventSystem::advance(&mut state, &world, &tick(30), &[]);
-        EventSystem::advance(&mut state, &world, &tick(50), &[]);
-
-        // Complete Dagobah: the mission's end sets Luke's DagobahCompleted
-        // (FUN_005751d0).
-        let luke_key = find_character(&world, "Luke").unwrap();
-        world
-            .characters
-            .get_mut(luke_key)
-            .unwrap()
-            .dagobah_completed = true;
-        EventSystem::advance(&mut state, &world, &tick(60), &[]);
-
-        // Leia Force discovery (0x362) fires at tick 80 after Dagobah complete
-        let fired = EventSystem::advance(&mut state, &world, &tick(80), &[]);
-        assert!(
-            fired.iter().any(|f| f.event_id == EVT_LEIA_FORCE),
-            "Leia Force discovery should fire after Dagobah completion. Events: {:?}",
-            fired
-                .iter()
-                .map(|f| (f.event_id, &f.event_name))
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn leia_force_does_not_fire_before_dagobah() {
-        let world = make_world_with_characters();
-        let mut state = EventState::new();
-        define_story_events(&mut state, &world);
-
-        // At tick 80 without Dagobah completion — should NOT fire
-        let fired = EventSystem::advance(&mut state, &world, &tick(80), &[]);
-        assert!(
-            !fired.iter().any(|f| f.event_id == EVT_LEIA_FORCE),
-            "Leia Force should NOT fire before Dagobah completion"
-        );
     }
 
     // notification_events_fire_with_random_rolls — REMOVED (Phase 3b)

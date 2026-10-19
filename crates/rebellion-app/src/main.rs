@@ -44,11 +44,11 @@ use rebellion_core::dat::Faction;
 use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyEvent, EconomyState, EconomySystem};
-use rebellion_core::events::{EventAction, EventState, EventSystem};
+use rebellion_core::events::{EventState, EventSystem};
 use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
-use rebellion_core::jedi::{JediState, JediSystem};
+use rebellion_core::jedi::JediState;
 use rebellion_core::manufacturing::{
     ManufacturingState, QueueItem,
 };
@@ -2547,18 +2547,6 @@ async fn main() {
                 }
             }
 
-            // Apply Jedi training from story events (outside the event-action
-            // helper because it needs jedi_state which is not in scope there).
-            for fired in &fired_events {
-                for action in &fired.actions {
-                    if let EventAction::StartJediTraining { character } = action {
-                        if let Some(c) = world.characters.get(*character) {
-                            jedi_state.start_training(*character, c.is_alliance, current_tick);
-                        }
-                    }
-                }
-            }
-
             // ── Story cutscene triggers (C1–C8) ─────────────────────────────
             // When a story event fires that maps to a cutscene file (101–108),
             // launch the cutscene. Only the first matching event triggers a
@@ -3221,76 +3209,9 @@ async fn main() {
                 }
             }
 
-            // ── Jedi training ────────────────────────────────────────────────
-            let jedi_rolls: Vec<f64> = (0..jedi_state.training.len().max(1))
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            let jedi_events =
-                JediSystem::advance(&mut jedi_state, &world, &tick_events, &jedi_rolls);
-            for evt in &jedi_events {
-                match evt {
-                    rebellion_core::jedi::JediEvent::TierAdvanced {
-                        character,
-                        new_tier,
-                    } => {
-                        if let Some(c) = world.characters.get_mut(*character) {
-                            c.force_tier = *new_tier;
-                            // Persist XP: set to threshold for the new tier
-                            c.force_experience = match new_tier {
-                                rebellion_core::world::ForceTier::None => 0,
-                                rebellion_core::world::ForceTier::Aware => 1,
-                                rebellion_core::world::ForceTier::Training => {
-                                    rebellion_core::jedi::XP_TO_TRAINING
-                                }
-                                rebellion_core::world::ForceTier::Experienced => {
-                                    rebellion_core::jedi::XP_TO_EXPERIENCED
-                                }
-                            };
-                        }
-                        let name = world
-                            .characters
-                            .get(*character)
-                            .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                        let tier_str = match new_tier {
-                            rebellion_core::world::ForceTier::None => "None",
-                            rebellion_core::world::ForceTier::Aware => "Force Aware",
-                            rebellion_core::world::ForceTier::Training => "Jedi Training",
-                            rebellion_core::world::ForceTier::Experienced => "Jedi Knight",
-                        };
-                        // Notification 0x1d, Force Skill Improvement.
-                        msg_log.push(filed(
-                            GameMessage::new(
-                                current_tick,
-                                format!("{name} has reached {tier_str} tier"),
-                                MessageCategory::Event,
-                            )
-                            .with_picture_if(Some(pictures::side(
-                                cockpit_state.faction,
-                                pictures::portrait_key(&world, *character),
-                            ))),
-                            MessageRail::Mission,
-                            character_audience(&world, *character),
-                        ));
-                    }
-                    rebellion_core::jedi::JediEvent::TrainingComplete { character } => {
-                        jedi_state.stop_training(*character);
-                    }
-                    rebellion_core::jedi::JediEvent::JediDiscovered { character, .. } => {
-                        if let Some(c) = world.characters.get_mut(*character) {
-                            c.is_discovered_jedi = true;
-                        }
-                        let name = world
-                            .characters
-                            .get(*character)
-                            .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                        msg_log.push(GameMessage::new(
-                            current_tick,
-                            format!("{name}'s Force sensitivity discovered!"),
-                            MessageCategory::Event,
-                        ));
-                    }
-                }
-            }
+            // ── (The port's Jedi tiers are gone: the Force grows through the
+            // missions, Dagobah, escapes and the encounter;
+            // ghidra/notes/jedi-rs-replacement.md.)
 
             // ── Victory check ────────────────────────────────────────────────
             // The victory conditions word (FUN_005180e0): each change is
