@@ -1,0 +1,241 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 5000 --dual-ai, seeds 1-5, at commit 39a75042",
+ "seeds": [
+  {
+   "seed": 1,
+   "last_snapshot": {
+    "tick": 4000,
+    "alliance_systems": 27,
+    "empire_systems": 26,
+    "fleets": 12,
+    "in_transit": 0
+   },
+   "max_fleets": 20,
+   "missions": 2856,
+   "missions_by_kind": {
+    "Abduction": 22,
+    "Assassination": 112,
+    "Diplomacy": 62,
+    "Espionage": 215,
+    "FacilityDesignResearch": 6,
+    "InciteUprising": 1,
+    "Move": 2005,
+    "Reconnaissance": 69,
+    "Recruitment": 75,
+    "Rescue": 19,
+    "Sabotage": 233,
+    "ShipDesignResearch": 11,
+    "SubdueUprising": 21,
+    "TroopTrainingResearch": 5
+   },
+   "victory": {
+    "tick": 4172,
+    "outcome": "DeathStarVictory { target_system: SystemKey(69v1) }"
+   },
+   "last_words": [
+    {
+     "tick": 2895,
+     "old": "0x21",
+     "new": "0x1"
+    },
+    {
+     "tick": 4077,
+     "old": "0x1",
+     "new": "0x11"
+    },
+    {
+     "tick": 4172,
+     "old": "0x11",
+     "new": "0x10100031"
+    }
+   ]
+  },
+  {
+   "seed": 2,
+   "last_snapshot": {
+    "tick": 5000,
+    "alliance_systems": 23,
+    "empire_systems": 23,
+    "fleets": 12,
+    "in_transit": 1
+   },
+   "max_fleets": 23,
+   "missions": 6819,
+   "missions_by_kind": {
+    "Abduction": 115,
+    "Assassination": 119,
+    "Diplomacy": 59,
+    "Espionage": 227,
+    "FacilityDesignResearch": 8,
+    "InciteUprising": 20,
+    "Move": 3586,
+    "Reconnaissance": 80,
+    "Recruitment": 73,
+    "Rescue": 2032,
+    "Sabotage": 463,
+    "ShipDesignResearch": 8,
+    "SubdueUprising": 21,
+    "TroopTrainingResearch": 8
+   },
+   "victory": null,
+   "last_words": [
+    {
+     "tick": 4850,
+     "old": "0x20",
+     "new": "0x0"
+    },
+    {
+     "tick": 4936,
+     "old": "0x0",
+     "new": "0x1000"
+    },
+    {
+     "tick": 4947,
+     "old": "0x1000",
+     "new": "0x0"
+    }
+   ]
+  },
+  {
+   "seed": 3,
+   "last_snapshot": {
+    "tick": 5000,
+    "alliance_systems": 51,
+    "empire_systems": 20,
+    "fleets": 19,
+    "in_transit": 0
+   },
+   "max_fleets": 31,
+   "missions": 4223,
+   "missions_by_kind": {
+    "Abduction": 102,
+    "Assassination": 45,
+    "Diplomacy": 73,
+    "Espionage": 162,
+    "FacilityDesignResearch": 6,
+    "InciteUprising": 36,
+    "Move": 2945,
+    "Reconnaissance": 81,
+    "Recruitment": 72,
+    "Rescue": 57,
+    "Sabotage": 556,
+    "ShipDesignResearch": 12,
+    "SubdueUprising": 69,
+    "TroopTrainingResearch": 7
+   },
+   "victory": null,
+   "last_words": [
+    {
+     "tick": 4245,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 4286,
+     "old": "0x0",
+     "new": "0x2000"
+    },
+    {
+     "tick": 4381,
+     "old": "0x2000",
+     "new": "0x0"
+    }
+   ]
+  },
+  {
+   "seed": 4,
+   "last_snapshot": {
+    "tick": 4500,
+    "alliance_systems": 54,
+    "empire_systems": 27,
+    "fleets": 19,
+    "in_transit": 0
+   },
+   "max_fleets": 42,
+   "missions": 7078,
+   "missions_by_kind": {
+    "Abduction": 76,
+    "Assassination": 33,
+    "Diplomacy": 1305,
+    "Espionage": 259,
+    "FacilityDesignResearch": 6,
+    "InciteUprising": 1748,
+    "Move": 3109,
+    "Reconnaissance": 83,
+    "Recruitment": 64,
+    "Rescue": 41,
+    "Sabotage": 286,
+    "ShipDesignResearch": 12,
+    "SubdueUprising": 49,
+    "TroopTrainingResearch": 7
+   },
+   "victory": {
+    "tick": 4744,
+    "outcome": "HqCaptured { winner: Alliance, loser: Empire, hq_system: SystemKey(76v1) }"
+   },
+   "last_words": [
+    {
+     "tick": 4305,
+     "old": "0x2300",
+     "new": "0x300"
+    },
+    {
+     "tick": 4637,
+     "old": "0x300",
+     "new": "0x1300"
+    },
+    {
+     "tick": 4744,
+     "old": "0x1300",
+     "new": "0x11003300"
+    }
+   ]
+  },
+  {
+   "seed": 5,
+   "last_snapshot": {
+    "tick": 5000,
+    "alliance_systems": 37,
+    "empire_systems": 21,
+    "fleets": 22,
+    "in_transit": 2
+   },
+   "max_fleets": 30,
+   "missions": 5431,
+   "missions_by_kind": {
+    "Abduction": 104,
+    "Assassination": 63,
+    "Diplomacy": 74,
+    "Espionage": 275,
+    "FacilityDesignResearch": 5,
+    "InciteUprising": 29,
+    "Move": 3312,
+    "Reconnaissance": 80,
+    "Recruitment": 67,
+    "Rescue": 1060,
+    "Sabotage": 306,
+    "ShipDesignResearch": 12,
+    "SubdueUprising": 38,
+    "TroopTrainingResearch": 6
+   },
+   "victory": null,
+   "last_words": [
+    {
+     "tick": 4245,
+     "old": "0x30",
+     "new": "0x10"
+    },
+    {
+     "tick": 4484,
+     "old": "0x10",
+     "new": "0x30"
+    },
+    {
+     "tick": 4781,
+     "old": "0x30",
+     "new": "0x10"
+    }
+   ]
+  }
+ ]
+}

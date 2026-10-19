@@ -268,6 +268,12 @@ cross-runtime proof remain open
   HQ is destroyed, a destroyed Coruscant counts for the Alliance, and any
   captor counts. In 24 campaigns of 1500 days no game ends, as before.
   Golden unchanged (`evidence/2026-10-18-victory-word/`).
+- 2026-10-19: in 5 AI-against-AI campaigns of 5000 days at `39a75042`,
+  two games end by the word: the Empire wins at day 4172 (Death Star on
+  the Alliance HQ, Luke and Mon Mothma captured), and the Alliance wins
+  at day 4744 (Vader and the Emperor captured, Coruscant taken). They
+  are the port's first AI games to end
+  (`evidence/2026-10-19-long-campaigns/`).
 - Acceptance: every win and loss route reaches the result UI, freezes play,
   follows the accepted cutscene policy, and returns cleanly to the menu.
 

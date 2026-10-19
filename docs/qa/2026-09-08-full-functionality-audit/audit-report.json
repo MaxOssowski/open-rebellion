@@ -273,7 +273,8 @@
       "evidence": [
         "crates/rebellion-app/src/main.rs:2993",
         "crates/rebellion-app/src/main.rs:5791",
-        "2026-10-18: the game is decided by the victory conditions word (FUN_005180e0): VictorySystem::check reads its game-over and win bits. Where the binary differs from the manual and the 2026-09-10 contract, the port follows the binary: no Imperial assault after the HQ is destroyed, a destroyed Coruscant counts for the Alliance, and any captor counts. In 24 campaigns of 1500 days no game ends, as before. Golden unchanged (evidence/2026-10-18-victory-word/)."
+        "2026-10-18: the game is decided by the victory conditions word (FUN_005180e0): VictorySystem::check reads its game-over and win bits. Where the binary differs from the manual and the 2026-09-10 contract, the port follows the binary: no Imperial assault after the HQ is destroyed, a destroyed Coruscant counts for the Alliance, and any captor counts. In 24 campaigns of 1500 days no game ends, as before. Golden unchanged (evidence/2026-10-18-victory-word/).",
+        "2026-10-19: in 5 AI-against-AI campaigns of 5000 days at 39a75042, two games end by the word: the Empire wins at day 4172 (Death Star on the Alliance HQ, Luke and Mon Mothma captured), and the Alliance wins at day 4744 (Vader and the Emperor captured, Coruscant taken). They are the port's first AI games to end (evidence/2026-10-19-long-campaigns/)."
       ],
       "acceptance": "Every win/loss route reaches the accepted result UI and clean transition sequence."
     },
