@@ -884,6 +884,9 @@ impl Character {
     /// `is_killed == true` rather than relying on the arena-absent invariant
     /// that existed before Knesset Shamash-Bet #R11.
     pub fn mark_killed(&mut self) {
+        // Slot +0x11c (FUN_004f1340), on the destroyed bit (+0x50 0x8,
+        // FUN_004f7560): FUN_004eeed0 takes the command.
+        self.set_command(crate::character_command::CommandKind::None);
         self.is_killed = true;
         self.current_system = None;
         self.current_fleet = None;

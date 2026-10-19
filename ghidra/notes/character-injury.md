@@ -83,8 +83,9 @@ evading member, a captured one leaves, and the uprising incident only
 injures characters outside missions (`usable_at`, as `FUN_00539f70`
 walks).
 
-Not ported yet: the command clearing (the port keeps no command
-`+0x96`) and the `Damaged` bit. Death by injury for the `0x00665be0`
+The command clearing is ported (`character-command.md`,
+`Character::injure`). The `Damaged` bit is not kept: it equals "injury
+non-zero". Death by injury for the `0x00665be0`
 subclass is ported for every injury (below).
 
 ## Correction (2026-10-18)

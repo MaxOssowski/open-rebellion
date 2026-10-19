@@ -2864,6 +2864,11 @@ cross-runtime proof remain open
   a character on a mission loses its command (the notes had it the other
   way round). The 24 campaigns and the golden are unchanged
   (`evidence/2026-10-19-character-command-move/`).
+- 2026-10-19: character command, stage 6. `keeps` adds `FUN_004eeed0`'s
+  mission test, and a death clears the command (the destruction hook,
+  slot `+0x11c`, `FUN_004f1340`); the mission hook is slot `+0x268`
+  (`FUN_004f1490`). The 24 campaigns and the golden are unchanged
+  (`evidence/2026-10-19-character-command-hooks/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

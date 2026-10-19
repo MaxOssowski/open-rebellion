@@ -189,24 +189,28 @@ pub fn give(
     Ok(changed)
 }
 
-/// `FUN_004eeed0`: a character keeps its command only while uninjured and
-/// not captured. The character's injury (slot `+0x32c`, `FUN_004f1720`) and
-/// capture (slot `+0x34c`, `FUN_004f1a80`) hooks run it.
-///
-/// hyp: its other two tests, `+0x50` bit 6 and a commanding key `+0x68` of
-/// family `0x50..0x7f`, hold while a character commands, since the order
-/// sets the key (`SetCharacterCommandingKey`); neither is read yet.
+/// `FUN_004eeed0` (`0x004eeed0..0x004eef64`): a character keeps its command
+/// only while uninjured (`+0x94`), not captured (`+0xac` bit 0), existing
+/// (`+0x50` bit 6) and not in a mission (container `+0x68` of family
+/// `0x50..0x7f`). The character's hooks run it: injury (slot `+0x32c`,
+/// `FUN_004f1720`), capture (`+0x34c`, `FUN_004f1a80`), destruction
+/// (`+0x11c`, `FUN_004f1340`) and the mission change (`+0x268`,
+/// `FUN_004f1490`).
 #[must_use]
 pub fn keeps(character: &Character) -> bool {
-    character.injury == 0 && !character.is_captive && !character.is_killed
+    character.injury == 0
+        && !character.is_captive
+        && !character.is_killed
+        && !(character.on_mission || character.on_hidden_mission || character.on_mandatory_mission)
 }
 
 /// The characters whose command `FUN_004eeed0` clears: each one holding a
 /// command it no longer [`keeps`]. Returns them.
 ///
-/// port: the original clears it in the hook as the injury or capture
-/// happens; the port's injuries clear it at once ([`Character::injure`]) and
-/// every capture by the day's pass that calls this.
+/// port: the original clears it in the hook as the change happens; the
+/// port's injuries ([`Character::injure`]), deaths
+/// ([`Character::mark_killed`]) and moves ([`Character::move_to`]) clear it
+/// at once, and every capture or mission by the day's pass that calls this.
 pub fn release_unfit(world: &mut GameWorld) -> Vec<CharacterKey> {
     let mut released = Vec::new();
     for (key, c) in &mut world.characters {
@@ -612,5 +616,28 @@ mod tests {
         assert!(keeps(&world.characters[c]));
         world.characters[c].mark_killed();
         assert!(!keeps(&world.characters[c]));
+    }
+
+    #[test]
+    fn a_death_or_a_mission_takes_the_command() {
+        // FUN_004eeed0 (0x004eeed0..0x004eef64) clears the command of one in
+        // a mission (container +0x68 of family 0x50..0x7f), run by the
+        // mission hook (slot +0x268, FUN_004f1490); the destruction hook
+        // (slot +0x11c, FUN_004f1340) runs it at the death.
+        let mut world = GameWorld::default();
+        let [dead, plain, hidden, mandatory] = [0; 4].map(|_| officer(&mut world, true));
+        for k in [dead, plain, hidden, mandatory] {
+            world.characters[k].command = CommandKind::Admiral;
+        }
+        world.characters[dead].mark_killed();
+        assert_eq!(world.characters[dead].command, CommandKind::None);
+        assert!(release_unfit(&mut world).is_empty());
+        world.characters[plain].on_mission = true;
+        world.characters[hidden].on_hidden_mission = true;
+        world.characters[mandatory].on_mandatory_mission = true;
+        assert_eq!(release_unfit(&mut world), vec![plain, hidden, mandatory]);
+        assert!([plain, hidden, mandatory]
+            .iter()
+            .all(|&k| world.characters[k].command == CommandKind::None));
     }
 }

@@ -101,8 +101,8 @@ The character's hooks run it:
 |---|---|---|
 | `+0x32c` | `FUN_004f1720` | injury change (`character-injury.md`); also sets `Damaged` (`+0x50` bit `0x200`) |
 | `+0x34c` | `FUN_004f1a80` | captured change (`captive-escape.md`) |
-| `+0x11c` | `FUN_004f1340` | `Role_vt11c` (meaning not read) |
-| `+0x268` | `FUN_004f1490` | `Role_vt268` (meaning not read) |
+| `+0x11c` | `FUN_004f1340` | destruction: `FUN_004f7560` sets `+0x50` bit `0x8` and calls the slot; the base `Role_vt11c` also asks for removal from the mission |
+| `+0x268` | `FUN_004f1490` | the mission change: the base `Role_vt268` sets the role's parent at mission completion (`SetRoleParentAtMissionCompletionKey`); then `FUN_004ef070`, `FUN_004eeed0`, `FUN_004ef0c0` |
 
 `FUN_00560d50(object, from, to)`, from `FUN_00514a60` (an object's move;
 `FUN_0057ba50` passes its event's `+0x3c`, `+0x4c`, `+0x50`), takes the
@@ -112,7 +112,9 @@ command away:
 - a character (`0x30..0x3b`) holding a command that moves loses it, except
   from one capital ship to another of the same fleet (`FUN_00504dc0` of
   each, both of family `0x08..0x0f` and equal);
-- a character of family `0x34` also runs `FUN_005617b0` (not read).
+- a character of family `0x34` (the Emperor) also runs `FUN_005617b0`, the
+  seat of power test (`CharacterMgr_SetSeatOfPower`: free, at Coruscant
+  `0x90000109`, held by the Empire), not a command rule.
 Ported in stage 5 (`Character::move_to`).
 
 ## Who reads it
@@ -156,7 +158,7 @@ day loops call `release_unfit` for captures.
 port:
 - the base check `FUN_004f9860` is read as the character being alive;
 - `FUN_004eeed0`'s existence test is the port's "not killed"; its mission
-  test (container `+0x68` of family `0x50..0x7f`) is not made yet (stage 6);
+  test reads the port's mission flags (stage 6);
 - a capture clears the command at the day's pass, not in its hook;
 - `Damaged` (`+0x50` bit `0x200`) is not kept: it equals "injury non-zero",
   and no character reader of it is known;
@@ -224,6 +226,14 @@ remove, and the story's character transfer. port: characters ride the
 fleet, not a ship, so a split moves none and a ship-to-ship move inside a
 fleet does not occur. A capture is the day pass's `release_unfit`.
 
+Stage 6 (2026-10-19), the hooks:
+- `keeps` adds `FUN_004eeed0`'s mission test: a character on a mission
+  (the port's `on_mission`, `on_hidden_mission`, `on_mandatory_mission`)
+  loses its command at the day pass (`release_unfit`), as the mission
+  hook (`+0x268`) does when it joins;
+- `Character::mark_killed` clears the command, as the destruction hook
+  (`+0x11c`) does.
+
 ## Plan (tracker item "Dowodzenie i jego utrata przy ranie")
 
 1. **This note.**
@@ -253,8 +263,6 @@ The AI giving commands waits for module `0xc`.
 
 ## Still open
 
-- The port's `keeps` does not yet test "not on a mission" (stage 6).
-- Which events reach `FUN_0057ba50` (the move event), and `FUN_005617b0`.
-- `Role_vt11c` and `Role_vt268`, the other two hooks that run
-  `FUN_004eeed0`.
-- The order event's path to `FUN_00561bb0`.
+- Which events reach `FUN_0057ba50` (the move event), and the order
+  event's path to `FUN_00561bb0`. The port runs both rules where it makes
+  the move or gives the order, so the paths change no behaviour.
