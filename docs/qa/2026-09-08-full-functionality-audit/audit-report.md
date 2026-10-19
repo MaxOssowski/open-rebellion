@@ -2802,6 +2802,12 @@ cross-runtime proof remain open
   covert mission now comes from an original planner. Golden final
   `v1:ed40629cc5780d6d` -> `v1:1ddf726cecfd8477`
   (`evidence/2026-10-19-sector-bits/`).
+- 2026-10-19: timer `0x38a` verified. It is the captive escape timer
+  (`captive-escape.md`, ported 2026-10-14). Its pulse of `+0xac` bit 10
+  (`FUN_004ef150`, `FUN_004eebf0`) raises event `0x317`, the ESCAPETB roll.
+  The pulse's other call, slot `+0x3e8` (`FUN_004f23c0`), only logs.
+  `coverage-map.md` rows `0x388` and `0x38a` are corrected from "missing"
+  to matched. No code change.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

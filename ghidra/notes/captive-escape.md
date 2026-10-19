@@ -21,7 +21,9 @@ Captured (+0xac bit 0) changes            FUN_004ee800 -> slot +0x34c
 timer 0x38a fires (vtable 0x00669970)     FUN_005862a0 -> slot +0x30 FUN_0057d330
   FUN_004ef150: if CanEscape,
     EscapeAttempt := 1, then 0            FUN_004eebf0, +0xac bit 10
-      raise event 0x317                   FUN_004f1be0 -> FUN_0053f9c0(0x317)
+      notify sides 1 and 2                FUN_004f1120 -> slot +0x3e8 FUN_004f23c0
+        (log only: "CharacterEscapeAttemptNotif" via FUN_004f8880)
+      raise event 0x317                   slot +0x370 FUN_004f1be0 -> FUN_0053f9c0(0x317)
 
 event 0x317 fires (vtable 0x006699a8)     slot +0x20 FUN_0057d670
   FUN_00561990(captive, ...)              the roll, below
