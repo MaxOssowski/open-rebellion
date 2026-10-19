@@ -2829,6 +2829,14 @@ cross-runtime proof remain open
   Commander. Accepted in the browser on both sides. The name prefix
   (`FUN_004f17f0`) waits for a decision
   (`evidence/2026-10-19-character-command-menu/`).
+- 2026-10-19: character command, stage 3b (save v86). A command renames
+  the character (`FUN_004f17f0`) to TEXTSTRA of its name id plus `0x6800`,
+  `0x6c00` or `0x7000` ("Admiral Ackbar"), and its loss renames it back.
+  The loader keeps the four names on the character. Accepted in the
+  browser on both sides. The 24 campaigns are unchanged. Golden initial
+  `v1:4d8201e965d27089` -> `v1:094e77fcd3b4b666`, final
+  `v1:2229fcf258823750` -> `v1:beb63be8a01b2699`
+  (`evidence/2026-10-19-character-command-names/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

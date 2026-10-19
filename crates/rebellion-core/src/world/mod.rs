@@ -759,6 +759,11 @@ pub struct Character {
     /// `CommandKind` (`+0x96`, `FUN_004ee350`): the command the Command
     /// orders give ([`crate::character_command`]; save v85).
     pub command: crate::character_command::CommandKind,
+    /// The name for each command, none first: TEXTSTRA of the class record's
+    /// name `+0x30` plus 0, `0x6800`, `0x6c00` and `0x7000`, which the
+    /// command's hook renames the character to (`FUN_004f17f0`; save v86).
+    /// An empty entry keeps the name.
+    pub command_names: [String; 4],
 }
 
 impl Character {
@@ -825,8 +830,23 @@ impl Character {
             // The injury hook (slot +0x32c, FUN_004f1720) runs FUN_004eeed0,
             // which clears the command of an injured character.
             if !crate::character_command::keeps(self) {
-                self.command = crate::character_command::CommandKind::None;
+                self.set_command(crate::character_command::CommandKind::None);
             }
+        }
+    }
+
+    /// `FUN_004ee350`: set `CommandKind` `+0x96`; on a change its hook
+    /// (slot `+0x330`, `FUN_004f17f0`) renames the character to the
+    /// command's name ([`Character::command_names`], through
+    /// `FUN_004f6e60`).
+    pub fn set_command(&mut self, kind: crate::character_command::CommandKind) {
+        if self.command == kind {
+            return;
+        }
+        self.command = kind;
+        let name = &self.command_names[kind as usize];
+        if !name.is_empty() {
+            self.name.clone_from(name);
         }
     }
 
@@ -938,6 +958,7 @@ impl Default for Character {
             escape_barred: false,
             bounty_captured: false,
             command: crate::character_command::CommandKind::None,
+            command_names: Default::default(),
         }
     }
 }
@@ -2860,7 +2881,8 @@ mod tests {
             "encounter_day": 0,
             "escape_barred": false,
             "bounty_captured": false,
-            "command": "None"
+            "command": "None",
+            "command_names": ["", "", "", ""]
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

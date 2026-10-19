@@ -1074,6 +1074,7 @@ mod tests {
             escape_barred: false,
             bounty_captured: false,
             command: rebellion_core::character_command::CommandKind::None,
+            command_names: Default::default(),
         }
     }
 

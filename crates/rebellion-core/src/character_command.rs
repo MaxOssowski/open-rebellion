@@ -18,13 +18,13 @@ use crate::world::{Character, GameWorld};
 pub enum CommandKind {
     /// 0: no command.
     #[default]
-    None,
+    None = 0,
     /// 1: Commander (order `0x261`; name prefix TEXTSTRA `+0x6800`).
-    Commander,
+    Commander = 1,
     /// 2: Admiral (order `0x262`; `+0x6c00`).
-    Admiral,
+    Admiral = 2,
     /// 3: General (order `0x263`; `+0x7000`).
-    General,
+    General = 3,
 }
 
 impl CommandKind {
@@ -176,13 +176,13 @@ pub fn give(
                 .then_some(key)
         });
         if let Some(holder) = holder {
-            world.characters[holder].command = CommandKind::None;
+            world.characters[holder].set_command(CommandKind::None);
             changed.push(holder);
         }
     }
     let c = &mut world.characters[character];
     if c.command != kind {
-        c.command = kind;
+        c.set_command(kind);
         changed.push(character);
     }
     Ok(changed)
@@ -210,7 +210,7 @@ pub fn release_unfit(world: &mut GameWorld) -> Vec<CharacterKey> {
     let mut released = Vec::new();
     for (key, c) in &mut world.characters {
         if c.command != CommandKind::None && !keeps(c) {
-            c.command = CommandKind::None;
+            c.set_command(CommandKind::None);
             released.push(key);
         }
     }
@@ -380,6 +380,54 @@ mod tests {
             Err(Refusal::Injured)
         );
         assert_eq!(world.characters[a].command, CommandKind::None);
+    }
+
+    #[test]
+    fn a_command_renames_the_character_and_its_loss_renames_it_back() {
+        // FUN_004ee350's hook, slot +0x330 (FUN_004f17f0): the name becomes
+        // TEXTSTRA of the class name +0x6800, +0x6c00 or +0x7000, and with
+        // no command the name itself (FUN_004f6e60).
+        let mut world = GameWorld::default();
+        let titled = |name: &str| -> [String; 4] {
+            [
+                name.to_owned(),
+                format!("Commander {name}"),
+                format!("Admiral {name}"),
+                format!("General {name}"),
+            ]
+        };
+        let ackbar = officer(&mut world, true);
+        let rieekan = officer(&mut world, true);
+        let mut fleets = slotmap::SlotMap::<FleetKey, ()>::with_key();
+        let fleet = fleets.insert(());
+        for (c, name) in [(ackbar, "Ackbar"), (rieekan, "Rieekan")] {
+            world.characters[c].name = name.into();
+            world.characters[c].command_names = titled(name);
+            world.characters[c].current_fleet = Some(fleet);
+        }
+        give_as(&mut world, ackbar, CommandKind::Admiral).unwrap();
+        assert_eq!(world.characters[ackbar].name, "Admiral Ackbar");
+        give_as(&mut world, ackbar, CommandKind::General).unwrap();
+        assert_eq!(world.characters[ackbar].name, "General Ackbar");
+        // Another takes the kind: the holder's name goes back.
+        give_as(&mut world, rieekan, CommandKind::General).unwrap();
+        assert_eq!(world.characters[ackbar].name, "Ackbar");
+        assert_eq!(world.characters[rieekan].name, "General Rieekan");
+        // An injury takes the command and the name.
+        world.characters[rieekan].injure(4);
+        assert_eq!(world.characters[rieekan].name, "Rieekan");
+        // A capture too.
+        world.characters[ackbar].injury = 0;
+        give_as(&mut world, ackbar, CommandKind::Commander).unwrap();
+        assert_eq!(world.characters[ackbar].name, "Commander Ackbar");
+        world.characters[ackbar].is_captive = true;
+        release_unfit(&mut world);
+        assert_eq!(world.characters[ackbar].name, "Ackbar");
+        // An empty entry keeps the name.
+        world.characters[ackbar].is_captive = false;
+        world.characters[ackbar].command_names[2] = String::new();
+        give_as(&mut world, ackbar, CommandKind::Admiral).unwrap();
+        assert_eq!(world.characters[ackbar].name, "Ackbar");
     }
 
     #[test]

@@ -356,9 +356,25 @@ pub fn load_game_data_with_options(
     // ── 5. Major characters ──────────────────────────────────────────────────
     let major_file: MajorCharactersFile = read_dat_file(&gdata_path.join("MJCHARSD.DAT"))?;
 
+    // FUN_004f17f0: a command renames a character to TEXTSTRA of its name
+    // plus 0x6800 (Commander), 0x6c00 (Admiral) or 0x7000 (General).
+    let command_names = |id: u16, name: &str| -> [String; 4] {
+        [0, 0x6800, 0x6c00, 0x7000].map(|offset: u16| {
+            if offset == 0 {
+                name.to_owned()
+            } else {
+                string_table
+                    .get(&id.wrapping_add(offset))
+                    .cloned()
+                    .unwrap_or_default()
+            }
+        })
+    };
     for dat in &major_file.characters {
         let name = lookup(dat.text_stra_dll_id, "Character");
-        world.characters.insert(convert_character(dat, true, name));
+        let mut c = convert_character(dat, true, name);
+        c.command_names = command_names(dat.text_stra_dll_id, &c.name);
+        world.characters.insert(c);
     }
 
     // ── 6. Minor characters ──────────────────────────────────────────────────
@@ -366,7 +382,9 @@ pub fn load_game_data_with_options(
 
     for dat in &minor_file.characters {
         let name = lookup(dat.text_stra_dll_id, "Character");
-        world.characters.insert(convert_character(dat, false, name));
+        let mut c = convert_character(dat, false, name);
+        c.command_names = command_names(dat.text_stra_dll_id, &c.name);
+        world.characters.insert(c);
     }
 
     // ── 6b. Abodes (ABODESD.DAT) ─────────────────────────────────────────────
@@ -946,6 +964,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         escape_barred: false,
         bounty_captured: false,
         command: rebellion_core::character_command::CommandKind::None,
+        command_names: Default::default(),
     }
 }
 

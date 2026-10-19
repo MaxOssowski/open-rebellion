@@ -162,8 +162,9 @@ pub enum Scenario {
     /// fleet: the fleet icon's Planetary Assault
     /// (`ghidra/notes/planetary-assault.md`).
     FleetAssault = 67,
-    /// As `MissionTargeting` with the agent's class able to command: the
-    /// Command submenu's orders (`ghidra/notes/character-command.md`).
+    /// As `MissionTargeting` with the first character whose class may be an
+    /// admiral as the agent: the Command submenu's orders
+    /// (`ghidra/notes/character-command.md`).
     CharacterCommand = 68,
 }
 
@@ -423,7 +424,16 @@ pub fn apply(
         _ => {}
     }
 
-    if let Some((character_key, character)) = world.characters.iter_mut().next() {
+    // The agent is the first character; for the Command scenario, the first
+    // whose class may be an admiral (FUN_004ed1c0).
+    let agent = world
+        .characters
+        .iter()
+        .find(|(_, c)| request.scenario != Scenario::CharacterCommand || c.can_be_admiral)
+        .map(|(key, _)| key);
+    if let Some((character_key, character)) =
+        agent.and_then(|key| world.characters.get_mut(key).map(|c| (key, c)))
+    {
         character.current_system = Some(primary);
         character.current_fleet = None;
         character.is_alliance = player_is_alliance;
@@ -442,13 +452,7 @@ pub fn apply(
             character.is_captive = false;
             character.on_mandatory_mission = false;
         }
-        if request.scenario == Scenario::CharacterCommand {
-            // FUN_004ed750's class tests (FUN_004ed1e0, FUN_004ed1c0,
-            // FUN_004ed200) pass for each command.
-            character.can_be_commander = true;
-            character.can_be_admiral = true;
-            character.can_be_general = true;
-        }
+
         if matches!(
             request.scenario,
             Scenario::Mission | Scenario::ActivePersonnel

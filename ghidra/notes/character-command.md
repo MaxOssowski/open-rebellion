@@ -164,11 +164,16 @@ Stage 3 (2026-10-19), the interface:
   (`status_rows.rs`) name the fleet's side's holder aboard
   (`FUN_004fd790`).
 
+Stage 3b (2026-10-19, save v86), the name prefix (`FUN_004f17f0`):
+- A command renames the character through `FUN_004f6e60` to TEXTSTRA of
+  its name id (class record `+0x30`) plus `0x6800`, `0x6c00` or `0x7000`.
+  None renames it back to the plain name.
+- The loader keeps the four names on the character
+  (`Character::command_names`), and `Character::set_command` renames it.
+  `give`, the injury and `release_unfit` all set the command through it.
+- port: a character without a TEXTSTRA name for the kind keeps its name.
+
 Not yet:
-- the name prefix, `FUN_004f17f0`. It renames the character through
-  `FUN_004f6e60` to TEXTSTRA (class record `+0x30` + `0x6800`, `0x6c00` or
-  `0x7000`). The port keeps the name, not the name's TEXTSTRA id, so this
-  needs the id kept on the character (a save change) or another source;
 - the readers use no rank: `bombardment-order.md` port note, and the AI
   records' `hyp:`.
 
@@ -185,7 +190,7 @@ Not yet:
 3. **The interface.**
    - The Command submenu with None, Admiral, General and Commander,
      enabled per `FUN_004ed750`, with the held kind checked.
-   - The name prefix (`FUN_004f17f0`) in the windows that show it.
+   - The name prefix (`FUN_004f17f0`) in the windows that show it (3b).
    - Browser acceptance.
 4. **The readers.**
    - The decoy roll's backing rank.
