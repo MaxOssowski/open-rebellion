@@ -1787,9 +1787,24 @@ port:
 - the bound mission stands for `0x80000000`, and a mission that ends
   without a result clears it.
 
-Next:
-- add `mission_bits` (bits 1 and 2 are now known per cycle) and remove
-  the heuristic Sabotage and Assassination.
+**The bits and the end of the heuristics** (ported 2026-10-19, stage 7).
+`FUN_00478000` adds each held planner's bits to `+0x64` as its last
+cycle left its `+0x20`: `0x20000000` for any, `0x400` without both bits
+1 and 2, and `0x80000000` with `0x100`, which state 4 sets when it keeps
+a member. The planner keeps these bits in `MissionPlanner::pending`, and
+`SectorPlanner::missions` adds `mission_bits` to `requests`.
+
+The port's heuristic Sabotage and Assassination (`evaluate_espionage`)
+are removed, together with what only they used:
+- `adopt_mission_orders`;
+- `Planner::plan`;
+- the mission module's heuristic group (`MissionEntry::Group`, kept only
+  for older saves);
+- the covert cap, whose config field is kept but no longer read.
+
+Every Sabotage and Assassination now comes from a sector planner, and
+the Alliance's subtype-4 request builds Abduction (`FUN_00482b30`).
+The F-036 chain of the sector planners' missions is complete.
 
 ## The controller's leader bit (read and ported 2026-10-19)
 

@@ -36,10 +36,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{
-    CapitalShipKey, CharacterKey, DatId, FighterKey, FleetKey, ManufacturingFacilityKey, SystemKey,
-    TroopKey,
-};
+use crate::ids::{CapitalShipKey, CharacterKey, DatId, FighterKey, FleetKey, SystemKey, TroopKey};
 use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState, ProductionArea};
 use crate::mission_planning::Planner;
 use crate::missions::{MissionFaction, MissionKind, MissionState};
@@ -323,12 +320,6 @@ fn accepts(
     }
 }
 
-/// The mission module's groups of port heuristics, after its research
-/// planners: officers, espionage, rescue, reconnaissance, uprisings.
-///
-/// port: the original's list holds one planner per request (`FUN_004d2730`).
-const MISSION_GROUPS: u8 = 1;
-
 /// The module whose step issues the production heuristic's order for
 /// `kind`: `0xa` a manufacturing facility; none for the rest.
 ///
@@ -355,12 +346,13 @@ fn production_module(kind: &BuildableKind) -> Option<u8> {
 /// One entry of the mission module's planner list (`FUN_004d2730`).
 ///
 /// port: the original lists one planner per request; the port lists its
-/// research planners, then one entry per group of mission heuristics.
+/// research planners here, and its other planners run each pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MissionEntry {
     /// The research planner with this id.
     Research(u64),
-    /// A group of mission heuristics, below [`MISSION_GROUPS`].
+    /// A group of the port's former mission heuristics. None is listed
+    /// any longer; older saves may still name one.
     Group(u8),
 }
 
@@ -384,10 +376,6 @@ pub const MAX_CONSTRUCTION_YARDS: usize = 5;
 /// Minimum popularity fraction below which the AI considers a system a
 /// diplomacy target (systems already at high popularity are deprioritized).
 pub const DIPLOMACY_TARGET_POPULARITY_CAP: f32 = 0.8;
-
-/// Maximum number of new covert missions the AI will queue per evaluation pass.
-/// Prevents spamming every available operative on espionage each tick interval.
-pub const MAX_COVERT_OPS_PER_EVAL: usize = 3;
 
 // ---------------------------------------------------------------------------
 // GalaxyState — strategic categorization of all systems
@@ -676,9 +664,10 @@ pub struct MissionPlanner {
     /// `+0x6c`).
     #[serde(default)]
     pub failures: u32,
-    /// `+0x20` bits `0x40000000` (check the target) and `0x20000000`
-    /// (abort) that the report set (`FUN_0047c890`) and state 1 reads
-    /// (`FUN_0047b250`).
+    /// `+0x20` bits: for a standing planner, `0x40000000` (check the
+    /// target) and `0x20000000` (abort) that the report set
+    /// (`FUN_0047c890`) and state 1 reads (`FUN_0047b250`); for a sector
+    /// planner's, bits 1, 2 and `0x100` of its last cycle.
     #[serde(default)]
     pub pending: u32,
     /// `+0x70`: the id of the module 8 sector planner that holds it
@@ -1635,7 +1624,7 @@ impl AISystem {
     /// One step of the mission module (`FUN_004d2490` states 5 and 6): the
     /// entry `+0x4c` names, else the first, runs, and `+0x4c` takes the
     /// entry after it (`FUN_004d2730`). Its list holds the research
-    /// planners, then the port's groups of mission heuristics.
+    /// planners.
     fn mission_step(
         state: &mut AIState,
         planner: &mut Planner<'_>,
@@ -1648,7 +1637,6 @@ impl AISystem {
             research_state,
             uprisings,
             faction,
-            config,
             ..
         } = *ctx;
         Self::take_sector_request(state, world, galaxy);
@@ -1656,16 +1644,14 @@ impl AISystem {
             .research_planners
             .iter()
             .map(|p| MissionEntry::Research(p.id))
-            .chain((0..MISSION_GROUPS).map(MissionEntry::Group))
             .collect();
         let at = entries
             .iter()
             .position(|&e| Some(e) == state.mission_next)
             .unwrap_or(0);
         state.mission_next = entries.get(at + 1).copied();
-        let start = actions.len();
-        match entries[at] {
-            MissionEntry::Research(id) => {
+        match entries.get(at).copied() {
+            Some(MissionEntry::Research(id)) => {
                 let is_alliance = matches!(faction, AiFaction::Alliance);
                 if let Some(p) = state.research_planners.iter_mut().find(|p| p.id == id) {
                     Self::research_cycle(
@@ -1679,85 +1665,10 @@ impl AISystem {
                     );
                 }
             }
-            MissionEntry::Group(0) => {
-                Self::evaluate_espionage((planner, galaxy), world, faction, config, actions);
-            }
-            MissionEntry::Group(_) => {}
+            Some(MissionEntry::Group(_)) | None => {}
         }
-        Self::adopt_mission_orders(state, ctx.tick, start, actions);
         Self::mission_planner_reports(state, galaxy, (ctx.mission_state, ctx.tick), actions);
         Self::mission_planner_cycle(state, planner, world, galaxy, ctx.tick, actions);
-    }
-
-    /// The heuristics' orders become mission planners (`FUN_0042f830`) that
-    /// hold the members their selectors picked. A planner for the same kind
-    /// and target already running takes the place of a new one, which
-    /// frees the new one's members.
-    ///
-    /// port: the side's strategy (`+0x318`, `+0x31c`) is untraced, so the
-    /// port's heuristics stand in for it and name the kind and target.
-    fn adopt_mission_orders(
-        state: &mut AIState,
-        tick: u64,
-        start: usize,
-        actions: &mut Vec<AIAction>,
-    ) {
-        let mut kept = Vec::new();
-        for action in actions.drain(start..) {
-            match action {
-                AIAction::DispatchMission {
-                    kind,
-                    team,
-                    decoys,
-                    target_system,
-                    target_character,
-                    target_object,
-                } if !matches!(kind, MissionKind::Move) && kind.research_tech().is_none() => {
-                    let running = state.mission_planners.iter().any(|p| {
-                        p.kind == kind
-                            && p.target_system == Some(target_system)
-                            && p.target_character == target_character
-                            && p.target_object == target_object
-                    });
-                    // FUN_0047b610: a member another planner holds (record
-                    // +0x24) is not this one's.
-                    let held: Vec<crate::missions::MissionMember> = state
-                        .mission_planners
-                        .iter()
-                        .flat_map(|p| p.team.iter().chain(&p.decoys).copied())
-                        .collect();
-                    let team: Vec<_> = team.into_iter().filter(|m| !held.contains(m)).collect();
-                    let decoys: Vec<_> = decoys.into_iter().filter(|m| !held.contains(m)).collect();
-                    if !running && !team.is_empty() {
-                        let id = state.next_planner_id;
-                        state.next_planner_id += 1;
-                        state.mission_planners.push(MissionPlanner {
-                            id,
-                            kind,
-                            team,
-                            decoys,
-                            target_system: Some(target_system),
-                            target_character,
-                            target_object,
-                            created: tick,
-                            last_cycle: 0,
-                            staging: None,
-                            standing: false,
-                            claimed: None,
-                            sector: None,
-                            mission: None,
-                            report: None,
-                            failures: 0,
-                            pending: 0,
-                            owner: 0,
-                            subtype: 0,
-                        });
-                    }
-                }
-                other => kept.push(other),
-            }
-        }
-        actions.extend(kept);
     }
 
     /// One cycle of every mission planner (`FUN_004bced0`):
@@ -2052,12 +1963,13 @@ impl AISystem {
     /// What each sector planner holds (`FUN_00476ba0` counts, `FUN_00478000`
     /// bits): its mission planners by kind (`+0xa0..+0xac`,
     /// [`held_index`]), and `+0x64` `0x20000000` with any, `0x400` with
-    /// one whose team or decoys are not complete (`+0x20` bits 1 and 2).
-    /// A mission planner whose sector planner is gone is dropped.
+    /// one whose team or decoys are not full (`+0x20` bits 1 and 2 not
+    /// both set), `0x80000000` with one that kept a member (`+0x20`
+    /// `0x100`), as its last cycle left them ([`sector_cycle`]). A mission
+    /// planner whose sector planner is gone is dropped.
     ///
     /// port: the counts are taken from the list each pass instead of kept
-    /// as the planners come and go; `+0x20` bit `0x100` (`0x80000000`) is
-    /// not kept.
+    /// as the planners come and go.
     fn sync_sector_missions(state: &mut AIState) {
         let ids: Vec<u32> = state.module8.planners.iter().map(|p| p.id).collect();
         state
@@ -2075,9 +1987,11 @@ impl AISystem {
                     counts[i] += 1;
                 }
                 bits |= 0x2000_0000;
-                let decoys = crate::mission_planning::decoy_cap(p.kind, p.subtype);
-                if p.team.is_empty() || p.decoys.len() < decoys {
+                if p.pending & 3 != 3 {
                     bits |= 0x400;
+                }
+                if p.pending & 0x100 != 0 {
+                    bits |= 0x8000_0000;
                 }
             }
             sector.mission_counts = counts;
@@ -2364,142 +2278,6 @@ impl AISystem {
     // -----------------------------------------------------------------------
     // Officer heuristics
     // -----------------------------------------------------------------------
-
-    /// Plan `kind`'s team and decoys (`crate::mission_planning`) and push
-    /// the order when the planner sends anyone. Returns whether it did.
-    fn dispatch_planned(
-        (planner, galaxy): (&mut Planner<'_>, &crate::ai_records::Galaxy),
-        kind: MissionKind,
-        target: (SystemKey, Option<CharacterKey>),
-        target_object: Option<crate::missions::MissionTarget>,
-        actions: &mut Vec<AIAction>,
-    ) -> bool {
-        let defense = galaxy.system(target.0).map(|r| r.values[29]);
-        let Some((team, decoys)) = planner.plan(kind, defense) else {
-            return false;
-        };
-        actions.push(AIAction::DispatchMission {
-            kind,
-            team,
-            decoys,
-            target_system: target.0,
-            target_character: target.1,
-            target_object,
-        });
-        true
-    }
-
-    // -----------------------------------------------------------------------
-    // Espionage heuristics
-    // -----------------------------------------------------------------------
-
-    /// Dispatch covert operatives on Sabotage and Assassination missions
-    /// against the enemy faction. Espionage and Abduction are the
-    /// strategy's ([`Self::mission_strategy`]).
-    ///
-    /// port: the targets are the port's (side `+0x318` is untraced); the
-    /// planner of each kind picks the members (`crate::mission_planning`).
-    /// 1. **Sabotage**: enemy systems with manufacturing facilities, the most
-    ///    first.
-    /// 2. **Assassination**: enemy characters.
-    ///
-    /// At most `max_covert_ops_per_eval` covert missions are queued per pass,
-    /// and a kind stops once its planner finds no team.
-    fn evaluate_espionage(
-        (planner, galaxy): (&mut Planner<'_>, &crate::ai_records::Galaxy),
-        world: &GameWorld,
-        faction: AiFaction,
-        config: &GameConfig,
-        actions: &mut Vec<AIAction>,
-    ) {
-        let mut ops_queued = 0;
-
-        // ── Priority 1: Sabotage enemy manufacturing systems ─────────────────
-        // Score each enemy system by number of mfg facilities (proxy for value).
-        // port: the planner's object choice is untraced (F-019 phase 5); the
-        // AI names the system's first enemy manufacturing facility.
-        let mut sabotage_targets: Vec<(SystemKey, usize, ManufacturingFacilityKey)> = world
-            .systems
-            .iter()
-            .filter_map(|(sys_key, system)| {
-                // Target systems where the enemy faction has manufacturing presence.
-                let enemy_mfg: Vec<ManufacturingFacilityKey> = system
-                    .manufacturing_facilities
-                    .iter()
-                    .copied()
-                    .filter(|mfk| {
-                        world
-                            .manufacturing_facilities
-                            .get(*mfk)
-                            .is_some_and(|f| match faction {
-                                AiFaction::Alliance => f.side == crate::dat::Faction::Empire,
-                                AiFaction::Empire => f.side == crate::dat::Faction::Alliance,
-                            })
-                    })
-                    .collect();
-                enemy_mfg
-                    .first()
-                    .map(|&first| (sys_key, enemy_mfg.len(), first))
-            })
-            .collect();
-
-        // Highest facility count first.
-        sabotage_targets.sort_by_key(|a| std::cmp::Reverse(a.1));
-
-        for &(target_sys, _, facility) in &sabotage_targets {
-            if ops_queued >= config.ai.max_covert_ops_per_eval {
-                break;
-            }
-            let target = Some(crate::missions::MissionTarget::ManufacturingFacility(
-                facility,
-            ));
-            if !Self::dispatch_planned(
-                (planner, galaxy),
-                MissionKind::Sabotage,
-                (target_sys, None),
-                target,
-                actions,
-            ) {
-                break;
-            }
-            ops_queued += 1;
-        }
-
-        // ── Priority 2: Assassination of enemy characters ──
-        // The target chooser (FUN_004bd0a0) sends the order to the target's
-        // system; a character in a fleet stands at the fleet's system.
-        let whereabouts = |c: &Character| {
-            c.current_system.or_else(|| {
-                c.current_fleet
-                    .and_then(|fleet| world.fleets.get(fleet))
-                    .map(|fleet| fleet.location)
-            })
-        };
-        let enemy_major_chars: Vec<(CharacterKey, SystemKey)> = world
-            .characters
-            .iter()
-            .filter(|(_, c)| c.is_major && !faction.owns_character(c) && !c.is_killed)
-            .filter(|(_, c)| !c.is_captive)
-            .filter_map(|(key, c)| whereabouts(c).map(|system| (key, system)))
-            .collect();
-
-        for &(target_char, target_sys) in &enemy_major_chars {
-            if ops_queued >= config.ai.max_covert_ops_per_eval {
-                break;
-            }
-            let target = (target_sys, Some(target_char));
-            if !Self::dispatch_planned(
-                (planner, galaxy),
-                MissionKind::Assassination,
-                target,
-                None,
-                actions,
-            ) {
-                break;
-            }
-            ops_queued += 1;
-        }
-    }
 
     // -----------------------------------------------------------------------
     // Research heuristics
@@ -4204,6 +3982,13 @@ fn strategy_subtype(kind: MissionKind) -> u32 {
     }
 }
 
+/// `+0x20` bit 1: the team selector filled the team (`FUN_004808c0`).
+const TEAM_FULL: u32 = 1;
+/// `+0x20` bit 2: the decoy selector reached its cap (`FUN_00480aa0`).
+const DECOYS_FULL: u32 = 2;
+/// `+0x20` `0x100`: state 4 kept a member (`FUN_0047b110`).
+const KEPT: u32 = 0x100;
+
 /// States 3 to 9 of a sector planner's mission planner (`FUN_004bda60`),
 /// after state 2 has set its target:
 ///
@@ -4213,7 +3998,9 @@ fn strategy_subtype(kind: MissionKind) -> u32 {
 ///   class fill the team to [`crate::mission_planning::team_size`] and the
 ///   decoys to [`crate::mission_planning::decoy_limit`] of the target's
 ///   `v[29]`, and past the limit the first decoy goes (`FUN_0047b9e0`);
-///   they set `+0x20` bits 1 and 2 when full;
+///   they set `+0x20` bits 1 and 2 when full, which the planner keeps in
+///   [`MissionPlanner::pending`] for the owner's `+0x64`
+///   ([`AISystem::sync_sector_missions`]);
 /// - 7 (`FUN_004be230`): each free member (record without `0x74000f1`)
 ///   away from the gathering place gets a Move order `0x201` to it; with
 ///   none away or busy, a team, and bits 1 and 2, bit 8 is set;
@@ -4247,6 +4034,10 @@ fn sector_cycle(
     for &member in p.team.iter().chain(&p.decoys) {
         planner.hold(member);
     }
+    p.pending &= !(KEPT | TEAM_FULL | DECOYS_FULL);
+    if !(p.team.is_empty() && p.decoys.is_empty()) {
+        p.pending |= KEPT;
+    }
     let class = (p.kind, p.subtype);
     let defense = galaxy.system(target).map(|r| r.values[29]);
     let (team, decoys) = planner.refill(class, p.team.len(), p.decoys.len(), defense);
@@ -4256,7 +4047,13 @@ fn sector_cycle(
     if p.decoys.len() > limit {
         p.decoys.remove(0);
     }
-    let full = p.team.len() >= team_size(p.kind, p.subtype) && p.decoys.len() >= limit;
+    if p.team.len() >= team_size(p.kind, p.subtype) {
+        p.pending |= TEAM_FULL;
+    }
+    if p.decoys.len() >= limit {
+        p.pending |= DECOYS_FULL;
+    }
+    let full = p.pending & (TEAM_FULL | DECOYS_FULL) == TEAM_FULL | DECOYS_FULL;
     let mut ready = !p.team.is_empty();
     for &member in p.team.iter().chain(&p.decoys) {
         if !planner.sendable(member) {
@@ -5397,14 +5194,6 @@ mod tests {
         };
         let mut actions = Vec::new();
         research_all(state, &mut planner, &ctx, &mut actions);
-        let galaxy = galaxy_of(state, world);
-        AISystem::evaluate_espionage(
-            (&mut planner, &galaxy),
-            world,
-            faction,
-            config,
-            &mut actions,
-        );
         AISystem::evaluate_production(
             world,
             mfg_state,
@@ -7140,81 +6929,18 @@ mod tests {
         })
     }
 
-    /// Whether `side`'s AI sends the agent `add` makes to sabotage the enemy
-    /// shipyard, naming the shipyard as the target object.
+    /// Whether `side`'s Sabotage team selector (`FUN_0047d520`, the class a
+    /// sector planner's request builds) takes the agent `add` makes.
     fn sabotage_dispatched_by(
         side: AiFaction,
         add: impl FnOnce(&mut GameWorld, bool) -> crate::missions::MissionMember,
     ) -> bool {
-        let alliance_ai = side == AiFaction::Alliance;
         let mut world = empty_world();
-        let sector = add_sector(&mut world);
-
-        // Enemy (alliance) system with a manufacturing facility — a sabotage target.
-        let mfg_key =
-            world
-                .manufacturing_facilities
-                .insert(crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(1),
-                    side: crate::dat::Faction::of_alliance(!alliance_ai), // owned by the AI's enemy
-                    is_shipyard: false,
-                });
-        let enemy_sys = world.systems.insert(System {
-            dat_id: DatId(0),
-            name: "Enemy Shipyard".into(),
-            sector,
-            x: 10,
-            y: 10,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.8,
-            popularity_empire: 0.1,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![mfg_key],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
-        });
-
-        let spy = add(&mut world, alliance_ai);
-
-        let mut state = AIState::new(side);
-        let mfg = ManufacturingState::new();
-        let missions = MissionState::new();
-
-        let actions = evaluate(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
-            &ticks(7),
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        );
-
-        let sabotage = actions.iter().find(|a| {
-            matches!(
-                a,
-                AIAction::DispatchMission {
-                    kind: MissionKind::Sabotage,
-                    team,
-                    target_system,
-                    target_object: Some(crate::missions::MissionTarget::ManufacturingFacility(yard)),
-                    ..
-                }
-                if *team == [spy] && *target_system == enemy_sys && *yard == mfg_key
-            )
-        });
-        sabotage.is_some()
+        let spy = add(&mut world, side == AiFaction::Alliance);
+        planner_for(&world, side)
+            .refill((MissionKind::Sabotage, 0), 0, 0, Some(0))
+            .0
+            .contains(&spy)
     }
 
     #[test]
@@ -7227,7 +6953,7 @@ mod tests {
     }
 
     #[test]
-    fn an_alliance_commando_sabotages_an_empire_shipyard() {
+    fn an_alliance_commando_is_picked_for_sabotage() {
         assert!(sabotage_dispatched_by(
             AiFaction::Alliance,
             |world, alliance| { add_commando(world, alliance, 80, 60) }
@@ -7310,91 +7036,6 @@ mod tests {
         );
     }
 
-    #[test]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
-    )]
-    fn covert_ops_capped_at_max_per_eval() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-
-        // Create 5 enemy manufacturing systems — more than MAX_COVERT_OPS_PER_EVAL.
-        for i in 0..5u32 {
-            let mfg_key = world.manufacturing_facilities.insert(
-                crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(i),
-                    side: crate::dat::Faction::Alliance,
-                    is_shipyard: false,
-                },
-            );
-            world.systems.insert(System {
-                dat_id: DatId(i),
-                name: format!("Enemy System {i}"),
-                sector,
-                x: (i * 10) as u16,
-                y: 0,
-                exploration_status: crate::dat::ExplorationStatus::Explored,
-                popularity_alliance: 0.7,
-                popularity_empire: 0.1,
-                is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![mfg_key],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
-                control: ControlKind::Uncontrolled,
-            });
-        }
-
-        // 10 Empire special forces — all highly skilled.
-        for _ in 0..10 {
-            add_commando(&mut world, false, 80, 60);
-        }
-
-        let mut state = AIState::new(AiFaction::Empire);
-        let mfg = ManufacturingState::new();
-        let missions = MissionState::new();
-
-        let actions = evaluate(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
-            &ticks(7),
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        );
-
-        let covert_count = actions
-            .iter()
-            .filter(|a| {
-                matches!(
-                    a,
-                    AIAction::DispatchMission {
-                        kind: MissionKind::Sabotage
-                            | MissionKind::Assassination
-                            | MissionKind::Espionage,
-                        ..
-                    }
-                )
-            })
-            .count();
-
-        assert!(
-            covert_count <= MAX_COVERT_OPS_PER_EVAL,
-            "expected at most {MAX_COVERT_OPS_PER_EVAL} covert ops, got {covert_count}",
-        );
-    }
-
     // -----------------------------------------------------------------------
     // Knesset Shamash-Bet #R11 — killed characters are invisible to dispatch
     // -----------------------------------------------------------------------
@@ -7404,14 +7045,16 @@ mod tests {
         // FUN_00402230 builds records only for the side's live objects.
         let mut world = empty_world();
         let ck = add_character(&mut world, /*alliance*/ false, /*major*/ true, 90);
-        assert!(planner_for(&world, AiFaction::Empire)
-            .plan(MissionKind::Diplomacy, Some(0))
-            .is_some());
+        let team = |world: &GameWorld| {
+            planner_for(world, AiFaction::Empire)
+                .refill((MissionKind::Diplomacy, 0), 0, 0, Some(0))
+                .0
+        };
+        assert_eq!(team(&world), vec![MissionMember::Character(ck)]);
 
         world.characters.get_mut(ck).unwrap().mark_killed();
-        assert_eq!(
-            planner_for(&world, AiFaction::Empire).plan(MissionKind::Diplomacy, Some(0)),
-            None,
+        assert!(
+            team(&world).is_empty(),
             "killed character must not pass dispatch gate"
         );
     }
@@ -7629,6 +7272,47 @@ mod tests {
         }
     }
 
+    /// A planner of `order` as the port's heuristics left them (not
+    /// standing, no owner), which older saves may still hold.
+    fn adopted(state: &mut AIState, tick: u64, orders: &mut Vec<AIAction>) {
+        for order in orders.drain(..) {
+            let AIAction::DispatchMission {
+                kind,
+                team,
+                decoys,
+                target_system,
+                target_character,
+                target_object,
+            } = order
+            else {
+                continue;
+            };
+            let id = state.next_planner_id;
+            state.next_planner_id += 1;
+            state.mission_planners.push(MissionPlanner {
+                id,
+                kind,
+                team,
+                decoys,
+                target_system: Some(target_system),
+                target_character,
+                target_object,
+                created: tick,
+                last_cycle: 0,
+                staging: None,
+                standing: false,
+                claimed: None,
+                sector: None,
+                mission: None,
+                report: None,
+                failures: 0,
+                pending: 0,
+                owner: 0,
+                subtype: 0,
+            });
+        }
+    }
+
     #[test]
     fn a_mission_planner_gathers_its_team_before_the_order() {
         // FUN_004bced0: state 7 (FUN_004bd570) moves each member away from
@@ -7637,15 +7321,7 @@ mod tests {
         let (mut world, [a, b], [_, _, target]) = gathering_world();
         let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
         let mut state = AIState::new(AiFaction::Empire);
-        let mut actions = vec![rescue_order(team.clone(), target)];
-        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut actions);
-        assert!(actions.is_empty());
-        assert_eq!(state.mission_planners.len(), 1);
-        // The same order again is the running planner's.
-        let mut again = vec![rescue_order(team.clone(), target)];
-        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut again);
-        assert!(again.is_empty());
-        assert_eq!(state.mission_planners.len(), 1);
+        adopted(&mut state, 1, &mut vec![rescue_order(team.clone(), target)]);
 
         let mut actions = Vec::new();
         AISystem::mission_planner_cycle(
@@ -7727,7 +7403,7 @@ mod tests {
         fighter(&mut world, c);
         let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
         let mut state = AIState::new(AiFaction::Empire);
-        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut vec![rescue_order(team, target)]);
+        adopted(&mut state, 1, &mut vec![rescue_order(team, target)]);
         let mut actions = Vec::new();
         AISystem::mission_planner_cycle(
             &mut state,
@@ -7815,102 +7491,6 @@ mod tests {
     }
 
     #[test]
-    fn each_order_is_its_own_planner_unless_one_runs_for_it_and_held_members_stay_put() {
-        // FUN_0042f830 makes one planner per order; the port's heuristics
-        // repeat their orders, so one already running for the same kind
-        // and target takes the new one's place. FUN_0047b610: a member
-        // another planner holds is not taken again.
-        let (_, [a, b], [here, there, target]) = gathering_world();
-        let (ma, mb) = (MissionMember::Character(a), MissionMember::Character(b));
-        let order =
-            |kind, team: Vec<MissionMember>, system, character, object| AIAction::DispatchMission {
-                kind,
-                team,
-                decoys: Vec::new(),
-                target_system: system,
-                target_character: character,
-                target_object: object,
-            };
-        let mut state = AIState::new(AiFaction::Empire);
-        let mut actions = vec![
-            order(MissionKind::Rescue, vec![ma], target, None, None),
-            // The same member again: held, so no planner.
-            order(MissionKind::Sabotage, vec![ma], here, None, None),
-            order(MissionKind::Rescue, vec![mb], here, None, None),
-        ];
-        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut actions);
-        assert_eq!(state.mission_planners.len(), 2);
-        assert_eq!(state.mission_planners[0].team, [ma]);
-        assert_eq!(state.mission_planners[1].team, [mb]);
-        assert_ne!(state.mission_planners[0].id, state.mission_planners[1].id);
-        // A held decoy is dropped, a free one kept.
-        let free = MissionMember::SpecialForce(crate::ids::SpecialForceKey::default());
-        let mut actions = vec![AIAction::DispatchMission {
-            kind: MissionKind::Espionage,
-            team: vec![free],
-            decoys: vec![ma, MissionMember::Character(CharacterKey::default())],
-            target_system: there,
-            target_character: None,
-            target_object: None,
-        }];
-        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut actions);
-        assert_eq!(
-            state.mission_planners[2].decoys,
-            [MissionMember::Character(CharacterKey::default())]
-        );
-        // A planner per differing kind, system, character or object.
-        let object = Some(crate::missions::MissionTarget::DeathStar(
-            crate::ids::FleetKey::default(),
-        ));
-        let mut state = AIState::new(AiFaction::Empire);
-        for (kind, system, character, object) in [
-            (MissionKind::Rescue, target, None, None),
-            (MissionKind::Abduction, target, None, None),
-            (MissionKind::Rescue, there, None, None),
-            (MissionKind::Rescue, target, Some(b), None),
-            (MissionKind::Rescue, target, None, object),
-        ] {
-            AISystem::adopt_mission_orders(
-                &mut state,
-                1,
-                0,
-                &mut vec![order(kind, vec![ma], system, character, object)],
-            );
-            // Free the member for the next variant.
-            if let Some(p) = state.mission_planners.last_mut() {
-                p.team.clear();
-            }
-        }
-        assert_eq!(state.mission_planners.len(), 5);
-        let ids: HashSet<u64> = state.mission_planners.iter().map(|p| p.id).collect();
-        assert_eq!(ids.len(), 5);
-        // An order for a running planner's kind and target adds none.
-        let mut state = AIState::new(AiFaction::Empire);
-        for member in [ma, mb] {
-            AISystem::adopt_mission_orders(
-                &mut state,
-                1,
-                0,
-                &mut vec![order(MissionKind::Rescue, vec![member], target, None, None)],
-            );
-        }
-        assert_eq!(state.mission_planners.len(), 1);
-        // A sector planner's planner (owner set) stands for it too.
-        state.mission_planners[0].owner = 7;
-        AISystem::adopt_mission_orders(
-            &mut state,
-            1,
-            0,
-            &mut vec![order(MissionKind::Rescue, vec![mb], target, None, None)],
-        );
-        assert_eq!(state.mission_planners.len(), 1);
-        // Other actions pass through untouched.
-        let mut passing = vec![order(MissionKind::Move, vec![mb], here, None, None)];
-        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut passing);
-        assert_eq!(passing.len(), 1);
-    }
-
-    #[test]
     fn a_mission_planner_drops_members_it_cannot_keep_and_ends_when_empty_or_old() {
         // State 2 (FUN_0047b110 -> FUN_0047ba40) drops a member that is no
         // longer the side's live record; an empty team ends the planner
@@ -7918,8 +7498,7 @@ mod tests {
         let (mut world, [a, b], [_, _, target]) = gathering_world();
         let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
         let mut state = AIState::new(AiFaction::Empire);
-        let mut actions = vec![rescue_order(team, target)];
-        AISystem::adopt_mission_orders(&mut state, 1, 0, &mut actions);
+        adopted(&mut state, 1, &mut vec![rescue_order(team, target)]);
         world.characters[a].mark_killed();
         let cycle = |state: &mut AIState, world: &GameWorld, tick| {
             let mut actions = Vec::new();
@@ -7943,8 +7522,11 @@ mod tests {
         assert!(state.mission_planners.is_empty());
 
         let (world, [a, _], [_, _, target]) = gathering_world();
-        let mut actions = vec![rescue_order(vec![MissionMember::Character(a)], target)];
-        AISystem::adopt_mission_orders(&mut state, 10, 0, &mut actions);
+        adopted(
+            &mut state,
+            10,
+            &mut vec![rescue_order(vec![MissionMember::Character(a)], target)],
+        );
         cycle(&mut state, &world, 10 + MISSION_PLANNER_DAYS);
         assert_eq!(state.mission_planners.len(), 1);
         cycle(&mut state, &world, 11 + MISSION_PLANNER_DAYS);
@@ -7979,17 +7561,6 @@ mod tests {
                 _ => None,
             })
             .collect()
-    }
-
-    /// `n` special forces of `combat` with no espionage, so none is a decoy.
-    fn fighters(world: &mut GameWorld, is_alliance: bool, n: usize) -> Vec<MissionMember> {
-        (0..n)
-            .map(|_| add_commando(world, is_alliance, 0, 90))
-            .collect()
-    }
-
-    fn at(world: &mut GameWorld, character: CharacterKey, system: SystemKey) {
-        world.characters[character].current_system = Some(system);
     }
 
     #[test]
@@ -9239,10 +8810,10 @@ mod tests {
     #[test]
     fn a_sector_planner_counts_each_held_kind_and_whether_each_is_complete() {
         // FUN_004794b0 (0 Abduction/Assassination, 1 Espionage, 2 Recon,
-        // 3 Sabotage) and FUN_00478000's 0x400 for a planner without its
-        // team (+0x20 bit 1) or its decoys (bit 2).
-        let mut world = empty_world();
-        let agent = MissionMember::Character(add_character(&mut world, false, true, 30));
+        // 3 Sabotage) and FUN_00478000's bits from each planner's +0x20:
+        // 0x400 without both bits 1 (team) and 2 (decoys), 0x80000000 with
+        // 0x100 (a member kept).
+        let world = empty_world();
         let mut galaxy = crate::ai_records::Galaxy::default();
         let mut state = AIState::new(AiFaction::Empire);
         state.module8.planners = vec![crate::ai_module8::SectorPlanner {
@@ -9273,19 +8844,20 @@ mod tests {
         AISystem::sync_sector_missions(&mut state);
         assert_eq!(state.module8.planners[0].mission_counts, [1, 1, 2, 1]);
         assert_eq!(state.module8.planners[0].mission_bits, 0x2000_0400);
-        // Complete teams: Recon needs no decoy; Espionage, Sabotage and the
-        // subtype-4 Abduction one each.
         for p in &mut state.mission_planners {
-            p.team = vec![agent];
-            if p.kind != MissionKind::Reconnaissance {
-                p.decoys = vec![agent];
-            }
+            p.pending = 3;
         }
         AISystem::sync_sector_missions(&mut state);
         assert_eq!(state.module8.planners[0].mission_bits, 0x2000_0000);
-        state.mission_planners[1].decoys.clear();
+        state.mission_planners[1].pending = 1;
         AISystem::sync_sector_missions(&mut state);
         assert_eq!(state.module8.planners[0].mission_bits, 0x2000_0400);
+        state.mission_planners[1].pending = 2;
+        AISystem::sync_sector_missions(&mut state);
+        assert_eq!(state.module8.planners[0].mission_bits, 0x2000_0400);
+        state.mission_planners[1].pending = 0x103;
+        AISystem::sync_sector_missions(&mut state);
+        assert_eq!(state.module8.planners[0].mission_bits, 0xa000_0000);
     }
 
     #[test]
@@ -10329,10 +9901,15 @@ mod tests {
         let mut p = planner_with(&spies[..2], &[]);
         assert!(ordered(&mut p, &galaxy, 2));
         assert_eq!(p.decoys, spies[2..3]);
+        // +0x20: 0x100 (kept), 1 (team) and 2 (decoys), for FUN_00478000.
+        assert_eq!(p.pending, 0x103);
         // One member and the decoy, the third held by another planner: no
         // one free to complete the team.
+        // Each cycle clears the bits before it sets them.
         let mut p = planner_with(&spies[..1], &spies[1..2]);
+        p.pending = 0x103;
         assert!(!ordered(&mut p, &galaxy, 3));
+        assert_eq!(p.pending, 0x102);
         // A defense of 2 wants two decoys; one is not enough.
         for r in galaxy.sectors.iter_mut().flat_map(|s| s.systems.iter_mut()) {
             if r.system == rebels[0] {
@@ -10342,6 +9919,12 @@ mod tests {
         let mut p = planner_with(&spies[..2], &[]);
         assert!(!ordered(&mut p, &galaxy, 2));
         assert_eq!(p.decoys, spies[2..3]);
+        assert_eq!(p.pending, 0x101);
+        // Nobody to keep or take: none of the bits.
+        let mut p = planner_with(&[], &[]);
+        p.pending = 0x103;
+        assert!(!ordered(&mut p, &galaxy, 3));
+        assert_eq!(p.pending, 0);
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.
@@ -10439,110 +10022,6 @@ mod tests {
         assert_eq!(target(&p), None);
     }
 
-    #[test]
-    fn a_sabotage_goes_to_each_enemy_yard() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let mut yards = Vec::new();
-        for _ in 0..2 {
-            let system = add_system(&mut world, sector, 0.8, 0.1);
-            let yard = world.manufacturing_facilities.insert(
-                crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(1),
-                    side: crate::dat::Faction::Alliance,
-                    is_shipyard: false,
-                },
-            );
-            world.systems[system].manufacturing_facilities.push(yard);
-            yards.push(system);
-        }
-        for _ in 0..4 {
-            add_commando(&mut world, false, 0, 90);
-        }
-        for member in world.special_forces.values_mut() {
-            member.skills[crate::world::Skill::Espionage as usize] = 90;
-        }
-        let mut planner = planner_for(&world, AiFaction::Empire);
-        let mut actions = Vec::new();
-
-        let galaxy = galaxy_of(&AIState::new(AiFaction::Empire), &world);
-        AISystem::evaluate_espionage(
-            (&mut planner, &galaxy),
-            &world,
-            AiFaction::Empire,
-            &GameConfig::default(),
-            &mut actions,
-        );
-
-        let targets: Vec<SystemKey> = orders(&actions, MissionKind::Sabotage)
-            .into_iter()
-            .map(|(_, system, _)| system)
-            .collect();
-        assert_eq!(targets.len(), 2);
-        assert!(yards.iter().all(|yard| targets.contains(yard)));
-    }
-
-    #[test]
-    fn an_assassination_goes_where_a_free_enemy_major_stands_up_to_the_covert_cap() {
-        // FUN_004bd0a0 sends the order to the target's system; a character
-        // in a fleet stands at the fleet's system.
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let here = add_system(&mut world, sector, 0.8, 0.1);
-        let docked = add_system(&mut world, sector, 0.8, 0.1);
-        let fleet = world.fleets.insert(Fleet {
-            location: docked,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: true,
-            has_death_star: false,
-        });
-        let target = add_character(&mut world, true, true, 30);
-        at(&mut world, target, here);
-        let aboard = add_character(&mut world, true, true, 30);
-        world.characters[aboard].current_fleet = Some(fleet);
-        for (captive, killed) in [(true, false), (false, true)] {
-            let spared = add_character(&mut world, true, true, 30);
-            at(&mut world, spared, here);
-            world.characters[spared].is_captive = captive;
-            world.characters[spared].is_killed = killed;
-        }
-        let own = add_character(&mut world, false, true, 30);
-        at(&mut world, own, here);
-        for _ in 0..2 {
-            let other = add_character(&mut world, true, true, 30);
-            at(&mut world, other, here);
-        }
-        fighters(&mut world, false, 10);
-        let mut planner = planner_for(&world, AiFaction::Empire);
-        let mut actions = Vec::new();
-
-        let galaxy = galaxy_of(&AIState::new(AiFaction::Empire), &world);
-        AISystem::evaluate_espionage(
-            (&mut planner, &galaxy),
-            &world,
-            AiFaction::Empire,
-            &GameConfig::default(),
-            &mut actions,
-        );
-
-        let sent = orders(&actions, MissionKind::Assassination);
-        assert_eq!(sent.len(), GameConfig::default().ai.max_covert_ops_per_eval);
-        assert!(sent.iter().any(|(_, _, c)| *c == Some(target)));
-        assert!(sent.iter().any(|(_, _, c)| *c == Some(aboard)));
-        for (_, system, character) in &sent {
-            let character = character.unwrap();
-            assert!(character != own && !world.characters[character].is_captive);
-            assert!(!world.characters[character].is_killed);
-            let expected = if character == aboard { docked } else { here };
-            assert_eq!(*system, expected);
-        }
-    }
-
-    /// An Alliance system holding a yard of `family` (MANFACSD `0x28`
-    /// shipyard, `0x29` training facility, `0x2a` construction yard) and an
-    /// Alliance regiment: a research site of the yard's tree.
     fn yard_system(world: &mut GameWorld, sector: SectorKey, family: u32) -> SystemKey {
         let system = add_system(world, sector, 0.5, 0.5);
         world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
@@ -13152,12 +12631,7 @@ mod tests {
         assert_eq!(step(&mut state), vec![(vec![first], shipyard, None)]);
         assert_eq!(state.mission_next, Some(MissionEntry::Research(ids[1])));
         assert_eq!(step(&mut state), vec![(vec![second], shipyard, None)]);
-        assert_eq!(state.mission_next, Some(MissionEntry::Group(0)));
-        for group in 0..MISSION_GROUPS {
-            assert!(step(&mut state).is_empty());
-            let after = (group + 1 < MISSION_GROUPS).then_some(MissionEntry::Group(group + 1));
-            assert_eq!(state.mission_next, after);
-        }
+        assert_eq!(state.mission_next, None);
         assert_eq!(step(&mut state), vec![(vec![first], shipyard, None)]);
     }
 

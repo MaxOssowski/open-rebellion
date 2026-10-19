@@ -75,11 +75,8 @@ pub struct SectorPlanner {
     pub mission_counts: [i32; 4],
     /// The `+0x64` bits its held mission planners give (`FUN_00478000`):
     /// `0x20000000` any, `0x400` one without both `+0x20` bits 1 and 2,
-    /// `0x80000000` one with `+0x20` `0x100`.
-    ///
-    /// port: kept, but not yet added to `+0x64`
-    /// ([`crate::ai_planner`]'s `missions`), until the held planners run
-    /// their cycle.
+    /// `0x80000000` one with `+0x20` `0x100`; `missions` adds them to
+    /// `+0x64` ([`crate::ai_planner`]).
     #[serde(default)]
     pub mission_bits: u32,
     /// `+0xe0`, `+0xe4`: the movement its plan asks for, and the movement

@@ -1,0 +1,4 @@
+test ai::tests::a_sector_planner_counts_each_held_kind_and_whether_each_is_complete ... FAILED
+test ai::tests::a_sector_planner_s_mission_planner_orders_only_with_its_team_and_decoys_full ... FAILED
+test ai_planner::tests::a_sector_planner_asks_for_one_mission_kind_by_what_it_holds ... FAILED
+test result: FAILED. 1402 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s

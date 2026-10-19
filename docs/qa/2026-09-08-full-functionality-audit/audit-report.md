@@ -2796,6 +2796,12 @@ cross-runtime proof remain open
   order. Missions dispatched in 24 campaigns rise from 11,976 to 19,149
   (Reconnaissance 1,682 -> 6,450). Golden final `v1:dee3c02775ecfb47` ->
   `v1:ed40629cc5780d6d` (`evidence/2026-10-19-sector-cycle/`).
+- 2026-10-19 (F-036): the held planners' `+0x20` bits reach their sector
+  planner's `+0x64` (`FUN_00478000`), and the port's heuristic Sabotage and
+  Assassination are removed with the adoption and `Planner::plan`. Every
+  covert mission now comes from an original planner. Golden final
+  `v1:ed40629cc5780d6d` -> `v1:1ddf726cecfd8477`
+  (`evidence/2026-10-19-sector-bits/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

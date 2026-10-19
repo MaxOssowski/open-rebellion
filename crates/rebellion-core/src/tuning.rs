@@ -31,6 +31,9 @@ pub struct AiConfig {
     pub diplomacy_target_popularity_cap: f32,
 
     /// Maximum covert operations dispatched per evaluation cycle. **Augmentation.**
+    /// Unread since 2026-10-19: the heuristic Sabotage and Assassination it
+    /// capped are gone; the sector planners order those missions
+    /// (`FUN_004bda60`). Kept so the save layout and saved configs still load.
     pub max_covert_ops_per_eval: usize,
 
     /// Maximum construction yards per system. **Parity.**

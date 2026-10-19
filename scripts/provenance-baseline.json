@@ -3,7 +3,6 @@
     "crates/rebellion-core/src/ai.rs::DIPLOMACY_SKILL_THRESHOLD": 1,
     "crates/rebellion-core/src/ai.rs::DIPLOMACY_TARGET_POPULARITY_CAP": 1,
     "crates/rebellion-core/src/ai.rs::MAX_CONSTRUCTION_YARDS": 1,
-    "crates/rebellion-core/src/ai.rs::MAX_COVERT_OPS_PER_EVAL": 1,
     "crates/rebellion-core/src/betrayal.rs::BETRAYAL_CHECK_INTERVAL": 1,
     "crates/rebellion-core/src/betrayal.rs::BetrayalSystem::advance": 2,
     "crates/rebellion-core/src/blockade.rs::EV_BLOCKADE": 1,

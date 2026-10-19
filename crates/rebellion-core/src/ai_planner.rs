@@ -946,9 +946,7 @@ impl SectorPlanner {
         if self.mission[0] != 0 {
             self.requests |= 0x100;
         }
-        // port: the held planners do not run their cycle yet (FUN_004bda60),
-        // so none ever completes its team, and their bits would mark every
-        // sector planner short for good; they join once the cycle does.
+        self.requests |= self.mission_bits;
     }
 
     /// `FUN_00478140`: the plan's movement request (slot `+0x1c`) into
@@ -1731,6 +1729,10 @@ pub(crate) mod tests {
         // A request with a cancellation of a later row.
         assert_eq!(ask(&mut fx, &mut p, 0, [2, 0, 0, 0]), (0x52, 0, [0x62, 4]));
         assert_ne!(p.requests & 0x100, 0);
+        // FUN_00478000 then adds the held planners' bits to +0x64.
+        p.mission_bits = 0xa000_0400;
+        ask(&mut fx, &mut p, 0, [1, 1, 0, 0]);
+        assert_eq!(p.requests, 0xa000_0400);
     }
 
     #[test]
