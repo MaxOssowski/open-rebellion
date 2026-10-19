@@ -45,9 +45,9 @@ const MANDATORY: u32 = 0x40_0000;
 /// Set at construction; cleared when a planner takes the object
 /// (`FUN_0047b610`, `FUN_0047b730`).
 const UNASSIGNED: u32 = 0x80_0000;
-/// Officer rank 1 (`+0x96` = 1, `FUN_00402230`; ranks 2 and 3 are
-/// `0x1000000` and `0x2000000`).
-const OFFICER_RANK_1: u32 = 0x400_0000;
+/// The officer rank bits by `+0x96` (`FUN_00402230`): none, Commander
+/// `0x4000000`, Admiral `0x1000000`, General `0x2000000`.
+const OFFICER_RANKS: [u32; 4] = [0, 0x400_0000, 0x100_0000, 0x200_0000];
 /// Reserved: a Diplomacy-capable object with diplomacy of 80 or more, or a
 /// research-capable one the side needs (`FUN_00402230`).
 const RESERVED: u32 = 0x800_0000;
@@ -717,11 +717,7 @@ fn records(
         if missions.is_en_route(member) {
             flags |= EN_ROUTE;
         }
-        // hyp: the port has no officer rank (+0x96); a character in a fleet
-        // holds one.
-        if c.current_fleet.is_some() {
-            flags |= OFFICER_RANK_1;
-        }
+        flags |= OFFICER_RANKS[c.command as usize];
         records.push(agent_record(world, member, flags, caps));
     }
     for (key, unit) in &world.special_forces {
@@ -1231,6 +1227,56 @@ mod tests {
         });
 
         assert_eq!(plan(&mut planner(&world), MissionKind::Diplomacy), None);
+    }
+
+    #[test]
+    fn a_character_s_command_sets_its_rank_bit_and_keeps_it_off_a_diplomacy_team() {
+        // FUN_00402230: +0x96 1 sets 0x4000000, 2 0x1000000, 3 0x2000000;
+        // FUN_004815a0's query forbids 0x7404051. A character aboard a fleet
+        // without a command holds no rank.
+        use crate::character_command::CommandKind;
+        let mut world = world();
+        let mut keys = slotmap::SlotMap::<crate::ids::FleetKey, ()>::with_key();
+        let fleet = keys.insert(());
+        let kinds = [
+            CommandKind::None,
+            CommandKind::Commander,
+            CommandKind::Admiral,
+            CommandKind::General,
+        ];
+        let members: Vec<_> = kinds
+            .iter()
+            .enumerate()
+            .map(|(i, &kind)| {
+                agent(&mut world, 0x2c0 + u32::try_from(i).unwrap(), |c| {
+                    c.diplomacy = pair(99 - u32::try_from(i).unwrap());
+                    c.current_fleet = Some(fleet);
+                    c.command = kind;
+                })
+            })
+            .collect();
+        let p = planner(&world);
+        let rank = |member| {
+            p.records
+                .iter()
+                .find(|r| r.member == member)
+                .map(|r| r.flags & 0x700_0000)
+        };
+        assert_eq!(
+            members.iter().map(|&m| rank(m)).collect::<Vec<_>>(),
+            [Some(0), Some(0x400_0000), Some(0x100_0000), Some(0x200_0000)]
+        );
+        // The officers' better diplomacy does not put them on the team.
+        let mut world = world.clone();
+        world.characters.iter_mut().for_each(|(_, c)| {
+            if c.command == CommandKind::None {
+                c.diplomacy = pair(70);
+            }
+        });
+        assert_eq!(
+            plan(&mut planner(&world), MissionKind::Diplomacy),
+            Some((vec![members[0]], vec![]))
+        );
     }
 
     #[test]

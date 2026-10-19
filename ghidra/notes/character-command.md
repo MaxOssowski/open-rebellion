@@ -99,9 +99,16 @@ The character's hooks run it:
 | `+0x11c` | `FUN_004f1340` | `Role_vt11c` (meaning not read) |
 | `+0x268` | `FUN_004f1490` | `Role_vt268` (meaning not read) |
 
-`FUN_00560d50`, from `FUN_00514a60`, clears the command of every character
-aboard a capital ship (`FUN_004f25c0(ship, 3)`). When `FUN_00514a60` runs is
-not read.
+`FUN_00560d50(object, from, to)`, from `FUN_00514a60` (an object's move;
+`FUN_0057ba50` passes its event's `+0x3c`, `+0x4c`, `+0x50`), takes the
+command away:
+- a capital ship (`0x14..0x1b`) that moves clears the command of every
+  character aboard (`FUN_004f25c0(ship, 3)`);
+- a character (`0x30..0x3b`) holding a command that moves loses it, except
+  from one capital ship to another of the same fleet (`FUN_00504dc0` of
+  each, both of family `0x08..0x0f` and equal);
+- a character of family `0x34` also runs `FUN_005617b0` (not read).
+Port: stage 5.
 
 ## Who reads it
 
@@ -113,9 +120,8 @@ not read.
 - The Planetary Assault duel's two generals (`FUN_0058bec0`,
   `planetary-assault.md`).
 - The AI's records: rank bits `0x4000000` / `0x1000000` / `0x2000000`
-  (`FUN_00402230`, `ai-mission-planning.md`).
-  - The port reads them as a `hyp:`: rank 1 for any character in a fleet,
-    `mission_planning.rs`.
+  for ranks 1, 2, 3 (`FUN_00402230`, `ai-mission-planning.md`). Most
+  mission queries forbid `0x7000000`, keeping an officer off missions.
 
 ## The AI
 
@@ -196,9 +202,13 @@ Stage 4b (2026-10-19), the detector's officer (`mission_detection.rs`):
 - an exposed member rolls RLEVADTB against the officer's effective combat
   and is captured by the officer's side.
 
-Not yet:
-- the AI records' rank bits, the `hyp:` in `mission_planning.rs` (stage
-  4c).
+Stage 4c (2026-10-19), the AI records (`mission_planning.rs`): the rank
+bits follow `Character::command` (`OFFICER_RANKS`), replacing the `hyp:`
+that gave every character in a fleet rank 1. The 24 dual-AI campaigns are
+unchanged: in them the hyp's bit changed no pick.
+
+The AI giving commands waits for module `0xc`; until then no AI character
+holds one.
 
 ## Plan (tracker item "Dowodzenie i jego utrata przy ranie")
 
@@ -227,7 +237,7 @@ The AI giving commands waits for module `0xc`.
 
 - What sets `+0x50` bit 6, and the family `0x50..0x7f` of the commanding key
   `+0x68`. `SetCharacterCommandingKey` is not read yet.
-- `FUN_00514a60`'s trigger for `FUN_00560d50`.
+- Which events reach `FUN_0057ba50` (the move event), and `FUN_005617b0`.
 - `Role_vt11c` and `Role_vt268`, the other two hooks that run
   `FUN_004eeed0`.
 - The order event's path to `FUN_00561bb0`.

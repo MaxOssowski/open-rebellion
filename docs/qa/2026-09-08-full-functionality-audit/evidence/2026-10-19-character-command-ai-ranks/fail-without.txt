@@ -1,0 +1,4 @@
+thread 'mission_planning::tests::a_character_s_command_sets_its_rank_bit_and_keeps_it_off_a_diplomacy_team' (3508749) panicked at crates/rebellion-core/src/mission_planning.rs:1268:9:
+  left: [Some(67108864), Some(67108864), Some(67108864), Some(67108864)]
+ right: [Some(0), Some(67108864), Some(16777216), Some(33554432)]
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1416 filtered out; finished in 0.00s

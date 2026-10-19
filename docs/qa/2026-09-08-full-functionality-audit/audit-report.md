@@ -2851,6 +2851,12 @@ cross-runtime proof remain open
   exposed member rolls against its combat and is captured by it
   (`FUN_005888f0`). The 24 campaigns and the golden are unchanged
   (`evidence/2026-10-19-character-command-detector/`).
+- 2026-10-19: character command, stage 4c. The AI records' rank bits
+  (`FUN_00402230`: `0x4000000`, `0x1000000`, `0x2000000`) follow the
+  character's command, replacing the hyp that gave every character in a
+  fleet rank 1. The 24 campaigns and the golden are unchanged. Found:
+  `FUN_00560d50` clears commands on a move (stage 5)
+  (`evidence/2026-10-19-character-command-ai-ranks/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

@@ -9072,7 +9072,7 @@ mod tests {
 
     /// A rebel sector for the Empire's sector planners: `planet` with Luke
     /// and a minor character on the planet, `aboard` with an Alliance fleet
-    /// carrying Leia, both Alliance systems.
+    /// carrying Leia as its admiral, both Alliance systems.
     fn opponents_world() -> (GameWorld, SystemKey, SystemKey, [CharacterKey; 3]) {
         let mut world = empty_world();
         let sector = add_sector(&mut world);
@@ -9109,6 +9109,7 @@ mod tests {
         world.systems[aboard].fleets.push(fleet);
         world.characters[leia].current_system = None;
         world.characters[leia].current_fleet = Some(fleet);
+        world.characters[leia].command = crate::character_command::CommandKind::Admiral;
         (world, planet, aboard, [luke, minor, leia])
     }
 
@@ -9133,8 +9134,8 @@ mod tests {
         assert_eq!(picks(planet, 0x800, 4), HashSet::new());
         assert_eq!(picks(aboard, 0x800, 4), HashSet::from([leia]));
         assert_eq!(picks(aboard, 0xc00, 4), HashSet::from([leia]));
-        // hyp: only a character in a fleet holds an officer rank
-        // (0x4000000, FUN_00402230).
+        // Only Leia holds a command, the Admiral's bit 0x1000000
+        // (FUN_00402230).
         assert_eq!(picks(planet, 0xc00, 0x700_0000), HashSet::new());
         assert_eq!(picks(aboard, 0x800, 0x700_0000), HashSet::from([leia]));
 

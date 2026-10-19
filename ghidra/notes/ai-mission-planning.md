@@ -769,7 +769,9 @@ original as follows:
   Assassination, and DS Sabotage teams;
 - (2026-10-18) the research bits follow the side's finished trees (see
   "The research reserve" below);
-- hyp: the port has no officer rank, so a character in a fleet holds one;
+- (2026-10-19) the officer rank bits follow the character's command
+  (`character-command.md`, stage 4c), replacing the hyp that gave every
+  character in a fleet rank 1;
 - port: Espionage takes the class for subtypes other than 6 and Abduction
   its default class (side `+0x31c` is untraced); the mission kind and target
   are the port's (side `+0x318`).
