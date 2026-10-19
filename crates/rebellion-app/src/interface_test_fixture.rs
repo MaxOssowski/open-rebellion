@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 68;
+const SCENARIO_COUNT: u8 = 69;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -162,6 +162,9 @@ pub enum Scenario {
     /// fleet: the fleet icon's Planetary Assault
     /// (`ghidra/notes/planetary-assault.md`).
     FleetAssault = 67,
+    /// As `MissionTargeting` with the agent's class able to command: the
+    /// Command submenu's orders (`ghidra/notes/character-command.md`).
+    CharacterCommand = 68,
 }
 
 impl Scenario {
@@ -235,6 +238,7 @@ impl Scenario {
             65 => Self::SquadronBattle,
             66 => Self::FleetBombardment,
             67 => Self::FleetAssault,
+            68 => Self::CharacterCommand,
             _ => return None,
         })
     }
@@ -262,6 +266,7 @@ impl Scenario {
     /// The scenarios whose gate opens the object pop-up menu.
     fn reports_object_menu(self) -> bool {
         self == Self::MissionTargeting
+            || self == Self::CharacterCommand
             || self == Self::ReconTargeting
             || self == Self::ResearchTargeting
             || self.targets_an_object()
@@ -429,13 +434,20 @@ pub fn apply(
         );
         if matches!(
             request.scenario,
-            Scenario::MissionTargeting | Scenario::ResearchTargeting
+            Scenario::MissionTargeting | Scenario::ResearchTargeting | Scenario::CharacterCommand
         ) || request.scenario.targets_an_object()
         {
             // MissionState::mission_order_enabled: a free recruited member.
             character.recruited = true;
             character.is_captive = false;
             character.on_mandatory_mission = false;
+        }
+        if request.scenario == Scenario::CharacterCommand {
+            // FUN_004ed750's class tests (FUN_004ed1e0, FUN_004ed1c0,
+            // FUN_004ed200) pass for each command.
+            character.can_be_commander = true;
+            character.can_be_admiral = true;
+            character.can_be_general = true;
         }
         if matches!(
             request.scenario,
@@ -619,7 +631,10 @@ pub fn apply(
     }
     if matches!(
         request.scenario,
-        Scenario::MissionTargeting | Scenario::ReconTargeting | Scenario::ResearchTargeting
+        Scenario::MissionTargeting
+            | Scenario::ReconTargeting
+            | Scenario::ResearchTargeting
+            | Scenario::CharacterCommand
     ) {
         // The primary system's Defenses window at the galaxy view's right
         // edge holds the agent first on its personnel page; the second
@@ -1572,7 +1587,8 @@ struct FixtureObjectMenu<'a> {
     stop_row: Option<usize>,
     bombardment_row: Option<usize>,
     assault_row: Option<usize>,
-    /// The Planetary Bombardment submenu while it is shown.
+    command_row: Option<usize>,
+    /// The Planetary Bombardment or Command submenu while it is shown.
     submenu: Option<FixtureSubmenu>,
     target_dat_id: u32,
     target_name: &'a str,
@@ -1589,6 +1605,9 @@ struct FixtureSubmenu {
     height: f32,
     rows: usize,
     general_row: Option<usize>,
+    /// The Command submenu's rows `0x260..0x263` (None, Commander,
+    /// Admiral, General).
+    command_rows: [Option<usize>; 4],
 }
 
 fn object_menu_report<'a>(
@@ -1645,6 +1664,7 @@ fn object_menu_report<'a>(
         build_row: menu.row_of(ObjectMenuCommand::Build),
         stop_row: menu.row_of(ObjectMenuCommand::Stop),
         bombardment_row: menu.row_of(ObjectMenuCommand::Bombardment),
+        command_row: menu.row_of(ObjectMenuCommand::Command),
         assault_row: menu
             .row_of(ObjectMenuCommand::Assault)
             .filter(|&row| menu.row_enabled(row)),
@@ -1659,6 +1679,8 @@ fn object_menu_report<'a>(
                 general_row: menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(
                     rebellion_core::bombardment::GENERAL,
                 )),
+                command_rows: [0x260, 0x261, 0x262, 0x263]
+                    .map(|order| menu.submenu_row_of(ObjectMenuCommand::GiveCommand(order))),
             }),
         target_dat_id: target.dat_id.raw(),
         target_name: &target.name,
@@ -5337,7 +5359,8 @@ mod tests {
                 Scenario::SquadronLoad,
                 Scenario::SquadronBattle,
                 Scenario::FleetBombardment,
-                Scenario::FleetAssault
+                Scenario::FleetAssault,
+                Scenario::CharacterCommand
             ]
         );
     }

@@ -2822,6 +2822,13 @@ cross-runtime proof remain open
   the 24 campaigns are unchanged. Golden initial `v1:20ee82a2951ad9aa` ->
   `v1:4d8201e965d27089`, final `v1:1ddf726cecfd8477` ->
   `v1:2229fcf258823750` (`evidence/2026-10-19-character-command/`).
+- 2026-10-19: character command, stage 3. The Command submenu
+  (`0x260..0x263`, STRATEGY records read from the DLL) is enabled per
+  `FUN_004ed750` and its base check `FUN_004f9860`, with the held kind
+  checked. The Fleet Status window names the fleet's Admiral, General and
+  Commander. Accepted in the browser on both sides. The name prefix
+  (`FUN_004f17f0`) waits for a decision
+  (`evidence/2026-10-19-character-command-menu/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

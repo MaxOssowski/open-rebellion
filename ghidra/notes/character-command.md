@@ -149,9 +149,26 @@ port:
   and no character reader of it is known;
 - `FUN_00560d50` waits for `FUN_00514a60`'s trigger.
 
+Stage 3 (2026-10-19), the interface:
+- The Command submenu (`object_menu.rs`) lists the STRATEGY records
+  `0x260..0x263`: parent `0x160`, sort keys 402, 409, 406, 408, TEXTSTRA
+  12354 None, 12356 Commander, 12358 Admiral, 12360 General, word 10
+  bitmap 11902.
+  - Each row is enabled by `order_allowed`. The held kind shows the bitmap
+    (`hyp:`: the check the menu reads from the order's `+0x14` is not
+    settled; None is checked while no command is held).
+  - The choice runs `give` (`PanelAction::OrderCommand`).
+- `order_allowed` adds the base check `FUN_004f9860`: the ordering side's,
+  active (recruited), not destroyed. Its en route test is not made.
+- The Fleet Status window's Admiral, General and Commander rows
+  (`status_rows.rs`) name the fleet's side's holder aboard
+  (`FUN_004fd790`).
+
 Not yet:
-- the menu still shows "Command" without its children or a handler
-  (`object_menu.rs`), so nobody gets a command yet;
+- the name prefix, `FUN_004f17f0`. It renames the character through
+  `FUN_004f6e60` to TEXTSTRA (class record `+0x30` + `0x6800`, `0x6c00` or
+  `0x7000`). The port keeps the name, not the name's TEXTSTRA id, so this
+  needs the id kept on the character (a save change) or another source;
 - the readers use no rank: `bombardment-order.md` port note, and the AI
   records' `hyp:`.
 

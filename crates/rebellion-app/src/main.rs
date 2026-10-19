@@ -5051,6 +5051,14 @@ async fn main() {
                                 panel_actions.push(PanelAction::OrderAssault { fleets, system });
                             }
                         }
+                        // FUN_00486fb0 0x260..0x263: the Command order on
+                        // the selected character.
+                        Some((
+                            ObjectMenuCommand::GiveCommand(order),
+                            Some(MenuObject::Character(character)),
+                        )) => {
+                            panel_actions.push(PanelAction::OrderCommand { character, order });
+                        }
                         Some((ObjectMenuCommand::BombardmentTarget(kind), selection)) => {
                             if let Some((fleets, system)) = bombard_team(
                                 &world,
@@ -7044,7 +7052,37 @@ fn order_gates(
                 system,
             )
         }),
+        // FUN_004ed750 for each of 0x260..0x263; the held kind is checked.
+        command: command_rows(world, selection, is_alliance).0,
+        command_checked: command_rows(world, selection, is_alliance).1,
     }
+}
+
+/// The Command submenu's rows on `selection`: which of `0x260..0x263`
+/// `FUN_004ed750` allows, and which names the character's command.
+///
+/// hyp: the row naming the held command is checked (None while it holds
+/// none); the order's `+0x14` (`FUN_00580d80`) that the menu reads for the
+/// check is not settled.
+fn command_rows(
+    world: &GameWorld,
+    selection: Option<MenuObject>,
+    is_alliance: bool,
+) -> ([bool; 4], [bool; 4]) {
+    use rebellion_core::character_command::{order_allowed, CommandKind};
+    let Some(MenuObject::Character(key)) = selection else {
+        return ([false; 4], [false; 4]);
+    };
+    let Some(c) = world.characters.get(key) else {
+        return ([false; 4], [false; 4]);
+    };
+    let kinds = [0x260, 0x261, 0x262, 0x263].map(|order| {
+        CommandKind::of_order(order).unwrap_or(CommandKind::None)
+    });
+    (
+        kinds.map(|kind| order_allowed(c, kind, is_alliance).is_ok()),
+        kinds.map(|kind| c.command == kind),
+    )
 }
 
 /// The team and system of a Planetary Bombardment order on `selection`: a
@@ -7621,6 +7659,31 @@ fn apply_panel_action(
                     clock.tick,
                     "Planetary bombardment refused".to_string(),
                     MessageCategory::Combat,
+                ));
+            }
+        }
+        // FUN_00486fb0 -> FUN_00487740: the Command order validates
+        // (FUN_004ed750), then takes effect (FUN_00561bb0), or FUN_00487c90
+        // reports the refusal.
+        PanelAction::OrderCommand { character, order } => {
+            let is_alliance = *player_faction == MissionFaction::Alliance;
+            let Some(kind) = rebellion_core::character_command::CommandKind::of_order(order)
+            else {
+                return;
+            };
+            let result =
+                rebellion_core::character_command::give(world, character, kind, is_alliance);
+            macroquad::logging::info!(
+                "[interface] command={order:#x} character={:?} result={:?} now={:?}",
+                world.characters.get(character).map(|c| c.name.as_str()),
+                result.as_ref().map(Vec::len),
+                world.characters.get(character).map(|c| c.command),
+            );
+            if result.is_err() {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    "Command refused".to_string(),
+                    MessageCategory::Event,
                 ));
             }
         }

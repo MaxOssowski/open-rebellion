@@ -1,0 +1,56 @@
+{
+ "alliance": {
+  "steps": [
+   [
+    "submenu",
+    {
+     "left": 235.65625,
+     "top": 160,
+     "width": 109.34375,
+     "height": 86,
+     "rows": 4,
+     "general_row": null,
+     "command_rows": [
+      0,
+      3,
+      1,
+      2
+     ]
+    }
+   ]
+  ],
+  "command_lines": [
+   "[info] [interface] command=0x262 character=Some(\"Mon Mothma\") result=Ok(1) now=Some(Admiral)",
+   "[info] [interface] command=0x262 character=Some(\"Mon Mothma\") result=Ok(1) now=Some(None)",
+   "[info] [interface] command=0x263 character=Some(\"Mon Mothma\") result=Ok(1) now=Some(General)"
+  ],
+  "errors": []
+ },
+ "empire": {
+  "steps": [
+   [
+    "submenu",
+    {
+     "left": 295.65625,
+     "top": 160,
+     "width": 109.34375,
+     "height": 86,
+     "rows": 4,
+     "general_row": null,
+     "command_rows": [
+      0,
+      3,
+      1,
+      2
+     ]
+    }
+   ]
+  ],
+  "command_lines": [
+   "[info] [interface] command=0x262 character=Some(\"Mon Mothma\") result=Ok(1) now=Some(Admiral)",
+   "[info] [interface] command=0x262 character=Some(\"Mon Mothma\") result=Ok(1) now=Some(None)",
+   "[info] [interface] command=0x263 character=Some(\"Mon Mothma\") result=Ok(1) now=Some(General)"
+  ],
+  "errors": []
+ }
+}

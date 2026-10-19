@@ -1,0 +1,17 @@
+70a9d85b51bb8dc95c0a6960992d759d54247d51f3c91305f9daf0894565dd01  crates/rebellion-core/src/character_command.rs
+c94629d0cf71bd8699193378ad9bc5337474c0ae122aa03928d05e7b75f082f1  crates/rebellion-render/src/object_menu.rs
+aab7f9f022ea1e1f6618e47c39744d17048c94d84d468a322fe9edca6acafdb3  crates/rebellion-render/src/status_rows.rs
+f40cede5ac09f02b5bab5f704c6a7c65c6d5b95fa29fc0055e66387082099bcd  crates/rebellion-render/src/panels/mod.rs
+683814033b2a770b948c5fdc942605cf88a2ec4a193690d07cdf4830ffc59b81  crates/rebellion-app/src/main.rs
+75fa8d262f0406461931aa3a5a307b06c16ca54cfafc4c725e971f56f00ca8cc  crates/rebellion-app/src/interface_test_fixture.rs
+318393fa7fda18a8ae16b34a4a4225f82d21c1337f1cd58668c01584b0e7a041  ghidra/notes/character-command.md
+2d2f20a579a3b6f17537fe39ec7042dd8c8bcb177d40e0c1dc34dbffd70452a9  web/open-rebellion.wasm
+616a3bf89b925c82ccf257bbdf8519a7ba18699e22ec152683861ee27876f11d  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/console.txt
+0e4bea705d84cfe287a9ef3730442862771f5298fc66ce6b55ca327e5c290ade  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/network.txt
+d5de51940693483ea8c7b883f774cc00bdb1589dd7b28ce71144d17bd49d4f0e  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/replay-equivalence.json
+7df5d35c797ae3d82e8234c7c38d423abfcff1a8ea79e11171d33d9f5719b7ba  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/fail-without.txt
+58ff5729cea682ee1d21461f92ce2a8eef25b3a4ecc4966535328cbd0d7c1633  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/acceptance.json
+12266ba59abc9761affbe76ae496afaf6086f7a48e98a4adb4cb45062efa4dce  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/acceptance-alliance-console.txt
+12266ba59abc9761affbe76ae496afaf6086f7a48e98a4adb4cb45062efa4dce  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/acceptance-empire-console.txt
+45029c446971bac968857400f3d921cca1f5f52c231a86847af979804412301f  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/screenshots.sha256
+2e031a6c00c106bc24640976421e1bdf9906b35846cde262e73cd3d0eefc796b  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/README.md

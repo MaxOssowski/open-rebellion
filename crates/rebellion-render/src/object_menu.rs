@@ -39,6 +39,9 @@ pub enum ObjectMenuCommand {
     Bombardment,
     /// A Planetary Bombardment target (`0x220..0x223`), by its kind.
     BombardmentTarget(u32),
+    /// A Command order (`0x260..0x263`: None, Commander, Admiral, General),
+    /// by its kind.
+    GiveCommand(u16),
     Assault,
     Rename,
     Scrap,
@@ -268,6 +271,48 @@ const BOMBARDMENT_TARGETS: [ObjectMenuItem; 4] = [
         false,
     ),
 ];
+/// The Command orders under [`COMMAND`]: STRATEGY records `0x260..0x263`
+/// (word 1 the parent `0x160`, word 2 the sort key, word 5 the TEXTSTRA
+/// string, word 10 the bitmap 11902; `character-command.md`).
+const COMMAND_KINDS: [ObjectMenuItem; 4] = [
+    item(
+        0x260,
+        ObjectMenuCommand::GiveCommand(0x260),
+        402,
+        12354,
+        "None",
+        false,
+    ),
+    item(
+        0x261,
+        ObjectMenuCommand::GiveCommand(0x261),
+        409,
+        12356,
+        "Commander",
+        false,
+    ),
+    item(
+        0x262,
+        ObjectMenuCommand::GiveCommand(0x262),
+        406,
+        12358,
+        "Admiral",
+        false,
+    ),
+    item(
+        0x263,
+        ObjectMenuCommand::GiveCommand(0x263),
+        408,
+        12360,
+        "General",
+        false,
+    ),
+];
+
+/// The bitmap a checked row shows: the Command records' word 10.
+/// hyp: word 10 is the checked item's bitmap, as `agent_menu.rs` reads it.
+const CHECK_BITMAP: u32 = 11902;
+
 const ASSAULT: ObjectMenuItem = item(
     0x234,
     ObjectMenuCommand::Assault,
@@ -336,6 +381,8 @@ const PRODUCER_RENAME: ObjectMenuItem = item(
 pub struct ObjectMenuRow {
     pub item: ObjectMenuItem,
     pub enabled: bool,
+    /// The order's `+0x14` says so: the row shows [`CHECK_BITMAP`].
+    pub checked: bool,
 }
 
 impl ObjectMenuRow {
@@ -343,7 +390,11 @@ impl ObjectMenuRow {
     pub const fn entry(&self) -> GameMenuEntry<'static> {
         GameMenuEntry {
             label: self.item.label,
-            icon: None,
+            icon: if self.checked {
+                Some(CHECK_BITMAP)
+            } else {
+                None
+            },
             enabled: self.enabled,
             submenu: self.item.submenu,
         }
@@ -397,10 +448,11 @@ impl ObjectMenuRow {
 /// - Encyclopedia is enabled for a single selection.
 /// - Status is enabled for any single selection that is not a system
 ///   (`FUN_0051d990`, `ghidra/notes/status-window.md`).
+/// - Command, a submenu parent, is enabled (`FUN_00442590`); its rows are
+///   [`object_submenu_rows`].
 /// - port: a character's or special force's Move and Confirmed Move,
-///   Command, Retire and the other fleet orders stay disabled until their
-///   windows and orders are ported. In the original, Command is a submenu
-///   parent.
+///   Retire and the other fleet orders stay disabled until their windows
+///   and orders are ported.
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
     // A fleet icon's Move rows act on the system's fleets of the player's
@@ -456,6 +508,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         .chain(&[ENCYCLOPEDIA, STATUS])
         .map(|&item| ObjectMenuRow {
             item,
+            checked: false,
             enabled: match item.command {
                 ObjectMenuCommand::Mission => gates.mission,
                 ObjectMenuCommand::Move => {
@@ -471,7 +524,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::Build => producer && gates.build,
                 ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
                 // FUN_00442590: a submenu parent (flags 8) is enabled.
-                ObjectMenuCommand::Bombardment => true,
+                ObjectMenuCommand::Bombardment | ObjectMenuCommand::Command => true,
                 ObjectMenuCommand::Assault => gates.assault,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 // FUN_0051d990: a single selection that is not a system.
@@ -486,12 +539,31 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
     rows
 }
 
-/// The rows of the Planetary Bombardment submenu for `selection`: a fleet's
-/// class lists the four targets (`FUN_004ff8e0`), as does a sector window's
-/// fleet icon (`FUN_00507290`); each is enabled by its gate. Empty for any
-/// other selection.
+/// The rows of the submenu for `selection`:
+///
+/// - Planetary Bombardment: a fleet's class lists the four targets
+///   (`FUN_004ff8e0`), as does a sector window's fleet icon
+///   (`FUN_00507290`); each is enabled by its gate;
+/// - Command: a character's class lists None, Commander, Admiral and
+///   General (`FUN_004f2400`), in their sort-key order, each enabled by its
+///   check (`FUN_004ed750`) and the held one checked.
+///
+/// Empty for any other selection.
 #[must_use]
 pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
+    if matches!(selection, Some(MenuObject::Character(_))) {
+        let mut rows: Vec<ObjectMenuRow> = COMMAND_KINDS
+            .iter()
+            .zip(gates.command.into_iter().zip(gates.command_checked))
+            .map(|(&item, (enabled, checked))| ObjectMenuRow {
+                item,
+                enabled,
+                checked,
+            })
+            .collect();
+        rows.sort_by_key(|row| row.item.sort_key);
+        return rows;
+    }
     let fleet = matches!(
         selection,
         Some(
@@ -508,7 +580,11 @@ pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> 
     BOMBARDMENT_TARGETS
         .iter()
         .zip(gates.bombard)
-        .map(|(&item, enabled)| ObjectMenuRow { item, enabled })
+        .map(|(&item, enabled)| ObjectMenuRow {
+            item,
+            enabled,
+            checked: false,
+        })
         .collect()
 }
 
@@ -541,6 +617,11 @@ pub struct OrderGates {
     /// Planetary Assault (`0x234`, its `+0x18` `FUN_00581ae0`;
     /// `rebellion_core::assault::order_enabled`).
     pub assault: bool,
+    /// The Command orders `0x260..0x263` on a character (`FUN_004ed750`,
+    /// `rebellion_core::character_command::order_allowed`).
+    pub command: [bool; 4],
+    /// Which of `0x260..0x263` names the character's command.
+    pub command_checked: [bool; 4],
 }
 
 /// An open object pop-up menu.
@@ -548,7 +629,8 @@ pub struct OrderGates {
 pub struct ObjectMenuState {
     selection: Option<MenuObject>,
     rows: Vec<ObjectMenuRow>,
-    /// The Planetary Bombardment submenu's rows, if the menu has it.
+    /// The Planetary Bombardment or Command submenu's rows, if the menu has
+    /// one.
     submenu: Vec<ObjectMenuRow>,
     /// The highlight and the submenu's timer (`FUN_004aab50`).
     window: GameMenuState,
@@ -582,7 +664,7 @@ impl ObjectMenuState {
         self.submenu.len()
     }
 
-    /// Whether the Planetary Bombardment submenu is shown.
+    /// Whether the submenu is shown.
     #[must_use]
     pub fn submenu_shown(&self) -> bool {
         self.window.submenu_shown()
@@ -647,10 +729,12 @@ pub fn draw_object_menu(
     let entries: Vec<GameMenuEntry<'static>> = open.rows.iter().map(ObjectMenuRow::entry).collect();
     let children: Vec<GameMenuEntry<'static>> =
         open.submenu.iter().map(ObjectMenuRow::entry).collect();
-    let parent = open
-        .rows
-        .iter()
-        .position(|row| row.item.command == ObjectMenuCommand::Bombardment);
+    let parent = open.rows.iter().position(|row| {
+        matches!(
+            row.item.command,
+            ObjectMenuCommand::Bombardment | ObjectMenuCommand::Command
+        )
+    });
     let submenu = parent
         .filter(|_| !children.is_empty())
         .map(|parent| GameSubmenu {
@@ -708,6 +792,8 @@ mod tests {
         build: false,
         bombard: [false; 4],
         assault: false,
+        command: [false; 4],
+        command_checked: [false; 4],
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -762,6 +848,54 @@ mod tests {
                 .map(|row| row.item.label)
                 .collect::<Vec<_>>(),
             ["Command"]
+        );
+    }
+
+    #[test]
+    fn a_characters_command_submenu_lists_none_admiral_general_commander() {
+        // STRATEGY RT_RCDATA 0x260..0x263: parent 0x160, sort 402, 409, 406,
+        // 408, TEXTSTRA 12354, 12356, 12358, 12360, bitmap 11902; each row
+        // enabled by FUN_004ed750, the held kind checked.
+        let gates = OrderGates {
+            command: [false, true, true, false],
+            command_checked: [false, false, true, false],
+            ..OrderGates::default()
+        };
+        let rows = object_submenu_rows(Some(MenuObject::Character(CharacterKey::default())), gates);
+        assert_eq!(labels(&rows), ["None", "Admiral", "General", "Commander"]);
+        assert_eq!(
+            rows.iter().map(|row| row.item.kind).collect::<Vec<_>>(),
+            [0x260, 0x262, 0x263, 0x261]
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.item.label_string_id)
+                .collect::<Vec<_>>(),
+            [12354, 12358, 12360, 12356]
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.item.sort_key).collect::<Vec<_>>(),
+            [402, 406, 408, 409]
+        );
+        assert_eq!(enabled(&rows), ["Admiral", "Commander"]);
+        assert_eq!(
+            rows.iter().map(|row| row.entry().icon).collect::<Vec<_>>(),
+            [None, Some(11902), None, None]
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.item.command).collect::<Vec<_>>(),
+            [0x260, 0x262, 0x263, 0x261].map(ObjectMenuCommand::GiveCommand)
+        );
+        // A special force or a fleet has no Command rows.
+        assert!(object_submenu_rows(
+            Some(MenuObject::SpecialForce(SpecialForceKey::default())),
+            gates
+        )
+        .is_empty());
+        assert!(
+            object_submenu_rows(Some(MenuObject::Fleet(FleetKey::default())), gates)
+                .iter()
+                .all(|row| !matches!(row.item.command, ObjectMenuCommand::GiveCommand(_)))
         );
     }
 
@@ -849,6 +983,8 @@ mod tests {
             build: false,
             bombard: [false; 4],
             assault: false,
+            command: [false; 4],
+            command_checked: [false; 4],
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -864,11 +1000,12 @@ mod tests {
             enabled(&object_menu_rows(fleet, OrderGates::default())),
             ["Planetary Bombardment", "Encyclopedia", "Status"]
         );
-        // port: a character's move is not ported, so its rows stay disabled.
+        // port: a character's move is not ported, so its rows stay disabled;
+        // Command is a submenu parent, enabled (FUN_00442590).
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, gates)),
-            ["Encyclopedia", "Status"]
+            ["Command", "Encyclopedia", "Status"]
         );
     }
 
@@ -1035,6 +1172,8 @@ mod tests {
             build: true,
             bombard: [false; 4],
             assault: false,
+            command: [false; 4],
+            command_checked: [false; 4],
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),
@@ -1190,11 +1329,11 @@ mod tests {
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, MISSION_GATE)),
-            ["Mission", "Encyclopedia", "Status"]
+            ["Mission", "Command", "Encyclopedia", "Status"]
         );
         assert_eq!(
             enabled(&object_menu_rows(character, OrderGates::default())),
-            ["Encyclopedia", "Status"]
+            ["Command", "Encyclopedia", "Status"]
         );
     }
 
@@ -1332,7 +1471,7 @@ mod tests {
             GameMenuEntry {
                 label: "Command",
                 icon: None,
-                enabled: false,
+                enabled: true,
                 submenu: true,
             }
         );

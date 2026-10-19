@@ -52,10 +52,18 @@ impl CommandKind {
     }
 }
 
-/// Why `FUN_004ed750` refuses a Command order (its error codes under
-/// `0x30`).
+/// Why a Command order is refused: the base check `FUN_004f9860`, then
+/// `FUN_004ed750`'s error codes under `0x30`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
+    /// `FUN_004f9860` 1: the character is not the ordering side's (`+0x24`
+    /// bits 6..7).
+    OtherSide,
+    /// `FUN_004f9860` 2: not active (`+0x50` bit 2; for a character, not
+    /// recruited).
+    Inactive,
+    /// `FUN_004f9860` 3: destroyed (`+0x50` bit 3; killed).
+    Destroyed,
     /// 1: on a mission (`+0x78` bit 7).
     OnMission,
     /// 2: captured (`+0xac` bit 0).
@@ -66,18 +74,36 @@ pub enum Refusal {
     NotAllowed,
 }
 
-/// `FUN_004ed750`, the character's slot `+0x2d0` for orders `0x260..0x263`:
-/// the order is refused for a character on a mission, injured or captured,
-/// and unless its class allows the command (`FUN_004ed1e0` Commander,
-/// `FUN_004ed1c0` Admiral, `FUN_004ed200` General, the class record's
-/// `+0xac`, `+0xa8`, `+0xb0`); None needs a command to clear.
+/// `FUN_004ed750`, the character's slot `+0x2d0` for orders `0x260..0x263`,
+/// for the side whose order it is (`is_alliance`):
+///
+/// - the base check `FUN_004f9860`: the character is the ordering side's,
+///   active (recruited) and not destroyed;
+/// - the order is refused for a character on a mission, injured or
+///   captured;
+/// - and unless its class allows the command (`FUN_004ed1e0` Commander,
+///   `FUN_004ed1c0` Admiral, `FUN_004ed200` General, the class record's
+///   `+0xac`, `+0xa8`, `+0xb0`); None needs a command to clear.
 ///
 /// The original reports every refusal that applies, in this order; the
 /// port returns the first.
 ///
-/// port: the base check `FUN_004f9860` is read as the character being
-/// alive.
-pub fn order_allowed(character: &Character, kind: CommandKind) -> Result<(), Refusal> {
+/// port: the base check's en route test (`+0x50` bit 4) is not made; the
+/// port keeps no such flag on a character.
+pub fn order_allowed(
+    character: &Character,
+    kind: CommandKind,
+    is_alliance: bool,
+) -> Result<(), Refusal> {
+    if character.is_alliance != is_alliance {
+        return Err(Refusal::OtherSide);
+    }
+    if !character.recruited {
+        return Err(Refusal::Inactive);
+    }
+    if character.is_killed {
+        return Err(Refusal::Destroyed);
+    }
     if character.on_mission || character.on_hidden_mission {
         return Err(Refusal::OnMission);
     }
@@ -100,7 +126,8 @@ pub fn order_allowed(character: &Character, kind: CommandKind) -> Result<(), Ref
     }
 }
 
-/// `FUN_00561bb0`, the Command order's effect on `character`:
+/// `FUN_00561bb0`, the Command order of the side `is_alliance` on
+/// `character`:
 ///
 /// 1. The command the order names (`FUN_0053ebb0`); the character's own
 ///    command again names none.
@@ -118,11 +145,12 @@ pub fn give(
     world: &mut GameWorld,
     character: CharacterKey,
     kind: CommandKind,
+    is_alliance: bool,
 ) -> Result<Vec<CharacterKey>, Refusal> {
     let Some(c) = world.characters.get(character) else {
-        return Err(Refusal::NotAllowed);
+        return Err(Refusal::Destroyed);
     };
-    order_allowed(c, kind)?;
+    order_allowed(c, kind, is_alliance)?;
     let kind = if c.command == kind {
         CommandKind::None
     } else {
@@ -194,10 +222,21 @@ mod tests {
     use super::*;
     use crate::ids::{FleetKey, SystemKey};
 
+    /// The Command order of `c`'s own side.
+    fn give_as(
+        world: &mut GameWorld,
+        c: CharacterKey,
+        kind: CommandKind,
+    ) -> Result<Vec<CharacterKey>, Refusal> {
+        let side = world.characters[c].is_alliance;
+        give(world, c, kind, side)
+    }
+
     fn officer(world: &mut GameWorld, alliance: bool) -> CharacterKey {
         world.characters.insert(Character {
             is_alliance: alliance,
             is_empire: !alliance,
+            recruited: true,
             can_be_admiral: true,
             can_be_commander: true,
             can_be_general: true,
@@ -230,15 +269,24 @@ mod tests {
         // captured (+0xac bit 0), or when the class lacks the kind
         // (FUN_004ed1e0, FUN_004ed1c0, FUN_004ed200); None needs a command.
         let base = Character {
+            is_alliance: true,
+            recruited: true,
             can_be_admiral: true,
             ..Default::default()
         };
-        assert_eq!(order_allowed(&base, CommandKind::Admiral), Ok(()));
+        assert_eq!(order_allowed(&base, CommandKind::Admiral, true), Ok(()));
+        // FUN_004f9860: the ordering side's, active (recruited), not destroyed.
+        assert_eq!(
+            order_allowed(&base, CommandKind::Admiral, false),
+            Err(Refusal::OtherSide)
+        );
         let with = |edit: fn(&mut Character)| {
             let mut c = base.clone();
             edit(&mut c);
-            order_allowed(&c, CommandKind::Admiral)
+            order_allowed(&c, CommandKind::Admiral, true)
         };
+        assert_eq!(with(|c| c.recruited = false), Err(Refusal::Inactive));
+        assert_eq!(with(|c| c.is_killed = true), Err(Refusal::Destroyed));
         assert_eq!(with(|c| c.on_mission = true), Err(Refusal::OnMission));
         assert_eq!(
             with(|c| c.on_hidden_mission = true),
@@ -248,29 +296,34 @@ mod tests {
         assert_eq!(with(|c| c.is_captive = true), Err(Refusal::Captured));
         assert_eq!(with(|c| c.can_be_admiral = false), Err(Refusal::NotAllowed));
         assert_eq!(
-            order_allowed(&base, CommandKind::General),
+            order_allowed(&base, CommandKind::General, true),
             Err(Refusal::NotAllowed)
         );
         assert_eq!(
-            order_allowed(&base, CommandKind::Commander),
+            order_allowed(&base, CommandKind::Commander, true),
             Err(Refusal::NotAllowed)
         );
         let general = Character {
+            is_alliance: true,
+            recruited: true,
             can_be_general: true,
             can_be_commander: true,
             ..Default::default()
         };
-        assert_eq!(order_allowed(&general, CommandKind::General), Ok(()));
-        assert_eq!(order_allowed(&general, CommandKind::Commander), Ok(()));
+        assert_eq!(order_allowed(&general, CommandKind::General, true), Ok(()));
         assert_eq!(
-            order_allowed(&base, CommandKind::None),
+            order_allowed(&general, CommandKind::Commander, true),
+            Ok(())
+        );
+        assert_eq!(
+            order_allowed(&base, CommandKind::None, true),
             Err(Refusal::NotAllowed)
         );
         let commanding = Character {
             command: CommandKind::Admiral,
             ..base
         };
-        assert_eq!(order_allowed(&commanding, CommandKind::None), Ok(()));
+        assert_eq!(order_allowed(&commanding, CommandKind::None, true), Ok(()));
     }
 
     #[test]
@@ -295,10 +348,10 @@ mod tests {
         let enemy = place(&mut world, false, Some(fleet));
         let planet = place(&mut world, true, None);
         for c in [elsewhere, enemy, planet] {
-            assert_eq!(give(&mut world, c, CommandKind::Admiral), Ok(vec![c]));
+            assert_eq!(give_as(&mut world, c, CommandKind::Admiral), Ok(vec![c]));
         }
-        assert_eq!(give(&mut world, a, CommandKind::Admiral), Ok(vec![a]));
-        assert_eq!(give(&mut world, b, CommandKind::Admiral), Ok(vec![a, b]));
+        assert_eq!(give_as(&mut world, a, CommandKind::Admiral), Ok(vec![a]));
+        assert_eq!(give_as(&mut world, b, CommandKind::Admiral), Ok(vec![a, b]));
         assert_eq!(world.characters[a].command, CommandKind::None);
         assert_eq!(world.characters[b].command, CommandKind::Admiral);
         // The other fleet's, the enemy's and the planet's admirals stay.
@@ -306,24 +359,24 @@ mod tests {
             assert_eq!(world.characters[c].command, CommandKind::Admiral);
         }
         // Another kind takes no one's.
-        assert_eq!(give(&mut world, a, CommandKind::General), Ok(vec![a]));
+        assert_eq!(give_as(&mut world, a, CommandKind::General), Ok(vec![a]));
         assert_eq!(world.characters[b].command, CommandKind::Admiral);
         // On the planet: the system's holder not aboard a fleet.
         let second = place(&mut world, true, None);
         assert_eq!(
-            give(&mut world, second, CommandKind::Admiral),
+            give_as(&mut world, second, CommandKind::Admiral),
             Ok(vec![planet, second])
         );
         assert_eq!(world.characters[b].command, CommandKind::Admiral);
         // The same kind again clears it, as None does.
-        assert_eq!(give(&mut world, b, CommandKind::Admiral), Ok(vec![b]));
+        assert_eq!(give_as(&mut world, b, CommandKind::Admiral), Ok(vec![b]));
         assert_eq!(world.characters[b].command, CommandKind::None);
-        assert_eq!(give(&mut world, a, CommandKind::None), Ok(vec![a]));
+        assert_eq!(give_as(&mut world, a, CommandKind::None), Ok(vec![a]));
         assert_eq!(world.characters[a].command, CommandKind::None);
         // A refused order changes nothing.
         world.characters[a].injury = 3;
         assert_eq!(
-            give(&mut world, a, CommandKind::Admiral),
+            give_as(&mut world, a, CommandKind::Admiral),
             Err(Refusal::Injured)
         );
         assert_eq!(world.characters[a].command, CommandKind::None);

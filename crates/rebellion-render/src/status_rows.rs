@@ -118,10 +118,33 @@ const fn yes_no(value: bool) -> &'static str {
     }
 }
 
-/// 34658 "Not Assigned". port: the port keeps no character command rank
-/// (`+0x96`), so a fleet's or system's Admiral, General and Commander rows
-/// always read it.
+/// 34658 "Not Assigned".
 const NOT_ASSIGNED: &str = "Not Assigned";
+
+/// A fleet's Admiral, General or Commander row (`FUN_004fd790(fleet,
+/// kind)`): the name (`FUN_004f62d0`) of the first character aboard the
+/// fleet's ships, of the fleet's side, whose command (`+0x96`) is `kind`
+/// (`FUN_005006f0`), else [`NOT_ASSIGNED`].
+///
+/// port: the characters are taken in the world's order, as the port keeps
+/// them on the fleet rather than its ships.
+fn commander(
+    world: &rebellion_core::world::GameWorld,
+    key: FleetKey,
+    is_alliance: bool,
+    kind: rebellion_core::character_command::CommandKind,
+) -> String {
+    world
+        .characters
+        .values()
+        .find(|c| {
+            c.current_fleet == Some(key)
+                && c.is_alliance == is_alliance
+                && !c.is_killed
+                && c.command == kind
+        })
+        .map_or_else(|| NOT_ASSIGNED.to_owned(), |c| c.name.clone())
+}
 
 /// The shared ETA row (`FUN_004fd2b0`): 34662 "ETA Destination:", 14356
 /// "Day " and the arrival day.
@@ -238,6 +261,7 @@ fn damaged(ship: &ShipInstance, class: &CapitalShipClass) -> bool {
 /// hyperdrive (`FUN_004fd900` is traced only to its walk).
 #[must_use]
 pub fn fleet_rows(sources: StatusSources<'_>, key: FleetKey) -> Option<Vec<StatusRow>> {
+    use rebellion_core::character_command::CommandKind;
     let world = sources.world;
     let fleet = world.fleets.get(key)?;
     let arrival = fleet_arrival(sources, key);
@@ -248,9 +272,18 @@ pub fn fleet_rows(sources: StatusSources<'_>, key: FleetKey) -> Option<Vec<Statu
     let troop_capacity: u32 = ships.iter().map(|(_, class)| class.troop_capacity).sum();
     let squadrons: u32 = fleet.fighters.iter().map(|entry| entry.count).sum();
     rows.extend([
-        row("Admiral:", NOT_ASSIGNED),
-        row("General:", NOT_ASSIGNED),
-        row("Commander:", NOT_ASSIGNED),
+        row(
+            "Admiral:",
+            commander(world, key, fleet.is_alliance, CommandKind::Admiral),
+        ),
+        row(
+            "General:",
+            commander(world, key, fleet.is_alliance, CommandKind::General),
+        ),
+        row(
+            "Commander:",
+            commander(world, key, fleet.is_alliance, CommandKind::Commander),
+        ),
         row("Number Of Ships", fleet.ship_count().to_string()),
         heading("Capacity:"),
         row("Fighter Squadrons:", fighter_capacity.to_string()),
@@ -1157,6 +1190,45 @@ mod tests {
                 ("Personnel:", "1"),
                 ("Damaged Ships:", "1"),
                 ("Hyperdrive Rating:", "Yes"),
+            ]
+        );
+    }
+
+    #[test]
+    fn fleet_status_names_the_fleets_side_s_admiral_general_and_commander() {
+        // FUN_00449200: 12358 "Admiral", 12360 "General", 12356 "Commander",
+        // each FUN_004fd790(fleet, kind): the first of the fleet's side
+        // aboard whose +0x96 is the kind, else 34658 "Not Assigned".
+        use rebellion_core::character_command::CommandKind;
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Yavin",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let fleet = carrier_fleet(&mut world, here);
+        let aboard = |world: &mut GameWorld, name: &str, alliance: bool, command| {
+            world.characters.insert(rebellion_core::world::Character {
+                name: name.into(),
+                is_alliance: alliance,
+                current_fleet: Some(fleet),
+                command,
+                ..Default::default()
+            })
+        };
+        aboard(&mut world, "Ackbar", true, CommandKind::Admiral);
+        aboard(&mut world, "Rieekan", true, CommandKind::None);
+        // A prisoner of the other side aboard counts for neither.
+        aboard(&mut world, "Ozzel", false, CommandKind::General);
+        let states = States::new();
+        let rows = fleet_rows(states.sources(&world), fleet).unwrap();
+        let rows = super::tests::rows(&rows);
+        assert_eq!(
+            rows[1..4],
+            [
+                ("Admiral:", "Ackbar"),
+                ("General:", "Not Assigned"),
+                ("Commander:", "Not Assigned")
             ]
         );
     }

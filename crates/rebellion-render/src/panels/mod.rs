@@ -195,6 +195,12 @@ pub enum PanelAction {
     },
     /// Order Planetary Assault (`0x234`) of `system` by the player's
     /// `fleets` (`FUN_00486fb0` -> `FUN_00487740` -> `FUN_00563390`).
+    /// A Command order (`0x260..0x263`, `character-command.md`) on a
+    /// character of the player's.
+    OrderCommand {
+        character: rebellion_core::ids::CharacterKey,
+        order: u16,
+    },
     OrderAssault {
         fleets: Vec<FleetKey>,
         system: SystemKey,
