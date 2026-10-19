@@ -2907,6 +2907,13 @@ cross-runtime proof remain open
   none meets the original's timers `0x380..0x396`; 21 unread `u32` event
   constants (the invented ids among them) are removed and a test guards
   the range (`evidence/2026-10-19-event-ids/`).
+- 2026-10-19 (F-028): betrayal. The original's only betrayal is the
+  mission phase `FUN_00589f10` (ported); no function changes a
+  character's side, and the manual's Traitors section agrees. The port's
+  50-day defection (`betrayal.rs`) is removed, save v88; golden
+  regenerated (initial `v1:a2c72fbdc17546ff`, final `v1:55c055d53d7ca5b8`);
+  every campaign changes through the shifted rolls, none had a defection
+  (`evidence/2026-10-19-betrayal-removed/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

@@ -110,7 +110,7 @@ See `agent_docs/simulation.md` for full API reference on all 15 systems.
 ### Full Parity (v0.5.0)
 - **4 scripted story chains** (`story_events.rs`): Luke Dagobah (0x221→0x210), Final Battle (0x220), Bounty Hunters (0x212), Jabba's Palace (0x380-0x383)
 - **Han Solo speed bonus** (`movement.rs`): `hyperdrive_modifier` on Character, consulted by `fleet_ticks_per_hop()`
-- **Betrayal system** (`betrayal.rs`): loyalty threshold via UPRIS1TB, `is_unable_to_betray` immunity, 50-tick cooldown
+- **Betrayal**: the mission phase only (`mission_detection::betray`, `FUN_00589f10`); characters never change sides (`ghidra/notes/betrayal-and-loyalty.md`)
 - **Decoy system** (`missions.rs`): FDECOYTB consultation during mission resolution
 - **Escape system** (`missions.rs`): timer `0x38a` per captive (GNPRTB 2584 + rand(0..=2585) days), an ESCAPETB roll on espionage + combat minus the captor's guards and regiments, and autorouting to the nearest safe system, `advance_escapes()` (`ghidra/notes/captive-escape.md`)
 - **Mission state flags**: `on_mission`, `on_hidden_mission`, `on_mandatory_mission` tracked on Character; `dispatch_guarded()` prevents double-dispatch

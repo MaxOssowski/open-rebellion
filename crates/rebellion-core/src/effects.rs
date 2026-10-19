@@ -208,10 +208,6 @@ pub enum GameEffect {
     EventFired {
         event_id: u32,
     },
-    CharacterBetrayed {
-        character: CharacterKey,
-        defected_to_alliance: bool,
-    },
     UprisingIncident {
         system: SystemKey,
     },
@@ -298,7 +294,6 @@ impl GameEffect {
             | Self::AiResearchDispatched { .. }
             | Self::TechUnlocked { .. }
             | Self::EventFired { .. }
-            | Self::CharacterBetrayed { .. }
             | Self::UprisingIncident { .. }
             | Self::SpecialForceSpawned { .. }
             | Self::StoryMessageDisplayed { .. } => EffectPhase::Command,

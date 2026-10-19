@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 use crate::integrator::{resolve_system_space_combat, PerceptionIntegrator};
 use rebellion_core::ai::{AIState, AISystem};
-use rebellion_core::betrayal::{BetrayalState, BetrayalSystem};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
 use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
 use rebellion_core::delivery::DeliveryState;
@@ -31,7 +30,7 @@ use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
 use rebellion_core::victory::{VictoryState, VictorySystem};
 use rebellion_core::world::ControlKind;
-use rebellion_core::world::{CampaignConfig, GameWorld, MstbTable};
+use rebellion_core::world::{CampaignConfig, GameWorld};
 
 const COMBAT_RETRY_TICKS: u64 = 5;
 const UNCHANGED_STALEMATE_COOLDOWN: u64 = u64::MAX;
@@ -59,7 +58,6 @@ pub struct SimulationStates {
     pub death_star: DeathStarState,
     pub research: ResearchState,
     pub victory: VictoryState,
-    pub betrayal: BetrayalState,
     pub economy: EconomyState,
     pub repair: RepairState,
     /// Mines, refineries and each side's stockpiles.
@@ -595,7 +593,6 @@ pub fn run_simulation_tick(
         world,
         tick_events.last().map_or(0, |event| event.tick),
     ));
-    let empty_table = MstbTable::new(vec![]);
     let uprising_events = UprisingSystem::advance(
         &mut states.uprising,
         world,
@@ -637,17 +634,8 @@ pub fn run_simulation_tick(
     );
     integrator.apply_force_discoveries(world, &discovered);
 
-    // ── 10. Betrayal ─────────────────────────────────────────────────────
-    let betrayal_rolls = take_rolls(world.characters.len());
-    let loyalty_tb = world.mission_tables.get("UPRIS1TB").unwrap_or(&empty_table);
-    let betrayal_events = BetrayalSystem::advance(
-        &mut states.betrayal,
-        world,
-        tick_events,
-        &betrayal_rolls,
-        loyalty_tb,
-    );
-    integrator.apply_betrayal_events(world, &betrayal_events);
+    // ── 10. (The port's 50-day defection is gone: the original's only
+    // betrayal is the mission phase; ghidra/notes/betrayal-and-loyalty.md.)
 
     // ── 11. Death Star ───────────────────────────────────────────────────
     for (req, outcome) in &bombard.outcomes {
@@ -904,7 +892,6 @@ mod tests {
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(s1, s2),
-            betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
@@ -1386,7 +1373,6 @@ mod tests {
                 death_star: DeathStarState::default(),
                 research: ResearchState::new(),
                 victory: VictoryState::new(target, other),
-                betrayal: BetrayalState::new(),
                 economy: EconomyState::default(),
                 repair: RepairState::default(),
                 production: ProductionState::new(),
@@ -1521,7 +1507,6 @@ mod tests {
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(other, target),
-            betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
@@ -1710,7 +1695,6 @@ mod tests {
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(alliance_hq, coruscant),
-            betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
@@ -1860,7 +1844,6 @@ mod tests {
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(alliance_hq, coruscant),
-            betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),
@@ -2025,7 +2008,6 @@ mod tests {
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(origin, target),
-            betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             repair: RepairState::default(),
             production: ProductionState::new(),

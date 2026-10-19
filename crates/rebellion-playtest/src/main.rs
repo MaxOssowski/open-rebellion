@@ -362,7 +362,6 @@ fn main() -> anyhow::Result<()> {
         death_star: rebellion_core::death_star::DeathStarState::default(),
         research: rebellion_core::research::ResearchState::new(),
         victory: rebellion_core::victory::VictoryState::new(victory_a, victory_e),
-        betrayal: rebellion_core::betrayal::BetrayalState::new(),
         economy: rebellion_core::economy::EconomyState::default(),
         repair: rebellion_core::repair::RepairState::default(),
         production: rebellion_core::production_cycle::ProductionState::new(),

@@ -12,7 +12,6 @@ pub mod ai_planner;
 pub mod ai_module_b;
 pub mod ai_records;
 pub mod ai_strategy;
-pub mod betrayal;
 pub mod blockade;
 pub mod assault;
 pub mod autoscrap;

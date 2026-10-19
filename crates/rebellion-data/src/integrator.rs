@@ -12,7 +12,6 @@
 
 
 use rebellion_core::ai::{AIAction, AIState, AiFaction};
-use rebellion_core::betrayal::BetrayalEvent;
 use rebellion_core::blockade::BlockadeEvent;
 use rebellion_core::bombardment::BombardEnv;
 use rebellion_core::combat::{CombatSide, CombatSystem, SpaceCombatResult};
@@ -21,7 +20,7 @@ use rebellion_core::economy::{EconomyEvent, EconomyState};
 use rebellion_core::events::{EventAction, FiredEvent, SkillField, SystemTag};
 use rebellion_core::fog::RevealEvent;
 use rebellion_core::game_events::{
-    GameEventRecord, EVT_AI_ACTION, EVT_BETRAYAL_CHECK, EVT_BLOCKADE_ENDED, EVT_BLOCKADE_STARTED,
+    GameEventRecord, EVT_AI_ACTION, EVT_BLOCKADE_ENDED, EVT_BLOCKADE_STARTED,
     EVT_BLOCKADE_SUPPORT, EVT_BLOCKADE_TROOP_DESTROYED, EVT_BOMBARDMENT, EVT_BUILD_COMPLETE,
     EVT_CAMPAIGN_SNAPSHOT,
     EVT_CAPTURE, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
@@ -33,11 +32,11 @@ use rebellion_core::game_events::{
     EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
     EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
-    EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SIDE_CHANGE,
+    EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED,
     EVT_SUPPORT_CHANGE, EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
     EVT_UPRISING_SUPPORT,
-    EVT_UPRISING_INCIDENT, EVT_VICTORY, EVT_VICTORY_CHECK, SYS_AI, SYS_BETRAYAL, SYS_BLOCKADE,
+    EVT_UPRISING_INCIDENT, EVT_VICTORY, EVT_VICTORY_CHECK, SYS_AI, SYS_BLOCKADE,
     SYS_COMBAT, SYS_DEATH_STAR, SYS_ECONOMY, SYS_EVENTS, SYS_FOG, SYS_JEDI, SYS_MANUFACTURING,
     SYS_MISSIONS, SYS_MOVEMENT, SYS_REPAIR, SYS_RESEARCH, SYS_STORY, SYS_UPRISING, SYS_VICTORY,
 };
@@ -1833,55 +1832,6 @@ impl PerceptionIntegrator {
                 payload,
             ));
             rebellion_core::uprising::apply_uprising_event(world, evt);
-        }
-    }
-
-    // ── Step 10: Betrayal ─────────────────────────────────────────────────
-
-    /// Apply betrayal events: faction flip + fleet removal + telemetry.
-    pub fn apply_betrayal_events(&mut self, world: &mut GameWorld, events: &[BetrayalEvent]) {
-        // Heartbeat: emit a check event so the "betrayal" system tag always appears.
-        self.events.push(GameEventRecord::new(
-            self.tick, self.wall_ms, SYS_BETRAYAL, EVT_BETRAYAL_CHECK,
-            serde_json::json!({ "characters_checked": world.characters.len(), "betrayals": events.len() }),
-        ));
-        for evt in events {
-            let BetrayalEvent::CharacterBetrayed {
-                character,
-                defected_to_alliance,
-            } = evt;
-
-            // #R9: reveal-before-flip — emit EVT_TRAITOR_REVEALED while the
-            // character still belongs to the original faction.
-            self.emit(
-                SYS_BETRAYAL,
-                EVT_TRAITOR_REVEALED,
-                serde_json::json!({
-                    "character": char_name(world, *character),
-                    "original_faction": if world.characters.get(*character)
-                        .is_some_and(|c| c.is_alliance) { "alliance" } else { "empire" },
-                }),
-            );
-
-            // Apply the faction flip.
-            if let Some(c) = world.characters.get_mut(*character) {
-                c.is_alliance = *defected_to_alliance;
-                c.is_empire = !*defected_to_alliance;
-            }
-            for (_, fleet) in &mut world.fleets {
-                fleet.characters.retain(|&k| k != *character);
-            }
-
-            // #R10: emit EVT_SIDE_CHANGE after the flip with DI-H2 payload.
-            // Replaces the former EVT_BETRAYAL emit (identical payload, same timing).
-            self.emit(
-                SYS_BETRAYAL,
-                EVT_SIDE_CHANGE,
-                serde_json::json!({
-                    "character": char_name(world, *character),
-                    "defected_to_alliance": defected_to_alliance,
-                }),
-            );
         }
     }
 

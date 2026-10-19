@@ -48,7 +48,6 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use serde::{Deserialize, Serialize};
 
 use rebellion_core::ai::AIState;
-use rebellion_core::betrayal::BetrayalState;
 use rebellion_core::blockade::BlockadeState;
 use rebellion_core::death_star::DeathStarState;
 use rebellion_core::economy::EconomyState;
@@ -78,7 +77,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 87;
+pub const SAVE_VERSION: u32 = 88;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -223,7 +222,6 @@ pub struct SaveState {
     pub death_star: DeathStarState,
     pub research: ResearchState,
     pub victory: VictoryState,
-    pub betrayal: BetrayalState,
     // ── v8: economy state (closes incident re-fire on reload bug) ────────
     pub economy: EconomyState,
     // ── v10: deterministic continuation envelope ────────────────────────
@@ -973,7 +971,6 @@ mod tests {
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: rebellion_core::victory::VictoryState::new(sys_a, sys_b),
-            betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             sim_rng: Xoshiro256PlusPlus::seed_from_u64(42),
             ai2: None,

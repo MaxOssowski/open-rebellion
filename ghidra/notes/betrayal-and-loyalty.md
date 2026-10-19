@@ -68,7 +68,11 @@ not read yet):
 
 1. **This note.**
 2. **Remove `betrayal.rs`'s defection.** The day step and `BetrayalState`
-   go, a save format change (v88). The mission phase stays.
+   go, a save format change (v88). The mission phase stays. Done
+   2026-10-19: `betrayal.rs`, `BetrayalState`, the app's and the
+   simulation's step 10, `apply_betrayal_events`,
+   `GameEffect::CharacterBetrayed`, and the telemetry `betrayal`,
+   `betrayal_check` and `side_change`.
 3. **Read when each loyalty handler runs**, and the counters
    `galaxy[+0x54]+0x60..0x6c`, `FUN_00509a20`, `FUN_005099c0` and
    `FUN_005099f0`.

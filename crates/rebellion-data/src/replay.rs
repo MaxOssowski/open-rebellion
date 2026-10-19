@@ -743,7 +743,6 @@ impl ReplayRuntime {
             death_star,
             research,
             victory,
-            betrayal,
             economy,
             sim_rng,
             ai2,
@@ -785,7 +784,6 @@ impl ReplayRuntime {
                 death_star,
                 research,
                 victory,
-                betrayal,
                 economy,
                 repair,
                 production,
@@ -899,7 +897,6 @@ impl ReplayRuntime {
             death_star: self.states.death_star.clone(),
             research: self.states.research.clone(),
             victory: self.states.victory.clone(),
-            betrayal: self.states.betrayal.clone(),
             economy: self.states.economy.clone(),
             sim_rng: self.sim_rng.clone(),
             ai2: self.states.ai2.clone(),
@@ -1131,7 +1128,6 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use rand_xoshiro::Xoshiro256PlusPlus;
-    use rebellion_core::betrayal::BetrayalState;
     use rebellion_core::blockade::BlockadeState;
     use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
     use rebellion_core::death_star::DeathStarState;
@@ -1238,7 +1234,6 @@ mod tests {
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(alliance_hq, empire_hq),
-            betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
             sim_rng: Xoshiro256PlusPlus::seed_from_u64(seed),
             ai2: None,

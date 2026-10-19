@@ -40,7 +40,6 @@ const ALL_SYSTEMS: &[&str] = &[
     SYS_RESEARCH,
     SYS_JEDI,
     SYS_VICTORY,
-    SYS_BETRAYAL,
     SYS_STORY,
     SYS_ECONOMY,
     SYS_REPAIR,
@@ -52,7 +51,6 @@ const ALL_SYSTEMS: &[&str] = &[
 const OPTIONAL_SYSTEMS: &[&str] = &[
     SYS_VICTORY,  // Requires HQ capture or DS fire at enemy HQ — not guaranteed
     SYS_UPRISING, // Needs UPRIS1TB table + specific RNG + control stability
-    SYS_BETRAYAL, // Needs UPRIS1TB table + character survival + RNG alignment
 ];
 
 // Test-only ID, outside the original story-event range.
@@ -127,7 +125,6 @@ fn telemetry_coverage_all_sys_constants_emit() {
         death_star: rebellion_core::death_star::DeathStarState::default(),
         research: rebellion_core::research::ResearchState::new(),
         victory: rebellion_core::victory::VictoryState::new(victory_a, victory_e),
-        betrayal: rebellion_core::betrayal::BetrayalState::new(),
         economy: rebellion_core::economy::EconomyState::default(),
         repair: rebellion_core::repair::RepairState::default(),
         production: rebellion_core::production_cycle::ProductionState::new(),
@@ -189,17 +186,6 @@ fn telemetry_coverage_all_sys_constants_emit() {
                 system: sys_key,
                 ticks_remaining: 100,
             });
-    }
-
-    // BETRAYAL: Set several non-immune minor characters' loyalty very low.
-    // Multiple characters increases likelihood that at least one survives to
-    // the betrayal check window (every 50 ticks).
-    let mut betrayal_count = 0;
-    for (_, character) in &mut world.characters {
-        if !character.is_unable_to_betray && !character.is_major && betrayal_count < 5 {
-            character.loyalty.base = 5; // score = 5 - 50 = -45, ~80% betrayal chance
-            betrayal_count += 1;
-        }
     }
 
     // REPAIR: Damage one ship of a fleet that starts at a system with a

@@ -4,7 +4,6 @@ use anyhow::{bail, Context};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rebellion_core::ai::{AIState, AiFaction};
-use rebellion_core::betrayal::BetrayalState;
 use rebellion_core::blockade::BlockadeState;
 use rebellion_core::dat::{Faction, GalaxySize};
 use rebellion_core::death_star::DeathStarState;
@@ -35,23 +34,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:681087f1af0a0e6d";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:f2946c95622dd970";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:a2c72fbdc17546ff";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:55c055d53d7ca5b8";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:002bd2c253379905"),
-    (2, 0, "v1:27adfab70183b9ef"),
-    (3, 5, "v1:d18f4bba7b183910"),
-    (4, 10, "v1:30006369b5608d2d"),
-    (5, 15, "v1:e995f7c58894f982"),
-    (6, 20, "v1:7ae3bf2071c00c8c"),
-    (7, 25, "v1:61d5df89220b47e0"),
-    (8, 25, "v1:f2946c95622dd970"),
-    (9, 25, "v1:f2946c95622dd970"),
+    (1, 0, "v1:ee73f39e7286ebf3"),
+    (2, 0, "v1:04ec7d4178361151"),
+    (3, 5, "v1:36e9f377b3c0c88e"),
+    (4, 10, "v1:c5985d45470c56cb"),
+    (5, 15, "v1:b9402519ea3bc1f2"),
+    (6, 20, "v1:5ed5bf64320ccb96"),
+    (7, 25, "v1:316cced27a80b998"),
+    (8, 25, "v1:55c055d53d7ca5b8"),
+    (9, 25, "v1:55c055d53d7ca5b8"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,7 +191,6 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         death_star: DeathStarState::default(),
         research: ResearchState::new(),
         victory: VictoryState::new(alliance_hq, empire_hq),
-        betrayal: BetrayalState::new(),
         economy: EconomyState::default(),
         sim_rng: Xoshiro256PlusPlus::seed_from_u64(SEED42_SEED),
         ai2: None,

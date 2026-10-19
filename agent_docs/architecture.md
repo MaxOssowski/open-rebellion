@@ -58,7 +58,6 @@ crates/rebellion-core/src/
 ├── death_star.rs     — Construction countdown, planet destruction, nearby-warning scan. `cleanup_destroyed_system()` removes all entities (fleets, troops, facilities) and cancels in-transit orders to the destroyed system.
 ├── research.rs       — 3 research trees per side: levels, points, Done, points hook
 ├── victory.rs        — current HQ/Death Star outcome checks; parity divergences documented
-├── betrayal.rs       — Loyalty-driven faction defection, UPRIS1TB threshold, immunity flag
 ├── story_events.rs   — 4 scripted story chains (Dagobah, Final Battle, Bounty Hunters, Jabba), 5-case palace outcomes, 5-stage carbonite countdown, telemetry twins (0x200, 0x231), CharactersCoLocated condition. Notification events removed (Phase 3b — belong in economy tick).
 ├── commands.rs       — Shared command registry (16 CommandDef entries) for GUI palette + CLI
 ├── game_events.rs    — GameEventRecord struct + 57 event type constants for JSONL telemetry
@@ -136,7 +135,7 @@ crates/rebellion-data/src/
 ├── save.rs       — Save/load: bincode snapshots and save slots; only the current SAVE_VERSION loads, with no migrations (save-load.md). Native uses filesystem saves; WASM uses browser localStorage through the gl.js loader's imports, with separate metadata keys for fast slot listing.
 ├── mods.rs       — Mod loader + ModRuntime: TOML manifest, RFC 7396 merge patch, semver, hot reload
 ├── simulation.rs — Tick orchestrator: SimulationStates bundle + run_simulation_tick() (~449 LOC)
-└── integrator.rs — PerceptionIntegrator: all world mutation + telemetry emission (~1,200 LOC, 17 apply methods). Betrayal emits reveal-before-flip (EVT_TRAITOR_REVEALED) + side-change-after-flip (EVT_SIDE_CHANGE).
+└── integrator.rs — PerceptionIntegrator: all world mutation + telemetry emission (~1,200 LOC, the apply methods).
 ```
 
 ## Type System: Two Layers
@@ -199,7 +198,6 @@ run_simulation_tick():
   7. AISystem::advance             → integrator.apply_ai_actions()
   8. BlockadeSystem::advance       → integrator.apply_blockade_events()
   9. UprisingSystem::advance       → integrator.apply_uprising_events()
-  10. BetrayalSystem::advance      → integrator.apply_betrayal_events()
   11. DeathStarSystem::advance     → integrator.apply_death_star_events()
   12. (research missions add points in step 5)
   14. VictorySystem::check         → integrator.apply_victory()

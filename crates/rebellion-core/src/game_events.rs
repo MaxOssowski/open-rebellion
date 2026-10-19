@@ -56,7 +56,6 @@ pub const SYS_DEATH_STAR: &str = "death_star";
 pub const SYS_RESEARCH: &str = "research";
 pub const SYS_JEDI: &str = "jedi";
 pub const SYS_VICTORY: &str = "victory";
-pub const SYS_BETRAYAL: &str = "betrayal";
 pub const SYS_STORY: &str = "story";
 pub const SYS_ECONOMY: &str = "economy";
 pub const SYS_REPAIR: &str = "repair";
@@ -91,7 +90,6 @@ pub const EVT_DS_CONSTRUCTION: &str = "death_star_construction";
 pub const EVT_DS_FIRED: &str = "death_star_fired";
 pub const EVT_RESEARCH_UNLOCKED: &str = "research_unlocked";
 pub const EVT_VICTORY: &str = "victory_check";
-pub const EVT_BETRAYAL: &str = "betrayal";
 pub const EVT_ESCAPE: &str = "character_escaped";
 pub const EVT_STORY: &str = "story_event";
 pub const EVT_CAPTURE: &str = "character_captured";
@@ -115,7 +113,6 @@ pub const EVT_MAINTENANCE_SHORTFALL: &str = "maintenance_shortfall";
 
 // System heartbeat events — emitted each tick to ensure system tags appear in telemetry
 pub const EVT_UPRISING_CHECK: &str = "uprising_check";
-pub const EVT_BETRAYAL_CHECK: &str = "betrayal_check";
 pub const EVT_DS_STATUS: &str = "death_star_status";
 pub const EVT_VICTORY_CHECK: &str = "victory_status";
 
@@ -148,7 +145,6 @@ pub const EVT_FORCE_ENCOUNTER: &str = "force_encounter";
 pub const EVT_CONFRONTATION: &str = "confrontation";
 /// Luke learned his heritage from Vader (`FUN_0056f650`).
 pub const EVT_HERITAGE_LEARNED: &str = "heritage_learned";
-pub const EVT_SIDE_CHANGE: &str = "side_change";
 pub const EVT_EMPEROR_ARRIVAL: &str = "emperor_arrival";
 pub const EVT_JABBA_PRISONERS: &str = "jabba_prisoners";
 pub const EVT_HAN_RESCUE: &str = "han_rescue";
@@ -214,7 +210,6 @@ mod tests {
             EVT_DS_FIRED,
             EVT_RESEARCH_UNLOCKED,
             EVT_VICTORY,
-            EVT_BETRAYAL,
             EVT_ESCAPE,
             EVT_STORY,
             EVT_CAPTURE,
@@ -253,14 +248,12 @@ mod tests {
             EVT_FORCE_ENCOUNTER,
             EVT_CONFRONTATION,
             EVT_HERITAGE_LEARNED,
-            EVT_SIDE_CHANGE,
             EVT_EMPEROR_ARRIVAL,
             EVT_JABBA_PRISONERS,
             EVT_HAN_RESCUE,
             EVT_TROOP_MOVED,
             // Heartbeat events
             EVT_UPRISING_CHECK,
-            EVT_BETRAYAL_CHECK,
             EVT_DS_STATUS,
             EVT_VICTORY_CHECK,
         ];

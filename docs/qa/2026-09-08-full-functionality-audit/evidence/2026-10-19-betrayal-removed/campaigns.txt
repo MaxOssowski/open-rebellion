@@ -1,0 +1,19 @@
+24 dual-AI campaigns, 1500 days; before (jedi.rs save stage) -> after
+  side_change: 0 -> 0
+  traitor_revealed: 0 -> 0
+  betrayal_check: 36000 -> 0
+  mission_resolved: 30425 -> 30735
+  mission_dispatched: 61783 -> 63118
+  combat_space: 847 -> 972
+  bombardment: 1286 -> 1474
+most changed:
+  betrayal_check: 36000 -> 0
+  economy_tick: 285789 -> 267135
+  character_health: 21600 -> 23923
+  mission_dispatched: 61783 -> 63118
+  ai_action: 189597 -> 188419
+  troop_moved: 53756 -> 52750
+  ship_repaired: 2658 -> 3115
+  fleet_arrived: 5061 -> 5510
+  mission_resolved: 30425 -> 30735
+  blockade_started: 1079 -> 1364

@@ -1116,7 +1116,7 @@ secrets and signed sessions.
 - [ ] Add `homeworld: Option<SystemKey>` to Character
 - [ ] Create `data/homeworlds.json` with canon homeworld assignments (Luke→Tatooine, etc.)
 - [ ] HomeworldModifier: +10% at homeworld, -5% when enemy controls, -15 loyalty on fall
-- [ ] Wire into missions.rs probability + betrayal.rs loyalty
+- [ ] Wire into missions.rs probability and the base loyalty (`betrayal.rs` was removed 2026-10-19)
 - [ ] Display in Officers panel and Encyclopedia
 
 **Phase 2: Character Creation Core**

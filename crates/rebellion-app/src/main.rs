@@ -35,7 +35,6 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use rebellion_core::ai::{AIAction, AIState, AISystem, AiFaction, FleetMoveReason};
-use rebellion_core::betrayal::{BetrayalState, BetrayalSystem};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
 use rebellion_core::bombardment::BombardEnv;
 use rebellion_core::combat::{CombatSide, CombatSystem};
@@ -71,7 +70,7 @@ use rebellion_core::troop_transport::{RegimentLeg, RegimentTarget, TroopTranspor
 use rebellion_core::uprising::{UprisingState, UprisingSystem};
 use rebellion_core::victory::{VictoryState, VictorySystem};
 use rebellion_core::world::{
-    CampaignConfig, GameWorld, MstbTable, SeedDifficulty, SeedOptions, VictoryConditions,
+    CampaignConfig, GameWorld, SeedDifficulty, SeedOptions, VictoryConditions,
 };
 
 use rebellion_render::build_selection::{
@@ -415,7 +414,6 @@ struct LiveCampaign<'a> {
     death_star: &'a mut DeathStarState,
     research: &'a mut ResearchState,
     victory: &'a mut VictoryState,
-    betrayal: &'a mut BetrayalState,
     economy: &'a mut EconomyState,
     sim_rng: &'a mut Xoshiro256PlusPlus,
     ai2: &'a mut Option<AIState>,
@@ -455,7 +453,6 @@ impl LiveCampaign<'_> {
             death_star: self.death_star.clone(),
             research: self.research.clone(),
             victory: self.victory.clone(),
-            betrayal: self.betrayal.clone(),
             economy: self.economy.clone(),
             sim_rng: self.sim_rng.clone(),
             ai2: self.ai2.clone(),
@@ -498,7 +495,6 @@ impl LiveCampaign<'_> {
         *self.death_star = state.death_star;
         *self.research = state.research;
         *self.victory = state.victory;
-        *self.betrayal = state.betrayal;
         *self.economy = state.economy;
         *self.sim_rng = state.sim_rng;
         *self.ai2 = state.ai2;
@@ -1085,7 +1081,6 @@ async fn main() {
     let mut uprising_state = UprisingState::new();
     let mut death_star_state = DeathStarState::default();
     let mut research_state = ResearchState::new();
-    let mut betrayal_state = BetrayalState::new();
     let mut repair_state = RepairState::default();
     let mut production_state = ProductionState::new();
     let mut autoscrap_state = rebellion_core::autoscrap::AutoscrapState::default();
@@ -3092,51 +3087,6 @@ async fn main() {
                 }
             }
 
-            // ── Betrayal ─────────────────────────────────────────────────────
-            let betrayal_rolls: Vec<f64> = (0..world.characters.len())
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            let empty_loyalty_tb = MstbTable::new(vec![]);
-            let loyalty_tb = world
-                .mission_tables
-                .get("UPRIS1TB")
-                .unwrap_or(&empty_loyalty_tb);
-            let betrayal_events = BetrayalSystem::advance(
-                &mut betrayal_state,
-                &world,
-                &tick_events,
-                &betrayal_rolls,
-                loyalty_tb,
-            );
-            for evt in &betrayal_events {
-                let rebellion_core::betrayal::BetrayalEvent::CharacterBetrayed {
-                    character,
-                    defected_to_alliance,
-                } = evt;
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.is_alliance = *defected_to_alliance;
-                    c.is_empire = !*defected_to_alliance;
-                }
-                // Remove from current fleet
-                for (_, fleet) in &mut world.fleets {
-                    fleet.characters.retain(|&k| k != *character);
-                }
-                let name = world
-                    .characters
-                    .get(*character)
-                    .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                let to_faction = if *defected_to_alliance {
-                    "Alliance"
-                } else {
-                    "Empire"
-                };
-                msg_log.push(GameMessage::new(
-                    current_tick,
-                    format!("{name} has betrayed and defected to the {to_faction}!"),
-                    MessageCategory::Event,
-                ));
-            }
-
             // ── Death Star ───────────────────────────────────────────────────
             let ds_events = DeathStarSystem::advance(&mut death_star_state, &world, &tick_events);
             for evt in &ds_events {
@@ -3716,7 +3666,6 @@ async fn main() {
                                     uprising_state = UprisingState::new();
                                     death_star_state = DeathStarState::default();
                                     research_state = ResearchState::new();
-                                    betrayal_state = BetrayalState::new();
                                     repair_state = RepairState::default();
                                     production_state = ProductionState::new();
                                     autoscrap_state =
@@ -6162,7 +6111,6 @@ async fn main() {
                         death_star: &mut death_star_state,
                         research: &mut research_state,
                         victory: &mut victory_state,
-                        betrayal: &mut betrayal_state,
                         economy: &mut economy_state,
                         sim_rng: &mut sim_rng,
                         ai2: &mut secondary_ai_state,
@@ -6240,7 +6188,6 @@ async fn main() {
                                 death_star: &mut death_star_state,
                                 research: &mut research_state,
                                 victory: &mut victory_state,
-                                betrayal: &mut betrayal_state,
                                 economy: &mut economy_state,
                                 sim_rng: &mut sim_rng,
                                 ai2: &mut secondary_ai_state,
