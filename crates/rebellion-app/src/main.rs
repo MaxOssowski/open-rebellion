@@ -7461,6 +7461,7 @@ fn apply_panel_action(
                 MissionKind::TroopTrainingResearch => "Troop Training Research",
                 MissionKind::Autoscrap => "Autoscrap",
                 MissionKind::Move => "Move",
+                MissionKind::Return => "Return",
                 MissionKind::JediTraining => "Jedi Training",
                 MissionKind::Dagobah => "Dagobah",
                 MissionKind::Bounty => "Bounty",
@@ -7963,6 +7964,7 @@ fn apply_mission_result(
         MissionKind::TroopTrainingResearch => "Troop Training Research",
         MissionKind::Autoscrap => "Autoscrap",
         MissionKind::Move => "Move",
+        MissionKind::Return => "Return",
         MissionKind::JediTraining => "Jedi Training",
         MissionKind::Dagobah => "Dagobah",
         MissionKind::Bounty => "Bounty",
@@ -7995,6 +7997,7 @@ fn apply_mission_result(
         | MissionKind::TroopTrainingResearch
         | MissionKind::Autoscrap
         | MissionKind::Move
+        | MissionKind::Return
         | MissionKind::JediTraining
         | MissionKind::Dagobah
         | MissionKind::Bounty
@@ -8192,6 +8195,7 @@ fn apply_mission_result(
             | MissionEffect::HeritageLearned { .. }
             | MissionEffect::CapturedByBountyHunters { .. }
             | MissionEffect::EscapeBarred { .. }
+            | MissionEffect::MemberOnMission { .. }
             | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             }

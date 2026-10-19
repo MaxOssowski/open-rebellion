@@ -8400,6 +8400,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules::default(),
             members: crate::world::MissionMemberRules {
                 alliance: true,

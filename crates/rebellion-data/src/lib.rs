@@ -844,6 +844,7 @@ fn mission_record(m: &Mission) -> MissionRecord {
         hidden: m.hidden != 0,
         detection_phases: m.detection_phases != 0,
         can_resign: m.can_resign != 0,
+        leave_rule: m.flag_col10,
         rules: MissionTargetRules {
             container_loss_ends: m.container_loss_ends != 0,
             needs_populated_container: m.needs_populated_container != 0,
@@ -1105,6 +1106,7 @@ mod tests {
         record[13] = 0; // hidden
         record[14] = 2; // detection phases: any nonzero value is on
         record[15] = 1; // can resign
+        record[16] = 1; // leave rule, file 0x40 (in-memory +0x68)
                         // Target rules, file 0x44..0x6c: the odd words 17..27 set, so each
                         // column lands in its own field (in-memory +0x6c..+0x94).
         for word in (17..28).step_by(2) {
@@ -1123,6 +1125,7 @@ mod tests {
                 hidden: false,
                 detection_phases: true,
                 can_resign: true,
+                leave_rule: 1,
                 rules: MissionTargetRules {
                     container_loss_ends: true,
                     needs_populated_container: true,

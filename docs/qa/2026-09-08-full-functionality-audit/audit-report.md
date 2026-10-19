@@ -3100,6 +3100,18 @@ cross-runtime proof remain open
   releases members where they are, so an agent stays at another side's
   system after its mission; porting the Return is the next stage
   (`ghidra/notes/mission-lifecycle.md`).
+- 2026-10-20: the Return order is ported (save v91).
+  `MissionRecord::leave_rule` holds MISSNSD column 10;
+  `MissionSystem::finish` sends each team or decoy member of an ended rule-1
+  mission that stands in a container of another side on a Return order
+  `0x42000002` (`MissionKind::Return`, Move's slots), grouped by destination
+  (`FUN_00548910`, `FUN_00542ee0`'s autoroute search; port: the container
+  and `+0x70` candidates are skipped, and the jail fallback, rule 2 and the
+  Mandatory flag are not ported). 24 dual-AI campaigns: 11,979 Return
+  orders, and the AI's own Move orders fall from 44,841 to 32,470. Golden
+  regenerated: initial `v1:68bc58d8f3fb696d`, final `v1:5fc59cefe817d1b4`
+  (`evidence/2026-10-20-return-order/`). Open: Autorouting `0x43` and Adrift
+  `0x44` as orders, and the jails.
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

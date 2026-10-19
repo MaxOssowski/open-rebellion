@@ -46,7 +46,8 @@ pub struct Mission {
     pub detection_phases: u32,
     // Members may resign (record +0x64, FUN_00520b90)
     pub can_resign: u32,
-    // Not yet mapped
+    // How members leave the mission (record +0x68, FUN_00520ba0, read by
+    // FUN_00521220): 0 stay, 1 return from another side's place, 2 return
     pub flag_col10: u32,
     // A running mission ends (code 7) when its container is destroyed
     // (record +0x6c, FUN_00523450)

@@ -81,6 +81,8 @@ fn capability(kind: MissionKind) -> Option<u32> {
         // No planner sends these: Autoscrap is the Autoscrap planner's, and
         // Move is the trip an AI planner orders before its mission (FUN_004bd570).
         MissionKind::Autoscrap | MissionKind::Move => return None,
+        // A mission's end sends Return (FUN_00548910), not a planner.
+        MissionKind::Return => return None,
         // FUN_00402720 reads Jedi Training's record (0x58000042, the image's
         // only use of that id, 0x402c74) but sets no bit, so no planner
         // sends it; only the player does.
@@ -298,6 +300,7 @@ fn selectors(kind: MissionKind, subtype: u32) -> Option<Selectors> {
         MissionKind::Autoscrap => return None,
         // The Move pseudo-mission has no selectors (FUN_004bd570 builds it).
         MissionKind::Move
+        | MissionKind::Return
         | MissionKind::JediTraining
         | MissionKind::Dagobah
         | MissionKind::Bounty
@@ -862,6 +865,7 @@ mod tests {
                 hidden: false,
                 detection_phases: false,
                 can_resign: false,
+                leave_rule: 0,
                 rules: crate::world::MissionTargetRules::default(),
                 members: MissionMemberRules {
                     alliance: true,
@@ -1565,6 +1569,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules::default(),
             members: MissionMemberRules {
                 alliance: true,

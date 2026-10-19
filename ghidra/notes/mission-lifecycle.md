@@ -654,11 +654,17 @@ every agent mission; 2 for Dagobah, Palace, Vacation, Pickup and Bounty.
   (`0x44000004`, `FUN_00547880`) when the group is adrift; otherwise
   `FUN_00549850` or, with no destination, `FUN_00549580`.
 
-Against the port: a member of an ended mission is released where it is
-(`MissionEffect::MemberAvailable`); only an abode target sends it home
-(`leave_abode`). No Return order exists, so an agent stays at the target,
-even another side's system. The escape and abode trips are the port's
-direct transits in place of Autorouting orders.
+Ported 2026-10-20 (save v91): `MissionRecord::leave_rule` holds column
+10, and `MissionSystem::finish` sends each team or decoy member of an ended
+rule-1 mission that stands in a container of another side on a Return
+order (`MissionKind::Return`, vtable `0x00664388`, Move's slots), grouped
+by destination; the orders step at once. port: the container and `+0x70`
+candidates are skipped (the search runs from the member's system and
+leaves it out); a member with nowhere to go is released where it is, not
+sent to its jail; rule 2 keeps the port's abode trips; a prisoner on the
+captured list stays; the Return's Mandatory flag is not kept. The escape
+and abode trips are still the port's direct transits in place of
+Autorouting orders.
 
 Still open here: what writes a character's `+0x70`, and what
 `FUN_00554170` and `FUN_005543c0` accept.

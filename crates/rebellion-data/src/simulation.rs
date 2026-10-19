@@ -360,6 +360,11 @@ pub fn run_simulation_tick(
         &mission_advance.effects,
         tick_events.last().map_or(0, |event| event.tick),
     );
+    integrator.record_return_orders(
+        world,
+        &states.missions,
+        tick_events.last().map_or(0, |event| event.tick),
+    );
 
     // ── 5b. Dagobah: timer 0x392 and the check FUN_00544030 ──────────────
     let dagobah_rolls = take_rolls(rebellion_core::dagobah::DagobahSystem::roll_budget());

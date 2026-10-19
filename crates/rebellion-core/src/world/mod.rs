@@ -1292,6 +1292,10 @@ pub struct MissionRecord {
     pub detection_phases: bool,
     /// Members may resign (record `+0x64`, `FUN_00520b90`).
     pub can_resign: bool,
+    /// How members leave the ended mission (record `+0x68`, `FUN_00520ba0`,
+    /// read by `FUN_00521220`; save v91): 0 they stay, 1 they return from a
+    /// place of another side, 2 they return.
+    pub leave_rule: u32,
     /// What the validator requires of a running mission's target and
     /// container (record `+0x6c..+0x94`).
     pub rules: MissionTargetRules,
@@ -2561,6 +2565,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            leave_rule: 0,
             rules: MissionTargetRules::default(),
             members: MissionMemberRules::default(),
         };

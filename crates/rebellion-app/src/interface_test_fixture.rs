@@ -3408,6 +3408,8 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            // MISSNSD column 10 of the shipped Diplomacy record.
+            leave_rule: 1,
             rules: MissionTargetRules {
                 container_loss_ends: true,
                 needs_populated_container: true,

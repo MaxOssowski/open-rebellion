@@ -1689,6 +1689,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign,
+            leave_rule: 0,
             rules: MissionTargetRules {
                 own_side_target: true,
                 other_side_target: true,

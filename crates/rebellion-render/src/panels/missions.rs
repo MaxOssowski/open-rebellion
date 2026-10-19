@@ -162,6 +162,7 @@ fn mission_kind_display(kind: MissionKind) -> (&'static str, Color32) {
         | MissionKind::TroopTrainingResearch => ("[RSCH]", Color32::from_rgb(120, 220, 120)),
         MissionKind::Autoscrap => ("[AUTO]", Color32::from_rgb(120, 120, 120)),
         MissionKind::Move => ("[MOVE]", Color32::from_rgb(180, 180, 200)),
+        MissionKind::Return => ("[RETURN]", Color32::from_rgb(180, 180, 200)),
         MissionKind::JediTraining => ("[JEDI]", Color32::from_rgb(120, 200, 140)),
         MissionKind::Dagobah => ("[DAGO]", Color32::from_rgb(120, 200, 140)),
         MissionKind::Bounty => ("[BNTY]", Color32::from_rgb(200, 160, 90)),

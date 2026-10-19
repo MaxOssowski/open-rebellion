@@ -1,0 +1,4 @@
+24 dual-AI campaigns, 1500 days (rebellion-playtest data/base --dual-ai, seeds 1..24)
+before = stage before (save v90), after = this stage
+before: dispatched 63268 (Move 44841), return orders 0 {}, resolved {'Success': 22667, 'Failure': 8469}
+after: dispatched 50524 (Move 32470), return orders 11979 {'Empire': 6831, 'Alliance': 5148}, resolved {'Success': 22568, 'Failure': 7769}

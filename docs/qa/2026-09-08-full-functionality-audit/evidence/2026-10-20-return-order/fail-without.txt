@@ -1,0 +1,3 @@
+thread 'missions::tests::an_agent_returns_home_from_another_side_s_system_on_a_return_order' (689090) panicked at crates/rebellion-core/src/missions.rs:6898:9:
+thread 'missions::tests::the_return_order_ends_on_arrival_and_frees_its_member' (689091) panicked at crates/rebellion-core/src/missions.rs:6941:9:
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 1408 filtered out; finished in 0.00s

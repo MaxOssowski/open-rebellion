@@ -31,7 +31,7 @@ use rebellion_core::game_events::{
     EVT_GARRISON_REQUIRED, EVT_HERITAGE_LEARNED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL,
     EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
-    EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
+    EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RETURN_ORDERED, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED,
     EVT_SUPPORT_CHANGE, EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
@@ -655,6 +655,29 @@ impl PerceptionIntegrator {
                     "character": name,
                     "cause": "healing",
                     "injury": heal.injury,
+                }),
+            ));
+        }
+    }
+
+    /// Record the Return orders the day's mission step gave
+    /// (`FUN_00548910`): a `return_ordered` event for each, with its team
+    /// and destination.
+    pub fn record_return_orders(&mut self, world: &GameWorld, missions: &MissionState, tick: u64) {
+        for order in missions
+            .missions()
+            .iter()
+            .filter(|m| m.kind == MissionKind::Return && m.ordered_tick == tick)
+        {
+            self.events.push(GameEventRecord::new(
+                tick,
+                self.wall_ms,
+                SYS_MISSIONS,
+                EVT_RETURN_ORDERED,
+                serde_json::json!({
+                    "faction": format!("{:?}", order.faction),
+                    "team": member_names(world, &order.team),
+                    "to": sys_name(world, order.target_system),
                 }),
             ));
         }
@@ -2073,6 +2096,7 @@ fn apply_mission_effects_inner(
             | MissionEffect::HeritageLearned { .. }
             | MissionEffect::CapturedByBountyHunters { .. }
             | MissionEffect::EscapeBarred { .. }
+            | MissionEffect::MemberOnMission { .. }
             | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(
                     world,
@@ -2819,6 +2843,46 @@ mod tests {
         assert_eq!(integrator.events[1].event_type, EVT_FORCE_EXPERIENCE);
         assert_eq!(integrator.events[1].details["force"], 51);
         assert_eq!(integrator.events[1].details["gain"], 1);
+    }
+
+    #[test]
+    fn a_return_order_of_the_day_is_recorded_with_its_team_and_destination() {
+        use rebellion_core::missions::MissionRequest;
+        let mut world = GameWorld::default();
+        let envoy = world.characters.insert(rebellion_core::world::Character {
+            name: "Envoy".into(),
+            ..Default::default()
+        });
+        let home = add_system(&mut world, "Home");
+        let elsewhere = add_system(&mut world, "Elsewhere");
+        let mut missions = MissionState::new();
+        missions.dispatch(MissionRequest::single(
+            MissionKind::Return,
+            MissionFaction::Alliance,
+            envoy,
+            home,
+            None,
+            7,
+        ));
+        missions.dispatch(MissionRequest::single(
+            MissionKind::Move,
+            MissionFaction::Alliance,
+            envoy,
+            elsewhere,
+            None,
+            7,
+        ));
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+
+        integrator.record_return_orders(&world, &missions, 7);
+
+        assert_eq!(integrator.events.len(), 1);
+        let event = &integrator.events[0];
+        assert_eq!(event.event_type, EVT_RETURN_ORDERED);
+        assert_eq!(event.details["team"][0], "Envoy");
+        assert_eq!(event.details["to"], "Home");
+        integrator.record_return_orders(&world, &missions, 8);
+        assert_eq!(integrator.events.len(), 1);
     }
 
     #[test]

@@ -125,6 +125,13 @@ pub enum MissionKind {
     /// `FUN_005215e0`).
     Move,
 
+    /// The Return pseudo-mission (MISSNSD `0x42000002`, TEXTSTRA 11266,
+    /// vtable `0x00664388`): the trip home of members leaving an ended
+    /// mission (`FUN_00548910` -> `FUN_005475f0`). Its record and slots are
+    /// Move's: hidden, timer 0, own-side targets only, the base phase
+    /// handler `FUN_00524b70` and the base rules `FUN_005215e0`.
+    Return,
+
     /// Jedi Training (MISSNSD `0x58000042`, TEXTSTRA 11330, vtable
     /// `0x006667d8`; `ghidra/notes/force-awareness.md`, "Force growth"): a
     /// teacher who trains Jedi at Force GNPRTB 2581 (100) or more trains the
@@ -183,6 +190,7 @@ impl MissionKind {
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch
             | MissionKind::Move
+            | MissionKind::Return
             | MissionKind::JediTraining
             | MissionKind::Dagobah
             | MissionKind::Bounty
@@ -227,7 +235,7 @@ impl MissionKind {
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch => (10, 20),
             // The shipped record's 0 + rand(0..=0).
-            MissionKind::Move => (0, 0),
+            MissionKind::Move | MissionKind::Return => (0, 0),
             // The shipped record's 60 + rand(0..=30).
             MissionKind::JediTraining => (60, 90),
             // The shipped record's 100 + rand(0..=0).
@@ -1182,7 +1190,7 @@ pub fn member_chance(
         | MissionKind::FacilityDesignResearch
         | MissionKind::TroopTrainingResearch => return 0,
         // The base class has no slot +0x274 roll; phase 10 rolls no one.
-        MissionKind::Move => return 0,
+        MissionKind::Move | MissionKind::Return => return 0,
         // FUN_005710b0 reads the mission's teacher +0xa8: phase 10 takes
         // the chance from [`jedi_training_chance`].
         MissionKind::JediTraining => return 0,
@@ -1295,6 +1303,15 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
         match effect {
             MissionEffect::MemberMoved { member, to } => move_member(world, *member, *to),
             MissionEffect::MemberAvailable { member } => set_on_mission(world, *member, false),
+            MissionEffect::MemberOnMission { member, hidden } => {
+                set_on_mission(world, *member, true);
+                if let Some(c) = member
+                    .character()
+                    .and_then(|key| world.characters.get_mut(key))
+                {
+                    c.on_hidden_mission = *hidden;
+                }
+            }
             MissionEffect::CharacterCaptured {
                 character,
                 captured_by,
@@ -1990,6 +2007,10 @@ pub enum MissionEffect {
     /// A member has left its mission and may take another
     /// (`RoleOnMissionNotif` `FUN_00536b00` cleared).
     MemberAvailable { member: MissionMember },
+    /// A member joined a mission the advance created, a Return order
+    /// (`FUN_00522b30`: `RoleOnMissionNotif`, and `OnHiddenMission` from
+    /// the record's `+0x5c`, `FUN_00520b70`).
+    MemberOnMission { member: MissionMember, hidden: bool },
     /// A member moved for its mission: off the map when it starts a transit
     /// (`to: None`), into the target system when it lands (`FUN_00556390`).
     MemberMoved {
@@ -2252,6 +2273,7 @@ impl MissionKind {
             MissionKind::FacilityDesignResearch => 0x5300_0021,
             MissionKind::TroopTrainingResearch => 0x5300_0022,
             MissionKind::Move => 0x4100_0001,
+            MissionKind::Return => 0x4200_0002,
             MissionKind::JediTraining => 0x5800_0042,
             MissionKind::Dagobah => 0x7100_0043,
             MissionKind::Bounty => 0x6500_0083,
@@ -2282,7 +2304,7 @@ impl MissionKind {
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch => TargetRules::System,
             // FUN_005215e0: the base rules alone, at a system target.
-            MissionKind::Move => TargetRules::Place,
+            MissionKind::Move | MissionKind::Return => TargetRules::Place,
             // FUN_00570690: the system rules, then its own.
             MissionKind::JediTraining => TargetRules::System,
             // Its target is an abode, a place (FUN_00521070).
@@ -2731,6 +2753,7 @@ impl MissionSystem {
                 }));
 
             let missions = std::mem::take(&mut state.missions);
+            let mut orders = Vec::new();
             let ctx = StepContext {
                 world,
                 uprisings,
@@ -2769,29 +2792,97 @@ impl MissionSystem {
                 // +0xac(0x14)). The members are released here, so the port
                 // drops it at once.
                 if mission.phase == PHASE_END {
-                    out.effects.extend(
-                        mission
-                            .members()
-                            .map(|member| MissionEffect::MemberAvailable { member }),
-                    );
-                    // FUN_00546370 -> slot +0xb0 (FUN_004ef260): a member
-                    // left in an abode of another side autoroutes home.
-                    if let Some(abode) = mission.target_abode {
-                        Self::leave_abode(&mission, abode, world, state, &mut out, now);
-                    }
-                    out.ended.push(MissionEnded {
-                        mission_id: mission.id,
-                        kind: mission.kind,
-                        faction: mission.faction,
-                        end_code: mission.end_code,
-                        tick: now,
-                    });
+                    orders.extend(Self::finish(&mission, world, state, &mut out, now));
                 } else {
                     state.missions.push_back(mission);
                 }
             }
+            // The Return orders step at once, as the original's new missions
+            // do (FUN_00522980 sets the ready bit after each phase change).
+            for mut order in orders {
+                let mut draws = MissionRolls {
+                    rolls: &[],
+                    next: 0,
+                    stream: crate::mission_detection::MissionRng::seeded(0.5, order.id),
+                };
+                Self::run(&mut order, &ctx, state, &mut out, now, &mut draws);
+                if order.phase == PHASE_END {
+                    Self::finish(&order, world, state, &mut out, now);
+                } else {
+                    state.missions.push_back(order);
+                }
+            }
         }
         out
+    }
+
+    /// An ended mission's members leave (`FUN_00548120`, `FUN_00548910`):
+    /// each one [`leaves_for_home`] goes on a Return order (`0x42000002`,
+    /// `FUN_005475f0`) with the members sharing its destination, and stays
+    /// on a mission; the others are released where they are. Returns the
+    /// Return orders.
+    ///
+    /// port: the original sends a member with nowhere to go to its side's
+    /// jail (`FUN_00549580`); the port releases it where it is. The Return
+    /// order's Mandatory flag (the mission's `+0xa4` bit 2) is not kept.
+    fn finish(
+        mission: &ActiveMission,
+        world: &GameWorld,
+        state: &mut MissionState,
+        out: &mut MissionAdvance,
+        now: u64,
+    ) -> Vec<ActiveMission> {
+        // FUN_00548910 groups the members by the first one's destination
+        // (FUN_00542ee0), in member order (FUN_00525bb0).
+        let mut groups: Vec<(SystemKey, Vec<MissionMember>)> = Vec::new();
+        for member in mission.members() {
+            let Some(to) = return_destination(mission, world, member) else {
+                continue;
+            };
+            match groups.iter_mut().find(|(dest, _)| *dest == to) {
+                Some((_, group)) => group.push(member),
+                None => groups.push((to, vec![member])),
+            }
+        }
+        let going_home: Vec<MissionMember> = groups
+            .iter()
+            .flat_map(|(_, group)| group.iter().copied())
+            .collect();
+        out.effects.extend(
+            mission
+                .members()
+                .filter(|member| !going_home.contains(member))
+                .map(|member| MissionEffect::MemberAvailable { member }),
+        );
+        // FUN_00546370 -> slot +0xb0 (FUN_004ef260): a member
+        // left in an abode of another side autoroutes home.
+        if let Some(abode) = mission.target_abode {
+            Self::leave_abode(mission, abode, world, state, out, now);
+        }
+        out.ended.push(MissionEnded {
+            mission_id: mission.id,
+            kind: mission.kind,
+            faction: mission.faction,
+            end_code: mission.end_code,
+            tick: now,
+        });
+        let hidden = MissionKind::Return
+            .record_id()
+            .and_then(|id| world.mission_record(id))
+            .is_some_and(|record| record.hidden);
+        out.effects.extend(
+            going_home
+                .iter()
+                .map(|&member| MissionEffect::MemberOnMission { member, hidden }),
+        );
+        groups
+            .into_iter()
+            .map(|(to, team)| {
+                let id = state.next_id;
+                state.next_id += 1;
+                ActiveMission::new(id, MissionKind::Return, mission.faction, team, to, now)
+            })
+            .collect()
     }
 
     /// Set a waiting mission's ready bit or end code for day `now`.
@@ -3122,7 +3213,7 @@ impl MissionSystem {
                 }
             }
             // The Move class's base handler FUN_00524b70 runs nothing here.
-            PHASE_OUTCOME if mission.kind == MissionKind::Move => {}
+            PHASE_OUTCOME if matches!(mission.kind, MissionKind::Move | MissionKind::Return) => {}
             PHASE_OUTCOME => {
                 let result = Self::roll_members(mission, ctx, now, &mut draws.stream, &out.results);
                 mission.succeeded = result.outcome == MissionOutcome::Success;
@@ -3634,7 +3725,7 @@ impl MissionSystem {
                 }
                 MissionKind::Autoscrap => result = 3,
                 // Never reached: phase 10 skips Move (FUN_00524b70).
-                MissionKind::Move => {}
+                MissionKind::Move | MissionKind::Return => {}
                 // FUN_0056bec0: 3, with no skill raise.
                 MissionKind::Reconnaissance => result = 3,
                 // FUN_00572470: 3.
@@ -4012,6 +4103,78 @@ pub(crate) fn escape_destination(
     )
 }
 
+/// Where `member` of the ended `mission` returns (`FUN_00521220`,
+/// `FUN_00542ee0`), or `None` when it is released where it is.
+///
+/// `FUN_00521220` sends home a member of an ended mission by the record's
+/// `+0x68` ([`crate::world::MissionRecord::leave_rule`]): with 1, a member
+/// whose container (`FUN_004f6b50`) is not of its side. `FUN_00548910`
+/// takes no member with a remove request (`+0x78` bit 2). For an agent
+/// mission `FUN_00542ee0` then tries the container (`FUN_00554170`), the
+/// member's `+0x70` (`FUN_005543c0`) and the autoroute search
+/// `FUN_00543040`.
+///
+/// port: the container and `+0x70` candidates are skipped, as for an
+/// escape; the search runs from the member's system and leaves it out. A
+/// prisoner on the captured list stays where it is. Rule 2 (Dagobah,
+/// Palace, Pickup, Bounty) keeps the port's abode trips
+/// ([`MissionSystem::leave_abode`]).
+fn return_destination(
+    mission: &ActiveMission,
+    world: &GameWorld,
+    member: MissionMember,
+) -> Option<SystemKey> {
+    use crate::dat::Faction;
+    if mission.captured.contains(&member) || mission.removing.contains(&member) {
+        return None;
+    }
+    let record = mission
+        .kind
+        .record_id()
+        .and_then(|id| world.mission_record(id))?;
+    let state = member_state(world, member)?;
+    if record.leave_rule != 1 || state.prisoner {
+        return None;
+    }
+    let side = if state.is_alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    if container_side(world, member) == Some(side) {
+        return None;
+    }
+    let here = member_location(world, member)?;
+    let sys = world.systems.get(here)?;
+    nearest_place(
+        world,
+        side,
+        (i64::from(sys.x), i64::from(sys.y)),
+        Some(here),
+    )
+}
+
+/// The side of `member`'s container (`FUN_004f6b50`): its abode's, its
+/// fleet's, or its system holder's; `None` for a system no single side
+/// holds.
+fn container_side(world: &GameWorld, member: MissionMember) -> Option<crate::dat::Faction> {
+    use crate::dat::Faction;
+    if let Some(abode) = member_abode(world, member) {
+        return world.abodes.get(abode).map(|abode| abode.side);
+    }
+    match member_state(world, member)?.location {
+        MemberLocation::Fleet(fleet) => world.fleets.get(fleet).map(|fleet| {
+            if fleet.is_alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            }
+        }),
+        MemberLocation::System(system) => world.systems.get(system)?.control.faction(),
+        MemberLocation::Nowhere => None,
+    }
+}
+
 /// [`escape_destination`]'s search from `origin`, leaving out `exclude`:
 /// `FUN_005545e0`'s candidates in order, nearest first.
 fn autoroute_destination(
@@ -4021,7 +4184,6 @@ fn autoroute_destination(
     exclude: Option<SystemKey>,
 ) -> Option<SystemKey> {
     use crate::dat::Faction;
-    use crate::world::ControlKind;
 
     let c = world.characters.get(character)?;
     let side = if c.is_alliance {
@@ -4031,6 +4193,20 @@ fn autoroute_destination(
     } else {
         Faction::Neutral
     };
+    nearest_place(world, side, origin, exclude)
+}
+
+/// `FUN_005545e0`'s candidates for `side` from `origin`, leaving out
+/// `exclude`: the first rule any system meets, nearest first.
+fn nearest_place(
+    world: &GameWorld,
+    side: crate::dat::Faction,
+    origin: (i64, i64),
+    exclude: Option<SystemKey>,
+) -> Option<SystemKey> {
+    use crate::dat::Faction;
+    use crate::world::ControlKind;
+
     let mut nearest: Vec<(i64, SystemKey)> = world
         .systems
         .iter()
@@ -5711,6 +5887,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 other_side_target: true,
                 opponent_target: true,
@@ -5755,6 +5932,7 @@ mod tests {
             hidden: false,
             detection_phases: false,
             can_resign: false,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 own_side_target: true,
                 revolting_target: true,
@@ -6577,6 +6755,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
                 needs_populated_container: true,
@@ -6610,6 +6789,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 target_loss_ends: true,
                 opponent_target: true,
@@ -6663,6 +6843,176 @@ mod tests {
             )
             .expect("a free envoy");
         (state, envoy)
+    }
+
+    /// A one-shot Diplomacy that ends on day 5 at `away` (no MSTB table, so
+    /// it fails), its record's leave rule `leave_rule`; the envoy's home
+    /// side holds `home`.
+    fn ending_at(
+        away_holder: crate::dat::Faction,
+        leave_rule: u32,
+    ) -> (GameWorld, MissionState, CharacterKey, SystemKey, SystemKey) {
+        use crate::world::ControlKind;
+        let mut world = minimal_world();
+        let home = system_at(&mut world, 0);
+        let away = system_at(&mut world, 100);
+        world.systems[home].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.systems[away].control = ControlKind::Controlled(away_holder);
+        world.mission_records = vec![crate::world::MissionRecord {
+            repeats: false,
+            leave_rule,
+            ..diplomacy_record()
+        }];
+        let envoy = agent_at(&mut world, away, true);
+        world.characters[envoy].on_mission = true;
+        let mut state = MissionState::new();
+        state.missions.push_back(ActiveMission::timed(
+            0,
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            vec![MissionMember::Character(envoy)],
+            away,
+            5,
+        ));
+        state.next_id = 1;
+        (world, state, envoy, home, away)
+    }
+
+    #[test]
+    fn an_agent_returns_home_from_another_side_s_system_on_a_return_order() {
+        // FUN_00521220: record +0x68 = 1 sends home a member of an ended
+        // mission whose container is not of its side; FUN_00548910 gives it
+        // a Return order 0x42000002 (FUN_005475f0) to FUN_00542ee0's
+        // destination, the nearest system of its side (FUN_00554e80). The
+        // order steps at once: phase 4 sends the envoy off the map.
+        let (world, mut state, envoy, home, _) = ending_at(crate::dat::Faction::Empire, 1);
+        let member = MissionMember::Character(envoy);
+
+        let advance = step(&mut state, &world, 5, &[]);
+
+        assert_eq!(advance.ended.len(), 1);
+        assert!(!advance
+            .effects
+            .contains(&MissionEffect::MemberAvailable { member }));
+        assert!(advance
+            .effects
+            .contains(&MissionEffect::MemberMoved { member, to: None }));
+        let order = &state.missions()[0];
+        assert_eq!(
+            (order.kind, order.team.clone(), order.target_system, order.phase),
+            (MissionKind::Return, vec![member], home, PHASE_TRANSIT)
+        );
+    }
+
+    #[test]
+    fn an_agent_on_its_own_side_s_system_or_under_rule_zero_stays_where_it_is() {
+        // FUN_00521220: rule 1 returns only from another side's container;
+        // rule 0 (the movement orders) never returns.
+        for (holder, rule) in [
+            (crate::dat::Faction::Alliance, 1),
+            (crate::dat::Faction::Empire, 0),
+        ] {
+            let (world, mut state, envoy, _, _) = ending_at(holder, rule);
+            let advance = step(&mut state, &world, 5, &[]);
+            assert!(advance.effects.contains(&MissionEffect::MemberAvailable {
+                member: MissionMember::Character(envoy)
+            }));
+            assert!(state.missions().is_empty(), "{holder:?} rule {rule}");
+        }
+    }
+
+    #[test]
+    fn members_sharing_a_destination_share_one_return_order() {
+        // FUN_00548910 gathers every member whose destination
+        // (FUN_00542ee0) is the first one's, one Return order per group; a
+        // member with a remove request (+0x78 bit 2) or held on the
+        // captured list does not go.
+        use crate::world::ControlKind;
+        let (mut world, mut state, envoy, home, away) = ending_at(crate::dat::Faction::Empire, 1);
+        let far = system_at(&mut world, 250);
+        world.systems[far].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let partner = agent_at(&mut world, away, true);
+        let other = agent_at(&mut world, far, true);
+        world.systems[far].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let near_far = system_at(&mut world, 300);
+        world.systems[near_far].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let removed = agent_at(&mut world, away, true);
+        let prisoner = agent_at(&mut world, away, true);
+        let mission = state.missions.back_mut().expect("the mission");
+        let [envoy, partner, other, removed, prisoner] =
+            [envoy, partner, other, removed, prisoner].map(MissionMember::Character);
+        mission.team.extend([removed, other]);
+        mission.decoys.push(partner);
+        mission.removing.push(removed);
+        mission.captured.push(prisoner);
+
+        let advance = step(&mut state, &world, 5, &[]);
+
+        let orders: Vec<_> = state
+            .missions()
+            .iter()
+            .map(|m| (m.id, m.team.clone(), m.target_system))
+            .collect();
+        assert_eq!(
+            orders,
+            vec![(1, vec![envoy, partner], home), (2, vec![other], near_far)]
+        );
+        for member in [removed, prisoner] {
+            assert!(advance
+                .effects
+                .contains(&MissionEffect::MemberAvailable { member }));
+        }
+    }
+
+    #[test]
+    fn a_return_order_s_members_are_put_on_its_hidden_mission() {
+        // FUN_00522b30 sets RoleOnMissionNotif; FUN_00520b70 reads the
+        // record's hidden flag +0x5c into OnHiddenMission.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let envoy = agent_at(&mut world, here, true);
+        let member = MissionMember::Character(envoy);
+        apply_advance_effects(
+            &mut world,
+            &[MissionEffect::MemberOnMission {
+                member,
+                hidden: true,
+            }],
+        );
+        let c = &world.characters[envoy];
+        assert!(c.on_mission && c.on_hidden_mission);
+    }
+
+    #[test]
+    fn the_return_order_ends_on_arrival_and_frees_its_member() {
+        // The Return's base phase handler FUN_00524b70 rolls no one; its
+        // record times 0 days, so it ends once its member lands.
+        let (mut world, mut state, envoy, home, _) =
+            ending_at(crate::dat::Faction::Empire, 1);
+        world.mission_records.push(crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x4200_0002),
+            ..move_record()
+        });
+        let member = MissionMember::Character(envoy);
+        let advance = step(&mut state, &world, 5, &[]);
+        // FUN_00520b70: the record is hidden, as Move's.
+        assert!(advance
+            .effects
+            .contains(&MissionEffect::MemberOnMission { member, hidden: true }));
+        let arrival = state.en_route()[0].arrival;
+
+        let advance = step(&mut state, &world, arrival, &[]);
+        assert!(advance.effects.contains(&MissionEffect::MemberMoved {
+            member,
+            to: Some(home)
+        }));
+        // FUN_00586130 makes the 0-day timer at least one tick.
+        let advance = step(&mut state, &world, arrival + 1, &[]);
+        assert!(advance
+            .effects
+            .contains(&MissionEffect::MemberAvailable { member }));
+        assert_eq!(advance.ended[0].kind, MissionKind::Return);
+        assert!(state.missions().is_empty());
     }
 
     #[test]
@@ -6742,6 +7092,7 @@ mod tests {
             hidden: true,
             detection_phases: true,
             can_resign: false,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
                 target_loss_ends: true,
@@ -7751,6 +8102,7 @@ mod tests {
                 hidden: false,
                 detection_phases: true,
                 can_resign: true,
+                leave_rule: 0,
                 rules: crate::world::MissionTargetRules {
                     target_loss_ends: true,
                     opponent_target: true,
@@ -7893,6 +8245,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
                 needs_populated_container: true,
@@ -8553,6 +8906,7 @@ mod tests {
             hidden: true,
             detection_phases: true,
             can_resign: false,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
                 needs_populated_container: false,
@@ -8615,6 +8969,7 @@ mod tests {
             hidden: true,
             detection_phases: false,
             can_resign: false,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: false,
                 needs_populated_container: false,
@@ -8683,6 +9038,7 @@ mod tests {
             hidden: true,
             detection_phases: true,
             can_resign: false,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: false,
                 needs_populated_container: false,
@@ -9333,6 +9689,7 @@ mod tests {
             hidden: false,
             detection_phases: true,
             can_resign: true,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
                 needs_populated_container: false,

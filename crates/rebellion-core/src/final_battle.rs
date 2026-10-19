@@ -517,6 +517,7 @@ mod tests {
             hidden: true,
             detection_phases: true,
             can_resign: false,
+            leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 own_side_target: true,
                 ..crate::world::MissionTargetRules::default()
