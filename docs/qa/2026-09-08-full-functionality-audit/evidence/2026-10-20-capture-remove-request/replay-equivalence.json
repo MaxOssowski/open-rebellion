@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "native_platform": "native",
+  "browser_platform": "wasm32",
+  "artifact_bytes": 13479,
+  "checkpoint_count": 9,
+  "initial_fingerprint": "v1:0d8727a7d2a2ee81",
+  "final_tick": 25,
+  "final_fingerprint": "v1:3f8a4e8cc1d73a06",
+  "request_count": 4,
+  "browser_errors": 0,
+  "invalid_query": "query",
+  "missing_pack": "runtime_pack_fetch",
+  "normal_startup_requests": 4,
+  "normal_menu_active": "true",
+  "failures": []
+}

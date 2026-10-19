@@ -10,8 +10,8 @@
 //!
 //! port: the original runs these checks from the mission manager's handlers
 //! (`FUN_00549910`, on many events); the port runs them each day, as it does
-//! the Dagobah check. `DarthPickup` and the Pickup mission (`0x73`) are not
-//! ported: they need Jabba's palace.
+//! the Dagobah check. `DarthPickup` and the Pickup mission (`0x73`) are in
+//! `jabba.rs`.
 
 use serde::{Deserialize, Serialize};
 

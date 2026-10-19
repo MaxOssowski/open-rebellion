@@ -1,0 +1,4 @@
+24 dual-AI campaigns, 1500 days: Final Battle steps by seed, stage D (d1) against the stage before (b7)
+  seed 12: before {}  after {'to_emperor': 1, 'battle': 1}
+  seed 14: before {'vader_to_luke': 76}  after {'battle': 1}
+seeds unchanged against the stage before: 1 of 24

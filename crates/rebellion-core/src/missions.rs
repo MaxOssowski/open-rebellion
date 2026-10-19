@@ -354,6 +354,10 @@ pub struct ActiveMission {
     /// Members with a resign request (role `+0x78` bit 3, `FUN_00534640`),
     /// set when an exposed member may resign (record column 9).
     pub resigning: Vec<MissionMember>,
+    /// Members with a remove request (role `+0x78` bit 2,
+    /// `Role_SetMissionRemoveRequest` `FUN_005345d0`): a captured member's
+    /// status change sets it (`FUN_004f18e0`, save v90).
+    pub removing: Vec<MissionMember>,
     /// Jedi Training's teacher `+0xa8` (`MissionJediTrainingTeacherKeyNotif`),
     /// chosen on entering phase 2 (`FUN_00571410` -> `FUN_00570e40`,
     /// `FUN_005703b0`).
@@ -414,6 +418,7 @@ impl ActiveMission {
             timer_due: None,
             container_loss_seen: false,
             resigning: Vec::new(),
+            removing: Vec::new(),
             teacher: None,
             target_abode: None,
             origin_abode: None,
@@ -2442,11 +2447,13 @@ pub(crate) fn running_end_code(
 ) -> u8 {
     use crate::dat::Faction;
     // Rule 1 (FUN_00522480.c:42-52): end 5 unless a team member stands
-    // without a remove or resign request; an empty team ends too, and a
-    // killed member is deleted. port: the port has no remove requests, and
-    // +0xa4 bit 1, which lifts the rule, is untraced and taken as clear.
+    // without a remove or resign request (role +0x78 & 0xc); an empty team
+    // ends too, and a killed member is deleted. port: +0xa4 bit 1, which
+    // lifts the rule, is untraced and taken as clear.
     let standing = mission.team.iter().any(|&member| {
-        member_state(world, member).is_some() && !mission.resigning.contains(&member)
+        member_state(world, member).is_some()
+            && !mission.resigning.contains(&member)
+            && !mission.removing.contains(&member)
     });
     if !standing {
         return 5;

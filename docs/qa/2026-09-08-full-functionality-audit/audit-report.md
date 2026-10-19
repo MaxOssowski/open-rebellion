@@ -2935,6 +2935,12 @@ cross-runtime proof remain open
   container is the Emperor's, which the Final Battle's DarthToEmperor
   Move order is; ported as `story_messages::taken_to_emperor`
   (`evidence/2026-10-20-luke-taken-to-emperor/`).
+- 2026-10-20: a captured mission member takes a remove request
+  (`FUN_004f18e0` -> `FUN_005345d0`), so rule 1 ends a mission whose team
+  was all captured with code 5; a Move order no longer carries its
+  prisoner on (the Final Battle's `DarthToLuke` repeated 76 times in seed
+  14). Save v90 (golden regenerated: initial `v1:0d8727a7d2a2ee81`, final
+  `v1:3f8a4e8cc1d73a06`) (`evidence/2026-10-20-capture-remove-request/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

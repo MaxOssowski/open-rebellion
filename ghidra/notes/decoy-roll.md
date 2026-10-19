@@ -688,6 +688,25 @@ Special forces (vtable `0x0065e160`) read their base skills: espionage
 remove or resign request, or `+0xa4` bit 1 is set. An empty team therefore
 ends with 5, and so does a team whose members were all deleted.
 
+### The capture's remove request (read 2026-10-20)
+
+- The status `+0x98` change handler, character slot `+0x334`
+  `FUN_004f18e0`, runs on the capture's `FUN_004ee3e0(member, 0)`:
+  1. `FUN_004ef190` with an empty key (the capture then stores the captor);
+  2. `GameObj_SetAutorouting(1)`;
+  3. when the character holds a mission key (`FUN_004ece60`),
+     `Role_SetMissionRemoveRequest(1)` (`FUN_005345d0`: role `+0x78` bit 2,
+     synced to both sides' views, then event `0x30b`);
+  4. event `0x30a` (`FUN_00516220`, not read further).
+- Event `0x30b`'s handler (`FUN_00546240`) removes the member from its
+  mission (slot `+0x1d0`) and re-runs `FUN_00522480` only for a destroyed
+  member (`+0x50` bit 3). A captured member stays on the team with its
+  remove request, so rule 1 no longer counts it.
+- So a mission whose every team member is captured ends with code 5 at its
+  next validation; a Move order no longer carries its prisoner on to the
+  target. The port keeps the request in `ActiveMission::removing` (save
+  v90). port: the autorouting set here is not applied by the capture.
+
 ### Port decisions (`mission_detection.rs`)
 
 - The setup sets `+0x28 +0x2c` only with `+0x24` and `+0x30` only with

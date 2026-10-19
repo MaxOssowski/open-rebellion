@@ -527,7 +527,10 @@ impl Run<'_> {
     /// (the team's, and betrayal's before any decoy acts) never meet one, so
     /// the port keeps no decoying mark.
     fn counts(&self, mission: &ActiveMission, member: MissionMember) -> bool {
-        if mission.resigning.contains(&member) || self.gone.contains(&member) {
+        if mission.resigning.contains(&member)
+            || mission.removing.contains(&member)
+            || self.gone.contains(&member)
+        {
             return false;
         }
         match member_location_kind(self.world, member) {
@@ -600,9 +603,12 @@ impl Run<'_> {
         };
         self.evade_or_capture(mission, member, combat, captor, rng, out);
         self.request_resign(mission, member);
-        // port: a resigning team member also leaves the team count, which
-        // nothing reads once the team is exposed; the port drops it.
-        if mission.resigning.contains(&member) && mission.decoys.contains(&member) {
+        // A member with either request leaves the decoy count. port: it also
+        // leaves the team count, which nothing reads once the team is
+        // exposed; the port drops it.
+        let requested =
+            mission.resigning.contains(&member) || mission.removing.contains(&member);
+        if requested && mission.decoys.contains(&member) {
             self.decoys -= 1;
         }
     }
@@ -648,6 +654,12 @@ impl Run<'_> {
                     },
                     at_system: self.location,
                 });
+                // FUN_004ef480 sets the status +0x98 to 0, whose handler
+                // FUN_004f18e0 sets the member's remove request
+                // (FUN_005345d0) while it is on a mission.
+                if !mission.removing.contains(&member) {
+                    mission.removing.push(member);
+                }
                 // port: the capture applies after the run, so the run marks
                 // the prisoner gone from its lists now.
                 self.gone.insert(member);
@@ -663,10 +675,13 @@ impl Run<'_> {
         }
     }
 
-    /// `FUN_00534640` when the member may resign (bit 4, record column 9).
-    /// port: the port has no remove requests (bit 2).
+    /// `FUN_00534640` when the member may resign (bit 4, record column 9)
+    /// and has no remove request (bit 2).
     fn request_resign(&self, mission: &mut ActiveMission, member: MissionMember) {
-        if self.can_resign && !mission.resigning.contains(&member) {
+        if self.can_resign
+            && !mission.resigning.contains(&member)
+            && !mission.removing.contains(&member)
+        {
             mission.resigning.push(member);
         }
     }
@@ -2190,6 +2205,48 @@ mod tests {
             ),
             5
         );
+    }
+
+    #[test]
+    fn a_team_whose_every_member_has_a_remove_request_ends_with_code_five() {
+        // FUN_00522480.c:42-52: a member stands only with role +0x78 & 0xc
+        // clear, bit 2 being the remove request (FUN_005345d0).
+        let (mut world, here) = world_with(imperial());
+        let lead = agent(&mut world, here, 100);
+        let mut mission = sabotage(vec![lead], here, 8);
+        mission.removing = vec![lead];
+        assert_eq!(
+            running_end_code(
+                &mission,
+                &world,
+                &UprisingState::default(),
+                &crate::research::ResearchState::default(),
+                &[]
+            ),
+            5
+        );
+    }
+
+    #[test]
+    fn a_captured_member_takes_a_remove_request_and_no_resign_request() {
+        // Slot +0x20c FUN_004ef480 sets the status +0x98 to 0; its handler
+        // FUN_004f18e0 sets the remove request of a member on a mission
+        // (FUN_005345d0). FUN_005888f0.c:61-84 then gives a resign request
+        // only to a member without a remove request.
+        let (mut world, here) = world_with(imperial());
+        imperial_regiment(&mut world, here);
+        table(&mut world, FOILTB, 100);
+        table(&mut world, RLEVADTB, 0);
+        let lead = agent(&mut world, here, 100);
+        let mut mission = sabotage(vec![lead], here, 2);
+
+        let out = run_once(&mut mission, &world);
+
+        assert!(out
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::CharacterCaptured { .. })));
+        assert_eq!(mission.removing, vec![lead]);
+        assert!(mission.resigning.is_empty());
     }
 
     #[test]
