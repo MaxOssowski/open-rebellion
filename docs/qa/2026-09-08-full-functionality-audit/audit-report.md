@@ -2780,6 +2780,10 @@ cross-runtime proof remain open
   unchanged. The Fleet window gate passed in 1 of 4 runs; the
   stage-2 commit also fails it (`join-fleet`), an open problem
   (`evidence/2026-10-19-sector-mission-characters/`).
+- 2026-10-19 (F-036): a sector planner's held Sabotage planner takes a
+  system and an object from its plan (slot `+0x30`, `FUN_004ae480`). It
+  still orders nothing. Golden final `v1:aae0de7bbef402c1` ->
+  `v1:dee3c02775ecfb47` (`evidence/2026-10-19-sector-mission-sabotage/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

@@ -1803,6 +1803,7 @@ impl AISystem {
         let sector_claims = &mut state.sector_claims;
         let seen = &state.seen;
         let sectors = &state.module8.planners;
+        let no_site = state.controller.flags & crate::ai_module1::NO_SITE != 0;
         state.mission_planners.retain_mut(|p| {
             // A sector planner's mission planner runs FUN_004bda60: state 2
             // takes its target from its owner's plan; without one state 9
@@ -1815,15 +1816,27 @@ impl AISystem {
                     let target = match p.kind {
                         MissionKind::Abduction | MissionKind::Assassination => owner
                             .and_then(|s| sector_character_target(s, planner, world, galaxy))
-                            .map(|(system, c)| (system, Some(c))),
+                            .map(|(system, c)| (system, Some(c), None)),
+                        MissionKind::Sabotage => owner
+                            .and_then(|s| {
+                                sector_sabotage_target(
+                                    s,
+                                    planner,
+                                    world,
+                                    galaxy,
+                                    (is_alliance, no_site),
+                                )
+                            })
+                            .map(|(system, object)| (system, None, Some(object))),
                         kind => owner
                             .and_then(|s| {
                                 sector_mission_target(kind, s, planner, galaxy, (tick, seen))
                             })
-                            .map(|system| (system, None)),
+                            .map(|system| (system, None, None)),
                     };
                     p.target_system = target.map(|t| t.0);
                     p.target_character = target.and_then(|t| t.1);
+                    p.target_object = target.and_then(|t| t.2);
                 }
                 return true;
             }
@@ -3795,10 +3808,8 @@ fn espionage_target(
 /// `+0x30` is the system itself.
 ///
 /// Abduction and Assassination (`0x17`, `0x81`, slot `+0x24`) are
-/// [`sector_character_target`].
-///
-/// port: the Sabotage slot (`0x12`, `+0x30`) is not ported yet and gives
-/// no target.
+/// [`sector_character_target`], and Sabotage (`0x12`, slot `+0x30`)
+/// [`sector_sabotage_target`].
 fn sector_mission_target(
     kind: MissionKind,
     owner: &crate::ai_module8::SectorPlanner,
@@ -3964,6 +3975,206 @@ fn opponent_at(
     let count = i32::try_from(candidates.len()).unwrap_or(i32::MAX);
     let at = usize::try_from(planner.random(count)).unwrap_or(0);
     candidates.get(at).copied()
+}
+
+/// Slot `+0x30` of a sector planner's plan object, for its Sabotage
+/// planner: the first step to give a system of the plan's sector, by
+/// `FUN_0041a340` on `v[29]`, order 2 (`+0x2c` bit, `+0x30` bit), then an
+/// asset of that step's kind there ([`assets_at`]):
+///
+/// | Kind | Steps |
+/// |---|---|
+/// | 1 (`FUN_004bab30`) | the HQ (`0x2000000`, `0x80000000`; the Empire's planner only), `0x20000`, `0x10000`, `0x200000`, `0x800000` (`0x200`), `0x400000` |
+/// | 2 (`FUN_004b99b0`) | `0x400000`, `0x800000` (`0x200`), `0x20000` |
+/// | 3 (`FUN_004b3f80`) | `0x40000` (`0x100`), `0x80000`, `0x100000`, `0x40000`, `0x200000`, `0x20000`, `0x400000`, `0x800000` (`0x200`) |
+/// | 4, 5 (`FUN_004b7b10`, `FUN_004b1f80`) | as kind 3 without `0x20000` |
+/// | 6 (`FUN_004b5540`) | as kind 5, with the HQ second (the Empire's planner only) |
+///
+/// Kind 4 first copies its target `+0x5c` when that record has `+0x30`
+/// `0x100` and not 1, but its first step then writes over it
+/// (`0x4b7c00`), so it chooses as kind 5 does.
+fn sector_sabotage_target(
+    owner: &crate::ai_module8::SectorPlanner,
+    planner: &mut Planner<'_>,
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+    (is_alliance, no_site): (bool, bool),
+) -> Option<(SystemKey, crate::missions::MissionTarget)> {
+    use crate::ai_records::{pick, Mask, Order};
+    const HQ: (u32, u32) = (0x200_0000, 0x8000_0000);
+    let any = Mask::new(0, 0);
+    let sector = owner.sector?;
+    let empire_hq: &[(u32, u32)] = if is_alliance { &[] } else { &[HQ] };
+    let defenses = [(0x8_0000, 0), (0x10_0000, 0), (0x4_0000, 0), (0x20_0000, 0)];
+    let steps: Vec<(u32, u32)> = match owner.kind {
+        1 => [empire_hq, &[(0x2_0000, 0), (0x1_0000, 0), (0x20_0000, 0)]]
+            .concat()
+            .into_iter()
+            .chain([(0x80_0000, 0x200), (0x40_0000, 0)])
+            .collect(),
+        2 => vec![(0x40_0000, 0), (0x80_0000, 0x200), (0x2_0000, 0)],
+        3 => [
+            &[(0x4_0000, 0x100)][..],
+            &defenses,
+            &[(0x2_0000, 0), (0x40_0000, 0), (0x80_0000, 0x200)],
+        ]
+        .concat(),
+        4 | 5 => [
+            &[(0x4_0000, 0x100)][..],
+            &defenses,
+            &[(0x40_0000, 0), (0x80_0000, 0x200)],
+        ]
+        .concat(),
+        6 => [
+            &[(0x4_0000, 0x100)][..],
+            empire_hq,
+            &defenses,
+            &[(0x40_0000, 0), (0x80_0000, 0x200)],
+        ]
+        .concat(),
+        _ => return None,
+    };
+    let (system, bits) = steps.into_iter().find_map(|(f2c, f30)| {
+        pick(&[galaxy.system_query(
+            sector,
+            [any, Mask::new(f2c, 0), Mask::new(f30, 0)],
+            29,
+            Order::Descending,
+            &mut || planner.coin(),
+        )])
+        .map(|system| (system, f2c))
+    })?;
+    let assets = assets_at(world, galaxy, system, bits, no_site);
+    if assets.is_empty() {
+        return None;
+    }
+    let count = i32::try_from(assets.len()).unwrap_or(i32::MAX);
+    let at = usize::try_from(planner.random(count)).unwrap_or(0);
+    assets.get(at).map(|&target| (system, target))
+}
+
+/// `FUN_004ae480`'s list: the active objects at `system` of each kind in
+/// `bits`, in this order, any side's unless named:
+///
+/// - `0x40000`: defenses of family `0x24` (`FUN_005278c0`);
+/// - `0x80000`: `0x25` (`FUN_0051c270`);
+/// - `0x100000`: `0x23`, then `0x22` (`FUN_005272e0`, `FUN_00527550`);
+/// - `0x200000`: the regiments (`FUN_00504c40`);
+/// - `0x800000`: each capital ship of a fleet whose record is not the
+///   side's (`+0x38` bit 1; `FUN_004ffe70`, `FUN_00419e40`);
+/// - `0x20000`: training facilities, shipyards, then construction yards
+///   unless controller `+4` has [`crate::ai_module1::NO_SITE`]
+///   (`FUN_0052c740`, `FUN_0052cab0`, `FUN_0052c420`);
+/// - `0x10000`: refineries, then mines (`FUN_0052d1f0`, `FUN_0052d610`).
+///
+/// The draw is `FUN_0041cd80(count)`.
+///
+/// port: every object is active; the port has no headquarters object
+/// (`0x2000000`, families `0x20..0x21`, `FUN_00526cf0`) and no mission
+/// target for a squadron on a planet (`0x400000`, `FUN_005039d0`), so
+/// those give none; each kind lists in the world's order.
+fn assets_at(
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+    system: SystemKey,
+    bits: u32,
+    no_site: bool,
+) -> Vec<crate::missions::MissionTarget> {
+    use crate::missions::MissionTarget;
+    let Some(sys) = world.systems.get(system) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let defenses = |out: &mut Vec<MissionTarget>, family: u8| {
+        out.extend(
+            sys.defense_facilities
+                .iter()
+                .copied()
+                .filter(|&f| {
+                    world
+                        .defense_facilities
+                        .get(f)
+                        .is_some_and(|d| d.class_dat_id.family() == family)
+                })
+                .map(MissionTarget::DefenseFacility),
+        );
+    };
+    if bits & 0x4_0000 != 0 {
+        defenses(&mut out, 0x24);
+    }
+    if bits & 0x8_0000 != 0 {
+        defenses(&mut out, 0x25);
+    }
+    if bits & 0x10_0000 != 0 {
+        defenses(&mut out, 0x23);
+        defenses(&mut out, 0x22);
+    }
+    if bits & 0x20_0000 != 0 {
+        out.extend(sys.ground_units.iter().copied().map(MissionTarget::Troop));
+    }
+    if bits & 0x80_0000 != 0 {
+        for &fleet in &sys.fleets {
+            let foreign = galaxy
+                .fleets
+                .get(&fleet)
+                .is_some_and(|r| r.flags & crate::ai_records::FLEET_OWN == 0);
+            let Some(value) = world.fleets.get(fleet).filter(|_| foreign) else {
+                continue;
+            };
+            for ship in value.capital_ships.iter().filter(|ship| ship.alive) {
+                let death_star = world
+                    .capital_ship_classes
+                    .get(ship.class)
+                    .is_some_and(crate::world::CapitalShipClass::is_death_star);
+                out.push(if death_star {
+                    MissionTarget::DeathStar(fleet)
+                } else {
+                    MissionTarget::CapitalShip {
+                        fleet,
+                        class: ship.class,
+                    }
+                });
+            }
+        }
+    }
+    if bits & 0x2_0000 != 0 {
+        let families: &[u8] = if no_site {
+            &[0x29, 0x28]
+        } else {
+            &[0x29, 0x28, 0x2a]
+        };
+        for &family in families {
+            out.extend(
+                sys.manufacturing_facilities
+                    .iter()
+                    .copied()
+                    .filter(|&f| {
+                        world
+                            .manufacturing_facilities
+                            .get(f)
+                            .is_some_and(|m| m.class_dat_id.family() == family)
+                    })
+                    .map(MissionTarget::ManufacturingFacility),
+            );
+        }
+    }
+    if bits & 0x1_0000 != 0 {
+        for family in [0x2d, 0x2c] {
+            out.extend(
+                sys.production_facilities
+                    .iter()
+                    .copied()
+                    .filter(|&f| {
+                        world
+                            .production_facilities
+                            .get(f)
+                            .is_some_and(|m| m.class_dat_id.family() == family)
+                    })
+                    .map(MissionTarget::ProductionFacility),
+            );
+        }
+    }
+    out
 }
 
 /// Whether `character` is an opponent's main character free in the field
@@ -9258,6 +9469,266 @@ mod tests {
         }
         let mut galaxy = galaxy_of(&state, &world);
         assert_eq!(run(&mut state, &world, &mut galaxy, 6), (None, None));
+    }
+
+    /// An Alliance system with one asset of each kind `FUN_004ae480` lists,
+    /// an Alliance fleet and an Empire fleet, for the Empire's planners.
+    struct Assets {
+        world: GameWorld,
+        system: SystemKey,
+        defenses: [crate::ids::DefenseFacilityKey; 4],
+        troop: crate::ids::TroopKey,
+        yards: [crate::ids::ManufacturingFacilityKey; 3],
+        plants: [crate::ids::ProductionFacilityKey; 2],
+        fleet: crate::ids::FleetKey,
+        class: crate::ids::CapitalShipKey,
+    }
+
+    fn assets_world() -> Assets {
+        use crate::world::{
+            DefenseFacilityInstance, ManufacturingFacilityInstance, ProductionFacilityInstance,
+        };
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let system = add_system(&mut world, sector, 0.9, 0.1);
+        world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let alliance = crate::dat::Faction::Alliance;
+        // Families 0x24, 0x25, 0x23, 0x22.
+        let defenses = [0x2400_0001, 0x2500_0001, 0x2300_0001, 0x2200_0001].map(|id| {
+            world.defense_facilities.insert(DefenseFacilityInstance {
+                class_dat_id: DatId(id),
+                side: alliance,
+            })
+        });
+        // Listed out of order to show the original's.
+        world.systems[system].defense_facilities.extend([
+            defenses[3],
+            defenses[2],
+            defenses[1],
+            defenses[0],
+        ]);
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 50,
+        });
+        world.systems[system].ground_units.push(troop);
+        // Families 0x29 (training), 0x28 (shipyard), 0x2a (construction).
+        let yards = [0x2900_0001, 0x2800_0001, 0x2a00_0001].map(|id| {
+            world
+                .manufacturing_facilities
+                .insert(ManufacturingFacilityInstance {
+                    class_dat_id: DatId(id),
+                    side: alliance,
+                    is_shipyard: id == 0x2800_0001,
+                })
+        });
+        world.systems[system]
+            .manufacturing_facilities
+            .extend([yards[2], yards[1], yards[0]]);
+        // Families 0x2d (refinery), 0x2c (mine).
+        let plants = [0x2d00_0001, 0x2c00_0001].map(|id| {
+            world
+                .production_facilities
+                .insert(ProductionFacilityInstance {
+                    class_dat_id: DatId(id),
+                    side: alliance,
+                    is_mine: id == 0x2c00_0001,
+                })
+        });
+        world.systems[system]
+            .production_facilities
+            .extend([plants[1], plants[0]]);
+        let class = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        let mut fleets = [true, false].map(|is_alliance| {
+            world.fleets.insert(Fleet {
+                location: system,
+                capital_ships: ShipInstance::make(class, 100, is_alliance, 1),
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+            })
+        });
+        world.systems[system].fleets.extend(fleets);
+        fleets.reverse();
+        Assets {
+            world,
+            system,
+            defenses,
+            troop,
+            yards,
+            plants,
+            fleet: fleets[1],
+            class,
+        }
+    }
+
+    #[test]
+    fn sabotage_lists_the_assets_of_its_step_s_kind_in_the_original_s_order() {
+        // FUN_004ae480: 0x40000 family 0x24 (FUN_005278c0), 0x80000 0x25
+        // (FUN_0051c270), 0x100000 0x23 then 0x22 (FUN_005272e0,
+        // FUN_00527550), 0x200000 the regiments (FUN_00504c40), 0x800000
+        // the ships of fleets whose record lacks bit 1 (FUN_004ffe70),
+        // 0x20000 0x29, 0x28, then 0x2a unless controller +4 has 0x40
+        // (FUN_0052c740, FUN_0052cab0, FUN_0052c420), 0x10000 0x2d then
+        // 0x2c (FUN_0052d1f0, FUN_0052d610).
+        use crate::missions::MissionTarget as T;
+        let a = assets_world();
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &a.world);
+        let list = |bits, no_site| assets_at(&a.world, &galaxy, a.system, bits, no_site);
+        let [d24, d25, d23, d22] = a.defenses.map(T::DefenseFacility);
+        assert_eq!(list(0x4_0000, false), [d24]);
+        assert_eq!(list(0x8_0000, false), [d25]);
+        assert_eq!(list(0x10_0000, false), [d23, d22]);
+        assert_eq!(list(0x20_0000, false), [T::Troop(a.troop)]);
+        assert_eq!(
+            list(0x80_0000, false),
+            [T::CapitalShip {
+                fleet: a.fleet,
+                class: a.class
+            }]
+        );
+        let [training, shipyard, construction] = a.yards.map(T::ManufacturingFacility);
+        assert_eq!(list(0x2_0000, false), [training, shipyard, construction]);
+        assert_eq!(list(0x2_0000, true), [training, shipyard]);
+        let [refinery, mine] = a.plants.map(T::ProductionFacility);
+        assert_eq!(list(0x1_0000, false), [refinery, mine]);
+        // port: no headquarters object and no planet squadron target.
+        assert!(list(0x240_0000, false).is_empty());
+        assert_eq!(list(0x4_0000 | 0x8_0000, false), [d24, d25]);
+    }
+
+    #[test]
+    fn each_plan_kind_sabotages_by_its_own_order_of_asset_kinds() {
+        // Slot +0x30: kind 1 (FUN_004bab30) yards before regiments, kind 3
+        // (FUN_004b3f80) regiments before yards, kinds 4 and 5 no yards,
+        // kind 2 (FUN_004b99b0) yards last; the Empire's kinds 1 and 6 try
+        // the headquarters (+0x2c 0x2000000, +0x30 0x80000000) first.
+        use crate::missions::MissionTarget as T;
+        let a = assets_world();
+        let state = AIState::new(AiFaction::Empire);
+        let mut galaxy = galaxy_of(&state, &a.world);
+        let sector = a.world.systems[a.system].sector;
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let set = |galaxy: &mut crate::ai_records::Galaxy, summary: u32, kind: u32| {
+            let r = galaxy
+                .sectors
+                .iter_mut()
+                .flat_map(|s| s.systems.iter_mut())
+                .find(|r| r.system == a.system)
+                .unwrap();
+            r.summary = summary;
+            r.kind = kind;
+        };
+        let target = |galaxy: &crate::ai_records::Galaxy, kind, is_alliance| {
+            let mut planner = Planner::new(&a.world, &missions, &busy, is_alliance, 7);
+            let owner = crate::ai_module8::SectorPlanner {
+                kind,
+                sector: Some(sector),
+                ..Default::default()
+            };
+            sector_sabotage_target(&owner, &mut planner, &a.world, galaxy, (is_alliance, false))
+                .map(|(system, object)| {
+                    assert_eq!(system, a.system);
+                    object
+                })
+        };
+        let troop = Some(T::Troop(a.troop));
+        let yard = |object: Option<T>| matches!(object, Some(T::ManufacturingFacility(_)));
+        set(&mut galaxy, 0x2_0000 | 0x20_0000, 0);
+        assert!(yard(target(&galaxy, 1, false)));
+        assert!(yard(target(&galaxy, 2, false)));
+        assert_eq!(target(&galaxy, 3, false), troop);
+        assert_eq!(target(&galaxy, 4, false), troop);
+        assert_eq!(target(&galaxy, 5, false), troop);
+        assert_eq!(target(&galaxy, 6, false), troop);
+        set(&mut galaxy, 0x2_0000, 0);
+        assert!(yard(target(&galaxy, 3, false)));
+        assert_eq!(target(&galaxy, 5, false), None);
+        // The headquarters step finds the system, and the port lists no
+        // object there.
+        set(&mut galaxy, 0x200_0000 | 0x2_0000 | 0x20_0000, 0x8000_0000);
+        assert_eq!(target(&galaxy, 1, false), None);
+        assert!(yard(target(&galaxy, 1, true)));
+        assert_eq!(target(&galaxy, 6, false), None);
+        assert_eq!(target(&galaxy, 6, true), troop);
+        // Kind 3's first step wants +0x30 0x100 with 0x24 defenses.
+        set(&mut galaxy, 0x4_0000 | 0x20_0000, 0x100);
+        assert_eq!(
+            target(&galaxy, 3, false),
+            Some(T::DefenseFacility(a.defenses[0]))
+        );
+        assert_eq!(target(&galaxy, 0, false), None);
+    }
+
+    #[test]
+    fn a_sector_planner_s_sabotage_planner_takes_a_system_and_an_object() {
+        // FUN_004bdbc0: 0x12 -> slot +0x30 sets the system +0x34 and the
+        // object +0x30.
+        let a = assets_world();
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut galaxy = galaxy_of(&state, &a.world);
+        for r in galaxy.sectors.iter_mut().flat_map(|s| s.systems.iter_mut()) {
+            r.summary = 0x20_0000;
+        }
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner {
+            id: 7,
+            kind: 5,
+            sector: Some(a.world.systems[a.system].sector),
+            mission: [0x69, 0, 0],
+            ..Default::default()
+        }];
+        AISystem::take_sector_request(&mut state, &a.world, &mut galaxy);
+        assert_eq!(state.mission_planners[0].kind, MissionKind::Sabotage);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &mut planner_for(&a.world, AiFaction::Empire),
+            &a.world,
+            &mut galaxy,
+            5,
+            &mut actions,
+        );
+        assert!(actions.is_empty());
+        let p = &state.mission_planners[0];
+        assert_eq!(p.target_system, Some(a.system));
+        assert_eq!(
+            p.target_object,
+            Some(crate::missions::MissionTarget::Troop(a.troop))
+        );
+        assert_eq!(p.target_character, None);
+
+        // Only a construction yard: listed unless controller +4 has 0x40.
+        let mut world = a.world;
+        world.systems[a.system].manufacturing_facilities = vec![a.yards[2]];
+        for r in galaxy.sectors.iter_mut().flat_map(|s| s.systems.iter_mut()) {
+            r.summary = 0x2_0000;
+        }
+        state.module8.planners[0].kind = 1;
+        let mut run = |state: &mut AIState, tick| {
+            AISystem::mission_planner_cycle(
+                state,
+                &mut planner_for(&world, AiFaction::Empire),
+                &world,
+                &mut galaxy,
+                tick,
+                &mut Vec::new(),
+            );
+            state.mission_planners[0].target_object
+        };
+        assert_eq!(
+            run(&mut state, 6),
+            Some(crate::missions::MissionTarget::ManufacturingFacility(
+                a.yards[2]
+            ))
+        );
+        state.controller.flags |= crate::ai_module1::NO_SITE;
+        assert_eq!(run(&mut state, 7), None);
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.

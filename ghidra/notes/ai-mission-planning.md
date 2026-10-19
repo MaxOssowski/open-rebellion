@@ -1644,12 +1644,51 @@ excluded):
 It draws one with `FUN_0041cd80(count)` into the object `+0x30`. With
 none the object stays clear, and state 2 fails.
 
+**The Sabotage targets** (read and ported 2026-10-19, stage 4). Each
+slot `+0x30` first clears both outputs (`FUN_004ece80` on the system
+and the object). It then tries its steps until one gives a system, by
+`FUN_0041a340(sector, +0x2c bit, +0x30 bit, v[29], order 2)`:
+
+| Kind | Steps (`+0x2c`, with `+0x30`) |
+|---|---|
+| 1 (`FUN_004bab30`) | `0x2000000` with `0x80000000` (only when plan `+4` is 2, the Empire), `0x20000`, `0x10000`, `0x200000`, `0x800000` with `0x200`, `0x400000` |
+| 2 (`FUN_004b99b0`) | `0x400000`, `0x800000` with `0x200`, `0x20000` |
+| 3 (`FUN_004b3f80`) | `0x40000` with `0x100`, `0x80000`, `0x100000`, `0x40000`, `0x200000`, `0x20000`, `0x400000`, `0x800000` with `0x200` |
+| 4, 5 (`FUN_004b7b10`, `FUN_004b1f80`) | as kind 3 without `0x20000` |
+| 6 (`FUN_004b5540`) | as kind 5, with the Empire's headquarters step second |
+
+Kind 4 first copies its target `+0x5c` into the system when that record
+has `+0x30` `0x100` and not 1. Its first query then writes over it
+unconditionally (`0x4b7c00`, `ecx = ebp`), so the copy never counts.
+
+`FUN_004ae480(system, &object, bits)` lists the active (mode 1) objects
+at the system of the kinds in the step's bit, then draws one with
+`FUN_0041cd80(count)`:
+
+| Bit | Objects |
+|---|---|
+| `0x2000000` | the headquarters, families `0x20..0x21` (`FUN_00526cf0`) |
+| `0x40000` | defenses `0x24` (`FUN_005278c0`) |
+| `0x80000` | defenses `0x25` (`FUN_0051c270`) |
+| `0x100000` | defenses `0x23`, then `0x22` (`FUN_005272e0`, `FUN_00527550`) |
+| `0x200000` | regiments `0x10..0x13` (`FUN_00504c40`) |
+| `0x400000` | squadrons on the planet `0x1c..0x1f` (`FUN_005039d0`) |
+| `0x800000` | the ship records of each fleet (`FUN_004ffe70`) whose record lacks bit 1 |
+| `0x20000` | training facilities `0x29`, shipyards `0x28`, then construction yards `0x2a` unless controller `+4` has `0x40` (`FUN_0052c740`, `FUN_0052cab0`, `FUN_0052c420`) |
+| `0x10000` | refineries `0x2d`, then mines `0x2c` (`FUN_0052d1f0`, `FUN_0052d610`) |
+
+No side is checked, except the fleets' record bit.
+
 Ported (stage 2): `sector_mission_target` and state 2 in
 `AISystem::mission_planner_cycle`, once a day per planner. Stage 3:
-`sector_character_target` and `opponent_at`.
+`sector_character_target` and `opponent_at`. Stage 4:
+`sector_sabotage_target` and `assets_at`.
 
 port:
-- the Sabotage slots give no target yet;
+- the port has no headquarters object and no mission target for a
+  squadron on a planet, so `0x2000000` and `0x400000` list nothing; a
+  step that finds such a system gives no target;
+- `assets_at` lists each kind in the world's order;
 - `opponent_at` takes the candidates in the world's character order;
 - the adoption of the heuristics' orders passes over a sector planner's
   planner. Otherwise a heuristic Assassination aimed at its target was
@@ -1668,8 +1707,11 @@ In the 24 campaigns of stage 3, the picks again changed only the draws.
 With the targets dropped, seeds 1, 2, 14 and 23 ran event for event as
 with them kept. That held once the adoption fix above was in.
 
+In the 24 campaigns of stage 4, the Sabotage picks only shifted the
+draws: with the targets dropped, seeds 1, 2, 14 and 23 ran event for event
+as with them kept. The targets enter the seed-42 golden from tick 15.
+
 Next:
-- the Sabotage slots `+0x30` with `FUN_004ae480`;
 - `FUN_004bda60` with `FUN_004bdcd0` and `FUN_004be230`;
 - the sector classes' selectors (Espionage of subtype not 6:
   `FUN_004808c0`, `FUN_00480aa0`).

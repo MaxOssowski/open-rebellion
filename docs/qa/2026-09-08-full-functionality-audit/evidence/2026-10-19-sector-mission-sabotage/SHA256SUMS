@@ -1,0 +1,13 @@
+c5440695942910f30f75591ff2f41203426ff217d74dfad47d3fb196186170be  crates/rebellion-core/src/ai.rs
+b67216d0903fb1f42d8fc5cf8dc7364ccd86a210a5c459f54304eb4ae00ff034  crates/rebellion-data/src/replay_fixture.rs
+5d738014eadb7fa61ea44361d3491d82d11f660706439e04e3c5b182eb313531  crates/rebellion-data/tests/replay_manifest.rs
+ae7d0d2373ca35130628b035e48e98ca49cbf7da36d9d7fee436eeb0f0c17164  crates/rebellion-data/tests/fixtures/replay_seed42_v1.json
+8ed6d29e48f0e2d58da2a62061ee74cf8635fdba52387755a00a01ed5d63c517  agent_docs/deterministic-replay.md
+18a277d0306675e445f23c32addc2921fd7c1cdbbc6034708a3837742c8150e9  ghidra/notes/ai-mission-planning.md
+736b24e83adee4cd67415fead25f5a82d96d0f743322b8cec46cb426d091c176  web/open-rebellion.wasm
+192e3ba68d732bc4df9f2291add868c2df22a152661a80ec778c98ee6955cd16  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-sabotage/console.txt
+f004dba75c4512f1b2c9115fbe9b5c389e6731425c00c84e19b0d66155c329bc  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-sabotage/network.txt
+52a6c89fc99e8ae8d5092b266020e3f5905145cd618dc69c65ac323b0efdb111  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-sabotage/replay-equivalence.json
+c24999c158991ffeb789c758779bbf627f6a4157018cad1c0a48fe794de013df  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-sabotage/fail-without.txt
+73416b08fe937632832ce3eba79d1afa28aa75ec0497ecd24d19830c404844fd  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-sabotage/playtest-sector-sabotage.json
+5f9fa85b0347e9dc344bc74a4188eb76afb524dfef60f9ded9852d4698d6105c  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-sabotage/README.md
