@@ -1683,6 +1683,7 @@ mod tests {
                 transport: &fx.transport,
                 people: &fx.people,
                 controller_flags: 0,
+                is_alliance: true,
                 day: fx.day,
                 seen: &fx.seen,
                 swept: &mut fx.swept,

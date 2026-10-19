@@ -575,6 +575,11 @@ pub struct AIState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub sector_claims: HashMap<crate::ids::SectorKey, u32>,
+    /// The mission module's `+0x40`/`+0x44` (`FUN_004d2610`): the sector
+    /// planner whose request it takes, and the one its next search starts
+    /// from (save v84).
+    #[serde(default)]
+    pub mission_take: [u32; 2],
 }
 
 /// Controller `+4` bit 0: a Headquarters Only game, whose records mark no
@@ -676,6 +681,14 @@ pub struct MissionPlanner {
     /// (`FUN_0047b250`).
     #[serde(default)]
     pub pending: u32,
+    /// `+0x70`: the id of the module 8 sector planner that holds it
+    /// (`FUN_00476ba0`), 0 for none (save v84).
+    #[serde(default)]
+    pub owner: u32,
+    /// Slot `+0x14`: the subtype it was built with (`FUN_0042f640`), 4 for
+    /// a sector planner's Abduction or Assassination.
+    #[serde(default)]
+    pub subtype: u32,
 }
 
 /// State 6 (`FUN_004bd0a0`): the planner's gathering place `+0x38`. It
@@ -768,6 +781,7 @@ impl AIState {
             swept: Vec::new(),
             record_claims: HashMap::new(),
             sector_claims: HashMap::new(),
+            mission_take: Default::default(),
         }
     }
 
@@ -1190,6 +1204,7 @@ impl AISystem {
                 planner.hold(member);
             }
         }
+        Self::sync_sector_missions(state);
         let mut galaxy = Self::records(
             state,
             &planner,
@@ -1532,6 +1547,7 @@ impl AISystem {
                 transport: ctx.transport,
                 people: &people,
                 controller_flags: state.controller.flags,
+                is_alliance: matches!(ctx.faction, AiFaction::Alliance),
                 day: ctx.tick,
                 seen: &state.seen,
                 swept: &mut state.swept,
@@ -1637,6 +1653,7 @@ impl AISystem {
             config,
             ..
         } = *ctx;
+        Self::take_sector_request(state, world, galaxy);
         let entries: Vec<MissionEntry> = state
             .research_planners
             .iter()
@@ -1734,6 +1751,8 @@ impl AISystem {
                             report: None,
                             failures: 0,
                             pending: 0,
+                            owner: 0,
+                            subtype: 0,
                         });
                     }
                 }
@@ -1780,6 +1799,11 @@ impl AISystem {
         let sector_claims = &mut state.sector_claims;
         let seen = &state.seen;
         state.mission_planners.retain_mut(|p| {
+            // port: a sector planner's mission planner runs FUN_004bda60,
+            // not yet ported; it waits.
+            if p.owner != 0 {
+                return true;
+            }
             if !p.standing && tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
                 return false;
             }
@@ -1982,6 +2006,126 @@ impl AISystem {
         }
     }
 
+    /// What each sector planner holds (`FUN_00476ba0` counts, `FUN_00478000`
+    /// bits): its mission planners by kind (`+0xa0..+0xac`,
+    /// [`held_index`]), and `+0x64` `0x20000000` with any, `0x400` with
+    /// one whose team or decoys are not complete (`+0x20` bits 1 and 2).
+    /// A mission planner whose sector planner is gone is dropped.
+    ///
+    /// port: the counts are taken from the list each pass instead of kept
+    /// as the planners come and go; `+0x20` bit `0x100` (`0x80000000`) is
+    /// not kept.
+    fn sync_sector_missions(state: &mut AIState) {
+        let ids: Vec<u32> = state.module8.planners.iter().map(|p| p.id).collect();
+        state
+            .mission_planners
+            .retain(|p| p.owner == 0 || ids.contains(&p.owner));
+        for sector in &mut state.module8.planners {
+            let mut counts = [0; 4];
+            let mut bits = 0;
+            for p in state
+                .mission_planners
+                .iter()
+                .filter(|p| p.owner == sector.id)
+            {
+                if let Some(i) = held_index(p.kind) {
+                    counts[i] += 1;
+                }
+                bits |= 0x2000_0000;
+                let decoys = crate::mission_planning::decoy_cap(p.kind, p.subtype);
+                if p.team.is_empty() || p.decoys.len() < decoys {
+                    bits |= 0x400;
+                }
+            }
+            sector.mission_counts = counts;
+            sector.mission_bits = bits;
+        }
+    }
+
+    /// States 2 and 3 of the mission module (`FUN_004d2610`,
+    /// `FUN_004d2690`): from the sector planner after the last one taken
+    /// (`+0x44`), the first with a request or a cancellation
+    /// (`FUN_00476b80`). Its cancellation drops the planner it holds of
+    /// that kind and subtype with the least cancel key (`FUN_00478000`,
+    /// `FUN_0042f690`); its request builds a planner (`FUN_0042f640`) that
+    /// it then holds (`FUN_00476ba0`: `+0x70` names it, and the request
+    /// clears).
+    ///
+    /// port: a cancelled planner goes at once (the original flags it
+    /// `0x10000000` and drops it at its next state 1).
+    fn take_sector_request(
+        state: &mut AIState,
+        world: &GameWorld,
+        galaxy: &mut crate::ai_records::Galaxy,
+    ) {
+        let planners = &state.module8.planners;
+        let start = planners
+            .iter()
+            .position(|p| p.id == state.mission_take[1])
+            .unwrap_or(0);
+        let found = planners
+            .iter()
+            .enumerate()
+            .skip(start)
+            .find(|(_, p)| p.mission[0] != 0 || p.cancel[0] != 0)
+            .map(|(at, p)| (at, p.id));
+        let Some((at, owner)) = found else {
+            state.mission_take = [0, 0];
+            return;
+        };
+        state.mission_take = [owner, planners.get(at + 1).map_or(0, |p| p.id)];
+        let sector = &mut state.module8.planners[at];
+        let request = sector.mission;
+        let cancel = sector.cancel;
+        sector.mission = [0; 3];
+        sector.cancel = [0; 2];
+        if let Some(kind) = requested_kind(cancel[0]) {
+            let at = state
+                .mission_planners
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.owner == owner && p.kind == kind && p.subtype == cancel[1])
+                .min_by_key(|&(at, p)| (sector_cancel_key(world, p), at))
+                .map(|(at, _)| at);
+            if let Some(at) = at {
+                let p = state.mission_planners.remove(at);
+                if let Some(sector) = p.sector {
+                    release_sector(
+                        &mut state.sector_claims,
+                        galaxy,
+                        sector,
+                        sector_claim_bit(p.kind),
+                    );
+                }
+            }
+        }
+        if let Some(kind) = requested_kind(request[0]) {
+            let id = state.next_planner_id;
+            state.next_planner_id += 1;
+            state.mission_planners.push(MissionPlanner {
+                id,
+                kind,
+                team: Vec::new(),
+                decoys: Vec::new(),
+                target_system: None,
+                target_character: None,
+                target_object: None,
+                created: 0,
+                last_cycle: 0,
+                staging: None,
+                standing: false,
+                claimed: None,
+                sector: None,
+                mission: None,
+                report: None,
+                failures: 0,
+                pending: 0,
+                owner,
+                subtype: request[1],
+            });
+        }
+    }
+
     /// The strategy's rows for the standing planners (`FUN_004e8290`), each
     /// kept at its want by [`Self::keep_planners`]:
     ///
@@ -2168,6 +2312,8 @@ impl AISystem {
                 report: None,
                 failures: 0,
                 pending: 0,
+                owner: 0,
+                subtype: 0,
             });
         }
     }
@@ -3859,6 +4005,49 @@ fn rescue_target(
     p.target_character.map(|_| system)
 }
 
+/// `FUN_004794b0`: the count a sector planner keeps of a held mission
+/// planner (`+0xa0 + 4·i`): 0 Abduction or Assassination, 1 Espionage, 2
+/// Reconnaissance, 3 Sabotage.
+fn held_index(kind: MissionKind) -> Option<usize> {
+    match kind {
+        MissionKind::Abduction | MissionKind::Assassination => Some(0),
+        MissionKind::Espionage => Some(1),
+        MissionKind::Reconnaissance => Some(2),
+        MissionKind::Sabotage => Some(3),
+        _ => None,
+    }
+}
+
+/// The mission family a sector planner's request names (`FUN_004b7150`).
+fn requested_kind(code: u32) -> Option<MissionKind> {
+    Some(match code {
+        0x52 => MissionKind::Espionage,
+        0x54 => MissionKind::Reconnaissance,
+        0x62 => MissionKind::Abduction,
+        0x63 => MissionKind::Assassination,
+        0x69 => MissionKind::Sabotage,
+        _ => return None,
+    })
+}
+
+/// Slot `+0x18` of the sector planners' mission classes, the cancel key:
+/// the team's espionage for Recon (`FUN_0047f220`) and Espionage
+/// (`FUN_004807c0`), espionage and combat halved for Sabotage
+/// (`FUN_0047d430`), combat for Abduction and Assassination
+/// (`FUN_00482c40`).
+fn sector_cancel_key(world: &GameWorld, p: &MissionPlanner) -> u32 {
+    use crate::world::Skill;
+    let skill = |m, s| crate::missions::member_skill(world, m, s).unwrap_or(0);
+    p.team
+        .iter()
+        .map(|&m| match p.kind {
+            MissionKind::Reconnaissance | MissionKind::Espionage => skill(m, Skill::Espionage),
+            MissionKind::Sabotage => (skill(m, Skill::Espionage) + skill(m, Skill::Combat)) / 2,
+            _ => skill(m, Skill::Combat),
+        })
+        .sum()
+}
+
 /// Row 6's want (`FUN_004e8290`): the side's uprisings plus one (side
 /// `+0x21c`, the sector records' `+0x164`: systems with record `+0x2c` bit
 /// `0x20`, an own uprising with no own fleet; `FUN_0041b7e0`) while
@@ -5292,6 +5481,8 @@ mod tests {
             report: None,
             failures: 3,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         let scout =
             MissionMember::Character(add_character(&mut GameWorld::default(), false, true, 0));
@@ -5499,6 +5690,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         let (world, _, _, keys) = diplomacy_world(90.0, &[50, 90]);
         let mut state = AIState::new(AiFaction::Empire);
@@ -5554,6 +5747,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         state
             .mission_planners
@@ -7260,6 +7455,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         let mut target = |p: &MissionPlanner| incite_target(p, &mut planner, &galaxy);
         // Without +0x38: the best supported (v[0], order 1).
@@ -7416,6 +7613,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         let mut target = |p: &MissionPlanner| subdue_target(p, &mut planner, &galaxy);
         // The far sector has two uprisings; its best supported.
@@ -7577,6 +7776,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         let mut claims = HashMap::new();
         let mut seen = state.seen.clone();
@@ -7705,6 +7906,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         let mut claims = HashMap::new();
         let seen = HashMap::new();
@@ -8002,6 +8205,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         // The guarded prison ranks first (v[29] 2, order 1) but needs a
         // decoy; with none, the open one, and Luke.
@@ -8052,6 +8257,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         assert_eq!(
             rescue_target(&mut p, &mut planner, &world, &galaxy),
@@ -8182,6 +8389,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         assert_eq!(
             abduction_target(&mut p, &mut planner, &world, &galaxy),
@@ -8241,6 +8450,244 @@ mod tests {
         assert_eq!(leader(&state), Some(0x4000_0000));
         state.set_game_type(crate::world::VictoryConditions::HeadquartersOnly);
         assert_eq!(leader(&state), Some(0));
+    }
+
+    #[test]
+    fn the_mission_module_takes_a_sector_planner_s_request_and_holds_its_planner() {
+        // FUN_004d2610 from the cursor +0x44 to the first sector planner
+        // with a request or cancellation (FUN_00476b80); FUN_004d2690
+        // cancels, builds the request (FUN_0042f640) and hands it over
+        // (FUN_00476ba0: +0x70, the request cleared, the count by
+        // FUN_004794b0).
+        let world = empty_world();
+        let mut galaxy = crate::ai_records::Galaxy::default();
+        let mut state = AIState::new(AiFaction::Empire);
+        state.module8.planners = (1..=3)
+            .map(|id| crate::ai_module8::SectorPlanner {
+                id,
+                ..Default::default()
+            })
+            .collect();
+        state.module8.planners[1].mission = [0x69, 0, 0];
+        state.module8.planners[2].mission = [0x63, 4, 0];
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        assert_eq!(state.mission_take, [2, 3]);
+        assert_eq!(state.module8.planners[1].mission, [0; 3]);
+        let p = state.mission_planners[0].clone();
+        assert_eq!(
+            (p.kind, p.owner, p.subtype, p.standing),
+            (MissionKind::Sabotage, 2, 0, false)
+        );
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        assert_eq!(state.mission_take, [3, 0]);
+        let p = state.mission_planners[1].clone();
+        assert_eq!(
+            (p.kind, p.owner, p.subtype),
+            (MissionKind::Assassination, 3, 4)
+        );
+        // Nothing left from the cursor's end: none.
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        assert_eq!(state.mission_take, [0, 0]);
+
+        // The counts and bits each pass (FUN_00476ba0, FUN_00478000).
+        AISystem::sync_sector_missions(&mut state);
+        let counts: Vec<[i32; 4]> = state
+            .module8
+            .planners
+            .iter()
+            .map(|p| p.mission_counts)
+            .collect();
+        assert_eq!(counts, vec![[0; 4], [0, 0, 0, 1], [1, 0, 0, 0]]);
+        assert_eq!(state.module8.planners[1].mission_bits, 0x2000_0400);
+        assert_eq!(state.module8.planners[0].mission_bits, 0);
+
+        // The search starts at the cursor: with it at the third planner,
+        // the second's request waits.
+        state.module8.planners[1].mission = [0x52, 0, 0];
+        state.module8.planners[2].mission = [0x54, 0, 0];
+        state.mission_take = [0, 3];
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        assert_eq!(state.mission_take, [3, 0]);
+        assert_eq!(state.module8.planners[1].mission[0], 0x52);
+        assert_eq!(
+            state.mission_planners.last().map(|p| (p.kind, p.owner)),
+            Some((MissionKind::Reconnaissance, 3))
+        );
+
+        // A cancellation drops its own planner of that kind and subtype,
+        // not another sector planner's nor another kind.
+        state.module8.planners[1].mission = [0; 3];
+        // Listed first: the same sector planner's Recon, and another's
+        // Assassination of subtype 4.
+        let recon = state.mission_planners.pop().unwrap();
+        state.mission_planners.insert(0, recon);
+        let mut other = state.mission_planners[2].clone();
+        other.owner = 2;
+        other.id = 99;
+        state.mission_planners.insert(0, other);
+        state.module8.planners[2].cancel = [0x63, 4];
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        assert!(!state
+            .mission_planners
+            .iter()
+            .any(|p| p.owner == 3 && p.kind == MissionKind::Assassination));
+        assert!(state
+            .mission_planners
+            .iter()
+            .any(|p| p.owner == 3 && p.kind == MissionKind::Reconnaissance));
+        assert!(state.mission_planners.iter().any(|p| p.id == 99));
+        state
+            .mission_planners
+            .retain(|p| p.kind != MissionKind::Reconnaissance && p.id != 99);
+        // A planner whose sector planner is gone goes with it.
+        state.module8.planners.remove(1);
+        AISystem::sync_sector_missions(&mut state);
+        assert!(state.mission_planners.is_empty());
+    }
+
+    #[test]
+    fn a_sector_planner_counts_each_held_kind_and_whether_each_is_complete() {
+        // FUN_004794b0 (0 Abduction/Assassination, 1 Espionage, 2 Recon,
+        // 3 Sabotage) and FUN_00478000's 0x400 for a planner without its
+        // team (+0x20 bit 1) or its decoys (bit 2).
+        let mut world = empty_world();
+        let agent = MissionMember::Character(add_character(&mut world, false, true, 30));
+        let mut galaxy = crate::ai_records::Galaxy::default();
+        let mut state = AIState::new(AiFaction::Empire);
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner {
+            id: 1,
+            ..Default::default()
+        }];
+        state.next_planner_id = 10;
+        for code in [[0x54, 0], [0x52, 0], [0x69, 0], [0x62, 4], [0x54, 0]] {
+            state.module8.planners[0].mission = [code[0], code[1], 0];
+            state.mission_take = [0, 0];
+            AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        }
+        let kinds: Vec<(MissionKind, u64)> = state
+            .mission_planners
+            .iter()
+            .map(|p| (p.kind, p.id))
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                (MissionKind::Reconnaissance, 10),
+                (MissionKind::Espionage, 11),
+                (MissionKind::Sabotage, 12),
+                (MissionKind::Abduction, 13),
+                (MissionKind::Reconnaissance, 14),
+            ]
+        );
+        AISystem::sync_sector_missions(&mut state);
+        assert_eq!(state.module8.planners[0].mission_counts, [1, 1, 2, 1]);
+        assert_eq!(state.module8.planners[0].mission_bits, 0x2000_0400);
+        // Complete teams: Recon needs no decoy; Espionage, Sabotage and the
+        // subtype-4 Abduction one each.
+        for p in &mut state.mission_planners {
+            p.team = vec![agent];
+            if p.kind != MissionKind::Reconnaissance {
+                p.decoys = vec![agent];
+            }
+        }
+        AISystem::sync_sector_missions(&mut state);
+        assert_eq!(state.module8.planners[0].mission_bits, 0x2000_0000);
+        state.mission_planners[1].decoys.clear();
+        AISystem::sync_sector_missions(&mut state);
+        assert_eq!(state.module8.planners[0].mission_bits, 0x2000_0400);
+    }
+
+    #[test]
+    fn a_cancellation_drops_the_held_planner_with_the_weakest_team() {
+        // FUN_00478000: the least slot +0x18 (espionage for Recon,
+        // FUN_0047f220; espionage and combat halved for Sabotage,
+        // FUN_0047d430; combat for the pair, FUN_00482c40).
+        let mut world = empty_world();
+        let mut agent = |esp: u32, combat: u32| {
+            let c = add_character(&mut world, false, true, 30);
+            world.characters[c].espionage.base = esp;
+            world.characters[c].combat.base = combat;
+            MissionMember::Character(c)
+        };
+        let (a, b) = (agent(60, 10), agent(20, 90));
+        let (c, d) = (agent(90, 10), agent(40, 40));
+        let mut galaxy = crate::ai_records::Galaxy::default();
+        let mut cancel = |kind: MissionKind, code: u32, subtype: u32, pair: [MissionMember; 2]| {
+            let mut state = AIState::new(AiFaction::Empire);
+            state.module8.planners = vec![crate::ai_module8::SectorPlanner {
+                id: 1,
+                ..Default::default()
+            }];
+            for (id, m) in [(1, pair[0]), (2, pair[1])] {
+                state.mission_planners.push(MissionPlanner {
+                    id,
+                    kind,
+                    team: vec![m],
+                    decoys: Vec::new(),
+                    target_system: None,
+                    target_character: None,
+                    target_object: None,
+                    created: 0,
+                    last_cycle: 0,
+                    staging: None,
+                    standing: false,
+                    claimed: None,
+                    sector: None,
+                    mission: None,
+                    report: None,
+                    failures: 0,
+                    pending: 0,
+                    owner: 1,
+                    subtype,
+                });
+            }
+            state.module8.planners[0].cancel = [code, subtype];
+            AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+            state
+                .mission_planners
+                .iter()
+                .map(|p| p.id)
+                .collect::<Vec<_>>()
+        };
+        // Recon: a (60) outranks b (20), so b goes.
+        assert_eq!(
+            cancel(MissionKind::Reconnaissance, 0x54, 0, [a, b]),
+            vec![1]
+        );
+        assert_eq!(cancel(MissionKind::Espionage, 0x52, 0, [a, b]), vec![1]);
+        // Sabotage: c ((90 + 10) / 2 = 50) outranks d (40), though d has
+        // more combat and a larger product.
+        assert_eq!(cancel(MissionKind::Sabotage, 0x69, 0, [c, d]), vec![1]);
+        // The pair by combat: a (10) goes.
+        assert_eq!(cancel(MissionKind::Assassination, 0x63, 4, [a, b]), vec![2]);
+        assert_eq!(cancel(MissionKind::Abduction, 0x62, 4, [a, b]), vec![2]);
+    }
+
+    #[test]
+    fn a_sector_planner_s_mission_planner_waits_in_the_cycle() {
+        // port: FUN_004bda60 is not ported; the planner neither orders nor
+        // ends, whatever its age.
+        let (world, _, _, _) = diplomacy_world(90.0, &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner {
+            id: 7,
+            mission: [0x52, 0, 0],
+            ..Default::default()
+        }];
+        let mut galaxy = crate::ai_records::Galaxy::default();
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &mut planner_for(&world, AiFaction::Empire),
+            &world,
+            &mut galaxy,
+            500,
+            &mut actions,
+        );
+        assert!(actions.is_empty());
+        assert_eq!(state.mission_planners.len(), 1);
+        assert!(state.mission_planners[0].team.is_empty());
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.
@@ -8314,6 +8761,8 @@ mod tests {
             report: None,
             failures: 0,
             pending: 0,
+            owner: 0,
+            subtype: 0,
         };
         let busy = HashSet::new();
         let missions = MissionState::new();

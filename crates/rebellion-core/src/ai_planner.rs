@@ -46,6 +46,9 @@ pub struct PlannerIo<'a> {
     pub people: &'a HashMap<crate::ids::CharacterKey, u32>,
     /// Controller `+4`.
     pub controller_flags: u32,
+    /// The side: the plan object's `+4` (`FUN_00477630` passes the sector
+    /// planner's `+0x20`) is 1 for the Alliance.
+    pub is_alliance: bool,
     /// Today (`FUN_004fcf00`).
     pub day: u64,
     /// [`crate::ai::AIState::seen`]: the system records' `+0x44`.
@@ -879,25 +882,73 @@ impl SectorPlanner {
         nearest_sector_system(io, sector, own)
     }
 
-    /// `FUN_00478000`, state 4: the plan's mission request (slot `+0x18`)
-    /// into `+0xbc`/`+0xc0`, `+0x64` bit `0x100` with one; the mission
-    /// planners it holds (`+0xb0`) set more bits.
+    /// `FUN_00478000`, state 4: the plan's mission request (slot `+0x18`,
+    /// every kind's `FUN_004b7150`) into `+0xbc`/`+0xc0`, `+0x64` bit
+    /// `0x100` with one, and its cancellation; the mission planners it
+    /// holds set more bits ([`SectorPlanner::mission_bits`], not yet
+    /// added: see the port note in the body).
     ///
-    /// port: the sector planners' mission planners are not ported, so it
-    /// holds none and every count of them (`+0xa0..+0xac`) is 0. Kinds 1
-    /// and 3's slot (`FUN_004b7150`) then asks for Recon (`0x54`) in a sector with
-    /// a system not the side's (`+0x2c` `0x18`), else Espionage (`0x52`).
+    /// `FUN_004b7150` reads the held counts (`+0xa0..+0xac`) and the
+    /// sector record `+0x2c`; the first request found wins, and a row
+    /// with no request may give the cancellation:
+    ///
+    /// - Recon `0x54` while fewer than 2 are held and the sector has a
+    ///   system not the side's (`0x18`); cancel above 2, or with none of
+    ///   `0x18` and any held;
+    /// - Espionage `0x52` while none is held; cancel above 1;
+    /// - Sabotage `0x69` while none is held and the sector has an
+    ///   opponent's system (8); cancel above 1, or with no 8 and any held;
+    /// - `0x62` (the Alliance's side, plan `+4` 1) or `0x63`, subtype 4,
+    ///   while none is held and the sector has `0x40008`; cancel above 1,
+    ///   or with no `0x40008` and any held.
     fn missions(&mut self, io: &PlannerIo<'_>) {
         self.mission = [0; 3];
+        self.cancel = [0; 2];
         if !ported_kind(self.kind) {
             return;
         }
-        if let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) {
-            self.mission[0] = if r.summary & 0x18 != 0 { 0x54 } else { 0x52 };
+        if let Some(summary) = self
+            .sector
+            .and_then(|s| io.galaxy.sector(s))
+            .map(|r| r.summary)
+        {
+            let [paired, espionage, recon, sabotage] = self.mission_counts;
+            let mut request = [0, 0];
+            let mut cancel = [0, 0];
+            let others = summary & 0x18 != 0;
+            if recon < 2 && others {
+                request = [0x54, 0];
+            } else if recon > 2 || (!others && recon > 0) {
+                cancel = [0x54, 0];
+            }
+            if request[0] == 0 && espionage == 0 {
+                request = [0x52, 0];
+            } else if cancel[0] == 0 && espionage > 1 {
+                cancel = [0x52, 0];
+            }
+            let opponent = summary & 8 != 0;
+            if request[0] == 0 && sabotage == 0 && opponent {
+                request = [0x69, 0];
+            } else if cancel[0] == 0 && (sabotage > 1 || (!opponent && sabotage > 0)) {
+                cancel = [0x69, 0];
+            }
+            let kind = if io.is_alliance { 0x62 } else { 0x63 };
+            let guarded = summary & 0x4_0008 != 0;
+            if request[0] == 0 && paired == 0 && guarded {
+                request = [kind, 4];
+            } else if cancel[0] == 0 && (paired > 1 || (!guarded && paired > 0)) {
+                cancel = [kind, 4];
+            }
+            self.mission[0] = request[0];
+            self.mission[1] = request[1];
+            self.cancel = cancel;
         }
         if self.mission[0] != 0 {
             self.requests |= 0x100;
         }
+        // port: the held planners do not run their cycle yet (FUN_004bda60),
+        // so none ever completes its team, and their bits would mark every
+        // sector planner short for good; they join once the cycle does.
     }
 
     /// `FUN_00478140`: the plan's movement request (slot `+0x1c`) into
@@ -1279,6 +1330,7 @@ pub(crate) mod tests {
             transport: &fx.transport,
             people: &fx.people,
             controller_flags: 0,
+            is_alliance: true,
             day: fx.day,
             seen: &fx.seen,
             swept: &mut fx.swept,
@@ -1644,6 +1696,41 @@ pub(crate) mod tests {
         p.counts = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         fx.galaxy.fleets.get_mut(&f).unwrap().flags |= 0x2000_0000;
         assert_eq!(with(&mut fx, |io| p.spare(io)), None);
+    }
+
+    #[test]
+    fn a_sector_planner_asks_for_one_mission_kind_by_what_it_holds() {
+        // FUN_004b7150: the first request wins (Recon while fewer than 2
+        // with +0x2c 0x18, Espionage while none, Sabotage while none with
+        // 8, 0x62/0x63 subtype 4 while none with 0x40008); a row without
+        // a request may cancel.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let ask = |fx: &mut Fx, p: &mut SectorPlanner, summary: u32, counts: [i32; 4]| {
+            fx.galaxy.sectors[0].summary = summary;
+            p.mission_counts = counts;
+            p.requests = 0;
+            with(fx, |io| p.missions(io));
+            (p.mission[0], p.mission[1], p.cancel)
+        };
+        assert_eq!(ask(&mut fx, &mut p, 0x18, [0, 0, 0, 0]), (0x54, 0, [0, 0]));
+        assert_eq!(ask(&mut fx, &mut p, 0x18, [0, 0, 2, 0]), (0x52, 0, [0, 0]));
+        assert_eq!(ask(&mut fx, &mut p, 0x18, [0, 1, 2, 0]), (0x69, 0, [0, 0]));
+        assert_eq!(ask(&mut fx, &mut p, 0x4_0008, [0, 1, 2, 1]), (0x62, 4, [0, 0]));
+        assert_eq!(ask(&mut fx, &mut p, 0x4_0008, [1, 1, 2, 1]), (0, 0, [0, 0]));
+        // Cancellations: Recon above 2; Espionage above 1; Sabotage and
+        // the pair with their bit gone.
+        assert_eq!(ask(&mut fx, &mut p, 0x18, [0, 1, 3, 1]), (0x62, 4, [0x54, 0]));
+        assert_eq!(ask(&mut fx, &mut p, 0x4_0018, [1, 2, 2, 1]), (0, 0, [0x52, 0]));
+        assert_eq!(ask(&mut fx, &mut p, 0, [1, 1, 0, 1]), (0, 0, [0x69, 0]));
+        assert_eq!(ask(&mut fx, &mut p, 0, [1, 1, 0, 0]), (0, 0, [0x62, 4]));
+        // Recon with no 0x18 and one held; none held and no 0x40008 cancels
+        // nothing.
+        assert_eq!(ask(&mut fx, &mut p, 0, [0, 1, 1, 0]), (0, 0, [0x54, 0]));
+        assert_eq!(ask(&mut fx, &mut p, 0, [0, 1, 0, 0]), (0, 0, [0, 0]));
+        // A request with a cancellation of a later row.
+        assert_eq!(ask(&mut fx, &mut p, 0, [2, 0, 0, 0]), (0x52, 0, [0x62, 4]));
+        assert_ne!(p.requests & 0x100, 0);
     }
 
     #[test]

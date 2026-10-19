@@ -1554,14 +1554,59 @@ The bits are the opponent's assets (`ai-galaxy-records.md`): `0x10000`
 mines or refineries, `0x20000` yards, `0x40000..0x400000` defenses,
 fleets and regiments, `0x2000000` the headquarters.
 
-**Port.** None of this is ported. The heuristic Sabotage (enemy
-manufacturing systems) and Assassination (enemy main characters) in
-`evaluate_espionage` stand in. Next:
-- the sector planners' requests (the port's `SectorPlanner::missions`
-  asks only Recon or Espionage today);
-- `FUN_004d2610`/`FUN_004d2690`, and holding the planners;
+**The counts and bits.** `FUN_00476ba0` counts a held planner at
+`+0xa0 + 4·FUN_004794b0(kind)`: 0 for `0x62`/`0x63`, 1 Espionage, 2
+Recon, 3 Sabotage. It stores the sector planner's id in the mission
+planner's `+0x70`.
+
+`FUN_00478000` also walks the held list (`+0xb0`):
+- every held planner sets `+0x64` `0x20000000`;
+- one whose `+0x20 & 3` is not 3 sets `0x400`. Bit 1 is set by the team
+  selector once it has a member, and bit 2 by the decoy selector at its
+  cap or at once for a class with no decoys (`FUN_0047f500`,
+  `FUN_00481100`);
+- one with `+0x20` `0x100` sets `0x80000000`;
+- the cancellation picks the held planner of the cancelled kind and
+  subtype with the least slot `+0x18` into `+0xc4`.
+
+The sector classes' slot `+0x18` is the team's espionage (Recon
+`FUN_0047f220`, Espionage `FUN_004807c0`), espionage and combat halved
+(Sabotage `FUN_0047d430`), or combat (`FUN_00482c40`). The mission
+module's state 1 takes the strategy's request (`FUN_004d2580`, where slot
+`+0x10` 2 is a strategy class); states 2 and 3 take a sector planner's;
+states 5 and 6 run the planners.
+
+**Ported 2026-10-19, stage 1 (save v84):**
+- `SectorPlanner::missions` is `FUN_004b7150` in full, with
+  `mission_counts`, `cancel` and `mission_bits`;
+- `AISystem::take_sector_request` (`FUN_004d2610`/`FUN_004d2690`,
+  cursor `AIState::mission_take`);
+- `AISystem::sync_sector_missions` (the counts and bits each pass);
+- `MissionPlanner::owner` (`+0x70`) and `subtype`, and
+  `mission_planning::decoy_cap`.
+
+port:
+- the counts are taken from the list each pass;
+- a cancelled planner goes at once;
+- the cancellation resolves at the take;
+- `+0x20` `0x100` is not kept;
+- the held planners' bits are computed but not yet added to `+0x64`.
+  The held planners do not run their cycle yet (`FUN_004bda60`), so none
+  ever completes its team. Their `0x400` would then mark every sector
+  planner short for good, which no original game shows. With the bits
+  added, the Fleet window gate failed twice in different cases. Once the
+  test system held 4 fleets where 1 was expected; once another
+  regiment's arrival came last.
+
+The held planners order nothing. The heuristic Sabotage and
+Assassination in `evaluate_espionage` still stand in. The 24 runs of
+1500 days are unchanged event for event.
+
+Next:
 - `FUN_00476e80` with the plan objects' targets;
-- `FUN_004bdcd0` and `FUN_004be230`.
+- `FUN_004bda60` with `FUN_004bdcd0` and `FUN_004be230`;
+- the sector classes' selectors (Espionage of subtype not 6:
+  `FUN_004808c0`, `FUN_00480aa0`).
 
 ## The controller's leader bit (read and ported 2026-10-19)
 

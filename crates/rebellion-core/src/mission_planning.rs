@@ -295,6 +295,27 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
     })
 }
 
+/// The decoys a planner of `kind` built with `subtype` wants before its
+/// decoy selector sets `+0x20` bit 2 (slot `+0x4c`: `FUN_0047f500`,
+/// `FUN_00481100` set it at once; `FUN_00483410` and its siblings once
+/// they reach the cap). The sector planners' Espionage (subtype not 6,
+/// `FUN_00480aa0`), Sabotage (`FUN_0047d720`) and Abduction or
+/// Assassination of subtype 4 (`FUN_00482ec0`) use the posture cap.
+///
+/// hyp: the posture cap reads 1, as in [`Planner::plan`].
+pub(crate) fn decoy_cap(kind: MissionKind, subtype: u32) -> usize {
+    match (kind, subtype) {
+        (MissionKind::Espionage, 6) | (MissionKind::Reconnaissance, _) => 0,
+        (MissionKind::Espionage | MissionKind::Sabotage, _) => 1,
+        (MissionKind::Abduction | MissionKind::Assassination, 4) => 1,
+        _ => match selectors(kind).and_then(|s| s.decoys) {
+            Some((_, DecoyCap::Fixed(cap))) => cap,
+            Some((_, DecoyCap::Posture)) => 1,
+            None => 0,
+        },
+    }
+}
+
 /// One side's planners for one AI evaluation.
 pub(crate) struct Planner<'a> {
     records: Vec<AgentRecord>,
@@ -955,6 +976,27 @@ mod tests {
             p.plan(MissionKind::InciteUprising).map(|(team, _)| team),
             Some(vec![luke])
         );
+    }
+
+    #[test]
+    fn each_class_wants_its_own_decoy_count() {
+        // Slot +0x4c: none for Recon (FUN_0047f500, FUN_00481100) and
+        // Espionage of subtype 6; the posture cap (read as 1) for the
+        // sector planners' Espionage, Sabotage and Abduction or
+        // Assassination of subtype 4; Abduction's own cap 4 (FUN_004047d0).
+        use MissionKind::*;
+        let caps = [
+            decoy_cap(Reconnaissance, 0),
+            decoy_cap(Reconnaissance, 5),
+            decoy_cap(Espionage, 6),
+            decoy_cap(Espionage, 0),
+            decoy_cap(Sabotage, 0),
+            decoy_cap(Assassination, 4),
+            decoy_cap(Abduction, 4),
+            decoy_cap(Abduction, 0),
+            decoy_cap(Diplomacy, 0),
+        ];
+        assert_eq!(caps, [0, 0, 0, 1, 1, 1, 1, 4, 0]);
     }
 
     #[test]

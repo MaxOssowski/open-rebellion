@@ -2753,6 +2753,14 @@ cross-runtime proof remain open
   leader (`FUN_00401d20`), so leaders may join the missions whose teams
   forbid them. Standard campaigns are unchanged, event for event
   (`evidence/2026-10-19-leader-bit/`).
+- 2026-10-19 (F-036): the sector planners ask for missions as the
+  original does (`FUN_004b7150`). The mission module takes each request
+  and holds the planner for its sector planner (`FUN_004d2610`,
+  `FUN_004d2690`, `FUN_00476ba0`). These planners do not order anything
+  yet. Save v84. Golden initial `v1:530e248f2599b293` ->
+  `v1:20ee82a2951ad9aa`, final `v1:49ba43802d0d2840` ->
+  `v1:14ec5ed9881bd79b`. Campaigns are unchanged, event for event
+  (`evidence/2026-10-19-sector-mission-requests/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

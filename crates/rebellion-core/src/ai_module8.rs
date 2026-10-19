@@ -61,6 +61,27 @@ pub struct SectorPlanner {
     /// `+0xbc`, `+0xc0`, `+0xc4`: the mission kind and subtype its plan
     /// asks for, and the mission planner it takes.
     pub mission: [u32; 3],
+    /// The kind and subtype its plan cancels (`FUN_004b7150`'s third and
+    /// fourth outputs), which `FUN_00478000` resolves into `+0xc4`.
+    ///
+    /// port: the mission module resolves it when it takes the request
+    /// ([`crate::ai::AISystem`]), since the held planners live there.
+    #[serde(default)]
+    pub cancel: [u32; 2],
+    /// `+0xa0..+0xac`: the mission planners it holds of each kind
+    /// (`FUN_004794b0`: 0 Abduction/Assassination, 1 Espionage, 2 Recon,
+    /// 3 Sabotage), as the mission module counts them each pass.
+    #[serde(default)]
+    pub mission_counts: [i32; 4],
+    /// The `+0x64` bits its held mission planners give (`FUN_00478000`):
+    /// `0x20000000` any, `0x400` one without both `+0x20` bits 1 and 2,
+    /// `0x80000000` one with `+0x20` `0x100`.
+    ///
+    /// port: kept, but not yet added to `+0x64`
+    /// ([`crate::ai_planner`]'s `missions`), until the held planners run
+    /// their cycle.
+    #[serde(default)]
+    pub mission_bits: u32,
     /// `+0xe0`, `+0xe4`: the movement its plan asks for, and the movement
     /// planner it takes.
     pub movement: [u32; 2],
@@ -146,6 +167,8 @@ pub struct Inputs8<'a> {
     pub people: &'a std::collections::HashMap<crate::ids::CharacterKey, u32>,
     /// Controller `+4`.
     pub controller_flags: u32,
+    /// The side ([`PlannerIo::is_alliance`]).
+    pub is_alliance: bool,
     /// Today (`FUN_004fcf00`).
     pub day: u64,
     /// [`crate::ai::AIState::seen`].
@@ -170,6 +193,7 @@ impl Inputs8<'_> {
             transport: self.transport,
             people: self.people,
             controller_flags: self.controller_flags,
+            is_alliance: self.is_alliance,
             day: self.day,
             seen: self.seen,
             swept: &mut *self.swept,
@@ -521,6 +545,7 @@ mod tests {
             transport: &transport,
             people: &people,
             controller_flags: 0,
+            is_alliance: true,
             day: 0,
             seen: &seen,
             swept: &mut swept,

@@ -1,0 +1,7 @@
+test ai::tests::a_sector_planner_s_mission_planner_waits_in_the_cycle ... FAILED
+test ai::tests::the_mission_module_takes_a_sector_planner_s_request_and_holds_its_planner ... FAILED
+test ai_planner::tests::a_sector_planner_asks_for_one_mission_kind_by_what_it_holds ... FAILED
+    ai::tests::a_sector_planner_s_mission_planner_waits_in_the_cycle
+    ai::tests::the_mission_module_takes_a_sector_planner_s_request_and_holds_its_planner
+    ai_planner::tests::a_sector_planner_asks_for_one_mission_kind_by_what_it_holds
+test result: FAILED. 1388 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
