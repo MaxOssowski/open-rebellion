@@ -2808,6 +2808,13 @@ cross-runtime proof remain open
   The pulse's other call, slot `+0x3e8` (`FUN_004f23c0`), only logs.
   `coverage-map.md` rows `0x388` and `0x38a` are corrected from "missing"
   to matched. No code change.
+- 2026-10-19: character command read (`ghidra/notes/character-command.md`).
+  `+0x96` is `CommandKind` (1 Commander, 2 Admiral, 3 General), set by
+  orders `0x260..0x263`. The checks are `FUN_004ed750`: not on a mission,
+  injured or captured, and the class allows it. The effect is
+  `FUN_00561bb0`: one holder per fleet or system, the same kind again
+  clears. `FUN_004eeed0` clears it on injury and capture. The AI's command
+  orders are module `0xc`'s. Not yet ported.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
