@@ -1832,6 +1832,15 @@ cross-runtime proof remain open
   drops it on the day it ends (port:). Still open: the traitor's own fate
   and fields `+0xa0`/`+0x8c`, `FUN_004f9510`, and `+0xa4` bit 1, which lifts
   rule 1 (`ghidra/notes/decoy-roll.md`).
+- Read (2026-10-20): the last open detection items. `+0xa4` bit 1, which
+  lifts rule 1, is ImpliedTeam (`FUN_005221a0`); only the Autorouting order
+  0x43 (`FUN_00547740`) sets it, so it is clear for every kind the port
+  runs. The traitor's own fate: `FUN_00588da0` only stores its key, and the
+  traitor is exposed with the team. +0x8c is the Force and +0xa0 the
+  TraitorDiscovered key (notification 0x361, ported as TraitorIdentified).
+  `FUN_004f9510` hands an event to a side's view (hyp: no rule). Nothing in
+  F-034's evidence stays open; the status stays open until a review
+  confirms the closing.
 - Acceptance: Detection, escape, and effects follow their decompiles with
   failing-without tests; mission members become a roster (with F-019).
 

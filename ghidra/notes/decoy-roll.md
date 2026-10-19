@@ -587,8 +587,8 @@ sections above come first.
   `+0x44` = 1, unless the side is 3. Setup only sets its flags, so the second
   pass inherits them. Modes 1, 2, and 4 set skip (`+0x48`) on the second pass,
   which still runs the validator and the counts.
-- A run that leaves an end code calls `FUN_004f9510(mission, opponent, ...)`
-  (`FUN_00547f60.c:71-92`); not read.
+- A run that leaves an end code calls `FUN_004f9510(opponent, ctx)`
+  (`FUN_00547f60.c:71-92`); read 2026-10-20, see "Still open" below.
 - `FUN_00546ea0` runs the manager after every phase change, then
   `FUN_00548120`, `FUN_00548370` on phase 2, `FUN_005484d0`, `FUN_00548840`,
   and `FUN_00522980` (ready).
@@ -719,9 +719,32 @@ ends with 5, and so does a team whose members were all deleted.
 - The draws come from a SplitMix64 stream seeded per mission and tick by one
   caller roll (`DETECTION_SEED_ROLL`).
 
-### Still open
+### Read 2026-10-20 (the last open items)
 
-The traitor's own fate, the traitor fields `+0xa0` and `+0x8c`,
-`FUN_004f9510`, `+0xa4` bit 1 (which lifts rule 1). `FUN_00589e40` and `FUN_00588d30` are read in `encounter.md`. The officer ranks
-are the characters' commands (`character-command.md`); the AI gives none
-until module `0xc`.
+- `+0xa4` bit 1, which lifts rule 1, is `ImpliedTeam`
+  (`Mission_SetImpliedTeam` `FUN_005221a0`, notification
+  `MissionImpliedTeamNotif`). Its only setter is the creation
+  `FUN_00547ba0`'s eleventh argument, and only `FUN_00547740` passes a
+  value there: the Autorouting order (`0x43000003`, TEXTSTRA 11267). Move
+  (`FUN_00547340`, `FUN_00547480`, `FUN_00547180`, `FUN_005479c0`), Return
+  (`0x42`, `FUN_005475f0`), Adrift (`0x44`, `FUN_00547880`) and the player's
+  and AI's orders (`FUN_00549bf0`) pass 0. So for every kind the port runs
+  the bit is clear, as the port assumed; Autorouting is not a port mission.
+- The traitor's own fate: `FUN_00588da0` (disassembly `0x588da0..0x588e6b`)
+  rolls loyalty, logs the roll (`0x5897b0`) and stores the traitor's key in
+  the pool's `+0x38`; nothing else touches the traitor. The mission is
+  detected, so the traitor is exposed with the rest of the team.
+- `+0x8c` is the Force level and `+0xa0` the TraitorDiscovered key
+  (`FUN_004ee5c0`, hook slot `+0x340` `FUN_004f2090`: notification `0x361`).
+  The port reports the learning (`MissionEffect::TraitorIdentified`) and
+  keeps no `+0xa0`; a reader of `+0xa0` other than the hook is not traced.
+- `FUN_004f9510(side, ctx)`: `FUN_00539fd0(side)` returns the object's
+  view for that side (`FUN_005844e0`: `+0x24 + side * 4`), and its slot
+  `+0x24` is called with a copy of the event context whose fields are set
+  to 1 and 3 (`FUN_004fd450`; the same pattern as `FUN_004f87b0`). hyp: it
+  hands the event to that side's view (the per-side mirror the setters
+  sync), which the port has no counterpart for; no rule reads it.
+
+`FUN_00589e40` and `FUN_00588d30` are read in `encounter.md`. The officer
+ranks are the characters' commands (`character-command.md`); the AI gives
+none until module `0xc`.

@@ -110,7 +110,8 @@ the three still share a location:
   winner's autoroute destination (`FUN_00543040`) by `FUN_00547480`,
   another Move order (`0x41000001`). The hook's return also checks that
   the three now share a side (`0x54b543`..`0x54b567`).
-- `FUN_004f9510` is called around the battle on both sides (not read).
+- `FUN_004f9510` is called around the battle on both sides (read in
+  `decoy-roll.md`, 2026-10-20; hyp: the side's view, no rule).
 
 The class `0x65b408` sets its bit `0x10` on `0x220`
 (`MissionMgrFinalBattleNotif`) and builds The Final Battle
@@ -171,7 +172,6 @@ member Vader.
 
 ## Open
 
-- `FUN_004f9510` (both sides, around the battle).
 - The checks `FUN_005442f0`, `FUN_00544130`, `FUN_005443f0`,
   `FUN_005444e0`.
 - Status `+0x98` value 2 (Luke's slot `+0x218`); 0 is captured and 1 free

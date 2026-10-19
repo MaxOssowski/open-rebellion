@@ -2432,8 +2432,9 @@ pub(crate) fn running_end_code(
     use crate::dat::Faction;
     // Rule 1 (FUN_00522480.c:42-52): end 5 unless a team member stands
     // without a remove or resign request (role +0x78 & 0xc); an empty team
-    // ends too, and a killed member is deleted. port: +0xa4 bit 1, which
-    // lifts the rule, is untraced and taken as clear.
+    // ends too, and a killed member is deleted. +0xa4 bit 1 (ImpliedTeam,
+    // FUN_005221a0), which lifts the rule, is set only on the Autorouting
+    // order 0x43 (FUN_00547740), which the port does not run.
     let standing = mission.team.iter().any(|&member| {
         member_state(world, member).is_some()
             && !mission.resigning.contains(&member)

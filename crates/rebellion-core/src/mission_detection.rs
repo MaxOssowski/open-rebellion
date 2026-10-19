@@ -1084,7 +1084,8 @@ impl Run<'_> {
     /// (`FUN_004ef1c0`).
     ///
     /// port: the observation reveals the system to both sides, as
-    /// Espionage's level 10 does; `FUN_004f9510` is not read.
+    /// Espionage's level 10 does. hyp: `FUN_004f9510` hands the event to
+    /// each side's view (`decoy-roll.md`) and sets no rule.
     fn begin_encounter(
         &mut self,
         member: CharacterKey,
@@ -1432,7 +1433,8 @@ pub(crate) fn run(
     };
     first_pass(mission, world, location, day, rng, out, &validate);
     validate(mission);
-    // FUN_004f9510 tells the opponent of a mission that ended here; not read.
+    // FUN_004f9510 then hands the ended mission to the opponent's view. hyp:
+    // no rule reads it (decoy-roll.md).
 }
 
 fn first_pass(
