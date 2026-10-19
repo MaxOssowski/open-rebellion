@@ -1509,6 +1509,30 @@ Their vtables end at slot `+0x44`: `+0x40` is the team selector and
 - 8 orders the mission (`FUN_0047b360`);
 - 9 (`FUN_004be4c0`) ends the cycle.
 
+**The plan's targets.** `FUN_00476e80` switches on the planner's record
+index (`+0x2c & 0xffffff`) and calls one of the plan object's slots
+(`+0x5c`) with `&+0x34` (system) and `&+0x30` (object):
+
+| Index | Mission | Plan slot |
+|---|---|---|
+| `0x12` | Sabotage | `+0x30` |
+| `0x13` | Espionage | `+0x28` |
+| `0x15` | Reconnaissance | `+0x2c` |
+| `0x17`, `0x81` | Abduction, Assassination | `+0x24` |
+
+Any other index gives no target. The six plan kinds' slots are:
+
+| Kind | `+0x24` | `+0x28` | `+0x2c` | `+0x30` |
+|---|---|---|---|---|
+| 1 | `FUN_004ba630` | `FUN_004ba830` | `FUN_004ba960` | `FUN_004bab30` |
+| 2 | `FUN_004b94b0` | `FUN_004b96b0` | `FUN_004b97e0` | `FUN_004b99b0` |
+| 3 | `FUN_004b3880` | `FUN_004b3bf0` | `FUN_004b3db0` | `FUN_004b3f80` |
+| 4 | `FUN_004b7370` | `FUN_004b7780` | `FUN_004b7940` | `FUN_004b7b10` |
+| 5 | `FUN_004b1880` | `FUN_004b1bf0` | `FUN_004b1db0` | `FUN_004b1f80` |
+| 6 | `FUN_004b4e40` | `FUN_004b51b0` | `FUN_004b5370` | `FUN_004b5540` |
+
+Together they run about 2,500 decompiled lines, not read yet.
+
 **Port.** None of this is ported. The heuristic Sabotage (enemy
 manufacturing systems) and Assassination (enemy main characters) in
 `evaluate_espionage` stand in. Next:
