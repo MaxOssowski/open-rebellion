@@ -2844,6 +2844,13 @@ cross-runtime proof remain open
   (`FUN_004fd790`) and `system_holder` (`FUN_00509330`). The 24 campaigns
   and the golden are unchanged
   (`evidence/2026-10-19-character-command-leadership/`).
+- 2026-10-19: character command, stage 4b. A detector's officer (slot
+  `+0x1bc`: a ship's Admiral, a squadron's Commander, a regiment's General,
+  from its fleet or the system) takes its espionage times G3588/G3589 over
+  100 off the decoy roll and FOILTB (`FUN_00588b90`, `FUN_00588a90`), and an
+  exposed member rolls against its combat and is captured by it
+  (`FUN_005888f0`). The 24 campaigns and the golden are unchanged
+  (`evidence/2026-10-19-character-command-detector/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

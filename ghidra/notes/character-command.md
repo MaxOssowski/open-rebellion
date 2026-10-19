@@ -188,8 +188,15 @@ Stage 4a (2026-10-19), the leadership readers:
   general)`).
 - The Fleet Status rows use `fleet_holder`.
 
+Stage 4b (2026-10-19), the detector's officer (`mission_detection.rs`):
+- the rank by the detector's kind (slot `+0x1bc`): a capital ship's
+  Admiral, a squadron's Commander, a regiment's General;
+- the decoy roll and FOILTB subtract the officer's espionage times G3588
+  or G3589 (35) over 100;
+- an exposed member rolls RLEVADTB against the officer's effective combat
+  and is captured by the officer's side.
+
 Not yet:
-- the decoy roll's officer (stage 4b);
 - the AI records' rank bits, the `hyp:` in `mission_planning.rs` (stage
   4c).
 
@@ -210,7 +217,7 @@ Not yet:
    - Browser acceptance.
 4. **The readers.**
    - 4a: the bombardment multipliers and the assault's generals.
-   - 4b: the decoy roll's backing rank.
+   - 4b: the decoy roll's backing rank, FOILTB and the exposure's captor.
    - 4c: the AI records' rank bits, replacing the `hyp:`. This also closes
      stage 5 of AI module 4.
 

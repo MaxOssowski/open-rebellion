@@ -1,0 +1,6 @@
+thread 'mission_detection::tests::a_regiment_s_general_takes_part_of_its_espionage_off_the_decoy_and_foiltb_rolls' (3423639) panicked at crates/rebellion-core/src/mission_detection.rs:2387:9:
+thread 'mission_detection::tests::a_ship_is_backed_by_its_fleet_s_admiral_a_squadron_by_a_commander_and_a_regiment_by_a_general' (3423640) panicked at crates/rebellion-core/src/mission_detection.rs:2433:9:
+  left: None
+ right: Some(CharacterKey(1v1))
+thread 'mission_detection::tests::an_exposed_member_rolls_against_and_is_captured_by_the_detector_s_officer' (3423648) panicked at crates/rebellion-core/src/mission_detection.rs:2471:9:
+test result: FAILED. 60 passed; 3 failed; 0 ignored; 0 measured; 1353 filtered out; finished in 0.00s

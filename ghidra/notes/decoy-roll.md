@@ -692,8 +692,17 @@ ends with 5, and so does a team whose members were all deleted.
 
 - The setup sets `+0x28 +0x2c` only with `+0x24` and `+0x30` only with
   `+0x20`, so the port folds each kind flag into its walk flag.
-- With no officer ranks, the officer terms of the decoy and detection rolls
-  (`espionage * G3588 / 100`, `espionage * G3589 / 100`) are 0 and omitted.
+- The officer terms of the decoy and detection rolls
+  (`espionage * G3588 / 100`, `espionage * G3589 / 100`, truncated through
+  `FUN_0053e190`) read the detector's officer (2026-10-19,
+  `character-command.md` stage 4b): the rank by the detector's kind, from
+  its fleet (`character_command::fleet_holder`) or the system
+  (`character_command::system_holder`), 0 without one. The push order in
+  `FUN_00588b90` (`0x00588c3c..0x00588c4e`) and `FUN_00588a90`
+  (`0x00588b3a..0x00588b46`) confirms the officer's espionage as the
+  third argument of `FUN_0055e410` and `FUN_0055e470`.
+- An exposed member's captor is that officer, at its effective combat; the
+  port records the officer's side as the captor's.
 - A captured member's capture applies after the run, so the run marks it
   gone from its lists at once, as it does a destroyed special force.
 - Only a decoy decoys, and the lists that skip decoying members never meet
@@ -706,5 +715,6 @@ ends with 5, and so does a team whose members were all deleted.
 ### Still open
 
 `FUN_00589e40` (the character hook), `FUN_00588d30` (the `+0x9c` branch),
-the traitor's own fate, `FUN_004f9510`, `+0xa4` bit 1, and the officer ranks
-of a side (the port assigns none).
+the traitor's own fate, `FUN_004f9510`, `+0xa4` bit 1. The officer ranks
+are the characters' commands (`character-command.md`); the AI gives none
+until module `0xc`.

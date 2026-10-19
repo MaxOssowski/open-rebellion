@@ -18,8 +18,19 @@ use crate::uprising::{
     roll_injury, Draws, UprisingState, GNPRTB_INJURY_BASE, GNPRTB_INJURY_MIN_CHANCE,
     GNPRTB_INJURY_SPREAD,
 };
+use crate::character_command::{self, CommandKind};
 use crate::world::{GameWorld, Skill};
 
+/// GNPRTB 3588 (`DAT_006bb710`): the percent of the detector's officer's
+/// espionage the decoy roll subtracts (`FUN_0055e410`).
+const GNPRTB_DECOY_OFFICER: u16 = 3588;
+/// GNPRTB 3588 as shipped.
+const SHIPPED_DECOY_OFFICER: i64 = 35;
+/// GNPRTB 3589 (`DAT_006bb70c`): the percent of the detector's officer's
+/// espionage the FOILTB roll subtracts (`FUN_0055e470`).
+const GNPRTB_FOIL_OFFICER: u16 = 3589;
+/// GNPRTB 3589 as shipped.
+const SHIPPED_FOIL_OFFICER: i64 = 35;
 /// GNPRTB 3584 (`DAT_006bb714`): the detection offset.
 const GNPRTB_DETECTION_OFFSET: u16 = 3584;
 /// GNPRTB 3584 as shipped.
@@ -204,6 +215,34 @@ struct Defender {
     /// Slot `+0x1c4`: the class `detection`.
     detection: i32,
     side: Faction,
+}
+
+impl Defender {
+    /// Slot `+0x1bc`: the rank of the officer that backs the detector, an
+    /// Admiral for a capital ship (`0x0043c1f0`), a Commander for a fighter
+    /// squadron (`FUN_0040f340`), a General for a regiment (`FUN_00526f00`).
+    const fn rank(&self) -> CommandKind {
+        match self.id {
+            DefenderId::Ship(..) => CommandKind::Admiral,
+            DefenderId::Fighter(..) | DefenderId::PlanetFighter(..) => CommandKind::Commander,
+            DefenderId::Regiment(_) => CommandKind::General,
+        }
+    }
+
+    /// The detector's officer (`FUN_00588b90`, `FUN_00588a90`,
+    /// `FUN_005888f0`): its fleet's holder of the rank (`FUN_004fd790`), or,
+    /// for one the walk hands no fleet, the system's (`FUN_00509330` on the
+    /// pool's system `+8`).
+    fn officer(&self, world: &GameWorld, location: SystemKey) -> Option<CharacterKey> {
+        match self.id {
+            DefenderId::Ship(fleet, _) | DefenderId::Fighter(fleet, ..) => {
+                character_command::fleet_holder(world, fleet, self.rank())
+            }
+            DefenderId::Regiment(_) | DefenderId::PlanetFighter(..) => {
+                character_command::system_holder(world, location, self.rank())
+            }
+        }
+    }
 }
 
 pub(crate) fn faction_of(is_alliance: bool) -> Faction {
@@ -534,9 +573,16 @@ impl Run<'_> {
             .map_or(0, |value| i32::try_from(value).unwrap_or(i32::MAX))
     }
 
+    /// The effective `skill` of `defender`'s officer, 0 without one.
+    fn officer_skill(&self, defender: Defender, skill: Skill) -> i32 {
+        defender
+            .officer(self.world, self.location)
+            .map_or(0, |officer| self.skill(MissionMember::Character(officer), skill))
+    }
+
     /// `FUN_005888f0` / `FUN_005349e0`: the member rolls RLEVADTB against the
-    /// defender's officer, evading or being captured. port: the port assigns
-    /// no officer ranks, so the captor is the defender and its combat is 0.
+    /// defender's officer (its effective combat, slot `+0x1f0`), evading or
+    /// being captured by it; without an officer, by the defender, at 0.
     fn expose(
         &mut self,
         mission: &mut ActiveMission,
@@ -545,7 +591,14 @@ impl Run<'_> {
         rng: &mut MissionRng,
         out: &mut Vec<MissionEffect>,
     ) {
-        self.evade_or_capture(mission, member, 0, defender.side, rng, out);
+        let (combat, captor) = match defender.officer(self.world, self.location) {
+            Some(officer) => (
+                self.skill(MissionMember::Character(officer), Skill::Combat),
+                faction_of(self.world.characters[officer].is_alliance),
+            ),
+            None => (0, defender.side),
+        };
+        self.evade_or_capture(mission, member, combat, captor, rng, out);
         self.request_resign(mission, member);
         // port: a resigning team member also leaves the team count, which
         // nothing reads once the team is exposed; the port drops it.
@@ -693,9 +746,12 @@ impl Run<'_> {
             else {
                 return;
             };
-            // port: the port assigns no officer ranks, so the officer term
-            // `espionage * G3588 / 100` (DAT_006bb710, shipped 35) is 0.
-            let x = self.skill(decoy, Skill::Espionage) - defender.detection;
+            // FUN_00588b90 -> FUN_0055e410: less the officer's espionage
+            // (slot +0x1e0, 0 without one) * G3588 / 100 (DAT_006bb710).
+            let officer = self.officer_skill(defender, Skill::Espionage);
+            let x = self.skill(decoy, Skill::Espionage)
+                - defender.detection
+                - officer * param(self.world, GNPRTB_DECOY_OFFICER, SHIPPED_DECOY_OFFICER) / 100;
             let table = if defender.in_fleet {
                 FDECOYTB
             } else {
@@ -746,9 +802,14 @@ impl Run<'_> {
             if self.decoyed.contains(&defender.id) {
                 continue;
             }
-            // port: the port assigns no officer ranks, so the officer term
-            // `espionage * G3589 / 100` (DAT_006bb70c, shipped 35) is 0.
-            let x = espionage - defender.detection - special_forces - offset;
+            // FUN_00588a90 -> FUN_0055e470: less the officer's espionage
+            // (slot +0x1e0, 0 without one) * G3589 / 100 (DAT_006bb70c).
+            let officer = self.officer_skill(defender, Skill::Espionage);
+            let x = espionage
+                - defender.detection
+                - special_forces
+                - officer * param(self.world, GNPRTB_FOIL_OFFICER, SHIPPED_FOIL_OFFICER) / 100
+                - offset;
             // port: an absent FOILTB detects nothing.
             if table_roll(self.world, FOILTB, x, rng) == Some(true) {
                 self.detected = true;
@@ -2257,8 +2318,8 @@ mod tests {
 
     #[test]
     fn a_decoy_roll_reads_the_decoy_s_espionage_less_the_defender_s_detection() {
-        // FUN_00589620: x = decoy espionage - defender detection (port: no
-        // officer term). Espionage 10 against detection 4 gives x = 6.
+        // FUN_00589620: x = decoy espionage - defender detection, with no
+        // officer. Espionage 10 against detection 4 gives x = 6.
         let (mut world, here) = world_with(imperial());
         regiment(&mut world, here, false, 4);
         table(&mut world, FOILTB, 100);
@@ -2271,6 +2332,142 @@ mod tests {
         run_once(&mut mission, &world);
 
         assert_eq!(mission.end_code, 0);
+    }
+
+    /// A character of `alliance`'s side on the planet `at` holding `kind`.
+    fn officer(
+        world: &mut GameWorld,
+        at: SystemKey,
+        alliance: bool,
+        kind: CommandKind,
+        espionage: u32,
+        combat: u32,
+    ) -> CharacterKey {
+        let pair = |base| SkillPair { base, variance: 0 };
+        world.characters.insert(Character {
+            name: "Officer".into(),
+            is_alliance: alliance,
+            is_empire: !alliance,
+            espionage: pair(espionage),
+            combat: pair(combat),
+            current_system: Some(at),
+            command: kind,
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn a_regiment_s_general_takes_part_of_its_espionage_off_the_decoy_and_foiltb_rolls() {
+        // A regiment's slot +0x1bc is 3, a General (FUN_00526f00); with no
+        // fleet the officer is the system's (FUN_00509330, the system's
+        // side). FUN_0055e410: x = decoy espionage - detection - officer
+        // espionage * G3588 (35) / 100; FUN_0055e470 the same with G3589
+        // (35). Espionage 20 takes 20 * 35 / 100 = 7 off.
+        let decoyed = |officers: &[(bool, CommandKind)]| {
+            let (mut world, here) = world_with(imperial());
+            regiment(&mut world, here, false, 4);
+            table(&mut world, FOILTB, 100);
+            band(&mut world, TDECOYTB, -1, -1);
+            for &(alliance, kind) in officers {
+                officer(&mut world, here, alliance, kind, 20, 0);
+            }
+            let lead = agent(&mut world, here, 100);
+            let decoy = skilled(&mut world, here, 0x30, 10, 0);
+            let mut mission = sabotage(vec![lead], here, 2);
+            mission.decoys = vec![decoy];
+            run_once(&mut mission, &world);
+            mission.end_code == 0
+        };
+        // Without a general x = 10 - 4 = 6 misses the band: detected.
+        assert!(!decoyed(&[]));
+        // Another rank, or the other side's general, backs nothing.
+        assert!(!decoyed(&[(false, CommandKind::Admiral), (true, CommandKind::General)]));
+        // The Empire's general: x = 6 - 7 = -1, the regiment is drawn off.
+        assert!(decoyed(&[(false, CommandKind::General)]));
+
+        // FOILTB: espionage 20 - detection 5 + 1 = 16 alone; 9 with the
+        // general.
+        let detected = |general: bool| {
+            let (mut world, here) = world_with(imperial());
+            regiment(&mut world, here, false, 5);
+            band(&mut world, FOILTB, 9, 9);
+            if general {
+                officer(&mut world, here, false, CommandKind::General, 20, 0);
+            }
+            let lead = skilled(&mut world, here, 0x30, 20, 0);
+            let mut mission = sabotage(vec![lead], here, 2);
+            run_once(&mut mission, &world);
+            mission.end_code == 3
+        };
+        assert!(!detected(false));
+        assert!(detected(true));
+    }
+
+    #[test]
+    fn a_ship_is_backed_by_its_fleet_s_admiral_a_squadron_by_a_commander_and_a_regiment_by_a_general() {
+        // Slot +0x1bc (decoy-roll.md, "Officer rank and detector slots"):
+        // capital ship 2 (0x0043c1f0), fighter squadron 1 (FUN_0040f340),
+        // regiment 3 (FUN_00526f00); FUN_004fd790 on the defender's fleet,
+        // else FUN_00509330 on the system.
+        let (mut world, here) = world_with(imperial());
+        let fleet = imperial_fleet(&mut world, here, false);
+        let aboard = |world: &mut GameWorld, kind| {
+            let c = officer(world, here, false, kind, 0, 0);
+            world.characters[c].current_fleet = Some(fleet);
+            c
+        };
+        let admiral = aboard(&mut world, CommandKind::Admiral);
+        let commander = aboard(&mut world, CommandKind::Commander);
+        aboard(&mut world, CommandKind::General);
+        let general = officer(&mut world, here, false, CommandKind::General, 0, 0);
+        let planet_commander = officer(&mut world, here, false, CommandKind::Commander, 0, 0);
+        let troop = imperial_regiment(&mut world, here);
+        let defender = |id| Defender {
+            id,
+            in_fleet: false,
+            detection: 0,
+            side: Faction::Empire,
+        };
+        let officer_of = |id| defender(id).officer(&world, here);
+        assert_eq!(officer_of(DefenderId::Ship(fleet, 0)), Some(admiral));
+        assert_eq!(officer_of(DefenderId::Fighter(fleet, 0, 0)), Some(commander));
+        assert_eq!(officer_of(DefenderId::Regiment(troop)), Some(general));
+        assert_eq!(
+            officer_of(DefenderId::PlanetFighter(0, 0)),
+            Some(planet_commander)
+        );
+    }
+
+    #[test]
+    fn an_exposed_member_rolls_against_and_is_captured_by_the_detector_s_officer() {
+        // FUN_005888f0: the officer's key and slot +0x1f0 (effective combat),
+        // else the defender's and 0; FUN_005349e0: RLEVADTB at member combat
+        // less it. Combat 30 against the general's 30 evades at x = 0.
+        let run_with = |general: bool| {
+            let (mut world, here) = world_with(imperial());
+            imperial_regiment(&mut world, here);
+            table(&mut world, FOILTB, 100);
+            band(&mut world, RLEVADTB, 0, 0);
+            if general {
+                officer(&mut world, here, false, CommandKind::General, 0, 30);
+            }
+            let lead = skilled(&mut world, here, 0x30, 0, 30);
+            let mut mission = sabotage(vec![lead], here, 2);
+            run_once(&mut mission, &world)
+        };
+        let captured = |out: &[MissionEffect]| {
+            out.iter().any(|e| {
+                matches!(
+                    e,
+                    MissionEffect::CharacterCaptured {
+                        captured_by: MissionFaction::Empire,
+                        ..
+                    }
+                )
+            })
+        };
+        assert!(captured(&run_with(false)));
+        assert!(!captured(&run_with(true)));
     }
 
     #[test]
