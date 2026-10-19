@@ -2302,23 +2302,13 @@ pub fn apply_event_action_to_world(
                     }
                 }
             }
-            EventAction::RelocateCharacter { .. }
-            | EventAction::StartJediTraining { .. }
-            | EventAction::TriggerEvent { .. } => {}
+            EventAction::RelocateCharacter { .. } | EventAction::TriggerEvent { .. } => {}
             EventAction::SetMandatoryMission {
                 character,
                 mandatory,
             } => {
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.on_mandatory_mission = *mandatory;
-                }
-            }
-            EventAction::ModifyForceTier {
-                character,
-                new_tier,
-            } => {
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.force_tier = *new_tier;
                 }
             }
             EventAction::RemoveCharacter { character } => {
@@ -2348,11 +2338,6 @@ pub fn apply_event_action_to_world(
                             rebellion_core::dat::Faction::Neutral => {}
                         }
                     }
-                }
-            }
-            EventAction::AccumulateForceExperience { character, amount } => {
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.force_experience += amount;
                 }
             }
             EventAction::CaptureCharacter {

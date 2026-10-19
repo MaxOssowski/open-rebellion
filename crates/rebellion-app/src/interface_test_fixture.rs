@@ -1798,11 +1798,8 @@ pub fn emit_production(
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
-/// The story-message scenario's messages, posted as the game posts them
-/// (`story_messages::story_message`): Leia's Force discovery (port
-/// `0x363`, the original's `0x362` Leia branch) and Chewbacca taken at
-/// Jabba's palace (port `0x387` with a capture, the original's `0x1e0`
-/// case 5), then timer `0x389`'s two discoveries
+/// The story-message scenario's messages, posted as the game posts them:
+/// timer `0x389`'s two discoveries
 /// (`story_messages::force_user_discovered`). They are filed unread under
 /// the Mission rail.
 pub fn post_story_messages(
@@ -1814,7 +1811,6 @@ pub fn post_story_messages(
     if request.scenario != Scenario::StoryMessages {
         return;
     }
-    use rebellion_core::events::{EventAction, EVT_LEIA_FORCE};
     let named = |needle: &str| {
         world
             .characters
@@ -1825,26 +1821,6 @@ pub fn post_story_messages(
     let (Some(leia), Some(chewbacca)) = (named("leia"), named("chewbacca")) else {
         return;
     };
-    let posts = [(
-        EVT_LEIA_FORCE,
-        vec![EventAction::ModifyForceTier {
-            character: leia,
-            new_tier: rebellion_core::world::ForceTier::Aware,
-        }],
-        "Princess Leia has discovered her connection to the Force!",
-    )];
-    for (event_id, actions, port_text) in posts {
-        log.push(rebellion_render::story_messages::story_message(
-            world,
-            event_id,
-            &actions,
-            port_text.to_owned(),
-            0,
-            request.faction,
-            texts,
-            rebellion_render::MessageCategory::Event,
-        ));
-    }
     // Notification 0x362 (FUN_0048f1e0) as timer 0x389 posts it: Vader
     // finds an Empire minor character (the Empire reader sees Future Jedi
     // Discovered), Luke finds Leia (the Alliance reader sees Leia Uses

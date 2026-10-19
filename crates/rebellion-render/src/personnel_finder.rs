@@ -939,7 +939,7 @@ mod tests {
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
     use rebellion_core::ids::DatId;
     use rebellion_core::world::{
-        Character, ControlKind, ForceTier, Sector, SkillPair, SpecialForceUnit, System,
+        Character, ControlKind, Sector, SkillPair, SpecialForceUnit, System,
     };
 
     fn layout() -> CockpitLayout {
@@ -1042,9 +1042,6 @@ mod tests {
             can_be_admiral: false,
             can_be_commander: false,
             can_be_general: false,
-            force_tier: ForceTier::None,
-            force_experience: 0,
-            is_discovered_jedi: false,
             is_unable_to_betray: false,
             is_jedi_trainer: false,
             is_known_jedi: false,

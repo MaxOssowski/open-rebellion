@@ -48,7 +48,6 @@ use rebellion_core::events::{EventState, EventSystem};
 use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
-use rebellion_core::jedi::JediState;
 use rebellion_core::manufacturing::{
     ManufacturingState, QueueItem,
 };
@@ -415,7 +414,6 @@ struct LiveCampaign<'a> {
     uprising: &'a mut UprisingState,
     death_star: &'a mut DeathStarState,
     research: &'a mut ResearchState,
-    jedi: &'a mut JediState,
     victory: &'a mut VictoryState,
     betrayal: &'a mut BetrayalState,
     economy: &'a mut EconomyState,
@@ -456,7 +454,6 @@ impl LiveCampaign<'_> {
             uprising: self.uprising.clone(),
             death_star: self.death_star.clone(),
             research: self.research.clone(),
-            jedi: self.jedi.clone(),
             victory: self.victory.clone(),
             betrayal: self.betrayal.clone(),
             economy: self.economy.clone(),
@@ -500,7 +497,6 @@ impl LiveCampaign<'_> {
         *self.uprising = state.uprising;
         *self.death_star = state.death_star;
         *self.research = state.research;
-        *self.jedi = state.jedi;
         *self.victory = state.victory;
         *self.betrayal = state.betrayal;
         *self.economy = state.economy;
@@ -1089,7 +1085,6 @@ async fn main() {
     let mut uprising_state = UprisingState::new();
     let mut death_star_state = DeathStarState::default();
     let mut research_state = ResearchState::new();
-    let mut jedi_state = JediState::new();
     let mut betrayal_state = BetrayalState::new();
     let mut repair_state = RepairState::default();
     let mut production_state = ProductionState::new();
@@ -3721,7 +3716,6 @@ async fn main() {
                                     uprising_state = UprisingState::new();
                                     death_star_state = DeathStarState::default();
                                     research_state = ResearchState::new();
-                                    jedi_state = JediState::new();
                                     betrayal_state = BetrayalState::new();
                                     repair_state = RepairState::default();
                                     production_state = ProductionState::new();
@@ -6167,7 +6161,6 @@ async fn main() {
                         uprising: &mut uprising_state,
                         death_star: &mut death_star_state,
                         research: &mut research_state,
-                        jedi: &mut jedi_state,
                         victory: &mut victory_state,
                         betrayal: &mut betrayal_state,
                         economy: &mut economy_state,
@@ -6246,7 +6239,6 @@ async fn main() {
                                 uprising: &mut uprising_state,
                                 death_star: &mut death_star_state,
                                 research: &mut research_state,
-                                jedi: &mut jedi_state,
                                 victory: &mut victory_state,
                                 betrayal: &mut betrayal_state,
                                 economy: &mut economy_state,

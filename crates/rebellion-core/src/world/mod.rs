@@ -17,27 +17,6 @@ use crate::ids::{
     TroopKey,
 };
 
-/// Force sensitivity tier for a character.
-///
-/// Maps to the 2-bit value at `entity[9] >> 6 & 3` in REBEXE.EXE's C++ layout:
-/// 0=None/Low, 1=Aware (`ForcePotential` tier), 2=Training (`ForceTraining` tier),
-/// 3=Experienced (`ForceExperience` tier).
-///
-/// Characters start as `None`. Those with `jedi_probability > 0` may advance
-/// through tiers via the Jedi training system (`jedi.rs`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
-pub enum ForceTier {
-    /// No Force sensitivity detected.
-    #[default]
-    None = 0,
-    /// Force potential recognized — character is Force-aware but untrained.
-    Aware = 1,
-    /// Actively training in the Force.
-    Training = 2,
-    /// Full Jedi Knight / Sith Lord tier. Maximum Force capability.
-    Experienced = 3,
-}
-
 /// Control state of a star system.
 ///
 /// Maps to the 2-bit `faction_side` field at `entity+0x24 bits 6-7` in REBEXE.EXE:
@@ -627,20 +606,6 @@ pub struct Character {
     pub can_be_commander: bool,
     pub can_be_general: bool,
 
-    // ── Force / Jedi fields (entity-system.md §1.3) ───────────────────────────
-    /// Current Force sensitivity tier (None → Aware → Training → Experienced).
-    /// Driven by `jedi.rs` `JediSystem`.
-    #[serde(default)]
-    pub force_tier: ForceTier,
-    /// Accumulated Force experience points. Increments via Jedi training missions;
-    /// threshold crossings trigger tier advancement.
-    #[serde(default)]
-    pub force_experience: u32,
-    /// True once the opposing faction has discovered this character's Force ability.
-    /// Maps to `!(entity[0x1e] & 1)` in REBEXE.EXE — initially hidden.
-    #[serde(default)]
-    pub is_discovered_jedi: bool,
-
     // ── DAT-promoted fields ─────────────────────────────────────────────────
     /// Immune to betrayal missions (Luke, Vader). From MJCHARSD.DAT `is_unable_to_betray`.
     #[serde(default)]
@@ -947,9 +912,6 @@ impl Default for Character {
             can_be_admiral: false,
             can_be_commander: false,
             can_be_general: false,
-            force_tier: ForceTier::None,
-            force_experience: 0,
-            is_discovered_jedi: false,
             is_unable_to_betray: false,
             is_jedi_trainer: false,
             is_known_jedi: false,
@@ -2918,7 +2880,6 @@ mod tests {
         assert!(!c.on_mandatory_mission);
         assert!(c.current_system.is_none());
         assert!(c.current_fleet.is_none());
-        assert_eq!(c.force_tier, ForceTier::None);
         assert!(!c.heritage_known);
         assert!(!c.is_killed);
     }

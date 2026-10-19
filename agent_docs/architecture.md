@@ -57,7 +57,6 @@ crates/rebellion-core/src/
 ├── uprising.rs       — Recovered revolt lifecycle, uprising incident (UPRIS1TB/UPRIS2TB codes), Subdue gain, disaster
 ├── death_star.rs     — Construction countdown, planet destruction, nearby-warning scan. `cleanup_destroyed_system()` removes all entities (fleets, troops, facilities) and cancels in-transit orders to the destroyed system.
 ├── research.rs       — 3 research trees per side: levels, points, Done, points hook
-├── jedi.rs           — 4-tier Force progression (None→Aware→Training→Experienced), detection
 ├── victory.rs        — current HQ/Death Star outcome checks; parity divergences documented
 ├── betrayal.rs       — Loyalty-driven faction defection, UPRIS1TB threshold, immunity flag
 ├── story_events.rs   — 4 scripted story chains (Dagobah, Final Battle, Bounty Hunters, Jabba), 5-case palace outcomes, 5-stage carbonite countdown, telemetry twins (0x200, 0x231), CharactersCoLocated condition. Notification events removed (Phase 3b — belong in economy tick).
@@ -105,7 +104,7 @@ crates/rebellion-render/src/
     ├── fleets.rs         — Fleet roster: composition, assign/remove officers (joining is on the Fleet window)
     ├── manufacturing.rs  — Production queue manager
     ├── missions.rs       — Active missions with progress and cancel; missions start from the object pop-up menu
-    ├── jedi.rs           — Force-sensitive roster, tier progression, training controls
+    ├── jedi.rs           — Force panel: each character's Force +0x8c, ranking, awareness (read-only)
     ├── bombardment.rs    — Orbital bombardment targeting: fleet selection, damage forecast, fire
     ├── death_star.rs     — Death Star: construction progress, superlaser targeting, movement orders
     ├── loyalty.rs        — Loyalty dashboard: per-system danger, uprising risk, betrayal risk
@@ -203,7 +202,6 @@ run_simulation_tick():
   10. BetrayalSystem::advance      → integrator.apply_betrayal_events()
   11. DeathStarSystem::advance     → integrator.apply_death_star_events()
   12. (research missions add points in step 5)
-  13. JediSystem::advance          → integrator.apply_jedi_events()
   14. VictorySystem::check         → integrator.apply_victory()
   15. Campaign snapshot            → integrator.emit_campaign_snapshot()
   return integrator.finish()

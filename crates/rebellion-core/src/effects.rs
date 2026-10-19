@@ -18,7 +18,7 @@ use crate::manufacturing::BuildableKind;
 use crate::missions::{MissionFaction, MissionKind, MissionOutcome};
 use crate::research::TechType;
 use crate::victory::VictoryOutcome;
-use crate::world::{ControlKind, ForceTier};
+use crate::world::ControlKind;
 
 // ---------------------------------------------------------------------------
 // Effect phase ordering
@@ -205,13 +205,6 @@ pub enum GameEffect {
         tech_type: TechType,
         new_level: u32,
     },
-    JediTierAdvanced {
-        character: CharacterKey,
-        new_tier: ForceTier,
-    },
-    JediDiscovered {
-        character: CharacterKey,
-    },
     EventFired {
         event_id: u32,
     },
@@ -304,8 +297,6 @@ impl GameEffect {
             | Self::AiProductionEnqueued { .. }
             | Self::AiResearchDispatched { .. }
             | Self::TechUnlocked { .. }
-            | Self::JediTierAdvanced { .. }
-            | Self::JediDiscovered { .. }
             | Self::EventFired { .. }
             | Self::CharacterBetrayed { .. }
             | Self::UprisingIncident { .. }

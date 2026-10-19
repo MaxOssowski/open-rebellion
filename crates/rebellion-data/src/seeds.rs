@@ -2251,7 +2251,6 @@ mod tests {
         let c = &world.characters;
         assert!(c[latent].force_potential && !c[latent].force_aware);
         assert_eq!(c[latent].force_base, 0);
-        assert_eq!(c[latent].force_tier, rebellion_core::world::ForceTier::None);
         assert!(!c[never].force_potential);
         assert_eq!(c[never].force_base, 0);
         assert_eq!(c[known].force_base, 50);

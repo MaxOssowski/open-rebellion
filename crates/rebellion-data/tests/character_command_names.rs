@@ -32,3 +32,22 @@ fn a_character_loads_its_name_for_each_command() {
     );
     assert!(ackbar.can_be_admiral);
 }
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn a_character_loads_its_class_flags_from_the_dat() {
+    // MNCHARSD 832 (Ackbar, TEXTSTRA 10816): can_be_general 1,
+    // is_unable_to_betray 1; MJCHARSD 576 (Mon Mothma): can_be_general 0.
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+    let named = |name: &str| {
+        world
+            .characters
+            .values()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("{name} is loaded"))
+    };
+    let ackbar = named("Ackbar");
+    assert!(ackbar.can_be_general);
+    assert!(ackbar.is_unable_to_betray);
+    assert!(!named("Mon Mothma").can_be_general);
+}

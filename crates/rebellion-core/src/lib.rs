@@ -39,7 +39,6 @@ pub mod game_events;
 pub mod healing;
 pub mod ids;
 pub mod informant;
-pub mod jedi;
 pub mod manufacturing;
 mod mission_detection;
 mod mission_planning;

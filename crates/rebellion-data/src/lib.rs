@@ -926,13 +926,6 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         can_be_admiral: dat.can_be_admiral != 0,
         can_be_commander: dat.can_be_commander != 0,
         can_be_general: dat.can_be_general != 0,
-        force_tier: if dat.is_known_jedi != 0 {
-            rebellion_core::world::ForceTier::Aware
-        } else {
-            rebellion_core::world::ForceTier::None
-        },
-        force_experience: 0,
-        is_discovered_jedi: false,
         is_unable_to_betray: dat.is_unable_to_betray != 0,
         is_jedi_trainer: dat.is_jedi_trainer != 0,
         is_known_jedi: dat.is_known_jedi != 0,

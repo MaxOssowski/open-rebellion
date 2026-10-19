@@ -58,7 +58,7 @@ use serde::{Deserialize, Serialize};
 use crate::dat::Faction;
 use crate::ids::{CharacterKey, SystemKey};
 use crate::tick::TickEvent;
-use crate::world::{ForceTier, GameWorld};
+use crate::world::GameWorld;
 
 // ---------------------------------------------------------------------------
 // Ghidra RE event IDs (from annotated-functions.md)
@@ -97,7 +97,6 @@ pub const EVT_MAINTENANCE_SHORTFALL_EVENT: u32 = 0x304; // 772 — maintenance b
 pub const EVT_SABOTEUR_DETECTED: u32 = 0x305; // 773 — saboteur detected
 pub const EVT_CHARACTER_KILLED: u32 = 0x306; // 774 — character killed in action
 pub const EVT_TRAITOR_REVEALED: u32 = 0x361; // 865 — traitor revealed
-pub const EVT_LEIA_FORCE: u32 = 0x363; // 867 — Leia-specific Force discovery (distinct from 0x362 generic)
 pub const EVT_SIDE_CHANGE: u32 = 0x386; // 902 — character changes faction
 pub const EVT_JABBA_CAPTURES_CHEWIE: u32 = 0x387; // 903 — Chewie captured at Jabba's palace
 pub const EVT_HAN_PERMANENT_FREEZE: u32 = 0x39B; // 923 — Han permanently frozen in carbonite
@@ -166,17 +165,8 @@ pub enum EventCondition {
     /// Useful for event chains (e.g., "Bounty hunter arrives after Luke event").
     EventFired { id: u32 },
 
-    /// Character's Force tier is at least `min_tier`.
-    CharacterHasForceLevel {
-        character: CharacterKey,
-        min_tier: ForceTier,
-    },
-
     /// A specific faction controls a system.
     FactionControlsSystem { faction: Faction, system: SystemKey },
-
-    /// Character is a Force user (any tier above None).
-    CharacterIsForceUser { character: CharacterKey },
 
     /// Luke's `DagobahCompleted` (`+0xb0` bit `0x8`), which the Dagobah
     /// mission's end sets (`FUN_005751d0`, `crate::dagobah`).
@@ -190,12 +180,6 @@ pub enum EventCondition {
 
     /// A specific number of systems are controlled by a faction.
     FactionControlsNSystems { faction: Faction, min_count: usize },
-
-    /// Character's accumulated Force XP meets threshold.
-    CharacterForceExperience {
-        character: CharacterKey,
-        min_xp: u32,
-    },
 
     /// Character is currently held captive.
     CharacterIsCaptive { character: CharacterKey },
@@ -291,17 +275,8 @@ pub enum EventAction {
         mandatory: bool,
     },
 
-    /// Change a character's Force tier.
-    ModifyForceTier {
-        character: CharacterKey,
-        new_tier: ForceTier,
-    },
-
     /// Remove a character from the game.
     RemoveCharacter { character: CharacterKey },
-
-    /// Start Jedi training for a character.
-    StartJediTraining { character: CharacterKey },
 
     /// Transfer a character to a system and optionally change faction.
     TransferCharacter {
@@ -312,12 +287,6 @@ pub enum EventAction {
 
     /// Fire another event by ID (for chaining story beats).
     TriggerEvent { event_id: u32 },
-
-    /// Add Force experience points to a character.
-    AccumulateForceExperience {
-        character: CharacterKey,
-        amount: u32,
-    },
 
     /// Put a character into captive/carbonite state.
     CaptureCharacter {
@@ -615,23 +584,10 @@ fn evaluate_condition(
 
         EventCondition::EventFired { id } => fired_ids.contains(id),
 
-        EventCondition::CharacterHasForceLevel {
-            character,
-            min_tier,
-        } => world
-            .characters
-            .get(*character)
-            .is_some_and(|c| c.force_tier >= *min_tier),
-
         EventCondition::FactionControlsSystem { faction, system } => world
             .systems
             .get(*system)
             .is_some_and(|s| s.control.is_controlled_by(*faction)),
-
-        EventCondition::CharacterIsForceUser { character } => world
-            .characters
-            .get(*character)
-            .is_some_and(|c| c.force_tier > ForceTier::None),
 
         EventCondition::CharacterDagobahCompleted { character } => world
             .characters
@@ -653,11 +609,6 @@ fn evaluate_condition(
                 .count();
             count >= *min_count
         }
-
-        EventCondition::CharacterForceExperience { character, min_xp } => world
-            .characters
-            .get(*character)
-            .is_some_and(|c| c.force_experience >= *min_xp),
 
         EventCondition::CharacterIsCaptive { character } => world
             .characters
@@ -772,19 +723,18 @@ mod tests {
     use super::*;
     use crate::tick::TickEvent;
     use crate::world::ControlKind;
-    use crate::world::{Character, ForceTier};
+    use crate::world::Character;
 
     fn make_world() -> GameWorld {
         GameWorld::default()
     }
 
     /// Create a test character with sensible defaults. Override fields after creation.
-    fn make_character(name: &str, force_tier: ForceTier) -> Character {
+    fn make_character(name: &str) -> Character {
         Character {
             name: name.into(),
             is_alliance: true,
             is_major: true,
-            force_tier,
             ..Default::default()
         }
     }
@@ -1074,48 +1024,6 @@ mod tests {
     // --- New condition variants ---
 
     #[test]
-    fn character_has_force_level_true_when_tier_matches() {
-        let mut world = make_world();
-        let key = world
-            .characters
-            .insert(make_character("Luke", ForceTier::Training));
-
-        let mut state = EventState::new();
-        state.define(event(
-            1,
-            vec![EventCondition::CharacterHasForceLevel {
-                character: key,
-                min_tier: ForceTier::Aware,
-            }],
-            vec![],
-        ));
-
-        let fired = EventSystem::advance(&mut state, &world, &tick(1), &[]);
-        assert_eq!(fired.len(), 1, "Training >= Aware should fire");
-    }
-
-    #[test]
-    fn character_has_force_level_false_when_tier_too_low() {
-        let mut world = make_world();
-        let key = world
-            .characters
-            .insert(make_character("Han", ForceTier::None));
-
-        let mut state = EventState::new();
-        state.define(event(
-            1,
-            vec![EventCondition::CharacterHasForceLevel {
-                character: key,
-                min_tier: ForceTier::Aware,
-            }],
-            vec![],
-        ));
-
-        let fired = EventSystem::advance(&mut state, &world, &tick(1), &[]);
-        assert!(fired.is_empty(), "None < Aware should not fire");
-    }
-
-    #[test]
     fn faction_controls_system_evaluates_correctly() {
         use crate::dat::{ExplorationStatus, Faction};
 
@@ -1172,7 +1080,7 @@ mod tests {
         let mut world = make_world();
         let key = world
             .characters
-            .insert(make_character("Doomed", ForceTier::None));
+            .insert(make_character("Doomed"));
 
         // Remove the character
         world.characters.remove(key);
@@ -1269,24 +1177,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn character_is_force_user_true_for_aware_tier() {
-        let mut world = make_world();
-        let key = world
-            .characters
-            .insert(make_character("Leia", ForceTier::Aware));
-
-        let mut state = EventState::new();
-        state.define(event(
-            1,
-            vec![EventCondition::CharacterIsForceUser { character: key }],
-            vec![],
-        ));
-
-        let fired = EventSystem::advance(&mut state, &world, &tick(1), &[]);
-        assert_eq!(fired.len(), 1, "Aware > None, so is a Force user");
-    }
-
     // --- CharactersCoLocated condition ---
 
     #[test]
@@ -1329,13 +1219,13 @@ mod tests {
 
         let luke = world
             .characters
-            .insert(make_character("Luke", ForceTier::Experienced));
+            .insert(make_character("Luke"));
         let vader = world
             .characters
-            .insert(make_character("Vader", ForceTier::Experienced));
+            .insert(make_character("Vader"));
         let emperor = world
             .characters
-            .insert(make_character("Emperor", ForceTier::Experienced));
+            .insert(make_character("Emperor"));
 
         // Put all three in a fleet at the same system
         let fleet = world.fleets.insert(crate::world::Fleet {
@@ -1425,10 +1315,10 @@ mod tests {
 
         let luke = world
             .characters
-            .insert(make_character("Luke", ForceTier::Experienced));
+            .insert(make_character("Luke"));
         let vader = world
             .characters
-            .insert(make_character("Vader", ForceTier::Experienced));
+            .insert(make_character("Vader"));
 
         // Luke at sys1, Vader at sys2
         let fleet1 = world.fleets.insert(crate::world::Fleet {
@@ -1472,7 +1362,7 @@ mod tests {
         let mut world = make_world();
         let luke = world
             .characters
-            .insert(make_character("Luke", ForceTier::Aware));
+            .insert(make_character("Luke"));
 
         let mut state = EventState::new();
 
@@ -1504,10 +1394,10 @@ mod tests {
         let mut world = make_world();
         let luke = world
             .characters
-            .insert(make_character("Luke", ForceTier::Experienced));
+            .insert(make_character("Luke"));
         let vader = world
             .characters
-            .insert(make_character("Vader", ForceTier::Experienced));
+            .insert(make_character("Vader"));
 
         // Remove Vader — his key is now stale
         world.characters.remove(vader);
@@ -1568,10 +1458,10 @@ mod tests {
 
         let luke = world
             .characters
-            .insert(make_character("Luke", ForceTier::Experienced));
+            .insert(make_character("Luke"));
         let vader = world
             .characters
-            .insert(make_character("Vader", ForceTier::Experienced));
+            .insert(make_character("Vader"));
 
         // Luke in Alliance fleet, Vader in Empire fleet — both at same system
         let fleet1 = world.fleets.insert(crate::world::Fleet {
@@ -1651,8 +1541,8 @@ mod tests {
         // Luke in a fleet, Emperor via current_system only (no fleet)
         let luke = world
             .characters
-            .insert(make_character("Luke", ForceTier::Experienced));
-        let mut emperor = make_character("Emperor", ForceTier::Experienced);
+            .insert(make_character("Luke"));
+        let mut emperor = make_character("Emperor");
         emperor.current_system = Some(sys_key);
         let emperor_key = world.characters.insert(emperor);
 
@@ -1729,7 +1619,7 @@ mod tests {
         // as "assigned" because the integrator can resolve at the fleet's
         // static location.
         let han_key = {
-            let mut han = make_character("Han", ForceTier::None);
+            let mut han = make_character("Han");
             han.current_fleet = None; // will be set after fleet insert
             world.characters.insert(han)
         };
@@ -1758,7 +1648,7 @@ mod tests {
         // mark_killed clears current_fleet, so this honors Fix A without
         // needing an explicit is_killed check inside the condition.
         let mut world = make_world();
-        let mut han = make_character("Han", ForceTier::None);
+        let mut han = make_character("Han");
         // Seed a bogus fleet handle via an actual fleet insert.
         let sector_key = world.sectors.insert(crate::world::Sector {
             dat_id: crate::ids::DatId::new(0),
@@ -1828,7 +1718,7 @@ mod tests {
         let mut world = world;
         let ghost = world
             .characters
-            .insert(make_character("Ghost", ForceTier::None));
+            .insert(make_character("Ghost"));
         world.characters.remove(ghost);
 
         let mut state = EventState::new();
@@ -1883,11 +1773,11 @@ mod tests {
             control: ControlKind::Uncontrolled,
         });
 
-        let mut luke = make_character("Luke", ForceTier::Experienced);
+        let mut luke = make_character("Luke");
         luke.current_system = Some(sys_key);
         let luke_key = world.characters.insert(luke);
 
-        let mut vader = make_character("Vader", ForceTier::Experienced);
+        let mut vader = make_character("Vader");
         vader.current_system = Some(sys_key);
         let vader_key = world.characters.insert(vader);
 

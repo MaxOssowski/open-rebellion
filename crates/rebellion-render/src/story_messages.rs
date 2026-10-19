@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use rebellion_core::events::{EventAction, EVT_CHARACTER_FORCE, EVT_LEIA_FORCE, EVT_LUKE_DAGOBAH};
+use rebellion_core::events::{EventAction, EVT_CHARACTER_FORCE, EVT_LUKE_DAGOBAH};
 use rebellion_core::ids::{CharacterKey, DatId};
 use rebellion_core::world::GameWorld;
 
@@ -76,8 +76,8 @@ impl StoryClass {
 
 /// The message class a fired port story event is posted as.
 ///
-/// `0x221` and `0x1e1` share the original's ids. The port's Leia Force
-/// discovery (`0x363`) is the original's `0x362` for Leia. Jabba's
+/// `0x221` and `0x1e1` share the original's ids. Leia's Force discovery is
+/// the trainer's `0x362` (`force_user_discovered`). Jabba's
 /// capture is posted by [`jabba_captures_message`] since the port's own
 /// `0x387` went (save v77). The port's Final Battle
 /// (`0x220`) fires as the battle begins and the original's message
@@ -87,7 +87,6 @@ pub fn story_class(event_id: u32) -> Option<StoryClass> {
     match event_id {
         EVT_LUKE_DAGOBAH => Some(StoryClass::LukeGoesToDagobah),
         EVT_CHARACTER_FORCE => Some(StoryClass::ForceGrowth),
-        EVT_LEIA_FORCE => Some(StoryClass::LeiaUsesForce),
         _ => None,
     }
 }
@@ -104,9 +103,7 @@ pub fn story_subject(
     actions
         .iter()
         .find_map(|action| match action {
-            EventAction::ModifyForceTier { character, .. }
-            | EventAction::CaptureCharacter { character, .. }
-            | EventAction::StartJediTraining { character } => Some(*character),
+            EventAction::CaptureCharacter { character, .. } => Some(*character),
             _ => None,
         })
         .or_else(|| {
@@ -1242,8 +1239,9 @@ mod tests {
     #[test]
     fn port_story_events_map_to_their_original_classes_where_they_mean_the_same() {
         // ghidra/notes/message-index-rows.md: 0x221 and 0x1e1 share the
-        // original's ids; the port's 0x363 is the original's 0x362 for
-        // Leia; the port's 0x387 is gone (save v77), and the Final Battle
+        // original's ids; the port's 0x363 is gone with jedi.rs (Leia's
+        // discovery is the trainer's 0x362); the port's 0x387 is gone (save
+        // v77), and the Final Battle
         // (0x220) and the gates have no class.
         let (mut world, character) = (GameWorld::default(), CharacterKey::default());
         let capture = [EventAction::CaptureCharacter {
@@ -1252,8 +1250,7 @@ mod tests {
         }];
         assert_eq!(story_class(0x221), Some(StoryClass::LukeGoesToDagobah));
         assert_eq!(story_class(0x1e1), Some(StoryClass::ForceGrowth));
-        assert_eq!(story_class(0x363), Some(StoryClass::LeiaUsesForce));
-        for unmapped in [0x220, 0x200, 0x212, 0x362, 0x387, 0x399] {
+        for unmapped in [0x220, 0x200, 0x212, 0x362, 0x363, 0x387, 0x399] {
             assert_eq!(story_class(unmapped), None, "{unmapped:#x}");
         }
 
@@ -1277,8 +1274,9 @@ mod tests {
 
     #[test]
     fn a_story_event_posts_its_classes_message_or_keeps_the_port_text() {
-        // FUN_0048f1e0's Leia branch: TEXTSTRA 0x71d8 / 0x71d9 over the
-        // side's background with her portrait, filed under bit 0x10.
+        // The Force Growth class (0x1e1): TEXTSTRA 0x7180 / 0x7181 over the
+        // side's background with the subject's portrait, filed under bit
+        // 0x10.
         let mut world = GameWorld::default();
         let leia = world.characters.insert(rebellion_core::world::Character {
             dat_id: DatId::new(577),
@@ -1287,16 +1285,16 @@ mod tests {
             ..Default::default()
         });
         let texts = HashMap::from([
-            (0x71d8, "Leia Uses Force".to_owned()),
-            (0x71d9, "My heritage gives me the Force.".to_owned()),
+            (0x7180, "Force Growth".to_owned()),
+            (0x7181, "The Force grows stronger.".to_owned()),
         ]);
-        let actions = [EventAction::ModifyForceTier {
+        let actions = [EventAction::CaptureCharacter {
             character: leia,
-            new_tier: rebellion_core::world::ForceTier::Aware,
+            captor_faction: rebellion_core::dat::Faction::Empire,
         }];
         let message = story_message(
             &world,
-            0x363,
+            0x1e1,
             &actions,
             "port text".into(),
             40,
@@ -1304,8 +1302,8 @@ mod tests {
             &texts,
             MessageCategory::Event,
         );
-        assert_eq!(message.title.as_deref(), Some("Leia Uses Force"));
-        assert_eq!(message.text, "My heritage gives me the Force.");
+        assert_eq!(message.title.as_deref(), Some("Force Growth"));
+        assert_eq!(message.text, "The Force grows stronger.");
         assert_eq!(
             message.picture,
             Some(MessagePicture {

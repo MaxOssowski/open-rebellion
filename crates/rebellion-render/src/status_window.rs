@@ -478,7 +478,7 @@ mod tests {
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
     use rebellion_core::ids::{DatId, SystemKey};
-    use rebellion_core::world::{Character, ControlKind, ForceTier, Sector, SkillPair, System};
+    use rebellion_core::world::{Character, ControlKind, Sector, SkillPair, System};
 
     fn skill(base: u32) -> SkillPair {
         SkillPair { base, variance: 0 }
@@ -509,9 +509,6 @@ mod tests {
             can_be_admiral: true,
             can_be_commander: true,
             can_be_general: false,
-            force_tier: ForceTier::None,
-            force_experience: 0,
-            is_discovered_jedi: false,
             is_unable_to_betray: false,
             is_jedi_trainer: false,
             is_known_jedi: false,

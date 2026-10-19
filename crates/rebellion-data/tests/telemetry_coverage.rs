@@ -126,7 +126,6 @@ fn telemetry_coverage_all_sys_constants_emit() {
         uprising: rebellion_core::uprising::UprisingState::new(),
         death_star: rebellion_core::death_star::DeathStarState::default(),
         research: rebellion_core::research::ResearchState::new(),
-        jedi: rebellion_core::jedi::JediState::new(),
         victory: rebellion_core::victory::VictoryState::new(victory_a, victory_e),
         betrayal: rebellion_core::betrayal::BetrayalState::new(),
         economy: rebellion_core::economy::EconomyState::default(),

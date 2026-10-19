@@ -742,7 +742,6 @@ impl ReplayRuntime {
             uprising,
             death_star,
             research,
-            jedi,
             victory,
             betrayal,
             economy,
@@ -785,7 +784,6 @@ impl ReplayRuntime {
                 uprising,
                 death_star,
                 research,
-                jedi,
                 victory,
                 betrayal,
                 economy,
@@ -900,7 +898,6 @@ impl ReplayRuntime {
             uprising: self.states.uprising.clone(),
             death_star: self.states.death_star.clone(),
             research: self.states.research.clone(),
-            jedi: self.states.jedi.clone(),
             victory: self.states.victory.clone(),
             betrayal: self.states.betrayal.clone(),
             economy: self.states.economy.clone(),
@@ -1140,7 +1137,6 @@ mod tests {
     use rebellion_core::death_star::DeathStarState;
     use rebellion_core::economy::EconomyState;
     use rebellion_core::events::EventState;
-    use rebellion_core::jedi::JediState;
     use rebellion_core::manufacturing::ManufacturingState;
     use rebellion_core::missions::MissionState;
     use rebellion_core::movement::MovementState;
@@ -1241,7 +1237,6 @@ mod tests {
             uprising: UprisingState::new(),
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
-            jedi: JediState::new(),
             victory: VictoryState::new(alliance_hq, empire_hq),
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),

@@ -55,7 +55,6 @@ use rebellion_core::economy::EconomyState;
 use rebellion_core::events::EventState;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::SystemKey;
-use rebellion_core::jedi::JediState;
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::MissionState;
@@ -79,7 +78,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 86;
+pub const SAVE_VERSION: u32 = 87;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -223,7 +222,6 @@ pub struct SaveState {
     pub uprising: UprisingState,
     pub death_star: DeathStarState,
     pub research: ResearchState,
-    pub jedi: JediState,
     pub victory: VictoryState,
     pub betrayal: BetrayalState,
     // ── v8: economy state (closes incident re-fire on reload bug) ────────
@@ -974,7 +972,6 @@ mod tests {
             uprising: UprisingState::new(),
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
-            jedi: JediState::new(),
             victory: rebellion_core::victory::VictoryState::new(sys_a, sys_b),
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),

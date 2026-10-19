@@ -1129,7 +1129,7 @@ secrets and signed sessions.
 **Phase 3: Force Sensitivity**
 - [ ] 8-16% base chance depending on species + archetype
 - [ ] Success: jedi_probability 15-30 (Luke = 100 — custom characters strictly inferior)
-- [ ] Wire to existing JediSystem progression
+- [ ] Wire to the Force fields (`force_potential`, `force_aware`; `jedi.rs` was removed 2026-10-19)
 
 **Phase 4: Portraits & Flavor**
 - [ ] 128 portrait BMPs (8 per species × 2 factions × 8 species)

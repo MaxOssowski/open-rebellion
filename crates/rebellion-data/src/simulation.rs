@@ -17,7 +17,6 @@ use rebellion_core::events::{EventState, EventSystem};
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::game_events::GameEventRecord;
 use rebellion_core::ids::SystemKey;
-use rebellion_core::jedi::JediState;
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::{MissionState, MissionSystem};
 use rebellion_core::movement::{reconcile_fleet_orbits, MovementState, MovementSystem};
@@ -59,7 +58,6 @@ pub struct SimulationStates {
     pub uprising: UprisingState,
     pub death_star: DeathStarState,
     pub research: ResearchState,
-    pub jedi: JediState,
     pub victory: VictoryState,
     pub betrayal: BetrayalState,
     pub economy: EconomyState,
@@ -905,7 +903,6 @@ mod tests {
             uprising: UprisingState::new(),
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
-            jedi: JediState::new(),
             victory: VictoryState::new(s1, s2),
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
@@ -1388,7 +1385,6 @@ mod tests {
                 uprising: UprisingState::new(),
                 death_star: DeathStarState::default(),
                 research: ResearchState::new(),
-                jedi: JediState::new(),
                 victory: VictoryState::new(target, other),
                 betrayal: BetrayalState::new(),
                 economy: EconomyState::default(),
@@ -1524,7 +1520,6 @@ mod tests {
             uprising: UprisingState::new(),
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
-            jedi: JediState::new(),
             victory: VictoryState::new(other, target),
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
@@ -1714,7 +1709,6 @@ mod tests {
             uprising: UprisingState::new(),
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
-            jedi: JediState::new(),
             victory: VictoryState::new(alliance_hq, coruscant),
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
@@ -1865,7 +1859,6 @@ mod tests {
             uprising: UprisingState::new(),
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
-            jedi: JediState::new(),
             victory: VictoryState::new(alliance_hq, coruscant),
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),
@@ -2031,7 +2024,6 @@ mod tests {
             uprising: UprisingState::new(),
             death_star: DeathStarState::default(),
             research: ResearchState::new(),
-            jedi: JediState::new(),
             victory: VictoryState::new(origin, target),
             betrayal: BetrayalState::new(),
             economy: EconomyState::default(),

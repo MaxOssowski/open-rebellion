@@ -49,7 +49,6 @@ The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `
 | 10d | **Force discovery** | `force_discovery.rs` | `advance(state, world, ticks, rolls)` | Each trainer with Force 80+ (Vader; Luke later), free, makes the latent characters of its side beside it Force aware, daily, timer `0x389` (`ghidra/notes/force-awareness.md`) |
 | 11 | **Death Star** | `death_star.rs` | `advance(state, world, ticks)` | Self-clears construction on completion |
 | 12 | **Research** | `research.rs` | `advance_tally(state, world, blocked, ticks, rolls)` after the production cycle; research missions resolve in step 5 | `MissionEffect::ResearchPoints` -> `ResearchState::add_points` (2026-10-14); timer `0x381` adds the side's active yards to each tree every 30-60 days (2026-10-17) |
-| 13 | **Jedi** | `jedi.rs` | `advance(state, world, ticks, rolls)` | XP stored in `JediTrainingRecord`, not world |
 | 14 | **Victory** | `victory.rs` | `advance_conditions_word(state, world, conditions)`, then `check(state, world, ticks)` | The victory conditions word (`FUN_005180e0`, notification `0x128` on a change: Coruscant Captured, Alliance Headquarters Destroyed); then `check` decides the game by the word's win bits (F-005) |
 | 15 | **Betrayal** | `betrayal.rs` | `advance(state, world, ticks, rolls, loyalty_tb)` | `is_unable_to_betray` immunity; 50-tick cooldown |
 | 16 | **Economy** | `economy.rs` | `advance(state, world, ticks, difficulty)` | Full 18-function strategic state rebuild (FUN_00508250, which the original runs once at setup, not per tick: `ghidra/notes/timer-scheduler.md`). Runs BEFORE manufacturing (position 0). Resource caps, smuggling percent (FUN_0050b230 → `+0x6c`; support moves only through FUN_0050c9f0, `ghidra/notes/economy-cadence.md`), collection rate, KDY modifier, side resolution (FUN_0050b610: the regiments' side, else the side whose support reaches GNPRTB[7760]; `ghidra/notes/system-control.md`), garrison, troop/fleet summary, incident generation (state-transition-driven, 4 flags). 17 GNPRTB indices. 30 tests. |
@@ -101,7 +100,6 @@ run_simulation_tick():
   10. betrayal       = BetrayalSystem::advance()        → integrator.apply_betrayal_events()
   11. ds_events      = DeathStarSystem::advance()       → integrator.apply_death_star_events()
   12. research       = (none: research missions add points in step 5, apply_mission_result)
-  13. jedi           = JediSystem::advance()            → integrator.apply_jedi_events()
   14. victory        = VictorySystem::check()           → integrator.apply_victory()
   15. snapshot       (every 250 ticks)                  → integrator.emit_campaign_snapshot()
   return integrator.finish()
@@ -155,7 +153,6 @@ All simulation states are created in `main.rs` and included in `SaveState` (`reb
 | `UprisingState` | `UprisingSystem::advance`, `end_if_garrisoned()` |
 | `DeathStarState` | `DeathStarSystem::advance`, `fire()`, `start_construction()` |
 | `ResearchState` | `ResearchState::add_points` from a research mission's `ResearchPoints` effect |
-| `JediState` | `JediSystem::advance`, `start_training()`, `stop_training()` |
 | `VictoryState` | Caller sets `resolved = true` after outcome |
 | `GameWorld` | Effect application only (never inside advance()) |
 

@@ -1,8 +1,8 @@
 # Force potential, awareness and discovery (timer `0x389`)
 
-Read 2026-10-17 for F-038. The port's `jedi.rs` runs its own Force tiers
+Read 2026-10-17 for F-038. The port's `jedi.rs` ran its own Force tiers
 with flat probabilities; this note records what the original keeps and
-does, as the base for replacing it.
+does. `jedi.rs` is gone since 2026-10-19 (`jedi-rs-replacement.md`).
 
 ## Fields and flags
 
@@ -185,12 +185,11 @@ Force 50. The message `0x362` followed the same day
 `evidence/2026-10-18-force-discovery-message/`). Evidence:
 `docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-discovery/`.
 
-## Against the port
+## Against the port (before 2026-10-19)
 
-`jedi.rs` keeps `force_tier`, `force_experience`, `is_discovered_jedi` and
-`jedi_probability`, and advances tiers by flat chances. None of
-`ForcePotential`, `ForceAware`, `DiscoveringForceUser` or timer `0x389`
-exists. Porting this replaces part of `jedi.rs`.
+`jedi.rs` kept `force_tier`, `force_experience` and `is_discovered_jedi`,
+and advanced tiers by flat chances. It is removed (save v87,
+`jedi-rs-replacement.md`); the port keeps the original's fields below.
 
 ## Open
 

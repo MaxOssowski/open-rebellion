@@ -2896,6 +2896,13 @@ cross-runtime proof remain open
   training order; the invented tiers, XP and detection risk are gone from
   them. Accepted in the browser
   (`evidence/2026-10-19-jedi-rs-panels/`).
+- 2026-10-19: jedi.rs, stage 4 (save v87, approved). `jedi.rs`,
+  `ForceTier`, `force_tier`, `force_experience`, `is_discovered_jedi`,
+  `JediState`, the event engine's tier conditions and actions and the
+  `0x363` event are removed; the provenance baseline shrinks 85 -> 77.
+  Golden regenerated for the layout (initial `v1:681087f1af0a0e6d`, final
+  `v1:f2946c95622dd970`); the 24 campaigns are unchanged. The tracker item
+  is done (`evidence/2026-10-19-jedi-rs-save/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

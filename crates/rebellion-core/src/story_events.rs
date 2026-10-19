@@ -92,19 +92,18 @@ mod tests {
     use crate::events::EVT_TRAITOR_REVEALED;
     use crate::events::{EventCondition, EventState, EventSystem, GameEvent, SystemTag};
     use crate::tick::TickEvent;
-    use crate::world::{Character, ForceTier};
+    use crate::world::Character;
 
     fn tick(n: u64) -> Vec<TickEvent> {
         vec![TickEvent { tick: n }]
     }
 
-    fn make_character(name: &str, force_tier: ForceTier, is_alliance: bool) -> Character {
+    fn make_character(name: &str, is_alliance: bool) -> Character {
         Character {
             name: name.into(),
             is_alliance,
             is_empire: !is_alliance,
             is_major: true,
-            force_tier,
             ..Default::default()
         }
     }
@@ -113,24 +112,24 @@ mod tests {
         let mut world = GameWorld::default();
         world
             .characters
-            .insert(make_character("Luke Skywalker", ForceTier::Aware, true));
+            .insert(make_character("Luke Skywalker", true));
         world
             .characters
-            .insert(make_character("Darth Vader", ForceTier::Experienced, false));
+            .insert(make_character("Darth Vader", false));
         world
             .characters
-            .insert(make_character("Han Solo", ForceTier::None, true));
+            .insert(make_character("Han Solo", true));
         {
-            let mut yoda = make_character("Yoda", ForceTier::Experienced, true);
+            let mut yoda = make_character("Yoda", true);
             yoda.is_jedi_trainer = true;
             world.characters.insert(yoda);
         }
         world
             .characters
-            .insert(make_character("Princess Leia", ForceTier::None, true));
+            .insert(make_character("Princess Leia", true));
         world
             .characters
-            .insert(make_character("Chewbacca", ForceTier::None, true));
+            .insert(make_character("Chewbacca", true));
         world
     }
 
@@ -164,57 +163,11 @@ mod tests {
     // --- Task 8: New condition variant tests ---
 
     #[test]
-    fn character_force_experience_evaluates_at_threshold() {
-        let mut world = GameWorld::default();
-        let luke = world
-            .characters
-            .insert(make_character("Luke", ForceTier::Aware, true));
-
-        // Set force_experience to 25
-        world.characters.get_mut(luke).unwrap().force_experience = 25;
-
-        let mut state = EventState::new();
-        state.define(GameEvent {
-            id: 1,
-            name: "xp_test".into(),
-            conditions: vec![EventCondition::CharacterForceExperience {
-                character: luke,
-                min_xp: 20,
-            }],
-            actions: vec![],
-            is_repeatable: false,
-            enabled: true,
-            system_tag: SystemTag::Story,
-        });
-
-        let fired = EventSystem::advance(&mut state, &world, &tick(1), &[]);
-        assert_eq!(fired.len(), 1, "25 >= 20 should fire");
-
-        // Reset with higher threshold
-        let mut state2 = EventState::new();
-        state2.define(GameEvent {
-            id: 2,
-            name: "xp_test_fail".into(),
-            conditions: vec![EventCondition::CharacterForceExperience {
-                character: luke,
-                min_xp: 30,
-            }],
-            actions: vec![],
-            is_repeatable: false,
-            enabled: true,
-            system_tag: SystemTag::Story,
-        });
-
-        let fired2 = EventSystem::advance(&mut state2, &world, &tick(1), &[]);
-        assert!(fired2.is_empty(), "25 < 30 should not fire");
-    }
-
-    #[test]
     fn character_is_captive_evaluates_correctly() {
         let mut world = GameWorld::default();
         let han = world
             .characters
-            .insert(make_character("Han Solo", ForceTier::None, true));
+            .insert(make_character("Han Solo", true));
 
         let mut state = EventState::new();
         state.define(GameEvent {
@@ -324,11 +277,7 @@ mod tests {
         // port's own bounty, carbonite and palace events, which no original
         // code raises this way, are no longer defined.
         let mut world = make_world_with_characters();
-        world.characters.insert(make_character(
-            "Emperor Palpatine",
-            ForceTier::Experienced,
-            false,
-        ));
+        world.characters.insert(make_character("Emperor Palpatine", false));
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
         let gone = [
@@ -350,11 +299,7 @@ mod tests {
         // the port's own 0x393, 0x394, 0x395, 0x396 and 0x220 events, which
         // no original code raises this way, are no longer defined.
         let mut world = make_world_with_characters();
-        world.characters.insert(make_character(
-            "Emperor Palpatine",
-            ForceTier::Experienced,
-            false,
-        ));
+        world.characters.insert(make_character("Emperor Palpatine", false));
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
         for id in [0x393, 0x394, 0x395, 0x396, crate::events::EVT_FINAL_BATTLE] {
@@ -374,11 +319,7 @@ mod tests {
         // story-message-classes.md row 16: 0x230 is SeatOfPower
         // (FUN_005617b0), not a day-90 dominance gate.
         let mut world = make_world_with_characters();
-        world.characters.insert(make_character(
-            "Emperor Palpatine",
-            ForceTier::Experienced,
-            false,
-        ));
+        world.characters.insert(make_character("Emperor Palpatine", false));
         let mut state = EventState::new();
         define_story_events(&mut state, &world);
         assert!(!state.events().iter().any(|e| e.id == 0x230));

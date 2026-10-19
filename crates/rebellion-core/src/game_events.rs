@@ -134,7 +134,6 @@ pub const EVT_SABOTEUR_DETECTED: &str = "saboteur_detected";
 pub const EVT_CHARACTER_KILLED: &str = "character_killed";
 pub const EVT_CHARACTER_HEALTH: &str = "character_health";
 pub const EVT_TRAITOR_REVEALED: &str = "traitor_revealed";
-pub const EVT_LEIA_FORCE: &str = "leia_force_discovery";
 /// A trainer's timer `0x389` made a character Force aware (`FUN_00560a30`).
 pub const EVT_FORCE_DISCOVERED: &str = "force_discovered";
 /// A character's `ForceExperience` (`+0x8e`) grew (Luke's or Leia's evade,
@@ -248,7 +247,6 @@ mod tests {
             EVT_CHARACTER_KILLED,
             EVT_CHARACTER_HEALTH,
             EVT_TRAITOR_REVEALED,
-            EVT_LEIA_FORCE,
             EVT_FORCE_DISCOVERED,
             EVT_FORCE_EXPERIENCE,
             EVT_LUKE_DAGOBAH,

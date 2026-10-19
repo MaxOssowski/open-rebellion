@@ -92,3 +92,14 @@ already traced, in the note cited.
      `SaveState::jedi`, and delete `jedi.rs`.
    - This is a save format change (v87), which needs the user's approval,
      and it regenerates the golden.
+   - Done 2026-10-19 (approved). Removed:
+     - `ForceTier`, `force_tier`, `force_experience`, `is_discovered_jedi`;
+     - `JediState` and its save field;
+     - `jedi.rs`;
+     - the event engine's `CharacterHasForceLevel`, `CharacterIsForceUser`,
+       `CharacterForceExperience`, `ModifyForceTier`, `StartJediTraining`
+       and `AccumulateForceExperience`;
+     - `GameEffect::JediTierAdvanced` and `JediDiscovered`;
+     - `EVT_LEIA_FORCE` (`0x363`), with the interface fixture's message.
+   - The story class for `0x1e1` (Force Growth, TEXTSTRA `0x7180`) stays
+     mapped. It is the original's id and texts, though nothing posts it.

@@ -103,7 +103,7 @@ See `agent_docs/simulation.md` for full API reference on all 15 systems.
 - **Uprising** (`uprising.rs`): revolts start on a troop shortfall and never change control; an incident every 30-100 ticks maps its score through UPRIS1TB/UPRIS2TB step lookups to losses; natural disasters erode resources and facilities
 - **Death Star** (`death_star.rs`): Construction countdown, superlaser fire (precondition checks from RE), nearby-warning scan
 - **Research** (`research.rs`): 3 trees (Ship/Troop/Facility) per side, advanced only by the three research missions (`0x53000020..22`); `research_order` gates classes and `research_difficulty` prices levels
-- **Jedi training** (`jedi.rs`): 4-tier Force progression (None→Aware→Training→Experienced), XP accumulation, detection checks
+- **The Force**: the original's fields (`ForcePotential`, `ForceAware`, Force `+0x8c` = `+0x8e` + `+0x90`); discovery by a trainer (`force_discovery.rs`), detection in the missions (`mission_detection.rs`), growth through the Jedi Training mission, Dagobah, escapes and the encounter (`ghidra/notes/force-awareness.md`)
 - **Victory conditions** (`victory.rs`): HQ capture, Death Star fire/destroyed, `resolved` flag prevents re-trigger
 - **Save/load** (`rebellion-data/src/save.rs`): Bincode with OPENREB header, v4 format with mod metadata + FNV-1a hash, migration framework, 10 slots. See `agent_docs/save-load.md`.
 
