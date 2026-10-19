@@ -185,10 +185,11 @@ struct Selectors {
 /// Where a decoy selector reads its cap.
 #[derive(Clone, Copy)]
 enum DecoyCap {
-    /// `(record.+0xbc + 2) / 2` of the target system's AI record, whose
-    /// `+0xbc` is the mission kind its posture recommends (`FUN_00478000`
-    /// via `FUN_004b7150`), or 0.
-    Posture,
+    /// `(v[29] + 2) / 2` of the target system's AI record (`+0x34`,
+    /// `FUN_00403d30`; `+0xbc` is `v[29]`, its defense), 0 without one
+    /// ([`defense_cap`]: `FUN_00480110`, `FUN_0047d720`, `FUN_00480aa0`,
+    /// `FUN_00482ec0`).
+    Defense,
     /// Planner slot `+0x44` (`FUN_004047d0`).
     Fixed(usize),
 }
@@ -218,11 +219,25 @@ const fn decoys(req_caps: u32, cap: DecoyCap) -> Option<(Query, DecoyCap)> {
     Some((q, cap))
 }
 
-/// The selectors of `kind`'s planner (`FUN_0042f830`).
+/// A defense-capped decoy selector's cap: `(v[29] + 2) / 2` of the target
+/// system's record, 0 with no record (`FUN_00480110` and siblings).
+fn defense_cap(defense: Option<i32>) -> usize {
+    defense.map_or(0, |v| usize::try_from((v + 2) / 2).unwrap_or(0))
+}
+
+/// The selectors of `kind`'s planner of `subtype` (`FUN_0042f830`):
 ///
-/// Espionage takes the class of subtype 6, which the strategy requests
-/// (`FUN_004e8290` row 12). port: Abduction takes its default class.
-fn selectors(kind: MissionKind) -> Option<Selectors> {
+/// - Espionage of subtype 6 (the strategy's, `FUN_004e8290` row 12) is
+///   `FUN_00480f30` alone; any other (a sector planner's) is
+///   `FUN_004808c0`, the same query for two members, with
+///   `FUN_00480aa0` taking decoys by that query too;
+/// - Abduction of subtype 4 (a sector planner's, class `0x65a9b0`,
+///   `FUN_00482b30` with `+0x7c` 0x10) is `FUN_00482ce0` and
+///   `FUN_00482ec0`, Assassination's selectors with Abduction's
+///   capability bit; any other is `FUN_00483290`;
+/// - Reconnaissance of subtype 5 (`FUN_0047f790`) and any other
+///   (`FUN_0047f320`) select alike.
+fn selectors(kind: MissionKind, subtype: u32) -> Option<Selectors> {
     use Skill::{
         Combat, Diplomacy, Espionage, FacilityDesign, Leadership, ShipDesign, TroopTraining,
     };
@@ -234,6 +249,7 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
     const RESCUE: &[Query] = &[query(0x2, 0x2, 0x4f40_0051, 0x700_0000, Combat, 51)];
     const ABDUCTION: &[Query] = &[query(0x2, 0x10, 0x0f40_0051, 0x700_0000, Combat, 51)];
     const ASSASSINATION: &[Query] = &[query(0x1080_0002, 0x40, 0x4740_0051, 0, Combat, 51)];
+    const SECTOR_ABDUCTION: &[Query] = &[query(0x1080_0002, 0x10, 0x4740_0051, 0, Combat, 51)];
     const SABOTAGE: &[Query] = &[
         query(0x80_0002, 0x4, 0x4f40_0051, 0, Combat, 51),
         query(0x80_0002, 0x4, 0x4f40_0051, 0, Espionage, 51),
@@ -250,24 +266,27 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
         // FUN_004815a0; FUN_0047f500 takes no decoys.
         MissionKind::Diplomacy => (DIPLOMACY, 1, None),
         // FUN_00480f30, the strategy's subtype 6 (FUN_004e8290 row 12): one
-        // member; slot +0x4c (FUN_00481100) takes no decoys. The class for
-        // other subtypes (FUN_004808c0, FUN_00480aa0: two members and a
-        // decoy) has no request the port makes.
-        MissionKind::Espionage => (ESPIONAGE, 1, None),
+        // member; slot +0x4c (FUN_00481100) takes no decoys. Other
+        // subtypes: FUN_004808c0, FUN_00480aa0.
+        MissionKind::Espionage if subtype == 6 => (ESPIONAGE, 1, None),
+        MissionKind::Espionage => (ESPIONAGE, 2, Some((ESPIONAGE[0], DecoyCap::Defense))),
         // FUN_0047db40; the class has no decoy selector.
         MissionKind::Recruitment => (RECRUITMENT, 1, None),
         // FUN_0047ff90, FUN_00480110.
-        MissionKind::InciteUprising => (INCITE, 1, decoys(0x100, DecoyCap::Posture)),
+        MissionKind::InciteUprising => (INCITE, 1, decoys(0x100, DecoyCap::Defense)),
         // FUN_0047cee0; no decoy selector.
         MissionKind::SubdueUprising => (SUBDUE, 1, None),
         // FUN_0047e270, FUN_0047e3f0 (cap slot +0x44 = 4).
         MissionKind::Rescue => (RESCUE, 2, decoys(0x2, DecoyCap::Fixed(4))),
         // FUN_00483290, FUN_00483410 (cap 4).
+        MissionKind::Abduction if subtype == 4 => {
+            (SECTOR_ABDUCTION, 2, decoys(0x10, DecoyCap::Defense))
+        }
         MissionKind::Abduction => (ABDUCTION, 2, decoys(0x10, DecoyCap::Fixed(4))),
         // FUN_00482ce0, FUN_00482ec0 with +0x7c = 0x40.
-        MissionKind::Assassination => (ASSASSINATION, 2, decoys(0x40, DecoyCap::Posture)),
+        MissionKind::Assassination => (ASSASSINATION, 2, decoys(0x40, DecoyCap::Defense)),
         // FUN_0047d520, FUN_0047d720.
-        MissionKind::Sabotage => (SABOTAGE, 2, decoys(0x4, DecoyCap::Posture)),
+        MissionKind::Sabotage => (SABOTAGE, 2, decoys(0x4, DecoyCap::Defense)),
         // FUN_00482180, FUN_00482330 (cap 4).
         MissionKind::DeathStarSabotage => (DS_SABOTAGE, 2, decoys(0x80, DecoyCap::Fixed(4))),
         // FUN_0047f790, the strategy's subtype 5 (FUN_004e8290 row 11): one
@@ -300,19 +319,15 @@ fn selectors(kind: MissionKind) -> Option<Selectors> {
 /// `FUN_00481100` set it at once; `FUN_00483410` and its siblings once
 /// they reach the cap). The sector planners' Espionage (subtype not 6,
 /// `FUN_00480aa0`), Sabotage (`FUN_0047d720`) and Abduction or
-/// Assassination of subtype 4 (`FUN_00482ec0`) use the posture cap.
+/// Assassination of subtype 4 (`FUN_00482ec0`) use the defense cap.
 ///
-/// hyp: the posture cap reads 1, as in [`Planner::plan`].
+/// hyp: the defense cap reads 1 here. Only the sector planners' `+0x64`
+/// bits read this, and they are not yet added (`ai_module8`).
 pub(crate) fn decoy_cap(kind: MissionKind, subtype: u32) -> usize {
-    match (kind, subtype) {
-        (MissionKind::Espionage, 6) | (MissionKind::Reconnaissance, _) => 0,
-        (MissionKind::Espionage | MissionKind::Sabotage, _) => 1,
-        (MissionKind::Abduction | MissionKind::Assassination, 4) => 1,
-        _ => match selectors(kind).and_then(|s| s.decoys) {
-            Some((_, DecoyCap::Fixed(cap))) => cap,
-            Some((_, DecoyCap::Posture)) => 1,
-            None => 0,
-        },
+    match selectors(kind, subtype).and_then(|s| s.decoys) {
+        Some((_, DecoyCap::Fixed(cap))) => cap,
+        Some((_, DecoyCap::Defense)) => 1,
+        None => 0,
     }
 }
 
@@ -399,7 +414,7 @@ impl<'a> Planner<'a> {
         if kind != MissionKind::Diplomacy {
             return false;
         }
-        let Some(selectors) = selectors(kind) else {
+        let Some(selectors) = selectors(kind, 0) else {
             return false;
         };
         let list = ranked(&self.records, selectors.team[0], &mut self.rng);
@@ -445,7 +460,7 @@ impl<'a> Planner<'a> {
     /// A research planner's team selector (`FUN_0047bcd0` and siblings):
     /// its best candidate, which the planner then holds.
     pub(crate) fn pick(&mut self, kind: MissionKind) -> Option<MissionMember> {
-        let selectors = selectors(kind)?;
+        let selectors = selectors(kind, 0)?;
         let index = *self.select(selectors.team, 1).first()?;
         let member = self.records[index].member;
         self.hold(member);
@@ -501,8 +516,9 @@ impl<'a> Planner<'a> {
     pub(crate) fn plan(
         &mut self,
         kind: MissionKind,
+        defense: Option<i32>,
     ) -> Option<(Vec<MissionMember>, Vec<MissionMember>)> {
-        let selectors = selectors(kind)?;
+        let selectors = selectors(kind, 0)?;
         let team = self.select(selectors.team, selectors.team_size);
         // port: a plan that sends no one keeps no one. The original planner
         // holds its picks (they lost 0x800000) across ticks until it emits.
@@ -516,9 +532,7 @@ impl<'a> Planner<'a> {
             return None;
         }
         let decoys = match selectors.decoys {
-            // hyp: the posture that names +0xbc is not ported; a system
-            // with no recommended kind reads 0, which allows one decoy.
-            Some((decoy, DecoyCap::Posture)) => self.select(&[decoy], 1),
+            Some((decoy, DecoyCap::Defense)) => self.select(&[decoy], defense_cap(defense)),
             Some((decoy, DecoyCap::Fixed(cap))) => self.select(&[decoy], cap),
             None => Vec::new(),
         };
@@ -547,20 +561,21 @@ impl<'a> Planner<'a> {
     /// the class's team size and decoy cap. The new picks are held
     /// (`FUN_0047b610`), so no other query of this evaluation takes them.
     ///
-    /// hyp: the posture cap (`+0xbc`) reads 0, one decoy, as in
-    /// [`Self::plan`].
+    /// `defense` is `v[29]` of the record of the target the planner holds
+    /// (`+0x34`), for the defense cap.
     pub(crate) fn refill(
         &mut self,
-        kind: MissionKind,
+        (kind, subtype): (MissionKind, u32),
         team: usize,
         decoys: usize,
+        defense: Option<i32>,
     ) -> (Vec<MissionMember>, Vec<MissionMember>) {
-        let Some(selectors) = selectors(kind) else {
+        let Some(selectors) = selectors(kind, subtype) else {
             return (Vec::new(), Vec::new());
         };
         let new_team = self.select(selectors.team, selectors.team_size.saturating_sub(team));
         let cap = match selectors.decoys {
-            Some((_, DecoyCap::Posture)) => 1,
+            Some((_, DecoyCap::Defense)) => defense_cap(defense),
             Some((_, DecoyCap::Fixed(cap))) => cap,
             None => 0,
         };
@@ -968,14 +983,59 @@ mod tests {
         });
         let mut p = planner(&world);
         assert_eq!(p.flags(luke).map(|f| f & LEADER), Some(LEADER));
-        assert_eq!(p.plan(MissionKind::InciteUprising), None);
+        assert_eq!(p.plan(MissionKind::InciteUprising, Some(0)), None);
         let mut p = planner(&world);
         p.without_leaders();
         assert_eq!(p.flags(luke).map(|f| f & LEADER), Some(0));
         assert_eq!(
-            p.plan(MissionKind::InciteUprising).map(|(team, _)| team),
+            p.plan(MissionKind::InciteUprising, Some(0))
+                .map(|(team, _)| team),
             Some(vec![luke])
         );
+    }
+
+    #[test]
+    fn a_defense_capped_selector_takes_half_the_target_s_defense_plus_one() {
+        // FUN_00480110, FUN_0047d720, FUN_00480aa0, FUN_00482ec0:
+        // (record +0xbc + 2) / 2 of the target +0x34 (FUN_00403d30), 0
+        // without a record; +0xbc is v[29] (+0x48 + 4 * 29).
+        let caps = [None, Some(0), Some(1), Some(3), Some(10)].map(defense_cap);
+        assert_eq!(caps, [0, 1, 1, 2, 6]);
+    }
+
+    #[test]
+    fn a_sector_planner_s_espionage_takes_two_and_decoys_by_the_same_query() {
+        // FUN_004808c0: two members by FUN_00480f30's query (0x10800002,
+        // capability 8, espionage 51..); FUN_00480aa0 takes decoys by it
+        // too, up to the defense cap. Subtype 6 (FUN_00480f30,
+        // FUN_00481100): one member, no decoys.
+        let mut world = world();
+        let spies: Vec<_> = (0..6).map(|i| unit(&mut world, 90 - i, 0)).collect();
+        let (team, decoys) = planner(&world).refill((MissionKind::Espionage, 0), 0, 0, Some(3));
+        assert_eq!(team, spies[0..2]);
+        assert_eq!(decoys, spies[2..4]);
+        let (team, decoys) = planner(&world).refill((MissionKind::Espionage, 6), 0, 0, Some(3));
+        assert_eq!(team, spies[0..1]);
+        assert!(decoys.is_empty());
+        // Without the target's record, no decoys.
+        let (_, decoys) = planner(&world).refill((MissionKind::Espionage, 0), 0, 0, None);
+        assert!(decoys.is_empty());
+    }
+
+    #[test]
+    fn a_sector_planner_s_abduction_caps_its_decoys_by_the_target_s_defense() {
+        // FUN_00482b30 builds class 0x65a9b0 for the Alliance as Abduction
+        // with +0x7c 0x10: FUN_00482ce0 (0x10800002, by combat 51..) and
+        // FUN_00482ec0 (the defense cap). Abduction of another subtype is
+        // FUN_00483290 and FUN_00483410, whose cap is 4 (FUN_004047d0).
+        let mut world = world();
+        let units: Vec<_> = (0..8).map(|i| unit(&mut world, 90 - i, 90 - i)).collect();
+        let (team, decoys) = planner(&world).refill((MissionKind::Abduction, 4), 0, 0, Some(0));
+        assert_eq!(team, units[0..2]);
+        assert_eq!(decoys, units[2..3]);
+        let (team, decoys) = planner(&world).refill((MissionKind::Abduction, 0), 0, 0, Some(0));
+        assert_eq!(team, units[0..2]);
+        assert_eq!(decoys.len(), 4);
     }
 
     #[test]
@@ -1109,7 +1169,7 @@ mod tests {
 
         assert_eq!(
             planner(&world)
-                .plan(MissionKind::Diplomacy)
+                .plan(MissionKind::Diplomacy, Some(0))
                 .map(|(team, _)| team),
             Some(vec![next])
         );
@@ -1124,7 +1184,7 @@ mod tests {
         let best = agent(&mut world, 2, |c| c.diplomacy = pair(79));
         let _ = agent(&mut world, 3, |c| c.diplomacy = pair(75));
 
-        let plan = planner(&world).plan(MissionKind::Diplomacy);
+        let plan = planner(&world).plan(MissionKind::Diplomacy, Some(0));
 
         assert_eq!(plan, Some((vec![best], vec![])));
     }
@@ -1141,7 +1201,9 @@ mod tests {
         let c = unit(&mut world, 80, 80);
         let _d = unit(&mut world, 50, 99);
 
-        let (team, _) = planner(&world).plan(MissionKind::Sabotage).unwrap();
+        let (team, _) = planner(&world)
+            .plan(MissionKind::Sabotage, Some(0))
+            .unwrap();
 
         assert_eq!(team, vec![b, c]);
         assert!(!team.contains(&a));
@@ -1158,7 +1220,7 @@ mod tests {
         let third = unit(&mut world, 70, 70);
         let _ = unit(&mut world, 60, 60);
 
-        let plan = planner(&world).plan(MissionKind::Sabotage);
+        let plan = planner(&world).plan(MissionKind::Sabotage, Some(0));
 
         assert_eq!(plan, Some((vec![first, second], vec![third])));
     }
@@ -1169,7 +1231,7 @@ mod tests {
         let mut world = world();
         let units: Vec<_> = (0..7).map(|i| unit(&mut world, 90 - i, 90 - i)).collect();
 
-        let (team, decoys) = planner(&world).plan(MissionKind::Rescue).unwrap();
+        let (team, decoys) = planner(&world).plan(MissionKind::Rescue, Some(0)).unwrap();
 
         assert_eq!(team, units[..2].to_vec());
         assert_eq!(decoys, units[2..6].to_vec());
@@ -1186,7 +1248,7 @@ mod tests {
         });
         let _ = agent(&mut world, 2, |c| c.diplomacy = pair(70));
 
-        assert_eq!(planner(&world).plan(MissionKind::Diplomacy), None);
+        assert_eq!(planner(&world).plan(MissionKind::Diplomacy, Some(0)), None);
     }
 
     #[test]
@@ -1199,7 +1261,7 @@ mod tests {
             c.recruited = false;
         });
 
-        assert_eq!(planner(&world).plan(MissionKind::Diplomacy), None);
+        assert_eq!(planner(&world).plan(MissionKind::Diplomacy, Some(0)), None);
     }
 
     #[test]
@@ -1214,7 +1276,7 @@ mod tests {
         });
         let fighter = agent(&mut world, 0x301, |c| c.combat = pair(60));
 
-        let plan = planner(&world).plan(MissionKind::Rescue);
+        let plan = planner(&world).plan(MissionKind::Rescue, Some(0));
 
         assert_eq!(plan, Some((vec![fighter], vec![])));
     }
@@ -1232,15 +1294,15 @@ mod tests {
             c.ship_design = pair(10);
         });
         world.mission_records = research_records();
-        assert_eq!(planner(&world).plan(MissionKind::Sabotage), None);
+        assert_eq!(planner(&world).plan(MissionKind::Sabotage, Some(0)), None);
 
         // Another tree done keeps it; its own tree done frees it.
         let mut p = planner(&world);
         p.research_done([false, true, true]);
-        assert_eq!(p.plan(MissionKind::Sabotage), None);
+        assert_eq!(p.plan(MissionKind::Sabotage, Some(0)), None);
         let mut p = planner(&world);
         p.research_done([true, false, false]);
-        assert!(p.plan(MissionKind::Sabotage).is_some());
+        assert!(p.plan(MissionKind::Sabotage, Some(0)).is_some());
     }
 
     #[test]
@@ -1254,7 +1316,9 @@ mod tests {
             c.espionage = pair(90);
         });
         world.mission_records = research_records();
-        assert!(planner(&world).plan(MissionKind::Sabotage).is_some());
+        assert!(planner(&world)
+            .plan(MissionKind::Sabotage, Some(0))
+            .is_some());
     }
 
     #[test]
@@ -1278,7 +1342,7 @@ mod tests {
             c.current_system = Some(here);
         });
 
-        let plan = planner(&world).plan(MissionKind::Rescue);
+        let plan = planner(&world).plan(MissionKind::Rescue, Some(0));
 
         assert_eq!(plan, Some((vec![first, away], vec![])));
     }
@@ -1322,9 +1386,9 @@ mod tests {
         });
         let mut planner = planner(&world);
 
-        assert_eq!(planner.plan(MissionKind::Recruitment), None);
+        assert_eq!(planner.plan(MissionKind::Recruitment, Some(0)), None);
         assert_eq!(
-            planner.plan(MissionKind::DeathStarSabotage),
+            planner.plan(MissionKind::DeathStarSabotage, Some(0)),
             Some((vec![second], vec![]))
         );
     }
@@ -1357,7 +1421,7 @@ mod tests {
         let mut planner = Planner::new(&world, &missions, &HashSet::new(), true, 1);
 
         assert_eq!(
-            planner.plan(MissionKind::DeathStarSabotage),
+            planner.plan(MissionKind::DeathStarSabotage, Some(0)),
             Some((vec![second], vec![]))
         );
     }
@@ -1373,7 +1437,7 @@ mod tests {
         let third = unit(&mut world, 70, 70);
 
         assert_eq!(
-            planner(&world).plan(MissionKind::Sabotage),
+            planner(&world).plan(MissionKind::Sabotage, Some(0)),
             Some((vec![second], vec![third]))
         );
 
@@ -1391,7 +1455,7 @@ mod tests {
         let mut planner = Planner::new(&world, &missions, &HashSet::new(), true, 1);
 
         assert_eq!(
-            planner.plan(MissionKind::Sabotage),
+            planner.plan(MissionKind::Sabotage, Some(0)),
             Some((vec![second], vec![third]))
         );
     }
@@ -1409,7 +1473,7 @@ mod tests {
             .filter(|&tick| {
                 let mut planner =
                     Planner::new(&world, &MissionState::new(), &HashSet::new(), true, tick);
-                planner.plan(MissionKind::Diplomacy) == Some((vec![first], vec![]))
+                planner.plan(MissionKind::Diplomacy, Some(0)) == Some((vec![first], vec![]))
             })
             .count();
 
@@ -1427,7 +1491,9 @@ mod tests {
         let _c = unit(&mut world, 70, 80);
         let _d = unit(&mut world, 60, 90);
 
-        let (team, _) = planner(&world).plan(MissionKind::Sabotage).unwrap();
+        let (team, _) = planner(&world)
+            .plan(MissionKind::Sabotage, Some(0))
+            .unwrap();
 
         assert_eq!(team[0], a);
     }
@@ -1449,7 +1515,7 @@ mod tests {
         });
 
         assert_eq!(
-            planner(&world).plan(MissionKind::Rescue),
+            planner(&world).plan(MissionKind::Rescue, Some(0)),
             Some((vec![main], vec![]))
         );
     }
@@ -1465,7 +1531,7 @@ mod tests {
         });
 
         assert_eq!(
-            planner(&world).plan(MissionKind::Sabotage),
+            planner(&world).plan(MissionKind::Sabotage, Some(0)),
             Some((vec![main], vec![]))
         );
     }
@@ -1504,11 +1570,11 @@ mod tests {
         let mut world = world();
         world.mission_records = vec![diplomacy_record()];
         let _reserved = agent(&mut world, 1, saboteur(80));
-        assert_eq!(planner(&world).plan(MissionKind::Sabotage), None);
+        assert_eq!(planner(&world).plan(MissionKind::Sabotage, Some(0)), None);
 
         let free = agent(&mut world, 2, saboteur(79));
         assert_eq!(
-            planner(&world).plan(MissionKind::Sabotage),
+            planner(&world).plan(MissionKind::Sabotage, Some(0)),
             Some((vec![free], vec![]))
         );
     }
@@ -1533,7 +1599,7 @@ mod tests {
         }
 
         assert_eq!(
-            planner(&world).plan(MissionKind::Sabotage),
+            planner(&world).plan(MissionKind::Sabotage, Some(0)),
             Some((vec![commando], vec![]))
         );
     }
@@ -1546,9 +1612,9 @@ mod tests {
         let commando = unit(&mut world, 80, 80);
         let mut planner = planner(&world);
 
-        assert_eq!(planner.plan(MissionKind::InciteUprising), None);
+        assert_eq!(planner.plan(MissionKind::InciteUprising, Some(0)), None);
         assert_eq!(
-            planner.plan(MissionKind::Sabotage),
+            planner.plan(MissionKind::Sabotage, Some(0)),
             Some((vec![commando], vec![]))
         );
     }
@@ -1563,14 +1629,14 @@ mod tests {
         let mut planner = planner(&world);
 
         assert_eq!(
-            planner.plan(MissionKind::Diplomacy),
+            planner.plan(MissionKind::Diplomacy, Some(0)),
             Some((vec![first], vec![]))
         );
         assert_eq!(
-            planner.plan(MissionKind::Diplomacy),
+            planner.plan(MissionKind::Diplomacy, Some(0)),
             Some((vec![second], vec![]))
         );
-        assert_eq!(planner.plan(MissionKind::Diplomacy), None);
+        assert_eq!(planner.plan(MissionKind::Diplomacy, Some(0)), None);
     }
 
     #[test]
@@ -1587,9 +1653,9 @@ mod tests {
         });
         let mut planner = planner(&world);
 
-        assert_eq!(planner.plan(MissionKind::Sabotage), None);
+        assert_eq!(planner.plan(MissionKind::Sabotage, Some(0)), None);
         assert_eq!(
-            planner.plan(MissionKind::Diplomacy),
+            planner.plan(MissionKind::Diplomacy, Some(0)),
             Some((vec![leader], vec![]))
         );
     }

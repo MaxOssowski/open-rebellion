@@ -1,0 +1,11 @@
+5cd8083ab53d16d1bb734abec4387338b7ac0ef8fe93a26a8f9e7585f16cfe37  crates/rebellion-core/src/ai.rs
+98abd3108c3e5cd18949aa9c66d369dd90eea9abe6ed08c633db8d2edc942cd3  crates/rebellion-core/src/mission_planning.rs
+5594c2917954fcb3f44a242ba8b7a426188bdb1106962bc63d895606849cf4b9  ghidra/notes/ai-mission-planning.md
+739062057fc304515e9095fe2262301b61395e5fe04a282b1e1bbeb29e8f03e8  web/open-rebellion.wasm
+91dee687835ac74a2844ef8405f9322a5fcfee3085c48a94cd449d9a4e94c677  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-selectors/console.txt
+fba78dc47cc12077c588d5ce3cf2b411544be0cf6c65432100b7056f6aeafe30  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-selectors/network.txt
+52a6c89fc99e8ae8d5092b266020e3f5905145cd618dc69c65ac323b0efdb111  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-selectors/replay-equivalence.json
+6fabae71a30c7a80f9f3d100cd9ee3c60cfea071877917c88e6715bf99070856  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-selectors/fail-without.txt
+e869a7c42e725fbe0585af64f6ff50c48b6fb7ecb5b49f613f5ade7b5fddfbeb  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-selectors/playtest-sector-selectors.json
+bda2c1be6248dc47edfbf5fdfce2c4a96c5ad58043abd57580a5831dd6c81ea1  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-selectors/decoys.json
+56f807b4489eec17ec2132231ee7ad7da0f57690abdd67b8ec801bc0e9e2cc07  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-selectors/README.md

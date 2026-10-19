@@ -202,10 +202,12 @@ decoys are therefore unassigned special forces of the side with espionage
 - Espionage (`00480aa0`), Incite (`00480110`), Assassination/Abduction 4
   (`00482ec0`), and Sabotage (`0047d720`): `(rec.+0xbc + 2) / 2`, where `rec`
   is the per-system record of the planner's `+0x34` (`FUN_00403d30` on
-  context `+0x2c`). Its `+0xbc` is the mission kind that system's posture
-  recommends (`FUN_00478000` through posture slot 6, `FUN_004b7150`, shared
-  by all six posture classes), or 0. The cap is 1 with no recommendation
-  and 42 to 53 with one, so every eligible decoy goes.
+  context `+0x2c`), and 0 with no record. Its `+0xbc` is `v[29]` (the
+  values start at `+0x48`, 4 bytes each), the system's defense: for an
+  opponent's system, its standing fleets' `+0xa4` and its regiments and
+  squadrons (`ai-galaxy-records.md`). (Corrected 2026-10-19: this note
+  had read `+0xbc` as the mission kind the posture recommends, so the
+  port took one decoy.)
 - Rescue (`0047e3f0`), Abduction (`00483410`), and DS Sabotage
   (`00482330`): planner slot `+0x44`, `FUN_004047d0`, which returns 4.
 - Diplomacy, Recruitment, Subdue, Research, Recon, and Espionage 6 take
@@ -759,8 +761,9 @@ original as follows:
 - port: a plan with no team keeps no decoys, and a member one plan sends is
   not taken by the next in the same evaluation;
 - port: the tie draws come from a stream seeded by the day and the side;
-- hyp: the posture that sets `+0xbc` is not ported, so the four posture-cap
-  kinds take one decoy;
+- (2026-10-19) the four defense-cap kinds take `(v[29] + 2) / 2` of their
+  target's record (`mission_planning::defense_cap`); this replaced the
+  hyp that read `+0xbc` as a posture and took one decoy;
 - hyp: the controller's leader bit is read as clear, its constructor
   value, so the four leaders stay off Incite, Rescue, Sabotage,
   Assassination, and DS Sabotage teams;
@@ -1711,10 +1714,31 @@ In the 24 campaigns of stage 4, the Sabotage picks only shifted the
 draws: with the targets dropped, seeds 1, 2, 14 and 23 ran event for event
 as with them kept. The targets enter the seed-42 golden from tick 15.
 
+**The sector classes' selectors** (read and ported 2026-10-19, stage 5).
+`FUN_0042f830` picks a class by kind and subtype:
+- Reconnaissance: `FUN_0047f320` (any subtype but 5) is `FUN_0047f790`
+  word for word, so both classes select alike;
+- Espionage: `FUN_004808c0` (any subtype but 6) is `FUN_00480f30` with
+  two members (`< 2` where the other has `== 0`), and `FUN_00480aa0` takes
+  decoys by the same query up to the defense cap;
+- `0x62` subtype 4 and `0x63`: class `0x65a9b0` (`FUN_00482b30`). For the
+  Empire (side 2) it is Assassination with `+0x7c` 0x40; otherwise it is
+  Abduction (`0x62000017`) with `+0x7c` 0x10. Its selectors are
+  `FUN_00482ce0` (0x10800002, capability `+0x7c`, by combat 51..) and
+  `FUN_00482ec0` (the defense cap);
+- Sabotage: `FUN_0047d520`, `FUN_0047d720`, the port's already.
+
+Ported: `mission_planning::selectors(kind, subtype)`, `defense_cap`, and
+`Planner::refill` and `Planner::plan` with the target's `v[29]`. port: a
+planner keeps its subtype only for a sector planner's request. The
+strategy's take theirs from the kind (`ai::strategy_subtype`: Recon 5,
+Espionage 6), so v84 saves need no change. The held planners still do not
+run states 3 to 8.
+
 Next:
 - `FUN_004bda60` with `FUN_004bdcd0` and `FUN_004be230`;
-- the sector classes' selectors (Espionage of subtype not 6:
-  `FUN_004808c0`, `FUN_00480aa0`).
+- then add `mission_bits` and remove the heuristic Sabotage and
+  Assassination.
 
 ## The controller's leader bit (read and ported 2026-10-19)
 

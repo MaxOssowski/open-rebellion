@@ -1682,7 +1682,7 @@ impl AISystem {
                 }
             }
             MissionEntry::Group(0) => {
-                Self::evaluate_espionage(planner, world, faction, config, actions);
+                Self::evaluate_espionage((planner, galaxy), world, faction, config, actions);
             }
             MissionEntry::Group(_) => {}
         }
@@ -1854,7 +1854,16 @@ impl AISystem {
             for &member in p.team.iter().chain(&p.decoys) {
                 planner.hold(member);
             }
-            let (team, decoys) = planner.refill(p.kind, p.team.len(), p.decoys.len());
+            let defense = p
+                .target_system
+                .and_then(|t| galaxy.system(t))
+                .map(|r| r.values[29]);
+            let (team, decoys) = planner.refill(
+                (p.kind, strategy_subtype(p.kind)),
+                p.team.len(),
+                p.decoys.len(),
+                defense,
+            );
             p.team.extend(team);
             p.decoys.extend(decoys);
             if p.standing {
@@ -2361,13 +2370,14 @@ impl AISystem {
     /// Plan `kind`'s team and decoys (`crate::mission_planning`) and push
     /// the order when the planner sends anyone. Returns whether it did.
     fn dispatch_planned(
-        planner: &mut Planner<'_>,
+        (planner, galaxy): (&mut Planner<'_>, &crate::ai_records::Galaxy),
         kind: MissionKind,
         target: (SystemKey, Option<CharacterKey>),
         target_object: Option<crate::missions::MissionTarget>,
         actions: &mut Vec<AIAction>,
     ) -> bool {
-        let Some((team, decoys)) = planner.plan(kind) else {
+        let defense = galaxy.system(target.0).map(|r| r.values[29]);
+        let Some((team, decoys)) = planner.plan(kind, defense) else {
             return false;
         };
         actions.push(AIAction::DispatchMission {
@@ -2398,7 +2408,7 @@ impl AISystem {
     /// At most `max_covert_ops_per_eval` covert missions are queued per pass,
     /// and a kind stops once its planner finds no team.
     fn evaluate_espionage(
-        planner: &mut Planner<'_>,
+        (planner, galaxy): (&mut Planner<'_>, &crate::ai_records::Galaxy),
         world: &GameWorld,
         faction: AiFaction,
         config: &GameConfig,
@@ -2446,7 +2456,7 @@ impl AISystem {
                 facility,
             ));
             if !Self::dispatch_planned(
-                planner,
+                (planner, galaxy),
                 MissionKind::Sabotage,
                 (target_sys, None),
                 target,
@@ -2480,7 +2490,13 @@ impl AISystem {
                 break;
             }
             let target = (target_sys, Some(target_char));
-            if !Self::dispatch_planned(planner, MissionKind::Assassination, target, None, actions) {
+            if !Self::dispatch_planned(
+                (planner, galaxy),
+                MissionKind::Assassination,
+                target,
+                None,
+                actions,
+            ) {
                 break;
             }
             ops_queued += 1;
@@ -4177,6 +4193,19 @@ fn assets_at(
     out
 }
 
+/// The subtype a strategy row builds each kind's planner with
+/// (`FUN_004e8290`: row 11 Reconnaissance 5, row 12 Espionage 6), which
+/// picks its class (`FUN_0042f830`). port: the planner keeps its subtype
+/// only for a sector planner's request (save v84); the strategy's and the
+/// heuristics' take theirs from the kind.
+fn strategy_subtype(kind: MissionKind) -> u32 {
+    match kind {
+        MissionKind::Reconnaissance => 5,
+        MissionKind::Espionage => 6,
+        _ => 0,
+    }
+}
+
 /// Whether `character` is an opponent's main character free in the field
 /// for the side's records (`+0x30` bits 8 and 4, `FUN_00401d20`).
 fn enemy_main(planner: &Planner<'_>, character: CharacterKey) -> bool {
@@ -5146,7 +5175,14 @@ mod tests {
         };
         let mut actions = Vec::new();
         research_all(state, &mut planner, &ctx, &mut actions);
-        AISystem::evaluate_espionage(&mut planner, world, faction, config, &mut actions);
+        let galaxy = galaxy_of(state, world);
+        AISystem::evaluate_espionage(
+            (&mut planner, &galaxy),
+            world,
+            faction,
+            config,
+            &mut actions,
+        );
         AISystem::evaluate_production(
             world,
             mfg_state,
@@ -7147,12 +7183,12 @@ mod tests {
         let mut world = empty_world();
         let ck = add_character(&mut world, /*alliance*/ false, /*major*/ true, 90);
         assert!(planner_for(&world, AiFaction::Empire)
-            .plan(MissionKind::Diplomacy)
+            .plan(MissionKind::Diplomacy, Some(0))
             .is_some());
 
         world.characters.get_mut(ck).unwrap().mark_killed();
         assert_eq!(
-            planner_for(&world, AiFaction::Empire).plan(MissionKind::Diplomacy),
+            planner_for(&world, AiFaction::Empire).plan(MissionKind::Diplomacy, Some(0)),
             None,
             "killed character must not pass dispatch gate"
         );
@@ -9731,6 +9767,53 @@ mod tests {
         assert_eq!(run(&mut state, 7), None);
     }
 
+    #[test]
+    fn the_strategy_s_espionage_planner_keeps_its_one_member_class() {
+        // FUN_004e8290 row 12 builds Espionage of subtype 6 (FUN_00480f30,
+        // FUN_00481100: one member, no decoys); only a sector planner's
+        // request (subtype 0) builds the two-member class (FUN_004808c0).
+        let (mut world, home, _, _) = recon_world(0, true);
+        for _ in 0..4 {
+            let MissionMember::SpecialForce(key) = add_commando(&mut world, false, 90, 0) else {
+                unreachable!()
+            };
+            world.systems[home].special_forces.push(key);
+        }
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut galaxy = galaxy_of(&state, &world);
+        state.mission_planners.push(MissionPlanner {
+            id: 1,
+            kind: MissionKind::Espionage,
+            team: Vec::new(),
+            decoys: Vec::new(),
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: None,
+            standing: true,
+            claimed: None,
+            sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
+            owner: 0,
+            subtype: 0,
+        });
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &mut planner_for(&world, AiFaction::Empire),
+            &world,
+            &mut galaxy,
+            5,
+            &mut Vec::new(),
+        );
+        let p = &state.mission_planners[0];
+        assert_eq!((p.team.len(), p.decoys.len()), (1, 0));
+    }
+
     /// The side's records (phase 4) for `world`, as `state` keeps them.
     fn galaxy_of(state: &AIState, world: &GameWorld) -> crate::ai_records::Galaxy {
         let missions = MissionState::new();
@@ -9852,8 +9935,9 @@ mod tests {
         let mut planner = planner_for(&world, AiFaction::Empire);
         let mut actions = Vec::new();
 
+        let galaxy = galaxy_of(&AIState::new(AiFaction::Empire), &world);
         AISystem::evaluate_espionage(
-            &mut planner,
+            (&mut planner, &galaxy),
             &world,
             AiFaction::Empire,
             &GameConfig::default(),
@@ -9904,8 +9988,9 @@ mod tests {
         let mut planner = planner_for(&world, AiFaction::Empire);
         let mut actions = Vec::new();
 
+        let galaxy = galaxy_of(&AIState::new(AiFaction::Empire), &world);
         AISystem::evaluate_espionage(
-            &mut planner,
+            (&mut planner, &galaxy),
             &world,
             AiFaction::Empire,
             &GameConfig::default(),

@@ -2784,6 +2784,12 @@ cross-runtime proof remain open
   system and an object from its plan (slot `+0x30`, `FUN_004ae480`). It
   still orders nothing. Golden final `v1:aae0de7bbef402c1` ->
   `v1:dee3c02775ecfb47` (`evidence/2026-10-19-sector-mission-sabotage/`).
+- 2026-10-19 (F-036): the sector classes' selectors (`FUN_0042f830` by
+  subtype: Espionage `FUN_004808c0`/`FUN_00480aa0`, class `0x65a9b0`) are
+  ported. The defense-capped decoy selectors take `(v[29] + 2) / 2` of the
+  target's record, replacing a `hyp:` that read `+0xbc` as a posture and
+  took one decoy. Golden unchanged
+  (`evidence/2026-10-19-sector-selectors/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

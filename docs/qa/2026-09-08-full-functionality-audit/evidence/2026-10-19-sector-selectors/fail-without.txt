@@ -1,0 +1,6 @@
+test ai::tests::a_sector_planner_counts_each_held_kind_and_whether_each_is_complete ... FAILED
+test mission_planning::tests::a_defense_capped_selector_takes_half_the_target_s_defense_plus_one ... FAILED
+test mission_planning::tests::a_sector_planner_s_abduction_caps_its_decoys_by_the_target_s_defense ... FAILED
+test mission_planning::tests::a_sector_planner_s_espionage_takes_two_and_decoys_by_the_same_query ... FAILED
+test mission_planning::tests::each_class_wants_its_own_decoy_count ... FAILED
+test result: FAILED. 1401 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s

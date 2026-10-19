@@ -1,0 +1,118 @@
+{
+ "before": {
+  "Abduction": {
+   "dispatched": 592,
+   "decoys": 1884
+  },
+  "Assassination": {
+   "dispatched": 314,
+   "decoys": 267
+  },
+  "Diplomacy": {
+   "dispatched": 1326,
+   "decoys": 0
+  },
+  "Espionage": {
+   "dispatched": 2366,
+   "decoys": 0
+  },
+  "FacilityDesignResearch": {
+   "dispatched": 167,
+   "decoys": 0
+  },
+  "InciteUprising": {
+   "dispatched": 169,
+   "decoys": 88
+  },
+  "Move": {
+   "dispatched": 24159,
+   "decoys": 0
+  },
+  "Reconnaissance": {
+   "dispatched": 1732,
+   "decoys": 0
+  },
+  "Recruitment": {
+   "dispatched": 1682,
+   "decoys": 0
+  },
+  "Rescue": {
+   "dispatched": 557,
+   "decoys": 1354
+  },
+  "Sabotage": {
+   "dispatched": 2542,
+   "decoys": 1657
+  },
+  "ShipDesignResearch": {
+   "dispatched": 244,
+   "decoys": 0
+  },
+  "SubdueUprising": {
+   "dispatched": 409,
+   "decoys": 0
+  },
+  "TroopTrainingResearch": {
+   "dispatched": 178,
+   "decoys": 0
+  }
+ },
+ "after": {
+  "Abduction": {
+   "dispatched": 579,
+   "decoys": 1876
+  },
+  "Assassination": {
+   "dispatched": 319,
+   "decoys": 605
+  },
+  "Diplomacy": {
+   "dispatched": 1276,
+   "decoys": 0
+  },
+  "Espionage": {
+   "dispatched": 2598,
+   "decoys": 0
+  },
+  "FacilityDesignResearch": {
+   "dispatched": 160,
+   "decoys": 0
+  },
+  "InciteUprising": {
+   "dispatched": 132,
+   "decoys": 318
+  },
+  "Move": {
+   "dispatched": 31564,
+   "decoys": 0
+  },
+  "Reconnaissance": {
+   "dispatched": 1682,
+   "decoys": 0
+  },
+  "Recruitment": {
+   "dispatched": 1684,
+   "decoys": 0
+  },
+  "Rescue": {
+   "dispatched": 312,
+   "decoys": 933
+  },
+  "Sabotage": {
+   "dispatched": 2268,
+   "decoys": 3773
+  },
+  "ShipDesignResearch": {
+   "dispatched": 284,
+   "decoys": 0
+  },
+  "SubdueUprising": {
+   "dispatched": 512,
+   "decoys": 0
+  },
+  "TroopTrainingResearch": {
+   "dispatched": 170,
+   "decoys": 0
+  }
+ }
+}
