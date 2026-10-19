@@ -2890,6 +2890,12 @@ cross-runtime proof remain open
   `v1:6bc0edeba372c686`, final `v1:f2b8571c7dec63a3`); every campaign
   changes through the shifted roll stream
   (`evidence/2026-10-19-jedi-rs-simulation/`).
+- 2026-10-19: jedi.rs, stage 3. The J panel ("The Force") and the
+  Officers panel read the original's Force fields (`+0x8c`, its Status
+  window ranking, ForceAware, ForcePotential, the discoverer) and give no
+  training order; the invented tiers, XP and detection risk are gone from
+  them. Accepted in the browser
+  (`evidence/2026-10-19-jedi-rs-panels/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

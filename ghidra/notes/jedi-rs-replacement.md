@@ -78,6 +78,15 @@ already traced, in the note cited.
    - Training is the Jedi Training mission, so the panel gives no training
      order.
    - The Officers panel reads the same fields.
+   - Done 2026-10-19. The J panel, now "The Force", lists the side's
+     living characters with a Force value, `ForceAware` or `ForcePotential`,
+     strongest first: the value `+0x8c`, the Status window's ranking word,
+     the two flags and the discoverer (`panels::jedi::force_summary`). It
+     gives no order.
+   - The Officers panel's badge and detail read the same summary. Its
+     "JEDI" badge had followed the class's `jedi_probability` and marked
+     many characters with no Force; it is now "FORCE".
+   - `PanelAction::StartJediTraining` and `StopJediTraining` are gone.
 4. **The save.**
    - Remove `force_tier`, `force_experience`, `is_discovered_jedi` and
      `SaveState::jedi`, and delete `jedi.rs`.

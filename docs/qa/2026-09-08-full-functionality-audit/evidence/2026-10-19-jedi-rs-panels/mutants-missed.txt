@@ -1,0 +1,10 @@
+crates/rebellion-render/src/panels/jedi.rs:98:5: replace ranking_color -> Color32 with Default::default()
+crates/rebellion-render/src/panels/jedi.rs:99:9: delete match arm 0..= 9 in ranking_color
+crates/rebellion-render/src/panels/jedi.rs:100:9: delete match arm 10..= 79 in ranking_color
+crates/rebellion-render/src/panels/jedi.rs:101:9: delete match arm 80..= 119 in ranking_color
+crates/rebellion-render/src/panels/jedi.rs:113:5: replace draw_jedi -> Option<PanelAction> with None
+crates/rebellion-render/src/panels/jedi.rs:113:38: replace == with != in draw_jedi
+crates/rebellion-render/src/panels/jedi.rs:156:32: delete ! in draw_jedi
+crates/rebellion-render/src/panels/officers.rs:180:5: replace draw_character_detail with ()
+crates/rebellion-render/src/panels/officers.rs:342:12: delete ! in draw_character_detail
+crates/rebellion-render/src/panels/officers.rs:434:5: replace draw_role_badges with ()

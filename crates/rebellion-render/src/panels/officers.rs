@@ -6,12 +6,8 @@
 
 use egui_macroquad::egui::{self, Color32, ProgressBar, RichText, ScrollArea, Vec2};
 use rebellion_core::ids::CharacterKey;
-use rebellion_core::jedi::{
-    DETECT_PROB_AWARE, DETECT_PROB_EXPERIENCED, DETECT_PROB_TRAINING, XP_TO_EXPERIENCED,
-    XP_TO_TRAINING,
-};
 use rebellion_core::missions::MissionFaction;
-use rebellion_core::world::{Character, ForceTier, GameWorld, SkillPair};
+use rebellion_core::world::{Character, GameWorld, SkillPair};
 
 use super::PanelAction;
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -230,31 +226,13 @@ fn draw_character_detail(
             );
         }
 
-        // Force tier badge
-        match character.force_tier {
-            ForceTier::Aware => {
-                ui.label(
-                    RichText::new("FORCE AWARE")
-                        .color(Color32::from_rgb(100, 160, 255))
-                        .size(10.0),
-                );
-            }
-            ForceTier::Training => {
-                ui.label(
-                    RichText::new("TRAINING")
-                        .color(Color32::from_rgb(180, 120, 255))
-                        .size(10.0),
-                );
-            }
-            ForceTier::Experienced => {
-                ui.label(
-                    RichText::new("JEDI")
-                        .color(Color32::from_rgb(60, 200, 100))
-                        .size(10.0)
-                        .strong(),
-                );
-            }
-            ForceTier::None => {}
+        // The Force ranking (the Status window's word for +0x8c).
+        if let Some(ranking) = super::jedi::ranking_badge(character.force_level()) {
+            ui.label(
+                RichText::new(ranking.to_uppercase())
+                    .color(Color32::from_rgb(100, 160, 255))
+                    .size(10.0),
+            );
         }
     });
 
@@ -339,79 +317,42 @@ fn draw_character_detail(
     ui.add_space(4.0);
     ui.separator();
 
-    // ── 40d: Force progression detail ────────────────────────────────────────
-    if character.jedi_probability > 0 || character.force_tier != ForceTier::None {
+    // ── The Force: +0x8c, its ranking, ForceAware, ForcePotential and the
+    // discoverer (panels::jedi::force_summary).
+    if let Some(force) = super::jedi::force_summary(world, character) {
         ui.label(
             RichText::new("FORCE")
                 .color(theme::GOLD_DIM)
                 .size(10.0)
                 .strong(),
         );
-
-        let (tier_label, tier_color) = match character.force_tier {
-            ForceTier::None => ("Latent", Color32::from_gray(120)),
-            ForceTier::Aware => ("Force Aware", Color32::from_rgb(100, 160, 255)),
-            ForceTier::Training => ("In Training", Color32::from_rgb(180, 120, 255)),
-            ForceTier::Experienced => ("Jedi Knight", Color32::from_rgb(60, 200, 100)),
-        };
         ui.label(
-            RichText::new(tier_label)
-                .color(tier_color)
+            RichText::new(format!("{} ({})", force.ranking, force.level))
+                .color(Color32::from_rgb(100, 160, 255))
                 .size(12.0)
                 .strong(),
         );
-
-        // XP progress bar
-        match character.force_tier {
-            ForceTier::Aware => {
-                let xp = character.force_experience;
-                let progress = xp as f32 / XP_TO_TRAINING as f32;
-                ui.add(
-                    ProgressBar::new(progress.min(1.0))
-                        .text(format!("{xp}/{XP_TO_TRAINING} XP"))
-                        .fill(Color32::from_rgb(60, 100, 180)),
-                );
-            }
-            ForceTier::Training => {
-                let xp = character.force_experience;
-                let progress = xp as f32 / XP_TO_EXPERIENCED as f32;
-                ui.add(
-                    ProgressBar::new(progress.min(1.0))
-                        .text(format!("{xp}/{XP_TO_EXPERIENCED} XP"))
-                        .fill(Color32::from_rgb(100, 60, 180)),
-                );
-            }
-            _ => {}
+        let mut marks = Vec::new();
+        if force.aware {
+            marks.push("Force aware");
         }
-
-        // Detection risk
-        if character.force_tier != ForceTier::None && character.force_tier != ForceTier::Experienced
-        {
-            let risk = match character.force_tier {
-                ForceTier::Aware => DETECT_PROB_AWARE,
-                ForceTier::Training => DETECT_PROB_TRAINING,
-                _ => DETECT_PROB_EXPERIENCED,
-            };
-            let risk_color = if risk > 0.1 {
-                theme::WARNING_AMBER
-            } else {
-                theme::TEXT_SECONDARY
-            };
-            ui.label(
-                RichText::new(format!("Detection risk: {:.0}%", risk * 100.0))
-                    .color(risk_color)
-                    .size(10.0),
-            );
+        if force.potential {
+            marks.push("Force potential");
         }
-
-        if character.force_tier == ForceTier::None && character.jedi_probability > 0 {
+        if !marks.is_empty() {
             ui.label(
-                RichText::new(format!("Sensitivity: {}%", character.jedi_probability))
+                RichText::new(marks.join(", "))
                     .color(theme::TEXT_SECONDARY)
                     .size(10.0),
             );
         }
-
+        if let Some(name) = &force.discoverer {
+            ui.label(
+                RichText::new(format!("Discovered by {name}"))
+                    .color(theme::TEXT_SECONDARY)
+                    .size(10.0),
+            );
+        }
         ui.add_space(4.0);
         ui.separator();
     }
@@ -511,9 +452,11 @@ fn draw_role_badges(ui: &mut egui::Ui, character: &Character) {
                 .small(),
         );
     }
-    if character.jedi_probability > 0 {
+    // A Force (+0x8c), ForceAware or ForcePotential, as the Force panel
+    // lists it (panels::jedi::force_summary).
+    if super::jedi::has_force(character) {
         ui.label(
-            RichText::new("JEDI")
+            RichText::new("FORCE")
                 .color(Color32::from_rgb(220, 210, 120))
                 .small(),
         );

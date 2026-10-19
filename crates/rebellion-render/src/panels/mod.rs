@@ -176,15 +176,6 @@ pub enum PanelAction {
     /// Reload all mods from disk.
     ReloadMods,
 
-    // ── Jedi Training ──────────────────────────────────────────────────────
-    /// Start Force training for a character.
-    StartJediTraining {
-        character: CharacterKey,
-        faction: MissionFaction,
-    },
-    /// Stop Force training for a character.
-    StopJediTraining { character: CharacterKey },
-
     // ── Bombardment ──────────────────────────────────────────────────
     /// Order Planetary Bombardment `kind` (`0x220..0x223`) of `system` by
     /// the player's `fleets` (`FUN_00486fb0` -> `FUN_00487740`).

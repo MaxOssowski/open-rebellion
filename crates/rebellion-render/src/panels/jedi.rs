@@ -1,270 +1,259 @@
-//! Jedi training panel — Force progression, training management, detection risk.
+//! Force panel: the player's characters with a Force, from the original's
+//! fields (`ghidra/notes/force-awareness.md`, `jedi-rs-replacement.md`).
 //!
-//! Shows Force-sensitive characters, their tier (None→Aware→Training→Experienced),
-//! training progress via XP bars, detection risk, and start/stop controls.
-//! Returns `PanelAction::StartJediTraining` / `StopJediTraining`.
+//! port: the original has no such panel; it shows a character's Force only
+//! in the Status window's "Force Ranking:" row (`FUN_004486f0`). This side
+//! panel lists the same value for each character, read-only: training is
+//! the Jedi Training mission.
 
-use egui_macroquad::egui::{self, Color32, ProgressBar, RichText, ScrollArea};
+use egui_macroquad::egui::{self, Color32, RichText, ScrollArea};
 use rebellion_core::ids::CharacterKey;
-use rebellion_core::jedi::{
-    JediState, DETECT_PROB_AWARE, DETECT_PROB_EXPERIENCED, DETECT_PROB_TRAINING, XP_TO_EXPERIENCED,
-    XP_TO_TRAINING,
-};
 use rebellion_core::missions::MissionFaction;
-use rebellion_core::world::{Character, ForceTier, GameWorld};
+use rebellion_core::world::{Character, GameWorld};
 
 use super::PanelAction;
+use crate::status_window::force_ranking;
 use crate::theme;
 
-/// Mutable UI state for the Jedi training panel.
+/// Mutable UI state for the Force panel.
 #[derive(Debug, Clone, Default)]
 pub struct JediPanelState {
     /// If set, show detail view for this character.
     pub focused: Option<CharacterKey>,
 }
 
-/// Draw the Jedi training panel as a left-side egui panel.
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-)]
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
-)]
+/// A character's Force as the original keeps it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForceSummary {
+    /// Force `+0x8c`: `ForceExperience` `+0x8e` plus `ForceTraining`
+    /// `+0x90` ([`Character::force_level`]).
+    pub level: u32,
+    /// The Status window's word for it (`FUN_004486f0`).
+    pub ranking: &'static str,
+    /// `ForceAware` (`+0xac` bit `0x10`).
+    pub aware: bool,
+    /// `ForcePotential` (`+0xac` bit `0x20`).
+    pub potential: bool,
+    /// The trainer who discovered it (`+0xa4`, `force_discovery.rs`).
+    pub discoverer: Option<String>,
+}
+
+/// Whether `character` has a Force value, `ForceAware` or `ForcePotential`.
+#[must_use]
+pub fn has_force(character: &Character) -> bool {
+    character.force_level() > 0 || character.force_aware || character.force_potential
+}
+
+/// The ranking a roster badge shows: the Status window's word once it is
+/// above "None" (Force 10 or more), else nothing.
+#[must_use]
+pub fn ranking_badge(level: u32) -> Option<&'static str> {
+    (level >= 10).then(|| force_ranking(level))
+}
+
+/// `character`'s Force, or `None` for a character without one
+/// ([`has_force`]).
+#[must_use]
+pub fn force_summary(world: &GameWorld, character: &Character) -> Option<ForceSummary> {
+    if !has_force(character) {
+        return None;
+    }
+    let level = character.force_level();
+    let discoverer = character.force_discoverer.and_then(|id| {
+        world
+            .characters
+            .values()
+            .find(|c| c.dat_id == id)
+            .map(|c| c.name.clone())
+    });
+    Some(ForceSummary {
+        level,
+        ranking: force_ranking(level),
+        aware: character.force_aware,
+        potential: character.force_potential,
+        discoverer,
+    })
+}
+
+/// The panel's rows: the side's living characters with a Force, the
+/// strongest first, then by name.
+#[must_use]
+pub fn force_rows(world: &GameWorld, is_alliance: bool) -> Vec<(CharacterKey, ForceSummary)> {
+    let mut rows: Vec<(CharacterKey, ForceSummary)> = world
+        .characters
+        .iter()
+        .filter(|(_, c)| c.is_alliance == is_alliance && !c.is_killed)
+        .filter_map(|(key, c)| force_summary(world, c).map(|summary| (key, summary)))
+        .collect();
+    rows.sort_by(|(a, x), (b, y)| {
+        y.level
+            .cmp(&x.level)
+            .then_with(|| world.characters[*a].name.cmp(&world.characters[*b].name))
+    });
+    rows
+}
+
+/// The colour of a ranking's label.
+fn ranking_color(level: u32) -> Color32 {
+    match level {
+        0..=9 => Color32::from_gray(120),
+        10..=79 => Color32::from_rgb(100, 160, 255),
+        80..=119 => Color32::from_rgb(180, 120, 255),
+        _ => Color32::from_rgb(60, 200, 100),
+    }
+}
+
+/// Draw the Force panel as a left-side egui panel.
 pub fn draw_jedi(
     ctx: &egui::Context,
     world: &GameWorld,
-    jedi_state: &JediState,
     _state: &mut JediPanelState,
     player_faction: MissionFaction,
 ) -> Option<PanelAction> {
-    let mut action = None;
     let is_alliance = player_faction == MissionFaction::Alliance;
-
     egui::SidePanel::left("jedi_panel")
         .min_width(280.0)
         .max_width(340.0)
         .show(ctx, |ui| {
-            let title = if is_alliance {
-                "Jedi Training"
-            } else {
-                "Sith Training"
-            };
-            ui.heading(RichText::new(title).color(theme::GOLD));
+            ui.heading(RichText::new("The Force").color(theme::GOLD));
             ui.separator();
-
-            // Collect Force-sensitive characters for this faction
-            let mut sensitives: Vec<(CharacterKey, &Character, Option<u32>)> = Vec::new();
-            for (key, character) in &world.characters {
-                let owns = if is_alliance {
-                    character.is_alliance
-                } else {
-                    !character.is_alliance
-                };
-                if !owns {
-                    continue;
-                }
-                if character.jedi_probability == 0 && character.force_tier == ForceTier::None {
-                    continue;
-                }
-
-                // Get accumulated XP from training record if exists
-                let xp = jedi_state
-                    .training
-                    .iter()
-                    .find(|r| r.character == key)
-                    .map(|r| r.accumulated_xp);
-
-                sensitives.push((key, character, xp));
-            }
-
-            // Sort: Training first, then Experienced, then Aware, then None
-            sensitives.sort_by_key(|(_, c, _)| match c.force_tier {
-                ForceTier::Training => 0,
-                ForceTier::Experienced => 1,
-                ForceTier::Aware => 2,
-                ForceTier::None => 3,
-            });
-
-            if sensitives.is_empty() {
+            let rows = force_rows(world, is_alliance);
+            if rows.is_empty() {
                 ui.add_space(20.0);
-                ui.label(
-                    RichText::new("No Force-sensitive characters detected.")
-                        .color(theme::TEXT_DISABLED),
-                );
+                ui.label(RichText::new("No character with a Force.").color(theme::TEXT_DISABLED));
                 return;
             }
-
-            // Summary counts
-            let training_count = sensitives
-                .iter()
-                .filter(|(_, c, _)| c.force_tier == ForceTier::Training)
-                .count();
-            let experienced_count = sensitives
-                .iter()
-                .filter(|(_, c, _)| c.force_tier == ForceTier::Experienced)
-                .count();
-            let aware_count = sensitives
-                .iter()
-                .filter(|(_, c, _)| c.force_tier == ForceTier::Aware)
-                .count();
-
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(format!("Training: {training_count}"))
-                        .color(theme::WARNING_AMBER)
-                        .size(11.0),
-                );
-                ui.label(
-                    RichText::new(format!("Ready: {experienced_count}"))
-                        .color(theme::SUCCESS_GREEN)
-                        .size(11.0),
-                );
-                ui.label(
-                    RichText::new(format!("Aware: {aware_count}"))
-                        .color(theme::TEXT_SECONDARY)
-                        .size(11.0),
-                );
-            });
-            ui.add_space(8.0);
-
-            // ── Character list ────────────────────────────────────────────────
             ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    for (key, character, xp) in &sensitives {
-                        let is_training = jedi_state.is_training(*key);
-                        let tier = character.force_tier;
-
+                    for (key, summary) in &rows {
+                        let character = &world.characters[*key];
                         ui.group(|ui| {
-                            // Name + tier badge
                             ui.horizontal(|ui| {
                                 ui.label(
                                     RichText::new(&character.name)
                                         .color(theme::TEXT_PRIMARY)
                                         .strong(),
                                 );
-                                let (tier_label, tier_color) = tier_display(tier);
-                                ui.label(RichText::new(tier_label).color(tier_color).size(10.0));
-                            });
-
-                            // XP progress bar (only for Aware and Training)
-                            match tier {
-                                ForceTier::Aware => {
-                                    let current_xp = xp.unwrap_or(0);
-                                    let progress = current_xp as f32 / XP_TO_TRAINING as f32;
-                                    ui.add(
-                                        ProgressBar::new(progress.min(1.0))
-                                            .text(format!(
-                                                "{current_xp}/{XP_TO_TRAINING} XP to Training"
-                                            ))
-                                            .fill(Color32::from_rgb(60, 100, 180)),
-                                    );
-                                }
-                                ForceTier::Training => {
-                                    let current_xp = xp.unwrap_or(0);
-                                    let progress = current_xp as f32 / XP_TO_EXPERIENCED as f32;
-                                    ui.add(
-                                        ProgressBar::new(progress.min(1.0))
-                                            .text(format!(
-                                                "{current_xp}/{XP_TO_EXPERIENCED} XP to Experienced"
-                                            ))
-                                            .fill(Color32::from_rgb(100, 60, 180)),
-                                    );
-                                }
-                                ForceTier::Experienced => {
-                                    ui.label(
-                                        RichText::new("FULLY TRAINED")
-                                            .color(theme::SUCCESS_GREEN)
-                                            .size(10.0),
-                                    );
-                                }
-                                ForceTier::None => {
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "Force potential: {}%",
-                                            character.jedi_probability
-                                        ))
-                                        .color(theme::TEXT_DISABLED)
-                                        .size(10.0),
-                                    );
-                                }
-                            }
-
-                            // Detection risk
-                            if tier != ForceTier::None && tier != ForceTier::Experienced {
-                                let risk = match tier {
-                                    ForceTier::Aware => DETECT_PROB_AWARE,
-                                    ForceTier::Training => DETECT_PROB_TRAINING,
-                                    _ => DETECT_PROB_EXPERIENCED,
-                                };
                                 ui.label(
-                                    RichText::new(format!("Detection risk: {:.0}%", risk * 100.0))
-                                        .color(if risk > 0.1 {
-                                            theme::WARNING_AMBER
-                                        } else {
-                                            theme::TEXT_SECONDARY
-                                        })
+                                    RichText::new(summary.ranking)
+                                        .color(ranking_color(summary.level))
+                                        .size(10.0),
+                                );
+                            });
+                            ui.label(
+                                RichText::new(format!("Force: {}", summary.level))
+                                    .color(theme::TEXT_SECONDARY)
+                                    .size(10.0),
+                            );
+                            let mut marks = Vec::new();
+                            if summary.aware {
+                                marks.push("Force aware");
+                            }
+                            if summary.potential {
+                                marks.push("Force potential");
+                            }
+                            if !marks.is_empty() {
+                                ui.label(
+                                    RichText::new(marks.join(", "))
+                                        .color(theme::TEXT_SECONDARY)
                                         .size(10.0),
                                 );
                             }
-
-                            // Training controls
-                            match tier {
-                                ForceTier::Aware | ForceTier::Training => {
-                                    if is_training {
-                                        if ui
-                                            .button(
-                                                RichText::new("Stop Training")
-                                                    .color(theme::DANGER_RED)
-                                                    .size(11.0),
-                                            )
-                                            .clicked()
-                                        {
-                                            action = Some(PanelAction::StopJediTraining {
-                                                character: *key,
-                                            });
-                                        }
-                                    } else if !character.is_captive && !character.on_mission {
-                                        if ui
-                                            .button(
-                                                RichText::new("Begin Training")
-                                                    .color(theme::GOLD)
-                                                    .size(11.0),
-                                            )
-                                            .clicked()
-                                        {
-                                            action = Some(PanelAction::StartJediTraining {
-                                                character: *key,
-                                                faction: player_faction,
-                                            });
-                                        }
-                                    } else {
-                                        ui.label(
-                                            RichText::new("Unavailable (on mission or captured)")
-                                                .color(theme::TEXT_DISABLED)
-                                                .size(10.0),
-                                        );
-                                    }
-                                }
-                                _ => {}
+                            if let Some(name) = &summary.discoverer {
+                                ui.label(
+                                    RichText::new(format!("Discovered by {name}"))
+                                        .color(theme::TEXT_SECONDARY)
+                                        .size(10.0),
+                                );
                             }
                         });
                         ui.add_space(4.0);
                     }
                 });
         });
-
-    action
+    None
 }
 
-/// Display label and color for a Force tier.
-fn tier_display(tier: ForceTier) -> (&'static str, Color32) {
-    match tier {
-        ForceTier::None => ("LATENT", Color32::from_rgb(100, 100, 100)),
-        ForceTier::Aware => ("AWARE", Color32::from_rgb(100, 160, 255)),
-        ForceTier::Training => ("TRAINING", Color32::from_rgb(180, 120, 255)),
-        ForceTier::Experienced => ("EXPERIENCED", Color32::from_rgb(60, 200, 100)),
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rebellion_core::ids::DatId;
+
+    fn person(name: &str, is_alliance: bool, edit: impl FnOnce(&mut Character)) -> Character {
+        let mut c = Character {
+            name: name.into(),
+            is_alliance,
+            is_empire: !is_alliance,
+            ..Character::default()
+        };
+        edit(&mut c);
+        c
+    }
+
+    #[test]
+    fn the_force_panel_lists_the_side_s_force_values_strongest_first() {
+        // Force +0x8c = +0x8e + +0x90 (Character::force_level); the word is
+        // the Status window's (FUN_004486f0: <10 None, <20 Novice, <80
+        // Trainee, <100 Jedi Student, <120 Jedi Knight, else Jedi Master).
+        let mut world = GameWorld::default();
+        let yoda = world.characters.insert(person("Yoda", true, |c| {
+            c.dat_id = DatId::new(0x3000_0243);
+            c.force_base = 150;
+        }));
+        let luke = world.characters.insert(person("Luke", true, |c| {
+            c.force_base = 20;
+            c.force_training = 5;
+            c.force_aware = true;
+            c.force_potential = true;
+            c.force_discoverer = Some(DatId::new(0x3000_0243));
+        }));
+        let latent = world.characters.insert(person("Latent", true, |c| {
+            c.force_potential = true;
+        }));
+        world.characters.insert(person("Han", true, |_| {}));
+        world
+            .characters
+            .insert(person("Vader", false, |c| c.force_base = 140));
+        world.characters.insert(person("Gone", true, |c| {
+            c.force_base = 90;
+            c.is_killed = true;
+        }));
+
+        let rows = force_rows(&world, true);
+        assert_eq!(
+            rows.iter().map(|(key, _)| *key).collect::<Vec<_>>(),
+            [yoda, luke, latent]
+        );
+        assert_eq!(
+            rows[1].1,
+            ForceSummary {
+                level: 25,
+                ranking: "Trainee",
+                aware: true,
+                potential: true,
+                discoverer: Some("Yoda".into()),
+            }
+        );
+        assert_eq!(rows[0].1.ranking, "Jedi Master");
+        assert_eq!((rows[2].1.level, rows[2].1.ranking), (0, "None"));
+        assert_eq!(force_rows(&world, false).len(), 1);
+    }
+
+    #[test]
+    fn a_roster_badge_needs_a_force_and_names_a_ranking_from_ten() {
+        let none = person("Han", true, |_| {});
+        assert!(!has_force(&none));
+        for edit in [
+            (|c: &mut Character| c.force_base = 1) as fn(&mut Character),
+            |c| c.force_training = 1,
+            |c| c.force_aware = true,
+            |c| c.force_potential = true,
+        ] {
+            assert!(has_force(&person("Luke", true, edit)));
+        }
+        assert_eq!(ranking_badge(9), None);
+        assert_eq!(ranking_badge(10), Some("Novice"));
+        assert_eq!(ranking_badge(120), Some("Jedi Master"));
     }
 }

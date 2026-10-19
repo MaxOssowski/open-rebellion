@@ -4263,13 +4263,9 @@ async fn main() {
                         }
                     }
                     if show_jedi {
-                        if let Some(action) = draw_jedi(
-                            ctx,
-                            &world,
-                            &jedi_state,
-                            &mut jedi_panel_state,
-                            player_faction,
-                        ) {
+                        if let Some(action) =
+                            draw_jedi(ctx, &world, &mut jedi_panel_state, player_faction)
+                        {
                             panel_actions.push(action);
                         }
                     }
@@ -6398,7 +6394,6 @@ async fn main() {
                         &mut troop_transport_state,
                         active_fog_state,
                         &mut ai_state,
-                        &mut jedi_state,
                         &mut death_star_state,
                         &mut msg_log,
                         &mut player_faction,
@@ -7113,7 +7108,6 @@ fn apply_panel_action(
     troop_transport_state: &mut TroopTransportState,
     fog_state: &mut FogState,
     ai_state: &mut AIState,
-    jedi_state: &mut JediState,
     death_star_state: &mut DeathStarState,
     msg_log: &mut MessageLog,
     player_faction: &mut MissionFaction,
@@ -7862,32 +7856,6 @@ fn apply_panel_action(
             ));
         }
 
-        // ── Jedi Training ────────────────────────────────────────────────────
-        PanelAction::StartJediTraining { character, faction } => {
-            let is_alliance = faction == MissionFaction::Alliance;
-            jedi_state.start_training(character, is_alliance, clock.tick);
-            let char_name = world
-                .characters
-                .get(character)
-                .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-            msg_log.push(GameMessage::new(
-                clock.tick,
-                format!("{char_name} begins Force training"),
-                MessageCategory::Event,
-            ));
-        }
-        PanelAction::StopJediTraining { character } => {
-            jedi_state.stop_training(character);
-            let char_name = world
-                .characters
-                .get(character)
-                .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-            msg_log.push(GameMessage::new(
-                clock.tick,
-                format!("{char_name} Force training stopped"),
-                MessageCategory::Event,
-            ));
-        }
     }
 }
 
