@@ -1798,10 +1798,19 @@ impl AISystem {
         let claims = &mut state.record_claims;
         let sector_claims = &mut state.sector_claims;
         let seen = &state.seen;
+        let sectors = &state.module8.planners;
         state.mission_planners.retain_mut(|p| {
-            // port: a sector planner's mission planner runs FUN_004bda60,
-            // not yet ported; it waits.
+            // A sector planner's mission planner runs FUN_004bda60: state 2
+            // takes its target from its owner's plan; without one state 9
+            // ends the cycle (FUN_004be4c0 releases the members it holds).
+            // port: states 3 to 8 are not ported yet; it holds no one.
             if p.owner != 0 {
+                if p.last_cycle != tick {
+                    p.last_cycle = tick;
+                    p.target_system = sectors.iter().find(|s| s.id == p.owner).and_then(|s| {
+                        sector_mission_target(p.kind, s, planner, galaxy, (tick, seen))
+                    });
+                }
                 return true;
             }
             if !p.standing && tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
@@ -3751,6 +3760,72 @@ fn espionage_target(
     take_sector(claims, galaxy, sector, CLAIM_ESPIONAGE);
     p.sector = Some(sector);
     Some(target)
+}
+
+/// State 2 of a sector planner's mission planner (`FUN_004bdbc0`): the
+/// target its owner's plan object gives (`FUN_00476e80`, by the record
+/// index of the mission's kind, through slot `+0x5c`):
+///
+/// - Reconnaissance (`0x15`, slot `+0x2c`: `FUN_004ba960`, `FUN_004b97e0`,
+///   `FUN_004b3db0`, `FUN_004b7940`, `FUN_004b1db0`, `FUN_004b5370`): of
+///   the sector's systems not the side's (`+0x2c` `0x80`), the one seen
+///   longest ago (`FUN_0041a3a0`, order 1) among the unexplored
+///   (forbidding `+0x2c` `0x8000000`), else among all;
+/// - Espionage (`0x13`, slot `+0x28`: `FUN_004ba830`, `FUN_004b96b0`,
+///   `FUN_004b3bf0`, `FUN_004b7780`, `FUN_004b1bf0`, `FUN_004b51b0`): the
+///   opponent's system (`+0x2c` `0x200`, `+0x30` 4) seen longest ago;
+///   kinds 3 to 6 then fall back to a random system with `+0x2c` `0x200`
+///   (`FUN_0041a460`, order 1).
+///
+/// The slots need the plan's sector (its record `+0x34`), and the object
+/// `+0x30` is the system itself.
+///
+/// port: the Sabotage (`0x12`, slot `+0x30`) and Abduction or
+/// Assassination (`0x17`, `0x81`, slot `+0x24`) slots are not ported yet
+/// and give no target.
+fn sector_mission_target(
+    kind: MissionKind,
+    owner: &crate::ai_module8::SectorPlanner,
+    planner: &mut Planner<'_>,
+    galaxy: &crate::ai_records::Galaxy,
+    (day, seen): (u64, &HashMap<SystemKey, u64>),
+) -> Option<SystemKey> {
+    use crate::ai_records::{pick, Mask, Order};
+    let any = Mask::new(0, 0);
+    // port: a sector planner without a plan object (kind 0) gives none.
+    if !crate::ai_planner::ported_kind(owner.kind) {
+        return None;
+    }
+    let sector = owner.sector?;
+    let by_age = |planner: &mut Planner<'_>, masks| {
+        pick(&[galaxy.system_query_by_age(
+            sector,
+            masks,
+            (day, seen),
+            Order::Ascending,
+            &mut || planner.coin(),
+        )])
+    };
+    match kind {
+        MissionKind::Reconnaissance => by_age(planner, [any, Mask::new(0x80, 0x800_0000), any])
+            .or_else(|| by_age(planner, [any, Mask::new(0x80, 0), any])),
+        MissionKind::Espionage => {
+            by_age(planner, [any, Mask::new(0x200, 0), Mask::new(4, 0)]).or_else(|| {
+                if matches!(owner.kind, 3..=6) {
+                    random_system(
+                        planner,
+                        galaxy,
+                        Some(sector),
+                        [any, Mask::new(0x200, 0), any],
+                        Order::Ascending,
+                    )
+                } else {
+                    None
+                }
+            })
+        }
+        _ => None,
+    }
 }
 
 /// Whether `character` is an opponent's main character free in the field
@@ -8665,8 +8740,8 @@ mod tests {
 
     #[test]
     fn a_sector_planner_s_mission_planner_waits_in_the_cycle() {
-        // port: FUN_004bda60 is not ported; the planner neither orders nor
-        // ends, whatever its age.
+        // port: FUN_004bda60's states 3 to 8 are not ported; the planner
+        // neither orders nor ends, whatever its age.
         let (world, _, _, _) = diplomacy_world(90.0, &[90]);
         let mut state = AIState::new(AiFaction::Empire);
         state.module8.planners = vec![crate::ai_module8::SectorPlanner {
@@ -8688,6 +8763,123 @@ mod tests {
         assert!(actions.is_empty());
         assert_eq!(state.mission_planners.len(), 1);
         assert!(state.mission_planners[0].team.is_empty());
+    }
+
+    #[test]
+    fn a_sector_planner_s_plan_gives_recon_an_unexplored_system_and_espionage_the_oldest_seen() {
+        // FUN_00476e80: record index 0x15 -> plan slot +0x2c (FUN_004b3db0,
+        // kind 3), 0x13 -> +0x28 (FUN_004b3bf0). Recon: +0x2c 0x80
+        // forbidding 0x8000000, else 0x80, seen longest ago (FUN_0041a3a0,
+        // order 1). Espionage: +0x2c 0x200 with +0x30 4, seen longest ago;
+        // kinds 3 to 6 then a random +0x2c 0x200 (FUN_0041a460), kinds 1
+        // and 2 nothing (FUN_004ba830).
+        let (mut world, _, rebels, _) = recon_world(0, true);
+        world.systems[rebels[1]].exploration_status = crate::dat::ExplorationStatus::Unexplored;
+        let state = AIState::new(AiFaction::Empire);
+        let mut galaxy = galaxy_of(&state, &world);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let far = world.systems[rebels[0]].sector;
+        let owner = |kind| crate::ai_module8::SectorPlanner {
+            id: 7,
+            kind,
+            sector: Some(far),
+            ..Default::default()
+        };
+        let mut seen = HashMap::new();
+        seen.insert(rebels[1], 3);
+        macro_rules! target {
+            ($kind:expr, $plan:expr, $galaxy:expr, $seen:expr) => {
+                sector_mission_target($kind, &owner($plan), &mut planner, $galaxy, (5, $seen))
+            };
+        }
+        // The unexplored one, though rebels[0] was seen longer ago.
+        assert_eq!(
+            target!(MissionKind::Reconnaissance, 3, &galaxy, &seen),
+            Some(rebels[1])
+        );
+        // An unexplored system has no +0x2c 0x200.
+        assert_eq!(target!(MissionKind::Espionage, 3, &galaxy, &seen), Some(rebels[0]));
+        // All explored: the one seen longest ago.
+        let mut explored = galaxy_of(&state, &{
+            let mut w = world.clone();
+            w.systems[rebels[1]].exploration_status = crate::dat::ExplorationStatus::Explored;
+            w
+        });
+        assert_eq!(
+            target!(MissionKind::Reconnaissance, 3, &explored, &seen),
+            Some(rebels[0])
+        );
+        seen.insert(rebels[0], 4);
+        assert_eq!(
+            target!(MissionKind::Reconnaissance, 3, &explored, &seen),
+            Some(rebels[1])
+        );
+        assert_eq!(target!(MissionKind::Espionage, 1, &explored, &seen), Some(rebels[1]));
+        // No +0x30 4: only kinds 3 to 6 fall back to a random system.
+        for r in explored.sectors.iter_mut().flat_map(|s| s.systems.iter_mut()) {
+            r.kind &= !4;
+        }
+        assert_eq!(target!(MissionKind::Espionage, 1, &explored, &seen), None);
+        assert_eq!(target!(MissionKind::Espionage, 2, &explored, &seen), None);
+        assert!(target!(MissionKind::Espionage, 6, &explored, &seen).is_some());
+        // Without a plan object or a sector, and for the slots not ported.
+        assert_eq!(target!(MissionKind::Espionage, 0, &galaxy, &seen), None);
+        assert_eq!(target!(MissionKind::Sabotage, 3, &galaxy, &seen), None);
+        assert_eq!(
+            sector_mission_target(
+                MissionKind::Espionage,
+                &crate::ai_module8::SectorPlanner {
+                    kind: 3,
+                    ..Default::default()
+                },
+                &mut planner,
+                &galaxy,
+                (5, &seen)
+            ),
+            None
+        );
+        galaxy.sectors.clear();
+        assert_eq!(target!(MissionKind::Espionage, 3, &galaxy, &seen), None);
+    }
+
+    #[test]
+    fn a_sector_planner_s_mission_planner_takes_its_target_once_a_day() {
+        // FUN_004bdbc0: state 2 asks the owner +0x70 (FUN_00476e80); the
+        // cycle runs once a day.
+        let (world, _, rebels, _) = recon_world(0, true);
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut galaxy = galaxy_of(&state, &world);
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner {
+            id: 7,
+            kind: 3,
+            sector: Some(world.systems[rebels[0]].sector),
+            mission: [0x52, 0, 0],
+            ..Default::default()
+        }];
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        state.seen.insert(rebels[1], 1);
+        let run = |state: &mut AIState, galaxy: &mut crate::ai_records::Galaxy, tick| {
+            let mut actions = Vec::new();
+            AISystem::mission_planner_cycle(
+                state,
+                &mut planner_for(&world, AiFaction::Empire),
+                &world,
+                galaxy,
+                tick,
+                &mut actions,
+            );
+            assert!(actions.is_empty());
+            state.mission_planners[0].target_system
+        };
+        assert_eq!(run(&mut state, &mut galaxy, 5), Some(rebels[0]));
+        state.seen.insert(rebels[0], 4);
+        assert_eq!(run(&mut state, &mut galaxy, 5), Some(rebels[0]));
+        assert_eq!(run(&mut state, &mut galaxy, 6), Some(rebels[1]));
+        // An owner gone gives none.
+        state.module8.planners[0].id = 8;
+        assert_eq!(run(&mut state, &mut galaxy, 7), None);
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.

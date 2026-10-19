@@ -1,0 +1,3 @@
+test ai::tests::a_sector_planner_s_mission_planner_takes_its_target_once_a_day ... FAILED
+test ai::tests::a_sector_planner_s_plan_gives_recon_an_unexplored_system_and_espionage_the_oldest_seen ... FAILED
+test result: FAILED. 6 passed; 2 failed; 0 ignored; 0 measured; 1388 filtered out; finished in 0.00s

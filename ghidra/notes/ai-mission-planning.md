@@ -1602,8 +1602,48 @@ The held planners order nothing. The heuristic Sabotage and
 Assassination in `evaluate_espionage` still stand in. The 24 runs of
 1500 days are unchanged event for event.
 
+**The Recon and Espionage targets** (read and ported 2026-10-19, stage
+2). Every kind's Recon slot `+0x2c` is the same:
+`FUN_0041a3a0(sector, +0x2c 0x80 forbidding 0x8000000, order 1)`, the
+unexplored system not the side's seen longest ago. Without one it takes
+`FUN_0041a3a0(sector, +0x2c 0x80, order 1)`.
+
+The Espionage slot `+0x28` takes
+`FUN_0041a3a0(sector, +0x2c 0x200, +0x30 4, order 1)`. Kinds 3 to 6 then
+fall back to `FUN_0041a460(sector, +0x2c 0x200, order 1)`, and kinds 1
+and 2 (`FUN_004ba830`, `FUN_004b96b0`) do not.
+
+Both slots need the plan's sector record (`+0x10` -> `+0x34`, family
+`0x80..0x8f`). Each writes the pick to the system (`+0x34`) and, when
+that is a system, copies it to the object (`+0x30`). State 2
+(`FUN_004bdbc0`) clears `+0x20` bit `0x10` and asks again each cycle; it
+sets the bit when both are set. With none, state 9 (`FUN_004be4c0`)
+releases the held members (`FUN_0047b870`, `FUN_0047b8e0`) unless
+`+0x20 & 0xe0000000`, and the cycle ends; the planner stays.
+
+The Abduction and Assassination slots `+0x24` (skimmed) pick a system
+with `+0x2c` `0x400` or `0x800`, mostly by `FUN_0041a340` on `v[29]`,
+order 2; kinds 3 to 6 first want `+0x30` `0x1000`. They then pick the
+character there with `FUN_004af1c0` (231 lines, not read).
+
+Ported (stage 2): `sector_mission_target` and state 2 in
+`AISystem::mission_planner_cycle`, once a day per planner.
+
+port:
+- the Sabotage and Abduction/Assassination slots give no target yet;
+- a sector planner of kind 0 gives none;
+- bit `0x10` is not kept;
+- states 3 to 8 are not ported, so the held planners still order
+  nothing.
+
+The held planners' targets enter the seed-42 golden from tick 10. The 24
+campaigns differ only through the draws the picks take from the planner's
+random numbers. With the picks made but their targets dropped, seeds 1,
+2, 14 and 23 run event for event as with them kept.
+
 Next:
-- `FUN_00476e80` with the plan objects' targets;
+- the Abduction/Assassination slots `+0x24` with `FUN_004af1c0`;
+- the Sabotage slots `+0x30` with `FUN_004ae480`;
 - `FUN_004bda60` with `FUN_004bdcd0` and `FUN_004be230`;
 - the sector classes' selectors (Espionage of subtype not 6:
   `FUN_004808c0`, `FUN_00480aa0`).

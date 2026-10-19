@@ -2761,6 +2761,11 @@ cross-runtime proof remain open
   `v1:20ee82a2951ad9aa`, final `v1:49ba43802d0d2840` ->
   `v1:14ec5ed9881bd79b`. Campaigns are unchanged, event for event
   (`evidence/2026-10-19-sector-mission-requests/`).
+- 2026-10-19 (F-036): a sector planner's held Recon and Espionage
+  planners take their targets from its plan (`FUN_004bdbc0`,
+  `FUN_00476e80`, slots `+0x2c` and `+0x28`). They still order nothing.
+  Golden final `v1:14ec5ed9881bd79b` -> `v1:aae0de7bbef402c1`
+  (`evidence/2026-10-19-sector-mission-targets/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
