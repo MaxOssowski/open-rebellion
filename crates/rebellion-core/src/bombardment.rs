@@ -8,12 +8,12 @@
 //! [`apply`] carries it out. A Death Star's destruction of the system is
 //! left to the caller's Death Star cleanup.
 //!
-//! port: the port has no officer ranks (`+0x96`), so the general's and the
-//! admiral's leadership factors are 1; a ship keeps no shield damage, so
-//! its shields are recomputed each time (`FUN_00501160`).
+//! port: a ship keeps no shield damage, so its shields are recomputed each
+//! time (`FUN_00501160`).
 
 use serde::{Deserialize, Serialize};
 
+use crate::character_command as command;
 use crate::dat::Faction;
 use crate::ids::ProductionFacilityKey;
 use crate::ids::{
@@ -390,8 +390,12 @@ pub fn resolve(
         .collect();
     let count = i32::try_from(bombarders.len()).unwrap_or(i32::MAX);
     // Phase 2 (FUN_0058dc10): each ion cannon, then each battery, of any
-    // side hits a drawn ship with (general / G0x600 + 1) * its attack.
-    let general = 0;
+    // side hits a drawn ship with (general / G0x600 + 1) * its attack; the
+    // general is the system's (FUN_00509330(3)), its leadership (+0x1f4).
+    let general = command::leadership(
+        world,
+        command::system_holder(world, req.system, command::CommandKind::General),
+    );
     let factor = general / gnprtb(world, GNPRTB_GENERAL_DIVISOR).max(1) + 1;
     let Some(system) = world.systems.get(req.system) else {
         return out;
@@ -454,8 +458,6 @@ pub fn resolve(
     }
     // Phase 3 (FUN_0058df60): firepower less the shields of the system's
     // side gives the shots.
-    let admiral = 0;
-    let factor = admiral / gnprtb(world, GNPRTB_ADMIRAL_DIVISOR).max(1) + 1;
     let mut firepower = 0i32;
     for &fleet in req.fleets.iter().filter(|f| system.fleets.contains(f)) {
         let Some(value) = world.fleets.get(fleet) else {
@@ -464,6 +466,13 @@ pub fn resolve(
         if Faction::of_alliance(value.is_alliance) != req.side {
             continue;
         }
+        // FUN_0055e950: each fleet's (admiral / G0x601 + 1), the admiral
+        // its own (FUN_004fd790(2)), its leadership (+0x1f4).
+        let admiral = command::leadership(
+            world,
+            command::fleet_holder(world, fleet, command::CommandKind::Admiral),
+        );
+        let factor = admiral / gnprtb(world, GNPRTB_ADMIRAL_DIVISOR).max(1) + 1;
         let mut sum = 0i32;
         for b in bombarders.iter().filter(|b| b.fleet == fleet && alive(b)) {
             sum = sum.wrapping_add(ship_bombardment(world, b));
@@ -1083,6 +1092,69 @@ mod tests {
             .shield_strength = 47;
         let out = resolve(&fx.world, &request(&fx, GENERAL), &mut script(&[], 9));
         assert_eq!(out.shots, 0);
+    }
+
+    /// An officer of `kind` with `leadership` at the fixture's system, aboard
+    /// `fleet` when given.
+    fn officer(
+        fx: &mut Fx,
+        alliance: bool,
+        fleet: Option<FleetKey>,
+        kind: command::CommandKind,
+        leadership: u32,
+    ) {
+        fx.world.characters.insert(crate::world::Character {
+            is_alliance: alliance,
+            current_system: Some(fx.system),
+            current_fleet: fleet,
+            command: kind,
+            leadership: crate::world::SkillPair {
+                base: leadership,
+                variance: 0,
+            },
+            ..Default::default()
+        });
+    }
+
+    #[test]
+    fn a_fleet_s_admiral_and_the_planet_s_general_magnify_their_side_s_fire() {
+        // FUN_0058df60 -> FUN_0055e950: the fleet's firepower times
+        // (admiral / G0x601 + 1), the fleet's admiral (FUN_004fd790(2)).
+        // FUN_0058dc10 -> FUN_0055e930: each battery's attack times
+        // (general / G0x600 + 1), the system's general (FUN_00509330(3)).
+        // Slot +0x1f4 is the officer's leadership; G0x600 = G0x601 = 40.
+        let mut fx = fixture(2);
+        let fleet = Some(fx.fleet);
+        let out = resolve(&fx.world, &request(&fx, GENERAL), &mut script(&[], 9));
+        assert_eq!(out.shots, 40);
+        // The other side's admiral aboard, or the fleet's own general, adds
+        // nothing.
+        officer(&mut fx, true, fleet, command::CommandKind::Admiral, 200);
+        officer(&mut fx, false, fleet, command::CommandKind::General, 200);
+        let out = resolve(&fx.world, &request(&fx, GENERAL), &mut script(&[], 9));
+        assert_eq!(out.shots, 40);
+        // Leadership 80: (80 / 40 + 1) = 3 times.
+        officer(&mut fx, false, fleet, command::CommandKind::Admiral, 80);
+        let out = resolve(&fx.world, &request(&fx, GENERAL), &mut script(&[], 9));
+        assert_eq!(out.shots, 120);
+
+        // A battery of 10 is taken by the ship's shields of 10.
+        let mut fx = fixture(1);
+        defense(&mut fx.world, fx.system, BATTERY, attack(10));
+        let fire = |fx: &Fx| {
+            resolve(
+                &fx.world,
+                &request(fx, TARGET_CIVILIAN),
+                &mut script(&[0], 9),
+            )
+        };
+        assert!(fire(&fx).ship_losses.is_empty());
+        // The attacker's general on the planet adds nothing; the system's
+        // side's (the Alliance's) general of 40 doubles it: 10 past them.
+        officer(&mut fx, false, None, command::CommandKind::General, 200);
+        assert!(fire(&fx).ship_losses.is_empty());
+        officer(&mut fx, true, None, command::CommandKind::General, 40);
+        assert_eq!(fire(&fx).ship_losses[0].hull_damage, 10);
     }
 
     #[test]

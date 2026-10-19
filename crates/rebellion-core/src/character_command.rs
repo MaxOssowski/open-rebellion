@@ -10,8 +10,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::CharacterKey;
-use crate::world::{Character, GameWorld};
+use crate::dat::Faction;
+use crate::ids::{CharacterKey, FleetKey, SystemKey};
+use crate::world::{Character, GameWorld, Skill};
 
 /// `CommandKind`, character short `+0x96` (`FUN_004ee350`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -217,10 +218,56 @@ pub fn release_unfit(world: &mut GameWorld) -> Vec<CharacterKey> {
     released
 }
 
+/// `FUN_004fd790(fleet, kind)`: the first character of the fleet's own side
+/// (`+0x24 >> 6 & 3`) aboard it holding `kind`.
+#[must_use]
+pub fn fleet_holder(world: &GameWorld, fleet: FleetKey, kind: CommandKind) -> Option<CharacterKey> {
+    let side = world.fleets.get(fleet)?.is_alliance;
+    world.characters.iter().find_map(|(key, c)| {
+        (c.current_fleet == Some(fleet) && c.is_alliance == side && !c.is_killed && c.command == kind)
+            .then_some(key)
+    })
+}
+
+/// `FUN_00509330(system, kind)`: the first character of the system's own
+/// side (`+0x24 >> 6 & 3`) held by the system, not aboard a fleet, holding
+/// `kind`. A neutral or contested system has none.
+#[must_use]
+pub fn system_holder(
+    world: &GameWorld,
+    system: SystemKey,
+    kind: CommandKind,
+) -> Option<CharacterKey> {
+    let side = match GameWorld::facility_holder(world.systems.get(system)?.control)? {
+        Faction::Alliance => true,
+        Faction::Empire => false,
+        Faction::Neutral => return None,
+    };
+    world.characters.iter().find_map(|(key, c)| {
+        (c.current_system == Some(system)
+            && c.current_fleet.is_none()
+            && c.is_alliance == side
+            && !c.is_killed
+            && c.command == kind)
+            .then_some(key)
+    })
+}
+
+/// The holder's slot `+0x1f4`, its leadership (`+0x88`,
+/// [`Character::effective_skill`]); 0 without a holder, as the callers
+/// (`FUN_0058dc10`, `FUN_0058df60`, `FUN_0058bec0`) start it.
+#[must_use]
+pub fn leadership(world: &GameWorld, holder: Option<CharacterKey>) -> i32 {
+    holder
+        .and_then(|key| world.characters.get(key))
+        .map_or(0, |c| {
+            i32::try_from(c.effective_skill(Skill::Leadership)).unwrap_or(i32::MAX)
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ids::{FleetKey, SystemKey};
 
     /// The Command order of `c`'s own side.
     fn give_as(
@@ -380,6 +427,85 @@ mod tests {
             Err(Refusal::Injured)
         );
         assert_eq!(world.characters[a].command, CommandKind::None);
+    }
+
+    #[test]
+    fn a_fleet_s_or_a_planet_s_officer_is_its_own_side_s_holder_of_the_rank() {
+        // FUN_004fd790: the fleet's side (+0x24 >> 6 & 3) aboard it;
+        // FUN_00509330: the system's side held by the system, not aboard a
+        // fleet. Slot +0x1f4 is the holder's leadership (+0x88).
+        use crate::dat::ExplorationStatus;
+        use crate::world::{ControlKind, Fleet, SkillPair, System};
+        let mut world = GameWorld::default();
+        let system = world.systems.insert(System {
+            dat_id: crate::ids::DatId::new(0x9000_0000),
+            name: "Yavin".into(),
+            sector: crate::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let place = |world: &mut GameWorld, alliance, fleet, kind, leadership| {
+            let c = officer(world, alliance);
+            let c_mut = &mut world.characters[c];
+            c_mut.current_system = Some(system);
+            c_mut.current_fleet = fleet;
+            c_mut.command = kind;
+            c_mut.leadership = SkillPair {
+                base: leadership,
+                variance: 0,
+            };
+            c
+        };
+        assert_eq!(fleet_holder(&world, fleet, CommandKind::Admiral), None);
+        assert_eq!(leadership(&world, None), 0);
+        place(&mut world, false, Some(fleet), CommandKind::Admiral, 90);
+        place(&mut world, true, Some(fleet), CommandKind::General, 80);
+        let admiral = place(&mut world, true, Some(fleet), CommandKind::Admiral, 70);
+        let general = place(&mut world, true, None, CommandKind::General, 60);
+        place(&mut world, false, None, CommandKind::General, 50);
+        assert_eq!(
+            fleet_holder(&world, fleet, CommandKind::Admiral),
+            Some(admiral)
+        );
+        assert_eq!(
+            system_holder(&world, system, CommandKind::General),
+            Some(general)
+        );
+        assert_eq!(system_holder(&world, system, CommandKind::Admiral), None);
+        assert_eq!(
+            leadership(&world, fleet_holder(&world, fleet, CommandKind::Admiral)),
+            70
+        );
+        // A killed holder holds nothing; a neutral system has no officer.
+        world.characters[admiral].is_killed = true;
+        assert_eq!(fleet_holder(&world, fleet, CommandKind::Admiral), None);
+        world.systems[system].control = ControlKind::Uncontrolled;
+        assert_eq!(system_holder(&world, system, CommandKind::General), None);
     }
 
     #[test]

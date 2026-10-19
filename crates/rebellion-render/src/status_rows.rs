@@ -131,18 +131,10 @@ const NOT_ASSIGNED: &str = "Not Assigned";
 fn commander(
     world: &rebellion_core::world::GameWorld,
     key: FleetKey,
-    is_alliance: bool,
     kind: rebellion_core::character_command::CommandKind,
 ) -> String {
-    world
-        .characters
-        .values()
-        .find(|c| {
-            c.current_fleet == Some(key)
-                && c.is_alliance == is_alliance
-                && !c.is_killed
-                && c.command == kind
-        })
+    rebellion_core::character_command::fleet_holder(world, key, kind)
+        .and_then(|c| world.characters.get(c))
         .map_or_else(|| NOT_ASSIGNED.to_owned(), |c| c.name.clone())
 }
 
@@ -274,15 +266,15 @@ pub fn fleet_rows(sources: StatusSources<'_>, key: FleetKey) -> Option<Vec<Statu
     rows.extend([
         row(
             "Admiral:",
-            commander(world, key, fleet.is_alliance, CommandKind::Admiral),
+            commander(world, key, CommandKind::Admiral),
         ),
         row(
             "General:",
-            commander(world, key, fleet.is_alliance, CommandKind::General),
+            commander(world, key, CommandKind::General),
         ),
         row(
             "Commander:",
-            commander(world, key, fleet.is_alliance, CommandKind::Commander),
+            commander(world, key, CommandKind::Commander),
         ),
         row("Number Of Ships", fleet.ship_count().to_string()),
         heading("Capacity:"),

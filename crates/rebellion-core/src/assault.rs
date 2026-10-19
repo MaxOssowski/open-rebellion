@@ -6,13 +6,13 @@
 //! [`apply`] carries it out. The draws come from the tick's
 //! [`crate::bombardment::BombardEnv`] ([`crate::bombardment::BombardEnv::assault`]).
 //!
-//! port: the port has no officer ranks (`+0x96`), so the generals'
-//! leadership terms are 0; a fleet's regiments are its cargo, not each
-//! ship's, so the walk takes each fleet's cargo in order.
+//! port: a fleet's regiments are its cargo, not each ship's, so the walk
+//! takes each fleet's cargo in order.
 
 use serde::{Deserialize, Serialize};
 
 use crate::bombardment::Target;
+use crate::character_command as command;
 use crate::dat::Faction;
 use crate::ids::{FleetKey, SystemKey, TroopKey};
 use crate::movement::MovementState;
@@ -57,6 +57,8 @@ pub struct AssaultRequest {
     /// request's fleets of the side, in the system's order, each fleet's
     /// regiments aboard.
     pub troops: Vec<TroopKey>,
+    /// Each attacking regiment's fleet, in `troops`' order.
+    pub troop_fleets: Vec<FleetKey>,
 }
 
 /// What an assault did.
@@ -108,15 +110,17 @@ fn system_side(world: &GameWorld, system: SystemKey) -> Option<Faction> {
 }
 
 /// The attacking regiments of `side`'s `fleets` at `system`
-/// (`FUN_0058ba10`): the fleets in the system's order, each one's cargo.
+/// (`FUN_0058ba10`): the fleets in the system's order, each one's cargo,
+/// each regiment with its fleet (the walk's functor gets the regiment, its
+/// ship and its fleet).
 #[must_use]
-pub fn attacking_troops(
+pub fn attackers(
     world: &GameWorld,
     transport: &TroopTransportState,
     side: Faction,
     fleets: &[FleetKey],
     system: SystemKey,
-) -> Vec<TroopKey> {
+) -> Vec<(TroopKey, FleetKey)> {
     let Some(sys) = world.systems.get(system) else {
         return Vec::new();
     };
@@ -129,8 +133,8 @@ pub fn attacking_troops(
                 .get(f)
                 .is_some_and(|value| Faction::of_alliance(value.is_alliance) == side)
         })
-        .flat_map(|&f| transport.cargo(f).iter().copied())
-        .filter(|&t| world.troops.contains_key(t))
+        .flat_map(|&f| transport.cargo(f).iter().map(move |&t| (t, f)))
+        .filter(|&(t, _)| world.troops.contains_key(t))
         .collect()
 }
 
@@ -257,9 +261,26 @@ pub fn resolve(
     // Phase 3 (FUN_0058c500, FUN_0058bec0): each attacking regiment in
     // order duels a drawn defender while both sides have some.
     if !attackers.is_empty() && !defenders.is_empty() {
-        // port: no officer ranks, so no general's leadership (slot +0x1f4).
-        let leadership: i32 = 0;
-        let general = leadership / gnprtb(world, GNPRTB_GENERAL_DIVISOR).max(1);
+        // The leaders' leadership (slot +0x1f4): the system's general
+        // (FUN_00509330(3)) and the attacker's fleet's (FUN_004fd790(3)).
+        let general_divisor = gnprtb(world, GNPRTB_GENERAL_DIVISOR).max(1);
+        let defending_general = command::leadership(
+            world,
+            command::system_holder(world, req.system, command::CommandKind::General),
+        );
+        let attacking_general = |troop: TroopKey| {
+            let fleet = req
+                .troops
+                .iter()
+                .position(|&t| t == troop)
+                .and_then(|i| req.troop_fleets.get(i).copied());
+            command::leadership(
+                world,
+                fleet.and_then(|f| {
+                    command::fleet_holder(world, f, command::CommandKind::General)
+                }),
+            )
+        };
         let duel_draw = gnprtb(world, GNPRTB_DUEL_DRAW);
         let attacker_lost = gnprtb(world, GNPRTB_ATTACKER_LOST);
         let defender_lost = gnprtb(world, GNPRTB_DEFENDER_LOST);
@@ -274,10 +295,11 @@ pub fn resolve(
             let defender = defenders[at];
             out.duels += 1;
             // FUN_0055eb00: the draw, plus the attacker's TROOPSD attack
-            // (class +0x64) and its general, less the defender's defense
-            // (+0x68) and its general.
-            let x = upto(draw, duel_draw) + (troop_stat(world, attacker, true) + general)
-                - (troop_stat(world, defender, false) + general);
+            // (class +0x64) and its general / G0x201, less the defender's
+            // defense (+0x68) and its general / G0x201.
+            let x = upto(draw, duel_draw)
+                + (troop_stat(world, attacker, true) + attacking_general(attacker) / general_divisor)
+                - (troop_stat(world, defender, false) + defending_general / general_divisor);
             if x >= defender_lost {
                 out.lost_defenders.push(defenders.remove(at));
                 i += 1;
@@ -462,11 +484,15 @@ impl crate::bombardment::BombardEnv {
         fleets: &[FleetKey],
         system: SystemKey,
     ) -> &AssaultOutcome {
+        let (troops, troop_fleets) = attackers(world, transport, side, fleets, system)
+            .into_iter()
+            .unzip();
         let req = AssaultRequest {
             system,
             side,
             fleets: fleets.to_vec(),
-            troops: attacking_troops(world, transport, side, fleets, system),
+            troops,
+            troop_fleets,
         };
         let outcome = resolve(world, &req, &mut |m| self.draw(m));
         apply(world, transport, &req, &outcome);
@@ -639,17 +665,21 @@ mod tests {
     }
 
     fn request(fx: &Fx) -> AssaultRequest {
+        let (troops, troop_fleets) = attackers(
+            &fx.world,
+            &fx.transport,
+            Faction::Empire,
+            &[fx.fleet],
+            fx.system,
+        )
+        .into_iter()
+        .unzip();
         AssaultRequest {
             system: fx.system,
             side: Faction::Empire,
             fleets: vec![fx.fleet],
-            troops: attacking_troops(
-                &fx.world,
-                &fx.transport,
-                Faction::Empire,
-                &[fx.fleet],
-                fx.system,
-            ),
+            troops,
+            troop_fleets,
         }
     }
 
@@ -661,6 +691,51 @@ mod tests {
             at += 1;
             d.clamp(0, m - 1)
         }
+    }
+
+    #[test]
+    fn each_side_s_general_adds_its_leadership_over_thirty_to_the_duel() {
+        // FUN_0058bec0: the system's general (FUN_00509330(3)) and the
+        // attacker's fleet's (FUN_004fd790(3)), each one's leadership
+        // (slot +0x1f4); FUN_0055eb00 adds each over G0x201 (30) to its
+        // side: x = 0..10 + (a + gA / 30) - (d + gD / 30).
+        let mut fx = fixture();
+        let a = aboard(&mut fx, 1);
+        defending(&mut fx, 1);
+        let general = |fx: &mut Fx, alliance: bool, fleet: Option<FleetKey>, leadership| {
+            fx.world.characters.insert(crate::world::Character {
+                is_alliance: alliance,
+                current_system: Some(fx.system),
+                current_fleet: fleet,
+                command: command::CommandKind::General,
+                leadership: crate::world::SkillPair {
+                    base: leadership,
+                    variance: 0,
+                },
+                ..Default::default()
+            });
+        };
+        let duel = |fx: &Fx| resolve(&fx.world, &request(fx), &mut script(&[0, 5], 99));
+        // x 5: neither falls.
+        let out = duel(&fx);
+        assert!(out.lost_attackers.is_empty() && out.lost_defenders.is_empty());
+        // The attacking fleet's general of 30: x 6, the defender falls.
+        let fleet = Some(fx.fleet);
+        general(&mut fx, false, fleet, 30);
+        assert_eq!(duel(&fx).lost_defenders.len(), 1);
+        // One of the attacker's side on the planet counts for neither.
+        general(&mut fx, false, None, 300);
+        assert_eq!(duel(&fx).lost_defenders.len(), 1);
+        // The planet's general of 30 for the system's side: x 5 again.
+        general(&mut fx, true, None, 30);
+        let out = duel(&fx);
+        assert!(out.lost_attackers.is_empty() && out.lost_defenders.is_empty());
+        // A fleet's general of 90 instead: x 7; the planet's of 150: x 3,
+        // the attacker falls.
+        for c in fx.world.characters.values_mut() {
+            c.leadership.base *= if c.is_alliance { 5 } else { 3 };
+        }
+        assert_eq!(duel(&fx).lost_attackers, a);
     }
 
     #[test]

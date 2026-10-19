@@ -2837,6 +2837,13 @@ cross-runtime proof remain open
   `v1:4d8201e965d27089` -> `v1:094e77fcd3b4b666`, final
   `v1:2229fcf258823750` -> `v1:beb63be8a01b2699`
   (`evidence/2026-10-19-character-command-names/`).
+- 2026-10-19: character command, stage 4a. The command's leadership
+  readers: the bombardment batteries' general and each fleet's admiral
+  (`FUN_0055e930`, `FUN_0055e950`), and the assault duel's two generals
+  (`FUN_0058bec0`, `FUN_0055eb00`), through `fleet_holder`
+  (`FUN_004fd790`) and `system_holder` (`FUN_00509330`). The 24 campaigns
+  and the golden are unchanged
+  (`evidence/2026-10-19-character-command-leadership/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

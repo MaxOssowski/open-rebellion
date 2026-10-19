@@ -193,8 +193,11 @@ port:
 - The port's automatic bombardment after a space victory had no
   counterpart: the original bombards only on these orders (removed with
   the port above).
-- The port has no officer ranks (`+0x96`): no general or admiral, so both
-  multipliers are 1.
+- The multipliers read the officers (2026-10-19, `character-command.md`):
+  the system's general (`character_command::system_holder`) for the
+  batteries, and each bombarding fleet's own admiral
+  (`character_command::fleet_holder`) for its firepower. Their leadership
+  is `Character::effective_skill`; without an officer the multiplier is 1.
 - The port's ship keeps its current hull (`hull_current`), so `+0x60`
   damage is `hull - hull_current`; it has no shield damage (`+0x28`) or
   per-squadron damage, and squadrons are counts.

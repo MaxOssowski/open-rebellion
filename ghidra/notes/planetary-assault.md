@@ -164,7 +164,6 @@ system land only on their side's standing, unblockaded planet
 (`FUN_005073d0`); one side's regiments alone still take a planet (port).
 
 port:
-- No officer ranks: the generals' leadership terms are 0.
 - A fleet's regiments are its cargo; the walk takes the fleets in the
   system's order and each one's cargo in order.
 - The order's members' target test (`FUN_0053f150`) is not read; in its
@@ -192,6 +191,19 @@ again, then carries the order out with the same `BombardEnv::assault` the
 AI's order uses, and writes the same summary line. A refused order writes
 "Planetary assault refused" (`FUN_00487c90`). The Assault Summary window
 is not ported.
+
+## Ported (2026-10-19): the generals
+
+Each duel reads the two generals (`character-command.md`, F-038):
+- the system's general, `character_command::system_holder`
+  (`FUN_00509330(3)`): the system's side, on the planet, not aboard a fleet;
+- the attacking regiment's fleet's general,
+  `character_command::fleet_holder` (`FUN_004fd790(3)`). The fleet is the
+  one the walk (`FUN_0058ba10`) hands the duel with the regiment
+  (`AssaultRequest::troop_fleets`).
+
+Each general's leadership (slot `+0x1f4`, `+0x88`) over G`0x201` is added
+to its side. An absent general adds 0.
 
 ## Against the port (before stage 5f)
 

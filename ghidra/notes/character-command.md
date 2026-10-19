@@ -110,6 +110,8 @@ not read.
   (`decoy-roll.md`).
 - The bombardment multipliers for an admiral or general
   (`bombardment-order.md`).
+- The Planetary Assault duel's two generals (`FUN_0058bec0`,
+  `planetary-assault.md`).
 - The AI's records: rank bits `0x4000000` / `0x1000000` / `0x2000000`
   (`FUN_00402230`, `ai-mission-planning.md`).
   - The port reads them as a `hyp:`: rank 1 for any character in a fleet,
@@ -173,9 +175,23 @@ Stage 3b (2026-10-19, save v86), the name prefix (`FUN_004f17f0`):
   `give`, the injury and `release_unfit` all set the command through it.
 - port: a character without a TEXTSTRA name for the kind keeps its name.
 
+Stage 4a (2026-10-19), the leadership readers:
+- `fleet_holder` (`FUN_004fd790`): the fleet's side's holder aboard;
+  `system_holder` (`FUN_00509330`): the system's side's holder on the
+  planet, none for a neutral or contested system; `leadership`: the
+  holder's slot `+0x1f4` (`+0x88`), else 0.
+- Bombardment (`bombardment.rs`): the batteries' general and each fleet's
+  admiral (`FUN_0055e930`, `FUN_0055e950`).
+- Planetary Assault (`assault.rs`): the system's general and the
+  attacking regiment's fleet's general (`FUN_0055eb00`; the push order at
+  `0x0058c01c..0x0058c029` gives `(attack, fleet general, defense, system
+  general)`).
+- The Fleet Status rows use `fleet_holder`.
+
 Not yet:
-- the readers use no rank: `bombardment-order.md` port note, and the AI
-  records' `hyp:`.
+- the decoy roll's officer (stage 4b);
+- the AI records' rank bits, the `hyp:` in `mission_planning.rs` (stage
+  4c).
 
 ## Plan (tracker item "Dowodzenie i jego utrata przy ranie")
 
@@ -193,10 +209,10 @@ Not yet:
    - The name prefix (`FUN_004f17f0`) in the windows that show it (3b).
    - Browser acceptance.
 4. **The readers.**
-   - The decoy roll's backing rank.
-   - The bombardment multipliers.
-   - The AI records' rank bits, replacing the `hyp:`. This also closes stage
-     5 of AI module 4.
+   - 4a: the bombardment multipliers and the assault's generals.
+   - 4b: the decoy roll's backing rank.
+   - 4c: the AI records' rank bits, replacing the `hyp:`. This also closes
+     stage 5 of AI module 4.
 
 The AI giving commands waits for module `0xc`.
 

@@ -1,0 +1,10 @@
+thread 'character_command::tests::a_fleet_s_or_a_planet_s_officer_is_its_own_side_s_holder_of_the_rank' (3238184) panicked at crates/rebellion-core/src/character_command.rs:500:9:
+  left: 0
+ right: 70
+thread 'bombardment::tests::a_fleet_s_admiral_and_the_planet_s_general_magnify_their_side_s_fire' (3238183) panicked at crates/rebellion-core/src/bombardment.rs:1139:9:
+  left: 40
+ right: 120
+thread 'assault::tests::each_side_s_general_adds_its_leadership_over_thirty_to_the_duel' (3238182) panicked at crates/rebellion-core/src/assault.rs:739:9:
+  left: 0
+ right: 1
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 1410 filtered out; finished in 0.00s
