@@ -1,0 +1,14 @@
+4a9ba3e87d76d2a3ba0d32b0d9da4f14374bf0f877ea0f6416f5890c51ef33aa  crates/rebellion-core/src/ai.rs
+6c590b4839858ba14075fa57e841af916cdc5c02e87ed66f89ae9445572e934b  crates/rebellion-core/src/mission_planning.rs
+60f9d621764aa0d06a84ef37e1a51043a0954e19230b7a58a27cfde44047367c  crates/rebellion-data/src/replay_fixture.rs
+b1017fc7d28920725a1bbbf71bd601040b97169bf3bb145c7a2ae4133e254069  crates/rebellion-data/tests/replay_manifest.rs
+d7c6f79e1346d95fd8ebf905ed7acfe1f21173883bfbffb70550b7a6e962eab8  crates/rebellion-data/tests/fixtures/replay_seed42_v1.json
+e9481034d641dcdc1abc376e31ec7f6e29e6e0266d1439d8e5bf6fb82319a9d6  agent_docs/deterministic-replay.md
+be9f6b8a2d7bf02b98e1559b17ad20826509ad20bc16f18899b6f12be61a80d4  ghidra/notes/ai-mission-planning.md
+8dd3c8f4e223d56db01402c4ff122efd39b00a57eff55d548050971922c92a7f  web/open-rebellion.wasm
+24d32e80430c97534b73a622de75ce8d8272778ae4093c1bff515d3d6cae8065  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-cycle/console.txt
+0166bca03e152ea3238b11a988c5ca9d652a24c63045dac1dd4d6cbd3e5c503e  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-cycle/network.txt
+85a268ae3c533f3f2fd3c24e1c7901ebfd0621ef434a42712898257ac29b8fbd  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-cycle/replay-equivalence.json
+69eb36a43438a00f9219df7db7f0e01b5e50b9f6db5e9a77ff324f8ec02385a3  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-cycle/fail-without.txt
+48a863b77809e5fa051960f4b0aeeb2f5c737c64b4b92badbc83422cb0add27b  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-cycle/playtest-sector-cycle.json
+b06ea9f44d6464446df4b29ebf39eb41d070cb967fc6fc3d408e6edd2108d63a  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-cycle/README.md

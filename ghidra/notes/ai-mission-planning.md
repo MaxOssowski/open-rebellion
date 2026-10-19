@@ -1735,10 +1735,61 @@ strategy's take theirs from the kind (`ai::strategy_subtype`: Recon 5,
 Espionage 6), so v84 saves need no change. The held planners still do not
 run states 3 to 8.
 
+**The cycle** (read and ported 2026-10-19, stage 6). `FUN_004bda60`
+states 3 to 9:
+- 3, `FUN_004bdcd0`: clears `+0x20` bit 4, then takes the gathering place
+  `+0x38`. The order is:
+  - the previous place while its record has `+0x30` bit 1 and not `+0x28`
+    bit 2. Outside the planner's sector `+0x74` this needs bit `0x40`,
+    which marks a place taken from another sector;
+  - the system of the first team member standing in `+0x74` whose record
+    qualifies, found by walking up the member's containers (`+0x1c`,
+    `FUN_004f2d10`). `FUN_004bd7d0` gives a record's sector
+    (`record+0x3c -> +0x18`);
+  - `FUN_0041a460(+0x74, +0x30 1 forbidding +0x28 2, order 1)`;
+  - `FUN_0041b2b0(+0x74, +0x30 1 forbidding +0x30 0x200)`, which sets
+    `0x40`.
+
+  `+0x74` is the owner's sector `+0x34`, copied by `FUN_00476ba0`.
+  Without a place, the cycle goes to 9.
+- 4, `FUN_0047b110`: keeps what `FUN_0047ba40` passes, and lets the rest
+  go (`FUN_0047b870`, `FUN_0047b8e0`);
+- 5 and 6: the class's selectors. The team selector sets bit 1 at its
+  size. The decoy selector clears bit 2, sets it at its cap, and past the
+  cap lets the first decoy go (`FUN_0047b9e0`);
+- 7, `FUN_004be230`: clears bit 8. One Move `0x201` to `+0x38` takes
+  every member whose record lacks `0x74000f1` and stands elsewhere. Bit 8
+  is set when no member is away or busy, the team is not empty, and bits
+  1 and 2 are set; otherwise the cycle ends;
+- 8, `FUN_0047b360`: the order;
+- 9, `FUN_004be4c0`: releases the members unless `+0x20 & 0xe0000000`.
+
+The reports (slot `+0x30`):
+- Recon `FUN_0047f2c0`, Espionage `FUN_00480860`, Sabotage and class
+  `0x65a9b0` `FUN_0047d4d0`;
+- result 0 sets `0x80000000`;
+- a failure runs `FUN_0047ae20`: it counts against slot `+0x24`, sets
+  `0x80` past it, and clears the count (Recon does not count);
+- a success clears the count, and for Recon and Espionage marks the
+  target seen (`FUN_0047aa90`, `FUN_00433dc0`);
+- both results run `FUN_0047b950`, which clears `0x80000000`.
+
+Ported: `ai::sector_cycle`, `sector_staging`,
+`nearest_sector_random_system` and `sector_report`. `bind_mission` binds
+these planners' orders as well, and the adoption no longer passes over
+them.
+
+port:
+- one Move per member (`0x201` expands per character, `move-order.md`);
+- the cycle runs once a day;
+- `0x40` is read as "the place is outside the sector";
+- `+0x20` `0x80` is not kept;
+- the bound mission stands for `0x80000000`, and a mission that ends
+  without a result clears it.
+
 Next:
-- `FUN_004bda60` with `FUN_004bdcd0` and `FUN_004be230`;
-- then add `mission_bits` and remove the heuristic Sabotage and
-  Assassination.
+- add `mission_bits` (bits 1 and 2 are now known per cycle) and remove
+  the heuristic Sabotage and Assassination.
 
 ## The controller's leader bit (read and ported 2026-10-19)
 

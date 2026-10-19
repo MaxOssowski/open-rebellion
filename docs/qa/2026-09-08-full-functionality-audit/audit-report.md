@@ -2790,6 +2790,12 @@ cross-runtime proof remain open
   target's record, replacing a `hyp:` that read `+0xbc` as a posture and
   took one decoy. Golden unchanged
   (`evidence/2026-10-19-sector-selectors/`).
+- 2026-10-19 (F-036): the sector planners' mission planners run their
+  cycle (`FUN_004bda60` states 3 to 9: `FUN_004bdcd0`, `FUN_004be230`,
+  `FUN_0047b360`) and read their reports. They now gather, move and
+  order. Missions dispatched in 24 campaigns rise from 11,976 to 19,149
+  (Reconnaissance 1,682 -> 6,450). Golden final `v1:dee3c02775ecfb47` ->
+  `v1:ed40629cc5780d6d` (`evidence/2026-10-19-sector-cycle/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

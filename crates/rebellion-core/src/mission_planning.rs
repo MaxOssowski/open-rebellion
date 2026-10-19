@@ -331,6 +331,26 @@ pub(crate) fn decoy_cap(kind: MissionKind, subtype: u32) -> usize {
     }
 }
 
+/// The team size at which `kind`'s team selector of `subtype` sets
+/// `+0x20` bit 1 (`FUN_0047f320`: one; `FUN_004808c0`, `FUN_0047d520`,
+/// `FUN_00482ce0`: two).
+pub(crate) fn team_size(kind: MissionKind, subtype: u32) -> usize {
+    selectors(kind, subtype).map_or(0, |s| s.team_size)
+}
+
+/// The decoy count at which the decoy selector of `kind`'s planner of
+/// `subtype` sets `+0x20` bit 2 and beyond which it lets the first decoy go
+/// (`FUN_0047b9e0`): the defense cap of the target's `v[29]`, the class's
+/// fixed cap, or 0 for a class with none (`FUN_0047f500` sets the bit at
+/// once).
+pub(crate) fn decoy_limit(kind: MissionKind, subtype: u32, defense: Option<i32>) -> usize {
+    match selectors(kind, subtype).and_then(|s| s.decoys) {
+        Some((_, DecoyCap::Fixed(cap))) => cap,
+        Some((_, DecoyCap::Defense)) => defense_cap(defense),
+        None => 0,
+    }
+}
+
 /// One side's planners for one AI evaluation.
 pub(crate) struct Planner<'a> {
     records: Vec<AgentRecord>,

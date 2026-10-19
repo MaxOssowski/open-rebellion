@@ -1,0 +1,5 @@
+test ai::tests::a_sector_planner_s_report_marks_its_target_seen_and_counts_failures ... FAILED
+test ai::tests::a_sector_planner_s_mission_planner_gathers_in_its_sector_else_the_nearest ... FAILED
+test ai::tests::a_sector_planner_s_mission_planner_gathers_its_full_team_then_orders ... FAILED
+test ai::tests::a_sector_planner_s_mission_planner_orders_only_with_its_team_and_decoys_full ... FAILED
+test result: FAILED. 1406 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s

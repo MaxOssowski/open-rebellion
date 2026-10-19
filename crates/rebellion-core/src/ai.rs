@@ -831,19 +831,17 @@ impl AIState {
 
     /// An applied order binds its mission to the planner that sent it
     /// (`FUN_0047b360` stores the order in planner `+0x28`): the standing
-    /// planner of its kind whose team `lead` leads, or the research planner
-    /// of its tree whose designer `lead` is.
+    /// or sector planner's planner of its kind whose team `lead` leads, or
+    /// the research planner of its tree whose designer `lead` is.
     pub fn bind_mission(
         &mut self,
         kind: MissionKind,
         lead: crate::missions::MissionMember,
         mission_id: u64,
     ) {
-        if let Some(p) = self
-            .mission_planners
-            .iter_mut()
-            .find(|p| p.standing && p.kind == kind && p.team.first() == Some(&lead))
-        {
+        if let Some(p) = self.mission_planners.iter_mut().find(|p| {
+            (p.standing || p.owner != 0) && p.kind == kind && p.team.first() == Some(&lead)
+        }) {
             p.mission = Some(mission_id);
             p.report = None;
         }
@@ -1715,12 +1713,8 @@ impl AISystem {
                     target_character,
                     target_object,
                 } if !matches!(kind, MissionKind::Move) && kind.research_tech().is_none() => {
-                    // port: a sector planner's mission planner (owner set)
-                    // orders nothing until FUN_004bda60's states 3 to 8 are
-                    // ported, so it does not stand for the order.
                     let running = state.mission_planners.iter().any(|p| {
-                        p.owner == 0
-                            && p.kind == kind
+                        p.kind == kind
                             && p.target_system == Some(target_system)
                             && p.target_character == target_character
                             && p.target_object == target_object
@@ -1805,10 +1799,9 @@ impl AISystem {
         let sectors = &state.module8.planners;
         let no_site = state.controller.flags & crate::ai_module1::NO_SITE != 0;
         state.mission_planners.retain_mut(|p| {
-            // A sector planner's mission planner runs FUN_004bda60: state 2
-            // takes its target from its owner's plan; without one state 9
-            // ends the cycle (FUN_004be4c0 releases the members it holds).
-            // port: states 3 to 8 are not ported yet; it holds no one.
+            // A sector planner's mission planner runs FUN_004bda60 once a
+            // day: state 2 takes its target from its owner's plan, and
+            // [`sector_cycle`] runs states 3 to 9.
             if p.owner != 0 {
                 if p.last_cycle != tick {
                     p.last_cycle = tick;
@@ -1837,6 +1830,8 @@ impl AISystem {
                     p.target_system = target.map(|t| t.0);
                     p.target_character = target.and_then(|t| t.1);
                     p.target_object = target.and_then(|t| t.2);
+                    let sector = owner.and_then(|s| s.sector);
+                    sector_cycle(p, sector, planner, (world, galaxy), actions);
                 }
                 return true;
             }
@@ -1967,6 +1962,9 @@ impl AISystem {
         const CHECK: u32 = 0x4000_0000;
         const ABORT: u32 = 0x2000_0000;
         let seen = &mut state.seen;
+        for p in state.mission_planners.iter_mut().filter(|p| p.owner != 0) {
+            sector_report(p, galaxy, seen, (missions, day));
+        }
         for p in state.mission_planners.iter_mut().filter(|p| p.standing) {
             match (p.kind, p.report) {
                 (MissionKind::Recruitment, Some(MissionOutcome::Success)) => {
@@ -4203,6 +4201,230 @@ fn strategy_subtype(kind: MissionKind) -> u32 {
         MissionKind::Reconnaissance => 5,
         MissionKind::Espionage => 6,
         _ => 0,
+    }
+}
+
+/// States 3 to 9 of a sector planner's mission planner (`FUN_004bda60`),
+/// after state 2 has set its target:
+///
+/// - 3 ([`sector_staging`]): the gathering place `+0x38`;
+/// - 4 (`FUN_0047b110`): it keeps the members `FUN_0047ba40` passes;
+/// - 5 and 6 (slots `+0x40`, `+0x44`): the team and decoy selectors of its
+///   class fill the team to [`crate::mission_planning::team_size`] and the
+///   decoys to [`crate::mission_planning::decoy_limit`] of the target's
+///   `v[29]`, and past the limit the first decoy goes (`FUN_0047b9e0`);
+///   they set `+0x20` bits 1 and 2 when full;
+/// - 7 (`FUN_004be230`): each free member (record without `0x74000f1`)
+///   away from the gathering place gets a Move order `0x201` to it; with
+///   none away or busy, a team, and bits 1 and 2, bit 8 is set;
+/// - 8 (`FUN_0047b360`): the mission order on the target;
+/// - 9 (`FUN_004be4c0`), after a failed state 2 or 3: the members go,
+///   unless `+0x20 & 0xe0000000` (its order's mission still runs).
+///
+/// port: the Move order is one per member, as `0x201` expands into one
+/// `0x241` per character (`move-order.md`).
+fn sector_cycle(
+    p: &mut MissionPlanner,
+    sector: Option<crate::ids::SectorKey>,
+    planner: &mut Planner<'_>,
+    (world, galaxy): (&GameWorld, &crate::ai_records::Galaxy),
+    actions: &mut Vec<AIAction>,
+) {
+    use crate::mission_planning::{decoy_limit, standing_system, team_size};
+    let staging = p
+        .target_system
+        .and_then(|_| sector_staging(p.staging, sector, &p.team, planner, (world, galaxy)));
+    p.staging = staging;
+    let (Some(target), Some(staging)) = (p.target_system, staging) else {
+        if p.mission.is_none() {
+            p.team.clear();
+            p.decoys.clear();
+        }
+        return;
+    };
+    p.team.retain(|&m| planner.keeps(m));
+    p.decoys.retain(|&m| planner.keeps(m));
+    for &member in p.team.iter().chain(&p.decoys) {
+        planner.hold(member);
+    }
+    let class = (p.kind, p.subtype);
+    let defense = galaxy.system(target).map(|r| r.values[29]);
+    let (team, decoys) = planner.refill(class, p.team.len(), p.decoys.len(), defense);
+    p.team.extend(team);
+    p.decoys.extend(decoys);
+    let limit = decoy_limit(p.kind, p.subtype, defense);
+    if p.decoys.len() > limit {
+        p.decoys.remove(0);
+    }
+    let full = p.team.len() >= team_size(p.kind, p.subtype) && p.decoys.len() >= limit;
+    let mut ready = !p.team.is_empty();
+    for &member in p.team.iter().chain(&p.decoys) {
+        if !planner.sendable(member) {
+            ready = false;
+            continue;
+        }
+        if standing_system(world, member) != Some(staging) {
+            ready = false;
+            actions.push(AIAction::DispatchMission {
+                kind: MissionKind::Move,
+                team: vec![member],
+                decoys: Vec::new(),
+                target_system: staging,
+                target_character: None,
+                target_object: None,
+            });
+        }
+    }
+    if ready && full {
+        actions.push(AIAction::DispatchMission {
+            kind: p.kind,
+            team: p.team.clone(),
+            decoys: p.decoys.clone(),
+            target_system: target,
+            target_character: p.target_character,
+            target_object: p.target_object,
+        });
+    }
+}
+
+/// State 3 of a sector planner's mission planner (`FUN_004bdcd0`): its
+/// gathering place `+0x38`, a system whose record is the side's (`+0x30`
+/// bit 1) and not blockaded (`+0x28` bit 2):
+///
+/// 1. the previous one while it still qualifies. One in another sector is
+///    kept only while `+0x20` bit `0x40` says it was taken from there,
+///    which for these planners it always was;
+/// 2. the system of the first team member standing in the planner's
+///    sector `+0x74` (the owner's `+0x34`, `FUN_00476ba0`) where the
+///    record qualifies (`FUN_004bd7d0` gives the record's sector);
+/// 3. a random qualifying system of the sector (`FUN_0041a460`, order 1);
+/// 4. in the nearest other sector with one, a random system of the side
+///    with no enemy fleet (`+0x30` 1 forbidding `0x200`, `FUN_0041b2b0`),
+///    setting bit `0x40`.
+///
+/// None without a sector.
+fn sector_staging(
+    previous: Option<SystemKey>,
+    sector: Option<crate::ids::SectorKey>,
+    team: &[crate::missions::MissionMember],
+    planner: &mut Planner<'_>,
+    (world, galaxy): (&GameWorld, &crate::ai_records::Galaxy),
+) -> Option<SystemKey> {
+    use crate::ai_records::{Mask, Order};
+    let sector = sector?;
+    let fit = |s: SystemKey| {
+        galaxy
+            .system(s)
+            .is_some_and(|r| r.kind & 1 != 0 && r.state & 2 == 0)
+    };
+    let in_sector = |s: SystemKey| world.systems.get(s).is_some_and(|sys| sys.sector == sector);
+    if let Some(previous) = previous.filter(|&s| fit(s)) {
+        return Some(previous);
+    }
+    if let Some(at) = team
+        .iter()
+        .filter_map(|&m| crate::mission_planning::standing_system(world, m))
+        .find(|&s| in_sector(s) && fit(s))
+    {
+        return Some(at);
+    }
+    let any = Mask::new(0, 0);
+    random_system(
+        planner,
+        galaxy,
+        Some(sector),
+        [Mask::new(0, 2), any, Mask::new(1, 0)],
+        Order::Ascending,
+    )
+    .or_else(|| {
+        nearest_sector_random_system(planner, galaxy, sector, [any, any, Mask::new(1, 0x200)])
+    })
+}
+
+/// `FUN_0041b2b0`: of the sectors but `from`, by squared distance (the
+/// first of equals), the nearest whose systems include one passing
+/// `masks`, picked by a random key (`FUN_0041a460`, order 1), as
+/// [`crate::ai_planner::nearest_sector_system`] does for the plans.
+fn nearest_sector_random_system(
+    planner: &mut Planner<'_>,
+    galaxy: &crate::ai_records::Galaxy,
+    from: crate::ids::SectorKey,
+    masks: [crate::ai_records::Mask; 3],
+) -> Option<SystemKey> {
+    let home = galaxy.sector(from)?.position;
+    let mut best: Option<(i32, SystemKey)> = None;
+    for s in galaxy.sectors.iter().filter(|s| s.sector != from) {
+        let d = crate::ai_records::squared_distance(home, s.position);
+        if best.is_some_and(|(top, _)| d >= top) {
+            continue;
+        }
+        if let Some(system) = random_system(
+            planner,
+            galaxy,
+            Some(s.sector),
+            masks,
+            crate::ai_records::Order::Ascending,
+        ) {
+            best = Some((d, system));
+        }
+    }
+    best.map(|(_, s)| s)
+}
+
+/// The Mission Report of a sector planner's mission planner (slot
+/// `+0x30`):
+///
+/// - Reconnaissance (`FUN_0047f2c0`) and Espionage (`FUN_00480860`): a
+///   success marks the target seen today (`FUN_0047aa90`, `FUN_00433dc0`)
+///   and clears the count `+0x6c`;
+/// - Espionage, Sabotage (`FUN_0047d4d0`, which class `0x65a9b0` shares):
+///   a failure counts against slot `+0x24` (`FUN_0047ae20`: 10,
+///   `FUN_004820c0`; 5 for class `0x65a9b0`, `FUN_00404c20`), and past it
+///   the count clears; Sabotage's success clears it;
+/// - either result runs `FUN_0047b950`, which clears `+0x20` `0x80000000`,
+///   the bit its order's running mission keeps (result 0).
+///
+/// port: `+0x20` `0x80`, which `FUN_0047ae20` sets past the count, is not
+/// kept; a mission that ends without a result frees the planner too.
+fn sector_report(
+    p: &mut MissionPlanner,
+    galaxy: &crate::ai_records::Galaxy,
+    seen: &mut HashMap<SystemKey, u64>,
+    (missions, day): (&MissionState, u64),
+) {
+    use crate::missions::MissionOutcome;
+    if let Some(outcome) = p.report.take() {
+        p.mission = None;
+        match (p.kind, outcome) {
+            (MissionKind::Reconnaissance | MissionKind::Espionage, MissionOutcome::Success) => {
+                if let Some(t) = p.target_system.filter(|&t| galaxy.system(t).is_some()) {
+                    seen.insert(t, day);
+                }
+                p.failures = 0;
+            }
+            (MissionKind::Reconnaissance, MissionOutcome::Failure) => {}
+            (kind, MissionOutcome::Failure) => {
+                let limit = if matches!(kind, MissionKind::Abduction | MissionKind::Assassination) {
+                    5
+                } else {
+                    10
+                };
+                p.failures += 1;
+                if p.failures > limit {
+                    p.failures = 0;
+                }
+            }
+            (_, MissionOutcome::Success) => p.failures = 0,
+        }
+    }
+    let running = p.mission.is_some_and(|id| {
+        missions
+            .missions()
+            .iter()
+            .any(|m| m.id == id && m.end_code == 0)
+    });
+    if !running {
+        p.mission = None;
     }
 }
 
@@ -7673,8 +7895,7 @@ mod tests {
             );
         }
         assert_eq!(state.mission_planners.len(), 1);
-        // port: a sector planner's planner (owner set) orders nothing yet,
-        // so it does not stand for the order.
+        // A sector planner's planner (owner set) stands for it too.
         state.mission_planners[0].owner = 7;
         AISystem::adopt_mission_orders(
             &mut state,
@@ -7682,7 +7903,7 @@ mod tests {
             0,
             &mut vec![order(MissionKind::Rescue, vec![mb], target, None, None)],
         );
-        assert_eq!(state.mission_planners.len(), 2);
+        assert_eq!(state.mission_planners.len(), 1);
         // Other actions pass through untouched.
         let mut passing = vec![order(MissionKind::Move, vec![mb], here, None, None)];
         AISystem::adopt_mission_orders(&mut state, 1, 0, &mut passing);
@@ -9134,9 +9355,9 @@ mod tests {
     }
 
     #[test]
-    fn a_sector_planner_s_mission_planner_waits_in_the_cycle() {
-        // port: FUN_004bda60's states 3 to 8 are not ported; the planner
-        // neither orders nor ends, whatever its age.
+    fn a_sector_planner_s_mission_planner_without_a_target_waits_in_the_cycle() {
+        // FUN_004bda60: a failed state 2 goes to state 9 and ends the
+        // cycle; the planner neither orders nor ends, whatever its age.
         let (world, _, _, _) = diplomacy_world(90.0, &[90]);
         let mut state = AIState::new(AiFaction::Empire);
         state.module8.planners = vec![crate::ai_module8::SectorPlanner {
@@ -9812,6 +10033,315 @@ mod tests {
         );
         let p = &state.mission_planners[0];
         assert_eq!((p.team.len(), p.decoys.len()), (1, 0));
+    }
+
+    #[test]
+    fn a_sector_planner_s_mission_planner_gathers_in_its_sector_else_the_nearest() {
+        // FUN_004bdcd0: the previous place while the side's (+0x30 1) and
+        // not blockaded (+0x28 2), wherever it is (bit 0x40); else a team
+        // member's system in the sector +0x74; else a random such system
+        // of the sector (FUN_0041a460, order 1); else one in the nearest
+        // other sector with no enemy fleet (FUN_0041b2b0, +0x30 1
+        // forbidding 0x200).
+        let (mut world, home, rebels, _) = recon_world(0, true);
+        let far = world.systems[rebels[0]].sector;
+        let near = world.systems[home].sector;
+        let outpost = |world: &mut GameWorld| {
+            let s = add_system(world, far, 0.1, 0.9);
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+            s
+        };
+        let first = outpost(&mut world);
+        let second = outpost(&mut world);
+        let spy = add_commando(&mut world, false, 90, 0);
+        let MissionMember::SpecialForce(key) = spy else {
+            unreachable!()
+        };
+        world.systems[second].special_forces.push(key);
+        let away = add_commando(&mut world, false, 90, 0);
+        let MissionMember::SpecialForce(key) = away else {
+            unreachable!()
+        };
+        world.systems[home].special_forces.push(key);
+        // A farther sector with a system of the side.
+        let remote = add_sector(&mut world);
+        world.sectors[remote].x = 5000;
+        let outer = add_system(&mut world, remote, 0.1, 0.9);
+        world.systems[outer].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let mut stage = |previous, sector, team: &[MissionMember]| {
+            sector_staging(previous, sector, team, &mut planner, (&world, &galaxy))
+        };
+        assert_eq!(stage(Some(home), Some(far), &[spy]), Some(home));
+        assert_eq!(stage(Some(rebels[0]), Some(far), &[spy]), Some(second));
+        // A member standing in another sector does not count.
+        assert_eq!(stage(None, Some(far), &[away, spy]), Some(second));
+        assert!([first, second].contains(&stage(None, Some(far), &[]).unwrap()));
+        assert_eq!(stage(None, None, &[spy]), None);
+        // No system of the side in the sector: the nearest other sector's.
+        for s in [first, second] {
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        }
+        let galaxy = galaxy_of(&state, &world);
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        assert_eq!(
+            sector_staging(None, Some(far), &[spy], &mut planner, (&world, &galaxy)),
+            Some(home)
+        );
+        assert_eq!(world.systems[home].sector, near);
+    }
+
+    #[test]
+    fn a_sector_planner_s_mission_planner_gathers_its_full_team_then_orders() {
+        // FUN_004bda60 states 3 to 8: the team selector of the sector
+        // Espionage class takes two (FUN_004808c0), the decoys one for a
+        // target of no defense ((0 + 2) / 2, FUN_00480aa0); a member away
+        // from the gathering place gets a Move (FUN_004be230); the order
+        // goes once all stand there (FUN_0047b360). While its mission runs
+        // the planner orders nothing; without a target it lets its members
+        // go unless its mission still runs (FUN_004be4c0).
+        let (mut world, home, rebels, _) = recon_world(0, true);
+        let spies: Vec<MissionMember> = (0..3)
+            .map(|i| {
+                let spy = add_commando(&mut world, false, 90 - i, 0);
+                let MissionMember::SpecialForce(key) = spy else {
+                    unreachable!()
+                };
+                world.systems[home].special_forces.push(key);
+                spy
+            })
+            .collect();
+        let near = world.systems[home].sector;
+        let elsewhere = add_system(&mut world, near, 0.1, 0.9);
+        world.systems[elsewhere].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let MissionMember::SpecialForce(third) = spies[2] else {
+            unreachable!()
+        };
+        world.systems[home].special_forces.retain(|&k| k != third);
+        world.systems[elsewhere].special_forces.push(third);
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut galaxy = galaxy_of(&state, &world);
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner {
+            id: 7,
+            kind: 3,
+            sector: Some(world.systems[rebels[0]].sector),
+            mission: [0x52, 0, 0],
+            ..Default::default()
+        }];
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        state.seen.insert(rebels[1], 1);
+        let run = |state: &mut AIState,
+                   world: &GameWorld,
+                   galaxy: &mut crate::ai_records::Galaxy,
+                   tick| {
+            let mut actions = Vec::new();
+            let mut planner = planner_for(world, AiFaction::Empire);
+            for p in &state.mission_planners {
+                for &m in p.team.iter().chain(&p.decoys) {
+                    planner.hold(m);
+                }
+            }
+            AISystem::mission_planner_cycle(state, &mut planner, world, galaxy, tick, &mut actions);
+            actions
+        };
+        let actions = run(&mut state, &world, &mut galaxy, 5);
+        let p = &state.mission_planners[0];
+        assert_eq!(p.team, spies[0..2]);
+        assert_eq!(p.decoys, spies[2..3]);
+        // No system of the side in the target's sector: the nearest one.
+        assert!([home, elsewhere].contains(&p.staging.unwrap()));
+        let staging = p.staging.unwrap();
+        let away: Vec<_> = spies
+            .iter()
+            .copied()
+            .filter(|&m| crate::mission_planning::standing_system(&world, m) != Some(staging))
+            .collect();
+        assert_eq!(orders(&actions, MissionKind::Move).len(), away.len());
+        assert!(orders(&actions, MissionKind::Espionage).is_empty());
+        // All gathered: the order.
+        for spy in &spies {
+            let MissionMember::SpecialForce(key) = *spy else {
+                unreachable!()
+            };
+            for sys in world.systems.values_mut() {
+                sys.special_forces.retain(|&k| k != key);
+            }
+            world.systems[staging].special_forces.push(key);
+        }
+        let actions = run(&mut state, &world, &mut galaxy, 6);
+        assert_eq!(
+            orders(&actions, MissionKind::Espionage),
+            vec![(spies[0..2].to_vec(), rebels[0], None)]
+        );
+        assert!(orders(&actions, MissionKind::Move).is_empty());
+        // Its mission runs: nothing more, and the members stay.
+        state.bind_mission(MissionKind::Espionage, spies[0], 99);
+        assert_eq!(state.mission_planners[0].mission, Some(99));
+        for spy in &spies {
+            let MissionMember::SpecialForce(key) = *spy else {
+                unreachable!()
+            };
+            world.special_forces[key].on_mission = true;
+        }
+        assert!(run(&mut state, &world, &mut galaxy, 7).is_empty());
+        state.module8.planners[0].sector = None;
+        run(&mut state, &world, &mut galaxy, 8);
+        assert_eq!(state.mission_planners[0].team.len(), 2);
+        // No mission running and no target: the members go.
+        state.mission_planners[0].mission = None;
+        run(&mut state, &world, &mut galaxy, 9);
+        assert!(state.mission_planners[0].team.is_empty());
+        assert!(state.mission_planners[0].decoys.is_empty());
+    }
+
+    #[test]
+    fn a_sector_planner_s_report_marks_its_target_seen_and_counts_failures() {
+        // FUN_0047f2c0, FUN_00480860: a success marks the target seen
+        // (FUN_00433dc0) and clears the count; FUN_0047ae20 counts a
+        // failure against slot +0x24 (10 for Espionage and Sabotage,
+        // FUN_004820c0; 5 for class 0x65a9b0, FUN_00404c20). FUN_0047b950
+        // clears the running bit 0x80000000.
+        use crate::missions::MissionOutcome::{Failure, Success};
+        let (world, _, rebels, _) = recon_world(0, true);
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        let missions = MissionState::new();
+        let planner = |kind| MissionPlanner {
+            id: 1,
+            kind,
+            team: Vec::new(),
+            decoys: Vec::new(),
+            target_system: Some(rebels[0]),
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: None,
+            standing: false,
+            claimed: None,
+            sector: None,
+            mission: Some(3),
+            report: None,
+            failures: 4,
+            pending: 0,
+            owner: 7,
+            subtype: 0,
+        };
+        let mut seen = HashMap::new();
+        let mut p = planner(MissionKind::Espionage);
+        p.report = Some(Success);
+        sector_report(&mut p, &galaxy, &mut seen, (&missions, 12));
+        assert_eq!(seen.get(&rebels[0]), Some(&12));
+        assert_eq!((p.failures, p.mission, p.report), (0, None, None));
+        let fail = |kind, failures| {
+            let mut p = planner(kind);
+            p.failures = failures;
+            p.report = Some(Failure);
+            sector_report(&mut p, &galaxy, &mut HashMap::new(), (&missions, 12));
+            p.failures
+        };
+        assert_eq!(fail(MissionKind::Sabotage, 9), 10);
+        assert_eq!(fail(MissionKind::Sabotage, 10), 0);
+        assert_eq!(fail(MissionKind::Assassination, 4), 5);
+        assert_eq!(fail(MissionKind::Assassination, 5), 0);
+        assert_eq!(fail(MissionKind::Reconnaissance, 4), 4);
+        let mut p = planner(MissionKind::Sabotage);
+        p.report = Some(Success);
+        sector_report(&mut p, &galaxy, &mut seen, (&missions, 13));
+        assert_eq!(p.failures, 0);
+        assert_eq!(seen.get(&rebels[0]), Some(&12));
+        // Without a report, a running mission keeps the bit; a mission
+        // gone clears it.
+        let mut running = MissionState::new();
+        let id = running.dispatch(crate::missions::MissionRequest {
+            kind: MissionKind::Sabotage,
+            faction: MissionFaction::Empire,
+            team: Vec::new(),
+            decoys: Vec::new(),
+            target_system: rebels[0],
+            target_character: None,
+            target_object: None,
+            tick: 1,
+        });
+        let mut p = planner(MissionKind::Sabotage);
+        p.mission = Some(id);
+        sector_report(&mut p, &galaxy, &mut seen, (&running, 13));
+        assert_eq!(p.mission, Some(id));
+        p.mission = Some(id + 1);
+        sector_report(&mut p, &galaxy, &mut seen, (&running, 13));
+        assert_eq!(p.mission, None);
+    }
+
+    #[test]
+    fn a_sector_planner_s_mission_planner_orders_only_with_its_team_and_decoys_full() {
+        // FUN_004be230 sets bit 8 only with +0x20 bits 1 and 2: the team at
+        // its size (FUN_004808c0: two) and the decoys at the cap
+        // ((v[29] + 2) / 2, FUN_00480aa0).
+        let (mut world, home, rebels, _) = recon_world(0, true);
+        let spies: Vec<MissionMember> = (0..3)
+            .map(|i| {
+                let spy = add_commando(&mut world, false, 90 - i, 0);
+                let MissionMember::SpecialForce(key) = spy else {
+                    unreachable!()
+                };
+                world.systems[home].special_forces.push(key);
+                spy
+            })
+            .collect();
+        let state = AIState::new(AiFaction::Empire);
+        let mut galaxy = galaxy_of(&state, &world);
+        let far = world.systems[rebels[0]].sector;
+        let planner_with = |team: &[MissionMember], decoys: &[MissionMember]| MissionPlanner {
+            id: 1,
+            kind: MissionKind::Espionage,
+            team: team.to_vec(),
+            decoys: decoys.to_vec(),
+            target_system: Some(rebels[0]),
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: None,
+            standing: false,
+            claimed: None,
+            sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
+            owner: 7,
+            subtype: 0,
+        };
+        let ordered = |p: &mut MissionPlanner, galaxy: &crate::ai_records::Galaxy, held: usize| {
+            let mut planner = planner_for(&world, AiFaction::Empire);
+            for &m in &spies[..held] {
+                planner.hold(m);
+            }
+            let mut actions = Vec::new();
+            sector_cycle(p, Some(far), &mut planner, (&world, galaxy), &mut actions);
+            !orders(&actions, MissionKind::Espionage).is_empty()
+        };
+        // Two and a decoy: the order.
+        let mut p = planner_with(&spies[..2], &[]);
+        assert!(ordered(&mut p, &galaxy, 2));
+        assert_eq!(p.decoys, spies[2..3]);
+        // One member and the decoy, the third held by another planner: no
+        // one free to complete the team.
+        let mut p = planner_with(&spies[..1], &spies[1..2]);
+        assert!(!ordered(&mut p, &galaxy, 3));
+        // A defense of 2 wants two decoys; one is not enough.
+        for r in galaxy.sectors.iter_mut().flat_map(|s| s.systems.iter_mut()) {
+            if r.system == rebels[0] {
+                r.values[29] = 2;
+            }
+        }
+        let mut p = planner_with(&spies[..2], &[]);
+        assert!(!ordered(&mut p, &galaxy, 2));
+        assert_eq!(p.decoys, spies[2..3]);
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.
