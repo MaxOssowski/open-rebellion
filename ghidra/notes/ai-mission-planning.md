@@ -1518,12 +1518,36 @@ manufacturing systems) and Assassination (enemy main characters) in
 - `FUN_00476e80` with the plan objects' targets;
 - `FUN_004bdcd0` and `FUN_004be230`.
 
+## The controller's leader bit (read and ported 2026-10-19)
+
+`FUN_004182a0` sets the AI's controller up (case 1). It reads the game's
+settings through `FUN_004fce50`, a 16-byte copy of game `+0xc0` `+0x58`
+whose defaults are 0, 0, 7, 0 (`FUN_0051c740`). It sets controller `+4`
+bit 0 when field `+8` is 1.
+
+The Objectives lists (`FUN_0044b2d0`, `FUN_0044bb70`) read the same field
+as the game type: `+8 == 0` shows the standard game's leader conditions
+beside the VictoryConditions word (side `+0xbc`). So the bit marks a
+Headquarters Only game. `FUN_00401d20` then marks no record as a leader
+(`0x40000000`).
+
+That has two effects. The selectors that forbid a leader (Incite, Rescue,
+Abduction, Sabotage, `0x4f400051`/`0x0f400051`) can take one. And a
+leader aboard a ship no longer adds to the ship record's `v[18]`
+(`FUN_00484630`).
+
+Ported:
+- `AIState::set_game_type`, called each day by the simulation and the
+  app from the campaign's setup;
+- `LEADERS_UNMARKED`;
+- `Planner::without_leaders`, applied in `AISystem::side_planner`.
+
+The headless runs play the standard game, so their output is unchanged.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
 - The posture (`FUN_00478000`, `FUN_004b7150`) and its sector bits.
-- When the controller's leader bit (`FUN_004182a0`, a game setting read
-  through `FUN_004fce50`) is set.
 - Whether the per-system record's `+0x34` is a DatId or coordinates: it is
   the system's map position (2026-10-14, see above).
 

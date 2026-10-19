@@ -360,6 +360,15 @@ impl<'a> Planner<'a> {
         })
     }
 
+    /// `FUN_00401d20` sets the leader bit (`0x40000000`) only while the
+    /// side controller's `+4` bit 0 is clear; a Headquarters Only game sets
+    /// it (`FUN_004182a0`), and no record is a leader.
+    pub(crate) fn without_leaders(&mut self) {
+        for record in &mut self.records {
+            record.flags &= !LEADER;
+        }
+    }
+
     /// Diplomacy's slot `+0x3c` (`FUN_00481ef0`), which `FUN_0047ba40` asks
     /// in state 2: the planner lets `member` go when the best free diplomat
     /// (its team query, `FUN_004035d0` with priority 0, order 1) has more
@@ -697,9 +706,8 @@ fn records(
             }
         }
         // FUN_00401d20: the leader bit is set while the side controller's
-        // +4 bit 0 is clear. hyp: that bit's only writer (FUN_004182a0, a
-        // game setting read through FUN_004fce50) is untraced; it is read
-        // as clear, its constructor value.
+        // +4 bit 0 is clear; FUN_004182a0 sets that bit in a Headquarters
+        // Only game ([`Planner::without_leaders`]).
         if c.is_major && LEADERS.contains(&id) {
             flags |= LEADER;
         }
@@ -924,6 +932,29 @@ mod tests {
         assert!(!p.outranked(MissionKind::Recruitment, member));
         p.hold(better);
         assert!(!p.outranked(MissionKind::Diplomacy, member));
+    }
+
+    #[test]
+    fn in_a_headquarters_game_no_record_is_a_leader() {
+        // FUN_00401d20 marks Mon Mothma, Luke, the Emperor and Vader
+        // (0x40000000) while controller +4 bit 0 is clear; a Headquarters
+        // Only game sets it (FUN_004182a0). The Incite team forbids a
+        // leader (FUN_0047ff90, 0x4f400051).
+        let mut world = world();
+        let luke = agent(&mut world, 0x242, |c| {
+            c.is_major = true;
+            c.leadership = pair(90);
+        });
+        let mut p = planner(&world);
+        assert_eq!(p.flags(luke).map(|f| f & LEADER), Some(LEADER));
+        assert_eq!(p.plan(MissionKind::InciteUprising), None);
+        let mut p = planner(&world);
+        p.without_leaders();
+        assert_eq!(p.flags(luke).map(|f| f & LEADER), Some(0));
+        assert_eq!(
+            p.plan(MissionKind::InciteUprising).map(|(team, _)| team),
+            Some(vec![luke])
+        );
     }
 
     #[test]

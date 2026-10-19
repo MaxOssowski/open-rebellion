@@ -577,6 +577,10 @@ pub struct AIState {
     pub sector_claims: HashMap<crate::ids::SectorKey, u32>,
 }
 
+/// Controller `+4` bit 0: a Headquarters Only game, whose records mark no
+/// leader (`FUN_004182a0`, `FUN_00401d20`).
+pub const LEADERS_UNMARKED: u32 = 1;
+
 /// A system record's yard marks (`+0x28 & 0x3e00000`), which
 /// `FUN_00433e40` keeps across refreshes.
 pub const YARD_MARKS: u32 = 0x3e0_0000;
@@ -845,6 +849,22 @@ impl AIState {
     /// A new day clears the order count (`FUN_00485de0`, slot `+0x54`, from
     /// `FUN_0041e500` at the day boundary: its window `+0x424` stays 0, so
     /// every call clears `+0x420`).
+    /// `FUN_004182a0` at the AI's setup: controller `+4` bit 0 is set when
+    /// the game's setting `+8` (`FUN_004fce50`, the game type the
+    /// Objectives window also reads, `FUN_0044bb70`) is 1, a Headquarters
+    /// Only game. While it is set, the records mark no leader
+    /// (`FUN_00401d20`, [`Planner::without_leaders`]).
+    ///
+    /// port: the callers set it each day from the campaign's setup.
+    pub fn set_game_type(&mut self, conditions: crate::world::VictoryConditions) {
+        let headquarters = conditions == crate::world::VictoryConditions::HeadquartersOnly;
+        if headquarters {
+            self.controller.flags |= LEADERS_UNMARKED;
+        } else {
+            self.controller.flags &= !LEADERS_UNMARKED;
+        }
+    }
+
     pub fn begin_day(&mut self) {
         self.orders_today = 0;
     }
@@ -1145,13 +1165,7 @@ impl AISystem {
         if state.orders_today >= ORDERS_PER_DAY {
             return Vec::new();
         }
-        let mut planner = Planner::new(
-            world,
-            mission_state,
-            &state.busy_characters,
-            matches!(faction, AiFaction::Alliance),
-            tick,
-        );
+        let mut planner = Self::side_planner(state, world, mission_state, faction, tick);
         // FUN_004198a0, FUN_00419870, FUN_004197b0: the controller's bit for
         // each tree the side has finished.
         planner.research_done(
@@ -1301,6 +1315,29 @@ impl AISystem {
             }
         }
         orders
+    }
+
+    /// The side's object records for a pass (`FUN_00401d20` through
+    /// [`Planner::new`]), without leaders while controller `+4` bit 0 is set
+    /// ([`LEADERS_UNMARKED`]).
+    fn side_planner<'w>(
+        state: &AIState,
+        world: &'w GameWorld,
+        mission_state: &MissionState,
+        faction: AiFaction,
+        tick: u64,
+    ) -> Planner<'w> {
+        let mut planner = Planner::new(
+            world,
+            mission_state,
+            &state.busy_characters,
+            matches!(faction, AiFaction::Alliance),
+            tick,
+        );
+        if state.controller.flags & LEADERS_UNMARKED != 0 {
+            planner.without_leaders();
+        }
+        planner
     }
 
     /// Phase 4's refresh of the side's records (`FUN_00418500`): the class,
@@ -8179,6 +8216,35 @@ mod tests {
             abduction_target(&mut p, &mut planner, &world, &galaxy),
             None
         );
+    }
+
+    #[test]
+    fn the_game_type_sets_the_controller_s_leader_bit() {
+        // FUN_004182a0: controller +4 bit 0 for a Headquarters Only game.
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.controller.flags = 0x10;
+        state.set_game_type(crate::world::VictoryConditions::HeadquartersOnly);
+        assert_eq!(state.controller.flags, 0x11);
+        state.set_game_type(crate::world::VictoryConditions::Standard);
+        assert_eq!(state.controller.flags, 0x10);
+    }
+
+    #[test]
+    fn a_pass_s_records_mark_no_leader_in_a_headquarters_game() {
+        // FUN_00401d20 with controller +4 bit 0 (FUN_004182a0).
+        let mut world = empty_world();
+        let luke = add_character(&mut world, true, true, 30);
+        world.characters[luke].dat_id = DatId(0x242);
+        let missions = MissionState::new();
+        let mut state = AIState::new(AiFaction::Alliance);
+        let leader = |state: &AIState| {
+            AISystem::side_planner(state, &world, &missions, AiFaction::Alliance, 1)
+                .flags(MissionMember::Character(luke))
+                .map(|f| f & 0x4000_0000)
+        };
+        assert_eq!(leader(&state), Some(0x4000_0000));
+        state.set_game_type(crate::world::VictoryConditions::HeadquartersOnly);
+        assert_eq!(leader(&state), Some(0));
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.

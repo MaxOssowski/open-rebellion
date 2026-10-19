@@ -513,8 +513,10 @@ pub fn run_simulation_tick(
     );
     for event in tick_events {
         states.ai.begin_day();
+        states.ai.set_game_type(states.campaign_config.victory_conditions);
         if let Some(ref mut ai2) = states.ai2 {
             ai2.begin_day();
+            ai2.set_game_type(states.campaign_config.victory_conditions);
         }
         // The AI follows its ships by id (GameWorld::number_ships).
         world.number_ships();

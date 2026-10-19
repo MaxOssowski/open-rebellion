@@ -2742,6 +2742,11 @@ cross-runtime proof remain open
 - 2026-10-19 (F-036): a Diplomacy planner trades its diplomat for a
   better free one (`FUN_0047ba40` asking slot `+0x3c`, `FUN_00481ef0`).
   Golden unchanged (`evidence/2026-10-19-diplomat-trade/`).
+- 2026-10-19 (F-036): the AI controller's leader bit is ported
+  (`FUN_004182a0`). In a Headquarters Only game the records mark no
+  leader (`FUN_00401d20`), so leaders may join the missions whose teams
+  forbid them. Standard campaigns are unchanged, event for event
+  (`evidence/2026-10-19-leader-bit/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

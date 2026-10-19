@@ -2592,8 +2592,10 @@ async fn main() {
                 BombardEnv::new(sim_rng.gen::<u64>(), Some(victory_state.alliance_hq));
             for event in &tick_events {
                 ai_state.begin_day();
+                ai_state.set_game_type(campaign_config.victory_conditions);
                 if let Some(ref mut second_ai) = secondary_ai_state {
                     second_ai.begin_day();
+                    second_ai.set_game_type(campaign_config.victory_conditions);
                 }
                 // The AI follows its ships by id (GameWorld::number_ships).
                 world.number_ships();

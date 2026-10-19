@@ -1,0 +1,3 @@
+test ai::tests::a_pass_s_records_mark_no_leader_in_a_headquarters_game ... FAILED
+    ai::tests::a_pass_s_records_mark_no_leader_in_a_headquarters_game
+test result: FAILED. 1387 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
