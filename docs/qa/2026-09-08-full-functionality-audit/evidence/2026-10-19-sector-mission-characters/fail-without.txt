@@ -1,0 +1,7 @@
+test ai::tests::a_sector_planner_s_assassination_planner_takes_a_system_and_its_character ... FAILED
+test ai::tests::each_plan_kind_looks_for_an_opponent_in_its_own_order ... FAILED
+test ai::tests::an_opponent_at_a_system_is_any_character_of_the_other_side_where_the_bits_look ... FAILED
+test result: FAILED. 88 passed; 3 failed; 0 ignored; 0 measured; 1308 filtered out; finished in 0.01s
+error: test failed, to rerun pass `-p rebellion-core --lib`
+test ai::tests::each_order_is_its_own_planner_unless_one_runs_for_it_and_held_members_stay_put ... FAILED
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1398 filtered out; finished in 0.00s

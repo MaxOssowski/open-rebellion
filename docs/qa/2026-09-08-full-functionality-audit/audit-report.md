@@ -2766,6 +2766,12 @@ cross-runtime proof remain open
   `FUN_00476e80`, slots `+0x2c` and `+0x28`). They still order nothing.
   Golden final `v1:14ec5ed9881bd79b` -> `v1:aae0de7bbef402c1`
   (`evidence/2026-10-19-sector-mission-targets/`).
+- 2026-10-19 (F-036): a sector planner's held Abduction and
+  Assassination planners take a system and a character from its plan
+  (slot `+0x24`, `FUN_004af1c0`). They still order nothing. Golden
+  unchanged. The Fleet window gate passed in 1 of 4 runs; the
+  stage-2 commit also fails it (`join-fleet`), an open problem
+  (`evidence/2026-10-19-sector-mission-characters/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

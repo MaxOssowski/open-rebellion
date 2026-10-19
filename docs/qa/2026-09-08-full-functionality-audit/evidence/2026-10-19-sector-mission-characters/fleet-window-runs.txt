@@ -1,0 +1,5 @@
+this stage, run 1 (gates script): fail; alliance join-fleet: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: 4 !== 1; empire join-fleet: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: 4 !== 1
+this stage, run 2: fail; alliance travel: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: the last regiment message was 'Regiment arrived at Svivren', expected "Regiment arrived at F'tral"
+HEAD 077a997d (stage 2), run 1: fail; empire join-fleet: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: 4 !== 1
+this stage, run 3: fail; alliance join-fleet: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: 4 !== 1
+this stage, run 4: pass, 48 cases

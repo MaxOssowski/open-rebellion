@@ -1,0 +1,10 @@
+1ec60c8bfc9415cadc4e6a7d3f158431be05ae5bdff5647818e396a739a52acf  crates/rebellion-core/src/ai.rs
+d90db9ef14799d17ccf6de57da8af5e21e02dc5e0e9f0db34d5f5fd885c2fa8f  ghidra/notes/ai-mission-planning.md
+8a4742096e5657cef777568bf597ae5eda949c855fdf9cf256690987ff2c95e1  web/open-rebellion.wasm
+c530f86475f830b2ac264b486811975877afeb8299cf3be30acee2f27e3d2821  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-characters/console.txt
+74daaccdf07ba521886a42aed96c6b62c63afa9b833d8720241415595b5221d1  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-characters/network.txt
+482a94b9e3fe91477f98f653de5e8d89d32dd7755b249cb04185fa5c347150d1  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-characters/replay-equivalence.json
+8c3837d79ae1b0d9cfbdc8fdb58c781e0b50ee704ed613866c6753d8f2986e5b  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-characters/fail-without.txt
+3654775e0bd2c3b1eb9bc35bb24ac08e355f9334efa3463e6df143f0a7680a24  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-characters/playtest-sector-characters.json
+2a82774d1ebc919a7eefefd1c22ea141beb1c78a7a7d684c08148f3ff3ce2fff  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-characters/fleet-window-runs.txt
+d34af57c5a84b5446c7d2ba7991d3e0671a6bdfbbb4659c15b6ab4b420bb1008  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-sector-mission-characters/README.md

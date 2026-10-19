@@ -1621,16 +1621,39 @@ sets the bit when both are set. With none, state 9 (`FUN_004be4c0`)
 releases the held members (`FUN_0047b870`, `FUN_0047b8e0`) unless
 `+0x20 & 0xe0000000`, and the cycle ends; the planner stays.
 
-The Abduction and Assassination slots `+0x24` (skimmed) pick a system
-with `+0x2c` `0x400` or `0x800`, mostly by `FUN_0041a340` on `v[29]`,
-order 2; kinds 3 to 6 first want `+0x30` `0x1000`. They then pick the
-character there with `FUN_004af1c0` (231 lines, not read).
+**The Abduction and Assassination targets** (read and ported
+2026-10-19, stage 3). Slot `+0x24` tries its steps in turn until one gives
+a system. A step is `FUN_0041a340(sector, +0x2c bit, +0x30 bit, key
+v[29], order 2)` unless named. It then calls `FUN_004af1c0(system, &object,
+bits, mask)`:
+
+| Kinds | Steps (`+0x2c`, `+0x30`; bits, mask) |
+|---|---|
+| 1, 2 (`FUN_004ba630`, `FUN_004b94b0`) | `0x400`; `0xc00`, 4. Then `0x800`; `0x800`, 4 |
+| 3, 5, 6 (`FUN_004b3880`, `FUN_004b1880`, `FUN_004b4e40`) | `0x400`, `0x1000`; `0xc00`, 4 (kind 3 by `FUN_0041a460`, order 1). Then `0x800`, `0x1000`; `0x800`, `0x7000000`. Then kind 1's two steps |
+| 4 (`FUN_004b7370`) | its target `+0x5c` when that record has `+0x2c & 0xc00`; `0xc00`, 4. Then kind 5's steps, the first with mask `0x7000000` (`ebx` at `0x4b7490`) |
+
+`FUN_004af1c0` lists the characters whose record has `+0x30`
+`0x20000000` and 4, a bit of the mask, and no `0x20` (a prisoner is not
+excluded):
+- with bits `0x400`, on the planet (`FUN_00536da0(system, 3)`);
+- when the system record has `+0x2c` `0x800`, aboard the fleets there
+  (`FUN_004ffe70`) whose record lacks bit 1 and has `+0x38 & 0x600000`,
+  ship by ship.
+
+It draws one with `FUN_0041cd80(count)` into the object `+0x30`. With
+none the object stays clear, and state 2 fails.
 
 Ported (stage 2): `sector_mission_target` and state 2 in
-`AISystem::mission_planner_cycle`, once a day per planner.
+`AISystem::mission_planner_cycle`, once a day per planner. Stage 3:
+`sector_character_target` and `opponent_at`.
 
 port:
-- the Sabotage and Abduction/Assassination slots give no target yet;
+- the Sabotage slots give no target yet;
+- `opponent_at` takes the candidates in the world's character order;
+- the adoption of the heuristics' orders passes over a sector planner's
+  planner. Otherwise a heuristic Assassination aimed at its target was
+  taken as already running, and so never sent;
 - a sector planner of kind 0 gives none;
 - bit `0x10` is not kept;
 - states 3 to 8 are not ported, so the held planners still order
@@ -1641,8 +1664,11 @@ campaigns differ only through the draws the picks take from the planner's
 random numbers. With the picks made but their targets dropped, seeds 1,
 2, 14 and 23 run event for event as with them kept.
 
+In the 24 campaigns of stage 3, the picks again changed only the draws.
+With the targets dropped, seeds 1, 2, 14 and 23 ran event for event as
+with them kept. That held once the adoption fix above was in.
+
 Next:
-- the Abduction/Assassination slots `+0x24` with `FUN_004af1c0`;
 - the Sabotage slots `+0x30` with `FUN_004ae480`;
 - `FUN_004bda60` with `FUN_004bdcd0` and `FUN_004be230`;
 - the sector classes' selectors (Espionage of subtype not 6:

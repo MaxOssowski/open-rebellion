@@ -1715,8 +1715,12 @@ impl AISystem {
                     target_character,
                     target_object,
                 } if !matches!(kind, MissionKind::Move) && kind.research_tech().is_none() => {
+                    // port: a sector planner's mission planner (owner set)
+                    // orders nothing until FUN_004bda60's states 3 to 8 are
+                    // ported, so it does not stand for the order.
                     let running = state.mission_planners.iter().any(|p| {
-                        p.kind == kind
+                        p.owner == 0
+                            && p.kind == kind
                             && p.target_system == Some(target_system)
                             && p.target_character == target_character
                             && p.target_object == target_object
@@ -1807,9 +1811,19 @@ impl AISystem {
             if p.owner != 0 {
                 if p.last_cycle != tick {
                     p.last_cycle = tick;
-                    p.target_system = sectors.iter().find(|s| s.id == p.owner).and_then(|s| {
-                        sector_mission_target(p.kind, s, planner, galaxy, (tick, seen))
-                    });
+                    let owner = sectors.iter().find(|s| s.id == p.owner);
+                    let target = match p.kind {
+                        MissionKind::Abduction | MissionKind::Assassination => owner
+                            .and_then(|s| sector_character_target(s, planner, world, galaxy))
+                            .map(|(system, c)| (system, Some(c))),
+                        kind => owner
+                            .and_then(|s| {
+                                sector_mission_target(kind, s, planner, galaxy, (tick, seen))
+                            })
+                            .map(|system| (system, None)),
+                    };
+                    p.target_system = target.map(|t| t.0);
+                    p.target_character = target.and_then(|t| t.1);
                 }
                 return true;
             }
@@ -3780,9 +3794,11 @@ fn espionage_target(
 /// The slots need the plan's sector (its record `+0x34`), and the object
 /// `+0x30` is the system itself.
 ///
-/// port: the Sabotage (`0x12`, slot `+0x30`) and Abduction or
-/// Assassination (`0x17`, `0x81`, slot `+0x24`) slots are not ported yet
-/// and give no target.
+/// Abduction and Assassination (`0x17`, `0x81`, slot `+0x24`) are
+/// [`sector_character_target`].
+///
+/// port: the Sabotage slot (`0x12`, `+0x30`) is not ported yet and gives
+/// no target.
 fn sector_mission_target(
     kind: MissionKind,
     owner: &crate::ai_module8::SectorPlanner,
@@ -3826,6 +3842,128 @@ fn sector_mission_target(
         }
         _ => None,
     }
+}
+
+/// Slot `+0x24` of a sector planner's plan object, for its Abduction or
+/// Assassination planner: a system of the plan's sector holding an
+/// opponent's character, then that character ([`opponent_at`]).
+///
+/// Each kind tries its steps in turn until one gives a system. A step's
+/// query is `FUN_0041a340` on `v[29]`, order 2, unless named; the bits
+/// say where [`opponent_at`] looks, and the mask which characters it
+/// takes:
+///
+/// | Kinds | Steps |
+/// |---|---|
+/// | 1, 2 (`FUN_004ba630`, `FUN_004b94b0`) | `+0x2c` `0x400` (`0xc00`, 4); `0x800` (`0x800`, 4) |
+/// | 3, 5, 6 (`FUN_004b3880`, `FUN_004b1880`, `FUN_004b4e40`) | `0x400` with `+0x30` `0x1000` (`0xc00`, 4; kind 3 by `FUN_0041a460`, order 1); `0x800` with `0x1000` (`0x800`, `0x7000000`); `0x400` (`0xc00`, 4); `0x800` (`0x800`, 4) |
+/// | 4 (`FUN_004b7370`) | its target `+0x5c` when its record has `+0x2c & 0xc00` (`0xc00`, 4); then kind 5's steps, the first with mask `0x7000000` |
+fn sector_character_target(
+    owner: &crate::ai_module8::SectorPlanner,
+    planner: &mut Planner<'_>,
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+) -> Option<(SystemKey, CharacterKey)> {
+    use crate::ai_records::{pick, Mask, Order};
+    const OFFICER: u32 = 0x700_0000;
+    let any = Mask::new(0, 0);
+    if !crate::ai_planner::ported_kind(owner.kind) {
+        return None;
+    }
+    let sector = owner.sector?;
+    let query = |planner: &mut Planner<'_>, f2c: u32, f30: u32| {
+        pick(&[galaxy.system_query(
+            sector,
+            [any, Mask::new(f2c, 0), Mask::new(f30, 0)],
+            29,
+            Order::Descending,
+            &mut || planner.coin(),
+        )])
+    };
+    let mut found = None;
+    if owner.kind == 4 {
+        found = owner
+            .plan_target
+            .filter(|&t| galaxy.system(t).is_some_and(|r| r.summary & 0xc00 != 0))
+            .map(|t| (t, 0xc00, 4));
+    }
+    if found.is_none() && matches!(owner.kind, 3..=6) {
+        let first = if owner.kind == 3 {
+            random_system(
+                planner,
+                galaxy,
+                Some(sector),
+                [any, Mask::new(0x400, 0), Mask::new(0x1000, 0)],
+                Order::Ascending,
+            )
+        } else {
+            query(planner, 0x400, 0x1000)
+        };
+        let mask = if owner.kind == 4 { OFFICER } else { 4 };
+        found = first
+            .map(|s| (s, 0xc00, mask))
+            .or_else(|| query(planner, 0x800, 0x1000).map(|s| (s, 0x800, OFFICER)));
+    }
+    let found = found
+        .or_else(|| query(planner, 0x400, 0).map(|s| (s, 0xc00, 4)))
+        .or_else(|| query(planner, 0x800, 0).map(|s| (s, 0x800, 4)));
+    let (system, bits, mask) = found?;
+    opponent_at(planner, world, galaxy, system, bits, mask).map(|c| (system, c))
+}
+
+/// `FUN_004af1c0`: a random character at `system` whose record has
+/// `+0x30` `0x20000000` and 4, any bit of `mask`, and no `0x20`. With
+/// `bits & 0x400` it looks on the planet (`FUN_00536da0`); when the
+/// system's record has `+0x2c` `0x800`, aboard each fleet there not the
+/// side's with an opponent's character (fleet record `+0x38` `0x600000`,
+/// `FUN_004ffe70`). The draw is `FUN_0041cd80(count)`.
+///
+/// port: the candidates are taken in the world's character order.
+fn opponent_at(
+    planner: &mut Planner<'_>,
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+    system: SystemKey,
+    bits: u32,
+    mask: u32,
+) -> Option<CharacterKey> {
+    let record = galaxy.system(system)?;
+    let sys = world.systems.get(system)?;
+    let takes = |planner: &Planner<'_>, c: CharacterKey| {
+        planner
+            .flags(crate::missions::MissionMember::Character(c))
+            .is_some_and(|f| f & 0x2000_0004 == 0x2000_0004 && f & mask != 0 && f & 0x20 == 0)
+    };
+    let mut candidates: Vec<CharacterKey> = Vec::new();
+    if bits & 0x400 != 0 {
+        candidates.extend(world.characters.iter().filter_map(|(key, c)| {
+            (!c.is_killed
+                && c.current_system == Some(system)
+                && c.current_fleet.is_none()
+                && takes(planner, key))
+            .then_some(key)
+        }));
+    }
+    if record.summary & 0x800 != 0 {
+        for &fleet in &sys.fleets {
+            let carrying = galaxy.fleets.get(&fleet).is_some_and(|r| {
+                r.flags & crate::ai_records::FLEET_OWN == 0 && r.flags & 0x60_0000 != 0
+            });
+            if !carrying {
+                continue;
+            }
+            candidates.extend(world.characters.iter().filter_map(|(key, c)| {
+                (!c.is_killed && c.current_fleet == Some(fleet) && takes(planner, key))
+                    .then_some(key)
+            }));
+        }
+    }
+    if candidates.is_empty() {
+        return None;
+    }
+    let count = i32::try_from(candidates.len()).unwrap_or(i32::MAX);
+    let at = usize::try_from(planner.random(count)).unwrap_or(0);
+    candidates.get(at).copied()
 }
 
 /// Whether `character` is an opponent's main character free in the field
@@ -7288,6 +7426,16 @@ mod tests {
             );
         }
         assert_eq!(state.mission_planners.len(), 1);
+        // port: a sector planner's planner (owner set) orders nothing yet,
+        // so it does not stand for the order.
+        state.mission_planners[0].owner = 7;
+        AISystem::adopt_mission_orders(
+            &mut state,
+            1,
+            0,
+            &mut vec![order(MissionKind::Rescue, vec![mb], target, None, None)],
+        );
+        assert_eq!(state.mission_planners.len(), 2);
         // Other actions pass through untouched.
         let mut passing = vec![order(MissionKind::Move, vec![mb], here, None, None)];
         AISystem::adopt_mission_orders(&mut state, 1, 0, &mut passing);
@@ -8880,6 +9028,236 @@ mod tests {
         // An owner gone gives none.
         state.module8.planners[0].id = 8;
         assert_eq!(run(&mut state, &mut galaxy, 7), None);
+    }
+
+    /// A rebel sector for the Empire's sector planners: `planet` with Luke
+    /// and a minor character on the planet, `aboard` with an Alliance fleet
+    /// carrying Leia, both Alliance systems.
+    fn opponents_world() -> (GameWorld, SystemKey, SystemKey, [CharacterKey; 3]) {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let rebel = |world: &mut GameWorld, x| {
+            let s = add_system(world, sector, 0.9, 0.1);
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+            world.systems[s].x = x;
+            s
+        };
+        let planet = rebel(&mut world, 10);
+        let aboard = rebel(&mut world, 20);
+        let person = |world: &mut GameWorld, alliance: bool, id: u32, at| {
+            let c = add_character(world, alliance, true, 30);
+            world.characters[c].dat_id = DatId(id);
+            world.characters[c].current_system = Some(at);
+            c
+        };
+        let luke = person(&mut world, true, 0x242, planet);
+        let minor = person(&mut world, true, 0x2c7, planet);
+        // The side's own character is no target.
+        person(&mut world, false, 0x281, planet);
+        let leia = person(&mut world, true, 0x241, aboard);
+        let class = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        let fleet = world.fleets.insert(Fleet {
+            location: aboard,
+            capital_ships: ShipInstance::make(class, 100, true, 1),
+            fighters: vec![],
+            characters: vec![leia],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[aboard].fleets.push(fleet);
+        world.characters[leia].current_system = None;
+        world.characters[leia].current_fleet = Some(fleet);
+        (world, planet, aboard, [luke, minor, leia])
+    }
+
+    #[test]
+    fn an_opponent_at_a_system_is_any_character_of_the_other_side_where_the_bits_look() {
+        // FUN_004af1c0: record +0x30 0x20000000 and 4, a bit of the mask,
+        // no 0x20; with 0x400 on the planet (FUN_00536da0), and aboard a
+        // fleet not the side's with fleet record +0x38 0x600000 when the
+        // system record has +0x2c 0x800.
+        let (world, planet, aboard, [luke, minor, leia]) = opponents_world();
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let mut picks = |system, bits, mask| {
+            (0..40)
+                .filter_map(|_| opponent_at(&mut planner, &world, &galaxy, system, bits, mask))
+                .collect::<HashSet<CharacterKey>>()
+        };
+        assert_eq!(picks(planet, 0xc00, 4), HashSet::from([luke, minor]));
+        assert_eq!(picks(planet, 0x800, 4), HashSet::new());
+        assert_eq!(picks(aboard, 0x800, 4), HashSet::from([leia]));
+        assert_eq!(picks(aboard, 0xc00, 4), HashSet::from([leia]));
+        // hyp: only a character in a fleet holds an officer rank
+        // (0x4000000, FUN_00402230).
+        assert_eq!(picks(planet, 0xc00, 0x700_0000), HashSet::new());
+        assert_eq!(picks(aboard, 0x800, 0x700_0000), HashSet::from([leia]));
+
+        // An Alliance prisoner aboard the side's own fleet (record +0x38
+        // bit 1) is not looked for, though its record reads 4.
+        let mut world = world;
+        let class = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        let own = world.fleets.insert(Fleet {
+            location: aboard,
+            capital_ships: ShipInstance::make(class, 100, false, 1),
+            fighters: vec![],
+            characters: vec![minor],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[aboard].fleets.push(own);
+        world.characters[minor].current_system = None;
+        world.characters[minor].current_fleet = Some(own);
+        world.characters[minor].is_captive = true;
+        world.characters[minor].captured_by = Some(crate::dat::Faction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        assert_ne!(
+            planner.flags(MissionMember::Character(minor)).unwrap() & 4,
+            0
+        );
+        let picks: HashSet<CharacterKey> = (0..40)
+            .filter_map(|_| opponent_at(&mut planner, &world, &galaxy, aboard, 0x800, 4))
+            .collect();
+        assert_eq!(picks, HashSet::from([leia]));
+    }
+
+    #[test]
+    fn each_plan_kind_looks_for_an_opponent_in_its_own_order() {
+        // Slot +0x24: kinds 1 and 2 (FUN_004ba630) take +0x2c 0x400 first,
+        // then 0x800; kinds 3, 5, 6 (FUN_004b1880) first want +0x30 0x1000
+        // with 0x400, then with 0x800 (mask 0x7000000); kind 4
+        // (FUN_004b7370) takes its own target +0x5c first when its record
+        // has +0x2c 0xc00.
+        let (mut world, planet, aboard, [luke, minor, leia]) = opponents_world();
+        let home = world.systems[planet].sector;
+        let bare = add_system(&mut world, home, 0.9, 0.1);
+        world.systems[bare].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        assert_eq!(galaxy.system(aboard).unwrap().kind & 0x1000, 0x1000);
+        assert_eq!(galaxy.system(planet).unwrap().kind & 0x1000, 0);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        let sector = world.systems[planet].sector;
+        let mut target = |kind, plan_target| {
+            let owner = crate::ai_module8::SectorPlanner {
+                kind,
+                sector: Some(sector),
+                plan_target,
+                ..Default::default()
+            };
+            sector_character_target(&owner, &mut planner, &world, &galaxy)
+        };
+        for kind in [1, 2] {
+            let (system, c) = target(kind, None).unwrap();
+            assert_eq!(system, planet);
+            assert!([luke, minor].contains(&c));
+        }
+        for kind in [3, 5, 6] {
+            assert_eq!(target(kind, None), Some((aboard, leia)));
+        }
+        assert_eq!(target(4, None), Some((aboard, leia)));
+        let (system, _) = target(4, Some(planet)).unwrap();
+        assert_eq!(system, planet);
+        // A target whose record has no opponent's character is passed by.
+        assert_eq!(target(4, Some(bare)), Some((aboard, leia)));
+        assert_eq!(target(0, None), None);
+
+        // A free character on `aboard`'s planet too: the first step finds
+        // `aboard` (+0x2c 0x400, +0x30 0x1000). Kind 4 then takes only an
+        // officer (mask 0x7000000), kinds 3, 5 and 6 anyone (mask 4).
+        let mut world = world;
+        world.characters[luke].current_system = Some(aboard);
+        let galaxy = galaxy_of(&state, &world);
+        let picks = |kind| {
+            let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+            let owner = crate::ai_module8::SectorPlanner {
+                kind,
+                sector: Some(sector),
+                ..Default::default()
+            };
+            (0..40)
+                .filter_map(|_| sector_character_target(&owner, &mut planner, &world, &galaxy))
+                .collect::<HashSet<_>>()
+        };
+        assert_eq!(picks(4), HashSet::from([(aboard, leia)]));
+        for kind in [3, 5, 6] {
+            assert_eq!(picks(kind), HashSet::from([(aboard, leia), (aboard, luke)]));
+        }
+        // Kind 3's first step is FUN_0041a460, which draws a key per
+        // system; kind 5's FUN_0041a340 draws none for a lone system.
+        let draws_after = |kind| {
+            let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+            let owner = crate::ai_module8::SectorPlanner {
+                kind,
+                sector: Some(sector),
+                ..Default::default()
+            };
+            sector_character_target(&owner, &mut planner, &world, &galaxy);
+            (0..8).map(|_| planner.random(1000)).collect::<Vec<_>>()
+        };
+        let reference = {
+            let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+            opponent_at(&mut planner, &world, &galaxy, aboard, 0xc00, 4);
+            (0..8).map(|_| planner.random(1000)).collect::<Vec<_>>()
+        };
+        assert_eq!(draws_after(5), reference);
+        assert_eq!(draws_after(6), reference);
+        assert_ne!(draws_after(3), reference);
+    }
+
+    #[test]
+    fn a_sector_planner_s_assassination_planner_takes_a_system_and_its_character() {
+        // FUN_004bdbc0: 0x81 -> slot +0x24 (FUN_00476e80) sets the system
+        // +0x34 and the object +0x30; without a character there is none.
+        let (mut world, _, aboard, [_, _, leia]) = opponents_world();
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut galaxy = galaxy_of(&state, &world);
+        state.module8.planners = vec![crate::ai_module8::SectorPlanner {
+            id: 7,
+            kind: 5,
+            sector: Some(world.systems[aboard].sector),
+            mission: [0x63, 4, 0],
+            ..Default::default()
+        }];
+        AISystem::take_sector_request(&mut state, &world, &mut galaxy);
+        assert_eq!(state.mission_planners[0].kind, MissionKind::Assassination);
+        let run = |state: &mut AIState,
+                   world: &GameWorld,
+                   galaxy: &mut crate::ai_records::Galaxy,
+                   tick| {
+            let mut actions = Vec::new();
+            AISystem::mission_planner_cycle(
+                state,
+                &mut planner_for(world, AiFaction::Empire),
+                world,
+                galaxy,
+                tick,
+                &mut actions,
+            );
+            assert!(actions.is_empty());
+            let p = &state.mission_planners[0];
+            (p.target_system, p.target_character)
+        };
+        assert_eq!(
+            run(&mut state, &world, &mut galaxy, 5),
+            (Some(aboard), Some(leia))
+        );
+        // Nobody left in the sector: no target.
+        for c in world.characters.values_mut() {
+            c.is_killed = true;
+        }
+        let mut galaxy = galaxy_of(&state, &world);
+        assert_eq!(run(&mut state, &world, &mut galaxy, 6), (None, None));
     }
 
     /// The side's records (phase 4) for `world`, as `state` keeps them.
