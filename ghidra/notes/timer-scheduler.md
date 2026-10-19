@@ -145,7 +145,7 @@ it), slot `+0x2c` resolves the target's record, and slot `+0x30` acts.
 | `0x389` | `0x00669938` | `FUN_0057cff0` | `0x30..0x3c` | `FUN_00560a30` (149 lines, not read) | `0x4f1b87` (unnamed) | not traced |
 | `0x38a` | `0x00669970` | `FUN_0057d330` | `0x30..0x3c` | `FUN_004ef150`: if `+0xac` bit 8, pulse `+0xac` bit 10 on then off (`FUN_004eebf0`) | `FUN_004f1ba0` on CanEscape (`captive-escape.md`) | record `+0x54`+`0x28`; GNPRTB 2584 min, 2585 spread (`FUN_004ef750`) |
 | `0x38b` | `0x00661e50` | `FUN_0054d6c0` | `0x40..0x80` | `FUN_00522a10`: if `+0x68` == 8, set `+0xa4` bit 0 (`FUN_00522130`) | `FUN_00524b70` (twice) | object `+0x54`+`0x20`, not traced |
-| `0x38c` | `0x00661e88` | `FUN_0054da10` | `0x40..0x80` | `FUN_00522a30`: if `+0x68` == 11, own slot `+0xac(0x14)` | `FUN_005229c0` (from `FUN_00522fc0`, `FUN_00524b20`) | object `+0x54`+`0x28`, not traced |
+| `0x38c` | `0x00661e88` | `FUN_0054da10` | `0x40..0x80` | `FUN_00522a30`: if `+0x68` == 11, own slot `+0xac(0x14)` | `FUN_005229c0` (from `FUN_00522fc0`, `FUN_00524b20`): only with an end code `+0x64` and empty member lists (`FUN_00520d60` over `FUN_00525bb0`) | object `+0x54`+`0x28`: min 1, spread 0 (`FUN_005236e0`, read 2026-10-20) |
 | `0x38d` | `0x006635b8` | `FUN_005660c0` | `0x90..0x98` | `FUN_0050cb80`: uprising incident on, then off (`FUN_0050aa50`) | `FUN_00510f20` | GNPRTB 7701 (30) + rand 7702 (70) (`uprising.rs`) |
 | `0x38e` | `0x006635f0` | `FUN_00566410` | `0x90..0x98` | `FUN_0050cbe0`: when held (side bits != 3) and `FUN_00559f90` passes, informant incident on, then off (`FUN_0050aac0`) | `FUN_0050c820` (from `FUN_00510820`, `FUN_0050e200`) | system `+0x54`+`0x40`: GNPRTB 7703 (30) min, 7704 (970) spread (`FUN_0050e200`); ported 2026-10-17 (`informant.rs`, `informant-incident.md`) |
 | `0x38f` | `0x00663628` | `FUN_00566760` | `0xf9..0xfa` | `FUN_00556b50`: disaster on one random existing system (`FUN_0050cdc0`) | `FUN_00556fa0` | GNPRTB 7717 (1) + rand 7718 (399) |
@@ -204,7 +204,8 @@ The event factories' fire slots are not decompiled.
 
 ## Open
 
-- The record delays for `0x380`, `0x388..0x38c` and `0x394`. Those of the
+- The record delays for `0x380`, `0x388..0x38b` and `0x394` (`0x38c`'s is
+  1 day, `FUN_005236e0`). Those of the
   per-system timers `0x383..0x386`, `0x38d` and `0x38e` are set by the
   system's setup `FUN_0050e200` (read from its disassembly, 2026-10-17;
   the decompile drops the record pointers). A spread it does not set is

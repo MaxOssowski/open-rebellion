@@ -247,22 +247,13 @@ identical, `-20:10, -19:20, -9:40, 0:50, 10:60, 20:70, 30:80, 40:90, 50:92,
 60:94, 70:95, 80:96, 90:98, 100:99`. FOILTB is `-20:99, -19:98, -9:96, 1:94,
 11:90, 21:80, 31:70, 41:60, 51:50, 61:45, 71:40, 81:35, 91:30, 101:25`.
 
-## Open
+## Open (rewritten 2026-10-20)
 
-- `FUN_005349e0` (what the officer does to an exposed member), the phases
-  `FUN_00589e40` and `FUN_00589f10`, and the mission's slot `+0x1dc` are not
-  traced.
-- The mission-kind record `+0x34` nibbles are not matched to a MISSNSD
-  column, so each mission's mode per state is unknown.
-- The player's and the AI's decoy assignment paths: resolved in
-  `ai-mission-planning.md`.
-- The in-memory shift that puts `detection` at class `+0x5c` is inferred.
-- `FUN_00520cd0` (Incite and Subdue leadership in the uprising incident)
-  averages over `FUN_00525bb0`, all team, decoy, and captured members; the
-  port reads only the mission's one agent.
-- The port has no decoy characters on missions. Its invented `is_decoy` roll
-  and `MissionSystem::check_decoy` are removed (2026-09-27); the `is_decoy`
-  field stays only for the save layout.
+The first list here (2026-09-27) is settled: `FUN_005349e0`, `FUN_00589e40`,
+`FUN_00589f10` and slot `+0x1dc` are read below and in `encounter.md`; the
+mode word is `FUN_005236e0`'s constant (below); `FUN_00520cd0` is ported
+(`uprising.rs`); the port's missions carry decoys and its `is_decoy` field
+is gone. What stays open is listed under "Still open" at the end.
 
 ## Recovered 2026-09-28
 
@@ -560,16 +551,13 @@ moves chosen characters between the two lists, and the AI planners pick
 decoys for Sabotage, Rescue, Incite, Espionage, DS Sabotage, Abduction, and
 Assassination (`ai-mission-planning.md`, recovered 2026-09-28).
 
-### Still open (2026-09-28, after pass 3)
+### Still open (2026-09-28, after pass 3; re-checked 2026-10-20)
 
-- The sender of command `0x250`: resolved in `ai-mission-planning.md`.
-  Phase stepping and the phase-10 outcomes are in `mission-lifecycle.md`.
-- The phase-2 character hook (`FUN_00589e40`, DatIds `0x32000242` and
-  `0x35000281`), `FUN_0058a5b0`, and the meaning of `+0xa0` and `+0x8c`.
-- Slots `+0x278`, `+0x27c` (the per-member outcome), `+0x280`, and `+0x284`,
-  and the end codes' names.
-- `FUN_00507270` and `FUN_005091f0` (the support and counter terms in the
-  Diplomacy, Recruitment, Incite, and Subdue inputs).
+Settled: the sender of `0x250` (`ai-mission-planning.md`); the phase-2
+character hook (`encounter.md`); slots `+0x278..+0x284` and the phase-10
+outcomes (`mission-lifecycle.md`); `FUN_00507270` and `FUN_005091f0`
+(ported in `missions.rs` and `uprising.rs`). Still inferred: what the
+traitor fields `+0xa0` and `+0x8c` mean (below).
 
 ## Re-read for the port (2026-09-29, F-019 phase 3)
 
@@ -733,7 +721,7 @@ ends with 5, and so does a team whose members were all deleted.
 
 ### Still open
 
-`FUN_00589e40` (the character hook), `FUN_00588d30` (the `+0x9c` branch),
-the traitor's own fate, `FUN_004f9510`, `+0xa4` bit 1. The officer ranks
+The traitor's own fate, the traitor fields `+0xa0` and `+0x8c`,
+`FUN_004f9510`, `+0xa4` bit 1 (which lifts rule 1). `FUN_00589e40` and `FUN_00588d30` are read in `encounter.md`. The officer ranks
 are the characters' commands (`character-command.md`); the AI gives none
 until module `0xc`.

@@ -1,9 +1,5 @@
-//! Mission system: all 11 mission types with MSTB probability lookup.
-//!
-//! Missions are assigned to characters and execute over multiple game-days.
-//! When a mission completes, success is determined either by a quadratic
-//! probability formula (fallback) or by a stepped MSTB table lookup
-//! when `world.mission_tables` is populated by rebellion-data.
+//! Mission system: the original's mission kinds (MISSNSD records, family
+//! `0x40..0x80`) and their lifecycle (`ghidra/notes/mission-lifecycle.md`).
 //!
 //! # Design
 //!
@@ -15,37 +11,26 @@
 //! - The caller provides pre-generated random rolls so rebellion-core stays
 //!   dependency-free and fully deterministic in tests.
 //!
-//! # Probability
-//!
-//! Two paths, in priority order:
-//! 1. **MSTB lookup**: if `world.mission_tables` contains an entry for this mission kind,
-//!    use `MstbTable::step_lookup(skill_score)` (the row at or below the score, `FUN_00595090`).
-//! 2. **Quadratic fallback**: `clamp(a·score² + b·score + c, min%, max%)` — same as
-//!    rebellion2's Mission.cs coefficients. Used when MSTB tables are not yet loaded.
-//!
-//! Combined: `total_prob = agent_prob · (1 − foil_prob)`.
-//!
-//! # Mission Types
-//!
-//! Nine types ported from REBEXE.EXE's 13-case dispatch (`FUN_0050d5a0`):
-//! Diplomacy, Recruitment, Sabotage, Assassination, Espionage, Rescue, Abduction,
-//! `InciteUprising`, Autoscrap.
-//!
 //! # Lifecycle
 //!
-//! A mission steps through phases `0..=0xb` (`FUN_005227d0`,
-//! `ghidra/notes/mission-lifecycle.md`). It waits in phase 4 for its
-//! members' transit and in phase 8 for its MISSNSD timer, rolls in phase 10,
-//! repeats 10 -> 8 when its record says so, and ends in phase `0xb` once the
-//! validator (`FUN_00522480`) or the last step sets an end code.
+//! A mission steps through phases `0..=0xb` (`FUN_005227d0`). It waits in
+//! phase 4 for its members' transit and in phase 8 for its MISSNSD timer,
+//! rolls in phase 10, repeats 10 -> 8 when its record says so, and ends in
+//! phase `0xb` once the validator (`FUN_00522480`) or the last step sets an
+//! end code.
 //!
 //! After each phase change the detection run (`mission_detection`,
 //! `FUN_00547f60`) lets the decoys draw off defenders, the defenders try to
 //! detect the team, and phase 9 looks for a traitor; a detected team is
 //! exposed, and its members evade and resign or are captured.
 //!
-//! The phase 10 roll and the probability paths above are interim until
-//! F-019 phase 4 ports the per-member roll.
+//! # The phase 10 roll
+//!
+//! Each team member rolls in turn (slots `+0x274`..`+0x284`,
+//! `MissionSystem::roll_members`): its chance is the kind's MSTB table at
+//! the kind's input (`member_chance`, `MstbTable::step_lookup`,
+//! `FUN_00595090`), or the kind's own rule. A missing table, row or target
+//! gives 0.
 
 use std::collections::VecDeque;
 
@@ -60,11 +45,8 @@ use crate::world::{Character, GameWorld, Skill};
 // MissionKind
 // ---------------------------------------------------------------------------
 
-/// All nine mission types recognised by the REBEXE.EXE dispatch (`FUN_0050d5a0`).
-///
-/// Type codes match the original binary's 13-case switch where applicable.
-/// Coefficients are ported from rebellion2's Mission.cs; they serve as
-/// fallback when `GameWorld::mission_tables` is not yet populated.
+/// The original's mission kinds, each with its MISSNSD record
+/// ([`MissionKind::record_id`]); `Autoscrap` has none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MissionKind {
     // ── Living Galaxy (implemented) ─────────────────────────────────────────
@@ -455,8 +437,10 @@ impl ActiveMission {
             .copied()
     }
 
-    /// The first team character. The resolver rolls for this one member
-    /// until the per-member roll lands (port: interim, F-019 phase 4).
+    /// The first team character, which the mission lists name.
+    /// port: the original keeps a leader key (`MissionLeaderKeyNotif`,
+    /// `FUN_005251a0`) whose setter is not traced; the phase-10 roll covers
+    /// every member (`MissionSystem::roll_members`).
     #[must_use]
     pub fn lead_character(&self) -> Option<CharacterKey> {
         self.team.iter().find_map(|member| member.character())
@@ -2775,6 +2759,12 @@ impl MissionSystem {
                     Self::wake(&mut mission, &ctx, state, now);
                     Self::run(&mut mission, &ctx, state, &mut out, now, &mut draws);
                 }
+                // port: the original keeps an ended mission one more day:
+                // FUN_005229c0 arms timer 0x38c (FUN_005236e0: min 1, spread
+                // 0) once the member lists are empty (FUN_00520d60), and its
+                // handler FUN_00522a30 deletes the mission in phase 0xb (slot
+                // +0xac(0x14)). The members are released here, so the port
+                // drops it at once.
                 if mission.phase == PHASE_END {
                     out.effects.extend(
                         mission
@@ -5221,8 +5211,8 @@ mod tests {
 
     #[test]
     fn the_lead_is_the_first_team_character_and_a_special_force_has_no_character_key() {
-        // port: the interim resolver rolls one character until F-019 phase 4
-        // ports the per-member roll; a special force is never that character.
+        // Our helper: the lists' named character is the first team
+        // character; a special force is never that character.
         let mut sf: slotmap::SlotMap<SpecialForceKey, ()> = slotmap::SlotMap::with_key();
         let unit = MissionMember::SpecialForce(sf.insert(()));
         let mut chr: slotmap::SlotMap<CharacterKey, ()> = slotmap::SlotMap::with_key();

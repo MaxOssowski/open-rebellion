@@ -1819,6 +1819,19 @@ cross-runtime proof remain open
   `v1:18b0d4ae14e00774` -> `v1:501c8c959ff47345`. The escape bullet above is
   closed; the container and `+0x70` candidates and the move validator stay
   open. Evidence: `evidence/2026-10-14-captive-escape/README.md`.
+- Re-check (2026-10-20): every evidence bullet is now ported. Detection
+  rolls FOILTB per defender (`mission_detection.rs`, `FUN_0058a130`), and
+  the rebellion2 quadratic is gone from the code (its module doc was the
+  last trace, rewritten). Sabotage destroys the named object
+  (`FUN_0056a2d0`, `FUN_00574600`); no `ticks_lost` or invented effect sizes
+  remain, and the timers come from the MISSNSD records. Incite starts the
+  uprising incident (`FUN_0050d030`) and Subdue runs the support machine
+  (`FUN_0050c9f0`). Members are team, decoy and captured lists
+  (`FUN_0054c200`). Timer `0x38c` was read (`FUN_005229c0`, `FUN_005236e0`:
+  the ended mission is deleted one day after its last member left); the port
+  drops it on the day it ends (port:). Still open: the traitor's own fate
+  and fields `+0xa0`/`+0x8c`, `FUN_004f9510`, and `+0xa4` bit 1, which lifts
+  rule 1 (`ghidra/notes/decoy-roll.md`).
 - Acceptance: Detection, escape, and effects follow their decompiles with
   failing-without tests; mission members become a roster (with F-019).
 

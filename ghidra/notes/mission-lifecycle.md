@@ -60,6 +60,17 @@ The timer's delay record (`+0x54 -> +0x20`) is written at init by
 spread = record `+0x54` (`FUN_00520b50`, `FUN_00540270`). A timer fires after
 `min + rand(0..=spread)` days (`FUN_00586130`, `timer-scheduler.md`).
 
+### The ended mission's deletion (timer `0x38c`, read 2026-10-20)
+
+After each step `FUN_00524b20` runs `FUN_005229c0`: once the end code
+`+0x64` is set and the member lists are empty (`FUN_00520d60` walks
+`FUN_00525bb0`: team, decoys, captured), it arms timer `0x38c`. Its delay
+record `+0x54 -> +0x28` is written at init by `FUN_005236e0`: min 1, spread
+0. The handler `FUN_00522a30` deletes the mission (slot `+0xac(0x14)`) when
+its phase is `0xb`. So an ended mission is deleted one day after its last
+member left. port: the port releases the members and drops the mission on
+the day it ends.
+
 ### What each phase does (`FUN_00524b70`, entering the new phase)
 
 | Phase | Action | Detection mode (`decoy-roll.md`) |
