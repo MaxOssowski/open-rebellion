@@ -190,6 +190,81 @@ pub fn settle(
     shifts
 }
 
+/// SDPRTB 2560 (`Sdprtb_2560_*`): the divisor of a battle's or a
+/// blockade's losses (`FUN_0053ec10`).
+const SDPRTB_LOSS_DIVISOR: u16 = 2560;
+/// SDPRTB 2560 as shipped (50 for both sides).
+const SHIPPED_LOSS_DIVISOR: i64 = 50;
+
+/// Each side's capital ships at a system, by the value a lost one adds to
+/// its side's battle losses (class `+0x58`, `uprising_defense`;
+/// `System_vtd0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BattleWatch {
+    alliance: i64,
+    empire: i64,
+}
+
+/// The value of each side's living capital ships orbiting `system`.
+#[must_use]
+pub fn battle_watch(world: &GameWorld, system: SystemKey) -> BattleWatch {
+    let mut watch = BattleWatch::default();
+    let Some(sys) = world.systems.get(system) else {
+        return watch;
+    };
+    for fleet in sys.fleets.iter().filter_map(|&key| world.fleets.get(key)) {
+        let value: i64 = fleet
+            .capital_ships
+            .iter()
+            .filter(|ship| ship.alive)
+            .filter_map(|ship| world.capital_ship_classes.get(ship.class))
+            .map(|class| i64::from(class.uprising_defense))
+            .sum();
+        if fleet.is_alliance {
+            watch.alliance += value;
+        } else {
+            watch.empire += value;
+        }
+    }
+    watch
+}
+
+/// `FUN_0053ec10(side, alliance losses, empire losses)`:
+/// `(other - own) / SDPRTB 2560 + other / SDPRTB 2560`, read for `side`,
+/// with C's truncating division.
+fn loss_shift(world: &GameWorld, side: Faction, alliance: i64, empire: i64) -> i32 {
+    let (own, other) = match side {
+        Faction::Alliance => (alliance, empire),
+        Faction::Empire => (empire, alliance),
+        Faction::Neutral => return 0,
+    };
+    let divisor =
+        i64::from(param(world, SDPRTB_LOSS_DIVISOR, SHIPPED_LOSS_DIVISOR, Some(side)).max(1));
+    i32::try_from((other - own) / divisor + other / divisor).unwrap_or(0)
+}
+
+/// A battle's end at `system` (`FUN_00517270` -> `FUN_00560d00`): the
+/// winning side's loyalty shift, from each side's losses since `before`
+/// (`FUN_0053ec10`). A battle without a winner shifts nothing.
+///
+/// port: the losses are the capital ships the port tracks; a regiment
+/// lost aboard (class `+0x58` too) is not counted, and the port's
+/// fighters are worth 0 as FIGHTSD ships them.
+pub fn settle_battle(
+    world: &mut GameWorld,
+    before: BattleWatch,
+    system: SystemKey,
+    winner: Option<Faction>,
+) -> Option<LoyaltyShift> {
+    let side = winner.filter(|side| *side != Faction::Neutral)?;
+    let after = battle_watch(world, system);
+    let alliance = (before.alliance - after.alliance).max(0);
+    let empire = (before.empire - after.empire).max(0);
+    let amount = loss_shift(world, side, alliance, empire);
+    shift(world, side, amount);
+    (amount != 0).then_some(LoyaltyShift { side, amount })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,6 +340,74 @@ mod tests {
         );
         shift(&mut world, Faction::Neutral, 4);
         assert_eq!(loyalty(&world, rebel), 54);
+    }
+
+    #[test]
+    fn a_battle_s_winner_gains_its_enemy_s_losses_less_its_own_over_fifty() {
+        // FUN_00560d00 -> FUN_0053ec10: for the winner w,
+        // (L(o) - L(w)) / SDPRTB 2560 + L(o) / SDPRTB 2560, SDPRTB 2560 = 50;
+        // the losses are the lost ships' class +0x58 (System_vtd0).
+        use crate::world::{CapitalShipClass, Fleet, ShipInstance};
+        let mut world = GameWorld::default();
+        let here = system(&mut world, 0x101, ControlKind::Controlled(Faction::Empire));
+        let star_destroyer = world.capital_ship_classes.insert(CapitalShipClass {
+            uprising_defense: 42,
+            ..CapitalShipClass::default()
+        });
+        let frigate = world.capital_ship_classes.insert(CapitalShipClass {
+            uprising_defense: 15,
+            ..CapitalShipClass::default()
+        });
+        let fleet = |world: &mut GameWorld, alliance: bool, class, n| {
+            let key = world.fleets.insert(Fleet {
+                location: here,
+                capital_ships: ShipInstance::make(class, 100, alliance, n),
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: alliance,
+                has_death_star: false,
+            });
+            world.systems[here].fleets.push(key);
+            key
+        };
+        let rebels = fleet(&mut world, true, frigate, 2);
+        let escort = fleet(&mut world, true, frigate, 1);
+        let imperials = fleet(&mut world, false, star_destroyer, 4);
+        let rebel = person(&mut world, true, false, 50);
+        let imperial = person(&mut world, false, true, 50);
+        let before = battle_watch(&world, here);
+        // The Alliance loses two frigates (30), the Empire three of its
+        // four destroyers (126): (126 - 30) / 50 + 126 / 50 = 1 + 2 = 3.
+        world.fleets[rebels].capital_ships[0].alive = false;
+        world.fleets[escort].capital_ships[0].alive = false;
+        for ship in world.fleets[imperials].capital_ships.iter_mut().take(3) {
+            ship.alive = false;
+        }
+        let mut world_draw = world.clone();
+        assert_eq!(
+            settle_battle(&mut world, before, here, Some(Faction::Alliance)),
+            Some(LoyaltyShift {
+                side: Faction::Alliance,
+                amount: 3
+            })
+        );
+        assert_eq!(
+            (loyalty(&world, rebel), loyalty(&world, imperial)),
+            (53, 47)
+        );
+        // The Empire winning the same losses: (30 - 126) / 50 + 30 / 50 = -1
+        // (C truncates).
+        let mut world_lost = world_draw.clone();
+        assert_eq!(
+            settle_battle(&mut world_lost, before, here, Some(Faction::Empire)),
+            Some(LoyaltyShift {
+                side: Faction::Empire,
+                amount: -1
+            })
+        );
+        // No winner, no shift.
+        assert_eq!(settle_battle(&mut world_draw, before, here, None), None);
+        assert_eq!(loyalty(&world_draw, rebel), 50);
     }
 
     #[test]

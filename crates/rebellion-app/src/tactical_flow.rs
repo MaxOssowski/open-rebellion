@@ -174,6 +174,11 @@ pub(crate) fn apply_results(
     world: &mut GameWorld,
     troop_transport: &mut TroopTransportState,
 ) -> BattleReturn {
+    let battle_before = rebellion_core::loyalty::battle_watch(world, session.system);
+    let attacker_is_alliance = world
+        .fleets
+        .get(session.attacker_fleet)
+        .map(|fleet| fleet.is_alliance);
     for (fleet_key, is_attacker) in [
         (session.attacker_fleet, true),
         (session.defender_fleet, false),
@@ -261,6 +266,13 @@ pub(crate) fn apply_results(
         }
     }
     troop_transport.destroy_untransportable_cargo(world);
+    // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift.
+    let winner = attacker_is_alliance.and_then(|attacker| match session.winner {
+        Some(CombatWinner::Attacker) => Some(Faction::of_alliance(attacker)),
+        Some(CombatWinner::Defender) => Some(Faction::of_alliance(!attacker)),
+        Some(CombatWinner::Draw) | None => None,
+    });
+    rebellion_core::loyalty::settle_battle(world, battle_before, session.system, winner);
     summarize_results(session)
 }
 

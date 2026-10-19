@@ -2064,6 +2064,8 @@ async fn main() {
                 }
 
                 // AI vs AI: auto-resolve as before.
+                let battle_before = rebellion_core::loyalty::battle_watch(&world, sys_key);
+                let attacker_is_alliance = world.fleets.get(atk_fleet).map(|f| f.is_alliance);
                 let combat_rolls: Vec<f64> = (0..256).map(|_| sim_rng.gen::<f64>()).collect();
                 let space_result = CombatSystem::resolve_space(
                     &world,
@@ -2078,6 +2080,13 @@ async fn main() {
 
                 // Apply ship damage: reduce counts proportional to destroyed hulls.
                 apply_space_combat_result(&space_result, &mut world);
+                // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift.
+                rebellion_core::loyalty::settle_battle(
+                    &mut world,
+                    battle_before,
+                    sys_key,
+                    battle_winner(space_result.winner, attacker_is_alliance),
+                );
                 troop_transport_state.destroy_untransportable_cargo(&mut world);
                 rebellion_core::squadrons::recover(&mut world, &sorties);
                 // Record combat cooldown to prevent infinite re-trigger on draws.
@@ -5759,6 +5768,12 @@ async fn main() {
                         // Battle Results window used by a played engagement.
                         let mut result_presented = false;
                         if let Some(session) = tactical_state.session.clone() {
+                            let battle_before =
+                                rebellion_core::loyalty::battle_watch(&world, session.system);
+                            let attacker_is_alliance = world
+                                .fleets
+                                .get(session.attacker_fleet)
+                                .map(|f| f.is_alliance);
                             let combat_rolls: Vec<f64> =
                                 (0..256).map(|_| sim_rng.gen::<f64>()).collect();
                             let space_result = CombatSystem::resolve_space(
@@ -5772,6 +5787,12 @@ async fn main() {
                                 death_star_state.shield_generator_active,
                             );
                             apply_space_combat_result(&space_result, &mut world);
+                            rebellion_core::loyalty::settle_battle(
+                                &mut world,
+                                battle_before,
+                                session.system,
+                                battle_winner(space_result.winner, attacker_is_alliance),
+                            );
                             tactical_flow::reconcile_death_star_result(
                                 &world,
                                 &mut death_star_state,
@@ -8246,6 +8267,20 @@ fn apply_mission_result(
 // ---------------------------------------------------------------------------
 
 /// Delegate to integrator's shared implementation.
+/// The side that won a battle of `attacker_is_alliance`'s fleet against
+/// another side's (`FUN_0050a040`), or none for a draw.
+fn battle_winner(
+    winner: CombatSide,
+    attacker_is_alliance: Option<bool>,
+) -> Option<Faction> {
+    let attacker = attacker_is_alliance?;
+    match winner {
+        CombatSide::Attacker => Some(Faction::of_alliance(attacker)),
+        CombatSide::Defender => Some(Faction::of_alliance(!attacker)),
+        CombatSide::Draw => None,
+    }
+}
+
 fn apply_space_combat_result(
     result: &rebellion_core::combat::SpaceCombatResult,
     world: &mut GameWorld,

@@ -163,5 +163,18 @@ Still open:
    headquarters, -5. Coruscant never changes hands.
 5. **Read the system record's per-side loss counters** (done 2026-10-19,
    above).
-6. **Port the battle's shift** (`FUN_00560d00`).
+6. **Port the battle's shift** (`FUN_00560d00`). Done 2026-10-19:
+   - `loyalty::battle_watch` and `settle_battle`, around every battle
+     resolution:
+     - the simulation's `resolve_system_space_combat`;
+     - the app's AI-against-AI and auto-resolve paths;
+     - the played tactical battle's `apply_results`;
+   - the losses are the capital ships' class `+0x58` (`uprising_defense`),
+     before against after.
+
+   port: a regiment lost aboard is not counted; fighters are worth 0, as
+   FIGHTSD ships them.
+
+   In 24 dual-AI campaigns 15 battles shift loyalty, and 11 campaigns
+   change.
 7. **Port the blockade's shift** (`FUN_00561280`).

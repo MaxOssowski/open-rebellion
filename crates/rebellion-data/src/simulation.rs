@@ -255,6 +255,7 @@ pub fn run_simulation_tick(
     for sys_key in combat_triggers {
         let combat_rolls = take_rolls(256);
         let sorties = squadrons::scramble(world, sys_key);
+        let battle_before = rebellion_core::loyalty::battle_watch(world, sys_key);
         let space_result = resolve_system_space_combat(
             world,
             sys_key,
@@ -264,6 +265,22 @@ pub fn run_simulation_tick(
             states.death_star.shield_generator_active,
         );
         squadrons::recover(world, &sorties);
+        // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift for the
+        // battle's losses (Alliance attacks, Empire defends).
+        let battle_winner = match space_result.winner {
+            rebellion_core::combat::CombatSide::Attacker => {
+                Some(rebellion_core::dat::Faction::Alliance)
+            }
+            rebellion_core::combat::CombatSide::Defender => Some(rebellion_core::dat::Faction::Empire),
+            rebellion_core::combat::CombatSide::Draw => None,
+        };
+        let battle_shift = rebellion_core::loyalty::settle_battle(
+            world,
+            battle_before,
+            sys_key,
+            battle_winner,
+        );
+        integrator.record_loyalty_shifts(battle_shift.as_slice());
 
         integrator.emit_system_space_combat(world, &space_result);
         states.combat_cooldowns.insert(

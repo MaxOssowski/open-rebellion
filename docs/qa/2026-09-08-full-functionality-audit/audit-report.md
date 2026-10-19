@@ -2920,6 +2920,11 @@ cross-runtime proof remain open
   (`FUN_00561780`, `0..=-5` for the Alliance) are ported
   (`loyalty.rs`); 23 of 24 campaigns are unchanged, seed 9's HQ loss
   shifts once (`evidence/2026-10-19-loyalty-coruscant-hq/`).
+- 2026-10-19 (F-028): loyalty after a battle. The winner gains its
+  enemy's losses less its own over SDPRTB 2560 (`FUN_00560d00`,
+  `FUN_0053ec10`; the losses are the lost units' class `+0x58`), in every
+  battle path; 15 battles shift loyalty in 24 campaigns
+  (`evidence/2026-10-19-loyalty-battle/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

@@ -1,0 +1,11 @@
+24 dual-AI campaigns, 1500 days: loyalty_shift events by (side, amount)
+  ('Alliance', -5): 1
+  ('Alliance', -1): 1
+  ('Alliance', 1): 1
+  ('Alliance', 6): 1
+  ('Empire', -4): 1
+  ('Empire', -1): 2
+  ('Empire', 1): 4
+  ('Empire', 2): 2
+  ('Empire', 3): 2
+per seed 1..24: [1, 1, 0, 0, 2, 1, 0, 0, 1, 0, 2, 0, 0, 0, 1, 0, 1, 0, 1, 0, 2, 0, 1, 1]
