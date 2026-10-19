@@ -2903,6 +2903,10 @@ cross-runtime proof remain open
   Golden regenerated for the layout (initial `v1:681087f1af0a0e6d`, final
   `v1:f2946c95622dd970`); the 24 campaigns are unchanged. The tracker item
   is done (`evidence/2026-10-19-jedi-rs-save/`).
+- 2026-10-19: event ids. The port defines no story event any more, so
+  none meets the original's timers `0x380..0x396`; 21 unread `u32` event
+  constants (the invented ids among them) are removed and a test guards
+  the range (`evidence/2026-10-19-event-ids/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

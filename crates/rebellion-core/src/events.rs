@@ -64,25 +64,15 @@ use crate::world::GameWorld;
 // Ghidra RE event IDs (from annotated-functions.md)
 // ---------------------------------------------------------------------------
 
-pub const EVT_RECRUITMENT_DONE: u32 = 0x12c; // 300
-pub const EVT_SYSTEM_BATTLE: u32 = 0x14d; // 333
-pub const EVT_SYSTEM_BLOCKADE: u32 = 0x14e; // 334
 pub const EVT_UPRISING_INCIDENT: u32 = 0x152; // 338
-pub const EVT_FLEET_BATTLE: u32 = 0x180; // 384
 pub const EVT_CHARACTER_FORCE: u32 = 0x1e1; // 481
-pub const EVT_FORCE_TRAINING: u32 = 0x1e5; // 485
-pub const EVT_DAGOBAH_COMPLETED: u32 = 0x210; // 528
 pub const EVT_BOUNTY_ATTACK: u32 = 0x212; // 530
 pub const EVT_FINAL_BATTLE: u32 = 0x220; // 544
 pub const EVT_LUKE_DAGOBAH: u32 = 0x221; // 545
-pub const EVT_GAME_OBJ_DESTROYED: u32 = 0x302; // 770
-pub const EVT_TROOP_BLOCKADE_KILL: u32 = 0x340; // 832
 pub const EVT_FORCE_DISCOVERED: u32 = 0x362; // 866
-pub const EVT_ESPIONAGE_EXTRA: u32 = 0x370; // 880
 
 // Phase 3 additions — from community disassembly cross-reference
 pub const EVT_SUPPORT_CHANGE: u32 = 0x100; // 256 — popular support shift
-pub const EVT_FLEET_ARRIVE: u32 = 0x105; // 261 — fleet arrived at system
 pub const EVT_CHARACTER_HEALTH: u32 = 0x106; // 262 — character health change
 pub const EVT_UNITS_DEPLOYED: u32 = 0x107; // 263 — units deployed to system
 pub const EVT_HQ_CAPTURED: u32 = 0x128; // 296 — headquarters captured
@@ -90,21 +80,10 @@ pub const EVT_INFORMANT_INTEL: u32 = 0x153; // 339 — informant intelligence
 pub const EVT_NATURAL_DISASTER: u32 = 0x154; // 340 — event mapping unverified (FUN_00511810 raises 0x304, not 0x154)
 pub const EVT_RESOURCE_DISCOVERY: u32 = 0x155; // 341 — New Resources / Resources Depleted (FUN_0048e940; raised by the resource incident, event 0x390)
 pub const EVT_MANUFACTURING_IDLE: u32 = 0x160; // 352 — manufacturing queue empty
-pub const EVT_HAN_RESCUE: u32 = 0x200; // 512 — Han Solo rescue variant
-pub const EVT_EMPEROR_ARRIVAL: u32 = 0x230; // 560 — Emperor arrives at system
-pub const EVT_JABBA_PRISONERS: u32 = 0x231; // 561 — Jabba's prisoner events
 pub const EVT_MAINTENANCE_SHORTFALL_EVENT: u32 = 0x304; // 772 — maintenance budget shortfall
 pub const EVT_SABOTEUR_DETECTED: u32 = 0x305; // 773 — saboteur detected
 pub const EVT_CHARACTER_KILLED: u32 = 0x306; // 774 — character killed in action
 pub const EVT_TRAITOR_REVEALED: u32 = 0x361; // 865 — traitor revealed
-pub const EVT_SIDE_CHANGE: u32 = 0x386; // 902 — character changes faction
-pub const EVT_JABBA_CAPTURES_CHEWIE: u32 = 0x387; // 903 — Chewie captured at Jabba's palace
-pub const EVT_HAN_PERMANENT_FREEZE: u32 = 0x39B; // 923 — Han permanently frozen in carbonite
-pub const EVT_HAN_CARBONITE_FAIL_1: u32 = 0x39C; // 924 — escape countdown stage 1
-pub const EVT_HAN_CARBONITE_FAIL_2: u32 = 0x39D; // 925 — escape countdown stage 2
-pub const EVT_HAN_CARBONITE_FAIL_3: u32 = 0x39E; // 926 — escape countdown stage 3
-pub const EVT_HAN_CARBONITE_FAIL_4: u32 = 0x39F; // 927 — escape countdown stage 4
-pub const EVT_HAN_CARBONITE_FAIL_5: u32 = 0x3A0; // 928 — escape countdown stage 5 (terminal)
 
 // ---------------------------------------------------------------------------
 // SystemTag — telemetry routing
@@ -721,6 +700,36 @@ fn character_is_at_system(world: &GameWorld, character: CharacterKey, system: Sy
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_notification_id_takes_a_timer_s_id() {
+        // FUN_0053fb00 (timer-scheduler.md): the original's timers are
+        // 0x380..0x396. The port's own story events that once used those
+        // ids (0x386, 0x387, 0x390..0x396, 0x39b..0x3a0) are gone.
+        let ids = [
+            EVT_UPRISING_INCIDENT,
+            EVT_CHARACTER_FORCE,
+            EVT_BOUNTY_ATTACK,
+            EVT_FINAL_BATTLE,
+            EVT_LUKE_DAGOBAH,
+            EVT_FORCE_DISCOVERED,
+            EVT_SUPPORT_CHANGE,
+            EVT_CHARACTER_HEALTH,
+            EVT_UNITS_DEPLOYED,
+            EVT_HQ_CAPTURED,
+            EVT_INFORMANT_INTEL,
+            EVT_NATURAL_DISASTER,
+            EVT_RESOURCE_DISCOVERY,
+            EVT_MANUFACTURING_IDLE,
+            EVT_MAINTENANCE_SHORTFALL_EVENT,
+            EVT_SABOTEUR_DETECTED,
+            EVT_CHARACTER_KILLED,
+            EVT_TRAITOR_REVEALED,
+        ];
+        for id in ids {
+            assert!(!(0x380..=0x396).contains(&id), "{id:#x}");
+        }
+    }
     use crate::tick::TickEvent;
     use crate::world::ControlKind;
     use crate::world::Character;
