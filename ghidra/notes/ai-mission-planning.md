@@ -1531,7 +1531,28 @@ Any other index gives no target. The six plan kinds' slots are:
 | 5 | `FUN_004b1880` | `FUN_004b1bf0` | `FUN_004b1db0` | `FUN_004b1f80` |
 | 6 | `FUN_004b4e40` | `FUN_004b51b0` | `FUN_004b5370` | `FUN_004b5540` |
 
-Together they run about 2,500 decompiled lines, not read yet.
+Together they run about 2,500 decompiled lines.
+
+**The Sabotage slots `+0x30`** (skimmed 2026-10-19). Each walks a list of
+opponent asset bits in the planner's sector (`+0x10` -> `+0x34`). For
+each bit it takes the system with the lowest defense:
+`FUN_0041a340(sector, 0, bit, require30, 0, 0, 0, key v[29], order 2)`.
+It stops at the first bit that gives a system, then picks the object
+there with `FUN_004ae480(system, &object, bit)`, which is 626 lines and
+not read.
+
+| Kind | The record `+0x2c` bits in order |
+|---|---|
+| 1 | Empire only: `0x2000000` with `+0x30` `0x80000000` (the HQ); then `0x20000`, `0x10000`, `0x200000`, `0x800000` (with `+0x30` `0x200`), `0x400000` |
+| 2 | `0x400000`, `0x800000` (with `0x200`), `0x20000` |
+| 3 | `0x40000` (with `+0x30` `0x100`), `0x80000`, `0x100000`, `0x40000`, `0x200000`, `0x20000`, `0x400000`, `0x800000` (with `0x200`) |
+| 4 | as kind 3 without `0x20000`; order 1 |
+| 5 | as kind 4, order 2 |
+| 6 | as kind 5, with the HQ (`0x2000000`/`0x80000000`) second |
+
+The bits are the opponent's assets (`ai-galaxy-records.md`): `0x10000`
+mines or refineries, `0x20000` yards, `0x40000..0x400000` defenses,
+fleets and regiments, `0x2000000` the headquarters.
 
 **Port.** None of this is ported. The heuristic Sabotage (enemy
 manufacturing systems) and Assassination (enemy main characters) in
