@@ -592,6 +592,14 @@ cross-runtime proof remain open
   2026-09-08, so all gates are currently manual. Formatting, strict clippy,
   packaging, browser execution, screenshots, parity, coverage, and asset
   integrity are not enforced by a hosted pipeline.
+- 2026-10-19: the Fleet window gate failed in 4 of 5 runs, two causes:
+  - The list took egui's global double click, so a click on a popup
+    menu and then on a fleet counted as one. Win32's
+    `WM_LBUTTONDBLCLK` needs both clicks in one window within 4 by 4
+    pixels.
+  - The fixture read the AI's own arrival line.
+  - Both are fixed, and the gate passes 5 of 5
+    (`evidence/2026-10-19-fleet-window-double-click/`).
 - Acceptance: the release pipeline runs the same versioned commands and fixtures
   used by local acceptance, retains artifacts, and blocks regressions.
 

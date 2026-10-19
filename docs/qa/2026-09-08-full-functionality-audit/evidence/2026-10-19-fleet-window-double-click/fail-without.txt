@@ -1,0 +1,11 @@
+test fleet_window::tests::a_double_click_counts_only_when_both_clicks_land_close_in_the_list ... FAILED
+thread 'fleet_window::tests::a_double_click_counts_only_when_both_clicks_land_close_in_the_list' (2073514) panicked at crates/rebellion-render/src/fleet_window.rs:3659:9:
+assertion `left == right` failed
+  left: 2
+ right: 1
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 777 filtered out; finished in 0.01s
+test interface_test_fixture::tests::the_fleet_load_watch_reports_only_its_own_regiment_as_travelling ... FAILED
+assertion `left == right` failed
+  left: Some("Regiment arrived at Svivren")
+ right: Some("Regiment arrived at Cathar")
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 79 filtered out; finished in 0.00s

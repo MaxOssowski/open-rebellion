@@ -1,0 +1,9 @@
+2621fd7a0f0323079c183910ec587acb49ba50f64af316ca51a145faca2ed502  crates/rebellion-render/src/fleet_window.rs
+7d9f946d1ab345281d3d85d2b7517a9e8c59ea57e4f3eb229bb3f8e264ab0212  crates/rebellion-app/src/interface_test_fixture.rs
+9da139533b0908586dc79fbccbde8632bd5de392e2b0062abea117d4b176764a  web/open-rebellion.wasm
+0f3428da81216694dd0e89eb898fbf7b7b28209684538a6a83e5f786d2324d48  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/console.txt
+e83817f5b32f2d76b2664bdb992d1917bd4e547bd7ca419dcf4759d4ae79fcd2  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/network.txt
+482a94b9e3fe91477f98f653de5e8d89d32dd7755b249cb04185fa5c347150d1  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/replay-equivalence.json
+3efd5c75e6b8471164793c6bb94b638f1802982f4f4eccbfc700f19b05496628  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/fail-without.txt
+2caf93881270a3e9e7ee867d37f1ed14497271201f3ca33a50d1e8c06e6ad8c3  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/fleet-window-runs.txt
+7bfbd16526b90804b6c1a1e0ecf658309c64a76c465945099106bc4c353bbb8a  docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/README.md

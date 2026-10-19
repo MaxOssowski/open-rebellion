@@ -160,7 +160,7 @@ impl FleetWindowEntry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct OpenFleetWindow {
     system: SystemKey,
     logical_position: (i16, i16),
@@ -172,6 +172,36 @@ struct OpenFleetWindow {
     tab: FleetWindowTab,
     /// The in-place name edit Rename (0x203) opens (`FUN_004ac7a0`).
     rename: Option<RenameEdit>,
+    /// Where in the left list, in window-local logical pixels, and when
+    /// the last primary click landed; `None` after a click anywhere else
+    /// or a double click ([`win32_double_click`]). port: egui counts a
+    /// double click across widgets, and a third click as a triple, so the
+    /// list keeps its own, as the Fleet Finder's does.
+    last_click: Option<((i32, i32), f64)>,
+}
+
+/// Whether a click at `now` completes a double click begun at `previous`:
+/// Win32 posts `WM_LBUTTONDBLCLK` only when the second click lands in the
+/// same window within the double-click time, inside the rectangle centred
+/// on the first (`SM_CXDOUBLECLK` by `SM_CYDOUBLECLK`, 4 by 4 pixels by
+/// default).
+fn win32_double_click(
+    previous: Option<((i32, i32), f64)>,
+    (at, time): ((i32, i32), f64),
+    delay: f64,
+) -> bool {
+    previous.is_some_and(|((x, y), then)| {
+        (at.0 - x).abs() <= 2 && (at.1 - y).abs() <= 2 && time - then <= delay
+    })
+}
+
+/// `point` in `local`'s logical pixels, as the original's window sees it.
+#[allow(clippy::cast_possible_truncation)]
+fn logical_point(local: egui::Rect, scale: f32, point: egui::Pos2) -> (i32, i32) {
+    (
+        ((point.x - local.min.x) / scale).floor() as i32,
+        ((point.y - local.min.y) / scale).floor() as i32,
+    )
 }
 
 /// A Rename's edit field (`+0x138`, a CoolStringField) over the entry it
@@ -293,6 +323,7 @@ impl FleetWindowState {
             expanded: Vec::new(),
             tab: FleetWindowTab::CapitalShips,
             rename: None,
+            last_click: None,
         });
         true
     }
@@ -1302,6 +1333,9 @@ struct WindowDrawResult {
     drag: Option<ItemDrag>,
     object_menu: Option<(MenuObject, egui::Pos2)>,
     rename: Option<RenameOutcome>,
+    /// A primary click this frame: where and when it landed in the left
+    /// list, or `None` outside it or for a double click.
+    last_click: Option<Option<((i32, i32), f64)>>,
 }
 
 /// Draw every open Fleet window.
@@ -1367,6 +1401,9 @@ pub fn draw_fleet_windows(
             if let Some(selected) = result.select {
                 open.selected = selected;
                 open.selected_item = None;
+            }
+            if let Some(click) = result.last_click {
+                open.last_click = click;
             }
             if let Some(fleet) = result.toggle {
                 if let Some(index) = open.expanded.iter().position(|&key| key == fleet) {
@@ -1539,6 +1576,23 @@ fn draw_fleet_window(
             );
             let list_painter = painter.with_clip_rect(list);
             let font = egui::FontId::proportional((9.0 * scale).max(6.0));
+            let click = ctx.input(|input| {
+                input
+                    .pointer
+                    .primary_clicked()
+                    .then(|| input.pointer.interact_pos())
+                    .flatten()
+                    .map(|point| (point, input.time))
+            });
+            let delay = ctx.options(|options| options.input_options.max_double_click_delay);
+            let mut double = false;
+            if let Some((point, time)) = click {
+                let here =
+                    rect_contains(list, point).then(|| (logical_point(local, scale, point), time));
+                double =
+                    here.is_some_and(|here| win32_double_click(window.last_click, here, delay));
+                result.last_click = Some(here.filter(|_| !double));
+            }
             for (row, entry) in entries.iter().enumerate() {
                 let top = LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32;
                 if top >= LEFT_LIST.1 + LEFT_LIST.3 {
@@ -1680,7 +1734,7 @@ fn draw_fleet_window(
                     result.select = Some(Some(*entry));
                     result.focus = true;
                 }
-                if response.double_clicked() {
+                if response.clicked() && double {
                     if let FleetWindowEntry::Fleet(fleet) = entry {
                         result.toggle = Some(*fleet);
                     }
@@ -2243,6 +2297,7 @@ pub(crate) mod tests {
             expanded: Vec::new(),
             tab: FleetWindowTab::CapitalShips,
             rename: None,
+            last_click: None,
         }
     }
 
@@ -3619,6 +3674,52 @@ pub(crate) mod tests {
         assert!(focused
             .actions
             .contains(&FleetWindowAction::SelectSystem(system)));
+    }
+
+    #[test]
+    fn a_double_click_counts_only_when_both_clicks_land_close_in_the_list() {
+        // Win32 posts WM_LBUTTONDBLCLK to the window under both clicks only
+        // within the 4 by 4 double-click rectangle (SM_CXDOUBLECLK). A click
+        // on another window (a popup menu) and then on a fleet's entry, or
+        // two clicks 3 pixels apart, are two single clicks.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        add_fleet(&mut world, system, true, 1);
+        let transport = TroopTransportState::default();
+        let entries = |state: &FleetWindowState| {
+            state
+                .report(
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog(system),
+                    &transport,
+                    system,
+                )
+                .unwrap()
+                .entries
+        };
+        let clicks = |points: &[egui::Pos2]| {
+            let mut state = opened(&world, system);
+            let frames = points.iter().flat_map(|&point| click(point)).collect();
+            run(
+                &world,
+                &transport,
+                &mut state,
+                CockpitFaction::Alliance,
+                frames,
+            );
+            entries(&state)
+        };
+        // Each click 0.25 s after the last, inside egui's 0.3 s.
+        let elsewhere = egui::pos2(1300.0, 900.0);
+        assert_eq!(clicks(&[elsewhere, at(40.0, 50.0)]), 1);
+        assert_eq!(clicks(&[at(40.0, 50.0), at(43.0, 50.0)]), 1);
+        assert_eq!(clicks(&[at(40.0, 50.0), at(40.0, 53.0)]), 1);
+        assert_eq!(clicks(&[at(40.0, 50.0), at(42.0, 52.0)]), 2);
+        // egui takes the third click for a triple; the list still sees its
+        // double click.
+        assert_eq!(clicks(&[elsewhere, at(40.0, 50.0), at(40.0, 50.0)]), 2);
+        // A double click ends the pair: a third click starts another.
+        assert_eq!(clicks(&[at(40.0, 50.0), at(40.0, 50.0), at(40.0, 50.0)]), 2);
     }
 
     #[test]

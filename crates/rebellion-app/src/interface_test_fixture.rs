@@ -2788,10 +2788,16 @@ fn fleet_load_observation(
         confirmation_open,
         last_message: messages.last().map(|message| message.text.clone()),
         // One frame can run several days, so a regiment's line may not be
-        // the last.
+        // the last. Only the player's: the AI's regiments post their own
+        // arrivals to the other side's index (Unit Arrival, 0xd).
         last_regiment_message: messages
             .iter()
             .rev()
+            .filter(|message| {
+                message
+                    .audience
+                    .includes(request.faction == CockpitFaction::Alliance)
+            })
             .find(|message| message.text.starts_with("Regiment "))
             .map(|message| message.text.clone()),
         planet_squadrons: rebellion_core::squadrons::on_planet(
@@ -4580,6 +4586,11 @@ mod tests {
         let messages = [
             line("Regiment move rejected: the destination is blockaded"),
             line("Regiment arrived at Cathar"),
+            // The AI's own arrival goes to its side's index only.
+            line("Regiment arrived at Svivren").on_rail(
+                rebellion_render::MessageRail::Mission,
+                rebellion_render::RailAudience::Empire,
+            ),
             line("Luke Skywalker has reached Jedi Knight tier"),
         ];
         let later = fleet_load_observation(
