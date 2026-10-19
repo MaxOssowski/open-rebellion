@@ -1834,6 +1834,15 @@ Ported:
 
 The headless runs play the standard game, so their output is unchanged.
 
+## No planner sends Jedi Training (read 2026-10-20)
+
+`FUN_00402720` walks the side's mission records and sets one capability bit
+per id. Its last branch builds the key `0x58000042` (Jedi Training,
+disassembly `0x402c74`) and reads the record, but compares nothing and sets
+no bit; the image holds that id nowhere else. So no AI planner can send
+Jedi Training: only the player's dialog does, as in the port
+(`mission_planning::capability`).
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

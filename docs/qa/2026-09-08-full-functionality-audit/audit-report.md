@@ -3067,6 +3067,14 @@ cross-runtime proof remain open
 - 2026-10-18: Dagobah (`0x71`) runs through the lifecycle with an abode
   target (F-038, `evidence/2026-10-18-dagobah/`). Open: Palace, Bounty,
   Vacation, Pickup, Return, Autorouting, Adrift.
+- 2026-10-20 (re-check): no AI planner sends Jedi Training in the original.
+  `FUN_00402720` builds the key `0x58000042` (`0x402c74`, the image's only
+  use of that id) and sets no capability bit, so the port's player-only Jedi
+  Training matches (test `no_planner_capability_names_jedi_training`). Since
+  the entries above, Palace and Bounty (`148dbd83`, `b43895ec`), Pickup
+  (`f05e1831`) and the Reconnaissance planners (2026-10-18) are ported.
+  Open: Vacation `0x72` (two records, Alliance only), and the pseudo-
+  missions Return `0x42`, Autorouting `0x43` and Adrift `0x44`.
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

@@ -81,7 +81,9 @@ fn capability(kind: MissionKind) -> Option<u32> {
         // No planner sends these: Autoscrap is the Autoscrap planner's, and
         // Move is the trip an AI planner orders before its mission (FUN_004bd570).
         MissionKind::Autoscrap | MissionKind::Move => return None,
-        // port: the AI's Jedi Training planner is not read, so it sends none.
+        // FUN_00402720 reads Jedi Training's record (0x58000042, the image's
+        // only use of that id, 0x402c74) but sets no bit, so no planner
+        // sends it; only the player does.
         MissionKind::JediTraining => return None,
         // The mission manager sends Dagobah (FUN_0054a860), not a planner.
         MissionKind::Dagobah => return None,
@@ -815,6 +817,14 @@ fn agent_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_planner_capability_names_jedi_training() {
+        // FUN_00402720 (0x402c74): the Jedi Training branch builds the key
+        // 0x58000042 and sets no capability bit.
+        assert_eq!(capability(MissionKind::JediTraining), None);
+        assert!(!KINDS.contains(&MissionKind::JediTraining));
+    }
 
     #[test]
     fn a_ranged_draw_covers_zero_to_one_below_its_bound() {
