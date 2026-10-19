@@ -2215,10 +2215,6 @@ impl AISystem {
     ///
     /// At most `max_covert_ops_per_eval` covert missions are queued per pass,
     /// and a kind stops once its planner finds no team.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-    )]
     fn evaluate_espionage(
         planner: &mut Planner<'_>,
         world: &GameWorld,
