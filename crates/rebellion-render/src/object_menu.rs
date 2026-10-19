@@ -309,10 +309,6 @@ const COMMAND_KINDS: [ObjectMenuItem; 4] = [
     ),
 ];
 
-/// The bitmap a checked row shows: the Command records' word 10.
-/// hyp: word 10 is the checked item's bitmap, as `agent_menu.rs` reads it.
-const CHECK_BITMAP: u32 = 11902;
-
 const ASSAULT: ObjectMenuItem = item(
     0x234,
     ObjectMenuCommand::Assault,
@@ -381,8 +377,6 @@ const PRODUCER_RENAME: ObjectMenuItem = item(
 pub struct ObjectMenuRow {
     pub item: ObjectMenuItem,
     pub enabled: bool,
-    /// The order's `+0x14` says so: the row shows [`CHECK_BITMAP`].
-    pub checked: bool,
 }
 
 impl ObjectMenuRow {
@@ -390,11 +384,12 @@ impl ObjectMenuRow {
     pub const fn entry(&self) -> GameMenuEntry<'static> {
         GameMenuEntry {
             label: self.item.label,
-            icon: if self.checked {
-                Some(CHECK_BITMAP)
-            } else {
-                None
-            },
+            // FUN_00442590 flags bit 1: checked when the order's `+0x14`
+            // says so. No order the port offers is ever checked: the
+            // menu's fresh order (FUN_0051d990) leaves its `+0x40` list
+            // empty, so FUN_0051fd30 (and the Command orders' FUN_00580d80
+            // over it) answers 0.
+            icon: None,
             enabled: self.enabled,
             submenu: self.item.submenu,
         }
@@ -508,7 +503,6 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         .chain(&[ENCYCLOPEDIA, STATUS])
         .map(|&item| ObjectMenuRow {
             item,
-            checked: false,
             enabled: match item.command {
                 ObjectMenuCommand::Mission => gates.mission,
                 ObjectMenuCommand::Move => {
@@ -546,7 +540,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
 ///   (`FUN_00507290`); each is enabled by its gate;
 /// - Command: a character's class lists None, Commander, Admiral and
 ///   General (`FUN_004f2400`), in their sort-key order, each enabled by its
-///   check (`FUN_004ed750`) and the held one checked.
+///   check (`FUN_004ed750`); none is checked.
 ///
 /// Empty for any other selection.
 #[must_use]
@@ -554,12 +548,8 @@ pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> 
     if matches!(selection, Some(MenuObject::Character(_))) {
         let mut rows: Vec<ObjectMenuRow> = COMMAND_KINDS
             .iter()
-            .zip(gates.command.into_iter().zip(gates.command_checked))
-            .map(|(&item, (enabled, checked))| ObjectMenuRow {
-                item,
-                enabled,
-                checked,
-            })
+            .zip(gates.command)
+            .map(|(&item, enabled)| ObjectMenuRow { item, enabled })
             .collect();
         rows.sort_by_key(|row| row.item.sort_key);
         return rows;
@@ -583,7 +573,6 @@ pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> 
         .map(|(&item, enabled)| ObjectMenuRow {
             item,
             enabled,
-            checked: false,
         })
         .collect()
 }
@@ -620,8 +609,6 @@ pub struct OrderGates {
     /// The Command orders `0x260..0x263` on a character (`FUN_004ed750`,
     /// `rebellion_core::character_command::order_allowed`).
     pub command: [bool; 4],
-    /// Which of `0x260..0x263` names the character's command.
-    pub command_checked: [bool; 4],
 }
 
 /// An open object pop-up menu.
@@ -793,7 +780,6 @@ mod tests {
         bombard: [false; 4],
         assault: false,
         command: [false; 4],
-        command_checked: [false; 4],
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -855,10 +841,10 @@ mod tests {
     fn a_characters_command_submenu_lists_none_admiral_general_commander() {
         // STRATEGY RT_RCDATA 0x260..0x263: parent 0x160, sort 402, 409, 406,
         // 408, TEXTSTRA 12354, 12356, 12358, 12360, bitmap 11902; each row
-        // enabled by FUN_004ed750, the held kind checked.
+        // enabled by FUN_004ed750, none checked (FUN_00580d80 ->
+        // FUN_0051fd30 over the fresh order's empty +0x40 list).
         let gates = OrderGates {
             command: [false, true, true, false],
-            command_checked: [false, false, true, false],
             ..OrderGates::default()
         };
         let rows = object_submenu_rows(Some(MenuObject::Character(CharacterKey::default())), gates);
@@ -880,7 +866,7 @@ mod tests {
         assert_eq!(enabled(&rows), ["Admiral", "Commander"]);
         assert_eq!(
             rows.iter().map(|row| row.entry().icon).collect::<Vec<_>>(),
-            [None, Some(11902), None, None]
+            [None; 4]
         );
         assert_eq!(
             rows.iter().map(|row| row.item.command).collect::<Vec<_>>(),
@@ -984,7 +970,6 @@ mod tests {
             bombard: [false; 4],
             assault: false,
             command: [false; 4],
-            command_checked: [false; 4],
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -1173,7 +1158,6 @@ mod tests {
             bombard: [false; 4],
             assault: false,
             command: [false; 4],
-            command_checked: [false; 4],
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),

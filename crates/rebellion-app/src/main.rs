@@ -7052,37 +7052,32 @@ fn order_gates(
                 system,
             )
         }),
-        // FUN_004ed750 for each of 0x260..0x263; the held kind is checked.
-        command: command_rows(world, selection, is_alliance).0,
-        command_checked: command_rows(world, selection, is_alliance).1,
+        // FUN_004ed750 for each of 0x260..0x263.
+        command: command_rows(world, mission_state, selection, is_alliance),
     }
 }
 
 /// The Command submenu's rows on `selection`: which of `0x260..0x263`
-/// `FUN_004ed750` allows, and which names the character's command.
-///
-/// hyp: the row naming the held command is checked (None while it holds
-/// none); the order's `+0x14` (`FUN_00580d80`) that the menu reads for the
-/// check is not settled.
+/// `FUN_004ed750` allows. None is checked (`object_menu.rs`,
+/// `ObjectMenuRow::entry`).
 fn command_rows(
     world: &GameWorld,
+    missions: &MissionState,
     selection: Option<MenuObject>,
     is_alliance: bool,
-) -> ([bool; 4], [bool; 4]) {
+) -> [bool; 4] {
     use rebellion_core::character_command::{order_allowed, CommandKind};
     let Some(MenuObject::Character(key)) = selection else {
-        return ([false; 4], [false; 4]);
+        return [false; 4];
     };
     let Some(c) = world.characters.get(key) else {
-        return ([false; 4], [false; 4]);
+        return [false; 4];
     };
-    let kinds = [0x260, 0x261, 0x262, 0x263].map(|order| {
-        CommandKind::of_order(order).unwrap_or(CommandKind::None)
-    });
-    (
-        kinds.map(|kind| order_allowed(c, kind, is_alliance).is_ok()),
-        kinds.map(|kind| c.command == kind),
-    )
+    let en_route = missions.is_en_route(rebellion_core::missions::MissionMember::Character(key));
+    [0x260, 0x261, 0x262, 0x263].map(|order| {
+        let kind = CommandKind::of_order(order).unwrap_or(CommandKind::None);
+        order_allowed(c, kind, is_alliance, en_route).is_ok()
+    })
 }
 
 /// The team and system of a Planetary Bombardment order on `selection`: a
@@ -7673,8 +7668,15 @@ fn apply_panel_action(
             else {
                 return;
             };
-            let result =
-                rebellion_core::character_command::give(world, character, kind, is_alliance);
+            let en_route = mission_state
+                .is_en_route(rebellion_core::missions::MissionMember::Character(character));
+            let result = rebellion_core::character_command::give(
+                world,
+                character,
+                kind,
+                is_alliance,
+                en_route,
+            );
             macroquad::logging::info!(
                 "[interface] command={order:#x} character={:?} result={:?} now={:?}",
                 world.characters.get(character).map(|c| c.name.as_str()),

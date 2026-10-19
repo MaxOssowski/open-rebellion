@@ -2869,6 +2869,12 @@ cross-runtime proof remain open
   slot `+0x11c`, `FUN_004f1340`); the mission hook is slot `+0x268`
   (`FUN_004f1490`). The 24 campaigns and the golden are unchanged
   (`evidence/2026-10-19-character-command-hooks/`).
+- 2026-10-19: character command, stage 7 (closing). `FUN_004f9860`'s en
+  route test refuses a Command order (`Refusal::EnRoute`). No Command row
+  is checked: the menu's fresh order leaves its `+0x40` list empty, so
+  `FUN_00580d80` -> `FUN_0051fd30` answers 0 (read from the image),
+  replacing the stage-3 hyp. Accepted in the browser on both sides. The
+  tracker item is done (`evidence/2026-10-19-character-command-closing/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

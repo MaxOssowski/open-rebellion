@@ -1,0 +1,4 @@
+thread 'character_command::tests::a_command_order_needs_a_free_uninjured_character_its_class_allows' (3652648) panicked at crates/rebellion-core/src/character_command.rs:348:9:
+  left: Ok(())
+ right: Err(EnRoute)
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1418 filtered out; finished in 0.00s

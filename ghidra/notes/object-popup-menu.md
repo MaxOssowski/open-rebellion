@@ -94,7 +94,10 @@ orbit. port: Confirmed Move and Scrap stay disabled.
 ### When Mission is enabled
 
 - Listed: `+0x10` is `FUN_0040f340`, which returns 1.
-- Checked: `+0x14` is `FUN_0051fd30`, which returns 0.
+- Checked: `+0x14` is `FUN_0051fd30`, which returns 0 for the menu's fresh
+  order: it is checked only when the order's `+0x40` list has items that
+  all answer yes, and that list stays empty (read from the image
+  2026-10-19, `character-command.md` stage 7).
 - Enabled: the global gate `FUN_0051de80` (bit `0x10000000` of
   `+0xc0`→`+0x74` clear) and `+0x18`, `FUN_0051fe20`. That needs the order
   built (`+0x1c`, set when `FUN_0051fa20` allocated the list at `+0x40`),

@@ -162,19 +162,17 @@ port:
 - a capture clears the command at the day's pass, not in its hook;
 - `Damaged` (`+0x50` bit `0x200`) is not kept: it equals "injury non-zero",
   and no character reader of it is known;
-- `FUN_00560d50` waits for `FUN_00514a60`'s trigger.
+- `FUN_00560d50` is ported in stage 5.
 
 Stage 3 (2026-10-19), the interface:
 - The Command submenu (`object_menu.rs`) lists the STRATEGY records
   `0x260..0x263`: parent `0x160`, sort keys 402, 409, 406, 408, TEXTSTRA
   12354 None, 12356 Commander, 12358 Admiral, 12360 General, word 10
   bitmap 11902.
-  - Each row is enabled by `order_allowed`. The held kind shows the bitmap
-    (`hyp:`: the check the menu reads from the order's `+0x14` is not
-    settled; None is checked while no command is held).
+  - Each row is enabled by `order_allowed`. No row is checked (stage 7).
   - The choice runs `give` (`PanelAction::OrderCommand`).
 - `order_allowed` adds the base check `FUN_004f9860`: the ordering side's,
-  active (recruited), not destroyed. Its en route test is not made.
+  active (recruited), not destroyed; the en route test came in stage 7.
 - The Fleet Status window's Admiral, General and Commander rows
   (`status_rows.rs`) name the fleet's side's holder aboard
   (`FUN_004fd790`).
@@ -234,6 +232,23 @@ Stage 6 (2026-10-19), the hooks:
 - `Character::mark_killed` clears the command, as the destruction hook
   (`+0x11c`) does.
 
+Stage 7 (2026-10-19), closing:
+- `FUN_004f9860` refuses an order for an object en route (`+0x50` bit 4,
+  error 4, after the destroyed test). `order_allowed` and `give` take
+  `en_route`, the port's `MissionState::is_en_route`
+  (`Refusal::EnRoute`).
+- No Command row is checked. `FUN_0051d990` builds a fresh order for each
+  item: slot `+0x24` (`FUN_0051fb70`) puts the selection in the team at
+  `+0x2c`, slot `+0x2c` the target, and the list at `+0x40` stays empty.
+  Slot `+0x14` (`FUN_00580d80`, read from the image) returns
+  `FUN_0051fd30`, 0 when there is more than one selected object.
+  `FUN_0051fd30` (`0x0051fd30..0x0051fe14`; the decompile drops two
+  blocks) walks that list with `FUN_00553720`: some item answers yes (`a`)
+  and some no (`b`). With slot `+0x54` (`FUN_0040f340`, 1) it is checked
+  when `a` and not `b`, so an empty list is never checked. This replaces
+  the stage-3 `hyp:` that checked the held kind. The port's menu therefore
+  has no checked row, and `CHECK_BITMAP` is gone.
+
 ## Plan (tracker item "Dowodzenie i jego utrata przy ranie")
 
 1. **This note.**
@@ -246,7 +261,7 @@ Stage 6 (2026-10-19), the hooks:
    - Clear the commands aboard a ship on `FUN_00560d50`.
 3. **The interface.**
    - The Command submenu with None, Admiral, General and Commander,
-     enabled per `FUN_004ed750`, with the held kind checked.
+     enabled per `FUN_004ed750` (none is checked, stage 7).
    - The name prefix (`FUN_004f17f0`) in the windows that show it (3b).
    - Browser acceptance.
 4. **The readers.**
@@ -258,6 +273,7 @@ Stage 6 (2026-10-19), the hooks:
 6. **The hooks.** `FUN_004eeed0`'s mission test in `keeps`, and the two
    other hooks that run it (`FUN_004f1340`, `Role_vt11c`; `FUN_004f1490`,
    `Role_vt268`).
+7. **Closing.** `FUN_004f9860`'s en route test; the menu's checked row.
 
 The AI giving commands waits for module `0xc`.
 

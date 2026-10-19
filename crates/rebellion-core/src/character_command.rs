@@ -65,6 +65,8 @@ pub enum Refusal {
     Inactive,
     /// `FUN_004f9860` 3: destroyed (`+0x50` bit 3; killed).
     Destroyed,
+    /// `FUN_004f9860` 4: en route (`+0x50` bit 4).
+    EnRoute,
     /// 1: on a mission (`+0x78` bit 7).
     OnMission,
     /// 2: captured (`+0xac` bit 0).
@@ -79,7 +81,7 @@ pub enum Refusal {
 /// for the side whose order it is (`is_alliance`):
 ///
 /// - the base check `FUN_004f9860`: the character is the ordering side's,
-///   active (recruited) and not destroyed;
+///   active (recruited), not destroyed and not `en_route`;
 /// - the order is refused for a character on a mission, injured or
 ///   captured;
 /// - and unless its class allows the command (`FUN_004ed1e0` Commander,
@@ -89,12 +91,13 @@ pub enum Refusal {
 /// The original reports every refusal that applies, in this order; the
 /// port returns the first.
 ///
-/// port: the base check's en route test (`+0x50` bit 4) is not made; the
-/// port keeps no such flag on a character.
+/// port: `en_route` is the port's travel (`MissionState::is_en_route`),
+/// which the caller knows.
 pub fn order_allowed(
     character: &Character,
     kind: CommandKind,
     is_alliance: bool,
+    en_route: bool,
 ) -> Result<(), Refusal> {
     if character.is_alliance != is_alliance {
         return Err(Refusal::OtherSide);
@@ -104,6 +107,9 @@ pub fn order_allowed(
     }
     if character.is_killed {
         return Err(Refusal::Destroyed);
+    }
+    if en_route {
+        return Err(Refusal::EnRoute);
     }
     if character.on_mission || character.on_hidden_mission {
         return Err(Refusal::OnMission);
@@ -147,11 +153,12 @@ pub fn give(
     character: CharacterKey,
     kind: CommandKind,
     is_alliance: bool,
+    en_route: bool,
 ) -> Result<Vec<CharacterKey>, Refusal> {
     let Some(c) = world.characters.get(character) else {
         return Err(Refusal::Destroyed);
     };
-    order_allowed(c, kind, is_alliance)?;
+    order_allowed(c, kind, is_alliance, en_route)?;
     let kind = if c.command == kind {
         CommandKind::None
     } else {
@@ -280,7 +287,7 @@ mod tests {
         kind: CommandKind,
     ) -> Result<Vec<CharacterKey>, Refusal> {
         let side = world.characters[c].is_alliance;
-        give(world, c, kind, side)
+        give(world, c, kind, side, false)
     }
 
     fn officer(world: &mut GameWorld, alliance: bool) -> CharacterKey {
@@ -325,19 +332,31 @@ mod tests {
             can_be_admiral: true,
             ..Default::default()
         };
-        assert_eq!(order_allowed(&base, CommandKind::Admiral, true), Ok(()));
-        // FUN_004f9860: the ordering side's, active (recruited), not destroyed.
+        assert_eq!(order_allowed(&base, CommandKind::Admiral, true, false), Ok(()));
+        // FUN_004f9860: the ordering side's, active (recruited), not
+        // destroyed, not en route.
         assert_eq!(
-            order_allowed(&base, CommandKind::Admiral, false),
+            order_allowed(&base, CommandKind::Admiral, false, false),
             Err(Refusal::OtherSide)
         );
         let with = |edit: fn(&mut Character)| {
             let mut c = base.clone();
             edit(&mut c);
-            order_allowed(&c, CommandKind::Admiral, true)
+            order_allowed(&c, CommandKind::Admiral, true, false)
         };
         assert_eq!(with(|c| c.recruited = false), Err(Refusal::Inactive));
         assert_eq!(with(|c| c.is_killed = true), Err(Refusal::Destroyed));
+        // FUN_004f9860 4: en route (+0x50 bit 4), after the destroyed test.
+        assert_eq!(
+            order_allowed(&base, CommandKind::Admiral, true, true),
+            Err(Refusal::EnRoute)
+        );
+        let mut dead = base.clone();
+        dead.is_killed = true;
+        assert_eq!(
+            order_allowed(&dead, CommandKind::Admiral, true, true),
+            Err(Refusal::Destroyed)
+        );
         assert_eq!(with(|c| c.on_mission = true), Err(Refusal::OnMission));
         assert_eq!(
             with(|c| c.on_hidden_mission = true),
@@ -347,11 +366,11 @@ mod tests {
         assert_eq!(with(|c| c.is_captive = true), Err(Refusal::Captured));
         assert_eq!(with(|c| c.can_be_admiral = false), Err(Refusal::NotAllowed));
         assert_eq!(
-            order_allowed(&base, CommandKind::General, true),
+            order_allowed(&base, CommandKind::General, true, false),
             Err(Refusal::NotAllowed)
         );
         assert_eq!(
-            order_allowed(&base, CommandKind::Commander, true),
+            order_allowed(&base, CommandKind::Commander, true, false),
             Err(Refusal::NotAllowed)
         );
         let general = Character {
@@ -361,20 +380,20 @@ mod tests {
             can_be_commander: true,
             ..Default::default()
         };
-        assert_eq!(order_allowed(&general, CommandKind::General, true), Ok(()));
+        assert_eq!(order_allowed(&general, CommandKind::General, true, false), Ok(()));
         assert_eq!(
-            order_allowed(&general, CommandKind::Commander, true),
+            order_allowed(&general, CommandKind::Commander, true, false),
             Ok(())
         );
         assert_eq!(
-            order_allowed(&base, CommandKind::None, true),
+            order_allowed(&base, CommandKind::None, true, false),
             Err(Refusal::NotAllowed)
         );
         let commanding = Character {
             command: CommandKind::Admiral,
             ..base
         };
-        assert_eq!(order_allowed(&commanding, CommandKind::None, true), Ok(()));
+        assert_eq!(order_allowed(&commanding, CommandKind::None, true, false), Ok(()));
     }
 
     #[test]

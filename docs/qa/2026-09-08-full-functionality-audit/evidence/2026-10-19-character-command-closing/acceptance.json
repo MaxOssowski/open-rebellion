@@ -1,0 +1,56 @@
+{
+ "alliance": {
+  "steps": [
+   [
+    "submenu",
+    {
+     "left": 255.65625,
+     "top": 164,
+     "width": 89.34375,
+     "height": 82,
+     "rows": 4,
+     "general_row": null,
+     "command_rows": [
+      0,
+      3,
+      1,
+      2
+     ]
+    }
+   ]
+  ],
+  "command_lines": [
+   "[info] [interface] command=0x262 character=Some(\"Admiral Skywalker\") result=Ok(1) now=Some(Admiral)",
+   "[info] [interface] command=0x262 character=Some(\"Luke Skywalker\") result=Ok(1) now=Some(None)",
+   "[info] [interface] command=0x263 character=Some(\"General Skywalker\") result=Ok(1) now=Some(General)"
+  ],
+  "errors": []
+ },
+ "empire": {
+  "steps": [
+   [
+    "submenu",
+    {
+     "left": 315.65625,
+     "top": 164,
+     "width": 89.34375,
+     "height": 82,
+     "rows": 4,
+     "general_row": null,
+     "command_rows": [
+      0,
+      3,
+      1,
+      2
+     ]
+    }
+   ]
+  ],
+  "command_lines": [
+   "[info] [interface] command=0x262 character=Some(\"Admiral Skywalker\") result=Ok(1) now=Some(Admiral)",
+   "[info] [interface] command=0x262 character=Some(\"Luke Skywalker\") result=Ok(1) now=Some(None)",
+   "[info] [interface] command=0x263 character=Some(\"General Skywalker\") result=Ok(1) now=Some(General)"
+  ],
+  "errors": []
+ }
+}
