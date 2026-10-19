@@ -89,12 +89,54 @@ The class flag `+0xb4` that exempts a character is the DAT field after
 some (Ackbar 1, record 834 0). The manual: "Key characters have strong
 loyalty that won't waver."
 
+### The system record's loss counters (read 2026-10-19)
+
+**Where they are counted.** `System_vtd0` (`FUN_00508c60`) is a system's
+hook for an object there:
+- it acts when the object is destroyed (third argument 0, object `+0x50`
+  bit 3);
+- the object is of family `0x10..0x1f` (a regiment, capital ship or
+  fighter squadron);
+- it adds the object's value to its own side's counter (`+0x24 >> 6 & 3`).
+
+The value is slot `+0x1c0` minus `+0x1c8`:
+- `+0x1c8` is `FUN_006158b0`, which returns 0;
+- `+0x1c0` is `FUN_00558050` -> `FUN_00520b60`, the class record `+0x58`.
+  That is the DAT field before `detection`, which the dumper names
+  `uprising_defense`:
+  - capital ships 3..42;
+  - fighters 0;
+  - regiments 3..6.
+
+The counter chosen depends on the object's DestroyedReason (`+0x40` low
+byte):
+
+| Reason | Counter | Setter | Cleared |
+|---|---|---|---|
+| `0xc` (a battle) | `+0x68 / +0x6c` (`+100 + 4·side`) | `FUN_0050cee0` | at a battle's start (`System_vt21c`, `FUN_00511080`, which also posts `0x309`) |
+| `0xe` (Planetary Assault, `planetary-assault.md`) | `+0x48 / +0x4c` (`+0x44 + 4·side`) | `FUN_0050ce20` | at a blockade's start (`System_vt220`, `FUN_00511300`) |
+| `0xf` (bombardment, `bombardment-order.md`) | `+0x54 / +0x58` (`+0x50 + 4·side`) | `FUN_0050ce50` | at a blockade's start |
+
+- At a blockade's start `FUN_00511300` also stores the blockading side in
+  `+0x60` (`FUN_00509890` -> `FUN_0050ce80`).
+- The battle's winner is `+100` (`FUN_0050ceb0`, set by `System_vt23c`,
+  `FUN_00511780`).
+
+**What the two handlers give**, with SDPRTB 2560 = 50:
+- **A battle's end** (`FUN_00560d00`), for the winning side `w` with its
+  own losses `L(w)` and the loser's `L(o)`:
+  `(L(o) - L(w)) / 50 + L(o) / 50`.
+- **A blockade's end** (`FUN_00561280`, second argument 0):
+  - the side is the blockader `+0x60`;
+  - when the system is not destroyed and its holder differs, the side
+    switches to the other one, which is the holder;
+  - the losses per side are the assault and bombardment counters
+    (`FUN_00509a20`), with side 3's added for a side other than
+    `+0x60`.
+
 Still open:
-- What the system record's per-side counters `+0x44..+0x6c` hold. They are
-  presumably the battle's and the blockade's losses, by the manual's
-  "ships, fighters, or troops destroyed in battles, assaults, and
-  bombardments".
-- What the second argument 0 means for the HQ and blockade handlers.
+- What the HQ handler's second argument 0 means. It is presumably the
+  object's loss.
 
 ## Plan (tracker item "Zdrada")
 
@@ -119,5 +161,7 @@ Still open:
 
    In 24 dual-AI campaigns one shift happens: seed 9's Alliance loses its
    headquarters, -5. Coruscant never changes hands.
-5. **Read the system record's per-side loss counters**, then port the
-   battle's and the blockade's shifts.
+5. **Read the system record's per-side loss counters** (done 2026-10-19,
+   above).
+6. **Port the battle's shift** (`FUN_00560d00`).
+7. **Port the blockade's shift** (`FUN_00561280`).
