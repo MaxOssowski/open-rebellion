@@ -945,6 +945,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         encounter_day: 0,
         escape_barred: false,
         bounty_captured: false,
+        command: rebellion_core::character_command::CommandKind::None,
     }
 }
 

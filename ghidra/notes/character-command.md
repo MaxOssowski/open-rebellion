@@ -129,14 +129,29 @@ command order:
 The AI's commands are therefore module `0xc`'s, a separate tracker item
 ("Moduł 0xc (ruchy flot)"), not yet ported.
 
-## The port today
+## The port
 
-The port has none of this:
-- no `CommandKind` field;
-- the menu shows "Command" without its children or a handler
-  (`object_menu.rs`);
-- the injury does not clear a command or set `Damaged`
-  (`character-injury.md`, "Not ported yet");
+Stage 2 (2026-10-19, save v85), `rebellion-core/src/character_command.rs`:
+- `Character::command`;
+- `order_allowed` (`FUN_004ed750`);
+- `give` (`FUN_00561bb0`, `FUN_004ef400`);
+- `keeps` (`FUN_004eeed0`).
+
+`Character::injure` clears the command, as the injury hook does, and both
+day loops call `release_unfit` for captures.
+
+port:
+- the base check `FUN_004f9860` is read as the character being alive;
+- `FUN_004eeed0`'s `+0x50` bit 6 and commanding key tests are read as true
+  while the character commands (`hyp:`, "Still open");
+- a capture clears the command at the day's pass, not in its hook;
+- `Damaged` (`+0x50` bit `0x200`) is not kept: it equals "injury non-zero",
+  and no character reader of it is known;
+- `FUN_00560d50` waits for `FUN_00514a60`'s trigger.
+
+Not yet:
+- the menu still shows "Command" without its children or a handler
+  (`object_menu.rs`), so nobody gets a command yet;
 - the readers use no rank: `bombardment-order.md` port note, and the AI
   records' `hyp:`.
 

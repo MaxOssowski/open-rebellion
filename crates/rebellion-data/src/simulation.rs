@@ -630,6 +630,9 @@ pub fn run_simulation_tick(
     let healed =
         rebellion_core::healing::HealingSystem::advance(&mut states.healing, world, tick_events);
     integrator.apply_healing(world, &healed);
+    // A capture's hook (slot +0x34c, FUN_004f1a80) clears the captive's
+    // command (FUN_004eeed0).
+    rebellion_core::character_command::release_unfit(world);
 
     // ── 9d. Force discovery: each discovering trainer's timer 0x389 ──────
     let discovery_rolls =

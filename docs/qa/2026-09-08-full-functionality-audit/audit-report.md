@@ -2815,6 +2815,13 @@ cross-runtime proof remain open
   `FUN_00561bb0`: one holder per fleet or system, the same kind again
   clears. `FUN_004eeed0` clears it on injury and capture. The AI's command
   orders are module `0xc`'s. Not yet ported.
+- 2026-10-19: character command, stage 2 (save v85, `character_command.rs`).
+  `Character::command`, the order's check (`FUN_004ed750`) and effect
+  (`FUN_00561bb0`, `FUN_004ef400`), and the loss on injury and capture
+  (`FUN_004eeed0`). Nobody gets a command until the menu (stage 3), so
+  the 24 campaigns are unchanged. Golden initial `v1:20ee82a2951ad9aa` ->
+  `v1:4d8201e965d27089`, final `v1:1ddf726cecfd8477` ->
+  `v1:2229fcf258823750` (`evidence/2026-10-19-character-command/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

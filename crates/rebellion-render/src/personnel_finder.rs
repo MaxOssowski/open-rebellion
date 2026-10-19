@@ -1073,6 +1073,7 @@ mod tests {
             encounter_day: 0,
             escape_barred: false,
             bounty_captured: false,
+            command: rebellion_core::character_command::CommandKind::None,
         }
     }
 

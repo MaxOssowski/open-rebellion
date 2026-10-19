@@ -756,6 +756,9 @@ pub struct Character {
     /// Han's `CapturedByBountyHunters` (`+0xb0` bit 2, `FUN_00572700`),
     /// set when the Bounty mission captures him (`FUN_00575de0`; save v77).
     pub bounty_captured: bool,
+    /// `CommandKind` (`+0x96`, `FUN_004ee350`): the command the Command
+    /// orders give ([`crate::character_command`]; save v85).
+    pub command: crate::character_command::CommandKind,
 }
 
 impl Character {
@@ -819,6 +822,11 @@ impl Character {
         if injury > 0 {
             let total = i32::from(self.injury).saturating_add(injury).min(0x7fff);
             self.injury = u16::try_from(total).unwrap_or(0x7fff);
+            // The injury hook (slot +0x32c, FUN_004f1720) runs FUN_004eeed0,
+            // which clears the command of an injured character.
+            if !crate::character_command::keeps(self) {
+                self.command = crate::character_command::CommandKind::None;
+            }
         }
     }
 
@@ -929,6 +937,7 @@ impl Default for Character {
             encounter_day: 0,
             escape_barred: false,
             bounty_captured: false,
+            command: crate::character_command::CommandKind::None,
         }
     }
 }
@@ -2850,7 +2859,8 @@ mod tests {
             "encounter": null,
             "encounter_day": 0,
             "escape_barred": false,
-            "bounty_captured": false
+            "bounty_captured": false,
+            "command": "None"
         }"#;
         let c: Character = serde_json::from_str(json).unwrap();
         // All pre-v8 fields with `#[serde(default)]` should default gracefully

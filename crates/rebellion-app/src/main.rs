@@ -2948,6 +2948,9 @@ async fn main() {
                     push_character_health(&mut msg_log, &world, heal.character, heal.tick);
                 }
             }
+            // A capture's hook (slot +0x34c, FUN_004f1a80) clears the
+            // captive's command (FUN_004eeed0).
+            rebellion_core::character_command::release_unfit(&mut world);
 
             // ── Force discovery: each discovering trainer's timer 0x389 ────
             let discovery_rolls: Vec<f64> = (0
