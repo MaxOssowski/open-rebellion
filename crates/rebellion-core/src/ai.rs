@@ -327,7 +327,7 @@ fn accepts(
 /// planners: officers, espionage, rescue, reconnaissance, uprisings.
 ///
 /// port: the original's list holds one planner per request (`FUN_004d2730`).
-const MISSION_GROUPS: u8 = 2;
+const MISSION_GROUPS: u8 = 1;
 
 /// The module whose step issues the production heuristic's order for
 /// `kind`: `0xa` a manufacturing facility; none for the rest.
@@ -1630,7 +1630,7 @@ impl AISystem {
             MissionEntry::Group(0) => {
                 Self::evaluate_espionage(planner, world, faction, config, actions);
             }
-            MissionEntry::Group(_) => Self::evaluate_rescue(planner, world, faction, actions),
+            MissionEntry::Group(_) => {}
         }
         Self::adopt_mission_orders(state, ctx.tick, start, actions);
         Self::mission_planner_reports(state, galaxy, (ctx.mission_state, ctx.tick), actions);
@@ -1714,7 +1714,7 @@ impl AISystem {
     /// - state 5 (slot `+0x50`): a standing planner's target
     ///   ([`recruitment_target`], [`diplomacy_target`],
     ///   [`incite_target`], [`subdue_target`], [`recon_target`],
-    ///   [`espionage_target`], [`abduction_target`]);
+    ///   [`espionage_target`], [`abduction_target`], [`rescue_target`]);
     /// - state 6 ([`staging_point`]): the gathering place;
     /// - state 7 (`FUN_004bd570`): each free member away from it gets a
     ///   Move order there (`0x201`, the Move pseudo-mission);
@@ -1769,6 +1769,7 @@ impl AISystem {
                         espionage_target(p, planner, galaxy, sector_claims, (tick, seen))
                     }
                     MissionKind::Abduction => abduction_target(p, planner, world, galaxy),
+                    MissionKind::Rescue => rescue_target(p, planner, world, galaxy),
                     _ => diplomacy_target(p, planner, galaxy, claims),
                 };
             }
@@ -1960,6 +1961,9 @@ impl AISystem {
     ///
     /// - row 9, Abduction (count `+0x338`, slot `+0x40` 6, `FUN_004831e0`):
     ///   one; the weakest by combat (`FUN_004831f0`: record `+0x54`);
+    /// - row 10, Rescue (count `+0x340`, slot `+0x40` 8, `FUN_0047e1c0`):
+    ///   one while a character of the side is a prisoner, else none; the
+    ///   weakest by combat (`FUN_0047e1d0`: record `+0x54`);
     /// - row 11, Reconnaissance (count `+0x344`, slot `+0x40` 9,
     ///   `FUN_0047f670`): as many as the side's sector planners (controller
     ///   `+0xd8`, module 8); the weakest by espionage (`FUN_0047f680`:
@@ -1971,7 +1975,8 @@ impl AISystem {
     ///   by espionage (`FUN_00480e10`: record `+0x44`).
     ///
     /// port: rows 2 to 4 are the research planners
-    /// ([`Self::research_strategy`]) and rows 8 and 10 are not yet ported,
+    /// ([`Self::research_strategy`]) and row 8 is not ported (it asks only
+    /// for an Alliance with a Death Star fleet),
     /// so the rows are not ordered behind each other, and each count
     /// reaches its want within one step (the original asks once per
     /// strategy pass).
@@ -2026,6 +2031,21 @@ impl AISystem {
             world,
             galaxy,
             (MissionKind::Abduction, 1, Skill::Combat),
+        );
+        // FUN_0041bc10 sets controller bit 0x200 for a record of the side's
+        // character that is a prisoner (+0x30 2, 0x20000000, 0x40): a
+        // prisoner counts on its home side (FUN_00401d20).
+        let prisoner = world.characters.values().any(|c| {
+            !c.is_killed
+                && c.is_captive
+                && c.is_alliance == is_alliance
+                && c.is_empire != is_alliance
+        });
+        Self::keep_planners(
+            state,
+            world,
+            galaxy,
+            (MissionKind::Rescue, usize::from(prisoner), Skill::Combat),
         );
         let held = galaxy.sectors.iter().filter(|s| s.summary & 8 != 0).count();
         let spies = held.saturating_sub(scouts);
@@ -2246,42 +2266,6 @@ impl AISystem {
                 break;
             }
             ops_queued += 1;
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Rescue heuristics
-    // -----------------------------------------------------------------------
-
-    /// Dispatch a rescue mission to free captive allies.
-    ///
-    /// Scans for characters held captive by the enemy; the Rescue planner
-    /// (`FUN_0047e270`, `FUN_0047e3f0`) picks each team.
-    fn evaluate_rescue(
-        planner: &mut Planner<'_>,
-        world: &GameWorld,
-        faction: AiFaction,
-        actions: &mut Vec<AIAction>,
-    ) {
-        // Find captive allies (our characters held by the enemy).
-        let captives: Vec<(CharacterKey, SystemKey)> = world
-            .characters
-            .iter()
-            .filter_map(|(key, c)| {
-                if c.is_captive && faction.owns_character(c) {
-                    c.current_system.map(|sys| (key, sys))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        // One rescue per captive while the planner finds a team.
-        for (captive_key, captive_system) in captives {
-            let target = (captive_system, Some(captive_key));
-            if !Self::dispatch_planned(planner, MissionKind::Rescue, target, None, actions) {
-                break;
-            }
         }
     }
 
@@ -3721,6 +3705,124 @@ fn abduction_target(
     p.target_character.map(|_| system)
 }
 
+/// Whether `character` is a prisoner of the side (record `+0x30` 2 and
+/// `0x40`, `FUN_00401d20`).
+fn own_prisoner(planner: &Planner<'_>, character: CharacterKey) -> bool {
+    planner
+        .flags(crate::missions::MissionMember::Character(character))
+        .is_some_and(|f| f & 0x42 == 0x42)
+}
+
+/// `FUN_0047ecf0`: a random prisoner of the side (record `+0x30` 0x40 and
+/// 2) at `system`: on the planet when its record has `+0x2c` `0x4000`,
+/// and aboard a fleet there not the side's carrying one (fleet record
+/// `+0x38` `0x1000000`) when it has `0x8000`; the draw is
+/// `FUN_0041cd80(count)`.
+///
+/// port: the candidates are taken in the world's character order.
+fn rescue_character(
+    planner: &mut Planner<'_>,
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+    system: SystemKey,
+) -> Option<CharacterKey> {
+    let record = galaxy.system(system)?;
+    let sys = world.systems.get(system)?;
+    let mut candidates: Vec<CharacterKey> = Vec::new();
+    if record.summary & 0x4000 != 0 {
+        candidates.extend(world.characters.iter().filter_map(|(key, c)| {
+            (!c.is_killed
+                && c.current_system == Some(system)
+                && c.current_fleet.is_none()
+                && own_prisoner(planner, key))
+            .then_some(key)
+        }));
+    }
+    if record.summary & 0x8000 != 0 {
+        for &fleet in &sys.fleets {
+            let carrying = galaxy.fleets.get(&fleet).is_some_and(|r| {
+                r.flags & crate::ai_records::FLEET_OWN == 0 && r.flags & 0x100_0000 != 0
+            });
+            if !carrying {
+                continue;
+            }
+            candidates.extend(world.characters.iter().filter_map(|(key, c)| {
+                (!c.is_killed && c.current_fleet == Some(fleet) && own_prisoner(planner, key))
+                    .then_some(key)
+            }));
+        }
+    }
+    if candidates.is_empty() {
+        return None;
+    }
+    let count = i32::try_from(candidates.len()).unwrap_or(i32::MAX);
+    let at = usize::try_from(planner.random(count)).unwrap_or(0);
+    candidates.get(at).copied()
+}
+
+/// State 5 of a Rescue planner (slot `+0x50`, `FUN_0047e620`): its target
+/// character `+0x30` and system `+0x34`, chosen anew each cycle.
+///
+/// The test that would keep the character reads `(flags | 0x20) == 0`
+/// (`or eax, 0x20` at `0x47e800`), which never holds, so it never keeps.
+/// It lists the systems holding a prisoner of the side: the sectors with
+/// one (`+0x28` `0x4000`, key `+0x180`, order 1) in turn, and in each the
+/// systems with one on the planet (`+0x2c` `0x4000`, key `v[29]`, order 1),
+/// then those with one aboard a fleet (`0x8000`, order 2). It takes the
+/// first where the decoys gathered at `+0x38` (`FUN_004bd000`) fill the
+/// decoy cap (slot `+0x44`, `FUN_004047d0`: 4) or reach half its defense
+/// (record `+0xbc`), then a prisoner there ([`rescue_character`]).
+fn rescue_target(
+    p: &mut MissionPlanner,
+    planner: &mut Planner<'_>,
+    world: &GameWorld,
+    galaxy: &crate::ai_records::Galaxy,
+) -> Option<SystemKey> {
+    use crate::ai_records::{picks, sector_at, Mask, Order};
+    use crate::mission_planning::standing_system;
+    let any = Mask::new(0, 0);
+    let gathered = p
+        .decoys
+        .iter()
+        .filter(|&&m| p.staging.is_some() && standing_system(world, m) == p.staging)
+        .filter(|&&m| planner.sendable(m))
+        .count();
+    let gathered = i32::try_from(gathered).unwrap_or(i32::MAX);
+    p.target_character = None;
+    let sectors = picks(vec![galaxy.sector_query(
+        [any, Mask::new(0x4000, 0), any],
+        sector_at(0x180),
+        Order::Ascending,
+        &mut || planner.coin(),
+    )]);
+    let mut systems = Vec::new();
+    for sector in sectors {
+        let planet = galaxy.system_query(
+            sector,
+            [any, Mask::new(0x4000, 0), any],
+            29,
+            Order::Ascending,
+            &mut || planner.coin(),
+        );
+        systems.extend(picks(vec![planet]));
+        let aboard = galaxy.system_query(
+            sector,
+            [any, Mask::new(0x8000, 0), any],
+            29,
+            Order::Descending,
+            &mut || planner.coin(),
+        );
+        systems.extend(picks(vec![aboard]));
+    }
+    let system = systems.into_iter().find(|&s| {
+        galaxy
+            .system(s)
+            .is_some_and(|r| gathered == 4 || r.values[29] / 2 <= gathered)
+    })?;
+    p.target_character = rescue_character(planner, world, galaxy, system);
+    p.target_character.map(|_| system)
+}
+
 /// Row 6's want (`FUN_004e8290`): the side's uprisings plus one (side
 /// `+0x21c`, the sector records' `+0x164`: systems with record `+0x2c` bit
 /// `0x20`, an own uprising with no own fleet; `FUN_0041b7e0`) while
@@ -4396,7 +4498,6 @@ mod tests {
         let mut actions = Vec::new();
         research_all(state, &mut planner, &ctx, &mut actions);
         AISystem::evaluate_espionage(&mut planner, world, faction, config, &mut actions);
-        AISystem::evaluate_rescue(&mut planner, world, faction, &mut actions);
         AISystem::evaluate_production(
             world,
             mfg_state,
@@ -5400,9 +5501,10 @@ mod tests {
         state
             .mission_planners
             .push(other(MissionKind::Diplomacy, false));
+        // Row 8 (Death Star Sabotage) is not ported, so its planner stays.
         state
             .mission_planners
-            .push(other(MissionKind::Rescue, true));
+            .push(other(MissionKind::DeathStarSabotage, true));
         state.next_planner_id = 3;
         let mut galaxy = crate::ai_records::Galaxy::default();
         AISystem::mission_strategy(&mut state, &world, &mut galaxy);
@@ -7718,6 +7820,219 @@ mod tests {
         let _ = (leia, han);
     }
 
+    /// An Alliance home with a rescuer (combat 80), and an Empire prison
+    /// system in a far sector holding Luke (`0x242`) and, with `guards`
+    /// Empire regiments, Leia (`0x241`) in a second prison; both captive.
+    fn rescue_world(
+        guards: usize,
+    ) -> (
+        GameWorld,
+        SystemKey,
+        [SystemKey; 2],
+        [CharacterKey; 2],
+        CharacterKey,
+    ) {
+        let mut world = empty_world();
+        let home_sector = add_sector(&mut world);
+        let home = add_system(&mut world, home_sector, 0.9, 0.1);
+        world.systems[home].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let far = add_sector(&mut world);
+        world.sectors[far].x = 900;
+        let prison = |world: &mut GameWorld, x| {
+            let s = add_system(world, far, 0.1, 0.9);
+            world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+            world.systems[s].x = x;
+            s
+        };
+        let open = prison(&mut world, 900);
+        let guarded = prison(&mut world, 910);
+        for _ in 0..guards {
+            let troop = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: DatId(0),
+                is_alliance: false,
+                regiment_strength: 50,
+            });
+            world.systems[guarded].ground_units.push(troop);
+        }
+        let captive = |world: &mut GameWorld, id, at| {
+            let c = add_character(world, true, true, 30);
+            world.characters[c].dat_id = DatId(id);
+            world.characters[c].current_system = Some(at);
+            world.characters[c].is_captive = true;
+            world.characters[c].captured_by = Some(crate::dat::Faction::Empire);
+            c
+        };
+        let luke = captive(&mut world, 0x242, open);
+        let leia = captive(&mut world, 0x241, guarded);
+        let rescuer = add_character(&mut world, true, true, 30);
+        world.characters[rescuer].combat.base = 80;
+        world.characters[rescuer].can_be_commander = false;
+        world.characters[rescuer].current_system = Some(home);
+        // MISSNSD Abduction admitting no one, so the Abduction planner
+        // (listed first, combat 51..) does not take the rescuer.
+        world.mission_records = vec![crate::world::MissionRecord {
+            dat_id: MissionKind::Abduction.record_id().unwrap(),
+            timer_min_days: 5,
+            timer_spread_days: 10,
+            repeats: false,
+            hidden: false,
+            detection_phases: true,
+            can_resign: true,
+            rules: crate::world::MissionTargetRules::default(),
+            members: crate::world::MissionMemberRules {
+                alliance: true,
+                empire: true,
+                special_force_mask: 0,
+                character_mask: 0,
+            },
+        }];
+        (world, home, [open, guarded], [luke, leia], rescuer)
+    }
+
+    #[test]
+    fn the_strategy_keeps_a_rescue_planner_while_a_character_of_the_side_is_a_prisoner() {
+        // FUN_004e8290 row 10: one while controller bit 0x200 (FUN_0041bc10:
+        // a record of the side's character with 0x40) is set, else none.
+        let (mut world, home, [open, guarded], [luke, leia], rescuer) = rescue_world(0);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let actions = strategy_pass(&mut state, &world, 1);
+        let p = only(&state, MissionKind::Rescue);
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].staging, Some(home));
+        // Both prisons are open; the planet list ranks by defense (v[29],
+        // order 1), equal here, so either prisoner may come first.
+        let sent = orders(&actions, MissionKind::Rescue);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].0, vec![MissionMember::Character(rescuer)]);
+        assert!([(open, Some(luke)), (guarded, Some(leia))].contains(&(sent[0].1, sent[0].2)));
+
+        for c in [luke, leia] {
+            world.characters[c].is_captive = false;
+            world.characters[c].captured_by = None;
+        }
+        strategy_pass(&mut state, &world, 2);
+        assert!(only(&state, MissionKind::Rescue).is_empty());
+    }
+
+    #[test]
+    fn a_rescue_target_is_chosen_anew_where_the_decoys_cover_half_the_defense() {
+        // FUN_0047e620 never keeps its character ((flags | 0x20) == 0 at
+        // 0x47e800 never holds) and takes the first prison whose defense
+        // (record +0xbc) the gathered decoys halve, or that fills the cap;
+        // FUN_0047ecf0 then draws a prisoner of the side there.
+        let (world, home, [open, guarded], [luke, leia], rescuer) = rescue_world(2);
+        let galaxy = galaxy_of(&AIState::new(AiFaction::Alliance), &world);
+        assert_eq!(galaxy.system(guarded).unwrap().values[29], 2);
+        assert_eq!(galaxy.system(open).unwrap().summary & 0x4000, 0x4000);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, true, 7);
+        let mut p = MissionPlanner {
+            id: 1,
+            kind: MissionKind::Rescue,
+            team: vec![MissionMember::Character(rescuer)],
+            decoys: Vec::new(),
+            target_system: Some(guarded),
+            target_character: Some(leia),
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: Some(home),
+            standing: true,
+            claimed: None,
+            sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
+        };
+        // The guarded prison ranks first (v[29] 2, order 1) but needs a
+        // decoy; with none, the open one, and Luke.
+        assert_eq!(
+            rescue_target(&mut p, &mut planner, &world, &galaxy),
+            Some(open)
+        );
+        assert_eq!(p.target_character, Some(luke));
+        let picks: HashSet<CharacterKey> = (0..20)
+            .filter_map(|_| rescue_character(&mut planner, &world, &galaxy, open))
+            .collect();
+        assert_eq!(picks, HashSet::from([luke]));
+        // A free character of the side or an Empire one is no prisoner of
+        // the side to rescue.
+        assert!(!own_prisoner(&planner, rescuer));
+    }
+
+    #[test]
+    fn a_rescue_counts_the_decoys_where_it_gathers_and_reaches_prisoners_aboard_enemy_fleets() {
+        // FUN_004bd000 counts the decoys at +0x38; one covers two guards
+        // (2 / 2 <= 1). FUN_0047ecf0 takes a prisoner aboard an opponent's
+        // fleet carrying one (fleet record +0x38 0x1000000, system +0x2c
+        // 0x8000).
+        let (mut world, home, [open, guarded], [luke, leia], rescuer) = rescue_world(2);
+        let MissionMember::SpecialForce(decoy) = add_commando(&mut world, true, 60, 0) else {
+            unreachable!()
+        };
+        world.systems[home].special_forces.push(decoy);
+        let galaxy = galaxy_of(&AIState::new(AiFaction::Alliance), &world);
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&world, &missions, &busy, true, 7);
+        let mut p = MissionPlanner {
+            id: 1,
+            kind: MissionKind::Rescue,
+            team: vec![MissionMember::Character(rescuer)],
+            decoys: vec![MissionMember::SpecialForce(decoy)],
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: Some(home),
+            standing: true,
+            claimed: None,
+            sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
+        };
+        assert_eq!(
+            rescue_target(&mut p, &mut planner, &world, &galaxy),
+            Some(guarded)
+        );
+        assert_eq!(p.target_character, Some(leia));
+        p.staging = Some(open);
+        assert_eq!(
+            rescue_target(&mut p, &mut planner, &world, &galaxy),
+            Some(open)
+        );
+        assert_eq!(p.target_character, Some(luke));
+
+        // Luke moved aboard an Empire fleet at his prison.
+        let class = world
+            .capital_ship_classes
+            .insert(CapitalShipClass::default());
+        let fleet = world.fleets.insert(Fleet {
+            location: open,
+            capital_ships: ShipInstance::make(class, 100, false, 1),
+            fighters: vec![],
+            characters: vec![luke],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[open].fleets.push(fleet);
+        world.characters[luke].current_system = None;
+        world.characters[luke].current_fleet = Some(fleet);
+        let galaxy = galaxy_of(&AIState::new(AiFaction::Alliance), &world);
+        assert_eq!(galaxy.system(open).unwrap().summary & 0xc000, 0x8000);
+        let mut planner = Planner::new(&world, &missions, &busy, true, 7);
+        let picks: HashSet<CharacterKey> = (0..20)
+            .filter_map(|_| rescue_character(&mut planner, &world, &galaxy, open))
+            .collect();
+        assert_eq!(picks, HashSet::from([luke]));
+        assert_eq!(rescue_character(&mut planner, &world, &galaxy, home), None);
+    }
+
     #[test]
     fn an_abduction_takes_only_opponents_main_characters_on_the_planet_or_aboard_their_fleets() {
         // FUN_00483d10: record +0x30 8 and 4; on the planet with +0x2c
@@ -8032,38 +8347,6 @@ mod tests {
             let expected = if character == aboard { docked } else { here };
             assert_eq!(*system, expected);
         }
-    }
-
-    #[test]
-    fn each_captive_ally_gets_a_rescue_at_its_prison() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let first_prison = add_system(&mut world, sector, 0.1, 0.8);
-        let second_prison = add_system(&mut world, sector, 0.1, 0.8);
-        let captive = |world: &mut GameWorld, is_alliance, system| {
-            let key = add_character(world, is_alliance, false, 30);
-            world.characters[key].is_captive = true;
-            at(world, key, system);
-            key
-        };
-        let first = captive(&mut world, true, first_prison);
-        let second = captive(&mut world, true, second_prison);
-        let _enemy_prisoner = captive(&mut world, false, first_prison);
-        let free = add_character(&mut world, true, false, 30);
-        at(&mut world, free, first_prison);
-        fighters(&mut world, true, 6);
-        let mut planner = planner_for(&world, AiFaction::Alliance);
-        let mut actions = Vec::new();
-
-        AISystem::evaluate_rescue(&mut planner, &world, AiFaction::Alliance, &mut actions);
-
-        let sent: Vec<_> = orders(&actions, MissionKind::Rescue)
-            .into_iter()
-            .map(|(_, system, character)| (system, character.unwrap()))
-            .collect();
-        assert_eq!(sent.len(), 2);
-        assert!(sent.contains(&(first_prison, first)));
-        assert!(sent.contains(&(second_prison, second)));
     }
 
     /// An Alliance system holding a yard of `family` (MANFACSD `0x28`

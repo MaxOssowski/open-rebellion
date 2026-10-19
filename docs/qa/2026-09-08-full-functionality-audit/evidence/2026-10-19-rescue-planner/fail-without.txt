@@ -1,0 +1,9 @@
+test ai::tests::a_rescue_target_is_chosen_anew_where_the_decoys_cover_half_the_defense ... FAILED
+test ai::tests::an_espionage_planner_takes_the_enemy_system_seen_longest_ago_and_claims_its_sector ... FAILED
+test ai::tests::only_standing_diplomacy_planners_count_against_the_want_and_each_has_its_own_id ... FAILED
+test ai::tests::the_strategy_keeps_a_rescue_planner_while_a_character_of_the_side_is_a_prisoner ... FAILED
+    ai::tests::a_rescue_target_is_chosen_anew_where_the_decoys_cover_half_the_defense
+    ai::tests::an_espionage_planner_takes_the_enemy_system_seen_longest_ago_and_claims_its_sector
+    ai::tests::only_standing_diplomacy_planners_count_against_the_want_and_each_has_its_own_id
+    ai::tests::the_strategy_keeps_a_rescue_planner_while_a_character_of_the_side_is_a_prisoner
+test result: FAILED. 122 passed; 4 failed; 0 ignored; 0 measured; 1256 filtered out; finished in 0.00s

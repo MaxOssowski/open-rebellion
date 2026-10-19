@@ -2731,6 +2731,14 @@ cross-runtime proof remain open
   port had read the home side and flipped it, putting a prisoner on its
   captor's side. Golden unchanged
   (`evidence/2026-10-19-prisoner-side/`).
+- 2026-10-19 (F-036): the AI's Rescue planner is the original's. The
+  strategy keeps one while a character of the side is a prisoner
+  (`FUN_004e8290` row 10). It chooses its prison anew each cycle (the
+  keep test at `0x47e800` never holds), where the gathered decoys cover
+  half the defense (`FUN_0047e620`), and draws a prisoner there
+  (`FUN_0047ecf0`). The last mission heuristic group is removed. Golden
+  final `v1:03a36c82837d1ce1` -> `v1:49ba43802d0d2840`
+  (`evidence/2026-10-19-rescue-planner/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

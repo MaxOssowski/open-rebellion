@@ -1389,6 +1389,53 @@ results barely move: Rescue orders 409 and 429, Abduction 558 and 552.
 Systems held at the end, summed over the seeds: Alliance 599 and 607,
 Empire 540 and 536.
 
+## The Rescue planner (read and ported 2026-10-19)
+
+The Rescue planner class has vtable `0x0065a710`:
+
+| Slot | Function | Meaning |
+|---|---|---|
+| `+0x18` | `FUN_0047e1d0` | the cancel key: the team's records' `+0x54` summed (combat) |
+| `+0x40` | `FUN_0047e1c0` | 8: the count `S+0x340` |
+| `+0x44` | `FUN_004047d0` | 4: the decoy cap |
+| `+0x48` | `FUN_0047e270` | the team (2, combat 51..) |
+| `+0x4c` | `FUN_0047e3f0` | the decoys |
+| `+0x50` | `FUN_0047e620` | state 5, the target |
+
+**The want.** Row 10 asks while controller bit `0x200` is set and
+`S+0x340 < 1`. It cancels while above 1, or while the bit is clear and
+any planner remains. `FUN_0041bc10` sets the bit for a record with
+`+0x30` 2, `0x20000000` and `0x40`: a character of the side who is a
+prisoner, since a prisoner counts on its home side.
+
+**The target, `FUN_0047e620`.** It reads like Abduction's, with these
+differences:
+- The keep test reads `(flags | 0x20) == 0` (`or eax, 0x20; jne` at
+  `0x47e800`), which never holds, so the target is chosen anew each
+  cycle.
+- The sectors have `+0x28` `0x4000`, by key `+0x180`, order 1.
+- In each sector, the systems with a prisoner on the planet (`+0x2c`
+  `0x4000`) come by key `v[29]`, order 1, then those with one aboard a
+  fleet (`0x8000`), by `v[29]`, order 2.
+- The decoy test is Abduction's: the decoys gathered at `+0x38` fill the
+  cap (4) or reach half the record's `+0xbc`.
+
+`FUN_0047ecf0` then draws a prisoner of the side (record `0x40` and 2):
+- on the planet, with `0x4000`;
+- aboard a fleet there not the side's carrying one (fleet record `+0x38`
+  `0x1000000`), with `0x8000`.
+
+**Ported**:
+- `rescue_target`, `rescue_character`, and row 10 in `mission_strategy`;
+- the heuristic Rescue (one per captive) is removed, and with it the
+  last group of mission heuristics.
+
+Campaigns: 24 seeds of 1500 days, against the prisoner-side fix.
+- Rescue orders: 429 before, 327 after. Results: 193 successes and 6
+  failures before, 278 and 21 after.
+- Systems held at the end, summed over the seeds: Alliance 607 and 570,
+  Empire 536 and 579.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
