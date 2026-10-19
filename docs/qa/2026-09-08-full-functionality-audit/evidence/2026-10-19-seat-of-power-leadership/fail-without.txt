@@ -1,0 +1,11 @@
+thread 'seat_of_power::tests::the_seat_of_power_adds_half_again_to_an_imperial_character_s_leadership' (3702355) panicked at crates/rebellion-core/src/seat_of_power.rs:215:9:
+  left: 85
+ right: 127
+thread 'seat_of_power::tests::a_seat_of_power_general_s_bonus_reaches_the_missions_and_the_duel' (3702353) panicked at crates/rebellion-core/src/seat_of_power.rs:246:9:
+  left: Some(60)
+ right: Some(90)
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 1417 filtered out; finished in 0.00s
+thread 'status_window::tests::leadership_rating_is_the_effective_leadership_with_the_seat_of_power' (3714060) panicked at crates/rebellion-render/src/status_window.rs:680:9:
+  left: Some("70")
+ right: Some("105")
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 780 filtered out; finished in 0.00s

@@ -281,7 +281,8 @@ Row 16, Emperor Arrives at Coruscant (`0x230`):
   bit 0) and is usable (`+0x50` bit 0), stands at Coruscant
   (`0x90000109`), and Coruscant's side (`+0x24 & 0xc0`) is the Empire's
   (`0x80`). Otherwise it is 0.
-- `FUN_0055f650` stores it in the character manager's `+0x58` bit 1 and,
+- `FUN_0055f650` stores it in the character manager's `+0x58` mask 1
+  (bit 0; `FUN_0053a640` takes a mask) and,
   when it changes, calls slot `+0x1d8` (`FUN_00562450`). That posts
   `0x230` with the new value (`FUN_0053fdd0`).
 - The callers of `FUN_005617b0` are `FUN_00560d50`, `FUN_00561340`,

@@ -160,7 +160,12 @@ pub fn character_rows(
         ),
         // +0x86, the effective combat (slot +0x1f0).
         row("Combat Rating:", character.effective_combat().to_string()),
-        row("Leadership Rating:", character.leadership.base.to_string()),
+        // +0x88, the effective leadership (slot +0x1f4) with the seat of
+        // power's +0x92 (FUN_004eede0).
+        row(
+            "Leadership Rating:",
+            rebellion_core::seat_of_power::effective_leadership(world, character).to_string(),
+        ),
         // TEXTSTRA 34608 "R&&D Capabilities", DrawText's escape for "&".
         row("R&D Capabilities", ""),
         row(" Ship Design", yes_no(character.ship_design.base != 0)),
@@ -638,6 +643,43 @@ mod tests {
                 ("Commander:", "Yes"),
             ]
         );
+    }
+
+    #[test]
+    fn leadership_rating_is_the_effective_leadership_with_the_seat_of_power() {
+        // FUN_004486f0 34601 "Leadership Rating:" reads +0x88 (slot +0x1f4):
+        // with the Emperor seated at an Empire-held Coruscant (0x90000109,
+        // FUN_005617b0) an Imperial character's +0x92 is G3076 (50), so 70
+        // reads 105 (FUN_004eede0).
+        let (mut world, _, yavin, _) = world_with_luke();
+        let coruscant = add_system(&mut world, "Coruscant");
+        world.systems[coruscant].dat_id = DatId::new(0x109);
+        world.systems[coruscant].control = ControlKind::Controlled(Faction::Empire);
+        world.characters.insert(Character {
+            dat_id: DatId::new(0x3400_0280),
+            name: "Emperor Palpatine".into(),
+            is_alliance: false,
+            is_empire: true,
+            current_system: Some(coruscant),
+            ..luke()
+        });
+        let vader = world.characters.insert(Character {
+            name: "Darth Vader".into(),
+            is_alliance: false,
+            is_empire: true,
+            current_system: Some(yavin),
+            ..luke()
+        });
+        let leadership = |world: &GameWorld| {
+            let rows = character_rows(world, &[], vader).expect("rows");
+            pairs(&rows)
+                .into_iter()
+                .find(|(label, _)| *label == "Leadership Rating:")
+                .map(|(_, value)| value.to_owned())
+        };
+        assert_eq!(leadership(&world).as_deref(), Some("105"));
+        world.systems[coruscant].control = ControlKind::Controlled(Faction::Alliance);
+        assert_eq!(leadership(&world).as_deref(), Some("70"));
     }
 
     #[test]

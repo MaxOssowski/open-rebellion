@@ -1104,9 +1104,12 @@ pub fn member_skill(world: &GameWorld, member: MissionMember, skill: Skill) -> O
         // carry the Force share, combat also the injury.
         // port: seeding rolls every character's variance into its base
         // (FUN_00535e40); half of an unrolled variance matches skill_score.
-        MissionMember::Character(key) => {
-            world.characters.get(key).map(|c| c.effective_skill(skill))
-        }
+        // Leadership (+0x88, slot +0x1f4) carries the seat of power's
+        // +0x92 (FUN_004eede0).
+        MissionMember::Character(key) => world.characters.get(key).map(|c| match skill {
+            Skill::Leadership => crate::seat_of_power::effective_leadership(world, c),
+            _ => c.effective_skill(skill),
+        }),
         MissionMember::SpecialForce(key) => world
             .special_forces
             .get(key)

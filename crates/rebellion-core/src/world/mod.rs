@@ -1630,7 +1630,8 @@ impl Character {
     ///
     /// port: a skill is its rolled template, base plus half the variance,
     /// as `missions::member_skill` reads it. Leadership's share of `+0x92`
-    /// (`FUN_004eede0`) is not ported; `+0x92` is not read yet.
+    /// (`FUN_004eede0`) needs the world:
+    /// [`crate::seat_of_power::effective_leadership`].
     #[must_use]
     pub fn effective_skill(&self, skill: Skill) -> u32 {
         let pair = self.skill(skill);

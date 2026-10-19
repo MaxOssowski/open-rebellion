@@ -1,0 +1,31 @@
+24 dual-AI campaigns, 1500 days; before (stage 7 of the command item) -> after
+mission kind: resolved before/after, successes before/after
+  Abduction: 760 -> 757, 317 -> 356
+  Assassination: 1197 -> 1145, 108 -> 125
+  Bounty: 18 -> 19, 0 -> 1
+  Dagobah: 24 -> 24, 24 -> 24
+  Diplomacy: 5679 -> 5747, 3750 -> 3840
+  Espionage: 4408 -> 4503, 2629 -> 2825
+  FacilityDesignResearch: 2268 -> 2265, 1698 -> 1711
+  InciteUprising: 169 -> 145, 13 -> 9
+  Palace: 0 -> 1, 0 -> 1
+  Reconnaissance: 4064 -> 4023, 4064 -> 4023
+  Recruitment: 1690 -> 1657, 1224 -> 1224
+  Rescue: 351 -> 378, 321 -> 362
+  Sabotage: 1188 -> 1261, 1165 -> 1245
+  ShipDesignResearch: 6636 -> 6401, 5630 -> 5434
+  SubdueUprising: 1564 -> 1170, 243 -> 298
+  TroopTrainingResearch: 1411 -> 1395, 1021 -> 1029
+events most changed:
+  character_health: 26110 -> 22848
+  ai_action: 189844 -> 192145
+  economy_tick: 283642 -> 281958
+  units_deployed: 41895 -> 43091
+  manufacturing_complete: 41895 -> 43091
+  ship_repaired: 2655 -> 1948
+  story_final_battle: 671 -> 0
+  mission_resolved: 31427 -> 30891
+  fleet_arrived: 5091 -> 5388
+  troop_moved: 53884 -> 53654
+  mission_dispatched: 63282 -> 63488
+  garrison_required: 1008 -> 864

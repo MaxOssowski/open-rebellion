@@ -1,4 +1,4 @@
-//! The character manager's `SeatOfPower` (`+0x58` bit 1,
+//! The character manager's `SeatOfPower` (`+0x58` mask 1, bit 0,
 //! `ghidra/notes/story-message-classes.md`, row 16).
 //!
 //! `FUN_005617b0` sets it while the Emperor stands free at an Empire-held
@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::world::GameWorld;
+use crate::world::{Character, GameWorld, Skill};
 
 /// The Emperor's record (`0x34000280`, `FUN_005070d0`).
 const EMPEROR: u32 = 0x280;
@@ -24,7 +24,8 @@ const CORUSCANT: u32 = 0x109;
 pub struct SeatOfPowerState {
     /// Whether the first check ran.
     pub armed: bool,
-    /// `SeatOfPower`, character manager `+0x58` bit 1.
+    /// `SeatOfPower`, character manager `+0x58` mask 1 (`FUN_0055f650` ->
+    /// `FUN_0053a640(1, ...)`).
     pub held: bool,
 }
 
@@ -78,6 +79,50 @@ impl SeatOfPowerSystem {
         state.held = held;
         Some(held)
     }
+}
+
+/// GNPRTB 3076 (`Gnprtb_3076`): the seat of power's leadership bonus,
+/// percent.
+const GNPRTB_SEAT_BONUS: u16 = 3076;
+/// GNPRTB 3076 as shipped (50 at every level).
+const SHIPPED_SEAT_BONUS: i64 = 50;
+
+/// `FUN_005618d0`, a character's `+0x92` (set through `FUN_004ee250`,
+/// clamped to `0..=0x7fff`): GNPRTB 3076 while `SeatOfPower` holds and the
+/// character's class is the Empire's alone (`FUN_004edc80` == 2: class
+/// `+0x44` without `+0x40`), else 0. The manual's "Seat of Power" effect:
+/// "all Imperial characters in the galaxy get a leadership bonus".
+///
+/// port: the original stores `+0x92` when `SeatOfPower` changes (slot
+/// `+0x1d8`, `CharacterMgr_vt1d8`, over every character) and when a
+/// character is placed (`FUN_00561470`); the port reads it from the world
+/// as it stands, which is the same value without a save field. The class
+/// sides are the port's `is_alliance` and `is_empire`, which a defection
+/// rewrites where the class record would not.
+#[must_use]
+pub fn leadership_bonus(world: &GameWorld, character: &Character) -> u32 {
+    if character.is_empire && !character.is_alliance && seat_of_power(world) {
+        u32::try_from(crate::movement::gnprtb_or_shipped(
+            world,
+            GNPRTB_SEAT_BONUS,
+            SHIPPED_SEAT_BONUS,
+        ))
+        .unwrap_or(0)
+        .min(0x7fff)
+    } else {
+        0
+    }
+}
+
+/// `FUN_004eede0`, a character's effective leadership `+0x88` (slot
+/// `+0x1f4`): leadership plus leadership times `+0x92` over 100
+/// (`FUN_0053e940`, `FUN_0053e190` truncating), clamped to `0..=0x7fff`
+/// (`FUN_004edfb0`).
+#[must_use]
+pub fn effective_leadership(world: &GameWorld, character: &Character) -> u32 {
+    let leadership = u64::from(character.effective_skill(Skill::Leadership));
+    let bonus = u64::from(leadership_bonus(world, character));
+    u32::try_from((leadership + leadership * bonus / 100).min(0x7fff)).unwrap_or(0x7fff)
 }
 
 #[cfg(test)]
@@ -144,6 +189,69 @@ mod tests {
         }
         world.characters[emperor].current_abode = Some(crate::ids::AbodeKey::default());
         assert!(!seat_of_power(&world));
+    }
+
+    #[test]
+    fn the_seat_of_power_adds_half_again_to_an_imperial_character_s_leadership() {
+        // FUN_005618d0: +0x92 = G3076 (50) while SeatOfPower holds and the
+        // class is the Empire's alone (FUN_004edc80 == 2), else 0;
+        // FUN_004eede0: +0x88 = leadership + leadership * +0x92 / 100
+        // (FUN_0053e940, truncating), at most 0x7fff (FUN_004edfb0). Manual,
+        // "The Seat of Power Effect".
+        let (mut world, emperor, _) = world();
+        let character = |is_alliance, is_empire, leadership| Character {
+            is_alliance,
+            is_empire,
+            leadership: crate::world::SkillPair {
+                base: leadership,
+                variance: 0,
+            },
+            ..Character::default()
+        };
+        let vader = character(false, true, 85);
+        let ackbar = character(true, false, 85);
+        let both = character(true, true, 85);
+        assert_eq!(leadership_bonus(&world, &vader), 50);
+        assert_eq!(effective_leadership(&world, &vader), 85 + 42);
+        assert_eq!(effective_leadership(&world, &ackbar), 85);
+        assert_eq!(effective_leadership(&world, &both), 85);
+        assert_eq!(
+            effective_leadership(&world, &character(false, true, 30_000)),
+            0x7fff
+        );
+        // The shipped table's value is read when present.
+        world.gnprtb = crate::world::GnprtbParams::uniform(&[(3076, 20)]);
+        assert_eq!(effective_leadership(&world, &vader), 85 + 17);
+        // Without the seat, no bonus.
+        world.characters[emperor].is_captive = true;
+        assert_eq!(leadership_bonus(&world, &vader), 0);
+        assert_eq!(effective_leadership(&world, &vader), 85);
+    }
+
+    #[test]
+    fn a_seat_of_power_general_s_bonus_reaches_the_missions_and_the_duel() {
+        // Slot +0x1f4 (+0x88) is what the missions (missions::member_skill)
+        // and the command readers (character_command::leadership) read.
+        let (world, _, coruscant) = world();
+        let mut world = world;
+        let general = world.characters.insert(Character {
+            is_empire: true,
+            current_system: Some(coruscant),
+            leadership: crate::world::SkillPair {
+                base: 60,
+                variance: 0,
+            },
+            ..Character::default()
+        });
+        assert_eq!(
+            crate::missions::member_skill(
+                &world,
+                crate::missions::MissionMember::Character(general),
+                Skill::Leadership
+            ),
+            Some(90)
+        );
+        assert_eq!(crate::character_command::leadership(&world, Some(general)), 90);
     }
 
     #[test]

@@ -196,7 +196,8 @@ exists. Porting this replaces part of `jedi.rs`.
 
 - The Luke-Vader encounter `FUN_00560200` (GNPRTB 3084..3087), and who
   sends the Dagobah mission (notification `0x221`).
-- Leadership's share of `+0x92` (`FUN_004eede0`): what `+0x92` holds.
+- Leadership's share of `+0x92` (`FUN_004eede0`): settled 2026-10-19, the
+  seat of power's bonus (`seat-of-power-leadership.md`).
 - `FUN_0058a2c0` (who calls the detection) and `FUN_0055ff60`.
 - When `FUN_00560200` sets Luke's `KnowsHeritage` (the heritage
   encounter); the port's story events set `heritage_known` on their own.

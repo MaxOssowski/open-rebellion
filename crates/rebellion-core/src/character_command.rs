@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dat::Faction;
 use crate::ids::{CharacterKey, FleetKey, SystemKey};
-use crate::world::{Character, GameWorld, Skill};
+use crate::world::{Character, GameWorld};
 
 /// `CommandKind`, character short `+0x96` (`FUN_004ee350`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -265,14 +265,15 @@ pub fn system_holder(
 }
 
 /// The holder's slot `+0x1f4`, its leadership (`+0x88`,
-/// [`Character::effective_skill`]); 0 without a holder, as the callers
+/// [`crate::seat_of_power::effective_leadership`]); 0 without a holder, as the callers
 /// (`FUN_0058dc10`, `FUN_0058df60`, `FUN_0058bec0`) start it.
 #[must_use]
 pub fn leadership(world: &GameWorld, holder: Option<CharacterKey>) -> i32 {
     holder
         .and_then(|key| world.characters.get(key))
         .map_or(0, |c| {
-            i32::try_from(c.effective_skill(Skill::Leadership)).unwrap_or(i32::MAX)
+            i32::try_from(crate::seat_of_power::effective_leadership(world, c))
+                .unwrap_or(i32::MAX)
         })
 }
 

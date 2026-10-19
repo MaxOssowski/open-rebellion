@@ -2875,6 +2875,13 @@ cross-runtime proof remain open
   `FUN_00580d80` -> `FUN_0051fd30` answers 0 (read from the image),
   replacing the stage-3 hyp. Accepted in the browser on both sides. The
   tracker item is done (`evidence/2026-10-19-character-command-closing/`).
+- 2026-10-19: the seat of power's leadership bonus. `+0x92` is GNPRTB
+  3076 (50) for an Empire-class character while `SeatOfPower` holds
+  (`FUN_005618d0`), and the effective leadership `+0x88` adds that percent
+  (`FUN_004eede0`); the manual's "Seat of Power Effect" agrees. The
+  missions, the command readers and the Status window read it. 21 of the
+  24 campaigns change for this cause; the golden is unchanged
+  (`evidence/2026-10-19-seat-of-power-leadership/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
