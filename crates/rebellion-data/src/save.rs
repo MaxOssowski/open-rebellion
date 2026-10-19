@@ -77,7 +77,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 88;
+pub const SAVE_VERSION: u32 = 89;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1734,6 +1734,7 @@ mod tests {
                 attack_strength: 1,
                 defense_strength: 2,
                 detection: 7,
+                uprising_defense: 0,
             },
         );
         let mut mission = ActiveMission::new(

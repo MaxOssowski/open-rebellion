@@ -2667,6 +2667,12 @@ async fn main() {
                 );
             }
 
+            // System_vtd0: the day's bombardment and assault losses count
+            // toward each blockade's (DestroyedReason 0xf, 0xe).
+            for (system, losses) in &bombard.losses {
+                blockade_state.record_losses(*system, *losses);
+            }
+
             // A Destroy System order's Death Star destroyed these (FUN_0058d990).
             for system in bombard.destroyed_systems() {
                 destroy_planet(
@@ -2703,6 +2709,12 @@ async fn main() {
             // ── Blockade ─────────────────────────────────────────────────────
             let mut blockade_events =
                 BlockadeSystem::advance(&mut blockade_state, &world, &tick_events);
+            // Event305_SystemBlockadeChanged_Handle -> FUN_00561280: each
+            // ended blockade's loyalty shift for its assault and bombardment
+            // losses.
+            for (system, blockade) in blockade_state.take_ended() {
+                rebellion_core::loyalty::settle_blockade(&mut world, system, blockade);
+            }
             if let Some(last) = tick_events.last() {
                 running_regiments.extend(BlockadeSystem::running_regiments(
                     &mut blockade_state,
@@ -7525,6 +7537,9 @@ fn apply_panel_action(
                         kind,
                     )
                     .clone();
+                for (system, losses) in &bombard.losses {
+                    blockade_state.record_losses(*system, *losses);
+                }
                 log_bombardment(world, system, &outcome, clock.tick, msg_log);
                 if outcome.system_destroyed {
                     destroy_planet(
@@ -7602,6 +7617,9 @@ fn apply_panel_action(
                         system,
                     )
                     .clone();
+                for (system, losses) in &env.losses {
+                    blockade_state.record_losses(*system, *losses);
+                }
                 log_assault(world, system, &outcome, clock.tick, msg_log);
             } else {
                 msg_log.push(GameMessage::new(

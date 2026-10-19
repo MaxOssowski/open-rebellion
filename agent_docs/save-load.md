@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v88, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v89, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-19
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v88, and it is the only one
+serializable snapshot. The current format is v89, and it is the only one
 that loads.
 
-## Native format (v88)
+## Native format (v89)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -41,7 +41,7 @@ Every mutable campaign subsystem required by the app is serialized:
 
 | Field | Type |
 |-------|------|
-| `world` | `GameWorld`; each system keeps the squadrons on its planet (v46); each capital ship its id and the world the last id given (v51); each character its `ForcePotential`, `ForceAware` and Force base `+0x8e` (v69) its Force discoverer `+0xa4` (v70) and `ForceTraining` `+0x90` (v71), and its abode; the world's abodes from ABODESD (v72); Luke's `DagobahCompleted` (v73); each character's `Encounter` key `+0x9c` and encounter day (v74), and its barred escape (`CanEscape` cleared by the Final Battle, v76); each abode's special forces and Han's CapturedByBountyHunters (`+0xb0` bit 2) (v77); each character's `CommandKind` `+0x96` (v85) and its name for each command (v86); v87 drops `jedi.rs`'s `force_tier`, `force_experience` and `is_discovered_jedi`; v88 drops the invented `betrayal` state |
+| `world` | `GameWorld`; each system keeps the squadrons on its planet (v46); each capital ship its id and the world the last id given (v51); each character its `ForcePotential`, `ForceAware` and Force base `+0x8e` (v69) its Force discoverer `+0xa4` (v70) and `ForceTraining` `+0x90` (v71), and its abode; the world's abodes from ABODESD (v72); Luke's `DagobahCompleted` (v73); each character's `Encounter` key `+0x9c` and encounter day (v74), and its barred escape (`CanEscape` cleared by the Final Battle, v76); each abode's special forces and Han's CapturedByBountyHunters (`+0xb0` bit 2) (v77); each character's `CommandKind` `+0x96` (v85) and its name for each command (v86); v87 drops `jedi.rs`'s `force_tier`, `force_experience` and `is_discovered_jedi`; v88 drops the invented `betrayal` state; v89 adds each regiment class's `uprising_defense` (class `+0x58`, its loss value) |
 | `clock` | `GameClock` |
 | `manufacturing` | `ManufacturingState`: one queue and one Destination per system and production area (v30); a queue keeps its build points and each unit its cost in points (v34) |
 | `missions` | `MissionState`: missions, travelling members, and each captive's escape timer and escaped characters on the road (v35); each mission's Jedi Training teacher `+0xa8` (v71); its abode target, first training day and phase-10 success, and each member transit's abode (v73); each mission's origin abode and each escapee transit's abode, for Han's trip to Jabba's Palace (v77) |
@@ -50,7 +50,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `movement` | `MovementState` |
 | `fog_alliance`, `fog_empire` | `FogState` |
 | `player_is_alliance` | `bool` |
-| `blockade` | `BlockadeState`; v62 adds the support timer `0x386` of each blockaded system |
+| `blockade` | `BlockadeState`; v62 adds the support timer `0x386` of each blockaded system; v89 adds each blockade's blockader and its assault and bombardment losses (`System_vt220`, `ghidra/notes/betrayal-and-loyalty.md`) |
 | `uprising` | `UprisingState`; v62 adds each revolt's support timer `0x384`, v63 its side, v67 the resource incident timer `0x390` |
 | `death_star` | `DeathStarState` |
 | `research` | `ResearchState`: each side's level, points and Done flag per tree; the invented projects are gone (v36); v65 adds each side's yard research timer `0x381` |

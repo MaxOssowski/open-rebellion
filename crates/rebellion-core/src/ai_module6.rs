@@ -884,6 +884,7 @@ mod tests {
                     attack_strength: attack,
                     defense_strength: defense,
                     detection: 0,
+                    uprising_defense: 0,
                 },
             );
         }

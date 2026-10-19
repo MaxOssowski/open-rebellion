@@ -1536,6 +1536,12 @@ pub struct TroopClassDef {
     /// Detection, the class record's `+0x5c` that a regiment reads as a
     /// detector (slot `+0x1c4`, `ghidra/notes/decoy-roll.md`).
     pub detection: u32,
+    /// TROOPSD's field before `detection` (`uprising_defense` in the DAT
+    /// codec), the class `+0x58` that slot `+0x1c0` returns: the value a
+    /// lost regiment adds to its side's losses (`System_vtd0`,
+    /// `ghidra/notes/betrayal-and-loyalty.md`).
+    #[serde(default)]
+    pub uprising_defense: u32,
 }
 
 /// Class definition for a special-forces unit, from SPECFCSD.DAT.

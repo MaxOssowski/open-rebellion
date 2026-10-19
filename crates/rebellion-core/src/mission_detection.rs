@@ -1737,6 +1737,7 @@ mod tests {
                 attack_strength: 0,
                 defense_strength: 0,
                 detection,
+                uprising_defense: 0,
             },
         );
         let key = world.troops.insert(TroopUnit {

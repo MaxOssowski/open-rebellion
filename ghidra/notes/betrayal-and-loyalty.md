@@ -177,4 +177,16 @@ Still open:
 
    In 24 dual-AI campaigns 15 battles shift loyalty, and 11 campaigns
    change.
-7. **Port the blockade's shift** (`FUN_00561280`).
+7. **Port the blockade's shift** (`FUN_00561280`). Done 2026-10-19,
+   save v89:
+   - `TroopClassDef::uprising_defense` (TROOPSD, class `+0x58`);
+   - `BombardEnv::losses` counts each bombardment's destroyed regiments
+     and ships and each assault's lost regiments, by side, before `apply`
+     removes them;
+   - `BlockadeState` keeps each blockade's blockader and its losses
+     (`record_losses`) and hands an ended one to `take_ended`;
+   - `loyalty::settle_blockade` is `FUN_00561280`, in both day loops.
+
+   port: side 3's losses are not kept; a destroyed system's blockade is
+   dropped with it; the losses count toward a blockade the day the
+   blockade step has seen it.

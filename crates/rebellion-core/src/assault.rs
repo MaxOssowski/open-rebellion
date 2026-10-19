@@ -495,6 +495,14 @@ impl crate::bombardment::BombardEnv {
             troop_fleets,
         };
         let outcome = resolve(world, &req, &mut |m| self.draw(m));
+        // System_vtd0, DestroyedReason 0xe: the regiments the assault loses.
+        let mut losses = crate::loyalty::SideLosses::default();
+        for &troop in outcome.lost_attackers.iter().chain(&outcome.lost_defenders) {
+            if let Some((side, value)) = crate::loyalty::troop_loss(world, troop) {
+                losses.add(side, value);
+            }
+        }
+        self.losses.push((system, losses));
         apply(world, transport, &req, &outcome);
         self.assaults.push((req, outcome));
         &self.assaults[self.assaults.len() - 1].1
@@ -599,6 +607,7 @@ mod tests {
                     attack_strength: attack,
                     defense_strength: defense,
                     detection: 0,
+                    uprising_defense: 0,
                 },
             );
         }
@@ -736,6 +745,34 @@ mod tests {
             c.leadership.base *= if c.is_alliance { 5 } else { 3 };
         }
         assert_eq!(duel(&fx).lost_attackers, a);
+    }
+
+    #[test]
+    fn an_assault_counts_its_lost_regiments_by_side() {
+        // System_vtd0, DestroyedReason 0xe: each lost regiment's class
+        // +0x58 (uprising_defense) to its side.
+        let mut fx = fixture();
+        aboard(&mut fx, 4);
+        defending(&mut fx, 4);
+        for (raw, value) in [(ATTACKERS, 6), (DEFENDERS, 5)] {
+            fx.world
+                .troop_classes
+                .get_mut(&DatId::new(raw))
+                .unwrap()
+                .uprising_defense = value;
+        }
+        let mut env = crate::bombardment::BombardEnv::new(3, None);
+        let fleet = fx.fleet;
+        let system = fx.system;
+        let outcome = env
+            .assault(&mut fx.world, &mut fx.transport, Faction::Empire, &[fleet], system)
+            .clone();
+        let expected = crate::loyalty::SideLosses {
+            alliance: 5 * i64::try_from(outcome.lost_defenders.len()).unwrap(),
+            empire: 6 * i64::try_from(outcome.lost_attackers.len()).unwrap(),
+        };
+        assert!(expected.alliance + expected.empire > 0, "{outcome:?}");
+        assert_eq!(env.losses, [(system, expected)]);
     }
 
     #[test]

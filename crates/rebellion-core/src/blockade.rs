@@ -202,6 +202,28 @@ pub struct BlockadeState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     support_timers: HashMap<SystemKey, u64>,
+    /// Each blockaded system's blockading side and its assault and
+    /// bombardment losses since the blockade began (`System_vt220`,
+    /// `FUN_00511300`, clears the system record's counters `+0x48..+0x58`
+    /// and stores the blockader in `+0x60`; save v89).
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    losses: HashMap<SystemKey, BlockadeLosses>,
+    /// The losses of the blockades that ended in the last
+    /// [`BlockadeSystem::advance`], for the caller to settle.
+    #[serde(skip)]
+    ended: Vec<(SystemKey, BlockadeLosses)>,
+}
+
+/// A blockade's blockading side and the losses at its system since it
+/// began (`ghidra/notes/betrayal-and-loyalty.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockadeLosses {
+    pub blockader: crate::dat::Faction,
+    pub losses: crate::loyalty::SideLosses,
 }
 
 /// An embarked regiment's last observed orbit and its withdraw percent.
@@ -229,7 +251,29 @@ impl BlockadeState {
             blockaded: HashSet::new(),
             embarked: HashMap::new(),
             support_timers: HashMap::new(),
+            losses: HashMap::new(),
+            ended: Vec::new(),
         }
+    }
+
+    /// Add `losses` to `system`'s blockade, while it is blockaded
+    /// (`System_vtd0` for DestroyedReason `0xe` and `0xf`).
+    pub fn record_losses(&mut self, system: SystemKey, losses: crate::loyalty::SideLosses) {
+        if let Some(entry) = self.losses.get_mut(&system) {
+            entry.losses.merge(losses);
+        }
+    }
+
+    /// `system`'s blockade's losses so far.
+    #[must_use]
+    pub fn blockade_losses(&self, system: SystemKey) -> Option<BlockadeLosses> {
+        self.losses.get(&system).copied()
+    }
+
+    /// The blockades that ended in the last [`BlockadeSystem::advance`],
+    /// with their losses, taken once.
+    pub fn take_ended(&mut self) -> Vec<(SystemKey, BlockadeLosses)> {
+        std::mem::take(&mut self.ended)
     }
 
     /// The tracked position and withdraw percent of an embarked regiment.
@@ -242,6 +286,7 @@ impl BlockadeState {
     pub fn clear_blockade(&mut self, system: SystemKey) {
         self.blockaded.remove(&system);
         self.support_timers.remove(&system);
+        self.losses.remove(&system);
     }
 
     /// The tick timer `0x386` next fires at `system`, while it is blockaded.
@@ -349,6 +394,17 @@ impl BlockadeSystem {
                 tick,
             });
             state.support_timers.insert(sys_key, tick + period);
+            // FUN_00511300: clear the losses, store the blockader
+            // (FUN_00509890: the side of the fleets there).
+            if let Some(blockader) = Self::blockader(world, sys_key) {
+                state.losses.insert(
+                    sys_key,
+                    BlockadeLosses {
+                        blockader,
+                        losses: crate::loyalty::SideLosses::default(),
+                    },
+                );
+            }
         }
 
         // Cleared blockades (ended this tick)
@@ -358,12 +414,16 @@ impl BlockadeSystem {
             .copied()
             .collect();
         cleared.sort_unstable();
+        state.ended.clear();
         for sys_key in cleared {
             events.push(BlockadeEvent::BlockadeEnded {
                 system: sys_key,
                 tick,
             });
             state.support_timers.remove(&sys_key);
+            if let Some(entry) = state.losses.remove(&sys_key) {
+                state.ended.push((sys_key, entry));
+            }
         }
 
         state.blockaded = now_blockaded;
@@ -382,6 +442,18 @@ impl BlockadeSystem {
             }
         }
         events
+    }
+
+    /// `FUN_00509890`: the blockading side, the side of the fleets at
+    /// `system` (a blockade has one side's).
+    fn blockader(world: &GameWorld, system: SystemKey) -> Option<crate::dat::Faction> {
+        world
+            .systems
+            .get(system)?
+            .fleets
+            .iter()
+            .find_map(|key| world.fleets.get(*key))
+            .map(|fleet| crate::dat::Faction::of_alliance(fleet.is_alliance))
     }
 
     /// `FUN_0050cb20`: the blockading side's support shift at `sys`, or
@@ -801,6 +873,52 @@ mod tests {
             state.blockaded_systems()
         );
         assert!(BlockadeSystem::blockaded_now(&world).contains(&sys));
+    }
+
+    #[test]
+    fn a_blockade_keeps_its_blockader_and_losses_until_it_ends() {
+        // FUN_00511300 at a blockade's start clears the system record's
+        // counters and stores the blockader (+0x60); System_vtd0 adds the
+        // assault and bombardment losses; FUN_00561280 reads them at the end.
+        use crate::dat::Faction;
+        use crate::loyalty::SideLosses;
+        let (mut world, sys) = make_world();
+        let mut state = BlockadeState::new();
+        let loss = SideLosses {
+            alliance: 6,
+            empire: 0,
+        };
+        // Losses before the blockade do not count.
+        state.record_losses(sys, loss);
+        add_fleet(&mut world, sys, false);
+        BlockadeSystem::advance(&mut state, &world, &[tick(1)]);
+        assert_eq!(
+            state.blockade_losses(sys),
+            Some(BlockadeLosses {
+                blockader: Faction::Empire,
+                losses: SideLosses::default()
+            })
+        );
+        state.record_losses(sys, loss);
+        state.record_losses(sys, loss);
+        assert!(state.take_ended().is_empty());
+        add_fleet(&mut world, sys, true);
+        BlockadeSystem::advance(&mut state, &world, &[tick(2)]);
+        assert_eq!(
+            state.take_ended(),
+            [(
+                sys,
+                BlockadeLosses {
+                    blockader: Faction::Empire,
+                    losses: SideLosses {
+                        alliance: 12,
+                        empire: 0
+                    }
+                }
+            )]
+        );
+        assert!(state.take_ended().is_empty());
+        assert_eq!(state.blockade_losses(sys), None);
     }
 
     #[test]

@@ -1,0 +1,14 @@
+24 dual-AI campaigns, 1500 days: loyalty_shift events (battles, blockades, Coruscant, HQ) by (side, amount)
+  ('Alliance', -5): 1
+  ('Alliance', -3): 1
+  ('Alliance', -2): 1
+  ('Alliance', -1): 4
+  ('Alliance', 1): 2
+  ('Alliance', 6): 2
+  ('Alliance', 8): 1
+  ('Empire', -4): 1
+  ('Empire', -1): 5
+  ('Empire', 1): 4
+  ('Empire', 2): 1
+  ('Empire', 3): 2
+total 25 per seed 1..24: [1, 1, 0, 0, 3, 1, 2, 2, 1, 1, 2, 0, 0, 0, 1, 0, 1, 0, 2, 0, 3, 0, 1, 3]

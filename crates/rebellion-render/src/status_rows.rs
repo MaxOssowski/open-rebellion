@@ -1404,6 +1404,7 @@ mod tests {
                 attack_strength: 7,
                 defense_strength: 9,
                 detection: 3,
+                uprising_defense: 0,
             },
         );
         let troop = world.troops.insert(TroopUnit {

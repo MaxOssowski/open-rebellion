@@ -3173,6 +3173,7 @@ mod tests {
                     attack_strength: attack,
                     defense_strength: 1,
                     detection: 0,
+                    uprising_defense: 0,
                 },
             );
             let t = fx.world.troops.insert(TroopUnit {
@@ -3325,6 +3326,7 @@ mod tests {
                 attack_strength: 5,
                 defense_strength: 1,
                 detection: 0,
+                uprising_defense: 0,
             },
         );
         let t = fx.world.troops.insert(TroopUnit {
@@ -3610,6 +3612,7 @@ mod tests {
                     attack_strength: attack,
                     defense_strength: defense,
                     detection: 0,
+                    uprising_defense: 0,
                 },
             );
             let t = fx.world.troops.insert(TroopUnit {
@@ -3919,6 +3922,7 @@ mod tests {
                     attack_strength: attack,
                     defense_strength: defense,
                     detection: 0,
+                    uprising_defense: 0,
                 },
             );
             let t = fx.world.troops.insert(TroopUnit {

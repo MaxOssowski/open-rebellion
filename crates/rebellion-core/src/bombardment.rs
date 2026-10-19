@@ -128,6 +128,41 @@ pub struct BombardmentOutcome {
     pub civilian_damage: bool,
 }
 
+/// What `outcome` destroys, by side, before [`apply`] removes it: each
+/// regiment target and each bombarding ship whose hull the batteries end
+/// (`System_vtd0`, DestroyedReason `0xf`).
+fn bombardment_losses(
+    world: &GameWorld,
+    req: &BombardRequest,
+    outcome: &BombardmentOutcome,
+) -> crate::loyalty::SideLosses {
+    let mut losses = crate::loyalty::SideLosses::default();
+    for target in &outcome.destroyed {
+        if let Target::Troop(troop) = target {
+            if let Some((side, value)) = crate::loyalty::troop_loss(world, *troop) {
+                losses.add(side, value);
+            }
+        }
+    }
+    for loss in &outcome.ship_losses {
+        let Some(ship) = world
+            .fleets
+            .get(loss.fleet)
+            .and_then(|fleet| fleet.capital_ships.get(loss.index))
+        else {
+            continue;
+        };
+        if ship.hull_current - loss.hull_damage <= 0 {
+            let value = world
+                .capital_ship_classes
+                .get(ship.class)
+                .map_or(0, |class| i64::from(class.uprising_defense));
+            losses.add(req.side, value);
+        }
+    }
+    losses
+}
+
 /// `FUN_0053e290(n)`: a draw from 0 to `n`, from `-n` to 0 when negative
 /// (`FUN_005f5700(n + 1)`). `draw(m)` gives 0 to `m - 1`.
 fn upto(draw: &mut dyn FnMut(i32) -> i32, n: i32) -> i32 {
@@ -738,6 +773,10 @@ pub struct BombardEnv {
         crate::assault::AssaultRequest,
         crate::assault::AssaultOutcome,
     )>,
+    /// Each bombardment's and assault's losses at its system, by side
+    /// (`System_vtd0`: DestroyedReason `0xf` and `0xe`;
+    /// [`crate::loyalty::SideLosses`]).
+    pub losses: Vec<(SystemKey, crate::loyalty::SideLosses)>,
 }
 
 impl BombardEnv {
@@ -748,6 +787,7 @@ impl BombardEnv {
             alliance_hq,
             outcomes: Vec::new(),
             assaults: Vec::new(),
+            losses: Vec::new(),
         }
     }
 
@@ -781,6 +821,7 @@ impl BombardEnv {
             alliance_hq: self.alliance_hq,
         };
         let outcome = resolve(world, &req, &mut |m| self.draw(m));
+        self.losses.push((system, bombardment_losses(world, &req, &outcome)));
         apply(world, &req, &outcome);
         self.outcomes.push((req, outcome));
         &self.outcomes[self.outcomes.len() - 1].1
@@ -1293,6 +1334,62 @@ mod tests {
         assert_eq!(fx.world.systems[fx.system].ground_units, [a]);
         assert!(!fx.world.troops.contains_key(b));
         assert!(!out.civilian_damage);
+    }
+
+    #[test]
+    fn a_bombardment_counts_its_destroyed_regiments_and_ships_as_losses() {
+        // System_vtd0, DestroyedReason 0xf: each destroyed regiment's and
+        // bombarding ship's class +0x58 (uprising_defense) to its side.
+        let mut fx = fixture(2);
+        fx.world.capital_ship_classes[fx.ship_class].uprising_defense = 30;
+        let escort = fx.world.capital_ship_classes.insert(CapitalShipClass {
+            hull: 100,
+            uprising_defense: 7,
+            ..CapitalShipClass::default()
+        });
+        fx.world.fleets[fx.fleet].capital_ships[1].class = escort;
+        let rebels = troop(&mut fx.world, fx.system, 0);
+        let class = fx.world.troops[rebels].class_dat_id;
+        fx.world.troop_classes.insert(
+            class,
+            crate::world::TroopClassDef {
+                attack_strength: 0,
+                defense_strength: 0,
+                detection: 0,
+                uprising_defense: 5,
+            },
+        );
+        let req = request(&fx, GENERAL);
+        let outcome = BombardmentOutcome {
+            destroyed: vec![Target::Troop(rebels)],
+            // The first ship's hull is ended (30); the escort's only
+            // dented (7, not counted).
+            ship_losses: vec![
+                ShipLoss {
+                    fleet: fx.fleet,
+                    index: 0,
+                    hull_damage: 100,
+                },
+                ShipLoss {
+                    fleet: fx.fleet,
+                    index: 1,
+                    hull_damage: 99,
+                },
+            ],
+            ..BombardmentOutcome::default()
+        };
+        assert_eq!(
+            bombardment_losses(&fx.world, &req, &outcome),
+            crate::loyalty::SideLosses {
+                alliance: 5,
+                empire: 30
+            }
+        );
+        // The env keeps them by system.
+        let mut env = BombardEnv::new(0, None);
+        env.bombard(&mut fx.world, Faction::Empire, &[fx.fleet], fx.system, GENERAL);
+        assert_eq!(env.losses.len(), 1);
+        assert_eq!(env.losses[0].0, fx.system);
     }
 
     #[test]

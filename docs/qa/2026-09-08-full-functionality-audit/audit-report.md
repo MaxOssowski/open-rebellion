@@ -2925,6 +2925,11 @@ cross-runtime proof remain open
   `FUN_0053ec10`; the losses are the lost units' class `+0x58`), in every
   battle path; 15 battles shift loyalty in 24 campaigns
   (`evidence/2026-10-19-loyalty-battle/`).
+- 2026-10-19 (F-028): loyalty at a blockade's end (`FUN_00561280`): the
+  assault and bombardment losses since the blockade began, by the lost
+  units' class `+0x58`, credit the holder against the blockader; save v89
+  (golden regenerated: initial `v1:29ee3368cb892d9e`, final
+  `v1:fb78593dbd336659`) (`evidence/2026-10-19-loyalty-blockade/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

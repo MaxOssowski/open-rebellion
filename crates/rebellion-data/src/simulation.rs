@@ -618,6 +618,12 @@ pub fn run_simulation_tick(
         ));
     }
     integrator.apply_blockade_events(world, &mut states.troop_transport, &blockade_events);
+    // Event305_SystemBlockadeChanged_Handle -> FUN_00561280: each ended
+    // blockade's loyalty shift for its assault and bombardment losses.
+    for (system, blockade) in states.blockade.take_ended() {
+        let shift = rebellion_core::loyalty::settle_blockade(world, system, blockade);
+        integrator.record_loyalty_shifts(shift.as_slice());
+    }
 
     // ── 9. Uprising ──────────────────────────────────────────────────────
     let uprising_rolls = take_rolls(UprisingSystem::roll_budget(
@@ -672,6 +678,11 @@ pub fn run_simulation_tick(
     // ── 11. Death Star ───────────────────────────────────────────────────
     for (req, outcome) in &bombard.outcomes {
         integrator.emit_bombardment(world, req, outcome);
+    }
+    // System_vtd0: the day's bombardment and assault losses count toward
+    // each blockade's (DestroyedReason 0xf, 0xe).
+    for (system, losses) in &bombard.losses {
+        states.blockade.record_losses(*system, *losses);
     }
     for (req, outcome) in &bombard.assaults {
         integrator.emit_assault(world, req, outcome);
@@ -1529,6 +1540,7 @@ mod tests {
                 attack_strength: 0,
                 defense_strength: 10,
                 detection: 0,
+                uprising_defense: 0,
             },
         );
         let alliance_troop = world.troops.insert(TroopUnit {

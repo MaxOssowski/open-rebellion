@@ -2509,6 +2509,7 @@ mod tests {
                 attack_strength: 5,
                 defense_strength: 1,
                 detection: 0,
+                uprising_defense: 0,
             },
         );
         let troop = world.troops.insert(crate::world::TroopUnit {
@@ -2664,6 +2665,7 @@ mod tests {
                 attack_strength: 1,
                 defense_strength: 5,
                 detection: 0,
+                uprising_defense: 0,
             },
         );
         for _ in 0..2 {
@@ -3446,6 +3448,7 @@ mod tests {
                 attack_strength: 5,
                 defense_strength: 1,
                 detection: 0,
+                uprising_defense: 0,
             },
         );
         let sys = fixture.system;
@@ -4517,6 +4520,7 @@ mod tests {
                 attack_strength: 1,
                 defense_strength: 5,
                 detection: 0,
+                uprising_defense: 0,
             },
         );
         for _ in 0..b.regiments {
@@ -5506,6 +5510,7 @@ mod tests {
                 attack_strength: 7,
                 defense_strength: 7,
                 detection: 3,
+                uprising_defense: 0,
             },
         );
         world.buildable_classes.insert(regiment, class(true, false));

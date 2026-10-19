@@ -575,6 +575,7 @@ pub fn load_game_data_with_options(
                     attack_strength: dat.attack_strength,
                     defense_strength: dat.defense_strength,
                     detection: dat.detection,
+                    uprising_defense: dat.uprising_defense,
                 },
             );
         }

@@ -12,6 +12,8 @@
 //! ([`watch`]) with its end ([`settle`]), so two changes in one day count
 //! once.
 
+use serde::{Deserialize, Serialize};
+
 use crate::dat::Faction;
 use crate::ids::SystemKey;
 use crate::world::{Character, ControlKind, GameWorld};
@@ -190,6 +192,43 @@ pub fn settle(
     shifts
 }
 
+/// Each side's losses at a system, by the lost units' class `+0x58`
+/// (`System_vtd0`'s counters on the system record).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SideLosses {
+    pub alliance: i64,
+    pub empire: i64,
+}
+
+impl SideLosses {
+    /// Add `value` to `side`'s losses; a neutral unit counts for neither.
+    pub fn add(&mut self, side: Faction, value: i64) {
+        match side {
+            Faction::Alliance => self.alliance += value,
+            Faction::Empire => self.empire += value,
+            Faction::Neutral => {}
+        }
+    }
+
+    /// Add `other`'s losses.
+    pub fn merge(&mut self, other: Self) {
+        self.alliance += other.alliance;
+        self.empire += other.empire;
+    }
+}
+
+/// A regiment's loss value, its class `+0x58` (`uprising_defense`), and
+/// its side.
+#[must_use]
+pub fn troop_loss(world: &GameWorld, troop: crate::ids::TroopKey) -> Option<(Faction, i64)> {
+    let unit = world.troops.get(troop)?;
+    let value = world
+        .troop_classes
+        .get(&unit.class_dat_id)
+        .map_or(0, |class| i64::from(class.uprising_defense));
+    Some((Faction::of_alliance(unit.is_alliance), value))
+}
+
 /// SDPRTB 2560 (`Sdprtb_2560_*`): the divisor of a battle's or a
 /// blockade's losses (`FUN_0053ec10`).
 const SDPRTB_LOSS_DIVISOR: u16 = 2560;
@@ -261,6 +300,41 @@ pub fn settle_battle(
     let alliance = (before.alliance - after.alliance).max(0);
     let empire = (before.empire - after.empire).max(0);
     let amount = loss_shift(world, side, alliance, empire);
+    shift(world, side, amount);
+    (amount != 0).then_some(LoyaltyShift { side, amount })
+}
+
+/// A blockade's end at `system` (`Event305_SystemBlockadeChanged_Handle`
+/// -> `FUN_00561280`): the shift for `blockade`'s losses
+/// (`FUN_0053ec10`). The side is the blockader (`+0x60`), switched to the
+/// other side when the system stands and its holder is not the blockader.
+///
+/// port: side 3's losses, which `FUN_00509a20` adds for the side that
+/// does not blockade, are not kept; a destroyed system's blockade is
+/// dropped with it (`BlockadeState::clear_blockade`).
+pub fn settle_blockade(
+    world: &mut GameWorld,
+    system: SystemKey,
+    blockade: crate::blockade::BlockadeLosses,
+) -> Option<LoyaltyShift> {
+    let sys = world.systems.get(system)?;
+    let mut side = blockade.blockader;
+    if side == Faction::Neutral {
+        return None;
+    }
+    let holder = GameWorld::facility_holder(sys.control);
+    if !sys.is_destroyed && holder != Some(side) {
+        side = match side {
+            Faction::Alliance => Faction::Empire,
+            _ => Faction::Alliance,
+        };
+    }
+    let amount = loss_shift(
+        world,
+        side,
+        blockade.losses.alliance,
+        blockade.losses.empire,
+    );
     shift(world, side, amount);
     (amount != 0).then_some(LoyaltyShift { side, amount })
 }
@@ -408,6 +482,90 @@ mod tests {
         // No winner, no shift.
         assert_eq!(settle_battle(&mut world_draw, before, here, None), None);
         assert_eq!(loyalty(&world_draw, rebel), 50);
+    }
+
+    #[test]
+    fn a_blockade_s_end_credits_the_holder_against_its_blockader() {
+        // FUN_00561280: the blockader (+0x60), switched to the other side
+        // when the standing system is held by the other; FUN_0053ec10 over
+        // the assault and bombardment losses (FUN_00509a20), / 50.
+        use crate::blockade::BlockadeLosses;
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            0x101,
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let rebel = person(&mut world, true, false, 50);
+        let blockade = BlockadeLosses {
+            blockader: Faction::Empire,
+            losses: SideLosses {
+                alliance: 20,
+                empire: 130,
+            },
+        };
+        // An Imperial blockade of a Rebel world: the Alliance is credited,
+        // (130 - 20) / 50 + 130 / 50 = 2 + 2 = 4.
+        assert_eq!(
+            settle_blockade(&mut world, here, blockade),
+            Some(LoyaltyShift {
+                side: Faction::Alliance,
+                amount: 4
+            })
+        );
+        assert_eq!(loyalty(&world, rebel), 54);
+        // Held by the blockader: the Empire, (20 - 130) / 50 + 20 / 50 = -2.
+        world.systems[here].control = ControlKind::Controlled(Faction::Empire);
+        assert_eq!(
+            settle_blockade(&mut world, here, blockade),
+            Some(LoyaltyShift {
+                side: Faction::Empire,
+                amount: -2
+            })
+        );
+        // A destroyed system keeps the blockader.
+        world.systems[here].control = ControlKind::Controlled(Faction::Alliance);
+        world.systems[here].is_destroyed = true;
+        assert_eq!(
+            settle_blockade(&mut world, here, blockade).map(|s| s.side),
+            Some(Faction::Empire)
+        );
+        // A Rebel blockade of an Imperial world credits the Empire.
+        world.systems[here].is_destroyed = false;
+        world.systems[here].control = ControlKind::Controlled(Faction::Empire);
+        let rebel_blockade = BlockadeLosses {
+            blockader: Faction::Alliance,
+            ..blockade
+        };
+        assert_eq!(
+            settle_blockade(&mut world, here, rebel_blockade).map(|s| s.side),
+            Some(Faction::Empire)
+        );
+        // No losses, no shift.
+        let quiet = BlockadeLosses {
+            blockader: Faction::Empire,
+            losses: SideLosses::default(),
+        };
+        assert_eq!(settle_blockade(&mut world, here, quiet), None);
+    }
+
+    #[test]
+    fn side_losses_add_by_side_and_merge() {
+        let mut losses = SideLosses::default();
+        losses.add(Faction::Alliance, 3);
+        losses.add(Faction::Empire, 5);
+        losses.add(Faction::Neutral, 7);
+        losses.merge(SideLosses {
+            alliance: 1,
+            empire: 2,
+        });
+        assert_eq!(
+            losses,
+            SideLosses {
+                alliance: 4,
+                empire: 7
+            }
+        );
     }
 
     #[test]
