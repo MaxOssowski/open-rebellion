@@ -31,8 +31,9 @@ The hook (slot `+0x32c`, `FUN_004f1720`):
   `0x7fff` (`FUN_004edf30`);
 - recomputes the Healing flag (`FUN_004ef030`, below);
 - clears the command `+0x96` (`FUN_004eeed0` -> `FUN_004ee350(0)`) unless
-  the character is uninjured, free, existing and in a fleet-type container
-  (`0x50..0x7f`);
+  the character is uninjured, free, existing and not in a mission
+  (container `+0x68` of family `0x50..0x7f` clears it;
+  `character-command.md`, corrected 2026-10-19);
 - with a new injury and `CanResignFromMission` (`+0x78` bit `0x10`), asks to
   resign from the mission (`FUN_00534640`);
 - sets `Damaged` (`+0x50` bit `0x200`, `FUN_004f7800`) to injury != 0.

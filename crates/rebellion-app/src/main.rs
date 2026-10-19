@@ -7270,7 +7270,8 @@ fn apply_panel_action(
             }
             if let Some(c) = world.characters.get_mut(character) {
                 let name = c.name.clone();
-                c.current_fleet = Some(fleet);
+                let system = c.current_system;
+                c.move_to(Some(fleet), system);
                 msg_log.push(GameMessage::new(
                     clock.tick,
                     format!("{name} assigned to fleet"),
@@ -7284,7 +7285,8 @@ fn apply_panel_action(
             }
             if let Some(c) = world.characters.get_mut(character) {
                 let name = c.name.clone();
-                c.current_fleet = None;
+                let system = c.current_system;
+                c.move_to(None, system);
                 msg_log.push(GameMessage::new(
                     clock.tick,
                     format!("{name} removed from fleet"),

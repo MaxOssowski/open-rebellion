@@ -240,9 +240,11 @@ pub fn merge_fleet_into(
     if let Some(system) = world.systems.get_mut(source.location) {
         system.fleets.retain(|&fleet| fleet != from);
     }
+    // FUN_00560d50: each ship that moves takes the commands aboard it.
     for &character in &source.characters {
         if let Some(value) = world.characters.get_mut(character) {
-            value.current_fleet = Some(to);
+            let system = value.current_system;
+            value.move_to(Some(to), system);
         }
     }
     let target = &mut world.fleets[to];
@@ -776,6 +778,7 @@ mod tests {
             name: "Admiral".into(),
             is_alliance: true,
             current_fleet: Some(mover),
+            command: crate::character_command::CommandKind::Admiral,
             ..Default::default()
         });
         setup.world.fleets[mover].characters.push(admiral);
@@ -802,6 +805,11 @@ mod tests {
         assert_eq!(world.fleets[target].fighters[0].count, 3);
         assert_eq!(world.fleets[target].characters, [admiral]);
         assert_eq!(world.characters[admiral].current_fleet, Some(target));
+        // FUN_00560d50: a capital ship that moves clears the commands aboard.
+        assert_eq!(
+            world.characters[admiral].command,
+            crate::character_command::CommandKind::None
+        );
         assert!(world.fleets[target].has_death_star);
         assert_eq!(transport.cargo(target), [troop]);
         assert!(movement.is_empty());

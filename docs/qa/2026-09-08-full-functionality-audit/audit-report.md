@@ -2857,6 +2857,13 @@ cross-runtime proof remain open
   fleet rank 1. The 24 campaigns and the golden are unchanged. Found:
   `FUN_00560d50` clears commands on a move (stage 5)
   (`evidence/2026-10-19-character-command-ai-ranks/`).
+- 2026-10-19: character command, stage 5. A character that moves loses
+  its command (`FUN_00560d50` from the move event `FUN_00514a60`),
+  through `Character::move_to` at every real move; a fleet merge moves
+  the ships and so takes the commands aboard. `FUN_004eeed0` read again:
+  a character on a mission loses its command (the notes had it the other
+  way round). The 24 campaigns and the golden are unchanged
+  (`evidence/2026-10-19-character-command-move/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

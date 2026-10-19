@@ -79,16 +79,21 @@ not read). It acts only on a character (family `0x30..0x3b`):
    `+0x2f8` (`FUN_004ef400`):
    - the same kind again clears it;
    - otherwise it sets the kind and, with a kind, `SetCharacterCommandingKey`
-     (`+0x68`, the commanded object).
+     (`FUN_004ee740`, `+0xa8`, the commanded object).
 
 ## Losing the command
 
 `FUN_004eeed0` clears a command (`FUN_004ee350(0)`) unless all of these
-hold:
+hold (read again 2026-10-19 from the image, `0x004eeed0..0x004eef64`):
 - the character is uninjured (`+0x94 == 0`);
 - it is not captured (`+0xac` bit 0 clear);
-- `+0x50` bit 6 is set;
-- its commanding key `+0x68` is of family `0x50..0x7f`.
+- it exists (`+0x50` bit 6, GameObjExisting);
+- its container `+0x68` is not a mission (family outside `0x50..0x7f`;
+  `status-window.md`, `personnel-finder.md` "On Mission").
+
+The first reading took the last test the other way round, and called
+`+0x68` the commanding key. The commanding key is `+0xa8`
+(`Character::SetCharacterCommandingKey`, `FUN_004ee740`).
 
 The character's hooks run it:
 
@@ -108,7 +113,7 @@ command away:
   from one capital ship to another of the same fleet (`FUN_00504dc0` of
   each, both of family `0x08..0x0f` and equal);
 - a character of family `0x34` also runs `FUN_005617b0` (not read).
-Port: stage 5.
+Ported in stage 5 (`Character::move_to`).
 
 ## Who reads it
 
@@ -150,8 +155,8 @@ day loops call `release_unfit` for captures.
 
 port:
 - the base check `FUN_004f9860` is read as the character being alive;
-- `FUN_004eeed0`'s `+0x50` bit 6 and commanding key tests are read as true
-  while the character commands (`hyp:`, "Still open");
+- `FUN_004eeed0`'s existence test is the port's "not killed"; its mission
+  test (container `+0x68` of family `0x50..0x7f`) is not made yet (stage 6);
 - a capture clears the command at the day's pass, not in its hook;
 - `Damaged` (`+0x50` bit `0x200`) is not kept: it equals "injury non-zero",
   and no character reader of it is known;
@@ -210,6 +215,15 @@ unchanged: in them the hyp's bit changed no pick.
 The AI giving commands waits for module `0xc`; until then no AI character
 holds one.
 
+Stage 5 (2026-10-19), the move (`FUN_00560d50`): `Character::move_to`
+drops the command when the character's fleet or system changes. The real
+moves go through it: `missions::move_member` (missions and the AI's
+character moves), the abode move, `fleet_join::merge_fleet_into` (each
+moved ship takes the commands aboard), the fleet panel's assign and
+remove, and the story's character transfer. port: characters ride the
+fleet, not a ship, so a split moves none and a ship-to-ship move inside a
+fleet does not occur. A capture is the day pass's `release_unfit`.
+
 ## Plan (tracker item "Dowodzenie i jego utrata przy ranie")
 
 1. **This note.**
@@ -230,13 +244,16 @@ holds one.
    - 4b: the decoy roll's backing rank, FOILTB and the exposure's captor.
    - 4c: the AI records' rank bits, replacing the `hyp:`. This also closes
      stage 5 of AI module 4.
+5. **The move** (`FUN_00560d50`).
+6. **The hooks.** `FUN_004eeed0`'s mission test in `keeps`, and the two
+   other hooks that run it (`FUN_004f1340`, `Role_vt11c`; `FUN_004f1490`,
+   `Role_vt268`).
 
 The AI giving commands waits for module `0xc`.
 
 ## Still open
 
-- What sets `+0x50` bit 6, and the family `0x50..0x7f` of the commanding key
-  `+0x68`. `SetCharacterCommandingKey` is not read yet.
+- The port's `keeps` does not yet test "not on a mission" (stage 6).
 - Which events reach `FUN_0057ba50` (the move event), and `FUN_005617b0`.
 - `Role_vt11c` and `Role_vt268`, the other two hooks that run
   `FUN_004eeed0`.

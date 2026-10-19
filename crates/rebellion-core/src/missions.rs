@@ -1272,8 +1272,7 @@ pub fn move_member(world: &mut GameWorld, member: MissionMember, to: Option<Syst
                 fleet.characters.retain(|&c| c != key);
             }
             let character = &mut world.characters[key];
-            character.current_fleet = None;
-            character.current_system = to;
+            character.move_to(None, to);
             character.current_abode = None;
         }
         MissionMember::SpecialForce(key) => {
@@ -1410,8 +1409,7 @@ pub fn enter_abode(world: &mut GameWorld, member: MissionMember, abode: crate::i
         fleet.characters.retain(|&c| c != key);
     }
     let character = &mut world.characters[key];
-    character.current_fleet = None;
-    character.current_system = None;
+    character.move_to(None, None);
     character.current_abode = Some(abode);
 }
 
@@ -7707,6 +7705,7 @@ mod tests {
             has_death_star: false,
         });
         world.characters[pilot].current_fleet = Some(fleet);
+        world.characters[pilot].command = crate::character_command::CommandKind::Admiral;
         let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
             class_dat_id: crate::ids::DatId::new(0x3c00_0003),
             is_alliance: true,
@@ -7720,6 +7719,11 @@ mod tests {
         assert!(world.fleets[fleet].characters.is_empty());
         assert_eq!(world.characters[pilot].current_fleet, None);
         assert_eq!(world.characters[pilot].current_system, None);
+        // FUN_00560d50: the move takes the admiral's command.
+        assert_eq!(
+            world.characters[pilot].command,
+            crate::character_command::CommandKind::None
+        );
         assert!(world.systems[from].special_forces.is_empty());
 
         move_member(&mut world, MissionMember::Character(pilot), Some(to));

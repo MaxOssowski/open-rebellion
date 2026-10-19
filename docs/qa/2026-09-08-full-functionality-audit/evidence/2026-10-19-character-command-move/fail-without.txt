@@ -1,0 +1,10 @@
+thread 'character_command::tests::a_character_that_moves_loses_its_command' (3550254) panicked at crates/rebellion-core/src/character_command.rs:537:13:
+  left: General
+ right: None
+thread 'missions::tests::a_moved_member_leaves_its_fleet_or_system_and_lands_at_the_target' (3550256) panicked at crates/rebellion-core/src/missions.rs:7723:9:
+  left: Admiral
+ right: None
+thread 'fleet_join::tests::a_fleet_moved_onto_another_in_its_system_hands_over_everything_and_disbands' (3550255) panicked at crates/rebellion-core/src/fleet_join.rs:809:9:
+  left: Admiral
+ right: None
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 1415 filtered out; finished in 0.00s

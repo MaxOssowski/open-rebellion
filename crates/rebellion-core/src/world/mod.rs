@@ -850,6 +850,24 @@ impl Character {
         }
     }
 
+    /// Put the character aboard `fleet` (or on the planet when `None`) at
+    /// `system`. `FUN_00560d50`, which the move event `FUN_00514a60` runs: a
+    /// character that moves loses its command (`FUN_004ee350(0)`).
+    ///
+    /// port: the original keeps it across a move between two capital ships
+    /// of the same fleet; the port keeps characters on the fleet, not a
+    /// ship, so such a move does not happen. A capital ship that moves takes
+    /// the commands of everyone aboard; the port's fleet merge moves every
+    /// character with the ships (`fleet_join::merge_fleet_into`), and a
+    /// split moves none.
+    pub fn move_to(&mut self, fleet: Option<FleetKey>, system: Option<SystemKey>) {
+        if (self.current_fleet, self.current_system) != (fleet, system) {
+            self.set_command(crate::character_command::CommandKind::None);
+        }
+        self.current_fleet = fleet;
+        self.current_system = system;
+    }
+
     /// Mark this character as killed and clear all "alive" state so that
     /// other systems filter it out correctly.
     ///

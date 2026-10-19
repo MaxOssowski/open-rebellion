@@ -2407,7 +2407,8 @@ pub fn apply_event_action_to_world(
                 new_faction,
             } => {
                 if let Some(c) = world.characters.get_mut(*character) {
-                    c.current_system = Some(*destination);
+                    let fleet = c.current_fleet;
+                    c.move_to(fleet, Some(*destination));
                     if let Some(faction) = new_faction {
                         match faction {
                             rebellion_core::dat::Faction::Alliance => {

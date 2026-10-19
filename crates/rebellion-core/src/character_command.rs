@@ -509,6 +509,41 @@ mod tests {
     }
 
     #[test]
+    fn a_character_that_moves_loses_its_command() {
+        // FUN_00560d50 from the move event FUN_00514a60: a character
+        // (0x30..0x3b) holding a command that moves loses it
+        // (FUN_004ee350(0)); one that stays keeps it.
+        let mut fleets = slotmap::SlotMap::<FleetKey, ()>::with_key();
+        let fleet = fleets.insert(());
+        let mut systems = slotmap::SlotMap::<SystemKey, ()>::with_key();
+        let (here, there) = (systems.insert(()), systems.insert(()));
+        let mut world = GameWorld::default();
+        let c = officer(&mut world, true);
+        let held = |world: &mut GameWorld, fleet, system| {
+            let value = &mut world.characters[c];
+            value.current_fleet = fleet;
+            value.current_system = system;
+            value.command = CommandKind::General;
+        };
+        let moved = |world: &mut GameWorld, fleet, system| {
+            world.characters[c].move_to(fleet, system);
+            world.characters[c].command
+        };
+        held(&mut world, None, Some(here));
+        assert_eq!(moved(&mut world, None, Some(here)), CommandKind::General);
+        // To another planet, aboard a fleet, or off the map on a mission.
+        for (fleet, system) in [(None, Some(there)), (Some(fleet), Some(here)), (None, None)] {
+            held(&mut world, None, Some(here));
+            assert_eq!(moved(&mut world, fleet, system), CommandKind::None);
+            assert_eq!(world.characters[c].current_fleet, fleet);
+            assert_eq!(world.characters[c].current_system, system);
+        }
+        // Off the fleet onto its planet.
+        held(&mut world, Some(fleet), Some(here));
+        assert_eq!(moved(&mut world, None, Some(here)), CommandKind::None);
+    }
+
+    #[test]
     fn a_command_renames_the_character_and_its_loss_renames_it_back() {
         // FUN_004ee350's hook, slot +0x330 (FUN_004f17f0): the name becomes
         // TEXTSTRA of the class name +0x6800, +0x6c00 or +0x7000, and with
