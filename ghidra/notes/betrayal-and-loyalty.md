@@ -64,6 +64,38 @@ not read yet):
 | `FUN_005616a0(_, old, new)` | a side change of an object: for the old side and the new, `FUN_0053ec90(side, gained, plain)` = `rand(SDPRTB 2561) + SDPRTB 2562` for that side, unless either word has bits `0x30` |
 | `FUN_00561780(_, 0)` | `rand(GNPRTB 2592) + GNPRTB 2593`, for the Alliance (side 1) |
 
+## When the loyalty handlers run (read 2026-10-19)
+
+| Handler | Run by | On | Amount for the side (`FUN_00561910`; the other side's characters get its negative) |
+|---|---|---|---|
+| `FUN_00561670` -> `FUN_005616a0` | the character manager's side-change handler (`FUN_005613f0`) | an object of key index `0x109`, **Coruscant**, changes side | for the new side only (`FUN_0053ec90(new, 1)`): `rand(SDPRTB 2561) + SDPRTB 2562` = `0..=5`; none when either side word has bits `0x30`; none for the old side (`FUN_0053ec90(old, 0)` is 0) |
+| `FUN_00561470` -> `FUN_00561780` | the character manager's object handler | an object of family `0x20..0x21`, the **Alliance headquarters**, with the second argument 0 (presumably its loss) | for the Alliance: `rand(GNPRTB 2592) + GNPRTB 2593` = `rand(-5)` = `0..=-5` |
+| `FUN_00517270` -> `FUN_00560d00` | a battle's end at a system (`FUN_0051ddf0`, `timer-scheduler.md`; `planet-squadrons.md`) | the battle-won side (`FUN_0050a040`) | `FUN_0053ec10(won, a = rec[+0x68], b = rec[+0x6c])` on the system's record `+0x54`. For the Alliance: `(b - a) / SDPRTB 2560 + b / SDPRTB 2560`. For the Empire the same with `a` and `b` swapped. SDPRTB 2560 = 50 |
+| `Event305_SystemBlockadeChanged_Handle` (`FUN_00515f40`) -> `FUN_00561280` | a system's blockade change (`0x305`), with the second argument 0 | the holder side `rec[+0x60]` (`FUN_00509ac0`), switched to the other side when the system is not destroyed and its side differs | `FUN_0053ec10(side, FUN_00509a20(1), FUN_00509a20(2))`. `FUN_00509a20(s)` = `rec[+0x44+4s] + rec[+0x50+4s]` (`FUN_005099c0`, `FUN_005099f0`), plus side 3's when `s` is not the holder |
+
+Values (SDPRTB.DAT and GNPRTB.DAT as shipped, the same at every level and
+for both sides):
+- SDPRTB 2560 = 50;
+- SDPRTB 2561 = 5;
+- SDPRTB 2562 = 0;
+- GNPRTB 2592 = -5;
+- GNPRTB 2593 = 0.
+
+`FUN_0053e290(n)` draws `0..=n`. For a negative `n` it draws `n..=0`.
+
+The class flag `+0xb4` that exempts a character is the DAT field after
+`can_be_general` (`+0xb0`). In the MJCHARSD and MNCHARSD order that is
+`is_unable_to_betray`. MJCHARSD sets it for all six majors; MNCHARSD for
+some (Ackbar 1, record 834 0). The manual: "Key characters have strong
+loyalty that won't waver."
+
+Still open:
+- What the system record's per-side counters `+0x44..+0x6c` hold. They are
+  presumably the battle's and the blockade's losses, by the manual's
+  "ships, fighters, or troops destroyed in battles, assaults, and
+  bombardments".
+- What the second argument 0 means for the HQ and blockade handlers.
+
 ## Plan (tracker item "Zdrada")
 
 1. **This note.**
@@ -73,7 +105,8 @@ not read yet):
    simulation's step 10, `apply_betrayal_events`,
    `GameEffect::CharacterBetrayed`, and the telemetry `betrayal`,
    `betrayal_check` and `side_change`.
-3. **Read when each loyalty handler runs**, and the counters
-   `galaxy[+0x54]+0x60..0x6c`, `FUN_00509a20`, `FUN_005099c0` and
-   `FUN_005099f0`.
-4. **Port the loyalty changes**, one handler a stage.
+3. **Read when each loyalty handler runs** (done 2026-10-19, above).
+4. **Port Coruscant's side change and the HQ's loss** (`FUN_005616a0`,
+   `FUN_00561780`).
+5. **Read the system record's per-side loss counters**, then port the
+   battle's and the blockade's shifts.
