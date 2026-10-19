@@ -1709,7 +1709,8 @@ impl AISystem {
     /// One cycle of every mission planner (`FUN_004bced0`):
     ///
     /// - state 2 (`FUN_0047b110` -> `FUN_0047ba40`): a member the planner
-    ///   can no longer keep is dropped; a planner with no team left ends
+    ///   can no longer keep is dropped, and a diplomat a better free one
+    ///   outranks ([`Planner::outranked`]); a planner with no team left ends
     ///   (`FUN_0047aff0`);
     /// - state 5 (slot `+0x50`): a standing planner's target
     ///   ([`recruitment_target`], [`diplomacy_target`],
@@ -1749,7 +1750,9 @@ impl AISystem {
                 return p.standing || !p.team.is_empty();
             }
             p.last_cycle = tick;
-            p.team.retain(|&m| planner.keeps(m));
+            let kind = p.kind;
+            p.team
+                .retain(|&m| planner.keeps(m) && !planner.outranked(kind, m));
             p.decoys.retain(|&m| planner.keeps(m));
             for &member in p.team.iter().chain(&p.decoys) {
                 planner.hold(member);
@@ -4852,6 +4855,27 @@ mod tests {
         strategy_pass(&mut state, &world, 3);
         assert!(only(&state, MissionKind::Diplomacy).is_empty());
         assert!(state.record_claims.is_empty());
+    }
+
+    #[test]
+    fn a_diplomacy_planner_trades_its_diplomat_for_a_better_free_one() {
+        // FUN_0047ba40 asks slot +0x3c (FUN_00481ef0) in state 2: a free
+        // diplomat (69..) with more diplomacy (record +0x40) makes the
+        // planner let its own go, and state 3 takes the better one.
+        let (mut world, home, _, keys) = diplomacy_world(90.0, &[80]);
+        let mut state = AIState::new(AiFaction::Empire);
+        strategy_pass(&mut state, &world, 1);
+        let team = |state: &AIState| only(state, MissionKind::Diplomacy)[0].team.clone();
+        assert_eq!(team(&state), vec![MissionMember::Character(keys[0])]);
+        // An equal one does not outrank it.
+        let equal = add_character(&mut world, false, true, 80);
+        world.characters[equal].current_system = Some(home);
+        strategy_pass(&mut state, &world, 2);
+        assert_eq!(team(&state), vec![MissionMember::Character(keys[0])]);
+        let better = add_character(&mut world, false, true, 95);
+        world.characters[better].current_system = Some(home);
+        strategy_pass(&mut state, &world, 3);
+        assert_eq!(team(&state), vec![MissionMember::Character(better)]);
     }
 
     #[test]

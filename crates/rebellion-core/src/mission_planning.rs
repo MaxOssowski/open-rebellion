@@ -360,6 +360,29 @@ impl<'a> Planner<'a> {
         })
     }
 
+    /// Diplomacy's slot `+0x3c` (`FUN_00481ef0`), which `FUN_0047ba40` asks
+    /// in state 2: the planner lets `member` go when the best free diplomat
+    /// (its team query, `FUN_004035d0` with priority 0, order 1) has more
+    /// diplomacy (record `+0x40`). The other classes' slot (`FUN_0051ebb0`)
+    /// keeps every member.
+    pub(crate) fn outranked(&mut self, kind: MissionKind, member: MissionMember) -> bool {
+        if kind != MissionKind::Diplomacy {
+            return false;
+        }
+        let Some(selectors) = selectors(kind) else {
+            return false;
+        };
+        let list = ranked(&self.records, selectors.team[0], &mut self.rng);
+        let Some(&best) = list.last() else {
+            return false;
+        };
+        let skill = Skill::Diplomacy as usize;
+        self.records
+            .iter()
+            .find(|r| r.member == member)
+            .is_some_and(|r| r.skills[skill] < self.records[best].skills[skill])
+    }
+
     /// `FUN_0041cd80(10) < 5`: a coin from the planner's draws, for the
     /// ranked lists of the modules.
     pub(crate) fn coin(&mut self) -> bool {
@@ -878,6 +901,29 @@ mod tests {
 
     fn planner(world: &GameWorld) -> Planner<'_> {
         Planner::new(world, &MissionState::new(), &HashSet::new(), true, 1)
+    }
+
+    #[test]
+    fn a_diplomat_is_outranked_only_by_a_free_better_one() {
+        // FUN_00481ef0: the best free diplomat (unassigned, diplomacy 69..)
+        // against the member's record +0x40; a held one does not count.
+        let mut world = world();
+        let diplomat =
+            |world: &mut GameWorld, skill| agent(world, 0x2c0, |c| c.diplomacy = pair(skill));
+        let held = diplomat(&mut world, 99);
+        let member = diplomat(&mut world, 80);
+        let mut p = planner(&world);
+        p.hold(held);
+        p.hold(member);
+        assert!(!p.outranked(MissionKind::Diplomacy, member));
+        let better = diplomat(&mut world, 95);
+        let mut p = planner(&world);
+        p.hold(held);
+        p.hold(member);
+        assert!(p.outranked(MissionKind::Diplomacy, member));
+        assert!(!p.outranked(MissionKind::Recruitment, member));
+        p.hold(better);
+        assert!(!p.outranked(MissionKind::Diplomacy, member));
     }
 
     #[test]

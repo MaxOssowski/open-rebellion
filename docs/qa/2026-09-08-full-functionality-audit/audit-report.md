@@ -2739,6 +2739,9 @@ cross-runtime proof remain open
   (`FUN_0047ecf0`). The last mission heuristic group is removed. Golden
   final `v1:03a36c82837d1ce1` -> `v1:49ba43802d0d2840`
   (`evidence/2026-10-19-rescue-planner/`).
+- 2026-10-19 (F-036): a Diplomacy planner trades its diplomat for a
+  better free one (`FUN_0047ba40` asking slot `+0x3c`, `FUN_00481ef0`).
+  Golden unchanged (`evidence/2026-10-19-diplomat-trade/`).
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 

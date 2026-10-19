@@ -1436,6 +1436,27 @@ Campaigns: 24 seeds of 1500 days, against the prisoner-side fix.
 - Systems held at the end, summed over the seeds: Alliance 607 and 570,
   Empire 536 and 579.
 
+## Diplomacy's slot +0x3c (ported 2026-10-19)
+
+State 2 (`FUN_0047ba40`) keeps a member only while its class's slot
+`+0x3c` agrees. For Diplomacy that slot is `FUN_00481ef0`. It runs the
+team query with priority 0, so only free records count:
+`FUN_004035d0(0, 2, 1, 0x7404051, 0, 0, 0x45, 10000, 1)`. It takes the
+best (`FUN_004357b0`). When that one's diplomacy (record `+0x40`)
+exceeds the member's, it returns 0, and the planner lets the member go.
+State 3 then takes the better one. Every other class's slot is
+`FUN_0051ebb0`, which keeps.
+
+Ported as `Planner::outranked`, asked in `mission_planner_cycle`'s state
+2.
+
+Campaigns: 24 seeds of 1500 days, against the Rescue commit.
+- Diplomacy orders: 1,140 before, 1,242 after.
+- Diplomacy results: 3,543 successes and 1,850 failures before, 3,729
+  and 1,996 after.
+- Systems held at the end, summed over the seeds: Alliance 570 and 589,
+  Empire 579 and 564.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
