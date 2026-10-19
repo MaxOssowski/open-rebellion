@@ -3085,6 +3085,21 @@ cross-runtime proof remain open
   (`FUN_00402720`), and the class is reached only through its factory
   (`FUN_0051ebf0`). Open: Return `0x42`, Autorouting `0x43` and Adrift
   `0x44` (`ghidra/notes/mission-lifecycle.md`).
+- 2026-10-20 (read): how members leave a mission, and the Return,
+  Autorouting and Adrift orders. `FUN_00548120` (run after every phase
+  change) asks `FUN_00521220` how each member of an ended mission, or one
+  with a request, leaves: MISSNSD column 10 is 0 for the movement orders, 1
+  for agent missions (return when the member's container is not its side's)
+  and 2 for Dagobah, Palace, Vacation, Pickup and Bounty (always return).
+  `FUN_00548910` groups the returning members by destination
+  (`FUN_00542ee0`: the container, else the character's `+0x70`, else the
+  autoroute search `FUN_00543040`) and sends them on a Return order
+  `0x42000002` (`FUN_005475f0`); with no destination, `FUN_00549580` sends
+  them to their side's jail (abodes `0x98000440` Alliance Jail and
+  `0x98000480` Empire Jail) on an Autorouting order `0x43000003`. The port
+  releases members where they are, so an agent stays at another side's
+  system after its mission; porting the Return is the next stage
+  (`ghidra/notes/mission-lifecycle.md`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

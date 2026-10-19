@@ -601,6 +601,68 @@ area. The original choice is now read and ported (2026-10-14): see
 per able character, and a target chosen among the AI's research sites
 (own, garrisoned, unblockaded systems with an active yard it built).
 
+## Leaving a mission: Return, Autorouting and the jails (read 2026-10-20)
+
+After every phase change `FUN_00546ea0` runs `FUN_00548120`. It walks the
+members (`FUN_00525bb0`: team, decoys, captured) and asks `FUN_00521220`
+how each leaves:
+
+```
+FUN_00521220(member) -> (leaves, returns, from_here):
+    if no end code and member +0x78 & 0xc clear: nothing (stays on)
+    leaves  = 1
+    same    = member's container (FUN_004f6b50) has the member's side
+    col10   = record +0x68 (FUN_00520ba0; MISSNSD column 10)
+    returns = member autorouting (+0x50 bit 11) or col10 == 2
+              or (col10 == 1 and not same)
+    from_here = returns and col10 != 2
+```
+
+MISSNSD column 10 is 0 for Move, Return, Autorouting and Adrift; 1 for
+every agent mission; 2 for Dagobah, Palace, Vacation, Pickup and Bounty.
+
+- A member that leaves and does not return, with no remove request, is
+  taken off the mission (slot `+0x1d0`) and stays where it is. When it was
+  a team or decoy member of an ended mission, `FUN_00522070` rewrites the
+  mission's list `+0x9c` with the member added (meaning of `+0x9c` not
+  traced).
+- Then `FUN_00548910` runs until it finds no one: it takes the members
+  that leave and return (no remove request), finds each one's destination
+  with `FUN_00542ee0`, and gathers every member sharing the first one's.
+  They are taken off the mission. With a team or decoy among them, they
+  get a Return order (`0x42000002`, `FUN_005475f0`, Mandatory = the
+  mission's `+0xa4` bit 2) to that destination, or, with none,
+  `FUN_00549580` (below). A group of only captured members goes to
+  `FUN_00549850`: each prisoner not destroyed takes slot `+0x218` (status
+  2 and Autorouting).
+- `FUN_00542ee0(member, mission, from_here)`, for an agent mission
+  (family `0x50..0x7f`): with `from_here`, the member's container when
+  `FUN_00554170` accepts it; else its `+0x70` object when `FUN_005543c0`
+  accepts it; else `FUN_00543040`, the autoroute search of
+  `captive-escape.md`.
+- `FUN_00549580`, with nowhere to go: each member not destroyed is
+  captured with no captor (slot `+0x20c`) unless it is already held
+  (slot `+0x1d4`, then slot `+0x218`); `FUN_00543040` picks a destination,
+  and with none the member is sent to its side's jail, the abode
+  `0x98000440` "Alliance Jail" (TEXTSTRA 11600) or `0x98000480` "Empire
+  Jail" (11616), by its side bits `+0x24 & 0xc0`. Its Autorouting clears
+  (`FUN_004f78e0(0)`), and it gets an Autorouting order (`0x43000003`,
+  `FUN_00547740`) with ImpliedTeam = slot `+0x1d4`.
+- The autorouting event path (`captive-escape.md`, `FUN_00549230`) picks
+  destinations with `FUN_0054c7d0` and sends a group with a free character
+  (slot `+0x1d4` = 0) on an Autorouting order, or an Adrift order
+  (`0x44000004`, `FUN_00547880`) when the group is adrift; otherwise
+  `FUN_00549850` or, with no destination, `FUN_00549580`.
+
+Against the port: a member of an ended mission is released where it is
+(`MissionEffect::MemberAvailable`); only an abode target sends it home
+(`leave_abode`). No Return order exists, so an agent stays at the target,
+even another side's system. The escape and abode trips are the port's
+direct transits in place of Autorouting orders.
+
+Still open here: what writes a character's `+0x70`, and what
+`FUN_00554170` and `FUN_005543c0` accept.
+
 ## Vacation (`0x72`) is never created (read 2026-10-20)
 
 MISSNSD holds two Vacation records, `0x72000045` (TEXTSTRA 11333
@@ -634,7 +696,8 @@ out (F-040's "deliberately excluded with evidence").
 - `FUN_0055c940`/`FUN_00573170` (what Espionage reveals).
 - What `+0x50` bit 2 of a recruit means, the `+0xc` test in
   `FUN_0056b370`, and its `FUN_0056b680`/`FUN_0056b550` rules.
-- `FUN_00548120` and `FUN_00548840` (run on every phase change).
+- `FUN_00548840` (run on every phase change); `FUN_00548120` is read
+  above.
 - What end codes 1, 3, 4, 5, and 7 are shown as.
 
 ## Supporting decompiles
