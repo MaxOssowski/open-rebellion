@@ -727,8 +727,9 @@ ends with 5, and so does a team whose members were all deleted.
   `FUN_00547ba0`'s eleventh argument, and only `FUN_00547740` passes a
   value there: the Autorouting order (`0x43000003`, TEXTSTRA 11267). Move
   (`FUN_00547340`, `FUN_00547480`, `FUN_00547180`, `FUN_005479c0`), Return
-  (`0x42`, `FUN_005475f0`), Adrift (`0x44`, `FUN_00547880`) and the player's
-  and AI's orders (`FUN_00549bf0`) pass 0. So for every kind the port runs
+  (`0x42`, `FUN_005475f0`), Adrift (`0x44`, `FUN_00547880`) and the
+  create command `0x250` of the player's and AI's orders (`FUN_0054d360` ->
+  manager slot `+0x1bc` `FUN_00549bf0`) pass 0. So for every kind the port runs
   the bit is clear, as the port assumed; Autorouting is not a port mission.
 - The traitor's own fate: `FUN_00588da0` (disassembly `0x588da0..0x588e6b`)
   rolls loyalty, logs the roll (`0x5897b0`) and stores the traitor's key in

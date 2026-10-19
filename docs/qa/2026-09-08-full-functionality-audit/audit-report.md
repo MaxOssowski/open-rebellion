@@ -3075,6 +3075,16 @@ cross-runtime proof remain open
   (`f05e1831`) and the Reconnaissance planners (2026-10-18) are ported.
   Open: Vacation `0x72` (two records, Alliance only), and the pseudo-
   missions Return `0x42`, Autorouting `0x43` and Adrift `0x44`.
+- 2026-10-20: Vacation `0x72` is deliberately excluded with evidence. Its
+  records `0x72000045` (Vacation, 60 days) and `0x72000046` (Sabbatical,
+  1000 days) are hidden and Alliance only, and nothing in the original
+  creates one: neither id appears in the image as a value, the create
+  command `0x250` (`FUN_0054d360` -> manager slot `+0x1bc` `FUN_00549bf0`)
+  takes its id from an order that the dialog fills only with records that
+  are not hidden and the AI planners only with their capability kinds
+  (`FUN_00402720`), and the class is reached only through its factory
+  (`FUN_0051ebf0`). Open: Return `0x42`, Autorouting `0x43` and Adrift
+  `0x44` (`ghidra/notes/mission-lifecycle.md`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

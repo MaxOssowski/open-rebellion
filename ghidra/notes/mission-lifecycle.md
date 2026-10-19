@@ -601,6 +601,28 @@ area. The original choice is now read and ported (2026-10-14): see
 per able character, and a target chosen among the AI's research sites
 (own, garrisoned, unblockaded systems with an active yard it built).
 
+## Vacation (`0x72`) is never created (read 2026-10-20)
+
+MISSNSD holds two Vacation records, `0x72000045` (TEXTSTRA 11333
+"Vacation", 60 days) and `0x72000046` (11334 "Sabbatical", 1000 days), both
+Alliance only, hidden, with an "other side" target. Its class has a vtable
+(`0x00666d00`, constructor `FUN_00571cd0`) and two factory entries
+(`FUN_00571e30`, `FUN_00571eb0`, registered in `FUN_0051ebf0`), but nothing
+creates one:
+
+- neither id appears in the image as a value (a byte search of
+  `REBEXE.EXE`), unlike Move, Return, Autorouting, Adrift, Dagobah and
+  Pickup, whose creators pass their ids (`FUN_00547340`, `FUN_005475f0`,
+  `FUN_00547740`, `FUN_00547880`, `0x548876`, `0x54abfa`);
+- the create command `0x250` (`FUN_0054d360` -> manager slot `+0x1bc`
+  `FUN_00549bf0`) takes its id from an order, which the player's dialog
+  fills only with records that are not hidden (`FUN_005422f0`,
+  `mission-dialog.md`) and the AI planners only with their capability
+  kinds (`FUN_00402720`, which names no Vacation id).
+
+So Vacation is content the shipped game never reaches; the port leaves it
+out (F-040's "deliberately excluded with evidence").
+
 ## Still open
 
 - Which object a character mission stores as its target `+0x70` and

@@ -46,7 +46,9 @@ use crate::world::{Character, GameWorld, Skill};
 // ---------------------------------------------------------------------------
 
 /// The original's mission kinds, each with its MISSNSD record
-/// ([`MissionKind::record_id`]); `Autoscrap` has none.
+/// ([`MissionKind::record_id`]); `Autoscrap` has none. Vacation (`0x72`)
+/// has no kind: nothing in the original creates one
+/// (`ghidra/notes/mission-lifecycle.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MissionKind {
     // ── Living Galaxy (implemented) ─────────────────────────────────────────
