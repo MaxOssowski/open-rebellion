@@ -42,6 +42,9 @@ pub enum TargetOrder {
     /// window gives.
     CharacterMove {
         character: rebellion_core::ids::CharacterKey,
+        /// Confirmed Move (`0x202`): the confirmation window lists the
+        /// trip's days first (`FUN_00487cc0`).
+        confirmed: bool,
     },
     /// A regiment's Move (`0x201`). Released on a Fleet window it boards the
     /// fleet (`ghidra/notes/fleet-window.md`, "Loading a regiment onto a

@@ -473,8 +473,13 @@ the same slots but the kind) for the Move mission `0x41000001`.
 - port: the trip aims at the fleet's system when ordered; the original
   reroutes a traveller whose target moves (`FUN_004fbc20`,
   `GameObjParentReroutedNotif`), the port lands it at that system.
-  Confirmed Move (`0x202`) and its transit window stay disabled for a
-  character; a special force's Move is not ported.
+  A special force's Move is not ported.
+- A character's Confirmed Move (`0x202`, 2026-10-20) validates the same
+  way, then opens the confirmation window with one line, the character's
+  name and the trip's days (`missions::move_days`: `FUN_004f4850` at the
+  speed `FUN_00548370` sets). A character whose container is a blockaded
+  system gets the evacuation warning `0x7056` and pictures 1031/1030
+  (`FUN_0049a350`). The checkmark issues the same Move.
 - The Fleet window's Personnel tab lists each character as an object
   (2026-10-20): a right click opens its menu (manual p. 56: Command), and
   a drag out of the list issues the same Move against the window under
@@ -492,7 +497,7 @@ Manual p. 110-111, "Returning to Base", and p. 46:
 | A character has a base system; it returns there after a mission at a system not friendly to its side, and stays at a friendly one | Confirmed: `FUN_00521220` rule 1, `FUN_00542ee0` (`mission-lifecycle.md`); the base is likely `+0x70` (`FUN_005543c0`), whose writer is untraced | Partial: the Return goes to the nearest own system, not the base |
 | Move (right-click) changes the base | Unresolved: the `+0x70` writer is not read | Missing |
 | Move from the right-click menu | Confirmed: `0x201` -> `0x241` above | Present |
-| Confirmed Move shows the transit time and asks to confirm | Confirmed for fleets (`FUN_00487cc0`) | Disabled (port:) |
+| Confirmed Move shows the transit time and asks to confirm | Confirmed (`FUN_00487cc0`, `FUN_0053c2e0` -> `FUN_004f4850`) | Present (2026-10-20) |
 | Drag a character onto a system or fleet (p. 46, p. 111) | Confirmed: the drag issues `0x201`/`0x214` (above) | Partial: from the Fleet window's Personnel tab; not from a Defenses or system window |
 | Put a character aboard a fleet, then give it a Command rank (manual p. 56: "drag Jerjerrod onto the fleet", "right-click on each character icon and select Command") | Confirmed: a Move's fleet target is its container | Present: the menu's Move or a Fleet window drag, and the Personnel tab's right-click menu |
 
@@ -640,6 +645,13 @@ straight to `FUN_00487740(order, 0)`.
   are not read.
 
 ## Still open
+
+- A character dragged out of a Defenses or system window: `FUN_00422ce0`
+  issues `0x214` there, whose command executes the object's slot `+0x200`
+  (`FUN_0057e380`). For a character that slot is `FUN_00534b70` -> slot
+  `+0x204` `FUN_00534c00` -> slot `+0xac(0x14)`, the object's removal
+  (read 2026-10-20), not a move. How the drag treats a character there is
+  unresolved; the manual (p. 111) says it moves.
 
 - The names of window types 4, 10 and 11; type 4 is read as the fleet
   window from its size and its opening for item kind `0x10`.

@@ -445,10 +445,10 @@ impl ObjectMenuRow {
 ///   (`FUN_0051d990`, `ghidra/notes/status-window.md`).
 /// - Command, a submenu parent, is enabled (`FUN_00442590`); its rows are
 ///   [`object_submenu_rows`].
-/// - A character's Move is enabled when `gates.character_move` says so.
-///   port: its Confirmed Move (`0x202`), a special force's Move and Confirmed
-///   Move, Retire and the other fleet orders stay disabled until their
-///   windows and orders are ported.
+/// - A character's Move and Confirmed Move are enabled when
+///   `gates.character_move` says so. port: a special force's Move and
+///   Confirmed Move, Retire and the other fleet orders stay disabled until
+///   their windows and orders are ported.
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
     // A fleet icon's Move rows act on the system's fleets of the player's
@@ -519,7 +519,9 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::Destination => gates.destination,
                 ObjectMenuCommand::Stop => producer && gates.stop,
                 ObjectMenuCommand::Build => producer && gates.build,
-                ObjectMenuCommand::ConfirmedMove => fleet && gates.fleet_move,
+                ObjectMenuCommand::ConfirmedMove => {
+                    (fleet && gates.fleet_move) || (character && gates.character_move)
+                }
                 // FUN_00442590: a submenu parent (flags 8) is enabled.
                 ObjectMenuCommand::Bombardment | ObjectMenuCommand::Command => true,
                 ObjectMenuCommand::Assault => gates.assault,
@@ -1005,9 +1007,9 @@ mod tests {
 
     #[test]
     fn a_characters_move_row_follows_its_move_rule() {
-        // 0x201 -> 0x241 (FUN_0053c810): the row is enabled when the
-        // character resolves (FUN_004f4a00 only builds the command). port:
-        // its Confirmed Move (0x202) stays disabled.
+        // 0x201 and 0x202 -> 0x241 (FUN_0053c810): the rows are enabled
+        // when the character resolves (FUN_004f4a00 only builds the
+        // command).
         let gates = OrderGates {
             character_move: true,
             ..OrderGates::default()
@@ -1015,7 +1017,7 @@ mod tests {
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, gates)),
-            ["Move", "Command", "Encyclopedia", "Status"]
+            ["Move", "Confirmed Move", "Command", "Encyclopedia", "Status"]
         );
         let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
         assert!(!enabled(&object_menu_rows(unit, gates)).contains(&"Move"));

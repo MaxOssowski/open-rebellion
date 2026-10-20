@@ -3137,6 +3137,13 @@ cross-runtime proof remain open
   manual p. 111). Browser acceptance on fixture 71, both sides
   (`evidence/2026-10-20-character-drag/`). Open: the drag out of a Defenses
   or system window (`0x214`).
+- 2026-10-20: a character's Confirmed Move (manual pp. 110-111). `0x202`
+  expands to the same Move mission order `0x241`; `FUN_00487cc0` opens the
+  confirmation with the trip's days (`FUN_0053c2e0` -> `FUN_004f4850`), and
+  `FUN_0049a350` shows the evacuation warning `0x7056` for a character in a
+  blockaded system. Ported with `missions::move_days` and MoveConfirmation's
+  characters; browser acceptance on fixtures 69, 70 and 68, both sides
+  (`evidence/2026-10-20-character-confirmed-move/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

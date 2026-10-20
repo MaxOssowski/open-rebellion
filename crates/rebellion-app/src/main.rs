@@ -5063,9 +5063,14 @@ async fn main() {
                         Some((ObjectMenuCommand::Move, Some(MenuObject::Troop(troop)))) => {
                             targeting = Some(Targeting::new(TargetOrder::TroopMove { troop }));
                         }
-                        Some((ObjectMenuCommand::Move, Some(MenuObject::Character(character)))) => {
-                            targeting =
-                                Some(Targeting::new(TargetOrder::CharacterMove { character }));
+                        Some((
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
+                            Some(MenuObject::Character(character)),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::CharacterMove {
+                                character,
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                            }));
                         }
                         Some((
                             ObjectMenuCommand::Move,
@@ -5523,6 +5528,7 @@ async fn main() {
                     // which validates again and departs without asking.
                     if let Some(MoveConfirmationAction::Confirm {
                         fleets,
+                        characters,
                         destination,
                         join,
                     }) = draw_move_confirmation(
@@ -5531,6 +5537,15 @@ async fn main() {
                         cockpit_layout,
                         &mut bmp_cache,
                     ) {
+                        // FUN_0041ce20(order, 1): a character's 0x202 is
+                        // the Move mission order 0x241 again.
+                        panel_actions.extend(characters.into_iter().map(|character| {
+                            PanelAction::MoveCharacter {
+                                character,
+                                system: destination,
+                                fleet: join,
+                            }
+                        }));
                         panel_actions.extend(fleets.into_iter().map(|fleet| match join {
                             Some(target) => PanelAction::JoinFleet {
                                 mover: FleetMover::Fleet(fleet),
@@ -5665,22 +5680,38 @@ async fn main() {
                                 // release window's +0x70: a system, or a
                                 // fleet to board.
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::CharacterMove { character },
+                                    order:
+                                        TargetOrder::CharacterMove {
+                                            character,
+                                            confirmed,
+                                        },
                                     target,
-                                }) => panel_actions.push(match target {
-                                    ReleaseTarget::System(system) => PanelAction::MoveCharacter {
-                                        character,
-                                        system,
-                                        fleet: None,
-                                    },
-                                    ReleaseTarget::Fleet { fleet, system } => {
-                                        PanelAction::MoveCharacter {
+                                }) => {
+                                    let (system, fleet) = match target {
+                                        ReleaseTarget::System(system) => (system, None),
+                                        ReleaseTarget::Fleet { fleet, system } => {
+                                            (system, Some(fleet))
+                                        }
+                                    };
+                                    if confirmed {
+                                        confirm_character_move(
+                                            &world,
+                                            player_faction,
                                             character,
                                             system,
-                                            fleet: Some(fleet),
-                                        }
+                                            fleet,
+                                            clock.tick,
+                                            &mut msg_log,
+                                            &mut move_confirmation_state,
+                                        );
+                                    } else {
+                                        panel_actions.push(PanelAction::MoveCharacter {
+                                            character,
+                                            system,
+                                            fleet,
+                                        });
                                     }
-                                }),
+                                }
                                 // A regiment's 0x201 against the release
                                 // window's +0x70 (FUN_004a3130 for a Fleet
                                 // window), boarding, landing or travelling.
@@ -6833,9 +6864,63 @@ fn issue_fleet_move(
     move_confirmation_state.open(MoveConfirmation {
         faction: context.faction,
         fleets: fleets.to_vec(),
+        characters: Vec::new(),
+        blockaded: false,
         destination,
         join,
         lines,
+    });
+}
+
+/// A character's Confirmed Move (`0x202` -> `0x241`): the order validates
+/// (`FUN_004f4b60`, `1`/`0x28`), then `FUN_00487cc0` opens the confirmation
+/// with the trip's days (`FUN_004f4850`). `FUN_0049a350` shows the
+/// evacuation warning for a character whose container is a blockaded
+/// system.
+#[allow(clippy::too_many_arguments)]
+fn confirm_character_move(
+    world: &GameWorld,
+    faction: MissionFaction,
+    character: rebellion_core::ids::CharacterKey,
+    system: rebellion_core::ids::SystemKey,
+    fleet: Option<rebellion_core::ids::FleetKey>,
+    tick: u64,
+    msg_log: &mut MessageLog,
+    move_confirmation_state: &mut MoveConfirmationState,
+) {
+    let days = rebellion_core::missions::move_days(world, character, system);
+    let (Some(c), Some(days), true) = (
+        world.characters.get(character),
+        days,
+        rebellion_core::missions::move_place_allowed(world, faction, system, fleet),
+    ) else {
+        macroquad::logging::info!("[interface] character_move confirm refused");
+        msg_log.push(GameMessage::new(
+            tick,
+            "Move refused".to_string(),
+            MessageCategory::Event,
+        ));
+        return;
+    };
+    let blockaded = c.current_fleet.is_none()
+        && c.current_system
+            .and_then(|key| world.systems.get(key))
+            .is_some_and(|sys| {
+                rebellion_core::blockade::BlockadeSystem::system_is_blockaded(world, sys)
+            });
+    macroquad::logging::info!(
+        "[interface] character_move confirm days={} blockaded={}",
+        days,
+        blockaded
+    );
+    move_confirmation_state.open(MoveConfirmation {
+        faction,
+        fleets: Vec::new(),
+        characters: vec![character],
+        blockaded,
+        destination: system,
+        join: fleet,
+        lines: vec![(c.name.clone(), days)],
     });
 }
 

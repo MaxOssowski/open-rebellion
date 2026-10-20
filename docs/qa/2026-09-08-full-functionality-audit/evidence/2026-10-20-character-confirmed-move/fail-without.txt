@@ -1,0 +1,8 @@
+thread 'move_confirmation::tests::a_blockaded_characters_move_shows_the_evacuation_warning' (1259237) panicked at crates/rebellion-render/src/move_confirmation.rs:269:9:
+assertion `left == right` failed
+  left: 1018
+ right: 1031
+thread 'object_menu::tests::a_characters_move_row_follows_its_move_rule' (1259238) panicked at crates/rebellion-render/src/object_menu.rs:1018:9:
+assertion `left == right` failed
+  left: ["Move", "Command", "Encyclopedia", "Status"]
+ right: ["Move", "Confirmed Move", "Command", "Encyclopedia", "Status"]

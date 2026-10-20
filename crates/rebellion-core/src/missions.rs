@@ -4215,6 +4215,28 @@ pub fn move_place_allowed(
         .is_some_and(|sys| sys.control.faction() == Some(crate::dat::Faction::from(faction)))
 }
 
+/// The days a Move of `character` to `to` takes, as the Move confirmation
+/// lists it (`FUN_0053c2e0` -> `FUN_004f4850` for `0x241`): the character's
+/// system to `to` at the speed phase 2 sets (`FUN_00548370`: GNPRTB 3083
+/// for a free Han Solo, else the default). `None` without a location.
+#[must_use]
+pub fn move_days(world: &GameWorld, character: CharacterKey, to: SystemKey) -> Option<u32> {
+    let from = member_location(world, MissionMember::Character(character))?;
+    let position = |key: SystemKey| world.systems.get(key).map(|s| (s.x, s.y));
+    let c = world.characters.get(character)?;
+    let speed = if c.dat_id.raw() == HAN_SOLO && !c.is_captive {
+        crate::movement::gnprtb_or_shipped(world, GNPRTB_HAN_SOLO_SPEED, SHIPPED_HAN_SOLO_SPEED)
+    } else {
+        crate::movement::default_speed(world)
+    };
+    Some(crate::movement::transit_ticks_between(
+        world,
+        position(from)?,
+        position(to)?,
+        speed,
+    ))
+}
+
 /// Where `member` of the ended `mission` returns (`FUN_00521220`,
 /// `FUN_00542ee0`), or `None` when it is released where it is.
 ///
@@ -7093,6 +7115,24 @@ mod tests {
         );
         let c = &world.characters[envoy];
         assert!(c.on_mission && c.on_hidden_mission);
+    }
+
+    #[test]
+    fn a_moves_days_follow_the_travel_rule_and_han_solo_s_speed() {
+        // FUN_004f4850 lists the trip's days; FUN_00548370 gives a free Han
+        // Solo GNPRTB 3083's speed. isqrt(100^2) / GNPRTB 5120 (5) * 100 /
+        // 100 = 20 days at the default speed.
+        let mut world = minimal_world();
+        let from = system_at(&mut world, 0);
+        let to = system_at(&mut world, 100);
+        let agent = agent_at(&mut world, from, true);
+        assert_eq!(move_days(&world, agent, to), Some(20));
+        assert_eq!(move_days(&world, agent, from), Some(0));
+        world.characters[agent].dat_id = crate::ids::DatId::new(HAN_SOLO);
+        let han = move_days(&world, agent, to).expect("a trip");
+        assert!(han < 20, "Han travels faster: {han}");
+        world.characters[agent].current_system = None;
+        assert_eq!(move_days(&world, agent, to), None);
     }
 
     #[test]
