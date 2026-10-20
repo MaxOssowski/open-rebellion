@@ -195,8 +195,9 @@ side (in practice), with the transit time of `FUN_0055d8c0`.
 
 ## Still open
 
-- `+0x70` and `+0x74` on a character (likely a last or home system; not
-  traced), and the per-side default origin.
+- `+0x74` on a character, and the per-side default origin. (`+0x70` is
+  where the character joined its mission, `mission-lifecycle.md`, read
+  2026-10-20; an escapee is on no mission, so its `+0x70` is clear.)
 - `FUN_004ef190` and the handler of event `0x30a` (`FUN_00516220`).
 - What `FUN_00505230` with range `1..0x12` checks before each fire
   (`FUN_0057d330`, `FUN_0057d670`).

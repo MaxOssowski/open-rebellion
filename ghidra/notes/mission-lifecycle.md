@@ -666,8 +666,18 @@ captured list stays; the Return's Mandatory flag is not kept. The escape
 and abode trips are still the port's direct transits in place of
 Autorouting orders.
 
-Still open here: what writes a character's `+0x70`, and what
-`FUN_00554170` and `FUN_005543c0` accept.
+`+0x70` (read 2026-10-20): setting RoleOnMission (`+0x78` bit 7,
+`FUN_00534800`) runs slot `+0x268` (`Role_vt268` `FUN_00536490`; the
+character's override `FUN_004f1490` calls it first). Joining stores the
+member's container (`FUN_004f6b70`) in `+0x70` through its setter
+`FUN_00534390` (both sides notified, slot `+0x244`); leaving clears it. So
+`+0x70` is where the member joined its mission, the manual's "base"
+(pp. 110-111), and a Move to a new place changes where the next mission
+starts from. `FUN_00554170` and `FUN_005543c0` accept a candidate when the
+move validator passes it (`FUN_005511d0`, `FUN_00551b50`/`FUN_00551c80`);
+a Return needs its own side's target (`FUN_004f4b60`, `1`/`0x28`).
+Ported 2026-10-20: the Return takes the mission's origin system when the
+member's side holds it (port: without the route checks).
 
 ## Vacation (`0x72`) is never created (read 2026-10-20)
 

@@ -4151,8 +4151,9 @@ fn escape_input(world: &GameWorld, captive: CharacterKey) -> i32 {
 /// and the other side's system (`FUN_005552e0`). Blockade is
 /// [`crate::blockade::BlockadeSystem`]'s rule (`+0x88` bit `0x20`).
 ///
-/// port: the first two candidates, the character's container and its `+0x70`
-/// object (`FUN_00554740`, `FUN_00554ab0`), are skipped, and every candidate
+/// An escapee is on no mission, so its `+0x70` (where it joined one,
+/// `Role_vt268`) is clear and `FUN_00554ab0` finds nothing. port: the
+/// container candidate (`FUN_00554740`) is skipped, and every candidate
 /// passes, as the move validator `FUN_005571c0` is not ported, except
 /// `from` itself, which would be no move. A fleet's
 /// system is the destination, not the fleet. hyp: side 3 is `Contested`, as
@@ -4248,11 +4249,20 @@ pub fn move_days(world: &GameWorld, character: CharacterKey, to: SystemKey) -> O
 /// member's `+0x70` (`FUN_005543c0`) and the autoroute search
 /// `FUN_00543040`.
 ///
-/// port: the container and `+0x70` candidates are skipped, as for an
-/// escape; the search runs from the member's system and leaves it out. A
-/// prisoner on the captured list stays where it is. Rule 2 (Dagobah,
-/// Palace, Pickup, Bounty) keeps the port's abode trips
-/// ([`MissionSystem::leave_abode`]).
+/// `+0x70` is where the member joined the mission: setting RoleOnMission
+/// (`FUN_00534800`) runs slot `+0x268` (`Role_vt268` `FUN_00536490`), which
+/// stores the member's container there (`FUN_004f6b70` -> `FUN_00534390`)
+/// and clears it when the flag clears. It is taken when the move validator
+/// passes it (`FUN_005543c0`); a Return (family `0x42`) needs a target of
+/// its own side (`FUN_004f4b60`, `1`/`0x28`). The manual calls it the
+/// character's base (pp. 110-111).
+///
+/// port: the container candidate is skipped (it is another side's here);
+/// `+0x70` reads the mission's origin system, taken when the member's side
+/// holds it, without the route checks; the search runs from the member's
+/// system and leaves it out. A prisoner on the captured list stays where
+/// it is. Rule 2 (Dagobah, Palace, Pickup, Bounty) keeps the port's abode
+/// trips ([`MissionSystem::leave_abode`]).
 fn return_destination(
     mission: &ActiveMission,
     world: &GameWorld,
@@ -4279,6 +4289,15 @@ fn return_destination(
         return None;
     }
     let here = member_location(world, member)?;
+    if let Some(base) = mission.origin.filter(|&origin| {
+        origin != here
+            && world
+                .systems
+                .get(origin)
+                .is_some_and(|sys| !sys.is_destroyed && sys.control.faction() == Some(side))
+    }) {
+        return Some(base);
+    }
     let sys = world.systems.get(here)?;
     nearest_place(
         world,
@@ -7036,6 +7055,30 @@ mod tests {
             (order.kind, order.team.clone(), order.target_system, order.phase),
             (MissionKind::Return, vec![member], home, PHASE_TRANSIT)
         );
+    }
+
+    #[test]
+    fn an_agent_returns_to_where_it_joined_the_mission_while_its_side_holds_it() {
+        // FUN_00542ee0 tries the member's +0x70, the container it joined the
+        // mission from (Role_vt268 FUN_00536490), before the nearest search;
+        // a Return needs its own side's target (FUN_004f4b60, 1/0x28). The
+        // manual's "base" (pp. 110-111).
+        use crate::world::ControlKind;
+        for (base_holder, expected_far) in [
+            (crate::dat::Faction::Alliance, true),
+            (crate::dat::Faction::Empire, false),
+        ] {
+            let (mut world, mut state, _, home, _) =
+                ending_at(crate::dat::Faction::Empire, 1);
+            let base = system_at(&mut world, 400);
+            world.systems[base].control = ControlKind::Controlled(base_holder);
+            state.missions.back_mut().expect("the mission").origin = Some(base);
+
+            step(&mut state, &world, 5, &[]);
+
+            let to = state.missions()[0].target_system;
+            assert_eq!(to, if expected_far { base } else { home }, "{base_holder:?}");
+        }
     }
 
     #[test]

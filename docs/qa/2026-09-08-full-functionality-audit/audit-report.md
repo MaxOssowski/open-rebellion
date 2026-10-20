@@ -3144,6 +3144,15 @@ cross-runtime proof remain open
   blockaded system. Ported with `missions::move_days` and MoveConfirmation's
   characters; browser acceptance on fixtures 69, 70 and 68, both sides
   (`evidence/2026-10-20-character-confirmed-move/`).
+- 2026-10-20: the Return goes to the character's base. `+0x70` is where the
+  member joined its mission: setting RoleOnMission (`FUN_00534800`) runs
+  Role_vt268 (`FUN_00536490`), which stores the member's container in +0x70
+  (`FUN_00534390`) and clears it on leaving; `FUN_00542ee0` takes it before
+  the nearest search, and a Return needs its own side's target
+  (`FUN_004f4b60`). The port takes the mission's origin while the member's
+  side holds it (manual pp. 110-111, the base). 24 dual-AI campaigns: the
+  AI's own Move orders fall from 32,470 to 20,412
+  (`evidence/2026-10-20-return-to-base/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

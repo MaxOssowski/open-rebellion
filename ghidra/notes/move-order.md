@@ -494,8 +494,8 @@ Manual p. 110-111, "Returning to Base", and p. 46:
 
 | Claim | Trace | Port |
 |---|---|---|
-| A character has a base system; it returns there after a mission at a system not friendly to its side, and stays at a friendly one | Confirmed: `FUN_00521220` rule 1, `FUN_00542ee0` (`mission-lifecycle.md`); the base is likely `+0x70` (`FUN_005543c0`), whose writer is untraced | Partial: the Return goes to the nearest own system, not the base |
-| Move (right-click) changes the base | Unresolved: the `+0x70` writer is not read | Missing |
+| A character has a base system; it returns there after a mission at a system not friendly to its side, and stays at a friendly one | Confirmed: `FUN_00521220` rule 1, `FUN_00542ee0`; the base is `+0x70`, where the member joined the mission (`Role_vt268` `FUN_00536490`, `mission-lifecycle.md`) | Present (2026-10-20): the Return takes the mission's origin while its side holds it |
+| Move (right-click) changes the base | Confirmed: a mission starts from the character's container, so a Move changes where the next one starts | Present |
 | Move from the right-click menu | Confirmed: `0x201` -> `0x241` above | Present |
 | Confirmed Move shows the transit time and asks to confirm | Confirmed (`FUN_00487cc0`, `FUN_0053c2e0` -> `FUN_004f4850`) | Present (2026-10-20) |
 | Drag a character onto a system or fleet (p. 46, p. 111) | Confirmed: the drag issues `0x201`/`0x214` (above) | Partial: from the Fleet window's Personnel tab; not from a Defenses or system window |

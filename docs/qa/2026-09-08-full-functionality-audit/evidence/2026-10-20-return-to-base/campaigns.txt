@@ -1,0 +1,3 @@
+24 dual-AI campaigns, 1500 days (rebellion-playtest data/base --dual-ai, seeds 1..24)
+before (Return to the nearest own system): dispatched 50524 (Move 32470), return orders 11979, resolved {'Success': 22568, 'Failure': 7769}
+after (Return to where the mission started): dispatched 38494 (Move 20412), return orders 12546, resolved {'Success': 22895, 'Failure': 8276}
