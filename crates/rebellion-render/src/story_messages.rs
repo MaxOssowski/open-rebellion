@@ -704,6 +704,90 @@ pub fn smuggling_message(
     )
 }
 
+/// A side as a substitution: the Side's text provider (`FUN_0052d920`)
+/// reads TEXTSTRA strings `0x4d50` / `0x4d51` (kind 1), `0x4d60` /
+/// `0x4d61` (kind 2) and `0x4d70` / `0x4d71` (kind 4), Alliance then Empire.
+#[must_use]
+pub fn side_parameter(alliance: bool, texts: &HashMap<u16, String>) -> MessageParameter<'_> {
+    let text = |alliance_id: u16| {
+        texts
+            .get(&if alliance { alliance_id } else { alliance_id + 1 })
+            .map_or("", String::as_str)
+    };
+    MessageParameter::Side {
+        name: text(0x4d50),
+        full_name: text(0x4d60),
+        adjective: text(0x4d70),
+    }
+}
+
+/// Uprising Begins / Ends (`FUN_00499460`): notification `0x14b` with the
+/// system's uprising bit (`+0x88` bit 2). Both sides' classes speak for a
+/// system a side holds (`+0x24` bits 6..7), none for a neutral one. A
+/// beginning takes TEXTSTRA `0x7030` / `0x7033` ("An uprising has begun on
+/// the {1:4} controlled system {2:1}."), an end `0x7031` / `0x7032`; the
+/// body's first substitution is the holder. Returns the title and body.
+#[must_use]
+pub fn uprising_texts(
+    system: &str,
+    holder: Option<rebellion_core::dat::Faction>,
+    begins: bool,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::dat::Faction;
+    let alliance = match holder? {
+        Faction::Alliance => true,
+        Faction::Empire => false,
+        Faction::Neutral => return None,
+    };
+    let (title, body) = if begins {
+        (0x7030, 0x7033)
+    } else {
+        (0x7031, 0x7032)
+    };
+    let named = MessageParameter::Named { name: system };
+    let side = side_parameter(alliance, texts);
+    Some((
+        fill_message_text(texts.get(&title)?, &[named]),
+        fill_message_text(texts.get(&body)?, &[side, named]),
+    ))
+}
+
+/// Natural Disaster (`FUN_0048e940`): notification `0x154`, then `2`, for
+/// the side holding the system only. The title is TEXTSTRA `0x7190`. The
+/// body names what was lost: `0x7191` resources only, `0x7192` units only,
+/// `0x7193` both; each unit destroyed (a `0x302` of family `0x20`..`0x2f`,
+/// `FUN_0048e890`) adds a line `0x719b`. With nothing lost there is no
+/// message. Returns the title and body.
+///
+/// hyp: the class's bits 2 and 4 (`+0x64`), which `resources` stands for,
+/// are set by the energy and raw material changes; their setter is not
+/// traced.
+#[must_use]
+pub fn disaster_texts(
+    system: &str,
+    resources: bool,
+    units: &[String],
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let body = match (units.is_empty(), resources) {
+        (true, false) => return None,
+        (true, true) => 0x7191,
+        (false, false) => 0x7192,
+        (false, true) => 0x7193,
+    };
+    let named = [MessageParameter::Named { name: system }];
+    let mut text = fill_message_text(texts.get(&body)?, &named);
+    let line = texts.get(&0x719b)?;
+    for unit in units {
+        text.push_str(&fill_message_text(
+            line,
+            &[MessageParameter::Named { name: unit }],
+        ));
+    }
+    Some((fill_message_text(texts.get(&0x7190)?, &named), text))
+}
+
 /// Jabba Delivers Prisoners (`FUN_0048b6e0`): notification `0x231` with
 /// its argument set, as the Pickup's hit sets `PickupInProgress`. TEXTSTRA
 /// `0x7200` / `0x7201` take no arguments; the background is `0x42a`, or
@@ -978,6 +1062,13 @@ pub enum MessageParameter<'a> {
     },
     /// Any other named object, such as a system: kind 1 its name.
     Named { name: &'a str },
+    /// A side (`FUN_0052d920`): kind 1 its name, kind 2 its full name,
+    /// kind 4 its adjective ([`side_parameter`]).
+    Side {
+        name: &'a str,
+        full_name: &'a str,
+        adjective: &'a str,
+    },
 }
 
 impl MessageParameter<'_> {
@@ -987,7 +1078,9 @@ impl MessageParameter<'_> {
         match (self, kind) {
             (Self::Character { name, .. }, 1) => Some(name),
             (Self::Character { force_ranking, .. }, 7) => Some(force_ranking),
-            (Self::Named { name }, 1) => Some(name),
+            (Self::Named { name }, 1) | (Self::Side { name, .. }, 1) => Some(name),
+            (Self::Side { full_name, .. }, 2) => Some(full_name),
+            (Self::Side { adjective, .. }, 4) => Some(adjective),
             _ => None,
         }
     }
@@ -1062,6 +1155,96 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00499460 (notification 0x14b): TEXTSTRA 0x7030..0x7033 as
+    // shipped; the body's {1:4} is the holder's adjective from FUN_0052d920
+    // (strings 0x4d70 / 0x4d71).
+    #[test]
+    fn an_uprising_names_the_holder_s_side_when_it_begins_and_ends() {
+        use rebellion_core::dat::Faction;
+        let texts: HashMap<u16, String> = [
+            (0x7030, "Uprising Begins on {1:1}"),
+            (0x7031, "Uprising Ends on {1:1}"),
+            (0x7032, "The uprising on {2:1} has ended."),
+            (0x7033, "An uprising has begun on the {1:4} controlled system {2:1}."),
+            (0x4d50, "Alliance"),
+            (0x4d51, "Empire"),
+            (0x4d60, "Rebel Alliance"),
+            (0x4d61, "Galactic Empire"),
+            (0x4d70, "Alliance"),
+            (0x4d71, "Imperial"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            uprising_texts("Kessel", Some(Faction::Empire), true, &texts),
+            Some((
+                "Uprising Begins on Kessel".into(),
+                "An uprising has begun on the Imperial controlled system Kessel.".into()
+            ))
+        );
+        assert_eq!(
+            uprising_texts("Kessel", Some(Faction::Alliance), true, &texts)
+                .map(|(_, body)| body),
+            Some("An uprising has begun on the Alliance controlled system Kessel.".into())
+        );
+        assert_eq!(
+            uprising_texts("Kessel", Some(Faction::Empire), false, &texts),
+            Some((
+                "Uprising Ends on Kessel".into(),
+                "The uprising on Kessel has ended.".into()
+            ))
+        );
+        // A neutral system has no side to name, and its class stays silent.
+        assert_eq!(uprising_texts("Kessel", Some(Faction::Neutral), true, &texts), None);
+        assert_eq!(uprising_texts("Kessel", None, true, &texts), None);
+        // The provider's other kinds: 1 the name, 2 the full name.
+        let side = side_parameter(false, &texts);
+        assert_eq!(side.text(1), Some("Empire"));
+        assert_eq!(side.text(2), Some("Galactic Empire"));
+        assert_eq!(side.text(4), Some("Imperial"));
+    }
+
+    // FUN_0048e940 (notification 0x154, then 2): TEXTSTRA 0x7190..0x7193 and
+    // the unit line 0x719b as shipped.
+    #[test]
+    fn a_disaster_lists_what_it_destroyed_and_says_nothing_when_nothing_was_lost() {
+        let texts: HashMap<u16, String> = [
+            (0x7190, "Natural Disaster on {1:1}"),
+            (0x7191, "There has been a natural disaster on {1:1} which has destroyed resources there."),
+            (0x7192, "There has been a natural disaster on {1:1} which has destroyed the following units:"),
+            (0x7193, "There has been a natural disaster on {1:1} which has destroyed facilities and resources.  The following units were lost:"),
+            (0x719b, "\n{1:1}"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let mine = vec!["Mine".to_string(), "Shipyard".to_string()];
+        assert_eq!(
+            disaster_texts("Bothawui", true, &[], &texts),
+            Some((
+                "Natural Disaster on Bothawui".into(),
+                "There has been a natural disaster on Bothawui which has destroyed resources there."
+                    .into()
+            ))
+        );
+        assert_eq!(
+            disaster_texts("Bothawui", false, &mine, &texts).map(|(_, body)| body),
+            Some(
+                "There has been a natural disaster on Bothawui which has destroyed the following units:\nMine\nShipyard"
+                    .into()
+            )
+        );
+        assert_eq!(
+            disaster_texts("Bothawui", true, &mine[..1], &texts).map(|(_, body)| body),
+            Some(
+                "There has been a natural disaster on Bothawui which has destroyed facilities and resources.  The following units were lost:\nMine"
+                    .into()
+            )
+        );
+        assert_eq!(disaster_texts("Bothawui", false, &[], &texts), None);
+    }
 
     // FUN_00499130 (notification 0x145): TEXTSTRA 0x7060..0x7067 as
     // shipped; {1:1} is the system's name.

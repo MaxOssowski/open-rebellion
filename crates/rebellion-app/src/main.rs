@@ -3074,7 +3074,8 @@ async fn main() {
                     .systems
                     .get(system)
                     .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                let (text, category) = match evt {
+                let holder = world.systems.get(system).and_then(|s| s.control.faction());
+                let (mut text, category) = match evt {
                     UprisingEvent::UprisingBegan { .. } => {
                         // A revolt helps the player when the enemy holds the system.
                         let player_gains = world
@@ -3115,12 +3116,66 @@ async fn main() {
                     | UprisingEvent::ResourceChanged { .. } => None,
                     UprisingEvent::Disaster { .. } => Some(pictures::system_incident(true)),
                 };
+                // The original texts: Uprising Begins / Ends (0x14b,
+                // FUN_00499460) for both sides, Natural Disaster (0x154,
+                // FUN_0048e940) for the holder. port: a disaster on a neutral
+                // system keeps the port's line, off the Message Index.
+                let mut title = None;
+                let mut audience = system_audience(&world, system);
+                let original = match evt {
+                    UprisingEvent::UprisingBegan { .. } | UprisingEvent::UprisingEnded { .. } => {
+                        audience = holder
+                            .filter(|side| *side != Faction::Neutral)
+                            .map(|_| RailAudience::Both);
+                        rebellion_render::story_messages::uprising_texts(
+                            &name,
+                            holder,
+                            matches!(evt, UprisingEvent::UprisingBegan { .. }),
+                            &message_texts,
+                        )
+                    }
+                    UprisingEvent::Disaster {
+                        total_energy,
+                        raw_materials,
+                        destroyed,
+                        ..
+                    } if audience.is_some() => {
+                        let units: Vec<String> = destroyed
+                            .iter()
+                            .filter_map(|&facility| world.facility(facility))
+                            .filter_map(|(class, _)| {
+                                world.buildable_classes.get(&class).map(|c| c.name.clone())
+                            })
+                            .collect();
+                        let resources = world.systems.get(system).is_some_and(|s| {
+                            *total_energy < s.total_energy || *raw_materials < s.raw_materials
+                        });
+                        let texts = rebellion_render::story_messages::disaster_texts(
+                            &name,
+                            resources,
+                            &units,
+                            &message_texts,
+                        );
+                        if texts.is_none() && !message_texts.is_empty() {
+                            // Nothing lost: the class stays silent.
+                            rebellion_core::uprising::apply_uprising_event(&mut world, evt);
+                            continue;
+                        }
+                        texts
+                    }
+                    _ => None,
+                };
+                if let Some((original_title, body)) = original {
+                    title = Some(original_title);
+                    text = body;
+                }
                 // Notification 3, Uprising Message.
-                msg_log.push(filed(
-                    GameMessage::at_system(tick, text, category, system).with_picture_if(picture),
-                    MessageRail::PopularSupport,
-                    system_audience(&world, system),
-                ));
+                let mut message =
+                    GameMessage::at_system(tick, text, category, system).with_picture_if(picture);
+                if let Some(title) = title {
+                    message = message.with_title(title);
+                }
+                msg_log.push(filed(message, MessageRail::PopularSupport, audience));
                 rebellion_core::uprising::apply_uprising_event(&mut world, evt);
                 if let UprisingEvent::UprisingIncident { losses, .. } = evt {
                     for loss in losses {

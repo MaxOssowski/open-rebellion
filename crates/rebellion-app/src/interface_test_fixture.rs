@@ -3096,6 +3096,9 @@ struct FleetLoadObservation {
     primary_in_revolt: bool,
     last_incident_message: Option<String>,
     last_disaster_message: Option<String>,
+    /// The disaster line's title: Natural Disaster (TEXTSTRA `0x7190`) on a
+    /// held system, none on a neutral one.
+    last_disaster_title: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3293,11 +3296,20 @@ fn fleet_load_observation(
             })
             .find(|message| message.text.starts_with("Uprising incident at "))
             .map(|message| message.text.clone()),
-        last_disaster_message: messages
-            .iter()
-            .rev()
-            .find(|message| message.text.starts_with("Natural disaster strikes "))
-            .map(|message| message.text.clone()),
+        last_disaster_message: last_disaster(messages).map(|message| message.text.clone()),
+        last_disaster_title: last_disaster(messages).and_then(|message| message.title.clone()),
+    })
+}
+
+/// The last disaster line: Natural Disaster's (`FUN_0048e940`) on a held
+/// system, the port's own line on a neutral one.
+fn last_disaster(messages: &[GameMessage]) -> Option<&GameMessage> {
+    messages.iter().rev().find(|message| {
+        message
+            .title
+            .as_deref()
+            .is_some_and(|title| title.starts_with("Natural Disaster on "))
+            || message.text.starts_with("Natural disaster strikes ")
     })
 }
 
@@ -4524,6 +4536,8 @@ mod tests {
                     line("Uprising incident at Mine", true),
                     line("Uprising incident at Theirs", false),
                     line("Natural disaster strikes There", false),
+                    line("There has been a natural disaster on Held.", false)
+                        .with_title("Natural Disaster on Held".to_string()),
                 ],
             )
             .unwrap();
@@ -4534,7 +4548,11 @@ mod tests {
             );
             assert_eq!(
                 observed.last_disaster_message.as_deref(),
-                Some("Natural disaster strikes There")
+                Some("There has been a natural disaster on Held.")
+            );
+            assert_eq!(
+                observed.last_disaster_title.as_deref(),
+                Some("Natural Disaster on Held")
             );
         }
     }

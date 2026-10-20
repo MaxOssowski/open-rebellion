@@ -997,13 +997,19 @@ pub fn set_file_cache(files: std::collections::HashMap<String, Vec<u8>>) {
 /// (`dat_dumper::types::textstra::decode_message_text`). Native builds read
 /// the player's TEXTSTRA.DLL; browser builds use the table extracted from
 /// it at build time (`textstra-messages.json`). Empty when neither exists.
+///
+/// The Side's names join them from the string table (`RT_STRING`), for a
+/// side substitution: [`SIDE_NAME_STRINGS`].
 #[must_use]
 pub fn message_texts(gdata_path: &Path) -> HashMap<u16, String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let dll = gdata_path.join("TEXTSTRA.DLL");
         if dll.exists() {
-            textstra::load_message_texts(&dll).unwrap_or_default()
+            let mut texts = textstra::load_message_texts(&dll).unwrap_or_default();
+            let strings = textstra::load_strings(&dll).unwrap_or_default();
+            with_side_names(&mut texts, &strings);
+            texts
         } else {
             HashMap::new()
         }
@@ -1011,7 +1017,26 @@ pub fn message_texts(gdata_path: &Path) -> HashMap<u16, String> {
     #[cfg(target_arch = "wasm32")]
     {
         let _ = gdata_path;
-        WASM_MESSAGE_TEXTS.lock().unwrap().clone()
+        let mut texts = WASM_MESSAGE_TEXTS.lock().unwrap().clone();
+        with_side_names(&mut texts, &WASM_STRING_TABLE.lock().unwrap());
+        texts
+    }
+}
+
+/// The string ids the Side's text provider (`FUN_0052d920`, vtable
+/// `0x660ae8`) names a side by, Alliance then Empire: kind 1 `0x4d50` /
+/// `0x4d51` ("Alliance", "Empire"), kind 2 `0x4d60` / `0x4d61` ("Rebel
+/// Alliance", "Galactic Empire"), kind 4 `0x4d70` / `0x4d71` ("Alliance",
+/// "Imperial").
+pub const SIDE_NAME_STRINGS: [u16; 6] = [0x4d50, 0x4d51, 0x4d60, 0x4d61, 0x4d70, 0x4d71];
+
+/// Adds the side names from TEXTSTRA's string table to its message texts,
+/// keeping any message text of the same id.
+fn with_side_names(texts: &mut HashMap<u16, String>, strings: &HashMap<u16, String>) {
+    for id in SIDE_NAME_STRINGS {
+        if let Some(name) = strings.get(&id) {
+            texts.entry(id).or_insert_with(|| name.clone());
+        }
     }
 }
 
@@ -1067,6 +1092,21 @@ pub fn parse_dat_bytes<T: DatRecord>(data: &[u8], name: &str) -> anyhow::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_side_names_join_the_message_texts_without_replacing_one() {
+        // FUN_0052d920 names a side from string ids 0x4d50..0x4d71.
+        let mut texts = HashMap::from([(0x4d50, "kept".to_string())]);
+        let strings = HashMap::from([
+            (0x4d50, "Alliance".to_string()),
+            (0x4d71, "Imperial".to_string()),
+            (0x1234, "Other".to_string()),
+        ]);
+        with_side_names(&mut texts, &strings);
+        assert_eq!(texts[&0x4d50], "kept");
+        assert_eq!(texts[&0x4d71], "Imperial");
+        assert!(!texts.contains_key(&0x1234));
+    }
 
     #[test]
     fn an_abode_takes_the_side_the_galaxy_setup_gives_it() {

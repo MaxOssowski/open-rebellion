@@ -722,6 +722,12 @@ const cases = [
       await shot(page, directory, "incident-fired");
       const disaster = await until(page, "the natural disaster strikes",
         (o) => typeof o.last_disaster_message === "string", null, 90_000);
+      // A held system's line is the original's (FUN_0048e940, TEXTSTRA
+      // 0x7190..0x7193); a neutral one keeps the port's line.
+      if (disaster.last_disaster_title !== null) {
+        assert.match(disaster.last_disaster_title, /^Natural Disaster on /);
+        assert.match(disaster.last_disaster_message, /^There has been a natural disaster on /);
+      }
       await frames(page, 3);
       await shot(page, directory, "incident-disaster");
       return { before, incident, disaster };

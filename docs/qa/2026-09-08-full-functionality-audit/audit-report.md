@@ -1657,6 +1657,16 @@ cross-runtime proof remain open
   with the revolt still on, and a natural disaster on a random system.
   0 errors; the Fleet window suite passes 54 cases
   (`evidence/2026-10-21-uprising-browser/`).
+- Texts (2026-10-21): the uprising and disaster messages take the
+  original texts.
+  - Uprising Begins / Ends (`FUN_00499460`, TEXTSTRA `0x7030`-`0x7033`)
+    speaks for both sides. The holder is named by the Side's text provider
+    (`FUN_0052d920`, kind 4 strings `0x4d70` / `0x4d71`).
+  - Natural Disaster (`FUN_0048e940`, `0x7190`-`0x7193`, with a `0x719b`
+    line per destroyed facility) goes to the holder, and says nothing when
+    nothing was lost.
+  - Browser runs struck Bothawui and Akrit'tar with the original lines
+    (`evidence/2026-10-21-uprising-disaster-texts/`).
 - Acceptance: both incidents trigger and apply their recovered effects with
   failing-without tests, and a browser pass shows a revolt, an incident, and
   a disaster.
