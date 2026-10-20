@@ -3190,6 +3190,16 @@ cross-runtime proof remain open
   regenerated: initial `v1:57cfc0d727199c15`, final `v1:4dee6ff02fdbe5bc`;
   campaigns unchanged, as the AI puts no characters aboard fleets yet
   (`evidence/2026-10-20-adrift-path/`).
+- 2026-10-20: the Autorouting order and the jails are excluded with
+  evidence. A traveller already in hyperspace lands though its order ends
+  (`FUN_00522fc0`), as the port's direct trip does, and the order's
+  mandatory flag cannot matter while the traveller is off the map; the port
+  keeps its `EscapeeTransit` (port:, cited in code). The jails
+  (`FUN_00549580`) need a member with no destination, but the move validator
+  the autoroute search uses (`FUN_005571c0` -> `FUN_005513a0`) has no side
+  test, so an Alliance or Empire character always finds the other side's
+  systems while one stands; only a side-3 character could reach a jail, and
+  none is sent home (`ghidra/notes/mission-lifecycle.md`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

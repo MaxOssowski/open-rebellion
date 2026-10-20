@@ -793,10 +793,18 @@ member's side holds it (port: without the route checks).
   meet while the traveller is off the map. The port keeps the direct
   trips (port: no Autorouting order object).
 - The jails (`FUN_00549580`) need a member with no destination at all.
-  The port's search (`nearest_place`) ends with the other side's systems,
-  so it always finds one while any system stands; the original passes
-  each candidate through the move validator `FUN_005571c0`, which is not
-  read, so whether a jail is ever reached there stays open.
+  Read 2026-10-20: the move validator each candidate passes
+  (`FUN_005571c0`) sets up the character's order kind `0x241`
+  (`FUN_005511d0`), then `FUN_005513a0` only resolves the destination
+  (`1`/`0x22`, `0x23`), requires a system, fleet or ship (`FUN_005531b0`,
+  `0x25`) and builds the route legs (`FUN_00552d10` -> `FUN_00550700`);
+  `FUN_00551630` issues the move. No side test: the `1`/`0x28` refusal
+  belongs to the mission order's own validator (`FUN_004f4b60`). So for an
+  Alliance or Empire character the search's last rule, the other side's
+  systems, always yields a destination while one stands; only a side-3
+  character, which skips that rule, can reach a jail, and the port sends
+  none home. The jails are left out on this evidence (as the port's
+  `nearest_place` already behaves).
 
 ## Vacation (`0x72`) is never created (read 2026-10-20)
 
