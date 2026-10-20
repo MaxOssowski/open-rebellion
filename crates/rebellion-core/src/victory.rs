@@ -77,10 +77,6 @@ pub struct VictoryState {
     pub alliance_hq: SystemKey,
     /// The Empire headquarters system key.
     pub empire_hq: SystemKey,
-    /// When `true`, Death Star win-condition checks are active.
-    pub death_star_active: bool,
-    /// The system the Death Star is currently orbiting (if active).
-    pub death_star_location: Option<SystemKey>,
     /// Set `true` once a `VictoryOutcome` has been returned to suppress
     /// re-firing on subsequent ticks.
     pub resolved: bool,
@@ -96,8 +92,6 @@ impl VictoryState {
         VictoryState {
             alliance_hq,
             empire_hq,
-            death_star_active: false,
-            death_star_location: None,
             resolved: false,
             conditions_word: 0,
         }

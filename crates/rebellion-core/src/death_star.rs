@@ -35,8 +35,7 @@ pub enum DeathStarEvent {
     /// A Destroy System order's Death Star destroyed `system`
     /// (`FUN_0058d990`).
     ///
-    /// Caller must set `world.systems[system].is_destroyed = true` and update
-    /// `VictoryState::death_star_location = Some(system)`.
+    /// Caller must set `world.systems[system].is_destroyed = true`.
     PlanetDestroyed { system: SystemKey, tick: u64 },
 }
 

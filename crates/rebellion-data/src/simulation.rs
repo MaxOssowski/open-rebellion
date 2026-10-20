@@ -701,7 +701,6 @@ pub fn run_simulation_tick(
     for evt in &ds_events {
         let rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, .. } = evt;
         {
-            states.victory.death_star_location = Some(*system);
             let mut cleanup_effects: Vec<rebellion_core::effects::GameEffect> = Vec::new();
             rebellion_core::death_star::cleanup_destroyed_system(
                 world,

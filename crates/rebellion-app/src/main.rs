@@ -2681,7 +2681,6 @@ async fn main() {
                 destroy_planet(
                     &mut world,
                     system,
-                    &mut victory_state,
                     &bombard.killed_at(system),
                     &mut mfg_state,
                     &mut blockade_state,
@@ -7650,7 +7649,6 @@ fn apply_panel_action(
                     destroy_planet(
                         world,
                         system,
-                        victory_state,
                         &outcome.killed,
                         mfg_state,
                         blockade_state,
@@ -8491,7 +8489,6 @@ fn log_assault(
 fn destroy_planet(
     world: &mut GameWorld,
     system: SystemKey,
-    victory_state: &mut VictoryState,
     killed: &[rebellion_core::ids::CharacterKey],
     mfg_state: &mut ManufacturingState,
     blockade_state: &mut BlockadeState,
@@ -8505,7 +8502,6 @@ fn destroy_planet(
     if let Some(sys) = world.systems.get_mut(system) {
         sys.is_destroyed = true;
     }
-    victory_state.death_star_location = Some(system);
     // Drain the telemetry out-param into the message log so
     // interactive play surfaces the killed characters
     // immediately; the run_simulation_tick flow does the same

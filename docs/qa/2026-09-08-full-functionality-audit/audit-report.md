@@ -919,6 +919,10 @@ cross-runtime proof remain open
   system as STRATEGY 10240, an asteroid field, with the unheld name colour
   `0x2ffff00`; `sector_window::planet_art` does the same, seen in the
   browser after Destroy System (`evidence/2026-10-20-destroyed-system-art/`).
+- Victory fields (2026-10-20, save v97): `VictoryState::death_star_active`
+  and `death_star_location` had no source and no reader; both are removed.
+  Golden regenerated for save v97 (initial `v1:ba71ff33556e6215`, final
+  `v1:f7529f2440ec6c60`) (`evidence/2026-10-20-victory-death-star-fields/`).
 
 ### F-018: Research never limits which ships can be built
 
