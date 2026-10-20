@@ -82,10 +82,12 @@ use crate::world::GameWorld;
 // Event IDs (from RE annotated-functions.md)
 // ---------------------------------------------------------------------------
 
-/// `SystemBlockadeNotif` event ID — fires when blockade state changes.
+/// `SystemBlockadeNotif` event ID — fires when blockade state changes
+/// (`FUN_005122d0`: `FUN_0053fdd0(0x14e, ...)`).
 pub const EV_BLOCKADE: u32 = 0x14e; // 334
 
-/// `TroopRegDestroyedRunningBlockade` event ID.
+/// `TroopRegDestroyedRunningBlockade` event ID (`FUN_00504a00`:
+/// `FUN_0053fe40(0x340, ...)`).
 pub const EV_TROOP_BLOCKADE_KILL: u32 = 0x340; // 832
 
 /// DEFFACSD record 1, the KDY-150 (TEXTSTRA 8704, family `0x22`). An active one

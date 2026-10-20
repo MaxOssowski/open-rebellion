@@ -1821,6 +1821,15 @@ cross-runtime proof remain open
     `ESPIONAGE_SKILL_THRESHOLD` 50.
   - `economy.rs` `SupportTier::from_support_int` splits support at
     20/30/40/60 with no source.
+- 2026-10-21 (economy and incidents): the five economy GNPRTB ids are
+  cited to their readers:
+  - 7761 and 7762: `FUN_0055a050`;
+  - 7763: `FUN_00559c10`;
+  - 7680: `FUN_00559fe0` and `FUN_00559c40`;
+  - 7682: `FUN_00559fe0`.
+  The blockade event ids are cited to their senders (`0x14e`
+  `FUN_005122d0`, `0x340` `FUN_00504a00`), and the uprising roll budget is
+  tagged `port:`. The baseline shrinks from 51 to 43 uncited items.
 - Acceptance: each item is recovered and cited, or tagged `port:`/`hyp:` with a
   reason; `provenance-scan check` passes and the baseline shrinks to the
   port-owned remainder.

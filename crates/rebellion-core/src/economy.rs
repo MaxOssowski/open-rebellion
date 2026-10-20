@@ -58,16 +58,26 @@ const GNPRTB_SMUGGLING_BASE_MID: u16 = 7735;
 const GNPRTB_SMUGGLING_LOW_BAND: u16 = 7736;
 /// `DAT_006bb424` (75): the low band's base (`FUN_00559c40`).
 const GNPRTB_SMUGGLING_BASE_LOW: u16 = 7737;
+/// GNPRTB 7761 (60): the support below which a system needs regiments
+/// (`FUN_0055a050`).
 const GNPRTB_GARRISON_THRESHOLD: u16 = 7761;
+/// GNPRTB 7762 (-10): the support shortfall per regiment, negated
+/// (`FUN_0055a050`: `ceil((7761 - support) / -7762)`).
 const GNPRTB_GARRISON_DIVISOR: u16 = 7762;
+/// GNPRTB 7763 (100): the ProductionModifier's numerator
+/// (`FUN_00559c10`: `7763 × 100 / support`).
 const GNPRTB_COLLECTION_RATE_BASE: u16 = 7763;
 /// `FUN_0050b2c0`'s value with no holder, and the facility default
 /// (`FUN_0055a600`).
 const FULL_PRODUCTION_MODIFIER: i32 = 100;
 
-// Phase 3b: new constants from source tree cross-reference
-const GNPRTB_EMPIRE_TROOP_MULT: u16 = 7680; // =2: Empire regiments doubled, garrison halved near a Death Star (+0x88 bit 11)
-const GNPRTB_UPRISING_GARRISON_MULT: u16 = 7682; // =2: garrison doubles during uprising
+/// GNPRTB 7680 (2): near a Death Star (`+0x88` bit 11), an Empire system's
+/// garrison requirement is divided by it (`FUN_00559fe0`) and its regiments
+/// count that many times against smuggling (`FUN_00559c40`).
+const GNPRTB_EMPIRE_TROOP_MULT: u16 = 7680;
+/// GNPRTB 7682 (2): the garrison requirement is multiplied by it in revolt
+/// (`FUN_00559fe0`, `+0x88` bit 2).
+const GNPRTB_UPRISING_GARRISON_MULT: u16 = 7682;
 /// GNPRTB 7760 (60, `DAT_006bb4c0`): the support a side needs to hold a
 /// system without regiments (`FUN_0055a080`).
 const GNPRTB_SUPPORT_CONTROL_THRESHOLD: u16 = 7760;

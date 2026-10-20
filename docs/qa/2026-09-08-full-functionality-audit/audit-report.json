@@ -1936,7 +1936,8 @@
         "missions.rs foil_prob decides every covert mission with a quadratic from rebellion2 Mission.cs; the original rolls FOILTB (table id 12) in FUN_0058a130 (ghidra/notes/decoy-roll.md)",
         "missions.rs MissionKind::coefficients are rebellion2 or placeholder curves; they run only when an MSTB table is missing, so they should fail closed rather than approximate",
         "ai.rs has 18 uncited items, among them the production queue cap (queue_len >= 3), the troop-deployment radius (150 * 150), and ESPIONAGE_SKILL_THRESHOLD 50",
-        "economy.rs SupportTier::from_support_int splits support at 20/30/40/60 with no source"
+        "economy.rs SupportTier::from_support_int splits support at 20/30/40/60 with no source",
+        "2026-10-21 (economy and incidents): the five economy GNPRTB ids are cited to their readers (7761 and 7762 FUN_0055a050, 7763 FUN_00559c10, 7680 FUN_00559fe0 and FUN_00559c40, 7682 FUN_00559fe0), the blockade event ids to their senders (0x14e FUN_005122d0, 0x340 FUN_00504a00), and the uprising roll budget is tagged port:. The baseline shrinks from 51 to 43 uncited items."
       ],
       "acceptance": "Each item is recovered and cited, or tagged port:/hyp: with a reason, `provenance-scan check` passes, and the baseline shrinks to the port-owned remainder."
     },

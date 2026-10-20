@@ -348,7 +348,8 @@ pub struct UprisingSystem;
 
 /// The most draws one incident takes: two score draws, up to five per outcome
 /// code (the code 3 pick, chance, two injury draws and the death roll), and
-/// the next delay.
+/// the next delay. port: the size of the caller's roll slice; the original
+/// draws from its generator as it goes.
 const INCIDENT_ROLLS: usize = 13;
 
 impl UprisingSystem {
