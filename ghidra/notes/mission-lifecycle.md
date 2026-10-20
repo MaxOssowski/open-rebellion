@@ -758,6 +758,33 @@ member's side holds it (port: without the route checks).
   `0x98000440` and `0x98000480` only in `FUN_00549580`, the fallback for a
   member with no destination. Dagobah and Jabba's Palace are ported.
 
+## The Autorouting order (read 2026-10-20)
+
+- `FUN_00547740(side, destination, group, implied, ctx)` builds the order
+  `0x43000003` through `FUN_00547ba0` with Mandatory 1 (argument 12) and
+  ImpliedTeam = `implied` (argument 11): `FUN_00549580` passes the
+  member's held state (slot `+0x1d4`), and `FUN_00549230` 0. So a prisoner
+  group travels with no standing team member and is not ended by rule 1,
+  and every member is on a mandatory mission (`RoleOnMandatoryMission`)
+  for the trip.
+- Arrival (event `0x387` -> `FUN_004f7fc0`) clears only the en route bits
+  (`FUN_004f7870(0)`, `FUN_004f7390(0)`), not Autorouting; the order ends
+  as a Move does (its record's timer 0) and its members stay (column 10
+  is 0). Autorouting clears when `FUN_0054c7d0` next finds the member
+  staying.
+- RoleOnMission's change (event `0x312`, `FUN_00545e90`): a character
+  leaving a mission runs `FUN_00556710`, so one whose container was
+  destroyed meanwhile goes adrift then (`FUN_004ef2e0`). An object of
+  `+0x50` bit `0x40` whose key is `0x3c000009` (a special force) takes
+  DestroyedReason `0x14` there (`FUN_004f71d0(0x14)`); not read further.
+- Against the port: escapes, abode trips and the Pickup's prisoners travel
+  as `EscapeeTransit`s, off the map and on no mission. What the order adds
+  is the mandatory mission flag for the trip (the port's traveller is off
+  the map, so no order can take it anyway) and the validator: a target
+  that changes side during the trip ends the order (code 8). Whether the
+  traveller then still lands is not read (the transit and the order are
+  separate objects), so porting the order waits on that.
+
 ## Vacation (`0x72`) is never created (read 2026-10-20)
 
 MISSNSD holds two Vacation records, `0x72000045` (TEXTSTRA 11333
