@@ -781,9 +781,22 @@ member's side holds it (port: without the route checks).
   as `EscapeeTransit`s, off the map and on no mission. What the order adds
   is the mandatory mission flag for the trip (the port's traveller is off
   the map, so no order can take it anyway) and the validator: a target
-  that changes side during the trip ends the order (code 8). Whether the
-  traveller then still lands is not read (the transit and the order are
-  separate objects), so porting the order waits on that.
+  that changes side during the trip ends the order (code 8).
+- Read 2026-10-20: a member leaving a mission (slot `+0x1d0`,
+  `FUN_00522fc0`) has its en route bit (`+0x50` bit 5) cleared through
+  `FUN_004f7640(0)` only while its trip is not yet active (bit 11 clear).
+  A traveller already in hyperspace keeps its trip and its pending arrival
+  `0x387`, so it lands at the destination though the order ended. The
+  port's `EscapeeTransit` lands there too, so for an escapee or an abode
+  trip, which leaves at once, the port's direct trip gives the same
+  landing. What it lacks is the mandatory mission flag, which no order can
+  meet while the traveller is off the map. The port keeps the direct
+  trips (port: no Autorouting order object).
+- The jails (`FUN_00549580`) need a member with no destination at all.
+  The port's search (`nearest_place`) ends with the other side's systems,
+  so it always finds one while any system stands; the original passes
+  each candidate through the move validator `FUN_005571c0`, which is not
+  read, so whether a jail is ever reached there stays open.
 
 ## Vacation (`0x72`) is never created (read 2026-10-20)
 
