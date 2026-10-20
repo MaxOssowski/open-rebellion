@@ -58,7 +58,7 @@ use rebellion_core::world::{ControlKind, GameWorld, System};
 #[cfg(target_arch = "wasm32")]
 pub use advisor::set_advisor_asset_cache;
 pub use advisor::{
-    advisor_combat_result, advisor_death_star, advisor_greet, advisor_manufacturing_complete,
+    advisor_combat_result, advisor_greet, advisor_manufacturing_complete,
     advisor_mission_result, advisor_uprising, draw_advisor, AdvisorFaction, AdvisorMessage,
     AdvisorPriority, AdvisorState,
 };

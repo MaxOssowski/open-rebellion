@@ -205,12 +205,6 @@ pub enum PanelAction {
         system: SystemKey,
     },
 
-    // ── Death Star ───────────────────────────────────────────────────
-    /// Fire the Death Star superlaser at a system.
-    FireDeathStar { system: SystemKey },
-    /// Move the Death Star fleet to a target system.
-    MoveDeathStar { system: SystemKey },
-
     // ── Play-testing (command palette) ────────────────────────────────
     /// Advance simulation by N ticks immediately.
     AdvanceTicks(u64),

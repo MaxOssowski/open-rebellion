@@ -1,6 +1,6 @@
 ---
 title: "Death Star System"
-description: "Planet destruction and the nearby-warning scan; the Death Star is built as an ordinary capital ship"
+description: "The Death Star as an ordinary capital ship: Destroy System, a destroyed system's cleanup, DeathStarNearby, and the read-only panel"
 category: "agent-docs"
 created: 2026-03-14
 updated: 2026-10-20
@@ -9,7 +9,7 @@ tags: [death-star, planet-destruction, simulation]
 
 # Death Star System
 
-`death_star.rs` — planet destruction and the nearby-warning scan.
+`death_star.rs` — the Death Star's state and a destroyed system's cleanup.
 
 The Death Star is CAPSHPSD record 136 (TEXTSTRA 10120, research order 0), an
 ordinary capital ship built by a shipyard; a completed one marks its fleet
@@ -20,18 +20,18 @@ so the port's 1,825-day countdown was removed (save v94).
 
 | Type | Purpose |
 |------|---------|
-| `DeathStarState` | `death_star_fleet: Option<FleetKey>`, `shield_generator_active` |
-| `DeathStarEvent` | PlanetDestroyed / NearbyWarning |
+| `DeathStarState` | `shield_generator_active` (battle hull protection) |
+| `DeathStarEvent` | PlanetDestroyed, from a Destroy System order |
 
-## API
+## Destroying a planet
 
-```rust
-// Each tick: scan for nearby warnings
-let events = DeathStarSystem::advance(&mut ds_state, &world, &tick_events);
-
-// Player/AI fires superlaser (precondition-checked):
-let fired = DeathStarSystem::fire(&world, target_system, tick); // Option<DeathStarEvent>
-```
+Only the Fleet menu's Planetary Bombardment, Destroy System (`0x223`,
+`FUN_0058d990`, `bombardment.rs`), destroys a planet; the fleet must hold a
+Death Star (`FUN_00582440`). The port's strategic `DeathStarSystem::fire()`
+and its panel button had no source and no reachable caller (nothing set
+`death_star_fleet`); they were removed on 2026-10-20 (save v95). The
+tactical superlaser is the tactical session's
+(`ghidra/notes/tactical-death-star-path.md`).
 
 ## A destroyed system
 
@@ -40,21 +40,20 @@ let fired = DeathStarSystem::fire(&world, target_system, tick); // Option<DeathS
 units and facilities go, fleets stay, the characters standing there go
 adrift, and the minor characters a Destroy System order hit die.
 
-## Superlaser Fire Preconditions
+## Death Star nearby
 
-No recovered source for the superlaser fire path. FUN_005617b0 is the
-CharacterMgr SeatOfPower check; FUN_0055f650 stores that flag. The
-preconditions below are gameplay requirements, not decompiled logic:
-1. Target not already destroyed (`!sys.is_destroyed`)
-2. Empire Death Star fleet present at target system
-3. Target not Empire-controlled (no self-destruction)
+The system flag DeathStarNearby (`+0x88` bit 11) is set for every system of
+a sector holding an active Death Star (`FUN_005178b0`;
+`economy::death_star_nearby`). The port's 300-unit `NearbyWarning` message
+had no source and was removed.
 
-## Nearby Warning
+## The panel (D)
 
-Scans all Alliance-controlled systems within `NEARBY_WARNING_RADIUS = 300` coordinate units of the Death Star fleet. Emits `NearbyWarning` for each. Used for Alliance intelligence messages.
+port: a read-only list of the side's fleets holding a Death Star
+(`panels::death_star`); the original has no such panel.
 
 ## Source
 
-- `ghidra/notes/economy-systems.md` § SystemDeathStarNearbyNotif
-- `ghidra/notes/community-address-remap.md` — FUN_005617b0 is SeatOfPower, not the fire path
-- `entity-system.md §4.2` — alive_flag inverted semantics
+- `ghidra/notes/bombardment-order.md`
+- `ghidra/notes/economy-cadence.md`, "Bit 11: DeathStarNearby"
+- `ghidra/notes/tactical-death-star-path.md`

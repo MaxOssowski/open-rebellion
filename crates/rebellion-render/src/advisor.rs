@@ -1649,11 +1649,6 @@ pub fn advisor_uprising(state: &mut AdvisorState, system_name: &str, gained: boo
     state.push_message(AdvisorMessage::new(text, AdvisorPriority::High));
 }
 
-/// Notify the advisor of a Death Star event.
-pub fn advisor_death_star(state: &mut AdvisorState, event_text: &str) {
-    state.push_message(AdvisorMessage::new(event_text, AdvisorPriority::Critical));
-}
-
 /// Notify the advisor of manufacturing completion.
 pub fn advisor_manufacturing_complete(state: &mut AdvisorState, item_name: &str) {
     let text = match state.faction {

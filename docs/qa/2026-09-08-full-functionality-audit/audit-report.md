@@ -799,7 +799,7 @@ cross-runtime proof remain open
 ### F-017: The Death Star can never fire
 
 - Severity: P1
-- Status: partially remediated; construction timing, sabotage, and browser fire pass remain
+- Status: partially remediated; the battle shield's role and a browser pass of Destroy System remain
 - Evidence: `DeathStarSystem::fire` (`crates/rebellion-core/src/death_star.rs`)
   refuses while `shield_generator_active` is true, and the only other writer
   (`crates/rebellion-app/src/tactical_flow.rs`) sets it to true;
@@ -868,6 +868,17 @@ cross-runtime proof remain open
   `Fleet::has_death_star` follows the remaining Death Star hulls. Seeds 1,
   6, 16 and 24 of 24 change from the first fleet a sabotage emptied
   (`evidence/2026-10-20-death-star-sabotage/`).
+- Superlaser and nearby warning (2026-10-20, save v95): a planet falls only
+  to the Destroy System order (`0x223`, `FUN_0058d990`, ported), and the
+  tactical superlaser is the tactical session's
+  (`tactical-death-star-path.md`). The strategic `DeathStarSystem::fire()`,
+  the panel's Fire and Move buttons, `reconcile_death_star_result` and the
+  300-unit `NearbyWarning` had no source and no reachable caller: nothing
+  set `DeathStarState::death_star_fleet`. They are removed; DeathStarNearby
+  stays `economy::death_star_nearby` (`FUN_005178b0`). The port-only panel
+  (D) lists the side's Death Star fleets read-only. Golden regenerated for
+  save v95 (initial `v1:803494e978e8f71f`, final `v1:5eb68d3167d6a252`)
+  (`evidence/2026-10-20-death-star-superlaser/`).
 
 ### F-018: Research never limits which ships can be built
 

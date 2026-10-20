@@ -3,10 +3,8 @@
 use std::collections::HashMap;
 
 use rebellion_core::dat::Faction;
-use rebellion_core::death_star::DeathStarState;
 use rebellion_core::ids::{FleetKey, SystemKey};
 use rebellion_core::troop_transport::TroopTransportState;
-use rebellion_core::victory::VictoryState;
 use rebellion_core::world::{ControlKind, GameWorld};
 use rebellion_render::{
     BattleSession, CombatWinner, GameMessage, MessageCategory, MessageLog, MessageRail,
@@ -249,31 +247,6 @@ pub(crate) fn apply_results(
     });
     rebellion_core::loyalty::settle_battle(world, battle_before, session.system, winner);
     summarize_results(session)
-}
-
-/// Clear persistent Death Star pointers after either tactical or automatic
-/// combat has removed the manager-owned object from its fleet.
-pub(crate) fn reconcile_death_star_result(
-    world: &GameWorld,
-    death_star: &mut DeathStarState,
-    victory: &mut VictoryState,
-) -> bool {
-    let Some(fleet_key) = death_star.death_star_fleet else {
-        return false;
-    };
-    if world
-        .fleets
-        .get(fleet_key)
-        .is_some_and(|fleet| fleet.has_death_star)
-    {
-        return false;
-    }
-
-    death_star.death_star_fleet = None;
-    death_star.shield_generator_active = true;
-    victory.death_star_active = false;
-    victory.death_star_location = None;
-    true
 }
 
 /// A planet with regiments takes the holder the economy gives it
@@ -714,28 +687,4 @@ mod tests {
         assert_eq!(officer.current_fleet, None);
     }
 
-    #[test]
-    fn destroyed_death_star_clears_persistent_manager_and_victory_state() {
-        let (mut world, system, attacker, defender) = opposing_empty_fleets();
-        world.fleets[attacker].has_death_star = false;
-        let mut death_star = DeathStarState {
-            death_star_fleet: Some(attacker),
-            shield_generator_active: false,
-            ..DeathStarState::default()
-        };
-        let mut victory = VictoryState::new(system, system);
-        victory.death_star_active = true;
-        victory.death_star_location = Some(system);
-
-        assert!(reconcile_death_star_result(
-            &world,
-            &mut death_star,
-            &mut victory
-        ));
-        assert_eq!(death_star.death_star_fleet, None);
-        assert!(death_star.shield_generator_active);
-        assert!(!victory.death_star_active);
-        assert_eq!(victory.death_star_location, None);
-        assert!(!world.fleets[defender].has_death_star);
-    }
 }

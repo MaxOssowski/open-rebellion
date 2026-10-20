@@ -40,7 +40,7 @@ use rebellion_core::bombardment::BombardEnv;
 use rebellion_core::combat::{CombatSide, CombatSystem};
 use rebellion_core::agent_automation::{AutomationModule, PlayerAgent};
 use rebellion_core::dat::Faction;
-use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
+use rebellion_core::death_star::DeathStarState;
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyEvent, EconomyState, EconomySystem};
 use rebellion_core::events::{EventState, EventSystem};
@@ -114,7 +114,7 @@ use rebellion_render::targeting::{
     TargetOrder, Targeting, TargetingEnd,
 };
 use rebellion_render::{
-    advisor_combat_result, advisor_death_star, advisor_greet, advisor_manufacturing_complete,
+    advisor_combat_result, advisor_greet, advisor_manufacturing_complete,
     advisor_mission_result, advisor_uprising, draw_advisor, draw_audio_controls,
     draw_cockpit_background, draw_cockpit_chrome, draw_cockpit_egui_layer, draw_credits,
     draw_encyclopedia, draw_fleets, draw_galaxy_backdrop, draw_galaxy_map, draw_game_options,
@@ -3120,53 +3120,6 @@ async fn main() {
                 }
             }
 
-            // ── Death Star ───────────────────────────────────────────────────
-            let ds_events = DeathStarSystem::advance(&mut death_star_state, &world, &tick_events);
-            for evt in &ds_events {
-                match evt {
-                    rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { .. } => {
-                        // Knesset Shamash-Bet Fix D (CRITICAL C3):
-                        // `DeathStarSystem::advance()` NEVER emits
-                        // `PlanetDestroyed` in the current codebase — only
-                        // `DeathStarSystem::fire()` does, and that path goes
-                        // through `PanelAction::FireDeathStar` which already
-                        // calls `cleanup_destroyed_system` with the effects
-                        // buffer for EVT_CHARACTER_KILLED telemetry.
-                        //
-                        // This branch was pre-existing dead code that marked
-                        // `is_destroyed = true` but forgot to call
-                        // `cleanup_destroyed_system`, leaking entities under
-                        // R11. If a future refactor wires automatic DS
-                        // firing into `advance()`, the `unreachable!` will
-                        // fire loudly and force the implementer to handle
-                        // cleanup + telemetry correctly instead of silently
-                        // re-introducing the leak.
-                        unreachable!(
-                            "DeathStarSystem::advance does not emit PlanetDestroyed — \
-                             use DeathStarSystem::fire via PanelAction::FireDeathStar \
-                             so cleanup_destroyed_system is called with the effects \
-                             out-param (Knesset Shamash-Bet Fix D / CRITICAL C3)"
-                        );
-                    }
-                    rebellion_core::death_star::DeathStarEvent::NearbyWarning { system, tick } => {
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        msg_log.push(GameMessage::at_system(
-                            *tick,
-                            format!("Death Star detected near {name}!"),
-                            MessageCategory::Event,
-                            *system,
-                        ));
-                        advisor_death_star(
-                            &mut advisor_state,
-                            &format!("Warning! Death Star detected near {name}!"),
-                        );
-                    }
-                }
-            }
-
             // ── (The port's Jedi tiers are gone: the Force grows through the
             // missions, Dagobah, escapes and the encounter;
             // ghidra/notes/jedi-rs-replacement.md.)
@@ -4246,11 +4199,7 @@ async fn main() {
                         }
                     }
                     if show_death_star {
-                        if let Some(action) =
-                            draw_death_star(ctx, &world, &death_star_state, player_faction)
-                        {
-                            panel_actions.push(action);
-                        }
+                        draw_death_star(ctx, &world, player_faction);
                     }
                     if show_loyalty {
                         if let Some(action) =
@@ -5918,11 +5867,6 @@ async fn main() {
                                 session.system,
                                 battle_winner(space_result.winner, attacker_is_alliance),
                             );
-                            tactical_flow::reconcile_death_star_result(
-                                &world,
-                                &mut death_star_state,
-                                &mut victory_state,
-                            );
                             troop_transport_state.destroy_untransportable_cargo(&mut world);
                             rebellion_core::squadrons::recover(
                                 &mut world,
@@ -6005,13 +5949,6 @@ async fn main() {
                                 );
                                 result
                             };
-                            if !strategic_results_applied {
-                                tactical_flow::reconcile_death_star_result(
-                                    &world,
-                                    &mut death_star_state,
-                                    &mut victory_state,
-                                );
-                            }
                             rebellion_core::squadrons::recover(
                                 &mut world,
                                 &std::mem::take(&mut battle_sorties),
@@ -6492,7 +6429,6 @@ async fn main() {
                         &mut troop_transport_state,
                         active_fog_state,
                         &mut ai_state,
-                        &mut death_star_state,
                         &mut msg_log,
                         &mut player_faction,
                         &mut clock,
@@ -7271,7 +7207,6 @@ fn apply_panel_action(
     troop_transport_state: &mut TroopTransportState,
     fog_state: &mut FogState,
     ai_state: &mut AIState,
-    death_star_state: &mut DeathStarState,
     msg_log: &mut MessageLog,
     player_faction: &mut MissionFaction,
     clock: &mut GameClock,
@@ -7857,60 +7792,6 @@ fn apply_panel_action(
                     "Planetary assault refused".to_string(),
                     MessageCategory::Combat,
                 ));
-            }
-        }
-        PanelAction::FireDeathStar { system } => {
-            // Use DeathStarSystem::fire() for precondition validation (guards from Ghidra RE).
-            if let Some(rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { .. }) =
-                DeathStarSystem::fire(death_star_state, world, system, clock.tick)
-            {
-                destroy_planet(
-                    world,
-                    system,
-                    victory_state,
-                    &[],
-                    mfg_state,
-                    blockade_state,
-                    msg_log,
-                    clock.tick,
-                );
-            }
-        }
-        PanelAction::MoveDeathStar { system } => {
-            // Issue a movement order for the Death Star fleet to the target system.
-            if let Some(fleet_key) = death_star_state.death_star_fleet {
-                // Don't issue if already in transit.
-                if movement_state.get(fleet_key).is_some() {
-                    msg_log.push(GameMessage::new(
-                        clock.tick,
-                        "Death Star fleet is already in transit".to_string(),
-                        MessageCategory::Event,
-                    ));
-                } else if let Some(fleet) = world.fleets.get(fleet_key) {
-                    let origin = fleet.location;
-                    let ticks = rebellion_core::movement::fleet_transit_ticks(
-                        fleet, world, origin, system,
-                    );
-                    if origin != system && ticks.is_none() {
-                        msg_log.push(GameMessage::new(
-                            clock.tick,
-                            "Death Star fleet cannot enter hyperspace".to_string(),
-                            MessageCategory::Event,
-                        ));
-                    } else if let (true, Some(ticks)) = (origin != system, ticks) {
-                        let dest_name = world
-                            .systems
-                            .get(system)
-                            .map_or_else(|| "Unknown".to_string(), |s| s.name.clone());
-                        if begin_fleet_transit(movement_state, world, fleet_key, system, ticks) {
-                            msg_log.push(GameMessage::new(
-                                clock.tick,
-                                format!("Death Star fleet moving to {dest_name} ({ticks} days)"),
-                                MessageCategory::Event,
-                            ));
-                        }
-                    }
-                }
             }
         }
         PanelAction::AdvanceTicks(n) => {

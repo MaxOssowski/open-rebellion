@@ -1026,10 +1026,10 @@ impl CombatSystem {
     }
 
     // Death Star superlaser resolution is NOT handled by the combat system.
-    // Planet destruction goes through DeathStarSystem::fire() in death_star.rs.
-    // FUN_005617b0 recomputes CharacterMgr SeatOfPower (Emperor Palpatine,
-    // 0x34000280, alive and active at Coruscant held by the Empire); it is not a
-    // superlaser fire check. The real superlaser fire path is unrecovered.
+    // A planet is destroyed only by the Destroy System order (0x223,
+    // FUN_0058d990, bombardment.rs); the tactical superlaser is the tactical
+    // session's (tactical-death-star-path.md). FUN_005617b0 recomputes
+    // CharacterMgr SeatOfPower; it is not a superlaser fire check.
 }
 
 // ---------------------------------------------------------------------------

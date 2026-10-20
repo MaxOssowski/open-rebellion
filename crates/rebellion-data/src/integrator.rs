@@ -1899,7 +1899,6 @@ impl PerceptionIntegrator {
                         serde_json::json!({ "system": sys_name(world, *system) }),
                     ));
                 }
-                DeathStarEvent::NearbyWarning { .. } => {}
             }
         }
     }
@@ -4919,14 +4918,16 @@ mod tests {
     }
 
     #[test]
-    fn a_completed_death_star_can_fire_from_its_new_fleet() {
-        // CAPSHPSD.DAT record 136 is the Death Star (TEXTSTRA 10120).
+    fn a_completed_death_star_can_destroy_a_system_from_its_new_fleet() {
+        // CAPSHPSD.DAT record 136 is the Death Star (TEXTSTRA 10120); its
+        // fleet enables Destroy System (0x223, FUN_00582440).
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Yard");
         let class = world.capital_ship_classes.insert(CapitalShipClass {
             dat_id: DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
             is_empire: true,
             hull: 25_000,
+            bombardment_modifier: 15,
             ..Default::default()
         });
         let target = add_system(&mut world, "Target");
@@ -4946,13 +4947,14 @@ mod tests {
         world.systems[system].fleets.clear();
         world.systems[target].fleets.push(fleet);
         world.fleets[fleet].location = target;
-        assert!(rebellion_core::death_star::DeathStarSystem::fire(
-            &rebellion_core::death_star::DeathStarState::default(),
+        assert!(rebellion_core::bombardment::order_enabled(
             &world,
+            &rebellion_core::movement::MovementState::new(),
+            false,
+            &[fleet],
             target,
-            2
-        )
-        .is_some());
+            rebellion_core::bombardment::DESTROY_SYSTEM,
+        ));
     }
 
     #[test]

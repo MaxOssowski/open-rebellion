@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use crate::integrator::{resolve_system_space_combat, PerceptionIntegrator};
 use rebellion_core::ai::{AIState, AISystem};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
-use rebellion_core::death_star::{DeathStarState, DeathStarSystem};
+use rebellion_core::death_star::DeathStarState;
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyState, EconomySystem};
 use rebellion_core::events::{EventState, EventSystem};
@@ -692,8 +692,7 @@ pub fn run_simulation_tick(
     for (req, outcome) in &bombard.assaults {
         integrator.emit_assault(world, req, outcome);
     }
-    let mut ds_events = DeathStarSystem::advance(&mut states.death_star, world, tick_events);
-    ds_events.extend(planets_destroyed(&bombard, tick_events));
+    let ds_events = planets_destroyed(&bombard, tick_events);
     integrator.apply_death_star_events(world, &ds_events);
     // Update victory state and clean up destroyed systems.
     //
@@ -703,7 +702,8 @@ pub fn run_simulation_tick(
     // `name` / `dat_id` rather than `CharacterKey`). Character-death story
     // events are strictly next-tick reactive.
     for evt in &ds_events {
-        if let rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, .. } = evt {
+        let rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, .. } = evt;
+        {
             states.victory.death_star_location = Some(*system);
             let mut cleanup_effects: Vec<rebellion_core::effects::GameEffect> = Vec::new();
             rebellion_core::death_star::cleanup_destroyed_system(

@@ -1,258 +1,107 @@
-//! Death Star control panel — fire order, target selection.
+//! Death Star panel: the player's Death Stars and where they are.
 //!
-//! Empire players see the fleet location and fire button; the Death Star is
-//! built like any capital ship, in the Manufacturing window.
-//! Alliance players see detection status and interception info.
-//! Returns `PanelAction::FireDeathStar` / `MoveDeathStar`.
+//! port: the original has no such panel. A Death Star is an ordinary
+//! capital ship (CAPSHPSD record 136) in a fleet, and it destroys a planet
+//! through the Fleet menu's Planetary Bombardment, Destroy System (`0x223`,
+//! `FUN_0058d990`). This side panel only lists the side's fleets that hold
+//! one; it gives no orders.
 
 use egui_macroquad::egui::{self, RichText};
-use rebellion_core::death_star::DeathStarState;
-use rebellion_core::ids::SystemKey;
+use rebellion_core::ids::FleetKey;
 use rebellion_core::missions::MissionFaction;
 use rebellion_core::world::GameWorld;
 
-use super::PanelAction;
 use crate::theme;
 
-/// Draw the Death Star control panel as a left-side egui panel.
+/// The side's fleets that hold a Death Star (`Fleet::has_death_star`), in
+/// fleet order.
 #[must_use]
-pub fn draw_death_star(
-    ctx: &egui::Context,
-    world: &GameWorld,
-    ds_state: &DeathStarState,
-    player_faction: MissionFaction,
-) -> Option<PanelAction> {
-    let mut action = None;
-    let is_empire = player_faction == MissionFaction::Empire;
+pub fn death_star_fleets(world: &GameWorld, side: MissionFaction) -> Vec<FleetKey> {
+    let is_alliance = side == MissionFaction::Alliance;
+    world
+        .fleets
+        .iter()
+        .filter(|(_, fleet)| fleet.is_alliance == is_alliance && fleet.has_death_star)
+        .map(|(key, _)| key)
+        .collect()
+}
 
+/// Draw the Death Star panel as a left-side egui panel. It gives no orders.
+pub fn draw_death_star(ctx: &egui::Context, world: &GameWorld, player_faction: MissionFaction) {
     egui::SidePanel::left("death_star_panel")
         .min_width(280.0)
         .max_width(340.0)
         .show(ctx, |ui| {
-            let title = if is_empire {
-                "Death Star Command"
-            } else {
-                "Death Star Threat"
-            };
-            ui.heading(RichText::new(title).color(theme::DANGER_RED));
+            ui.heading(RichText::new("Death Star").color(theme::DANGER_RED));
             ui.separator();
-
-            if is_empire {
-                draw_empire_view(ui, world, ds_state, &mut action);
-            } else {
-                draw_alliance_view(ui, world, ds_state);
-            }
-        });
-
-    action
-}
-
-/// Empire view: construction status, location, fire button.
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-)]
-fn draw_empire_view(
-    ui: &mut egui::Ui,
-    world: &GameWorld,
-    ds_state: &DeathStarState,
-    action: &mut Option<PanelAction>,
-) {
-    // ── Operational Death Star ────────────────────────────────────
-    if let Some(fleet_key) = ds_state.death_star_fleet {
-        if let Some(fleet) = world.fleets.get(fleet_key) {
-            ui.label(
-                RichText::new("FULLY OPERATIONAL")
-                    .color(theme::SUCCESS_GREEN)
-                    .size(12.0)
-                    .strong(),
-            );
-
-            let sys_name = world
-                .systems
-                .get(fleet.location)
-                .map_or("Unknown", |s| s.name.as_str());
-            ui.label(
-                RichText::new(format!("Location: {sys_name}"))
-                    .color(theme::TEXT_PRIMARY)
-                    .size(11.0),
-            );
-
-            let ship_count: u32 = fleet.ship_count();
-            ui.label(
-                RichText::new(format!("Escort: {ship_count} capital ships"))
-                    .color(theme::TEXT_SECONDARY)
-                    .size(10.0),
-            );
-
-            ui.add_space(8.0);
-            ui.separator();
-
-            // ── Target selection ─────────────────────────────────
-            ui.label(
-                RichText::new("SUPERLASER TARGETING")
-                    .color(theme::GOLD_DIM)
-                    .size(10.0)
-                    .strong(),
-            );
-
-            // Find enemy systems at fleet location
-            let current_system = world.systems.get(fleet.location);
-            if let Some(system) = current_system {
-                let is_enemy = matches!(
-                    system.control,
-                    rebellion_core::world::ControlKind::Controlled(
-                        rebellion_core::dat::Faction::Alliance,
-                    )
+            let fleets = death_star_fleets(world, player_faction);
+            if fleets.is_empty() {
+                ui.add_space(20.0);
+                ui.label(
+                    RichText::new("No Death Star in your fleets.").color(theme::TEXT_DISABLED),
                 );
-
-                if system.is_destroyed {
+                return;
+            }
+            for key in fleets {
+                let fleet = &world.fleets[key];
+                let name = world.fleet_name(key).unwrap_or("Fleet");
+                let location = world
+                    .systems
+                    .get(fleet.location)
+                    .map_or("Unknown", |s| s.name.as_str());
+                ui.group(|ui| {
                     ui.label(
-                        RichText::new("This system has already been destroyed.")
-                            .color(theme::TEXT_DISABLED)
-                            .size(11.0),
-                    );
-                } else if is_enemy {
-                    ui.label(
-                        RichText::new(format!("Target: {}", system.name))
-                            .color(theme::DANGER_RED)
-                            .size(12.0)
+                        RichText::new(name)
+                            .color(theme::TEXT_PRIMARY)
                             .strong(),
                     );
                     ui.label(
-                        RichText::new("Firing will destroy this planet permanently.")
-                            .color(theme::WARNING_AMBER)
-                            .size(10.0),
-                    );
-
-                    ui.add_space(8.0);
-                    if ui
-                        .button(
-                            RichText::new("FIRE SUPERLASER")
-                                .color(theme::DANGER_RED)
-                                .strong()
-                                .size(14.0),
-                        )
-                        .clicked()
-                    {
-                        *action = Some(PanelAction::FireDeathStar {
-                            system: fleet.location,
-                        });
-                    }
-                } else {
-                    ui.label(
-                        RichText::new("No enemy system at current location.")
-                            .color(theme::TEXT_DISABLED)
-                            .size(11.0),
-                    );
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new("Move the Death Star fleet to an enemy system to fire.")
+                        RichText::new(format!("Location: {location}"))
                             .color(theme::TEXT_SECONDARY)
                             .size(10.0),
                     );
-                }
+                    ui.label(
+                        RichText::new(format!("Capital ships: {}", fleet.ship_count()))
+                            .color(theme::TEXT_SECONDARY)
+                            .size(10.0),
+                    );
+                });
+                ui.add_space(4.0);
             }
-
-            // Nearby systems list for movement
             ui.add_space(8.0);
-            ui.separator();
             ui.label(
-                RichText::new("NEARBY SYSTEMS")
-                    .color(theme::GOLD_DIM)
-                    .size(10.0)
-                    .strong(),
-            );
-
-            let mut nearby: Vec<(SystemKey, &str, f32)> = Vec::new();
-            if let Some(cur_sys) = world.systems.get(fleet.location) {
-                for (sk, sys) in &world.systems {
-                    if sk == fleet.location || sys.is_destroyed {
-                        continue;
-                    }
-                    let dx = f32::from(sys.x) - f32::from(cur_sys.x);
-                    let dy = f32::from(sys.y) - f32::from(cur_sys.y);
-                    let dist = (dx * dx + dy * dy).sqrt();
-                    if dist < 500.0 {
-                        nearby.push((sk, &sys.name, dist));
-                    }
-                }
-            }
-            nearby.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-            nearby.truncate(8);
-
-            if nearby.is_empty() {
-                ui.label(
-                    RichText::new("No nearby systems")
-                        .color(theme::TEXT_DISABLED)
-                        .size(10.0),
-                );
-            } else {
-                for (sk, name, dist) in &nearby {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .small_button(
-                                RichText::new(format!("{name} ({dist:.0})"))
-                                    .color(theme::TEXT_PRIMARY)
-                                    .size(10.0),
-                            )
-                            .clicked()
-                        {
-                            *action = Some(PanelAction::MoveDeathStar { system: *sk });
-                        }
-                    });
-                }
-            }
-        } else {
-            ui.label(
-                RichText::new("Death Star fleet not found.")
-                    .color(theme::DANGER_RED)
-                    .size(11.0),
-            );
-        }
-    } else {
-        // No Death Star at all
-        ui.add_space(20.0);
-        ui.label(RichText::new("No Death Star in service.").color(theme::TEXT_DISABLED));
-        ui.add_space(4.0);
-        ui.label(
-            RichText::new("Construct one at a system with an Advanced Shipyard.")
+                RichText::new(
+                    "Destroy System is ordered from the fleet's Planetary Bombardment menu.",
+                )
                 .color(theme::TEXT_SECONDARY)
                 .size(10.0),
-        );
-    }
+            );
+        });
 }
 
-/// Alliance view: threat detection, warning status.
-fn draw_alliance_view(ui: &mut egui::Ui, world: &GameWorld, ds_state: &DeathStarState) {
-    if let Some(fleet_key) = ds_state.death_star_fleet {
-        ui.label(
-            RichText::new("THREAT ACTIVE")
-                .color(theme::DANGER_RED)
-                .size(12.0)
-                .strong(),
-        );
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rebellion_core::world::Fleet;
 
-        if let Some(fleet) = world.fleets.get(fleet_key) {
-            let sys_name = world
-                .systems
-                .get(fleet.location)
-                .map_or("Unknown", |s| s.name.as_str());
-            ui.label(
-                RichText::new(format!("Last known location: {sys_name}"))
-                    .color(theme::TEXT_PRIMARY)
-                    .size(11.0),
-            );
-        }
+    fn fleet(world: &mut GameWorld, is_alliance: bool, has_death_star: bool) -> FleetKey {
+        world.fleets.insert(Fleet {
+            location: Default::default(),
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance,
+            has_death_star,
+        })
+    }
 
-        ui.add_space(4.0);
-        ui.label(
-            RichText::new("Sabotage missions can delay or destroy the Death Star.")
-                .color(theme::TEXT_SECONDARY)
-                .size(10.0),
-        );
-    } else {
-        ui.add_space(20.0);
-        ui.label(RichText::new("No Death Star threat detected.").color(theme::TEXT_DISABLED));
+    #[test]
+    fn the_panel_lists_only_the_side_s_fleets_holding_a_death_star() {
+        let mut world = GameWorld::default();
+        let imperial = fleet(&mut world, false, true);
+        fleet(&mut world, false, false);
+        let rebel = fleet(&mut world, true, true);
+        assert_eq!(death_star_fleets(&world, MissionFaction::Empire), [imperial]);
+        assert_eq!(death_star_fleets(&world, MissionFaction::Alliance), [rebel]);
     }
 }

@@ -16,7 +16,6 @@
     "crates/rebellion-core/src/combat.rs::CombatSystem::fighter_dogfight": 5,
     "crates/rebellion-core/src/combat.rs::CombatSystem::fighters_attack_ships": 1,
     "crates/rebellion-core/src/combat.rs::CombatSystem::snapshot_fleet": 3,
-    "crates/rebellion-core/src/death_star.rs::DeathStarSystem::advance": 1,
     "crates/rebellion-core/src/economy.rs::GNPRTB_COLLECTION_RATE_BASE": 1,
     "crates/rebellion-core/src/economy.rs::GNPRTB_EMPIRE_TROOP_MULT": 1,
     "crates/rebellion-core/src/economy.rs::GNPRTB_GARRISON_DIVISOR": 1,
