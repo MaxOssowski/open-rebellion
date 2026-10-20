@@ -4805,6 +4805,43 @@ async fn main() {
                                 };
                                 panel_actions.push(PanelAction::MoveRegiment { troop, target });
                             }
+                            // FUN_00422ce0: the character's 0x201 -> 0x241
+                            // against the window under the point.
+                            FleetWindowAction::DragCharacter { character, point } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                let action = match release_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) {
+                                    Some(ReleaseTarget::System(system)) => {
+                                        PanelAction::MoveCharacter {
+                                            character,
+                                            system,
+                                            fleet: None,
+                                        }
+                                    }
+                                    Some(ReleaseTarget::Fleet { fleet, system }) => {
+                                        PanelAction::MoveCharacter {
+                                            character,
+                                            system,
+                                            fleet: Some(fleet),
+                                        }
+                                    }
+                                    None => continue,
+                                };
+                                panel_actions.push(action);
+                            }
                             // FUN_00422ce0: the squadron's 0x201 against the
                             // window under the point.
                             FleetWindowAction::DragSquadron {

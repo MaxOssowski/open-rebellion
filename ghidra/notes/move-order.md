@@ -474,8 +474,14 @@ the same slots but the kind) for the Move mission `0x41000001`.
   reroutes a traveller whose target moves (`FUN_004fbc20`,
   `GameObjParentReroutedNotif`), the port lands it at that system.
   Confirmed Move (`0x202`) and its transit window stay disabled for a
-  character; a special force's Move is not ported; the drag of a character
-  (Fleet window Personnel tab, system windows) is not ported.
+  character; a special force's Move is not ported.
+- The Fleet window's Personnel tab lists each character as an object
+  (2026-10-20): a right click opens its menu (manual p. 56: Command), and
+  a drag out of the list issues the same Move against the window under
+  the release (`FleetWindowAction::DragCharacter`, `FUN_00422ce0`). port:
+  the drag of a character out of a Defenses or system window (`0x214`,
+  whose per-object command calls the character's slot `+0x200`) is not
+  ported.
 
 ### Manual cross-check (2026-10-20)
 
@@ -487,8 +493,8 @@ Manual p. 110-111, "Returning to Base", and p. 46:
 | Move (right-click) changes the base | Unresolved: the `+0x70` writer is not read | Missing |
 | Move from the right-click menu | Confirmed: `0x201` -> `0x241` above | Present |
 | Confirmed Move shows the transit time and asks to confirm | Confirmed for fleets (`FUN_00487cc0`) | Disabled (port:) |
-| Drag a character onto a system or fleet (p. 46, p. 111) | Confirmed: the drag issues `0x201`/`0x214` (above) | Missing |
-| Put a character aboard a fleet, then give it a Command rank (manual p. 56: "drag Jerjerrod onto the fleet") | Confirmed: a Move's fleet target is its container | Present by the menu's Move (2026-10-20); the drag is Missing |
+| Drag a character onto a system or fleet (p. 46, p. 111) | Confirmed: the drag issues `0x201`/`0x214` (above) | Partial: from the Fleet window's Personnel tab; not from a Defenses or system window |
+| Put a character aboard a fleet, then give it a Command rank (manual p. 56: "drag Jerjerrod onto the fleet", "right-click on each character icon and select Command") | Confirmed: a Move's fleet target is its container | Present: the menu's Move or a Fleet window drag, and the Personnel tab's right-click menu |
 
 ## Order 0x214 (Destination)
 

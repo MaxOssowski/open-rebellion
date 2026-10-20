@@ -252,6 +252,9 @@ enum ItemObject {
     },
     /// A squadron, by its entry's index in the fleet's `fighters`.
     Fighter { fleet: FleetKey, index: usize },
+    /// A Personnel tab character (manual p. 111: drag a character onto a
+    /// system or fleet; p. 56: right-click it for Command).
+    Character(rebellion_core::ids::CharacterKey),
 }
 
 impl ItemObject {
@@ -260,6 +263,7 @@ impl ItemObject {
             Self::Fighter { fleet, index } => MenuObject::Fighter { fleet, index },
             Self::Fleet(fleet) => MenuObject::Fleet(fleet),
             Self::Regiment(troop) => MenuObject::Troop(troop),
+            Self::Character(character) => MenuObject::Character(character),
             Self::Ship {
                 fleet,
                 index,
@@ -340,6 +344,16 @@ impl FleetWindowState {
             }
         }
         window.selected = Some(entry);
+        window.selected_item = None;
+        true
+    }
+
+    /// Show `tab` in `system`'s open window, as a click on its button does.
+    pub fn show_tab(&mut self, system: SystemKey, tab: FleetWindowTab) -> bool {
+        let Some(window) = self.window_mut(system) else {
+            return false;
+        };
+        window.tab = tab;
         window.selected_item = None;
         true
     }
@@ -655,6 +669,9 @@ impl FleetWindowState {
             },
             ItemObject::Fleet(fleet) => FleetWindowAction::DragFleet { fleet, point },
             ItemObject::Regiment(troop) => FleetWindowAction::DragRegiment { troop, point },
+            ItemObject::Character(character) => {
+                FleetWindowAction::DragCharacter { character, point }
+            }
             ItemObject::Ship {
                 fleet,
                 index,
@@ -740,6 +757,12 @@ pub enum FleetWindowAction {
     /// view hit-tests the screen point and issues `0x201` (`FUN_00422ce0`).
     DragRegiment {
         troop: TroopKey,
+        point: egui::Pos2,
+    },
+    /// A Personnel tab character dragged out of its list: the same `0x201`,
+    /// which expands to the Move mission order `0x241` (`FUN_0053c810`).
+    DragCharacter {
+        character: rebellion_core::ids::CharacterKey,
         point: egui::Pos2,
     },
     /// A Fighters tab squadron dragged out of its list: the same `0x201`
@@ -1107,6 +1130,7 @@ fn right_target(
                     class: entry.class,
                 })
             }),
+        Some(ItemObject::Character(key)) => Some(ItemTarget::Character(key)),
         Some(ItemObject::Fleet(_)) | None => None,
     })
 }
@@ -1184,13 +1208,13 @@ fn right_items(
         FleetWindowTab::Personnel => value
             .characters
             .iter()
-            .filter_map(|&character| world.characters.get(character))
-            .map(|character| RightItem {
+            .filter_map(|&key| Some((key, world.characters.get(key)?)))
+            .map(|(key, character)| RightItem {
                 mini: character_mini_resource_id(character.dat_id, character.is_major),
                 kind: MiniObject::Character,
                 label: character.name.clone(),
                 no_hyperdrive: false,
-                object: None,
+                object: Some(ItemObject::Character(key)),
             })
             .collect(),
     }
@@ -3105,6 +3129,59 @@ pub(crate) mod tests {
 
         assert!(held);
         assert_eq!(regiment_drops(&actions), [(troop, release)]);
+    }
+
+    #[test]
+    fn show_tab_switches_an_open_window_and_refuses_a_closed_one() {
+        // Our helper: the tab a click on its button would show.
+        let (world, _, system, fleet, _) = fleet_with_regiment();
+        let mut state = FleetWindowState::default();
+        let layout = layout();
+        state.open(&world, system, (5, 5), CockpitFaction::Alliance, layout);
+        state.select(system, FleetWindowEntry::Fleet(fleet));
+
+        assert!(state.show_tab(system, FleetWindowTab::Personnel));
+        assert_eq!(
+            state.selection(system),
+            Some((Some(FleetWindowEntry::Fleet(fleet)), FleetWindowTab::Personnel))
+        );
+        assert!(!state.show_tab(SystemKey::default(), FleetWindowTab::Troops));
+    }
+
+    #[test]
+    fn a_character_dragged_out_of_the_personnel_tab_drops_where_the_button_comes_up() {
+        // Manual p. 111: a character is moved by dragging its icon onto a
+        // system or fleet; FUN_00422ce0 issues 0x201, which expands to the
+        // Move mission order 0x241 (FUN_0053c810).
+        let (mut world, transport, system, fleet, _) = fleet_with_regiment();
+        let character = world.characters.insert(rebellion_core::world::Character {
+            name: "Admiral".into(),
+            is_alliance: true,
+            current_fleet: Some(fleet),
+            current_system: Some(system),
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(character);
+
+        let (actions, release, held) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::Personnel,
+            FIRST_RIGHT_ITEM,
+            (40.0, 200.0),
+        );
+
+        assert!(held);
+        let drops: Vec<_> = actions
+            .iter()
+            .filter_map(|action| match *action {
+                FleetWindowAction::DragCharacter { character, point } => Some((character, point)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(drops, [(character, release)]);
     }
 
     #[test]

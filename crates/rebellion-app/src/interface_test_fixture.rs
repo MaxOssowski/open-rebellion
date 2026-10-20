@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 71;
+const SCENARIO_COUNT: u8 = 72;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -174,6 +174,10 @@ pub enum Scenario {
     /// enemy secondary system, selected in its Fleet window: a character's
     /// Move aboard the fleet (`0x241` with the fleet as its target).
     CharacterBoard = 70,
+    /// As `CharacterBoard` with the agent aboard the fleet, shown on the
+    /// Fleet window's Personnel tab: the drag of a character (manual
+    /// p. 111) to the primary system's Defenses window.
+    CharacterAboard = 71,
 }
 
 impl Scenario {
@@ -250,6 +254,7 @@ impl Scenario {
             68 => Self::CharacterCommand,
             69 => Self::CharacterMove,
             70 => Self::CharacterBoard,
+            71 => Self::CharacterAboard,
             _ => return None,
         })
     }
@@ -280,6 +285,7 @@ impl Scenario {
             || self == Self::CharacterCommand
             || self == Self::CharacterMove
             || self == Self::CharacterBoard
+            || self == Self::CharacterAboard
             || self == Self::ReconTargeting
             || self == Self::ResearchTargeting
             || self.targets_an_object()
@@ -447,7 +453,10 @@ pub fn apply(
         .find(|(_, c)| {
             !matches!(
                 request.scenario,
-                Scenario::CharacterCommand | Scenario::CharacterMove | Scenario::CharacterBoard
+                Scenario::CharacterCommand
+                    | Scenario::CharacterMove
+                    | Scenario::CharacterBoard
+                    | Scenario::CharacterAboard
             ) || c.can_be_admiral
         })
         .map(|(key, _)| key);
@@ -469,6 +478,7 @@ pub fn apply(
                 | Scenario::CharacterCommand
                 | Scenario::CharacterMove
                 | Scenario::CharacterBoard
+                | Scenario::CharacterAboard
         ) || request.scenario.targets_an_object()
         {
             // MissionState::mission_order_enabled: a free recruited member.
@@ -593,7 +603,10 @@ pub fn apply(
     if request.scenario == Scenario::RescueTargeting {
         place_prisoner(request, world, defenses, cockpit, primary, secondary);
     }
-    if request.scenario == Scenario::CharacterBoard {
+    if matches!(
+        request.scenario,
+        Scenario::CharacterBoard | Scenario::CharacterAboard
+    ) {
         place_boarding_fleet(request, world, defenses, fleets, cockpit, primary, secondary);
     }
     if matches!(
@@ -886,9 +899,27 @@ fn place_boarding_fleet(
         has_death_star: false,
     });
     world.systems[secondary].fleets = vec![fleet];
+    // CharacterAboard: the agent (the first who may be an admiral) is
+    // aboard, on the Personnel tab.
+    let aboard = (request.scenario == Scenario::CharacterAboard)
+        .then(|| {
+            world
+                .characters
+                .iter()
+                .find(|(_, c)| c.can_be_admiral)
+                .map(|(key, _)| key)
+        })
+        .flatten();
+    if let Some(agent) = aboard {
+        world.characters[agent].move_to(Some(fleet), Some(secondary));
+        world.fleets[fleet].characters.push(agent);
+    }
     let left = (galaxy.x as i16 + 5, galaxy.y as i16 + 5);
     fleets.open(world, secondary, left, request.faction, layout);
     fleets.select(secondary, FleetWindowEntry::Fleet(fleet));
+    if aboard.is_some() {
+        fleets.show_tab(secondary, FleetWindowTab::Personnel);
+    }
 }
 
 /// The Rescue scenario sees into the enemy prison
@@ -1720,6 +1751,8 @@ fn object_menu_report<'a>(
         Scenario::FleetTargeting | Scenario::CharacterBoard => {
             fleets.entry_screen_rect(layout, key, 0)
         }
+        // The agent's Personnel item, the drag's source.
+        Scenario::CharacterAboard => fleets.item_screen_rect(layout, key, 0),
         _ => None,
     };
     let planet = match prison_cell.or_else(|| sectors.planet_screen_rect(world, layout, key)) {
@@ -5427,7 +5460,8 @@ mod tests {
                 Scenario::FleetAssault,
                 Scenario::CharacterCommand,
                 Scenario::CharacterMove,
-                Scenario::CharacterBoard
+                Scenario::CharacterBoard,
+                Scenario::CharacterAboard
             ]
         );
     }

@@ -3130,6 +3130,13 @@ cross-runtime proof remain open
   fleet moves. Browser acceptance on fixture 70, both sides. Golden
   regenerated: initial `v1:e4659ba5e1a2e054`, final `v1:21001b04a1c4b3b9`
   (`evidence/2026-10-20-character-board/`).
+- 2026-10-20: a character in the Fleet window. The Personnel tab lists each
+  character as an object: a right click opens its menu (manual p. 56,
+  Command) and a drag out of the list issues the Move `0x201` -> `0x241`
+  against the window under the release (`FUN_006083c0`, `FUN_00422ce0`;
+  manual p. 111). Browser acceptance on fixture 71, both sides
+  (`evidence/2026-10-20-character-drag/`). Open: the drag out of a Defenses
+  or system window (`0x214`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

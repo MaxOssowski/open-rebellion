@@ -1,0 +1,2 @@
+thread 'fleet_window::tests::a_character_dragged_out_of_the_personnel_tab_drops_where_the_button_comes_up' (1139966) panicked at crates/rebellion-render/src/fleet_window.rs:3159:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 785 filtered out; finished in 0.02s
