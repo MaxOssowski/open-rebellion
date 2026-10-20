@@ -196,7 +196,9 @@ impl ResearchState {
     }
 
     /// True if `class_research_order <= current level` — i.e. the class is
-    /// buildable by this faction.
+    /// buildable by this faction: `FUN_00567880` (from `FUN_0052e580`)
+    /// lists a class whose order is below or equal to the side's level and
+    /// skips one above it. Every level starts at 0 (`FUN_00533300`).
     #[must_use]
     pub fn is_unlocked(
         &self,

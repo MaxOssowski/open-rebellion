@@ -309,7 +309,24 @@ order). Times come from the manager:
 **List** (`FUN_0052e580`): the classes of the manager's production family
 (`0x28` ships, `0x29` regiments and special forces, `0x2a` facilities) that
 its side builds and has researched, the side's level at `+0x9c`, `+0xa0`,
-`+0xa4`. `FUN_00437f80` reopens on the class last confirmed by the same
+`+0xa4`.
+
+The research gate (read 2026-10-20). `FUN_0052e580` calls
+`FUN_0051cb20(side, family, level, 1, 1, 0, ctx, &max)`, which goes to
+`FUN_00567880`. For each class record of the family whose side flag is
+set (`+0x40` Alliance, `+0x44` Empire), it keeps the largest research
+order (`+0x50`) in `max`. It lists the class by the order's comparison
+with the level:
+- below: the 4th argument (1), listed;
+- equal: the 5th (1), listed;
+- above: the 6th (0), not listed.
+
+So a class is buildable when its order is at most the side's level. The
+side's constructor (`FUN_00533300`) zeroes `+0x9c`, `+0xa0` and `+0xa4`
+(`xor edi, edi` at `0x533327`, stored at `0x5333cf..0x5333db`), and only
+the level-up (`FUN_0052f280`) raises them. So every tree starts at level
+0. The port's `ResearchState::is_unlocked` (`level >= order`) and its
+zero start match. `FUN_00437f80` reopens on the class last confirmed by the same
 kind of manager (`DAT_006b289c` facilities, `DAT_006b28a0` troops,
 `DAT_006b28a4` ships), else the first.
 

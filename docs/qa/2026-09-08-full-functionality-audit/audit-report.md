@@ -927,7 +927,7 @@ cross-runtime proof remain open
 ### F-018: Research never limits which ships can be built
 
 - Severity: P1
-- Status: partially remediated; troop and facility trees remain
+- Status: remediated (2026-10-20: the gate's comparison and start traced)
 - Evidence: `ResearchSystem::ship_class_is_available` and
   `fighter_class_is_available` (`crates/rebellion-core/src/research.rs`) had
   no callers, so manufacturing offered every class regardless of research level.
@@ -956,6 +956,14 @@ cross-runtime proof remain open
   validates that each object in families `0x2d..0x2e` and `0x28..0x2b` sits in
   its side's list exactly when its `+0x58` is 1. No recovered code gates
   research.
+- Source (2026-10-20): the `<=` comparison and the level-0 start now
+  rest on the original, not the prototype. `FUN_0052e580` ->
+  `FUN_0051cb20` -> `FUN_00567880` lists a class of the side whose
+  research order (`+0x50`) is below or equal to the side's level, and
+  skips one above it. The side's constructor `FUN_00533300` zeroes the
+  three levels (`+0x9c`, `+0xa0`, `+0xa4`), and only `FUN_0052f280`
+  raises them. The port's `is_unlocked` and zero start already match;
+  only citations change (`manufacturing-build-selection.md`).
 - Acceptance: build lists and manufacturing orders respect the recovered
   research-order gate for both factions.
 
