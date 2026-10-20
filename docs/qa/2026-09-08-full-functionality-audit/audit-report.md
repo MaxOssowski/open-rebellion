@@ -1541,7 +1541,7 @@ cross-runtime proof remain open
 ### F-023: The economy applies the blockade troop-withdraw formula as a KDY production modifier
 
 - Severity: P2
-- Status: open
+- Status: remediated
 - Evidence: `economy.rs` step 4 computes
   `clamp(100 - capships * GNPRTB[7684] - fighters * GNPRTB[7685])` as a
   production modifier, citing `FUN_0050a480`, a community-dump address inside
@@ -1549,6 +1549,13 @@ cross-runtime proof remain open
   `FUN_0050b310` + `FUN_0055a020`, the blockade withdraw percent ported under
   F-021. No recovered code applies it to production; the value feeds only
   telemetry.
+- Fix (2026-10-20, save v99): the modifier, its GNPRTB 7684/7685
+  constants and its tests are removed. The withdraw formula stays where it
+  belongs (`blockade.rs`, F-021). The campaign snapshot's
+  `production_modifier` now reports the real `+0x70` (`FUN_0050b2c0`).
+  The 24 campaigns are identical apart from that telemetry value. Golden
+  regenerated for save v99 (initial `v1:fe91e55dd0f9a2af`, final
+  `v1:b51db94b116e8495`) (`evidence/2026-10-20-kdy-modifier-removed/`).
 - Acceptance: the modifier is dropped or re-sourced, with any golden change
   named.
 
@@ -1740,7 +1747,7 @@ cross-runtime proof remain open
 ### F-030: Manufactured objects arrive without an en-route phase
 
 - Severity: P3
-- Status: remediated, browser pending
+- Status: remediated; browser verified (2026-10-20)
 - Evidence: the integrator's manufacturing completion inserts a finished
   facility, regiment, or ship straight into its system or fleet. The original
   keeps an en-route state (`+0x50` bit 4, `GameObjEnrouteNotif` `FUN_004fc240`;
@@ -1767,6 +1774,13 @@ cross-runtime proof remain open
   system's planet, not a fleet there (`FUN_0052a140`, `FUN_0052a380`; manual
   p. 114); the player or the AI moves it onto a carrier with Move `0x201`
   (`evidence/2026-10-15-planet-squadrons/`).
+- Browser (2026-10-20): the fixture scenario `ProductionDelivery`
+  (code 75) and `fleet-window.mjs` `delivery` show, for both sides, a
+  capital ship built at Akrit'tar for F'tral. It departs ("Construction
+  complete at Akrit'tar, en route to F'tral"), is at neither end while en
+  route, and arrives ("Unit arrived at F'tral", one ship there). 0 errors;
+  the Fleet window suite passes 52 cases
+  (`evidence/2026-10-20-delivery-browser/`).
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 

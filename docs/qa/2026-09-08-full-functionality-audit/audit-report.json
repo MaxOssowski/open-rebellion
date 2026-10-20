@@ -1811,12 +1811,13 @@
     {
       "id": "F-023",
       "severity": "P2",
-      "status": "open",
+      "status": "remediated",
       "title": "The economy applies the blockade troop-withdraw formula as a KDY production modifier",
       "evidence": [
         "crates/rebellion-core/src/economy.rs step 4 computes clamp(100 - capships * GNPRTB[7684] - fighters * GNPRTB[7685]) as a production modifier and cited FUN_0050a480, a community-dump address that lies inside a CALL operand in our binary",
         "The community function is our FUN_0050b310 + FUN_0055a020: the system withdraw percent for regiments leaving a blockaded system without a KDY-150 (ghidra/notes/blockade-troop-withdrawal.md), ported in BlockadeSystem::withdraw_percent under F-021",
-        "No recovered code applies the value to production; the modifier currently feeds only telemetry"
+        "No recovered code applies the value to production; the modifier currently feeds only telemetry",
+        "2026-10-20 fix (save v99): the modifier, its GNPRTB 7684/7685 constants and its tests are removed. The withdraw formula stays where it belongs (blockade.rs, F-021). The campaign snapshot's production_modifier now reports the real +0x70 (FUN_0050b2c0). The 24 campaigns are identical apart from that telemetry value. Golden regenerated for save v99 (initial v1:fe91e55dd0f9a2af, final v1:b51db94b116e8495) (evidence/2026-10-20-kdy-modifier-removed/)."
       ],
       "acceptance": "economy.rs drops or re-sources the modifier, with the seed-42 golden regenerated only for that named cause."
     },
@@ -1908,7 +1909,7 @@
     {
       "id": "F-030",
       "severity": "P3",
-      "status": "remediated_browser_pending",
+      "status": "remediated_browser_verified",
       "title": "Manufactured objects arrive without an en-route phase",
       "evidence": [
         "The integrator's manufacturing completion inserts a finished facility, regiment, or ship straight into its system or fleet",
@@ -1917,7 +1918,8 @@
         "2026-09-28 remediation: a queue item may name a destination; on completion it departs (FUN_0052bee0) and arrives after the FUN_0055d8c0 transit at its own speed (capital ship FUN_00500820, fighter FIGHTSD hyperdrive FUN_00502f80, others GNPRTB 1). An object whose destination is destroyed is lost on arrival (0x303, FUN_004fc080). Save v16 stores destinations and DeliveryState (delivery.rs, ghidra/notes/build-delivery.md)",
         "hyp: the port holds a travelling object outside the world and places it on arrival, so every walk skips it; the original keeps it in the destination container, marked en route",
         "port: the production panel picks the destination from a list of held systems; the original order path is unrecovered, and AI builds stay at their facility",
-        "2026-10-15: a completed or delivered squadron joins its destination system's planet, not a fleet there (FUN_0052a140, FUN_0052a380; manual p. 114); the player or the AI moves it onto a carrier with Move 0x201 (evidence/2026-10-15-planet-squadrons/)"
+        "2026-10-15: a completed or delivered squadron joins its destination system's planet, not a fleet there (FUN_0052a140, FUN_0052a380; manual p. 114); the player or the AI moves it onto a carrier with Move 0x201 (evidence/2026-10-15-planet-squadrons/)",
+        "2026-10-20 browser: the fixture scenario ProductionDelivery (code 75) and fleet-window.mjs delivery show, for both sides, a capital ship built at Akrit'tar for F'tral. It departs (\"Construction complete at Akrit'tar, en route to F'tral\"), is at neither end while en route, and arrives (\"Unit arrived at F'tral\", one ship there). 0 errors; the Fleet window suite passes 52 cases (evidence/2026-10-20-delivery-browser/)."
       ],
       "acceptance": "Completed objects travel en route under recovered rules, the disaster and incident skip them, and a test fails without the phase."
     },

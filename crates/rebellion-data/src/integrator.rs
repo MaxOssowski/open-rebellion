@@ -497,7 +497,7 @@ impl PerceptionIntegrator {
                 systems_map.insert(
                     sys.name.clone(),
                     serde_json::json!({
-                        "production_modifier": econ.production_modifier,
+                        "production_modifier": rebellion_core::economy::production_modifier_at(economy, key),
                         "troop_surplus": econ.summary.troop_surplus,
                         "has_shipyard": econ.summary.has_shipyard,
                         "fleet_posture": format!("{:?}", econ.summary.fleet_posture),

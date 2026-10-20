@@ -65,8 +65,6 @@ const FULL_PRODUCTION_MODIFIER: i32 = 100;
 // Phase 3b: new constants from source tree cross-reference
 const GNPRTB_EMPIRE_TROOP_MULT: u16 = 7680; // =2: Empire regiments doubled, garrison halved near a Death Star (+0x88 bit 11)
 const GNPRTB_UPRISING_GARRISON_MULT: u16 = 7682; // =2: garrison doubles during uprising
-const GNPRTB_KDY_CAPSHIP_PENALTY: u16 = 7684; // =5: KDY production penalty per capital ship
-const GNPRTB_KDY_FIGHTER_PENALTY: u16 = 7685; // =2: KDY production penalty per fighter
 /// GNPRTB 7760 (60, `DAT_006bb4c0`): the support a side needs to hold a
 /// system without regiments (`FUN_0055a080`).
 const GNPRTB_SUPPORT_CONTROL_THRESHOLD: u16 = 7760;
@@ -194,8 +192,6 @@ pub struct SystemEconomy {
     pub collection_rate: f32,
     /// Number of troops required to prevent uprising.
     pub garrison_requirement: u32,
-    /// Production speed modifier from fleet/KDY presence (0-100).
-    pub production_modifier: i8,
     /// Current energy output (sum of production facility outputs, capped at system capacity).
     /// `FUN_0050ad60`: if `energy_allocated` > `System.total_energy`, cap it.
     pub energy_allocated: u32,
@@ -226,7 +222,6 @@ impl Default for SystemEconomy {
             smuggling_percent: 0,
             collection_rate: 1.0,
             garrison_requirement: 0,
-            production_modifier: 0,
             energy_allocated: 0,
             raw_material_allocated: 0,
             energy_overcapped: false,
@@ -451,20 +446,6 @@ impl EconomySystem {
                 difficulty,
             );
 
-            // 4. Blockade withdraw percent (FUN_0050b310 + FUN_0055a020).
-            // Original formula: 100 unless the system is blockaded (+0x88 bit5)
-            // with no KDY-150, else max(0, 100 - ships*GNPRTB[7684] - fighters*GNPRTB[7685]).
-            // Our production modifier use has no recovered source (audit finding F-023).
-            let capship_penalty = gnprtb.value(GNPRTB_KDY_CAPSHIP_PENALTY, difficulty);
-            let fighter_penalty = gnprtb.value(GNPRTB_KDY_FIGHTER_PENALTY, difficulty);
-            let total_capships =
-                presence.alliance_capships.cast_signed() + presence.empire_capships.cast_signed();
-            let total_fighters =
-                presence.alliance_fighters.cast_signed() + presence.empire_fighters.cast_signed();
-            let new_prod_mod =
-                (100 - total_capships * capship_penalty - total_fighters * fighter_penalty)
-                    .clamp(0, 100) as i8;
-
             // 5. The holder (FUN_0050b610): the regiments' side, else the
             // support side.
             let resolved_control = resolve_system_control(
@@ -486,7 +467,6 @@ impl EconomySystem {
             let old_garrison = eco.garrison_requirement;
             eco.collection_rate = new_rate;
             eco.garrison_requirement = new_garrison;
-            eco.production_modifier = new_prod_mod;
 
             // 6. Troop/fleet summary propagation (FUN_0050b500 through FUN_0050b8e0).
             eco.summary = compute_system_summary(world, sys, &presence, eco.garrison_requirement);
@@ -1752,142 +1732,7 @@ mod tests {
     // Phase 3b: Resource capacity enforcement tests
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn kdy_production_modifier_reduces_with_ships() {
-        let mut world = GameWorld {
-            gnprtb: stock_gnprtb(),
-            ..Default::default()
-        };
-        let sector_key = world.sectors.insert(crate::world::Sector {
-            dat_id: DatId(0),
-            name: "S".into(),
-            group: crate::dat::SectorGroup::Core,
-            x: 0,
-            y: 0,
-            systems: vec![],
-        });
-        // System with fleet presence (capships reduce production)
-        let fleet_key = world.fleets.insert(crate::world::Fleet {
-            location: crate::ids::SystemKey::default(),
-            capital_ships: crate::world::ShipInstance::make(
-                crate::ids::CapitalShipKey::default(),
-                100,
-                true,
-                3,
-            ),
-            fighters: vec![crate::world::FighterEntry {
-                class: crate::ids::FighterKey::default(),
-                count: 4,
-            }],
-            characters: vec![],
-            is_alliance: true,
-            has_death_star: false,
-        });
-        let sys_key = world.systems.insert(crate::world::System {
-            dat_id: DatId(0),
-            name: "KDY".into(),
-            sector: sector_key,
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.7,
-            popularity_empire: 0.3,
-            is_populated: true,
-            total_energy: 10,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![fleet_key],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
-        });
 
-        let mut state = EconomyState::default();
-        EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
-
-        let eco = state.per_system.get(&sys_key).unwrap();
-        // 3 capships * 5 (capship penalty) + 4 fighters * 2 (fighter penalty) = 15 + 8 = 23
-        // production_modifier = max(100 - 23, 0) = 77
-        assert_eq!(
-            eco.production_modifier, 77,
-            "production_modifier should be 100 - 3*5 - 4*2 = 77, got {}",
-            eco.production_modifier
-        );
-    }
-
-    #[test]
-    fn kdy_production_modifier_floors_at_zero() {
-        let mut world = GameWorld {
-            gnprtb: stock_gnprtb(),
-            ..Default::default()
-        };
-        let sector_key = world.sectors.insert(crate::world::Sector {
-            dat_id: DatId(0),
-            name: "S".into(),
-            group: crate::dat::SectorGroup::Core,
-            x: 0,
-            y: 0,
-            systems: vec![],
-        });
-        // System with massive fleet presence
-        let fleet_key = world.fleets.insert(crate::world::Fleet {
-            location: crate::ids::SystemKey::default(),
-            capital_ships: crate::world::ShipInstance::make(
-                crate::ids::CapitalShipKey::default(),
-                100,
-                true,
-                10,
-            ),
-            fighters: vec![crate::world::FighterEntry {
-                class: crate::ids::FighterKey::default(),
-                count: 30,
-            }],
-            characters: vec![],
-            is_alliance: true,
-            has_death_star: false,
-        });
-        let sys_key = world.systems.insert(crate::world::System {
-            dat_id: DatId(0),
-            name: "Overcrowded".into(),
-            sector: sector_key,
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.7,
-            popularity_empire: 0.3,
-            is_populated: true,
-            total_energy: 10,
-            raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![fleet_key],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
-        });
-
-        let mut state = EconomyState::default();
-        EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
-
-        let eco = state.per_system.get(&sys_key).unwrap();
-        // 10 capships * 5 + 30 fighters * 2 = 50 + 60 = 110 → max(100 - 110, 0) = 0
-        assert_eq!(
-            eco.production_modifier, 0,
-            "production modifier should floor at 0, got {}",
-            eco.production_modifier
-        );
-    }
 
     #[test]
     fn energy_overcap_emits_event() {
