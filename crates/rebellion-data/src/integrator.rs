@@ -544,6 +544,8 @@ impl PerceptionIntegrator {
                         }),
                     );
                 }
+                // Read only by the app's Near Uprising message (0x148).
+                EconomyEvent::TroopSurplusChanged { .. } => {}
                 EconomyEvent::CollectionRateChanged { system, new_rate } => {
                     self.emit(
                         SYS_ECONOMY,

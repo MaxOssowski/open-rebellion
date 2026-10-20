@@ -275,6 +275,14 @@ pub enum EconomyEvent {
         previous: i32,
         percent: i32,
     },
+    /// The system's troop surplus changed (`FUN_0050a230`, which notifies
+    /// only on a change), from `previous` to `surplus`; Near Uprising
+    /// (`0x148`, `FUN_00498cb0`) reads both.
+    TroopSurplusChanged {
+        system: SystemKey,
+        previous: i32,
+        surplus: i32,
+    },
     /// Collection rate recalculated.
     CollectionRateChanged { system: SystemKey, new_rate: f32 },
     /// Garrison requirement recalculated.
@@ -512,7 +520,15 @@ impl EconomySystem {
             eco.garrison_requirement = new_garrison;
 
             // 6. Troop/fleet summary propagation (FUN_0050b500 through FUN_0050b8e0).
+            let previous_surplus = eco.summary.troop_surplus;
             eco.summary = compute_system_summary(world, sys, &presence, eco.garrison_requirement);
+            if eco.summary.troop_surplus != previous_surplus {
+                events.push(EconomyEvent::TroopSurplusChanged {
+                    system: sys_key,
+                    previous: previous_surplus,
+                    surplus: eco.summary.troop_surplus,
+                });
+            }
 
             // 7. Uprising visibility (FUN_0050bb00). The incidents are
             // timer events: the uprising, disaster and resource incidents
@@ -2250,6 +2266,41 @@ mod tests {
         assert_eq!(surplus(&world), 0);
         world.systems[sys_key].ground_units.clear();
         assert_eq!(surplus(&world), 0);
+    }
+
+    #[test]
+    fn a_troop_surplus_change_is_reported_with_the_old_value() {
+        // FUN_0050a230 stores TroopRegSurplus and, only on a change, runs the
+        // views' sync, whose slot +0x28c (FUN_00511fd0) posts 0x148 with
+        // the old and the new value.
+        let (mut world, sys) = smuggling_world(false);
+        let mut state = EconomyState::default();
+        let changes = |events: Vec<EconomyEvent>| {
+            events
+                .into_iter()
+                .filter_map(|event| match event {
+                    EconomyEvent::TroopSurplusChanged {
+                        system,
+                        previous,
+                        surplus,
+                    } => Some((system, previous, surplus)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let first = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        let surplus = state.per_system[&sys].summary.troop_surplus;
+        assert_eq!(changes(first), vec![(sys, 0, surplus)]);
+        let same = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 2 }], 2);
+        assert_eq!(changes(same), vec![]);
+        let extra = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId(0x1400_0100),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[sys].ground_units.push(extra);
+        let more = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 3 }], 2);
+        assert_eq!(changes(more), vec![(sys, surplus, surplus + 1)]);
     }
 
     #[test]

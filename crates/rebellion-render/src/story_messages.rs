@@ -788,6 +788,52 @@ pub fn disaster_texts(
     Some((fill_message_text(texts.get(&0x7190)?, &named), text))
 }
 
+/// Near Uprising (`FUN_00498cb0`): notification `0x148`, the system's
+/// troop surplus going from `previous` to `surplus` (`FUN_00511fd0`). Only
+/// the holder's side hears it, and only for a garrisoned system (`+0x88`
+/// bit 8, `FUN_0050ba90`) not in revolt (bit 2) whose surplus has just
+/// fallen to 0: TEXTSTRA `0x7070` / `0x7071` ("Unrest has pushed {1:1}
+/// close to uprising."). The picture is `0x452` / `0x453` by the holder.
+#[must_use]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Mirrors the class's inputs: the system's side, bits and the two values."
+)]
+pub fn near_uprising_message(
+    system: &str,
+    holder: Option<rebellion_core::dat::Faction>,
+    viewer_is_alliance: bool,
+    garrisoned: bool,
+    in_uprising: bool,
+    previous: i32,
+    surplus: i32,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    use rebellion_core::dat::Faction;
+    let own = match holder? {
+        Faction::Alliance => viewer_is_alliance,
+        Faction::Empire => !viewer_is_alliance,
+        Faction::Neutral => false,
+    };
+    if !own || !garrisoned || in_uprising || surplus != 0 || previous == 0 {
+        return None;
+    }
+    let parameters = [MessageParameter::Named { name: system }];
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&0x7071)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(
+            crate::message_log::MessageRail::PopularSupport,
+            RailAudience::side(viewer_is_alliance),
+        )
+        .with_title(fill_message_text(texts.get(&0x7070)?, &parameters)),
+    )
+}
+
 /// Jabba Delivers Prisoners (`FUN_0048b6e0`): notification `0x231` with
 /// its argument set, as the Pickup's hit sets `PickupInProgress`. TEXTSTRA
 /// `0x7200` / `0x7201` take no arguments; the background is `0x42a`, or
@@ -1155,6 +1201,52 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00498cb0 (notification 0x148): TEXTSTRA 0x7070 / 0x7071 as
+    // shipped; the class reads the new surplus as its first value and the
+    // old as its second, as System Joins (FUN_00499760) reads the new side.
+    #[test]
+    fn near_uprising_warns_the_holder_when_a_garrisoned_system_s_surplus_falls_to_zero() {
+        use rebellion_core::dat::Faction;
+        let texts: HashMap<u16, String> = [
+            (0x7070, "{1:1} Near Uprising"),
+            (0x7071, "Unrest has pushed {1:1} close to uprising."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let say = |holder, viewer_is_alliance, garrisoned, in_uprising, previous, surplus| {
+            near_uprising_message(
+                "Ord Mantell",
+                holder,
+                viewer_is_alliance,
+                garrisoned,
+                in_uprising,
+                previous,
+                surplus,
+                3,
+                &texts,
+            )
+            .map(|m| (m.title.unwrap_or_default(), m.text))
+        };
+        let warned = Some((
+            "Ord Mantell Near Uprising".to_string(),
+            "Unrest has pushed Ord Mantell close to uprising.".to_string(),
+        ));
+        assert_eq!(say(Some(Faction::Alliance), true, true, false, 2, 0), warned);
+        assert_eq!(say(Some(Faction::Empire), false, true, false, -1, 0), warned);
+        // Only the holder hears it.
+        assert_eq!(say(Some(Faction::Alliance), false, true, false, 2, 0), None);
+        assert_eq!(say(Some(Faction::Empire), true, true, false, 2, 0), None);
+        assert_eq!(say(Some(Faction::Neutral), true, true, false, 2, 0), None);
+        assert_eq!(say(None, true, true, false, 2, 0), None);
+        // An ungarrisoned system, a revolt, a surplus that is not 0, or one
+        // that was already 0 say nothing.
+        assert_eq!(say(Some(Faction::Alliance), true, false, false, 2, 0), None);
+        assert_eq!(say(Some(Faction::Alliance), true, true, true, 2, 0), None);
+        assert_eq!(say(Some(Faction::Alliance), true, true, false, 0, 1), None);
+        assert_eq!(say(Some(Faction::Alliance), true, true, false, 0, 0), None);
+    }
 
     // FUN_00499460 (notification 0x14b): TEXTSTRA 0x7030..0x7033 as
     // shipped; the body's {1:4} is the holder's adjective from FUN_0052d920

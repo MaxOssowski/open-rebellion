@@ -1667,6 +1667,17 @@ cross-runtime proof remain open
     nothing was lost.
   - Browser runs struck Bothawui and Akrit'tar with the original lines
     (`evidence/2026-10-21-uprising-disaster-texts/`).
+- Near Uprising (2026-10-21, `0x148`, `FUN_00498cb0`) is ported.
+  - `FUN_0050a230` notifies a troop surplus change through
+    `FUN_00511fd0`, with the old and the new value.
+  - The class warns the holder's side when a garrisoned system (`+0x88`
+    bit 8) that is not in revolt falls to a surplus of exactly 0
+    (TEXTSTRA `0x7070` / `0x7071`).
+  - `EconomyEvent::TroopSurplusChanged` carries both values. A class's
+    slot `+0x24` takes the new value first, as System Joins
+    (`FUN_00499760`) shows.
+  - The campaigns and the golden are unchanged
+    (`evidence/2026-10-21-near-uprising-message/`).
 - Acceptance: both incidents trigger and apply their recovered effects with
   failing-without tests, and a browser pass shows a revolt, an incident, and
   a disaster.

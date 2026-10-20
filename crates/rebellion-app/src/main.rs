@@ -1762,6 +1762,36 @@ async fn main() {
                             }
                         }
                     }
+                    // Notification 0x148, Near Uprising (FUN_00498cb0).
+                    EconomyEvent::TroopSurplusChanged {
+                        system,
+                        previous,
+                        surplus,
+                    } => {
+                        if let Some(sys) = world.systems.get(*system) {
+                            let holder = sys.control.faction();
+                            if let Some(message) =
+                                rebellion_render::story_messages::near_uprising_message(
+                                    &sys.name,
+                                    holder,
+                                    player_faction == MissionFaction::Alliance,
+                                    // +0x88 bit 8, Garrisoned (FUN_0050ba90).
+                                    !sys.ground_units.is_empty(),
+                                    uprising_state.is_uprising(*system),
+                                    *previous,
+                                    *surplus,
+                                    tick_events.last().map_or(0, |event| event.tick),
+                                    &message_texts,
+                                )
+                            {
+                                msg_log.push(
+                                    message.with_picture_if(
+                                        holder.and_then(pictures::near_uprising),
+                                    ),
+                                );
+                            }
+                        }
+                    }
                     // Knesset Shamash-Bet Dabora 2 notification events —
                     // surface them in the interactive message log.
                     _ => {} // Telemetry-only events (collection rate, garrison, incidents, support change tier)
