@@ -7478,14 +7478,37 @@ fn tactical_withdraw_confirmation_control_at(
 
 /// The mission control's Attack Death Star (`FUN_005ad930`): a selected
 /// fighter group and an enemy Death Star the fighters may attack
-/// (`FUN_005ba450`).
+/// (`FUN_005ba450`), no trench run under way (`FUN_005d0ae0`, the result
+/// object's `DAT_006bc978`), fewer Imperial than Alliance fighter groups on
+/// the field (the manager's list `+0x988`, class 1, side `+0x168`: 0 is the
+/// Alliance, as the voice event `0x84` shows), and none of the player's
+/// groups already on the order (`+0x64`/`+0x68` = 6). The manual (p. 151):
+/// "there are more Alliance than Imperial fighters currently launched.
+/// Only one fighter group at a time may attempt the Death Star mission."
 ///
-/// port: the source's further test, more launched fighters on one side than
-/// the other (`+0x168` counts), is not ported.
+/// port: the run is under way from state 5's timer to its result.
 fn attack_death_star_enabled(session: &BattleSession) -> bool {
+    let (alliance, empire) = session
+        .fighters
+        .iter()
+        .filter(|fighter| fighter.alive)
+        .fold((0_usize, 0_usize), |(alliance, empire), fighter| {
+            if fighter.identity.is_alliance {
+                (alliance + 1, empire)
+            } else {
+                (alliance, empire + 1)
+            }
+        });
     session.selected_fighter_group.is_some()
         && session.death_star.is_some_and(|death_star| {
             death_star.attackable() && death_star.is_attacker != session.player_is_attacker
+        })
+        && session.trench_run_remaining_ms.is_none()
+        && empire < alliance
+        && !session.fighters.iter().any(|fighter| {
+            fighter.alive
+                && fighter.is_attacker == session.player_is_attacker
+                && fighter.order == TacticalOrder::AttackDeathStar
         })
 }
 
@@ -16202,16 +16225,62 @@ mod tests {
 
         // The mission control (FUN_005ad930) needs a selected fighter group
         // and an enemy Death Star the fighters may attack.
+        // One Alliance group on the field (FUN_005ad930 counts them).
         let mut open = open;
+        open.fighters.push(test_fighter(1, true));
+        shielded.fighters.push(test_fighter(1, true));
         assert!(!attack_death_star_enabled(&open));
         open.selected_fighter_group = Some(0);
         assert!(attack_death_star_enabled(&open));
         shielded.selected_fighter_group = Some(0);
         assert!(!attack_death_star_enabled(&shielded));
         let mut own = BattleSession::new(&world, system, rebels, empire, false, 1, 1);
+        own.fighters.push(test_fighter(1, true));
         own.selected_fighter_group = Some(0);
         own.death_star.as_mut().unwrap().shielded = false;
         assert!(!attack_death_star_enabled(&own));
+    }
+
+    // Source: FUN_005ad930. The manual (p. 151): more Alliance than
+    // Imperial fighters launched, and one group at a time.
+    #[test]
+    fn attack_death_star_needs_more_alliance_fighters_and_no_run_under_way() {
+        let mut session = test_session(
+            Vec::new(),
+            vec![test_fighter(1, true), test_fighter(2, false)],
+            true,
+        );
+        session.selected_fighter_group = Some(0);
+        session.death_star = Some(TacticalDeathStar {
+            resource: DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition::ORIGIN,
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        // One each: not more Alliance than Imperial.
+        assert!(!attack_death_star_enabled(&session));
+        session.fighters.push(test_fighter(3, true));
+        assert!(attack_death_star_enabled(&session));
+        // A lost Alliance group no longer counts.
+        session.fighters[2].alive = false;
+        assert!(!attack_death_star_enabled(&session));
+        session.fighters[2].alive = true;
+        // A run under way.
+        session.trench_run_remaining_ms = Some(1_000.0);
+        assert!(!attack_death_star_enabled(&session));
+        session.trench_run_remaining_ms = None;
+        // One of the player's groups already on the order.
+        session.fighters[0].order = TacticalOrder::AttackDeathStar;
+        assert!(!attack_death_star_enabled(&session));
+        // An enemy group's order does not count.
+        session.fighters[0].order = TacticalOrder::None;
+        session.fighters[1].order = TacticalOrder::AttackDeathStar;
+        assert!(attack_death_star_enabled(&session));
     }
 
     // Source: FUN_005ba7f0 Death Star laser charge rate to 100.

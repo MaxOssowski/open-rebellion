@@ -899,6 +899,16 @@ cross-runtime proof remain open
   Fleet window suite passes 50 cases. F-017's acceptance is met; the
   tactical Attack Death Star's launched-fighter count (`FUN_005ad930`)
   stays a known gap (`evidence/2026-10-20-destroy-system-browser/`).
+- Attack Death Star count (2026-10-20): the gap is closed. `FUN_005ad930`
+  also requires no trench run under way (`FUN_005d0ae0`, `DAT_006bc978`),
+  fewer Imperial than Alliance fighter groups on the field (list `+0x988`,
+  class 1, side `+0x168`, 0 the Alliance), and none of the player's groups
+  already on order 6 (manual p. 151); `attack_death_star_enabled` now
+  checks all three. The tactical browser scenarios could not run: their
+  fixture wants SYSTEMSD index 100/101, which the default 100-system
+  galaxy (indices 120..289) does not load, so all 16 Death Star cases stop
+  at setup, independently of this change
+  (`evidence/2026-10-20-attack-death-star-count/`).
 
 ### F-018: Research never limits which ships can be built
 

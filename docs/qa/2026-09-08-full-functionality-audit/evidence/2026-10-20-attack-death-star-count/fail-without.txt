@@ -1,0 +1,2 @@
+thread 'tactical_view::tests::attack_death_star_needs_more_alliance_fighters_and_no_run_under_way' (2480905) panicked at crates/rebellion-render/src/tactical_view.rs:16260:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 792 filtered out; finished in 0.00s

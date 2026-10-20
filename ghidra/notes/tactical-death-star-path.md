@@ -131,10 +131,22 @@ window.
   destroys the Death Star).
 - `FUN_005ba450` is `FUN_005ba420` (operational) plus `+0x70 == 0`. The
   Attack Death Star checks call it: `FUN_005ad930` (the mission control),
-  `FUN_005afcc0` and `FUN_005d14d0` (the tactical AI). They also require
-  more launched fighters on one side than the other (`+0x168` counts,
-  manual: "more Alliance than Imperial fighters currently launched");
-  not ported.
+  `FUN_005afcc0` and `FUN_005d14d0` (the tactical AI).
+- `FUN_005ad930` also requires (read 2026-10-20, ported):
+  - no trench run under way: `FUN_005d0ae0` returns `DAT_006bc978`, set
+    by the result object's constructor `FUN_005d0820` and cleared by
+    `FUN_005d0950`;
+  - fewer Imperial than Alliance fighter groups on the field: over the
+    manager's object list `+0x988`, class 1 (slot `+0x20`, a fighter
+    group, `tactical-attack-targeting.md`), side `+0x168` (0 is the
+    Alliance: `FUN_005a2920` queues voice event `0x84` for it, `0x102`
+    otherwise);
+  - none of the player's groups (`*(manager + 8) + 0x70`) with order or
+    pending order 6 (`+0x68`, `+0x64`).
+  The manual (p. 151) agrees: "there are more Alliance than Imperial
+  fighters currently launched. Only one fighter group at a time may
+  attempt the Death Star mission." `FUN_005afcc0` repeats the count.
+  port: the run counts as under way from state 5's timer to its result.
 - Outside the tactical code the family `0x25` checks (`FUN_0051c0d0`,
   `FUN_0051c270`) are called only by the interface (system and sector
   displays, `FUN_00446250`, `FUN_004a7f50`, `FUN_004a9ce0`) and the AI

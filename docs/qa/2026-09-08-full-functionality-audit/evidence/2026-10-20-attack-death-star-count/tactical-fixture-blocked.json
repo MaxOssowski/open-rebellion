@@ -1,0 +1,82 @@
+[
+ {
+  "case": "alliance/production-death-star-presentation/1280x800-letterboxed",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "alliance/production-death-star-presentation/640x480",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "empire/production-death-star-presentation/1280x800-letterboxed",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "empire/production-death-star-presentation/640x480",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "alliance/production-death-star-laser-journey/1280x800-letterboxed",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "alliance/production-death-star-laser-journey/640x480",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "empire/production-death-star-laser-journey/1280x800-letterboxed",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "empire/production-death-star-laser-journey/640x480",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "alliance/production-trench-run-success/1280x800-letterboxed",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "alliance/production-trench-run-success/640x480",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "empire/production-trench-run-success/1280x800-letterboxed",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "empire/production-trench-run-success/640x480",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "alliance/production-trench-run-failure/1280x800-letterboxed",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "alliance/production-trench-run-failure/640x480",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "empire/production-trench-run-failure/1280x800-letterboxed",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ },
+ {
+  "case": "empire/production-trench-run-failure/640x480",
+  "status": "fail",
+  "fixture_error": "fixture system is not empty and intact"
+ }
+]
