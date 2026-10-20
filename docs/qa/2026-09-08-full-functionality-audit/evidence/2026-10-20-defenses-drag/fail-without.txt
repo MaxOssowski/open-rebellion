@@ -1,0 +1,5 @@
+thread 'defenses_window::tests::a_character_dragged_out_of_the_list_drops_where_the_button_comes_up' (1390907) panicked at crates/rebellion-render/src/defenses_window.rs:1887:9:
+assertion `left == right` failed
+  left: (false, [], false)
+ right: (true, [(CharacterKey(3v1), [-70.0 160.0])], false)
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 788 filtered out; finished in 0.02s

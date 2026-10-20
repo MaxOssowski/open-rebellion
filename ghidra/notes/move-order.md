@@ -485,10 +485,13 @@ the same slots but the kind) for the Move mission `0x41000001`.
 - The Fleet window's Personnel tab lists each character as an object
   (2026-10-20): a right click opens its menu (manual p. 56: Command), and
   a drag out of the list issues the same Move against the window under
-  the release (`FleetWindowAction::DragCharacter`, `FUN_00422ce0`). port:
-  the drag of a character out of a Defenses or system window (`0x214`,
-  whose per-object command calls the character's slot `+0x200`) is not
-  ported.
+  the release (`FleetWindowAction::DragCharacter`, `FUN_00422ce0`).
+- The Defenses window (type 10) issues the same `0x201` for a drag
+  (`fleet-window.md`), so a character dragged out of its list moves the
+  same way (`DefensesWindowAction::DragCharacter`, 2026-10-20). The System
+  window (type 9), the one that issues `0x214`, lists only facilities.
+  port: in the Defenses window only a character drags; the drag image and
+  cursor are not drawn.
 
 ### Manual cross-check (2026-10-20)
 
@@ -500,7 +503,7 @@ Manual p. 110-111, "Returning to Base", and p. 46:
 | Move (right-click) changes the base | Confirmed: a mission starts from the character's container, so a Move changes where the next one starts | Present |
 | Move from the right-click menu | Confirmed: `0x201` -> `0x241` above | Present |
 | Confirmed Move shows the transit time and asks to confirm | Confirmed (`FUN_00487cc0`, `FUN_0053c2e0` -> `FUN_004f4850`) | Present (2026-10-20) |
-| Drag a character onto a system or fleet (p. 46, p. 111) | Confirmed: the drag issues `0x201`/`0x214` (above) | Partial: from the Fleet window's Personnel tab; not from a Defenses or system window |
+| Drag a character onto a system or fleet (p. 46, p. 111) | Confirmed: the Fleet (type 4) and Defenses (type 10) windows issue `0x201` | Present: from both windows |
 | Put a character aboard a fleet, then give it a Command rank (manual p. 56: "drag Jerjerrod onto the fleet", "right-click on each character icon and select Command") | Confirmed: a Move's fleet target is its container | Present: the menu's Move or a Fleet window drag, and the Personnel tab's right-click menu |
 
 ## Order 0x214 (Destination)
@@ -648,12 +651,11 @@ straight to `FUN_00487740(order, 0)`.
 
 ## Still open
 
-- A character dragged out of a Defenses or system window: `FUN_00422ce0`
-  issues `0x214` there, whose command executes the object's slot `+0x200`
-  (`FUN_0057e380`). For a character that slot is `FUN_00534b70` -> slot
-  `+0x204` `FUN_00534c00` -> slot `+0xac(0x14)`, the object's removal
-  (read 2026-10-20), not a move. How the drag treats a character there is
-  unresolved; the manual (p. 111) says it moves.
+- Settled 2026-10-20: `0x214` comes from the System window (type 9),
+  which lists only facilities, so it never carries a character. (A
+  character's slot `+0x200`, `FUN_00534b70` -> `+0x204` -> `+0xac(0x14)`, is
+  a removal; `0x214`'s command would not move one.) Characters drag from
+  the Defenses window (type 10, `0x201`).
 
 - The names of window types 4, 10 and 11; type 4 is read as the fleet
   window from its size and its opening for item kind `0x10`.

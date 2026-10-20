@@ -3166,6 +3166,12 @@ cross-runtime proof remain open
   `GameObjParentReroutedNotif`); the port, on arrival, sends the member on
   to the fleet's new system and moves the mission's place with it, and the
   member boards there (`evidence/2026-10-20-fleet-reroute/`).
+- 2026-10-20: a character dragged out of the Defenses window moves.
+  `FUN_00422ce0` issues `0x201` for window types 4 and 10 and `0x214` only
+  for type 9, the System window, which lists facilities; so the Defenses
+  window's character drag is the Move mission order `0x241` (manual p. 111).
+  Ported with `DefensesWindowAction::DragCharacter`; browser acceptance on
+  fixtures 69 and 68, both sides (`evidence/2026-10-20-defenses-drag/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

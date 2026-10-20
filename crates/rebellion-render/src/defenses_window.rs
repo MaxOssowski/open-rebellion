@@ -198,11 +198,25 @@ struct OpenDefensesWindow {
     selected: Option<DefensesItem>,
 }
 
+/// `CoolDragList` posts `0x29a` only when the release lies more than this
+/// squared distance (24 list pixels) from the press (`FUN_006083c0`).
+const DRAG_DISTANCE_SQUARED: f32 = 24.0;
+
+/// A left press held on a character's cell until its release
+/// (`FUN_006083c0`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DefensesDrag {
+    character: CharacterKey,
+    press: egui::Pos2,
+    list: egui::Rect,
+}
+
 /// The open Defenses windows. The last is focused and paints on top.
 #[derive(Debug)]
 pub struct DefensesWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenDefensesWindow>,
+    drag: Option<DefensesDrag>,
 }
 
 impl Default for DefensesWindowState {
@@ -210,6 +224,7 @@ impl Default for DefensesWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            drag: None,
         }
     }
 }
@@ -401,6 +416,47 @@ impl DefensesWindowState {
 
     pub fn clear(&mut self) {
         self.windows.clear();
+        self.drag = None;
+    }
+
+    /// Whether a left press on a character is held: the list has captured
+    /// the mouse (`FUN_006083c0`).
+    #[must_use]
+    pub fn is_dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    /// End a held drag on the left release: far enough from the press and
+    /// outside the list, it becomes the `0x29a` drop (`FUN_006083c0`), and
+    /// the galaxy view moves the selection against the window under the
+    /// point (`FUN_00422ce0`, window type 10: `0x201`, `fleet-window.md`).
+    ///
+    /// port: only a character drags; a regiment, special force or squadron
+    /// moves from its menu.
+    fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<DefensesWindowAction> {
+        let (released, down, point) = ctx.input(|input| {
+            (
+                input.pointer.primary_released(),
+                input.pointer.primary_down(),
+                input.pointer.latest_pos(),
+            )
+        });
+        if !released {
+            if !down {
+                self.drag = None;
+            }
+            return None;
+        }
+        let drag = self.drag.take()?;
+        let point = point?;
+        let moved = (point - drag.press) / scale;
+        if moved.length_sq() <= DRAG_DISTANCE_SQUARED || rect_contains(drag.list, point) {
+            return None;
+        }
+        Some(DefensesWindowAction::DragCharacter {
+            character: drag.character,
+            point,
+        })
     }
 
     fn prepare_faction(&mut self, faction: CockpitFaction) {
@@ -470,6 +526,13 @@ pub enum DefensesWindowAction {
         system: SystemKey,
         selection: Option<MenuObject>,
         point: (i16, i16),
+    },
+    /// A character dragged out of the list (`0x29a`): the galaxy view
+    /// issues `0x201`, the Move mission order `0x241` for a character
+    /// (`FUN_00422ce0`, manual p. 111).
+    DragCharacter {
+        character: CharacterKey,
+        point: egui::Pos2,
     },
 }
 
@@ -724,6 +787,8 @@ struct WindowDrawResult {
     deselect: bool,
     /// The selection and canvas point of a right release on the list.
     object_menu: Option<(Option<MenuObject>, (i16, i16))>,
+    /// A left press on a character's cell, held for a drag.
+    drag: Option<DefensesDrag>,
 }
 
 /// Draw every open Defenses window.
@@ -749,7 +814,7 @@ pub fn draw_defenses_windows(
     state.prepare_faction(faction);
     let windows = state.windows.clone();
     let focused_system = windows.last().map(|window| window.system);
-    let mut actions = Vec::new();
+    let mut actions: Vec<_> = state.end_drag(ctx, layout.scale).into_iter().collect();
     for window in &windows {
         let result = draw_defenses_window(
             ctx,
@@ -803,6 +868,9 @@ pub fn draw_defenses_windows(
                 selection,
                 point,
             });
+        }
+        if let Some(drag) = result.drag {
+            state.drag = Some(drag);
         }
     }
     actions
@@ -1061,6 +1129,26 @@ fn draw_defenses_window(
                 if right_pressed && response.is_pointer_button_down_on() {
                     result.select = Some(row.item);
                     result.focus = true;
+                }
+                // A left press on a character captures the mouse for a drag
+                // (FUN_006083c0).
+                if let (DefensesItem::Character(character), Some(press)) = (
+                    row.item,
+                    ctx.input(|input| {
+                        input
+                            .pointer
+                            .button_pressed(egui::PointerButton::Primary)
+                            .then(|| input.pointer.press_origin())
+                            .flatten()
+                    }),
+                ) {
+                    if response.is_pointer_button_down_on() && rect_contains(cell, press) {
+                        result.drag = Some(DefensesDrag {
+                            character,
+                            press,
+                            list,
+                        });
+                    }
                 }
                 if response.secondary_clicked() {
                     if let (Some(object), Some(point)) = (
@@ -1752,6 +1840,63 @@ mod tests {
             .texts
             .iter()
             .any(|value| value.text.starts_with("Garrison")));
+    }
+
+    #[test]
+    fn a_character_dragged_out_of_the_list_drops_where_the_button_comes_up() {
+        // FUN_006083c0 captures the mouse on the press and posts 0x29a with
+        // the release point; FUN_00422ce0 moves a window type 10 selection
+        // with 0x201 (fleet-window.md), the Move mission order 0x241 for a
+        // character (manual p. 111). A release inside the list drops
+        // nothing.
+        let (world, system, missions) = stocked();
+        let hidden = world
+            .characters
+            .iter()
+            .find(|(_, c)| c.name == "Hidden")
+            .map(|(key, _)| key)
+            .expect("the hidden agent");
+        let drag_from = |start: egui::Pos2, to: egui::Pos2| {
+            let mut state = opened(&world, system);
+            let mut frames = hover(start);
+            frames.extend([vec![press(start, true)], vec![egui::Event::PointerMoved(to)]]);
+            let held = run(&world, &missions, &mut state, frames);
+            let dragging = state.is_dragging();
+            let released = run(
+                &world,
+                &missions,
+                &mut state,
+                vec![vec![egui::Event::PointerMoved(to), press(to, false)]],
+            );
+            let drops: Vec<_> = held
+                .actions
+                .iter()
+                .chain(&released.actions)
+                .filter_map(|action| match *action {
+                    DefensesWindowAction::DragCharacter { character, point } => {
+                        Some((character, point))
+                    }
+                    _ => None,
+                })
+                .collect();
+            (dragging, drops, state.is_dragging())
+        };
+
+        let drag = |to| drag_from(at(100.0, 100.0), to);
+        let outside = at(-60.0, 40.0);
+        assert_eq!(drag(outside), (true, vec![(hidden, outside)], false));
+        assert_eq!(drag(at(150.0, 100.0)), (true, vec![], false));
+        // The distance is in list pixels: 5 above the press (25 > 24) drops,
+        // 3.5 (12.25) does not, though both lie above the list (y 81).
+        let near = at(100.0, 78.0);
+        assert_eq!(
+            drag_from(at(100.0, 83.0), near),
+            (true, vec![(hidden, near)], false)
+        );
+        assert_eq!(
+            drag_from(at(100.0, 83.0), at(100.0, 79.5)),
+            (true, vec![], false)
+        );
     }
 
     #[test]

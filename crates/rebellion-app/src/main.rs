@@ -3947,6 +3947,7 @@ async fn main() {
                     || defenses_window_state.contains_screen_point(cockpit_layout, pointer)
                     || missions_window_state.contains_screen_point(cockpit_layout, pointer)
                     || fleet_window_state.is_dragging()
+                    || defenses_window_state.is_dragging()
                     || mission_dialog_state.contains_screen_point(cockpit_layout, pointer)
                     || build_selection_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
@@ -4935,6 +4936,38 @@ async fn main() {
                                     player_faction,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
+                            }
+                            // FUN_00422ce0, window type 10: the character's
+                            // 0x201 -> 0x241 against the window under the
+                            // point.
+                            DefensesWindowAction::DragCharacter { character, point } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                let (system, fleet) = match release_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) {
+                                    Some(ReleaseTarget::System(system)) => (system, None),
+                                    Some(ReleaseTarget::Fleet { fleet, system }) => {
+                                        (system, Some(fleet))
+                                    }
+                                    None => continue,
+                                };
+                                panel_actions.push(PanelAction::MoveCharacter {
+                                    character,
+                                    system,
+                                    fleet,
+                                });
                             }
                         }
                     }

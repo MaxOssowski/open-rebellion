@@ -1,0 +1,70 @@
+{
+ "alliance/move": {
+  "drag": [
+   [
+    342,
+    161
+   ],
+   [
+    233.5,
+    334.5
+   ]
+  ],
+  "target": "F'tral",
+  "lines": [
+   "[info] [interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Ok(0)"
+  ],
+  "errors": []
+ },
+ "alliance/refused": {
+  "drag": [
+   [
+    342,
+    161
+   ],
+   [
+    233.5,
+    334.5
+   ]
+  ],
+  "target": "F'tral",
+  "lines": [
+   "[info] [interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+  ],
+  "errors": []
+ },
+ "empire/move": {
+  "drag": [
+   [
+    402,
+    161
+   ],
+   [
+    293.5,
+    339.5
+   ]
+  ],
+  "target": "F'tral",
+  "lines": [
+   "[info] [interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Ok(0)"
+  ],
+  "errors": []
+ },
+ "empire/refused": {
+  "drag": [
+   [
+    402,
+    161
+   ],
+   [
+    293.5,
+    339.5
+   ]
+  ],
+  "target": "F'tral",
+  "lines": [
+   "[info] [interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+  ],
+  "errors": []
+ }
+}
