@@ -183,10 +183,8 @@ port:
   production ones; a ship's `+0x24 & 0x30` is 0; the port's unset packed
   word (0) reads as a shield nibble of 0; a Death Star's destruction
   leaves no battery to fire and nothing to bombard.
-- Not ported: the minor characters' hits on destruction (the Death
-  Star's cleanup kills the people aboard its fleets instead), the
-  sector's and the galaxy's support events (`FUN_00518b20`), the system's
-  bombarded bit (`+0x88` bit `0x40`).
+- Not ported: the sector's and the galaxy's support events
+  (`FUN_00518b20`), the system's bombarded bit (`+0x88` bit `0x40`).
 
 ## Port notes
 
@@ -201,3 +199,40 @@ port:
 - The port's ship keeps its current hull (`hull_current`), so `+0x60`
   damage is `hull - hull_current`; it has no shield damage (`+0x28`) or
   per-squadron damage, and squadrons are counts.
+
+## The destroyed system's contents (read 2026-10-20)
+
+- The system's slot `+0xac` is `FUN_005080d0`: it writes the reason
+  (`FUN_004f8660` -> `FUN_004f71d0`), whose slot `+0x100` (`FUN_004fb200`
+  -> `FUN_004f7560`) sets the destroyed bit and calls slot `+0x11c`,
+  `FUN_00510950`: the base `FUN_004fb520` and event `0x319`.
+- `FUN_004fb520` calls slot `+0xb4(1)` on each existing direct child
+  (`FUN_004fcd00(this, 3)`):
+  - ships, squadrons, regiments, facilities and the system class share
+    `FUN_004f8710`: completed and not en route, `FUN_004f7ed0` destroys
+    the child with its container's reason; otherwise, unless destroyed,
+    it starts autorouting;
+  - a special force (`FUN_00503e20`) is destroyed the same way;
+  - a fleet's slot is `FUN_00524fb0`, `return 1`: the fleet stays, with
+    its ships and the characters aboard, and one en route there keeps its
+    trip;
+  - a character (`FUN_004ef2e0`) on no mission goes adrift, as the reason
+    (`0x10` or `0xf`) is not `0x14`.
+- Event `0x319` (`Event319_Handle`, `FUN_0050d5a0`, from the fire slot
+  `FUN_005650f0` for both sides) only refreshes each side's view of the
+  system.
+- Then `FUN_0058d990` walks the minor characters standing in the system
+  (`FUN_0056f3d0`, `0x38..0x3b`, mode 3, existing): one not en route
+  (`+0x50` bit 5) is hit with GNPRTB `0x606` (`FUN_0053e2f0`); a hit adds
+  an injury of 1 (slot `+0x2f0`, reason 10), and a character still
+  existing after it (`+0x50` bit 6, read in the disassembly at
+  `0x58daeb`) is destroyed with reason 10. Every hit kills. The manual
+  (p. 96, characters) says a character "may be injured ... if the system
+  on which he is located is blown up by a Death Star" and may be killed.
+- Ported 2026-10-20 (`death_star::cleanup_destroyed_system`,
+  `bombardment::destruction_hits`): the fleets stay, the characters
+  standing in the system go adrift, the hit minor characters die. Before
+  this, the port removed the fleets, killed every character aboard and
+  cancelled the trips there, none of it sourced. port: a captive is not
+  set adrift; the characters are taken in the arena's order.
+

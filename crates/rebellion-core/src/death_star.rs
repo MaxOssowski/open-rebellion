@@ -294,29 +294,46 @@ impl DeathStarSystem {
 use crate::blockade::BlockadeState;
 use crate::effects::GameEffect;
 use crate::manufacturing::ManufacturingState;
-use crate::movement::MovementState;
 
-/// Remove all entities at a destroyed system and cancel in-transit orders.
+/// Whether `character` stands in `system` itself: a direct child of the
+/// system (`FUN_00513050`'s walk does not descend), not aboard a fleet, in
+/// an abode or on a mission, and existing.
+#[must_use]
+pub fn stands_in(character: &crate::world::Character, system: SystemKey) -> bool {
+    character.current_system == Some(system)
+        && character.current_fleet.is_none()
+        && character.current_abode.is_none()
+        && !character.on_mission
+        && !character.is_killed
+}
+
+/// Carry out a Death Star's destruction of `system`.
 ///
-/// Called after Death Star fires. Matches original game behavior:
-/// characters at the system are killed (marked `is_killed`, removed from
-/// fleet rosters, but kept in the arena so next-tick story events can still
-/// resolve them by `dat_id` / `name`), fleets and the planet's squadrons
-/// destroyed, facilities removed,
-/// manufacturing queues cleared, blockade lifted, in-transit orders cancelled.
+/// The system's destruction (`FUN_0058ce70` -> slot `+0xac`, `FUN_005080d0`
+/// -> `FUN_004f71d0`) sets its destroyed bit (`FUN_004f7560`), whose hook
+/// (`FUN_00510950` -> `FUN_004fb520`) calls slot `+0xb4` on each existing
+/// direct child:
+/// - a ship, squadron, regiment or facility that is completed and not en
+///   route is destroyed with the system's reason (`FUN_004f8710` ->
+///   `FUN_004f7ed0`); so is a special force (`FUN_00503e20`);
+/// - a fleet stays (`FUN_00524fb0` returns 1), with its ships and the
+///   characters aboard, and one en route there keeps its trip;
+/// - a character on no mission goes adrift (`FUN_004ef2e0`), as the
+///   system's reason is not `0x14`.
 ///
-/// Emits one `GameEffect::CharacterKilled` per killed character into the
-/// caller-supplied `effects` buffer. The caller (`simulation.rs`) drains the
-/// buffer into telemetry as `EVT_CHARACTER_KILLED` records. Character-death
-/// story events are STRICTLY next-tick reactive: Events run at step 6 and
-/// Death Star cleanup runs at step 11 of the tick, so the `is_killed` flag
-/// is only visible to `EventSystem::advance` on the following tick.
+/// Then each of `killed`, the minor characters the destruction hit
+/// (`FUN_0058d990`, [`crate::bombardment`]), is killed, with one
+/// `GameEffect::CharacterKilled` each in `effects` for the caller's
+/// telemetry. A killed character stays in the arena so next-tick story
+/// events can still resolve it.
 ///
-/// (Knesset Shamash-Bet #R11 / ARCH-CRITICAL-#1.)
+/// port: a captive is not set adrift (where the original holds one is not
+/// traced); the manufacturing queues, the blockade and a construction at the
+/// system are cleared.
 pub fn cleanup_destroyed_system(
     world: &mut GameWorld,
     system: SystemKey,
-    movement: &mut MovementState,
+    killed: &[crate::ids::CharacterKey],
     death_star: &mut DeathStarState,
     manufacturing: &mut ManufacturingState,
     blockade: &mut BlockadeState,
@@ -326,38 +343,22 @@ pub fn cleanup_destroyed_system(
         return;
     };
 
-    let fleet_keys: Vec<_> = sys.fleets.clone();
     let troop_keys: Vec<_> = sys.ground_units.clone();
     let sf_keys: Vec<_> = sys.special_forces.clone();
     let def_keys: Vec<_> = sys.defense_facilities.clone();
     let mfg_keys: Vec<_> = sys.manufacturing_facilities.clone();
     let prod_keys: Vec<_> = sys.production_facilities.clone();
 
-    // Kill characters in fleets at this system. We mark them `is_killed = true`
-    // but keep the character record in the arena so next-tick reactive story
-    // events can still look up name/dat_id. Uniqueness for death-triggered
-    // events comes from the `is_killed` flag combined with `is_repeatable: false`
-    // (DI-M3).
-    //
-    // Split borrows through distinct struct fields permit `world.fleets.get()`
-    // and `world.characters.get_mut()` simultaneously — we clone the fleet's
-    // character list to release the fleets borrow, then mutate characters and
-    // push effects inline.
-    for &fk in &fleet_keys {
-        let chars: Vec<crate::ids::CharacterKey> = world
-            .fleets
-            .get(fk)
-            .map(|fleet| fleet.characters.clone())
-            .unwrap_or_default();
-        for ck in chars {
-            if let Some(c) = world.characters.get_mut(ck) {
-                if !c.is_killed {
-                    c.mark_killed();
-                    effects.push(GameEffect::CharacterKilled { character: ck });
-                }
-            }
+    for (_, c) in &mut world.characters {
+        if stands_in(c, system) && !c.is_captive {
+            c.adrift = true;
         }
-        world.fleets.remove(fk);
+    }
+    for &ck in killed {
+        if world.characters.get(ck).is_some_and(|c| !c.is_killed) {
+            crate::missions::kill_character(world, ck);
+            effects.push(GameEffect::CharacterKilled { character: ck });
+        }
     }
 
     for &tk in &troop_keys {
@@ -377,7 +378,6 @@ pub fn cleanup_destroyed_system(
     }
 
     if let Some(sys) = world.systems.get_mut(system) {
-        sys.fleets.clear();
         sys.ground_units.clear();
         sys.fighters.clear();
         sys.special_forces.clear();
@@ -385,8 +385,6 @@ pub fn cleanup_destroyed_system(
         sys.manufacturing_facilities.clear();
         sys.production_facilities.clear();
     }
-
-    movement.cancel_orders_to(system);
 
     if death_star
         .under_construction
@@ -586,13 +584,71 @@ mod tests {
         cleanup_destroyed_system(
             &mut world,
             sys,
-            &mut MovementState::new(),
+            &[],
             &mut DeathStarState::default(),
             &mut ManufacturingState::new(),
             &mut BlockadeState::new(),
             &mut effects,
         );
         assert!(world.systems[sys].fighters.is_empty());
+    }
+
+    #[test]
+    fn a_destroyed_systems_fleets_stay_and_the_characters_standing_there_go_adrift() {
+        // The system's destroyed hook (FUN_00510950 -> FUN_004fb520) calls
+        // slot +0xb4 on each direct child: a fleet's (FUN_00524fb0) does
+        // nothing, a regiment's (FUN_004f8710 -> FUN_004f7ed0) destroys it,
+        // a character's (FUN_004ef2e0) sets it adrift unless on a mission.
+        // FUN_0058d990 then destroys the minor characters it hit.
+        let (mut world, sys) = make_world();
+        let fleet = add_ds_fleet(&mut world, sys);
+        let mut person = |edit: &dyn Fn(&mut crate::world::Character)| {
+            let mut c = crate::world::Character {
+                current_system: Some(sys),
+                ..crate::world::Character::default()
+            };
+            edit(&mut c);
+            world.characters.insert(c)
+        };
+        let standing = person(&|_| {});
+        let hit = person(&|_| {});
+        let aboard = person(&|_| {});
+        let on_mission = person(&|c| c.on_mission = true);
+        let captive = person(&|c| c.is_captive = true);
+        world.characters[aboard].current_fleet = Some(fleet);
+        world.fleets[fleet].characters.push(aboard);
+        let troop = world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 1,
+        });
+        world.systems[sys].ground_units.push(troop);
+
+        let mut effects = Vec::new();
+        cleanup_destroyed_system(
+            &mut world,
+            sys,
+            &[hit],
+            &mut DeathStarState::default(),
+            &mut ManufacturingState::new(),
+            &mut BlockadeState::new(),
+            &mut effects,
+        );
+
+        assert_eq!(world.systems[sys].fleets, [fleet]);
+        assert_eq!(world.fleets[fleet].characters, [aboard]);
+        assert!(!world.characters[aboard].adrift && !world.characters[aboard].is_killed);
+        assert!(world.characters[standing].adrift);
+        assert!(!world.characters[standing].is_killed);
+        assert!(!world.characters[on_mission].adrift);
+        assert!(!world.characters[captive].adrift);
+        assert!(world.characters[hit].is_killed);
+        assert!(matches!(
+            effects.as_slice(),
+            [GameEffect::CharacterKilled { character }] if *character == hit
+        ));
+        assert!(!world.troops.contains_key(troop));
+        assert!(world.systems[sys].ground_units.is_empty());
     }
 
     #[test]

@@ -1755,6 +1755,18 @@ cross-runtime proof remain open
     at once (`FUN_00486fb0` -> `FUN_00487740`). A browser gate orders General
     Bombardment from it for both sides
     (`evidence/2026-10-16-bombardment-menu/`).
+  - Destroyed system's contents 2026-10-20: the system's destruction
+    (`FUN_005080d0`, destroyed hook `FUN_00510950` -> `FUN_004fb520`) calls
+    slot `+0xb4` on each direct child: units and facilities are destroyed
+    (`FUN_004f8710` -> `FUN_004f7ed0`), a fleet stays with its ships and
+    the characters aboard (`FUN_00524fb0`), and a character on no mission
+    goes adrift (`FUN_004ef2e0`). `FUN_0058d990` then kills each minor
+    character standing there that GNPRTB `0x606` (50) hits. The port had
+    removed the fleets, killed everyone aboard and cancelled the trips
+    there; `cleanup_destroyed_system` and
+    `bombardment::destruction_hits` now follow the original (manual p. 96).
+    Campaigns unchanged: the AI orders no Destroy System
+    (`evidence/2026-10-20-death-star-destruction/`).
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.

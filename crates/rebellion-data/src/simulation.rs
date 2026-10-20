@@ -709,7 +709,7 @@ pub fn run_simulation_tick(
             rebellion_core::death_star::cleanup_destroyed_system(
                 world,
                 *system,
-                &mut states.movement,
+                &bombard.killed_at(*system),
                 &mut states.death_star,
                 &mut states.manufacturing,
                 &mut states.blockade,

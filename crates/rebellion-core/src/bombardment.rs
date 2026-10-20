@@ -50,6 +50,9 @@ const GNPRTB_SHIELD_SCALE: u16 = 0x800;
 /// GNPRTB `0x1e19` (`DAT_006bb47c`, -20): the attacker's support change
 /// after civilian damage (`FUN_0058e320`).
 const GNPRTB_CIVILIAN_SUPPORT: u16 = 0x1e19;
+/// GNPRTB `0x606` (`DAT_006bb76c`, 50): a minor character's chance to be
+/// hit when a Death Star destroys its system (`FUN_0058d990`).
+const GNPRTB_DESTRUCTION_HIT: u16 = 0x606;
 
 /// The ion cannons' family (DEFFACSD 1, KDY v-150): their hits drain a
 /// ship's shields and stop it bombarding (`FUN_00527550`).
@@ -118,6 +121,10 @@ pub struct ShipLoss {
 pub struct BombardmentOutcome {
     /// A Death Star destroyed the system (`0x223`, `FUN_0058d990`).
     pub system_destroyed: bool,
+    /// The minor characters the destruction killed (`FUN_0058d990`), for
+    /// the caller's Death Star cleanup.
+    #[serde(default)]
+    pub killed: Vec<crate::ids::CharacterKey>,
     /// The bombarding ships the batteries hurt.
     pub ship_losses: Vec<ShipLoss>,
     /// Firepower less the shields (`FUN_0058df60`).
@@ -380,6 +387,34 @@ const fn excess(a: i32, b: i32) -> (i32, i32) {
     }
 }
 
+/// The minor characters a Death Star's destruction of `system` kills
+/// (`FUN_0058d990`): each minor character standing in the system
+/// (`FUN_0056f3d0`, families `0x38..0x3b`, existing, a direct child) that is
+/// not en route (`+0x50` bit 5) is hit with a chance of GNPRTB `0x606`
+/// (`FUN_0055e9e0` -> `FUN_0053e2f0`). A hit adds an injury of 1 (slot
+/// `+0x2f0`, reason 10), and a character it leaves existing (`+0x50` bit 6)
+/// is destroyed with reason 10 (slot `+0xac`), so every hit kills.
+///
+/// port: the characters are taken in the arena's order, not the system's
+/// child list; the minor characters' injury death roll (`FUN_0053eb30`),
+/// which cannot change the result, draws nothing.
+fn destruction_hits(
+    world: &GameWorld,
+    system: SystemKey,
+    draw: &mut dyn FnMut(i32) -> i32,
+) -> Vec<crate::ids::CharacterKey> {
+    let chance = gnprtb(world, GNPRTB_DESTRUCTION_HIT);
+    world
+        .characters
+        .iter()
+        .filter(|(_, c)| !c.is_major && crate::death_star::stands_in(c, system))
+        .map(|(key, _)| key)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter(|_| draw(100) < chance)
+        .collect()
+}
+
 /// Resolve one bombardment (`FUN_0058d770`), drawing with `draw(m)` (0 to
 /// `m - 1`).
 #[expect(
@@ -403,6 +438,7 @@ pub fn resolve(
     {
         out.system_destroyed = true;
         out.civilian_damage = true;
+        out.killed = destruction_hits(world, req.system, draw);
         return out;
     }
     let targets_at_start = i32::try_from(targets(world, req).len()).unwrap_or(i32::MAX);
@@ -827,6 +863,17 @@ impl BombardEnv {
         &self.outcomes[self.outcomes.len() - 1].1
     }
 
+    /// The minor characters the Death Star's destruction of `system` killed
+    /// this tick.
+    #[must_use]
+    pub fn killed_at(&self, system: SystemKey) -> Vec<crate::ids::CharacterKey> {
+        self.outcomes
+            .iter()
+            .filter(|(r, o)| o.system_destroyed && r.system == system)
+            .flat_map(|(_, o)| o.killed.iter().copied())
+            .collect()
+    }
+
     /// The systems a Death Star destroyed.
     #[must_use]
     pub fn destroyed_systems(&self) -> Vec<SystemKey> {
@@ -860,6 +907,7 @@ mod tests {
             (0x605, 9),
             (0x800, 4),
             (0x1e19, -20),
+            (0x606, 50),
         ])
     }
 
@@ -1574,6 +1622,59 @@ mod tests {
         );
         assert!(!out.system_destroyed);
         assert_eq!(out.shots, 20);
+    }
+
+    #[test]
+    fn a_death_stars_destruction_kills_the_minor_characters_it_hits() {
+        // FUN_0058d990: after the system's destruction each minor character
+        // standing in it (FUN_0056f3d0, families 0x38..0x3b, a direct child,
+        // not en route) is hit with GNPRTB 0x606 (50) through FUN_0053e2f0
+        // (a draw of 0..99 below 50); a hit ends destroyed (slot +0xac(10)).
+        let mut fx = fixture(1);
+        let ds = fx.world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x3400_0001),
+            hull: 1000,
+            ..CapitalShipClass::default()
+        });
+        fx.world.fleets[fx.fleet]
+            .capital_ships
+            .push(ShipInstance::new(ds, 1000, false));
+        let system = fx.system;
+        let mut person = |edit: &dyn Fn(&mut crate::world::Character)| {
+            let mut c = crate::world::Character {
+                current_system: Some(system),
+                ..crate::world::Character::default()
+            };
+            edit(&mut c);
+            fx.world.characters.insert(c)
+        };
+        let hit = person(&|_| {});
+        let missed = person(&|_| {});
+        person(&|c| c.is_major = true);
+        let aboard = person(&|_| {});
+        person(&|c| c.on_mission = true);
+        let fleet = fx.fleet;
+        fx.world.characters[aboard].current_fleet = Some(fleet);
+        let mut draws = vec![49, 50].into_iter();
+        let out = resolve(
+            &fx.world,
+            &request(&fx, DESTROY_SYSTEM),
+            &mut |m| {
+                assert_eq!(m, 100);
+                draws.next().expect("only the two standing minor characters draw")
+            },
+        );
+        assert_eq!(out.killed, [hit]);
+        assert!(!out.killed.contains(&missed));
+        // killed_at names only a destroyed system's dead.
+        let elsewhere = fx.world.systems.insert(fx.world.systems[system].clone());
+        let mut env = BombardEnv::new(0, None);
+        env.outcomes.push((request(&fx, DESTROY_SYSTEM), out.clone()));
+        let mut spared = out;
+        spared.system_destroyed = false;
+        env.outcomes.push((request(&fx, GENERAL), spared));
+        assert_eq!(env.killed_at(system), [hit]);
+        assert_eq!(env.killed_at(elsewhere), []);
     }
 
     #[test]

@@ -314,11 +314,6 @@ impl MovementState {
         self.orders.remove(&fleet)
     }
 
-    /// Cancel all movement orders targeting the given system.
-    pub fn cancel_orders_to(&mut self, system: crate::ids::SystemKey) {
-        self.orders.retain(|_, order| order.destination != system);
-    }
-
     /// Get the active order for a fleet, if any.
     #[must_use]
     pub fn get(&self, fleet: FleetKey) -> Option<&MovementOrder> {

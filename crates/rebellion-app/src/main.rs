@@ -2688,7 +2688,7 @@ async fn main() {
                     &mut world,
                     system,
                     &mut victory_state,
-                    &mut movement_state,
+                    &bombard.killed_at(system),
                     &mut death_star_state,
                     &mut mfg_state,
                     &mut blockade_state,
@@ -7747,7 +7747,7 @@ fn apply_panel_action(
                         world,
                         system,
                         victory_state,
-                        movement_state,
+                        &outcome.killed,
                         death_star_state,
                         mfg_state,
                         blockade_state,
@@ -7890,7 +7890,7 @@ fn apply_panel_action(
                     world,
                     system,
                     victory_state,
-                    movement_state,
+                    &[],
                     death_star_state,
                     mfg_state,
                     blockade_state,
@@ -8633,8 +8633,9 @@ fn log_assault(
 }
 
 /// A planet destroyed by a Death Star (the Fleet menu's superlaser, or a
-/// Destroy System order's `FUN_0058d990`): the system, its fleets, units
-/// and facilities go (`death_star::cleanup_destroyed_system`).
+/// Destroy System order's `FUN_0058d990`): its units and facilities go, its
+/// fleets stay, the characters standing there go adrift and `killed` die
+/// (`death_star::cleanup_destroyed_system`).
 #[expect(
     clippy::too_many_arguments,
     reason = "The planet's cleanup touches each of these states."
@@ -8643,7 +8644,7 @@ fn destroy_planet(
     world: &mut GameWorld,
     system: SystemKey,
     victory_state: &mut VictoryState,
-    movement_state: &mut MovementState,
+    killed: &[rebellion_core::ids::CharacterKey],
     death_star_state: &mut DeathStarState,
     mfg_state: &mut ManufacturingState,
     blockade_state: &mut BlockadeState,
@@ -8666,7 +8667,7 @@ fn destroy_planet(
     rebellion_core::death_star::cleanup_destroyed_system(
         world,
         system,
-        movement_state,
+        killed,
         death_star_state,
         mfg_state,
         blockade_state,
