@@ -1736,8 +1736,44 @@ async fn main() {
                         system,
                         new_control,
                     } => {
+                        let previous = world.systems.get(*system).and_then(|s| s.control.faction());
                         if let Some(sys) = world.systems.get_mut(*system) {
                             sys.control = *new_control;
+                        }
+                        // FUN_00510d70 → FUN_004f6f40: the system's
+                        // facilities follow its new holder.
+                        world.hand_over_facilities(*system);
+                        // Notification 0x100, System Joins / Declares
+                        // Neutrality (FUN_00499760), while the support
+                        // alone moved it. port: no regiment at the system
+                        // stands for bit 0x2000 (FUN_00510d70).
+                        if let Some(sys) = world.systems.get(*system) {
+                            if sys.ground_units.is_empty() {
+                                if let Some((title, text)) =
+                                    rebellion_render::story_messages::control_change_texts(
+                                        &sys.name,
+                                        previous,
+                                        new_control.faction(),
+                                        player_faction == MissionFaction::Alliance,
+                                        &message_texts,
+                                    )
+                                {
+                                    msg_log.push(filed(
+                                        GameMessage::at_system(
+                                            tick_events.last().map_or(0, |event| event.tick),
+                                            text,
+                                            MessageCategory::Diplomacy,
+                                            *system,
+                                        )
+                                        .with_title(title)
+                                        .with_picture_if(Some(pictures::loyalty_change())),
+                                        MessageRail::PopularSupport,
+                                        Some(RailAudience::side(
+                                            player_faction == MissionFaction::Alliance,
+                                        )),
+                                    ));
+                                }
+                            }
                         }
                     }
                     // Notification 0x145, Smuggling (FUN_00499130).

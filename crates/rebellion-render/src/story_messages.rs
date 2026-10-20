@@ -814,6 +814,48 @@ pub fn resource_texts(
     ))
 }
 
+/// System Joins / Joins Enemy / Declares Neutrality (`FUN_00499760`):
+/// notification `0x100`, a system's side changing from `previous` to
+/// `holder`. The class speaks only while `+0x88` bit `0x2000`
+/// (LoyaltyCausedCurrentControlKind, `FUN_00510d70`) is set: the support
+/// moved the system, no regiments did. A system joining the viewer's side
+/// takes TEXTSTRA `0x7038` / `0x703b`, one joining the other side `0x7039`
+/// / `0x703c`, both naming the new side (kind 1). A system left with no
+/// side takes `0x703a` / `0x703d`, naming the side it left (kind 4).
+/// Returns the title and body; `None` when the side did not change.
+#[must_use]
+pub fn control_change_texts(
+    system: &str,
+    previous: Option<rebellion_core::dat::Faction>,
+    holder: Option<rebellion_core::dat::Faction>,
+    viewer_is_alliance: bool,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::dat::Faction;
+    let side = |faction: Option<Faction>| match faction {
+        Some(Faction::Alliance) => Some(true),
+        Some(Faction::Empire) => Some(false),
+        _ => None,
+    };
+    let (before, after) = (side(previous), side(holder));
+    if before == after {
+        return None;
+    }
+    let named = MessageParameter::Named { name: system };
+    let (title, body, other) = match after {
+        Some(alliance) if alliance == viewer_is_alliance => (0x7038, 0x703b, after),
+        Some(_) => (0x7039, 0x703c, after),
+        None => (0x703a, 0x703d, before),
+    };
+    let other = other.map_or(MessageParameter::Named { name: "" }, |alliance| {
+        side_parameter(alliance, texts)
+    });
+    Some((
+        fill_message_text(texts.get(&title)?, &[named, other]),
+        fill_message_text(texts.get(&body)?, &[named, other]),
+    ))
+}
+
 /// Informants Provide Information (`FUN_00491060`): notification `0x153`,
 /// TEXTSTRA `0x7150` / `0x7151`, the system as `{1:1}`. Returns the title
 /// and body.
@@ -1265,6 +1307,64 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00499760 (notification 0x100): TEXTSTRA 0x7038..0x703d as
+    // shipped; the side is named by FUN_0052d920 (kind 1 0x4d50 / 0x4d51,
+    // kind 4 0x4d70 / 0x4d71).
+    #[test]
+    fn a_system_moved_by_its_support_joins_a_side_or_declares_neutrality() {
+        use rebellion_core::dat::Faction;
+        let texts: HashMap<u16, String> = [
+            (0x7038, "{1:1} Joins"),
+            (0x7039, "{1:1} Joins Enemy"),
+            (0x703a, "{1:1} Declares Neutrality"),
+            (0x703b, "Popular support on {1:1} has caused that world to join the {2:1}."),
+            (0x703c, "Popular dissent on {1:1} has caused that world to join the {2:1}."),
+            (0x703d, "Divided loyalty on {1:1} has caused that world to abandon the {2:4} cause."),
+            (0x4d50, "Alliance"),
+            (0x4d51, "Empire"),
+            (0x4d70, "Alliance"),
+            (0x4d71, "Imperial"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let say = |previous, holder, viewer_is_alliance| {
+            control_change_texts("Bespin", previous, holder, viewer_is_alliance, &texts)
+        };
+        assert_eq!(
+            say(None, Some(Faction::Alliance), true),
+            Some((
+                "Bespin Joins".into(),
+                "Popular support on Bespin has caused that world to join the Alliance.".into()
+            ))
+        );
+        assert_eq!(
+            say(Some(Faction::Alliance), Some(Faction::Empire), true),
+            Some((
+                "Bespin Joins Enemy".into(),
+                "Popular dissent on Bespin has caused that world to join the Empire.".into()
+            ))
+        );
+        assert_eq!(
+            say(Some(Faction::Empire), Some(Faction::Neutral), true),
+            Some((
+                "Bespin Declares Neutrality".into(),
+                "Divided loyalty on Bespin has caused that world to abandon the Imperial cause."
+                    .into()
+            ))
+        );
+        assert_eq!(
+            say(Some(Faction::Alliance), None, false).map(|(_, body)| body),
+            Some(
+                "Divided loyalty on Bespin has caused that world to abandon the Alliance cause."
+                    .into()
+            )
+        );
+        // No change of side, no message.
+        assert_eq!(say(Some(Faction::Empire), Some(Faction::Empire), true), None);
+        assert_eq!(say(Some(Faction::Neutral), None, true), None);
+    }
 
     // FUN_00491060 (0x153) and FUN_00498970 (0x304): TEXTSTRA 0x7150 /
     // 0x7151 and 0x7080..0x7082 as shipped; 0x7081 names the system as

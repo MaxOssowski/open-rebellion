@@ -2576,6 +2576,12 @@ cross-runtime proof remain open
   `v1:38af87970fe0c218` -> `v1:eb6515d682ec8a5d`, final unchanged. The 24
   campaigns are otherwise identical
   (`evidence/2026-10-21-economy-setup-pass/`).
+- 2026-10-21: System Joins / Declares Neutrality (`0x100`,
+  `FUN_00499760`, TEXTSTRA `0x7038`-`0x703d`) is ported for a holder change
+  the support alone caused (`+0x88` bit `0x2000`, `FUN_00510d70`; port: no
+  regiment at the system). The app's `ControlResolved` and occupation now
+  hand the facilities over (`FUN_004f6f40`), as the headless integrator
+  already did (`evidence/2026-10-21-system-joins-message/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

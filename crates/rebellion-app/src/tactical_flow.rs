@@ -287,6 +287,9 @@ pub(crate) fn apply_system_occupation(
     if let Some(value) = world.systems.get_mut(system) {
         value.control = ControlKind::Controlled(winner);
     }
+    // FUN_00510d70 → FUN_004f6f40: the system's facilities follow its new
+    // holder, as the headless integrator's occupation does.
+    world.hand_over_facilities(system);
     if previous != Some(ControlKind::Controlled(winner)) {
         let name = world
             .systems
@@ -457,6 +460,33 @@ mod tests {
             .embark(&mut world, fleet, &[attacker])
             .expect("fixture troop embarks");
         (world, system, fleet, attacker, transport)
+    }
+
+    #[test]
+    fn an_occupation_hands_the_system_s_facilities_to_the_new_holder() {
+        // FUN_00510d70 -> FUN_004f6f40: a change of holder passes each
+        // facility its class serves to the new side (FUN_004f8680).
+        let (mut world, system, _, _, _) =
+            transport_fixture(ControlKind::Controlled(Faction::Empire), false);
+        let class = DatId::new(0x2800_0001);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                is_alliance: true,
+                is_empire: true,
+                ..rebellion_core::world::BuildableClass::default()
+            },
+        );
+        let yard = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: class,
+                side: Faction::Empire,
+                is_shipyard: true,
+            },
+        );
+        world.systems[system].manufacturing_facilities.push(yard);
+        apply_system_occupation(&mut world, system, Faction::Alliance, 43, &mut MessageLog::default());
+        assert_eq!(world.manufacturing_facilities[yard].side, Faction::Alliance);
     }
 
     #[test]
