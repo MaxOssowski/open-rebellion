@@ -625,9 +625,14 @@ impl MissionTarget {
 
 /// Destroy a sabotaged target (slot `+0xac(6)`, `FUN_005746e0`).
 ///
-/// port: an emptied fleet keeps its slot until the fleet cleanup removes
-/// it; a regiment aboard a fleet is not at its container, so the validator
-/// ends the mission before it can be named here.
+/// A capital ship or the Death Star leaves its fleet as any lost ship does
+/// ([`crate::scrap::remove_ship`]): the fleet's ship change
+/// (`FUN_004fe870` -> `FUN_004fe630`) disbands a fleet left without one. A
+/// squadron's fleet follows the port's same rule
+/// ([`crate::scrap::disband_if_empty`]).
+///
+/// port: a regiment aboard a fleet is not at its container, so the
+/// validator ends the mission before it can be named here.
 pub fn destroy_target(world: &mut GameWorld, target: MissionTarget) {
     match target {
         MissionTarget::DefenseFacility(key) => {
@@ -656,34 +661,43 @@ pub fn destroy_target(world: &mut GameWorld, target: MissionTarget) {
         }
         MissionTarget::SpecialForce(key) => destroy_special_force(world, key),
         MissionTarget::DeathStar(key) => {
-            let classes = &world.capital_ship_classes;
-            if let Some(fleet) = world.fleets.get_mut(key) {
-                if let Some(hull) = fleet.capital_ships.iter_mut().find(|ship| {
-                    ship.alive
-                        && classes
-                            .get(ship.class)
-                            .is_some_and(crate::world::CapitalShipClass::is_death_star)
-                }) {
-                    hull.alive = false;
-                }
-                fleet.capital_ships.retain(|ship| ship.alive);
-                fleet.has_death_star = false;
+            let is_death_star = |world: &GameWorld, ship: &crate::world::ShipInstance| {
+                world
+                    .capital_ship_classes
+                    .get(ship.class)
+                    .is_some_and(crate::world::CapitalShipClass::is_death_star)
+            };
+            let Some(index) = world.fleets.get(key).and_then(|fleet| {
+                fleet
+                    .capital_ships
+                    .iter()
+                    .position(|ship| ship.alive && is_death_star(world, ship))
+            }) else {
+                return;
+            };
+            crate::scrap::remove_ship(world, key, index);
+            let still_one = world.fleets.get(key).map(|fleet| {
+                fleet
+                    .capital_ships
+                    .iter()
+                    .any(|ship| ship.alive && is_death_star(world, ship))
+            });
+            if let (Some(still_one), Some(fleet)) = (still_one, world.fleets.get_mut(key)) {
+                fleet.has_death_star = still_one;
             }
         }
         MissionTarget::CapitalShip { fleet, class } => {
-            if let Some(fleet) = world.fleets.get_mut(fleet) {
-                if let Some(hull) = fleet
+            if let Some(index) = world.fleets.get(fleet).and_then(|value| {
+                value
                     .capital_ships
-                    .iter_mut()
-                    .find(|ship| ship.alive && ship.class == class)
-                {
-                    hull.alive = false;
-                }
-                fleet.capital_ships.retain(|ship| ship.alive);
+                    .iter()
+                    .position(|ship| ship.alive && ship.class == class)
+            }) {
+                crate::scrap::remove_ship(world, fleet, index);
             }
         }
-        MissionTarget::Fighter { fleet, class } => {
-            if let Some(fleet) = world.fleets.get_mut(fleet) {
+        MissionTarget::Fighter { fleet: key, class } => {
+            if let Some(fleet) = world.fleets.get_mut(key) {
                 if let Some(entry) = fleet
                     .fighters
                     .iter_mut()
@@ -692,6 +706,7 @@ pub fn destroy_target(world: &mut GameWorld, target: MissionTarget) {
                     entry.count -= 1;
                 }
                 fleet.fighters.retain(|entry| entry.count > 0);
+                crate::scrap::disband_if_empty(world, key);
             }
         }
     }
@@ -8440,6 +8455,53 @@ mod tests {
         assert_eq!(fleet.capital_ships.len(), 1);
         assert!(!world.capital_ship_classes[fleet.capital_ships[0].class].is_death_star());
         assert!(target.state(&world).is_none());
+    }
+
+    #[test]
+    fn a_sabotaged_last_ship_disbands_its_fleet() {
+        // FUN_005746e0 destroys the object; the fleet's ship change
+        // (FUN_004fe870 -> FUN_004fe630) disbands a fleet left without a
+        // capital ship (slot +0xac(0x14)).
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let lone = death_star_fleet(&mut world, here);
+        world.fleets[lone].capital_ships.remove(0);
+        let escorted = death_star_fleet(&mut world, here);
+
+        destroy_target(&mut world, MissionTarget::DeathStar(lone));
+        destroy_target(&mut world, MissionTarget::DeathStar(escorted));
+
+        assert!(!world.fleets.contains_key(lone));
+        assert!(!world.systems[here].fleets.contains(&lone));
+        assert!(world.systems[here].fleets.contains(&escorted));
+        assert!(!world.fleets[escorted].has_death_star);
+
+        // A capital ship's sabotage follows the same rule.
+        let destroyer = world.fleets[escorted].capital_ships[0].class;
+        destroy_target(
+            &mut world,
+            MissionTarget::CapitalShip {
+                fleet: escorted,
+                class: destroyer,
+            },
+        );
+        assert!(!world.fleets.contains_key(escorted));
+        assert!(world.systems[here].fleets.is_empty());
+    }
+
+    #[test]
+    fn a_fleet_keeps_its_death_star_flag_while_another_death_star_remains() {
+        // has_death_star follows the fleet's Death Star hulls.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let fleet = death_star_fleet(&mut world, here);
+        let second = world.fleets[fleet].capital_ships[1].clone();
+        world.fleets[fleet].capital_ships.push(second);
+
+        destroy_target(&mut world, MissionTarget::DeathStar(fleet));
+
+        assert!(world.fleets[fleet].has_death_star);
+        assert_eq!(world.fleets[fleet].capital_ships.len(), 2);
     }
 
     /// A Sabotage of `target` at `here`, waiting in its timer phase.

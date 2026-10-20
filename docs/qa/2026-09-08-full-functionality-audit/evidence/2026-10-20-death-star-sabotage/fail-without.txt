@@ -1,0 +1,3 @@
+thread 'missions::tests::a_sabotaged_last_ship_disbands_its_fleet' (2169958) panicked at crates/rebellion-core/src/missions.rs:8464:9:
+thread 'missions::tests::a_fleet_keeps_its_death_star_flag_while_another_death_star_remains' (2169957) panicked at crates/rebellion-core/src/missions.rs:8493:9:
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1427 filtered out; finished in 0.00s

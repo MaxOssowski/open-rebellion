@@ -75,6 +75,13 @@ child of type `0x14..0x1b`), `FUN_004fe630` walks its own-side capital ships
 Bit 0 means "has held ships", so an emptied fleet is disbanded. hyp: state
 `0x14` removes the fleet; its view handler (`+0x100`) is not read here.
 
+The port disbands an emptied fleet in `scrap::remove_ship` /
+`disband_if_empty`, used by Scrap, Autoscrap, bombardment losses and the
+squadrons. From 2026-10-20 a sabotaged capital ship, Death Star or
+squadron (`missions::destroy_target`, `FUN_005746e0`) goes the same way;
+before, a fleet emptied by sabotage stayed. port: a fleet holding a
+squadron or a character is kept.
+
 ## Splitting: Create Fleet (`0x270`)
 
 - **The menu.** A capital ship's order list (slot `+0x3c`, `FUN_00500880`)

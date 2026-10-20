@@ -859,6 +859,15 @@ cross-runtime proof remain open
   one telemetry fixture. Golden regenerated for save v94 (initial
   `v1:f47443f73b78e129`, final `v1:caadbc1bab82cbda`)
   (`evidence/2026-10-20-death-star-construction/`).
+- Sabotage (2026-10-20): a successful Death Star Sabotage already destroyed
+  the Death Star (`FUN_005746e0`, slot `+0xac(6)`; manual p. 105), and the
+  invented construction delay was gone (`70916608`). A fleet the sabotage
+  emptied stayed in the world, though `FUN_004fe870` -> `FUN_004fe630`
+  disbands a fleet left without a capital ship; `destroy_target` now goes
+  through `scrap::remove_ship` / `disband_if_empty`, and
+  `Fleet::has_death_star` follows the remaining Death Star hulls. Seeds 1,
+  6, 16 and 24 of 24 change from the first fleet a sabotage emptied
+  (`evidence/2026-10-20-death-star-sabotage/`).
 
 ### F-018: Research never limits which ships can be built
 
