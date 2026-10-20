@@ -3,7 +3,7 @@ title: "Roadmap"
 description: "Development milestones from Galaxy Viewer through Release packaging"
 category: "agent-docs"
 created: 2026-03-11
-updated: 2026-10-06
+updated: 2026-10-20
 tags: [roadmap, planning, milestones, parity]
 ---
 
@@ -492,8 +492,9 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   the binary has no build-delay rule for sabotage (F-017).
 - [ ] Wire the recovered rules the 2026-09-25 test-pruning pass found uncalled:
   research gating of buildable ships (F-018), the decoy roll and the SUBDMSTB
-  Subdue success check (F-019; both now run, and its remaining phases are
-  tracked below), mod dependency errors (F-020), and blockade troop
+  Subdue success check (F-019; both now run, its remaining phases are
+  tracked below, and the Subdue success's browser pass passed on
+  2026-10-20), mod dependency errors (F-020), and blockade troop
   destruction (F-021; tracking now persists in save v15, browser pass
   pending).
 - [ ] Correct or re-source the code behaviors the 2026-09-26 citation audit
@@ -580,16 +581,24 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   (`ghidra/notes/regiment-unload.md`, "What happens to the rest of the
   cargo"). Retired 2026-10-17 by the user's choice: carried regiments stay
   aboard until an order moves them.
-- [ ] Port targeting of characters and objects (`+0x68` hit test, the walk up
+- [x] Port targeting of characters and objects (`+0x68` hit test, the walk up
   from a team member) so the dialog offers Rescue, Assassination, and
-  Abduction (F-019).
+  Abduction (F-019; phases 7g-7i, 2026-10-14).
 - [ ] Trace the galaxy view's right click on a system or fleet, then port
   what it opens.
 - [ ] Play the advisor's mission-refusal reactions (P34; the slots are in
   `ghidra/notes/mission-dialog.md`, "Refusal"), replacing the message-log
   stand-ins.
-- [ ] Add the original mission kinds the port lacks: Reconnaissance, Research,
-  Palace, Bounty, Jedi Training, and the leisure and movement kinds (F-040).
+- [ ] Add the original mission kinds the port lacks (F-040). Ported:
+  Reconnaissance, Research, Palace, Bounty, Jedi Training (no AI planner
+  sends it in the original), Dagobah, Pickup, Move, and Return (members of
+  an ended agent mission go home to where they joined it, save v91,
+  2026-10-20). Vacation is excluded: nothing in the original creates it.
+  Open: Autorouting `0x43` and Adrift `0x44` as orders, and the jails.
+- [x] Let the player move characters (F-040, 2026-10-20): the menu's Move
+  and Confirmed Move (with its transit window), a Move aboard a fleet (save
+  v92), and the Fleet window's Personnel menu and drag. Open: the drag out
+  of a Defenses or system window (`0x214`, unresolved for characters).
 - [x] Gate uncited simulation rules with `tools/provenance-scan`; its baseline
   may only shrink (F-031; 130 items after F-032 transit).
 - [x] Port fleet transit time from `FUN_0055d8c0` (F-032 transit; bombardment
