@@ -718,8 +718,16 @@ member's side holds it (port: without the route checks).
   `FUN_004f5ea0` starts `+0x40` at 0, so an intact fleet's arrival would
   set its characters Adrift, and whether that lasts rests on
   `FUN_0054c7d0`'s rule for an adrift character at a place of its own side
-  (`captive-escape.md` reads only its autorouting branch). Read
-  `FUN_0054c7d0`'s adrift branch next. (Mode 3's second pass with a team
+  (`captive-escape.md` reads only its autorouting branch).
+- `FUN_0054c7d0` (read 2026-10-20) takes each object at the location that
+  is autorouting (`+0x50` bit 12) or adrift (`+0x78` bit 6). One that stays
+  (its place is its side's and standing, or the condition on the object
+  the decompile loses fails) has both flags cleared together
+  (`FUN_004f78e0(0)`, `FUN_00534790(0)`). So an arriving fleet's
+  characters are adrift only for that moment at a place of their side; at
+  another side's place they get a destination (`FUN_00543040`) and leave
+  together, adrift ones on an Adrift order. Still open: the lost object
+  (`local_44`, `+0x50` bits 2 and 11), likely the container. (Mode 3's second pass with a team
   already detected is settled in `decoy-roll.md`.)
 - The autorouting event path (`FUN_00549230`, above) sends an adrift group
   on an Adrift order `0x44000004` (`FUN_00547880`), whose class alone uses
