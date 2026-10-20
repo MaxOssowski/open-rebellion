@@ -1854,6 +1854,16 @@ cross-runtime proof remain open
   The baseline shrinks from 19 to 11. What remains is `combat.rs`: the
   family ranges, the phase flags and the fighter rules. They need the
   combat area's reading.
+- 2026-10-21 (combat remainder, read only): the 11 `combat.rs` items rest
+  on `ghidra/notes/space-combat.md`, whose seven "phases" are not combat.
+  In the typed corpus, `FUN_005442f0`, `FUN_00544030`, `FUN_00544130`,
+  `FUN_00544da0` and `FUN_005445d0` are `MissionMgr` methods.
+  - They test the story flags at `+0x58`: LukeDagobahRequired,
+    HanCapturedAtPalace and FinalBattle.
+  - They set LukeDagobah, HanCapturedAtPalace, LukePalace,
+    FinalBattleReady and DarthPickup.
+  The phase flags and the pipeline citations need the combat area's
+  re-read; they are not tagged here.
 - Acceptance: each item is recovered and cited, or tagged `port:`/`hyp:` with a
   reason; `provenance-scan check` passes and the baseline shrinks to the
   port-owned remainder.
