@@ -706,7 +706,15 @@ member's side holds it (port: without the route checks).
   squadrons to `FUN_00556710`; the Event300 handler (`FUN_005140c0`) does
   not call it directly. So the destroyed fleet's characters reach
   `FUN_004ef2e0` some other way, still to find (a destroy cascade over the
-  fleet's children is the likely place). (Mode 3's second pass with a team
+  fleet's children is the likely place).
+- Only two places call slot `+0xb4` in the game-object code: the arrival
+  slot `FUN_004fb520` (argument 1, on each child) and `FUN_00556710`
+  (argument 0). The disassembly of `FUN_004ef2e0` (`0x4ef2e0..0x4ef33a`,
+  `ret 0x8`) never reads that argument. So what an intact container's
+  DestroyedReason byte holds decides the arrival call too: if it is `0x14`
+  there, an arriving fleet's characters merely autoroute (and stay at a
+  place of their side, `FUN_0054c7d0`); the meaning of reason `0x14` (also
+  what Retire passes, `FUN_00534c00`) settles this. (Mode 3's second pass with a team
   already detected is settled in `decoy-roll.md`.)
 - The autorouting event path (`FUN_00549230`, above) sends an adrift group
   on an Adrift order `0x44000004` (`FUN_00547880`), whose class alone uses
