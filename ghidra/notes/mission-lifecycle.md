@@ -679,6 +679,31 @@ a Return needs its own side's target (`FUN_004f4b60`, `1`/`0x28`).
 Ported 2026-10-20: the Return takes the mission's origin system when the
 member's side holds it (port: without the route checks).
 
+## Adrift and the abodes (read 2026-10-20, partial)
+
+- A character's slot `+0xb4` is `FUN_004ef2e0`. For a character on no
+  mission (`+0x78` bit 7 clear) and not destroyed, it reads its container
+  (`FUN_004f6b50`): a container whose byte `+0x40` is `0x14` sets
+  Autorouting; any other sets Adrift (`Role_SetAdrift` `FUN_00534790`,
+  `+0x78` bit 6, `RoleAdriftNotif`). `FUN_004fb520`, the arrival slot many
+  classes share (`build-delivery.md`), calls `+0xb4` on each child. What
+  byte `+0x40` holds is not traced, nor every other caller of `+0xb4`.
+- The autorouting event path (`FUN_00549230`, above) sends an adrift group
+  on an Adrift order `0x44000004` (`FUN_00547880`), whose class alone uses
+  the detection modes 3, 0, 1, 4 (`decoy-roll.md`, the mode word `0x4103`).
+  `FUN_00536110` clears Adrift (`FUN_00534790(0)`) and sets the remove
+  request.
+- Against the port: `integrator.rs` (`apply_space_combat_result_inner`)
+  makes the characters of a losing fleet left empty prisoners of the
+  winner, a rule with no source ("parity: officers captured on fleet
+  destruction"). The original's path for those characters is likely this
+  one (Adrift), unconfirmed until `+0x40` and the battle's removal of the
+  fleet are read.
+- The abodes: the Hermitage `0x98000442` is named only in Vacation's code
+  (`FUN_00571f20`, `0x571fc2`), which nothing creates; the jails
+  `0x98000440` and `0x98000480` only in `FUN_00549580`, the fallback for a
+  member with no destination. Dagobah and Jabba's Palace are ported.
+
 ## Vacation (`0x72`) is never created (read 2026-10-20)
 
 MISSNSD holds two Vacation records, `0x72000045` (TEXTSTRA 11333
