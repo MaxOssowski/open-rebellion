@@ -1,21 +1,42 @@
-//! Ship repair system — restores hull at systems with shipyard facilities.
+//! Capital ship repair: each damaged ship's timer `0x380`
+//! (`ghidra/notes/ship-repair.md`).
 //!
-//! From community disassembly cross-reference: `CombatUnitUnderRepair` /
-//! `CombatUnitFastRepair` notifications. Ships at systems with manufacturing
-//! facilities (shipyards) auto-repair each tick using the class `damage_control`
-//! rate.
+//! A ship is UnderRepair while it is Damaged and Usable (`FUN_005578d0`):
+//! anywhere, as long as it does not travel. Turning the flag on arms timer
+//! `0x380` on the ship's record (`FUN_005577f0` -> `FUN_00557c00`). Its
+//! period is GNPRTB 2052 (2) with FastRepair, else 2053 (30) (slot `+0x1d8`,
+//! `FUN_005010a0`). FastRepair (`FUN_0050c580`) holds at a system of the
+//! ship's side whose manager has a usable, unsuspended yard (`FUN_0050bb70`,
+//! `FUN_00528040(0)`, system `+0x88` bit `0x400`); a change of it rebuilds
+//! the timer from that day (`FUN_00557860` -> `FUN_00557c30`). Each fire
+//! (`FUN_00501c50`) repairs a tenth of the class's hull (`FUN_00500550`,
+//! `FUN_00501b70`).
+//!
+//! port:
+//! - a fleet in hyperspace is in no system's list, which stands for the
+//!   ship's en route bit;
+//! - a ship still unnumbered (id 0) waits for its id;
+//! - the port keeps no subsystem damage nibbles and no partial squadron
+//!   damage, so a fire repairs only the hull and squadrons have no timer;
+//! - the delay spread is not set (hyp: 0).
 //!
 //! # Advance contract
 //! `RepairSystem::advance()` never mutates `GameWorld`.
 //! It returns `Vec<RepairEvent>` for the caller to apply.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::dat::Faction;
 use crate::ids::{FleetKey, SystemKey};
 use crate::tick::TickEvent;
 use crate::world::GameWorld;
+
+/// GNPRTB 2052 (2): timer `0x380`'s period with FastRepair (`FUN_005010a0`).
+const GNPRTB_FAST_REPAIR_PERIOD: u16 = 2052;
+/// GNPRTB 2053 (30): its period without.
+const GNPRTB_REPAIR_PERIOD: u16 = 2053;
 
 // ---------------------------------------------------------------------------
 // Events
@@ -31,8 +52,8 @@ pub enum RepairEvent {
         hull_before: i32,
         hull_after: i32,
     },
-    /// Repair work started for damaged ships in one fleet at a shipyard.
-    /// Emitted alongside `ShipRepaired` events, never for a healthy fleet.
+    /// Repair started for damaged ships in one fleet: their timers were
+    /// armed. Never emitted for a healthy fleet.
     RepairCheckPerformed {
         system: SystemKey,
         fleet: FleetKey,
@@ -44,8 +65,16 @@ pub enum RepairEvent {
 // State
 // ---------------------------------------------------------------------------
 
-/// Repair-system state used to distinguish the beginning of a repair episode
-/// from the per-tick hull restoration that follows it.
+/// A ship's armed timer `0x380`: the day it next fires and whether it runs
+/// at the FastRepair period.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepairTimer {
+    pub due: u64,
+    pub fast: bool,
+}
+
+/// Each repairing ship's timer, by ship id, and the fleets holding one
+/// (save v98).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RepairState {
     #[serde(
@@ -53,14 +82,53 @@ pub struct RepairState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_set"
     )]
     active_fleets: HashSet<FleetKey>,
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    timers: HashMap<u64, RepairTimer>,
 }
 
 impl RepairState {
-    /// Whether a fleet was undergoing repair at the preceding repair step.
+    /// Whether a fleet holds a ship under repair.
     #[must_use]
     pub fn is_repairing(&self, fleet: FleetKey) -> bool {
         self.active_fleets.contains(&fleet)
     }
+
+    /// A ship's armed timer, by its id.
+    #[must_use]
+    pub fn timer(&self, ship_id: u64) -> Option<RepairTimer> {
+        self.timers.get(&ship_id).copied()
+    }
+}
+
+/// FastRepair for a ship of `is_alliance` at `system` (`FUN_0050c580`): the
+/// system is of the ship's side and holds a usable, unsuspended yard
+/// (`FUN_0050bb70`, `FUN_00528040(0)`).
+///
+/// port: a yard is a shipyard of the ship's side at the system; a system
+/// in revolt or blockaded suspends its yards (`FUN_0050bbb0`).
+fn fast_repair(world: &GameWorld, system: SystemKey, is_alliance: bool) -> bool {
+    let Some(sys) = world.systems.get(system) else {
+        return false;
+    };
+    let side = Faction::of_alliance(is_alliance);
+    if sys.is_destroyed || crate::uprising::holder(sys) != Some(side) {
+        return false;
+    }
+    if matches!(sys.control, crate::world::ControlKind::Uprising(_))
+        || crate::blockade::BlockadeSystem::system_is_blockaded(world, sys)
+    {
+        return false;
+    }
+    sys.manufacturing_facilities.iter().any(|&key| {
+        world
+            .manufacturing_facilities
+            .get(key)
+            .is_some_and(|yard| yard.is_shipyard && yard.side == side)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -70,79 +138,105 @@ impl RepairState {
 pub struct RepairSystem;
 
 impl RepairSystem {
-    /// Advance ship repairs. For each fleet at a system with manufacturing
-    /// facilities, repair damaged ships using the class `damage_control` rate.
-    ///
-    /// Returns repair events for the caller to apply to `GameWorld`.
+    /// Arm the timers of the ships under repair, drop the others, and fire
+    /// the ones due by the last tick. Returns the repairs for the caller to
+    /// apply to `GameWorld`.
     pub fn advance(
         state: &mut RepairState,
         world: &GameWorld,
         tick_events: &[TickEvent],
     ) -> Vec<RepairEvent> {
-        if tick_events.is_empty() {
+        let Some(last) = tick_events.last() else {
             return Vec::new();
-        }
+        };
+        let tick = last.tick;
+        let period = |fast: bool| {
+            u64::try_from(
+                world
+                    .gnprtb
+                    .value(
+                        if fast {
+                            GNPRTB_FAST_REPAIR_PERIOD
+                        } else {
+                            GNPRTB_REPAIR_PERIOD
+                        },
+                        world.difficulty_index,
+                    )
+                    .max(1),
+            )
+            .unwrap_or(1)
+        };
 
         let mut events = Vec::new();
+        let mut under_repair = HashSet::new();
         let mut repairing_now = HashSet::new();
-
-        // Iterate all systems that have manufacturing facilities (shipyards).
-        for (sys_key, sys) in &world.systems {
-            if sys.is_destroyed || sys.manufacturing_facilities.is_empty() {
+        for (fleet_key, fleet) in &world.fleets {
+            // Usable: a fleet in hyperspace is in no system's list.
+            let Some(sys) = world.systems.get(fleet.location) else {
+                continue;
+            };
+            if !sys.fleets.contains(&fleet_key) {
                 continue;
             }
-
-            // Each fleet at this system gets repair service.
-            for &fleet_key in &sys.fleets {
-                let Some(fleet) = world.fleets.get(fleet_key) else {
+            let fast = fast_repair(world, fleet.location, fleet.is_alliance);
+            let mut armed = 0;
+            for (ship_index, ship) in fleet.capital_ships.iter().enumerate() {
+                if !ship.alive || ship.id == 0 {
+                    continue;
+                }
+                let Some(class) = world.capital_ship_classes.get(ship.class) else {
                     continue;
                 };
-
-                // Repair damaged ships using the class damage_control rate.
-                let mut ships_repaired = 0;
-                for (ship_index, ship) in fleet.capital_ships.iter().enumerate() {
-                    if !ship.alive {
-                        continue;
+                let hull = i32::try_from(class.hull).unwrap_or(i32::MAX);
+                // Damaged.
+                if ship.hull_current >= hull {
+                    continue;
+                }
+                under_repair.insert(ship.id);
+                repairing_now.insert(fleet_key);
+                let timer = state.timers.entry(ship.id).or_insert_with(|| {
+                    armed += 1;
+                    RepairTimer {
+                        due: tick + period(fast),
+                        fast,
                     }
-                    let class = match world.capital_ship_classes.get(ship.class) {
-                        Some(c) if c.damage_control > 0 => c,
-                        _ => continue,
+                });
+                // FUN_00557c30: a new period rebuilds the timer from today.
+                if timer.fast != fast {
+                    *timer = RepairTimer {
+                        due: tick + period(fast),
+                        fast,
                     };
-                    let hull_max = class.hull.cast_signed();
-                    if ship.hull_current < hull_max {
-                        ships_repaired += 1;
-                        let hull_before = ship.hull_current;
-                        let hull_after =
-                            (hull_before + class.damage_control.cast_signed()).min(hull_max);
-                        events.push(RepairEvent::ShipRepaired {
-                            fleet: fleet_key,
-                            ship_index,
-                            hull_before,
-                            hull_after,
-                        });
-                    }
                 }
-
-                if ships_repaired > 0 {
-                    repairing_now.insert(fleet_key);
-                    if state.active_fleets.insert(fleet_key) {
-                        events.push(RepairEvent::RepairCheckPerformed {
-                            system: sys_key,
-                            fleet: fleet_key,
-                            ships_checked: ships_repaired,
-                        });
-                    }
+                if timer.due > tick {
+                    continue;
                 }
+                timer.due += period(fast);
+                // FUN_00501c50 -> FUN_00501b70: damage less a tenth of the
+                // class hull.
+                let hull_after = (ship.hull_current + hull / 10).min(hull);
+                events.push(RepairEvent::ShipRepaired {
+                    fleet: fleet_key,
+                    ship_index,
+                    hull_before: ship.hull_current,
+                    hull_after,
+                });
+            }
+            if armed > 0 {
+                events.push(RepairEvent::RepairCheckPerformed {
+                    system: fleet.location,
+                    fleet: fleet_key,
+                    ships_checked: armed,
+                });
             }
         }
-
-        // A healthy fleet, a fleet that left its shipyard, or a fleet at a
-        // destroyed shipyard has ended its repair episode. Later damage can
-        // therefore produce a fresh repair-start notification.
+        // A ship no longer Damaged and Usable drops its timer
+        // (FUN_005578d0 -> FUN_005577f0 off).
+        state.timers.retain(|id, _| under_repair.contains(id));
         state
             .active_fleets
             .retain(|fleet| repairing_now.contains(fleet));
-
+        state.active_fleets.extend(repairing_now);
         events
     }
 }
@@ -158,7 +252,12 @@ mod tests {
     use crate::ids::DatId;
     use crate::world::*;
 
-    fn make_shipyard_system(world: &mut GameWorld) -> SystemKey {
+    /// GNPRTB 2052 = 2 and 2053 = 30, as shipped (`ship-repair.md`).
+    fn gnprtb() -> GnprtbParams {
+        GnprtbParams::uniform(&[(2052, 2), (2053, 30)])
+    }
+
+    fn system(world: &mut GameWorld, shipyard: bool) -> SystemKey {
         let sector = world.sectors.insert(Sector {
             dat_id: DatId::new(0x9200_0000),
             name: "Test Sector".into(),
@@ -167,14 +266,17 @@ mod tests {
             y: 100,
             systems: vec![],
         });
-        let mfg_key = world
-            .manufacturing_facilities
-            .insert(ManufacturingFacilityInstance {
-                class_dat_id: DatId::new(0),
-                side: crate::dat::Faction::Empire,
-                is_shipyard: false,
-            });
-
+        let yards = if shipyard {
+            vec![world
+                .manufacturing_facilities
+                .insert(ManufacturingFacilityInstance {
+                    class_dat_id: DatId::new(0x2800_0001),
+                    side: Faction::Empire,
+                    is_shipyard: true,
+                })]
+        } else {
+            vec![]
+        };
         world.systems.insert(System {
             dat_id: DatId::new(0x9000_0000),
             name: "Kuat".into(),
@@ -192,7 +294,7 @@ mod tests {
             ground_units: vec![],
             special_forces: vec![],
             defense_facilities: vec![],
-            manufacturing_facilities: vec![mfg_key],
+            manufacturing_facilities: yards,
             production_facilities: vec![],
             fighters: Vec::new(),
             is_headquarters: false,
@@ -201,236 +303,180 @@ mod tests {
         })
     }
 
-    fn add_fleet_with_ship(world: &mut GameWorld, sys_key: SystemKey) -> FleetKey {
-        let class_key = world.capital_ship_classes.insert(CapitalShipClass {
-            dat_id: DatId::new(0x3000_0001),
+    /// An Empire fleet at `sys` with one numbered ship of hull 200 at
+    /// `hull`.
+    fn fleet(world: &mut GameWorld, sys: SystemKey, hull: i32) -> FleetKey {
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
             name: "Star Destroyer".into(),
-            is_alliance: false,
             is_empire: true,
-            refined_material_cost: 100,
-            maintenance_cost: 10,
-            research_order: 1,
-            research_difficulty: 5,
             hull: 200,
-            shield_strength: 100,
-            sub_light_engine: 50,
-            maneuverability: 30,
-            hyperdrive: 40,
-            fighter_capacity: 6,
-            troop_capacity: 4,
-            detection: 3,
-            turbolaser_fore: 10,
-            turbolaser_aft: 5,
-            turbolaser_port: 8,
-            turbolaser_starboard: 8,
-            ion_cannon_fore: 5,
-            ion_cannon_aft: 3,
-            ion_cannon_port: 4,
-            ion_cannon_starboard: 4,
-            laser_cannon_fore: 3,
-            laser_cannon_aft: 2,
-            laser_cannon_port: 3,
-            laser_cannon_starboard: 3,
-            shield_recharge_rate: 5,
-            damage_control: 10,
-            bombardment_modifier: 50,
-            ..Default::default()
+            damage_control: 5,
+            ..CapitalShipClass::default()
         });
-        let fleet_key = world.fleets.insert(Fleet {
-            location: sys_key,
-            capital_ships: ShipInstance::make(class_key, 200, false, 3),
+        let mut ship = ShipInstance::new(class, hull, false);
+        world.last_ship_id += 1;
+        ship.id = world.last_ship_id;
+        let key = world.fleets.insert(Fleet {
+            location: sys,
+            capital_ships: vec![ship],
             fighters: vec![],
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
         });
-        world
-            .systems
-            .get_mut(sys_key)
-            .unwrap()
-            .fleets
-            .push(fleet_key);
-        fleet_key
+        world.systems[sys].fleets.push(key);
+        key
     }
 
-    #[test]
-    fn healthy_ships_do_not_emit_repair_started() {
-        let mut world = GameWorld::default();
-        let sys_key = make_shipyard_system(&mut world);
-        add_fleet_with_ship(&mut world, sys_key);
-        let mut state = RepairState::default();
-        let tick_events = vec![crate::tick::TickEvent { tick: 1 }];
-
-        let events = RepairSystem::advance(&mut state, &world, &tick_events);
-        assert!(
-            events.is_empty(),
-            "healthy ships must not start repair telemetry"
-        );
+    fn day(n: u64) -> [TickEvent; 1] {
+        [TickEvent { tick: n }]
     }
 
-    #[test]
-    fn no_repair_without_shipyard() {
-        let mut world = GameWorld::default();
-        let sector = world.sectors.insert(Sector {
-            dat_id: DatId::new(0x9200_0000),
-            name: "Outer Rim".into(),
-            group: crate::dat::SectorGroup::RimOuter,
-            x: 500,
-            y: 500,
-            systems: vec![],
-        });
-        // System with NO manufacturing facilities
-        let sys_key = world.systems.insert(System {
-            dat_id: DatId::new(0x9000_0001),
-            name: "Tatooine".into(),
-            sector,
-            x: 500,
-            y: 500,
-            exploration_status: ExplorationStatus::Explored,
-            popularity_alliance: 0.5,
-            popularity_empire: 0.5,
-            is_populated: true,
-            total_energy: 3,
-            raw_materials: 2,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![], // no shipyard!
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
-        });
-        let fleet_key = add_fleet_with_ship(&mut world, sys_key);
-        world.fleets.get_mut(fleet_key).unwrap().capital_ships[0].hull_current = 150;
-        let mut state = RepairState::default();
-        let tick_events = vec![crate::tick::TickEvent { tick: 1 }];
-
-        let events = RepairSystem::advance(&mut state, &world, &tick_events);
-        assert!(events.is_empty(), "no repair without shipyard");
-    }
-
-    #[test]
-    fn no_repair_without_ticks() {
-        let mut world = GameWorld::default();
-        let sys_key = make_shipyard_system(&mut world);
-        let fleet_key = add_fleet_with_ship(&mut world, sys_key);
-        world.fleets.get_mut(fleet_key).unwrap().capital_ships[0].hull_current = 150;
-        let mut state = RepairState::default();
-
-        let events = RepairSystem::advance(&mut state, &world, &[]);
-        assert!(events.is_empty(), "no repair without tick events");
-    }
-
-    #[test]
-    fn no_repair_at_destroyed_system() {
-        let mut world = GameWorld::default();
-        let sys_key = make_shipyard_system(&mut world);
-        let fleet_key = add_fleet_with_ship(&mut world, sys_key);
-        world.fleets.get_mut(fleet_key).unwrap().capital_ships[0].hull_current = 150;
-        world.systems.get_mut(sys_key).unwrap().is_destroyed = true;
-        let mut state = RepairState::default();
-        let tick_events = vec![crate::tick::TickEvent { tick: 1 }];
-
-        let events = RepairSystem::advance(&mut state, &world, &tick_events);
-        assert!(events.is_empty(), "no repair at destroyed system");
-    }
-
-    #[test]
-    fn damaged_ship_emits_ship_repaired() {
-        let mut world = GameWorld::default();
-        let sys_key = make_shipyard_system(&mut world);
-        let fleet_key = add_fleet_with_ship(&mut world, sys_key);
-        // Damage the first ship: hull 200 → 150
-        world.fleets.get_mut(fleet_key).unwrap().capital_ships[0].hull_current = 150;
-        let mut state = RepairState::default();
-        let tick_events = vec![crate::tick::TickEvent { tick: 1 }];
-
-        let events = RepairSystem::advance(&mut state, &world, &tick_events);
-        let repaired: Vec<_> = events
+    fn repaired(events: &[RepairEvent]) -> Vec<(i32, i32)> {
+        events
             .iter()
-            .filter(|e| matches!(e, RepairEvent::ShipRepaired { .. }))
-            .collect();
-        assert_eq!(
-            repaired.len(),
-            1,
-            "one damaged ship should emit ShipRepaired"
-        );
-        assert!(
-            events.iter().any(|event| matches!(
-                event,
-                RepairEvent::RepairCheckPerformed { system, fleet, ships_checked: 1 }
-                    if *system == sys_key && *fleet == fleet_key
-            )),
-            "actual repair work should emit one repair-start record"
-        );
-        match repaired[0] {
-            RepairEvent::ShipRepaired {
-                fleet,
-                ship_index,
-                hull_before,
-                hull_after,
-            } => {
-                assert_eq!(*fleet, fleet_key);
-                assert_eq!(*ship_index, 0);
-                assert_eq!(*hull_before, 150);
-                // damage_control=10, so hull_after = min(150+10, 200) = 160
-                assert_eq!(*hull_after, 160);
-            }
-            RepairEvent::RepairCheckPerformed { .. } => unreachable!(),
-        }
+            .filter_map(|event| match event {
+                RepairEvent::ShipRepaired {
+                    hull_before,
+                    hull_after,
+                    ..
+                } => Some((*hull_before, *hull_after)),
+                RepairEvent::RepairCheckPerformed { .. } => None,
+            })
+            .collect()
     }
 
     #[test]
-    fn repair_started_is_emitted_once_per_continuous_episode() {
-        let mut world = GameWorld::default();
-        let sys_key = make_shipyard_system(&mut world);
-        let fleet_key = add_fleet_with_ship(&mut world, sys_key);
-        world.fleets.get_mut(fleet_key).unwrap().capital_ships[0].hull_current = 150;
+    fn a_damaged_ship_repairs_a_tenth_of_its_hull_every_two_days_at_its_shipyard() {
+        // FUN_005010a0: GNPRTB 2052 (2) with FastRepair; FUN_00501c50 ->
+        // FUN_00501b70: damage less class hull / 10 (FUN_00500550).
+        let mut world = GameWorld {
+            gnprtb: gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, true);
+        let fleet = fleet(&mut world, sys, 150);
         let mut state = RepairState::default();
-        let tick_events = vec![crate::tick::TickEvent { tick: 1 }];
 
-        let first = RepairSystem::advance(&mut state, &world, &tick_events);
-        assert!(first.iter().any(|event| matches!(
+        let armed = RepairSystem::advance(&mut state, &world, &day(10));
+        assert!(repaired(&armed).is_empty());
+        assert!(armed.iter().any(|event| matches!(
             event,
-            RepairEvent::RepairCheckPerformed { fleet, .. } if *fleet == fleet_key
+            RepairEvent::RepairCheckPerformed { fleet: f, ships_checked: 1, .. } if *f == fleet
         )));
-        assert!(state.is_repairing(fleet_key));
-
-        let encoded = serde_json::to_string(&state).expect("serialize repair state");
-        let restored: RepairState =
-            serde_json::from_str(&encoded).expect("deserialize repair state");
-        assert!(restored.is_repairing(fleet_key));
-
-        let second = RepairSystem::advance(&mut state, &world, &tick_events);
-        assert!(second.iter().any(|event| matches!(
-            event,
-            RepairEvent::ShipRepaired { fleet, .. } if *fleet == fleet_key
-        )));
-        assert!(
-            !second.iter().any(|event| matches!(
-                event,
-                RepairEvent::RepairCheckPerformed { fleet, .. } if *fleet == fleet_key
-            )),
-            "ongoing work must not be reported as a second repair start"
+        let id = world.fleets[fleet].capital_ships[0].id;
+        assert_eq!(state.timer(id), Some(RepairTimer { due: 12, fast: true }));
+        assert!(repaired(&RepairSystem::advance(&mut state, &world, &day(11))).is_empty());
+        assert_eq!(
+            repaired(&RepairSystem::advance(&mut state, &world, &day(12))),
+            [(150, 170)]
         );
+        assert_eq!(state.timer(id).map(|t| t.due), Some(14));
+        assert!(state.is_repairing(fleet));
+    }
 
-        world.fleets.get_mut(fleet_key).unwrap().capital_ships[0].hull_current = 200;
-        let healthy = RepairSystem::advance(&mut state, &world, &tick_events);
-        assert!(healthy.is_empty());
-        assert!(!state.is_repairing(fleet_key));
-
-        world.fleets.get_mut(fleet_key).unwrap().capital_ships[0].hull_current = 180;
-        let restarted = RepairSystem::advance(&mut state, &world, &tick_events);
-        assert!(
-            restarted.iter().any(|event| matches!(
-                event,
-                RepairEvent::RepairCheckPerformed { fleet, .. } if *fleet == fleet_key
-            )),
-            "new damage after recovery must begin a new repair episode"
+    #[test]
+    fn away_from_a_shipyard_a_ship_repairs_every_thirty_days() {
+        // FUN_0050c580: no usable yard of the side, so GNPRTB 2053 (30).
+        // There is no shipyard condition on repair itself (FUN_005578d0).
+        let mut world = GameWorld {
+            gnprtb: gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, false);
+        let fleet = fleet(&mut world, sys, 100);
+        let mut state = RepairState::default();
+        RepairSystem::advance(&mut state, &world, &day(1));
+        let id = world.fleets[fleet].capital_ships[0].id;
+        assert_eq!(state.timer(id), Some(RepairTimer { due: 31, fast: false }));
+        assert!(repaired(&RepairSystem::advance(&mut state, &world, &day(30))).is_empty());
+        assert_eq!(
+            repaired(&RepairSystem::advance(&mut state, &world, &day(31))),
+            [(100, 120)]
         );
+    }
+
+    #[test]
+    fn a_new_period_rebuilds_the_timer_and_a_healthy_or_travelling_ship_has_none() {
+        // FUN_00557860 -> FUN_00557c30: FastRepair changes the delay and
+        // the timer counts again from that day. FUN_005578d0: no timer
+        // without damage, or while not usable (en route).
+        let mut world = GameWorld {
+            gnprtb: gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, false);
+        let fleet = fleet(&mut world, sys, 100);
+        let id = world.fleets[fleet].capital_ships[0].id;
+        let mut state = RepairState::default();
+        RepairSystem::advance(&mut state, &world, &day(1));
+        // A shipyard of the side opens at the system.
+        let yard = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2800_0001),
+                side: Faction::Empire,
+                is_shipyard: true,
+            });
+        world.systems[sys].manufacturing_facilities.push(yard);
+        RepairSystem::advance(&mut state, &world, &day(5));
+        assert_eq!(state.timer(id), Some(RepairTimer { due: 7, fast: true }));
+        // An enemy-held system gives no FastRepair.
+        world.systems[sys].control = ControlKind::Controlled(Faction::Alliance);
+        RepairSystem::advance(&mut state, &world, &day(6));
+        assert_eq!(state.timer(id), Some(RepairTimer { due: 36, fast: false }));
+        // In hyperspace (out of every system's list) the timer drops.
+        world.systems[sys].fleets.clear();
+        RepairSystem::advance(&mut state, &world, &day(7));
+        assert_eq!(state.timer(id), None);
+        assert!(!state.is_repairing(fleet));
+        // Healthy: no timer, no event.
+        world.systems[sys].fleets.push(fleet);
+        world.fleets[fleet].capital_ships[0].hull_current = 200;
+        assert!(RepairSystem::advance(&mut state, &world, &day(8)).is_empty());
+        assert_eq!(state.timer(id), None);
+    }
+
+    #[test]
+    fn an_unnumbered_or_lost_ship_and_an_empty_day_repair_nothing() {
+        let mut world = GameWorld {
+            gnprtb: gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, true);
+        let fleet = fleet(&mut world, sys, 100);
+        let mut state = RepairState::default();
+        assert!(RepairSystem::advance(&mut state, &world, &[]).is_empty());
+        world.fleets[fleet].capital_ships[0].id = 0;
+        assert!(RepairSystem::advance(&mut state, &world, &day(1)).is_empty());
+        world.fleets[fleet].capital_ships[0].id = 9;
+        world.fleets[fleet].capital_ships[0].alive = false;
+        assert!(RepairSystem::advance(&mut state, &world, &day(2)).is_empty());
+    }
+
+    #[test]
+    fn a_system_in_revolt_or_destroyed_suspends_fast_repair() {
+        // FUN_0050bbb0: uprising or blockade suspends the yards, and
+        // FUN_00528040(0) counts only unsuspended ones.
+        let mut world = GameWorld {
+            gnprtb: gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, true);
+        assert!(fast_repair(&world, sys, false));
+        assert!(!fast_repair(&world, sys, true));
+        // A yard must be a shipyard of the unit's side.
+        let yard = world.systems[sys].manufacturing_facilities[0];
+        world.manufacturing_facilities[yard].is_shipyard = false;
+        assert!(!fast_repair(&world, sys, false));
+        world.manufacturing_facilities[yard].is_shipyard = true;
+        world.manufacturing_facilities[yard].side = Faction::Alliance;
+        assert!(!fast_repair(&world, sys, false));
+        world.manufacturing_facilities[yard].side = Faction::Empire;
+        world.systems[sys].control = ControlKind::Uprising(Faction::Empire);
+        assert!(!fast_repair(&world, sys, false));
+        world.systems[sys].control = ControlKind::Controlled(Faction::Empire);
+        world.systems[sys].is_destroyed = true;
+        assert!(!fast_repair(&world, sys, false));
     }
 }

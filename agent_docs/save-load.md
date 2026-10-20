@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v97, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v98, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-20
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v97, and it is the only one
+serializable snapshot. The current format is v98, and it is the only one
 that loads.
 
-## Native format (v97)
+## Native format (v98)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -66,7 +66,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `seat_of_power` | `SeatOfPowerState`: the character manager's SeatOfPower bit (`+0x58` bit 1) and whether its first check ran (v78) |
 | `sim_rng` | `Xoshiro256PlusPlus` |
 | `ai2` | `Option<AIState>` |
-| `repair` | `RepairState` |
+| `repair` | `RepairState`; v98 adds each repairing ship's timer `0x380` (due day, FastRepair period), by ship id |
 | `production` | `ProductionState`: each side's raw and refined stockpiles, the refineries waiting for raw material, and every mine's and refinery's cycle and upkeep allocation (v33); the yards waiting for refined material and every yard's cycle (v34) |
 | `combat_cooldowns` | `HashMap<SystemKey, u64>` |
 | `game_config` | `GameConfig` (v59 drops `AiConfig`'s `alliance_deploy_budget`, `empire_deploy_budget` and `ds_retreat_strength_ratio`; v60 its `max_attack_fronts`, `battle_cooldown_ticks`, `proximity_divisor` and the four `weight_*` attack scoring weights) |

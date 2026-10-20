@@ -1964,6 +1964,13 @@ cross-runtime proof remain open
   - Repair is timer `0x380`, not `0x386`. Timer `0x386` is the blockade's
     support shift (`blockade.rs`). Repair is read in
     `ghidra/notes/ship-repair.md`.
+- Repair ported (2026-10-20, save v98): `repair.rs` runs timer `0x380` per
+  ship. A damaged ship that is not travelling repairs a tenth of its class
+  hull every 2 days (GNPRTB 2052) beside a usable, unsuspended yard of its
+  side, else every 30 (2053). A FastRepair change rebuilds the timer. The
+  invented per-day `damage_control` rule at any manufacturing system is
+  gone. 20 of 24 campaigns change
+  (`evidence/2026-10-20-ship-repair-timer/`).
 - Acceptance: Queues, progress, and repair follow FUN_0052b960 and timer 0x386
   with failing-without tests.
 

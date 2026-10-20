@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 97;
+pub const SAVE_VERSION: u32 = 98;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1070,6 +1070,9 @@ mod tests {
             has_death_star: false,
         });
         state.world.systems[system].fleets.push(fleet);
+        // The drivers number new ships before each day (GameWorld::number_ships);
+        // repair keys its timers on the ship id.
+        state.world.number_ships();
         let repair_events = rebellion_core::repair::RepairSystem::advance(
             &mut state.repair,
             &state.world,
