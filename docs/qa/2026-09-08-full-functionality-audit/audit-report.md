@@ -1779,6 +1779,11 @@ cross-runtime proof remain open
   `0x7194` / `0x7199` / `0x719a` for a gain, `0x7196` / `0x7197` /
   `0x7198` for a loss. Before, the app held them as English strings
   (`evidence/2026-10-21-resource-message-texts/`).
+- 2026-10-21: the Informants message (`0x153`, `FUN_00491060`, TEXTSTRA
+  `0x7150` / `0x7151`) and Maintenance Shortfall (`0x304`, `FUN_00498970`,
+  `0x7080`-`0x7082`, the system as `0x7081`'s third substitution) read
+  their texts from TEXTSTRA. Before, the app held them as English strings
+  (`evidence/2026-10-21-informant-maintenance-texts/`).
 - Acceptance: both incidents follow their recovered timers and tables with
   failing-without tests.
 

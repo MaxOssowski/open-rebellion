@@ -2940,11 +2940,15 @@ async fn main() {
                     .and_then(|system| world.systems.get(system))
                     .map_or_else(|| "unknown".into(), |s| s.name.clone());
                 // Notification 0x304 (GameObjDestroyedAutoscrap), Maintenance
-                // Shortfall: TEXTSTRA 28800-28802.
-                let text = format!(
-                    "Maintenance Shortfall: the following units have been destroyed at {name} due to a maintenance shortfall: {}",
-                    scrap.unit
-                );
+                // Shortfall (FUN_00498970): TEXTSTRA 0x7080-0x7082.
+                let system_name = scrap.system.map(|_| name.as_str());
+                let Some((title, text)) = rebellion_render::story_messages::maintenance_texts(
+                    system_name,
+                    &scrap.unit,
+                    &message_texts,
+                ) else {
+                    continue;
+                };
                 let message = match scrap.system {
                     Some(system) => {
                         GameMessage::at_system(scrap.tick, text, MessageCategory::Event, system)
@@ -2952,9 +2956,9 @@ async fn main() {
                     None => GameMessage::new(scrap.tick, text, MessageCategory::Event),
                 };
                 msg_log.push(filed(
-                    message.with_picture_if(Some(pictures::units_destroyed(pictures::reader(
-                        alliance,
-                    )))),
+                    message.with_title(title).with_picture_if(Some(pictures::units_destroyed(
+                        pictures::reader(alliance),
+                    ))),
                     MessageRail::Manufacturing,
                     Some(RailAudience::side(alliance)),
                 ));
@@ -3046,18 +3050,23 @@ async fn main() {
                     .get(report.system)
                     .map_or_else(|| "unknown".into(), |s| s.name.clone());
                 // Notification 0x153, Informants Provide Information
-                // (TEXTSTRA 29008-29009).
-                msg_log.push(filed(
-                    GameMessage::at_system(
-                        report.tick,
-                        format!("Informants have provided us with information about {name}."),
-                        MessageCategory::Event,
-                        report.system,
-                    )
-                    .with_picture_if(Some(pictures::informants())),
-                    MessageRail::PopularSupport,
-                    Some(RailAudience::side(recipient_is_alliance)),
-                ));
+                // (FUN_00491060, TEXTSTRA 0x7150-0x7151).
+                if let Some((title, text)) =
+                    rebellion_render::story_messages::informants_texts(&name, &message_texts)
+                {
+                    msg_log.push(filed(
+                        GameMessage::at_system(
+                            report.tick,
+                            text,
+                            MessageCategory::Event,
+                            report.system,
+                        )
+                        .with_title(title)
+                        .with_picture_if(Some(pictures::informants())),
+                        MessageRail::PopularSupport,
+                        Some(RailAudience::side(recipient_is_alliance)),
+                    ));
+                }
             }
             for evt in &uprising_events {
                 use rebellion_core::uprising::UprisingEvent;

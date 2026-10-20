@@ -814,6 +814,44 @@ pub fn resource_texts(
     ))
 }
 
+/// Informants Provide Information (`FUN_00491060`): notification `0x153`,
+/// TEXTSTRA `0x7150` / `0x7151`, the system as `{1:1}`. Returns the title
+/// and body.
+#[must_use]
+pub fn informants_texts(system: &str, texts: &HashMap<u16, String>) -> Option<(String, String)> {
+    let named = [MessageParameter::Named { name: system }];
+    Some((
+        fill_message_text(texts.get(&0x7150)?, &named),
+        fill_message_text(texts.get(&0x7151)?, &named),
+    ))
+}
+
+/// Maintenance Shortfall (`FUN_00498970`): notification `0x304` for each
+/// autoscrapped unit, to the unit's side. The title is TEXTSTRA `0x7080`;
+/// the body `0x7081` names the system the unit was at (its third
+/// substitution, found up the unit's containers, empty when there is
+/// none), and each unit adds a line `0x7082`. Returns the title and body.
+#[must_use]
+pub fn maintenance_texts(
+    system: Option<&str>,
+    unit: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let unit = MessageParameter::Named { name: unit };
+    let mut body = fill_message_text(
+        texts.get(&0x7081)?,
+        &[
+            unit,
+            MessageParameter::Named { name: "" },
+            MessageParameter::Named {
+                name: system.unwrap_or_default(),
+            },
+        ],
+    );
+    body.push_str(&fill_message_text(texts.get(&0x7082)?, &[unit]));
+    Some((fill_message_text(texts.get(&0x7080)?, &[]), body))
+}
+
 /// Near Uprising (`FUN_00498cb0`): notification `0x148`, the system's
 /// troop surplus going from `previous` to `surplus` (`FUN_00511fd0`). Only
 /// the holder's side hears it, and only for a garrisoned system (`+0x88`
@@ -1227,6 +1265,44 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00491060 (0x153) and FUN_00498970 (0x304): TEXTSTRA 0x7150 /
+    // 0x7151 and 0x7080..0x7082 as shipped; 0x7081 names the system as
+    // its third substitution.
+    #[test]
+    fn informants_and_maintenance_shortfall_take_their_texts() {
+        let texts: HashMap<u16, String> = [
+            (0x7150, "Informants Provide Information"),
+            (0x7151, "Informants have provided us with information about {1:1}."),
+            (0x7080, "Maintenance Shortfall"),
+            (
+                0x7081,
+                "The following units have been destroyed at {3:1} due to a maintenance shortfall:\n",
+            ),
+            (0x7082, "{1:1}\n"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            informants_texts("Mon Calamari", &texts),
+            Some((
+                "Informants Provide Information".into(),
+                "Informants have provided us with information about Mon Calamari.".into()
+            ))
+        );
+        assert_eq!(
+            maintenance_texts(Some("Kuat"), "Victory-class Star Destroyer", &texts),
+            Some((
+                "Maintenance Shortfall".into(),
+                "The following units have been destroyed at Kuat due to a maintenance shortfall:\nVictory-class Star Destroyer\n".into()
+            ))
+        );
+        assert_eq!(
+            maintenance_texts(None, "Mine", &texts).map(|(_, body)| body),
+            Some("The following units have been destroyed at  due to a maintenance shortfall:\nMine\n".into())
+        );
+    }
 
     // FUN_0048e940 (notification 0x155): TEXTSTRA 0x7194..0x719a as shipped.
     #[test]
