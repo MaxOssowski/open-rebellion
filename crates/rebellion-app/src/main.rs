@@ -7661,6 +7661,7 @@ fn apply_panel_action(
                 MissionKind::Autoscrap => "Autoscrap",
                 MissionKind::Move => "Move",
                 MissionKind::Return => "Return",
+                MissionKind::Adrift => "Adrift",
                 MissionKind::JediTraining => "Jedi Training",
                 MissionKind::Dagobah => "Dagobah",
                 MissionKind::Bounty => "Bounty",
@@ -8215,6 +8216,7 @@ fn apply_mission_result(
         MissionKind::Autoscrap => "Autoscrap",
         MissionKind::Move => "Move",
         MissionKind::Return => "Return",
+        MissionKind::Adrift => "Adrift",
         MissionKind::JediTraining => "Jedi Training",
         MissionKind::Dagobah => "Dagobah",
         MissionKind::Bounty => "Bounty",
@@ -8248,6 +8250,7 @@ fn apply_mission_result(
         | MissionKind::Autoscrap
         | MissionKind::Move
         | MissionKind::Return
+        | MissionKind::Adrift
         | MissionKind::JediTraining
         | MissionKind::Dagobah
         | MissionKind::Bounty

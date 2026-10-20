@@ -1,0 +1,6 @@
+thread 'mission_detection::tests::the_adrift_order_s_mode_word_runs_two_passes_in_phase_two' (1488044) panicked at crates/rebellion-core/src/mission_detection.rs:2242:9:
+assertion `left == right` failed
+  left: [2]
+ right: [1, 2]
+thread 'mission_detection::tests::an_adrift_team_meets_the_enemy_fleets_as_it_sets_out' (1488043) panicked at crates/rebellion-core/src/mission_detection.rs:2278:9:
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1423 filtered out; finished in 0.00s

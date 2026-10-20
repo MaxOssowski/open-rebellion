@@ -83,6 +83,8 @@ fn capability(kind: MissionKind) -> Option<u32> {
         MissionKind::Autoscrap | MissionKind::Move => return None,
         // A mission's end sends Return (FUN_00548910), not a planner.
         MissionKind::Return => return None,
+        // A destroyed container's characters go Adrift (FUN_00549230).
+        MissionKind::Adrift => return None,
         // FUN_00402720 reads Jedi Training's record (0x58000042, the image's
         // only use of that id, 0x402c74) but sets no bit, so no planner
         // sends it; only the player does.
@@ -301,6 +303,7 @@ fn selectors(kind: MissionKind, subtype: u32) -> Option<Selectors> {
         // The Move pseudo-mission has no selectors (FUN_004bd570 builds it).
         MissionKind::Move
         | MissionKind::Return
+        | MissionKind::Adrift
         | MissionKind::JediTraining
         | MissionKind::Dagobah
         | MissionKind::Bounty

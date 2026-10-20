@@ -3172,6 +3172,14 @@ cross-runtime proof remain open
   window's character drag is the Move mission order `0x241` (manual p. 111).
   Ported with `DefensesWindowAction::DragCharacter`; browser acceptance on
   fixtures 69 and 68, both sides (`evidence/2026-10-20-defenses-drag/`).
+- 2026-10-20: the Adrift order `0x44000004` and its detection.
+  `MissionKind::Adrift` exists, and `mission_detection` reads the mode word
+  per kind: Adrift's `0x4103` (`FUN_00576a20`) gives phase 2 mode 3, whose
+  two passes run mode 1's body and then mode 2's with the flags kept
+  (`FUN_00589a40`); other kinds run one pass as before (24 campaigns
+  identical). Nothing creates an Adrift order yet; the battle's adrift path,
+  which replaces the integrator's unsourced capture of a losing fleet's
+  characters, is the next stage (`evidence/2026-10-20-adrift-detection/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

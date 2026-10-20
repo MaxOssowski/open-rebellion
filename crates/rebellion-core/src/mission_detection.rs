@@ -1461,12 +1461,73 @@ fn first_pass(
     if !record.detection_phases {
         return;
     }
-    let mode = match mission.phase {
-        2 => 2,
-        3 | 7 => 1,
-        PHASE_BETRAYAL => 4,
-        _ => return,
-    };
+    // FUN_005898f0 runs FUN_00589970 twice; for every kind but Adrift the
+    // second pass skips (modes 1, 2 and 4), so one pass acts.
+    // FUN_00589a40 also runs the validator on the second pass. port: the
+    // run's closing validator stands in for it: a member the first pass
+    // captured already has its remove request, so the second pass neither
+    // counts nor exposes it.
+    let mut inherited = Flags::default();
+    let mut detected = false;
+    for &mode in detection_passes(mission.kind, mission.phase) {
+        detected = one_pass(
+            mission,
+            world,
+            location,
+            day,
+            rng,
+            out,
+            record.can_resign,
+            mode,
+            &mut inherited,
+            detected,
+        );
+    }
+}
+
+/// The modes `FUN_00589a40` reads from the mission's mode word for `phase`,
+/// one per pass that acts: `0x4112` gives phase 2 mode 2, phases 3 and 7
+/// mode 1 and phase 9 mode 4; Adrift's `0x4103` gives phase 2 mode 3,
+/// which runs mode 1's body on the first pass and mode 2's on the second,
+/// phase 7 mode 1 and phase 9 mode 4 (`ghidra/notes/decoy-roll.md`).
+fn detection_passes(kind: crate::missions::MissionKind, phase: u8) -> &'static [u8] {
+    if kind == crate::missions::MissionKind::Adrift {
+        match phase {
+            2 => &[1, 2],
+            7 => &[1],
+            PHASE_BETRAYAL => &[4],
+            _ => &[],
+        }
+    } else {
+        match phase {
+            2 => &[2],
+            3 | 7 => &[1],
+            PHASE_BETRAYAL => &[4],
+            _ => &[],
+        }
+    }
+}
+
+/// One pass of `FUN_00589970` in `mode`: setup's flags, added to the earlier
+/// pass's (`inherited`), then Force detection, betrayal, the decoys and the
+/// detection while the team is not yet `detected`, and the detected outcome
+/// (`FUN_0058a1c0`) whenever it is. Returns whether the team is detected.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "One pass reads the mission's world, place, day and stream."
+)]
+fn one_pass(
+    mission: &mut ActiveMission,
+    world: &GameWorld,
+    location: SystemKey,
+    day: u64,
+    rng: &mut MissionRng,
+    out: &mut Vec<MissionEffect>,
+    can_resign: bool,
+    mode: u8,
+    inherited: &mut Flags,
+    detected: bool,
+) -> bool {
     let side = Faction::from(mission.faction);
     let opponent = if side == Faction::Alliance {
         Faction::Empire
@@ -1486,11 +1547,15 @@ fn first_pass(
         .get(location)
         .and_then(crate::uprising::holder)
         == Some(opponent);
-    let mut flags = Flags::default();
+    // Setup only sets flags (FUN_00589a40), so a second pass keeps the
+    // first's.
+    let mut flags = *inherited;
     match mode {
         1 => {
             flags.in_fleet = true;
-            flags.at_system = mission.origin != Some(mission.target_system);
+            if mission.origin != Some(mission.target_system) {
+                flags.at_system = true;
+            }
             if opponent_fleet && !own_fleet {
                 flags.fleets = true;
             }
@@ -1516,17 +1581,18 @@ fn first_pass(
             }
         }
     }
+    *inherited = flags;
     let mut run = Run {
         world,
         location,
         flags,
-        can_resign: record.can_resign,
+        can_resign,
         decoyed: HashSet::new(),
         gone: HashSet::new(),
         defenders: 0,
         team: 0,
         decoys: 0,
-        detected: false,
+        detected,
         day,
         encounters: HashMap::new(),
     };
@@ -1589,11 +1655,12 @@ fn first_pass(
     }
     if run.detected {
         // Slot +0x1dc: 3, or 4 past phase 4, when members may resign.
-        if record.can_resign {
+        if can_resign {
             mission.end_code = if mission.phase > 4 { 4 } else { 3 };
         }
         run.expose_team(mission, rng, out);
     }
+    run.detected
 }
 
 #[cfg(test)]
@@ -2160,6 +2227,84 @@ mod tests {
         mission.origin = Some(here);
         run_once(&mut mission, &world);
         assert_eq!(mission.end_code, 0);
+    }
+
+    #[test]
+    fn the_adrift_order_s_mode_word_runs_two_passes_in_phase_two() {
+        // FUN_00576a20's 0x4103: phase 2 mode 3 (mode 1's body, then mode
+        // 2's), phase 7 mode 1, phase 9 mode 4; every other kind 0x4112.
+        assert_eq!(detection_passes(MissionKind::Adrift, 2), &[1, 2]);
+        assert_eq!(detection_passes(MissionKind::Adrift, 3), &[] as &[u8]);
+        assert_eq!(detection_passes(MissionKind::Adrift, 7), &[1]);
+        assert_eq!(detection_passes(MissionKind::Adrift, PHASE_BETRAYAL), &[4]);
+        assert_eq!(detection_passes(MissionKind::Move, 2), &[2]);
+        assert_eq!(detection_passes(MissionKind::Move, 3), &[1]);
+        assert_eq!(detection_passes(MissionKind::Move, 5), &[] as &[u8]);
+    }
+
+    #[test]
+    fn an_adrift_team_meets_the_enemy_fleets_as_it_sets_out() {
+        // Mode 3's first pass is mode 1's body: the opponent's fleets at the
+        // origin search a team bound elsewhere. A Move's phase 2 is mode 2,
+        // the system's regiments only, so a fleet alone finds nothing there.
+        // RLEVADTB 0: an exposed member is captured (slot +0x20c).
+        let (mut world, here) = world_with(imperial());
+        let there = system(&mut world, ControlKind::Uncontrolled);
+        table(&mut world, FOILTB, 100);
+        table(&mut world, RLEVADTB, 0);
+        imperial_fleet(&mut world, here, false);
+        for raw in [0x4400_0004, 0x4100_0001] {
+            world.mission_records.push(MissionRecord {
+                dat_id: DatId::new(raw),
+                ..sabotage_record(false)
+            });
+        }
+        let captured = |kind| {
+            let mut world = world.clone();
+            let lead = agent(&mut world, here, 100);
+            let mut mission = sabotage(vec![lead], there, 2);
+            mission.kind = kind;
+            mission.origin = Some(here);
+            run_once(&mut mission, &world)
+                .iter()
+                .any(|effect| matches!(effect, MissionEffect::CharacterCaptured { .. }))
+        };
+        assert!(captured(MissionKind::Adrift));
+        assert!(!captured(MissionKind::Move));
+    }
+
+    #[test]
+    fn an_adrift_team_the_first_pass_ends_meets_no_second_pass() {
+        // FUN_00589a40 runs the validator on each pass: a team the fleets
+        // captured on the first pass has every member's remove request
+        // (FUN_004f18e0), so rule 1 ends the mission (code 5) and the
+        // system's regiments expose no one again. Without an enemy fleet,
+        // the second pass (mode 2's body) is the one that finds the team.
+        let (mut world, here) = world_with(imperial());
+        let there = system(&mut world, ControlKind::Uncontrolled);
+        table(&mut world, FOILTB, 100);
+        table(&mut world, RLEVADTB, 0);
+        imperial_regiment(&mut world, here);
+        world.mission_records.push(MissionRecord {
+            dat_id: DatId::new(0x4400_0004),
+            ..sabotage_record(false)
+        });
+        let captures = |world: &GameWorld| {
+            let mut world = world.clone();
+            let lead = agent(&mut world, here, 100);
+            let mut mission = sabotage(vec![lead], there, 2);
+            mission.kind = MissionKind::Adrift;
+            mission.origin = Some(here);
+            let out = run_once(&mut mission, &world);
+            let count = out
+                .iter()
+                .filter(|effect| matches!(effect, MissionEffect::CharacterCaptured { .. }))
+                .count();
+            (count, mission.end_code)
+        };
+        assert_eq!(captures(&world), (1, 5), "the regiments, second pass");
+        imperial_fleet(&mut world, here, false);
+        assert_eq!(captures(&world), (1, 5), "the fleet, first pass only");
     }
 
     #[test]

@@ -132,6 +132,14 @@ pub enum MissionKind {
     /// handler `FUN_00524b70` and the base rules `FUN_005215e0`.
     Return,
 
+    /// The Adrift pseudo-mission (MISSNSD `0x44000004`, TEXTSTRA 11268,
+    /// vtable `0x00668d58`): the trip of characters whose container was
+    /// destroyed (`FUN_004ef2e0`, `FUN_00549230` -> `FUN_00547880`). Move's
+    /// slots, but its own detection mode word `0x4103` (`FUN_00576a20`):
+    /// phase 2 mode 3, phase 7 mode 1, phase 9 mode 4
+    /// (`ghidra/notes/decoy-roll.md`).
+    Adrift,
+
     /// Jedi Training (MISSNSD `0x58000042`, TEXTSTRA 11330, vtable
     /// `0x006667d8`; `ghidra/notes/force-awareness.md`, "Force growth"): a
     /// teacher who trains Jedi at Force GNPRTB 2581 (100) or more trains the
@@ -191,6 +199,7 @@ impl MissionKind {
             | MissionKind::TroopTrainingResearch
             | MissionKind::Move
             | MissionKind::Return
+            | MissionKind::Adrift
             | MissionKind::JediTraining
             | MissionKind::Dagobah
             | MissionKind::Bounty
@@ -235,7 +244,7 @@ impl MissionKind {
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch => (10, 20),
             // The shipped record's 0 + rand(0..=0).
-            MissionKind::Move | MissionKind::Return => (0, 0),
+            MissionKind::Move | MissionKind::Return | MissionKind::Adrift => (0, 0),
             // The shipped record's 60 + rand(0..=30).
             MissionKind::JediTraining => (60, 90),
             // The shipped record's 100 + rand(0..=0).
@@ -1196,7 +1205,7 @@ pub fn member_chance(
         | MissionKind::FacilityDesignResearch
         | MissionKind::TroopTrainingResearch => return 0,
         // The base class has no slot +0x274 roll; phase 10 rolls no one.
-        MissionKind::Move | MissionKind::Return => return 0,
+        MissionKind::Move | MissionKind::Return | MissionKind::Adrift => return 0,
         // FUN_005710b0 reads the mission's teacher +0xa8: phase 10 takes
         // the chance from [`jedi_training_chance`].
         MissionKind::JediTraining => return 0,
@@ -2385,6 +2394,7 @@ impl MissionKind {
             MissionKind::TroopTrainingResearch => 0x5300_0022,
             MissionKind::Move => 0x4100_0001,
             MissionKind::Return => 0x4200_0002,
+            MissionKind::Adrift => 0x4400_0004,
             MissionKind::JediTraining => 0x5800_0042,
             MissionKind::Dagobah => 0x7100_0043,
             MissionKind::Bounty => 0x6500_0083,
@@ -2415,7 +2425,7 @@ impl MissionKind {
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch => TargetRules::System,
             // FUN_005215e0: the base rules alone, at a system target.
-            MissionKind::Move | MissionKind::Return => TargetRules::Place,
+            MissionKind::Move | MissionKind::Return | MissionKind::Adrift => TargetRules::Place,
             // FUN_00570690: the system rules, then its own.
             MissionKind::JediTraining => TargetRules::System,
             // Its target is an abode, a place (FUN_00521070).
@@ -3338,7 +3348,11 @@ impl MissionSystem {
                 }
             }
             // The Move class's base handler FUN_00524b70 runs nothing here.
-            PHASE_OUTCOME if matches!(mission.kind, MissionKind::Move | MissionKind::Return) => {}
+            PHASE_OUTCOME
+                if matches!(
+                    mission.kind,
+                    MissionKind::Move | MissionKind::Return | MissionKind::Adrift
+                ) => {}
             PHASE_OUTCOME => {
                 let result = Self::roll_members(mission, ctx, now, &mut draws.stream, &out.results);
                 mission.succeeded = result.outcome == MissionOutcome::Success;
@@ -3848,7 +3862,7 @@ impl MissionSystem {
                 }
                 MissionKind::Autoscrap => result = 3,
                 // Never reached: phase 10 skips Move (FUN_00524b70).
-                MissionKind::Move | MissionKind::Return => {}
+                MissionKind::Move | MissionKind::Return | MissionKind::Adrift => {}
                 // FUN_0056bec0: 3, with no skill raise.
                 MissionKind::Reconnaissance => result = 3,
                 // FUN_00572470: 3.

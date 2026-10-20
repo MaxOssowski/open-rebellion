@@ -163,10 +163,25 @@ fn mission_kind_display(kind: MissionKind) -> (&'static str, Color32) {
         MissionKind::Autoscrap => ("[AUTO]", Color32::from_rgb(120, 120, 120)),
         MissionKind::Move => ("[MOVE]", Color32::from_rgb(180, 180, 200)),
         MissionKind::Return => ("[RETURN]", Color32::from_rgb(180, 180, 200)),
+        MissionKind::Adrift => ("[ADRIFT]", Color32::from_rgb(180, 180, 200)),
         MissionKind::JediTraining => ("[JEDI]", Color32::from_rgb(120, 200, 140)),
         MissionKind::Dagobah => ("[DAGO]", Color32::from_rgb(120, 200, 140)),
         MissionKind::Bounty => ("[BNTY]", Color32::from_rgb(200, 160, 90)),
         MissionKind::Palace => ("[PLCE]", Color32::from_rgb(200, 140, 110)),
         MissionKind::Pickup => ("[PICK]", Color32::from_rgb(170, 120, 120)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_movement_orders_show_their_own_badges() {
+        // Our panel's labels for the pseudo-missions (MISSNSD 0x41, 0x42,
+        // 0x44).
+        assert_eq!(mission_kind_display(MissionKind::Move).0, "[MOVE]");
+        assert_eq!(mission_kind_display(MissionKind::Return).0, "[RETURN]");
+        assert_eq!(mission_kind_display(MissionKind::Adrift).0, "[ADRIFT]");
     }
 }

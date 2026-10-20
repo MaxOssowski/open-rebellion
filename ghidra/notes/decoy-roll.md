@@ -485,6 +485,12 @@ the first pass is exposed again on the second, by the defenders the second
 pass's flags add; an Adrift member cannot resign (MISSNSD column 9 is 0),
 so one that evaded rolls again.
 
+Ported 2026-10-20 (`mission_detection.rs`): `detection_passes` reads the
+mode word per kind and phase, and `one_pass` runs each pass with the
+flags it inherits and the team's detected state; for every kind but
+Adrift one pass acts, as before. `MissionKind::Adrift` exists; nothing
+creates one yet (the battle's adrift path is the next stage).
+
 ### Record flags (`+0x2c`)
 
 The in-memory MISSNSD record sits `0x28` above the file offsets. This is
