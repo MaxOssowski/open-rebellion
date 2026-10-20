@@ -5402,20 +5402,7 @@ pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut G
             // fleet stood, unless it is on a mission; FUN_0054c7d0 then
             // settles it or sends it on an Adrift order
             // (MissionSystem::send_adrift).
-            if let Some((chars, loc)) = world
-                .fleets
-                .get(fleet_key)
-                .map(|f| (f.characters.clone(), f.location))
-            {
-                for ck in chars {
-                    if let Some(c) = world.characters.get_mut(ck) {
-                        c.move_to(None, Some(loc));
-                        if !c.is_killed && !c.on_mission {
-                            c.adrift = true;
-                        }
-                    }
-                }
-            }
+            rebellion_core::missions::cast_adrift(world, fleet_key);
             if let Some(fleet) = world.fleets.get(fleet_key) {
                 let loc = fleet.location;
                 if let Some(sys) = world.systems.get_mut(loc) {

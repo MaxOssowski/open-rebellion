@@ -3200,6 +3200,14 @@ cross-runtime proof remain open
   test, so an Alliance or Empire character always finds the other side's
   systems while one stands; only a side-3 character could reach a jail, and
   none is sent home (`ghidra/notes/mission-lifecycle.md`).
+- 2026-10-20: the player's tactical battle sets a destroyed fleet's
+  characters adrift too. `tactical_flow::apply_results` kept a copy of the
+  unsourced capture; it and the integrator now share
+  `missions::cast_adrift` (`FUN_00556710` -> `FUN_004ef2e0`). The port's
+  other fleet removals leave no character to set adrift: a merge moves
+  them, scrap disbands only a fleet without characters, and the Death
+  Star kills them (Death Star area). Campaigns and replay unchanged
+  (`evidence/2026-10-20-adrift-tactical/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

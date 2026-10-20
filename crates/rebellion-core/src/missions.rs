@@ -1374,6 +1374,29 @@ fn landing(
     }
 }
 
+/// A battle destroyed `fleet`: its characters stand at its system, and
+/// each on no mission goes adrift (`FUN_00556710` -> slot `+0xb4`
+/// `FUN_004ef2e0`, `Role_SetAdrift` `FUN_00534790`) for
+/// `MissionSystem::send_adrift` to settle or send away. Call it before the
+/// fleet is removed.
+pub fn cast_adrift(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
+    let Some((characters, location)) = world
+        .fleets
+        .get(fleet)
+        .map(|value| (value.characters.clone(), value.location))
+    else {
+        return;
+    };
+    for key in characters {
+        if let Some(c) = world.characters.get_mut(key) {
+            c.move_to(None, Some(location));
+            if !c.is_killed && !c.on_mission {
+                c.adrift = true;
+            }
+        }
+    }
+}
+
 /// Apply [`MissionEffect::MemberBoarded`]: the character joins `fleet`'s
 /// roster at the fleet's system. port: a special force does not board.
 pub fn board_fleet(world: &mut GameWorld, member: MissionMember, fleet: crate::ids::FleetKey) {
@@ -7584,6 +7607,31 @@ mod tests {
 
         let advance = step(&mut state, &world, 21, &[0.0]);
         assert_eq!(advance.ended[0].end_code, 1);
+    }
+
+    #[test]
+    fn a_destroyed_fleets_free_characters_go_adrift_where_it_stood() {
+        // FUN_00556710 -> FUN_004ef2e0: a character on no mission goes
+        // adrift; one on a mission (+0x78 bit 7) is left as it is. All stand
+        // at the fleet's system.
+        let (mut world, _, traveller, fleet, to) = move_to_fleet();
+        let busy = agent_at(&mut world, to, true);
+        world.characters[busy].on_mission = true;
+        let free = agent_at(&mut world, to, true);
+        for key in [busy, free] {
+            world.characters[key].current_fleet = Some(fleet);
+            world.fleets[fleet].characters.push(key);
+        }
+
+        cast_adrift(&mut world, fleet);
+
+        assert!(world.characters[free].adrift);
+        assert!(!world.characters[busy].adrift);
+        for key in [busy, free] {
+            let c = &world.characters[key];
+            assert_eq!((c.current_fleet, c.current_system), (None, Some(to)));
+        }
+        assert!(!world.characters[traveller].adrift);
     }
 
     #[test]

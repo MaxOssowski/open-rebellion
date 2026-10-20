@@ -228,34 +228,9 @@ pub(crate) fn apply_results(
             .get(fleet_key)
             .is_none_or(rebellion_core::world::Fleet::is_empty);
         if is_empty {
-            let is_loser = match session.winner {
-                Some(CombatWinner::Attacker) => fleet_key == session.defender_fleet,
-                Some(CombatWinner::Defender) => fleet_key == session.attacker_fleet,
-                Some(CombatWinner::Draw) | None => false,
-            };
-            let capture_data = is_loser
-                .then(|| {
-                    world.fleets.get(fleet_key).map(|fleet| {
-                        let captor = if fleet.is_alliance {
-                            Faction::Empire
-                        } else {
-                            Faction::Alliance
-                        };
-                        (fleet.characters.clone(), captor, fleet.location)
-                    })
-                })
-                .flatten();
-            if let Some((characters, captor, location)) = capture_data {
-                for character_key in characters {
-                    if let Some(character) = world.characters.get_mut(character_key) {
-                        character.is_captive = true;
-                        character.captured_by = Some(captor);
-                        character.capture_tick = Some(session.start_tick);
-                        character.current_system = Some(location);
-                        character.current_fleet = None;
-                    }
-                }
-            }
+            // FUN_00556710 -> FUN_004ef2e0: the destroyed fleet's characters
+            // go adrift where it stood (`missions::cast_adrift`).
+            rebellion_core::missions::cast_adrift(world, fleet_key);
             if let Some(fleet) = world.fleets.get(fleet_key) {
                 let location = fleet.location;
                 if let Some(system) = world.systems.get_mut(location) {
@@ -700,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn destroyed_losing_fleet_captures_officers_and_clears_fleet_assignment() {
+    fn destroyed_losing_fleet_sets_its_officers_adrift_and_clears_fleet_assignment() {
         let (mut world, system, attacker, defender) = opposing_empty_fleets();
         world.fleets[attacker].has_death_star = true;
         let captive = world.characters.insert(Character {
@@ -729,14 +704,14 @@ mod tests {
 
         assert!(world.fleets.contains_key(attacker));
         assert!(!world.fleets.contains_key(defender));
-        assert!(world.characters[captive].is_captive);
-        assert_eq!(
-            world.characters[captive].captured_by,
-            Some(Faction::Alliance)
-        );
-        assert_eq!(world.characters[captive].capture_tick, Some(23));
-        assert_eq!(world.characters[captive].current_system, Some(system));
-        assert_eq!(world.characters[captive].current_fleet, None);
+        // FUN_00556710 -> FUN_004ef2e0: adrift, not captive (the capture
+        // this test once asserted had no source; mission-lifecycle.md,
+        // "Adrift and the abodes").
+        let officer = &world.characters[captive];
+        assert!(officer.adrift && !officer.is_captive);
+        assert_eq!(officer.captured_by, None);
+        assert_eq!(officer.current_system, Some(system));
+        assert_eq!(officer.current_fleet, None);
     }
 
     #[test]

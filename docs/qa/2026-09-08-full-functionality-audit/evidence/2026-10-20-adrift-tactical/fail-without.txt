@@ -1,0 +1,2 @@
+thread 'tactical_flow::tests::destroyed_losing_fleet_sets_its_officers_adrift_and_clears_fleet_assignment' (1999331) panicked at crates/rebellion-app/src/tactical_flow.rs:711:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 80 filtered out; finished in 0.00s

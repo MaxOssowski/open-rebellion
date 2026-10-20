@@ -750,9 +750,15 @@ member's side holds it (port: without the route checks).
   captive; `MissionSystem::send_adrift` settles one at a standing system
   of its side (`MissionEffect::AdriftSettled`) and sends the others of a
   side at one system on an Adrift order to the nearest place of their
-  side, with Adrift's two-pass detection. port: only a battle sets Adrift
-  (no other destroyed container yet); a character with nowhere to go
-  stays adrift instead of going to its jail.
+  side, with Adrift's two-pass detection. port: a character with nowhere
+  to go stays adrift instead of going to its jail.
+- 2026-10-20: both battle paths, the strategic one (`integrator.rs`) and
+  the player's tactical one (`tactical_flow::apply_results`, which kept a
+  copy of the unsourced capture), call `missions::cast_adrift` for a fleet
+  they remove. The port's other removals keep no character adrift: a
+  merge moves the characters to the joined fleet, scrap disbands only a
+  fleet without characters, and the Death Star's destruction of a system
+  kills the characters there (`death_star.rs`, the Death Star area).
 - The abodes: the Hermitage `0x98000442` is named only in Vacation's code
   (`FUN_00571f20`, `0x571fc2`), which nothing creates; the jails
   `0x98000440` and `0x98000480` only in `FUN_00549580`, the fallback for a
