@@ -699,9 +699,9 @@ member's side holds it (port: without the route checks).
   order, then `FUN_00556710` when not en route) and `0x312`
   (RoleOnMission, `FUN_00545e90`), and `FUN_00516ef0` (from
   `FUN_0051ddf0`, a galaxy-level pass over global `+0xc0`). Which of them
-  runs when a fleet is destroyed in battle is not settled; that, and
-  whether a detection pass that detected skips the second pass of mode 3,
-  come before porting the Adrift order.
+  runs when a fleet is destroyed in battle is not settled; that comes
+  before porting the Adrift order. (Mode 3's second pass with a team
+  already detected is settled in `decoy-roll.md`.)
 - The autorouting event path (`FUN_00549230`, above) sends an adrift group
   on an Adrift order `0x44000004` (`FUN_00547880`), whose class alone uses
   the detection modes 3, 0, 1, 4 (`decoy-roll.md`, the mode word `0x4103`).

@@ -477,6 +477,14 @@ So an Adrift order is searched for in phase 2 by both the enemy fleets and
 the enemy-held system, in phase 7 by the fleets, and in phase 9 betrayal
 runs; the port's detection runs one pass and has no mode 3.
 
+Both passes run the same steps (`FUN_00589970`) unless setup set skip
+(`+0x48`). Decoys (`FUN_0058a020`) and detection (`FUN_0058a130`) act only
+while the manager's detected `+0x4c` is clear, but the detected outcome
+(`FUN_0058a1c0`) runs whenever it is set. So in mode 3 a team detected on
+the first pass is exposed again on the second, by the defenders the second
+pass's flags add; an Adrift member cannot resign (MISSNSD column 9 is 0),
+so one that evaded rolls again.
+
 ### Record flags (`+0x2c`)
 
 The in-memory MISSNSD record sits `0x28` above the file offsets. This is
