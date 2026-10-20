@@ -1,0 +1,4 @@
+[FFEBA03E29D3E3E2719D0CF43FEF473C] GET http://127.0.0.1:18450/?fixture-code=325 (Document) 200
+[951189.2] GET http://127.0.0.1:18450/gl.js (Script) 200
+[951189.4] GET http://127.0.0.1:18450/open-rebellion-test.wasm (Fetch) 200
+[951189.5] GET http://127.0.0.1:18450/data/runtime.orpk (XHR) 200

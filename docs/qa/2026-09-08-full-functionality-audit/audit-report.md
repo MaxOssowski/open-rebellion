@@ -3112,6 +3112,16 @@ cross-runtime proof remain open
   regenerated: initial `v1:68bc58d8f3fb696d`, final `v1:5fc59cefe817d1b4`
   (`evidence/2026-10-20-return-order/`). Open: Autorouting `0x43` and Adrift
   `0x44` as orders, and the jails.
+- 2026-10-20: a character's Move from its menu. `0x201` expands a character
+  into the Move mission order `0x241` (`FUN_0053c810`); `FUN_004f4a00`
+  enables it for any character that resolves, and `FUN_004f4b60` refuses a
+  movement kind's target of another side (`1/0x28`). The port enables the
+  menu's Move for the player's living characters, targets a system, checks
+  `missions::move_target_allowed` and dispatches the Move mission; browser
+  acceptance on fixtures 69 and 68, both sides
+  (`evidence/2026-10-20-character-move/`). Manual pp. 110-111 confirms the
+  Return to a base system; open: the base (`+0x70`) that Move sets,
+  Confirmed Move, a fleet target, and the drag of a character.
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

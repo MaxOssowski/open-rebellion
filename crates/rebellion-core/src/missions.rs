@@ -4103,6 +4103,18 @@ pub(crate) fn escape_destination(
     )
 }
 
+/// Whether a Move order (`0x241`) of `faction` may target `to`: the mission
+/// order's validator `FUN_004f4b60` refuses a movement kind (family
+/// `0x40..0x4f`) whose target's side bits (`+0x24` bits 6..7) are not the
+/// order's side (`1`/`0x28`). A system's side is its holder's.
+#[must_use]
+pub fn move_target_allowed(world: &GameWorld, faction: MissionFaction, to: SystemKey) -> bool {
+    world
+        .systems
+        .get(to)
+        .is_some_and(|sys| sys.control.faction() == Some(crate::dat::Faction::from(faction)))
+}
+
 /// Where `member` of the ended `mission` returns (`FUN_00521220`,
 /// `FUN_00542ee0`), or `None` when it is released where it is.
 ///
@@ -6981,6 +6993,25 @@ mod tests {
         );
         let c = &world.characters[envoy];
         assert!(c.on_mission && c.on_hidden_mission);
+    }
+
+    #[test]
+    fn a_move_order_targets_only_a_system_its_side_holds() {
+        // FUN_004f4b60: a movement kind (family 0x40..0x4f) whose target's
+        // side bits differ from the order's side is refused (1/0x28).
+        use crate::world::ControlKind;
+        let mut world = minimal_world();
+        let own = system_at(&mut world, 0);
+        let enemy = system_at(&mut world, 10);
+        let open = system_at(&mut world, 20);
+        world.systems[own].control = ControlKind::Uprising(crate::dat::Faction::Alliance);
+        world.systems[enemy].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.systems[open].control = ControlKind::Contested;
+        let allowed = |to| move_target_allowed(&world, MissionFaction::Alliance, to);
+        assert!(allowed(own));
+        assert!(!allowed(enemy));
+        assert!(!allowed(open));
+        assert!(move_target_allowed(&world, MissionFaction::Empire, enemy));
     }
 
     #[test]

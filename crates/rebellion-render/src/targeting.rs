@@ -32,11 +32,16 @@ pub enum TargetOrder {
     Mission(Vec<MissionMember>),
     /// Move (`0x201`), or Confirmed Move (`0x202`) when `confirmed`, for a
     /// team of fleets: one fleet's own, or a sector window's fleet icon's
-    /// (`FUN_00512700`, kind `0x10`). port: a character's or special force's
-    /// move is not ported.
+    /// (`FUN_00512700`, kind `0x10`).
     FleetMove {
         fleets: Vec<FleetKey>,
         confirmed: bool,
+    },
+    /// A character's Move (`0x201`), which expands to the Move mission order
+    /// `0x241` (`FUN_0053c810`). port: a release on a fleet is refused; only
+    /// a system is a target.
+    CharacterMove {
+        character: rebellion_core::ids::CharacterKey,
     },
     /// A regiment's Move (`0x201`). Released on a Fleet window it boards the
     /// fleet (`ghidra/notes/fleet-window.md`, "Loading a regiment onto a

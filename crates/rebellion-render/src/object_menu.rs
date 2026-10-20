@@ -445,9 +445,10 @@ impl ObjectMenuRow {
 ///   (`FUN_0051d990`, `ghidra/notes/status-window.md`).
 /// - Command, a submenu parent, is enabled (`FUN_00442590`); its rows are
 ///   [`object_submenu_rows`].
-/// - port: a character's or special force's Move and Confirmed Move,
-///   Retire and the other fleet orders stay disabled until their windows
-///   and orders are ported.
+/// - A character's Move is enabled when `gates.character_move` says so.
+///   port: its Confirmed Move (`0x202`), a special force's Move and Confirmed
+///   Move, Retire and the other fleet orders stay disabled until their
+///   windows and orders are ported.
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
     // A fleet icon's Move rows act on the system's fleets of the player's
@@ -468,6 +469,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         Some(MenuObject::Fighter { .. } | MenuObject::PlanetFighter { .. })
     );
     let fleet_entry = matches!(selection, Some(MenuObject::Fleet(_)));
+    let character = matches!(selection, Some(MenuObject::Character(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
     let producer = matches!(selection, Some(MenuObject::Producer { .. }));
     let offered: &[ObjectMenuItem] = match selection {
@@ -506,7 +508,8 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             enabled: match item.command {
                 ObjectMenuCommand::Mission => gates.mission,
                 ObjectMenuCommand::Move => {
-                    (fleet && gates.fleet_move)
+                    (character && gates.character_move)
+                        || (fleet && gates.fleet_move)
                         || (troop && gates.troop_move)
                         || (ship && gates.ship_move)
                         || (squadron && gates.squadron_move)
@@ -582,6 +585,10 @@ pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> 
 pub struct OrderGates {
     pub mission: bool,
     pub fleet_move: bool,
+    /// A character's Move (`0x201` -> `0x241`): enabled for any character
+    /// that resolves (`FUN_004f4a00` only builds the command); the player's
+    /// side reads it ([`rebellion_core::missions::character_side`]).
+    pub character_move: bool,
     pub troop_move: bool,
     /// A squadron's Move: the player's, on a planet or aboard a fleet in
     /// orbit ([`rebellion_core::squadrons`]).
@@ -770,6 +777,7 @@ mod tests {
     const MISSION_GATE: OrderGates = OrderGates {
         mission: true,
         fleet_move: false,
+        character_move: false,
         troop_move: false,
         squadron_move: false,
         ship_move: false,
@@ -960,6 +968,7 @@ mod tests {
         let gates = OrderGates {
             mission: false,
             fleet_move: true,
+            character_move: false,
             troop_move: true,
             squadron_move: true,
             ship_move: true,
@@ -985,13 +994,31 @@ mod tests {
             enabled(&object_menu_rows(fleet, OrderGates::default())),
             ["Planetary Bombardment", "Encyclopedia", "Status"]
         );
-        // port: a character's move is not ported, so its rows stay disabled;
-        // Command is a submenu parent, enabled (FUN_00442590).
+        // A character's Move follows its own gate; Command is a submenu
+        // parent, enabled (FUN_00442590).
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, gates)),
             ["Command", "Encyclopedia", "Status"]
         );
+    }
+
+    #[test]
+    fn a_characters_move_row_follows_its_move_rule() {
+        // 0x201 -> 0x241 (FUN_0053c810): the row is enabled when the
+        // character resolves (FUN_004f4a00 only builds the command). port:
+        // its Confirmed Move (0x202) stays disabled.
+        let gates = OrderGates {
+            character_move: true,
+            ..OrderGates::default()
+        };
+        let character = Some(MenuObject::Character(CharacterKey::default()));
+        assert_eq!(
+            enabled(&object_menu_rows(character, gates)),
+            ["Move", "Command", "Encyclopedia", "Status"]
+        );
+        let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
+        assert!(!enabled(&object_menu_rows(unit, gates)).contains(&"Move"));
     }
 
     #[test]
@@ -1148,6 +1175,7 @@ mod tests {
         let every_gate = OrderGates {
             mission: true,
             fleet_move: true,
+            character_move: true,
             troop_move: true,
             squadron_move: true,
             ship_move: true,

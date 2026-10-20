@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 69;
+const SCENARIO_COUNT: u8 = 70;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -166,6 +166,10 @@ pub enum Scenario {
     /// admiral as the agent: the Command submenu's orders
     /// (`ghidra/notes/character-command.md`).
     CharacterCommand = 68,
+    /// As `CharacterCommand` with the secondary system the player's: a
+    /// character's Move (`0x201` -> `0x241`) to its planet
+    /// (`ghidra/notes/move-order.md`, "A character's Move").
+    CharacterMove = 69,
 }
 
 impl Scenario {
@@ -240,6 +244,7 @@ impl Scenario {
             66 => Self::FleetBombardment,
             67 => Self::FleetAssault,
             68 => Self::CharacterCommand,
+            69 => Self::CharacterMove,
             _ => return None,
         })
     }
@@ -268,6 +273,7 @@ impl Scenario {
     fn reports_object_menu(self) -> bool {
         self == Self::MissionTargeting
             || self == Self::CharacterCommand
+            || self == Self::CharacterMove
             || self == Self::ReconTargeting
             || self == Self::ResearchTargeting
             || self.targets_an_object()
@@ -421,6 +427,9 @@ pub fn apply(
         Scenario::Uprising => {
             world.systems[primary].control = ControlKind::Uprising(player_control);
         }
+        Scenario::CharacterMove => {
+            world.systems[secondary].control = ControlKind::Controlled(player_control);
+        }
         _ => {}
     }
 
@@ -429,7 +438,12 @@ pub fn apply(
     let agent = world
         .characters
         .iter()
-        .find(|(_, c)| request.scenario != Scenario::CharacterCommand || c.can_be_admiral)
+        .find(|(_, c)| {
+            !matches!(
+                request.scenario,
+                Scenario::CharacterCommand | Scenario::CharacterMove
+            ) || c.can_be_admiral
+        })
         .map(|(key, _)| key);
     if let Some((character_key, character)) =
         agent.and_then(|key| world.characters.get_mut(key).map(|c| (key, c)))
@@ -444,7 +458,10 @@ pub fn apply(
         );
         if matches!(
             request.scenario,
-            Scenario::MissionTargeting | Scenario::ResearchTargeting | Scenario::CharacterCommand
+            Scenario::MissionTargeting
+                | Scenario::ResearchTargeting
+                | Scenario::CharacterCommand
+                | Scenario::CharacterMove
         ) || request.scenario.targets_an_object()
         {
             // MissionState::mission_order_enabled: a free recruited member.
@@ -639,6 +656,7 @@ pub fn apply(
             | Scenario::ReconTargeting
             | Scenario::ResearchTargeting
             | Scenario::CharacterCommand
+            | Scenario::CharacterMove
     ) {
         // The primary system's Defenses window at the galaxy view's right
         // edge holds the agent first on its personnel page; the second
@@ -5347,7 +5365,8 @@ mod tests {
                 Scenario::SquadronBattle,
                 Scenario::FleetBombardment,
                 Scenario::FleetAssault,
-                Scenario::CharacterCommand
+                Scenario::CharacterCommand,
+                Scenario::CharacterMove
             ]
         );
     }

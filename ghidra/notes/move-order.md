@@ -433,6 +433,56 @@ not found. The confirmation window's own Escape is recovered
   an enemy fleet into a battle. The original meets it only on a stale bit,
   which the port, recomputing each tick, never holds.
 
+## A character's Move (read 2026-10-20)
+
+`0x201` expands a character or special force into a `0x241` order
+(`FUN_0053c810`), the mission order class of `0x240` (vtable `0x0065d170`,
+the same slots but the kind) for the Move mission `0x41000001`.
+
+- Enabled (`0x201` slot `+0x18`): `FUN_0053c4b0` resolves the team, then
+  each sub-order's `+0x18`; for `0x241` that is `FUN_0051fe20` -> slot
+  `+0x4c` `FUN_004f4a00`, which only builds command `0x250` (slot `+0x48`)
+  and adds it to the order's list (`FUN_0054ee30`). So Move is enabled for
+  any character that resolves; the refusals come at validation.
+- Validated (slot `+0x50` `FUN_004f4b60`):
+  1. an empty team and decoy list: `1`/`0x16`;
+  2. the first member's side (`FUN_00504e60`), else `1`/`0x12`; a side other
+     than 1 or 2: `1`/`0x14`;
+  3. the kind `+0x4c`: none `0x40`/`0x92`, no record `0x40`/`0x93`, not
+     open to the side (`FUN_004f2d10`) `0x40`/`0x20`;
+  4. the target (`FUN_00543410`); for a kind of family `0x40..0x4f` (Move,
+     Return, Autorouting, Adrift) a target whose side bits (`+0x24` bits
+     6..7) are not the order's side: `1`/`0x28`;
+  5. the route (`FUN_00551190`, `FUN_005513a0`, `FUN_00551770`), then the
+     command's checks; a failure there is `1`/`1`.
+- The command `0x250` then runs `FUN_0054d360` (`ai-mission-planning.md`):
+  `FUN_0054bb90` moves a prisoner to the captured list and refuses an
+  empty team (`0x40`/`0x91`), and `FUN_00522b30` refuses a busy member.
+
+### Port (2026-10-20)
+
+- The character menu's Move (`0x201`) is enabled for a living character of
+  the player's side (`OrderGates::character_move`; a prisoner reads its
+  captor's side). It targets like a fleet's Move; a released system takes
+  `missions::move_target_allowed` (`1`/`0x28`) and then
+  `MissionState::dispatch_guarded` for the Move mission.
+- port: a release on a fleet is refused; Confirmed Move (`0x202`) and its
+  transit window stay disabled for a character; a special force's Move is
+  not ported; the drag of a character (Fleet window Personnel tab, system
+  windows) is not ported.
+
+### Manual cross-check (2026-10-20)
+
+Manual p. 110-111, "Returning to Base", and p. 46:
+
+| Claim | Trace | Port |
+|---|---|---|
+| A character has a base system; it returns there after a mission at a system not friendly to its side, and stays at a friendly one | Confirmed: `FUN_00521220` rule 1, `FUN_00542ee0` (`mission-lifecycle.md`); the base is likely `+0x70` (`FUN_005543c0`), whose writer is untraced | Partial: the Return goes to the nearest own system, not the base |
+| Move (right-click) changes the base | Unresolved: the `+0x70` writer is not read | Missing |
+| Move from the right-click menu | Confirmed: `0x201` -> `0x241` above | Present |
+| Confirmed Move shows the transit time and asks to confirm | Confirmed for fleets (`FUN_00487cc0`) | Disabled (port:) |
+| Drag a character onto a system or fleet (p. 46, p. 111) | Confirmed: the drag issues `0x201`/`0x214` (above) | Missing |
+
 ## Order 0x214 (Destination)
 
 `FUN_0051f4b0` registers `FUN_00537090` for kind `0x214`. `FUN_00537090`

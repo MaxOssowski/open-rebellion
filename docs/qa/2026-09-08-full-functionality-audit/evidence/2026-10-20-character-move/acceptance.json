@@ -1,0 +1,54 @@
+{
+ "alliance/move": {
+  "menu": {
+   "rows": 7,
+   "move_row": 0,
+   "confirmed_move_row": 1,
+   "command_row": 3,
+   "target_name": "F'tral"
+  },
+  "lines": [
+   "[info] [interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") result=Ok(0)"
+  ],
+  "errors": []
+ },
+ "alliance/refused": {
+  "menu": {
+   "rows": 7,
+   "move_row": 0,
+   "confirmed_move_row": 1,
+   "command_row": 3,
+   "target_name": "F'tral"
+  },
+  "lines": [
+   "[info] [interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") result=Err(\"1/0x28\")"
+  ],
+  "errors": []
+ },
+ "empire/move": {
+  "menu": {
+   "rows": 7,
+   "move_row": 0,
+   "confirmed_move_row": 1,
+   "command_row": 3,
+   "target_name": "F'tral"
+  },
+  "lines": [
+   "[info] [interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") result=Ok(0)"
+  ],
+  "errors": []
+ },
+ "empire/refused": {
+  "menu": {
+   "rows": 7,
+   "move_row": 0,
+   "confirmed_move_row": 1,
+   "command_row": 3,
+   "target_name": "F'tral"
+  },
+  "lines": [
+   "[info] [interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") result=Err(\"1/0x28\")"
+  ],
+  "errors": []
+ }
+}

@@ -5026,6 +5026,10 @@ async fn main() {
                         Some((ObjectMenuCommand::Move, Some(MenuObject::Troop(troop)))) => {
                             targeting = Some(Targeting::new(TargetOrder::TroopMove { troop }));
                         }
+                        Some((ObjectMenuCommand::Move, Some(MenuObject::Character(character)))) => {
+                            targeting =
+                                Some(Targeting::new(TargetOrder::CharacterMove { character }));
+                        }
                         Some((
                             ObjectMenuCommand::Move,
                             Some(MenuObject::Fighter { fleet, index }),
@@ -5620,6 +5624,26 @@ async fn main() {
                                     roster,
                                     system,
                                 }),
+                                // A character's 0x201 -> 0x241 against the
+                                // release's system. port: a fleet target is
+                                // refused.
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::CharacterMove { character },
+                                    target,
+                                }) => match target {
+                                    ReleaseTarget::System(system) => panel_actions
+                                        .push(PanelAction::MoveCharacter { character, system }),
+                                    ReleaseTarget::Fleet { .. } => {
+                                        macroquad::logging::info!(
+                                            "[interface] character_move refused=fleet"
+                                        );
+                                        msg_log.push(GameMessage::new(
+                                            clock.tick,
+                                            "Move refused".to_string(),
+                                            MessageCategory::Event,
+                                        ));
+                                    }
+                                },
                                 // A regiment's 0x201 against the release
                                 // window's +0x70 (FUN_004a3130 for a Fleet
                                 // window), boarding, landing or travelling.
@@ -6824,6 +6848,17 @@ fn order_gates(
             ),
             _ => false,
         },
+        // FUN_0053c4b0 resolves the character; FUN_004f4a00 only builds
+        // the command. The order reads the character's side
+        // (FUN_00504e60), a prisoner's being its captor's.
+        character_move: match selection {
+            Some(MenuObject::Character(character)) => {
+                world.characters.get(character).is_some_and(|c| {
+                    !c.is_killed && rebellion_core::missions::character_side(c) == Some(side)
+                })
+            }
+            _ => false,
+        },
         troop_move: match selection {
             Some(MenuObject::Troop(troop)) => {
                 troop_transport_state.regiment_move_enabled(world, troop, is_alliance)
@@ -7560,6 +7595,46 @@ fn apply_panel_action(
                     clock.tick,
                     "Planetary bombardment refused".to_string(),
                     MessageCategory::Combat,
+                ));
+            }
+        }
+        // FUN_00486fb0 -> FUN_00487740: the Move order's 0x241 validates
+        // (FUN_004f4b60: a target of another side is 1/0x28), then its
+        // command 0x250 creates the Move mission (FUN_0054d360), or
+        // FUN_00487c90 reports the refusal.
+        PanelAction::MoveCharacter { character, system } => {
+            let result = if rebellion_core::missions::move_target_allowed(
+                world,
+                *player_faction,
+                system,
+            ) {
+                mission_state
+                    .dispatch_guarded(
+                        rebellion_core::missions::MissionRequest::single(
+                            MissionKind::Move,
+                            *player_faction,
+                            character,
+                            system,
+                            None,
+                            clock.tick,
+                        ),
+                        world,
+                    )
+                    .map_err(|refusal| format!("{refusal:?}"))
+            } else {
+                Err("1/0x28".to_string())
+            };
+            macroquad::logging::info!(
+                "[interface] character_move character={:?} to={:?} result={:?}",
+                world.characters.get(character).map(|c| c.name.as_str()),
+                world.systems.get(system).map(|s| s.name.as_str()),
+                result,
+            );
+            if result.is_err() {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    "Move refused".to_string(),
+                    MessageCategory::Event,
                 ));
             }
         }
