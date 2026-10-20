@@ -31,6 +31,7 @@ const FLEET_BOMBARDMENT = 67;
 const FLEET_ASSAULT = 68;
 const FLEET_DESTROY_SYSTEM = 74;
 const PRODUCTION_DELIVERY = 75;
+const UPRISING_INCIDENT = 76;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -702,6 +703,28 @@ const cases = [
       await frames(page, 3);
       await shot(page, directory, "delivery-arrived");
       return { before, departed, arrived };
+    },
+  },
+  {
+    name: "incident",
+    code: UPRISING_INCIDENT,
+    // A revolt's incident timer fires (event 0x38d, FUN_0050d030) and the
+    // disaster (event 0x38f, FUN_00511930) strikes a system with energy or
+    // raw materials (ghidra/notes/uprising-incident.md).
+    async run(page, faction, setup, directory) {
+      const before = await until(page, "the primary system revolts, nothing has struck",
+        (o) => o.primary_in_revolt && o.last_incident_message === null
+          && o.last_disaster_message === null);
+      await shot(page, directory, "incident-revolt");
+      const incident = await until(page, "the uprising incident fires",
+        (o) => typeof o.last_incident_message === "string", null, 90_000);
+      assert.ok(incident.primary_in_revolt, "an incident never ends the revolt (FUN_0050a130)");
+      await shot(page, directory, "incident-fired");
+      const disaster = await until(page, "the natural disaster strikes",
+        (o) => typeof o.last_disaster_message === "string", null, 90_000);
+      await frames(page, 3);
+      await shot(page, directory, "incident-disaster");
+      return { before, incident, disaster };
     },
   },
   {

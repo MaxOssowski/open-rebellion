@@ -1,0 +1,7 @@
+thread 'interface_test_fixture::tests::the_incident_scenario_revolts_the_primary_system_with_both_timers_due_soon' (3214835) panicked at crates/rebellion-app/src/interface_test_fixture.rs:4488:13:
+assertion `left == right` failed
+  left: Controlled(Alliance)
+--
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 82 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p rebellion-app --bin open-rebellion`

@@ -1585,7 +1585,7 @@ cross-runtime proof remain open
 ### F-026: The disaster and uprising incidents have no effect
 
 - Severity: P2
-- Status: remediated; browser pass pending
+- Status: remediated; browser verified (2026-10-21)
 - Evidence: `economy.rs` raised uprising and disaster flags from invented
   thresholds and only emitted messages; `UprisingSystem` started revolts on an
   invented UPRIS1TB roll and handed the system to the rebels.
@@ -1651,6 +1651,12 @@ cross-runtime proof remain open
 - En route: `FUN_00511930` spares a facility with `+0x50` bit 4. The port
   places a finished facility at once, so it never has one en route; the
   missing delivery phase is F-030.
+- Browser (2026-10-21): the fixture scenario `UprisingIncident` (code 76)
+  and `fleet-window.mjs` `incident` show, for both sides, the player's
+  Akrit'tar in revolt, its incident ("Uprising incident at Akrit'tar")
+  with the revolt still on, and a natural disaster on a random system.
+  0 errors; the Fleet window suite passes 54 cases
+  (`evidence/2026-10-21-uprising-browser/`).
 - Acceptance: both incidents trigger and apply their recovered effects with
   failing-without tests, and a browser pass shows a revolt, an incident, and
   a disaster.

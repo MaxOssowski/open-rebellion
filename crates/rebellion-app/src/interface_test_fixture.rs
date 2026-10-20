@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 75;
+const SCENARIO_COUNT: u8 = 76;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -194,6 +194,13 @@ pub enum Scenario {
     /// arrives (`FUN_0052bee0`, `FUN_0055d8c0`, event `0x387`;
     /// `ghidra/notes/build-delivery.md`).
     ProductionDelivery = 74,
+    /// As `FleetLoad` with the primary system, the player's, in revolt,
+    /// its uprising incident (event `0x38d`, `FUN_0050d030`) due on day 5
+    /// and the disaster (event `0x38f`, `FUN_00511930`) on day 8; a system
+    /// with neither energy nor raw materials gets one energy, so the
+    /// disaster's pick always strikes. The clock runs Fast
+    /// (`ghidra/notes/uprising-incident.md`).
+    UprisingIncident = 75,
 }
 
 impl Scenario {
@@ -274,6 +281,7 @@ impl Scenario {
             72 => Self::SubdueSuccess,
             73 => Self::FleetDestroySystem,
             74 => Self::ProductionDelivery,
+            75 => Self::UprisingIncident,
             _ => return None,
         })
     }
@@ -294,6 +302,7 @@ impl Scenario {
                 | Self::FleetAssault
                 | Self::FleetDestroySystem
                 | Self::ProductionDelivery
+                | Self::UprisingIncident
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -621,6 +630,9 @@ pub fn apply(
     if request.scenario == Scenario::ProductionDelivery {
         place_delivery(request, world, manufacturing, primary);
     }
+    if request.scenario == Scenario::UprisingIncident {
+        place_incidents(request, world, uprisings, primary);
+    }
     if request.scenario == Scenario::Quadrants {
         place_quadrant_contents(request, world, movement, missions, sectors, primary);
     }
@@ -890,7 +902,7 @@ fn place_sabotage_targets(
 pub fn runs_the_clock(request: FixtureRequest) -> bool {
     matches!(
         request.scenario,
-        Scenario::SubdueSuccess | Scenario::ProductionDelivery
+        Scenario::SubdueSuccess | Scenario::ProductionDelivery | Scenario::UprisingIncident
     )
 }
 
@@ -1349,6 +1361,38 @@ fn place_delivery(
     );
     for _ in 1..cost {
         let _ = queue.add_point();
+    }
+}
+
+/// The `UprisingIncident` scenario: the primary system revolts against the
+/// player, its incident due on day 5 and the disaster on day 8. Every
+/// system the disaster may pick holds energy or raw materials.
+fn place_incidents(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    uprisings: &mut rebellion_core::uprising::UprisingState,
+    primary: SystemKey,
+) {
+    let side = if request.faction == CockpitFaction::Alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    world.systems[primary].control = ControlKind::Uprising(side);
+    uprisings.active_uprisings.insert(
+        primary,
+        rebellion_core::uprising::ActiveUprising {
+            started_tick: 0,
+            next_incident_tick: Some(5),
+            next_support_tick: None,
+            side: Some(side),
+        },
+    );
+    uprisings.next_disaster_tick = Some(8);
+    for system in world.systems.values_mut() {
+        if system.total_energy == 0 && system.raw_materials == 0 {
+            system.total_energy = 1;
+        }
     }
 }
 
@@ -3046,6 +3090,12 @@ struct FleetLoadObservation {
     last_departure_message: Option<String>,
     last_arrival_message: Option<String>,
     target_ships: usize,
+    /// The incident variant: the primary system in revolt, the player's
+    /// last uprising incident line, and the last disaster line (any
+    /// audience: the disaster may strike a neutral system).
+    primary_in_revolt: bool,
+    last_incident_message: Option<String>,
+    last_disaster_message: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3232,6 +3282,22 @@ fn fleet_load_observation(
                 .map(|value| value.capital_ships.len())
                 .sum()
         }),
+        primary_in_revolt: matches!(world.systems[primary].control, ControlKind::Uprising(_)),
+        last_incident_message: messages
+            .iter()
+            .rev()
+            .filter(|message| {
+                message
+                    .audience
+                    .includes(request.faction == CockpitFaction::Alliance)
+            })
+            .find(|message| message.text.starts_with("Uprising incident at "))
+            .map(|message| message.text.clone()),
+        last_disaster_message: messages
+            .iter()
+            .rev()
+            .find(|message| message.text.starts_with("Natural disaster strikes "))
+            .map(|message| message.text.clone()),
     })
 }
 
@@ -4392,6 +4458,85 @@ mod tests {
             .manufacturing_facilities
             .iter()
             .any(|&key| world.manufacturing_facilities[key].is_shipyard));
+    }
+
+    // port: the fixture's own layout. A revolt's incident timer (event
+    // 0x38d, FUN_0050d030) and the disaster timer (event 0x38f,
+    // FUN_00511930) fire when due; the disaster spares a system with
+    // neither energy nor raw materials.
+    #[test]
+    fn the_incident_scenario_revolts_the_primary_system_with_both_timers_due_soon() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::UprisingIncident, faction);
+            let mut applied = apply_to_loading_world_with(request, |_| {});
+            let world = &mut applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let empty = world.systems.keys().nth(1).unwrap();
+            world.systems[empty].total_energy = 0;
+            world.systems[empty].raw_materials = 0;
+            let mined = world.systems.keys().nth(2).unwrap();
+            world.systems[mined].total_energy = 0;
+            world.systems[mined].raw_materials = 3;
+            let mut uprisings = rebellion_core::uprising::UprisingState::default();
+            place_incidents(request, world, &mut uprisings, primary);
+            let side = if faction == CockpitFaction::Alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            };
+            assert_eq!(world.systems[primary].control, ControlKind::Uprising(side));
+            let uprising = &uprisings.active_uprisings[&primary];
+            assert_eq!(uprising.next_incident_tick, Some(5));
+            assert_eq!(uprising.side, Some(side));
+            assert_eq!(uprisings.next_disaster_tick, Some(8));
+            assert!(world
+                .systems
+                .values()
+                .all(|system| system.total_energy > 0 || system.raw_materials > 0));
+            assert_eq!(world.systems[empty].total_energy, 1);
+            assert_eq!(world.systems[mined].total_energy, 0);
+            assert!(runs_the_clock(request));
+
+            // The report keeps the player's incident line only, and any
+            // disaster line.
+            let alliance = faction == CockpitFaction::Alliance;
+            let line = |text: &str, player: bool| {
+                GameMessage::new(
+                    1,
+                    text.to_string(),
+                    rebellion_render::message_log::MessageCategory::Diplomacy,
+                )
+                .on_rail(
+                    rebellion_render::message_log::MessageRail::PopularSupport,
+                    rebellion_render::message_log::RailAudience::side(alliance == player),
+                )
+            };
+            let observed = fleet_load_observation(
+                request,
+                loading_regiment(world, primary).unwrap(),
+                world,
+                &FogState::new(Faction::of_alliance(alliance)),
+                &applied.movement,
+                &applied.transport,
+                &FleetWindowState::default(),
+                false,
+                &[
+                    line("Uprising incident at Mine", true),
+                    line("Uprising incident at Theirs", false),
+                    line("Natural disaster strikes There", false),
+                ],
+            )
+            .unwrap();
+            assert!(observed.primary_in_revolt);
+            assert_eq!(
+                observed.last_incident_message.as_deref(),
+                Some("Uprising incident at Mine")
+            );
+            assert_eq!(
+                observed.last_disaster_message.as_deref(),
+                Some("Natural disaster strikes There")
+            );
+        }
     }
 
     // port: the fixture's own layout. Destroy System needs a Death Star in
@@ -5884,7 +6029,8 @@ mod tests {
                 Scenario::CharacterBoard,
                 Scenario::CharacterAboard,
                 Scenario::FleetDestroySystem,
-                Scenario::ProductionDelivery
+                Scenario::ProductionDelivery,
+                Scenario::UprisingIncident
             ]
         );
     }

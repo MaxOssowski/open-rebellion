@@ -501,7 +501,7 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   found without a binary source: the economy's KDY production modifier
   (F-023), the Emperor's 1.5x battle bonus (F-024), and family-`0x34` Death
   Star detection (F-025). The revolt lifecycle, uprising incident, and
-  disaster now follow recovered code (F-026, browser pass pending).
+  disaster now follow recovered code (F-026, browser verified 2026-10-21).
 - [ ] Move the remaining probability-table consumers to the recovered step
   lookup (F-028) and the informant and resource incidents to their recovered
   timers (F-029, remediated 2026-10-18; native GUI check pending).
