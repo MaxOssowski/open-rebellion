@@ -700,7 +700,13 @@ member's side holds it (port: without the route checks).
   (RoleOnMission, `FUN_00545e90`), and `FUN_00516ef0` (from
   `FUN_0051ddf0`, a galaxy-level pass over global `+0xc0`). Which of them
   runs when a fleet is destroyed in battle is not settled; that comes
-  before porting the Adrift order. (Mode 3's second pass with a team
+  before porting the Adrift order. `FUN_00516ef0` is the battle's end
+  (`planet-squadrons.md`): it sets the losing side's remaining fleets and
+  planet squadrons autorouting and passes only the winner's planet
+  squadrons to `FUN_00556710`; the Event300 handler (`FUN_005140c0`) does
+  not call it directly. So the destroyed fleet's characters reach
+  `FUN_004ef2e0` some other way, still to find (a destroy cascade over the
+  fleet's children is the likely place). (Mode 3's second pass with a team
   already detected is settled in `decoy-roll.md`.)
 - The autorouting event path (`FUN_00549230`, above) sends an adrift group
   on an Adrift order `0x44000004` (`FUN_00547880`), whose class alone uses
