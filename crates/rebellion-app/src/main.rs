@@ -7789,11 +7789,10 @@ fn apply_panel_action(
                         ),
                         world,
                     )
-                    .map(|id| {
+                    .inspect(|&id| {
                         if let Some(fleet) = fleet {
                             mission_state.set_target_fleet(id, fleet);
                         }
-                        id
                     })
                     .map_err(|refusal| format!("{refusal:?}"))
             } else {
