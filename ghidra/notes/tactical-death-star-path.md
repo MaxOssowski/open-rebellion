@@ -158,3 +158,18 @@ window.
   auto-resolved battle and had no source, is removed with the whole
   strategic Death Star state (save v96).
 
+## The browser fixture (2026-10-20)
+
+- `tactical_test_fixture.rs` looked for SYSTEMSD index 100 or 101, which
+  the default galaxy (100 systems, indices 120..289) does not load. Every
+  tactical battle case stopped at setup. It now takes the first and second
+  empty, intact systems in SYSTEMSD order.
+- A Death Star battle's Imperial fleet brings no fighter group, as
+  `FUN_005ad930` requires fewer Imperial than Alliance groups for Attack
+  Death Star. `run.mjs` expects that composition: one Imperial active
+  object, three participants, and no fighter scene once a failed run has
+  destroyed every Alliance group.
+- The tactical 3D corpus must be staged locally
+  (`go run ./tools/stage-ui-assets --tactical-3d-only --source ...`, then
+  `--tactical-3d-convert`), or the Death Star resource 5010 is missing.
+

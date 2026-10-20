@@ -439,21 +439,21 @@ pub(crate) fn apply(
     game_mode: &mut GameMode,
 ) -> Result<(), String> {
     // Exercise two real SYSTEMSD picture/palette identities across the faction
-    // matrix instead of accepting a hard-coded global palette accidentally.
-    let system_dat_id = if request.faction == CockpitFaction::Alliance {
-        100
-    } else {
-        101
-    };
-    let system = world
+    // matrix instead of accepting a hard-coded global palette accidentally:
+    // the first and second empty, intact systems the galaxy loaded, in
+    // SYSTEMSD order. The galaxy size picks which records load (the default
+    // loads indices 120..289), so no fixed index is assumed.
+    let mut empty: Vec<(u32, SystemKey)> = world
         .systems
         .iter()
-        .find(|(_, system)| {
-            system.dat_id.index() == system_dat_id
-                && !system.is_destroyed
-                && system.fleets.is_empty()
-        })
-        .map(|(key, _)| key)
+        .filter(|(_, system)| !system.is_destroyed && system.fleets.is_empty())
+        .map(|(key, system)| (system.dat_id.index(), key))
+        .collect();
+    empty.sort_unstable();
+    let ordinal = usize::from(request.faction != CockpitFaction::Alliance);
+    let system = empty
+        .get(ordinal)
+        .map(|&(_, key)| key)
         .ok_or("fixture system is not empty and intact")?;
     let alliance_ship = world
         .capital_ship_classes
@@ -552,6 +552,10 @@ pub(crate) fn apply(
             2
         } else if request.group_presentation && expanded {
             4
+        } else if request.death_star_presentation && !is_alliance {
+            // FUN_005ad930 enables Attack Death Star only while fewer
+            // Imperial than Alliance fighter groups are on the field.
+            0
         } else {
             1
         };

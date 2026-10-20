@@ -1,0 +1,98 @@
+[
+ {
+  "run": "2026-10-20T20-01-50-110Z-2802097",
+  "case": "alliance/production-death-star-presentation/1280x800-letterboxed",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-01-50-110Z-2802097",
+  "case": "alliance/production-death-star-presentation/640x480",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-01-50-110Z-2802097",
+  "case": "empire/production-death-star-presentation/1280x800-letterboxed",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-01-50-110Z-2802097",
+  "case": "empire/production-death-star-presentation/640x480",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-02-10-605Z-2806513",
+  "case": "alliance/production-trench-run-failure/1280x800-letterboxed",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-02-10-605Z-2806513",
+  "case": "alliance/production-trench-run-failure/640x480",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-02-10-605Z-2806513",
+  "case": "empire/production-trench-run-failure/1280x800-letterboxed",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-02-10-605Z-2806513",
+  "case": "empire/production-trench-run-failure/640x480",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-00-21-978Z-2799600",
+  "case": "alliance/production-death-star-laser-journey/1280x800-letterboxed",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-00-21-978Z-2799600",
+  "case": "alliance/production-death-star-laser-journey/640x480",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-00-21-978Z-2799600",
+  "case": "empire/production-death-star-laser-journey/1280x800-letterboxed",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-00-21-978Z-2799600",
+  "case": "empire/production-death-star-laser-journey/640x480",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-00-45-104Z-2800336",
+  "case": "alliance/production-trench-run-success/1280x800-letterboxed",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-00-45-104Z-2800336",
+  "case": "alliance/production-trench-run-success/640x480",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-00-45-104Z-2800336",
+  "case": "empire/production-trench-run-success/1280x800-letterboxed",
+  "status": "pass",
+  "error": ""
+ },
+ {
+  "run": "2026-10-20T20-00-45-104Z-2800336",
+  "case": "empire/production-trench-run-success/640x480",
+  "status": "pass",
+  "error": ""
+ }
+]

@@ -2843,7 +2843,7 @@ async function probeTacticalDeathStarPresentation(
     : {
         name: "DeathStarUnderAttack", event: "0x115", wave: 15124, faction: "Empire",
       };
-  const entryVoiceLog = consoleLines.find(({ text }) =>
+  const findEntryVoice = () => consoleLines.find(({ text }) =>
     text.includes(`voice_event=${expectedEntryVoice.name}`)
       && text.includes(`source_event=${expectedEntryVoice.event}`)
       && text.includes(`wave=${expectedEntryVoice.wave}`)
@@ -2851,6 +2851,12 @@ async function probeTacticalDeathStarPresentation(
       && text.includes("routed=true")
       && text.includes("loaded=true")
       && text.includes("muted=true"));
+  // The voice line can trail the commit by a frame or two.
+  let entryVoiceLog = findEntryVoice();
+  for (let attempt = 0; attempt < 30 && !entryVoiceLog; attempt += 1) {
+    await page.waitForTimeout(100);
+    entryVoiceLog = findEntryVoice();
+  }
   assert.ok(entryVoiceLog,
     `Death Star entry voice did not route ${JSON.stringify(expectedEntryVoice)}`);
   probes.push({
@@ -4433,6 +4439,17 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         outer_negative_z: -59,
         inner_negative_z: -39,
         inner_positive_z: 39,
+      } : scenario.death_star_presentation ? {
+        // The Imperial fleet brings no fighter group: FUN_005ad930 enables
+        // Attack Death Star only while fewer Imperial than Alliance groups
+        // are on the field.
+        first_active_objects: 2,
+        second_active_objects: 1,
+        battle_extent: 106,
+        outer_positive_z: 53,
+        outer_negative_z: -53,
+        inner_negative_z: -33,
+        inner_positive_z: 33,
       } : {
         first_active_objects: 2,
         second_active_objects: 2,
@@ -4459,7 +4476,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
               || scenario.attack_target_lifecycle_presentation ? 10
               : scenario.command_assignment_presentation
                 || scenario.battle_options_withdrawal ? 6
-                : scenario.battle_results_presentation ? 12 : 4);
+                : scenario.battle_results_presentation ? 12
+                  : scenario.death_star_presentation ? 3 : 4);
       const expectedParticipantLanes = new Map([
         ["capital-ship:alliance", -53],
         ["capital-ship:empire", 53],
@@ -4600,7 +4618,10 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.equal(empireShips.length, expectedShips);
         const expectedFighters = scenario.command_assignment_presentation ? 2 : 1;
         assert.equal(allianceFighters.length, expectedFighters);
-        assert.equal(empireFighters.length, expectedFighters);
+        // A Death Star battle brings no Imperial fighter group (FUN_005ad930
+        // needs fewer Imperial than Alliance groups for Attack Death Star).
+        assert.equal(empireFighters.length,
+          scenario.death_star_presentation ? 0 : expectedFighters);
         const allianceShipZ = scenario.death_star_laser_journey && faction === "empire"
           ? ready.source_layout.outer_positive_z
           : ready.source_layout.outer_negative_z;
@@ -4911,15 +4932,21 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           assert.ok(fighterFamilyLogs.every(({ text }) =>
             /dimensions=32x32,16x16,2x2 .*texture_filter=nearest alpha=opaque source=FUN_005c63f0/.test(text)),
           "fighter family load did not preserve dimensions or source texture state");
-          assert.equal(fighterSceneLogs.length, scenario.fighter_detail_journey ? 9 : 1,
+          // A field with no active fighter group (a failed trench run in a
+          // Death Star battle, which brings no Imperial group) draws no
+          // fighter scene.
+          assert.equal(fighterSceneLogs.length,
+            fighterParticipants.length === 0 ? 0 : scenario.fighter_detail_journey ? 9 : 1,
             "production participants emitted the wrong fighter scene count");
-          assert.match(fighterSceneLogs[0].text,
-            new RegExp(`requested=${fighterParticipants.length} rendered=${fighterParticipants.length} `
-              + ".*source_positions=true source=FUN_005ab650,FUN_005c63f0,0x005d4af0"),
-            "production fighter scene used the wrong resource families, detail state, or positions");
-          const initialFighterResources = parseFighterSceneResources(fighterSceneLogs[0]);
-          assert.deepEqual(initialFighterResources.map(({ resource_id }) => resource_id),
-            fighterParticipants.map(({ active_indicator_resource }) => active_indicator_resource));
+          if (fighterParticipants.length > 0) {
+            assert.match(fighterSceneLogs[0].text,
+              new RegExp(`requested=${fighterParticipants.length} rendered=${fighterParticipants.length} `
+                + ".*source_positions=true source=FUN_005ab650,FUN_005c63f0,0x005d4af0"),
+              "production fighter scene used the wrong resource families, detail state, or positions");
+            const initialFighterResources = parseFighterSceneResources(fighterSceneLogs[0]);
+            assert.deepEqual(initialFighterResources.map(({ resource_id }) => resource_id),
+              fighterParticipants.map(({ active_indicator_resource }) => active_indicator_resource));
+          }
           if (scenario.navigation_camera_presentation) {
             assert.ok(cameraLogs.length >= 6,
               "navigation journey did not exercise the source tactical camera");
