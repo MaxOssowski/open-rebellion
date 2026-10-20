@@ -36,7 +36,9 @@ pub struct AiConfig {
     /// (`FUN_004bda60`). Kept so the save layout and saved configs still load.
     pub max_covert_ops_per_eval: usize,
 
-    /// Maximum construction yards per system. **Parity.**
+    /// Maximum construction yards per system. **Augmentation.** The
+    /// original's production routing has no yard cap
+    /// (`docs/qa/2026-09-08-full-functionality-audit/evidence/invention-review-r1/ai.md`).
     pub max_construction_yards: usize,
 
     /// Minimum troop garrison count before a controlled system is considered
@@ -56,6 +58,7 @@ pub struct AiConfig {
 
 impl Default for AiConfig {
     fn default() -> Self {
+        // port: the AI heuristics' defaults; every field is the port's design.
         Self {
             diplomacy_target_popularity_cap: 0.8,
             max_covert_ops_per_eval: 3,
@@ -80,6 +83,8 @@ pub struct ProductionConfig {
 
 impl Default for ProductionConfig {
     fn default() -> Self {
+        // port: the production doctrine's defaults; both fields are the port's
+        // design.
         Self {
             capship_threshold: 5,
             fighter_ratio: 3,
@@ -102,6 +107,7 @@ pub struct ScoringConfig {
 
 impl Default for ScoringConfig {
     fn default() -> Self {
+        // port: the autoresearch scoring targets; no simulation rule reads them.
         Self {
             victory_center: 3000,
             combat_pct_center: 10.0,

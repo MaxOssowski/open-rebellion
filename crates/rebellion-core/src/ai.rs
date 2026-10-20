@@ -12,16 +12,6 @@
 //! - `AISystem::pass(state, world, mfg, missions, ..) -> Vec<AIAction>`
 //! - Actions are recommendations only — the caller decides whether to apply them
 //!
-//! # Heuristics (ported from rebellion2's AIManager.cs)
-//!
-//! 1. **Officer assignment**: for each available (unassigned) character —
-//!    - If major character AND unrecruited officers exist → recruitment mission
-//!    - Else if major OR diplomacy > 60 → diplomacy mission targeting lowest-popularity system
-//! 2. **Production — fighters**: if a system has idle manufacturing capacity,
-//!    enqueue the best available fighter class for fleets with excess carrier slots
-//! 3. **Production — facilities**: if a system has fewer than `MAX_CONSTRUCTION_YARDS`
-//!    construction yards and has free slots, enqueue another
-//!
 //! # Cadence
 //!
 //! The AI player's tick (`FUN_00485b40`) runs once a sub-tick, and a day has
@@ -366,16 +356,6 @@ pub fn passes_per_day(speed: crate::tick::GameSpeed) -> u32 {
     speed.original_rate().map_or(4, u32::from)
 }
 
-/// Diplomacy skill threshold above which a minor character is considered a
-/// viable diplomat (rebellion2: `officer.GetSkillValue(Diplomacy) > 60`).
-pub const DIPLOMACY_SKILL_THRESHOLD: u32 = 60;
-
-/// Maximum construction yards the AI will build per system before stopping.
-pub const MAX_CONSTRUCTION_YARDS: usize = 5;
-
-/// Minimum popularity fraction below which the AI considers a system a
-/// diplomacy target (systems already at high popularity are deprioritized).
-pub const DIPLOMACY_TARGET_POPULARITY_CAP: f32 = 0.8;
 
 // ---------------------------------------------------------------------------
 // GalaxyState — strategic categorization of all systems

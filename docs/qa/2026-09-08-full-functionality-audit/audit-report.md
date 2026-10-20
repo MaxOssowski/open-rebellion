@@ -1843,6 +1843,17 @@ cross-runtime proof remain open
   and weapon nibbles (`FUN_00501510`, `FUN_005015a0`) are cited. The event
   engine's evaluator and the old-save difficulty default are tagged
   `port:`. The baseline shrinks from 43 to 19.
+- 2026-10-21 (AI, tuning, combat caps):
+  - `ai.rs`'s three rebellion2 constants (`DIPLOMACY_SKILL_THRESHOLD`,
+    `DIPLOMACY_TARGET_POPULARITY_CAP`, `MAX_CONSTRUCTION_YARDS`) had no
+    reader. They are removed with the stale heuristics header.
+  - The tuning defaults are tagged `port:`. `max_construction_yards` was
+    marked Parity, but the original has no yard cap.
+  - The auto-resolve round cap is tagged `port:` and the headless battle
+    retry `hyp:`.
+  The baseline shrinks from 19 to 11. What remains is `combat.rs`: the
+  family ranges, the phase flags and the fighter rules. They need the
+  combat area's reading.
 - Acceptance: each item is recovered and cited, or tagged `port:`/`hyp:` with a
   reason; `provenance-scan check` passes and the baseline shrinks to the
   port-owned remainder.

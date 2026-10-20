@@ -31,6 +31,8 @@ use rebellion_core::victory::{VictoryState, VictorySystem};
 use rebellion_core::world::ControlKind;
 use rebellion_core::world::{CampaignConfig, GameWorld};
 
+/// Days before the headless runner tries a system's battle again. hyp: the
+/// original's battle trigger is unrecovered (F-031).
 const COMBAT_RETRY_TICKS: u64 = 5;
 const UNCHANGED_STALEMATE_COOLDOWN: u64 = u64::MAX;
 

@@ -1,8 +1,5 @@
 {
   "items": {
-    "crates/rebellion-core/src/ai.rs::DIPLOMACY_SKILL_THRESHOLD": 1,
-    "crates/rebellion-core/src/ai.rs::DIPLOMACY_TARGET_POPULARITY_CAP": 1,
-    "crates/rebellion-core/src/ai.rs::MAX_CONSTRUCTION_YARDS": 1,
     "crates/rebellion-core/src/combat.rs::CombatEntityKind::from_family_byte": 12,
     "crates/rebellion-core/src/combat.rs::CombatPhaseFlags::FIGHTER_TYPE": 1,
     "crates/rebellion-core/src/combat.rs::CombatPhaseFlags::HULL_TYPE": 1,
@@ -13,11 +10,6 @@
     "crates/rebellion-core/src/combat.rs::CombatSystem::capital_ships_attack_fighters": 4,
     "crates/rebellion-core/src/combat.rs::CombatSystem::fighter_dogfight": 5,
     "crates/rebellion-core/src/combat.rs::CombatSystem::fighters_attack_ships": 1,
-    "crates/rebellion-core/src/combat.rs::CombatSystem::snapshot_fleet": 2,
-    "crates/rebellion-core/src/tuning.rs::AiConfig::default": 5,
-    "crates/rebellion-core/src/tuning.rs::ProductionConfig::default": 2,
-    "crates/rebellion-core/src/tuning.rs::ScoringConfig::default": 3,
-    "crates/rebellion-data/src/integrator.rs::MAX_SYSTEM_COMBAT_ROUNDS": 1,
-    "crates/rebellion-data/src/simulation.rs::COMBAT_RETRY_TICKS": 1
+    "crates/rebellion-core/src/combat.rs::CombatSystem::snapshot_fleet": 2
   }
 }

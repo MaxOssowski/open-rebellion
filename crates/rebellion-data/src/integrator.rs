@@ -5176,6 +5176,7 @@ mod tests {
 ///
 /// A round that changes neither hull nor fighter strength ends the engagement
 /// immediately, so this cap only protects against unexpectedly large battles.
+/// port: a safety cap of the port's auto-resolve loop.
 pub const MAX_SYSTEM_COMBAT_ROUNDS: u32 = 256;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
