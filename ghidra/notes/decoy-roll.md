@@ -468,6 +468,15 @@ The mode applies only when `+0x54 -> +0x18` is set, meaning no member is
 still autorouting. Mode 0 and the second pass skip, except that mode 3 runs
 the mode-2 body on the second pass. Adrift uses 3, 0, 1, 4.
 
+Mode 3, re-read 2026-10-20 (`FUN_00589a40`, the `switch` on
+`FUN_00520e50`): on the first pass (`+0x44` set) it jumps into mode 1's
+body (`+0x1c`, the system when `FUN_00520bb0`, the enemy fleets when the
+side has none there), and on the second pass into mode 2's body (`+0x18`,
+and the system's regiments `+0x20`/`+0x30` when the system is the enemy's).
+So an Adrift order is searched for in phase 2 by both the enemy fleets and
+the enemy-held system, in phase 7 by the fleets, and in phase 9 betrayal
+runs; the port's detection runs one pass and has no mode 3.
+
 ### Record flags (`+0x2c`)
 
 The in-memory MISSNSD record sits `0x28` above the file offsets. This is
