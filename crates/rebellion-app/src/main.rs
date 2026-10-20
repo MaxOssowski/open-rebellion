@@ -5625,25 +5625,25 @@ async fn main() {
                                     system,
                                 }),
                                 // A character's 0x201 -> 0x241 against the
-                                // release's system. port: a fleet target is
-                                // refused.
+                                // release window's +0x70: a system, or a
+                                // fleet to board.
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::CharacterMove { character },
                                     target,
-                                }) => match target {
-                                    ReleaseTarget::System(system) => panel_actions
-                                        .push(PanelAction::MoveCharacter { character, system }),
-                                    ReleaseTarget::Fleet { .. } => {
-                                        macroquad::logging::info!(
-                                            "[interface] character_move refused=fleet"
-                                        );
-                                        msg_log.push(GameMessage::new(
-                                            clock.tick,
-                                            "Move refused".to_string(),
-                                            MessageCategory::Event,
-                                        ));
+                                }) => panel_actions.push(match target {
+                                    ReleaseTarget::System(system) => PanelAction::MoveCharacter {
+                                        character,
+                                        system,
+                                        fleet: None,
+                                    },
+                                    ReleaseTarget::Fleet { fleet, system } => {
+                                        PanelAction::MoveCharacter {
+                                            character,
+                                            system,
+                                            fleet: Some(fleet),
+                                        }
                                     }
-                                },
+                                }),
                                 // A regiment's 0x201 against the release
                                 // window's +0x70 (FUN_004a3130 for a Fleet
                                 // window), boarding, landing or travelling.
@@ -7602,11 +7602,16 @@ fn apply_panel_action(
         // (FUN_004f4b60: a target of another side is 1/0x28), then its
         // command 0x250 creates the Move mission (FUN_0054d360), or
         // FUN_00487c90 reports the refusal.
-        PanelAction::MoveCharacter { character, system } => {
-            let result = if rebellion_core::missions::move_target_allowed(
+        PanelAction::MoveCharacter {
+            character,
+            system,
+            fleet,
+        } => {
+            let result = if rebellion_core::missions::move_place_allowed(
                 world,
                 *player_faction,
                 system,
+                fleet,
             ) {
                 mission_state
                     .dispatch_guarded(
@@ -7620,14 +7625,21 @@ fn apply_panel_action(
                         ),
                         world,
                     )
+                    .map(|id| {
+                        if let Some(fleet) = fleet {
+                            mission_state.set_target_fleet(id, fleet);
+                        }
+                        id
+                    })
                     .map_err(|refusal| format!("{refusal:?}"))
             } else {
                 Err("1/0x28".to_string())
             };
             macroquad::logging::info!(
-                "[interface] character_move character={:?} to={:?} result={:?}",
+                "[interface] character_move character={:?} to={:?} fleet={:?} result={:?}",
                 world.characters.get(character).map(|c| c.name.as_str()),
                 world.systems.get(system).map(|s| s.name.as_str()),
+                fleet.and_then(|key| fleet_label(world, key)),
                 result,
             );
             if result.is_err() {
@@ -8271,6 +8283,7 @@ fn apply_mission_result(
             | MissionEffect::CapturedByBountyHunters { .. }
             | MissionEffect::EscapeBarred { .. }
             | MissionEffect::MemberOnMission { .. }
+            | MissionEffect::MemberBoarded { .. }
             | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             }

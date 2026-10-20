@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 70;
+const SCENARIO_COUNT: u8 = 71;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -170,6 +170,10 @@ pub enum Scenario {
     /// character's Move (`0x201` -> `0x241`) to its planet
     /// (`ghidra/notes/move-order.md`, "A character's Move").
     CharacterMove = 69,
+    /// The `CharacterCommand` agent, and a fleet of the player's side at the
+    /// enemy secondary system, selected in its Fleet window: a character's
+    /// Move aboard the fleet (`0x241` with the fleet as its target).
+    CharacterBoard = 70,
 }
 
 impl Scenario {
@@ -245,6 +249,7 @@ impl Scenario {
             67 => Self::FleetAssault,
             68 => Self::CharacterCommand,
             69 => Self::CharacterMove,
+            70 => Self::CharacterBoard,
             _ => return None,
         })
     }
@@ -274,6 +279,7 @@ impl Scenario {
         self == Self::MissionTargeting
             || self == Self::CharacterCommand
             || self == Self::CharacterMove
+            || self == Self::CharacterBoard
             || self == Self::ReconTargeting
             || self == Self::ResearchTargeting
             || self.targets_an_object()
@@ -441,7 +447,7 @@ pub fn apply(
         .find(|(_, c)| {
             !matches!(
                 request.scenario,
-                Scenario::CharacterCommand | Scenario::CharacterMove
+                Scenario::CharacterCommand | Scenario::CharacterMove | Scenario::CharacterBoard
             ) || c.can_be_admiral
         })
         .map(|(key, _)| key);
@@ -462,6 +468,7 @@ pub fn apply(
                 | Scenario::ResearchTargeting
                 | Scenario::CharacterCommand
                 | Scenario::CharacterMove
+                | Scenario::CharacterBoard
         ) || request.scenario.targets_an_object()
         {
             // MissionState::mission_order_enabled: a free recruited member.
@@ -585,6 +592,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::RescueTargeting {
         place_prisoner(request, world, defenses, cockpit, primary, secondary);
+    }
+    if request.scenario == Scenario::CharacterBoard {
+        place_boarding_fleet(request, world, defenses, fleets, cockpit, primary, secondary);
     }
     if matches!(
         request.scenario,
@@ -829,6 +839,54 @@ fn place_sabotage_targets(
     } else {
         world.systems[secondary].fleets = vec![fleet];
     }
+    fleets.open(world, secondary, left, request.faction, layout);
+    fleets.select(secondary, FleetWindowEntry::Fleet(fleet));
+}
+
+/// The `CharacterBoard` scenario: the agent in the primary system's
+/// Defenses window at the galaxy view's right edge, and a fleet of the
+/// player's side at the enemy secondary system, selected in its Fleet
+/// window at the left edge.
+fn place_boarding_fleet(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    defenses: &mut DefensesWindowState,
+    fleets: &mut FleetWindowState,
+    cockpit: &CockpitState,
+    primary: SystemKey,
+    secondary: SystemKey,
+) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let layout = cockpit.layout_for(640.0, 480.0);
+    let galaxy = layout.galaxy;
+    defenses.open(
+        world,
+        primary,
+        (
+            (galaxy.x + galaxy.width - DEFENSES_WINDOW_WIDTH) as i16 - 5,
+            galaxy.y as i16 + 5,
+        ),
+        request.faction,
+        layout,
+    );
+    let Some(class) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| !class.is_death_star() && class.is_alliance == player_is_alliance)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+        location: secondary,
+        capital_ships: vec![ShipInstance::new(class, 100, true)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: player_is_alliance,
+        has_death_star: false,
+    });
+    world.systems[secondary].fleets = vec![fleet];
+    let left = (galaxy.x as i16 + 5, galaxy.y as i16 + 5);
     fleets.open(world, secondary, left, request.faction, layout);
     fleets.select(secondary, FleetWindowEntry::Fleet(fleet));
 }
@@ -1659,7 +1717,9 @@ fn object_menu_report<'a>(
         Scenario::DeathStarTargeting | Scenario::ShipTargeting => {
             fleets.item_screen_rect(layout, key, 0)
         }
-        Scenario::FleetTargeting => fleets.entry_screen_rect(layout, key, 0),
+        Scenario::FleetTargeting | Scenario::CharacterBoard => {
+            fleets.entry_screen_rect(layout, key, 0)
+        }
         _ => None,
     };
     let planet = match prison_cell.or_else(|| sectors.planet_screen_rect(world, layout, key)) {
@@ -5366,7 +5426,8 @@ mod tests {
                 Scenario::FleetBombardment,
                 Scenario::FleetAssault,
                 Scenario::CharacterCommand,
-                Scenario::CharacterMove
+                Scenario::CharacterMove,
+                Scenario::CharacterBoard
             ]
         );
     }

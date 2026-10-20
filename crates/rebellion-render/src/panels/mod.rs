@@ -115,12 +115,13 @@ pub enum PanelAction {
         troop: TroopKey,
         target: RegimentTarget,
     },
-    /// A character's Move (`0x201` -> `0x241`) released on a system: the
-    /// Move mission `0x41000001` (`ghidra/notes/move-order.md`, "A
-    /// character's Move").
+    /// A character's Move (`0x201` -> `0x241`) released on a system, or on
+    /// a fleet there to board: the Move mission `0x41000001`
+    /// (`ghidra/notes/move-order.md`, "A character's Move").
     MoveCharacter {
         character: rebellion_core::ids::CharacterKey,
         system: rebellion_core::ids::SystemKey,
+        fleet: Option<rebellion_core::ids::FleetKey>,
     },
     /// A squadron's Move (`0x201`) released on a system or fleet
     /// (`squadrons::move_squadrons`).

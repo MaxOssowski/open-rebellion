@@ -1,0 +1,5 @@
+thread 'missions::tests::a_move_to_a_fleet_lands_its_member_aboard' (999486) panicked at crates/rebellion-core/src/missions.rs:7341:9:
+assertion `left == right` failed
+  left: []
+ right: [MemberMoved { member: Character(CharacterKey(1v1)), to: Some(SystemKey(2v1)) }, MemberBoarded { member: Character(CharacterKey(1v1)), fleet: FleetKey(1v1) }]
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1419 filtered out; finished in 0.00s

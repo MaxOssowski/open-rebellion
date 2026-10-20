@@ -466,10 +466,16 @@ the same slots but the kind) for the Move mission `0x41000001`.
   captor's side). It targets like a fleet's Move; a released system takes
   `missions::move_target_allowed` (`1`/`0x28`) and then
   `MissionState::dispatch_guarded` for the Move mission.
-- port: a release on a fleet is refused; Confirmed Move (`0x202`) and its
-  transit window stay disabled for a character; a special force's Move is
-  not ported; the drag of a character (Fleet window Personnel tab, system
-  windows) is not ported.
+- A release on a fleet of the player's side targets that fleet (the
+  order's container): `MissionState::set_target_fleet`, the validator
+  reads the fleet's side and place, and the members board it on landing
+  (`MissionEffect::MemberBoarded`, save v92).
+- port: the trip aims at the fleet's system when ordered; the original
+  reroutes a traveller whose target moves (`FUN_004fbc20`,
+  `GameObjParentReroutedNotif`), the port lands it at that system.
+  Confirmed Move (`0x202`) and its transit window stay disabled for a
+  character; a special force's Move is not ported; the drag of a character
+  (Fleet window Personnel tab, system windows) is not ported.
 
 ### Manual cross-check (2026-10-20)
 
@@ -482,6 +488,7 @@ Manual p. 110-111, "Returning to Base", and p. 46:
 | Move from the right-click menu | Confirmed: `0x201` -> `0x241` above | Present |
 | Confirmed Move shows the transit time and asks to confirm | Confirmed for fleets (`FUN_00487cc0`) | Disabled (port:) |
 | Drag a character onto a system or fleet (p. 46, p. 111) | Confirmed: the drag issues `0x201`/`0x214` (above) | Missing |
+| Put a character aboard a fleet, then give it a Command rank (manual p. 56: "drag Jerjerrod onto the fleet") | Confirmed: a Move's fleet target is its container | Present by the menu's Move (2026-10-20); the drag is Missing |
 
 ## Order 0x214 (Destination)
 

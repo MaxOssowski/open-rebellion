@@ -3122,6 +3122,14 @@ cross-runtime proof remain open
   (`evidence/2026-10-20-character-move/`). Manual pp. 110-111 confirms the
   Return to a base system; open: the base (`+0x70`) that Move sets,
   Confirmed Move, a fleet target, and the drag of a character.
+- 2026-10-20: a character's Move aboard a fleet (save v92). The Move order
+  `0x241` takes a fleet as its container; the validator reads the fleet's
+  side, and `FUN_004f7640` lands the members in it. The port keeps
+  `ActiveMission::target_fleet`, reads the fleet in the validator, and
+  boards the member on landing (MemberBoarded); port: no rerouting when the
+  fleet moves. Browser acceptance on fixture 70, both sides. Golden
+  regenerated: initial `v1:e4659ba5e1a2e054`, final `v1:21001b04a1c4b3b9`
+  (`evidence/2026-10-20-character-board/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

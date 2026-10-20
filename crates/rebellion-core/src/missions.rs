@@ -358,6 +358,13 @@ pub struct ActiveMission {
     /// a system. port: `target_system` then keeps the members' starting
     /// system, which no rule reads.
     pub target_abode: Option<crate::ids::AbodeKey>,
+    /// The fleet a Move order targets (`0x241`, `FUN_004f4b60`): its
+    /// container, which the members board on landing (save v92). port: the
+    /// trip aims at the fleet's system when the mission is ordered; the
+    /// original reroutes a traveller whose target moves (`FUN_004fbc20`,
+    /// `GameObjParentReroutedNotif`).
+    #[serde(default)]
+    pub target_fleet: Option<crate::ids::FleetKey>,
     /// Dagobah's `FirstTrainingDay` `+0xa8`, set on entering phase 8
     /// (`FUN_005751d0`).
     pub first_training_day: Option<u64>,
@@ -413,6 +420,7 @@ impl ActiveMission {
             removing: Vec::new(),
             teacher: None,
             target_abode: None,
+            target_fleet: None,
             origin_abode: None,
             first_training_day: None,
             succeeded: false,
@@ -1294,6 +1302,59 @@ pub fn move_member(world: &mut GameWorld, member: MissionMember, to: Option<Syst
     }
 }
 
+/// The effects of `member` landing at `to` for `mission` (`FUN_004f7640`
+/// into the container `+0x74`): into its abode, aboard the fleet a Move
+/// targets when that fleet of the mission's side stands there, else at the
+/// system.
+fn landing(
+    world: &GameWorld,
+    mission: Option<&ActiveMission>,
+    member: MissionMember,
+    to: SystemKey,
+    abode: Option<crate::ids::AbodeKey>,
+) -> Vec<MissionEffect> {
+    if let Some(abode) = abode {
+        return vec![MissionEffect::MemberEnteredAbode { member, abode }];
+    }
+    let moved = MissionEffect::MemberMoved {
+        member,
+        to: Some(to),
+    };
+    let aboard = mission.and_then(|mission| {
+        let fleet = mission.target_fleet?;
+        let value = world.fleets.get(fleet)?;
+        (value.location == to
+            && crate::mission_detection::faction_of(value.is_alliance)
+                == crate::dat::Faction::from(mission.faction))
+        .then_some(fleet)
+    });
+    match aboard {
+        Some(fleet) => vec![moved, MissionEffect::MemberBoarded { member, fleet }],
+        None => vec![moved],
+    }
+}
+
+/// Apply [`MissionEffect::MemberBoarded`]: the character joins `fleet`'s
+/// roster at the fleet's system. port: a special force does not board.
+pub fn board_fleet(world: &mut GameWorld, member: MissionMember, fleet: crate::ids::FleetKey) {
+    let MissionMember::Character(key) = member else {
+        return;
+    };
+    let Some(location) = world.fleets.get(fleet).map(|value| value.location) else {
+        return;
+    };
+    if world.characters.get(key).is_none_or(|c| c.is_killed) {
+        return;
+    }
+    for (_, other) in &mut world.fleets {
+        other.characters.retain(|&c| c != key);
+    }
+    let character = &mut world.characters[key];
+    character.move_to(Some(fleet), Some(location));
+    character.current_abode = None;
+    world.fleets[fleet].characters.push(key);
+}
+
 /// Apply [`MissionAdvance::effects`] in order: member moves and releases,
 /// and the detection's captures, lost special forces, injuries and Force
 /// gains. The native and browser app shares this with the headless
@@ -1303,6 +1364,7 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
         match effect {
             MissionEffect::MemberMoved { member, to } => move_member(world, *member, *to),
             MissionEffect::MemberAvailable { member } => set_on_mission(world, *member, false),
+            MissionEffect::MemberBoarded { member, fleet } => board_fleet(world, *member, *fleet),
             MissionEffect::MemberOnMission { member, hidden } => {
                 set_on_mission(world, *member, true);
                 if let Some(c) = member
@@ -1682,6 +1744,18 @@ impl MissionState {
         id
     }
 
+    /// Make mission `id`'s Move land its members aboard `fleet`, the order's
+    /// target container (`0x241`); `false` when no such mission waits.
+    pub fn set_target_fleet(&mut self, id: u64, fleet: crate::ids::FleetKey) -> bool {
+        match self.missions.iter_mut().find(|mission| mission.id == id) {
+            Some(mission) => {
+                mission.target_fleet = Some(fleet);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Dispatch a mission after the original's member checks, and mark every
     /// member on a mission.
     ///
@@ -2011,6 +2085,12 @@ pub enum MissionEffect {
     /// (`FUN_00522b30`: `RoleOnMissionNotif`, and `OnHiddenMission` from
     /// the record's `+0x5c`, `FUN_00520b70`).
     MemberOnMission { member: MissionMember, hidden: bool },
+    /// A member landed aboard the fleet its Move targets (the container
+    /// `+0x74`, `FUN_004f7640`).
+    MemberBoarded {
+        member: MissionMember,
+        fleet: crate::ids::FleetKey,
+    },
     /// A member moved for its mission: off the map when it starts a transit
     /// (`to: None`), into the target system when it lands (`FUN_00556390`).
     MemberMoved {
@@ -2410,6 +2490,17 @@ fn target_view(
                 prisoner: false,
             })
         }
+        // A Move to a fleet reads the fleet: its side and its system.
+        TargetRules::Place if mission.target_fleet.is_some() => {
+            let fleet = mission.target_fleet.and_then(|key| world.fleets.get(key));
+            Some(TargetView {
+                side: fleet.map(|fleet| crate::mission_detection::faction_of(fleet.is_alliance)),
+                destroyed: fleet.is_none(),
+                en_route: false,
+                location: fleet.map(|fleet| fleet.location),
+                prisoner: false,
+            })
+        }
         TargetRules::System | TargetRules::Place => {
             let sys = world.systems.get(mission.target_system)?;
             Some(TargetView {
@@ -2740,17 +2831,10 @@ impl MissionSystem {
                 .into_iter()
                 .partition(|transit| transit.arrival <= now);
             state.en_route = travelling;
-            out.effects
-                .extend(arrived.into_iter().map(|transit| match transit.abode {
-                    Some(abode) => MissionEffect::MemberEnteredAbode {
-                        member: transit.member,
-                        abode,
-                    },
-                    None => MissionEffect::MemberMoved {
-                        member: transit.member,
-                        to: Some(transit.to),
-                    },
-                }));
+            for transit in arrived {
+                let mission = state.missions.iter().find(|m| m.id == transit.mission_id);
+                out.effects.extend(landing(world, mission, transit.member, transit.to, transit.abode));
+            }
 
             let missions = std::mem::take(&mut state.missions);
             let mut orders = Vec::new();
@@ -3323,10 +3407,8 @@ impl MissionSystem {
                 mission.speed,
             );
             if days == 0 {
-                out.effects.push(MissionEffect::MemberMoved {
-                    member,
-                    to: Some(to),
-                });
+                out.effects
+                    .extend(landing(world, Some(mission), member, to, None));
             } else {
                 // port: a travelling member is off the map, as a delivery is.
                 out.effects
@@ -4109,6 +4191,24 @@ pub(crate) fn escape_destination(
 /// order's side (`1`/`0x28`). A system's side is its holder's.
 #[must_use]
 pub fn move_target_allowed(world: &GameWorld, faction: MissionFaction, to: SystemKey) -> bool {
+    move_place_allowed(world, faction, to, None)
+}
+
+/// [`move_target_allowed`] for a Move whose target may be a fleet at `to`:
+/// the fleet's side then decides.
+#[must_use]
+pub fn move_place_allowed(
+    world: &GameWorld,
+    faction: MissionFaction,
+    to: SystemKey,
+    fleet: Option<crate::ids::FleetKey>,
+) -> bool {
+    if let Some(fleet) = fleet {
+        return world.fleets.get(fleet).is_some_and(|value| {
+            crate::mission_detection::faction_of(value.is_alliance)
+                == crate::dat::Faction::from(faction)
+        });
+    }
     world
         .systems
         .get(to)
@@ -7187,6 +7287,133 @@ mod tests {
         assert!(advance.effects.contains(&MissionEffect::MemberAvailable {
             member: MissionMember::Character(traveller)
         }));
+    }
+
+    /// A Move of an Alliance agent at x 0 to an Alliance fleet at the
+    /// enemy's system at x 100 (`0x241` with the fleet as its target).
+    fn move_to_fleet() -> (GameWorld, MissionState, CharacterKey, crate::ids::FleetKey, SystemKey) {
+        let mut world = minimal_world();
+        world.mission_records = vec![move_record()];
+        let from = system_at(&mut world, 0);
+        let to = system_at(&mut world, 100);
+        world.systems[from].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.systems[to].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: to,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let traveller = agent_at(&mut world, from, true);
+        let mut state = MissionState::new();
+        let id = state
+            .dispatch_guarded(
+                MissionRequest::single(
+                    MissionKind::Move,
+                    MissionFaction::Alliance,
+                    traveller,
+                    to,
+                    None,
+                    0,
+                ),
+                &mut world,
+            )
+            .expect("a free traveller");
+        assert!(state.set_target_fleet(id, fleet));
+        (world, state, traveller, fleet, to)
+    }
+
+    #[test]
+    fn a_move_to_a_fleet_lands_its_member_aboard() {
+        // FUN_004f7640 lands the member in the order's container +0x74, the
+        // fleet; the validator reads the fleet's side (FUN_00523450 rule 3),
+        // so an own fleet at the enemy's system is a fit target.
+        let (mut world, mut state, traveller, fleet, to) = move_to_fleet();
+        let member = MissionMember::Character(traveller);
+        let advance = step(&mut state, &world, 1, &[]);
+        apply_advance_effects(&mut world, &advance.effects);
+
+        let advance = step(&mut state, &world, 20, &[0.5]);
+        assert_eq!(
+            advance.effects,
+            vec![
+                MissionEffect::MemberMoved {
+                    member,
+                    to: Some(to)
+                },
+                MissionEffect::MemberBoarded { member, fleet },
+            ]
+        );
+        apply_advance_effects(&mut world, &advance.effects);
+        assert_eq!(world.characters[traveller].current_fleet, Some(fleet));
+        assert_eq!(world.fleets[fleet].characters, vec![traveller]);
+
+        let advance = step(&mut state, &world, 21, &[0.0]);
+        assert_eq!(advance.ended[0].end_code, 1);
+    }
+
+    #[test]
+    fn a_character_boarding_a_fleet_leaves_the_fleet_it_was_on() {
+        // FUN_004f7640 puts the member in its new container; it leaves the
+        // old one's roster.
+        let (mut world, _, traveller, fleet, to) = move_to_fleet();
+        let old = world.fleets.insert(crate::world::Fleet {
+            location: to,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![traveller],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.characters[traveller].current_fleet = Some(old);
+
+        board_fleet(&mut world, MissionMember::Character(traveller), fleet);
+
+        assert!(world.fleets[old].characters.is_empty());
+        assert_eq!(world.fleets[fleet].characters, vec![traveller]);
+        assert_eq!(
+            (
+                world.characters[traveller].current_fleet,
+                world.characters[traveller].current_system
+            ),
+            (Some(fleet), Some(to))
+        );
+    }
+
+    #[test]
+    fn a_move_lands_at_the_system_when_its_fleet_has_left() {
+        // port: the trip aims at the fleet's system when ordered; the
+        // original reroutes the traveller (FUN_004fbc20). A fleet gone from
+        // the system leaves the member there.
+        let (mut world, mut state, traveller, fleet, to) = move_to_fleet();
+        let member = MissionMember::Character(traveller);
+        step(&mut state, &world, 1, &[]);
+        let elsewhere = system_at(&mut world, 300);
+        world.fleets[fleet].location = elsewhere;
+
+        let advance = step(&mut state, &world, 20, &[0.5]);
+
+        assert!(advance.effects.contains(&MissionEffect::MemberMoved {
+            member,
+            to: Some(to)
+        }));
+        assert!(!advance
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::MemberBoarded { .. })));
+    }
+
+    #[test]
+    fn a_move_may_target_its_own_sides_fleet_only() {
+        // FUN_004f4b60: 1/0x28 for a target whose side is not the order's.
+        let (world, _, _, fleet, to) = move_to_fleet();
+        assert!(move_place_allowed(&world, MissionFaction::Alliance, to, Some(fleet)));
+        assert!(!move_place_allowed(&world, MissionFaction::Empire, to, Some(fleet)));
+        assert!(!move_place_allowed(&world, MissionFaction::Alliance, to, None));
     }
 
     #[test]

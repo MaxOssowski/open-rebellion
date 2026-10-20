@@ -2097,6 +2097,7 @@ fn apply_mission_effects_inner(
             | MissionEffect::CapturedByBountyHunters { .. }
             | MissionEffect::EscapeBarred { .. }
             | MissionEffect::MemberOnMission { .. }
+            | MissionEffect::MemberBoarded { .. }
             | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(
                     world,

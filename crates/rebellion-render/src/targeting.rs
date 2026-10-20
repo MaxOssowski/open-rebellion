@@ -38,8 +38,8 @@ pub enum TargetOrder {
         confirmed: bool,
     },
     /// A character's Move (`0x201`), which expands to the Move mission order
-    /// `0x241` (`FUN_0053c810`). port: a release on a fleet is refused; only
-    /// a system is a target.
+    /// `0x241` (`FUN_0053c810`): to a system, or aboard a fleet a Fleet
+    /// window gives.
     CharacterMove {
         character: rebellion_core::ids::CharacterKey,
     },

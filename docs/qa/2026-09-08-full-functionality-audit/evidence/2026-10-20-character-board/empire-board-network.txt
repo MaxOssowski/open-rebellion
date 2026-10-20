@@ -1,0 +1,4 @@
+[F0A31D82C16025DBC64BF49066CD5527] GET http://127.0.0.1:18450/?fixture-code=583 (Document) 200
+[1076913.2] GET http://127.0.0.1:18450/gl.js (Script) 200
+[1076913.4] GET http://127.0.0.1:18450/open-rebellion-test.wasm (Fetch) 200
+[1076913.5] GET http://127.0.0.1:18450/data/runtime.orpk (XHR) 200
