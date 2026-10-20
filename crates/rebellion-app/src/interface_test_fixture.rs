@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 73;
+const SCENARIO_COUNT: u8 = 74;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -183,6 +183,11 @@ pub enum Scenario {
     /// (MISSNSD `0x57000080`); the clock runs Fast. The app's mission step
     /// ends the revolt (`FUN_00569c20` -> `FUN_0050c910`).
     SubdueSuccess = 72,
+    /// As `FleetBombardment` with the fleet's ship the player's Death Star
+    /// (CAPSHPSD 136, the Empire's only) and one of the other side's
+    /// characters standing on the planet: the submenu's Destroy System
+    /// (`0x223`, `FUN_00582440`, `FUN_0058d990`).
+    FleetDestroySystem = 73,
 }
 
 impl Scenario {
@@ -261,6 +266,7 @@ impl Scenario {
             70 => Self::CharacterBoard,
             71 => Self::CharacterAboard,
             72 => Self::SubdueSuccess,
+            73 => Self::FleetDestroySystem,
             _ => return None,
         })
     }
@@ -279,6 +285,7 @@ impl Scenario {
                 | Self::SquadronBattle
                 | Self::FleetBombardment
                 | Self::FleetAssault
+                | Self::FleetDestroySystem
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -1247,6 +1254,49 @@ fn place_bombarding_fleet(
     }
 }
 
+/// The Destroy System variant: the fleet's ship is the player's Death Star
+/// when its side has one (the Empire), and one of the other side's free
+/// characters stands on the planet, to go adrift when it is destroyed.
+fn place_death_star(
+    world: &mut GameWorld,
+    fleet: FleetKey,
+    primary: SystemKey,
+    player_is_alliance: bool,
+) {
+    if let Some((class, hull)) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| class.is_alliance == player_is_alliance && class.is_death_star())
+        .map(|(key, class)| (key, class.hull))
+    {
+        let value = &mut world.fleets[fleet];
+        value.capital_ships = vec![ShipInstance::new(
+            class,
+            i32::try_from(hull).unwrap_or(i32::MAX),
+            player_is_alliance,
+        )];
+        value.has_death_star = true;
+    }
+    if let Some(key) = world
+        .characters
+        .iter()
+        .find(|(_, c)| {
+            c.is_alliance != player_is_alliance
+                && !c.is_killed
+                && !c.on_mission
+                && !c.is_captive
+                && c.current_fleet.is_none()
+        })
+        .map(|(key, _)| key)
+    {
+        for (_, value) in &mut world.fleets {
+            value.characters.retain(|&k| k != key);
+        }
+        world.characters[key].move_to(None, Some(primary));
+        world.characters[key].current_abode = None;
+    }
+}
+
 /// The regiment-loading target: another system in the primary system's
 /// sector, so the sector window that shows the fleet icon shows it too.
 fn loading_target(world: &GameWorld, primary: SystemKey) -> Option<SystemKey> {
@@ -1506,9 +1556,12 @@ fn place_loading_fleet(
     }
     if matches!(
         request.scenario,
-        Scenario::FleetBombardment | Scenario::FleetAssault
+        Scenario::FleetBombardment | Scenario::FleetAssault | Scenario::FleetDestroySystem
     ) {
         place_bombarding_fleet(world, fleet, primary, elsewhere, player_is_alliance);
+    }
+    if request.scenario == Scenario::FleetDestroySystem {
+        place_death_star(world, fleet, primary, player_is_alliance);
     }
     // The assault variant: one of the player's regiments aboard the fleet.
     if request.scenario == Scenario::FleetAssault {
@@ -1807,6 +1860,9 @@ struct FixtureSubmenu {
     height: f32,
     rows: usize,
     general_row: Option<usize>,
+    /// Destroy System's row (`0x223`) and whether it is enabled.
+    destroy_row: Option<usize>,
+    destroy_enabled: bool,
     /// The Command submenu's rows `0x260..0x263` (None, Commander,
     /// Admiral, General).
     command_rows: [Option<usize>; 4],
@@ -1885,6 +1941,14 @@ fn object_menu_report<'a>(
                 general_row: menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(
                     rebellion_core::bombardment::GENERAL,
                 )),
+                destroy_row: menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(
+                    rebellion_core::bombardment::DESTROY_SYSTEM,
+                )),
+                destroy_enabled: menu
+                    .submenu_row_of(ObjectMenuCommand::BombardmentTarget(
+                        rebellion_core::bombardment::DESTROY_SYSTEM,
+                    ))
+                    .is_some_and(|row| menu.submenu_row_enabled(row)),
                 command_rows: [0x260, 0x261, 0x262, 0x263]
                     .map(|order| menu.submenu_row_of(ObjectMenuCommand::GiveCommand(order))),
             }),
@@ -2911,6 +2975,13 @@ struct FleetLoadObservation {
     last_bombardment_message: Option<String>,
     /// The last Planetary Assault line (the assault variant).
     last_assault_message: Option<String>,
+    /// The Destroy System variant: the primary system destroyed, the
+    /// player's fleet still in the world, the characters standing on the
+    /// planet that went adrift, and the destruction's line.
+    primary_destroyed: bool,
+    fleet_present: bool,
+    adrift_characters: usize,
+    last_destroy_message: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3053,6 +3124,18 @@ fn fleet_load_observation(
             .iter()
             .rev()
             .find(|message| message.text.contains("assault"))
+            .map(|message| message.text.clone()),
+        primary_destroyed: world.systems[primary].is_destroyed,
+        fleet_present: world.fleets.contains_key(fleet),
+        adrift_characters: world
+            .characters
+            .values()
+            .filter(|c| c.adrift || (c.on_mission && c.current_system == Some(primary)))
+            .count(),
+        last_destroy_message: messages
+            .iter()
+            .rev()
+            .find(|message| message.text.contains("DESTROYED by Death Star"))
             .map(|message| message.text.clone()),
     })
 }
@@ -4177,6 +4260,62 @@ mod tests {
                 rebellion_core::squadrons::sides_present(world, primary),
                 (true, true)
             );
+        }
+    }
+
+    // port: the fixture's own layout. Destroy System needs a Death Star in
+    // the fleet (FUN_00582440, 8/8 without one); CAPSHPSD 136 is the
+    // Empire's only.
+    #[test]
+    fn the_destroy_system_scenario_gives_only_the_empire_s_fleet_a_death_star() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let request = request(Scenario::FleetDestroySystem, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        is_alliance: alliance,
+                        hull: 300,
+                        hyperdrive: 80,
+                        troop_capacity: 2,
+                        bombardment_modifier: 5,
+                        ..Default::default()
+                    });
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        dat_id: rebellion_core::ids::DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
+                        is_alliance: false,
+                        is_empire: true,
+                        hull: 25_000,
+                        hyperdrive: 80,
+                        bombardment_modifier: 15,
+                        ..Default::default()
+                    });
+                world.characters.insert(rebellion_core::world::Character {
+                    is_alliance: !alliance,
+                    is_empire: alliance,
+                    ..Default::default()
+                });
+            });
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let fleet = world.fleets.keys().next().unwrap();
+            assert_eq!(world.fleets[fleet].has_death_star, !alliance);
+            assert_eq!(
+                rebellion_core::bombardment::order_enabled(
+                    world,
+                    &applied.movement,
+                    alliance,
+                    &[fleet],
+                    primary,
+                    rebellion_core::bombardment::DESTROY_SYSTEM,
+                ),
+                !alliance
+            );
+            assert!(world.characters.values().any(|c| c.is_alliance != alliance
+                && rebellion_core::death_star::stands_in(c, primary)));
         }
     }
 
@@ -5612,7 +5751,8 @@ mod tests {
                 Scenario::CharacterCommand,
                 Scenario::CharacterMove,
                 Scenario::CharacterBoard,
-                Scenario::CharacterAboard
+                Scenario::CharacterAboard,
+                Scenario::FleetDestroySystem
             ]
         );
     }

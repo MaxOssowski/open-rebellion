@@ -29,6 +29,7 @@ const SQUADRON_LOAD = 65;
 const SQUADRON_BATTLE = 66;
 const FLEET_BOMBARDMENT = 67;
 const FLEET_ASSAULT = 68;
+const FLEET_DESTROY_SYSTEM = 74;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -631,6 +632,50 @@ const cases = [
       await frames(page, 3);
       await shot(page, directory, "bombardment-done");
       return { before, menu, waited, sub, after };
+    },
+  },
+  {
+    name: "destroy-system",
+    code: FLEET_DESTROY_SYSTEM,
+    // Destroy System (0x223) needs a Death Star in the fleet (FUN_00582440):
+    // only the Empire's fleet holds one here. FUN_0058d990 destroys the
+    // system (FUN_005080d0): the fleet stays (FUN_00524fb0), the other
+    // side's character standing there goes adrift (FUN_004ef2e0)
+    // (ghidra/notes/bombardment-order.md, "The destroyed system's contents").
+    async run(page, faction, setup, directory) {
+      const empire = faction.name === "empire";
+      const before = await until(page, "the planet stands with a character on it",
+        (o) => o.primary_destroyed === false && o.fleet_present && o.adrift_characters === 0);
+      const menu = await openMenu(page, point(setup.icon), directory, "fleet");
+      const height = (menu.height - 2) / menu.rows;
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.bombardment_row + 0.5) });
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.submenu,
+        null, { timeout: 5_000 });
+      await frames(page, 3);
+      const shown = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      await shot(page, directory, "destroy-submenu");
+      const sub = shown.submenu;
+      assert.equal(sub.rows, 4, JSON.stringify(sub));
+      assert.equal(sub.destroy_row, 3, JSON.stringify(sub));
+      assert.equal(sub.destroy_enabled, empire, JSON.stringify(sub));
+      if (!empire) {
+        await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
+        await frames(page, 3);
+        const after = await until(page, "nothing is destroyed",
+          (o) => o.primary_destroyed === false && o.fleet_present);
+        return { before, sub, after };
+      }
+      const rowHeight = (sub.height - 2) / sub.rows;
+      await click(page, { x: sub.left + sub.width / 2, y: sub.top + 2 + rowHeight * (sub.destroy_row + 0.5) });
+      const after = await until(page, "the Death Star destroys the system",
+        (o) => o.primary_destroyed && o.last_destroy_message !== null);
+      assert.ok(after.fleet_present, "the fleet stays (FUN_00524fb0)");
+      assert.ok(after.adrift_characters >= 1, "the character standing there goes adrift");
+      assert.equal(after.enemy_regiments, 0);
+      await frames(page, 3);
+      await shot(page, directory, "destroy-done");
+      return { before, sub, after };
     },
   },
   {

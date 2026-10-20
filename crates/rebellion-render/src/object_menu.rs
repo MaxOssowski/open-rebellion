@@ -682,6 +682,12 @@ impl ObjectMenuState {
     pub fn row_enabled(&self, row: usize) -> bool {
         self.rows.get(row).is_some_and(|row| row.enabled)
     }
+
+    /// Whether the submenu's row at `row` is enabled.
+    #[must_use]
+    pub fn submenu_row_enabled(&self, row: usize) -> bool {
+        self.submenu.get(row).is_some_and(|row| row.enabled)
+    }
 }
 
 const MENU_ID: &str = "original_object_menu";
@@ -1735,6 +1741,11 @@ mod tests {
         );
         assert_eq!(menu.submenu_row_of(ObjectMenuCommand::Bombardment), None);
         assert_eq!(menu.submenu_row_count(), 4);
+        // Each row keeps its gate; past the last row nothing is enabled.
+        assert_eq!(
+            (0..5).map(|row| menu.submenu_row_enabled(row)).collect::<Vec<_>>(),
+            [true, false, true, false, false]
+        );
         assert!(!menu.submenu_shown());
         // Nothing else has the submenu.
         for selection in [

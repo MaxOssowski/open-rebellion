@@ -1,0 +1,270 @@
+{
+ "schema_version": 1,
+ "family": "fleet-window",
+ "status": "pass",
+ "browser_version": "153.0.8010.52",
+ "browser_executable": "/usr/bin/chromium",
+ "viewport": {
+  "width": 640,
+  "height": 480,
+  "device_scale_factor": 1
+ },
+ "wasm_sha256": "079e7f4539b42e23503929cb9e8c4812986712902ddafca2410cb33df6b811c5",
+ "runtime_pack_sha256": "2de177d821fc814f574ab42164221ee4f85e4d9dd609d0ef41ec404874575676",
+ "results": [
+  {
+   "status": "pass",
+   "faction": "alliance",
+   "case": "destroy-system",
+   "fixture_code": 330,
+   "checks": {
+    "before": {
+     "status": "fleet-load",
+     "code": 330,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null
+    },
+    "sub": {
+     "left": 188.90625,
+     "top": 114,
+     "width": 161.09375,
+     "height": 82,
+     "rows": 4,
+     "general_row": 2,
+     "destroy_row": 3,
+     "destroy_enabled": false,
+     "command_rows": [
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    "after": {
+     "status": "fleet-load",
+     "code": 330,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null
+    }
+   },
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": []
+  },
+  {
+   "status": "pass",
+   "faction": "empire",
+   "case": "destroy-system",
+   "fixture_code": 586,
+   "checks": {
+    "before": {
+     "status": "fleet-load",
+     "code": 586,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null
+    },
+    "sub": {
+     "left": 253.90625,
+     "top": 119,
+     "width": 161.09375,
+     "height": 82,
+     "rows": 4,
+     "general_row": 2,
+     "destroy_row": 3,
+     "destroy_enabled": true,
+     "command_rows": [
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    "after": {
+     "status": "fleet-load",
+     "code": 586,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": null,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Akrit'tar DESTROYED by Death Star superlaser!",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 0,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 0 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": true,
+     "fleet_present": true,
+     "adrift_characters": 2,
+     "last_destroy_message": "Akrit'tar DESTROYED by Death Star superlaser!"
+    }
+   },
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": []
+  }
+ ]
+}

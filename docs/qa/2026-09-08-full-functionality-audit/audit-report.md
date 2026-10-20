@@ -799,7 +799,7 @@ cross-runtime proof remain open
 ### F-017: The Death Star can never fire
 
 - Severity: P1
-- Status: partially remediated; a browser pass of Destroy System remains
+- Status: remediated; browser verified (2026-10-20)
 - Evidence: `DeathStarSystem::fire` (`crates/rebellion-core/src/death_star.rs`)
   refuses while `shield_generator_active` is true, and the only other writer
   (`crates/rebellion-app/src/tactical_flow.rs`) sets it to true;
@@ -889,6 +889,16 @@ cross-runtime proof remain open
   `0x34`, F-025) is removed with the whole strategic `DeathStarState`.
   Golden regenerated for save v96 (initial `v1:82332ef108ec7e21`, final
   `v1:49a3738dca7ca496`) (`evidence/2026-10-20-death-star-shield/`).
+- Browser pass (2026-10-20): the fixture scenario `FleetDestroySystem`
+  (code 74) and the `destroy-system` case of `fleet-window.mjs` order
+  Destroy System from the fleet icon's Planetary Bombardment submenu. The
+  Alliance's row is disabled (no Death Star, `FUN_00582440`). The Empire's
+  destroys Akrit'tar: the fleet stays, two characters go adrift, no enemy
+  regiment is left, and the line "Akrit'tar DESTROYED by Death Star
+  superlaser!" is posted. Both runs: 0 errors, 4 requests at 200. The
+  Fleet window suite passes 50 cases. F-017's acceptance is met; the
+  tactical Attack Death Star's launched-fighter count (`FUN_005ad930`)
+  stays a known gap (`evidence/2026-10-20-destroy-system-browser/`).
 
 ### F-018: Research never limits which ships can be built
 
