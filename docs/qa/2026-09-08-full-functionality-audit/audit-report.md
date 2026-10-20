@@ -1774,6 +1774,11 @@ cross-runtime proof remain open
 - 2026-10-18 (native): a 1000-day release-build campaign posted
   Informants on days 286, 520 and 747 and New Resources on day 776
   (`evidence/2026-10-18-native-acceptance/`).
+- 2026-10-21: the resource message (`0x155`, `FUN_0048e940`) reads its
+  title and body from TEXTSTRA through `story_messages::resource_texts`:
+  `0x7194` / `0x7199` / `0x719a` for a gain, `0x7196` / `0x7197` /
+  `0x7198` for a loss. Before, the app held them as English strings
+  (`evidence/2026-10-21-resource-message-texts/`).
 - Acceptance: both incidents follow their recovered timers and tables with
   failing-without tests.
 

@@ -788,6 +788,32 @@ pub fn disaster_texts(
     Some((fill_message_text(texts.get(&0x7190)?, &named), text))
 }
 
+/// New Resources / Resources Depleted (`FUN_0048e940`): notification
+/// `0x155`, then `2`, for the holder's side. `code` is the RESRCTB outcome
+/// (1 raw materials depleted, 2 energy depleted, 3 new raw materials, 4 new
+/// energy). A gain takes TEXTSTRA `0x7194` with `0x7199` (energy) or
+/// `0x719a` (raw materials), a loss `0x7196` with `0x7197` or `0x7198`.
+/// Returns the title and body.
+#[must_use]
+pub fn resource_texts(
+    system: &str,
+    code: u32,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let (title, body) = match code {
+        1 => (0x7196, 0x7198),
+        2 => (0x7196, 0x7197),
+        3 => (0x7194, 0x719a),
+        4 => (0x7194, 0x7199),
+        _ => return None,
+    };
+    let named = [MessageParameter::Named { name: system }];
+    Some((
+        fill_message_text(texts.get(&title)?, &named),
+        fill_message_text(texts.get(&body)?, &named),
+    ))
+}
+
 /// Near Uprising (`FUN_00498cb0`): notification `0x148`, the system's
 /// troop surplus going from `previous` to `surplus` (`FUN_00511fd0`). Only
 /// the holder's side hears it, and only for a garrisoned system (`+0x88`
@@ -1201,6 +1227,47 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_0048e940 (notification 0x155): TEXTSTRA 0x7194..0x719a as shipped.
+    #[test]
+    fn a_resource_change_names_what_was_found_or_used_up() {
+        let texts: HashMap<u16, String> = [
+            (0x7194, "New Resources on {1:1}"),
+            (0x7196, "Resources Depleted on {1:1}"),
+            (0x7197, "Operations on {1:1} have reduced the system energy available."),
+            (0x7198, "Operations on {1:1} have reduced the number of raw materials on that system."),
+            (0x7199, "New sources of system energy have been discovered on {1:1}."),
+            (0x719a, "New sources of raw materials have been discovered on {1:1}."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let say = |code| resource_texts("Sullust", code, &texts);
+        assert_eq!(
+            say(1),
+            Some((
+                "Resources Depleted on Sullust".into(),
+                "Operations on Sullust have reduced the number of raw materials on that system.".into()
+            ))
+        );
+        assert_eq!(
+            say(2).map(|(_, body)| body),
+            Some("Operations on Sullust have reduced the system energy available.".into())
+        );
+        assert_eq!(
+            say(3),
+            Some((
+                "New Resources on Sullust".into(),
+                "New sources of raw materials have been discovered on Sullust.".into()
+            ))
+        );
+        assert_eq!(
+            say(4).map(|(_, body)| body),
+            Some("New sources of system energy have been discovered on Sullust.".into())
+        );
+        assert_eq!(say(0), None);
+        assert_eq!(say(5), None);
+    }
 
     // FUN_00498cb0 (notification 0x148): TEXTSTRA 0x7070 / 0x7071 as
     // shipped; the class reads the new surplus as its first value and the

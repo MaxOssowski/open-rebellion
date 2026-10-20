@@ -3077,18 +3077,17 @@ async fn main() {
                         .systems
                         .get(*system)
                         .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                    let text = match code {
-                        1 => format!("Resources Depleted on {name}: operations on {name} have reduced the number of raw materials on that system."),
-                        2 => format!("Resources Depleted on {name}: operations on {name} have reduced the system energy available."),
-                        3 => format!("New Resources on {name}: new sources of raw materials have been discovered on {name}."),
-                        _ => format!("New Resources on {name}: new sources of system energy have been discovered on {name}."),
-                    };
-                    msg_log.push(filed(
-                        GameMessage::at_system(*tick, text, MessageCategory::Event, *system)
-                            .with_picture_if(Some(pictures::system_incident(false))),
-                        MessageRail::Resource,
-                        system_audience(&world, *system),
-                    ));
+                    if let Some((title, text)) =
+                        rebellion_render::story_messages::resource_texts(&name, *code, &message_texts)
+                    {
+                        msg_log.push(filed(
+                            GameMessage::at_system(*tick, text, MessageCategory::Event, *system)
+                                .with_title(title)
+                                .with_picture_if(Some(pictures::system_incident(false))),
+                            MessageRail::Resource,
+                            system_audience(&world, *system),
+                        ));
+                    }
                     rebellion_core::uprising::apply_uprising_event(&mut world, evt);
                     continue;
                 }
