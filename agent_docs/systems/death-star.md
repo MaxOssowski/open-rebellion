@@ -1,41 +1,44 @@
 ---
 title: "Death Star System"
-description: "Construction countdown, planet destruction, and nearby-warning scan mechanics"
+description: "Planet destruction and the nearby-warning scan; the Death Star is built as an ordinary capital ship"
 category: "agent-docs"
 created: 2026-03-14
-updated: 2026-03-16
-tags: [death-star, construction, planet-destruction, simulation]
+updated: 2026-10-20
+tags: [death-star, planet-destruction, simulation]
 ---
 
 # Death Star System
 
-`death_star.rs` — Construction countdown, planet destruction, and nearby-warning scan.
+`death_star.rs` — planet destruction and the nearby-warning scan.
+
+The Death Star is CAPSHPSD record 136 (TEXTSTRA 10120, research order 0), an
+ordinary capital ship built by a shipyard; a completed one marks its fleet
+(`Fleet::has_death_star`). The original has no separate construction timer,
+so the port's 1,825-day countdown was removed (save v94).
 
 ## Types
 
 | Type | Purpose |
 |------|---------|
-| `DeathStarState` | `under_construction: Option<DeathStarConstruction>`, `death_star_fleet: Option<FleetKey>` |
-| `DeathStarEvent` | ConstructionCompleted / PlanetDestroyed / NearbyWarning |
+| `DeathStarState` | `death_star_fleet: Option<FleetKey>`, `shield_generator_active` |
+| `DeathStarEvent` | PlanetDestroyed / NearbyWarning |
 
 ## API
 
 ```rust
-// Each tick: advance construction, scan for nearby warnings
+// Each tick: scan for nearby warnings
 let events = DeathStarSystem::advance(&mut ds_state, &world, &tick_events);
 
 // Player/AI fires superlaser (precondition-checked):
 let fired = DeathStarSystem::fire(&world, target_system, tick); // Option<DeathStarEvent>
-
-// Start construction at a system:
-DeathStarSystem::start_construction(&mut ds_state, system); // -> bool (false if already building)
 ```
 
-## Construction
+## A destroyed system
 
-- Default duration: `DEATH_STAR_CONSTRUCTION_TICKS = 1825` (~5 in-game years)
-- `ticks_remaining` decrements each tick via `saturating_sub`
-- Self-clears `under_construction = None` on completion (prevents re-emission every tick)
+`cleanup_destroyed_system` follows the original's cascade
+(`ghidra/notes/bombardment-order.md`, "The destroyed system's contents"):
+units and facilities go, fleets stay, the characters standing there go
+adrift, and the minor characters a Destroy System order hit die.
 
 ## Superlaser Fire Preconditions
 

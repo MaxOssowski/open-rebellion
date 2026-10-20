@@ -24,7 +24,7 @@ use rebellion_core::game_events::{
     EVT_BLOCKADE_SUPPORT, EVT_BLOCKADE_TROOP_DESTROYED, EVT_BOMBARDMENT, EVT_BUILD_COMPLETE,
     EVT_CAMPAIGN_SNAPSHOT,
     EVT_CAPTURE, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
-    EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_CONSTRUCTION, EVT_DS_FIRED,
+    EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
     EVT_CONFRONTATION, EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_ENCOUNTER,
     EVT_FORCE_EXPERIENCE, EVT_STORY_FINAL_BATTLE, EVT_STORY_JABBA, EVT_STORY_SEAT_OF_POWER, EVT_VICTORY_CONDITIONS,
@@ -1887,15 +1887,6 @@ impl PerceptionIntegrator {
         ));
         for evt in events {
             match evt {
-                DeathStarEvent::ConstructionCompleted { system, tick } => {
-                    self.events.push(GameEventRecord::new(
-                        *tick,
-                        self.wall_ms,
-                        SYS_DEATH_STAR,
-                        EVT_DS_CONSTRUCTION,
-                        serde_json::json!({ "system": sys_name(world, *system) }),
-                    ));
-                }
                 DeathStarEvent::PlanetDestroyed { system, tick } => {
                     if let Some(sys) = world.systems.get_mut(*system) {
                         sys.is_destroyed = true;

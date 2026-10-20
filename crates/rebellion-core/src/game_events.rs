@@ -92,7 +92,6 @@ pub const EVT_UPRISING_BEGAN: &str = "uprising_began";
 pub const EVT_UPRISING_ENDED: &str = "uprising_ended";
 /// Timer `0x384` eroded the holder's support in revolt (`FUN_0050caa0`).
 pub const EVT_UPRISING_SUPPORT: &str = "uprising_support";
-pub const EVT_DS_CONSTRUCTION: &str = "death_star_construction";
 pub const EVT_DS_FIRED: &str = "death_star_fired";
 pub const EVT_RESEARCH_UNLOCKED: &str = "research_unlocked";
 pub const EVT_VICTORY: &str = "victory_check";
@@ -217,7 +216,6 @@ mod tests {
             EVT_UPRISING_BEGAN,
             EVT_UPRISING_ENDED,
             EVT_UPRISING_SUPPORT,
-            EVT_DS_CONSTRUCTION,
             EVT_DS_FIRED,
             EVT_RESEARCH_UNLOCKED,
             EVT_VICTORY,

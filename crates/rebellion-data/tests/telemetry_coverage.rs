@@ -174,20 +174,6 @@ fn telemetry_coverage_all_sys_constants_emit() {
         }
     }
 
-    // DEATH STAR: Start construction with 100 ticks remaining (enough time for
-    // uprising and betrayal to fire before DS completion triggers victory)
-    if let Some((sys_key, _)) = world
-        .systems
-        .iter()
-        .find(|(_, s)| s.control.is_controlled_by(Faction::Empire) && !s.is_headquarters)
-    {
-        states.death_star.under_construction =
-            Some(rebellion_core::death_star::DeathStarConstruction {
-                system: sys_key,
-                ticks_remaining: 100,
-            });
-    }
-
     // REPAIR: Damage one ship of a fleet that starts at a system with a
     // shipyard, so the repair system fires whatever battles the campaign
     // happens to fight.

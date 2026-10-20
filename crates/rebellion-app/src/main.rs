@@ -2689,7 +2689,6 @@ async fn main() {
                     system,
                     &mut victory_state,
                     &bombard.killed_at(system),
-                    &mut death_star_state,
                     &mut mfg_state,
                     &mut blockade_state,
                     &mut msg_log,
@@ -3125,26 +3124,6 @@ async fn main() {
             let ds_events = DeathStarSystem::advance(&mut death_star_state, &world, &tick_events);
             for evt in &ds_events {
                 match evt {
-                    rebellion_core::death_star::DeathStarEvent::ConstructionCompleted {
-                        system,
-                        tick,
-                    } => {
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 0x21, Construction Complete.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                *tick,
-                                format!("Death Star construction complete at {name}"),
-                                MessageCategory::Event,
-                                *system,
-                            ),
-                            MessageRail::Manufacturing,
-                            Some(RailAudience::Empire),
-                        ));
-                    }
                     rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { .. } => {
                         // Knesset Shamash-Bet Fix D (CRITICAL C3):
                         // `DeathStarSystem::advance()` NEVER emits
@@ -7748,7 +7727,6 @@ fn apply_panel_action(
                         system,
                         victory_state,
                         &outcome.killed,
-                        death_star_state,
                         mfg_state,
                         blockade_state,
                         msg_log,
@@ -7891,7 +7869,6 @@ fn apply_panel_action(
                     system,
                     victory_state,
                     &[],
-                    death_star_state,
                     mfg_state,
                     blockade_state,
                     msg_log,
@@ -8645,7 +8622,6 @@ fn destroy_planet(
     system: SystemKey,
     victory_state: &mut VictoryState,
     killed: &[rebellion_core::ids::CharacterKey],
-    death_star_state: &mut DeathStarState,
     mfg_state: &mut ManufacturingState,
     blockade_state: &mut BlockadeState,
     msg_log: &mut MessageLog,
@@ -8668,7 +8644,6 @@ fn destroy_planet(
         world,
         system,
         killed,
-        death_star_state,
         mfg_state,
         blockade_state,
         &mut cleanup_effects,

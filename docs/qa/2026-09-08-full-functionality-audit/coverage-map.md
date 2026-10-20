@@ -80,7 +80,7 @@ tick order. "Original driver" is the handler above that should schedule it.
 | `BlockadeSystem::advance` (622) | `blockade-troop-withdrawal.md` | cited; not re-audited here |
 | `UprisingSystem::advance` (646) | timers `0x38d`, `0x38f` | matched |
 | `BetrayalSystem::advance` (659) | none found | suspect: `BETRAYAL_CHECK_INTERVAL = 50` (`betrayal.rs:22`), zero citations |
-| `DeathStarSystem::advance` (669) | superlaser path unrecovered (`death_star.rs:17`) | suspect: `DEATH_STAR_CONSTRUCTION_TICKS = 1825` has no source |
+| `DeathStarSystem::advance` (669) | superlaser path unrecovered (`death_star.rs:17`) | the uncited 1,825-tick construction timer was removed 2026-10-20 (save v94); the warning radius is still suspect |
 | `ResearchSystem::advance` (717) | none found; the design is from `rebellion2/Faction.cs` (`research.rs:12`) | suspect: `RESEARCH_MIN_TICKS = 10` and `RESEARCH_DEFAULT_TICKS = 30` have no source |
 | `RepairSystem::advance` (721) | none found; the header cites "community disassembly" notifications only | suspect |
 | `JediSystem::advance` (726) | none found | suspect: `DETECTION_CHECK_INTERVAL = 30` and `DETECT_PROB_*` (`jedi.rs:57-66`) have no source |

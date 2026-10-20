@@ -710,7 +710,6 @@ pub fn run_simulation_tick(
                 world,
                 *system,
                 &bombard.killed_at(*system),
-                &mut states.death_star,
                 &mut states.manufacturing,
                 &mut states.blockade,
                 &mut cleanup_effects,

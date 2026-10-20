@@ -850,6 +850,15 @@ cross-runtime proof remain open
   port's `add_sabotage_delay` has no source either. The superlaser, the
   1,825-tick timer, and sabotage stay open until the tactical fire path
   (`FUN_005a7500`) and the sabotage mission handler are decompiled.
+- Construction (2026-10-20, save v94): the second construction path is
+  removed. CAPSHPSD record 136 (cost 584, research order 0) is built by a
+  shipyard like any capital ship, and its completion already marks the
+  fleet (`apply_build_completion_inner`). `DeathStarState::under_construction`,
+  `start_construction`, the 1,825-tick timer, `ConstructionCompleted` and
+  its telemetry, message and panel view had no source and no caller outside
+  one telemetry fixture. Golden regenerated for save v94 (initial
+  `v1:f47443f73b78e129`, final `v1:caadbc1bab82cbda`)
+  (`evidence/2026-10-20-death-star-construction/`).
 
 ### F-018: Research never limits which ships can be built
 

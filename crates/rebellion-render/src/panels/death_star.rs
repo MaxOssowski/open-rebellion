@@ -1,11 +1,12 @@
-//! Death Star control panel — construction progress, fire order, target selection.
+//! Death Star control panel — fire order, target selection.
 //!
-//! Empire players see construction countdown, fleet location, and fire button.
+//! Empire players see the fleet location and fire button; the Death Star is
+//! built like any capital ship, in the Manufacturing window.
 //! Alliance players see detection status and interception info.
 //! Returns `PanelAction::FireDeathStar` / `MoveDeathStar`.
 
-use egui_macroquad::egui::{self, Color32, ProgressBar, RichText};
-use rebellion_core::death_star::{DeathStarState, DEATH_STAR_CONSTRUCTION_TICKS};
+use egui_macroquad::egui::{self, RichText};
+use rebellion_core::death_star::DeathStarState;
 use rebellion_core::ids::SystemKey;
 use rebellion_core::missions::MissionFaction;
 use rebellion_core::world::GameWorld;
@@ -51,58 +52,12 @@ pub fn draw_death_star(
     clippy::too_many_lines,
     reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
 )]
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
-)]
 fn draw_empire_view(
     ui: &mut egui::Ui,
     world: &GameWorld,
     ds_state: &DeathStarState,
     action: &mut Option<PanelAction>,
 ) {
-    // ── Construction ─────────────────────────────────────────────
-    if let Some(construction) = &ds_state.under_construction {
-        ui.label(
-            RichText::new("UNDER CONSTRUCTION")
-                .color(theme::WARNING_AMBER)
-                .size(12.0)
-                .strong(),
-        );
-
-        let sys_name = world
-            .systems
-            .get(construction.system)
-            .map_or("Unknown", |s| s.name.as_str());
-        ui.label(
-            RichText::new(format!("Location: {sys_name}"))
-                .color(theme::TEXT_PRIMARY)
-                .size(11.0),
-        );
-
-        let total = DEATH_STAR_CONSTRUCTION_TICKS as f32;
-        let remaining = construction.ticks_remaining as f32;
-        let progress = 1.0 - (remaining / total);
-
-        ui.add(
-            ProgressBar::new(progress.clamp(0.0, 1.0))
-                .text(format!(
-                    "{:.0}% — {} days remaining",
-                    progress * 100.0,
-                    construction.ticks_remaining
-                ))
-                .fill(Color32::from_rgb(120, 40, 40)),
-        );
-
-        ui.add_space(8.0);
-        ui.label(
-            RichText::new("The station will be operational when construction completes.")
-                .color(theme::TEXT_SECONDARY)
-                .size(10.0),
-        );
-        return;
-    }
-
     // ── Operational Death Star ────────────────────────────────────
     if let Some(fleet_key) = ds_state.death_star_fleet {
         if let Some(fleet) = world.fleets.get(fleet_key) {
@@ -270,25 +225,7 @@ fn draw_empire_view(
 
 /// Alliance view: threat detection, warning status.
 fn draw_alliance_view(ui: &mut egui::Ui, world: &GameWorld, ds_state: &DeathStarState) {
-    if ds_state.under_construction.is_some() {
-        ui.label(
-            RichText::new("INTELLIGENCE REPORTS")
-                .color(theme::GOLD_DIM)
-                .size(10.0)
-                .strong(),
-        );
-        ui.label(
-            RichText::new("The Empire is constructing a Death Star.")
-                .color(theme::WARNING_AMBER)
-                .size(12.0),
-        );
-        ui.add_space(4.0);
-        ui.label(
-            RichText::new("Send spies to locate the construction site.")
-                .color(theme::TEXT_SECONDARY)
-                .size(10.0),
-        );
-    } else if let Some(fleet_key) = ds_state.death_star_fleet {
+    if let Some(fleet_key) = ds_state.death_star_fleet {
         ui.label(
             RichText::new("THREAT ACTIVE")
                 .color(theme::DANGER_RED)

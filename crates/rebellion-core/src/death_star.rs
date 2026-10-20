@@ -1,16 +1,15 @@
-//! Death Star construction, movement tracking, and planet destruction.
+//! Death Star movement tracking and planet destruction.
 //!
-//! Three mechanics in one module:
+//! The Death Star is an ordinary capital ship (CAPSHPSD record 136, TEXTSTRA
+//! 10120, research order 0), built by a shipyard like any other; a completed
+//! one marks its fleet (`Fleet::has_death_star`). The original has no
+//! separate construction timer.
 //!
-//! 1. **Construction** — tracks remaining build ticks at a system; emits
-//!    `DeathStarEvent::ConstructionCompleted` when done.  The caller then
-//!    sets `Fleet::has_death_star = true` on the fleet at that system.
-//!
-//! 2. **Movement** — Death Star fleet movement reuses `MovementState`
+//! 1. **Movement** — Death Star fleet movement reuses `MovementState`
 //!    from `movement.rs`.  The Death Star module tracks the active orbital
 //!    location for the `VictorySystem` and for the nearby-warning logic.
 //!
-//! 3. **Planet destruction** — `DeathStarSystem::fire()` checks preconditions:
+//! 2. **Planet destruction** — `DeathStarSystem::fire()` checks preconditions:
 //!    - Target system is not already destroyed (`!system.is_destroyed`).
 //!    - Death Star fleet is present at that system.
 //!    - Target is enemy-controlled (Empire Death Star → non-Empire system).
@@ -40,14 +39,6 @@ use crate::world::GameWorld;
 // Constants
 // ---------------------------------------------------------------------------
 
-/// Default construction duration in game-days.
-///
-/// Best available approximation. GNPRTB parameters 0x0a00-0x0a21 (general) and
-/// 0x1400-0x1445 (combat) were exhaustively searched — construction duration is
-/// not parameterized in the original binary. 1825 = ~5 in-game years at 365 days,
-/// consistent with observed gameplay.
-pub const DEATH_STAR_CONSTRUCTION_TICKS: u32 = 1825;
-
 /// Threshold distance (in system-coordinate units) for the
 /// `SystemDeathStarNearbyNotif` warning.
 ///
@@ -63,12 +54,6 @@ pub const NEARBY_WARNING_RADIUS: u32 = 300;
 /// Events produced by `DeathStarSystem::advance()` and `DeathStarSystem::fire()`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DeathStarEvent {
-    /// Death Star construction finished at `system`.
-    ///
-    /// Caller should set `Fleet::has_death_star = true` on the fleet at this
-    /// system and update `VictoryState::death_star_active = true`.
-    ConstructionCompleted { system: SystemKey, tick: u64 },
-
     /// The Death Star superlaser fired and destroyed `system`.
     ///
     /// Caller must set `world.systems[system].is_destroyed = true` and update
@@ -86,22 +71,11 @@ pub enum DeathStarEvent {
 // State
 // ---------------------------------------------------------------------------
 
-/// Persistent Death Star construction state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeathStarConstruction {
-    /// System where the construction yard is active.
-    pub system: SystemKey,
-    /// Game-day ticks remaining until completion.
-    pub ticks_remaining: u32,
-}
-
 /// Persistent Death Star simulation state.
 ///
 /// Held in `main.rs` alongside other simulation states.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeathStarState {
-    /// Active construction project, if any.
-    pub under_construction: Option<DeathStarConstruction>,
     /// The fleet key of the active Death Star, if constructed and deployed.
     pub death_star_fleet: Option<FleetKey>,
     /// Whether the Death Star's shield generator (entity family 0x25) is active.
@@ -120,7 +94,6 @@ fn default_shield_active() -> bool {
 impl Default for DeathStarState {
     fn default() -> Self {
         DeathStarState {
-            under_construction: None,
             death_star_fleet: None,
             shield_generator_active: true,
         }
@@ -143,17 +116,14 @@ impl DeathStarState {
 pub struct DeathStarSystem;
 
 impl DeathStarSystem {
-    /// Advance Death Star construction and emit nearby-warning events.
+    /// Emit the nearby-warning events.
     ///
     /// Called each tick by the main loop.  Returns events for the caller to apply.
     ///
-    /// # What it does
-    /// 1. Decrements `under_construction.ticks_remaining` by the number of ticks
-    ///    that elapsed.  When it reaches 0, emits `ConstructionCompleted`.
-    /// 2. If `death_star_fleet` is set and present in the world, scans all Alliance
-    ///    systems within `NEARBY_WARNING_RADIUS` and emits `NearbyWarning`.
+    /// If `death_star_fleet` is set and present in the world, it scans all
+    /// Alliance systems within `NEARBY_WARNING_RADIUS` and emits
+    /// `NearbyWarning`.
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
     )]
@@ -168,23 +138,9 @@ impl DeathStarSystem {
             return events;
         };
 
-        let tick_count = tick_events.len() as u32;
         let last_tick = last_tick_event.tick;
 
-        // --- 1. Construction countdown ---
-        if let Some(ref mut construction) = state.under_construction {
-            construction.ticks_remaining = construction.ticks_remaining.saturating_sub(tick_count);
-            if construction.ticks_remaining == 0 {
-                events.push(DeathStarEvent::ConstructionCompleted {
-                    system: construction.system,
-                    tick: last_tick,
-                });
-                // Self-clear to prevent re-emitting ConstructionCompleted every tick.
-                state.under_construction = None;
-            }
-        }
-
-        // --- 2. Nearby-warning scan ---
+        // Nearby-warning scan.
         if let Some(fleet_key) = state.death_star_fleet {
             if let Some(fleet) = world.fleets.get(fleet_key) {
                 let ds_system = fleet.location;
@@ -266,25 +222,7 @@ impl DeathStarSystem {
         })
     }
 
-    /// Start a new construction project at `system`.
-    ///
-    /// Returns `false` (no-op) if construction is already underway.
-    pub fn start_construction(state: &mut DeathStarState, system: SystemKey) -> bool {
-        if state.under_construction.is_some() {
-            return false;
-        }
-        state.under_construction = Some(DeathStarConstruction {
-            system,
-            ticks_remaining: DEATH_STAR_CONSTRUCTION_TICKS,
-        });
-        true
-    }
 
-    /// Clear a completed construction project after the caller has handled the
-    /// `ConstructionCompleted` event.
-    pub fn clear_construction(state: &mut DeathStarState) {
-        state.under_construction = None;
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -328,13 +266,12 @@ pub fn stands_in(character: &crate::world::Character, system: SystemKey) -> bool
 /// events can still resolve it.
 ///
 /// port: a captive is not set adrift (where the original holds one is not
-/// traced); the manufacturing queues, the blockade and a construction at the
-/// system are cleared.
+/// traced); the manufacturing queues and the blockade at the system are
+/// cleared.
 pub fn cleanup_destroyed_system(
     world: &mut GameWorld,
     system: SystemKey,
     killed: &[crate::ids::CharacterKey],
-    death_star: &mut DeathStarState,
     manufacturing: &mut ManufacturingState,
     blockade: &mut BlockadeState,
     effects: &mut Vec<GameEffect>,
@@ -384,14 +321,6 @@ pub fn cleanup_destroyed_system(
         sys.defense_facilities.clear();
         sys.manufacturing_facilities.clear();
         sys.production_facilities.clear();
-    }
-
-    if death_star
-        .under_construction
-        .as_ref()
-        .is_some_and(|c| c.system == system)
-    {
-        death_star.under_construction = None;
     }
 
     // Clear manufacturing queues at the destroyed system.
@@ -467,64 +396,11 @@ mod tests {
         fk
     }
 
-    // ── Construction tests ───────────────────────────────────────────────────
-
-    #[test]
-    fn construction_countdown_completes_on_final_tick() {
-        let (world, sys) = make_world();
-        let mut state = DeathStarState::default();
-        DeathStarSystem::start_construction(&mut state, sys);
-
-        // Advance almost to completion.
-        let almost = DEATH_STAR_CONSTRUCTION_TICKS - 1;
-        let ticks: Vec<TickEvent> = (1..=u64::from(almost)).map(tick).collect();
-        let events = DeathStarSystem::advance(&mut state, &world, &ticks);
-        assert!(events.is_empty(), "should not complete yet");
-        assert_eq!(
-            state.under_construction.as_ref().unwrap().ticks_remaining,
-            1
-        );
-
-        // Final tick.
-        let events = DeathStarSystem::advance(
-            &mut state,
-            &world,
-            &[tick(u64::from(DEATH_STAR_CONSTRUCTION_TICKS))],
-        );
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, DeathStarEvent::ConstructionCompleted { .. })),
-            "expected ConstructionCompleted"
-        );
-    }
-
-    #[test]
-    fn construction_rejects_a_second_start() {
-        let (_, sys) = make_world();
-        let mut state = DeathStarState::default();
-        assert!(DeathStarSystem::start_construction(&mut state, sys));
-        assert!(
-            !DeathStarSystem::start_construction(&mut state, sys),
-            "second start_construction must return false"
-        );
-    }
-
-    #[test]
-    fn clear_construction_removes_in_progress_build() {
-        let (_, sys) = make_world();
-        let mut state = DeathStarState::default();
-        DeathStarSystem::start_construction(&mut state, sys);
-        DeathStarSystem::clear_construction(&mut state);
-        assert!(state.under_construction.is_none());
-    }
-
     // ── Planet destruction tests ─────────────────────────────────────────────
 
     /// A `DeathStarState` with the shield generator destroyed.
     fn state_shield_down() -> DeathStarState {
         DeathStarState {
-            under_construction: None,
             death_star_fleet: None,
             shield_generator_active: false,
         }
@@ -585,7 +461,6 @@ mod tests {
             &mut world,
             sys,
             &[],
-            &mut DeathStarState::default(),
             &mut ManufacturingState::new(),
             &mut BlockadeState::new(),
             &mut effects,
@@ -629,7 +504,6 @@ mod tests {
             &mut world,
             sys,
             &[hit],
-            &mut DeathStarState::default(),
             &mut ManufacturingState::new(),
             &mut BlockadeState::new(),
             &mut effects,
@@ -725,7 +599,6 @@ mod tests {
 
         let fleet_key = add_ds_fleet(&mut world, ds_sys);
         let mut state = DeathStarState {
-            under_construction: None,
             death_star_fleet: Some(fleet_key),
             shield_generator_active: false,
         };
@@ -776,7 +649,6 @@ mod tests {
 
         let fleet_key = add_ds_fleet(&mut world, ds_sys);
         let mut state = DeathStarState {
-            under_construction: None,
             death_star_fleet: Some(fleet_key),
             shield_generator_active: false,
         };

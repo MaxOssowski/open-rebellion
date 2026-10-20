@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v93, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v94, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-20
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v93, and it is the only one
+serializable snapshot. The current format is v94, and it is the only one
 that loads.
 
-## Native format (v93)
+## Native format (v94)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -52,7 +52,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `player_is_alliance` | `bool` |
 | `blockade` | `BlockadeState`; v62 adds the support timer `0x386` of each blockaded system; v89 adds each blockade's blockader and its assault and bombardment losses (`System_vt220`, `ghidra/notes/betrayal-and-loyalty.md`) |
 | `uprising` | `UprisingState`; v62 adds each revolt's support timer `0x384`, v63 its side, v67 the resource incident timer `0x390` |
-| `death_star` | `DeathStarState` |
+| `death_star` | `DeathStarState`; v94 drops the invented construction timer (`under_construction`): the Death Star is built as an ordinary capital ship |
 | `research` | `ResearchState`: each side's level, points and Done flag per tree; the invented projects are gone (v36); v65 adds each side's yard research timer `0x381` |
 | `victory` | `VictoryState`; v79 adds the victory conditions word (galaxy `+0x74`, `victory::conditions_word`) |
 | `economy` | `EconomyState`; v61 adds each system's smuggling percent (`+0x6c`), v63 the hook inputs last seen, v64 drops the invented maintenance cooldowns, v67 the incident flags and the resource-discovery arming |

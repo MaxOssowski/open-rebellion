@@ -189,7 +189,7 @@ def evaluate(events: list[dict], golden: dict) -> dict:
     # Death Star events are only meaningful once the log runs long enough for
     # construction to be theoretically possible.
     final_tick = max(int(event.get("tick", 0)) for event in events)
-    ds_required = ["death_star_construction", "death_star_fired", "death_star_shield_status"]
+    ds_required = ["death_star_fired", "death_star_shield_status"]
     if final_tick < values["death_star"]["construction_ticks"]:
         for event_type in ds_required:
             checks.append(
