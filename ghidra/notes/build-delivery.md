@@ -288,3 +288,29 @@ Vtables were found through the shared side-key slot `+0xc` (`FUN_004f6a80`,
   callback itself is not traced.
 - The player's destination choice and the en-route display were not looked
   up.
+
+## A destroyed destination (read 2026-10-20)
+
+- `FUN_004fc080` raises `GameObjDestroyedOnArrivalNotif` (`0x303`, through
+  `FUN_0053fe40`) for any object destroyed while EnrouteActive (`+0x50`
+  bit 5) with a DestinationCount (`+0x40` byte 2). The typed corpus's name
+  `Event303_SystemUprisingChanged` for the `FUN_0053f9c0` band is a
+  different id space.
+- An object en route is already a child of its destination. When that
+  system is destroyed, the system's destroyed hook (`FUN_00510950` ->
+  `FUN_004fb520`) calls slot `+0xb4` on it. `FUN_004f8710` destroys a
+  completed child only when it is not EnrouteActive; otherwise, unless
+  already destroyed, it sets Autorouting. So a product travelling to a
+  destroyed system is not lost: it autoroutes, and the autoroute search
+  (`FUN_005545e0`, `captive-escape.md`) picks the nearest place of its
+  side.
+- `0x321` is `ManuMgrDeploymentKeyNotif`, the manager's current product
+  changing (`FUN_00529770`), not a redirect. The Destination command
+  (`FUN_0052a380`) rewrites only the queued products, so the original has
+  no redirect of a product already en route.
+- Ported 2026-10-20 (save v100): `Delivery::side` (the building system's
+  holder at departure). An arrival at a destroyed system sets out again
+  for `missions::nearest_place` of that side (`DeliveryAdvance::rerouted`);
+  only a delivery with no such place is lost. port: the new trip starts on
+  the arrival day, from the destroyed system.
+

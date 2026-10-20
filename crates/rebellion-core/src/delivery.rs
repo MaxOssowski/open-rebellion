@@ -31,6 +31,9 @@ pub struct Delivery {
     pub arrival_tick: u64,
     /// What was built.
     pub kind: BuildableKind,
+    /// The side it belongs to: its building system's holder at departure
+    /// (save v100).
+    pub side: crate::dat::Faction,
 }
 
 /// Objects travelling from their facility to their destination.
@@ -44,9 +47,13 @@ pub struct DeliveryState {
 pub struct DeliveryAdvance {
     /// Deliveries that arrived, as completions at their destination.
     pub arrivals: Vec<CompletionEvent>,
-    /// Deliveries whose destination no longer exists
-    /// (`GameObjDestroyedOnArrivalNotif`, event `0x303`, `FUN_004fc080`).
+    /// Deliveries whose destination is gone and that found no other
+    /// place of their side (`GameObjDestroyedOnArrivalNotif`, event
+    /// `0x303`, `FUN_004fc080`).
     pub lost: Vec<Delivery>,
+    /// Deliveries that found their destination destroyed and set out again
+    /// for the nearest place of their side (Autorouting).
+    pub rerouted: Vec<Delivery>,
 }
 
 /// Speed of a product while it travels (object slot `+0x34`): a capital
@@ -113,17 +120,32 @@ impl DeliveryState {
                 position(departure.destination),
                 product_speed(world, departure.kind),
             );
+            let side = world
+                .systems
+                .get(departure.origin)
+                .and_then(crate::uprising::holder)
+                .unwrap_or(crate::dat::Faction::Neutral);
             self.en_route.push(Delivery {
                 origin: departure.origin,
                 destination: departure.destination,
                 arrival_tick: departure.tick + u64::from(ticks),
                 kind: departure.kind,
+                side,
             });
         }
     }
 
-    /// Deliver every object whose arrival day has come. An object whose
-    /// destination is gone or destroyed is lost on arrival.
+    /// Deliver every object whose arrival day has come.
+    ///
+    /// An object en route is already a child of its destination. When that
+    /// system is destroyed, its destroyed hook (`FUN_004fb520`) calls slot
+    /// `+0xb4` (`FUN_004f8710`) on it: completed but EnrouteActive, it is
+    /// not destroyed but set Autorouting, and the autoroute search
+    /// (`FUN_005545e0`, [`crate::missions::nearest_place`]) finds the
+    /// nearest place of its side. With no such place it is lost.
+    ///
+    /// port: the new trip starts from the destroyed system on the arrival
+    /// day, not on the day of the destruction.
     pub fn advance(&mut self, world: &GameWorld, tick_events: &[TickEvent]) -> DeliveryAdvance {
         let Some(now) = tick_events.last().map(|event| event.tick) else {
             return DeliveryAdvance::default();
@@ -138,7 +160,39 @@ impl DeliveryState {
                 .get(delivery.destination)
                 .is_none_or(|s| s.is_destroyed)
             {
-                result.lost.push(delivery);
+                let from = world
+                    .systems
+                    .get(delivery.destination)
+                    .map(|s| (s.x, s.y));
+                let place = from.and_then(|(x, y)| {
+                    crate::missions::nearest_place(
+                        world,
+                        delivery.side,
+                        (i64::from(x), i64::from(y)),
+                        Some(delivery.destination),
+                    )
+                    .map(|place| (place, (x, y)))
+                });
+                match place {
+                    Some((place, from)) => {
+                        let to = world.systems.get(place).map_or(from, |s| (s.x, s.y));
+                        let ticks = transit_ticks_between(
+                            world,
+                            from,
+                            to,
+                            product_speed(world, delivery.kind),
+                        );
+                        let next = Delivery {
+                            origin: delivery.destination,
+                            destination: place,
+                            arrival_tick: now + u64::from(ticks),
+                            ..delivery
+                        };
+                        result.rerouted.push(next.clone());
+                        remaining.push(next);
+                    }
+                    None => result.lost.push(delivery),
+                }
             } else {
                 result.arrivals.push(CompletionEvent {
                     system: delivery.destination,
@@ -268,9 +322,10 @@ mod tests {
         assert_eq!(state.en_route()[0].arrival_tick, 6);
     }
 
-    // FUN_004fc080: an object en route whose destination is gone is lost.
+    // FUN_004fc080: an object en route whose destination is destroyed and
+    // that finds no place of its side (FUN_005545e0) is lost.
     #[test]
-    fn a_delivery_to_a_destroyed_system_is_lost_on_arrival() {
+    fn a_delivery_to_a_destroyed_system_with_nowhere_to_go_is_lost() {
         let (mut world, systems) = world_with_systems(&[(0, 0), (30, 40)]);
         let kind = troop(&mut slotmap::SlotMap::with_key());
         let mut state = DeliveryState::new();
@@ -280,6 +335,35 @@ mod tests {
         assert!(result.arrivals.is_empty());
         assert_eq!(result.lost.len(), 1);
         assert!(state.en_route().is_empty());
+    }
+
+    // FUN_004fb520 -> FUN_004f8710: a completed, en-route object of a
+    // destroyed system is set Autorouting, not destroyed; the autoroute
+    // search (FUN_005545e0) sends it to the nearest system of its side.
+    #[test]
+    fn a_delivery_to_a_destroyed_system_reroutes_to_the_nearest_place_of_its_side() {
+        let (mut world, systems) = world_with_systems(&[(0, 0), (30, 40), (45, 60), (90, 120)]);
+        for &held in &[systems[0], systems[2], systems[3]] {
+            world.systems[held].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        }
+        let kind = troop(&mut slotmap::SlotMap::with_key());
+        let mut state = DeliveryState::new();
+        state.depart(&world, &[departure(systems[0], systems[1], 0, kind)]);
+        assert_eq!(state.en_route()[0].side, crate::dat::Faction::Alliance);
+        world.systems[systems[1]].is_destroyed = true;
+
+        let result = state.advance(&world, &[TickEvent { tick: 10 }]);
+        assert!(result.arrivals.is_empty() && result.lost.is_empty());
+        assert_eq!(result.rerouted.len(), 1);
+        // From the destroyed system to the nearest held one (25 away, 5
+        // days at the default speed), not the origin 50 away.
+        let next = &state.en_route()[0];
+        assert_eq!((next.origin, next.destination), (systems[1], systems[2]));
+        assert_eq!(next.arrival_tick, 15);
+
+        let arrived = state.advance(&world, &[TickEvent { tick: 15 }]);
+        assert_eq!(arrived.arrivals.len(), 1);
+        assert_eq!(arrived.arrivals[0].system, systems[2]);
     }
 
     #[test]

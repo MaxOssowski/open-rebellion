@@ -4536,7 +4536,7 @@ fn autoroute_destination(
 
 /// `FUN_005545e0`'s candidates for `side` from `origin`, leaving out
 /// `exclude`: the first rule any system meets, nearest first.
-fn nearest_place(
+pub(crate) fn nearest_place(
     world: &GameWorld,
     side: crate::dat::Faction,
     origin: (i64, i64),

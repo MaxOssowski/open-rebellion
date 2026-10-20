@@ -1781,6 +1781,15 @@ cross-runtime proof remain open
   route, and arrives ("Unit arrived at F'tral", one ship there). 0 errors;
   the Fleet window suite passes 52 cases
   (`evidence/2026-10-20-delivery-browser/`).
+- Autoroute (2026-10-20, save v100): a product travelling to a system
+  that is destroyed is not lost. The destroyed hook (`FUN_004fb520`) sets
+  an EnrouteActive child Autorouting (`FUN_004f8710`), and the autoroute
+  search (`FUN_005545e0`) sends it to the nearest place of its side.
+  `DeliveryState::advance` now does so (`Delivery::side`,
+  `DeliveryAdvance::rerouted`), and only a delivery with nowhere to go is
+  lost. `0x321` is the manager's current-product notification, not a
+  redirect. Seed 10 of 24 changes
+  (`evidence/2026-10-20-delivery-autoroute/`).
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 

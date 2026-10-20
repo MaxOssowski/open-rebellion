@@ -1,0 +1,2 @@
+thread 'delivery::tests::a_delivery_to_a_destroyed_system_reroutes_to_the_nearest_place_of_its_side' (3068511) panicked at crates/rebellion-core/src/delivery.rs:356:9:
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 1410 filtered out; finished in 0.00s
