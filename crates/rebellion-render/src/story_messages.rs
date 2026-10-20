@@ -648,6 +648,62 @@ pub fn death_star_sabotaged_message(
     )
 }
 
+/// Smuggling (`FUN_00499130`): notification `0x145`, the system's smuggling
+/// percent going from `previous` to `percent`, for the viewer's side. It
+/// speaks only when one of them is 0: smuggling begins (`percent` not 0) or
+/// ends. The system must be held by a side (`+0x24` bits 6..7): on the
+/// viewer's own system it reports losses (TEXTSTRA `0x7060`/`0x7064` on
+/// beginning, `0x7061`/`0x7065` on ending), on the other side's benefits
+/// (`0x7062`/`0x7066`, `0x7063`/`0x7067`). An Alliance system speaks when
+/// `previous` is at least 0, an Empire system when it is below 1. Its
+/// category mask is `0x001`, Popular Support (`FUN_00499030`,
+/// `FUN_0040f340`); its background is `0x3ec`, the beginning's picture
+/// `0x44f`.
+///
+/// port: the pictures are not drawn.
+#[must_use]
+pub fn smuggling_message(
+    system: &str,
+    holder: Option<rebellion_core::dat::Faction>,
+    viewer_is_alliance: bool,
+    previous: i32,
+    percent: i32,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    use rebellion_core::dat::Faction;
+    if previous != 0 && percent != 0 {
+        return None;
+    }
+    let (own, speaks) = match holder? {
+        Faction::Alliance => (viewer_is_alliance, previous >= 0),
+        Faction::Empire => (!viewer_is_alliance, previous < 1),
+        Faction::Neutral => return None,
+    };
+    if !speaks {
+        return None;
+    }
+    let (title, body) = match (percent != 0, own) {
+        (true, true) => (0x7060, 0x7064),
+        (true, false) => (0x7062, 0x7066),
+        (false, true) => (0x7061, 0x7065),
+        (false, false) => (0x7063, 0x7067),
+    };
+    let parameters = [MessageParameter::Named { name: system }];
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&body)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(
+            crate::message_log::MessageRail::PopularSupport,
+            RailAudience::side(viewer_is_alliance),
+        )
+        .with_title(fill_message_text(texts.get(&title)?, &parameters)),
+    )
+}
+
 /// Jabba Delivers Prisoners (`FUN_0048b6e0`): notification `0x231` with
 /// its argument set, as the Pickup's hit sets `PickupInProgress`. TEXTSTRA
 /// `0x7200` / `0x7201` take no arguments; the background is `0x42a`, or
@@ -1006,6 +1062,67 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00499130 (notification 0x145): TEXTSTRA 0x7060..0x7067 as
+    // shipped; {1:1} is the system's name.
+    #[test]
+    fn smuggling_speaks_when_it_begins_or_ends_by_whose_system_it_is() {
+        use rebellion_core::dat::Faction;
+        let texts: HashMap<u16, String> = [
+            (0x7060, "Smuggling Losses"),
+            (0x7061, "Smuggling Losses End"),
+            (0x7062, "Smuggling Benefits"),
+            (0x7063, "Smuggling Benefits End"),
+            (0x7064, "Smugglers begin on {1:1}."),
+            (0x7065, "Smuggling losses end on {1:1}."),
+            (0x7066, "Smugglers from {1:1} help us."),
+            (0x7067, "Smugglers from {1:1} withdraw."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let say = |holder, viewer_is_alliance, previous, percent| {
+            smuggling_message("Ord Mantell", holder, viewer_is_alliance, previous, percent, 9, &texts)
+                .map(|m| (m.title.unwrap_or_default(), m.text))
+        };
+        // Begins on the viewer's own system: losses.
+        assert_eq!(
+            say(Some(Faction::Alliance), true, 0, 20),
+            Some(("Smuggling Losses".into(), "Smugglers begin on Ord Mantell.".into()))
+        );
+        // Begins on the other side's: benefits.
+        assert_eq!(
+            say(Some(Faction::Alliance), false, 0, 20),
+            Some(("Smuggling Benefits".into(), "Smugglers from Ord Mantell help us.".into()))
+        );
+        // Ends: an Alliance system speaks when it was at least 0.
+        assert_eq!(
+            say(Some(Faction::Alliance), true, 20, 0).map(|m| m.0),
+            Some("Smuggling Losses End".into())
+        );
+        assert_eq!(say(Some(Faction::Alliance), true, -20, 0), None);
+        // An Empire system speaks when it was below 1.
+        assert_eq!(
+            say(Some(Faction::Empire), true, -20, 0).map(|m| m.0),
+            Some("Smuggling Benefits End".into())
+        );
+        assert_eq!(say(Some(Faction::Empire), false, 20, 0), None);
+        // The boundary: an Empire system that was at 1 says nothing.
+        assert_eq!(say(Some(Faction::Empire), true, 1, 0), None);
+        assert_eq!(
+            say(Some(Faction::Empire), false, 0, -20).map(|m| m.0),
+            Some("Smuggling Losses".into())
+        );
+        // A change between two non-zero values, or a neutral system, says
+        // nothing.
+        assert_eq!(say(Some(Faction::Alliance), true, 10, 20), None);
+        assert_eq!(say(Some(Faction::Neutral), true, 0, 20), None);
+        assert_eq!(say(None, true, 0, 20), None);
+        let message =
+            smuggling_message("Ord Mantell", Some(Faction::Empire), true, 0, 5, 9, &texts).unwrap();
+        assert_eq!(message.rail, Some(crate::message_log::MessageRail::PopularSupport));
+        assert_eq!(message.audience, RailAudience::Alliance);
+    }
 
     fn discovery_texts() -> HashMap<u16, String> {
         HashMap::from([

@@ -214,9 +214,12 @@ same path (`uprising.rs`, `support_change`).
   F-029). The maintenance shortfall (`0x304`) is the side's autoscrap
   timer `0x382` (`side-resource-monitors.md`, "Autoscrap"); the port's
   30-tick counter, which had no source, is gone (2026-10-17).
-- SmugglingPercent is ported (step 1). Its readers are not: the
-  manufacturing cycle's discarded roll (`side-resource-monitors.md`) and
-  the Smuggling message (`0x145`, `message-pictures.md`).
+- SmugglingPercent is ported (step 1). Its readers:
+  - the manufacturing cycle's discarded roll (`side-resource-monitors.md`)
+    is not ported;
+  - the Smuggling message (`0x145`, `FUN_00499130`) is ported 2026-10-20
+    as `story_messages::smuggling_message`. It speaks when the percent
+    begins or ends, by whose system it is (`story-message-classes.md`).
 
 ## Open
 

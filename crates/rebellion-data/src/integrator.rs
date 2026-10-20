@@ -532,7 +532,9 @@ impl PerceptionIntegrator {
     pub fn apply_economy_events(&mut self, world: &mut GameWorld, economy_events: &[EconomyEvent]) {
         for ev in economy_events {
             match ev {
-                EconomyEvent::SmugglingPercentChanged { system, percent } => {
+                EconomyEvent::SmugglingPercentChanged {
+                    system, percent, ..
+                } => {
                     self.emit(
                         SYS_ECONOMY,
                         EVT_SMUGGLING_PERCENT,
@@ -3666,6 +3668,7 @@ mod tests {
             &mut world,
             &[EconomyEvent::SmugglingPercentChanged {
                 system,
+                previous: 0,
                 percent: 75,
             }],
         );

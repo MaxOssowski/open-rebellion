@@ -1740,6 +1740,28 @@ async fn main() {
                             sys.control = *new_control;
                         }
                     }
+                    // Notification 0x145, Smuggling (FUN_00499130).
+                    EconomyEvent::SmugglingPercentChanged {
+                        system,
+                        previous,
+                        percent,
+                    } => {
+                        if let Some(sys) = world.systems.get(*system) {
+                            if let Some(message) =
+                                rebellion_render::story_messages::smuggling_message(
+                                    &sys.name,
+                                    sys.control.faction(),
+                                    player_faction == MissionFaction::Alliance,
+                                    *previous,
+                                    *percent,
+                                    tick_events.last().map_or(0, |event| event.tick),
+                                    &message_texts,
+                                )
+                            {
+                                msg_log.push(message);
+                            }
+                        }
+                    }
                     // Knesset Shamash-Bet Dabora 2 notification events —
                     // surface them in the interactive message log.
                     _ => {} // Telemetry-only events (collection rate, garrison, incidents, support change tier)

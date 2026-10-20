@@ -255,8 +255,13 @@ pub struct EconomyState {
 #[derive(Debug, Clone)]
 pub enum EconomyEvent {
     /// The system's smuggling percent changed (`FUN_00509ec0`, which
-    /// notifies only on a change).
-    SmugglingPercentChanged { system: SystemKey, percent: i32 },
+    /// notifies only on a change), from `previous` to `percent`; the
+    /// Smuggling message (`0x145`, `FUN_00499130`) reads both.
+    SmugglingPercentChanged {
+        system: SystemKey,
+        previous: i32,
+        percent: i32,
+    },
     /// Collection rate recalculated.
     CollectionRateChanged { system: SystemKey, new_rate: f32 },
     /// Garrison requirement recalculated.
@@ -409,9 +414,11 @@ impl EconomySystem {
             if last != Some(inputs) {
                 let percent = smuggling_percent(world, sys, nearby, gnprtb, difficulty);
                 if percent != eco.smuggling_percent {
+                    let previous = eco.smuggling_percent;
                     eco.smuggling_percent = percent;
                     events.push(EconomyEvent::SmugglingPercentChanged {
                         system: sys_key,
+                        previous,
                         percent,
                     });
                 }
@@ -1493,9 +1500,9 @@ mod tests {
             events
                 .into_iter()
                 .filter_map(|event| match event {
-                    EconomyEvent::SmugglingPercentChanged { system, percent } => {
-                        Some((system, percent))
-                    }
+                    EconomyEvent::SmugglingPercentChanged {
+                        system, percent, ..
+                    } => Some((system, percent)),
                     _ => None,
                 })
                 .collect::<Vec<_>>()

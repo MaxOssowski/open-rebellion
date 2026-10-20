@@ -2474,6 +2474,14 @@ cross-runtime proof remain open
 - 2026-10-18 (native): the same 1000-day release-build campaign raised
   research levels 22 times and refunded 14 autoscrapped units
   (`evidence/2026-10-18-native-acceptance/`).
+- 2026-10-20: the Smuggling message (`0x145`, `FUN_00499130`) is ported
+  as `story_messages::smuggling_message`. It speaks only when the
+  smuggling percent begins (old value 0) or ends (new value 0), on a held
+  system: an Alliance system when the old value is at least 0, an Empire
+  one when it is below 1. TEXTSTRA `0x7060`-`0x7067` are chosen by
+  beginning or ending and by whose system it is, on the Popular Support
+  rail. `SmugglingPercentChanged` gains `previous`. The 24 campaigns are
+  identical (`evidence/2026-10-20-smuggling-message/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 
