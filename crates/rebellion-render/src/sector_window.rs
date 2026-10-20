@@ -788,13 +788,7 @@ fn draw_sector_window(
                 let planet_double_clicked = planet_response.double_clicked()
                     && planet_clicked
                     && icon_double_clicked.is_none();
-                paint_resource(
-                    ui.painter(),
-                    ctx,
-                    cache,
-                    planet_resource_id(system.dat_id),
-                    planet_rect,
-                );
+                paint_resource(ui.painter(), ctx, cache, planet_art(system), planet_rect);
                 for ((x, y, width, height), color) in status_tracks(
                     planet_x,
                     planet_y,
@@ -817,7 +811,15 @@ fn draw_sector_window(
                     egui::Align2::CENTER_TOP,
                     &system.name,
                     egui::FontId::proportional((10.0 * layout.scale).max(7.0)),
-                    system_name_color(system.control, uprisings.is_uprising(*system_key), player),
+                    if system.is_destroyed {
+                        DESTROYED_NAME_COLOR
+                    } else {
+                        system_name_color(
+                            system.control,
+                            uprisings.is_uprising(*system_key),
+                            player,
+                        )
+                    },
                 );
 
                 overlays.extend(
@@ -1058,6 +1060,23 @@ pub(crate) fn planet_picture_id(dat_id: DatId) -> u8 {
         .and_then(|index| SYSTEM_PLANET_PICTURES.get(index as usize))
         .copied()
         .unwrap_or(1)
+}
+
+/// STRATEGY 10240 (`0x2800`), the asteroid field `FUN_0045bbb0` shows in
+/// place of a destroyed system's planet (`+0x50` bit 3, item state `0x40`).
+const DESTROYED_PLANET: u32 = 10240;
+/// `FUN_0045bbb0`'s name colour for a destroyed system, `0x2ffff00`.
+const DESTROYED_NAME_COLOR: egui::Color32 = egui::Color32::from_rgb(0, 255, 255);
+
+/// A system's art in the sector window: its planet (`FUN_0045c970` of its
+/// SYSTEMSD picture), or the asteroid field once it is destroyed
+/// (`FUN_0045bbb0`).
+pub(crate) fn planet_art(system: &rebellion_core::world::System) -> u32 {
+    if system.is_destroyed {
+        DESTROYED_PLANET
+    } else {
+        planet_resource_id(system.dat_id)
+    }
 }
 
 pub(crate) fn planet_resource_id(dat_id: DatId) -> u32 {
@@ -1534,6 +1553,18 @@ mod tests {
             },
             scale,
         }
+    }
+
+    #[test]
+    fn a_destroyed_system_shows_the_asteroid_field() {
+        // FUN_0045bbb0: an item whose system is destroyed (+0x50 bit 3)
+        // takes state 0x40, STRATEGY bitmap 0x2800 (10240) and the name
+        // colour 0x2ffff00.
+        let (mut world, system, _) = fixture_world();
+        assert_eq!(planet_art(&world.systems[system]), 10224);
+        world.systems[system].is_destroyed = true;
+        assert_eq!(planet_art(&world.systems[system]), 10240);
+        assert_eq!(DESTROYED_NAME_COLOR, egui::Color32::from_rgb(0, 255, 255));
     }
 
     #[test]

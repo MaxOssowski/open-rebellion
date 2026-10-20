@@ -909,6 +909,16 @@ cross-runtime proof remain open
   galaxy (indices 120..289) does not load, so all 16 Death Star cases stop
   at setup, independently of this change
   (`evidence/2026-10-20-attack-death-star-count/`).
+- Tactical fixture (2026-10-20): the fixture takes the first and second
+  empty, intact systems of the loaded galaxy instead of SYSTEMSD 100/101; a
+  Death Star battle's Imperial fleet brings no fighter group, which
+  `FUN_005ad930` requires; with the tactical 3D corpus staged locally, all
+  16 tactical Death Star browser cases pass on Chromium 154
+  (`evidence/2026-10-20-tactical-death-star-fixture/`).
+- Destroyed-system art (2026-10-20): `FUN_0045bbb0` draws a destroyed
+  system as STRATEGY 10240, an asteroid field, with the unheld name colour
+  `0x2ffff00`; `sector_window::planet_art` does the same, seen in the
+  browser after Destroy System (`evidence/2026-10-20-destroyed-system-art/`).
 
 ### F-018: Research never limits which ships can be built
 

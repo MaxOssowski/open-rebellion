@@ -422,3 +422,18 @@ the mission's target picture and its name. In detail:
   Member and target minis carry no status overlays, as in the Mission
   dialog. The picture's hit rect bug (`FUN_004a09a0`) is moot, because the
   port has no `+0x68` hit test.
+
+## A destroyed system (read 2026-10-20)
+
+`FUN_0045bbb0`, the refresh of a system's item in the sector window, tests
+the system's destroyed bit (`+0x50` bit 3) first. A destroyed system takes
+item state `0x40`, its bitmap becomes STRATEGY `0x2800` (10240, a 37 by 37
+asteroid field, `FUN_0060bd20`), its name colour `0x2ffff00` (the colour of
+an unheld system), and the refresh skips the rest (the side colours, the
+uprising marks `0x389`/`0x38a` and the overlay bookkeeping). The planet's
+own art otherwise comes from its SYSTEMSD record (`FUN_0045c970` of
+`FUN_00509610`, the record's `+0x44`).
+
+Ported 2026-10-20: `sector_window::planet_art` draws 10240 for a destroyed
+system, and its name takes the unheld colour.
+
