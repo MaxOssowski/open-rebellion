@@ -1,0 +1,2 @@
+thread 'missions::tests::a_traveller_follows_its_fleet_to_its_new_system_and_boards_there' (1338969) panicked at crates/rebellion-core/src/missions.rs:7527:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1422 filtered out; finished in 0.00s

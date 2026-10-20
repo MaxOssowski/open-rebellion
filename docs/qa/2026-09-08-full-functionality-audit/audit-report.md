@@ -3161,6 +3161,11 @@ cross-runtime proof remain open
   side holds it (manual pp. 110-111, the base). 24 dual-AI campaigns: the
   AI's own Move orders fall from 32,470 to 20,412
   (`evidence/2026-10-20-return-to-base/`).
+- 2026-10-20: a Move's traveller follows its target fleet. The original
+  reroutes a traveller whose target container moves (`FUN_004fbc20`,
+  `GameObjParentReroutedNotif`); the port, on arrival, sends the member on
+  to the fleet's new system and moves the mission's place with it, and the
+  member boards there (`evidence/2026-10-20-fleet-reroute/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

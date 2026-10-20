@@ -359,10 +359,8 @@ pub struct ActiveMission {
     /// system, which no rule reads.
     pub target_abode: Option<crate::ids::AbodeKey>,
     /// The fleet a Move order targets (`0x241`, `FUN_004f4b60`): its
-    /// container, which the members board on landing (save v92). port: the
-    /// trip aims at the fleet's system when the mission is ordered; the
-    /// original reroutes a traveller whose target moves (`FUN_004fbc20`,
-    /// `GameObjParentReroutedNotif`).
+    /// container, which the members board on landing (save v92); a
+    /// traveller follows it when it moves (`reroute`, `FUN_004fbc20`).
     #[serde(default)]
     pub target_fleet: Option<crate::ids::FleetKey>,
     /// Dagobah's `FirstTrainingDay` `+0xa8`, set on entering phase 8
@@ -1300,6 +1298,39 @@ pub fn move_member(world: &mut GameWorld, member: MissionMember, to: Option<Syst
             }
         }
     }
+}
+
+/// A Move's traveller whose target fleet stands elsewhere when it arrives
+/// sets out again for the fleet's system, at the mission's speed: the
+/// original reroutes a traveller whose target container moves
+/// (`FUN_004fbc20`, `GameObjParentReroutedNotif`). port: the port reroutes
+/// on arrival, not when the fleet moves.
+fn reroute(
+    world: &GameWorld,
+    mission: &ActiveMission,
+    transit: &MemberTransit,
+    now: u64,
+) -> Option<MemberTransit> {
+    let fleet = world.fleets.get(mission.target_fleet?)?;
+    let own = crate::mission_detection::faction_of(fleet.is_alliance)
+        == crate::dat::Faction::from(mission.faction);
+    if !own || fleet.location == transit.to {
+        return None;
+    }
+    let position = |key: SystemKey| world.systems.get(key).map(|s| (s.x, s.y));
+    let days = crate::movement::transit_ticks_between(
+        world,
+        position(transit.to)?,
+        position(fleet.location)?,
+        mission.speed,
+    );
+    Some(MemberTransit {
+        member: transit.member,
+        mission_id: transit.mission_id,
+        to: fleet.location,
+        arrival: now + u64::from(days.max(1)),
+        abode: None,
+    })
 }
 
 /// The effects of `member` landing at `to` for `mission` (`FUN_004f7640`
@@ -2833,6 +2864,16 @@ impl MissionSystem {
             state.en_route = travelling;
             for transit in arrived {
                 let mission = state.missions.iter().find(|m| m.id == transit.mission_id);
+                if let Some(leg) = mission.and_then(|mission| reroute(world, mission, &transit, now)) {
+                    // The fleet is the container: the mission's place follows it.
+                    if let Some(mission) =
+                        state.missions.iter_mut().find(|m| m.id == transit.mission_id)
+                    {
+                        mission.target_system = leg.to;
+                    }
+                    state.en_route.push(leg);
+                    continue;
+                }
                 out.effects.extend(landing(world, mission, transit.member, transit.to, transit.abode));
             }
 
@@ -7468,26 +7509,37 @@ mod tests {
     }
 
     #[test]
-    fn a_move_lands_at_the_system_when_its_fleet_has_left() {
-        // port: the trip aims at the fleet's system when ordered; the
-        // original reroutes the traveller (FUN_004fbc20). A fleet gone from
-        // the system leaves the member there.
+    fn a_traveller_follows_its_fleet_to_its_new_system_and_boards_there() {
+        // FUN_004fbc20 (GameObjParentReroutedNotif): a traveller whose
+        // target container moves is rerouted. port: on arrival, the member
+        // sets out again for the fleet's system, 200 units on: 40 days.
         let (mut world, mut state, traveller, fleet, to) = move_to_fleet();
         let member = MissionMember::Character(traveller);
-        step(&mut state, &world, 1, &[]);
+        let advance = step(&mut state, &world, 1, &[]);
+        apply_advance_effects(&mut world, &advance.effects);
         let elsewhere = system_at(&mut world, 300);
         world.fleets[fleet].location = elsewhere;
 
         let advance = step(&mut state, &world, 20, &[0.5]);
 
-        assert!(advance.effects.contains(&MissionEffect::MemberMoved {
-            member,
-            to: Some(to)
-        }));
-        assert!(!advance
-            .effects
-            .iter()
-            .any(|effect| matches!(effect, MissionEffect::MemberBoarded { .. })));
+        assert!(advance.effects.is_empty(), "{:?}", advance.effects);
+        assert_eq!(state.en_route()[0].to, elsewhere);
+        assert_eq!(state.en_route()[0].arrival, 60);
+        assert_eq!(state.missions()[0].phase, PHASE_TRANSIT);
+        assert_eq!(state.missions()[0].target_system, elsewhere);
+        assert_ne!(to, elsewhere);
+
+        let advance = step(&mut state, &world, 60, &[0.5]);
+        assert_eq!(
+            advance.effects,
+            vec![
+                MissionEffect::MemberMoved {
+                    member,
+                    to: Some(elsewhere)
+                },
+                MissionEffect::MemberBoarded { member, fleet },
+            ]
+        );
     }
 
     #[test]

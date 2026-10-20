@@ -470,9 +470,11 @@ the same slots but the kind) for the Move mission `0x41000001`.
   order's container): `MissionState::set_target_fleet`, the validator
   reads the fleet's side and place, and the members board it on landing
   (`MissionEffect::MemberBoarded`, save v92).
-- port: the trip aims at the fleet's system when ordered; the original
-  reroutes a traveller whose target moves (`FUN_004fbc20`,
-  `GameObjParentReroutedNotif`), the port lands it at that system.
+- A traveller whose target fleet has moved sets out again for the fleet's
+  system, and the mission's place follows the fleet (2026-10-20): the
+  original reroutes a traveller whose target container moves
+  (`FUN_004fbc20`, `GameObjParentReroutedNotif`). port: the port reroutes
+  on arrival, not at the moment the fleet moves.
   A special force's Move is not ported.
 - A character's Confirmed Move (`0x202`, 2026-10-20) validates the same
   way, then opens the confirmation window with one line, the character's
