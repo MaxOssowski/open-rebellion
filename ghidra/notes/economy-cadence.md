@@ -4,7 +4,10 @@ Read 2026-10-17 for F-037. Every tick the port runs `EconomySystem`,
 which rebuilds each system (until 2026-10-17 it also drifted its
 support). The original has no such loop:
 - `FUN_00508250` (system slot `+0xc0`) runs once, in the setup stage
-  `0x17` (`timer-scheduler.md`).
+  `0x17` (`timer-scheduler.md`). Ported 2026-10-21 as
+  `EconomySystem::setup`, run at game creation (the app's new game, the
+  playtest runner and the seed-42 fixture). Before it, the first day's
+  run found every field changed from its default and reported it.
 - After that a system changes only through its field hooks (when an input
   changes) and its timers.
 

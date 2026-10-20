@@ -2,8 +2,11 @@
 //!
 //! Implements the 18 sub-functions from the original `FUN_00508250`
 //! (the community dump calls it `FUN_005073d0_adjust_and_deploy_each_system`).
-//! The port runs it every tick for every system; the original runs it once at
-//! setup (`ghidra/notes/timer-scheduler.md`). Governs//! the smuggling percent, collection rates, garrison requirements, and
+//! The original runs it once, in setup stage `0x17`
+//! (`ghidra/notes/timer-scheduler.md`), and [`EconomySystem::setup`] does so
+//! at game creation. The port then runs it every day, recomputing each field
+//! only where its hooks would. Governs the smuggling percent, collection
+//! rates, garrison requirements, and
 //! resource allocation. It never moves popular support
 //! (`ghidra/notes/economy-cadence.md`).
 //!
@@ -318,6 +321,29 @@ impl EconomySystem {
             difficulty,
             &crate::uprising::UprisingState::default(),
         )
+    }
+
+    /// The setup stage `0x17` (`FUN_005136d0` -> `FUN_0051b7f0`) runs each
+    /// system's slot `+0xc0`, `FUN_00508250`, once at game creation: it
+    /// computes every derived field before the first day. Its values are the
+    /// starting state, so nothing is reported, and the first day's run sees
+    /// only what changed since (`ghidra/notes/economy-cadence.md`).
+    ///
+    /// port: a holder the pass would change is applied by the first day's
+    /// run, which reports it again.
+    pub fn setup(
+        state: &mut EconomyState,
+        world: &GameWorld,
+        difficulty: u8,
+        uprisings: &crate::uprising::UprisingState,
+    ) {
+        let _ = Self::advance_with_uprisings(
+            state,
+            world,
+            &[TickEvent { tick: 0 }],
+            difficulty,
+            uprisings,
+        );
     }
 
     /// Run the per-system economy tick. Mutates `EconomyState` in-place,
@@ -1512,6 +1538,29 @@ mod tests {
         assert_eq!(state.per_system[&sys].smuggling_percent, 58);
         let second = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 2 }], 2);
         assert_eq!(changes(second), vec![]);
+    }
+
+    #[test]
+    fn the_setup_pass_computes_the_fields_so_the_first_day_reports_no_change() {
+        // FUN_00508250 runs once in setup stage 0x17 (FUN_0051b7f0) and
+        // stores SmugglingPercent through FUN_00509ec0, which notifies only
+        // on a change: the first day finds nothing changed.
+        let (world, sys) = smuggling_world(false);
+        let mut state = EconomyState::default();
+        EconomySystem::setup(
+            &mut state,
+            &world,
+            2,
+            &crate::uprising::UprisingState::default(),
+        );
+        assert_eq!(state.per_system[&sys].smuggling_percent, 58);
+        let first = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        assert!(
+            !first
+                .iter()
+                .any(|event| matches!(event, EconomyEvent::SmugglingPercentChanged { .. })),
+            "{first:?}"
+        );
     }
 
     #[test]

@@ -3783,6 +3783,14 @@ async fn main() {
                                 FogSystem::seed(&mut fog_alliance_state, &world);
                                 FogSystem::seed(&mut fog_empire_state, &world);
                                 economy_state = EconomyState::default();
+                                // Setup stage 0x17: each system's
+                                // FUN_00508250, once.
+                                EconomySystem::setup(
+                                    &mut economy_state,
+                                    &world,
+                                    world.difficulty_index,
+                                    &uprising_state,
+                                );
                                 player_agent =
                                     PlayerAgent::for_new_game(campaign_config.difficulty);
 

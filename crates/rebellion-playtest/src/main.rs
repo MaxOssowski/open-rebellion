@@ -381,6 +381,14 @@ fn main() -> anyhow::Result<()> {
     // Seed fog
     FogSystem::seed(&mut states.fog, &world);
 
+    // Setup stage 0x17: each system's FUN_00508250, once.
+    rebellion_core::economy::EconomySystem::setup(
+        &mut states.economy,
+        &world,
+        world.difficulty_index,
+        &states.uprising,
+    );
+
     // Register story events
     rebellion_core::story_events::define_story_events(&mut states.events, &world);
 

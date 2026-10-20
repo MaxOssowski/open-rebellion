@@ -88,8 +88,8 @@ fn original_campaign_replay_matches_after_save_reload() {
     assert_eq!(
         observed_fingerprints,
         vec![
-            (1, 0, "v1:e654ac40854bf110".into()),
-            (2, 0, "v1:7f52d7f7f20b1eda".into()),
+            (1, 0, "v1:41189c296d0bc0b5".into()),
+            (2, 0, "v1:a4716f6b32ef437b".into()),
             (3, 5, "v1:6a229bca89c1bf61".into()),
             (4, 10, "v1:cc74ecbcbcc149f3".into()),
             (5, 15, "v1:d137a406b6655e0b".into()),

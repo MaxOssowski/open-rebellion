@@ -2494,6 +2494,14 @@ cross-runtime proof remain open
   beginning or ending and by whose system it is, on the Popular Support
   rail. `SmugglingPercentChanged` gains `previous`. The 24 campaigns are
   identical (`evidence/2026-10-20-smuggling-message/`).
+- 2026-10-21: the setup pass `FUN_00508250` (stage `0x17`) runs once at
+  game creation as `EconomySystem::setup`: in the app's new game, the
+  playtest runner and the seed-42 fixture. The first day no longer
+  reports every field changed from its default. That was 62 to 81
+  economy events a seed, among them "smuggling begins". Golden initial
+  `v1:38af87970fe0c218` -> `v1:eb6515d682ec8a5d`, final unchanged. The 24
+  campaigns are otherwise identical
+  (`evidence/2026-10-21-economy-setup-pass/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

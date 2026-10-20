@@ -480,7 +480,7 @@
     "version": 1,
     "value": "549c2ff65ab39aee"
   },
-  "initial_state_fingerprint": "v1:38af87970fe0c218",
+  "initial_state_fingerprint": "v1:eb6515d682ec8a5d",
   "commands": [
     {
       "tick": 0,
@@ -565,12 +565,12 @@
     {
       "tick": 0,
       "command_count": 1,
-      "state_fingerprint": "v1:e654ac40854bf110"
+      "state_fingerprint": "v1:41189c296d0bc0b5"
     },
     {
       "tick": 0,
       "command_count": 2,
-      "state_fingerprint": "v1:7f52d7f7f20b1eda"
+      "state_fingerprint": "v1:a4716f6b32ef437b"
     },
     {
       "tick": 5,

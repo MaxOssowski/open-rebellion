@@ -52,7 +52,7 @@ with a fresh delay, and dies when its target's state record changes
 
 | Id / slot | Original | Behavior | Port counterpart | Status |
 |-----------|----------|----------|------------------|--------|
-| setup stage `0x17` | `FUN_005136d0` -> `FUN_0051b7f0` -> slot `+0xc0` (`FUN_00508250` for systems) | one pass over every object during game setup | `economy.rs` header: "Implements the 18 sub-functions from `FUN_00508250` ... Runs every tick" | port-invented cadence: the original runs this pass at setup, and support recalculation `FUN_0050b230` runs from field hooks (`FUN_00510820`, `FUN_005109f0`, `FUN_00511740`) |
+| setup stage `0x17` | `FUN_005136d0` -> `FUN_0051b7f0` -> slot `+0xc0` (`FUN_00508250` for systems) | one pass over every object during game setup | `EconomySystem::setup` at game creation (2026-10-21); the daily run recomputes each field only where its hooks would | ported: the pass runs once at setup, and the smuggling percent `FUN_0050b230` follows its field hooks (`FUN_00510820`, `FUN_005109f0`, `FUN_00511740`) |
 | event `0x303` | `FUN_00510f20`, and `FUN_004fc080` destroyed-on-arrival (`build-delivery.md`) | destroyed-on-arrival notice | none | missing |
 | event `0x304` | raised by `FUN_00511780` (sender table) | action unread | `economy.rs:603` fires `EVT_MAINTENANCE_SHORTFALL_EVENT` on a per-faction cooldown reset to GNPRTB 7694 (30), from "the plan's #K4" | port-invented cadence; 7694 sits inside the 7691..7697 group whose odd ids the support timers `0x384..0x386` read, so the even ids may be those timers' delays (inference) |
 | event `0x306` | `FUN_004fba10` | route cancel | `events.rs:98` names `0x306` `EVT_CHARACTER_KILLED` | id collision |
@@ -114,7 +114,10 @@ tick order. "Original driver" is the handler above that should schedule it.
    ids, and `0x396` has no factory. Either the story events use another id
    space, which is unverified, or these constants are misattributed.
 5. **`FUN_00508250` is not a per-tick loop.** `economy.rs` says it "runs
-   every tick"; the recovered caller is setup stage `0x17`.
+   every tick"; the recovered caller is setup stage `0x17`. Resolved
+   2026-10-21: `EconomySystem::setup` runs it once at game creation, and
+   the daily run recomputes fields only where their hooks would
+   (`evidence/2026-10-21-economy-setup-pass/`).
 6. **The type family table conflicts.** `ghidra/notes/entity-system.md:383`
    gives `0x30–0x40` as ships. Two iterator recoveries (`decoy-roll.md`,
    `object-state-flags.md`) give `0x30..0x3c` as characters and `0x14..0x1c`

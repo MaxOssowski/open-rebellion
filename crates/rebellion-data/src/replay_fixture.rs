@@ -33,7 +33,7 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:38af87970fe0c218";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:eb6515d682ec8a5d";
 pub const SEED42_FINAL_FINGERPRINT: &str = "v1:eea438fc7e6c6fbc";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
@@ -41,8 +41,8 @@ pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:e654ac40854bf110"),
-    (2, 0, "v1:7f52d7f7f20b1eda"),
+    (1, 0, "v1:41189c296d0bc0b5"),
+    (2, 0, "v1:a4716f6b32ef437b"),
     (3, 5, "v1:6a229bca89c1bf61"),
     (4, 10, "v1:cc74ecbcbcc149f3"),
     (5, 15, "v1:d137a406b6655e0b"),
@@ -173,6 +173,15 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
     let mut events = EventState::new();
     rebellion_core::story_events::define_story_events(&mut events, &world);
     let options = seed42_seed_options();
+    // Setup stage 0x17: each system's FUN_00508250, once.
+    let uprising = UprisingState::new();
+    let mut economy = EconomyState::default();
+    rebellion_core::economy::EconomySystem::setup(
+        &mut economy,
+        &world,
+        world.difficulty_index,
+        &uprising,
+    );
 
     Ok(SaveState {
         world,
@@ -186,10 +195,10 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         fog_empire,
         player_is_alliance: true,
         blockade: BlockadeState::new(),
-        uprising: UprisingState::new(),
+        uprising,
         research: ResearchState::new(),
         victory: VictoryState::new(alliance_hq, empire_hq),
-        economy: EconomyState::default(),
+        economy,
         sim_rng: Xoshiro256PlusPlus::seed_from_u64(SEED42_SEED),
         ai2: None,
         repair: RepairState::default(),
