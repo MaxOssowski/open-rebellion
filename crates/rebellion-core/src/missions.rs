@@ -1646,6 +1646,13 @@ pub struct EscapeTimer {
 }
 
 /// An escaped character autorouting to safety (`FUN_004f18e0`).
+///
+/// port: the original sends an autorouting group on an Autorouting order
+/// `0x43000003` (`FUN_00549230` -> `FUN_00547740`); the port keeps a direct
+/// trip. The order adds a mandatory mission flag, which no order meets
+/// while the traveller is off the map, and its traveller lands even when
+/// the order ends on the way (`FUN_00522fc0`), as this trip does
+/// (`ghidra/notes/mission-lifecycle.md`, "The Autorouting order").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EscapeeTransit {
     pub character: CharacterKey,
