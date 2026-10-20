@@ -1376,7 +1376,11 @@ async fn main() {
             &mut fleet_window_state,
             &mut defenses_window_state,
             &mut troop_transport_state,
+            &mut uprising_state,
         );
+        if interface_test_fixture::runs_the_clock(request) {
+            choose_game_speed(&mut clock, GameSpeed::Fast);
+        }
         interface_test_fixture::reveal(
             request,
             &world,
@@ -2418,6 +2422,11 @@ async fn main() {
                             .systems
                             .get(system)
                             .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                        macroquad::logging::info!(
+                            "[interface] uprising_subdued system={} tick={}",
+                            name,
+                            tick
+                        );
                         // Notification 3, Uprising Message.
                         msg_log.push(filed(
                             GameMessage::at_system(

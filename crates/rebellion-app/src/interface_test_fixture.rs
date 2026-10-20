@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 72;
+const SCENARIO_COUNT: u8 = 73;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -178,6 +178,11 @@ pub enum Scenario {
     /// Fleet window's Personnel tab: the drag of a character (manual
     /// p. 111) to the primary system's Defenses window.
     CharacterAboard = 71,
+    /// The primary system, the player's, in an uprising with eight of the
+    /// player's regiments, and the agent on a Subdue Uprising mission there
+    /// (MISSNSD `0x57000080`); the clock runs Fast. The app's mission step
+    /// ends the revolt (`FUN_00569c20` -> `FUN_0050c910`).
+    SubdueSuccess = 72,
 }
 
 impl Scenario {
@@ -255,6 +260,7 @@ impl Scenario {
             69 => Self::CharacterMove,
             70 => Self::CharacterBoard,
             71 => Self::CharacterAboard,
+            72 => Self::SubdueSuccess,
             _ => return None,
         })
     }
@@ -374,6 +380,7 @@ pub fn apply(
     fleets: &mut FleetWindowState,
     defenses: &mut DefensesWindowState,
     troop_transport: &mut TroopTransportState,
+    uprisings: &mut rebellion_core::uprising::UprisingState,
 ) {
     *game_mode = GameMode::Galaxy;
     *player_faction = match request.faction {
@@ -505,6 +512,10 @@ pub fn apply(
                 0,
             ));
         }
+    }
+
+    if request.scenario == Scenario::SubdueSuccess {
+        place_subdue(request, world, missions, uprisings, agent, primary);
     }
 
     let mut transit_fleet = None;
@@ -854,6 +865,86 @@ fn place_sabotage_targets(
     }
     fleets.open(world, secondary, left, request.faction, layout);
     fleets.select(secondary, FleetWindowEntry::Fleet(fleet));
+}
+
+/// Whether the scenario runs the clock Fast from the start.
+#[must_use]
+pub fn runs_the_clock(request: FixtureRequest) -> bool {
+    request.scenario == Scenario::SubdueSuccess
+}
+
+/// The `SubdueSuccess` scenario: the primary system, the player's, revolts
+/// against it; eight of the player's regiments garrison it; the agent, a
+/// free recruited character there, is on a Subdue Uprising mission.
+fn place_subdue(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    missions: &mut MissionState,
+    uprisings: &mut rebellion_core::uprising::UprisingState,
+    agent: Option<rebellion_core::ids::CharacterKey>,
+    primary: SystemKey,
+) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let side = if player_is_alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    world.systems[primary].control = ControlKind::Uprising(side);
+    uprisings.active_uprisings.insert(
+        primary,
+        rebellion_core::uprising::ActiveUprising {
+            started_tick: 0,
+            next_incident_tick: None,
+            next_support_tick: None,
+            side: Some(side),
+        },
+    );
+    let class_dat_id = world
+        .troops
+        .values()
+        .find(|troop| troop.is_alliance == player_is_alliance)
+        .map_or_else(
+            || {
+                rebellion_core::ids::DatId::new(if player_is_alliance {
+                    0x1000_0001
+                } else {
+                    0x1000_0006
+                })
+            },
+            |troop| troop.class_dat_id,
+        );
+    for _ in 0..8 {
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id,
+            is_alliance: player_is_alliance,
+            regiment_strength: 100,
+        });
+        world.systems[primary].ground_units.push(troop);
+    }
+    let Some(agent) = agent else {
+        return;
+    };
+    let character = &mut world.characters[agent];
+    character.recruited = true;
+    character.is_captive = false;
+    character.on_mandatory_mission = false;
+    let faction = if player_is_alliance {
+        MissionFaction::Alliance
+    } else {
+        MissionFaction::Empire
+    };
+    let _ = missions.dispatch_guarded(
+        rebellion_core::missions::MissionRequest::single(
+            MissionKind::SubdueUprising,
+            faction,
+            agent,
+            primary,
+            None,
+            0,
+        ),
+        world,
+    );
 }
 
 /// The `CharacterBoard` scenario: the agent in the primary system's
@@ -3662,6 +3753,7 @@ mod tests {
             &mut FleetWindowState::default(),
             &mut defenses,
             &mut TroopTransportState::default(),
+            &mut rebellion_core::uprising::UprisingState::new(),
         );
 
         let prisoner = world.characters.keys().nth(1).unwrap();
@@ -3760,6 +3852,7 @@ mod tests {
                 &mut FleetWindowState::default(),
                 &mut DefensesWindowState::default(),
                 &mut TroopTransportState::default(),
+                &mut rebellion_core::uprising::UprisingState::new(),
             );
             let agent = MissionMember::Character(world.characters.keys().next().unwrap());
             let faction = if side == Faction::Alliance {
@@ -3842,6 +3935,7 @@ mod tests {
             &mut FleetWindowState::default(),
             &mut defenses,
             &mut TroopTransportState::default(),
+            &mut rebellion_core::uprising::UprisingState::new(),
         );
 
         // MissionState::mission_order_enabled enables the menu's Mission.
@@ -3991,6 +4085,7 @@ mod tests {
             &mut applied.fleets,
             &mut applied.defenses,
             &mut applied.transport,
+            &mut rebellion_core::uprising::UprisingState::new(),
         );
         applied
     }
@@ -4045,6 +4140,7 @@ mod tests {
             &mut applied.fleets,
             &mut applied.defenses,
             &mut applied.transport,
+            &mut rebellion_core::uprising::UprisingState::new(),
         );
         applied
     }
@@ -5426,6 +5522,61 @@ mod tests {
                 },
             )
             .is_none());
+    }
+
+    #[test]
+    fn the_subdue_scenario_revolts_the_primary_and_sends_the_agent_to_subdue_it() {
+        // Our fixture: a revolt the player's garrison may end, an agent on
+        // Subdue Uprising (MISSNSD 0x57000080) at it, and the clock Fast.
+        let mut world = diplomacy_world(Faction::Alliance);
+        let here = world.systems.keys().next().unwrap();
+        world.characters.insert(rebellion_core::world::Character {
+            name: "Agent".into(),
+            is_alliance: true,
+            current_system: Some(here),
+            ..Default::default()
+        });
+        let request = request(Scenario::SubdueSuccess, CockpitFaction::Alliance);
+        let mut missions = MissionState::default();
+        let mut uprisings = rebellion_core::uprising::UprisingState::new();
+        apply(
+            request,
+            &mut world,
+            &mut GameMode::MainMenu,
+            &mut MissionFaction::Alliance,
+            &mut CockpitState::new(CockpitFaction::Alliance),
+            &mut GalaxyMapState::default(),
+            &mut MovementState::default(),
+            &mut ManufacturingState::default(),
+            &mut EconomyState::default(),
+            &mut missions,
+            &mut BlockadeState::default(),
+            &mut SectorWindowState::default(),
+            &mut SystemWindowState::default(),
+            &mut FleetWindowState::default(),
+            &mut DefensesWindowState::default(),
+            &mut TroopTransportState::default(),
+            &mut uprisings,
+        );
+
+        assert!(runs_the_clock(request));
+        assert!(!runs_the_clock(super::tests::request(
+            Scenario::CharacterMove,
+            CockpitFaction::Alliance
+        )));
+        assert!(uprisings.is_uprising(here));
+        assert_eq!(
+            world.systems[here].control,
+            ControlKind::Uprising(Faction::Alliance)
+        );
+        let regiments = world.systems[here]
+            .ground_units
+            .iter()
+            .filter(|&&key| world.troops[key].is_alliance)
+            .count();
+        assert!(regiments >= 8, "{regiments}");
+        let kinds: Vec<_> = missions.missions().iter().map(|m| m.kind).collect();
+        assert_eq!(kinds, [MissionKind::SubdueUprising]);
     }
 
     #[test]

@@ -1,0 +1,16 @@
+{
+ "alliance": {
+  "lines": [
+   "[info] [interface] uprising_subdued system=Akrit'tar tick=9"
+  ],
+  "seconds": 6,
+  "errors": []
+ },
+ "empire": {
+  "lines": [
+   "[info] [interface] uprising_subdued system=Akrit'tar tick=6"
+  ],
+  "seconds": 6,
+  "errors": []
+ }
+}

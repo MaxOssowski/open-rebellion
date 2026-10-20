@@ -921,6 +921,14 @@ cross-runtime proof remain open
 - Pending: the app's call to `apply_mission_state_effects` runs inside the
   frame loop, which no unit test reaches; a Subdue Uprising success needs a
   browser pass to confirm the uprising clears.
+- 2026-10-20: the pending browser pass is done. Fixture scenario 72
+  (SubdueSuccess) revolts the player's primary system, garrisons it with
+  eight regiments and sends the agent on Subdue Uprising with the clock
+  Fast; on both sides the app's frame loop ends the revolt through
+  `apply_mission_state_effects` (log uprising_subdued at Akrit'tar, day 9
+  and day 6; `evidence/2026-10-20-subdue-success/`). The native check of the
+  dialog's entry passed on 2026-10-14 (cua-driver), and targets other than
+  systems landed in phases 7g-7i.
 - Recovery (2026-09-26): `FUN_0058b420` assigns the table ids (resource
   `0x642` `GDATA\` plus an `RT_RCDATA` file name): TDECOYTB 10, FDECOYTB 11,
   the ten mission tables `0x14..0x1d`, UPRIS1TB `0x28`, UPRIS2TB `0x29`,
