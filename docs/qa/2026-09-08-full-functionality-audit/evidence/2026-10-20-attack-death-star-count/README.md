@@ -101,3 +101,15 @@ is from `f13` and its window rerun.
 - `provenance-scan check`: 53 uncited items, unchanged.
 
 Hashes of the committed files are in `SHA256SUMS`.
+
+## Note on the committed WASM
+
+- At 19:32, during this stage, someone outside it changed the working
+  tree's `crates/rebellion-app/src/main.rs`. The change selects EGL for
+  the native Linux X11 window (`window_conf`) and re-indents one line.
+- It is not this stage's change. It is left uncommitted.
+- The f13 build of `web/open-rebellion.wasm` included it. It has no
+  effect in a browser.
+- A clean `HEAD` rebuild could not isolate its bytes. Builds from another
+  directory differ by path alone: `1a0929…` and `eef130…` against
+  `04a4cf…`.
