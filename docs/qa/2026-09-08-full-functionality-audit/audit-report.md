@@ -1690,7 +1690,7 @@ cross-runtime proof remain open
 ### F-028: Probability tables interpolate where the original steps
 
 - Severity: P2
-- Status: partially remediated
+- Status: remediated
 - Evidence: `MstbTable::lookup` interpolates between thresholds. The original
   lookup, `FUN_00595090`, returns the value of the largest threshold at or
   below the argument and clamps below the first row.
@@ -1705,6 +1705,12 @@ cross-runtime proof remain open
   seed-42 replay test already fails before the change (the fixture loads 100
   systems, and a 200-system galaxy does not match the reviewed initial
   fingerprint), so the golden was not regenerated.
+- 2026-10-21: the golden change is named. `83facd86`, the first golden
+  regenerated after `d6adacfe`, lists the step lookups among its causes.
+  On today's tree an interpolating `step_lookup` leaves the seed-42 golden
+  unchanged (its commands never fall between two rows), while all 24
+  dual-AI campaigns diverge between day 21 and day 168
+  (`evidence/2026-10-21-step-lookup-golden/`).
 - Acceptance: every table lookup follows `FUN_00595090`, with any golden
   change named.
 

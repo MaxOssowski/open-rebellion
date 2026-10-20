@@ -1882,13 +1882,14 @@
     {
       "id": "F-028",
       "severity": "P2",
-      "status": "partially_remediated",
+      "status": "remediated",
       "title": "Probability tables interpolate where the original steps",
       "evidence": [
         "MstbTable::lookup interpolates between thresholds; the original lookup FUN_00595090 returns the value of the largest threshold at or below the argument and clamps below the first row",
         "2026-09-26 fix: MstbTable::step_lookup implements the step lookup and the uprising incident uses it for UPRIS1TB and UPRIS2TB, with a test that fails under interpolation",
         "2026-10-14 fix: betrayal and the captive escape check use step_lookup, each with a test that fails under interpolation, and the interpolating MstbTable::lookup is removed; every table lookup now follows FUN_00595090",
-        "Open: the golden change is not named. On the tree the fix was made on, the seed-42 replay test already fails before the change (the fixture loads 100 systems, and a 200-system galaxy does not match the reviewed initial fingerprint), so the golden was not regenerated"
+        "Open: the golden change is not named. On the tree the fix was made on, the seed-42 replay test already fails before the change (the fixture loads 100 systems, and a 200-system galaxy does not match the reviewed initial fingerprint), so the golden was not regenerated",
+        "2026-10-21: the golden change is named. 83facd86, the first golden regenerated after d6adacfe, lists the step lookups among its causes. On today's tree an interpolating step_lookup leaves the seed-42 golden unchanged (its commands never fall between two rows), while all 24 dual-AI campaigns diverge between day 21 and day 168 (evidence/2026-10-21-step-lookup-golden/)."
       ],
       "acceptance": "Every table lookup follows FUN_00595090, with any golden change named."
     },

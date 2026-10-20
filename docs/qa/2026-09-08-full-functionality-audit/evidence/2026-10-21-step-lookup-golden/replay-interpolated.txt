@@ -1,0 +1,4 @@
+cargo test -q -p rebellion-data --test replay_manifest -- --include-ignored
+(on 92b38a3a with MstbTable::step_lookup temporarily interpolating, as the
+removed MstbTable::lookup did before d6adacfe)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.76s

@@ -502,9 +502,10 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   (F-023), the Emperor's 1.5x battle bonus (F-024), and family-`0x34` Death
   Star detection (F-025). The revolt lifecycle, uprising incident, and
   disaster now follow recovered code (F-026, browser verified 2026-10-21).
-- [ ] Move the remaining probability-table consumers to the recovered step
-  lookup (F-028) and the informant and resource incidents to their recovered
-  timers (F-029, remediated 2026-10-18; native GUI check pending).
+- [x] Move the remaining probability-table consumers to the recovered step
+  lookup (F-028, remediated 2026-10-21: golden change named in `83facd86`)
+  and the informant and resource incidents to their recovered timers
+  (F-029, remediated 2026-10-18; native run 2026-10-18).
 - [x] Port the en-route delivery of manufactured objects on the recovered
   per-object transit (F-030, save v16, browser pass pending).
 - [ ] Port the mission phases, decoys, and per-member success roll (F-019).
