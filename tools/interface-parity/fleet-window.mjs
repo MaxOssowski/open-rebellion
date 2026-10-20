@@ -30,6 +30,7 @@ const SQUADRON_BATTLE = 66;
 const FLEET_BOMBARDMENT = 67;
 const FLEET_ASSAULT = 68;
 const FLEET_DESTROY_SYSTEM = 74;
+const PRODUCTION_DELIVERY = 75;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -676,6 +677,31 @@ const cases = [
       await frames(page, 3);
       await shot(page, directory, "destroy-done");
       return { before, sub, after };
+    },
+  },
+  {
+    name: "delivery",
+    code: PRODUCTION_DELIVERY,
+    // A product bound elsewhere departs when its last point is done
+    // (FUN_0052b960 -> FUN_0052bee0), travels its own transit time
+    // (FUN_0055d8c0) and arrives (event 0x387) at its destination; until
+    // then it is at neither end (ghidra/notes/build-delivery.md).
+    async run(page, faction, setup, directory) {
+      const before = await until(page, "the ship waits one point short",
+        (o) => o.target_ships === 0 && o.last_departure_message === null);
+      const departed = await until(page, "the ship departs for its destination",
+        (o) => typeof o.last_departure_message === "string"
+          && o.last_departure_message.includes(", en route to "), null, 90_000);
+      assert.equal(departed.target_ships, 0, "an en-route ship is not at its destination yet");
+      assert.equal(departed.last_arrival_message, null);
+      await shot(page, directory, "delivery-en-route");
+      const destination = departed.last_departure_message.split(", en route to ")[1];
+      const arrived = await until(page, "the ship arrives at its destination",
+        (o, target) => o.last_arrival_message === `Unit arrived at ${target}` && o.target_ships === 1,
+        destination, 120_000);
+      await frames(page, 3);
+      await shot(page, directory, "delivery-arrived");
+      return { before, departed, arrived };
     },
   },
   {

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 74;
+const SCENARIO_COUNT: u8 = 75;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -188,6 +188,12 @@ pub enum Scenario {
     /// characters standing on the planet: the submenu's Destroy System
     /// (`0x223`, `FUN_00582440`, `FUN_0058d990`).
     FleetDestroySystem = 73,
+    /// As `ProductionDestination` with a capital ship of the player's one
+    /// point from done in the primary shipyard's queue, bound for the
+    /// loading target; the clock runs Fast. The ship departs, travels and
+    /// arrives (`FUN_0052bee0`, `FUN_0055d8c0`, event `0x387`;
+    /// `ghidra/notes/build-delivery.md`).
+    ProductionDelivery = 74,
 }
 
 impl Scenario {
@@ -267,6 +273,7 @@ impl Scenario {
             71 => Self::CharacterAboard,
             72 => Self::SubdueSuccess,
             73 => Self::FleetDestroySystem,
+            74 => Self::ProductionDelivery,
             _ => return None,
         })
     }
@@ -286,6 +293,7 @@ impl Scenario {
                 | Self::FleetBombardment
                 | Self::FleetAssault
                 | Self::FleetDestroySystem
+                | Self::ProductionDelivery
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -610,6 +618,9 @@ pub fn apply(
             primary,
         );
     }
+    if request.scenario == Scenario::ProductionDelivery {
+        place_delivery(request, world, manufacturing, primary);
+    }
     if request.scenario == Scenario::Quadrants {
         place_quadrant_contents(request, world, movement, missions, sectors, primary);
     }
@@ -877,7 +888,10 @@ fn place_sabotage_targets(
 /// Whether the scenario runs the clock Fast from the start.
 #[must_use]
 pub fn runs_the_clock(request: FixtureRequest) -> bool {
-    request.scenario == Scenario::SubdueSuccess
+    matches!(
+        request.scenario,
+        Scenario::SubdueSuccess | Scenario::ProductionDelivery
+    )
 }
 
 /// The `SubdueSuccess` scenario: the primary system, the player's, revolts
@@ -1297,6 +1311,47 @@ fn place_death_star(
     }
 }
 
+/// The delivery variant: one capital ship of the player's side, one point
+/// from done in the primary shipyard's queue, bound for the loading target.
+fn place_delivery(
+    request: FixtureRequest,
+    world: &GameWorld,
+    manufacturing: &mut ManufacturingState,
+    primary: SystemKey,
+) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let Some(target) = loading_target(world, primary) else {
+        return;
+    };
+    let Some((class, cost)) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| {
+            class.is_alliance == player_is_alliance
+                && class.hyperdrive > 0
+                && class.refined_material_cost > 1
+        })
+        .map(|(key, class)| (key, class.refined_material_cost))
+    else {
+        return;
+    };
+    manufacturing.enqueue(
+        primary,
+        rebellion_core::manufacturing::QueueItem::new(
+            rebellion_core::manufacturing::BuildableKind::CapitalShip(class),
+            cost,
+        )
+        .delivered_to(target),
+    );
+    let queue = manufacturing.queue_mut(
+        primary,
+        rebellion_core::manufacturing::ProductionArea::Shipyard,
+    );
+    for _ in 1..cost {
+        let _ = queue.add_point();
+    }
+}
+
 /// The regiment-loading target: another system in the primary system's
 /// sector, so the sector window that shows the fleet icon shows it too.
 fn loading_target(world: &GameWorld, primary: SystemKey) -> Option<SystemKey> {
@@ -1501,7 +1556,10 @@ fn place_loading_fleet(
     }
     // The destination variant: a shipyard of the player's, so the facility
     // icon's menu offers Destination (0x214, FUN_00512700 kind 4).
-    if request.scenario == Scenario::ProductionDestination {
+    if matches!(
+        request.scenario,
+        Scenario::ProductionDestination | Scenario::ProductionDelivery
+    ) {
         let shipyard = world.manufacturing_facilities.insert(
             rebellion_core::world::ManufacturingFacilityInstance {
                 class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
@@ -2982,6 +3040,12 @@ struct FleetLoadObservation {
     fleet_present: bool,
     adrift_characters: usize,
     last_destroy_message: Option<String>,
+    /// The delivery variant: the departure and arrival lines (notifications
+    /// `0x21` and `0xd`) and the player's capital ships at the loading
+    /// target.
+    last_departure_message: Option<String>,
+    last_arrival_message: Option<String>,
+    target_ships: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3137,6 +3201,37 @@ fn fleet_load_observation(
             .rev()
             .find(|message| message.text.contains("DESTROYED by Death Star"))
             .map(|message| message.text.clone()),
+        // Only the player's: the AI's deliveries post to the other side's
+        // index.
+        last_departure_message: messages
+            .iter()
+            .rev()
+            .filter(|message| {
+                message
+                    .audience
+                    .includes(request.faction == CockpitFaction::Alliance)
+            })
+            .find(|message| message.text.contains(", en route to "))
+            .map(|message| message.text.clone()),
+        last_arrival_message: messages
+            .iter()
+            .rev()
+            .filter(|message| {
+                message
+                    .audience
+                    .includes(request.faction == CockpitFaction::Alliance)
+            })
+            .find(|message| message.text.starts_with("Unit arrived at "))
+            .map(|message| message.text.clone()),
+        target_ships: loading_target(world, primary).map_or(0, |target| {
+            world.systems[target]
+                .fleets
+                .iter()
+                .filter_map(|&key| world.fleets.get(key))
+                .filter(|value| value.is_alliance == (request.faction == CockpitFaction::Alliance))
+                .map(|value| value.capital_ships.len())
+                .sum()
+        }),
     })
 }
 
@@ -4261,6 +4356,42 @@ mod tests {
                 (true, true)
             );
         }
+    }
+
+    // port: the fixture's own layout. A product one point from its cost
+    // completes on the next yard cycle (FUN_0052b960) and departs for its
+    // destination (FUN_0052bee0).
+    #[test]
+    fn the_delivery_scenario_queues_a_ship_one_point_short_bound_for_the_target() {
+        let request = request(Scenario::ProductionDelivery, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass {
+                    is_alliance: true,
+                    hull: 300,
+                    hyperdrive: 80,
+                    troop_capacity: 2,
+                    refined_material_cost: 6,
+                    ..Default::default()
+                });
+        });
+        let world = &applied.world;
+        let primary = world.systems.keys().next().unwrap();
+        let target = loading_target(world, primary).unwrap();
+        let mut manufacturing = ManufacturingState::default();
+        place_delivery(request, world, &mut manufacturing, primary);
+        let queue = manufacturing
+            .queue(primary, rebellion_core::manufacturing::ProductionArea::Shipyard)
+            .unwrap();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue.completed_points(), 5);
+        assert_eq!(queue.active().unwrap().destination, Some(target));
+        assert!(runs_the_clock(request));
+        assert!(world.systems[primary]
+            .manufacturing_facilities
+            .iter()
+            .any(|&key| world.manufacturing_facilities[key].is_shipyard));
     }
 
     // port: the fixture's own layout. Destroy System needs a Death Star in
@@ -5752,7 +5883,8 @@ mod tests {
                 Scenario::CharacterMove,
                 Scenario::CharacterBoard,
                 Scenario::CharacterAboard,
-                Scenario::FleetDestroySystem
+                Scenario::FleetDestroySystem,
+                Scenario::ProductionDelivery
             ]
         );
     }
