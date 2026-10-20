@@ -714,7 +714,12 @@ member's side holds it (port: without the route checks).
   DestroyedReason byte holds decides the arrival call too: if it is `0x14`
   there, an arriving fleet's characters merely autoroute (and stay at a
   place of their side, `FUN_0054c7d0`); the meaning of reason `0x14` (also
-  what Retire passes, `FUN_00534c00`) settles this. (Mode 3's second pass with a team
+  what Retire passes, `FUN_00534c00`) settles this. The base constructor
+  `FUN_004f5ea0` starts `+0x40` at 0, so an intact fleet's arrival would
+  set its characters Adrift, and whether that lasts rests on
+  `FUN_0054c7d0`'s rule for an adrift character at a place of its own side
+  (`captive-escape.md` reads only its autorouting branch). Read
+  `FUN_0054c7d0`'s adrift branch next. (Mode 3's second pass with a team
   already detected is settled in `decoy-roll.md`.)
 - The autorouting event path (`FUN_00549230`, above) sends an adrift group
   on an Adrift order `0x44000004` (`FUN_00547880`), whose class alone uses
