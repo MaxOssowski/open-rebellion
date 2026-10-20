@@ -1994,7 +1994,8 @@
         "No queue acceptance filter (FUN_00528890: created, not completed, not destroyed, same side); build progress rate per tick is unverified against FUN_0052b960 (now decompiled)",
         "Repair uses the ship class damage_control; the original runs timer 0x386 with GNPRTB 7693/7695 and a facility-derived rate (FUN_00509890.c:26), gates on the shipyard bit (+0x88 bit 5) rather than any facility, and repair runs per frame, not per tick",
         "ai.rs:1325 treats refined_material_cost as build ticks",
-        "evidence/invention-review-r1/manufacturing.md"
+        "evidence/invention-review-r1/manufacturing.md",
+        "2026-10-20 correction: the original keeps one manager per production area of a system (a yard finds it through FUN_00509670), and every usable, unsuspended yard of the area adds points to it, woken fastest first (FUN_00529dd0); the port has kept a queue per system and area with the same regulation since 2026-10-13 (manufacturing.rs, YardDay::regulate), so the per-yard item is closed. Repair is timer 0x380, not 0x386 (the blockade's support shift); see ghidra/notes/ship-repair.md."
       ],
       "acceptance": "Queues, progress, and repair follow FUN_0052b960 and timer 0x386 with failing-without tests."
     },

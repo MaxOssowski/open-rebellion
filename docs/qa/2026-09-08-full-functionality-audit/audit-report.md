@@ -1953,6 +1953,17 @@ cross-runtime proof remain open
     repair runs per frame, not per tick
   - ai.rs:1325 treats refined_material_cost as build ticks
   - evidence/invention-review-r1/manufacturing.md
+- Correction (2026-10-20): two evidence lines above are stale or misread.
+  - The original keeps one manager per production area of a system (a yard
+    finds it through `FUN_00509670`), and every usable, unsuspended yard of
+    the area adds points to it, woken fastest first (`FUN_00529dd0`). The
+    port has kept a queue per system and area with the same yard
+    regulation since 2026-10-13 (`manufacturing.rs`, `YardDay::regulate`;
+    `ghidra/notes/manufacturing-manager.md`). So two yards of one area
+    already build in parallel, and the per-yard item is closed.
+  - Repair is timer `0x380`, not `0x386`. Timer `0x386` is the blockade's
+    support shift (`blockade.rs`). Repair is read in
+    `ghidra/notes/ship-repair.md`.
 - Acceptance: Queues, progress, and repair follow FUN_0052b960 and timer 0x386
   with failing-without tests.
 
