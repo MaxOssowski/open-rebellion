@@ -23,13 +23,15 @@ impl DatId {
         self.0
     }
 
-    /// The high byte — identifies the entity class.
+    /// The high byte — identifies the entity class, as in the ids of
+    /// CAPSHPSD.DAT and the other class files (`agent_docs/dat-formats.md`).
     #[must_use]
     pub fn family(self) -> u8 {
         (self.0 >> 24) as u8
     }
 
-    /// The lower 24 bits — sequential index within the family.
+    /// The lower 24 bits — sequential index within the family, as
+    /// CAPSHPSD.DAT and the other class files number their records.
     #[must_use]
     pub fn index(self) -> u32 {
         self.0 & 0x00FF_FFFF

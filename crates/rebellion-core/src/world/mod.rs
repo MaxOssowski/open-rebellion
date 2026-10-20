@@ -1093,13 +1093,15 @@ impl ShipInstance {
             .collect()
     }
 
-    /// Shield recharge allocation nibble (bits 0-3).
+    /// Shield recharge allocation nibble (bits 0-3 of `+0x64`, written by
+    /// `FUN_00501510`).
     #[must_use]
     pub fn shield_nibble(&self) -> u8 {
         self.shield_weapon_packed & 0x0f
     }
 
-    /// Weapon recharge allocation nibble (bits 4-7).
+    /// Weapon recharge allocation nibble (bits 4-7 of `+0x64`, written by
+    /// `FUN_005015a0`).
     #[must_use]
     pub fn weapon_nibble(&self) -> u8 {
         (self.shield_weapon_packed >> 4) & 0x0f
@@ -1186,7 +1188,9 @@ impl GnprtbParams {
         Self::new(values.iter().map(entry).collect())
     }
 
-    /// Return the parameter value for `param_id` at `difficulty`.
+    /// Return the parameter value for `param_id` at `difficulty`: one of the
+    /// eight value columns of GNPRTB.DAT's `GeneralParamTableEntry`
+    /// (`agent_docs/dat-formats.md`), in file order.
     ///
     /// `difficulty`: 0=development, `1=alliance_easy`, `2=alliance_medium`, `3=alliance_hard`,
     ///               `4=empire_easy`, `5=empire_medium`, `6=empire_hard`, 7=multiplayer.
@@ -1251,7 +1255,10 @@ impl SdprtbParams {
             .any(|e| e.parameter_id == u32::from(param_id))
     }
 
-    /// Return a side-aware seeding parameter for the requested difficulty column.
+    /// Return a side-aware seeding parameter for the requested difficulty
+    /// column: SDPRTB.DAT's `SideParamTableEntry` holds an Alliance and an
+    /// Empire value for each of its eight columns, in file order
+    /// (`agent_docs/dat-formats.md`).
     #[must_use]
     pub fn value(&self, param_id: u16, difficulty: u8, faction: Faction) -> i32 {
         self.entries
@@ -1771,6 +1778,8 @@ pub struct FleetNames {
     renamed: slotmap::SecondaryMap<FleetKey, ()>,
 }
 
+/// port: a save written before the difficulty was stored loads at column 2,
+/// Alliance medium.
 fn default_difficulty_index() -> u8 {
     2
 }

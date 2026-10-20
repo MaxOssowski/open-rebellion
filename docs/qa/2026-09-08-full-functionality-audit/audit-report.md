@@ -1830,6 +1830,19 @@ cross-runtime proof remain open
   The blockade event ids are cited to their senders (`0x14e`
   `FUN_005122d0`, `0x340` `FUN_00504a00`), and the uprising roll budget is
   tagged `port:`. The baseline shrinks from 51 to 43 uncited items.
+- 2026-10-21 (events, ids, world): each notification and event id in
+  `events.rs` is cited to its sender (`FUN_0053fdd0`/`FUN_0053fcf0`
+  notifications, `FUN_0053f9c0` events) and to the message class that
+  answers it. Three keep a `hyp:` for the port's reading:
+  - `0x100` is `GameObjControlKindNotif` (`FUN_004fbbd0`), not a support
+    band change;
+  - `0x305` comes from the blockade hook (`FUN_00511300`), not a
+    saboteur;
+  - `0x306` comes from the Autorouting hook (`FUN_004fba10`), not a death.
+  The `DatId` layout, the GNPRTB.DAT and SDPRTB.DAT columns and the shield
+  and weapon nibbles (`FUN_00501510`, `FUN_005015a0`) are cited. The event
+  engine's evaluator and the old-save difficulty default are tagged
+  `port:`. The baseline shrinks from 43 to 19.
 - Acceptance: each item is recovered and cited, or tagged `port:`/`hyp:` with a
   reason; `provenance-scan check` passes and the baseline shrinks to the
   port-owned remainder.

@@ -61,29 +61,70 @@ use crate::tick::TickEvent;
 use crate::world::GameWorld;
 
 // ---------------------------------------------------------------------------
-// Ghidra RE event IDs (from annotated-functions.md)
+// Original notification and event ids
 // ---------------------------------------------------------------------------
+//
+// Each id is cited to the function that posts it (`FUN_0053fdd0` /
+// `FUN_0053fcf0` for the notifications `0x100`..`0x242`, `FUN_0053f9c0` for
+// the events `0x300`..`0x31f`) and to the message class that answers it
+// (`ghidra/notes/story-message-classes.md`).
 
+/// `SystemUprisingIncidentNotif` (`FUN_00512580`).
 pub const EVT_UPRISING_INCIDENT: u32 = 0x152; // 338
+/// `CharacterForceNotif` (`FUN_004f1e00`); Force Growth (`FUN_0048ed80`).
 pub const EVT_CHARACTER_FORCE: u32 = 0x1e1; // 481
+/// `HanBountyAttackNotif` (`FUN_00572b40`); the bounty classes
+/// (`FUN_0048fa00`).
 pub const EVT_BOUNTY_ATTACK: u32 = 0x212; // 530
+/// `MissionMgrFinalBattleNotif` (`FUN_0054ba00`); The Final Battle
+/// (`FUN_0048e3c0`).
 pub const EVT_FINAL_BATTLE: u32 = 0x220; // 544
+/// `MissionMgrLukeDagobahNotif` (`FUN_0054b7b0`); Luke Goes to Dagobah
+/// (`FUN_0048d190`).
 pub const EVT_LUKE_DAGOBAH: u32 = 0x221; // 545
+/// `CharacterForceUserDiscoveredKeyNotif` (`FUN_004f20e0`); Future Jedi
+/// Discovered (`FUN_0048f1e0`).
 pub const EVT_FORCE_DISCOVERED: u32 = 0x362; // 866
 
-// Phase 3 additions — from community disassembly cross-reference
-pub const EVT_SUPPORT_CHANGE: u32 = 0x100; // 256 — popular support shift
-pub const EVT_CHARACTER_HEALTH: u32 = 0x106; // 262 — character health change
-pub const EVT_UNITS_DEPLOYED: u32 = 0x107; // 263 — units deployed to system
-pub const EVT_HQ_CAPTURED: u32 = 0x128; // 296 — headquarters captured
-pub const EVT_INFORMANT_INTEL: u32 = 0x153; // 339 — informant intelligence
-pub const EVT_NATURAL_DISASTER: u32 = 0x154; // 340 — event mapping unverified (FUN_00511810 raises 0x304, not 0x154)
-pub const EVT_RESOURCE_DISCOVERY: u32 = 0x155; // 341 — New Resources / Resources Depleted (FUN_0048e940; raised by the resource incident, event 0x390)
-pub const EVT_MANUFACTURING_IDLE: u32 = 0x160; // 352 — manufacturing queue empty
-pub const EVT_MAINTENANCE_SHORTFALL_EVENT: u32 = 0x304; // 772 — maintenance budget shortfall
-pub const EVT_SABOTEUR_DETECTED: u32 = 0x305; // 773 — saboteur detected
-pub const EVT_CHARACTER_KILLED: u32 = 0x306; // 774 — character killed in action
-pub const EVT_TRAITOR_REVEALED: u32 = 0x361; // 865 — traitor revealed
+/// `GameObjControlKindNotif` (`FUN_004fbbd0`), a control change; System
+/// Joins / Declares Neutrality (`FUN_00499760`). hyp: the port raises it on
+/// a support band change, which no original sender does.
+pub const EVT_SUPPORT_CHANGE: u32 = 0x100; // 256
+/// `GameObjDamagedNotif` (`FUN_004fc3a0`); Character Injured / Healed /
+/// Killed (`FUN_0048fdf0`).
+pub const EVT_CHARACTER_HEALTH: u32 = 0x106; // 262
+/// `GameObjDeployedNotif` (`FUN_004fc570`); Units Deployed (`FUN_00497940`).
+pub const EVT_UNITS_DEPLOYED: u32 = 0x107; // 263
+/// `SideVictoryConditionsNotif` (`FUN_00532f90`); Alliance Headquarters
+/// Destroyed (`FUN_0048e5a0`) and Coruscant Captured (`FUN_0048f790`).
+pub const EVT_HQ_CAPTURED: u32 = 0x128; // 296
+/// `SystemInformantIncidentNotif` (`FUN_005125d0`); Informants Provide
+/// Information (`FUN_00491060`).
+pub const EVT_INFORMANT_INTEL: u32 = 0x153; // 339
+/// `SystemDisasterIncidentNotif` (`FUN_00512620`); Natural Disaster
+/// (`FUN_0048e940`).
+pub const EVT_NATURAL_DISASTER: u32 = 0x154; // 340
+/// `SystemResourceIncidentNotif` (`FUN_00512670`); New Resources /
+/// Resources Depleted (`FUN_0048e940`), raised by the resource incident
+/// (event `0x390`).
+pub const EVT_RESOURCE_DISCOVERY: u32 = 0x155; // 341
+/// `ManuMgrRemainingGameObjCountNotif` (`FUN_0052baa0`); Facility Idle
+/// (`FUN_0048be60`).
+pub const EVT_MANUFACTURING_IDLE: u32 = 0x160; // 352
+/// Event `0x304`, posted by the System's slot `+0x23c` (`FUN_00511780`);
+/// Maintenance Shortfall (`FUN_00498970`).
+pub const EVT_MAINTENANCE_SHORTFALL_EVENT: u32 = 0x304; // 772
+/// Event `0x305`, posted by the System's blockade hook (`FUN_00511300`)
+/// with the blockade bit; Saboteurs Strike (`FUN_0048b9a0`) answers it.
+/// hyp: the port's "saboteur detected" reading has no original sender.
+pub const EVT_SABOTEUR_DETECTED: u32 = 0x305; // 773
+/// Event `0x306`, posted by the game objects' Autorouting hook
+/// (`FUN_004fba10`). hyp: the port's "character killed in action" reading
+/// has no original sender.
+pub const EVT_CHARACTER_KILLED: u32 = 0x306; // 774
+/// `CharacterTraitorDiscoveredKeyNotif` (`FUN_004f2090`); Character
+/// Discovers Traitor (`FUN_0048c9c0`).
+pub const EVT_TRAITOR_REVEALED: u32 = 0x361; // 865
 
 // ---------------------------------------------------------------------------
 // SystemTag — telemetry routing
@@ -536,6 +577,9 @@ fn evaluate_conditions(
     clippy::too_many_lines,
     reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
 )]
+/// One condition of a port event definition. port: the port's own event
+/// engine; the original's story chains are notifications answered by message
+/// classes (`ghidra/notes/story-message-classes.md`).
 fn evaluate_condition(
     condition: &EventCondition,
     world: &GameWorld,
