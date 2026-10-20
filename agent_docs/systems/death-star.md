@@ -20,8 +20,17 @@ so the port's 1,825-day countdown was removed (save v94).
 
 | Type | Purpose |
 |------|---------|
-| `DeathStarState` | `shield_generator_active` (battle hull protection) |
 | `DeathStarEvent` | PlanetDestroyed, from a Destroy System order |
+
+The strategic simulation keeps no Death Star state (save v96).
+
+## The Death Star shield
+
+A Death Star shield (DEFFACSD 4, family `0x25`) on the battle system sets
+the tactical Death Star's `+0x70` (`FUN_0040bcd0`), and `FUN_005ba450` then
+bars the fighters' Attack Death Star (`TacticalDeathStar::attackable`). No
+strategic battle code reads it; the port's old hull-damage immunity had no
+source and was removed.
 
 ## Destroying a planet
 

@@ -150,6 +150,8 @@ const ORIGINAL_TACTICAL_STEP_SECONDS: f32 = ORIGINAL_TACTICAL_STEP_MILLISECONDS 
 /// milliseconds times one third times 0.001, capped at 100.
 const ORIGINAL_DEATH_STAR_LASER_CHARGE_PER_SECOND: f32 = 1.0 / 3.0;
 const ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE: f32 = 100.0;
+/// The Death Star shield's family (DEFFACSD 4, TEXTSTRA 8832; `FUN_0051c0c0`).
+const DEATH_STAR_SHIELD_FAMILY: u8 = 0x25;
 /// `FUN_005cfec0` arms the Death Star attack state with a 120,000 ms window.
 const ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS: f32 = 120_000.0;
 /// `_DAT_0066d078` scales the maneuver-failure damage draw.
@@ -1280,6 +1282,10 @@ pub struct TacticalDeathStar {
     pub hull: f32,
     /// Source field `+0x6c`, filled by `FUN_005ba7f0` from zero to 100.
     pub laser_charge: f32,
+    /// Source field `+0x70`: the battle's system holds a usable Death Star
+    /// shield (DEFFACSD 4, family `0x25`), counted by `FUN_0040bcd0`
+    /// (`FUN_0051c270`) and passed through `FUN_00595ef0` -> `FUN_005af4e0`.
+    pub shielded: bool,
     /// Source field `+0x74`; selects resource 5020 when set.
     pub destroyed: bool,
     /// Source field `+0x78`; set when the Death Star action is committed.
@@ -1301,6 +1307,14 @@ impl TacticalDeathStar {
     #[must_use]
     pub fn operational(self) -> bool {
         !self.destroyed && self.hull > 0.0 && !self.action_committed
+    }
+
+    /// `FUN_005ba450`: fighters may attack it, operational and with no
+    /// Death Star shield on its system (manual p. 124: "the only way to
+    /// protect a Death Star from attack by Alliance ships and fighters").
+    #[must_use]
+    pub fn attackable(self) -> bool {
+        self.operational() && !self.shielded
     }
 
     #[must_use]
@@ -3193,6 +3207,15 @@ impl BattleSession {
         let navigation_sets = original_navigation_point_sets(source_layout);
         Self::assign_original_task_forces(&mut ships);
         Self::assign_original_fighter_groups(&mut fighters);
+        // FUN_0040bcd0: the system's usable Death Star shields (FUN_0051c270,
+        // family 0x25), whatever their side.
+        let shielded = world.systems.get(system).is_some_and(|sys| {
+            sys.defense_facilities.iter().any(|&key| {
+                world.defense_facilities.get(key).is_some_and(|facility| {
+                    facility.class_dat_id.family() == DEATH_STAR_SHIELD_FAMILY
+                })
+            })
+        });
         let death_star = [(attacker, true), (defender, false)].into_iter().find_map(
             |(fleet_key, is_attacker)| {
                 let fleet = &world.fleets[fleet_key];
@@ -3211,6 +3234,7 @@ impl BattleSession {
                     },
                     hull: ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE,
                     laser_charge: 0.0,
+                    shielded,
                     destroyed: false,
                     action_committed: false,
                 })
@@ -7452,6 +7476,19 @@ fn tactical_withdraw_confirmation_control_at(
         })
 }
 
+/// The mission control's Attack Death Star (`FUN_005ad930`): a selected
+/// fighter group and an enemy Death Star the fighters may attack
+/// (`FUN_005ba450`).
+///
+/// port: the source's further test, more launched fighters on one side than
+/// the other (`+0x168` counts), is not ported.
+fn attack_death_star_enabled(session: &BattleSession) -> bool {
+    session.selected_fighter_group.is_some()
+        && session.death_star.is_some_and(|death_star| {
+            death_star.attackable() && death_star.is_attacker != session.player_is_attacker
+        })
+}
+
 fn player_death_star(session: &BattleSession) -> Option<TacticalDeathStar> {
     session
         .death_star
@@ -9926,11 +9963,7 @@ fn handle_original_tactical_controls(
                 .as_ref()
                 .map_or((false, false, false, true), |session| {
                     let selected_fighter = session.selected_fighter_group.is_some();
-                    let attack_death_star_enabled = selected_fighter
-                        && session.death_star.is_some_and(|death_star| {
-                            death_star.operational()
-                                && death_star.is_attacker != session.player_is_attacker
-                        });
+                    let attack_death_star_enabled = attack_death_star_enabled(session);
                     (
                         selected_fighter
                             || session.ships.iter().any(|ship| {
@@ -12152,12 +12185,10 @@ pub fn draw_tactical_view(
         let death_star = state.session.as_ref().and_then(player_death_star);
         let has_selection =
             groups.selected_fighter_group.is_some() || groups.selected_ship_name.is_some();
-        let attack_death_star_enabled = groups.selected_fighter_group.is_some()
-            && state.session.as_ref().is_some_and(|session| {
-                session.death_star.is_some_and(|death_star| {
-                    death_star.operational() && death_star.is_attacker != session.player_is_attacker
-                })
-            });
+        let attack_death_star_enabled = state
+            .session
+            .as_ref()
+            .is_some_and(attack_death_star_enabled);
         let withdraw_enabled = state
             .session
             .as_ref()
@@ -14821,6 +14852,7 @@ mod tests {
             source_position: TacticalWorldPosition::ORIGIN,
             hull: 100.0,
             laser_charge: 0.0,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });
@@ -14850,6 +14882,7 @@ mod tests {
             source_position: TacticalWorldPosition::ORIGIN,
             hull: 100.0,
             laser_charge: 0.0,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });
@@ -16098,6 +16131,89 @@ mod tests {
         assert_eq!(session.ships[0].source_waypoint, None);
     }
 
+    // Source: FUN_0040bcd0 counts the system's usable family 0x25 facilities
+    // (FUN_0051c270) and FUN_005af4e0 stores the answer at +0x70;
+    // FUN_005ba450 then refuses the fighters' attack (manual p. 124).
+    #[test]
+    fn a_death_star_shield_on_the_battle_system_bars_the_fighters_attack() {
+        use rebellion_core::world::{DefenseFacilityInstance, Fleet, System};
+        let mut world = GameWorld::default();
+        let system = world.systems.insert(System {
+            dat_id: DatId::new(0x9000_0001),
+            name: "Endor".into(),
+            sector: Default::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            fighters: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Controlled(
+                rebellion_core::dat::Faction::Empire,
+            ),
+        });
+        let mut fleet = |is_alliance: bool, has_death_star: bool| {
+            world.fleets.insert(Fleet {
+                location: system,
+                capital_ships: vec![],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star,
+            })
+        };
+        let rebels = fleet(true, false);
+        let empire = fleet(false, true);
+        let battery = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2300_0002),
+            side: rebellion_core::dat::Faction::Empire,
+        });
+        world.systems[system].defense_facilities.push(battery);
+
+        let open = BattleSession::new(&world, system, rebels, empire, true, 1, 1);
+        let death_star = open.death_star.expect("the Empire's Death Star");
+        assert!(!death_star.shielded);
+        assert!(death_star.attackable());
+
+        // DEFFACSD 4, the Death Star shield (TEXTSTRA 8832).
+        let shield = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2500_0004),
+            side: rebellion_core::dat::Faction::Empire,
+        });
+        world.systems[system].defense_facilities.push(shield);
+
+        let mut shielded = BattleSession::new(&world, system, rebels, empire, true, 1, 1);
+        let death_star = shielded.death_star.expect("the Empire's Death Star");
+        assert!(death_star.shielded);
+        assert!(death_star.operational());
+        assert!(!death_star.attackable());
+
+        // The mission control (FUN_005ad930) needs a selected fighter group
+        // and an enemy Death Star the fighters may attack.
+        let mut open = open;
+        assert!(!attack_death_star_enabled(&open));
+        open.selected_fighter_group = Some(0);
+        assert!(attack_death_star_enabled(&open));
+        shielded.selected_fighter_group = Some(0);
+        assert!(!attack_death_star_enabled(&shielded));
+        let mut own = BattleSession::new(&world, system, rebels, empire, false, 1, 1);
+        own.selected_fighter_group = Some(0);
+        own.death_star.as_mut().unwrap().shielded = false;
+        assert!(!attack_death_star_enabled(&own));
+    }
+
     // Source: FUN_005ba7f0 Death Star laser charge rate to 100.
     #[test]
     fn death_star_operational_predicate_resources_and_laser_charge_match_source_fields() {
@@ -16108,6 +16224,7 @@ mod tests {
             source_position: TacticalWorldPosition::ORIGIN,
             hull: 100.0,
             laser_charge: 0.0,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         };
@@ -16141,6 +16258,7 @@ mod tests {
             source_position: TacticalWorldPosition::ORIGIN,
             hull: 100.0,
             laser_charge: 99.95,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });
@@ -16166,6 +16284,7 @@ mod tests {
             source_position: TacticalWorldPosition::ORIGIN,
             hull: 100.0,
             laser_charge: 99.95,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });
@@ -16256,6 +16375,7 @@ mod tests {
             source_position: TacticalWorldPosition::ORIGIN,
             hull: 100.0,
             laser_charge: 99.0,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });
@@ -16285,6 +16405,7 @@ mod tests {
             },
             hull: 100.0,
             laser_charge: 100.0,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });
@@ -16329,6 +16450,7 @@ mod tests {
             },
             hull: 100.0,
             laser_charge: 0.0,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });
@@ -16397,6 +16519,7 @@ mod tests {
             source_position: TacticalWorldPosition::ORIGIN,
             hull: 100.0,
             laser_charge: 0.0,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });
@@ -16446,6 +16569,7 @@ mod tests {
             },
             hull: 100.0,
             laser_charge: 0.0,
+            shielded: false,
             destroyed: false,
             action_committed: false,
         });

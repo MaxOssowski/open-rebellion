@@ -799,7 +799,7 @@ cross-runtime proof remain open
 ### F-017: The Death Star can never fire
 
 - Severity: P1
-- Status: partially remediated; the battle shield's role and a browser pass of Destroy System remain
+- Status: partially remediated; a browser pass of Destroy System remains
 - Evidence: `DeathStarSystem::fire` (`crates/rebellion-core/src/death_star.rs`)
   refuses while `shield_generator_active` is true, and the only other writer
   (`crates/rebellion-app/src/tactical_flow.rs`) sets it to true;
@@ -879,6 +879,16 @@ cross-runtime proof remain open
   (D) lists the side's Death Star fleets read-only. Golden regenerated for
   save v95 (initial `v1:803494e978e8f71f`, final `v1:5eb68d3167d6a252`)
   (`evidence/2026-10-20-death-star-superlaser/`).
+- Shield (2026-10-20, save v96): the Death Star shield is DEFFACSD 4
+  (family `0x25`). `FUN_0040bcd0` counts the battle system's shields into
+  the tactical Death Star's `+0x70` (`FUN_00595ef0` -> `FUN_005af4e0`), and
+  `FUN_005ba450` bars the fighters' Attack Death Star while it is set
+  (manual p. 124); now `TacticalDeathStar::shielded` / `attackable`. No
+  strategic battle code reads a shield, so the auto-resolved battle's
+  hull-damage immunity (`shield_generator_active`, keyed on family
+  `0x34`, F-025) is removed with the whole strategic `DeathStarState`.
+  Golden regenerated for save v96 (initial `v1:82332ef108ec7e21`, final
+  `v1:49a3738dca7ca496`) (`evidence/2026-10-20-death-star-shield/`).
 
 ### F-018: Research never limits which ships can be built
 

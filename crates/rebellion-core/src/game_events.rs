@@ -108,7 +108,6 @@ pub const EVT_GARRISON_REQUIRED: &str = "garrison_required";
 pub const EVT_SHIP_REPAIRED: &str = "ship_repaired";
 pub const EVT_SHIP_REPAIR_STARTED: &str = "ship_repair_started";
 pub const EVT_DECOY_TRIGGERED: &str = "decoy_triggered";
-pub const EVT_DS_SHIELD_STATUS: &str = "death_star_shield_status";
 pub const EVT_CHARACTER_COMBAT_RATING: &str = "character_combat_rating";
 pub const EVT_STORY_JABBA: &str = "story_jabba";
 pub const EVT_STORY_SEAT_OF_POWER: &str = "story_seat_of_power";
@@ -232,7 +231,6 @@ mod tests {
             EVT_SHIP_REPAIRED,
             EVT_SHIP_REPAIR_STARTED,
             EVT_DECOY_TRIGGERED,
-            EVT_DS_SHIELD_STATUS,
             EVT_CHARACTER_COMBAT_RATING,
             EVT_STORY_JABBA,
             EVT_STORY_SEAT_OF_POWER,

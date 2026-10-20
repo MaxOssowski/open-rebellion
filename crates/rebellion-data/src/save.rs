@@ -49,7 +49,6 @@ use serde::{Deserialize, Serialize};
 
 use rebellion_core::ai::AIState;
 use rebellion_core::blockade::BlockadeState;
-use rebellion_core::death_star::DeathStarState;
 use rebellion_core::economy::EconomyState;
 use rebellion_core::events::EventState;
 use rebellion_core::fog::FogState;
@@ -77,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 95;
+pub const SAVE_VERSION: u32 = 96;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -219,7 +218,6 @@ pub struct SaveState {
     // ── v0.4.1: new simulation states ────────────────────────────────────
     pub blockade: BlockadeState,
     pub uprising: UprisingState,
-    pub death_star: DeathStarState,
     pub research: ResearchState,
     pub victory: VictoryState,
     // ── v8: economy state (closes incident re-fire on reload bug) ────────
@@ -968,7 +966,6 @@ mod tests {
             player_is_alliance: false,
             blockade: BlockadeState::new(),
             uprising: UprisingState::new(),
-            death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: rebellion_core::victory::VictoryState::new(sys_a, sys_b),
             economy: EconomyState::default(),

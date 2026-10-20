@@ -5262,7 +5262,6 @@ pub fn resolve_system_space_combat(
     difficulty: u8,
     rng_rolls: &[f64],
     tick: u64,
-    death_star_shield_active: bool,
 ) -> SystemSpaceCombatResult {
     let (initial_alliance, initial_empire) = orbiting_fleets_by_faction(world, system);
     let alliance_before = summarize_space_force(world, &initial_alliance);
@@ -5284,7 +5283,6 @@ pub fn resolve_system_space_combat(
             difficulty,
             rng_rolls,
             tick,
-            death_star_shield_active,
         );
         let made_progress = round
             .ship_damage
@@ -5686,7 +5684,7 @@ mod combat_application_tests {
         let attacker = add_ship_fleet(&mut world, system, true, 100, 30);
         let defender = add_ship_fleet(&mut world, system, false, 100, 1);
 
-        let result = resolve_system_space_combat(&mut world, system, 1, &[0.5; 256], 10, false);
+        let result = resolve_system_space_combat(&mut world, system, 1, &[0.5; 256], 10);
 
         assert_eq!(result.winner, CombatSide::Attacker);
         assert_eq!(result.winner_fleet, Some(attacker));
@@ -5704,7 +5702,7 @@ mod combat_application_tests {
         let first_empire = add_ship_fleet(&mut world, system, false, 30, 1);
         let second_empire = add_ship_fleet(&mut world, system, false, 30, 1);
 
-        let result = resolve_system_space_combat(&mut world, system, 1, &[0.5; 256], 11, false);
+        let result = resolve_system_space_combat(&mut world, system, 1, &[0.5; 256], 11);
 
         assert_eq!(result.alliance_fleets, 2);
         assert_eq!(result.empire_fleets, 2);
@@ -5730,7 +5728,7 @@ mod combat_application_tests {
         add_ship_fleet(&mut world, system, true, 100, 0);
         add_ship_fleet(&mut world, system, false, 100, 0);
 
-        let result = resolve_system_space_combat(&mut world, system, 1, &[0.5; 256], 12, false);
+        let result = resolve_system_space_combat(&mut world, system, 1, &[0.5; 256], 12);
 
         assert_eq!(result.winner, CombatSide::Draw);
         assert_eq!(result.rounds, 1);

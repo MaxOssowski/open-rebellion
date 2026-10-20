@@ -112,3 +112,37 @@ comparison remain open. The current beam shape is bounded A1 implementation
 evidence. A custom target cursor is not an open requirement:
 `FUN_005d6700` calls `LoadCursorA` with `IDC_ARROW` for the native tactical 3D
 window.
+
+## The Death Star shield (read 2026-10-20)
+
+- The Death Star shield is DEFFACSD record 4, family `0x25` (TEXTSTRA
+  8832, Empire only; `FUN_0051c0c0` returns `0x25`). The manual (p. 124
+  and the facility list) calls it the only protection of a Death Star
+  from the Alliance's ships and fighters, "a foolproof defense against a
+  Death Star being attacked by fighters".
+- `FUN_0040bcd0`, at the tactical setup beside `FUN_0040a700`, counts the
+  battle system's usable family `0x25` facilities (`FUN_0051c270(system,
+  1)`, no side filter) and calls `FUN_00595ef0(..., not completed,
+  shielded, strength)`. `FUN_00595ef0` swaps the two flags into
+  `FUN_005af4e0`, which stores `+0x70` = shielded and `+0x74` = the Death
+  Star object's completed bit (`+0x50` bit 2) clear. So `+0x74`, which
+  selects resource 5020, is "not completed" at creation; this note's table
+  called it a destroyed flag (the port also sets it when the trench run
+  destroys the Death Star).
+- `FUN_005ba450` is `FUN_005ba420` (operational) plus `+0x70 == 0`. The
+  Attack Death Star checks call it: `FUN_005ad930` (the mission control),
+  `FUN_005afcc0` and `FUN_005d14d0` (the tactical AI). They also require
+  more launched fighters on one side than the other (`+0x168` counts,
+  manual: "more Alliance than Imperial fighters currently launched");
+  not ported.
+- Outside the tactical code the family `0x25` checks (`FUN_0051c0d0`,
+  `FUN_0051c270`) are called only by the interface (system and sector
+  displays, `FUN_00446250`, `FUN_004a7f50`, `FUN_004a9ce0`) and the AI
+  (`0x4ae732`..`0x4ec4cd`). No strategic battle code reads a shield.
+- Ported 2026-10-20: `TacticalDeathStar::shielded` (`+0x70`) and
+  `attackable()` (`FUN_005ba450`) gate the fighters' Attack Death Star.
+  The port's strategic `DeathStarState::shield_generator_active`, which
+  made a Death Star of family `0x34` immune to hull damage in an
+  auto-resolved battle and had no source, is removed with the whole
+  strategic Death Star state (save v96).
+

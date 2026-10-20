@@ -1,0 +1,2 @@
+thread 'tactical_view::tests::a_death_star_shield_on_the_battle_system_bars_the_fighters_attack' (2314085) panicked at crates/rebellion-render/src/tactical_view.rs:16192:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 791 filtered out; finished in 0.00s

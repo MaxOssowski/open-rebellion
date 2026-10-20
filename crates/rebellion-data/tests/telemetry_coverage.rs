@@ -122,7 +122,6 @@ fn telemetry_coverage_all_sys_constants_emit() {
         fog: FogState::new(Faction::Alliance),
         blockade: rebellion_core::blockade::BlockadeState::new(),
         uprising: rebellion_core::uprising::UprisingState::new(),
-        death_star: rebellion_core::death_star::DeathStarState::default(),
         research: rebellion_core::research::ResearchState::new(),
         victory: rebellion_core::victory::VictoryState::new(victory_a, victory_e),
         economy: rebellion_core::economy::EconomyState::default(),

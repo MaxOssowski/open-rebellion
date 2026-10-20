@@ -1,4 +1,4 @@
-//! The Death Star's strategic state and a destroyed system's cleanup.
+//! The Death Star's planet destruction and a destroyed system's cleanup.
 //!
 //! The Death Star is an ordinary capital ship (CAPSHPSD record 136, TEXTSTRA
 //! 10120, research order 0), built by a shipyard like any other; a completed
@@ -10,7 +10,10 @@
 //! [`cleanup_destroyed_system`] carries out. Its superlaser in a tactical
 //! battle is the tactical session's (`tactical-death-star-path.md`). The
 //! system flag DeathStarNearby is [`crate::economy::death_star_nearby`]
-//! (`FUN_005178b0`).
+//! (`FUN_005178b0`). A Death Star shield (DEFFACSD 4, family `0x25`) acts
+//! only in a tactical battle, where it bars the fighters' Attack Death Star
+//! (`FUN_0040bcd0`, `FUN_005ba450`); the strategic simulation keeps no
+//! Death Star state.
 //!
 //! # Source
 //! - `ghidra/notes/bombardment-order.md`
@@ -35,43 +38,6 @@ pub enum DeathStarEvent {
     /// Caller must set `world.systems[system].is_destroyed = true` and update
     /// `VictoryState::death_star_location = Some(system)`.
     PlanetDestroyed { system: SystemKey, tick: u64 },
-}
-
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
-
-/// Persistent Death Star simulation state.
-///
-/// Held in `main.rs` alongside other simulation states.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeathStarState {
-    /// Whether the Death Star's shield generator (entity family 0x25) is active.
-    /// While active, the Death Star takes no hull damage in battle.
-    /// From community disassembly: shield entity managed at FUN_0051c0d0
-    /// through FUN_0051c270 (family 0x25..0x26 iterators).
-    #[serde(default = "default_shield_active")]
-    pub shield_generator_active: bool,
-}
-
-fn default_shield_active() -> bool {
-    true
-}
-
-impl Default for DeathStarState {
-    fn default() -> Self {
-        DeathStarState {
-            shield_generator_active: true,
-        }
-    }
-}
-
-impl DeathStarState {
-    /// Destroy the Death Star's shield generator.
-    /// After this, the Death Star takes hull damage in battle.
-    pub fn destroy_shield(&mut self) {
-        self.shield_generator_active = false;
-    }
 }
 
 // ---------------------------------------------------------------------------

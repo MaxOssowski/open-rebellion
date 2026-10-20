@@ -40,7 +40,6 @@ use rebellion_core::bombardment::BombardEnv;
 use rebellion_core::combat::{CombatSide, CombatSystem};
 use rebellion_core::agent_automation::{AutomationModule, PlayerAgent};
 use rebellion_core::dat::Faction;
-use rebellion_core::death_star::DeathStarState;
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyEvent, EconomyState, EconomySystem};
 use rebellion_core::events::{EventState, EventSystem};
@@ -411,7 +410,6 @@ struct LiveCampaign<'a> {
     player_faction: &'a mut MissionFaction,
     blockade: &'a mut BlockadeState,
     uprising: &'a mut UprisingState,
-    death_star: &'a mut DeathStarState,
     research: &'a mut ResearchState,
     victory: &'a mut VictoryState,
     economy: &'a mut EconomyState,
@@ -450,7 +448,6 @@ impl LiveCampaign<'_> {
             player_is_alliance: *self.player_faction == MissionFaction::Alliance,
             blockade: self.blockade.clone(),
             uprising: self.uprising.clone(),
-            death_star: self.death_star.clone(),
             research: self.research.clone(),
             victory: self.victory.clone(),
             economy: self.economy.clone(),
@@ -492,7 +489,6 @@ impl LiveCampaign<'_> {
         };
         *self.blockade = state.blockade;
         *self.uprising = state.uprising;
-        *self.death_star = state.death_star;
         *self.research = state.research;
         *self.victory = state.victory;
         *self.economy = state.economy;
@@ -1079,7 +1075,6 @@ async fn main() {
         std::collections::HashMap::new();
     let mut blockade_state = BlockadeState::new();
     let mut uprising_state = UprisingState::new();
-    let mut death_star_state = DeathStarState::default();
     let mut research_state = ResearchState::new();
     let mut repair_state = RepairState::default();
     let mut production_state = ProductionState::new();
@@ -2079,7 +2074,6 @@ async fn main() {
                     world.difficulty_index,
                     &combat_rolls,
                     current_tick,
-                    death_star_state.shield_generator_active,
                 );
 
                 // Apply ship damage: reduce counts proportional to destroyed hulls.
@@ -3639,7 +3633,6 @@ async fn main() {
                                     combat_cooldowns.clear();
                                     blockade_state = BlockadeState::new();
                                     uprising_state = UprisingState::new();
-                                    death_star_state = DeathStarState::default();
                                     research_state = ResearchState::new();
                                     repair_state = RepairState::default();
                                     production_state = ProductionState::new();
@@ -5858,7 +5851,6 @@ async fn main() {
                                 world.difficulty_index,
                                 &combat_rolls,
                                 session.start_tick,
-                                death_star_state.shield_generator_active,
                             );
                             apply_space_combat_result(&space_result, &mut world);
                             rebellion_core::loyalty::settle_battle(
@@ -6204,7 +6196,6 @@ async fn main() {
                         player_faction: &mut player_faction,
                         blockade: &mut blockade_state,
                         uprising: &mut uprising_state,
-                        death_star: &mut death_star_state,
                         research: &mut research_state,
                         victory: &mut victory_state,
                         economy: &mut economy_state,
@@ -6281,7 +6272,6 @@ async fn main() {
                                 player_faction: &mut player_faction,
                                 blockade: &mut blockade_state,
                                 uprising: &mut uprising_state,
-                                death_star: &mut death_star_state,
                                 research: &mut research_state,
                                 victory: &mut victory_state,
                                 economy: &mut economy_state,
@@ -9261,6 +9251,7 @@ mod tactical_ground_tests {
                 },
                 hull: 0.0,
                 laser_charge: 0.0,
+                shielded: false,
                 destroyed: true,
                 action_committed: false,
             }),

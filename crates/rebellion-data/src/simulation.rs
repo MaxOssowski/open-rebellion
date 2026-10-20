@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use crate::integrator::{resolve_system_space_combat, PerceptionIntegrator};
 use rebellion_core::ai::{AIState, AISystem};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
-use rebellion_core::death_star::DeathStarState;
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyState, EconomySystem};
 use rebellion_core::events::{EventState, EventSystem};
@@ -55,7 +54,6 @@ pub struct SimulationStates {
     pub fog: FogState,
     pub blockade: BlockadeState,
     pub uprising: UprisingState,
-    pub death_star: DeathStarState,
     pub research: ResearchState,
     pub victory: VictoryState,
     pub economy: EconomyState,
@@ -262,7 +260,6 @@ pub fn run_simulation_tick(
             world.difficulty_index,
             &combat_rolls,
             current_tick,
-            states.death_star.shield_generator_active,
         );
         squadrons::recover(world, &sorties);
         // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift for the
@@ -956,7 +953,6 @@ mod tests {
             fog: FogState::new(Faction::Alliance),
             blockade: BlockadeState::new(),
             uprising: UprisingState::new(),
-            death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(s1, s2),
             economy: EconomyState::default(),
@@ -1437,7 +1433,6 @@ mod tests {
                 fog: FogState::new(Faction::Alliance),
                 blockade: BlockadeState::new(),
                 uprising: UprisingState::new(),
-                death_star: DeathStarState::default(),
                 research: ResearchState::new(),
                 victory: VictoryState::new(target, other),
                 economy: EconomyState::default(),
@@ -1572,7 +1567,6 @@ mod tests {
             fog: FogState::new(Faction::Alliance),
             blockade: BlockadeState::new(),
             uprising: UprisingState::new(),
-            death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(other, target),
             economy: EconomyState::default(),
@@ -1760,7 +1754,6 @@ mod tests {
             fog: FogState::new(Faction::Alliance),
             blockade: BlockadeState::new(),
             uprising: UprisingState::new(),
-            death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(alliance_hq, coruscant),
             economy: EconomyState::default(),
@@ -1909,7 +1902,6 @@ mod tests {
             fog: FogState::new(Faction::Alliance),
             blockade: BlockadeState::new(),
             uprising: UprisingState::new(),
-            death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(alliance_hq, coruscant),
             economy: EconomyState::default(),
@@ -2073,7 +2065,6 @@ mod tests {
             fog: FogState::new(Faction::Alliance),
             blockade: BlockadeState::new(),
             uprising: UprisingState::new(),
-            death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(origin, target),
             economy: EconomyState::default(),

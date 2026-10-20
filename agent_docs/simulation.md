@@ -149,7 +149,6 @@ All simulation states are created in `main.rs` and included in `SaveState` (`reb
 | `FogState` | `FogSystem::advance` |
 | `BlockadeState` | `BlockadeSystem::advance` |
 | `UprisingState` | `UprisingSystem::advance`, `end_if_garrisoned()` |
-| `DeathStarState` | battle shield flag only; planets fall to Destroy System (`bombardment.rs`) |
 | `ResearchState` | `ResearchState::add_points` from a research mission's `ResearchPoints` effect |
 | `VictoryState` | Caller sets `resolved = true` after outcome |
 | `GameWorld` | Effect application only (never inside advance()) |

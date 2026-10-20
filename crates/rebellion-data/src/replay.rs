@@ -740,7 +740,6 @@ impl ReplayRuntime {
             player_is_alliance,
             blockade,
             uprising,
-            death_star,
             research,
             victory,
             economy,
@@ -781,7 +780,6 @@ impl ReplayRuntime {
                 fog,
                 blockade,
                 uprising,
-                death_star,
                 research,
                 victory,
                 economy,
@@ -894,7 +892,6 @@ impl ReplayRuntime {
             player_is_alliance: self.player_is_alliance,
             blockade: self.states.blockade.clone(),
             uprising: self.states.uprising.clone(),
-            death_star: self.states.death_star.clone(),
             research: self.states.research.clone(),
             victory: self.states.victory.clone(),
             economy: self.states.economy.clone(),
@@ -1130,7 +1127,6 @@ mod tests {
     use rand_xoshiro::Xoshiro256PlusPlus;
     use rebellion_core::blockade::BlockadeState;
     use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
-    use rebellion_core::death_star::DeathStarState;
     use rebellion_core::economy::EconomyState;
     use rebellion_core::events::EventState;
     use rebellion_core::manufacturing::ManufacturingState;
@@ -1231,7 +1227,6 @@ mod tests {
             player_is_alliance: true,
             blockade: BlockadeState::new(),
             uprising: UprisingState::new(),
-            death_star: DeathStarState::default(),
             research: ResearchState::new(),
             victory: VictoryState::new(alliance_hq, empire_hq),
             economy: EconomyState::default(),
