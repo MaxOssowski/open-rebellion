@@ -3180,6 +3180,16 @@ cross-runtime proof remain open
   identical). Nothing creates an Adrift order yet; the battle's adrift path,
   which replaces the integrator's unsourced capture of a losing fleet's
   characters, is the next stage (`evidence/2026-10-20-adrift-detection/`).
+- 2026-10-20: a destroyed fleet's characters go adrift, not captive (save
+  v93). The integrator's unsourced capture of a losing emptied fleet's
+  characters is removed; as `FUN_00556710` -> `FUN_004ef2e0` does, they go
+  adrift where the fleet stood, and `MissionSystem::send_adrift`
+  (`FUN_0054c7d0`, `FUN_00549230`) settles one at a standing system of its
+  side and sends the others on an Adrift order `0x44000004` to the nearest
+  place of their side, where the order's detection may capture them. Golden
+  regenerated: initial `v1:57cfc0d727199c15`, final `v1:4dee6ff02fdbe5bc`;
+  campaigns unchanged, as the AI puts no characters aboard fleets yet
+  (`evidence/2026-10-20-adrift-path/`).
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.

@@ -1405,6 +1405,11 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
             MissionEffect::MemberMoved { member, to } => move_member(world, *member, *to),
             MissionEffect::MemberAvailable { member } => set_on_mission(world, *member, false),
             MissionEffect::MemberBoarded { member, fleet } => board_fleet(world, *member, *fleet),
+            MissionEffect::AdriftSettled { character } => {
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.adrift = false;
+                }
+            }
             MissionEffect::MemberOnMission { member, hidden } => {
                 set_on_mission(world, *member, true);
                 if let Some(c) = member
@@ -2125,6 +2130,9 @@ pub enum MissionEffect {
     /// (`FUN_00522b30`: `RoleOnMissionNotif`, and `OnHiddenMission` from
     /// the record's `+0x5c`, `FUN_00520b70`).
     MemberOnMission { member: MissionMember, hidden: bool },
+    /// An adrift character stays where it is: `FUN_0054c7d0` clears its
+    /// Adrift (`FUN_00534790(0)`) and Autorouting together.
+    AdriftSettled { character: CharacterKey },
     /// A member landed aboard the fleet its Move targets (the container
     /// `+0x74`, `FUN_004f7640`).
     MemberBoarded {
@@ -2887,8 +2895,8 @@ impl MissionSystem {
                 out.effects.extend(landing(world, mission, transit.member, transit.to, transit.abode));
             }
 
+            let mut orders = Self::send_adrift(world, state, &mut out, now);
             let missions = std::mem::take(&mut state.missions);
-            let mut orders = Vec::new();
             let ctx = StepContext {
                 world,
                 uprisings,
@@ -2949,6 +2957,83 @@ impl MissionSystem {
             }
         }
         out
+    }
+
+    /// Adrift characters (`+0x78` bit 6) settle or set out
+    /// (`FUN_0054c7d0`, `FUN_00549230`): one free of any mission whose
+    /// system stands and is its side's stays, and its Adrift clears; the
+    /// others of one side at one system take the destination the autoroute
+    /// search gives (`FUN_00543040`) and leave together on an Adrift order
+    /// (`0x44000004`, `FUN_00547880`), whose detection gives the enemy its
+    /// chance at them. Returns the orders, which step at once.
+    ///
+    /// port: a character with nowhere to go stays adrift; the original
+    /// sends it to its side's jail (`FUN_00549580`). The order's members
+    /// keep Adrift until they settle where it lands.
+    fn send_adrift(
+        world: &GameWorld,
+        state: &mut MissionState,
+        out: &mut MissionAdvance,
+        now: u64,
+    ) -> Vec<ActiveMission> {
+        use crate::dat::Faction;
+        let hidden = MissionKind::Adrift
+            .record_id()
+            .and_then(|id| world.mission_record(id))
+            .is_some_and(|record| record.hidden);
+        let mut groups: Vec<((bool, SystemKey, SystemKey), Vec<MissionMember>)> = Vec::new();
+        for (key, c) in &world.characters {
+            if !c.adrift || c.on_mission || c.is_killed || c.is_captive || c.current_fleet.is_some() {
+                continue;
+            }
+            let Some(here) = c.current_system else {
+                continue;
+            };
+            let side = if c.is_alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            };
+            let Some(sys) = world.systems.get(here) else {
+                continue;
+            };
+            if !sys.is_destroyed && sys.control.faction() == Some(side) {
+                out.effects
+                    .push(MissionEffect::AdriftSettled { character: key });
+                continue;
+            }
+            let Some(to) = nearest_place(
+                world,
+                side,
+                (i64::from(sys.x), i64::from(sys.y)),
+                Some(here),
+            ) else {
+                continue;
+            };
+            let member = MissionMember::Character(key);
+            let group_key = (c.is_alliance, here, to);
+            match groups.iter_mut().find(|(k, _)| *k == group_key) {
+                Some((_, team)) => team.push(member),
+                None => groups.push((group_key, vec![member])),
+            }
+        }
+        groups
+            .into_iter()
+            .map(|((is_alliance, _, to), team)| {
+                out.effects.extend(
+                    team.iter()
+                        .map(|&member| MissionEffect::MemberOnMission { member, hidden }),
+                );
+                let id = state.next_id;
+                state.next_id += 1;
+                let faction = if is_alliance {
+                    MissionFaction::Alliance
+                } else {
+                    MissionFaction::Empire
+                };
+                ActiveMission::new(id, MissionKind::Adrift, faction, team, to, now)
+            })
+            .collect()
     }
 
     /// An ended mission's members leave (`FUN_00548120`, `FUN_00548910`):
@@ -7563,6 +7648,71 @@ mod tests {
         assert!(move_place_allowed(&world, MissionFaction::Alliance, to, Some(fleet)));
         assert!(!move_place_allowed(&world, MissionFaction::Empire, to, Some(fleet)));
         assert!(!move_place_allowed(&world, MissionFaction::Alliance, to, None));
+    }
+
+    #[test]
+    fn adrift_characters_settle_at_their_sides_system_and_leave_others_together() {
+        // FUN_0054c7d0: an adrift character that stays (its side's
+        // standing system) has Adrift cleared; the others of one side at
+        // one place leave together for FUN_00543040's destination on an
+        // Adrift order 0x44000004 (FUN_00549230 -> FUN_00547880), hidden as
+        // its record says. A prisoner or a member of a mission is left out.
+        use crate::world::ControlKind;
+        let mut world = minimal_world();
+        world.mission_records = vec![crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x4400_0004),
+            ..move_record()
+        }];
+        let home = system_at(&mut world, 0);
+        let enemy = system_at(&mut world, 100);
+        world.systems[home].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.systems[enemy].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let adrift = |world: &mut GameWorld, at| {
+            let key = agent_at(world, at, true);
+            world.characters[key].adrift = true;
+            key
+        };
+        let settled = adrift(&mut world, home);
+        let first = adrift(&mut world, enemy);
+        let second = adrift(&mut world, enemy);
+        let held = adrift(&mut world, enemy);
+        world.characters[held].is_captive = true;
+        let busy = adrift(&mut world, enemy);
+        world.characters[busy].on_mission = true;
+        let mut state = MissionState::new();
+
+        let advance = step(&mut state, &world, 1, &[]);
+
+        assert!(advance.effects.contains(&MissionEffect::AdriftSettled { character: settled }));
+        let [first, second] = [first, second].map(MissionMember::Character);
+        for member in [first, second] {
+            assert!(advance
+                .effects
+                .contains(&MissionEffect::MemberOnMission { member, hidden: true }));
+        }
+        let orders: Vec<_> = state
+            .missions()
+            .iter()
+            .map(|m| (m.kind, m.team.clone(), m.target_system, m.phase))
+            .collect();
+        assert_eq!(
+            orders,
+            [(MissionKind::Adrift, vec![first, second], home, PHASE_TRANSIT)]
+        );
+        apply_advance_effects(&mut world, &advance.effects);
+        assert!(!world.characters[settled].adrift);
+        assert!(world.characters[held].adrift && world.characters[busy].adrift);
+        // The order took an id of its own.
+        let order_id = state.missions()[0].id;
+        let next = state.dispatch(MissionRequest::single(
+            MissionKind::Move,
+            MissionFaction::Alliance,
+            settled,
+            home,
+            None,
+            2,
+        ));
+        assert_ne!(next, order_id);
     }
 
     #[test]

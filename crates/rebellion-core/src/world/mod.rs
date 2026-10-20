@@ -718,6 +718,11 @@ pub struct Character {
     /// `FUN_0054b040`) until a new capture sets it again (`FUN_004f1a80`;
     /// save v76).
     pub escape_barred: bool,
+    /// Adrift (`+0x78` bit 6, `Role_SetAdrift` `FUN_00534790`): the
+    /// character's container was destroyed under it (`FUN_004ef2e0`), and it
+    /// waits for an Adrift order or to settle (`FUN_0054c7d0`; save v93).
+    #[serde(default)]
+    pub adrift: bool,
     /// Han's `CapturedByBountyHunters` (`+0xb0` bit 2, `FUN_00572700`),
     /// set when the Bounty mission captures him (`FUN_00575de0`; save v77).
     pub bounty_captured: bool,
@@ -939,6 +944,7 @@ impl Default for Character {
             encounter: None,
             encounter_day: 0,
             escape_barred: false,
+            adrift: false,
             bounty_captured: false,
             command: crate::character_command::CommandKind::None,
             command_names: Default::default(),

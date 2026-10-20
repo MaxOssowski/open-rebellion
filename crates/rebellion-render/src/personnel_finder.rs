@@ -1069,6 +1069,7 @@ mod tests {
             encounter: None,
             encounter_day: 0,
             escape_barred: false,
+            adrift: false,
             bounty_captured: false,
             command: rebellion_core::character_command::CommandKind::None,
             command_names: Default::default(),

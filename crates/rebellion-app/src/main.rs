@@ -8450,6 +8450,7 @@ fn apply_mission_result(
             | MissionEffect::EscapeBarred { .. }
             | MissionEffect::MemberOnMission { .. }
             | MissionEffect::MemberBoarded { .. }
+            | MissionEffect::AdriftSettled { .. }
             | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             }

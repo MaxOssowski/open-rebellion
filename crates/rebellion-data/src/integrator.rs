@@ -31,7 +31,7 @@ use rebellion_core::game_events::{
     EVT_GARRISON_REQUIRED, EVT_HERITAGE_LEARNED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL,
     EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
-    EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RETURN_ORDERED, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
+    EVT_ADRIFT_ORDERED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RETURN_ORDERED, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED,
     EVT_SUPPORT_CHANGE, EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
@@ -660,20 +660,21 @@ impl PerceptionIntegrator {
         }
     }
 
-    /// Record the Return orders the day's mission step gave
-    /// (`FUN_00548910`): a `return_ordered` event for each, with its team
-    /// and destination.
+    /// Record the Return and Adrift orders the day's mission step gave
+    /// (`FUN_00548910`, `FUN_00549230`): a `return_ordered` or
+    /// `adrift_ordered` event for each, with its team and destination.
     pub fn record_return_orders(&mut self, world: &GameWorld, missions: &MissionState, tick: u64) {
-        for order in missions
-            .missions()
-            .iter()
-            .filter(|m| m.kind == MissionKind::Return && m.ordered_tick == tick)
-        {
+        for order in missions.missions().iter().filter(|m| m.ordered_tick == tick) {
+            let event = match order.kind {
+                MissionKind::Return => EVT_RETURN_ORDERED,
+                MissionKind::Adrift => EVT_ADRIFT_ORDERED,
+                _ => continue,
+            };
             self.events.push(GameEventRecord::new(
                 tick,
                 self.wall_ms,
                 SYS_MISSIONS,
-                EVT_RETURN_ORDERED,
+                event,
                 serde_json::json!({
                     "faction": format!("{:?}", order.faction),
                     "team": member_names(world, &order.team),
@@ -2098,6 +2099,7 @@ fn apply_mission_effects_inner(
             | MissionEffect::EscapeBarred { .. }
             | MissionEffect::MemberOnMission { .. }
             | MissionEffect::MemberBoarded { .. }
+            | MissionEffect::AdriftSettled { .. }
             | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(
                     world,
@@ -2873,17 +2875,27 @@ mod tests {
             None,
             7,
         ));
+        missions.dispatch(MissionRequest::single(
+            MissionKind::Adrift,
+            MissionFaction::Alliance,
+            envoy,
+            elsewhere,
+            None,
+            7,
+        ));
         let mut integrator = PerceptionIntegrator::new(1, 0);
 
         integrator.record_return_orders(&world, &missions, 7);
 
-        assert_eq!(integrator.events.len(), 1);
+        assert_eq!(integrator.events.len(), 2);
         let event = &integrator.events[0];
         assert_eq!(event.event_type, EVT_RETURN_ORDERED);
         assert_eq!(event.details["team"][0], "Envoy");
         assert_eq!(event.details["to"], "Home");
+        assert_eq!(integrator.events[1].event_type, EVT_ADRIFT_ORDERED);
+        assert_eq!(integrator.events[1].details["to"], "Elsewhere");
         integrator.record_return_orders(&world, &missions, 8);
-        assert_eq!(integrator.events.len(), 1);
+        assert_eq!(integrator.events.len(), 2);
     }
 
     #[test]
@@ -5385,29 +5397,21 @@ pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut G
             .get(fleet_key)
             .is_none_or(rebellion_core::world::Fleet::is_empty);
         if is_empty {
-            // Capture losing fleet's characters (parity: officers captured on fleet destruction).
-            let is_loser = match result.winner {
-                CombatSide::Attacker => fleet_key == result.defender_fleet,
-                CombatSide::Defender => fleet_key == result.attacker_fleet,
-                CombatSide::Draw => false,
-            };
-            if is_loser {
-                let capture_data = world.fleets.get(fleet_key).map(|f| {
-                    let captor = if f.is_alliance {
-                        rebellion_core::dat::Faction::Empire
-                    } else {
-                        rebellion_core::dat::Faction::Alliance
-                    };
-                    (f.characters.clone(), captor, f.location)
-                });
-                if let Some((chars, captor, loc)) = capture_data {
-                    for ck in chars {
-                        if let Some(c) = world.characters.get_mut(ck) {
-                            c.is_captive = true;
-                            c.captured_by = Some(captor);
-                            c.capture_tick = Some(result.tick);
-                            c.current_system = Some(loc);
-                            c.current_fleet = None;
+            // FUN_00556710 -> slot +0xb4 FUN_004ef2e0: a character whose
+            // container was destroyed (reason not 0x14) goes adrift where the
+            // fleet stood, unless it is on a mission; FUN_0054c7d0 then
+            // settles it or sends it on an Adrift order
+            // (MissionSystem::send_adrift).
+            if let Some((chars, loc)) = world
+                .fleets
+                .get(fleet_key)
+                .map(|f| (f.characters.clone(), f.location))
+            {
+                for ck in chars {
+                    if let Some(c) = world.characters.get_mut(ck) {
+                        c.move_to(None, Some(loc));
+                        if !c.is_killed && !c.on_mission {
+                            c.adrift = true;
                         }
                     }
                 }
@@ -5490,7 +5494,7 @@ mod combat_application_tests {
     }
 
     #[test]
-    fn fighter_losses_update_rosters_and_remove_defeated_fleet() {
+    fn fighter_losses_update_rosters_and_set_the_defeated_fleets_officers_adrift() {
         let mut world = GameWorld::default();
         let attacker = world.fleets.insert(Fleet {
             location: SystemKey::default(),
@@ -5548,13 +5552,97 @@ mod combat_application_tests {
 
         assert_eq!(world.fleets[attacker].fighters[0].count, 2);
         assert!(!world.fleets.contains_key(defender));
-        assert!(world.characters[captive].is_captive);
+        // FUN_00556710 -> FUN_004ef2e0: the officer of the destroyed fleet
+        // goes adrift where it stood, not captive (the capture this test
+        // once asserted had no source; mission-lifecycle.md, "Adrift").
+        let officer = &world.characters[captive];
+        assert!(officer.adrift && !officer.is_captive);
+        assert_eq!(officer.captured_by, None);
         assert_eq!(
-            world.characters[captive].captured_by,
-            Some(Faction::Alliance)
+            (officer.current_fleet, officer.current_system),
+            (None, Some(SystemKey::default()))
         );
-        assert_eq!(world.characters[captive].capture_tick, Some(1));
-        assert_eq!(world.characters[captive].current_fleet, None);
+    }
+
+    #[test]
+    fn a_destroyed_fleets_officer_leaves_the_battle_on_an_adrift_order() {
+        // FUN_00556710 -> FUN_004ef2e0 sets the officer adrift where its
+        // fleet was destroyed; the next mission step (FUN_0054c7d0 ->
+        // FUN_00549230) sends it on an Adrift order 0x44000004 to the
+        // nearest system of its side (FUN_00543040).
+        use rebellion_core::missions::{MissionKind, MissionState, MissionSystem};
+        let mut world = GameWorld::default();
+        let battle = add_combat_system(&mut world);
+        world.systems[battle].control = ControlKind::Controlled(Faction::Alliance);
+        let mut home = world.systems[battle].clone();
+        home.x = 100;
+        home.control = ControlKind::Controlled(Faction::Empire);
+        let home = world.systems.insert(home);
+        let winner = world.fleets.insert(Fleet {
+            location: battle,
+            capital_ships: vec![],
+            fighters: vec![FighterEntry {
+                class: FighterKey::default(),
+                count: 4,
+            }],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let beaten = world.fleets.insert(Fleet {
+            location: battle,
+            capital_ships: vec![],
+            fighters: vec![FighterEntry {
+                class: FighterKey::default(),
+                count: 3,
+            }],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        let officer = world.characters.insert(Character {
+            name: "Officer".into(),
+            is_empire: true,
+            current_fleet: Some(beaten),
+            current_system: Some(battle),
+            ..Character::default()
+        });
+        world.fleets[beaten].characters.push(officer);
+        let result = SpaceCombatResult {
+            attacker_fleet: winner,
+            defender_fleet: beaten,
+            system: battle,
+            winner: CombatSide::Attacker,
+            ship_damage: vec![],
+            fighter_losses: vec![FighterLossEvent {
+                fleet: beaten,
+                fighter_index: 0,
+                squads_before: 3,
+                squads_after: 0,
+            }],
+            tick: 4,
+        };
+        apply_space_combat_result_inner(&result, &mut world);
+        let mut missions = MissionState::new();
+
+        let advance = MissionSystem::advance(
+            &mut missions,
+            &world,
+            &UprisingState::default(),
+            &rebellion_core::research::ResearchState::default(),
+            &[rebellion_core::tick::TickEvent { tick: 4 }],
+            &[],
+        );
+        rebellion_core::missions::apply_advance_effects(&mut world, &advance.effects);
+
+        let orders: Vec<_> = missions
+            .missions()
+            .iter()
+            .map(|m| (m.kind, m.target_system))
+            .collect();
+        assert_eq!(orders, [(MissionKind::Adrift, home)]);
+        let c = &world.characters[officer];
+        assert!(c.on_mission && c.adrift && !c.is_captive);
     }
 
     #[test]

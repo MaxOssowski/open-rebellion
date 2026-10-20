@@ -75,6 +75,9 @@ pub const EVT_MISSION_RESOLVED: &str = "mission_resolved";
 /// Members of an ended mission were sent home on a Return order
 /// (`FUN_00548910` -> `FUN_005475f0`).
 pub const EVT_RETURN_ORDERED: &str = "return_ordered";
+/// Adrift characters left on an Adrift order (`FUN_00549230` ->
+/// `FUN_00547880`).
+pub const EVT_ADRIFT_ORDERED: &str = "adrift_ordered";
 pub const EVT_EVENT_FIRED: &str = "event_fired";
 pub const EVT_AI_ACTION: &str = "ai_action";
 pub const EVT_BLOCKADE_STARTED: &str = "blockade_started";
@@ -203,6 +206,7 @@ mod tests {
             EVT_MISSION_DISPATCHED,
             EVT_MISSION_RESOLVED,
             EVT_RETURN_ORDERED,
+            EVT_ADRIFT_ORDERED,
             EVT_EVENT_FIRED,
             EVT_AI_ACTION,
             EVT_BLOCKADE_STARTED,

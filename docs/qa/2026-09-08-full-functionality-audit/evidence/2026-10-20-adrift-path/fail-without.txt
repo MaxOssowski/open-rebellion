@@ -1,0 +1,2 @@
+thread 'missions::tests::adrift_characters_settle_at_their_sides_system_and_leave_others_together' (1845492) panicked at crates/rebellion-core/src/missions.rs:7689:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1426 filtered out; finished in 0.00s

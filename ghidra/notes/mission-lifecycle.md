@@ -745,6 +745,14 @@ member's side holds it (port: without the route checks).
   (`FUN_00556710` -> `FUN_004ef2e0`), and an adrift group then travels on
   an Adrift order, where the detection modes give the enemy its chance to
   capture them. Porting it replaces the invented capture.
+- Ported 2026-10-20 (save v93): the battle's removal of an emptied fleet
+  sets its characters adrift where it stood (`Character::adrift`), not
+  captive; `MissionSystem::send_adrift` settles one at a standing system
+  of its side (`MissionEffect::AdriftSettled`) and sends the others of a
+  side at one system on an Adrift order to the nearest place of their
+  side, with Adrift's two-pass detection. port: only a battle sets Adrift
+  (no other destroyed container yet); a character with nowhere to go
+  stays adrift instead of going to its jail.
 - The abodes: the Hermitage `0x98000442` is named only in Vacation's code
   (`FUN_00571f20`, `0x571fc2`), which nothing creates; the jails
   `0x98000440` and `0x98000480` only in `FUN_00549580`, the fallback for a
