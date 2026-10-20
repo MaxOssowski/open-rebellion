@@ -726,8 +726,12 @@ member's side holds it (port: without the route checks).
   (`FUN_004f78e0(0)`, `FUN_00534790(0)`). So an arriving fleet's
   characters are adrift only for that moment at a place of their side; at
   another side's place they get a destination (`FUN_00543040`) and leave
-  together, adrift ones on an Adrift order. Still open: the lost object
-  (`local_44`, `+0x50` bits 2 and 11), likely the container. (Mode 3's second pass with a team
+  together, adrift ones on an Adrift order. The disassembly
+  (`0x54c8f4..0x54c97c`) tests the object's own container
+  (`FUN_004f6b50` -> `[esp+0x60]`): destroyed (`+0x50` bit 3) or of
+  another side; then the object at `[esp+0x18]` must be usable (`+0x50`
+  bit 2) and not en route (bit 11). hyp: that object is the location being
+  walked. (Mode 3's second pass with a team
   already detected is settled in `decoy-roll.md`.)
 - The autorouting event path (`FUN_00549230`, above) sends an adrift group
   on an Adrift order `0x44000004` (`FUN_00547880`), whose class alone uses
