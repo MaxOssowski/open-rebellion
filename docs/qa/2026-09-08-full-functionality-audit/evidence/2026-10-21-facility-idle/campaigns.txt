@@ -1,0 +1,25 @@
+1 same apart from idle 654 1223
+2 same apart from idle 571 1148
+3 same apart from idle 631 1404
+4 same apart from idle 753 1113
+5 same apart from idle 741 1519
+6 same apart from idle 817 1374
+7 same apart from idle 731 1287
+8 same apart from idle 682 1457
+9 same apart from idle 357 1043
+10 same apart from idle 985 1419
+11 same apart from idle 816 1582
+12 same apart from idle 531 1010
+13 same apart from idle 742 1447
+14 same apart from idle 1024 1321
+15 same apart from idle 850 1172
+16 same apart from idle 580 1397
+17 same apart from idle 1138 1544
+18 same apart from idle 782 1280
+19 same apart from idle 977 1549
+20 same apart from idle 680 1146
+21 same apart from idle 524 1550
+22 same apart from idle 1059 1518
+23 same apart from idle 709 1296
+24 same apart from idle 1223 1685
+idle events 18557 -> 32484

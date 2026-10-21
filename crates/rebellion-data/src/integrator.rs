@@ -1117,20 +1117,25 @@ impl PerceptionIntegrator {
         }
     }
 
-    /// Emit `EVT_MANUFACTURING_IDLE` (0x160, K6) for systems whose queue
-    /// transitioned from non-empty to empty this tick. No world mutation —
-    /// the queue is already drained by `production_cycle::advance_yards`.
+    /// Emit `EVT_MANUFACTURING_IDLE` (0x160, K6) for each manager (a
+    /// system's area) whose queue transitioned from non-empty to empty this
+    /// tick (`FUN_0052baa0`). No world mutation — the queue is already
+    /// drained by `production_cycle::advance_yards`.
     pub fn apply_manufacturing_idle(
         &mut self,
         world: &GameWorld,
-        newly_idle: &[rebellion_core::ids::SystemKey],
+        newly_idle: &[(
+            rebellion_core::ids::SystemKey,
+            rebellion_core::manufacturing::ProductionArea,
+        )],
     ) {
-        for &system in newly_idle {
+        for &(system, area) in newly_idle {
             self.emit(
                 SYS_MANUFACTURING,
                 EVT_MANUFACTURING_IDLE,
                 serde_json::json!({
                     "system": sys_name(world, system),
+                    "area": format!("{area:?}"),
                 }),
             );
         }

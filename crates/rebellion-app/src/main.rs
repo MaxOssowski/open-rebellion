@@ -1928,22 +1928,41 @@ async fn main() {
                     lost.origin,
                 ));
             }
-            // K6 EVT_MANUFACTURING_IDLE (0x160) — surface idle transitions
-            // in the player-facing message log.
-            for &system in &mfg_advance.newly_idle {
-                let sys_name_str = world
-                    .systems
-                    .get(system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                msg_log.push(
-                    GameMessage::at_system(
-                        economy_tick,
-                        format!("Manufacturing queue idle at {sys_name_str}"),
-                        MessageCategory::Manufacturing,
-                        system,
-                    )
-                    .with_picture_if(pictures::idle_yard(&world, system)),
-                );
+            // Notification 0x160, Facility Idle (FUN_0048be60): a manager's
+            // remaining count reached 0. Only the holder's side hears it,
+            // and only while the system has a facility of that area.
+            for &(system, area) in &mfg_advance.newly_idle {
+                let Some(sys) = world.systems.get(system) else {
+                    continue;
+                };
+                let player_holds = sys.control.faction()
+                    == Some(if player_faction == MissionFaction::Alliance {
+                        Faction::Alliance
+                    } else {
+                        Faction::Empire
+                    });
+                let picture = pictures::idle_yard(&world, system, area);
+                if !player_holds || picture.is_none() {
+                    continue;
+                }
+                if let Some((title, text)) = rebellion_render::story_messages::facility_idle_texts(
+                    &sys.name,
+                    area,
+                    &message_texts,
+                ) {
+                    msg_log.push(filed(
+                        GameMessage::at_system(
+                            economy_tick,
+                            text,
+                            MessageCategory::Manufacturing,
+                            system,
+                        )
+                        .with_title(title)
+                        .with_picture_if(picture),
+                        MessageRail::Manufacturing,
+                        Some(RailAudience::side(player_faction == MissionFaction::Alliance)),
+                    ));
+                }
             }
 
             // ── Movement ────────────────────────────────────────────────────

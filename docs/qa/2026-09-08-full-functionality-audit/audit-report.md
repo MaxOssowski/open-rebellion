@@ -1833,6 +1833,17 @@ cross-runtime proof remain open
   lost. `0x321` is the manager's current-product notification, not a
   redirect. Seed 10 of 24 changes
   (`evidence/2026-10-20-delivery-autoroute/`).
+- Facility Idle (2026-10-21): `0x160` (`FUN_0048be60`) is per manager.
+  - Each area whose queue empties reports to the system's holder, while
+    a facility of its family remains: `0x28` shipyards (`0x71fc` /
+    `0x71fd`), `0x29` training (`0x71fa` / `0x71fb`), `0x2a` construction
+    (`0x71f8` / `0x71f9`).
+  - `ManufacturingAdvance::newly_idle` carries `(system, area)`. The port
+    had reported once per system, after its last area.
+  - The idle telemetry now has one record per area (18557 -> 32484 over
+    24 seeds); the simulation is otherwise unchanged.
+  - The browser `delivery` case sees "Shipyard Idle on Akrit'tar"
+    (`evidence/2026-10-21-facility-idle/`).
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 

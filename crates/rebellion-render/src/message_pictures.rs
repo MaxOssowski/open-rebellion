@@ -375,19 +375,23 @@ pub fn deployed(world: &GameWorld, kind: BuildableKind) -> Option<MessagePicture
         .and_then(object)
 }
 
-/// An idle production area (`FUN_0048be60`): the picture of the facility
-/// the notification names.
-///
-/// port: the port reports a system, not a facility, so this is the
-/// system's first yard.
+/// An idle production area (`FUN_0048be60`): the picture of the first
+/// facility of the area's family its walk finds at the system.
 #[must_use]
-pub fn idle_yard(world: &GameWorld, system: SystemKey) -> Option<MessagePicture> {
-    let yard = *world
+pub fn idle_yard(
+    world: &GameWorld,
+    system: SystemKey,
+    area: rebellion_core::manufacturing::ProductionArea,
+) -> Option<MessagePicture> {
+    let family = rebellion_core::build_selection::area_family(area);
+    let class = world
         .systems
         .get(system)?
         .manufacturing_facilities
-        .first()?;
-    let class = world.manufacturing_facilities.get(yard)?.class_dat_id;
+        .iter()
+        .filter_map(|&yard| world.manufacturing_facilities.get(yard))
+        .map(|yard| yard.class_dat_id)
+        .find(|class| class.family() == family)?;
     crate::manufacturing_window::class_mini(class).and_then(|(mini, _)| object(mini))
 }
 
@@ -668,7 +672,8 @@ mod tests {
         use rebellion_core::world::{ControlKind, ManufacturingFacilityInstance};
         let mut world = GameWorld::default();
         let here = system(&mut world, ControlKind::Controlled(Faction::Alliance));
-        assert_eq!(idle_yard(&world, here), None);
+        use rebellion_core::manufacturing::ProductionArea;
+        assert_eq!(idle_yard(&world, here, ProductionArea::Shipyard), None);
         let yard = world
             .manufacturing_facilities
             .insert(ManufacturingFacilityInstance {
@@ -677,7 +682,12 @@ mod tests {
                 is_shipyard: true,
             });
         world.systems[here].manufacturing_facilities.push(yard);
-        assert_eq!(idle_yard(&world, here).map(ids), Some((0x1103, None)));
+        assert_eq!(
+            idle_yard(&world, here, ProductionArea::Shipyard).map(ids),
+            Some((0x1103, None))
+        );
+        // The walk looks for the area's own family (FUN_00520580).
+        assert_eq!(idle_yard(&world, here, ProductionArea::TrainingFacility), None);
         assert_eq!(artwork_edata(0x1103), Some(6));
 
         let regiment = BuildableKind::Troop(DatId::new(0x1000_0003));

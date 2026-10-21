@@ -536,13 +536,15 @@ pub struct CompletionEvent {
 /// integrator can emit both `EVT_BUILD_COMPLETE`/`EVT_UNITS_DEPLOYED` (K5)
 /// and `EVT_MANUFACTURING_IDLE` (K6) without extra world-state plumbing.
 ///
-/// `newly_idle` is the set of system keys whose production queue
-/// transitioned from non-empty to empty during this advance call. Detection
-/// is intra-tick (pre/post length compare — no persistent "`was_empty`" bit).
+/// `newly_idle` holds each manager (a system's area) whose queue went from
+/// non-empty to empty during this advance call: its remaining count fell
+/// to 0 (`ManuMgrRemainingGameObjCountNotif`, `0x160`, `FUN_0052baa0`).
+/// Detection is intra-tick (pre/post length compare — no persistent
+/// "`was_empty`" bit).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ManufacturingAdvance {
     pub completions: Vec<CompletionEvent>,
-    pub newly_idle: Vec<SystemKey>,
+    pub newly_idle: Vec<(SystemKey, ProductionArea)>,
     /// Completed items bound for another system; `crate::delivery` times
     /// their travel and completes them there on arrival.
     pub departures: Vec<Departure>,

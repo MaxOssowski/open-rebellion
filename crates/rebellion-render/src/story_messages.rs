@@ -814,6 +814,31 @@ pub fn resource_texts(
     ))
 }
 
+/// Facility Idle (`FUN_0048be60`): notification `0x160`, a manager's
+/// remaining count reaching 0. The holder's side hears it, when the system
+/// still has a facility of the area's family. A construction yard area
+/// takes TEXTSTRA `0x71f8` / `0x71f9`, a training area `0x71fa` / `0x71fb`,
+/// a shipyard area `0x71fc` / `0x71fd`, the system as `{1:1}`. Returns the
+/// title and body.
+#[must_use]
+pub fn facility_idle_texts(
+    system: &str,
+    area: rebellion_core::manufacturing::ProductionArea,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::manufacturing::ProductionArea;
+    let (title, body) = match area {
+        ProductionArea::ConstructionYard => (0x71f8, 0x71f9),
+        ProductionArea::TrainingFacility => (0x71fa, 0x71fb),
+        ProductionArea::Shipyard => (0x71fc, 0x71fd),
+    };
+    let named = [MessageParameter::Named { name: system }];
+    Some((
+        fill_message_text(texts.get(&title)?, &named),
+        fill_message_text(texts.get(&body)?, &named),
+    ))
+}
+
 /// System Joins / Joins Enemy / Declares Neutrality (`FUN_00499760`):
 /// notification `0x100`, a system's side changing from `previous` to
 /// `holder`. The class speaks only while `+0x88` bit `0x2000`
@@ -1307,6 +1332,46 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_0048be60 (notification 0x160): TEXTSTRA 0x71f8..0x71fd as shipped,
+    // by the manager's area (slot +0x1ec: 1 construction, 2 training,
+    // otherwise shipyards).
+    #[test]
+    fn an_idle_area_names_its_own_kind_of_facility() {
+        use rebellion_core::manufacturing::ProductionArea;
+        let texts: HashMap<u16, String> = [
+            (0x71f8, "Construction Yard Idle on {1:1}"),
+            (0x71f9, "The Construction Yards at {1:1} have completed their assigned tasks."),
+            (0x71fa, "Training Facility Idle on {1:1}"),
+            (0x71fb, "The Training Facilities at {1:1} are no longer in use."),
+            (0x71fc, "Shipyard Idle on {1:1}"),
+            (0x71fd, "The Shipyards at {1:1} are available for new construction orders."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            facility_idle_texts("Fondor", ProductionArea::Shipyard, &texts),
+            Some((
+                "Shipyard Idle on Fondor".into(),
+                "The Shipyards at Fondor are available for new construction orders.".into()
+            ))
+        );
+        assert_eq!(
+            facility_idle_texts("Fondor", ProductionArea::TrainingFacility, &texts),
+            Some((
+                "Training Facility Idle on Fondor".into(),
+                "The Training Facilities at Fondor are no longer in use.".into()
+            ))
+        );
+        assert_eq!(
+            facility_idle_texts("Fondor", ProductionArea::ConstructionYard, &texts),
+            Some((
+                "Construction Yard Idle on Fondor".into(),
+                "The Construction Yards at Fondor have completed their assigned tasks.".into()
+            ))
+        );
+    }
 
     // FUN_00499760 (notification 0x100): TEXTSTRA 0x7038..0x703d as
     // shipped; the side is named by FUN_0052d920 (kind 1 0x4d50 / 0x4d51,

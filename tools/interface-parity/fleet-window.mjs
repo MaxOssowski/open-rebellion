@@ -695,6 +695,11 @@ const cases = [
           && o.last_departure_message.includes(", en route to "), null, 90_000);
       assert.equal(departed.target_ships, 0, "an en-route ship is not at its destination yet");
       assert.equal(departed.last_arrival_message, null);
+      // The shipyard's manager has nothing left to build (0x160,
+      // FUN_0048be60, TEXTSTRA 0x71fc).
+      const origin = departed.last_departure_message.split("Construction complete at ")[1]?.split(",")[0];
+      const idle = await until(page, "the shipyard reports idle",
+        (o, yard) => o.last_idle_title === `Shipyard Idle on ${yard}`, origin, 30_000);
       await shot(page, directory, "delivery-en-route");
       const destination = departed.last_departure_message.split(", en route to ")[1];
       const arrived = await until(page, "the ship arrives at its destination",
@@ -702,7 +707,7 @@ const cases = [
         destination, 120_000);
       await frames(page, 3);
       await shot(page, directory, "delivery-arrived");
-      return { before, departed, arrived };
+      return { before, departed, idle, arrived };
     },
   },
   {

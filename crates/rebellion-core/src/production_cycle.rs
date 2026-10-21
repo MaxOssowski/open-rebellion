@@ -724,14 +724,14 @@ pub fn advance_yards(
     state
         .yards
         .retain(|key, _| world.manufacturing_facilities.contains_key(*key));
-    let mut busy: Vec<SystemKey> = manufacturing
+    // Each manager reports its own remaining count (0x160, FUN_0052baa0).
+    let mut busy: Vec<(SystemKey, ProductionArea)> = manufacturing
         .queues()
         .iter()
         .filter(|(_, queue)| !queue.is_empty())
-        .map(|(&(system, _), _)| system)
+        .map(|(&key, _)| key)
         .collect();
     busy.sort_unstable();
-    busy.dedup();
 
     for tick_event in tick_events {
         let tick = tick_event.tick;
@@ -803,7 +803,11 @@ pub fn advance_yards(
     }
     advance.newly_idle = busy
         .into_iter()
-        .filter(|&system| manufacturing.queued_at(system) == 0)
+        .filter(|&(system, area)| {
+            manufacturing
+                .queue(system, area)
+                .is_none_or(crate::manufacturing::ProductionQueue::is_empty)
+        })
         .collect();
     advance
 }
@@ -1476,7 +1480,7 @@ mod tests {
         assert_eq!(advance.completions.len(), 1);
         assert_eq!(advance.completions[0].system, here);
         assert_eq!(advance.completions[0].tick, 8);
-        assert_eq!(advance.newly_idle, [here]);
+        assert_eq!(advance.newly_idle, [(here, ProductionArea::Shipyard)]);
         assert_eq!(alliance(&state), (0, 4));
         for key in [slow, fast] {
             assert!(!state.yard_is_processing(key) && !state.yard_is_waiting(key));
@@ -1776,9 +1780,12 @@ mod tests {
     }
 
     #[test]
-    fn a_system_goes_idle_once_when_its_last_area_finishes() {
-        // FUN_00509670: one manager per area, each with its own yards. K6
-        // waits for the last busy area and fires once.
+    fn each_area_goes_idle_when_its_own_queue_empties() {
+        // FUN_00509670: one manager per area, each with its own yards. Each
+        // manager reports its remaining count (0x160, FUN_0052baa0), and
+        // Facility Idle (FUN_0048be60) speaks for that manager when it
+        // reaches 0, whatever the other areas still build. The port had
+        // waited for the system's last busy area.
         use crate::manufacturing::{BuildableKind, QueueItem};
         let mut world = world();
         let (here, mut manufacturing, _, _) = shipyard_system(&mut world, 2);
@@ -1794,12 +1801,15 @@ mod tests {
         let second = yards_day(&mut state, &world, &mut manufacturing, 2);
         assert_eq!(second.completions.len(), 1);
         assert_eq!(second.completions[0].kind, regiment);
-        assert!(second.newly_idle.is_empty());
+        assert_eq!(
+            second.newly_idle,
+            [(here, ProductionArea::TrainingFacility)]
+        );
 
         yards_day(&mut state, &world, &mut manufacturing, 3);
         let fourth = yards_day(&mut state, &world, &mut manufacturing, 4);
         assert_eq!(fourth.completions.len(), 1);
-        assert_eq!(fourth.newly_idle, [here]);
+        assert_eq!(fourth.newly_idle, [(here, ProductionArea::Shipyard)]);
 
         let fifth = yards_day(&mut state, &world, &mut manufacturing, 5);
         assert!(fifth.newly_idle.is_empty());
@@ -1830,7 +1840,7 @@ mod tests {
                 kind: bound.kind,
             }]
         );
-        assert_eq!(advance.newly_idle, [here]);
+        assert_eq!(advance.newly_idle, [(here, ProductionArea::Shipyard)]);
     }
 
     #[test]
@@ -1847,7 +1857,13 @@ mod tests {
 
         let systems: Vec<_> = advance.completions.iter().map(|done| done.system).collect();
         assert_eq!(systems, [first, second]);
-        assert_eq!(advance.newly_idle, [first, second]);
+        assert_eq!(
+            advance.newly_idle,
+            [
+                (first, ProductionArea::Shipyard),
+                (second, ProductionArea::Shipyard)
+            ]
+        );
     }
 
     #[test]

@@ -3090,6 +3090,8 @@ struct FleetLoadObservation {
     last_departure_message: Option<String>,
     last_arrival_message: Option<String>,
     target_ships: usize,
+    /// The player's last Facility Idle title (`0x160`, `FUN_0048be60`).
+    last_idle_title: Option<String>,
     /// The incident variant: the primary system in revolt, the player's
     /// last uprising incident line, and the last disaster line (any
     /// audience: the disaster may strike a neutral system).
@@ -3285,6 +3287,17 @@ fn fleet_load_observation(
                 .map(|value| value.capital_ships.len())
                 .sum()
         }),
+        last_idle_title: messages
+            .iter()
+            .rev()
+            .filter(|message| {
+                message
+                    .audience
+                    .includes(request.faction == CockpitFaction::Alliance)
+            })
+            .filter_map(|message| message.title.as_deref())
+            .find(|title| title.contains(" Idle on "))
+            .map(str::to_owned),
         primary_in_revolt: matches!(world.systems[primary].control, ControlKind::Uprising(_)),
         last_incident_message: messages
             .iter()
