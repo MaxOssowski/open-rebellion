@@ -2249,6 +2249,20 @@ cross-runtime proof remain open
   - The port's Retreat opens the tactical battle with ships marked as
     retreating. That differs from the original and is the next stage's
     work. Read only; no code changes.
+- 2026-10-21 (W5 read): the winner and the loser's withdrawal are read
+  (`battle-flow.md`, "The winner and the loser's withdrawal").
+  - The seven result words (`FUN_005ae9c0`): words 1 and 3 mark a side
+    with no active unit, and words 0 and 2 a side whose retreat ran. They
+    are not each side's survivors, as first read.
+  - `FUN_0040c780`: the side that still has active units wins. A side
+    that retreats loses. A tie goes to the system's `+0x78` bits 6..7,
+    the side of the last fleet or squadron to arrive (`FUN_00508660` ->
+    `FUN_0050a1b0`).
+  - `FUN_00516ef0` sets every fleet and planet squadron of the loser
+    Autorouting. The event `0x307` handler (`FUN_00515480`) sends each to
+    the autoroute search's destination (`FUN_005545e0`).
+  - The port counts escaped units as survivors and sends no loser away.
+    Read only; no code changes.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

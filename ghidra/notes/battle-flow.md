@@ -47,11 +47,10 @@ The debug names are in `FUN_0040a700`'s table (`0x40a7b5`..), strings at
 ## The result (`FUN_0040c780`)
 
 - `FUN_005969d0` copies seven words from the tactical module
-  (`FUN_0059a730`). Words 1 and 3 (and 0 and 2, a second pass) are each
-  side's survivors.
-- The winner (`local_10c`) is the only side with survivors. With both
-  sides left, or neither, it is decided by the system's `+0x78` bits 6..7:
-  3 is no winner (3), otherwise 1 or 2.
+  (`FUN_0059a730`). For their meaning and the winner rule, see "The
+  winner and the loser's withdrawal" below. (An earlier reading called
+  words 1 and 3 each side's survivors. They are each side's "beaten"
+  marks.)
 - `FUN_0050cfd0(1)` and `FUN_0050ceb0(winner)` store it on the battle
   object. `FUN_00516ef0` reads it (`FUN_00509ad0`, `+100`) to send the
   loser's units autorouting.
@@ -95,6 +94,83 @@ The debug names are in `FUN_0040a700`'s table (`0x40a7b5`..), strings at
   without the display, with a stalemate rule. It is not a separate
   formula.
 
+## The winner and the loser's withdrawal (read 2026-10-21)
+
+**The result words** (`FUN_005ae9c0`, `0x5aec52..0x5aee90`). The side
+commander at `+0x24c` is the Alliance (side 0) and the one at `+0x250` is
+the Empire (side 1). A unit's `+0x168` gives its side; state `+0x170` 2 is
+active, 9 escaped and `0xb` destroyed.
+
+| Word | Offset | Set when |
+|---|---|---|
+| 0 | `+0x10` | the Alliance's retreat ran (`+0x84` == 5) and one of its units escaped |
+| 1 | `+0x14` | the Empire has no active unit (lists `+0x58`, `+0x64`), word 0 is clear, and no operational Death Star (`FUN_005ba420`) |
+| 2 | `+0x18` | the Empire's retreat ran, and one of its units escaped or the Death Star's `+0x78` is set |
+| 3 | `+0x1c` | the Alliance has no active unit, and word 2 is clear |
+| 4..6 | `+0x20..+0x28` | 0 here (the tactical game fills them) |
+
+When words 1 and 3 are both set, both are cleared: each side destroyed
+the other.
+
+**The winner** (`FUN_0040c780`, `local_10c`): 0 none, 1 Alliance, 2
+Empire, 3 the system's.
+
+1. From words 1 and 3: only word 1 gives 1, only word 3 gives 2. A side
+   that retreats has no active unit left, so the side that stays wins.
+2. If no winner yet, in the tactical mode (`+0xc` == 0) with word 6 set,
+   the battle runs again (`*param_2` = 1; state `0x16` goes back to 8).
+3. Otherwise the same test on words 0 and 2: only word 0 gives 1, only
+   word 2 gives 2. This pass can only decide when the first one did not,
+   which needs a side that retreated yet still has an active unit.
+4. When both words of a pair are set, the winner comes from the system's
+   `+0x78` bits 6..7: 3 gives 3, 1 gives 1, anything else gives 2.
+5. `FUN_0050cfd0(1)`, `FUN_0050ceb0(winner)` store it on the battle.
+
+The system's `+0x78` bits 6..7 hold the side of the last fleet (`0x08..
+0x0f`) or squadron (`0x1c..0x1f`) to join the system. When a unit joins,
+the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
+`FUN_0050a1b0(unit +0x24 >> 6 & 3)` (`0x508a46`, `0x508b0d`).
+
+**The loser's withdrawal** (`FUN_00516ef0`, state 9):
+
+1. Clear Battle (`FUN_0050a580(0)`). Count each side's active fleets
+   (`FUN_004ffef0(system, 1, side)`) and planet squadrons
+   (`FUN_00503a50(system, 1, side)`).
+2. The winner is the battle's (`FUN_00509ad0`). With none, and both sides
+   still present, it comes from the system's `+0x78` bits 6..7, as above.
+   With none and one side gone, nobody withdraws.
+3. The loser is the other side: winner 1 gives 2, and winner 2 gives 1.
+   Winner 3 gives 3, every side (the side mask of `FUN_004ffef0`).
+4. When `FUN_00506e60` allows, each of the winner's planet squadrons goes
+   to `FUN_00556710` (not read).
+5. Each of the loser's fleets, then each of its planet squadrons, is set
+   Autorouting (`FUN_004f78e0(1)`, `+0x50` bit `0x1000`).
+
+**Autorouting a fleet** (event `0x307`, `FUN_00515480`):
+
+- A destroyed object (`+0x50` & 8) is skipped. A character
+  (`0x30..0x3f`) takes the character path (`captive-escape.md`).
+- For a unit, with Autorouting set, from a system (`0x90..0x97`):
+  - The autoroute search `FUN_005545e0` (`captive-escape.md`) finds a
+    destination. In order: the current container, the `+0x70` object,
+    then the nearest system of its side that is not blockaded, and so on.
+  - A completed, standing unit then tests the destination
+    (`FUN_00555410` -> `FUN_00555460`, not read). If that fails and the
+    unit cannot move (slot `+0x34`, its speed, is 0), it is destroyed
+    with reason 5 (slot `+0xac`).
+  - The move itself is `FUN_00556390`, as for a player's move.
+- Open: the branch with `local_10 != -1`, which calls slot `+0xac(2)`.
+
+**In the port** (2026-10-21):
+
+- `abstract_battle::AbstractBattle::finish` takes the winner as the only
+  side with units left. An escaped unit counts as left, and a draw has no
+  tie-break.
+- The integrator sends no loser away. Its draw leaves both sides in the
+  system.
+- The port does not keep the last-arrived side (system `+0x78` bits
+  6..7).
+
 ## For the port
 
 - The port's strategic auto-resolve should be the tactical simulation run
@@ -112,7 +188,7 @@ The debug names are in `FUN_0040a700`'s table (`0x40a7b5`..), strings at
 - The sides' combat step (slot `+0x14` of the objects at `+0x93`,
   `+0x94`) and strength (`+0x3c`): the tactical engine's own rules, to
   check against the port's tactical code.
-- The meaning of each of the 7 result words, and how `FUN_0040c780`'s
-  inner walk turns them into damage per ship.
-- What a computer player answers in state 6 (slot `+0x3c` of its player
-  object).
+- How `FUN_0040c780`'s inner walk turns the result into damage per ship
+  (`FUN_0040d260`, `FUN_0040d320`). The words are read above.
+- State 6's answers are read (`abstract-battle.md`, "The battle
+  choice").
