@@ -2719,6 +2719,12 @@ cross-runtime proof remain open
   - Evacuation Losses (`FUN_00495e90`, `0x340`) takes `0x70a8`-`0x70aa`,
     to the regiment's side.
   - Evidence: `evidence/2026-10-21-blockade-messages/`.
+- Browser (2026-10-21): the fixture scenario `BlockadeArrival` (code 77)
+  and `fleet-window.mjs` `blockade` show the player's fleet arriving at
+  the other side's F'tral, for both sides. The blockader reads "Fleet
+  Initiates Blockade of F'tral" (`FUN_004960f0`, TEXTSTRA `0x70a0`). The
+  Fleet window suite passes 56 cases
+  (`evidence/2026-10-21-blockade-browser/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

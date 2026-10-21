@@ -32,6 +32,7 @@ const FLEET_ASSAULT = 68;
 const FLEET_DESTROY_SYSTEM = 74;
 const PRODUCTION_DELIVERY = 75;
 const UPRISING_INCIDENT = 76;
+const BLOCKADE_ARRIVAL = 77;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -713,6 +714,23 @@ const cases = [
       await frames(page, 3);
       await shot(page, directory, "delivery-arrived");
       return { before, departed, idle, arrived };
+    },
+  },
+  {
+    name: "blockade",
+    code: BLOCKADE_ARRIVAL,
+    // The player's fleet arrives at the other side's system and blockades
+    // it; Blockade (FUN_004960f0, 0x14e) gives the blockader TEXTSTRA 0x70a0
+    // "Fleet Initiates Blockade of {1:1}".
+    async run(page, faction, setup, directory) {
+      const before = await until(page, "no blockade yet",
+        (o) => o.last_blockade_title === null);
+      const blockade = await until(page, "the fleet blockades the target",
+        (o) => typeof o.last_blockade_title === "string"
+          && o.last_blockade_title.startsWith("Fleet Initiates Blockade of "), null, 90_000);
+      await frames(page, 3);
+      await shot(page, directory, "blockade-initiated");
+      return { before, blockade };
     },
   },
   {

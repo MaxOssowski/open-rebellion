@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 76;
+const SCENARIO_COUNT: u8 = 77;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -201,6 +201,12 @@ pub enum Scenario {
     /// disaster's pick always strikes. The clock runs Fast
     /// (`ghidra/notes/uprising-incident.md`).
     UprisingIncident = 75,
+    /// As `FleetLoad` with the loading target the other side's, held by its
+    /// support, and the player's fleet already bound there; the clock runs
+    /// Fast. On arrival the fleet blockades it, and Blockade
+    /// (`FUN_004960f0`, `0x14e`) tells the player "Fleet Initiates Blockade
+    /// of" the target.
+    BlockadeArrival = 76,
 }
 
 impl Scenario {
@@ -282,6 +288,7 @@ impl Scenario {
             73 => Self::FleetDestroySystem,
             74 => Self::ProductionDelivery,
             75 => Self::UprisingIncident,
+            76 => Self::BlockadeArrival,
             _ => return None,
         })
     }
@@ -303,6 +310,7 @@ impl Scenario {
                 | Self::FleetDestroySystem
                 | Self::ProductionDelivery
                 | Self::UprisingIncident
+                | Self::BlockadeArrival
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -633,6 +641,9 @@ pub fn apply(
     if request.scenario == Scenario::UprisingIncident {
         place_incidents(request, world, uprisings, primary);
     }
+    if request.scenario == Scenario::BlockadeArrival {
+        place_blockade_arrival(request, world, movement, primary);
+    }
     if request.scenario == Scenario::Quadrants {
         place_quadrant_contents(request, world, movement, missions, sectors, primary);
     }
@@ -902,7 +913,10 @@ fn place_sabotage_targets(
 pub fn runs_the_clock(request: FixtureRequest) -> bool {
     matches!(
         request.scenario,
-        Scenario::SubdueSuccess | Scenario::ProductionDelivery | Scenario::UprisingIncident
+        Scenario::SubdueSuccess
+            | Scenario::ProductionDelivery
+            | Scenario::UprisingIncident
+            | Scenario::BlockadeArrival
     )
 }
 
@@ -1361,6 +1375,33 @@ fn place_delivery(
     );
     for _ in 1..cost {
         let _ = queue.add_point();
+    }
+}
+
+/// The `BlockadeArrival` scenario: the loading target becomes the other
+/// side's, held by its support (`FUN_0050b610`), and the player's fleet
+/// sets out for it.
+fn place_blockade_arrival(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    primary: SystemKey,
+) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let Some(target) = loading_target(world, primary) else {
+        return;
+    };
+    let enemy = if player_is_alliance {
+        Faction::Empire
+    } else {
+        Faction::Alliance
+    };
+    let system = &mut world.systems[target];
+    system.control = ControlKind::Controlled(enemy);
+    system.popularity_alliance = if player_is_alliance { 0.0 } else { 1.0 };
+    system.popularity_empire = 1.0 - system.popularity_alliance;
+    if let Some(fleet) = world.fleets.keys().next() {
+        let _ = begin_fleet_transit(movement, world, fleet, target, 3);
     }
 }
 
@@ -3102,6 +3143,8 @@ struct FleetLoadObservation {
     /// The disaster line's title: Natural Disaster (TEXTSTRA `0x7190`) on a
     /// held system, none on a neutral one.
     last_disaster_title: Option<String>,
+    /// The player's last Blockade title (`0x14e`, `FUN_004960f0`).
+    last_blockade_title: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3319,6 +3362,17 @@ fn fleet_load_observation(
             .map(|message| message.text.clone()),
         last_disaster_message: last_disaster(messages).map(|message| message.text.clone()),
         last_disaster_title: last_disaster(messages).and_then(|message| message.title.clone()),
+        last_blockade_title: messages
+            .iter()
+            .rev()
+            .filter(|message| {
+                message
+                    .audience
+                    .includes(request.faction == CockpitFaction::Alliance)
+            })
+            .filter_map(|message| message.title.as_deref())
+            .find(|title| title.contains("Blockade"))
+            .map(str::to_owned),
     })
 }
 
@@ -4497,6 +4551,69 @@ mod tests {
     // 0x38d, FUN_0050d030) and the disaster timer (event 0x38f,
     // FUN_00511930) fire when due; the disaster spares a system with
     // neither energy nor raw materials.
+    // port: the fixture's own layout. A fleet arriving at the other side's
+    // system blockades it (blockade::system_is_blockaded); Blockade
+    // (FUN_004960f0) then speaks to the player.
+    #[test]
+    fn the_blockade_scenario_sends_the_fleet_to_a_system_the_other_side_holds() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let request = request(Scenario::BlockadeArrival, faction);
+            let mut applied = apply_to_loading_world_with(request, |_| {});
+            let primary = applied.world.systems.keys().next().unwrap();
+            let target = loading_target(&applied.world, primary).unwrap();
+            let fleet = applied.world.fleets.keys().next().unwrap();
+            place_blockade_arrival(request, &mut applied.world, &mut applied.movement, primary);
+            let enemy = if alliance {
+                Faction::Empire
+            } else {
+                Faction::Alliance
+            };
+            let system = &applied.world.systems[target];
+            assert_eq!(system.control, ControlKind::Controlled(enemy));
+            assert_eq!(system.popularity_alliance, if alliance { 0.0 } else { 1.0 });
+            assert_eq!(system.popularity_empire, if alliance { 1.0 } else { 0.0 });
+            assert_eq!(
+                applied.movement.get(fleet).map(|order| order.destination),
+                Some(target)
+            );
+            assert!(runs_the_clock(request));
+
+            // The report keeps the player's Blockade title only.
+            let line = |title: &str, player: bool| {
+                GameMessage::new(
+                    1,
+                    "text".to_string(),
+                    rebellion_render::message_log::MessageCategory::Combat,
+                )
+                .with_title(title.to_string())
+                .on_rail(
+                    rebellion_render::message_log::MessageRail::Conflict,
+                    rebellion_render::message_log::RailAudience::side(alliance == player),
+                )
+            };
+            let observed = fleet_load_observation(
+                request,
+                loading_regiment(&applied.world, primary).unwrap(),
+                &applied.world,
+                &FogState::new(Faction::of_alliance(alliance)),
+                &applied.movement,
+                &applied.transport,
+                &FleetWindowState::default(),
+                false,
+                &[
+                    line("Fleet Initiates Blockade of Mine", true),
+                    line("Theirs Under Blockade", false),
+                ],
+            )
+            .unwrap();
+            assert_eq!(
+                observed.last_blockade_title.as_deref(),
+                Some("Fleet Initiates Blockade of Mine")
+            );
+        }
+    }
+
     #[test]
     fn the_incident_scenario_revolts_the_primary_system_with_both_timers_due_soon() {
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
@@ -6069,7 +6186,8 @@ mod tests {
                 Scenario::CharacterAboard,
                 Scenario::FleetDestroySystem,
                 Scenario::ProductionDelivery,
-                Scenario::UprisingIncident
+                Scenario::UprisingIncident,
+                Scenario::BlockadeArrival
             ]
         );
     }
