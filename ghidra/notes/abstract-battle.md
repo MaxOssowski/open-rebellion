@@ -433,8 +433,13 @@ The terms:
 
 In the port, the displayed battle's run (`BattleSession::
 prepare_original_trench_run`, `FUN_005d04e0`) is a different function, with
-its own success rating. The abstract battle has neither the superlaser nor
-the trench run.
+its own success rating. Since W2i the abstract battle has both
+(`AbstractBattle::death_star_step`, `trench_run`).
+- `hyp:` the leader kind 4 is a fighter group.
+- `hyp:` no person commands, so the commander term is 1.0.
+- `port:` the Death Star's carried units are unknown and none falls with
+  it. The port's Death Star capital ship falls with it, so the fleet loses
+  the Death Star.
 
 ## The port (2026-10-21)
 
@@ -461,7 +466,7 @@ own (`resolve_space_battle`, all fleets at the system). Three pieces stay
 - The retreat (W2h) is ported. Since W2k a side may leave when its
   answer to the battle choice orders a retreat (`retreat_allowed`). A
   fighter group leaves with a jumping carrier (`hyp:`). The Death Star's
-  abstract actions are not ported.
+  abstract actions are ported since W2i (see above).
 
 The first probe over seeds 1–3 (67 battles) ended every battle with one
 side destroyed, in 1 to 1008 steps (median 43), and none by stalemate.

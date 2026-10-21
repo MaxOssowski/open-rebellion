@@ -1,0 +1,30 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, S = 1..24",
+ "baseline": "HEAD 824a072c (worktree build)",
+ "changed_seeds": [
+  3
+ ],
+ "totals": {
+  "alliance_capitals_lost": [
+   25,
+   25
+  ],
+  "battles": [
+   2092,
+   2092
+  ],
+  "empire_capitals_lost": [
+   6,
+   7
+  ],
+  "winner_alliance": [
+   741,
+   755
+  ],
+  "winner_empire": [
+   1351,
+   1337
+  ]
+ },
+ "seed3_day1340": "Alliance fleet (5 ships, 15 squadrons) at Orto meets the Empire's Death Star (2 ships incl. the Death Star, 13 squadrons): the trench run destroys the Death Star; the Empire is left with 1 ship and no squadrons"
+}

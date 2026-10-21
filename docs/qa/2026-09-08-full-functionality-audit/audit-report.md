@@ -2322,6 +2322,17 @@ cross-runtime proof remain open
       carries.
   - Open: the commander value's source field and the Death Star's carried
     lists. Read only; no code changes.
+- 2026-10-22 (W2i): the Death Star's abstract actions are ported
+  (`evidence/2026-10-22-death-star-abstract/`).
+  - The superlaser charges 1/3000 a step and fires at 100, so in practice
+    never.
+  - The Alliance's trench run (`FUN_005aefc0`) can destroy the Death
+    Star, which takes its capital ship from the fleet.
+  - `hyp:` the leader kind 4 is a fighter group; the commander term is
+    1.0. `port:` the carried units are unknown.
+  - Seed 3 changes: on day 1340 the trench run destroys the Death Star at
+    Orto. The other 23 campaigns are unchanged.
+  - 11 new tests; mutants 57 caught, 0 missed.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

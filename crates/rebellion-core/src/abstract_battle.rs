@@ -16,7 +16,8 @@
 //! choice orders a retreat (`retreat_allowed`) may leave (slots `+0x0c`,
 //! `+0x2c`). At the battle's end
 //! the loser's fleets leave on Autorouting ([`withdraw_loser`],
-//! `FUN_00516ef0`). Not yet ported: the Death Star's abstract actions.
+//! `FUN_00516ef0`). The Death Star charges and the Alliance may make the
+//! trench run ([`AbstractBattle::step`], `FUN_005aefc0`).
 
 use std::collections::HashMap;
 
@@ -28,8 +29,9 @@ use crate::tactical::{
     apply_original_capital_damage, original_engine_mode_bonus, original_tactical_damage_rolls,
     original_tactical_mobility, BattlePhase, BattleSession, CombatWinner, FleetBattle,
     TacticalWeaponArc, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX, ORIGINAL_CAPITAL_WEAPON_STRENGTH,
-    ORIGINAL_FIGHTER_TORPEDO_STRENGTH, ORIGINAL_ION_VS_FIGHTER, ORIGINAL_LASER_VS_CAPITAL,
-    ORIGINAL_LASER_VS_FIGHTER, ORIGINAL_TURBOLASER_VS_FIGHTER,
+    ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE, ORIGINAL_FIGHTER_TORPEDO_STRENGTH,
+    ORIGINAL_ION_VS_FIGHTER, ORIGINAL_LASER_VS_CAPITAL, ORIGINAL_LASER_VS_FIGHTER,
+    ORIGINAL_TURBOLASER_VS_FIGHTER,
 };
 
 /// `DAT_0066badc`: the time `FUN_0059a530` passes to each abstract step.
@@ -68,6 +70,22 @@ pub const ABSTRACT_RETREAT_RATIO: f32 = f32::from_bits(0x3ea8_f5c3);
 /// port: a bound on the steps, far past any stalemate, so a battle that
 /// cannot end does not hang the campaign.
 pub const ABSTRACT_STEP_LIMIT: u32 = 100_000;
+/// `FUN_005ba7f0`: the superlaser charge a step adds, dt (`DAT_0066badc`,
+/// 1.0) x 1/3 (`DAT_0066c708`) x 0.001 (`DAT_0066c718`). The display passes
+/// milliseconds; the abstract step passes 1.0, so a full charge of 100
+/// takes 300,000 steps.
+pub const ABSTRACT_DEATH_STAR_CHARGE_PER_STEP: f32 = ABSTRACT_STEP_SECONDS * (1.0 / 3.0) * 0.001;
+/// `FUN_005aefc0`: the trench run's visits before every member left is
+/// destroyed (`0x5af047`).
+pub const TRENCH_RUN_VISITS: u32 = 100;
+/// `FUN_005aefc0`: hull per hit unit (`DAT_0066c3dc`, 8.0).
+pub const TRENCH_RUN_HULL_UNIT: f32 = 8.0;
+/// `FUN_005afc00`: the commander term's floor (`DAT_0066c3f4`), its value
+/// with no commanding person. A person's term is capped at 9.0
+/// (`DAT_0066c3ec`).
+pub const TRENCH_RUN_COMMANDER_FLOOR: f32 = 1.0;
+/// `FUN_005aefc0`: the success chance's scale (`DAT_0066c3f0`, 0.5).
+pub const TRENCH_RUN_SUCCESS_SCALE: f32 = 0.5;
 
 /// One unit of the battle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -100,6 +118,14 @@ pub struct AbstractOutcome {
     pub winner: CombatWinner,
     pub steps: u32,
     pub stalemate: bool,
+}
+
+/// What a trench run (`FUN_005aefc0`) came to: the member visits it made
+/// and whether the Death Star fell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrenchRun {
+    pub visits: u32,
+    pub success: bool,
 }
 
 /// An abstract battle over a tactical session.
@@ -466,26 +492,32 @@ impl AbstractBattle {
         groups
     }
 
-    /// `FUN_005c9200` (after slot `+0x08`, `FUN_005d1a70`): each side's
-    /// commander gives its idle task forces targets.
-    fn assign_targets(&mut self, alliance: bool) {
-        let groups = self.groups(alliance);
-        // `FUN_005d1a70`: the enemy's active units, highest priority first.
+    /// `FUN_005d1a70` (the commander's list `+0x90`): the enemy's active
+    /// units, highest priority first.
+    fn ranked_enemies(&self, alliance: bool) -> Vec<AbstractUnit> {
         let mut ranked: Vec<(f32, AbstractUnit)> = units_of(&self.session, !alliance)
             .into_iter()
             .map(|unit| (-target_priority(&self.session, unit), unit))
             .collect();
         ranked.sort_by(|left, right| left.0.total_cmp(&right.0));
+        ranked.into_iter().map(|(_, unit)| unit).collect()
+    }
+
+    /// `FUN_005c9200` (after slot `+0x08`, `FUN_005d1a70`): each side's
+    /// commander gives its idle task forces targets.
+    fn assign_targets(&mut self, alliance: bool) {
+        let groups = self.groups(alliance);
+        let ranked = self.ranked_enemies(alliance);
         // `FUN_005c9200`: fighters, then ships, for laser-armed leaders;
         // ships, then fighters, then ships again, for the others.
         let fighters: Vec<AbstractUnit> = ranked
             .iter()
-            .map(|&(_, unit)| unit)
+            .copied()
             .filter(|unit| unit.is_fighter())
             .collect();
         let ships: Vec<AbstractUnit> = ranked
             .iter()
-            .map(|&(_, unit)| unit)
+            .copied()
             .filter(|unit| !unit.is_fighter())
             .collect();
         let fighter_list: Vec<AbstractUnit> = fighters.iter().chain(&ships).copied().collect();
@@ -726,6 +758,7 @@ impl AbstractBattle {
     /// `FUN_005d14d0` (slot `+0x28`): one side's step. Returns true when the
     /// side is beaten.
     fn side_step(&mut self, alliance: bool) -> bool {
+        self.death_star_step(alliance);
         self.assign_targets(alliance);
         for (group, members) in self.groups(alliance) {
             let Some(&target) = self.targets.get(&group) else {
@@ -856,19 +889,181 @@ impl AbstractBattle {
     /// `FUN_005af7a0`: every unit of the side is destroyed.
     fn destroy_side(&mut self, alliance: bool) {
         for unit in units_of(&self.session, alliance) {
-            match unit {
-                AbstractUnit::Capital(index) => {
-                    let ship = &mut self.session.ships[index];
-                    ship.hull_current = 0;
-                    ship.shield = 0;
-                    ship.alive = false;
-                }
-                AbstractUnit::Fighter(index) => {
-                    let fighter = &mut self.session.fighters[index];
-                    fighter.hull_current = 0.0;
-                    fighter.refresh_craft_count();
+            self.destroy(unit);
+        }
+    }
+
+    /// `FUN_005af7a0`: the unit is destroyed (state `0xb`).
+    fn destroy(&mut self, unit: AbstractUnit) {
+        match unit {
+            AbstractUnit::Capital(index) => {
+                let ship = &mut self.session.ships[index];
+                ship.hull_current = 0;
+                ship.shield = 0;
+                ship.alive = false;
+            }
+            AbstractUnit::Fighter(index) => {
+                let fighter = &mut self.session.fighters[index];
+                fighter.hull_current = 0.0;
+                fighter.refresh_craft_count();
+            }
+        }
+    }
+
+    /// `FUN_005d14d0`'s first part: the Death Star. The Empire charges the
+    /// superlaser (`FUN_005ba7f0`) and, at full charge, destroys the first
+    /// capital ship of its enemy list (`+0x90`, `FUN_005d1a70`) and empties
+    /// the charge (`FUN_005ba710`). The Alliance, with more fighter units
+    /// than the Empire (`+0x64`, `FUN_005c5eb0`) and an attackable Death
+    /// Star (`FUN_005ba450`), sends its first fighter task force on the
+    /// trench run (`FUN_005aefc0`).
+    ///
+    /// hyp: the leader kind 4 the Alliance looks for (slot `+0x04`) is a
+    /// fighter group, as the port's task forces of fighters.
+    fn death_star_step(&mut self, alliance: bool) {
+        let Some(death_star) = self.session.death_star.filter(|ds| !ds.is_alliance) else {
+            return;
+        };
+        if !alliance {
+            if !death_star.operational() {
+                return;
+            }
+            // FUN_005ba7f0's own hull and +0x74 tests are within
+            // operational (FUN_005ba420).
+            let ds = self.session.death_star.as_mut().expect("checked above");
+            if ds.laser_charge != ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE {
+                ds.laser_charge = (ds.laser_charge + ABSTRACT_DEATH_STAR_CHARGE_PER_STEP)
+                    .min(ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE);
+            }
+            if ds.laser_charge == ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE {
+                let target = self
+                    .ranked_enemies(false)
+                    .into_iter()
+                    .find(|unit| !unit.is_fighter());
+                if let Some(target) = target {
+                    if let Some(ds) = self.session.death_star.as_mut() {
+                        ds.laser_charge = 0.0;
+                    }
+                    self.destroy(target);
                 }
             }
+            return;
+        }
+        if !death_star.attackable() {
+            return;
+        }
+        let fighters = |alliance| {
+            units_of(&self.session, alliance)
+                .into_iter()
+                .filter(|unit| unit.is_fighter())
+                .count()
+        };
+        if fighters(false) >= fighters(true) {
+            return;
+        }
+        if let Some((_, members)) = self
+            .groups(true)
+            .into_iter()
+            .find(|(group, _)| group.fighters)
+        {
+            let members: Vec<usize> = members
+                .into_iter()
+                .filter_map(|unit| match unit {
+                    AbstractUnit::Fighter(index) => Some(index),
+                    AbstractUnit::Capital(_) => None,
+                })
+                .collect();
+            self.trench_run(&members);
+        }
+    }
+
+    /// `FUN_005aefc0`: the trench run of a fighter task force. Its members
+    /// are visited in turn, at most [`TRENCH_RUN_VISITS`] times, after which
+    /// every member left is destroyed. A member whose maneuverability (slot
+    /// `+0xbc`) is under a roll of 1..10 is hit for (1..hull / 8) x 8, and
+    /// destroyed when that leaves it 1 or less to roll or no hull. A member
+    /// left with hull rolls 1..100 against (`FUN_005b23a0` + the commander
+    /// term) x 0.5; at or under it, the Death Star's hull and charge empty
+    /// (`FUN_005ba8a0`).
+    ///
+    /// hyp: no person commands (`FUN_005afc00` gives its floor, 1.0); the
+    /// source of a person's `+0x50` is open. port: the units the Death Star
+    /// carries (its lists `+0x38`, `+0x3c`) are not known, so none is
+    /// destroyed with it; the port's Death Star capital ship takes the
+    /// Death Star's fall.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "The run truncates its floats as the original's __ftol."
+    )]
+    fn trench_run(&mut self, members: &[usize]) -> TrenchRun {
+        let mut left: Vec<usize> = members.to_vec();
+        let mut at = 0;
+        let mut visits = 0;
+        while !left.is_empty() {
+            if visits == TRENCH_RUN_VISITS {
+                for index in std::mem::take(&mut left) {
+                    self.destroy(AbstractUnit::Fighter(index));
+                }
+                break;
+            }
+            visits += 1;
+            let index = left[at];
+            let unit = AbstractUnit::Fighter(index);
+            let maneuverability = maneuverability(&self.session, unit) as u32;
+            let mut destroyed = false;
+            if self.session.tactical_rng.inclusive(1, 10) > maneuverability {
+                let hits =
+                    (self.session.fighters[index].hull_current / TRENCH_RUN_HULL_UNIT) as u32;
+                if hits <= 1 {
+                    destroyed = true;
+                } else {
+                    let roll = self.session.tactical_rng.inclusive(1, hits);
+                    self.deal(unit, roll as f32 * TRENCH_RUN_HULL_UNIT);
+                    destroyed = self.session.fighters[index].hull_current <= 0.0;
+                }
+            }
+            if destroyed {
+                self.destroy(unit);
+                left.remove(at);
+                if !left.is_empty() {
+                    at %= left.len();
+                }
+                continue;
+            }
+            let fighter = &self.session.fighters[index];
+            // FUN_005b1770: the rating scaled by hull over full hull. A
+            // member still here has hull, so its full hull is above 0.
+            let torpedoes = fighter.hull_current
+                * fighter.torpedo_strength as f32
+                * ORIGINAL_FIGHTER_TORPEDO_STRENGTH
+                / fighter.hull_max;
+            let chance =
+                ((torpedoes + TRENCH_RUN_COMMANDER_FLOOR) * TRENCH_RUN_SUCCESS_SCALE) as u32;
+            if self.session.tactical_rng.inclusive(1, 100) <= chance {
+                if let Some(ds) = self.session.death_star.as_mut() {
+                    ds.hull = 0.0;
+                    ds.laser_charge = 0.0;
+                }
+                let empire = !self.session.attacker_is_alliance;
+                for ship in &mut self.session.ships {
+                    if ship.death_star_resource.is_some() && ship.is_attacker == empire {
+                        ship.hull_current = 0;
+                        ship.shield = 0;
+                        ship.alive = false;
+                    }
+                }
+                return TrenchRun {
+                    visits,
+                    success: true,
+                };
+            }
+            at = (at + 1) % left.len();
+        }
+        TrenchRun {
+            visits,
+            success: false,
         }
     }
 
@@ -2683,6 +2878,284 @@ mod tests {
         assert!(withdraw_loser(&mut world, &mut movement, battle, None).is_empty());
         assert!(movement.is_empty());
         assert_eq!(world.systems[battle].fleets, [alliance]);
+    }
+
+    fn imperial_death_star(shielded: bool) -> crate::tactical::TacticalDeathStar {
+        crate::tactical::TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition::ORIGIN,
+            hull: ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE,
+            laser_charge: 0.0,
+            shielded,
+            destroyed: false,
+            action_committed: false,
+        }
+    }
+
+    /// The Empire's Death Star (also a capital ship, as the port keeps it)
+    /// against Alliance fighter groups of the given maneuverability and
+    /// torpedo rating; the Empire has one fighter group.
+    fn trench_battle(
+        alliance_groups: usize,
+        maneuverability: u32,
+        torpedoes: u32,
+    ) -> AbstractBattle {
+        let mut death_star_ship = ship(false, TacticalWeaponArc::default(), 0.0);
+        death_star_ship.death_star_resource =
+            Some(crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE);
+        let mut fighters = vec![fighter(false, TacticalWeaponArc::default())];
+        for _ in 0..alliance_groups {
+            let mut group = fighter(true, TacticalWeaponArc::default());
+            group.maneuverability = maneuverability;
+            group.torpedo_strength = torpedoes;
+            fighters.push(group);
+        }
+        let mut battle = AbstractBattle::new(session(vec![death_star_ship], fighters));
+        battle.session.death_star = Some(imperial_death_star(false));
+        battle
+    }
+
+    // FUN_005ba7f0 with the abstract dt of 1.0 (DAT_0066badc): the charge
+    // grows by 1/3 x 0.001 a step; at 100 (DAT_0066d0f4) the Empire destroys
+    // the first capital ship of its enemy list (+0x90) and the charge empties
+    // (FUN_005ba710).
+    #[test]
+    fn the_superlaser_charges_a_three_thousandth_a_step_and_fires_when_full() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::default(), 0.0),
+                ship(false, TacticalWeaponArc::default(), 0.0),
+            ],
+            Vec::new(),
+        ));
+        battle.session.death_star = Some(imperial_death_star(true));
+        battle.death_star_step(false);
+        let charge = battle.session.death_star.unwrap().laser_charge;
+        assert!((charge - 1.0 / 3000.0).abs() < 1e-9);
+        assert!((ABSTRACT_DEATH_STAR_CHARGE_PER_STEP - 1.0 / 3000.0).abs() < 1e-9);
+        assert!(battle.session.ships[0].alive);
+        battle.session.death_star.as_mut().unwrap().laser_charge =
+            ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE - ABSTRACT_DEATH_STAR_CHARGE_PER_STEP / 2.0;
+        battle.death_star_step(false);
+        assert!(!battle.session.ships[0].alive);
+        assert!(battle.session.ships[1].alive);
+        assert_eq!(battle.session.death_star.unwrap().laser_charge, 0.0);
+        // The Alliance's step charges nothing.
+        battle.death_star_step(true);
+        assert_eq!(battle.session.death_star.unwrap().laser_charge, 0.0);
+    }
+
+    // FUN_005aefc0: a member that dodges (maneuverability 9 against 1..10)
+    // and carries enough torpedoes always hits: the Death Star's hull and
+    // charge empty (FUN_005ba8a0), and the port's Death Star ship falls.
+    #[test]
+    fn a_trench_run_that_hits_empties_the_death_star() {
+        let mut battle = trench_battle(2, 9, 400);
+        battle
+            .session
+            .ships
+            .push(ship(false, TacticalWeaponArc::default(), 0.0));
+        battle.death_star_step(true);
+        let death_star = battle.session.death_star.unwrap();
+        assert_eq!(death_star.hull, 0.0);
+        assert!(!death_star.operational());
+        assert!(!battle.session.ships[0].alive);
+        // Only the Death Star falls.
+        assert!(battle.session.ships[1].alive);
+        assert!(battle.session.fighters[1..].iter().all(|f| f.alive));
+    }
+
+    // FUN_005aefc0: with no torpedoes the chance is (0 + 1.0) x 0.5, 0 as an
+    // integer, so the run never hits; after 100 visits (0x5af047) every
+    // member left is destroyed.
+    #[test]
+    fn a_trench_run_that_never_hits_loses_its_task_force() {
+        let mut battle = trench_battle(2, 9, 0);
+        battle.death_star_step(true);
+        assert_eq!(
+            battle.session.death_star.unwrap().hull,
+            ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
+        );
+        assert!(battle.session.ships[0].alive);
+        assert!(battle.session.fighters[0].alive);
+        assert!(battle.session.fighters[1..].iter().all(|f| !f.alive));
+    }
+
+    // FUN_005aefc0: a member under the 1..10 roll is hit; with hull / 8 at
+    // most 1 it is destroyed outright.
+    #[test]
+    fn a_trench_run_member_hit_with_little_hull_is_destroyed() {
+        let mut battle = trench_battle(2, 0, 400);
+        for fighter in &mut battle.session.fighters[1..] {
+            fighter.hull_current = 15.0;
+        }
+        // Maneuverability 0 reads 1.0 (slot +0xbc), so only a roll of 1
+        // spares a member; this stream's rolls do not.
+        battle.death_star_step(true);
+        assert!(battle.session.fighters[1..].iter().all(|f| !f.alive));
+        assert_eq!(
+            battle.session.death_star.unwrap().hull,
+            ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
+        );
+    }
+
+    /// The first draws of a stream seeded `seed`, each from 1 to its bound.
+    fn draws(seed: u32, bounds: &[u32]) -> Vec<u32> {
+        let mut rng = OriginalTacticalRng::new(seed);
+        bounds
+            .iter()
+            .map(|&bound| rng.inclusive(1, bound))
+            .collect()
+    }
+
+    /// The first seed whose draws pass `keep`.
+    fn seed_where(bounds: &[u32], keep: impl Fn(&[u32]) -> bool) -> u32 {
+        (1..10_000)
+            .find(|&seed| keep(&draws(seed, bounds)))
+            .expect("a seed")
+    }
+
+    /// One Alliance fighter group (index 1) set for a trench run.
+    fn runner(seed: u32, maneuverability: u32, hull: f32, torpedoes: u32) -> AbstractBattle {
+        let mut battle = trench_battle(1, maneuverability, torpedoes);
+        battle.session.tactical_rng = OriginalTacticalRng::new(seed);
+        let fighter = &mut battle.session.fighters[1];
+        fighter.hull_current = hull;
+        fighter.shield = 0.0;
+        battle
+    }
+
+    // FUN_005aefc0 with FUN_005b23a0 / FUN_005b1770: the shot succeeds at or
+    // under (torpedoes x 0.5333 x hull / full hull + 1.0) x 0.5 (DAT_0066c4cc,
+    // DAT_0066c3f4, DAT_0066c3f0), as an integer, on a roll of 1..100.
+    #[test]
+    fn the_trench_run_shot_is_torpedoes_by_hull_share_plus_one_halved() {
+        // Maneuverability 8 reads 9 (slot +0xbc): a roll under 10 spares.
+        let seed = seed_where(&[10, 100], |d| d[0] <= 9 && (5..=90).contains(&d[1]));
+        let shot = draws(seed, &[10, 100])[1];
+        // Half the full hull of 96 halves the torpedo term.
+        let chance = |torpedoes: u32| {
+            ((48.0 * torpedoes as f32 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH / 96.0 + 1.0) * 0.5)
+                as u32
+        };
+        // The fewest torpedoes that give the chance: the 1.0 term decides it.
+        let fewest = |wanted: u32| (0..5000).find(|&t| chance(t) == wanted).unwrap();
+        let mut battle = runner(seed, 8, 48.0, fewest(shot));
+        assert_eq!(
+            battle.trench_run(&[1]),
+            TrenchRun {
+                visits: 1,
+                success: true
+            }
+        );
+        assert_eq!(battle.session.death_star.unwrap().hull, 0.0);
+        let mut battle = runner(seed, 8, 48.0, fewest(shot) - 1);
+        assert!(battle.trench_run(&[1]).visits > 1);
+    }
+
+    // FUN_005aefc0: a roll of 1..10 over the maneuverability hits; equal to it
+    // spares. A hit member with hull / 8 at most 1 is destroyed.
+    #[test]
+    fn a_trench_run_roll_over_the_maneuverability_hits() {
+        let seed = seed_where(&[10], |d| (3..=9).contains(&d[0]));
+        let roll = draws(seed, &[10])[0];
+        // Slot +0xbc reads the rating plus one.
+        let mut battle = runner(seed, roll - 1, 15.0, 1000);
+        assert_eq!(
+            battle.trench_run(&[1]),
+            TrenchRun {
+                visits: 1,
+                success: true
+            }
+        );
+        let mut battle = runner(seed, roll - 2, 15.0, 1000);
+        assert_eq!(
+            battle.trench_run(&[1]),
+            TrenchRun {
+                visits: 1,
+                success: false
+            }
+        );
+        assert!(!battle.session.fighters[1].alive);
+    }
+
+    // FUN_005aefc0: a hit with more than 1 to roll deals (1..hull / 8) x 8
+    // (DAT_0066c3dc) through FUN_005b54d0; a member left with hull goes on to
+    // its shot.
+    #[test]
+    fn a_trench_run_hit_deals_eights_of_hull() {
+        // Rolls: 10 (a hit against 9), the damage 1 of 1..2.
+        let seed = seed_where(&[10, 2], |d| d[0] == 10 && d[1] == 1);
+        let mut battle = runner(seed, 8, 16.0, 1000);
+        let run = battle.trench_run(&[1]);
+        assert!(run.success);
+        assert_eq!(battle.session.fighters[1].hull_current, 8.0);
+        let seed = seed_where(&[10, 2], |d| d[0] == 10 && d[1] == 2);
+        let mut battle = runner(seed, 8, 16.0, 1000);
+        assert!(!battle.trench_run(&[1]).success);
+        assert!(!battle.session.fighters[1].alive);
+    }
+
+    // FUN_005aefc0 (0x5af047): after 100 visits every member left is
+    // destroyed.
+    #[test]
+    fn a_trench_run_ends_after_a_hundred_visits() {
+        let mut battle = runner(1, 8, 1.0e9, 0);
+        battle.session.fighters[1].hull_max = 1.0e9;
+        assert_eq!(
+            battle.trench_run(&[1]),
+            TrenchRun {
+                visits: TRENCH_RUN_VISITS,
+                success: false
+            }
+        );
+        assert!(!battle.session.fighters[1].alive);
+    }
+
+    // FUN_005aefc0: the members take their turns in order.
+    #[test]
+    fn a_trench_run_visits_its_members_in_turn() {
+        let mut battle = trench_battle(2, 8, 0);
+        for fighter in &mut battle.session.fighters[1..] {
+            fighter.hull_current = 1.0e9;
+            fighter.hull_max = 1.0e9;
+            fighter.shield = 0.0;
+        }
+        battle.session.fighters[2].torpedo_strength = 1000;
+        assert_eq!(
+            battle.trench_run(&[1, 2]),
+            TrenchRun {
+                visits: 2,
+                success: true
+            }
+        );
+    }
+
+    // FUN_005d14d0: the Death Star comes first in each side's step.
+    #[test]
+    fn a_battle_step_runs_the_death_star_part() {
+        let mut battle = trench_battle(2, 9, 400);
+        let _ = battle.step();
+        assert_eq!(battle.session.death_star.unwrap().hull, 0.0);
+    }
+
+    // FUN_005d14d0: no run against a shielded Death Star (FUN_005ba450) or
+    // without more fighter units than the Empire (FUN_005c5eb0).
+    #[test]
+    fn the_alliance_makes_no_trench_run_when_shielded_or_outnumbered() {
+        let mut battle = trench_battle(2, 9, 400);
+        battle.session.death_star = Some(imperial_death_star(true));
+        battle.death_star_step(true);
+        assert!(battle.session.ships[0].alive);
+        let mut battle = trench_battle(1, 9, 400);
+        battle.death_star_step(true);
+        assert!(battle.session.ships[0].alive);
+        assert_eq!(
+            battle.session.death_star.unwrap().hull,
+            ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
+        );
     }
 
     // hyp (FUN_005afe40): fighters leave only with a carrier that both has
