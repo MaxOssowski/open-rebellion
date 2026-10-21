@@ -1,0 +1,438 @@
+{
+ "before_f44": [
+  {
+   "seed": 1,
+   "battles": 23,
+   "capital_lost": 13,
+   "stalemates": 11,
+   "alliance": 4,
+   "empire": 6,
+   "draw": 13
+  },
+  {
+   "seed": 2,
+   "battles": 26,
+   "capital_lost": 23,
+   "stalemates": 11,
+   "alliance": 8,
+   "empire": 7,
+   "draw": 11
+  },
+  {
+   "seed": 3,
+   "battles": 18,
+   "capital_lost": 13,
+   "stalemates": 2,
+   "alliance": 2,
+   "empire": 13,
+   "draw": 3
+  },
+  {
+   "seed": 4,
+   "battles": 3,
+   "capital_lost": 9,
+   "stalemates": 0,
+   "alliance": 1,
+   "empire": 2,
+   "draw": 0
+  },
+  {
+   "seed": 5,
+   "battles": 20,
+   "capital_lost": 12,
+   "stalemates": 1,
+   "alliance": 8,
+   "empire": 11,
+   "draw": 1
+  },
+  {
+   "seed": 6,
+   "battles": 42,
+   "capital_lost": 34,
+   "stalemates": 2,
+   "alliance": 2,
+   "empire": 38,
+   "draw": 2
+  },
+  {
+   "seed": 7,
+   "battles": 28,
+   "capital_lost": 10,
+   "stalemates": 6,
+   "alliance": 0,
+   "empire": 22,
+   "draw": 6
+  },
+  {
+   "seed": 8,
+   "battles": 86,
+   "capital_lost": 18,
+   "stalemates": 39,
+   "alliance": 12,
+   "empire": 35,
+   "draw": 39
+  },
+  {
+   "seed": 9,
+   "battles": 28,
+   "capital_lost": 5,
+   "stalemates": 0,
+   "alliance": 2,
+   "empire": 25,
+   "draw": 1
+  },
+  {
+   "seed": 10,
+   "battles": 52,
+   "capital_lost": 33,
+   "stalemates": 9,
+   "alliance": 22,
+   "empire": 21,
+   "draw": 9
+  },
+  {
+   "seed": 11,
+   "battles": 103,
+   "capital_lost": 21,
+   "stalemates": 7,
+   "alliance": 11,
+   "empire": 84,
+   "draw": 8
+  },
+  {
+   "seed": 12,
+   "battles": 28,
+   "capital_lost": 4,
+   "stalemates": 10,
+   "alliance": 0,
+   "empire": 18,
+   "draw": 10
+  },
+  {
+   "seed": 13,
+   "battles": 30,
+   "capital_lost": 27,
+   "stalemates": 6,
+   "alliance": 10,
+   "empire": 10,
+   "draw": 10
+  },
+  {
+   "seed": 14,
+   "battles": 40,
+   "capital_lost": 10,
+   "stalemates": 3,
+   "alliance": 3,
+   "empire": 33,
+   "draw": 4
+  },
+  {
+   "seed": 15,
+   "battles": 52,
+   "capital_lost": 15,
+   "stalemates": 30,
+   "alliance": 20,
+   "empire": 2,
+   "draw": 30
+  },
+  {
+   "seed": 16,
+   "battles": 29,
+   "capital_lost": 10,
+   "stalemates": 10,
+   "alliance": 1,
+   "empire": 18,
+   "draw": 10
+  },
+  {
+   "seed": 17,
+   "battles": 32,
+   "capital_lost": 29,
+   "stalemates": 6,
+   "alliance": 3,
+   "empire": 22,
+   "draw": 7
+  },
+  {
+   "seed": 18,
+   "battles": 48,
+   "capital_lost": 12,
+   "stalemates": 13,
+   "alliance": 0,
+   "empire": 34,
+   "draw": 14
+  },
+  {
+   "seed": 19,
+   "battles": 23,
+   "capital_lost": 17,
+   "stalemates": 5,
+   "alliance": 2,
+   "empire": 15,
+   "draw": 6
+  },
+  {
+   "seed": 20,
+   "battles": 61,
+   "capital_lost": 13,
+   "stalemates": 55,
+   "alliance": 2,
+   "empire": 4,
+   "draw": 55
+  },
+  {
+   "seed": 21,
+   "battles": 33,
+   "capital_lost": 31,
+   "stalemates": 0,
+   "alliance": 0,
+   "empire": 26,
+   "draw": 7
+  },
+  {
+   "seed": 22,
+   "battles": 79,
+   "capital_lost": 23,
+   "stalemates": 1,
+   "alliance": 1,
+   "empire": 75,
+   "draw": 3
+  },
+  {
+   "seed": 23,
+   "battles": 14,
+   "capital_lost": 17,
+   "stalemates": 8,
+   "alliance": 4,
+   "empire": 2,
+   "draw": 8
+  },
+  {
+   "seed": 24,
+   "battles": 3,
+   "capital_lost": 2,
+   "stalemates": 1,
+   "alliance": 0,
+   "empire": 2,
+   "draw": 1
+  }
+ ],
+ "after_f45": [
+  {
+   "seed": 1,
+   "battles": 17,
+   "capital_lost": 19,
+   "stalemates": 1,
+   "alliance": 11,
+   "empire": 6,
+   "draw": 0
+  },
+  {
+   "seed": 2,
+   "battles": 81,
+   "capital_lost": 42,
+   "stalemates": 0,
+   "alliance": 16,
+   "empire": 65,
+   "draw": 0
+  },
+  {
+   "seed": 3,
+   "battles": 49,
+   "capital_lost": 31,
+   "stalemates": 0,
+   "alliance": 22,
+   "empire": 27,
+   "draw": 0
+  },
+  {
+   "seed": 4,
+   "battles": 38,
+   "capital_lost": 8,
+   "stalemates": 0,
+   "alliance": 3,
+   "empire": 35,
+   "draw": 0
+  },
+  {
+   "seed": 5,
+   "battles": 13,
+   "capital_lost": 27,
+   "stalemates": 1,
+   "alliance": 6,
+   "empire": 6,
+   "draw": 1
+  },
+  {
+   "seed": 6,
+   "battles": 89,
+   "capital_lost": 30,
+   "stalemates": 0,
+   "alliance": 2,
+   "empire": 87,
+   "draw": 0
+  },
+  {
+   "seed": 7,
+   "battles": 37,
+   "capital_lost": 12,
+   "stalemates": 0,
+   "alliance": 1,
+   "empire": 36,
+   "draw": 0
+  },
+  {
+   "seed": 8,
+   "battles": 48,
+   "capital_lost": 29,
+   "stalemates": 0,
+   "alliance": 5,
+   "empire": 43,
+   "draw": 0
+  },
+  {
+   "seed": 9,
+   "battles": 25,
+   "capital_lost": 3,
+   "stalemates": 0,
+   "alliance": 2,
+   "empire": 23,
+   "draw": 0
+  },
+  {
+   "seed": 10,
+   "battles": 55,
+   "capital_lost": 20,
+   "stalemates": 0,
+   "alliance": 22,
+   "empire": 33,
+   "draw": 0
+  },
+  {
+   "seed": 11,
+   "battles": 110,
+   "capital_lost": 14,
+   "stalemates": 0,
+   "alliance": 39,
+   "empire": 71,
+   "draw": 0
+  },
+  {
+   "seed": 12,
+   "battles": 11,
+   "capital_lost": 11,
+   "stalemates": 0,
+   "alliance": 1,
+   "empire": 10,
+   "draw": 0
+  },
+  {
+   "seed": 13,
+   "battles": 38,
+   "capital_lost": 18,
+   "stalemates": 0,
+   "alliance": 15,
+   "empire": 23,
+   "draw": 0
+  },
+  {
+   "seed": 14,
+   "battles": 32,
+   "capital_lost": 21,
+   "stalemates": 0,
+   "alliance": 4,
+   "empire": 28,
+   "draw": 0
+  },
+  {
+   "seed": 15,
+   "battles": 55,
+   "capital_lost": 33,
+   "stalemates": 1,
+   "alliance": 5,
+   "empire": 50,
+   "draw": 0
+  },
+  {
+   "seed": 16,
+   "battles": 51,
+   "capital_lost": 6,
+   "stalemates": 0,
+   "alliance": 16,
+   "empire": 35,
+   "draw": 0
+  },
+  {
+   "seed": 17,
+   "battles": 41,
+   "capital_lost": 31,
+   "stalemates": 0,
+   "alliance": 20,
+   "empire": 21,
+   "draw": 0
+  },
+  {
+   "seed": 18,
+   "battles": 45,
+   "capital_lost": 20,
+   "stalemates": 0,
+   "alliance": 11,
+   "empire": 34,
+   "draw": 0
+  },
+  {
+   "seed": 19,
+   "battles": 12,
+   "capital_lost": 2,
+   "stalemates": 0,
+   "alliance": 7,
+   "empire": 5,
+   "draw": 0
+  },
+  {
+   "seed": 20,
+   "battles": 19,
+   "capital_lost": 20,
+   "stalemates": 0,
+   "alliance": 10,
+   "empire": 9,
+   "draw": 0
+  },
+  {
+   "seed": 21,
+   "battles": 51,
+   "capital_lost": 43,
+   "stalemates": 0,
+   "alliance": 18,
+   "empire": 33,
+   "draw": 0
+  },
+  {
+   "seed": 22,
+   "battles": 60,
+   "capital_lost": 16,
+   "stalemates": 0,
+   "alliance": 2,
+   "empire": 58,
+   "draw": 0
+  },
+  {
+   "seed": 23,
+   "battles": 56,
+   "capital_lost": 26,
+   "stalemates": 0,
+   "alliance": 17,
+   "empire": 39,
+   "draw": 0
+  },
+  {
+   "seed": 24,
+   "battles": 10,
+   "capital_lost": 20,
+   "stalemates": 0,
+   "alliance": 1,
+   "empire": 9,
+   "draw": 0
+  }
+ ]
+}

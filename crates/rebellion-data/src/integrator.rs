@@ -14,7 +14,7 @@
 use rebellion_core::ai::{AIAction, AIState, AiFaction};
 use rebellion_core::blockade::BlockadeEvent;
 use rebellion_core::bombardment::BombardEnv;
-use rebellion_core::combat::{CombatSide, CombatSystem, SpaceCombatResult};
+use rebellion_core::combat::{CombatSide, SpaceCombatResult};
 use rebellion_core::death_star::DeathStarEvent;
 use rebellion_core::economy::{EconomyEvent, EconomyState};
 use rebellion_core::events::{EventAction, FiredEvent, SkillField, SystemTag};
@@ -5166,13 +5166,6 @@ mod tests {
 // Combat helpers (moved from simulation.rs)
 // ---------------------------------------------------------------------------
 
-/// Safety cap for a complete system-level engagement.
-///
-/// A round that changes neither hull nor fighter strength ends the engagement
-/// immediately, so this cap only protects against unexpectedly large battles.
-/// port: a safety cap of the port's auto-resolve loop.
-pub const MAX_SYSTEM_COMBAT_ROUNDS: u32 = 256;
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SpaceForceSummary {
     pub capital_ships: usize,
@@ -5266,36 +5259,20 @@ pub fn resolve_system_space_combat(
     let mut rounds = 0;
     let mut stalemate = false;
 
-    while rounds < MAX_SYSTEM_COMBAT_ROUNDS {
-        let (alliance, empire) = orbiting_fleets_by_faction(world, system);
-        let (Some(&attacker), Some(&defender)) = (alliance.first(), empire.first()) else {
-            break;
-        };
-
-        let round = CombatSystem::resolve_space(
+    // FUN_0040a050 state 8: every fleet of both sides fights one abstract
+    // battle (`rebellion_core::abstract_battle`, FUN_005ae9c0).
+    if !initial_alliance.is_empty() && !initial_empire.is_empty() {
+        let (round, outcome) = rebellion_core::abstract_battle::resolve_space_battle(
             world,
-            attacker,
-            defender,
             system,
-            rng_rolls,
+            &initial_alliance,
+            &initial_empire,
+            rebellion_core::abstract_battle::abstract_seed(rng_rolls),
             tick,
         );
-        let made_progress = round
-            .ship_damage
-            .iter()
-            .any(|event| event.hull_after < event.hull_before)
-            || round
-                .fighter_losses
-                .iter()
-                .any(|event| event.squads_after < event.squads_before);
-
         apply_space_combat_result_inner(&round, world);
-        rounds += 1;
-
-        if !made_progress {
-            stalemate = true;
-            break;
-        }
+        rounds = 1;
+        stalemate = outcome.stalemate;
     }
 
     let (alliance, empire) = orbiting_fleets_by_faction(world, system);
@@ -5306,9 +5283,6 @@ pub fn resolve_system_space_combat(
         (None, Some(fleet)) => (CombatSide::Defender, Some(fleet)),
         _ => (CombatSide::Draw, None),
     };
-    if rounds == MAX_SYSTEM_COMBAT_ROUNDS && winner == CombatSide::Draw {
-        stalemate = true;
-    }
 
     SystemSpaceCombatResult {
         system,
@@ -5359,8 +5333,20 @@ pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut G
         }
     }
 
-    // Remove dead ships and empty fleets.
-    for &fleet_key in &[result.attacker_fleet, result.defender_fleet] {
+    // Remove dead ships and empty fleets: the two named fleets and every
+    // other fleet the battle touched.
+    let mut fleets = vec![result.attacker_fleet, result.defender_fleet];
+    for fleet in result
+        .ship_damage
+        .iter()
+        .map(|event| event.fleet)
+        .chain(result.fighter_losses.iter().map(|event| event.fleet))
+    {
+        if !fleets.contains(&fleet) {
+            fleets.push(fleet);
+        }
+    }
+    for &fleet_key in &fleets {
         let death_star_status = world.fleets.get(fleet_key).map(|fleet| {
             fleet
                 .capital_ships
@@ -5453,6 +5439,9 @@ mod combat_application_tests {
             is_empire: !is_alliance,
             hull,
             turbolaser_fore: attack,
+            // FUN_005b7780: damage per second is the weapons' mean strength
+            // times the weapon recharge, so the recharge carries the attack.
+            weapon_recharge_rate: attack,
             ..CapitalShipClass::default()
         });
         let fleet = world.fleets.insert(Fleet {
@@ -5673,8 +5662,10 @@ mod combat_application_tests {
         assert_eq!(world.fleets[defender].capital_ships[0].class, escort_class);
     }
 
+    // FUN_0040a050 state 8: the engagement is one abstract battle that runs
+    // until a side is beaten (FUN_005ae9c0).
     #[test]
-    fn system_engagement_resolves_multiple_rounds_before_repair() {
+    fn system_engagement_resolves_in_one_abstract_battle() {
         let mut world = GameWorld::default();
         let system = add_combat_system(&mut world);
         let attacker = add_ship_fleet(&mut world, system, true, 100, 30);
@@ -5684,7 +5675,7 @@ mod combat_application_tests {
 
         assert_eq!(result.winner, CombatSide::Attacker);
         assert_eq!(result.winner_fleet, Some(attacker));
-        assert!(result.rounds > 1);
+        assert_eq!(result.rounds, 1);
         assert!(!result.stalemate);
         assert!(!world.fleets.contains_key(defender));
     }
@@ -5717,8 +5708,46 @@ mod combat_application_tests {
         assert_eq!(events[0].details["empire_fleets"], 2);
     }
 
+    // A battle needs both sides at the system.
     #[test]
-    fn system_engagement_stops_on_true_no_progress_stalemate() {
+    fn a_system_with_one_side_has_no_battle() {
+        let mut world = GameWorld::default();
+        let system = add_combat_system(&mut world);
+        let fleet = add_ship_fleet(&mut world, system, true, 100, 5);
+
+        let result = resolve_system_space_combat(&mut world, system, &[0.5; 256], 14);
+
+        assert_eq!(result.rounds, 0);
+        assert_eq!(result.winner, CombatSide::Attacker);
+        assert!(world.fleets.contains_key(fleet));
+    }
+
+    // FUN_0040c780: every hull the battle destroys leaves its fleet, however
+    // many fall in one fleet.
+    #[test]
+    fn every_hull_lost_in_one_battle_leaves_the_fleet() {
+        let mut world = GameWorld::default();
+        let system = add_combat_system(&mut world);
+        let attacker = add_ship_fleet(&mut world, system, true, 400, 40);
+        let defender = add_ship_fleet(&mut world, system, false, 50, 1);
+        let extra = world.fleets[defender].capital_ships[0].clone();
+        for _ in 0..4 {
+            world.fleets[defender].capital_ships.push(extra.clone());
+        }
+
+        let result = resolve_system_space_combat(&mut world, system, &[0.5; 256], 13);
+
+        assert_eq!(result.winner, CombatSide::Attacker);
+        assert_eq!(result.empire_before.capital_ships, 5);
+        assert_eq!(result.empire_after.capital_ships, 0);
+        assert!(!world.fleets.contains_key(defender));
+        assert!(world.fleets.contains_key(attacker));
+    }
+
+    // FUN_005ae9c0: unarmed sides never lose strength; after 1200 seconds
+    // the equal sides are both destroyed (FUN_005af7a0).
+    #[test]
+    fn system_engagement_stall_destroys_two_equal_unarmed_sides() {
         let mut world = GameWorld::default();
         let system = add_combat_system(&mut world);
         add_ship_fleet(&mut world, system, true, 100, 0);
@@ -5729,7 +5758,7 @@ mod combat_application_tests {
         assert_eq!(result.winner, CombatSide::Draw);
         assert_eq!(result.rounds, 1);
         assert!(result.stalemate);
-        assert_eq!(world.systems[system].fleets.len(), 2);
+        assert!(world.systems[system].fleets.is_empty());
     }
 }
 

@@ -225,7 +225,9 @@ stalled weaker side that cannot leave is destroyed.
 - strength with the out-damaged exclusion;
 - the 1200-second stall that destroys the weaker side, or both on a tie.
 
-It is not used by the campaign yet. Three pieces stay `hyp:`:
+Since W2f it resolves every strategic space battle the port resolves on its
+own (`resolve_space_battle`, all fleets at the system). Three pieces stay
+`hyp:`:
 
 - Targeting: ported in W2e, following the "Targets" section above.
   - `hyp:` the travel speed is the leader's engine power.

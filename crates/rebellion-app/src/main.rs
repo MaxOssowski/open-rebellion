@@ -37,7 +37,7 @@ use std::path::{Path, PathBuf};
 use rebellion_core::ai::{AIAction, AIState, AISystem, AiFaction, FleetMoveReason};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
 use rebellion_core::bombardment::BombardEnv;
-use rebellion_core::combat::{CombatSide, CombatSystem};
+use rebellion_core::combat::CombatSide;
 use rebellion_core::agent_automation::{AutomationModule, PlayerAgent};
 use rebellion_core::dat::Faction;
 use rebellion_core::delivery::DeliveryState;
@@ -2227,12 +2227,13 @@ async fn main() {
                 let battle_before = rebellion_core::loyalty::battle_watch(&world, sys_key);
                 let attacker_is_alliance = world.fleets.get(atk_fleet).map(|f| f.is_alliance);
                 let combat_rolls: Vec<f64> = (0..256).map(|_| sim_rng.gen::<f64>()).collect();
-                let space_result = CombatSystem::resolve_space(
+                // FUN_0040a050 state 8: an abstract battle (FUN_005ae9c0).
+                let (space_result, _) = rebellion_core::abstract_battle::resolve_space_battle(
                     &world,
-                    atk_fleet,
-                    def_fleet,
                     sys_key,
-                    &combat_rolls,
+                    &[atk_fleet],
+                    &[def_fleet],
+                    rebellion_core::abstract_battle::abstract_seed(&combat_rolls),
                     current_tick,
                 );
 
@@ -6205,14 +6206,15 @@ async fn main() {
                                 .map(|f| f.is_alliance);
                             let combat_rolls: Vec<f64> =
                                 (0..256).map(|_| sim_rng.gen::<f64>()).collect();
-                            let space_result = CombatSystem::resolve_space(
-                                &world,
-                                session.attacker_fleet,
-                                session.defender_fleet,
-                                session.system,
-                                &combat_rolls,
-                                session.start_tick,
-                            );
+                            let (space_result, _) =
+                                rebellion_core::abstract_battle::resolve_space_battle(
+                                    &world,
+                                    session.system,
+                                    &[session.attacker_fleet],
+                                    &[session.defender_fleet],
+                                    rebellion_core::abstract_battle::abstract_seed(&combat_rolls),
+                                    session.start_tick,
+                                );
                             apply_space_combat_result(&space_result, &mut world);
                             rebellion_core::loyalty::settle_battle(
                                 &mut world,

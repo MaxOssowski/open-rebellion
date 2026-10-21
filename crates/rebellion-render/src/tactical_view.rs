@@ -18,7 +18,7 @@
 //!     tactical_state = TacticalState::new_battle(...);
 //!     game_mode = GameMode::TacticalCombat;
 //! } else {
-//!     CombatSystem::resolve_space(...); // auto-resolve AI vs AI
+//!     abstract_battle::resolve_space_battle(...); // auto-resolve AI vs AI
 //! }
 //! ```
 

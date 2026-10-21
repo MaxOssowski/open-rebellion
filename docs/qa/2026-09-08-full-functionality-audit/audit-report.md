@@ -2185,6 +2185,24 @@ cross-runtime proof remain open
   - Probe over seeds 1-3: 67 of 67 battles end, 26 attacker and 41
     defender wins, no stalemate; 55 match the `hyp:` rule
     (`evidence/2026-10-21-abstract-targeting/`).
+- 2026-10-21 (W2f): every strategic space battle the port resolves on its
+  own is now an abstract battle (`FUN_0040a050` state 8).
+  - The integrator puts every fleet of both sides at the system into one
+    battle (`BattleSession::new_for_fleets`, `FUN_0040c780`).
+  - The app's AI battles and the player's Auto Resolve use the same
+    engine. `CombatSystem::resolve_space` decides nothing now.
+  - 24 of 24 campaigns change:
+    - battles 901 -> 1043;
+    - draws 258 -> 1, stalemates 236 -> 3;
+    - Alliance wins 118 -> 256, Empire wins 525 -> 786;
+    - capital ships lost 401 -> 502.
+  - No campaign reaches victory, and the golden has no battle
+    (`evidence/2026-10-21-abstract-battle-wired/`).
+  - Open:
+    - the retreat decision (slots `+0x0c`, `+0x2c`);
+    - the Death Star's abstract actions;
+    - removing the unused round formula;
+    - ground combat.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

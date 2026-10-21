@@ -1,0 +1,9 @@
+cargo mutants --in-diff (tactical.rs, abstract_battle.rs, integrator.rs) -p rebellion-core -p rebellion-data -- --lib
+21 mutants tested: 16 caught, 3 unviable, 2 missed.
+
+Missed, both equivalent:
+- 909 `fighter.alive && fighter.squad_count > 0` with `&&` -> `||`.
+- 909 the same test with `>` -> `>=`.
+  `refresh_craft_count` clears `alive` exactly when the count reaches 0, so both forms count the same squadrons.
+
+The first run, before the core tests `a_strategic_battle_reports_each_fleets_losses` and `the_seed_is_the_first_roll_scaled_to_32_bits`, missed 14. Those 14 lines were tested only from rebellion-data.

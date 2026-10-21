@@ -17,10 +17,14 @@
 
 use std::collections::HashMap;
 
+use crate::combat::{CombatSide, FighterLossEvent, ShipDamageEvent, SpaceCombatResult};
+use crate::ids::{FleetKey, SystemKey};
+use crate::world::GameWorld;
+
 use crate::tactical::{
     apply_original_capital_damage, original_engine_mode_bonus, original_tactical_damage_rolls,
-    original_tactical_mobility, BattlePhase, BattleSession, CombatWinner, TacticalWeaponArc,
-    ORIGINAL_CAPITAL_MANEUVERABILITY_MAX, ORIGINAL_CAPITAL_WEAPON_STRENGTH,
+    original_tactical_mobility, BattlePhase, BattleSession, CombatWinner, FleetBattle,
+    TacticalWeaponArc, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX, ORIGINAL_CAPITAL_WEAPON_STRENGTH,
     ORIGINAL_FIGHTER_TORPEDO_STRENGTH, ORIGINAL_ION_VS_FIGHTER, ORIGINAL_LASER_VS_CAPITAL,
     ORIGINAL_LASER_VS_FIGHTER, ORIGINAL_TURBOLASER_VS_FIGHTER,
 };
@@ -835,6 +839,114 @@ impl AbstractBattle {
         }
         self.finish()
     }
+}
+
+/// port: the seed of the battle object's stream (`FUN_005af420`) taken from
+/// the campaign's first combat roll.
+#[must_use]
+pub fn abstract_seed(rolls: &[f64]) -> u32 {
+    rolls.first().map_or(0, |roll| {
+        (roll.clamp(0.0, 1.0) * f64::from(u32::MAX)) as u32
+    })
+}
+
+/// A strategic space battle resolved without display (`FUN_0040a050`
+/// state 8): every fleet of both sides at the system fights one abstract
+/// battle, and `FUN_0040c780` carries each hull and squadron back to its
+/// fleet. The result names the first fleet of each side.
+#[must_use]
+pub fn resolve_space_battle(
+    world: &GameWorld,
+    system: SystemKey,
+    attackers: &[FleetKey],
+    defenders: &[FleetKey],
+    seed: u32,
+    tick: u64,
+) -> (SpaceCombatResult, AbstractOutcome) {
+    let FleetBattle {
+        session,
+        ship_fleets,
+        fighter_fleets,
+    } = BattleSession::new_for_fleets(world, system, attackers, defenders, true, tick, seed);
+    let (session, outcome) = resolve_abstract(session);
+
+    let mut ship_damage = Vec::new();
+    for (ship, &fleet_key) in session.ships.iter().zip(&ship_fleets) {
+        let Some(fleet) = world.fleets.get(fleet_key) else {
+            continue;
+        };
+        let Some(before) = fleet.capital_ships.get(ship.fleet_ship_index) else {
+            continue;
+        };
+        let after = if ship.alive {
+            ship.hull_current.max(0)
+        } else {
+            0
+        };
+        if after == before.hull_current {
+            continue;
+        }
+        // `ship_index` counts the fleet's live hulls.
+        let ship_index = fleet.capital_ships[..ship.fleet_ship_index]
+            .iter()
+            .filter(|other| other.alive)
+            .count();
+        ship_damage.push(ShipDamageEvent {
+            fleet: fleet_key,
+            ship_index,
+            hull_before: before.hull_current,
+            hull_after: after,
+        });
+    }
+
+    // `apply_space_combat_result_inner` counts live hulls as it marks them
+    // dead, so each fleet's events run from the last hull to the first.
+    ship_damage.sort_by(|left, right| right.ship_index.cmp(&left.ship_index));
+
+    let mut survivors: Vec<((FleetKey, usize), u32)> = Vec::new();
+    for (fighter, &fleet_key) in session.fighters.iter().zip(&fighter_fleets) {
+        let key = (fleet_key, fighter.fleet_fighter_index);
+        let alive = u32::from(fighter.alive && fighter.squad_count > 0);
+        match survivors.iter_mut().find(|(entry, _)| *entry == key) {
+            Some((_, count)) => *count += alive,
+            None => survivors.push((key, alive)),
+        }
+    }
+    let fighter_losses = survivors
+        .into_iter()
+        .filter_map(|((fleet_key, fighter_index), after)| {
+            let before = world
+                .fleets
+                .get(fleet_key)?
+                .fighters
+                .get(fighter_index)?
+                .count;
+            (after != before).then_some(FighterLossEvent {
+                fleet: fleet_key,
+                fighter_index,
+                squads_before: before,
+                squads_after: after,
+            })
+        })
+        .collect();
+
+    let winner = match outcome.winner {
+        CombatWinner::Attacker => CombatSide::Attacker,
+        CombatWinner::Defender => CombatSide::Defender,
+        CombatWinner::Draw => CombatSide::Draw,
+    };
+    (
+        SpaceCombatResult {
+            attacker_fleet: attackers[0],
+            defender_fleet: defenders[0],
+            system,
+            winner,
+            ship_damage,
+            fighter_losses,
+            tick,
+        },
+        outcome,
+    )
 }
 
 /// Resolve a battle session without display.
@@ -1684,5 +1796,156 @@ mod tests {
             assert!((score - base - 0.002).abs() < 1e-5, "axis {axis}: {score}");
         }
         assert_eq!(ABSTRACT_NO_SCORE, -1.0);
+    }
+
+    fn world_with_battle() -> (GameWorld, SystemKey, FleetKey, FleetKey, FleetKey) {
+        use crate::dat::ExplorationStatus;
+        use crate::ids::SectorKey;
+        use crate::world::{
+            CapitalShipClass, ControlKind, FighterClass, FighterEntry, Fleet, ShipInstance, System,
+        };
+        let mut world = GameWorld::default();
+        let system = world.systems.insert(System {
+            dat_id: DatId::new(0x9000_0001),
+            name: "Test".into(),
+            sector: SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Uncontrolled,
+        });
+        let strong = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x3000_0001),
+            is_alliance: true,
+            hull: 2_000,
+            turbolaser_fore: 10,
+            laser_cannon_fore: 10,
+            weapon_recharge_rate: 40,
+            ..CapitalShipClass::default()
+        });
+        let weak = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x3000_0002),
+            is_empire: true,
+            hull: 40,
+            turbolaser_fore: 1,
+            weapon_recharge_rate: 1,
+            ..CapitalShipClass::default()
+        });
+        let craft = world.fighter_classes.insert(FighterClass {
+            dat_id: DatId::new(0x2000_0001),
+            is_empire: true,
+            squadron_size: 1,
+            laser_cannon_fore: 1,
+            ..FighterClass::default()
+        });
+        let escort = world.fighter_classes.insert(FighterClass {
+            dat_id: DatId::new(0x2000_0002),
+            is_alliance: true,
+            squadron_size: 12,
+            ..FighterClass::default()
+        });
+        let mut dead = ShipInstance::new(weak, 0, false);
+        dead.alive = false;
+        let alliance = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![ShipInstance::new(strong, 2_000, true)],
+            fighters: vec![FighterEntry {
+                class: escort,
+                count: 2,
+            }],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        let ships = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![
+                dead,
+                ShipInstance::new(weak, 40, false),
+                ShipInstance::new(weak, 40, false),
+            ],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        let squadrons = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![FighterEntry {
+                class: craft,
+                count: 2,
+            }],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[system].fleets = vec![alliance, ships, squadrons];
+        (world, system, alliance, ships, squadrons)
+    }
+
+    // FUN_0040c780: each lost hull and squadron goes back to its own fleet.
+    // A hull's index counts the fleet's live hulls, last first, and an
+    // untouched hull has no event.
+    #[test]
+    fn a_strategic_battle_reports_each_fleets_losses() {
+        let (world, system, alliance, ships, squadrons) = world_with_battle();
+        let (result, outcome) =
+            resolve_space_battle(&world, system, &[alliance], &[ships, squadrons], 7, 3);
+        assert_eq!(outcome.winner, CombatWinner::Attacker);
+        assert_eq!(result.winner, CombatSide::Attacker);
+        assert_eq!(result.attacker_fleet, alliance);
+        assert_eq!(result.defender_fleet, ships);
+        assert_eq!(result.tick, 3);
+        let lost = |fleet: FleetKey| -> Vec<(usize, i32, i32)> {
+            result
+                .ship_damage
+                .iter()
+                .filter(|event| event.fleet == fleet)
+                .map(|event| (event.ship_index, event.hull_before, event.hull_after))
+                .collect()
+        };
+        assert_eq!(lost(ships), [(1, 40, 0), (0, 40, 0)]);
+        let hit = lost(alliance);
+        assert_eq!(hit.len(), 1);
+        assert!(hit[0].0 == 0 && hit[0].2 < hit[0].1 && hit[0].2 > 0);
+        // The Alliance's two squadrons both survive: no event.
+        assert_eq!(result.fighter_losses.len(), 1);
+        let squadron = &result.fighter_losses[0];
+        assert_eq!(
+            (
+                squadron.fleet,
+                squadron.fighter_index,
+                squadron.squads_before,
+                squadron.squads_after
+            ),
+            (squadrons, 0, 2, 0)
+        );
+    }
+
+    // port: the seed comes from the first combat roll.
+    #[test]
+    fn the_seed_is_the_first_roll_scaled_to_32_bits() {
+        assert_eq!(
+            abstract_seed(&[0.5, 0.9]),
+            (0.5 * f64::from(u32::MAX)) as u32
+        );
+        assert_eq!(abstract_seed(&[]), 0);
+        assert_eq!(abstract_seed(&[2.0]), u32::MAX);
     }
 }

@@ -51,7 +51,8 @@ crates/rebellion-core/src/
 ├── mission_detection.rs — The mission detection manager (FUN_00547f60): decoys, detection, betrayal, exposure
 ├── mission_planning.rs — The AI mission planners' team and decoy selectors
 ├── fog.rs            — FogState, visibility sets, dim rendering tiers (373 LOC, 9 tests)
-├── combat.rs         — Space combat 7-phase pipeline, ground combat, CombatPhaseFlags
+├── combat.rs         — Ground combat and the shared combat result types; its old space round formula no longer decides battles (see abstract_battle.rs)
+├── abstract_battle.rs — A battle resolved without display: the side commanders' targeting, per-second fire, the 1200 s stalemate; resolves every auto-resolved space battle (ghidra/notes/abstract-battle.md)
 ├── tactical.rs       — The tactical battle: BattleSession and its step, ships, fighters, Death Star, damage and voice cues (moved from rebellion-render; ghidra/notes/battle-flow.md)
 ├── tactical_resources.rs — Joins from DAT identities to the original tactical graphics (FUN_00597610)
 ├── pictures.rs       — A system's planet picture and a character's compact image, shared by windows and battles

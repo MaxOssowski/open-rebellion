@@ -1233,6 +1233,14 @@ pub struct BattleSession {
     pub diagnostic_log: Vec<String>,
 }
 
+/// A battle session with the fleet of each ship and fighter squadron.
+#[derive(Debug, Clone)]
+pub struct FleetBattle {
+    pub session: BattleSession,
+    pub ship_fleets: Vec<FleetKey>,
+    pub fighter_fleets: Vec<FleetKey>,
+}
+
 /// A visual weapon fire effect between two ships.
 #[derive(Debug, Clone)]
 pub struct WeaponEffect {
@@ -3040,6 +3048,33 @@ impl BattleSession {
         tick: u64,
         rng_seed: u32,
     ) -> Self {
+        Self::new_for_fleets(
+            world,
+            system,
+            &[attacker],
+            &[defender],
+            player_is_attacker,
+            tick,
+            rng_seed,
+        )
+        .session
+    }
+
+    /// A battle of several fleets per side. `FUN_0040c780` applies a
+    /// battle's result to every fleet at the system (`FUN_004ffe70`), so
+    /// every fleet of both sides fights. The first fleet of each side names
+    /// it. Each unit's fleet is returned beside the session.
+    pub fn new_for_fleets(
+        world: &GameWorld,
+        system: SystemKey,
+        attackers: &[FleetKey],
+        defenders: &[FleetKey],
+        player_is_attacker: bool,
+        tick: u64,
+        rng_seed: u32,
+    ) -> FleetBattle {
+        let attacker = attackers[0];
+        let defender = defenders[0];
         let system_name = world
             .systems
             .get(system)
@@ -3052,10 +3087,16 @@ impl BattleSession {
         let mut ships = Vec::new();
         let mut fighters = Vec::new();
 
-        // Expand attacker fleet into individual hulls.
-        Self::expand_fleet(world, attacker, true, &mut ships, &mut fighters);
-        // Expand defender fleet.
-        Self::expand_fleet(world, defender, false, &mut ships, &mut fighters);
+        let mut ship_fleets = Vec::new();
+        let mut fighter_fleets = Vec::new();
+        // Expand each attacker fleet, then each defender fleet, into hulls.
+        for (fleets, is_attacker) in [(attackers, true), (defenders, false)] {
+            for &fleet in fleets {
+                Self::expand_fleet(world, fleet, is_attacker, &mut ships, &mut fighters);
+                ship_fleets.resize(ships.len(), fleet);
+                fighter_fleets.resize(fighters.len(), fleet);
+            }
+        }
 
         // Retain the working 2D fallback separately from the recovered source
         // world coordinates. P58 will replace each fallback only after its
@@ -3075,8 +3116,11 @@ impl BattleSession {
                 })
             })
         });
-        let death_star = [(attacker, true), (defender, false)].into_iter().find_map(
-            |(fleet_key, is_attacker)| {
+        let death_star = attackers
+            .iter()
+            .map(|&fleet| (fleet, true))
+            .chain(defenders.iter().map(|&fleet| (fleet, false)))
+            .find_map(|(fleet_key, is_attacker)| {
                 let fleet = &world.fleets[fleet_key];
                 fleet.has_death_star.then_some(TacticalDeathStar {
                     resource: DEATH_STAR_TACTICAL_RESOURCE,
@@ -3097,8 +3141,7 @@ impl BattleSession {
                     destroyed: false,
                     action_committed: false,
                 })
-            },
-        );
+            });
 
         // The original Tactical Display opens with the battle paused. The
         // Battle Alert's Take Command choice is the entry action, not a second
@@ -3110,7 +3153,7 @@ impl BattleSession {
             ships[index].selected = true;
         }
 
-        BattleSession {
+        let session = BattleSession {
             system,
             system_name,
             system_picture_id,
@@ -3151,6 +3194,11 @@ impl BattleSession {
             step_accumulator: 0.0,
             winner: None,
             diagnostic_log: Vec::new(),
+        };
+        FleetBattle {
+            session,
+            ship_fleets,
+            fighter_fleets,
         }
     }
 
