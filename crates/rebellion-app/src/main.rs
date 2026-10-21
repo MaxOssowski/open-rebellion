@@ -2449,6 +2449,7 @@ async fn main() {
                     &mut world,
                     &mut research_state,
                     &mut msg_log,
+                    &message_texts,
                     #[cfg(not(target_arch = "wasm32"))]
                     &mut audio_engine,
                     #[cfg(not(target_arch = "wasm32"))]
@@ -8247,6 +8248,7 @@ fn apply_mission_result(
     world: &mut GameWorld,
     research_state: &mut ResearchState,
     log: &mut MessageLog,
+    message_texts: &std::collections::HashMap<u16, String>,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
 ) {
@@ -8377,18 +8379,49 @@ fn apply_mission_result(
                     rebellion_core::research::TechType::Troop => "Troop",
                     rebellion_core::research::TechType::Facility => "Facility",
                 };
+                let was_done = research_state.progress(is_alliance, *tech).done;
                 for level in research_state.add_points(world, is_alliance, *tech, *points) {
-                    // Notification 5, Research Report.
-                    log.push(filed(
-                        GameMessage::new(
-                            result.tick,
+                    // Notifications 0x125..0x127, Research Complete
+                    // (FUN_00499aa0): the class the level opens.
+                    let (title, text) = match rebellion_render::story_messages::research_complete_texts(
+                        world,
+                        is_alliance,
+                        *tech,
+                        level,
+                        message_texts,
+                    ) {
+                        Some((title, body)) => (Some(title), body),
+                        None if message_texts.is_empty() => (
+                            None,
                             format!("{faction_name} {tree_name} tech advanced to level {level}"),
-                            MessageCategory::Event,
-                        )
-                        .with_picture_if(Some(pictures::research())),
+                        ),
+                        None => continue,
+                    };
+                    let mut message = GameMessage::new(result.tick, text, MessageCategory::Event)
+                        .with_picture_if(Some(pictures::research()));
+                    if let Some(title) = title {
+                        message = message.with_title(title);
+                    }
+                    log.push(filed(
+                        message,
                         MessageRail::Manufacturing,
                         Some(RailAudience::side(is_alliance)),
                     ));
+                }
+                // Notifications 0x129..0x12b, Research Exhausted
+                // (FUN_0048abc0): the tree was just marked Done.
+                if !was_done && research_state.progress(is_alliance, *tech).done {
+                    if let Some((title, text)) =
+                        rebellion_render::story_messages::research_exhausted_texts(*tech, message_texts)
+                    {
+                        log.push(filed(
+                            GameMessage::new(result.tick, text, MessageCategory::Event)
+                                .with_title(title)
+                                .with_picture_if(Some(pictures::research())),
+                            MessageRail::Manufacturing,
+                            Some(RailAudience::side(is_alliance)),
+                        ));
+                    }
                 }
             }
             MissionEffect::UprisingIncident(event) => {

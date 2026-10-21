@@ -843,6 +843,73 @@ pub fn death_star_destroyed_texts(
     Some((title, body))
 }
 
+/// Research Complete (`FUN_00499aa0`): notifications `0x125` (ships),
+/// `0x126` (troops) and `0x127` (facilities), a side's research order
+/// reaching `level`. `FUN_00567a90` takes the first class of the tree's
+/// family whose order equals the level (`FUN_00567880` with only "equal"
+/// listed); with none there is no message. Its texts are TEXTSTRA
+/// `0x7048` "{1:1} Research Complete" and `0x7049` "R&D Reports that the
+/// {1:1} is now available for manufacture.". Returns the title and body.
+#[must_use]
+pub fn research_complete_texts(
+    world: &rebellion_core::world::GameWorld,
+    is_alliance: bool,
+    tech: rebellion_core::research::TechType,
+    level: u32,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::manufacturing::ProductionArea;
+    use rebellion_core::research::TechType;
+    let area = match tech {
+        TechType::Ship => ProductionArea::Shipyard,
+        TechType::Troop => ProductionArea::TrainingFacility,
+        TechType::Facility => ProductionArea::ConstructionYard,
+    };
+    let class = rebellion_core::build_selection::research_classes(world, area, is_alliance)
+        .into_iter()
+        .find(|class| class.order == level)?
+        .id;
+    let name = world
+        .capital_ship_classes
+        .values()
+        .find(|value| value.dat_id == class)
+        .map(|value| value.name.clone())
+        .or_else(|| {
+            world
+                .fighter_classes
+                .values()
+                .find(|value| value.dat_id == class)
+                .map(|value| value.name.clone())
+        })
+        .or_else(|| world.buildable_classes.get(&class).map(|value| value.name.clone()))?;
+    let named = [MessageParameter::Named { name: &name }];
+    Some((
+        fill_message_text(texts.get(&0x7048)?, &named),
+        fill_message_text(texts.get(&0x7049)?, &named),
+    ))
+}
+
+/// Research Exhausted (`FUN_0048abc0`): notifications `0x129` (ships),
+/// `0x12a` (troops) and `0x12b` (facilities), raised when a side's tree is
+/// marked Done (`FUN_0052f440` and siblings): TEXTSTRA `0x7218` with
+/// `0x7219`, `0x721a` or `0x721b`. Returns the title and body.
+#[must_use]
+pub fn research_exhausted_texts(
+    tech: rebellion_core::research::TechType,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::research::TechType;
+    let body = match tech {
+        TechType::Ship => 0x7219,
+        TechType::Troop => 0x721a,
+        TechType::Facility => 0x721b,
+    };
+    Some((
+        fill_message_text(texts.get(&0x7218)?, &[]),
+        fill_message_text(texts.get(&body)?, &[]),
+    ))
+}
+
 /// Units Deployed (`FUN_00497940`): notification `0x107` for a unit put
 /// in place, to the unit's side. The texts follow the unit's family:
 /// - a capital ship TEXTSTRA `0x7086` / `0x7087`, the Death Star `0x708e`
@@ -1418,6 +1485,90 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00499aa0 (0x125..0x127) and FUN_0048abc0 (0x129..0x12b): TEXTSTRA
+    // 0x7048 / 0x7049 and 0x7218..0x721b as shipped; the class is the first
+    // of the tree whose research order equals the new level (FUN_00567a90).
+    #[test]
+    fn research_names_the_class_it_opened_and_says_when_a_tree_is_done() {
+        use rebellion_core::ids::DatId;
+        use rebellion_core::research::TechType;
+        use rebellion_core::world::{CapitalShipClass, GameWorld};
+        let texts: HashMap<u16, String> = [
+            (0x7048, "{1:1} Research Complete"),
+            (0x7049, "R&D Reports that the {1:1} is now available for manufacture."),
+            (0x7218, "Research Exhausted"),
+            (0x7219, "There are no further advances expected in ship construction."),
+            (0x721a, "There are no further advances expected in troop training."),
+            (0x721b, "There are no further advances expected in facility construction."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let mut world = GameWorld::default();
+        for (id, name, order, alliance) in [
+            (0x1400_0003, "Assault Frigate", 2, true),
+            (0x1400_0002, "Nebulon-B Frigate", 1, true),
+            (0x1400_0004, "Dreadnaught", 1, false),
+        ] {
+            world.capital_ship_classes.insert(CapitalShipClass {
+                dat_id: DatId::new(id),
+                name: name.into(),
+                is_alliance: alliance,
+                is_empire: !alliance,
+                research_order: order,
+                refined_material_cost: 10,
+                ..CapitalShipClass::default()
+            });
+        }
+        assert_eq!(
+            research_complete_texts(&world, true, TechType::Ship, 1, &texts),
+            Some((
+                "Nebulon-B Frigate Research Complete".into(),
+                "R&D Reports that the Nebulon-B Frigate is now available for manufacture.".into()
+            ))
+        );
+        assert_eq!(
+            research_complete_texts(&world, false, TechType::Ship, 1, &texts)
+                .map(|(title, _)| title),
+            Some("Dreadnaught Research Complete".into())
+        );
+        // A fighter class opens on the same tree.
+        for (id, name) in [(0x1c00_0001, "A-wing"), (0x1c00_0002, "B-wing")] {
+            world
+                .fighter_classes
+                .insert(rebellion_core::world::FighterClass {
+                    dat_id: DatId::new(id),
+                    name: name.into(),
+                    is_alliance: true,
+                    research_order: if id == 0x1c00_0002 { 3 } else { 4 },
+                    refined_material_cost: 5,
+                    ..rebellion_core::world::FighterClass::default()
+                });
+        }
+        assert_eq!(
+            research_complete_texts(&world, true, TechType::Ship, 3, &texts)
+                .map(|(title, _)| title),
+            Some("B-wing Research Complete".into())
+        );
+        // No class at that order: no message.
+        assert_eq!(research_complete_texts(&world, true, TechType::Ship, 5, &texts), None);
+        assert_eq!(
+            research_exhausted_texts(TechType::Troop, &texts),
+            Some((
+                "Research Exhausted".into(),
+                "There are no further advances expected in troop training.".into()
+            ))
+        );
+        assert_eq!(
+            research_exhausted_texts(TechType::Ship, &texts).map(|(_, body)| body),
+            Some("There are no further advances expected in ship construction.".into())
+        );
+        assert_eq!(
+            research_exhausted_texts(TechType::Facility, &texts).map(|(_, body)| body),
+            Some("There are no further advances expected in facility construction.".into())
+        );
+    }
 
     // FUN_004950d0 (notification 0x182): TEXTSTRA 0x70c8..0x70ca as shipped;
     // the side is the system's before the blast, by kind 4 (FUN_0052d920).

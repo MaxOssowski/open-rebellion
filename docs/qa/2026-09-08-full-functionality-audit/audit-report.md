@@ -972,6 +972,15 @@ cross-runtime proof remain open
   three levels (`+0x9c`, `+0xa0`, `+0xa4`), and only `FUN_0052f280`
   raises them. The port's `is_unlocked` and zero start already match;
   only citations change (`manufacturing-build-selection.md`).
+- 2026-10-21: research posts the original messages, replacing "tech
+  advanced to level N".
+  - Research Complete (`0x125`-`0x127`, `FUN_00499aa0`) names the first
+    class whose order equals the new level (`FUN_00567a90` ->
+    `FUN_00567880`, "equal" only; TEXTSTRA `0x7048` / `0x7049`). It says
+    nothing when no class has that order.
+  - Research Exhausted (`0x129`-`0x12b`, `FUN_0048abc0`,
+    `0x7218`-`0x721b`) follows a tree turning Done (`FUN_0052f440`).
+  - Evidence: `evidence/2026-10-21-research-messages/`.
 - Acceptance: build lists and manufacturing orders respect the recovered
   research-order gate for both factions.
 
