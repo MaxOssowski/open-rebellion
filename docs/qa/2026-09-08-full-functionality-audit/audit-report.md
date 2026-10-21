@@ -309,6 +309,15 @@ cross-runtime proof remain open
     AI's `BombardEnv::assault`. A browser gate orders it for both sides
     (`evidence/2026-10-17-assault-menu/`). The Assault Summary window is
     not ported.
+  - The Assault Summary window read 2026-10-21
+    (`ghidra/notes/assault-summary-window.md`): a report message (vtable
+    `0x0065b870`) collects the system's and the attacking fleet's units,
+    the destroyed and the captured, and writes its title and outcome
+    (TEXTSTRA RCDATA `0x7090..0x7094`); it opens at once for the attacker
+    (kind 7) and is filed as a message for the defender (kind 3). The
+    window (`FUN_0044c410`) shares the Battle Results frame, rail, Close and
+    Display page, with six categories. The same report serves the orbital
+    bombardment (`0x7098..0x709a`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 
