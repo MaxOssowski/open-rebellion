@@ -1695,6 +1695,11 @@ cross-runtime proof remain open
     (`FUN_00499760`) shows.
   - The campaigns and the golden are unchanged
     (`evidence/2026-10-21-near-uprising-message/`).
+- 2026-10-21: notification `0x152` (SystemUprisingIncidentNotif,
+  `FUN_00512580`) has no message type in `FUN_00488de0`, so the incident
+  has no message of its own. The port's "Uprising incident at X" stays in
+  the log, off the Message Index
+  (`evidence/2026-10-21-uprising-incident-off-index/`).
 - Acceptance: both incidents trigger and apply their recovered effects with
   failing-without tests, and a browser pass shows a revolt, an incident, and
   a disaster.

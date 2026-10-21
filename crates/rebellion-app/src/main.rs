@@ -3312,6 +3312,14 @@ async fn main() {
                         }
                         texts
                     }
+                    // Notification 0x152 (SystemUprisingIncidentNotif,
+                    // FUN_00512580) maps to no message type (FUN_00488de0):
+                    // port: the incident keeps its line in the log, off the
+                    // Message Index.
+                    UprisingEvent::UprisingIncident { .. } => {
+                        audience = None;
+                        None
+                    }
                     _ => None,
                 };
                 if let Some((original_title, body)) = original {
