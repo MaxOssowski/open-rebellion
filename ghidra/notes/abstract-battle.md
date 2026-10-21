@@ -426,8 +426,27 @@ The terms:
   (`DAT_0066c3e4`), clamped to 1.0..9.0 (`DAT_0066c3f4`, `DAT_0066c3ec`);
   with no such person it is 1.0. `FUN_0040c200` builds each person from
   the character's slots `+0x1f0` and `+0x1f4`, through `FUN_0040d680` and
-  `FUN_0040d670`. Open: which of them lands at `+0x50`, and which flag is
-  `+0x58`.
+  `FUN_0040d670`.
+  - Read 2026-10-22 from the pushes at `0x40c394..0x40c434` and
+    `FUN_00596340` -> `FUN_00596c40`:
+    - `+0x44` is the side (`FUN_0040d660(FUN_0040d690)`: 0 Alliance);
+    - `+0x50` is combat (slot `+0x1f0`) / 20 (`fidivl DAT_006a80e8`);
+    - `+0x4c` is slot `+0x1f4` / 10 (`DAT_006a80e4`);
+    - `+0x54` is "is the battle's `+0x18`" (`+0x20` for the Empire);
+    - `+0x58` is "is the battle's `+0x1c`" (`+0x24`);
+    - `+0x48` is "a major character" (family `0x30..0x37`).
+  - `FUN_0040b0e0` fills `+0x18` / `+0x20` with `FUN_00509460(system,
+    side)`: the side's fleets' Admirals (`+0x96` = 2), best by slot
+    `+0x1f4`. It fills `+0x1c` / `+0x24` with `FUN_00509530`:
+    - first `FUN_00509330`, the Commander (`+0x96` = 1) of the system's
+      own side standing there;
+    - then the side's fleets' Commanders, replacing it on higher combat
+      (slot `+0x1f0`).
+  - So the trench run's term is the Alliance's best Commander's
+    combat / 20 + 1, clamped to 1..9. It falls back to 1.0 when none
+    exists or when the pick is the system's Imperial Commander.
+  - Ported as `abstract_battle::trench_commander_term`. `hyp:` every
+    character at the battle has a battle person.
 - Open: the Death Star's lists `+0x38` and `+0x3c`, which are the units
   it carries.
 
@@ -436,7 +455,7 @@ prepare_original_trench_run`, `FUN_005d04e0`) is a different function, with
 its own success rating. Since W2i the abstract battle has both
 (`AbstractBattle::death_star_step`, `trench_run`).
 - `hyp:` the leader kind 4 is a fighter group.
-- `hyp:` no person commands, so the commander term is 1.0.
+- The commander term is `trench_commander_term` (see above).
 - `port:` the Death Star's carried units are unknown and none falls with
   it. The port's Death Star capital ship falls with it, so the fleet loses
   the Death Star.

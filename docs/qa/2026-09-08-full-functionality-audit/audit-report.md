@@ -2364,6 +2364,11 @@ cross-runtime proof remain open
   - Nine campaigns change: battles 2092 -> 2080, Alliance wins 755 -> 782.
   - `port:` the winner's squadrons (`FUN_00556710`) are not read.
   - 2 new tests; mutants 2 caught, 0 missed.
+- 2026-10-22: the trench run's commander term is ported
+  (`trench_commander_term`, `evidence/2026-10-22-trench-commander/`).
+  - The Alliance's best Commander by combat gives combat / 20 + 1, clamped
+    to 1..9 (`FUN_005afc00`, `FUN_0040c200`, `FUN_00509530`).
+  - Campaigns are unchanged. 3 new tests; mutants 17 caught, 0 missed.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

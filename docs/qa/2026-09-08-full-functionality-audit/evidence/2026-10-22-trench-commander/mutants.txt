@@ -1,0 +1,21 @@
+run 1:
+crates/rebellion-core/src/abstract_battle.rs:1528:60: replace > with >= in trench_commander_term
+final:
+19 mutants tested: 17 caught, 2 unviable, 0 missed
+crates/rebellion-core/src/abstract_battle.rs:1049:17: replace / with % in AbstractBattle::trench_run
+crates/rebellion-core/src/abstract_battle.rs:1049:17: replace / with * in AbstractBattle::trench_run
+crates/rebellion-core/src/abstract_battle.rs:1050:63: replace * with + in AbstractBattle::trench_run
+crates/rebellion-core/src/abstract_battle.rs:1050:63: replace * with / in AbstractBattle::trench_run
+crates/rebellion-core/src/abstract_battle.rs:1050:38: replace + with - in AbstractBattle::trench_run
+crates/rebellion-core/src/abstract_battle.rs:1050:38: replace + with * in AbstractBattle::trench_run
+crates/rebellion-core/src/abstract_battle.rs:1506:5: replace trench_commander_term -> f32 with 0.0
+crates/rebellion-core/src/abstract_battle.rs:1506:5: replace trench_commander_term -> f32 with 1.0
+crates/rebellion-core/src/abstract_battle.rs:1506:5: replace trench_commander_term -> f32 with -1.0
+crates/rebellion-core/src/abstract_battle.rs:1520:12: delete ! in trench_commander_term
+crates/rebellion-core/src/abstract_battle.rs:1528:60: replace > with == in trench_commander_term
+crates/rebellion-core/src/abstract_battle.rs:1528:60: replace > with < in trench_commander_term
+crates/rebellion-core/src/abstract_battle.rs:1528:60: replace > with >= in trench_commander_term
+crates/rebellion-core/src/abstract_battle.rs:1537:64: replace + with - in trench_commander_term
+crates/rebellion-core/src/abstract_battle.rs:1537:64: replace + with * in trench_commander_term
+crates/rebellion-core/src/abstract_battle.rs:1537:33: replace / with % in trench_commander_term
+crates/rebellion-core/src/abstract_battle.rs:1537:33: replace / with * in trench_commander_term

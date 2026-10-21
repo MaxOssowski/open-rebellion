@@ -81,9 +81,13 @@ pub const TRENCH_RUN_VISITS: u32 = 100;
 /// `FUN_005aefc0`: hull per hit unit (`DAT_0066c3dc`, 8.0).
 pub const TRENCH_RUN_HULL_UNIT: f32 = 8.0;
 /// `FUN_005afc00`: the commander term's floor (`DAT_0066c3f4`), its value
-/// with no commanding person. A person's term is capped at 9.0
-/// (`DAT_0066c3ec`).
+/// with no commanding person.
 pub const TRENCH_RUN_COMMANDER_FLOOR: f32 = 1.0;
+/// `FUN_005afc00`: the commander term's cap (`DAT_0066c3ec`).
+pub const TRENCH_RUN_COMMANDER_CAP: f32 = 9.0;
+/// `FUN_0040d680`: a battle person's `+0x50` is its combat (slot `+0x1f0`)
+/// over this integer (`DAT_006a80e8`, 20).
+pub const BATTLE_PERSON_COMBAT_DIVISOR: f32 = 20.0;
 /// `FUN_005aefc0`: the success chance's scale (`DAT_0066c3f0`, 0.5).
 pub const TRENCH_RUN_SUCCESS_SCALE: f32 = 0.5;
 
@@ -153,6 +157,9 @@ pub struct AbstractBattle {
     pub retreat_done: [bool; 2],
     /// `+0xb0`: the stalemate marked the side to leave.
     pub retreat_marked: [bool; 2],
+    /// `FUN_005afc00(0)`: the Alliance commander's term in the trench run
+    /// ([`trench_commander_term`]).
+    pub trench_commander: f32,
     /// The system's last arrived side (`+0x78` bits 6..7,
     /// [`crate::world::System::last_arrival`]), which `FUN_0040c780` asks
     /// when both retreat words are set.
@@ -453,6 +460,7 @@ impl AbstractBattle {
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
             retreat_marked: [false; 2],
+            trench_commander: TRENCH_RUN_COMMANDER_FLOOR,
             last_arrival: None,
         };
         battle.lows = [battle.side_strength(true), battle.side_strength(false)];
@@ -986,8 +994,8 @@ impl AbstractBattle {
     /// term) x 0.5; at or under it, the Death Star's hull and charge empty
     /// (`FUN_005ba8a0`).
     ///
-    /// hyp: no person commands (`FUN_005afc00` gives its floor, 1.0); the
-    /// source of a person's `+0x50` is open. port: the units the Death Star
+    /// The commander term is [`AbstractBattle::trench_commander`]
+    /// ([`trench_commander_term`]). port: the units the Death Star
     /// carries (its lists `+0x38`, `+0x3c`) are not known, so none is
     /// destroyed with it; the port's Death Star capital ship takes the
     /// Death Star's fall.
@@ -1039,8 +1047,7 @@ impl AbstractBattle {
                 * fighter.torpedo_strength as f32
                 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH
                 / fighter.hull_max;
-            let chance =
-                ((torpedoes + TRENCH_RUN_COMMANDER_FLOOR) * TRENCH_RUN_SUCCESS_SCALE) as u32;
+            let chance = ((torpedoes + self.trench_commander) * TRENCH_RUN_SUCCESS_SCALE) as u32;
             if self.session.tactical_rng.inclusive(1, 100) <= chance {
                 if let Some(ds) = self.session.death_star.as_mut() {
                     ds.hull = 0.0;
@@ -1466,8 +1473,70 @@ impl AbstractBattle {
         let mut battle = Self::new(session);
         battle.retreat_allowed = retreat_allowed;
         battle.last_arrival = world.systems.get(system).and_then(|sys| sys.last_arrival);
+        battle.trench_commander = trench_commander_term(world, system);
         battle
     }
+}
+
+/// `FUN_005afc00(0)`: the trench run's commander term for the Alliance at
+/// `system`. The battle's `+0x1c` is `FUN_00509530(system, 1)`:
+///
+/// - first the system's own side's Commander (`+0x96` = 1) not aboard a
+///   fleet (`FUN_00509330`, [`crate::character_command::system_holder`]);
+///   that side is the system's, not the battle side's;
+/// - then each Alliance fleet at the system (`FUN_004ffef0(system, 1, 1)`):
+///   its Commander (`FUN_004fd790`, `FUN_005006f0`) replaces the one held
+///   when its combat (slot `+0x1f0`) is higher.
+///
+/// The battle person matching `+0x1c` is registered at `+0x254`
+/// (`FUN_0040c200` `+0x58`, `FUN_005af440`), and its `+0x50` is combat / 20
+/// (`FUN_0040d680`). The term is that minus -1.0 (`DAT_0066c3e4`), clamped to
+/// 1.0..9.0; with no such person it is 1.0. `FUN_0040c200` flags only an
+/// Alliance person against `+0x1c` (an Imperial one against `+0x24`), so
+/// an Imperial pick gives 1.0 too.
+///
+/// hyp: every character at the battle has a battle person (`FUN_0040c200`'s
+/// caller is not read), so the commander always counts.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "FUN_0040d680 loads the integer combat onto the FPU (fildl)."
+)]
+pub fn trench_commander_term(world: &GameWorld, system: SystemKey) -> f32 {
+    use crate::character_command::{fleet_holder, system_holder, CommandKind};
+
+    let combat = |key| {
+        world
+            .characters
+            .get(key)
+            .map_or(0, |c| c.effective_skill(crate::world::Skill::Combat))
+    };
+    let mut held = system_holder(world, system, CommandKind::Commander);
+    let fleets = world
+        .systems
+        .get(system)
+        .map_or(&[][..], |sys| &sys.fleets[..]);
+    for &fleet in fleets {
+        if !world
+            .fleets
+            .get(fleet)
+            .is_some_and(|value| value.is_alliance)
+        {
+            continue;
+        }
+        if let Some(candidate) = fleet_holder(world, fleet, CommandKind::Commander) {
+            if held.is_none_or(|current| combat(candidate) > combat(current)) {
+                held = Some(candidate);
+            }
+        }
+    }
+    // FUN_0040c200 sets +0x58 only on an Alliance person matching +0x1c, so
+    // an Imperial pick there leaves the Alliance without a commander.
+    held.filter(|&key| world.characters.get(key).is_some_and(|c| c.is_alliance))
+        .map_or(TRENCH_RUN_COMMANDER_FLOOR, |key| {
+            (combat(key) as f32 / BATTLE_PERSON_COMBAT_DIVISOR + 1.0)
+                .clamp(TRENCH_RUN_COMMANDER_FLOOR, TRENCH_RUN_COMMANDER_CAP)
+        })
 }
 
 /// Resolve a battle session without display.
@@ -2914,8 +2983,16 @@ mod tests {
     // system's last arrived side.
     #[test]
     fn a_battle_takes_its_systems_last_arrived_side() {
-        let (mut world, [battle, ..], _, _) = withdrawal_world();
+        let (mut world, [battle, ..], alliance, _) = withdrawal_world();
         world.systems[battle].last_arrival = Some(crate::dat::Faction::Alliance);
+        officer(
+            &mut world,
+            true,
+            crate::character_command::CommandKind::Commander,
+            100,
+            Some(alliance),
+            battle,
+        );
         let fought = AbstractBattle::at_system(
             &world,
             battle,
@@ -2924,6 +3001,7 @@ mod tests {
         );
         assert_eq!(fought.last_arrival, Some(crate::dat::Faction::Alliance));
         assert_eq!(fought.retreat_allowed, [true, false]);
+        assert_eq!(fought.trench_commander, 6.0);
     }
 
     // FUN_00516ef0: the loser's squadrons on the planet (FUN_00503a50) are
@@ -3287,6 +3365,95 @@ mod tests {
                 success: true
             }
         );
+    }
+
+    /// A character of `side` with `command` and `combat`, aboard `fleet` or
+    /// standing at `system`.
+    fn officer(
+        world: &mut GameWorld,
+        alliance: bool,
+        command: crate::character_command::CommandKind,
+        combat: u32,
+        fleet: Option<FleetKey>,
+        system: SystemKey,
+    ) -> crate::ids::CharacterKey {
+        let key = world.characters.insert(crate::world::Character {
+            is_alliance: alliance,
+            is_empire: !alliance,
+            command,
+            combat: crate::world::SkillPair {
+                base: combat,
+                variance: 0,
+            },
+            current_fleet: fleet,
+            current_system: Some(system),
+            ..crate::world::Character::default()
+        });
+        if let Some(fleet) = fleet {
+            world.fleets[fleet].characters.push(key);
+        }
+        key
+    }
+
+    // FUN_005afc00(0) over FUN_00509530 and FUN_0040d680: the Alliance's
+    // best Commander (+0x96 = 1) by combat (slot +0x1f0) gives combat / 20
+    // + 1, clamped to 1..9; with none, 1.
+    #[test]
+    fn the_trench_commander_is_the_best_alliance_commander_by_combat() {
+        use crate::character_command::CommandKind::{Admiral, Commander};
+        let (mut world, [battle, ..], alliance, _) = withdrawal_world();
+        assert_eq!(trench_commander_term(&world, battle), 1.0);
+        officer(&mut world, true, Admiral, 160, Some(alliance), battle);
+        assert_eq!(trench_commander_term(&world, battle), 1.0);
+        officer(&mut world, true, Commander, 100, Some(alliance), battle);
+        assert_eq!(trench_commander_term(&world, battle), 6.0);
+        let second = world.fleets.insert(world.fleets[alliance].clone());
+        world.fleets[second].characters.clear();
+        world.systems[battle].fleets.push(second);
+        officer(&mut world, true, Commander, 120, Some(second), battle);
+        assert_eq!(trench_commander_term(&world, battle), 7.0);
+        officer(&mut world, true, Commander, 400, Some(second), battle);
+        assert_eq!(trench_commander_term(&world, battle), 7.0);
+        let third = world.fleets.insert(world.fleets[alliance].clone());
+        world.fleets[third].characters.clear();
+        world.systems[battle].fleets.push(third);
+        officer(&mut world, true, Commander, 400, Some(third), battle);
+        assert_eq!(
+            trench_commander_term(&world, battle),
+            TRENCH_RUN_COMMANDER_CAP
+        );
+    }
+
+    // FUN_00509330 starts from the system's own side's Commander; a fleet's
+    // replaces it only with more combat. FUN_0040c200 flags only an Alliance
+    // person against +0x1c, so an Imperial pick leaves the term at 1.
+    #[test]
+    fn an_imperial_system_commander_can_hold_the_alliance_slot() {
+        use crate::character_command::CommandKind::Commander;
+        let (mut world, [battle, ..], alliance, _) = withdrawal_world();
+        world.systems[battle].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        officer(&mut world, false, Commander, 300, None, battle);
+        // A tie keeps the one held: FUN_00509530 replaces only on more.
+        officer(&mut world, true, Commander, 300, Some(alliance), battle);
+        assert_eq!(trench_commander_term(&world, battle), 1.0);
+        let second = world.fleets.insert(world.fleets[alliance].clone());
+        world.fleets[second].characters.clear();
+        world.systems[battle].fleets.push(second);
+        officer(&mut world, true, Commander, 320, Some(second), battle);
+        assert_eq!(trench_commander_term(&world, battle), 9.0);
+    }
+
+    // FUN_005aefc0: the shot's chance adds the commander term.
+    #[test]
+    fn the_trench_run_shot_adds_the_commander_term() {
+        let seed = seed_where(&[10, 100], |d| d[0] <= 9 && d[1] <= 4);
+        let mut battle = runner(seed, 8, 96.0, 0);
+        battle.trench_commander = 9.0;
+        assert!(battle.trench_run(&[1]).success);
+        let mut battle = runner(seed, 8, 96.0, 0);
+        assert_eq!(battle.trench_commander, 1.0);
+        assert!(battle.trench_run(&[1]).visits > 1);
     }
 
     // FUN_005d14d0: the Death Star comes first in each side's step.
