@@ -150,6 +150,16 @@ Notes on the rows:
 | System Destroyed by the Death Star | `0x182`, then 2 | `FUN_004950d0` | — | `0x70c8` / `0x70c9`, `0x70ca` |
 | Message From / Sent to the other side | — | `FUN_00498e90` | `0x410`/`0x411` | `0x71f0`, `0x71f1` |
 
+Natural Disaster and the resource messages share the class at vtable
+`0x65b490`. Its flags `+0x64` (read 2026-10-21): slot `+0x24`
+(`FUN_0048e840`) sets bit 4 on `SystemSystemEnergyNotif` (`0x141`), bit 2
+on `SystemSystemRawMaterialNotif` (`0x143`), and bit 1 when the new value is
+above the old; `0x154` sets bit 8 (a disaster) and `0x155` clears it; slot
+`+0x1c` (`FUN_0048e890`) sets bit `0x10` and lists each facility (`0x302`,
+family `0x20`..`0x2f`). So a gain or a loss, and energy or raw materials,
+pick the resource texts (`0x7194`/`0x7196`, `0x7197`-`0x719a`), and a
+disaster's "resources" are bits 2 and 4.
+
 The class at vtable `0x65b188` (`FUN_0048b2e0`, backgrounds `0x42f`/`0x430`)
 is the droid's advice: its texts are `0x6001 + 3n` (Alliance) and
 `0x6801 + 3n` (Empire), indexed from the RCDATA tables `0x6000` and

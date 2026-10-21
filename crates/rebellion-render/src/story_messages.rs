@@ -764,9 +764,10 @@ pub fn uprising_texts(
 /// `FUN_0048e890`) adds a line `0x719b`. With nothing lost there is no
 /// message. Returns the title and body.
 ///
-/// hyp: the class's bits 2 and 4 (`+0x64`), which `resources` stands for,
-/// are set by the energy and raw material changes; their setter is not
-/// traced.
+/// `resources` stands for the class's bits 2 and 4 (`+0x64`): its slot
+/// `+0x24` (`FUN_0048e840`) sets bit 4 on `SystemSystemEnergyNotif`
+/// (`0x141`) and bit 2 on `SystemSystemRawMaterialNotif` (`0x143`), and bit
+/// 1 when the value rose. A disaster only lowers them.
 #[must_use]
 pub fn disaster_texts(
     system: &str,
