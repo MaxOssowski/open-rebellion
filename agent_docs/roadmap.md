@@ -503,9 +503,9 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   pending).
 - [x] Correct or re-source the code behaviors the 2026-09-26 citation audit
   found without a binary source: the economy's KDY production modifier
-  (F-023), the Emperor's 1.5x battle bonus (F-024, remediated 2026-10-22:
+  (F-023), the Emperor's 1.5x battle bonus (F-024, remediated 2026-10-21:
   removed with the round formula, no battle code reads the Emperor), and
-  family-`0x34` Death Star detection (F-025, remediated 2026-10-22: the
+  family-`0x34` Death Star detection (F-025, remediated 2026-10-21: the
   CAPSHPSD family `0x18` record 136). The revolt lifecycle, uprising incident, and
   disaster now follow recovered code (F-026, browser verified 2026-10-21).
 - [x] Move the remaining probability-table consumers to the recovered step

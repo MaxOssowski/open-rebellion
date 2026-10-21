@@ -1,6 +1,6 @@
 # The loser's planet squadrons leave (F-033, W5b)
 
-Date: 2026-10-22. `FUN_00516ef0` sets the loser's fleets and its planet
+Date: 2026-10-21. `FUN_00516ef0` sets the loser's fleets and its planet
 squadrons (`FUN_00503a50(system, 1, side)`) Autorouting
 (`ghidra/notes/battle-flow.md`).
 

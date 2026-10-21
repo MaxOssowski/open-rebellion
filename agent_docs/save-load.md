@@ -3,7 +3,7 @@ title: "Save/Load System"
 description: "Native and browser save v102, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-10-22
+updated: 2026-10-21
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 

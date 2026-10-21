@@ -174,7 +174,7 @@ window.
   `--tactical-3d-convert`), or the Death Star resource 5010 is missing.
 
 
-## The Death Star's identity (read 2026-10-22, F-025)
+## The Death Star's identity (read 2026-10-21, F-025)
 
 - Every CAPSHPSD record carries an object family at `+0x10`
   (`tools/dat-dumper` `family_id`). It is `0x14` for every record except

@@ -1583,7 +1583,7 @@ cross-runtime proof remain open
 ### F-024: The Emperor's 1.5x battle damage bonus has no source
 
 - Severity: P2
-- Status: remediated (2026-10-22: the bonus went with the round formula,
+- Status: remediated (2026-10-21: the bonus went with the round formula,
   and no recovered battle code reads the Emperor)
 - Evidence: `combat.rs` multiplies the Empire's pending weapon damage by 1.5
   when a character named Palpatine or Emperor is in the fleet, citing
@@ -1591,7 +1591,7 @@ cross-runtime proof remain open
   `FUN_005438a0`, a named-character check (Leia, Luke, Han, the Emperor, Vader,
   Chewbacca). Neither shows a damage modifier.
 - Acceptance: the bonus is removed or traced to recovered code.
-- 2026-10-22: remediated.
+- 2026-10-21: remediated.
   - The bonus was in `CombatSystem::resolve_space`, which W2g
     (`c94ef9d8`) removed with the round formula.
   - No recovered battle code reads the Emperor (record `0x34000280`): the
@@ -1608,7 +1608,7 @@ cross-runtime proof remain open
 ### F-025: Death Star combat checks key on the Empire major-character family
 
 - Severity: P2
-- Status: remediated (2026-10-22: identity by the CAPSHPSD family `0x18`
+- Status: remediated (2026-10-21: identity by the CAPSHPSD family `0x18`
   record; the shield's role since save v96)
 - Evidence: `combat.rs` derives `is_death_star` and `CombatEntityKind::DeathStar`
   from DatId family `0x34`. MJCHARSD and TEXTSTRA show `0x34000280` is Emperor
@@ -1617,7 +1617,7 @@ cross-runtime proof remain open
   never runs on real data.
 - Acceptance: Death Star detection uses the recovered class identity and the
   shield's battle role follows recovered code.
-- 2026-10-22: remediated (`evidence/2026-10-22-death-star-identity/`).
+- 2026-10-21: remediated (`evidence/2026-10-21-death-star-identity/`).
   - CAPSHPSD record `+0x10` is the object family: `0x14` for every record
     but 136, the Death Star, `0x18`. The original finds Death Stars by it
     (`FUN_005003d0`, families `0x18..0x1b`; `FUN_0040b0e0` ->
@@ -2287,8 +2287,8 @@ cross-runtime proof remain open
     the autoroute search's destination (`FUN_005545e0`).
   - The port counts escaped units as survivors and sends no loser away.
     Read only; no code changes.
-- 2026-10-22 (W2j): the winner rule and the loser's withdrawal are ported
-  (`evidence/2026-10-22-battle-loser-withdrawal/`).
+- 2026-10-21 (W2j): the winner rule and the loser's withdrawal are ported
+  (`evidence/2026-10-21-battle-loser-withdrawal/`).
   - `AbstractBattle::finish` builds result words 0 to 3 and takes the
     winner from them (`FUN_005ae9c0`, `FUN_0040c780`). `port:` with both
     retreat words set there is no winner, because the last arrived side
@@ -2301,8 +2301,8 @@ cross-runtime proof remain open
   - Correction to the W5 read entry: the port's winner already counted
     only active units.
   - 4 new tests; mutants 32 caught, 0 missed.
-- 2026-10-22 (W2k): the battle choice's retreat orders are ported
-  (`evidence/2026-10-22-battle-retreat-orders/`).
+- 2026-10-21 (W2k): the battle choice's retreat orders are ported
+  (`evidence/2026-10-21-battle-retreat-orders/`).
   - An AI with a strategy orders a retreat except at its own system with
     squadrons on the planet, where it needs armed own fleets and never
     retreats from its headquarters (`ai_strategy::orders_retreat`,
@@ -2319,8 +2319,8 @@ cross-runtime proof remain open
   - `port:` Take Command does not yet pass the AI side's order to the
     tactical engine.
   - 7 new tests; mutants 29 caught, 0 missed.
-- 2026-10-22 (W2l, save v102): the system's last arrived side is ported
-  (`evidence/2026-10-22-last-arrived-side/`).
+- 2026-10-21 (W2l, save v102): the system's last arrived side is ported
+  (`evidence/2026-10-21-last-arrived-side/`).
   - `System::last_arrival` (`+0x78` bits 6..7, `FUN_00508660` ->
     `FUN_0050a1b0`) is set when a fleet departs for a system, a new fleet
     or completed unit appears there, or a squadron lands.
@@ -2329,7 +2329,7 @@ cross-runtime proof remain open
     side leaves (`FUN_00516ef0`).
   - The golden is regenerated for this cause (`v1:0174e1ddb8a28d5b` ->
     `v1:00f7cdfb6462bcb2`). Campaigns are unchanged: no tie came up.
-- 2026-10-22 (W2i read): the Death Star in the abstract battle is read
+- 2026-10-21 (W2i read): the Death Star in the abstract battle is read
   (`abstract-battle.md`, "The Death Star in the abstract battle").
   - The Empire's superlaser charges by dt x 1/3 x 0.001 (`FUN_005ba7f0`).
     At the abstract step of 1.0 it needs 300,000 steps, so in practice it
@@ -2346,8 +2346,8 @@ cross-runtime proof remain open
       carries.
   - Open: the commander value's source field and the Death Star's carried
     lists. Read only; no code changes.
-- 2026-10-22 (W2i): the Death Star's abstract actions are ported
-  (`evidence/2026-10-22-death-star-abstract/`).
+- 2026-10-21 (W2i): the Death Star's abstract actions are ported
+  (`evidence/2026-10-21-death-star-abstract/`).
   - The superlaser charges 1/3000 a step and fires at 100, so in practice
     never.
   - The Alliance's trench run (`FUN_005aefc0`) can destroy the Death
@@ -2357,15 +2357,15 @@ cross-runtime proof remain open
   - Seed 3 changes: on day 1340 the trench run destroys the Death Star at
     Orto. The other 23 campaigns are unchanged.
   - 11 new tests; mutants 57 caught, 0 missed.
-- 2026-10-22 (W5b): the loser's planet squadrons leave on Autorouting
-  too (`FUN_00516ef0`, `evidence/2026-10-22-planet-squadrons-withdraw/`).
+- 2026-10-21 (W5b): the loser's planet squadrons leave on Autorouting
+  too (`FUN_00516ef0`, `evidence/2026-10-21-planet-squadrons-withdraw/`).
   - The app's battles land scrambled squadrons back before the
     withdrawal, as the simulation does.
   - Nine campaigns change: battles 2092 -> 2080, Alliance wins 755 -> 782.
   - `port:` the winner's squadrons (`FUN_00556710`) are not read.
   - 2 new tests; mutants 2 caught, 0 missed.
-- 2026-10-22: the trench run's commander term is ported
-  (`trench_commander_term`, `evidence/2026-10-22-trench-commander/`).
+- 2026-10-21: the trench run's commander term is ported
+  (`trench_commander_term`, `evidence/2026-10-21-trench-commander/`).
   - The Alliance's best Commander by combat gives combat / 20 + 1, clamped
     to 1..9 (`FUN_005afc00`, `FUN_0040c200`, `FUN_00509530`).
   - Campaigns are unchanged. 3 new tests; mutants 17 caught, 0 missed.

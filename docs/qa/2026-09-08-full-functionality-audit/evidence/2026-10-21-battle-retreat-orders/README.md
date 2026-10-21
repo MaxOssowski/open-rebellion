@@ -1,6 +1,6 @@
 # The battle choice's retreat orders (F-033, W2k)
 
-Date: 2026-10-22. Each side of a battle now answers the battle choice
+Date: 2026-10-21. Each side of a battle now answers the battle choice
 (`FUN_004362b0`). The reading is in `ghidra/notes/abstract-battle.md`,
 "The battle choice".
 

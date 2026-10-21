@@ -1,6 +1,6 @@
 # The Death Star in the abstract battle (F-033, W2i)
 
-Date: 2026-10-22. The reading is in `ghidra/notes/abstract-battle.md`, "The
+Date: 2026-10-21. The reading is in `ghidra/notes/abstract-battle.md`, "The
 Death Star in the abstract battle" (commit `824a072c`).
 
 ## Change

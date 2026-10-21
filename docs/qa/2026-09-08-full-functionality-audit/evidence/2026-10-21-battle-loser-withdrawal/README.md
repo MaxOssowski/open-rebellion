@@ -1,6 +1,6 @@
 # The battle's winner and the loser's withdrawal (F-033, W2j)
 
-Date: 2026-10-22. This ports the result words, the winner rule
+Date: 2026-10-21. This ports the result words, the winner rule
 (`FUN_005ae9c0`, `FUN_0040c780`), and the loser's withdrawal
 (`FUN_00516ef0`, `FUN_00515480`). The reading is in
 `ghidra/notes/battle-flow.md`, "The winner and the loser's withdrawal".

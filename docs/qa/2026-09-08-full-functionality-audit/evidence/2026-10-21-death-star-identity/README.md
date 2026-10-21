@@ -1,6 +1,6 @@
 # The Death Star's identity (F-025, W4)
 
-Date: 2026-10-22. The reading is in `ghidra/notes/tactical-death-star-path.md`,
+Date: 2026-10-21. The reading is in `ghidra/notes/tactical-death-star-path.md`,
 "The Death Star's identity".
 
 ## Finding

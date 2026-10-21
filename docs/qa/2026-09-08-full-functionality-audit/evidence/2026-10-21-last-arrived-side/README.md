@@ -1,6 +1,6 @@
 # The system's last arrived side (F-033, W2l, save v102)
 
-Date: 2026-10-22. This ports the original's tie-break. The reading is in
+Date: 2026-10-21. This ports the original's tie-break. The reading is in
 `ghidra/notes/battle-flow.md`, "The winner and the loser's withdrawal".
 
 ## Change

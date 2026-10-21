@@ -1,6 +1,6 @@
 # The trench run's commander term (F-033)
 
-Date: 2026-10-22. The reading is in `ghidra/notes/abstract-battle.md`, "The
+Date: 2026-10-21. The reading is in `ghidra/notes/abstract-battle.md`, "The
 Death Star in the abstract battle", under `FUN_005afc00`.
 
 ## Reading

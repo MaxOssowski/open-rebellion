@@ -336,7 +336,7 @@ is the side commander's `+0x24` = 0.33.
 - Open: the Retreat button's enabled state in the original dialog. The
   port enables it when the player's ships have a working hyperdrive.
 
-### The port (W2k, 2026-10-22)
+### The port (W2k, 2026-10-21)
 
 - `ai_strategy::orders_retreat` is the strategy slot's rule. It builds
   the facts from the world at the battle: the holder, a known squadron on
@@ -353,7 +353,7 @@ is the side commander's `+0x24` = 0.33.
 - `port:` Take Command (the tactical battle) does not yet pass the AI
   side's order to the tactical engine.
 
-## The Death Star in the abstract battle (read 2026-10-22, W2i)
+## The Death Star in the abstract battle (read 2026-10-21, W2i)
 
 The side commander's step (`FUN_005d14d0`, `0x5d14d0..0x5d161c`) starts
 with the Death Star (`FUN_005a66a0` on the battle). Its fields are `+0x68`
@@ -427,7 +427,7 @@ The terms:
   with no such person it is 1.0. `FUN_0040c200` builds each person from
   the character's slots `+0x1f0` and `+0x1f4`, through `FUN_0040d680` and
   `FUN_0040d670`.
-  - Read 2026-10-22 from the pushes at `0x40c394..0x40c434` and
+  - Read 2026-10-21 from the pushes at `0x40c394..0x40c434` and
     `FUN_00596340` -> `FUN_00596c40`:
     - `+0x44` is the side (`FUN_0040d660(FUN_0040d690)`: 0 Alliance);
     - `+0x50` is combat (slot `+0x1f0`) / 20 (`fidivl DAT_006a80e8`);
