@@ -2169,6 +2169,22 @@ cross-runtime proof remain open
     wins, no stalemate, 1 to 1008 steps (median 43).
   - 22 tests; mutants 189 caught, 5 missed, one closed by a test and four
     equivalent (`evidence/2026-10-21-abstract-battle-engine/`).
+- 2026-10-21 (W2e): the abstract battle's targeting is ported in place of
+  its `hyp:` rule.
+  - The enemy list runs by priority, 15 × strength (`FUN_005d1a70`,
+    `FUN_005ed8e0`).
+  - Laser-led task forces take the fighter list, the others the ship list
+    (`FUN_005c9200`).
+  - A task force keeps a target under a combined score of 300
+    (`FUN_005ed5f0`). Eligible targets are armed (`FUN_005ed550`).
+  - Score: (hull × 0.65 + shields) ÷ (rate − shield recharge) + travel
+    (`FUN_005ed170`).
+  - Pairing (`FUN_005ec740`): alone in 0..180, otherwise combined from the
+    tail with the head counted but not linked, then the idle take the
+    first eligible target.
+  - Probe over seeds 1-3: 67 of 67 battles end, 26 attacker and 41
+    defender wins, no stalemate; 55 match the `hyp:` rule
+    (`evidence/2026-10-21-abstract-targeting/`).
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

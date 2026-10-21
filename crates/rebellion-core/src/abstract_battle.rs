@@ -11,9 +11,9 @@
 //! has fallen for 1200 seconds (`DAT_0066c3e0`), the weaker side is
 //! destroyed (`FUN_005af7a0`). `ghidra/notes/abstract-battle.md`.
 //!
-//! Not yet ported: the commanders' target scoring (`FUN_005c9200`,
-//! `FUN_005ec740`), the retreat decision (slots `+0x0c`, `+0x2c`), and the
-//! Death Star's abstract actions.
+//! Each step the commanders give idle task forces targets (`FUN_005c9200`,
+//! `FUN_005ec740`, `FUN_005ed170`). Not yet ported: the retreat decision
+//! (slots `+0x0c`, `+0x2c`) and the Death Star's abstract actions.
 
 use std::collections::HashMap;
 
@@ -38,6 +38,23 @@ pub const ABSTRACT_STRENGTH_MANEUVER_DIVISOR: f32 = 6.0;
 /// `_DAT_0066c518`: the floor of the maneuverability ratio in
 /// `FUN_005b7780` and `FUN_005b7a80`.
 pub const ABSTRACT_MANEUVER_RATIO_FLOOR: f32 = 0.1;
+/// `DAT_0066cbac`: the score limit `FUN_005c9200` passes to the pairing.
+pub const ABSTRACT_PAIR_SCORE_LIMIT: f32 = 180.0;
+/// `DAT_0066da84`: the combined score under which a task force keeps its
+/// target (`FUN_005ed5f0`).
+pub const ABSTRACT_KEEP_TARGET_SCORE: f32 = 300.0;
+/// `DAT_0066da9c`: the score of a target the rate cannot wear down.
+pub const ABSTRACT_NO_SCORE: f32 = -1.0;
+/// `DAT_0066da58`: the base key of a task force that cannot pair alone.
+pub const ABSTRACT_UNPAIRED_KEY: f32 = 100_000.0;
+/// `DAT_0066da8c`: the weight of hull in a target's hit points.
+pub const ABSTRACT_SCORE_HULL_WEIGHT: f32 = 0.65;
+/// `DAT_0066da98`: the weight of the travel time in a score.
+pub const ABSTRACT_SCORE_TRAVEL_WEIGHT: f32 = 0.001;
+/// `DAT_0066da7c`: the weight of a target's strength in its priority.
+pub const ABSTRACT_PRIORITY_STRENGTH_WEIGHT: f32 = 15.0;
+/// `DAT_0066daa0`: the weight of its shield and hull ratios.
+pub const ABSTRACT_PRIORITY_RATIO_WEIGHT: f32 = 0.01;
 /// port: a bound on the steps, far past any stalemate, so a battle that
 /// cannot end does not hang the campaign.
 pub const ABSTRACT_STEP_LIMIT: u32 = 100_000;
@@ -311,6 +328,51 @@ pub fn unit_strength(session: &BattleSession, unit: AbstractUnit) -> f32 {
     arc_rate(session, unit, false, 1.0, 0.0)
 }
 
+/// Policy slot `+0x10` (`FUN_005ed550`): an active unit with some weapon
+/// recharge (slot `+0x60`). The retreat branch is not ported.
+fn target_eligible(session: &BattleSession, unit: AbstractUnit) -> bool {
+    unit_active(session, unit) && weapon_recharge(session, unit) != 0.0
+}
+
+/// Policy slot `+0x08` (`FUN_005ed8e0`): 15 × the unit's strength less
+/// 0.01 × its shield-generator ratio (`FUN_005b1710`) and hull ratio
+/// (`FUN_005b1640`). The game-list terms are empty without display.
+fn target_priority(session: &BattleSession, unit: AbstractUnit) -> f32 {
+    let shield_ratio = match unit {
+        AbstractUnit::Capital(index) => {
+            let ship = &session.ships[index];
+            if ship.shield_recharge_rate == 0.0 {
+                0.0
+            } else {
+                ship.effective_shield_recharge() / ship.shield_recharge_rate
+            }
+        }
+        // hyp: a fighter group's +0x3e8 base is its full-hull recharge.
+        AbstractUnit::Fighter(_) => hull_ratio(session, unit),
+    };
+    unit_strength(session, unit) * ABSTRACT_PRIORITY_STRENGTH_WEIGHT
+        - shield_ratio * ABSTRACT_PRIORITY_RATIO_WEIGHT
+        - hull_ratio(session, unit) * ABSTRACT_PRIORITY_RATIO_WEIGHT
+}
+
+/// A unit's retained-mode position (`+0x30`).
+fn position(session: &BattleSession, unit: AbstractUnit) -> (f32, f32, f32) {
+    let at = match unit {
+        AbstractUnit::Capital(index) => session.ships[index].source_position,
+        AbstractUnit::Fighter(index) => session.fighters[index].source_position,
+    };
+    (at.x, at.y, at.z)
+}
+
+/// hyp: the speed (slot `+0x34`) of a task force's object `+0x54`, taken as
+/// its leader's sublight engine power.
+fn engine_speed(session: &BattleSession, unit: AbstractUnit) -> f32 {
+    match unit {
+        AbstractUnit::Capital(index) => session.ships[index].sublight_engine_power,
+        AbstractUnit::Fighter(index) => session.fighters[index].sublight_engine_power,
+    }
+}
+
 impl AbstractBattle {
     /// `FUN_005ae460`: the battle starts with each side's strength as its
     /// low.
@@ -363,36 +425,199 @@ impl AbstractBattle {
         groups
     }
 
-    /// hyp: until `FUN_005c9200` and `FUN_005ec740` are ported, a task force
-    /// keeps its live target and otherwise takes the first enemy in stable
-    /// order. A leader with laser cannons (`FUN_005b7ce0`) looks at fighter
-    /// groups first, others at capital ships first.
+    /// `FUN_005c9200` (after slot `+0x08`, `FUN_005d1a70`): each side's
+    /// commander gives its idle task forces targets.
     fn assign_targets(&mut self, alliance: bool) {
-        let enemies = units_of(&self.session, !alliance);
-        for (group, members) in self.groups(alliance) {
-            if self
-                .targets
-                .get(&group)
-                .is_some_and(|&target| unit_active(&self.session, target))
-            {
+        let groups = self.groups(alliance);
+        // `FUN_005d1a70`: the enemy's active units, highest priority first.
+        let mut ranked: Vec<(f32, AbstractUnit)> = units_of(&self.session, !alliance)
+            .into_iter()
+            .map(|unit| (-target_priority(&self.session, unit), unit))
+            .collect();
+        ranked.sort_by(|left, right| left.0.total_cmp(&right.0));
+        // `FUN_005c9200`: fighters, then ships, for laser-armed leaders;
+        // ships, then fighters, then ships again, for the others.
+        let fighters: Vec<AbstractUnit> = ranked
+            .iter()
+            .map(|&(_, unit)| unit)
+            .filter(|unit| unit.is_fighter())
+            .collect();
+        let ships: Vec<AbstractUnit> = ranked
+            .iter()
+            .map(|&(_, unit)| unit)
+            .filter(|unit| !unit.is_fighter())
+            .collect();
+        let fighter_list: Vec<AbstractUnit> = fighters.iter().chain(&ships).copied().collect();
+        let ship_list: Vec<AbstractUnit> = ships.iter().chain(&fighter_list).copied().collect();
+
+        let mut ship_groups = Vec::new();
+        let mut laser_groups = Vec::new();
+        for (group, members) in &groups {
+            if self.keeps_target(*group, &groups) {
                 continue;
             }
-            let leader_has_lasers = arcs(&self.session, members[0])
+            // `FUN_005b7ce0`: the leader carries laser cannons in some arc.
+            let lasers = arcs(&self.session, members[0])
                 .iter()
                 .any(|arc| arc.laser_cannons > 0);
-            let target = enemies
+            if lasers {
+                laser_groups.push((*group, members.clone()));
+            } else {
+                ship_groups.push((*group, members.clone()));
+            }
+        }
+        self.pair(ship_groups, &ship_list);
+        self.pair(laser_groups, &fighter_list);
+    }
+
+    /// Policy slot `+0x0c` (`FUN_005ed5f0`): a task force keeps an eligible
+    /// target while it and the side's other task forces on it score under
+    /// 300 (`DAT_0066da84`) and not -1.
+    fn keeps_target(
+        &self,
+        group: AbstractGroup,
+        groups: &[(AbstractGroup, Vec<AbstractUnit>)],
+    ) -> bool {
+        let Some(&target) = self.targets.get(&group) else {
+            return false;
+        };
+        if !target_eligible(&self.session, target) {
+            return false;
+        }
+        let members = |key: AbstractGroup| {
+            groups
                 .iter()
-                .copied()
-                .find(|unit| unit.is_fighter() == leader_has_lasers)
-                .or_else(|| enemies.first().copied());
-            match target {
-                Some(target) => {
-                    self.targets.insert(group, target);
-                }
-                None => {
-                    self.targets.remove(&group);
+                .find(|(other, _)| *other == key)
+                .map(|(_, members)| members.as_slice())
+                .unwrap_or(&[])
+        };
+        let mut running = 0.0;
+        let mut score = self.score(target, members(group), &mut running);
+        if score >= ABSTRACT_KEEP_TARGET_SCORE || score == ABSTRACT_NO_SCORE {
+            for (other, other_members) in groups {
+                if *other != group && self.targets.get(other) == Some(&target) {
+                    score = self.score(target, other_members, &mut running);
                 }
             }
+            if score >= ABSTRACT_KEEP_TARGET_SCORE || score == ABSTRACT_NO_SCORE {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Policy slot `+0x04` (`FUN_005ed170`): the seconds the running rate
+    /// needs to wear the target down, plus a small travel term. `running`
+    /// grows by the task force's rate (`FUN_005cb650`).
+    fn score(&self, target: AbstractUnit, members: &[AbstractUnit], running: &mut f32) -> f32 {
+        if members.is_empty() {
+            return ABSTRACT_NO_SCORE;
+        }
+        *running += self.group_rate(members, target);
+        let (hull, shield) = match target {
+            AbstractUnit::Capital(index) => {
+                let ship = &self.session.ships[index];
+                (ship.hull_current as f32, ship.shield as f32)
+            }
+            AbstractUnit::Fighter(index) => {
+                let fighter = &self.session.fighters[index];
+                (fighter.hull_current, fighter.shield)
+            }
+        };
+        let points = (hull * ABSTRACT_SCORE_HULL_WEIGHT + shield).max(1.0);
+        let recharge = shield_recharge(&self.session, target);
+        let margin = *running - recharge;
+        if margin <= 0.0 {
+            return ABSTRACT_NO_SCORE;
+        }
+        let mut score = points / margin;
+        let leader = members[0];
+        let from = position(&self.session, leader);
+        let to = position(&self.session, target);
+        let (dx, dy, dz) = (to.0 - from.0, to.1 - from.1, to.2 - from.2);
+        if dx != 0.0 || dy != 0.0 || dz != 0.0 {
+            let speed = engine_speed(&self.session, leader);
+            let travel = if speed == 0.0 {
+                0.0
+            } else {
+                dx.hypot(dy).hypot(dz) / speed
+            };
+            score += travel.max(1.0) * ABSTRACT_SCORE_TRAVEL_WEIGHT;
+        }
+        score
+    }
+
+    /// Strategy `0x66cbe8` slot `+0x04` (`FUN_005ec740`): pair idle task
+    /// forces with eligible targets in list order, alone where one scores
+    /// 0..180 (`DAT_0066cbac`), otherwise combined from the weakest up.
+    fn pair(&mut self, groups: Vec<(AbstractGroup, Vec<AbstractUnit>)>, targets: &[AbstractUnit]) {
+        let mut idle = groups;
+        if idle.is_empty() || targets.is_empty() {
+            return;
+        }
+        for &target in targets {
+            if !target_eligible(&self.session, target) {
+                continue;
+            }
+            // Each idle task force scored alone; a score outside 0..180
+            // sorts after, by 100,000 (`DAT_0066da58`) less its rate.
+            let mut scored: Vec<(f32, usize)> = idle
+                .iter()
+                .enumerate()
+                .map(|(index, (_, members))| {
+                    let mut running = 0.0;
+                    let score = self.score(target, members, &mut running);
+                    let key = if (0.0..=ABSTRACT_PAIR_SCORE_LIMIT).contains(&score) {
+                        score
+                    } else {
+                        ABSTRACT_UNPAIRED_KEY - running
+                    };
+                    (key, index)
+                })
+                .collect();
+            scored.sort_by(|left, right| left.0.total_cmp(&right.0));
+            let Some(&(_, head)) = scored.first() else {
+                return;
+            };
+            if scored.len() == 1 {
+                let (group, _) = idle.remove(head);
+                self.targets.insert(group, target);
+                return;
+            }
+            // From the tail toward the head, add each task force to the
+            // head's rate; the first combined score in 0..180 links the tail
+            // through that one. The head itself is not linked.
+            let mut running = self.group_rate(&idle[head].1, target);
+            let mut linked = None;
+            for position in (1..scored.len()).rev() {
+                let index = scored[position].1;
+                let score = self.score(target, &idle[index].1, &mut running);
+                if (0.0..=ABSTRACT_PAIR_SCORE_LIMIT).contains(&score) {
+                    linked = Some(position);
+                    break;
+                }
+            }
+            if let Some(from) = linked {
+                let mut chosen: Vec<usize> =
+                    scored[from..].iter().map(|&(_, index)| index).collect();
+                for &index in &chosen {
+                    self.targets.insert(idle[index].0, target);
+                }
+                chosen.sort_unstable();
+                for index in chosen.into_iter().rev() {
+                    idle.remove(index);
+                }
+            }
+        }
+        // Every task force still idle takes the first eligible target, or
+        // the first of the list.
+        let fallback = targets
+            .iter()
+            .copied()
+            .find(|&target| target_eligible(&self.session, target))
+            .unwrap_or(targets[0]);
+        for (group, _) in idle {
+            self.targets.insert(group, fallback);
         }
     }
 
@@ -1076,37 +1301,6 @@ mod tests {
         assert_eq!(battle.session.phase, BattlePhase::Results);
     }
 
-    // hyp targeting: a laser-armed leader picks fighters first, others pick
-    // capital ships first; a live target is kept, each task force its own.
-    #[test]
-    fn laser_leaders_take_fighters_and_others_take_ships() {
-        let mut lasers = ship(true, TacticalWeaponArc::new(2, 0, 0), 10.0);
-        lasers.task_force = 1;
-        let mut battle = AbstractBattle::new(session(
-            vec![
-                ship(true, TacticalWeaponArc::new(0, 0, 2), 10.0),
-                lasers,
-                ship(false, TacticalWeaponArc::default(), 0.0),
-            ],
-            vec![fighter(false, TacticalWeaponArc::default())],
-        ));
-        battle.assign_targets(true);
-        let group = |id| AbstractGroup {
-            side: 0,
-            fighters: false,
-            id,
-        };
-        assert_eq!(battle.targets[&group(0)], AbstractUnit::Capital(2));
-        assert_eq!(battle.targets[&group(1)], AbstractUnit::Fighter(0));
-        battle.targets.insert(group(1), AbstractUnit::Capital(2));
-        battle.assign_targets(true);
-        assert_eq!(battle.targets[&group(1)], AbstractUnit::Capital(2));
-        battle.session.ships[2].alive = false;
-        battle.assign_targets(true);
-        assert_eq!(battle.targets[&group(1)], AbstractUnit::Fighter(0));
-        assert_eq!(battle.targets[&group(0)], AbstractUnit::Fighter(0));
-    }
-
     // State 2: a ship that left or has no hull is out of the battle.
     #[test]
     fn a_ship_that_left_or_has_no_hull_is_inactive() {
@@ -1217,5 +1411,278 @@ mod tests {
         );
         let rate = damage_rate(&battle, AbstractUnit::Capital(0), AbstractUnit::Capital(1));
         assert!((rate - ORIGINAL_CAPITAL_WEAPON_STRENGTH * 10.0).abs() < 1e-5);
+    }
+
+    fn group(side: u8, id: u8) -> AbstractGroup {
+        AbstractGroup {
+            side,
+            fighters: false,
+            id,
+        }
+    }
+
+    // FUN_005ed170: hit points (hull × 0.65 + shields) over the running
+    // rate less the target's shield recharge; -1 when the rate cannot win.
+    #[test]
+    fn a_score_is_the_seconds_to_wear_the_target_down() {
+        let battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
+                ship(false, TacticalWeaponArc::default(), 0.0),
+            ],
+            Vec::new(),
+        ));
+        let attackers = [AbstractUnit::Capital(0)];
+        let target = AbstractUnit::Capital(1);
+        let rate = damage_rate(&battle.session, attackers[0], target);
+        let mut running = 0.0;
+        let score = battle.score(target, &attackers, &mut running);
+        assert!((running - rate).abs() < 1e-6);
+        // 100 hull × 0.65 + 50 shield, recharge 1.0; both at the origin.
+        assert!((score - 115.0 / (rate - 1.0)).abs() < 1e-3, "{score}");
+        let mut weak = 0.5;
+        let mut empty = 0.0;
+        assert_eq!(battle.score(target, &[], &mut empty), ABSTRACT_NO_SCORE);
+        let mut ion_only = battle.clone();
+        ion_only.session.ships[0].weapon_arcs[0] = TacticalWeaponArc::default();
+        assert_eq!(
+            ion_only.score(target, &attackers, &mut weak),
+            ABSTRACT_NO_SCORE
+        );
+    }
+
+    // FUN_005ed170: a distant target adds 0.001 × its travel seconds, at
+    // least one.
+    #[test]
+    fn a_distant_target_adds_its_travel_time() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
+                ship(false, TacticalWeaponArc::default(), 0.0),
+            ],
+            Vec::new(),
+        ));
+        let attackers = [AbstractUnit::Capital(0)];
+        let target = AbstractUnit::Capital(1);
+        let near = battle.score(target, &attackers, &mut 0.0);
+        battle.session.ships[1].source_position.z = 40.0;
+        let far = battle.score(target, &attackers, &mut 0.0);
+        // 40 units at engine power 2: 20 seconds.
+        assert!((far - near - 20.0 * 0.001).abs() < 1e-5, "{far} {near}");
+        battle.session.ships[1].source_position.z = 1.0;
+        let close = battle.score(target, &attackers, &mut 0.0);
+        assert!((close - near - 0.001).abs() < 1e-5, "{close} {near}");
+    }
+
+    // FUN_005d1a70 and FUN_005ed8e0: targets run from the highest priority,
+    // 15 × strength; FUN_005ed550 skips an unarmed one.
+    #[test]
+    fn the_strongest_armed_enemy_is_taken_first() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 5.0),
+                ship(false, TacticalWeaponArc::default(), 0.0),
+            ],
+            Vec::new(),
+        ));
+        for index in 1..4 {
+            battle.session.ships[index].task_force = index as u8;
+        }
+        assert!(
+            target_priority(&battle.session, AbstractUnit::Capital(2))
+                > target_priority(&battle.session, AbstractUnit::Capital(1))
+        );
+        assert!(!target_eligible(&battle.session, AbstractUnit::Capital(3)));
+        battle.assign_targets(true);
+        assert_eq!(battle.targets[&group(0, 0)], AbstractUnit::Capital(2));
+    }
+
+    // FUN_005ed550: an unarmed ship is skipped for the next eligible target
+    // even on the ship list; with only unarmed ships, FUN_005ec740 falls back
+    // to the first of the list. A fighter group is armed by its hull
+    // (FUN_005b9c00).
+    #[test]
+    fn an_unarmed_ship_is_skipped_and_only_a_fallback() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
+                ship(false, TacticalWeaponArc::default(), 0.0),
+            ],
+            vec![fighter(false, TacticalWeaponArc::default())],
+        ));
+        assert!(target_eligible(&battle.session, AbstractUnit::Fighter(0)));
+        battle.assign_targets(true);
+        assert_eq!(battle.targets[&group(0, 0)], AbstractUnit::Fighter(0));
+
+        let mut only_ships = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
+                ship(false, TacticalWeaponArc::default(), 0.0),
+            ],
+            Vec::new(),
+        ));
+        only_ships.assign_targets(true);
+        assert_eq!(only_ships.targets[&group(0, 0)], AbstractUnit::Capital(1));
+    }
+
+    // FUN_005ec740: three task forces too weak alone combine. The walk from
+    // the tail links the tail and the middle once the head's rate plus theirs
+    // scores under 180; the head is counted but not linked, so it stays idle
+    // and, alone for the next target, is linked to it.
+    #[test]
+    fn weak_task_forces_combine_and_the_head_moves_on() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 1.2),
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 1.1),
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 1.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+            ],
+            Vec::new(),
+        ));
+        battle.session.ships[1].task_force = 1;
+        battle.session.ships[2].task_force = 2;
+        for index in [3, 4] {
+            battle.session.ships[index].shield_recharge_rate = 0.0;
+        }
+        // Rates 0.32, 0.293 and 0.267 per second against 115 points: alone
+        // over 180 s; head and tail 196 s; all three 131 s.
+        let groups = battle.groups(true);
+        battle.pair(
+            groups,
+            &[AbstractUnit::Capital(3), AbstractUnit::Capital(4)],
+        );
+        assert_eq!(battle.targets[&group(0, 1)], AbstractUnit::Capital(3));
+        assert_eq!(battle.targets[&group(0, 2)], AbstractUnit::Capital(3));
+        assert_eq!(battle.targets[&group(0, 0)], AbstractUnit::Capital(4));
+    }
+
+    // FUN_005ed5f0: a task force keeps an eligible target while its score
+    // stays under 300; a target with no weapons is dropped.
+    #[test]
+    fn a_task_force_keeps_its_target_while_the_score_is_under_300() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+            ],
+            Vec::new(),
+        ));
+        battle.targets.insert(group(0, 0), AbstractUnit::Capital(1));
+        let groups = battle.groups(true);
+        assert!(battle.keeps_target(group(0, 0), &groups));
+        battle.session.ships[1].hull_current = 100_000;
+        assert!(!battle.keeps_target(group(0, 0), &groups));
+        battle.session.ships[1].hull_current = 100;
+        battle.session.ships[1].weapon_recharge_rate = 0.0;
+        assert!(!battle.keeps_target(group(0, 0), &groups));
+    }
+
+    // FUN_005c9200 with FUN_005b7ce0: a laser-armed leader takes the
+    // fighter list, any other leader the ship list.
+    #[test]
+    fn laser_leaders_take_the_fighter_list_and_others_the_ship_list() {
+        let mut lasers = ship(true, TacticalWeaponArc::new(1, 0, 4), 30.0);
+        lasers.task_force = 1;
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
+                lasers,
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+            ],
+            vec![fighter(false, TacticalWeaponArc::new(2, 0, 0))],
+        ));
+        battle.assign_targets(true);
+        assert_eq!(battle.targets[&group(0, 0)], AbstractUnit::Capital(2));
+        assert_eq!(battle.targets[&group(0, 1)], AbstractUnit::Fighter(0));
+    }
+
+    // FUN_005ed8e0: 15 (DAT_0066da7c) × strength less 0.01 (DAT_0066daa0) ×
+    // the shield-generator ratio (FUN_005b1710: recharge over its base, 0
+    // without one) and the hull ratio (FUN_005b1640).
+    #[test]
+    fn the_priority_is_fifteen_times_strength_less_the_ratios() {
+        let mut battle = session(
+            vec![
+                ship(false, TacticalWeaponArc::new(0, 0, 4), 10.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 4), 10.0),
+            ],
+            vec![fighter(false, TacticalWeaponArc::new(2, 0, 0))],
+        );
+        battle.ships[0].shield_recharge_rate = 2.0;
+        battle.ships[0].hull_current = 50;
+        battle.ships[0].subsystem_damage.shields = 1;
+        battle.ships[1].shield_recharge_rate = 0.0;
+        battle.fighters[0].hull_current = 48.0;
+        let unit = AbstractUnit::Capital(0);
+        let shield_ratio = battle.ships[0].effective_shield_recharge() / 2.0;
+        let expected = 15.0 * unit_strength(&battle, unit) - 0.01 * shield_ratio - 0.01 * 0.5;
+        assert!((target_priority(&battle, unit) - expected).abs() < 1e-5);
+        let bare = AbstractUnit::Capital(1);
+        let expected = 15.0 * unit_strength(&battle, bare) - 0.01;
+        assert!((target_priority(&battle, bare) - expected).abs() < 1e-5);
+        let squadron = AbstractUnit::Fighter(0);
+        let expected = 15.0 * unit_strength(&battle, squadron) - 0.01;
+        assert!((target_priority(&battle, squadron) - expected).abs() < 1e-5);
+        assert!(shield_ratio > 0.0 && shield_ratio < 0.5);
+    }
+
+    // FUN_005ed5f0: a score of 300 or more alone is kept when the side's
+    // other task forces on the same target bring it under 300; task forces
+    // on another target do not count.
+    #[test]
+    fn partners_on_the_same_target_keep_it() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 1.0),
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 10.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+            ],
+            Vec::new(),
+        ));
+        battle.session.ships[1].task_force = 1;
+        battle.session.ships[2].shield_recharge_rate = 0.0;
+        battle.session.ships[3].task_force = 1;
+        battle.targets.insert(group(0, 0), AbstractUnit::Capital(2));
+        battle.targets.insert(group(0, 1), AbstractUnit::Capital(3));
+        let groups = battle.groups(true);
+        // Alone: 115 / 0.267 > 300.
+        assert!(!battle.keeps_target(group(0, 0), &groups));
+        battle.targets.insert(group(0, 1), AbstractUnit::Capital(2));
+        assert!(battle.keeps_target(group(0, 0), &groups));
+    }
+
+    // FUN_005ed170: the travel term measures from the task force to the
+    // target along every axis.
+    #[test]
+    fn the_travel_term_measures_from_the_leader_on_every_axis() {
+        let battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
+                ship(false, TacticalWeaponArc::default(), 0.0),
+            ],
+            Vec::new(),
+        ));
+        let attackers = [AbstractUnit::Capital(0)];
+        let target = AbstractUnit::Capital(1);
+        let base = battle.score(target, &attackers, &mut 0.0);
+        for axis in 0..3 {
+            let mut moved = battle.clone();
+            let set = |at: &mut TacticalWorldPosition, value: f32| match axis {
+                0 => at.x = value,
+                1 => at.y = value,
+                _ => at.z = value,
+            };
+            set(&mut moved.session.ships[0].source_position, 6.0);
+            set(&mut moved.session.ships[1].source_position, 10.0);
+            // 4 units at engine power 2: 2 seconds.
+            let score = moved.score(target, &attackers, &mut 0.0);
+            assert!((score - base - 0.002).abs() < 1e-5, "axis {axis}: {score}");
+        }
+        assert_eq!(ABSTRACT_NO_SCORE, -1.0);
     }
 }

@@ -227,9 +227,12 @@ stalled weaker side that cannot leave is destroyed.
 
 It is not used by the campaign yet. Three pieces stay `hyp:`:
 
-- Targeting: a task force keeps a live target, otherwise it takes the
-  first enemy of the class its leader's lasers favour. `FUN_005ec740`
-  scoring is next.
+- Targeting: ported in W2e, following the "Targets" section above.
+  - `hyp:` the travel speed is the leader's engine power.
+  - `hyp:` a fighter group's shield-generator ratio is its hull ratio.
+  - The game-list terms are empty without display.
+  - Over seeds 1-3, 55 of 67 battles end as with the earlier rule, with
+    26 attacker and 41 defender wins (28 and 39 before).
 - A fighter group hit by `FUN_005b54d0`: shields first, then hull.
 - The retreat decision and the Death Star's abstract actions. These are
   not ported.
