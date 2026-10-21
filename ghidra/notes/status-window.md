@@ -468,14 +468,22 @@ no ":" maximum.
   names.
 - Embarked: port: no per-ship field, because fighters, regiments and
   characters are kept per fleet.
-- Ship Damaged: port: no flag.
+- Ship Damaged: the hull below the class's, or a hit counter set
+  (`FUN_00501c00`).
 - Hull: `ShipInstance::hull_current` stands for the value after damage
   (class `hull` minus `+0x60`). The maximum is `CapitalShipClass::hull`.
-- The damage terms read `+0x64` nibbles. The port keeps only bits 0..7, in
-  `ShipInstance::shield_weapon_packed`, and treats them as recharge
-  allocation. Bits 8..23 (tractor, sub-light, hyperdrive, backup
-  hyperdrive) have no port field, so those rows show the class value. The
-  global `DAT_006bb388` is untraced.
+- The damage terms (ported 2026-10-22, `rebellion_core::ship_condition`)
+  read `ShipInstance::subsystem_hits` (`+0x64`) and the hull; `DAT_006bb388`
+  is GNPRTB 2048 (4):
+  - recharge (`FUN_00500f60`, `FUN_00500fa0`): `rate x hits / G`;
+  - tractor (`FUN_00500e60`, bits 8..11), sub-light (`FUN_005010c0`,
+    bits 12..15) and each arc (`FUN_00501270`, bits 4..7): the shown value
+    is `value x (G - hits) / G x (hull - damage) / hull`, the class value
+    when G or the hull is 0;
+  - bombardment (`FUN_00500f00`): `modifier x damage / hull`; the whole
+    modifier while the ship is unfinished (`+0x24 & 0x30` clear and
+    `FUN_005006e0`), which a port ship never is;
+  - hyperdrive (`FUN_005011f0`, `FUN_00501230`): `rating x hits / 1`.
 
 ## Fighter Squadron Status (`FUN_004444c0`)
 

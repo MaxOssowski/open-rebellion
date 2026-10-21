@@ -54,6 +54,7 @@ pub mod research;
 pub mod scrap;
 #[doc(hidden)]
 pub mod serde_ordered;
+pub mod ship_condition;
 pub mod side_resources;
 pub mod squadrons;
 pub mod story_events;

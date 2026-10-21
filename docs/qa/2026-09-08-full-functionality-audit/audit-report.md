@@ -2123,6 +2123,10 @@ cross-runtime proof remain open
     (`FUN_004738d0`, `FUN_00473910`, GNPRTB 2048; evidence
     `2026-10-21-ai-recharge-hits/`). 14 campaigns change (battles
     2025 -> 1855).
+  - 2026-10-22 (D5): the Capital Ship Status rows show the ratings after
+    hits and hull damage (`ship_condition.rs`: `FUN_00500e60`,
+    `FUN_005010c0`, `FUN_00501270`, `FUN_00500f00`, `FUN_00500f60`;
+    evidence `2026-10-22-ship-status-hits/`).
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.

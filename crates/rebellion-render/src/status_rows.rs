@@ -241,7 +241,7 @@ fn alive_ships(
 /// hyp: the port's nearest field to the damage bit (`+0x50` bit `0x200`):
 /// a hull below its class's.
 fn damaged(ship: &ShipInstance, class: &CapitalShipClass) -> bool {
-    u32::try_from(ship.hull_current).unwrap_or(0) < class.hull
+    ship.subsystem_hits != 0 || u32::try_from(ship.hull_current).unwrap_or(0) < class.hull
 }
 
 /// The Fleet Status rows (`FUN_00449200`).
@@ -316,12 +316,11 @@ fn aboard(capacities: &[u32], index: usize, total: u32) -> u32 {
 /// The Capital Ship Status rows (`FUN_00446fd0`), for the fleet's ship at
 /// `index`.
 ///
-/// port: the ship's damage nibbles (`+0x64` bits 8..23) and
-/// `DAT_006bb388` are not kept, so the tractor beam, sub-light,
-/// recharge and hyperdrive rows read the class value over itself. The
-/// hull is `ShipInstance::hull_current`. hyp: Ship Damaged reads Yes while
-/// the hull is below its class's (`+0x50` bit `0x200`). Personnel puts the
-/// fleet's characters aboard its first alive ship.
+/// The rows after damage read `rebellion_core::ship_condition`: the ship's
+/// hit counters (`+0x64`) and hull. Ship Damaged reads Yes while the hull is
+/// below its class's or a counter is set (`+0x50` bit `0x200`,
+/// `FUN_00501c00`). The hull is `ShipInstance::hull_current`. port:
+/// Personnel puts the fleet's characters aboard its first alive ship.
 #[must_use]
 pub fn ship_rows(
     sources: StatusSources<'_>,
@@ -361,11 +360,9 @@ pub fn ship_rows(
         row("Status:", moving_status(arrival.is_some())),
     ];
     eta(&mut rows, arrival);
-    let hyperdrive = if class.hyperdrive == 0 {
-        class.hyperdrive_if_damaged
-    } else {
-        class.hyperdrive
-    };
+    use rebellion_core::ship_condition as condition;
+    use rebellion_core::world::Subsystem;
+    let rating = |value, subsystem| condition::rating(world, value, class, ship, subsystem);
     rows.extend([
         row("Maintenance Cost:", class.maintenance_cost.to_string()),
         heading("Capacity:"),
@@ -382,29 +379,47 @@ pub fn ship_rows(
         ),
         row("Personnel:", personnel.to_string()),
         row("Ship Damaged:", yes_no(damaged(ship, class))),
-        row("Hyperdrive Rating:", ratio(hyperdrive, class.hyperdrive)),
+        row(
+            "Hyperdrive Rating:",
+            ratio(condition::hyperdrive(class, ship), class.hyperdrive),
+        ),
         row("Hull Value:", ratio(ship.hull_current, class.hull)),
         row("Damage Control Rating:", class.damage_control.to_string()),
         row(
             "Shield Recharge Rate:",
-            ratio(class.shield_recharge_rate, class.shield_recharge_rate),
+            ratio(
+                condition::recharge(world, class.shield_recharge_rate, ship, Subsystem::Shield),
+                class.shield_recharge_rate,
+            ),
         ),
         row("Maximum Shield Strength:", class.shield_strength.to_string()),
         row(
             "Tractor Beam Power:",
-            ratio(class.tractor_beam_power, class.tractor_beam_power),
+            ratio(
+                rating(class.tractor_beam_power, Subsystem::Tractor),
+                class.tractor_beam_power,
+            ),
         ),
         row(
             "Sub-Light Engine Rating:",
-            ratio(class.sub_light_engine, class.sub_light_engine),
+            ratio(
+                rating(class.sub_light_engine, Subsystem::Speed),
+                class.sub_light_engine,
+            ),
         ),
         row("Maneuverability:", class.maneuverability.to_string()),
         row("Detection Rating:", class.detection.to_string()),
         row(
             "Weapon Recharge Rate:",
-            ratio(class.weapon_recharge_rate, class.weapon_recharge_rate),
+            ratio(
+                condition::recharge(world, class.weapon_recharge_rate, ship, Subsystem::Weapon),
+                class.weapon_recharge_rate,
+            ),
         ),
-        row("Bombardment Modifier:", class.bombardment_modifier.to_string()),
+        row(
+            "Bombardment Modifier:",
+            condition::bombardment(class, ship).to_string(),
+        ),
     ]);
     // Fore 0, aft 1, then starboard (arc 3) before port (arc 2), read from
     // the pushes at 0x447f2c..0x448650.
@@ -430,11 +445,12 @@ pub fn ship_rows(
             [class.turbolaser_port, class.ion_cannon_port, class.laser_cannon_port],
         ),
     ] {
+        // FUN_00501270: each arc after the weapon hits and the hull.
         rows.extend([
             heading(heading_label),
-            row("Turbo Laser:", turbo.to_string()),
-            row(" Ion Cannon:", ion.to_string()),
-            row("Laser Cannon:", laser.to_string()),
+            row("Turbo Laser:", rating(turbo, Subsystem::Weapon).to_string()),
+            row(" Ion Cannon:", rating(ion, Subsystem::Weapon).to_string()),
+            row("Laser Cannon:", rating(laser, Subsystem::Weapon).to_string()),
         ]);
     }
     Some(rows)
@@ -1273,6 +1289,77 @@ mod tests {
         // A class with no hyperdrive shows its damaged rating (FUN_00446fd0).
         assert_eq!(value(0, "Hyperdrive Rating:", 0), "9:0");
         assert_eq!(value(1, "Hyperdrive Rating:", 0), "2:2");
+    }
+
+    #[test]
+    fn a_ships_hits_and_hull_damage_lower_its_ratings() {
+        // FUN_00446fd0's rows less FUN_00500fa0, FUN_00500e60, FUN_005010c0,
+        // FUN_00500f60, FUN_00500f00 and FUN_00501270 (GNPRTB 2048 = 4),
+        // and a hit primary hyperdrive (FUN_005011f0).
+        use rebellion_core::world::{GnprtbEntry, GnprtbParams, Subsystem};
+        let mut world = GameWorld::default();
+        world.gnprtb = GnprtbParams::new(vec![GnprtbEntry {
+            parameter_id: 2048,
+            development: 4,
+            alliance_sp_easy: 4,
+            alliance_sp_medium: 4,
+            alliance_sp_hard: 4,
+            empire_sp_easy: 4,
+            empire_sp_medium: 4,
+            empire_sp_hard: 4,
+            multiplayer: 4,
+        }]);
+        let here = system(&mut world, "Yavin", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, here);
+        let large = world.fleets[fleet].capital_ships[1].class;
+        let class = &mut world.capital_ship_classes[large];
+        class.hyperdrive_if_damaged = 5;
+        class.shield_recharge_rate = 8;
+        class.weapon_recharge_rate = 12;
+        class.tractor_beam_power = 10;
+        class.sub_light_engine = 20;
+        class.bombardment_modifier = 10;
+        let ship = &mut world.fleets[fleet].capital_ships[1];
+        for (subsystem, hits) in [
+            (Subsystem::Shield, 1),
+            (Subsystem::Weapon, 2),
+            (Subsystem::Tractor, 1),
+            (Subsystem::PrimaryHyperdrive, 1),
+        ] {
+            ship.set_hits(subsystem, hits);
+        }
+        let states = States::new();
+        let rows = ship_rows(states.sources(&world), fleet, 1).unwrap();
+        let value = |label: &str| {
+            super::tests::rows(&rows)
+                .into_iter()
+                .find(|(each, _)| *each == label)
+                .unwrap()
+                .1
+                .to_owned()
+        };
+        // The hull is 60 of 100.
+        assert_eq!(value("Shield Recharge Rate:"), "6:8");
+        assert_eq!(value("Weapon Recharge Rate:"), "6:12");
+        // 10 x 3 / 4 = 7; 7 x 60 / 100 = 4.
+        assert_eq!(value("Tractor Beam Power:"), "4:10");
+        // 20 x 4 / 4 x 60 / 100 = 12.
+        assert_eq!(value("Sub-Light Engine Rating:"), "12:20");
+        // 10 - 10 x 40 / 100.
+        assert_eq!(value("Bombardment Modifier:"), "6");
+        assert_eq!(value("Hyperdrive Rating:"), "5:2");
+        // The starboard turbolaser: 3 x 2 / 4 x 60 / 100 = 0.
+        let turbo: Vec<String> = super::tests::rows(&rows)
+            .into_iter()
+            .filter(|(label, _)| *label == "Turbo Laser:")
+            .map(|(_, value)| value.to_owned())
+            .collect();
+        assert_eq!(turbo, ["0", "0", "0", "1"]);
+        // Hits alone count as damage (FUN_00501c00).
+        let ship = &mut world.fleets[fleet].capital_ships[0];
+        ship.set_hits(Subsystem::Speed, 1);
+        let rows = ship_rows(states.sources(&world), fleet, 0).unwrap();
+        assert!(super::tests::rows(&rows).contains(&("Ship Damaged:", "Yes")));
     }
 
     #[test]

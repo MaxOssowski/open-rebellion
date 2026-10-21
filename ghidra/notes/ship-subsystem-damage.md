@@ -92,7 +92,11 @@ quarter. The AI's ship record (`FUN_00484630`) passes it to
 `FUN_004738d0` / `FUN_004738f0` / `FUN_00473910`, which scale the class
 figure by it over the class recharge (`+0x50`, `+0x54`). Ported in D4
 (`ai_records::ship_record`, `recharge_after_hits`). The status window shows
-the same rate (`status-window.md`).
+the same rate (`status-window.md`); D5 (2026-10-22,
+`rebellion_core::ship_condition`) ports its rows after hits and hull
+damage: recharge, tractor beam (`FUN_00500e60`), sub-light
+(`FUN_005010c0`), the arcs (`FUN_00501270`), bombardment (`FUN_00500f00`)
+and hyperdrive.
 
 ## The port (before)
 
