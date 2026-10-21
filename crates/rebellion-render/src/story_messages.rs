@@ -943,6 +943,34 @@ pub fn facility_lost_texts(
     ))
 }
 
+/// The Message Index rail of a unit's Units Deployed (`FUN_00497940`) or
+/// Unit Arrival (`FUN_004981c0`) message: the class's category mask
+/// (`+0x34`) by the unit's family. Capital ships and the Death Star take
+/// `0x80` (Fleet); a squadron or regiment at a system `0x40` (Defense); a
+/// special force `0x10` (Mission); a defense facility `0x40`; a shipyard,
+/// training facility or construction yard `0x08` (Manufacturing); a mine
+/// or refinery `0x04` (Resource) when deployed, `0x08` when arriving.
+///
+/// port: a completed or delivered unit stands at its system.
+#[must_use]
+pub fn unit_message_rail(
+    kind: rebellion_core::manufacturing::BuildableKind,
+    arriving: bool,
+) -> crate::message_log::MessageRail {
+    use crate::message_log::MessageRail;
+    use rebellion_core::manufacturing::BuildableKind;
+    match kind {
+        BuildableKind::CapitalShip(_) => MessageRail::Fleet,
+        BuildableKind::Fighter(_) | BuildableKind::Troop(_) | BuildableKind::DefenseFacility(_) => {
+            MessageRail::Defense
+        }
+        BuildableKind::SpecialForce(_) => MessageRail::Mission,
+        BuildableKind::ManufacturingFacility(_) => MessageRail::Manufacturing,
+        BuildableKind::ProductionFacility(_) if arriving => MessageRail::Manufacturing,
+        BuildableKind::ProductionFacility(_) => MessageRail::Resource,
+    }
+}
+
 /// Unit Arrival (`FUN_004981c0`): `GameObjEnrouteActiveNotif` (`0x105`)
 /// clearing, a unit arriving where it was bound, to the unit's side. A
 /// capital ship takes TEXTSTRA `0x7076` "Ships arrive at {2:1}" and
@@ -1557,6 +1585,52 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00497940 and FUN_004981c0 set their category mask (+0x34) by the
+    // unit's family; FUN_0042d8d0 files the message on that rail.
+    #[test]
+    fn a_unit_s_message_goes_to_the_rail_of_its_family() {
+        use crate::message_log::MessageRail;
+        use rebellion_core::ids::{CapitalShipKey, DatId, FighterKey};
+        use rebellion_core::manufacturing::{BuildableKind, FacilityBuild};
+        let build = |id| FacilityBuild {
+            class: DatId::new(id),
+            is_alliance: true,
+        };
+        let rail = unit_message_rail;
+        assert_eq!(
+            rail(BuildableKind::CapitalShip(CapitalShipKey::default()), false),
+            MessageRail::Fleet
+        );
+        assert_eq!(
+            rail(BuildableKind::Fighter(FighterKey::default()), false),
+            MessageRail::Defense
+        );
+        assert_eq!(
+            rail(BuildableKind::Troop(DatId::new(0x1000_0001)), true),
+            MessageRail::Defense
+        );
+        assert_eq!(
+            rail(BuildableKind::SpecialForce(DatId::new(0x3c00_0001)), false),
+            MessageRail::Mission
+        );
+        assert_eq!(
+            rail(BuildableKind::DefenseFacility(build(0x2200_0001)), false),
+            MessageRail::Defense
+        );
+        assert_eq!(
+            rail(BuildableKind::ManufacturingFacility(build(0x2800_0001)), false),
+            MessageRail::Manufacturing
+        );
+        assert_eq!(
+            rail(BuildableKind::ProductionFacility(build(0x2c00_0001)), false),
+            MessageRail::Resource
+        );
+        assert_eq!(
+            rail(BuildableKind::ProductionFacility(build(0x2c00_0001)), true),
+            MessageRail::Manufacturing
+        );
+    }
 
     // FUN_004981c0 (notification 0x105 clearing): TEXTSTRA 0x7076 / 0x7077,
     // 0x707a / 0x707b and the unit line 0x707e as shipped, by family.

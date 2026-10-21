@@ -1879,7 +1879,7 @@ async fn main() {
                 }
                 msg_log.push(filed(
                     message,
-                    MessageRail::Manufacturing,
+                    rebellion_render::story_messages::unit_message_rail(completion.kind, false),
                     system_audience(&world, completion.system),
                 ));
                 advisor_manufacturing_complete(&mut advisor_state, &sys_name);
@@ -1922,7 +1922,7 @@ async fn main() {
                 }
                 msg_log.push(filed(
                     message,
-                    MessageRail::Manufacturing,
+                    rebellion_render::story_messages::unit_message_rail(departure.kind, false),
                     system_audience(&world, departure.origin),
                 ));
                 advisor_manufacturing_complete(&mut advisor_state, &origin);
@@ -1956,7 +1956,7 @@ async fn main() {
                 }
                 msg_log.push(filed(
                     message,
-                    MessageRail::Manufacturing,
+                    rebellion_render::story_messages::unit_message_rail(completion.kind, true),
                     system_audience(&world, completion.system),
                 ));
             }

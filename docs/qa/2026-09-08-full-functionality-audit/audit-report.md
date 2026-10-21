@@ -1893,6 +1893,16 @@ cross-runtime proof remain open
   - The browser `delivery` case sees "<class> Deployed at F'tral" at
     departure and "Ships arrive at F'tral" on arrival
     (`evidence/2026-10-21-unit-arrival/`).
+- Rails (2026-10-21): Units Deployed (`FUN_00497940`) and Unit Arrival
+  (`FUN_004981c0`) set their category mask (`+0x34`) by family:
+  - ships `0x80` Fleet;
+  - squadrons and regiments at a system, and defense facilities, `0x40`;
+  - special forces `0x10`;
+  - manufacturing facilities `0x08`;
+  - mines and refineries `0x04` when deployed, `0x08` when arriving.
+  The app had filed them all on the Manufacturing rail; now
+  `story_messages::unit_message_rail` picks the rail
+  (`evidence/2026-10-21-unit-message-rails/`).
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 
