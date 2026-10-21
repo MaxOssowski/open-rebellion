@@ -1844,6 +1844,18 @@ cross-runtime proof remain open
     24 seeds); the simulation is otherwise unchanged.
   - The browser `delivery` case sees "Shipyard Idle on Akrit'tar"
     (`evidence/2026-10-21-facility-idle/`).
+- Units Deployed (2026-10-21): a completed or delivered unit posts `0x107`
+  (`FUN_00497940`) with the texts of its family, replacing "Construction
+  complete at X" and "Unit arrived at Y":
+  - ships: TEXTSTRA `0x7086` / `0x7087`;
+  - the Death Star: `0x708e` / `0x708f`;
+  - squadrons: `0x708a` / `0x708b`;
+  - regiments and special forces: `0x7088` / `0x7089` with a `0x707f`
+    line;
+  - facilities: `0x708c` / `0x708d`.
+  The browser `delivery` case sees "Mon Calamari Cruiser Deployed at
+  F'tral" and "Strike Cruiser Deployed at F'tral"
+  (`evidence/2026-10-21-units-deployed/`).
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 

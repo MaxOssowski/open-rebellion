@@ -703,7 +703,9 @@ const cases = [
       await shot(page, directory, "delivery-en-route");
       const destination = departed.last_departure_message.split(", en route to ")[1];
       const arrived = await until(page, "the ship arrives at its destination",
-        (o, target) => o.last_arrival_message === `Unit arrived at ${target}` && o.target_ships === 1,
+        // Units Deployed (FUN_00497940, TEXTSTRA 0x7086 "{1:3} Deployed at
+        // {2:1}") at the destination.
+        (o, target) => o.last_arrival_message?.endsWith(` Deployed at ${target}`) && o.target_ships === 1,
         destination, 120_000);
       await frames(page, 3);
       await shot(page, directory, "delivery-arrived");

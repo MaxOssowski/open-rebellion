@@ -3084,9 +3084,9 @@ struct FleetLoadObservation {
     fleet_present: bool,
     adrift_characters: usize,
     last_destroy_message: Option<String>,
-    /// The delivery variant: the departure and arrival lines (notifications
-    /// `0x21` and `0xd`) and the player's capital ships at the loading
-    /// target.
+    /// The delivery variant: the departure line (the port's), the arrival's
+    /// Units Deployed title (`0x107`, `FUN_00497940`) and the player's
+    /// capital ships at the loading target.
     last_departure_message: Option<String>,
     last_arrival_message: Option<String>,
     target_ships: usize,
@@ -3276,8 +3276,9 @@ fn fleet_load_observation(
                     .audience
                     .includes(request.faction == CockpitFaction::Alliance)
             })
-            .find(|message| message.text.starts_with("Unit arrived at "))
-            .map(|message| message.text.clone()),
+            .filter_map(|message| message.title.as_deref())
+            .find(|title| title.contains(" Deployed at "))
+            .map(str::to_owned),
         target_ships: loading_target(world, primary).map_or(0, |target| {
             world.systems[target]
                 .fleets

@@ -814,6 +814,57 @@ pub fn resource_texts(
     ))
 }
 
+/// Units Deployed (`FUN_00497940`): notification `0x107` for a unit put
+/// in place, to the unit's side. The texts follow the unit's family:
+/// - a capital ship TEXTSTRA `0x7086` / `0x7087`, the Death Star `0x708e`
+///   / `0x708f`;
+/// - a squadron `0x708a` / `0x708b`;
+/// - a regiment or special force `0x7088` / `0x7089` with a `0x707f` line
+///   for the unit (special force `0x3c000009` stays silent);
+/// - a facility `0x708c` / `0x708d`.
+/// The unit is the first substitution and the system the second.
+///
+/// port: a completed or delivered unit stands at its system, so the body's
+/// container is the system; the port names no unit, so its name is its
+/// class's.
+#[must_use]
+pub fn deployed_texts(
+    world: &rebellion_core::world::GameWorld,
+    kind: rebellion_core::manufacturing::BuildableKind,
+    system: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::manufacturing::BuildableKind;
+    let (class, _) = crate::manufacturing_window::product(world, kind);
+    let (title, body, line) = match kind {
+        BuildableKind::CapitalShip(key) => {
+            if world.capital_ship_classes.get(key)?.is_death_star() {
+                (0x708e, 0x708f, None)
+            } else {
+                (0x7086, 0x7087, None)
+            }
+        }
+        BuildableKind::Fighter(_) => (0x708a, 0x708b, None),
+        BuildableKind::SpecialForce(class) if class.raw() == 0x3c00_0009 => return None,
+        BuildableKind::Troop(_) | BuildableKind::SpecialForce(_) => (0x7088, 0x7089, Some(0x707f)),
+        BuildableKind::DefenseFacility(_)
+        | BuildableKind::ManufacturingFacility(_)
+        | BuildableKind::ProductionFacility(_) => (0x708c, 0x708d, None),
+    };
+    let parameters = [
+        MessageParameter::Unit {
+            name: &class,
+            class: &class,
+        },
+        MessageParameter::Named { name: system },
+    ];
+    let mut text = fill_message_text(texts.get(&body)?, &parameters);
+    if let Some(line) = line {
+        text.push_str(&fill_message_text(texts.get(&line)?, &parameters));
+    }
+    Some((fill_message_text(texts.get(&title)?, &parameters), text))
+}
+
 /// Facility Idle (`FUN_0048be60`): notification `0x160`, a manager's
 /// remaining count reaching 0. The holder's side hears it, when the system
 /// still has a facility of the area's family. A construction yard area
@@ -1239,6 +1290,9 @@ pub enum MessageParameter<'a> {
     },
     /// Any other named object, such as a system: kind 1 its name.
     Named { name: &'a str },
+    /// A unit (`FUN_004f6030`): kind 1 its own name, which is its class's
+    /// when it has none (`FUN_004f62d0`), kind 3 its class's name.
+    Unit { name: &'a str, class: &'a str },
     /// A side (`FUN_0052d920`): kind 1 its name, kind 2 its full name,
     /// kind 4 its adjective ([`side_parameter`]).
     Side {
@@ -1255,7 +1309,10 @@ impl MessageParameter<'_> {
         match (self, kind) {
             (Self::Character { name, .. }, 1) => Some(name),
             (Self::Character { force_ranking, .. }, 7) => Some(force_ranking),
-            (Self::Named { name }, 1) | (Self::Side { name, .. }, 1) => Some(name),
+            (Self::Named { name }, 1)
+            | (Self::Side { name, .. }, 1)
+            | (Self::Unit { name, .. }, 1) => Some(name),
+            (Self::Unit { class, .. }, 3) => Some(class),
             (Self::Side { full_name, .. }, 2) => Some(full_name),
             (Self::Side { adjective, .. }, 4) => Some(adjective),
             _ => None,
@@ -1332,6 +1389,80 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00497940 (notification 0x107): TEXTSTRA 0x7086..0x708f and 0x707f
+    // as shipped, by the unit's family; kind 3 is the class's name
+    // (FUN_004f6030).
+    #[test]
+    fn a_deployed_unit_takes_the_texts_of_its_family() {
+        use rebellion_core::ids::DatId;
+        use rebellion_core::manufacturing::BuildableKind;
+        use rebellion_core::world::{CapitalShipClass, FighterClass, GameWorld};
+        let texts: HashMap<u16, String> = [
+            (0x707f, "{1:1}\n"),
+            (0x7086, "{1:3} Deployed at {2:1}"),
+            (0x7087, "The new {1:3}, {1:1}, has been deployed at {2:1}."),
+            (0x7088, "{1:1} Deployed to {2:1}"),
+            (0x7089, "The following units have been deployed to {2:1}:\n"),
+            (0x708a, "{1:1} Squadron Deployed at {2:1}"),
+            (0x708b, "A new {1:1} squadron has been deployed to {2:1}."),
+            (0x708c, "{1:1} Deployed at {2:1}"),
+            (0x708d, "A new {1:1} has been deployed to {2:1}."),
+            (0x708e, "New Death Star Deployed at {2:1}"),
+            (0x708f, "The new Death Star, {1:1}, has been deployed at {2:1}."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let mut world = GameWorld::default();
+        let frigate = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0002),
+            name: "Nebulon-B Frigate".into(),
+            ..CapitalShipClass::default()
+        });
+        let death_star = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
+            name: "Death Star".into(),
+            ..CapitalShipClass::default()
+        });
+        let xwing = world.fighter_classes.insert(FighterClass {
+            name: "X-wing".into(),
+            ..FighterClass::default()
+        });
+        let say = |kind| deployed_texts(&world, kind, "Fondor", &texts);
+        assert_eq!(
+            say(BuildableKind::CapitalShip(frigate)),
+            Some((
+                "Nebulon-B Frigate Deployed at Fondor".into(),
+                "The new Nebulon-B Frigate, Nebulon-B Frigate, has been deployed at Fondor.".into()
+            ))
+        );
+        assert_eq!(
+            say(BuildableKind::CapitalShip(death_star)),
+            Some((
+                "New Death Star Deployed at Fondor".into(),
+                "The new Death Star, Death Star, has been deployed at Fondor.".into()
+            ))
+        );
+        assert_eq!(
+            say(BuildableKind::Fighter(xwing)),
+            Some((
+                "X-wing Squadron Deployed at Fondor".into(),
+                "A new X-wing squadron has been deployed to Fondor.".into()
+            ))
+        );
+        let regiment = say(BuildableKind::Troop(DatId::new(0x1000_0003))).unwrap();
+        assert!(regiment.0.ends_with(" Deployed to Fondor"), "{regiment:?}");
+        assert!(
+            regiment.1.starts_with("The following units have been deployed to Fondor:\n"),
+            "{regiment:?}"
+        );
+        assert!(regiment.1.ends_with('\n'), "{regiment:?}");
+        assert_eq!(say(BuildableKind::SpecialForce(DatId::new(0x3c00_0009))), None);
+        // Every other special force speaks with the regiments' texts.
+        let commandos = say(BuildableKind::SpecialForce(DatId::new(0x3c00_0001))).unwrap();
+        assert!(commandos.0.ends_with(" Deployed to Fondor"), "{commandos:?}");
+    }
 
     // FUN_0048be60 (notification 0x160): TEXTSTRA 0x71f8..0x71fd as shipped,
     // by the manager's area (slot +0x1ec: 1 construction, 2 training,

@@ -1857,15 +1857,28 @@ async fn main() {
                     .systems
                     .get(completion.system)
                     .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                // Notification 0x21, Construction Complete.
+                // Notification 0x107, Units Deployed (FUN_00497940).
+                let (title, text) = rebellion_render::story_messages::deployed_texts(
+                    &world,
+                    completion.kind,
+                    &sys_name,
+                    &message_texts,
+                )
+                .map_or((None, format!("Construction complete at {sys_name}")), |(t, b)| {
+                    (Some(t), b)
+                });
+                let mut message = GameMessage::at_system(
+                    completion.tick,
+                    text,
+                    MessageCategory::Manufacturing,
+                    completion.system,
+                )
+                .with_picture_if(pictures::deployed(&world, completion.kind));
+                if let Some(title) = title {
+                    message = message.with_title(title);
+                }
                 msg_log.push(filed(
-                    GameMessage::at_system(
-                        completion.tick,
-                        format!("Construction complete at {sys_name}"),
-                        MessageCategory::Manufacturing,
-                        completion.system,
-                    )
-                    .with_picture_if(pictures::deployed(&world, completion.kind)),
+                    message,
                     MessageRail::Manufacturing,
                     system_audience(&world, completion.system),
                 ));
@@ -1903,15 +1916,30 @@ async fn main() {
             let delivered = delivery_state.advance(&world, &tick_events);
             for completion in &delivered.arrivals {
                 rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
-                // Notification 0xd, Unit Arrival.
+                // Notification 0x107, Units Deployed (FUN_00497940), at the
+                // destination.
+                let arrived_at = system_name(&world, completion.system);
+                let (title, text) = rebellion_render::story_messages::deployed_texts(
+                    &world,
+                    completion.kind,
+                    &arrived_at,
+                    &message_texts,
+                )
+                .map_or((None, format!("Unit arrived at {arrived_at}")), |(t, b)| {
+                    (Some(t), b)
+                });
+                let mut message = GameMessage::at_system(
+                    completion.tick,
+                    text,
+                    MessageCategory::Manufacturing,
+                    completion.system,
+                )
+                .with_picture_if(pictures::deployed(&world, completion.kind));
+                if let Some(title) = title {
+                    message = message.with_title(title);
+                }
                 msg_log.push(filed(
-                    GameMessage::at_system(
-                        completion.tick,
-                        format!("Unit arrived at {}", system_name(&world, completion.system)),
-                        MessageCategory::Manufacturing,
-                        completion.system,
-                    )
-                    .with_picture_if(pictures::deployed(&world, completion.kind)),
+                    message,
                     MessageRail::Manufacturing,
                     system_audience(&world, completion.system),
                 ));
