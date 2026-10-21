@@ -283,6 +283,26 @@ pub struct System {
     /// Derived from the 2-bit `faction_side` field (`entity+0x24 bits 6-7`):
     /// 0 = neutral, 1 = Alliance, 2 = Empire, 3 = contested.
     pub control: ControlKind,
+    /// `+0x78` bits 6..7: the side of the last fleet (`0x08..0x0f`) or
+    /// squadron (`0x1c..0x1f`) to join the system (slot `+0xd0`,
+    /// `FUN_00508660` -> `FUN_0050a1b0`); `None` for 0. A battle with no
+    /// winner goes to this side (`FUN_0040c780`, `FUN_00516ef0`). See
+    /// [`System::unit_joined`].
+    #[serde(default)]
+    pub last_arrival: Option<crate::dat::Faction>,
+}
+
+impl System {
+    /// `FUN_00508660` (slot `+0xd0`) with a fleet or squadron of the side
+    /// `is_alliance` joining: `FUN_0050a1b0` stores its side in `+0x78`
+    /// bits 6..7.
+    pub fn unit_joined(&mut self, is_alliance: bool) {
+        self.last_arrival = Some(if is_alliance {
+            crate::dat::Faction::Alliance
+        } else {
+            crate::dat::Faction::Empire
+        });
+    }
 }
 
 /// A sector — a named galactic region containing multiple star systems.
@@ -2147,6 +2167,7 @@ mod facility_ownership_tests {
 
     fn system(world: &mut GameWorld, control: ControlKind) -> SystemKey {
         world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Here".into(),
             sector: SectorKey::default(),
@@ -2936,6 +2957,7 @@ mod tests {
             systems: vec![],
         });
         let dummy_sys = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0),
             name: "Sys".into(),
             sector: sector_key,

@@ -1454,6 +1454,7 @@ mod tests {
             systems: Vec::new(),
         });
         let system_a = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(263),
             name: "Chandrila".into(),
             sector: sector_a,
@@ -1488,6 +1489,7 @@ mod tests {
             systems: Vec::new(),
         });
         let system_b = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(270),
             name: "Bothawui".into(),
             sector: sector_b,

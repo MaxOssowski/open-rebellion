@@ -1744,6 +1744,7 @@ mod interaction_tests {
             systems: vec![],
         });
         let key = world.systems.insert(System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
             sector,
@@ -1823,6 +1824,7 @@ mod interaction_tests {
         };
         let yards = vec![facility(0x28), facility(0x29)];
         let key = world.systems.insert(System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
             sector: rebellion_core::ids::SectorKey::default(),
@@ -1880,6 +1882,7 @@ mod interaction_tests {
     fn the_squadron_display_counts_the_side_s_squadrons_on_the_planet() {
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
             sector: rebellion_core::ids::SectorKey::default(),

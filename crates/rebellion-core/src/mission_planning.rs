@@ -1108,6 +1108,7 @@ mod tests {
         let mut world = world();
         let system = |world: &mut GameWorld| {
             world.systems.insert(System {
+                last_arrival: None,
                 dat_id: crate::ids::DatId::new(0x9000_0001),
                 name: "System".into(),
                 sector: crate::ids::SectorKey::default(),

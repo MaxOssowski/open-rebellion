@@ -926,6 +926,7 @@ mod tests {
             systems: vec![],
         });
         let make_system = |name: &str| System {
+            last_arrival: None,
             dat_id: DatId::new(2),
             name: name.into(),
             sector,

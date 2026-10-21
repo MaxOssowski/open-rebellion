@@ -455,6 +455,7 @@ mod tests {
 
     fn system(world: &mut GameWorld, name: &str, x: u16, control: ControlKind) -> SystemKey {
         world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0000 | u32::try_from(world.systems.len()).unwrap()),
             name: name.into(),
             sector: crate::ids::SectorKey::default(),

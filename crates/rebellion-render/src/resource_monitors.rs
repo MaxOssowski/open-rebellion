@@ -193,6 +193,7 @@ mod tests {
         let mut world = GameWorld::default();
         let pair = |world: &mut GameWorld, side| {
             let system = world.systems.insert(System {
+                last_arrival: None,
                 dat_id: DatId::new(0x9000_0001),
                 name: "Here".into(),
                 sector: SectorKey::default(),

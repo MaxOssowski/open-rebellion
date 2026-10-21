@@ -2307,6 +2307,7 @@ mod tests {
 
     fn bare_system(world: &mut GameWorld, control: ControlKind) -> SystemKey {
         world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Here".into(),
             sector: rebellion_core::ids::SectorKey::default(),

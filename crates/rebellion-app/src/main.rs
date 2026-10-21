@@ -9526,6 +9526,7 @@ mod tactical_ground_tests {
             systems: vec![],
         });
         let system = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(2),
             name: "Test System".into(),
             sector,
@@ -9864,6 +9865,7 @@ mod fleet_move_tests {
 
     fn system(sector: rebellion_core::ids::SectorKey, x: u16) -> System {
         System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0000),
             name: format!("Sys{x}"),
             sector,
@@ -10105,6 +10107,7 @@ mod fleet_move_tests {
                 MissionFaction::Empire => Faction::Empire,
             });
             let system = world.systems.insert(rebellion_core::world::System {
+                last_arrival: None,
                 dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
                 name: "Bortras".into(),
                 sector: rebellion_core::ids::SectorKey::default(),

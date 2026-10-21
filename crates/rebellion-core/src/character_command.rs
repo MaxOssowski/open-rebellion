@@ -462,6 +462,7 @@ mod tests {
         use crate::world::{ControlKind, Fleet, SkillPair, System};
         let mut world = GameWorld::default();
         let system = world.systems.insert(System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0x9000_0000),
             name: "Yavin".into(),
             sector: crate::ids::SectorKey::default(),

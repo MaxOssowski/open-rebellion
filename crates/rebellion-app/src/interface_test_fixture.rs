@@ -3942,6 +3942,7 @@ mod tests {
         };
         let mut world = GameWorld::default();
         let here = world.systems.insert(System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "System".into(),
             sector: rebellion_core::ids::SectorKey::default(),

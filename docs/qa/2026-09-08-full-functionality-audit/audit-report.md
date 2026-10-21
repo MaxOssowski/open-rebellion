@@ -2295,6 +2295,16 @@ cross-runtime proof remain open
   - `port:` Take Command does not yet pass the AI side's order to the
     tactical engine.
   - 7 new tests; mutants 29 caught, 0 missed.
+- 2026-10-22 (W2l, save v102): the system's last arrived side is ported
+  (`evidence/2026-10-22-last-arrived-side/`).
+  - `System::last_arrival` (`+0x78` bits 6..7, `FUN_00508660` ->
+    `FUN_0050a1b0`) is set when a fleet departs for a system, a new fleet
+    or completed unit appears there, or a squadron lands.
+  - A battle with both retreat words set goes to that side
+    (`FUN_0040c780`). With no winner and both sides present, the other
+    side leaves (`FUN_00516ef0`).
+  - The golden is regenerated for this cause (`v1:0174e1ddb8a28d5b` ->
+    `v1:00f7cdfb6462bcb2`). Campaigns are unchanged: no tie came up.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

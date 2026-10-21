@@ -913,6 +913,7 @@ mod tests {
         let mut world = GameWorld::default();
         // Need at least 2 systems for VictoryState
         let s1 = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(1),
             name: "System A".into(),
             sector: SectorKey::default(),
@@ -937,6 +938,7 @@ mod tests {
             espionage_rating: 0.0,
         });
         let s2 = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(2),
             name: "System B".into(),
             sector: SectorKey::default(),
@@ -1392,6 +1394,7 @@ mod tests {
         let run = |control: ControlKind, destroyed: bool| {
             let mut world = GameWorld::default();
             let make = |dat_id, control| System {
+                last_arrival: None,
                 dat_id: DatId::new(dat_id),
                 name: "System".into(),
                 sector: SectorKey::default(),
@@ -1509,6 +1512,7 @@ mod tests {
         // it. This test asserted the port's automatic surface battle.
         let mut world = GameWorld::default();
         let make_system = |dat_id, name: &str, control| System {
+            last_arrival: None,
             dat_id: DatId::new(dat_id),
             name: name.into(),
             sector: SectorKey::default(),
@@ -1681,6 +1685,7 @@ mod tests {
         let mut world = GameWorld::default();
         world.gnprtb = control_threshold();
         let make_system = |dat_id, name: &str, control, is_headquarters| System {
+            last_arrival: None,
             dat_id: DatId::new(dat_id),
             name: name.into(),
             sector: SectorKey::default(),
@@ -1831,6 +1836,7 @@ mod tests {
         world.gnprtb = control_threshold();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
+                last_arrival: None,
                 dat_id: DatId::new(dat_id),
                 name: name.into(),
                 sector: SectorKey::default(),
@@ -1995,6 +2001,7 @@ mod tests {
         world.gnprtb = control_threshold();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
+                last_arrival: None,
                 dat_id: DatId::new(dat_id),
                 name: name.into(),
                 sector: SectorKey::default(),

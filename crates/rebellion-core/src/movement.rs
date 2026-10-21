@@ -689,6 +689,12 @@ pub fn begin_fleet_transit(
     if let Some(system) = world.systems.get_mut(origin) {
         system.fleets.retain(|&key| key != fleet);
     }
+    // FUN_00556390: the move puts the fleet in its destination at once, and
+    // the destination's slot +0xd0 (FUN_00508660) records its side.
+    let is_alliance = world.fleets.get(fleet).map(|value| value.is_alliance);
+    if let (Some(is_alliance), Some(system)) = (is_alliance, world.systems.get_mut(destination)) {
+        system.unit_joined(is_alliance);
+    }
     true
 }
 
@@ -1106,6 +1112,7 @@ mod tests {
 
     fn make_system(sector: crate::ids::SectorKey, x: u16, y: u16) -> System {
         System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0000),
             name: format!("Sys@{x},{y}"),
             sector,
@@ -1178,6 +1185,13 @@ mod tests {
             5,
         ));
         assert!(!world.systems[origin].fleets.contains(&fleet));
+        // FUN_00556390 puts the fleet in its destination at departure, and
+        // FUN_00508660 records its side there (+0x78 bits 6..7).
+        assert_eq!(
+            world.systems[destination].last_arrival,
+            Some(crate::dat::Faction::Alliance)
+        );
+        assert_eq!(world.systems[origin].last_arrival, None);
         reconcile_fleet_orbits(&movement, &mut world);
         assert!(!world.systems[origin].fleets.contains(&fleet));
 

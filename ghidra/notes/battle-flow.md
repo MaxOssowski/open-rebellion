@@ -164,9 +164,23 @@ the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
 **In the port** (2026-10-21, W2j):
 
 - `abstract_battle::AbstractBattle::finish` builds the four words and
-  takes the winner as above. With words 0 and 2 both set the battle has no
-  winner (`port:`): the port does not keep the last arrived side (system
-  `+0x78` bits 6..7). The Death Star's `+0x78` in word 2 is not modelled.
+  takes the winner as above, with words 0 and 2 both set from the
+  system's last arrived side (W2l). The Death Star's `+0x78` in word 2 is
+  not modelled.
+- Since W2l (save v102) `System::last_arrival` keeps `+0x78` bits 6..7.
+  `System::unit_joined` sets it where a fleet or squadron joins a system:
+  - a fleet's departure: `FUN_00556390` puts it in its destination at
+    once (`movement::begin_fleet_transit`);
+  - a new fleet from a split;
+  - a capital ship completed into a new fleet, or a squadron completed on
+    the planet;
+  - a squadron moved onto a planet.
+
+  `port:` seeded systems start with no side. A battle sortie's squadrons
+  landing back after the battle do not set it, because the sortie is the
+  port's.
+- `withdraw_loser` with no winner and both sides present sends away the
+  side that did not arrive last.
 - Since W2k the integrator's winner is the battle's, not the side left
   in orbit. A side that escaped is still in orbit until it is sent away.
 - `abstract_battle::withdraw_loser` sends each loser fleet at the system

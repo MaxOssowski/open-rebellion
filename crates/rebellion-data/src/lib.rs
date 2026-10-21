@@ -229,6 +229,7 @@ pub fn load_game_data_with_options(
         let is_headquarters = seq_id == 0x109 || seq_id == 0x121;
 
         let system = System {
+            last_arrival: None,
             dat_id: DatId::new(dat.id),
             name: lookup(dat.text_stra_dll_id, "System"),
             sector: sector_key,

@@ -464,6 +464,7 @@ mod tests {
     fn world() -> (GameWorld, CharacterKey, SystemKey, AbodeKey) {
         let mut world = GameWorld::default();
         let home = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Tatooine".into(),
             sector: crate::ids::SectorKey::default(),

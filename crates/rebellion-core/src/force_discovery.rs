@@ -250,6 +250,7 @@ mod tests {
 
     fn system(world: &mut GameWorld, name: &str) -> SystemKey {
         world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: name.into(),
             sector: crate::ids::SectorKey::default(),

@@ -979,6 +979,7 @@ mod tests {
             systems: vec![],
         });
         let system = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Hoth".into(),
             sector,

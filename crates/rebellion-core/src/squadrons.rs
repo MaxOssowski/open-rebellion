@@ -375,6 +375,13 @@ impl SquadronTransits {
         if let Some(source) = entries_mut(world, from) {
             take(source, class, count);
         }
+        // FUN_00556390 puts the squadron in its destination at once; a
+        // planet's system records its side (slot +0xd0, FUN_00508660).
+        if let SquadronPlace::Planet(system) = to {
+            if let Some(value) = world.systems.get_mut(system) {
+                value.unit_joined(alliance);
+            }
+        }
         let moved = if origin == destination {
             if let Some(target) = entries_mut(world, to) {
                 add(target, class, count);
@@ -633,6 +640,7 @@ mod tests {
             systems: vec![],
         });
         let system = |name: &str| System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: name.into(),
             sector,
@@ -776,6 +784,8 @@ mod tests {
         assert_eq!(total(&s.world.fleets[s.fleet].fighters), 2);
         assert_eq!(total(&s.world.systems[s.here].fighters), 1);
         assert_eq!(fleet_room(&s.world, s.fleet), 0);
+        // Boarding a fleet joins no system (FUN_00508660 is the system's).
+        assert_eq!(s.world.systems[s.here].last_arrival, None);
     }
 
     #[test]
@@ -786,6 +796,12 @@ mod tests {
         move_squadrons(&mut s.world, true, s.x_wing, 1, fleet, planet).unwrap();
         assert_eq!(total(&s.world.fleets[s.fleet].fighters), 1);
         assert_eq!(on_planet(&s.world, s.here, true), 1);
+        // FUN_00508660 -> FUN_0050a1b0: the planet's system records the
+        // squadron's side.
+        assert_eq!(
+            s.world.systems[s.here].last_arrival,
+            Some(crate::dat::Faction::Alliance)
+        );
         // The carrier stays: a fleet with a ship does not disband.
         move_squadrons(&mut s.world, true, s.x_wing, 1, fleet, planet).unwrap();
         assert!(s.world.fleets.contains_key(s.fleet));

@@ -3077,6 +3077,7 @@ mod tests {
             systems: vec![],
         });
         world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(2),
             name: name.into(),
             sector,
@@ -5028,6 +5029,11 @@ mod tests {
         build(&mut world, star_destroyer);
         let fleet = world.systems[system].fleets[0];
         assert!(!world.fleets[fleet].has_death_star);
+        // FUN_00508660: the new fleet joins the system.
+        assert_eq!(
+            world.systems[system].last_arrival,
+            Some(rebellion_core::dat::Faction::Empire)
+        );
 
         build(&mut world, death_star);
         assert_eq!(world.systems[system].fleets, [fleet]);
@@ -5072,6 +5078,11 @@ mod tests {
         assert_eq!(world.systems[system].fighters.len(), 1);
         assert_eq!(world.systems[system].fighters[0].class, tie);
         assert_eq!(world.systems[system].fighters[0].count, 2);
+        // FUN_00508660: the squadron joins the system.
+        assert_eq!(
+            world.systems[system].last_arrival,
+            Some(rebellion_core::dat::Faction::Empire)
+        );
     }
 
     #[test]
@@ -5408,6 +5419,7 @@ mod combat_application_tests {
 
     fn add_combat_system(world: &mut GameWorld) -> SystemKey {
         world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Test System".into(),
             sector: SectorKey::default(),
@@ -5917,6 +5929,8 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                 let fk = world.insert_fleet(fleet);
                 if let Some(sys) = world.systems.get_mut(sys_key) {
                     sys.fleets.push(fk);
+                    // FUN_00508660: the new fleet joins the system.
+                    sys.unit_joined(is_alliance);
                 }
             }
         }
@@ -5927,8 +5941,11 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
             if !world.fighter_classes.contains_key(*class_key) {
                 return;
             }
+            let is_alliance = world.fighter_classes[*class_key].is_alliance;
             if let Some(sys) = world.systems.get_mut(sys_key) {
                 rebellion_core::squadrons::add(&mut sys.fighters, *class_key, 1);
+                // FUN_00508660: the squadron joins the system.
+                sys.unit_joined(is_alliance);
             }
         }
         BuildableKind::ManufacturingFacility(build) => {

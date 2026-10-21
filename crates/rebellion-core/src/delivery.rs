@@ -228,6 +228,7 @@ mod tests {
             .iter()
             .map(|&(x, y)| {
                 world.systems.insert(System {
+                    last_arrival: None,
                     dat_id: DatId::new(0x9000_0000),
                     name: format!("Sys@{x},{y}"),
                     sector,

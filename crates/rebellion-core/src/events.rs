@@ -1090,6 +1090,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0),
             name: "Coruscant".into(),
             sector: sector_key,
@@ -1165,6 +1166,7 @@ mod tests {
 
         let make_sys = |world: &mut GameWorld, name: &str, faction: Option<Faction>| {
             world.systems.insert(crate::world::System {
+                last_arrival: None,
                 dat_id: crate::ids::DatId::new(0),
                 name: name.into(),
                 sector: sector_key,
@@ -1246,6 +1248,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0),
             name: "Endor".into(),
             sector: sector_key,
@@ -1318,6 +1321,7 @@ mod tests {
             systems: vec![],
         });
         let sys1 = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0),
             name: "Endor".into(),
             sector: sector_key,
@@ -1342,6 +1346,7 @@ mod tests {
             control: ControlKind::Controlled(Faction::Empire),
         });
         let sys2 = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(1),
             name: "Coruscant".into(),
             sector: sector_key,
@@ -1485,6 +1490,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0),
             name: "Endor".into(),
             sector: sector_key,
@@ -1567,6 +1573,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0),
             name: "Endor".into(),
             sector: sector_key,
@@ -1644,6 +1651,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0),
             name: "Tatooine".into(),
             sector: sector_key,
@@ -1712,6 +1720,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0),
             name: "S".into(),
             sector: sector_key,
@@ -1802,6 +1811,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: crate::ids::DatId::new(0),
             name: "Destroyed".into(),
             sector: sector_key,

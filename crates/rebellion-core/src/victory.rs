@@ -318,6 +318,7 @@ mod tests {
         });
 
         let a_hq = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0000),
             name: "Yavin IV".into(),
             sector: sector_key,
@@ -343,6 +344,7 @@ mod tests {
         });
 
         let e_hq = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Coruscant".into(),
             sector: sector_key,

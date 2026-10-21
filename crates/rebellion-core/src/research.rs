@@ -478,6 +478,7 @@ mod tests {
         let mut world = GameWorld::default();
         for _ in 0..n {
             world.systems.insert(System {
+                last_arrival: None,
                 dat_id: DatId::new(0x9000_0001),
                 name: String::new(),
                 sector: crate::ids::SectorKey::default(),

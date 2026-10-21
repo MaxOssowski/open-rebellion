@@ -127,6 +127,10 @@ pub struct AbstractBattle {
     pub retreat_done: [bool; 2],
     /// `+0xb0`: the stalemate marked the side to leave.
     pub retreat_marked: [bool; 2],
+    /// The system's last arrived side (`+0x78` bits 6..7,
+    /// [`crate::world::System::last_arrival`]), which `FUN_0040c780` asks
+    /// when both retreat words are set.
+    pub last_arrival: Option<crate::dat::Faction>,
 }
 
 const fn side_index(alliance: bool) -> usize {
@@ -423,6 +427,7 @@ impl AbstractBattle {
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
             retreat_marked: [false; 2],
+            last_arrival: None,
         };
         battle.lows = [battle.side_strength(true), battle.side_strength(false)];
         battle
@@ -954,12 +959,11 @@ impl AbstractBattle {
     ///   has no active unit and word 2 is clear; both set clears both;
     /// - the winner is the Alliance on word 1 alone and the Empire on
     ///   word 3 alone; failing that, the Alliance on word 0 alone and the
-    ///   Empire on word 2 alone.
+    ///   Empire on word 2 alone;
+    /// - with words 0 and 2 both set, the system's last arrived side
+    ///   (`+0x78` bits 6..7): the Alliance for 1, else the Empire.
     ///
-    /// port: with words 0 and 2 both set the original asks the system's
-    /// last arrived side (`+0x78` bits 6..7, `FUN_0050a1b0`), which the
-    /// port does not keep; the battle has no winner. port: the Death
-    /// Star's `+0x78` in word 2 is not modelled.
+    /// port: the Death Star's `+0x78` in word 2 is not modelled.
     fn finish(&mut self) -> AbstractOutcome {
         let words_0_2 = [
             self.retreat_done[0] && self.side_escaped(true),
@@ -979,7 +983,8 @@ impl AbstractBattle {
             _ => match words_0_2 {
                 [true, false] => Some(true),
                 [false, true] => Some(false),
-                _ => None,
+                [true, true] => Some(self.last_arrival == Some(crate::dat::Faction::Alliance)),
+                [false, false] => None,
             },
         };
         let winner = match alliance_won {
@@ -1042,8 +1047,7 @@ pub fn resolve_space_battle(
         ship_fleets,
         fighter_fleets,
     } = BattleSession::new_for_fleets(world, system, attackers, defenders, true, tick, seed);
-    let mut battle = AbstractBattle::new(session);
-    battle.retreat_allowed = retreat_allowed;
+    let mut battle = AbstractBattle::at_system(world, system, session, retreat_allowed);
     let outcome = battle.run();
     let session = battle.session;
 
@@ -1139,7 +1143,9 @@ pub struct Withdrawal {
 /// the system is set Autorouting (`FUN_004f78e0(1)`), and the event `0x307`
 /// handler (`FUN_00515480`) moves it (`FUN_00556390`) to the autoroute
 /// search's destination (`FUN_005545e0`, [`crate::missions`]'s
-/// `nearest_place`). A battle with no winner sends nobody away.
+/// `nearest_place`). A battle with no winner, both sides still present,
+/// goes to the system's last arrived side (`+0x78` bits 6..7); with one
+/// side gone nobody leaves.
 ///
 /// port: the search leaves out the battle's system, as the port's escape
 /// search does for the place a character leaves. port: a fleet with no
@@ -1155,6 +1161,18 @@ pub fn withdraw_loser(
 ) -> Vec<Withdrawal> {
     use crate::dat::Faction;
 
+    // With no winner and both sides still present, the system's last
+    // arrived side wins (+0x78 bits 6..7: the Alliance for 1, else the
+    // Empire).
+    let winner = winner.or_else(|| {
+        let (alliance, empire) = crate::squadrons::sides_present(world, system);
+        (alliance && empire).then(|| {
+            match world.systems.get(system).and_then(|sys| sys.last_arrival) {
+                Some(Faction::Alliance) => Faction::Alliance,
+                _ => Faction::Empire,
+            }
+        })
+    });
     let loser_is_alliance = match winner {
         Some(Faction::Alliance) => false,
         Some(Faction::Empire) => true,
@@ -1211,6 +1229,23 @@ pub fn withdraw_loser(
         }
     }
     withdrawals
+}
+
+impl AbstractBattle {
+    /// The battle at `system` (`FUN_0040b0e0`): each side's retreat order
+    /// (`FUN_005afb30`) and the system's last arrived side.
+    #[must_use]
+    pub fn at_system(
+        world: &GameWorld,
+        system: SystemKey,
+        session: BattleSession,
+        retreat_allowed: [bool; 2],
+    ) -> Self {
+        let mut battle = Self::new(session);
+        battle.retreat_allowed = retreat_allowed;
+        battle.last_arrival = world.systems.get(system).and_then(|sys| sys.last_arrival);
+        battle
+    }
 }
 
 /// Resolve a battle session without display.
@@ -2070,6 +2105,7 @@ mod tests {
         };
         let mut world = GameWorld::default();
         let system = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Test".into(),
             sector: SectorKey::default(),
@@ -2405,6 +2441,10 @@ mod tests {
     };
 
     fn finish_with(alliance: End, empire: End, death_star: bool) -> CombatWinner {
+        ended(alliance, empire, death_star).finish().winner
+    }
+
+    fn ended(alliance: End, empire: End, death_star: bool) -> AbstractBattle {
         let mut battle = AbstractBattle::new(session(
             vec![
                 jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0),
@@ -2446,7 +2486,7 @@ mod tests {
                 action_committed: false,
             });
         }
-        battle.finish().winner
+        battle
     }
 
     // FUN_005ae9c0 (0x5aec52) and FUN_0040c780: the result words decide the
@@ -2474,8 +2514,18 @@ mod tests {
         };
         assert_eq!(finish_with(stayed, FIGHTING, false), Attacker);
         assert_eq!(finish_with(FIGHTING, stayed, false), Defender);
-        // port: both retreats ran; the original asks the last arrived side.
-        assert_eq!(finish_with(LEFT, LEFT, false), Draw);
+        // Both retreats ran: the system's last arrived side (+0x78 bits
+        // 6..7) wins, the Empire when none is recorded.
+        assert_eq!(finish_with(LEFT, LEFT, false), Defender);
+        for (arrival, winner) in [
+            (Some(crate::dat::Faction::Alliance), Attacker),
+            (Some(crate::dat::Faction::Empire), Defender),
+            (None, Defender),
+        ] {
+            let mut battle = ended(LEFT, LEFT, false);
+            battle.last_arrival = arrival;
+            assert_eq!(battle.finish().winner, winner);
+        }
     }
 
     // FUN_005ae9c0: words 0 and 2 need both the side's retreat (+0x84 == 5)
@@ -2514,6 +2564,7 @@ mod tests {
         let mut world = GameWorld::default();
         let mut place = |x: u16, control: ControlKind| {
             world.systems.insert(System {
+                last_arrival: None,
                 dat_id: DatId::new(0x9000_0000 | u32::from(x)),
                 name: format!("S{x}"),
                 sector: crate::ids::SectorKey::default(),
@@ -2586,15 +2637,52 @@ mod tests {
         assert_eq!(world.systems[battle].fleets, [alliance]);
     }
 
-    // FUN_00516ef0: with no winner, nobody leaves (port: the original's
-    // last-arrived tie-break is not kept).
+    // FUN_0040b0e0 / FUN_005afb30: a battle carries the sides' orders and its
+    // system's last arrived side.
     #[test]
-    fn a_battle_without_a_winner_sends_nobody_away() {
+    fn a_battle_takes_its_systems_last_arrived_side() {
+        let (mut world, [battle, ..], _, _) = withdrawal_world();
+        world.systems[battle].last_arrival = Some(crate::dat::Faction::Alliance);
+        let fought = AbstractBattle::at_system(
+            &world,
+            battle,
+            session(Vec::new(), Vec::new()),
+            [true, false],
+        );
+        assert_eq!(fought.last_arrival, Some(crate::dat::Faction::Alliance));
+        assert_eq!(fought.retreat_allowed, [true, false]);
+    }
+
+    // FUN_00516ef0: with no winner and both sides present, the system's
+    // last arrived side (+0x78 bits 6..7) holds it and the other leaves;
+    // the Empire holds it when none is recorded.
+    #[test]
+    fn without_a_winner_the_last_arrived_side_holds_the_system() {
+        for (arrival, leaver) in [
+            (Some(crate::dat::Faction::Alliance), false),
+            (Some(crate::dat::Faction::Empire), true),
+            (None, true),
+        ] {
+            let (mut world, [battle, ..], alliance, empire) = withdrawal_world();
+            world.systems[battle].last_arrival = arrival;
+            let mut movement = crate::movement::MovementState::new();
+            let sent = withdraw_loser(&mut world, &mut movement, battle, None);
+            let gone = if leaver { alliance } else { empire };
+            assert_eq!(sent.iter().map(|w| w.fleet).collect::<Vec<_>>(), [gone]);
+        }
+    }
+
+    // FUN_00516ef0: with no winner and one side gone, nobody leaves.
+    #[test]
+    fn a_battle_without_a_winner_or_a_second_side_sends_nobody_away() {
         let (mut world, [battle, ..], alliance, empire) = withdrawal_world();
+        world.systems[battle]
+            .fleets
+            .retain(|&fleet| fleet != empire);
         let mut movement = crate::movement::MovementState::new();
         assert!(withdraw_loser(&mut world, &mut movement, battle, None).is_empty());
         assert!(movement.is_empty());
-        assert_eq!(world.systems[battle].fleets, [alliance, empire]);
+        assert_eq!(world.systems[battle].fleets, [alliance]);
     }
 
     // hyp (FUN_005afe40): fighters leave only with a carrier that both has

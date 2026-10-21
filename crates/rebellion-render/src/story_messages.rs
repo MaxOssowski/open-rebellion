@@ -3022,6 +3022,7 @@ mod tests {
         let [luke, leia, vader, emperor, _] = encounter_cast(&mut world);
         let mut place = |name: &str| {
             world.systems.insert(rebellion_core::world::System {
+                last_arrival: None,
                 dat_id: DatId::new(0x9000_0001),
                 name: name.into(),
                 sector: rebellion_core::ids::SectorKey::default(),
@@ -3558,6 +3559,7 @@ mod tests {
         // Empire 0x716a/0x716b with Han's system on 0x41e.
         let mut world = GameWorld::default();
         let tatooine = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Tatooine".into(),
             sector: rebellion_core::ids::SectorKey::default(),

@@ -1763,6 +1763,7 @@ mod tests {
             ..Default::default()
         };
         let _sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Destroyed".into(),
             sector: SectorKey::default(),
@@ -1817,6 +1818,7 @@ mod tests {
         });
         // System with total_energy=2 but 5 production facilities
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Overcap".into(),
             sector: sector_key,
@@ -1913,6 +1915,7 @@ mod tests {
         });
         // System with total_energy=10 and only 3 production facilities
         world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Normal".into(),
             sector: sector_key,
@@ -1980,6 +1983,7 @@ mod tests {
         });
         // System with raw_materials=1 but 3 manufacturing facilities
         world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "MineCap".into(),
             sector: sector_key,
@@ -2076,6 +2080,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Yavin".into(),
             sector,
@@ -2154,6 +2159,7 @@ mod tests {
             regiment_strength: 100,
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
             sector: sector_key,
@@ -2217,6 +2223,7 @@ mod tests {
             })
             .to_vec();
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
             sector,
@@ -2332,6 +2339,7 @@ mod tests {
             has_death_star: false,
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Contested".into(),
             sector: sector_key,
@@ -2374,6 +2382,7 @@ mod tests {
     /// `alliance` percent, held as `control`.
     fn held_system(alliance: f32, control: ControlKind) -> crate::world::System {
         crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
             sector: crate::ids::SectorKey::default(),
@@ -2551,6 +2560,7 @@ mod tests {
             ..Default::default()
         };
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Unpopulated".into(),
             sector: SectorKey::default(),
@@ -2627,6 +2637,7 @@ mod tests {
         };
 
         let sys = crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
             sector: SectorKey::default(),
@@ -2786,6 +2797,7 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
             sector: sector_key,

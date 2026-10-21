@@ -269,6 +269,7 @@ mod tests {
         let sys_keys: Vec<SystemKey> = (0..n_systems)
             .map(|i| {
                 world.systems.insert(crate::world::System {
+                    last_arrival: None,
                     dat_id: crate::ids::DatId(i as u32),
                     name: format!("System {i}"),
                     sector,
@@ -467,6 +468,7 @@ mod tests {
         // Fleet at (0, 0), nearby system at (100, 0), far system at (1000, 0).
         // detection=10 → radius = 10 * 15.0 = 150 units → (100,0) within range, (1000,0) not.
         let sys0 = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Base".into(),
             sector,
@@ -491,6 +493,7 @@ mod tests {
             control: ControlKind::Uncontrolled,
         });
         let sys_near = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(1),
             name: "Near".into(),
             sector,
@@ -515,6 +518,7 @@ mod tests {
             control: ControlKind::Uncontrolled,
         });
         let sys_far = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(2),
             name: "Far".into(),
             sector,
@@ -595,6 +599,7 @@ mod tests {
         });
 
         let sys0 = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Base".into(),
             sector,
@@ -619,6 +624,7 @@ mod tests {
             control: ControlKind::Uncontrolled,
         });
         let sys_near = world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId(1),
             name: "Near".into(),
             sector,

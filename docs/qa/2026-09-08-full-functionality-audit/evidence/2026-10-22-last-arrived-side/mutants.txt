@@ -1,0 +1,13 @@
+16 mutants tested in 3m: 1 missed, 9 caught, 6 unviable
+missed:
+crates/rebellion-data/src/lib.rs:89:5: replace load_game_data_with_options -> anyhow::Result<GameWorld> with Ok(Default::default())
+caught:
+crates/rebellion-core/src/abstract_battle.rs:986:56: replace == with != in AbstractBattle::finish
+crates/rebellion-core/src/abstract_battle.rs:1162:5: replace withdraw_loser -> Vec<Withdrawal> with vec![]
+crates/rebellion-core/src/abstract_battle.rs:1169:19: replace && with || in withdraw_loser
+crates/rebellion-core/src/abstract_battle.rs:1171:17: delete match arm Some(Faction::Alliance) in withdraw_loser
+crates/rebellion-core/src/fleet_join.rs:342:5: replace new_fleet -> FleetKey with Default::default()
+crates/rebellion-core/src/movement.rs:682:5: replace begin_fleet_transit -> bool with true
+crates/rebellion-core/src/movement.rs:682:5: replace begin_fleet_transit -> bool with false
+crates/rebellion-core/src/world/mod.rs:300:9: replace System::unit_joined with ()
+crates/rebellion-data/src/integrator.rs:5880:5: replace apply_build_completion_inner with ()

@@ -970,6 +970,7 @@ mod tests {
             systems: Vec::new(),
         });
         world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(100),
             name: name.into(),
             sector,

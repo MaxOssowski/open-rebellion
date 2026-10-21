@@ -352,6 +352,8 @@ fn new_fleet(world: &mut GameWorld, like: FleetKey) -> FleetKey {
     if let Some(system) = world.systems.get_mut(location) {
         system.fleets.push(fleet);
         system.fleets.sort_unstable();
+        // FUN_00508660: a new fleet joins the system.
+        system.unit_joined(world.fleets[fleet].is_alliance);
     }
     fleet
 }
@@ -664,6 +666,7 @@ mod tests {
 
     fn system(sector: crate::ids::SectorKey, x: u16) -> System {
         System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0000),
             name: format!("Sys{x}"),
             sector,
@@ -1195,6 +1198,11 @@ mod tests {
         assert_eq!(hulls(&setup.world, source), [10]);
         assert!(transport.cargo(source).is_empty());
         assert_eq!(transport.cargo(created), troops.as_slice());
+        // FUN_00508660: the new fleet joins its system.
+        assert_eq!(
+            setup.world.systems[here].last_arrival,
+            Some(crate::dat::Faction::Alliance)
+        );
         assert!(transport
             .destroy_untransportable_cargo(&mut setup.world)
             .is_empty());

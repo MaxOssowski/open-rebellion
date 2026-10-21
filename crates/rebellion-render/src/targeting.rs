@@ -622,6 +622,7 @@ mod tests {
             });
             let mut system = |x, y| {
                 let key = world.systems.insert(System {
+                    last_arrival: None,
                     dat_id: DatId::new(100),
                     name: "System".into(),
                     sector,

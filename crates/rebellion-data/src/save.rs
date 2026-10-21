@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 101;
+pub const SAVE_VERSION: u32 = 102;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -906,6 +906,7 @@ mod tests {
             systems: vec![],
         });
         let sys_a = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0000),
             name: "A".into(),
             sector: sector_key,
@@ -930,6 +931,7 @@ mod tests {
             espionage_rating: 0.0,
         });
         let sys_b = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "B".into(),
             sector: sector_key,

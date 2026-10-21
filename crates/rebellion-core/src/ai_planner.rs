@@ -1207,6 +1207,7 @@ pub(crate) mod tests {
         let sectors = [sector(0), sector(100)];
         let mut system = |sector, x| {
             world.systems.insert(System {
+                last_arrival: None,
                 dat_id: DatId::new(0x9000_0001),
                 name: "System".into(),
                 sector,

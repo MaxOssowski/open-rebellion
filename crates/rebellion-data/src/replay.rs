@@ -1165,6 +1165,7 @@ mod tests {
             systems: Vec::new(),
         });
         let alliance_hq = world.systems.insert(System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0000),
             name: "Alliance HQ".into(),
             sector,
@@ -1189,6 +1190,7 @@ mod tests {
             espionage_rating: 0.0,
         });
         let empire_hq = world.systems.insert(System {
+            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Empire HQ".into(),
             sector,

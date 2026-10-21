@@ -705,6 +705,7 @@ mod tests {
             systems: vec![],
         });
         let sys = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0000),
             name: "Bespin".into(),
             sector,
@@ -767,6 +768,7 @@ mod tests {
         let (mut world, system_a) = make_world();
         let sector = world.systems[system_a].sector;
         let system_b = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Hoth".into(),
             sector,

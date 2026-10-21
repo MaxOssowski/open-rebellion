@@ -1529,6 +1529,7 @@ mod tests {
         let mut systems = Vec::new();
         for index in 0..count {
             let system = world.systems.insert(System {
+                last_arrival: None,
                 dat_id: DatId::new(100 + index as u32),
                 name: format!("System {index}"),
                 sector,

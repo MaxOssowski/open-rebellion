@@ -4776,6 +4776,7 @@ mod tests {
         pop_empire: f32,
     ) -> SystemKey {
         world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Test System".into(),
             sector,
@@ -4852,6 +4853,7 @@ mod tests {
                     is_shipyard: false,
                 });
         let sys_key = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Coruscant".into(),
             sector,
@@ -5007,6 +5009,7 @@ mod tests {
         let yard = facility_of(&mut world, 0x2a00_0003);
         let training = facility_of(&mut world, 0x2900_0002);
         let sys_key = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Home".into(),
             sector,
@@ -6317,6 +6320,7 @@ mod tests {
                 });
 
         let sys_key = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Coruscant".into(),
             sector,
@@ -6460,6 +6464,7 @@ mod tests {
                 });
 
         let sys_key = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Coruscant".into(),
             sector,
@@ -6545,6 +6550,7 @@ mod tests {
                     is_shipyard: true,
                 });
         world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Coruscant".into(),
             sector,
@@ -6953,6 +6959,7 @@ mod tests {
                     is_shipyard: false,
                 });
         let _ = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Enemy Shipyard".into(),
             sector,
@@ -7058,6 +7065,7 @@ mod tests {
 
         // Donor system: 5 empire troops.
         let donor_sys = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(0),
             name: "Donor".into(),
             sector,
@@ -7092,6 +7100,7 @@ mod tests {
 
         // Frontline receiver: 0 troops, near enemy territory.
         let frontline_sys = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(1),
             name: "Frontline".into(),
             sector,
@@ -7118,6 +7127,7 @@ mod tests {
 
         // Interior receiver: 0 troops, far from enemy.
         let _interior_sys = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(2),
             name: "Interior".into(),
             sector,
@@ -7144,6 +7154,7 @@ mod tests {
 
         // Enemy system at x=120 (near frontline_sys).
         let _ = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId(3),
             name: "Enemy".into(),
             sector,

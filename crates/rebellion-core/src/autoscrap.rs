@@ -417,6 +417,7 @@ mod tests {
             );
         }
         let here = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Here".into(),
             sector: crate::ids::SectorKey::default(),

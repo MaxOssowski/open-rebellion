@@ -2446,6 +2446,7 @@ mod tests {
     /// An Alliance system at the map's origin.
     fn system(world: &mut GameWorld) -> crate::ids::SystemKey {
         world.systems.insert(crate::world::System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "System".into(),
             sector: crate::ids::SectorKey::default(),

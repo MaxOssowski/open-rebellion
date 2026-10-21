@@ -341,6 +341,7 @@ mod tests {
             systems: vec![],
         });
         let system = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(2),
             name: "Test System".into(),
             sector,
@@ -401,6 +402,7 @@ mod tests {
             systems: vec![],
         });
         let system = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(12),
             name: "Ground Test System".into(),
             sector,

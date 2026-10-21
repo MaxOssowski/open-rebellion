@@ -598,6 +598,7 @@ mod tests {
     fn system(world: &mut GameWorld, control: rebellion_core::world::ControlKind) -> SystemKey {
         use rebellion_core::dat::ExplorationStatus;
         world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Hoth".into(),
             sector: rebellion_core::ids::SectorKey::default(),

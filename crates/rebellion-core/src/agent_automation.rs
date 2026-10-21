@@ -885,6 +885,7 @@ mod tests {
     ) -> (GameWorld, SystemKey, EconomyState, ManufacturingState) {
         let mut world = GameWorld::default();
         let sys = System {
+            last_arrival: None,
             dat_id: crate::ids::DatId(0x9000_0001),
             name: "Coruscant".into(),
             sector: world.sectors.insert(crate::world::Sector {
@@ -1404,6 +1405,7 @@ mod tests {
 
         // sys2: requirement=2, troops=0 → deficit=2
         let sys2 = world.systems.insert(System {
+            last_arrival: None,
             dat_id: crate::ids::DatId(0x9000_0002),
             name: "Hoth".into(),
             sector: world.sectors.keys().next().unwrap(),

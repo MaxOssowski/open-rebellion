@@ -135,6 +135,7 @@ mod tests {
     fn world() -> (GameWorld, crate::ids::CharacterKey, crate::ids::SystemKey) {
         let mut world = GameWorld::default();
         let coruscant = world.systems.insert(System {
+            last_arrival: None,
             dat_id: DatId::new(CORUSCANT),
             name: "Coruscant".into(),
             sector: crate::ids::SectorKey::default(),
