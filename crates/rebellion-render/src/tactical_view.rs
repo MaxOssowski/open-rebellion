@@ -1847,7 +1847,9 @@ pub enum TacticalAction {
     RetreatSelected,
     /// Withdraw every eligible player hull after the Battle Options command.
     WithdrawFromBattle,
-    /// Attempt an immediate retreat from the pre-battle Battle Alert.
+    /// The Battle Alert's Retreat (`0x67`, `FUN_00450540`): a simulated
+    /// battle in which the player's side may leave (`FUN_00487830` sets the
+    /// retreat word 10000.0), not the tactical battle.
     RetreatBeforeBattle,
     /// Route to the original unified Game Options surface.
     OpenGameOptions,
@@ -5793,11 +5795,8 @@ fn draw_original_battle_alert(state: &mut TacticalState, cache: &mut BmpCache) -
             state.battle_alert_open = false;
             return match control {
                 BattleAlertControl::Retreat => {
-                    if let Some(session) = state.session.as_mut() {
-                        session.queue_withdrawal_started_voice();
-                    }
                     macroquad::logging::info!(
-                        "[battle_alert] command=retreat resource={} status=started",
+                        "[battle_alert] command=retreat resource={} status=simulated",
                         skin.buttons[0][0]
                     );
                     TacticalAction::RetreatBeforeBattle

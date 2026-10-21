@@ -167,6 +167,8 @@ the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
   takes the winner as above. With words 0 and 2 both set the battle has no
   winner (`port:`): the port does not keep the last arrived side (system
   `+0x78` bits 6..7). The Death Star's `+0x78` in word 2 is not modelled.
+- Since W2k the integrator's winner is the battle's, not the side left
+  in orbit. A side that escaped is still in orbit until it is sent away.
 - `abstract_battle::withdraw_loser` sends each loser fleet at the system
   to `missions::nearest_place`, leaving out the battle's system. It runs
   in the headless simulation, the app's AI battles, Auto Resolve, and

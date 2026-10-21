@@ -1,0 +1,39 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, S = 1..24",
+ "baseline": "HEAD c31d0143 (worktree build)",
+ "identical_event_streams": 0,
+ "totals": {
+  "alliance_capitals_lost": [
+   278,
+   25
+  ],
+  "battles": [
+   1043,
+   2092
+  ],
+  "battles_without_losses": [
+   0,
+   800
+  ],
+  "empire_capitals_lost": [
+   224,
+   6
+  ],
+  "stalemates": [
+   3,
+   0
+  ],
+  "winner_alliance": [
+   256,
+   741
+  ],
+  "winner_draw": [
+   1,
+   0
+  ],
+  "winner_empire": [
+   786,
+   1351
+  ]
+ }
+}

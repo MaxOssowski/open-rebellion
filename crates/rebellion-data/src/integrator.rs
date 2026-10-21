@@ -5242,22 +5242,22 @@ fn summarize_space_force(world: &GameWorld, fleets: &[FleetKey]) -> SpaceForceSu
         })
 }
 
-/// Resolve all hostile task forces at a system as one uninterrupted engagement.
-///
-/// Each core combat call models one combat round. Applying every damaging round
-/// here prevents repair ticks from healing fleets between rounds and advances to
-/// the next deterministic pair when either task force is destroyed.
+/// Resolve every fleet of both sides at a system as one abstract battle
+/// (`FUN_0040a050` state 8). `retreat_allowed` (Alliance, Empire) holds
+/// each side's retreat order from the battle choice (`FUN_004362b0`).
 pub fn resolve_system_space_combat(
     world: &mut GameWorld,
     system: SystemKey,
     rng_rolls: &[f64],
     tick: u64,
+    retreat_allowed: [bool; 2],
 ) -> SystemSpaceCombatResult {
     let (initial_alliance, initial_empire) = orbiting_fleets_by_faction(world, system);
     let alliance_before = summarize_space_force(world, &initial_alliance);
     let empire_before = summarize_space_force(world, &initial_empire);
     let mut rounds = 0;
     let mut stalemate = false;
+    let mut fought = None;
 
     // FUN_0040a050 state 8: every fleet of both sides fights one abstract
     // battle (`rebellion_core::abstract_battle`, FUN_005ae9c0).
@@ -5269,19 +5269,30 @@ pub fn resolve_system_space_combat(
             &initial_empire,
             rebellion_core::abstract_battle::abstract_seed(rng_rolls),
             tick,
+            retreat_allowed,
         );
         apply_space_combat_result_inner(&round, world);
         rounds = 1;
         stalemate = outcome.stalemate;
+        fought = Some(round.winner);
     }
 
     let (alliance, empire) = orbiting_fleets_by_faction(world, system);
     let alliance_after = summarize_space_force(world, &alliance);
     let empire_after = summarize_space_force(world, &empire);
-    let (winner, winner_fleet) = match (alliance.first().copied(), empire.first().copied()) {
-        (Some(fleet), None) => (CombatSide::Attacker, Some(fleet)),
-        (None, Some(fleet)) => (CombatSide::Defender, Some(fleet)),
-        _ => (CombatSide::Draw, None),
+    // FUN_0040c780: a fought battle's winner is the one its result words
+    // name; a side that escaped is still in orbit but has lost. Without a
+    // battle, the side left in orbit holds the field.
+    let present = match (alliance.first().copied(), empire.first().copied()) {
+        (Some(_), None) => CombatSide::Attacker,
+        (None, Some(_)) => CombatSide::Defender,
+        _ => CombatSide::Draw,
+    };
+    let winner = fought.unwrap_or(present);
+    let winner_fleet = match winner {
+        CombatSide::Attacker => alliance.first().copied(),
+        CombatSide::Defender => empire.first().copied(),
+        CombatSide::Draw => None,
     };
 
     SystemSpaceCombatResult {
@@ -5671,13 +5682,72 @@ mod combat_application_tests {
         let attacker = add_ship_fleet(&mut world, system, true, 100, 30);
         let defender = add_ship_fleet(&mut world, system, false, 100, 1);
 
-        let result = resolve_system_space_combat(&mut world, system, &[0.5; 256], 10);
+        let result = resolve_system_space_combat(
+            &mut world,
+            system,
+            &[0.5; 256],
+            10,
+            [false, false],
+        );
 
         assert_eq!(result.winner, CombatSide::Attacker);
         assert_eq!(result.winner_fleet, Some(attacker));
         assert_eq!(result.rounds, 1);
         assert!(!result.stalemate);
         assert!(!world.fleets.contains_key(defender));
+    }
+
+    // FUN_0040c780: the result words name the winner. An Empire that jumped
+    // out (FUN_005af910) is still in orbit until FUN_00516ef0 sends it away,
+    // but it lost the battle.
+    #[test]
+    fn a_side_that_escaped_loses_though_still_in_orbit() {
+        let mut world = GameWorld::default();
+        let system = add_combat_system(&mut world);
+        let attacker = add_ship_fleet(&mut world, system, true, 100, 30);
+        let defender = add_ship_fleet(&mut world, system, false, 100, 1);
+        let class = world.fleets[defender].capital_ships[0].class;
+        world.capital_ship_classes[class].hyperdrive = 1;
+        world.capital_ship_classes[class].sub_light_engine = 1;
+
+        let result = resolve_system_space_combat(
+            &mut world,
+            system,
+            &[0.5; 256],
+            10,
+            [false, true],
+        );
+
+        assert_eq!(result.winner, CombatSide::Attacker);
+        assert_eq!(result.winner_fleet, Some(attacker));
+        assert_eq!(world.systems[system].fleets, [attacker, defender]);
+        assert_eq!(result.empire_after.capital_ships, 1);
+    }
+
+    // FUN_00509710: with one side's fleets alone (the other only on the
+    // planet) no space battle is fought; the side in orbit holds the field.
+    #[test]
+    fn a_side_alone_in_orbit_holds_the_field_without_a_battle() {
+        for is_alliance in [true, false] {
+            let mut world = GameWorld::default();
+            let system = add_combat_system(&mut world);
+            let fleet = add_ship_fleet(&mut world, system, is_alliance, 100, 1);
+            let result = resolve_system_space_combat(
+                &mut world,
+                system,
+                &[0.5; 256],
+                10,
+                [false, false],
+            );
+            let side = if is_alliance {
+                CombatSide::Attacker
+            } else {
+                CombatSide::Defender
+            };
+            assert_eq!(result.winner, side);
+            assert_eq!(result.winner_fleet, Some(fleet));
+            assert_eq!(result.rounds, 0);
+        }
     }
 
     #[test]
@@ -5689,7 +5759,13 @@ mod combat_application_tests {
         let first_empire = add_ship_fleet(&mut world, system, false, 30, 1);
         let second_empire = add_ship_fleet(&mut world, system, false, 30, 1);
 
-        let result = resolve_system_space_combat(&mut world, system, &[0.5; 256], 11);
+        let result = resolve_system_space_combat(
+            &mut world,
+            system,
+            &[0.5; 256],
+            11,
+            [false, false],
+        );
 
         assert_eq!(result.alliance_fleets, 2);
         assert_eq!(result.empire_fleets, 2);
@@ -5715,7 +5791,13 @@ mod combat_application_tests {
         let system = add_combat_system(&mut world);
         let fleet = add_ship_fleet(&mut world, system, true, 100, 5);
 
-        let result = resolve_system_space_combat(&mut world, system, &[0.5; 256], 14);
+        let result = resolve_system_space_combat(
+            &mut world,
+            system,
+            &[0.5; 256],
+            14,
+            [false, false],
+        );
 
         assert_eq!(result.rounds, 0);
         assert_eq!(result.winner, CombatSide::Attacker);
@@ -5735,7 +5817,13 @@ mod combat_application_tests {
             world.fleets[defender].capital_ships.push(extra.clone());
         }
 
-        let result = resolve_system_space_combat(&mut world, system, &[0.5; 256], 13);
+        let result = resolve_system_space_combat(
+            &mut world,
+            system,
+            &[0.5; 256],
+            13,
+            [false, false],
+        );
 
         assert_eq!(result.winner, CombatSide::Attacker);
         assert_eq!(result.empire_before.capital_ships, 5);
@@ -5753,7 +5841,13 @@ mod combat_application_tests {
         add_ship_fleet(&mut world, system, true, 100, 0);
         add_ship_fleet(&mut world, system, false, 100, 0);
 
-        let result = resolve_system_space_combat(&mut world, system, &[0.5; 256], 12);
+        let result = resolve_system_space_combat(
+            &mut world,
+            system,
+            &[0.5; 256],
+            12,
+            [false, false],
+        );
 
         assert_eq!(result.winner, CombatSide::Draw);
         assert_eq!(result.rounds, 1);

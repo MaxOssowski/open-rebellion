@@ -12,8 +12,9 @@
 //! destroyed (`FUN_005af7a0`). `ghidra/notes/abstract-battle.md`.
 //!
 //! Each step the commanders give idle task forces targets (`FUN_005c9200`,
-//! `FUN_005ec740`, `FUN_005ed170`). The retreat (slots `+0x0c`, `+0x2c`) is
-//! ported but no side may leave yet (`retreat_allowed`). At the battle's end
+//! `FUN_005ec740`, `FUN_005ed170`). A side whose answer to the battle
+//! choice orders a retreat (`retreat_allowed`) may leave (slots `+0x0c`,
+//! `+0x2c`). At the battle's end
 //! the loser's fleets leave on Autorouting ([`withdraw_loser`],
 //! `FUN_00516ef0`). Not yet ported: the Death Star's abstract actions.
 
@@ -120,7 +121,7 @@ pub struct AbstractBattle {
     pub stalemate: bool,
     /// `+0x80` of each side's commander: the side may leave the battle.
     /// `FUN_00599c90` copies it from the battle object's `+0x10` and
-    /// `+0x14` (`FUN_005afb30`); the port does not yet set it.
+    /// `+0x14` (`FUN_005afb30`), the sides' retreat words.
     pub retreat_allowed: [bool; 2],
     /// `+0x84` = 5: the side's retreat has run.
     pub retreat_done: [bool; 2],
@@ -1021,6 +1022,11 @@ pub fn abstract_seed(rolls: &[f64]) -> u32 {
 /// state 8): every fleet of both sides at the system fights one abstract
 /// battle, and `FUN_0040c780` carries each hull and squadron back to its
 /// fleet. The result names the first fleet of each side.
+///
+/// `retreat_allowed` (Alliance, Empire) is each side's answer to the
+/// battle choice: its retreat word, non-zero for a retreat order
+/// (`FUN_004362b0`), which reaches the side commander's `+0x80`
+/// (`FUN_005afb30`).
 #[must_use]
 pub fn resolve_space_battle(
     world: &GameWorld,
@@ -1029,13 +1035,17 @@ pub fn resolve_space_battle(
     defenders: &[FleetKey],
     seed: u32,
     tick: u64,
+    retreat_allowed: [bool; 2],
 ) -> (SpaceCombatResult, AbstractOutcome) {
     let FleetBattle {
         session,
         ship_fleets,
         fighter_fleets,
     } = BattleSession::new_for_fleets(world, system, attackers, defenders, true, tick, seed);
-    let (session, outcome) = resolve_abstract(session);
+    let mut battle = AbstractBattle::new(session);
+    battle.retreat_allowed = retreat_allowed;
+    let outcome = battle.run();
+    let session = battle.session;
 
     let mut ship_damage = Vec::new();
     for (ship, &fleet_key) in session.ships.iter().zip(&ship_fleets) {
@@ -2159,8 +2169,15 @@ mod tests {
     #[test]
     fn a_strategic_battle_reports_each_fleets_losses() {
         let (world, system, alliance, ships, squadrons) = world_with_battle();
-        let (result, outcome) =
-            resolve_space_battle(&world, system, &[alliance], &[ships, squadrons], 7, 3);
+        let (result, outcome) = resolve_space_battle(
+            &world,
+            system,
+            &[alliance],
+            &[ships, squadrons],
+            7,
+            3,
+            [false, false],
+        );
         assert_eq!(outcome.winner, CombatWinner::Attacker);
         assert_eq!(result.winner, CombatSide::Attacker);
         assert_eq!(result.attacker_fleet, alliance);
@@ -2190,6 +2207,40 @@ mod tests {
             ),
             (squadrons, 0, 2, 0)
         );
+    }
+
+    // FUN_004362b0 -> FUN_005afb30: the side's answer reaches its commander's
+    // +0x80. Allowed to leave, the beaten Empire's jumping hulls escape
+    // (FUN_005d14d0 step 5) and keep their hull; without it they are
+    // destroyed.
+    #[test]
+    fn a_retreat_order_reaches_the_battle() {
+        let (mut world, system, alliance, ships, squadrons) = world_with_battle();
+        for class in world.capital_ship_classes.values_mut() {
+            if class.is_empire {
+                class.hyperdrive = 1;
+                class.sub_light_engine = 1;
+            }
+        }
+        let lost = |allowed: [bool; 2]| {
+            let (result, outcome) = resolve_space_battle(
+                &world,
+                system,
+                &[alliance],
+                &[ships, squadrons],
+                7,
+                3,
+                allowed,
+            );
+            assert_eq!(outcome.winner, CombatWinner::Attacker);
+            result
+                .ship_damage
+                .iter()
+                .filter(|event| event.fleet == ships && event.hull_after == 0)
+                .count()
+        };
+        assert_eq!(lost([false, false]), 2);
+        assert!(lost([false, true]) < 2);
     }
 
     // port: the seed comes from the first combat roll.

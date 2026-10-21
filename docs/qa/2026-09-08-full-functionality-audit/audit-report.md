@@ -2277,6 +2277,24 @@ cross-runtime proof remain open
   - Correction to the W5 read entry: the port's winner already counted
     only active units.
   - 4 new tests; mutants 32 caught, 0 missed.
+- 2026-10-22 (W2k): the battle choice's retreat orders are ported
+  (`evidence/2026-10-22-battle-retreat-orders/`).
+  - An AI with a strategy orders a retreat except at its own system with
+    squadrons on the planet, where it needs armed own fleets and never
+    retreats from its headquarters (`ai_strategy::orders_retreat`,
+    `FUN_00485d50`, `FUN_004e77f0`).
+  - The Battle Alert's Retreat (`0x67`) runs the abstract battle with the
+    player's order; it no longer opens the tactical battle.
+  - The integrator's winner is the battle's (`FUN_0040c780`), so a side
+    that escaped and is still in orbit loses and is sent away.
+  - All 24 campaigns change:
+    - battles 1043 -> 2092, 800 of them without losses;
+    - draws 1 -> 0;
+    - capital ships lost 502 -> 31;
+    - seed 24 ends with the Alliance taking Coruscant on day 1350.
+  - `port:` Take Command does not yet pass the AI side's order to the
+    tactical engine.
+  - 7 new tests; mutants 29 caught, 0 missed.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

@@ -588,6 +588,115 @@ impl Strategy {
 }
 
 /// A plan count as a length.
+/// The AI's answer to the battle choice at `system` for the side
+/// `is_alliance`: whether it orders a retreat, that is a non-zero retreat
+/// word (`ghidra/notes/abstract-battle.md`, "The battle choice").
+///
+/// The AI player (slot `+0x44`, `FUN_00485d50`) asks its strategy module
+/// (`0xd`) when the module has a strategy (`+0x60`, `FUN_004bf300`). The
+/// strategy's slot `+0x10` (`FUN_004e77f0` and six copies) starts at 0.9 and
+/// reads the side's system record (`FUN_00403d30`). Only at the side's own
+/// system (`+0x30` bit 1) with squadrons on the planet (`v[25]` > 0) does it
+/// change the word:
+///
+/// - at the headquarters or system `0x109` (`+0x28` bit `0x80000000`) it is
+///   0;
+/// - otherwise it is the own fleets' attack (fleet record `+0x58`,
+///   `values[2]`) over the others' at the system (`FUN_004ffe70(system,
+///   3)`), at most 0.9, so 0 when the own fleets have no attack.
+///
+/// port: the original reads the records of the AI's last refresh; the port
+/// builds the system's facts and its fleets' records at the battle.
+#[must_use]
+pub fn orders_retreat(
+    world: &crate::world::GameWorld,
+    movement: &crate::movement::MovementState,
+    transport: &crate::troop_transport::TroopTransportState,
+    system: SystemKey,
+    is_alliance: bool,
+    has_strategy: bool,
+) -> bool {
+    if !has_strategy {
+        return false;
+    }
+    let Some(sys) = world.systems.get(system) else {
+        return true;
+    };
+    // FUN_00433e40: an unexplored system's record has no counts; the
+    // planet's squadrons (v[25]) count only on a populated planet.
+    let side = if is_alliance {
+        crate::dat::Faction::Alliance
+    } else {
+        crate::dat::Faction::Empire
+    };
+    let holder = crate::uprising::holder(sys);
+    let own = holder == Some(side);
+    let squadrons = sys.exploration_status == crate::dat::ExplorationStatus::Explored
+        && sys.is_populated
+        && sys
+            .fighters
+            .iter()
+            .any(|entry| entry.count > 0 && world.fighter_classes.contains_key(entry.class));
+    if !own || !squadrons {
+        return true;
+    }
+    let headquarters = sys.dat_id.raw() & 0xff_ffff == 0x109 || sys.is_headquarters;
+    if headquarters {
+        return false;
+    }
+    let classes = crate::ai_records::ClassRecords::build(world);
+    let attack: i32 = sys
+        .fleets
+        .iter()
+        .filter_map(|&fleet| {
+            crate::ai_records::FleetRecord::build(
+                world,
+                &classes,
+                fleet,
+                is_alliance,
+                movement,
+                transport,
+                &|_| None,
+            )
+        })
+        .filter(|record| record.flags & crate::ai_records::FLEET_OWN != 0)
+        .map(|record| record.values[2])
+        .sum();
+    attack != 0
+}
+
+/// `FUN_004362b0`'s retreat words (Alliance, Empire) for the sides the
+/// AI players `ais` play: each one's [`orders_retreat`] with its strategy
+/// (`Strategy::kind` 0 means no strategy object yet). A side no AI plays
+/// gives no order here; the player answers in the Battle Alert.
+#[must_use]
+pub fn retreat_orders(
+    ais: &[&crate::ai::AIState],
+    world: &crate::world::GameWorld,
+    movement: &crate::movement::MovementState,
+    transport: &crate::troop_transport::TroopTransportState,
+    system: SystemKey,
+) -> [bool; 2] {
+    [true, false].map(|is_alliance| {
+        ais.iter()
+            .find(|ai| {
+                ai.faction.is_some_and(|faction| {
+                    matches!(faction, crate::ai::AiFaction::Alliance) == is_alliance
+                })
+            })
+            .is_some_and(|ai| {
+                orders_retreat(
+                    world,
+                    movement,
+                    transport,
+                    system,
+                    is_alliance,
+                    ai.strategy.kind != 0,
+                )
+            })
+    })
+}
+
 fn count(wanted: i32) -> usize {
     usize::try_from(wanted).unwrap_or(0)
 }
@@ -641,6 +750,161 @@ fn staleness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod retreat {
+        use super::super::*;
+        use crate::dat::{ExplorationStatus, Faction};
+        use crate::ids::DatId;
+        use crate::world::{
+            CapitalShipClass, ControlKind, FighterClass, FighterEntry, Fleet, GameWorld,
+            ShipInstance, System,
+        };
+
+        /// An Empire-held, populated system with one squadron on the
+        /// planet and one armed Imperial fleet in orbit.
+        fn world() -> (GameWorld, SystemKey, crate::ids::FleetKey) {
+            let mut world = GameWorld::default();
+            let craft = world.fighter_classes.insert(FighterClass {
+                dat_id: DatId::new(0x1c00_0001),
+                is_empire: true,
+                ..FighterClass::default()
+            });
+            let system = world.systems.insert(System {
+                dat_id: DatId::new(0x9000_0001),
+                name: "Held".into(),
+                sector: SectorKey::default(),
+                x: 0,
+                y: 0,
+                exploration_status: ExplorationStatus::Explored,
+                popularity_alliance: 0.2,
+                popularity_empire: 0.8,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: vec![FighterEntry {
+                    class: craft,
+                    count: 1,
+                }],
+                is_headquarters: false,
+                is_destroyed: false,
+                control: ControlKind::Controlled(Faction::Empire),
+            });
+            let class = world.capital_ship_classes.insert(CapitalShipClass {
+                dat_id: DatId::new(0x1400_0001),
+                is_empire: true,
+                hull: 100,
+                turbolaser_fore: 10,
+                weapon_recharge_rate: 40,
+                ..CapitalShipClass::default()
+            });
+            let fleet = world.fleets.insert(Fleet {
+                location: system,
+                capital_ships: vec![ShipInstance::new(class, 100, false)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: false,
+                has_death_star: false,
+            });
+            world.systems[system].fleets.push(fleet);
+            (world, system, fleet)
+        }
+
+        fn orders(world: &GameWorld, system: SystemKey, is_alliance: bool, strategy: bool) -> bool {
+            orders_retreat(
+                world,
+                &crate::movement::MovementState::new(),
+                &crate::troop_transport::TroopTransportState::default(),
+                system,
+                is_alliance,
+                strategy,
+            )
+        }
+
+        // FUN_004bf300: with no strategy object (+0x60) the word stays 0.
+        #[test]
+        fn an_ai_without_a_strategy_orders_no_retreat() {
+            let (world, system, _) = world();
+            assert!(!orders(&world, system, true, false));
+            assert!(!orders(&world, system, false, false));
+        }
+
+        // FUN_004e77f0: 0.9 unless the system is the side's own (+0x30
+        // bit 1) with squadrons on the planet (v[25] > 0). The Imperial
+        // fleet here is the Alliance's, so a defended system gives 0.
+        #[test]
+        fn away_from_its_defended_systems_the_ai_orders_a_retreat() {
+            let (mut world, system, fleet) = world();
+            world.fleets[fleet].is_alliance = true;
+            assert!(!orders(&world, system, false, true));
+            // The Alliance does not hold the system.
+            assert!(orders(&world, system, true, true));
+            // No squadron on the planet: none left, or one of no known class.
+            let entry = world.systems[system].fighters[0].clone();
+            world.systems[system].fighters = vec![FighterEntry {
+                count: 0,
+                ..entry.clone()
+            }];
+            assert!(orders(&world, system, false, true));
+            world.systems[system].fighters = vec![FighterEntry {
+                class: crate::ids::FighterKey::default(),
+                ..entry.clone()
+            }];
+            assert!(orders(&world, system, false, true));
+            // v[25] counts only on a populated, explored planet.
+            world.systems[system].fighters = vec![entry];
+            assert!(!orders(&world, system, false, true));
+            world.systems[system].is_populated = false;
+            assert!(orders(&world, system, false, true));
+            world.systems[system].is_populated = true;
+            world.systems[system].exploration_status = ExplorationStatus::Unexplored;
+            assert!(orders(&world, system, false, true));
+        }
+
+        // FUN_004e77f0: at its own defended system the word is the own
+        // fleets' attack (record +0x58) over the others', so a retreat
+        // needs an own fleet with attack; at the headquarters or system
+        // 0x109 (+0x28 bit 0x80000000) the word is 0.
+        #[test]
+        fn at_its_defended_systems_the_ai_retreats_only_with_armed_fleets() {
+            let (mut world, system, fleet) = world();
+            assert!(orders(&world, system, false, true));
+            world.systems[system].is_headquarters = true;
+            assert!(!orders(&world, system, false, true));
+            world.systems[system].is_headquarters = false;
+            world.systems[system].dat_id = DatId::new(0x9000_0109);
+            assert!(!orders(&world, system, false, true));
+            world.systems[system].dat_id = DatId::new(0x9000_0001);
+            // The Alliance's fleets do not count as the Empire's own.
+            world.fleets[fleet].is_alliance = true;
+            assert!(!orders(&world, system, false, true));
+        }
+
+        // FUN_004362b0: each AI player answers for its own side only.
+        #[test]
+        fn each_ai_answers_for_its_own_side() {
+            let (world, system, _) = world();
+            let mut empire = crate::ai::AIState::new(crate::ai::AiFaction::Empire);
+            let movement = crate::movement::MovementState::new();
+            let transport = crate::troop_transport::TroopTransportState::default();
+            let answer = |ais: &[&crate::ai::AIState]| {
+                retreat_orders(ais, &world, &movement, &transport, system)
+            };
+            assert_eq!(answer(&[&empire]), [false, false]);
+            empire.strategy.kind = 1;
+            assert_eq!(answer(&[&empire]), [false, true]);
+            let mut alliance = crate::ai::AIState::new(crate::ai::AiFaction::Alliance);
+            alliance.strategy.kind = 3;
+            assert_eq!(answer(&[&alliance, &empire]), [true, true]);
+            assert_eq!(answer(&[&alliance]), [true, false]);
+        }
+    }
     use crate::ai_records::{sector_at, SectorRecord, SystemRecord};
 
     fn record(system: SystemKey, kind: u32) -> SystemRecord {

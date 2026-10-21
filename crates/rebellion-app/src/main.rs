@@ -2227,6 +2227,16 @@ async fn main() {
                 let battle_before = rebellion_core::loyalty::battle_watch(&world, sys_key);
                 let attacker_is_alliance = world.fleets.get(atk_fleet).map(|f| f.is_alliance);
                 let combat_rolls: Vec<f64> = (0..256).map(|_| sim_rng.gen::<f64>()).collect();
+                // FUN_004362b0: each AI side's retreat order (FUN_00485d50).
+                let ais: Vec<&AIState> =
+                    std::iter::once(&ai_state).chain(&secondary_ai_state).collect();
+                let retreat_allowed = rebellion_core::ai_strategy::retreat_orders(
+                    &ais,
+                    &world,
+                    &movement_state,
+                    &troop_transport_state,
+                    sys_key,
+                );
                 // FUN_0040a050 state 8: an abstract battle (FUN_005ae9c0).
                 let (space_result, _) = rebellion_core::abstract_battle::resolve_space_battle(
                     &world,
@@ -2235,6 +2245,7 @@ async fn main() {
                     &[def_fleet],
                     rebellion_core::abstract_battle::abstract_seed(&combat_rolls),
                     current_tick,
+                    retreat_allowed,
                 );
 
                 // Apply ship damage: reduce counts proportional to destroyed hulls.
@@ -6188,6 +6199,9 @@ async fn main() {
                     _ => None,
                 };
 
+                // Battle Alert's Retreat (0x67) answers "simulate" with the
+                // player's retreat order (FUN_00450540, FUN_00487830).
+                let player_retreats = matches!(tac_action, TacticalAction::RetreatBeforeBattle);
                 match tac_action {
                     TacticalAction::BeginCombat => {
                         // Advance from placement to combat phase.
@@ -6196,9 +6210,10 @@ async fn main() {
                             session.queue_battle_ready_voice();
                         }
                     }
-                    TacticalAction::AutoResolve => {
-                        // Auto-resolve the battle, then show the same original
-                        // Battle Results window used by a played engagement.
+                    TacticalAction::AutoResolve | TacticalAction::RetreatBeforeBattle => {
+                        // Simulate Results (0x65) or Retreat (0x67): the
+                        // abstract battle (FUN_004362b0 answer 1, state 8),
+                        // then the original Battle Results window.
                         let mut result_presented = false;
                         if let Some(session) = tactical_state.session.clone() {
                             let battle_before =
@@ -6209,6 +6224,20 @@ async fn main() {
                                 .map(|f| f.is_alliance);
                             let combat_rolls: Vec<f64> =
                                 (0..256).map(|_| sim_rng.gen::<f64>()).collect();
+                            // FUN_004362b0: the AI side's retreat order
+                            // (FUN_00485d50) and the player's button.
+                            let ais: Vec<&AIState> =
+                                std::iter::once(&ai_state).chain(&secondary_ai_state).collect();
+                            let mut retreat_allowed = rebellion_core::ai_strategy::retreat_orders(
+                                &ais,
+                                &world,
+                                &movement_state,
+                                &troop_transport_state,
+                                session.system,
+                            );
+                            let player_is_alliance =
+                                session.player_is_attacker == session.attacker_is_alliance;
+                            retreat_allowed[usize::from(!player_is_alliance)] = player_retreats;
                             let (space_result, _) =
                                 rebellion_core::abstract_battle::resolve_space_battle(
                                     &world,
@@ -6217,6 +6246,7 @@ async fn main() {
                                     &[session.defender_fleet],
                                     rebellion_core::abstract_battle::abstract_seed(&combat_rolls),
                                     session.start_tick,
+                                    retreat_allowed,
                                 );
                             apply_space_combat_result(&space_result, &mut world);
                             let winner = battle_winner(space_result.winner, attacker_is_alliance);
@@ -6451,24 +6481,6 @@ async fn main() {
                             }
                             session.selected_ship = None;
                             session.selected_fighter_group = None;
-                        }
-                    }
-                    TacticalAction::RetreatBeforeBattle => {
-                        if let Some(ref mut session) = tactical_state.session {
-                            let player_side = session.player_is_attacker;
-                            for ship in &mut session.ships {
-                                if ship.alive
-                                    && ship.is_attacker == player_side
-                                    && ship.subsystem_capacity.hyperdrive > 0
-                                    && ship.subsystem_condition.hyperdrive > 0
-                                {
-                                    ship.retreating = true;
-                                    ship.selected = false;
-                                }
-                            }
-                            session.selected_ship = None;
-                            session.selected_fighter_group = None;
-                            session.paused = false;
                         }
                     }
                     TacticalAction::OpenGameOptions => {

@@ -336,13 +336,22 @@ is the side commander's `+0x24` = 0.33.
 - Open: the Retreat button's enabled state in the original dialog. The
   port enables it when the player's ships have a working hyperdrive.
 
-### The port before this read
+### The port (W2k, 2026-10-22)
 
-- Its Battle Alert's Retreat (`TacticalAction::RetreatBeforeBattle`)
-  opens the tactical battle with the player's hyperdrive ships marked
-  retreating. That is not the original: Retreat is a simulated battle
-  with the player's `+0x80` set.
-- `abstract_battle` keeps `retreat_allowed` = false for both sides.
+- `ai_strategy::orders_retreat` is the strategy slot's rule. It builds
+  the facts from the world at the battle: the holder, a known squadron on
+  an explored, populated planet, the headquarters or `0x109`, and the
+  `values[2]` of each fleet record. `ai_strategy::retreat_orders` answers
+  for each side an AI plays; an AI with no strategy yet (`Strategy::kind`
+  0) gives no order.
+- `abstract_battle::resolve_space_battle` takes the two answers as
+  `retreat_allowed`. The headless simulation and the app's AI battles
+  ask the AI players.
+- The player's Battle Alert: Simulate Results gives no order, and Retreat
+  (`TacticalAction::RetreatBeforeBattle`) gives one. Both run the abstract
+  battle. Retreat no longer opens the tactical battle.
+- `port:` Take Command (the tactical battle) does not yet pass the AI
+  side's order to the tactical engine.
 
 ## The port (2026-10-21)
 
@@ -366,9 +375,8 @@ own (`resolve_space_battle`, all fleets at the system). Three pieces stay
   - Over seeds 1-3, 55 of 67 battles end as with the earlier rule, with
     26 attacker and 41 defender wins (28 and 39 before).
 - A fighter group hit by `FUN_005b54d0`: shields first, then hull.
-- The retreat (W2h) is ported, but no side may leave yet
-  (`retreat_allowed` = false). The source of `+0x80` is now read ("The
-  battle choice") but not yet ported. A
+- The retreat (W2h) is ported. Since W2k a side may leave when its
+  answer to the battle choice orders a retreat (`retreat_allowed`). A
   fighter group leaves with a jumping carrier (`hyp:`). The Death Star's
   abstract actions are not ported.
 

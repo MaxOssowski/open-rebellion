@@ -256,11 +256,23 @@ pub fn run_simulation_tick(
         let combat_rolls = take_rolls(256);
         let sorties = squadrons::scramble(world, sys_key);
         let battle_before = rebellion_core::loyalty::battle_watch(world, sys_key);
+        // FUN_004362b0: each side answers the battle choice. An AI side's
+        // strategy gives its retreat order (FUN_00485d50); a side no AI
+        // plays gives none.
+        let ais: Vec<&AIState> = std::iter::once(&states.ai).chain(&states.ai2).collect();
+        let retreat_allowed = rebellion_core::ai_strategy::retreat_orders(
+            &ais,
+            world,
+            &states.movement,
+            &states.troop_transport,
+            sys_key,
+        );
         let space_result = resolve_system_space_combat(
             world,
             sys_key,
             &combat_rolls,
             current_tick,
+            retreat_allowed,
         );
         squadrons::recover(world, &sorties);
         // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift for the
