@@ -943,6 +943,42 @@ pub fn facility_lost_texts(
     ))
 }
 
+/// Unit Arrival (`FUN_004981c0`): `GameObjEnrouteActiveNotif` (`0x105`)
+/// clearing, a unit arriving where it was bound, to the unit's side. A
+/// capital ship takes TEXTSTRA `0x7076` "Ships arrive at {2:1}" and
+/// `0x7077`; a squadron, regiment or facility `0x707a` "Units Arrive at
+/// {2:1}" and `0x707b`; each adds a line `0x707e` for the unit. Characters
+/// and special forces (`0x30`..`0x3f`) have no arrival message here.
+/// Returns the title and body.
+///
+/// port: the class also stays silent while the system has a battle
+/// pending (`+0x88` bit 12); the port has no such bit.
+#[must_use]
+pub fn arrival_texts(
+    world: &rebellion_core::world::GameWorld,
+    kind: rebellion_core::manufacturing::BuildableKind,
+    system: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::manufacturing::BuildableKind;
+    let (title, body) = match kind {
+        BuildableKind::CapitalShip(_) => (0x7076, 0x7077),
+        BuildableKind::SpecialForce(_) => return None,
+        _ => (0x707a, 0x707b),
+    };
+    let (name, _) = crate::manufacturing_window::product(world, kind);
+    let parameters = [
+        MessageParameter::Unit {
+            name: &name,
+            class: &name,
+        },
+        MessageParameter::Named { name: system },
+    ];
+    let mut text = fill_message_text(texts.get(&body)?, &parameters);
+    text.push_str(&fill_message_text(texts.get(&0x707e)?, &parameters));
+    Some((fill_message_text(texts.get(&title)?, &parameters), text))
+}
+
 /// Units Deployed (`FUN_00497940`): notification `0x107` for a unit put
 /// in place, to the unit's side. The texts follow the unit's family:
 /// - a capital ship TEXTSTRA `0x7086` / `0x7087`, the Death Star `0x708e`
@@ -953,9 +989,12 @@ pub fn facility_lost_texts(
 /// - a facility `0x708c` / `0x708d`.
 /// The unit is the first substitution and the system the second.
 ///
-/// port: a completed or delivered unit stands at its system, so the body's
-/// container is the system; the port names no unit, so its name is its
-/// class's.
+/// A product bound elsewhere is Deployed when completed (`FUN_0052bee0`),
+/// already a child of its destination, so its message names the
+/// destination at departure; its arrival is [`arrival_texts`].
+///
+/// port: a completed unit stands at its system, so the body's container is
+/// the system; the port names no unit, so its name is its class's.
 #[must_use]
 pub fn deployed_texts(
     world: &rebellion_core::world::GameWorld,
@@ -1518,6 +1557,58 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_004981c0 (notification 0x105 clearing): TEXTSTRA 0x7076 / 0x7077,
+    // 0x707a / 0x707b and the unit line 0x707e as shipped, by family.
+    #[test]
+    fn an_arrival_reports_ships_or_units_and_lists_the_unit() {
+        use rebellion_core::ids::DatId;
+        use rebellion_core::manufacturing::BuildableKind;
+        use rebellion_core::world::{CapitalShipClass, GameWorld};
+        let texts: HashMap<u16, String> = [
+            (0x7076, "Ships arrive at {2:1}"),
+            (0x7077, "The following ships have arrived at {2:1}:\n"),
+            (0x707a, "Units Arrive at {2:1}"),
+            (0x707b, "The following units have arrived at {2:1}:\n"),
+            (0x707e, "{1:1}\n"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let mut world = GameWorld::default();
+        let cruiser = world.capital_ship_classes.insert(CapitalShipClass {
+            name: "Strike Cruiser".into(),
+            ..CapitalShipClass::default()
+        });
+        assert_eq!(
+            arrival_texts(&world, BuildableKind::CapitalShip(cruiser), "F'tral", &texts),
+            Some((
+                "Ships arrive at F'tral".into(),
+                "The following ships have arrived at F'tral:\nStrike Cruiser\n".into()
+            ))
+        );
+        let regiment = arrival_texts(
+            &world,
+            BuildableKind::Troop(DatId::new(0x1000_0003)),
+            "F'tral",
+            &texts,
+        )
+        .unwrap();
+        assert_eq!(regiment.0, "Units Arrive at F'tral");
+        assert!(
+            regiment.1.starts_with("The following units have arrived at F'tral:\n"),
+            "{regiment:?}"
+        );
+        assert_eq!(
+            arrival_texts(
+                &world,
+                BuildableKind::SpecialForce(DatId::new(0x3c00_0001)),
+                "F'tral",
+                &texts
+            ),
+            None
+        );
+    }
 
     // FUN_00497690 (event 0x303): TEXTSTRA 0x70b0 / 0x70b1 as shipped, for a
     // facility only (family 0x20..0x2f).

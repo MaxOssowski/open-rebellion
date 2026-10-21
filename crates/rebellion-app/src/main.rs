@@ -1897,14 +1897,31 @@ async fn main() {
             for departure in &mfg_advance.departures {
                 let origin = system_name(&world, departure.origin);
                 let destination = system_name(&world, departure.destination);
-                // Notification 0x21, Construction Complete.
+                // Notification 0x107, Units Deployed (FUN_00497940): the
+                // product is Deployed on completion (FUN_0052bee0), already
+                // bound to its destination, which the message names.
+                let (title, text) = rebellion_render::story_messages::deployed_texts(
+                    &world,
+                    departure.kind,
+                    &destination,
+                    &message_texts,
+                )
+                .map_or(
+                    (None, format!("Construction complete at {origin}, en route to {destination}")),
+                    |(title, body)| (Some(title), body),
+                );
+                let mut message = GameMessage::at_system(
+                    departure.tick,
+                    text,
+                    MessageCategory::Manufacturing,
+                    departure.destination,
+                )
+                .with_picture_if(pictures::deployed(&world, departure.kind));
+                if let Some(title) = title {
+                    message = message.with_title(title);
+                }
                 msg_log.push(filed(
-                    GameMessage::at_system(
-                        departure.tick,
-                        format!("Construction complete at {origin}, en route to {destination}"),
-                        MessageCategory::Manufacturing,
-                        departure.origin,
-                    ),
+                    message,
                     MessageRail::Manufacturing,
                     system_audience(&world, departure.origin),
                 ));
@@ -1916,10 +1933,9 @@ async fn main() {
             let delivered = delivery_state.advance(&world, &tick_events);
             for completion in &delivered.arrivals {
                 rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
-                // Notification 0x107, Units Deployed (FUN_00497940), at the
-                // destination.
+                // Notification 0x105 clearing, Unit Arrival (FUN_004981c0).
                 let arrived_at = system_name(&world, completion.system);
-                let (title, text) = rebellion_render::story_messages::deployed_texts(
+                let (title, text) = rebellion_render::story_messages::arrival_texts(
                     &world,
                     completion.kind,
                     &arrived_at,

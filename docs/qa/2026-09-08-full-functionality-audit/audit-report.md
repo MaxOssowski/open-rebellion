@@ -1878,6 +1878,16 @@ cross-runtime proof remain open
   only for a facility (family `0x20`..`0x2f`): TEXTSTRA `0x70b0` /
   `0x70b1`, to its side. Other units lost on arrival post nothing, as in
   the original (`evidence/2026-10-21-facility-lost-message/`).
+- Arrival (2026-10-21, timing corrected):
+  - `FUN_0052bee0` sets Deployed (`0x107`) on completion, with the
+    product already a child of its destination. So Units Deployed names
+    the destination at departure.
+  - The arrival clears EnrouteActive (`0x105` -> type `0xd`), and Unit
+    Arrival (`FUN_004981c0`) speaks: TEXTSTRA `0x7076` / `0x7077` for
+    ships, `0x707a` / `0x707b` for other units, and a `0x707e` line.
+  - The browser `delivery` case sees "<class> Deployed at F'tral" at
+    departure and "Ships arrive at F'tral" on arrival
+    (`evidence/2026-10-21-unit-arrival/`).
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 

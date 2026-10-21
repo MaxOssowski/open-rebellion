@@ -692,22 +692,23 @@ const cases = [
     async run(page, faction, setup, directory) {
       const before = await until(page, "the ship waits one point short",
         (o) => o.target_ships === 0 && o.last_departure_message === null);
+      // The product is Deployed on completion (FUN_0052bee0), already bound
+      // to its destination: Units Deployed (FUN_00497940, TEXTSTRA 0x7086
+      // "{1:3} Deployed at {2:1}") names the destination.
       const departed = await until(page, "the ship departs for its destination",
         (o) => typeof o.last_departure_message === "string"
-          && o.last_departure_message.includes(", en route to "), null, 90_000);
+          && o.last_departure_message.includes(" Deployed at "), null, 90_000);
       assert.equal(departed.target_ships, 0, "an en-route ship is not at its destination yet");
       assert.equal(departed.last_arrival_message, null);
       // The shipyard's manager has nothing left to build (0x160,
       // FUN_0048be60, TEXTSTRA 0x71fc).
-      const origin = departed.last_departure_message.split("Construction complete at ")[1]?.split(",")[0];
       const idle = await until(page, "the shipyard reports idle",
-        (o, yard) => o.last_idle_title === `Shipyard Idle on ${yard}`, origin, 30_000);
+        (o) => o.last_idle_title?.startsWith("Shipyard Idle on "), null, 30_000);
       await shot(page, directory, "delivery-en-route");
-      const destination = departed.last_departure_message.split(", en route to ")[1];
+      const destination = departed.last_departure_message.split(" Deployed at ")[1];
       const arrived = await until(page, "the ship arrives at its destination",
-        // Units Deployed (FUN_00497940, TEXTSTRA 0x7086 "{1:3} Deployed at
-        // {2:1}") at the destination.
-        (o, target) => o.last_arrival_message?.endsWith(` Deployed at ${target}`) && o.target_ships === 1,
+        // Unit Arrival (0x105 clearing, FUN_004981c0, TEXTSTRA 0x7076).
+        (o, target) => o.last_arrival_message === `Ships arrive at ${target}` && o.target_ships === 1,
         destination, 120_000);
       await frames(page, 3);
       await shot(page, directory, "delivery-arrived");
