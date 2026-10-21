@@ -98,8 +98,11 @@ The debug names are in `FUN_0040a700`'s table (`0x40a7b5`..), strings at
 
 - The port's strategic auto-resolve should be the tactical simulation run
   without display, stepped at 1.0 with the 1200 stalemate rule. The port
-  has a tactical engine (`rebellion-render`, `tactical_*`), and the
-  tracker item "Walka taktyczna 3D" asks for its result on the same path.
+  has a tactical engine, and the tracker item "Walka taktyczna 3D" asks
+  for its result on the same path.
+- Since 2026-10-21 the engine's state and step are in `rebellion-core`
+  (`tactical.rs`, `BattleSession::step`); the view stays in
+  `rebellion-render` (`tactical_view.rs`).
 - The four "slot handlers" `+0x1c4`..`+0x1d4` the audit named are the
   tactical module's, not a strategy formula.
 

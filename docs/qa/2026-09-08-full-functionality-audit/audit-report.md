@@ -2115,6 +2115,23 @@ cross-runtime proof remain open
     (`tactical_view.rs`, `BattleSession::step`). Running it for
     auto-resolve needs it moved to `rebellion-core`: an architecture change
     to agree first.
+- 2026-10-21 (move, agreed): the tactical battle state and step now live in
+  `rebellion-core::tactical`, with no change in behaviour.
+  - Moved: `BattleSession` with `step`, the ships, fighters, Death Star,
+    RNG, damage, subsystem, order and voice-cue types, and the
+    `tactical_resources` joins. Drawing, input, the battle windows and the
+    HUD art stay in `rebellion-render::tactical_view`, which re-exports the
+    moved names.
+  - The two Death Star log lines go to `BattleSession::diagnostic_log`; the
+    view prints them right after `step`, the effects advance and the shot.
+  - The provenance scanner now sees the moved code: its 100 uncited items
+    carry their source (`FUN_`, from `ghidra/notes/tactical-*.md`), `port:`
+    for the 2D fallback layout and the port's step, or `hyp:` where the
+    writer is not located.
+  - 24 of 24 campaigns and the golden are unchanged; 63 of 64 tactical
+    screenshots match, the 64th being the in-flight beam frame that differs
+    on every run (`evidence/2026-10-21-tactical-sim-to-core/`).
+  - Next: auto-resolve runs this simulation (step 1.0, 1200 stalemate).
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

@@ -18,6 +18,7 @@ use rebellion_core::fog::FogState;
 use rebellion_core::ids::{DatId, FleetKey, SystemKey};
 use rebellion_core::manufacturing::{ManufacturingState, ProductionArea};
 use rebellion_core::missions::{MissionState, MissionTarget, MissionTargetPick};
+pub(crate) use rebellion_core::pictures::character_mini_resource_id;
 use rebellion_core::world::{ControlKind, GameWorld};
 
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -1260,15 +1261,6 @@ pub(crate) fn opposing_contents_visible(
 #[must_use]
 pub fn fleet_label(world: &GameWorld, fleet: FleetKey) -> Option<String> {
     world.fleet_name(fleet).map(str::to_owned)
-}
-
-pub(crate) fn character_mini_resource_id(dat_id: DatId, is_major: bool) -> Option<u32> {
-    let index = dat_id.index();
-    if is_major {
-        matches!(index, 576..=579 | 592 | 640..=641).then_some(index + 17_920)
-    } else {
-        matches!(index, 832..=857 | 896..=923).then_some(index + 18_176)
-    }
 }
 
 pub(crate) fn manufacturing_facility_mini(dat_id: DatId) -> Option<(u32, &'static str)> {

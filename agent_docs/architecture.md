@@ -52,6 +52,9 @@ crates/rebellion-core/src/
 ├── mission_planning.rs — The AI mission planners' team and decoy selectors
 ├── fog.rs            — FogState, visibility sets, dim rendering tiers (373 LOC, 9 tests)
 ├── combat.rs         — Space combat 7-phase pipeline, ground combat, CombatPhaseFlags
+├── tactical.rs       — The tactical battle: BattleSession and its step, ships, fighters, Death Star, damage and voice cues (moved from rebellion-render; ghidra/notes/battle-flow.md)
+├── tactical_resources.rs — Joins from DAT identities to the original tactical graphics (FUN_00597610)
+├── pictures.rs       — A system's planet picture and a character's compact image, shared by windows and battles
 ├── bombardment.rs    — Planetary bombardment orders 0x220..0x223 (FUN_0058d770)
 ├── blockade.rs       — Fleet-presence blockade, manufacturing halt, troop destruction
 ├── uprising.rs       — Recovered revolt lifecycle, uprising incident (UPRIS1TB/UPRIS2TB codes), Subdue gain, disaster
@@ -93,7 +96,7 @@ crates/rebellion-render/src/
 ├── encyclopedia.rs     — 4-tab entity browser with BMP texture cache from EData/
 ├── bmp_cache.rs        — DllSource enum, BMP/PNG texture cache with HD fallback, WASM path rebasing, named DLL resource ID catalog
 ├── cockpit.rs          — Faction cockpit chrome (top/bottom bars), 9 control buttons, CockpitViewport
-├── tactical_view.rs    — 2D tactical combat: BattleSession, ship placement, phased combat, targeting, retreat
+├── tactical_view.rs    — Tactical battle view: drawing, input, HUD and battle windows over rebellion-core::tactical
 ├── story_messages.rs   — Story events as Message window messages: the Mission rail and, where the message class is recovered, its picture (FUN_0046a320).
 ├── advisor.rs          — Animated droid advisors (C-3PO/R2-D2 or Imperial), priority message queue, BIN-driven frame sequencing with BMP modulo fallback
 └── panels/

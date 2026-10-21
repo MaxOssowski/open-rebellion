@@ -9682,6 +9682,7 @@ mod tactical_ground_tests {
             combat_speed: 1,
             step_accumulator: 0.0,
             winner: Some(rebellion_render::CombatWinner::Attacker),
+            diagnostic_log: Vec::new(),
         };
 
         let battle_return =

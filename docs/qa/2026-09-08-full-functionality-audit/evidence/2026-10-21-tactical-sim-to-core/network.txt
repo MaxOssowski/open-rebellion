@@ -1,0 +1,4 @@
+{"url": "/", "status": 200}
+{"url": "/gl.js", "status": 200}
+{"url": "/open-rebellion-test.wasm", "status": 200}
+{"url": "/data/runtime.orpk", "status": 200}

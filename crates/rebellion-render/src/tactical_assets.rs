@@ -18,7 +18,7 @@ use macroquad::window::miniquad::{
 #[cfg(not(target_arch = "wasm32"))]
 use crate::tactical_asset_cache::set_tactical_asset_cache;
 use crate::tactical_asset_cache::TACTICAL_OBJECT_CACHE;
-use crate::tactical_view::OriginalTacticalLayout;
+use rebellion_core::tactical::OriginalTacticalLayout;
 
 #[cfg(feature = "interface-test-fixtures")]
 pub const PROOF_MESH_KEYS: [&str; 3] = ["2560/1033", "2561/1033", "2562/1033"];

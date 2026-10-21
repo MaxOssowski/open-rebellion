@@ -5,7 +5,7 @@
 //! order is not identical to CAPSHPSD or FIGHTSD record order, so callers must
 //! use these explicit joins rather than arithmetic on a [`DatId`].
 
-use rebellion_core::ids::DatId;
+use crate::ids::DatId;
 
 /// Original type-301 mesh family selected for one capital-ship class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +49,8 @@ impl TacticalFighterResource {
     }
 
     /// The retained fighter visual loads its far sprite at close ID `+5`.
+    ///
+    /// `FUN_005ab650` loads the far sprite at close ID `+5`.
     #[must_use]
     pub const fn initial_far_resource(self, player_side: bool) -> u32 {
         self.initial_close_resource(player_side) + 5
@@ -56,6 +58,8 @@ impl TacticalFighterResource {
 
     /// The third retained visual is the two-by-two color indicator at
     /// `4200 + (close ID % 10)`.
+    ///
+    /// `FUN_005ab650` indicator family 4200 (type-303 `4200`–`4204`).
     #[must_use]
     pub const fn initial_indicator_resource(self, player_side: bool) -> u32 {
         4200 + self.initial_close_resource(player_side) % 10
@@ -75,18 +79,24 @@ impl TacticalFighterResource {
     }
 
     /// Far fighter art is the active close resource plus five.
+    ///
+    /// `FUN_005c7150` keeps the `+5` far offset of `FUN_005ab650`.
     #[must_use]
     pub const fn grouped_far_resource(self, player_side: bool, group: u8) -> u32 {
         self.grouped_close_resource(player_side, group) + 5
     }
 
     /// The 2×2 distant indicator preserves the active group colour.
+    ///
+    /// `FUN_005c7150` keeps the 4200 indicator family of `FUN_005ab650`.
     #[must_use]
     pub const fn grouped_indicator_resource(self, player_side: bool, group: u8) -> u32 {
         4200 + self.grouped_close_resource(player_side, group) % 10
     }
 
     /// Selected-fighter panel bitmap for the source registry ordinal.
+    ///
+    /// `FUN_00597610` registry ordinals 29 and up are fighters; panel bitmaps from 2030.
     #[must_use]
     pub const fn hud_resource(self) -> u32 {
         2030 + (self.tactical_ordinal - 29) as u32
@@ -101,7 +111,10 @@ pub struct TacticalDeathStarResource {
     pub resource_base_with_flag: u32,
 }
 
+/// The Death Star's CAPSHPSD.DAT identity; `FUN_005ab650` selects it outside the capital table.
+
 pub const DEATH_STAR_DAT_ID: DatId = DatId(136);
+/// `FUN_00597610` registry ordinal 37 and `FUN_005ab650`'s type-301 bases 5010/5020.
 pub const DEATH_STAR_TACTICAL_RESOURCE: TacticalDeathStarResource = TacticalDeathStarResource {
     tactical_ordinal: 37,
     resource_base_without_flag: 5010,
@@ -109,6 +122,7 @@ pub const DEATH_STAR_TACTICAL_RESOURCE: TacticalDeathStarResource = TacticalDeat
 };
 
 // DAT identity, original tactical ordinal, type-301 resource-family base.
+/// `FUN_00597610` registry order joined to CAPSHPSD.DAT identities.
 const CAPITAL_SHIP_JOIN: [(u32, u8, u32); 29] = [
     (64, 0, 2010),
     (65, 1, 2020),

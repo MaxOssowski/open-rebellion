@@ -1,0 +1,3 @@
+{"type": "info", "text": "[tactical_death_star] superlaser_targeting status=armed input=right_click"}
+{"type": "info", "text": "[tactical_death_star] superlaser_committed target_object_id=1 charge=0"}
+{"type": "info", "text": "[tactical_death_star] superlaser_resolved target_object_id=1"}
