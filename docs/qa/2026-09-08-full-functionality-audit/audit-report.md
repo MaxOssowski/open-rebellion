@@ -2145,7 +2145,7 @@ cross-runtime proof remain open
 ### F-035: Manufacturing and repair use invented structure and rates
 
 - Severity: P2
-- Status: open
+- Status: remediated (2026-10-21)
 - Evidence:
   - One ProductionQueue per system; the original keeps a manager per facility,
     so two yards build in parallel
@@ -2176,8 +2176,25 @@ cross-runtime proof remain open
   invented per-day `damage_control` rule at any manufacturing system is
   gone. 20 of 24 campaigns change
   (`evidence/2026-10-20-ship-repair-timer/`).
-- Acceptance: Queues, progress, and repair follow FUN_0052b960 and timer 0x386
-  with failing-without tests.
+- Closed (2026-10-21): the two remaining evidence lines are stale too.
+  - The acceptance filter `FUN_00528890` keeps in a manager's queue only
+    products that exist and are not completed, destroyed or en route
+    (`manufacturing-manager.md`, "Queue membership"). The port's queue
+    holds orders, and it makes an object only at completion
+    (`apply_build_completion_inner`) or at a delivery's arrival
+    (`delivery.rs`). So nothing completed, destroyed or en route is ever
+    in it.
+  - `ai.rs` passes a class's refined cost as the order's cost in points;
+    each point is one yard cycle (`FUN_00530950` -> `FUN_0052a430`), as in
+    the original. That is not a tick count.
+  - The queues, points and completion follow `FUN_0052b960` (tests since
+    2026-10-13), and repair follows timer `0x380` (the acceptance's `0x386`
+    is the blockade timer), each with failing-without tests.
+  - The port's remaining differences are recorded as port: in
+    `manufacturing-manager.md` ("The port"): the daily walk of the
+    managers, and the yard stopped in a cycle.
+- Acceptance: Queues, progress, and repair follow FUN_0052b960 and timer 0x380
+  (read 0x386 when written) with failing-without tests.
 
 ### F-036: The AI polls on an invented cadence with invented weights
 

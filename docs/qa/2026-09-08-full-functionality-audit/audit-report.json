@@ -2012,7 +2012,7 @@
     {
       "id": "F-035",
       "severity": "P2",
-      "status": "open",
+      "status": "remediated",
       "title": "Manufacturing and repair use invented structure and rates",
       "evidence": [
         "One ProductionQueue per system; the original keeps a manager per facility, so two yards build in parallel",
@@ -2021,7 +2021,8 @@
         "ai.rs:1325 treats refined_material_cost as build ticks",
         "evidence/invention-review-r1/manufacturing.md",
         "2026-10-20 correction: the original keeps one manager per production area of a system (a yard finds it through FUN_00509670), and every usable, unsuspended yard of the area adds points to it, woken fastest first (FUN_00529dd0); the port has kept a queue per system and area with the same regulation since 2026-10-13 (manufacturing.rs, YardDay::regulate), so the per-yard item is closed. Repair is timer 0x380, not 0x386 (the blockade's support shift); see ghidra/notes/ship-repair.md.",
-        "2026-10-20 repair ported (save v98): repair.rs runs timer 0x380 per ship. A damaged ship that is not travelling repairs a tenth of its class hull every 2 days (GNPRTB 2052) beside a usable, unsuspended yard of its side, else every 30 (2053). A FastRepair change rebuilds the timer. The invented per-day damage_control rule at any manufacturing system is gone. 20 of 24 campaigns change (evidence/2026-10-20-ship-repair-timer/)."
+        "2026-10-20 repair ported (save v98): repair.rs runs timer 0x380 per ship. A damaged ship that is not travelling repairs a tenth of its class hull every 2 days (GNPRTB 2052) beside a usable, unsuspended yard of its side, else every 30 (2053). A FastRepair change rebuilds the timer. The invented per-day damage_control rule at any manufacturing system is gone. 20 of 24 campaigns change (evidence/2026-10-20-ship-repair-timer/).",
+        "2026-10-21, closed: FUN_00528890's acceptance filter is structural in the port (the queue holds orders; objects exist only from completion or a delivery's arrival), ai.rs's refined cost is the order's cost in points (one point per yard cycle, FUN_0052a430), queues/points/completion follow FUN_0052b960 and repair timer 0x380 (the acceptance's 0x386 is the blockade timer), each with failing-without tests; the remaining port differences are in manufacturing-manager.md."
       ],
       "acceptance": "Queues, progress, and repair follow FUN_0052b960 and timer 0x386 with failing-without tests."
     },
