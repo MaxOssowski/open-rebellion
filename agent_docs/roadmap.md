@@ -3,7 +3,7 @@ title: "Roadmap"
 description: "Development milestones from Galaxy Viewer through Release packaging"
 category: "agent-docs"
 created: 2026-03-11
-updated: 2026-10-20
+updated: 2026-10-21
 tags: [roadmap, planning, milestones, parity]
 ---
 
@@ -488,8 +488,12 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   follow-up, uprisings, bombardment, HQ relocation, and principal missions.
   Do not require symmetric attack counts from an asymmetric game.
 - [ ] Enable AI Death Star construction/fire/cleanup and repair parity oracles.
-  The superlaser path, the construction timer, and sabotage are unrecovered;
-  the binary has no build-delay rule for sabotage (F-017).
+  The Death Star is built as CAPSHPSD 136 through manufacturing (save v94),
+  fires through Destroy System (`0x223`), its destroyed system keeps its
+  fleets and shows the asteroid field, and the destruction message takes
+  TEXTSTRA `0x70c8`-`0x70ca` (F-017, 2026-10-20/21); repair runs on timer
+  `0x380` (F-035, save v98). The binary has no build-delay rule for
+  sabotage. Open: the AI's own use of a Death Star.
 - [ ] Wire the recovered rules the 2026-09-25 test-pruning pass found uncalled:
   research gating of buildable ships (F-018), the decoy roll and the SUBDMSTB
   Subdue success check (F-019; both now run, its remaining phases are
@@ -507,7 +511,10 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   and the informant and resource incidents to their recovered timers
   (F-029, remediated 2026-10-18; native run 2026-10-18).
 - [x] Port the en-route delivery of manufactured objects on the recovered
-  per-object transit (F-030, save v16, browser pass pending).
+  per-object transit (F-030, save v16; browser pass 2026-10-20, autoroute
+  save v100). Its messages follow the original classes: Units Deployed at
+  departure, Unit Arrival, Facility Lost and per-area Facility Idle
+  (2026-10-21).
 - [ ] Port the mission phases, decoys, and per-member success roll (F-019).
   The rules are in `ghidra/notes/decoy-roll.md`, `mission-lifecycle.md`,
   `ai-mission-planning.md`, and `mission-dialog.md`. Phases 0-6 have landed:
@@ -601,13 +608,15 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   v92), and the Fleet window's Personnel menu and drag. Open: the drag out
   of a Defenses or system window (`0x214`, unresolved for characters).
 - [x] Gate uncited simulation rules with `tools/provenance-scan`; its baseline
-  may only shrink (F-031; 130 items after F-032 transit).
+  may only shrink (F-031; 130 items after F-032 transit, 11 on 2026-10-21,
+  all in `combat.rs`).
 - [x] Port fleet transit time from `FUN_0055d8c0` (F-032 transit; bombardment
   and fog remain).
 - [ ] Replace the invented rules found by the invention review, one system at
   a time: transit and bombardment (F-032), strategic combat (F-033), missions
   (F-034), manufacturing and repair (F-035), AI (F-036), economy and research
-  (F-037, remediated 2026-10-17; native GUI check pending), character timers
+  (F-037, remediated 2026-10-17; native run 2026-10-18; setup pass,
+  unpopulated systems and the invented support bands 2026-10-21), character timers
   and story events (F-038), and false notes (F-039).
 - [ ] Pass five reproducibly configured 5,000-tick seeds: transit ≤10%, orders
   ≤1.5× arrivals, and fleet arena ≤3× initial. Record 50–400 engagements, eight
