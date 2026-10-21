@@ -2,6 +2,7 @@
 
 pub mod advisor;
 pub mod agent_menu;
+pub mod assault_summary;
 pub mod audio;
 pub mod bmp_cache;
 pub mod build_selection;

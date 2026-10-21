@@ -810,6 +810,9 @@ pub struct BombardEnv {
         crate::assault::AssaultRequest,
         crate::assault::AssaultOutcome,
     )>,
+    /// Each Planetary Assault's Assault Summary report, in order
+    /// ([`crate::assault_report`]).
+    pub reports: Vec<crate::assault_report::AssaultReport>,
     /// Each bombardment's and assault's losses at its system, by side
     /// (`System_vtd0`: DestroyedReason `0xf` and `0xe`;
     /// [`crate::loyalty::SideLosses`]).
@@ -824,6 +827,7 @@ impl BombardEnv {
             alliance_hq,
             outcomes: Vec::new(),
             assaults: Vec::new(),
+            reports: Vec::new(),
             losses: Vec::new(),
         }
     }

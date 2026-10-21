@@ -120,12 +120,36 @@ Commands (`FUN_0044df90`, keys `FUN_0044e180`):
 - Left and right arrows (`0x25`, `0x27`) step through the visible
   category buttons.
 
-## Against the port
+## Ported (2026-10-22)
 
-The port writes one log line (`log_assault` in `rebellion-app`), with no
-window, no picture, no unit lists and no bombardment report. The
-Battle Results window (`rebellion-render` `tactical_view.rs`) already
-draws the same frame, rail, Close and Display page.
+- `rebellion-core` `assault_report.rs`: `AssaultReport::start` takes the
+  forces before the assault, `finish` files the losses and reads whether
+  the attacker holds the system (`economy::system_holder`), `body`,
+  `picture` and `opens_at_once` follow `FUN_00496770` and `FUN_00497530`.
+  `BombardEnv::assault` keeps one report per assault (`reports`).
+- `rebellion-render` `assault_summary.rs`: the window, its four pages,
+  six categories, columns, Display buttons, Close, Escape and the arrows.
+- `rebellion-app`: the attacker's side sees the window at once; the other
+  side gets a Conflict message (title, outcome, picture) whose display
+  opens the window and closes the Message Index (`FUN_00469de0`).
+  Close marks the message; `0xb` opens the system's sector window, `0xc`
+  also its Fleet window.
+
+port:
+- The forces are taken from the port's world: a fleet's regiments are its
+  cargo; squadrons are one row per squadron of each class.
+- hyp: Operational lists the units that survive; the assault captures no
+  personnel, so Captured is empty.
+- The window is centred in the galaxy view; a row shows its GOKRES picture
+  (the name when none is loaded), the name also as a hover text; the list
+  scrolls with the wheel and draws no scroll bar; the RCDATA `0x7013`
+  line sits above the Display buttons.
+- The port's log line ("Planetary assault at ...") stays.
+- The bombardment report (`0x14f`, `0x7098..0x709a`, pictures
+  `0x2b9a..0x2b9c`) is not ported yet. A system's text for kinds 1, 2 and
+  4 is its name (`FUN_004f6030`), so `0x7098` reads "Orbital bombardment
+  of {system}". Its picture is `0x2b9b` when the system lost units
+  (`+0x80`), else `0x2b9c` when the attacker did (`+0x88`), else `0x2b9a`.
 
 Open: the exact y of each rail button; how `+0x90`/`+0x98` are filled for
 system personnel; the row widget `FUN_0044edb0`; `+0x28`'s use.

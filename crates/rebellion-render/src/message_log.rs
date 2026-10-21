@@ -215,6 +215,10 @@ pub struct GameMessage {
     /// the player's TEXTSTRA message texts; the index lists it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// The Assault Summary report a battle-report message (type `0x0f`)
+    /// opens in place of its text (`FUN_00469de0` -> `FUN_0042a410`).
+    #[serde(skip)]
+    pub assault_report: Option<Box<rebellion_core::assault_report::AssaultReport>>,
 }
 
 impl GameMessage {
@@ -232,6 +236,7 @@ impl GameMessage {
             unread: false,
             picture: None,
             title: None,
+            assault_report: None,
         }
     }
 
@@ -254,6 +259,7 @@ impl GameMessage {
             unread: false,
             picture: None,
             title: None,
+            assault_report: None,
         }
     }
 
@@ -278,6 +284,16 @@ impl GameMessage {
     #[must_use]
     pub fn with_picture(mut self, picture: MessagePicture) -> Self {
         self.picture = Some(picture);
+        self
+    }
+
+    /// Open `report`'s Assault Summary window when the message is shown.
+    #[must_use]
+    pub fn with_assault_report(
+        mut self,
+        report: rebellion_core::assault_report::AssaultReport,
+    ) -> Self {
+        self.assault_report = Some(Box::new(report));
         self
     }
 

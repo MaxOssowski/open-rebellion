@@ -790,11 +790,42 @@ const cases = [
       assert.notEqual(menu.assault_row, null, JSON.stringify(menu));
       const height = (menu.height - 2) / menu.rows;
       await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.assault_row + 0.5) });
-      const after = await until(page, "Planetary Assault is carried out",
-        (o) => o.last_assault_message?.startsWith("Planetary assault at "));
+      // The attacker's side sees the Assault Summary at once (kind 7,
+      // FUN_00497530) on its Summary page (FUN_0044c630,
+      // ghidra/notes/assault-summary-window.md).
+      const after = await until(page, "Planetary Assault is carried out and its Assault Summary opens",
+        (o) => o.last_assault_message?.startsWith("Planetary assault at ")
+          && o.assault_summary?.page === "Summary");
+      const summary = after.assault_summary;
+      assert.equal(summary.windows, 1);
+      assert.match(summary.title, /^Assault on /);
+      assert.ok(summary.body.length > 0, JSON.stringify(summary));
+      assert.equal(summary.picture, faction.name === "alliance" ? 0x2b98 : 0x2b99);
       await frames(page, 3);
+      await shot(page, directory, "assault-summary");
+      // The rail's 0x66 (the attacker's forces) and 0x67 (System Forces).
+      const rail = faction.name === "alliance"
+        ? { x: 418, ys: [88, 141, 196, 250], width: 41 }
+        : { x: 426, ys: [89, 148, 207, 266], width: 44 };
+      const [ox, oy] = summary.origin;
+      const railButton = (index) => point([ox + rail.x + rail.width / 2, oy + rail.ys[index] + 20]);
+      await click(page, railButton(1));
+      const attackers = await until(page, "the attacker's forces show the regiments",
+        (o) => o.assault_summary?.page === "Attackers" && o.assault_summary.category === "Troops");
+      assert.equal(attackers.assault_summary.columns.length, 2);
+      await frames(page, 3);
+      await shot(page, directory, "assault-attackers");
+      await click(page, railButton(2));
+      const defenders = await until(page, "the System Forces show the planet's regiments",
+        (o) => o.assault_summary?.page === "SystemForces");
+      await frames(page, 3);
+      await shot(page, directory, "assault-system-forces");
+      // FUN_0044e180: Escape closes the window.
+      await press(page, "Escape");
+      const closed = await until(page, "Escape closes the Assault Summary",
+        (o) => o.assault_summary === null);
       await shot(page, directory, "assault-done");
-      return { before, menu, after };
+      return { before, menu, after, attackers, defenders, closed };
     },
   },
   {

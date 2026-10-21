@@ -1188,6 +1188,8 @@ async fn main() {
     let mut system_window_state = SystemWindowState::default();
     let mut fleet_window_state = FleetWindowState::default();
     let mut defenses_window_state = DefensesWindowState::default();
+    let mut assault_summary_state =
+        rebellion_render::assault_summary::AssaultSummaryState::default();
     let mut missions_window_state = MissionsWindowState::default();
     // The object pop-up menu a right-click in a system window opens.
     let mut object_menu: Option<ObjectMenuState> = None;
@@ -1518,6 +1520,8 @@ async fn main() {
                 } else if troop_finder_state.is_open() || personnel_finder_state.is_open() {
                     // The Troop and Personnel Finders close on Escape in
                     // their own key slots, as the Fleet Finder.
+                } else if assault_summary_state.window_count() > 0 {
+                    // The Assault Summary's key slot closes it (FUN_0044e180).
                 } else if let Some(index) = message_index.take() {
                     // port: Escape closes the Message Index as its Close
                     // button (0x28) does; no traced key slot is recovered.
@@ -2872,6 +2876,15 @@ async fn main() {
             for (system, losses) in &bombard.losses {
                 blockade_state.record_losses(*system, *losses);
             }
+            present_assault_reports(
+                std::mem::take(&mut bombard.reports),
+                &world,
+                player_faction,
+                &message_texts,
+                &mut assault_summary_state,
+                &mut msg_log,
+                current_tick,
+            );
 
             // A Destroy System order's Death Star destroyed these (FUN_0058d990).
             for system in bombard.destroyed_systems() {
@@ -3657,6 +3670,7 @@ async fn main() {
                 system_window_state.clear();
                 fleet_window_state.clear();
                 defenses_window_state.clear();
+                assault_summary_state.clear();
                 missions_window_state.clear();
                 object_menu = None;
                 targeting = None;
@@ -4126,6 +4140,7 @@ async fn main() {
                                 system_window_state.clear();
                                 fleet_window_state.clear();
                                 defenses_window_state.clear();
+                                assault_summary_state.clear();
                                 missions_window_state.clear();
                                 object_menu = None;
                                 targeting = None;
@@ -4471,7 +4486,7 @@ async fn main() {
                         }
                     }
                     if let Some(index) = message_index.as_mut() {
-                        let actions = rebellion_render::message_index::draw_message_index(
+                        let mut actions = rebellion_render::message_index::draw_message_index(
                             ctx,
                             &mut bmp_cache,
                             &mut enc_state,
@@ -4482,6 +4497,23 @@ async fn main() {
                             index,
                             player_faction == MissionFaction::Alliance,
                         );
+                        // FUN_00469de0: a battle report (type 0x0f) opens
+                        // its Assault Summary (FUN_0042a410) and the index
+                        // closes (slot +0x30).
+                        let report = actions.iter().find_map(|action| match action {
+                            MessageIndexAction::MessageDisplayed(id) => msg_log
+                                .messages()
+                                .iter()
+                                .find(|message| message.id == *id)
+                                .and_then(|message| {
+                                    message.assault_report.clone().map(|report| (*id, report))
+                                }),
+                            _ => None,
+                        });
+                        if let Some((id, report)) = report {
+                            assault_summary_state.open(&world, *report, &message_texts, Some(id));
+                            actions.push(MessageIndexAction::Close);
+                        }
                         if actions.contains(&MessageIndexAction::Close) {
                             let closing = message_index.take().map(|index| index.close());
                             apply_message_index_actions(
@@ -5193,6 +5225,46 @@ async fn main() {
                                     from: SquadronPlace::Fleet(fleet),
                                     to: target.squadron_place(),
                                 });
+                            }
+                        }
+                    }
+
+                    // The Assault Summary windows (FUN_0044c410).
+                    for action in rebellion_render::assault_summary::draw_assault_summaries(
+                        ctx,
+                        &mut assault_summary_state,
+                        cockpit_state.faction,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        use rebellion_render::assault_summary::AssaultSummaryAction;
+                        match action {
+                            // FUN_00469d60: the message is marked.
+                            AssaultSummaryAction::Closed(message) => {
+                                if let Some(id) = message {
+                                    msg_log.mark_message_read(id);
+                                }
+                            }
+                            // 0xb: FUN_00429ce0 opens the system's sector
+                            // window; 0xc also its Fleet window
+                            // (FUN_0045c8e0, kind 4).
+                            AssaultSummaryAction::GotoSystem(system)
+                            | AssaultSummaryAction::GotoFleets(system) => {
+                                sector_window_state.open_for_system(
+                                    &world,
+                                    system,
+                                    cockpit_state.faction,
+                                );
+                                map_state.selected_system = Some(system);
+                                if matches!(action, AssaultSummaryAction::GotoFleets(_)) {
+                                    let _ = fleet_window_state.open(
+                                        &world,
+                                        system,
+                                        (85, 55),
+                                        cockpit_state.faction,
+                                        cockpit_layout,
+                                    );
+                                }
                             }
                         }
                     }
@@ -6730,6 +6802,7 @@ async fn main() {
                             system_window_state.clear();
                             fleet_window_state.clear();
                             defenses_window_state.clear();
+                            assault_summary_state.clear();
                             missions_window_state.clear();
                             object_menu = None;
                             targeting = None;
@@ -6843,6 +6916,7 @@ async fn main() {
                         &event_state,
                         &mut mod_runtime,
                         &message_texts,
+                        &mut assault_summary_state,
                         #[cfg(not(target_arch = "wasm32"))]
                         &mut audio_engine,
                         #[cfg(not(target_arch = "wasm32"))]
@@ -7051,6 +7125,10 @@ async fn main() {
                     &fleet_window_state,
                     move_confirmation_state.is_open(),
                     msg_log.messages(),
+                    interface_test_fixture::FixtureAssaultSummary::of(
+                        &assault_summary_state,
+                        cockpit_state.faction,
+                    ),
                 );
                 fleet_finder_watch.observe(
                     request,
@@ -7107,6 +7185,10 @@ async fn main() {
                     &fleet_window_state,
                     move_confirmation_state.is_open(),
                     msg_log.messages(),
+                    interface_test_fixture::FixtureAssaultSummary::of(
+                        &assault_summary_state,
+                        cockpit_state.faction,
+                    ),
                 );
             }
         }
@@ -7622,6 +7704,7 @@ fn apply_panel_action(
     event_state: &EventState,
     mod_runtime: &mut rebellion_data::mods::ModRuntime,
     message_texts: &std::collections::HashMap<u16, String>,
+    assault_summaries: &mut rebellion_render::assault_summary::AssaultSummaryState,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
     #[cfg(not(target_arch = "wasm32"))] _sounds_dir: &Path,
@@ -8191,6 +8274,15 @@ fn apply_panel_action(
                     blockade_state.record_losses(*system, *losses);
                 }
                 log_assault(world, system, &outcome, clock.tick, msg_log);
+                present_assault_reports(
+                    std::mem::take(&mut env.reports),
+                    world,
+                    *player_faction,
+                    message_texts,
+                    assault_summaries,
+                    msg_log,
+                    clock.tick,
+                );
             } else {
                 msg_log.push(GameMessage::new(
                     clock.tick,
@@ -8925,6 +9017,41 @@ fn log_assault(
         MessageCategory::Combat,
         system,
     ));
+}
+
+/// The Assault Summary reports (`ghidra/notes/assault-summary-window.md`):
+/// the attacker's side sees the window at once (kind 7, `FUN_00497530`);
+/// the other side gets a battle report on the Conflict rail (kind 3,
+/// category `0x100`, `FUN_0048bc60`) that opens it.
+fn present_assault_reports(
+    reports: Vec<rebellion_core::assault_report::AssaultReport>,
+    world: &GameWorld,
+    player_faction: MissionFaction,
+    message_texts: &std::collections::HashMap<u16, String>,
+    summaries: &mut rebellion_render::assault_summary::AssaultSummaryState,
+    log: &mut MessageLog,
+    tick: u64,
+) {
+    let alliance = player_faction == MissionFaction::Alliance;
+    for report in reports {
+        if report.opens_at_once(Faction::of_alliance(alliance)) {
+            summaries.open(world, report, message_texts, None);
+            continue;
+        }
+        let (title, body) =
+            rebellion_render::assault_summary::summary_texts(&report, world, message_texts);
+        let picture = rebellion_render::message_log::MessagePicture {
+            background: report.picture(),
+            foreground: None,
+        };
+        log.push(
+            GameMessage::at_system(tick, body, MessageCategory::Combat, report.system)
+                .with_title(title)
+                .with_picture(picture)
+                .on_rail(MessageRail::Conflict, RailAudience::side(alliance))
+                .with_assault_report(report),
+        );
+    }
 }
 
 /// A planet destroyed by a Death Star (the Fleet menu's superlaser, or a

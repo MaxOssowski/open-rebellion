@@ -1,0 +1,1703 @@
+{
+ "summary": {
+  "schema_version": 1,
+  "family": "fleet-window",
+  "scope": "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, a squadron's Move from the planet onto a fleet and its drag back onto its planet, and a battle the other side's planet squadrons start with the player's fleet, on both sides",
+  "status": "pass",
+  "browser_version": "155.0.8059.84",
+  "browser_executable": "/usr/bin/chromium",
+  "launch_arguments": [
+   "--mute-audio",
+   "--disable-background-networking",
+   "--disable-component-update",
+   "--disable-default-apps",
+   "--disable-extensions",
+   "--disable-sync",
+   "--no-first-run"
+  ],
+  "profile": "one-new-muted-process-per-faction-and-case",
+  "muted": true,
+  "viewport": {
+   "width": 640,
+   "height": 480,
+   "device_scale_factor": 1
+  },
+  "masks": {
+   "open": [
+    {
+     "x": 18,
+     "y": 2,
+     "width": 186,
+     "height": 16,
+     "why": "title text"
+    },
+    {
+     "x": 8,
+     "y": 33,
+     "width": 60,
+     "height": 13,
+     "why": "fleet label"
+    },
+    {
+     "x": 5,
+     "y": 34,
+     "width": 5,
+     "height": 3,
+     "why": "dotted tree line"
+    }
+   ],
+   "selected": [
+    {
+     "x": 100,
+     "y": 28,
+     "width": 130,
+     "height": 13,
+     "why": "selected fleet name"
+    },
+    {
+     "x": 101,
+     "y": 127,
+     "width": 133,
+     "height": 164,
+     "why": "right list contents"
+    }
+   ]
+  },
+  "source": {
+   "dll": "STRATEGY.DLL",
+   "resource_ids": [
+    10108,
+    10201,
+    10209,
+    10253,
+    10299,
+    10400,
+    10401,
+    10407,
+    10413,
+    10414,
+    10415,
+    10416,
+    10425,
+    10450,
+    10451,
+    10457,
+    10463,
+    10464,
+    10465,
+    10466,
+    10475,
+    10770
+   ],
+   "aggregate_sha256": "e7855bc7cb27bc1bdd0c5fe186f911dd9325c937abea3e4ffbbdd73ade8150c9"
+  },
+  "wasm_sha256": "0f377d272a901d619993b0c8d9db841937ef673f8a9f13f6a16b552ca36aa4c1",
+  "runtime_pack_sha256": "f627086246bbb4a3f10fd2bfefafe60a935ee0aa95565467db15b9d2aec672ea"
+ },
+ "assault": [
+  {
+   "status": "pass",
+   "faction": "alliance",
+   "case": "assault",
+   "fixture_code": 324,
+   "ready": {
+    "schema_version": 1,
+    "status": "ready",
+    "code": 324,
+    "scenario": 67,
+    "faction": "alliance",
+    "mode": "Popular Support",
+    "state_fingerprint": "fnv1a64:2d492e824a02705b",
+    "stable_frames": 2,
+    "primary_system_x": 385,
+    "primary_system_y": 138,
+    "probe_system_dat_id": 278,
+    "probe_system_name": "Sullust",
+    "probe_screen_x": 344.43262,
+    "probe_screen_y": 262.71542
+   },
+   "setup": {
+    "status": "fleet-load-setup",
+    "code": 324,
+    "primary_dat_id": 120,
+    "target_dat_id": 121,
+    "target_name": "F'tral",
+    "icon": [
+     347,
+     74.5
+    ],
+    "system_icon": [
+     318,
+     74.5
+    ],
+    "troop_item": [
+     102,
+     161
+    ],
+    "defenses_window": [
+     177.5,
+     197
+    ],
+    "primary_planet": [
+     332.5,
+     84.5
+    ],
+    "target_planet": [
+     473.5,
+     334.5
+    ],
+    "day_readout": [
+     144,
+     27
+    ],
+    "capacity": 1,
+    "fighter_room": 3
+   },
+   "checks": {
+    "before": {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    "menu": {
+     "status": "object-menu",
+     "code": 324,
+     "left": 347,
+     "top": 75,
+     "width": 185.53125,
+     "height": 142,
+     "rows": 7,
+     "mission_row": null,
+     "move_row": 0,
+     "confirmed_move_row": 1,
+     "create_fleet_row": null,
+     "rename_row": null,
+     "destination_row": null,
+     "status_window_row": 5,
+     "build_row": null,
+     "stop_row": null,
+     "bombardment_row": 2,
+     "assault_row": 3,
+     "command_row": null,
+     "submenu": null,
+     "target_dat_id": 121,
+     "target_name": "F'tral",
+     "target_screen_x": 473.5,
+     "target_screen_y": 334.5
+    },
+    "after": {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       63,
+       50
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Imperial Troops have defended Akrit'tar from an Alliance assault.",
+      "page": "Summary",
+      "category": "Troops",
+      "picture": 11160,
+      "columns": []
+     }
+    },
+    "attackers": {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       63,
+       50
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Imperial Troops have defended Akrit'tar from an Alliance assault.",
+      "page": "Attackers",
+      "category": "Troops",
+      "picture": 11160,
+      "columns": [
+       [
+        "Alliance Army Regiment"
+       ],
+       []
+      ]
+     }
+    },
+    "defenders": {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       63,
+       50
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Imperial Troops have defended Akrit'tar from an Alliance assault.",
+      "page": "SystemForces",
+      "category": "Troops",
+      "picture": 11160,
+      "columns": [
+       [
+        "Alliance Army Regiment"
+       ],
+       [
+        "Alliance Army Regiment"
+       ]
+      ]
+     }
+    },
+    "closed": {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   },
+   "observations": [
+    {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       63,
+       50
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Imperial Troops have defended Akrit'tar from an Alliance assault.",
+      "page": "Summary",
+      "category": "Troops",
+      "picture": 11160,
+      "columns": []
+     }
+    },
+    {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       63,
+       50
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Imperial Troops have defended Akrit'tar from an Alliance assault.",
+      "page": "Attackers",
+      "category": "Troops",
+      "picture": 11160,
+      "columns": [
+       [
+        "Alliance Army Regiment"
+       ],
+       []
+      ]
+     }
+    },
+    {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       63,
+       50
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Imperial Troops have defended Akrit'tar from an Alliance assault.",
+      "page": "SystemForces",
+      "category": "Troops",
+      "picture": 11160,
+      "columns": [
+       [
+        "Alliance Army Regiment"
+       ],
+       [
+        "Alliance Army Regiment"
+       ]
+      ]
+     }
+    },
+    {
+     "status": "fleet-load",
+     "code": 324,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   ],
+   "screenshots": [
+    {
+     "label": "ready",
+     "sha256": "303ff4fef027e6c9a2e7f28f4f903dd6c32e5259df1e8e12b56b9a8d2de8b47f"
+    },
+    {
+     "label": "final",
+     "sha256": "4e0ee7ad7a2045503283c2c1f403a0e80aa22584a9cd1fde64f4fb94b4615d8a"
+    }
+   ],
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": [],
+   "console": [
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "info",
+     "text": "[assets] render_profile=original-parity"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x1fdc023ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x1fdc023ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x1fdc023ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x1fdc023ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+     "type": "info",
+     "text": "runtime_asset_pack loaded game_files=53 encyclopedia_assets=0 ui_bitmaps=2326 advisor_frames=3988 audio_files=313 tactical_meshes=87 tactical_textures=397 bytes=51695122"
+    },
+    {
+     "type": "info",
+     "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+    },
+    {
+     "type": "info",
+     "text": "[cutscene] opened path=assets/references/ref-videos/000.webm"
+    },
+    {
+     "type": "info",
+     "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+    },
+    {
+     "type": "info",
+     "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+    }
+   ],
+   "launch_attempts": [
+    {
+     "attempt": 1,
+     "status": "pass",
+     "duration_ms": 111.26839599999948
+    }
+   ],
+   "cleanup": "closed"
+  },
+  {
+   "status": "pass",
+   "faction": "empire",
+   "case": "assault",
+   "fixture_code": 580,
+   "ready": {
+    "schema_version": 1,
+    "status": "ready",
+    "code": 580,
+    "scenario": 67,
+    "faction": "empire",
+    "mode": "Popular Support",
+    "state_fingerprint": "fnv1a64:501c28d244a850db",
+    "stable_frames": 2,
+    "primary_system_x": 385,
+    "primary_system_y": 138,
+    "probe_system_dat_id": 278,
+    "probe_system_name": "Sullust",
+    "probe_screen_x": 407.43262,
+    "probe_screen_y": 264.71542
+   },
+   "setup": {
+    "status": "fleet-load-setup",
+    "code": 580,
+    "primary_dat_id": 120,
+    "target_dat_id": 121,
+    "target_name": "F'tral",
+    "icon": [
+     412,
+     79.5
+    ],
+    "system_icon": [
+     383,
+     79.5
+    ],
+    "troop_item": [
+     167,
+     161
+    ],
+    "defenses_window": [
+     242.5,
+     197
+    ],
+    "primary_planet": [
+     397.5,
+     89.5
+    ],
+    "target_planet": [
+     538.5,
+     339.5
+    ],
+    "day_readout": [
+     539.5,
+     25
+    ],
+    "capacity": 2,
+    "fighter_room": 2
+   },
+   "checks": {
+    "before": {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    "menu": {
+     "status": "object-menu",
+     "code": 580,
+     "left": 412,
+     "top": 80,
+     "width": 185.53125,
+     "height": 142,
+     "rows": 7,
+     "mission_row": null,
+     "move_row": 0,
+     "confirmed_move_row": 1,
+     "create_fleet_row": null,
+     "rename_row": null,
+     "destination_row": null,
+     "status_window_row": 5,
+     "build_row": null,
+     "stop_row": null,
+     "bombardment_row": 2,
+     "assault_row": 3,
+     "command_row": null,
+     "submenu": null,
+     "target_dat_id": 121,
+     "target_name": "F'tral",
+     "target_screen_x": 538.5,
+     "target_screen_y": 339.5
+    },
+    "after": {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       125,
+       52
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Alliance Troops have defended Akrit'tar from an Imperial assault.",
+      "page": "Summary",
+      "category": "Troops",
+      "picture": 11161,
+      "columns": []
+     }
+    },
+    "attackers": {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       125,
+       52
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Alliance Troops have defended Akrit'tar from an Imperial assault.",
+      "page": "Attackers",
+      "category": "Troops",
+      "picture": 11161,
+      "columns": [
+       [
+        "Imperial Fleet Regiment"
+       ],
+       []
+      ]
+     }
+    },
+    "defenders": {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       125,
+       52
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Alliance Troops have defended Akrit'tar from an Imperial assault.",
+      "page": "SystemForces",
+      "category": "Troops",
+      "picture": 11161,
+      "columns": [
+       [
+        "Imperial Fleet Regiment"
+       ],
+       [
+        "Imperial Fleet Regiment"
+       ]
+      ]
+     }
+    },
+    "closed": {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   },
+   "observations": [
+    {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       125,
+       52
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Alliance Troops have defended Akrit'tar from an Imperial assault.",
+      "page": "Summary",
+      "category": "Troops",
+      "picture": 11161,
+      "columns": []
+     }
+    },
+    {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       125,
+       52
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Alliance Troops have defended Akrit'tar from an Imperial assault.",
+      "page": "Attackers",
+      "category": "Troops",
+      "picture": 11161,
+      "columns": [
+       [
+        "Imperial Fleet Regiment"
+       ],
+       []
+      ]
+     }
+    },
+    {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       125,
+       52
+      ],
+      "title": "Assault on Akrit'tar",
+      "body": "Alliance Troops have defended Akrit'tar from an Imperial assault.",
+      "page": "SystemForces",
+      "category": "Troops",
+      "picture": 11161,
+      "columns": [
+       [
+        "Imperial Fleet Regiment"
+       ],
+       [
+        "Imperial Fleet Regiment"
+       ]
+      ]
+     }
+    },
+    {
+     "status": "fleet-load",
+     "code": 580,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 1,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 1,
+     "last_bombardment_message": null,
+     "last_assault_message": "Planetary assault at Akrit'tar: 0 of 1 attacking and 1 of 2 defending regiment(s) lost, 0 landed",
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   ],
+   "screenshots": [
+    {
+     "label": "ready",
+     "sha256": "1a64b8d17f840681c27b84c657c2ff93edce08a983ab00f27c125cb8b73d6040"
+    },
+    {
+     "label": "final",
+     "sha256": "cc96b5cb5819456b977475471bdf8d50b4af435542c268e51364eb89d0099c54"
+    }
+   ],
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": [],
+   "console": [
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "info",
+     "text": "[assets] render_profile=original-parity"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x3a0c001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x3a0c001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x3a0c001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x3a0c001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+     "type": "info",
+     "text": "runtime_asset_pack loaded game_files=53 encyclopedia_assets=0 ui_bitmaps=2326 advisor_frames=3988 audio_files=313 tactical_meshes=87 tactical_textures=397 bytes=51695122"
+    },
+    {
+     "type": "info",
+     "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+    },
+    {
+     "type": "info",
+     "text": "[cutscene] opened path=assets/references/ref-videos/000.webm"
+    },
+    {
+     "type": "info",
+     "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+    },
+    {
+     "type": "info",
+     "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+    }
+   ],
+   "launch_attempts": [
+    {
+     "attempt": 1,
+     "status": "pass",
+     "duration_ms": 109.17667000001529
+    }
+   ],
+   "cleanup": "closed"
+  }
+ ]
+}

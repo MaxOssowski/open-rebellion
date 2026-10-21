@@ -66,9 +66,25 @@ pub struct ReportUnit {
     pub category: ReportCategory,
     pub dat_id: DatId,
     pub name: String,
+    /// A major character (its picture's table, `pictures.rs`).
+    pub major: bool,
     /// The ground object an assault can destroy; `None` for ships,
     /// squadrons and personnel.
     target: Option<Target>,
+}
+
+impl ReportUnit {
+    /// A unit no assault destroys (a craft or personnel).
+    #[must_use]
+    pub fn new(category: ReportCategory, dat_id: DatId, name: String, major: bool) -> Self {
+        Self {
+            category,
+            dat_id,
+            name,
+            major,
+            target: None,
+        }
+    }
 }
 
 /// One side's columns: Operational (Survivors), Captured, Destroyed
@@ -168,7 +184,7 @@ impl AssaultReport {
             }
             for &character in &fleet.characters {
                 if let Some(value) = world.characters.get(character) {
-                    push(&mut attackers, value.dat_id, value.name.clone(), None);
+                    push_character(&mut attackers, value);
                 }
             }
         }
@@ -219,7 +235,7 @@ impl AssaultReport {
         };
         for (key, character) in &world.characters {
             if !character.is_killed && character.current_system == Some(system) && !aboard(key) {
-                push(&mut forces, character.dat_id, character.name.clone(), None);
+                push_character(&mut forces, character);
             }
         }
 
@@ -293,8 +309,20 @@ fn push(units: &mut Vec<ReportUnit>, dat_id: DatId, name: String, target: Option
             category,
             dat_id,
             name,
+            major: false,
             target,
         });
+    }
+}
+
+fn push_character(units: &mut Vec<ReportUnit>, character: &crate::world::Character) {
+    if let Some(category) = ReportCategory::of_family(character.dat_id.family()) {
+        units.push(ReportUnit::new(
+            category,
+            character.dat_id,
+            character.name.clone(),
+            character.is_major,
+        ));
     }
 }
 
@@ -502,6 +530,7 @@ mod tests {
                 name: name.into(),
                 current_system: at,
                 is_killed: killed,
+                is_major: name == "Leia",
                 ..Character::default()
             })
         };
@@ -516,6 +545,11 @@ mod tests {
             |forces: &ReportForces| names(&forces.columns(ReportCategory::Personnel)[0]);
         assert_eq!(personnel(&report.system_forces), ["Leia"]);
         assert_eq!(personnel(&report.attackers), ["Vader"]);
+        // pictures.rs: a major character's picture comes from its own table.
+        let [leia, ..] = report.system_forces.columns(ReportCategory::Personnel);
+        assert!(leia[0].major);
+        let [vader, ..] = report.attackers.columns(ReportCategory::Personnel);
+        assert!(!vader[0].major);
     }
 
     #[test]

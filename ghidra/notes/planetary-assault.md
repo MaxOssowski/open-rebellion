@@ -190,7 +190,7 @@ orders it at once (`PanelAction::OrderAssault`). The app checks the gate
 again, then carries the order out with the same `BombardEnv::assault` the
 AI's order uses, and writes the same summary line. A refused order writes
 "Planetary assault refused" (`FUN_00487c90`). The Assault Summary window
-is not ported.
+is ported since 2026-10-22 (`assault-summary-window.md`).
 
 ## Ported (2026-10-19): the generals
 

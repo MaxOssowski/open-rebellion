@@ -3171,6 +3171,44 @@ struct FleetLoadObservation {
     /// The player's System Joins title (`0x100`, `FUN_00499760`) for the
     /// loading target.
     last_joins_title: Option<String>,
+    /// The top Assault Summary window (`FUN_0044c410`).
+    assault_summary: Option<FixtureAssaultSummary>,
+}
+
+/// What the top Assault Summary window shows, and where it sits on the 640
+/// by 480 canvas.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct FixtureAssaultSummary {
+    windows: usize,
+    origin: (f32, f32),
+    title: String,
+    body: String,
+    page: String,
+    category: String,
+    picture: u32,
+    columns: Vec<Vec<String>>,
+}
+
+impl FixtureAssaultSummary {
+    #[must_use]
+    pub fn of(
+        state: &rebellion_render::assault_summary::AssaultSummaryState,
+        faction: CockpitFaction,
+    ) -> Option<Self> {
+        let report = state.report()?;
+        let layout = CockpitState::new(faction).layout_for(640.0, 480.0);
+        let rect = rebellion_render::assault_summary::window_rect(layout);
+        Some(Self {
+            windows: state.window_count(),
+            origin: (rect.min.x, rect.min.y),
+            title: report.title,
+            body: report.body,
+            page: format!("{:?}", report.page),
+            category: format!("{:?}", report.category),
+            picture: report.picture,
+            columns: report.columns,
+        })
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3417,6 +3455,7 @@ fn fleet_load_observation(
                 })
             })
             .map(str::to_owned),
+        assault_summary: None,
     })
 }
 
@@ -3455,6 +3494,7 @@ impl FleetLoadWatch {
         fleets: &FleetWindowState,
         confirmation_open: bool,
         messages: &[GameMessage],
+        assault_summary: Option<FixtureAssaultSummary>,
     ) -> Option<FleetLoadObservation> {
         if !request.scenario.uses_the_fleet_window() {
             return None;
@@ -3480,7 +3520,11 @@ impl FleetLoadWatch {
             fleets,
             confirmation_open,
             messages,
-        );
+        )
+        .map(|observation| FleetLoadObservation {
+            assault_summary,
+            ..observation
+        });
         if now.is_none() || now == self.last {
             return None;
         }
@@ -3499,6 +3543,7 @@ impl FleetLoadWatch {
         fleets: &FleetWindowState,
         confirmation_open: bool,
         messages: &[GameMessage],
+        assault_summary: Option<FixtureAssaultSummary>,
     ) {
         let Some(report) = self.next(
             request,
@@ -3509,6 +3554,7 @@ impl FleetLoadWatch {
             fleets,
             confirmation_open,
             messages,
+            assault_summary,
         ) else {
             return;
         };
@@ -5356,6 +5402,7 @@ mod tests {
                     &FleetWindowState::default(),
                     false,
                     &[],
+                    None,
                 )
                 .unwrap();
             assert!(start.aboard, "{faction:?}");
@@ -5535,6 +5582,7 @@ mod tests {
                 fleets,
                 false,
                 &[],
+                None,
             )
         };
 
@@ -5588,6 +5636,7 @@ mod tests {
                 &fleets,
                 false,
                 &[],
+                None,
             ),
             None
         );

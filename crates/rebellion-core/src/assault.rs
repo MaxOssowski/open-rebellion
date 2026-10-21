@@ -494,6 +494,9 @@ impl crate::bombardment::BombardEnv {
             troops,
             troop_fleets,
         };
+        // The report takes the forces before the assault (0x150, 0x182).
+        let report =
+            crate::assault_report::AssaultReport::start(world, transport, side, fleets, system);
         let outcome = resolve(world, &req, &mut |m| self.draw(m));
         // System_vtd0, DestroyedReason 0xe: the regiments the assault loses.
         let mut losses = crate::loyalty::SideLosses::default();
@@ -504,6 +507,10 @@ impl crate::bombardment::BombardEnv {
         }
         self.losses.push((system, losses));
         apply(world, transport, &req, &outcome);
+        if let Some(mut report) = report {
+            report.finish(world, &outcome);
+            self.reports.push(report);
+        }
         self.assaults.push((req, outcome));
         &self.assaults[self.assaults.len() - 1].1
     }
@@ -1080,5 +1087,16 @@ mod tests {
         assert_eq!(landed, a);
         assert_eq!(env.assaults.len(), 1);
         assert!(fx.world.systems[fx.system].ground_units.contains(&a[0]));
+        // The Assault Summary report (FUN_00496770): the landed regiment
+        // leaves the Empire holding the Alliance's system, 0x7091.
+        let [report] = env.reports.as_slice() else {
+            panic!("one report, got {}", env.reports.len());
+        };
+        assert!(report.taken);
+        assert_eq!(report.body(), 0x7091);
+        let troops = report
+            .attackers
+            .columns(crate::assault_report::ReportCategory::Troops);
+        assert_eq!(troops[0].len(), 1);
     }
 }

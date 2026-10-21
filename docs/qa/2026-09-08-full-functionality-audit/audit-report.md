@@ -318,6 +318,12 @@ cross-runtime proof remain open
     window (`FUN_0044c410`) shares the Battle Results frame, rail, Close and
     Display page, with six categories. The same report serves the orbital
     bombardment (`0x7098..0x709a`).
+  - The Assault Summary window ported 2026-10-22 (`assault_report.rs`,
+    `assault_summary.rs`): the attacker's side sees it at once, the other
+    side gets a Conflict message that opens it. A browser gate opens it
+    for both sides, shows each side's forces and closes it with Escape
+    (`evidence/2026-10-22-assault-summary/`). The bombardment summary is
+    not ported.
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 
