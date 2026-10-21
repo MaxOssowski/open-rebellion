@@ -2103,6 +2103,18 @@ cross-runtime proof remain open
   - The acceptance's four slot handlers belong to the tactical module. The
     port's auto-resolve stays `hyp:` until it runs the tactical simulation
     without display.
+- 2026-10-21 (read, second pass): the abstract battle steps the tactical
+  simulation without display.
+  - The mode flag (battle object `+0xc`) reaches the module's `+0x668`
+    (`FUN_0040b0e0` -> `FUN_00595d60` -> `FUN_00599c90` / `FUN_0059a0b0`).
+  - `FUN_0059a530` then calls `FUN_005ae9c0` at a step of 1.0. Each side
+    runs its combat step (slot `+0x14`) and its beaten test (slot `+0x28`).
+  - After 1200 (`DAT_0066c3e0`) with neither side's strength (`+0x3c`)
+    falling, the weaker side withdraws (`FUN_005af7a0`).
+  - The port's tactical simulation lives in `rebellion-render`
+    (`tactical_view.rs`, `BattleSession::step`). Running it for
+    auto-resolve needs it moved to `rebellion-core`: an architecture change
+    to agree first.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.
