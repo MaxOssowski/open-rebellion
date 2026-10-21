@@ -378,3 +378,32 @@ at Coruscant before play. The port's own `0x230` story event is removed.
   on one mission, so no one can learn. A player's multi-character team
   can.
 - All 21 story message classes are now mapped.
+
+## Reading a message class (2026-10-21)
+
+Facts used to port the overnight message stages (`evidence/2026-10-21-*`):
+
+- `FUN_00488de0` maps a queued notification to a message type. A code it
+  does not map has no message at all. Examples: `0x152`, the uprising
+  incident, has none; `0x14d` maps to 1, `0x14e` to 7, `0x105` to `0xd`,
+  `0x107` to `0xe`, `0x160` (count 0) to `0x21`, `0x303` to `0x10`,
+  `0x304` to `0xc`.
+- A class's slot `+0x24` takes two values: the new one first, the old one
+  second. System Joins (`FUN_00499760`) requires the first to be the
+  system's current side; Smuggling (`FUN_00499130`) reads the first as
+  the new percent; Near Uprising (`FUN_00498cb0`) wants the new troop
+  surplus 0 and the old not.
+- Slot `+0x20` takes one value: the new one.
+- `FUN_004f3dd0(viewer, side)` returns a Side, whose text provider
+  (`FUN_0052d920`) gives kind 1 "Alliance"/"Empire" (`0x4d50`/`0x4d51`),
+  kind 2 the full name (`0x4d60`/`0x4d61`) and kind 4 the adjective
+  "Alliance"/"Imperial" (`0x4d70`/`0x4d71`). The decompile drops the
+  arguments; read them in the disassembly. Uprising Begins/Ends passes the
+  holder (`0x4994b6`, `0x4994dd`); Blockade passes the other side
+  (`0x4961a3`, `0x4961c9`).
+- A unit's text provider (`FUN_004f6030`) gives kind 1 its own name, or
+  its class's name when it has none (`FUN_004f62d0`); kind 3 is its
+  class's name.
+- A class sets its message's category mask (`+0x34`), which picks the
+  Message Index rail. Units Deployed and Unit Arrival set it by the
+  unit's family.
