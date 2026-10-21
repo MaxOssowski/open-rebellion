@@ -316,11 +316,6 @@ impl EconomySystem {
         clippy::too_many_lines,
         reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
     )]
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
-    )]
     pub fn advance_with_uprisings(
         state: &mut EconomyState,
         world: &GameWorld,

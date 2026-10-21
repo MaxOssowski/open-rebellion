@@ -1025,6 +1025,7 @@ pub fn arrival_texts(
 /// - a regiment or special force `0x7088` / `0x7089` with a `0x707f` line
 ///   for the unit (special force `0x3c000009` stays silent);
 /// - a facility `0x708c` / `0x708d`.
+///
 /// The unit is the first substitution and the system the second.
 ///
 /// A product bound elsewhere is Deployed when completed (`FUN_0052bee0`),
