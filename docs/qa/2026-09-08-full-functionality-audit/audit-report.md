@@ -981,6 +981,10 @@ cross-runtime proof remain open
   - Research Exhausted (`0x129`-`0x12b`, `FUN_0048abc0`,
     `0x7218`-`0x721b`) follows a tree turning Done (`FUN_0052f440`).
   - Evidence: `evidence/2026-10-21-research-messages/`.
+- 2026-10-21: the yards' own research (the timer `0x381` tally) posts the
+  same Research Complete and Research Exhausted messages as a research
+  mission, through the same points hook
+  (`evidence/2026-10-21-yard-research-messages/`).
 - Acceptance: build lists and manufacturing orders respect the recovered
   research-order gate for both factions.
 

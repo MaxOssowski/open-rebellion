@@ -2993,6 +2993,21 @@ async fn main() {
 
             // ── The yards' own research: each side's timer 0x381 ────────────
             let tally_rolls = [sim_rng.gen::<f64>(), sim_rng.gen::<f64>()];
+            // Each tree's Done flag before the tally (FUN_0052f440 posts
+            // 0x129..0x12b when it turns on).
+            let done_before: Vec<(bool, rebellion_core::research::TechType, bool)> = [true, false]
+                .into_iter()
+                .flat_map(|alliance| {
+                    [
+                        rebellion_core::research::TechType::Ship,
+                        rebellion_core::research::TechType::Troop,
+                        rebellion_core::research::TechType::Facility,
+                    ]
+                    .into_iter()
+                    .map(move |tech| (alliance, tech))
+                })
+                .map(|(alliance, tech)| (alliance, tech, research_state.progress(alliance, tech).done))
+                .collect();
             let tallies = rebellion_core::research::ResearchSystem::advance_tally(
                 &mut research_state,
                 &world,
@@ -3013,16 +3028,52 @@ async fn main() {
                 };
                 let tick = tick_events.last().map_or(0, |event| event.tick);
                 for level in &tally.reached {
-                    // Notification 5, Research Report.
-                    msg_log.push(filed(
-                        GameMessage::new(
-                            tick,
+                    // Notifications 0x125..0x127, Research Complete
+                    // (FUN_00499aa0): the class the level opens.
+                    let (title, text) = match rebellion_render::story_messages::research_complete_texts(
+                        &world,
+                        tally.faction_is_alliance,
+                        tally.tech,
+                        *level,
+                        &message_texts,
+                    ) {
+                        Some((title, body)) => (Some(title), body),
+                        None if message_texts.is_empty() => (
+                            None,
                             format!("{faction_name} {tree_name} tech advanced to level {level}"),
-                            MessageCategory::Event,
-                        )
-                        .with_picture_if(Some(pictures::research())),
+                        ),
+                        None => continue,
+                    };
+                    let mut message = GameMessage::new(tick, text, MessageCategory::Event)
+                        .with_picture_if(Some(pictures::research()));
+                    if let Some(title) = title {
+                        message = message.with_title(title);
+                    }
+                    msg_log.push(filed(
+                        message,
                         MessageRail::Manufacturing,
                         Some(RailAudience::side(tally.faction_is_alliance)),
+                    ));
+                }
+            }
+            // Notifications 0x129..0x12b, Research Exhausted (FUN_0048abc0).
+            for (alliance, tech, was_done) in done_before {
+                if was_done || !research_state.progress(alliance, tech).done {
+                    continue;
+                }
+                if let Some((title, text)) =
+                    rebellion_render::story_messages::research_exhausted_texts(tech, &message_texts)
+                {
+                    msg_log.push(filed(
+                        GameMessage::new(
+                            tick_events.last().map_or(0, |event| event.tick),
+                            text,
+                            MessageCategory::Event,
+                        )
+                        .with_title(title)
+                        .with_picture_if(Some(pictures::research())),
+                        MessageRail::Manufacturing,
+                        Some(RailAudience::side(alliance)),
                     ));
                 }
             }
