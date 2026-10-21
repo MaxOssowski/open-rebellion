@@ -2305,6 +2305,23 @@ cross-runtime proof remain open
     side leaves (`FUN_00516ef0`).
   - The golden is regenerated for this cause (`v1:0174e1ddb8a28d5b` ->
     `v1:00f7cdfb6462bcb2`). Campaigns are unchanged: no tie came up.
+- 2026-10-22 (W2i read): the Death Star in the abstract battle is read
+  (`abstract-battle.md`, "The Death Star in the abstract battle").
+  - The Empire's superlaser charges by dt x 1/3 x 0.001 (`FUN_005ba7f0`).
+    At the abstract step of 1.0 it needs 300,000 steps, so in practice it
+    never fires before the 1200-step stalemate. At full charge it would
+    destroy the first capital ship in the enemy priority list.
+  - The Alliance, with more fighter groups than the Empire and an
+    attackable Death Star, sends its first fighter task force on the
+    trench run (`FUN_005aefc0`).
+    - Each visit rolls 1..10 against maneuverability for damage, then
+      1..100 against (torpedo x 0.5333 x hull ratio + commander value,
+      1..9) x 0.5.
+    - Up to 100 visits; then the members left are destroyed.
+    - Success zeroes the Death Star's hull and destroys the units it
+      carries.
+  - Open: the commander value's source field and the Death Star's carried
+    lists. Read only; no code changes.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

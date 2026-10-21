@@ -353,6 +353,89 @@ is the side commander's `+0x24` = 0.33.
 - `port:` Take Command (the tactical battle) does not yet pass the AI
   side's order to the tactical engine.
 
+## The Death Star in the abstract battle (read 2026-10-22, W2i)
+
+The side commander's step (`FUN_005d14d0`, `0x5d14d0..0x5d161c`) starts
+with the Death Star (`FUN_005a66a0` on the battle). Its fields are `+0x68`
+hull, `+0x6c` laser charge, `+0x70` shielded, `+0x74` destroyed and `+0x78`
+action committed. `FUN_005ba420` (operational) needs `+0x74` clear,
+`+0x68` != 0 and `+0x78` != 1. `FUN_005ba450` (attackable) also needs
+`+0x70` clear.
+
+**Side 1 (the Empire)**, with an operational Death Star:
+
+1. If the charge is not 100 (`DAT_0066d0f4`), `FUN_005ba7f0(dt)` adds
+   `dt x 1/3 (DAT_0066c708) x 0.001 (DAT_0066c718)`, capped at 100
+   (`DAT_0066c71c`). It also needs hull > 0 (`DAT_0066c710`) and `+0x74`
+   clear. Event `0x113` sounds on reaching full charge in display mode
+   (`+0x9ec` == 1).
+2. At 100 the commander refreshes its orders (slot `+0x08`) and walks its
+   enemy list `+0x90` (`FUN_005f5060`; the priority list of "Targets"
+   above). The first unit whose type (slot `+0x20`) is 0, a capital ship,
+   is destroyed (`FUN_005af7a0`), and the charge returns to 0
+   (`FUN_005ba710`).
+
+The abstract step passes dt = 1.0 (`DAT_0066badc`), so the charge grows by
+1/3000 a step and needs 300,000 steps to fill. The stalemate ends a battle
+after 1200 steps without a strength fall (`DAT_0066c3e0`). **In the
+abstract battle the superlaser in practice never fires.** Display mode
+passes milliseconds, which fills the charge in 300 seconds (the port's
+`ORIGINAL_DEATH_STAR_LASER_CHARGE_PER_SECOND`).
+
+**Side 0 (the Alliance)**, with an attackable Death Star:
+
+- If the Empire commander's fighter list (`+0x250` -> `+0x64`) is shorter
+  than the Alliance's (`+0x64`, `FUN_005c5eb0` counts), the commander
+  walks its task forces (`+0x70`, slot `+0x0c` then `+0x04`). The first
+  whose leader's kind (slot `+0x04`) is 4, a fighter group, makes the
+  trench run (`FUN_005aefc0(leader)`). Only one run happens per step.
+
+**The trench run** (`FUN_005aefc0`, `0x5aefc0..0x5af41d`):
+
+1. Take the task force's members (`FUN_005c6100` on the group `+0x1c`).
+   Visit them in a cycle (`FUN_005f6590`, wrapping to the head), counting
+   visits. After the 100th visit every member left is destroyed
+   (`FUN_005af7a0`, `0x5af2d7`) and the run ends.
+2. For the member visited: `m` = its maneuverability (slot `+0xbc`, cast to
+   an integer). Roll `r` = 1..10 (`FUN_005af420(1, 10)`, the battle's
+   stream `DAT_006bc4a8`).
+   - If `r > m`, it is hit. `h` = its hull `+0x3cc` / 8.0 (`DAT_0066c3dc`),
+     as an integer. With `h` <= 1 it is destroyed. Otherwise it takes
+     `(1..h) x 8.0` damage (`FUN_005b54d0`) and is destroyed if its hull
+     falls to 0 or below. A destroyed member leaves the list
+     (`FUN_005c60d0`, its id `+0xec`); an empty list ends the run.
+   - A member still with hull > 0 (`DAT_0066c3e8`), hit or not, tries the
+     shot. `c` = `FUN_005afc00(0)` capped at 9.0 (`DAT_0066c3ec`).
+     `s` = (`FUN_005b23a0(member)` + `c`) x 0.5 (`DAT_0066c3f0`). Roll
+     1..100: at or under `s` (as an integer) the run succeeds.
+3. Success (`0x5af30d`): `FUN_005ba8a0` zeroes the Death Star's charge and
+   hull `+0x68`. Every unit in its lists `+0x38` and `+0x3c` is destroyed
+   (`FUN_005af7a0`), and the run ends.
+4. Otherwise go to the next member.
+
+The terms:
+
+- `FUN_005b23a0`: `FUN_005b1770(+0x134 x 0.53333336 (DAT_0066c4cc))`.
+  That is the FIGHTSD torpedo rating `+0x134` times 0.5333, scaled by
+  hull / full hull (`+0x3cc` / `+0x3c8`, `FUN_005b1770`). The port has the
+  coefficient as `ORIGINAL_FIGHTER_TORPEDO_STRENGTH`.
+- `FUN_005afc00(0)`: the battle's `+0x254` holds side 0's commanding
+  character id. `FUN_005af440` registers a battle person (`FUN_00596c40`,
+  `+0x44` side, `+0x18` id) there when its `+0x58` is set, and at `+0x25c`
+  when `+0x54` is set. The value is that person's `+0x50` minus -1.0
+  (`DAT_0066c3e4`), clamped to 1.0..9.0 (`DAT_0066c3f4`, `DAT_0066c3ec`);
+  with no such person it is 1.0. `FUN_0040c200` builds each person from
+  the character's slots `+0x1f0` and `+0x1f4`, through `FUN_0040d680` and
+  `FUN_0040d670`. Open: which of them lands at `+0x50`, and which flag is
+  `+0x58`.
+- Open: the Death Star's lists `+0x38` and `+0x3c`, which are the units
+  it carries.
+
+In the port, the displayed battle's run (`BattleSession::
+prepare_original_trench_run`, `FUN_005d04e0`) is a different function, with
+its own success rating. The abstract battle has neither the superlaser nor
+the trench run.
+
 ## The port (2026-10-21)
 
 `rebellion-core::abstract_battle` steps a `BattleSession` this way:
