@@ -711,7 +711,11 @@ pub fn smuggling_message(
 pub fn side_parameter(alliance: bool, texts: &HashMap<u16, String>) -> MessageParameter<'_> {
     let text = |alliance_id: u16| {
         texts
-            .get(&if alliance { alliance_id } else { alliance_id + 1 })
+            .get(&if alliance {
+                alliance_id
+            } else {
+                alliance_id + 1
+            })
             .map_or("", String::as_str)
     };
     MessageParameter::Side {
@@ -881,7 +885,12 @@ pub fn research_complete_texts(
                 .find(|value| value.dat_id == class)
                 .map(|value| value.name.clone())
         })
-        .or_else(|| world.buildable_classes.get(&class).map(|value| value.name.clone()))?;
+        .or_else(|| {
+            world
+                .buildable_classes
+                .get(&class)
+                .map(|value| value.name.clone())
+        })?;
     let named = [MessageParameter::Named { name: &name }];
     Some((
         fill_message_text(texts.get(&0x7048)?, &named),
@@ -1619,7 +1628,10 @@ mod tests {
             MessageRail::Defense
         );
         assert_eq!(
-            rail(BuildableKind::ManufacturingFacility(build(0x2800_0001)), false),
+            rail(
+                BuildableKind::ManufacturingFacility(build(0x2800_0001)),
+                false
+            ),
             MessageRail::Manufacturing
         );
         assert_eq!(
@@ -1655,7 +1667,12 @@ mod tests {
             ..CapitalShipClass::default()
         });
         assert_eq!(
-            arrival_texts(&world, BuildableKind::CapitalShip(cruiser), "F'tral", &texts),
+            arrival_texts(
+                &world,
+                BuildableKind::CapitalShip(cruiser),
+                "F'tral",
+                &texts
+            ),
             Some((
                 "Ships arrive at F'tral".into(),
                 "The following ships have arrived at F'tral:\nStrike Cruiser\n".into()
@@ -1670,7 +1687,9 @@ mod tests {
         .unwrap();
         assert_eq!(regiment.0, "Units Arrive at F'tral");
         assert!(
-            regiment.1.starts_with("The following units have arrived at F'tral:\n"),
+            regiment
+                .1
+                .starts_with("The following units have arrived at F'tral:\n"),
             "{regiment:?}"
         );
         assert_eq!(
@@ -1726,7 +1745,8 @@ mod tests {
             ),
             Some((
                 "Facility Lost".into(),
-                "New Mine could not be deployed to Ghorman.  The facility has been scrapped.".into()
+                "New Mine could not be deployed to Ghorman.  The facility has been scrapped."
+                    .into()
             ))
         );
         assert_eq!(
@@ -1745,11 +1765,23 @@ mod tests {
         use rebellion_core::world::{CapitalShipClass, GameWorld};
         let texts: HashMap<u16, String> = [
             (0x7048, "{1:1} Research Complete"),
-            (0x7049, "R&D Reports that the {1:1} is now available for manufacture."),
+            (
+                0x7049,
+                "R&D Reports that the {1:1} is now available for manufacture.",
+            ),
             (0x7218, "Research Exhausted"),
-            (0x7219, "There are no further advances expected in ship construction."),
-            (0x721a, "There are no further advances expected in troop training."),
-            (0x721b, "There are no further advances expected in facility construction."),
+            (
+                0x7219,
+                "There are no further advances expected in ship construction.",
+            ),
+            (
+                0x721a,
+                "There are no further advances expected in troop training.",
+            ),
+            (
+                0x721b,
+                "There are no further advances expected in facility construction.",
+            ),
         ]
         .into_iter()
         .map(|(id, text)| (id, text.to_owned()))
@@ -1801,7 +1833,10 @@ mod tests {
             Some("B-wing Research Complete".into())
         );
         // No class at that order: no message.
-        assert_eq!(research_complete_texts(&world, true, TechType::Ship, 5, &texts), None);
+        assert_eq!(
+            research_complete_texts(&world, true, TechType::Ship, 5, &texts),
+            None
+        );
         assert_eq!(
             research_exhausted_texts(TechType::Troop, &texts),
             Some((
@@ -1826,8 +1861,14 @@ mod tests {
         use rebellion_core::dat::Faction;
         let texts: HashMap<u16, String> = [
             (0x70c8, "{2:1} Destroyed!"),
-            (0x70c9, "The Death Star has destroyed the {1:4} system {3:1}."),
-            (0x70ca, "The Death Star has destroyed the neutral system {2:1}."),
+            (
+                0x70c9,
+                "The Death Star has destroyed the {1:4} system {3:1}.",
+            ),
+            (
+                0x70ca,
+                "The Death Star has destroyed the neutral system {2:1}.",
+            ),
             (0x4d70, "Alliance"),
             (0x4d71, "Imperial"),
         ]
@@ -1876,7 +1917,10 @@ mod tests {
             (0x708c, "{1:1} Deployed at {2:1}"),
             (0x708d, "A new {1:1} has been deployed to {2:1}."),
             (0x708e, "New Death Star Deployed at {2:1}"),
-            (0x708f, "The new Death Star, {1:1}, has been deployed at {2:1}."),
+            (
+                0x708f,
+                "The new Death Star, {1:1}, has been deployed at {2:1}.",
+            ),
         ]
         .into_iter()
         .map(|(id, text)| (id, text.to_owned()))
@@ -1921,14 +1965,22 @@ mod tests {
         let regiment = say(BuildableKind::Troop(DatId::new(0x1000_0003))).unwrap();
         assert!(regiment.0.ends_with(" Deployed to Fondor"), "{regiment:?}");
         assert!(
-            regiment.1.starts_with("The following units have been deployed to Fondor:\n"),
+            regiment
+                .1
+                .starts_with("The following units have been deployed to Fondor:\n"),
             "{regiment:?}"
         );
         assert!(regiment.1.ends_with('\n'), "{regiment:?}");
-        assert_eq!(say(BuildableKind::SpecialForce(DatId::new(0x3c00_0009))), None);
+        assert_eq!(
+            say(BuildableKind::SpecialForce(DatId::new(0x3c00_0009))),
+            None
+        );
         // Every other special force speaks with the regiments' texts.
         let commandos = say(BuildableKind::SpecialForce(DatId::new(0x3c00_0001))).unwrap();
-        assert!(commandos.0.ends_with(" Deployed to Fondor"), "{commandos:?}");
+        assert!(
+            commandos.0.ends_with(" Deployed to Fondor"),
+            "{commandos:?}"
+        );
     }
 
     // FUN_0048be60 (notification 0x160): TEXTSTRA 0x71f8..0x71fd as shipped,
@@ -1939,11 +1991,20 @@ mod tests {
         use rebellion_core::manufacturing::ProductionArea;
         let texts: HashMap<u16, String> = [
             (0x71f8, "Construction Yard Idle on {1:1}"),
-            (0x71f9, "The Construction Yards at {1:1} have completed their assigned tasks."),
+            (
+                0x71f9,
+                "The Construction Yards at {1:1} have completed their assigned tasks.",
+            ),
             (0x71fa, "Training Facility Idle on {1:1}"),
-            (0x71fb, "The Training Facilities at {1:1} are no longer in use."),
+            (
+                0x71fb,
+                "The Training Facilities at {1:1} are no longer in use.",
+            ),
             (0x71fc, "Shipyard Idle on {1:1}"),
-            (0x71fd, "The Shipyards at {1:1} are available for new construction orders."),
+            (
+                0x71fd,
+                "The Shipyards at {1:1} are available for new construction orders.",
+            ),
         ]
         .into_iter()
         .map(|(id, text)| (id, text.to_owned()))
@@ -1981,9 +2042,18 @@ mod tests {
             (0x7038, "{1:1} Joins"),
             (0x7039, "{1:1} Joins Enemy"),
             (0x703a, "{1:1} Declares Neutrality"),
-            (0x703b, "Popular support on {1:1} has caused that world to join the {2:1}."),
-            (0x703c, "Popular dissent on {1:1} has caused that world to join the {2:1}."),
-            (0x703d, "Divided loyalty on {1:1} has caused that world to abandon the {2:4} cause."),
+            (
+                0x703b,
+                "Popular support on {1:1} has caused that world to join the {2:1}.",
+            ),
+            (
+                0x703c,
+                "Popular dissent on {1:1} has caused that world to join the {2:1}.",
+            ),
+            (
+                0x703d,
+                "Divided loyalty on {1:1} has caused that world to abandon the {2:4} cause.",
+            ),
             (0x4d50, "Alliance"),
             (0x4d51, "Empire"),
             (0x4d70, "Alliance"),
@@ -2025,7 +2095,10 @@ mod tests {
             )
         );
         // No change of side, no message.
-        assert_eq!(say(Some(Faction::Empire), Some(Faction::Empire), true), None);
+        assert_eq!(
+            say(Some(Faction::Empire), Some(Faction::Empire), true),
+            None
+        );
         assert_eq!(say(Some(Faction::Neutral), None, true), None);
     }
 
@@ -2073,10 +2146,22 @@ mod tests {
         let texts: HashMap<u16, String> = [
             (0x7194, "New Resources on {1:1}"),
             (0x7196, "Resources Depleted on {1:1}"),
-            (0x7197, "Operations on {1:1} have reduced the system energy available."),
-            (0x7198, "Operations on {1:1} have reduced the number of raw materials on that system."),
-            (0x7199, "New sources of system energy have been discovered on {1:1}."),
-            (0x719a, "New sources of raw materials have been discovered on {1:1}."),
+            (
+                0x7197,
+                "Operations on {1:1} have reduced the system energy available.",
+            ),
+            (
+                0x7198,
+                "Operations on {1:1} have reduced the number of raw materials on that system.",
+            ),
+            (
+                0x7199,
+                "New sources of system energy have been discovered on {1:1}.",
+            ),
+            (
+                0x719a,
+                "New sources of raw materials have been discovered on {1:1}.",
+            ),
         ]
         .into_iter()
         .map(|(id, text)| (id, text.to_owned()))
@@ -2086,7 +2171,8 @@ mod tests {
             say(1),
             Some((
                 "Resources Depleted on Sullust".into(),
-                "Operations on Sullust have reduced the number of raw materials on that system.".into()
+                "Operations on Sullust have reduced the number of raw materials on that system."
+                    .into()
             ))
         );
         assert_eq!(
@@ -2139,8 +2225,14 @@ mod tests {
             "Ord Mantell Near Uprising".to_string(),
             "Unrest has pushed Ord Mantell close to uprising.".to_string(),
         ));
-        assert_eq!(say(Some(Faction::Alliance), true, true, false, 2, 0), warned);
-        assert_eq!(say(Some(Faction::Empire), false, true, false, -1, 0), warned);
+        assert_eq!(
+            say(Some(Faction::Alliance), true, true, false, 2, 0),
+            warned
+        );
+        assert_eq!(
+            say(Some(Faction::Empire), false, true, false, -1, 0),
+            warned
+        );
         // Only the holder hears it.
         assert_eq!(say(Some(Faction::Alliance), false, true, false, 2, 0), None);
         assert_eq!(say(Some(Faction::Empire), true, true, false, 2, 0), None);
@@ -2164,7 +2256,10 @@ mod tests {
             (0x7030, "Uprising Begins on {1:1}"),
             (0x7031, "Uprising Ends on {1:1}"),
             (0x7032, "The uprising on {2:1} has ended."),
-            (0x7033, "An uprising has begun on the {1:4} controlled system {2:1}."),
+            (
+                0x7033,
+                "An uprising has begun on the {1:4} controlled system {2:1}.",
+            ),
             (0x4d50, "Alliance"),
             (0x4d51, "Empire"),
             (0x4d60, "Rebel Alliance"),
@@ -2183,8 +2278,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            uprising_texts("Kessel", Some(Faction::Alliance), true, &texts)
-                .map(|(_, body)| body),
+            uprising_texts("Kessel", Some(Faction::Alliance), true, &texts).map(|(_, body)| body),
             Some("An uprising has begun on the Alliance controlled system Kessel.".into())
         );
         assert_eq!(
@@ -2195,7 +2289,10 @@ mod tests {
             ))
         );
         // A neutral system has no side to name, and its class stays silent.
-        assert_eq!(uprising_texts("Kessel", Some(Faction::Neutral), true, &texts), None);
+        assert_eq!(
+            uprising_texts("Kessel", Some(Faction::Neutral), true, &texts),
+            None
+        );
         assert_eq!(uprising_texts("Kessel", None, true, &texts), None);
         // The provider's other kinds: 1 the name, 2 the full name.
         let side = side_parameter(false, &texts);
@@ -2263,18 +2360,32 @@ mod tests {
         .map(|(id, text)| (id, text.to_owned()))
         .collect();
         let say = |holder, viewer_is_alliance, previous, percent| {
-            smuggling_message("Ord Mantell", holder, viewer_is_alliance, previous, percent, 9, &texts)
-                .map(|m| (m.title.unwrap_or_default(), m.text))
+            smuggling_message(
+                "Ord Mantell",
+                holder,
+                viewer_is_alliance,
+                previous,
+                percent,
+                9,
+                &texts,
+            )
+            .map(|m| (m.title.unwrap_or_default(), m.text))
         };
         // Begins on the viewer's own system: losses.
         assert_eq!(
             say(Some(Faction::Alliance), true, 0, 20),
-            Some(("Smuggling Losses".into(), "Smugglers begin on Ord Mantell.".into()))
+            Some((
+                "Smuggling Losses".into(),
+                "Smugglers begin on Ord Mantell.".into()
+            ))
         );
         // Begins on the other side's: benefits.
         assert_eq!(
             say(Some(Faction::Alliance), false, 0, 20),
-            Some(("Smuggling Benefits".into(), "Smugglers from Ord Mantell help us.".into()))
+            Some((
+                "Smuggling Benefits".into(),
+                "Smugglers from Ord Mantell help us.".into()
+            ))
         );
         // Ends: an Alliance system speaks when it was at least 0.
         assert_eq!(
@@ -2301,7 +2412,10 @@ mod tests {
         assert_eq!(say(None, true, 0, 20), None);
         let message =
             smuggling_message("Ord Mantell", Some(Faction::Empire), true, 0, 5, 9, &texts).unwrap();
-        assert_eq!(message.rail, Some(crate::message_log::MessageRail::PopularSupport));
+        assert_eq!(
+            message.rail,
+            Some(crate::message_log::MessageRail::PopularSupport)
+        );
         assert_eq!(message.audience, RailAudience::Alliance);
     }
 

@@ -485,7 +485,13 @@ mod tests {
             },
         );
         world.systems[system].manufacturing_facilities.push(yard);
-        apply_system_occupation(&mut world, system, Faction::Alliance, 43, &mut MessageLog::default());
+        apply_system_occupation(
+            &mut world,
+            system,
+            Faction::Alliance,
+            43,
+            &mut MessageLog::default(),
+        );
         assert_eq!(world.manufacturing_facilities[yard].side, Faction::Alliance);
     }
 

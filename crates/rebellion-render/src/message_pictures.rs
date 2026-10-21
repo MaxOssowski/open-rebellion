@@ -687,7 +687,10 @@ mod tests {
             Some((0x1103, None))
         );
         // The walk looks for the area's own family (FUN_00520580).
-        assert_eq!(idle_yard(&world, here, ProductionArea::TrainingFacility), None);
+        assert_eq!(
+            idle_yard(&world, here, ProductionArea::TrainingFacility),
+            None
+        );
         assert_eq!(artwork_edata(0x1103), Some(6));
 
         let regiment = BuildableKind::Troop(DatId::new(0x1000_0003));

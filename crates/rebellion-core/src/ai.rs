@@ -356,7 +356,6 @@ pub fn passes_per_day(speed: crate::tick::GameSpeed) -> u32 {
     speed.original_rate().map_or(4, u32::from)
 }
 
-
 // ---------------------------------------------------------------------------
 // GalaxyState — strategic categorization of all systems
 // ---------------------------------------------------------------------------

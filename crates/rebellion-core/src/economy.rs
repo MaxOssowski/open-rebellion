@@ -2662,8 +2662,7 @@ mod tests {
 
         // One side's regiments alone hold it.
         for alliance in [true, false] {
-            let (mut world, sys) =
-                make_singleton_world(0.5, 0.5, ControlKind::Uncontrolled, false);
+            let (mut world, sys) = make_singleton_world(0.5, 0.5, ControlKind::Uncontrolled, false);
             let regiment = world.troops.insert(crate::world::TroopUnit {
                 class_dat_id: DatId(0x1400_0100),
                 is_alliance: alliance,
