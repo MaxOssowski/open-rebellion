@@ -15,11 +15,6 @@ use serde::{Deserialize, Serialize};
 use crate::ids::{FleetKey, SystemKey};
 use crate::world::GameWorld;
 
-/// GNPRTB parameter 0x1400 for combat difficulty scaling.
-/// FUN_0053e190(a,b) computes a*b/100 (DAT_00661a88 is the constant 100).
-/// Value is percentage (100 = 1.0x).
-const GNPRTB_COMBAT_DIFFICULTY_MODIFIER: u16 = 0x1400;
-
 // ---------------------------------------------------------------------------
 // Phase flags
 // ---------------------------------------------------------------------------
@@ -164,7 +159,6 @@ impl CombatSystem {
         attacker: FleetKey,
         defender: FleetKey,
         system: SystemKey,
-        difficulty: u8,
         rng_rolls: &[f64],
         tick: u64,
     ) -> SpaceCombatResult {
@@ -186,18 +180,6 @@ impl CombatSystem {
             || def_ships.iter().any(|s| s.alive && s.weapon_nibble > 0);
         let any_fighters = atk_fighters.iter().any(|&count| count > 0)
             || def_fighters.iter().any(|&count| count > 0);
-
-        // Difficulty modifier: FUN_0053e190 scales combat damage via GNPRTB.
-        let difficulty_mod = {
-            let raw = world
-                .gnprtb
-                .value(GNPRTB_COMBAT_DIFFICULTY_MODIFIER, difficulty);
-            if raw > 0 {
-                f64::from(raw) / 100.0
-            } else {
-                1.0
-            }
-        };
 
         // Phase 3: Weapon fire (FUN_00544030).
         // Gate: ACTIVE && !PHASES_ENABLED — weapon fire runs BEFORE the pipeline is armed.
@@ -255,8 +237,8 @@ impl CombatSystem {
             // Phase 5: Hull damage application (FUN_005443f0, 54 lines, vtable +0x1d0).
             // Overflow damage after shields is applied to hull_current, scaled by difficulty.
             // Death Star ships are immune while shield generator is active (entity 0x25).
-            Self::phase_hull_damage(&mut atk_ships, difficulty_mod);
-            Self::phase_hull_damage(&mut def_ships, difficulty_mod);
+            Self::phase_hull_damage(&mut atk_ships);
+            Self::phase_hull_damage(&mut def_ships);
 
             // Phase 6: Fighter engagement (FUN_005444e0, 53 lines, vtable +0x1d4).
             // Family 0x71 exactly uses alt_shield_path (C++ +0x78 bit7).
@@ -520,19 +502,16 @@ impl CombatSystem {
     /// Applies remaining pending damage (after shield absorption) to hull.
     /// No-op guard: only fires when `pending_damage` > 0 (mirrors C++ check
     /// `new_hull != current_hull` from `FUN_00501490`).
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
-    )]
-    fn phase_hull_damage(ships: &mut [ShipSnap], difficulty_mod: f64) {
+    fn phase_hull_damage(ships: &mut [ShipSnap]) {
         for ship in ships.iter_mut() {
             if !ship.alive || ship.pending_damage == 0 {
                 continue;
             }
 
-            // Scale hull damage by difficulty modifier (FUN_0053e190).
-            let scaled_damage = ((f64::from(ship.pending_damage) * difficulty_mod) as i32).max(1);
-            ship.hull_current = (ship.hull_current - scaled_damage).max(0);
+            // No GNPRTB scales it: 5120 (0x1400), which the port had read
+            // as a damage modifier, is the transit distance divisor
+            // (FUN_0055d8c0, F-033).
+            ship.hull_current = (ship.hull_current - ship.pending_damage).max(0);
             ship.pending_damage = 0;
             ship.pending_ion_damage = 0;
 
@@ -1197,6 +1176,42 @@ mod tests {
     // Source: FUN_00501510 / FUN_005015a0 packed allocation setters and the
     // combat-entry defaults recorded by the recovered phase initializer.
     #[test]
+    fn hull_damage_is_not_scaled_by_gnprtb_5120() {
+        // GNPRTB 5120 (0x1400) divides the transit distance (FUN_0055d8c0);
+        // nothing in the battle reads it (audit F-033). Its stock value is 5.
+        let battle = |gnprtb: GnprtbParams| {
+            let mut world = empty_world();
+            world.gnprtb = gnprtb;
+            let sector = make_sector(&mut world);
+            let sys = make_system(&mut world, sector);
+            let atk_class = make_class(&mut world, 500, 100);
+            let def_class = make_class(&mut world, 500, 100);
+            let atk = make_fleet(&mut world, sys, atk_class, 2, true);
+            let def = make_fleet(&mut world, sys, def_class, 2, false);
+            let result = CombatSystem::resolve_space(&world, atk, def, sys, &[0.5; 200], 1);
+            result
+                .ship_damage
+                .iter()
+                .map(|e| e.hull_before - e.hull_after)
+                .sum::<i32>()
+        };
+        let with_5120 = GnprtbParams::new(vec![GnprtbEntry {
+            parameter_id: 0x1400,
+            development: 5,
+            alliance_sp_easy: 5,
+            alliance_sp_medium: 5,
+            alliance_sp_hard: 5,
+            empire_sp_easy: 5,
+            empire_sp_medium: 5,
+            empire_sp_hard: 5,
+            multiplayer: 5,
+        }]);
+        let damage = battle(GnprtbParams::default());
+        assert!(damage > 0);
+        assert_eq!(battle(with_5120), damage);
+    }
+
+    #[test]
     fn space_combat_consumes_persisted_power_nibbles_with_source_defaults() {
         let mut world = empty_world();
         let sector = make_sector(&mut world);
@@ -1263,58 +1278,8 @@ mod tests {
 
         // Provide ample RNG rolls.
         let rolls: Vec<f64> = vec![0.5; 200];
-        let result = CombatSystem::resolve_space(&world, atk, def, sys, 1, &rolls, 1);
+        let result = CombatSystem::resolve_space(&world, atk, def, sys, &rolls, 1);
         assert_eq!(result.winner, CombatSide::Attacker);
-    }
-
-    #[test]
-    fn space_combat_difficulty_scales_hull_damage() {
-        // FUN_0053e190(a, b) = a * b / 100 (DAT_00661a88 is 100); GNPRTB
-        // 0x1400 as its second argument is not yet traced to a caller.
-        let mut world = empty_world();
-        let sector = make_sector(&mut world);
-        let sys = make_system(&mut world, sector);
-
-        // Set up GNPRTB with difficulty-varying modifier.
-        world.gnprtb = GnprtbParams::new(vec![GnprtbEntry {
-            parameter_id: 0x1400,
-            development: 100,
-            alliance_sp_easy: 50,
-            alliance_sp_medium: 100,
-            alliance_sp_hard: 200,
-            empire_sp_easy: 100,
-            empire_sp_medium: 100,
-            empire_sp_hard: 100,
-            multiplayer: 100,
-        }]);
-
-        let atk_class = make_class(&mut world, 500, 100);
-        let def_class = make_class(&mut world, 500, 100);
-        let atk = make_fleet(&mut world, sys, atk_class, 2, true);
-        let def = make_fleet(&mut world, sys, def_class, 2, false);
-
-        // Run at easy difficulty (0.5x damage).
-        let rolls: Vec<f64> = vec![0.5; 200];
-        let easy_result = CombatSystem::resolve_space(&world, atk, def, sys, 1, &rolls, 1);
-        let easy_total_damage: i32 = easy_result
-            .ship_damage
-            .iter()
-            .map(|e| e.hull_before - e.hull_after)
-            .sum();
-
-        // Run at hard difficulty (2.0x damage) with same rolls.
-        let hard_result = CombatSystem::resolve_space(&world, atk, def, sys, 3, &rolls, 1);
-        let hard_total_damage: i32 = hard_result
-            .ship_damage
-            .iter()
-            .map(|e| e.hull_before - e.hull_after)
-            .sum();
-
-        // Hard should deal more total damage than easy.
-        assert!(
-            hard_total_damage > easy_total_damage,
-            "Hard difficulty damage ({hard_total_damage}) should exceed easy ({easy_total_damage})"
-        );
     }
 
     // -----------------------------------------------------------------------
@@ -1379,7 +1344,7 @@ mod tests {
         let def = make_fleet_with_fighters(&mut world, sys, ship_class, 2, fc_clumsy, 10, false);
 
         let rolls: Vec<f64> = vec![0.8; 200];
-        let result = CombatSystem::resolve_space(&world, atk, def, sys, 1, &rolls, 1);
+        let result = CombatSystem::resolve_space(&world, atk, def, sys, &rolls, 1);
 
         // Nimble side should lose fewer fighters.
         let atk_losses: u32 = result
@@ -1419,12 +1384,7 @@ mod tests {
         let defender = make_fleet(&mut world, sys, defender_class, 1, false);
 
         let result = CombatSystem::resolve_space(
-            &world,
-            attacker,
-            defender,
-            sys,
-            1,
-            &vec![0.5; 200],
+            &world, attacker, defender, sys, &vec![0.5; 200],
             1,
         );
 
@@ -1461,12 +1421,7 @@ mod tests {
         let screen = make_fleet(&mut world, sys, screen_class, 1, false);
 
         let result = CombatSystem::resolve_space(
-            &world,
-            fighter_wing,
-            screen,
-            sys,
-            1,
-            &[0.5; 200],
+            &world, fighter_wing, screen, sys, &[0.5; 200],
             1,
         );
 
@@ -1504,7 +1459,7 @@ mod tests {
         );
 
         let result =
-            CombatSystem::resolve_space(&world, attacker, defender, sys, 1, &[0.5; 200], 1);
+            CombatSystem::resolve_space(&world, attacker, defender, sys, &[0.5; 200], 1);
 
         assert_eq!(result.winner, CombatSide::Defender);
         assert!(result.fighter_losses.iter().any(|event| {
@@ -1546,7 +1501,7 @@ mod tests {
         let def = make_fleet(&mut world, sys, def_class, 1, false);
 
         let rolls: Vec<f64> = vec![0.5; 300];
-        let result = CombatSystem::resolve_space(&world, atk, def, sys, 1, &rolls, 1);
+        let result = CombatSystem::resolve_space(&world, atk, def, sys, &rolls, 1);
 
         // After recall, attacker should have at most 2 surviving fighters (carrier cap).
         let total_original: u32 = world.fleets[atk].fighters.iter().map(|e| e.count).sum();
@@ -1592,7 +1547,7 @@ mod tests {
         let def = make_fleet(&mut world, sys, strong_class, 3, false);
 
         let rolls: Vec<f64> = vec![0.5; 300];
-        let result = CombatSystem::resolve_space(&world, atk, def, sys, 1, &rolls, 1);
+        let result = CombatSystem::resolve_space(&world, atk, def, sys, &rolls, 1);
 
         // Attacker carrier should be destroyed — all surviving fighters lost during recall.
         let atk_ship_destroyed = result
@@ -1626,7 +1581,7 @@ mod tests {
         let def = make_fleet(&mut world, sys, class, 2, false);
 
         let rolls: Vec<f64> = vec![0.5; 200];
-        let result = CombatSystem::resolve_space(&world, atk, def, sys, 1, &rolls, 1);
+        let result = CombatSystem::resolve_space(&world, atk, def, sys, &rolls, 1);
         assert!(
             result.fighter_losses.is_empty(),
             "no fighter losses expected when neither fleet has fighters"
@@ -1647,7 +1602,7 @@ mod tests {
         let def = make_fleet(&mut world, sys, ship_class, 2, false);
 
         let rolls: Vec<f64> = vec![0.5; 300];
-        let result = CombatSystem::resolve_space(&world, atk, def, sys, 1, &rolls, 1);
+        let result = CombatSystem::resolve_space(&world, atk, def, sys, &rolls, 1);
 
         // Attacker should not lose fighters in dogfight (no enemy fighters).
         let atk_fighter_losses: u32 = result
@@ -1708,7 +1663,7 @@ mod tests {
             alive: true,
         }];
         CombatSystem::phase_shield_absorb(&mut ships);
-        CombatSystem::phase_hull_damage(&mut ships, 1.0);
+        CombatSystem::phase_hull_damage(&mut ships);
         assert_eq!(ships[0].shield_current, 50);
         assert_eq!(ships[0].hull_current, 100);
         assert!(ships[0].alive);
@@ -1730,7 +1685,7 @@ mod tests {
         CombatSystem::phase_shield_absorb(&mut ships);
         assert_eq!(ships[0].shield_current, 0);
         assert!(ships[0].pending_damage > 0);
-        CombatSystem::phase_hull_damage(&mut ships, 1.0);
+        CombatSystem::phase_hull_damage(&mut ships);
         assert!(ships[0].hull_current < 100);
         assert!(ships[0].hull_current > 0);
     }
@@ -1784,7 +1739,7 @@ mod tests {
         }];
         CombatSystem::phase_shield_absorb(&mut ships);
         assert_eq!(ships[0].shield_current, 145);
-        CombatSystem::phase_hull_damage(&mut ships, 1.0);
+        CombatSystem::phase_hull_damage(&mut ships);
         assert_eq!(ships[0].hull_current, 100);
     }
 
@@ -1803,7 +1758,7 @@ mod tests {
         }];
         CombatSystem::phase_shield_absorb(&mut ships);
         assert_eq!(ships[0].pending_damage, 60);
-        CombatSystem::phase_hull_damage(&mut ships, 1.0);
+        CombatSystem::phase_hull_damage(&mut ships);
         assert_eq!(ships[0].hull_current, 40);
     }
 
@@ -1821,7 +1776,7 @@ mod tests {
             alive: true,
         }];
         CombatSystem::phase_shield_absorb(&mut ships);
-        CombatSystem::phase_hull_damage(&mut ships, 1.0);
+        CombatSystem::phase_hull_damage(&mut ships);
         assert!(ships[0].alive);
         assert_eq!(ships[0].hull_current, 50);
         assert_eq!(ships[0].shield_current, 100);
@@ -1838,7 +1793,7 @@ mod tests {
         let def = make_fleet(&mut world, sys, def_class, 1, false);
 
         let rolls: Vec<f64> = vec![0.5; 200];
-        let result = CombatSystem::resolve_space(&world, atk, def, sys, 1, &rolls, 1);
+        let result = CombatSystem::resolve_space(&world, atk, def, sys, &rolls, 1);
 
         let atk_damage: i32 = result
             .ship_damage
@@ -1870,7 +1825,7 @@ mod tests {
 
         let rolls: Vec<f64> = vec![0.5; 200];
         let result_ion =
-            CombatSystem::resolve_space(&world, ion_atk, target1, sys, 1, &rolls, 1);
+            CombatSystem::resolve_space(&world, ion_atk, target1, sys, &rolls, 1);
 
         let mut world2 = empty_world();
         let sector2 = make_sector(&mut world2);
@@ -1881,7 +1836,7 @@ mod tests {
         let target2 = make_fleet(&mut world2, sys2, target_class2, 1, false);
 
         let result_turbo =
-            CombatSystem::resolve_space(&world2, turbo_atk, target2, sys2, 1, &rolls, 1);
+            CombatSystem::resolve_space(&world2, turbo_atk, target2, sys2, &rolls, 1);
 
         let ion_hull_damage: i32 = result_ion
             .ship_damage
@@ -1951,7 +1906,7 @@ mod tests {
         world.systems[sys].fleets.push(ds_fleet);
 
         let result =
-            CombatSystem::resolve_space(&world, atk, ds_fleet, sys, 1, &[0.5; 200], 1);
+            CombatSystem::resolve_space(&world, atk, ds_fleet, sys, &[0.5; 200], 1);
 
         let ds_damage: i32 = result
             .ship_damage

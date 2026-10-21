@@ -2232,7 +2232,6 @@ async fn main() {
                     atk_fleet,
                     def_fleet,
                     sys_key,
-                    world.difficulty_index,
                     &combat_rolls,
                     current_tick,
                 );
@@ -6211,7 +6210,6 @@ async fn main() {
                                 session.attacker_fleet,
                                 session.defender_fleet,
                                 session.system,
-                                world.difficulty_index,
                                 &combat_rolls,
                                 session.start_tick,
                             );

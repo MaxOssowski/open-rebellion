@@ -1,0 +1,5 @@
+thread 'combat::tests::hull_damage_is_not_scaled_by_gnprtb_5120' (122410) panicked at crates/rebellion-core/src/combat.rs:1213:9:
+assertion `left == right` failed
+  left: 16
+ right: 360
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1420 filtered out; finished in 0.00s

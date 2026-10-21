@@ -259,7 +259,6 @@ pub fn run_simulation_tick(
         let space_result = resolve_system_space_combat(
             world,
             sys_key,
-            world.difficulty_index,
             &combat_rolls,
             current_tick,
         );

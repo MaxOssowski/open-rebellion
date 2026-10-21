@@ -2083,6 +2083,13 @@ cross-runtime proof remain open
   ported. The "space combat" pipeline `FUN_005457f0` → `FUN_00549910` is the
   mission manager's story path (`FUN_005438a0`), not the battle's
   (`evidence/2026-10-15-squadron-battles/`).
+- 2026-10-21: the 5120 misuse is removed. GNPRTB 5120 (`0x1400`) is the
+  transit distance divisor (`FUN_0055d8c0`); `resolve_space` had scaled
+  every hull hit by 5 / 100. The modifier and its difficulty argument are
+  gone, and a test fails with the scaling put back. 20 of 24 campaigns
+  change: battles 960 -> 901, rounds 1855 -> 1650, capital ships lost
+  451 -> 401. The golden has no battle
+  (`evidence/2026-10-21-combat-5120-removed/`).
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.
