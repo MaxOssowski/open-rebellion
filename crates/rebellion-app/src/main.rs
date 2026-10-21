@@ -3221,12 +3221,14 @@ async fn main() {
                     fleet,
                     ship_index,
                     hull_after,
+                    hits_after,
                     ..
                 } = evt
                 {
                     if let Some(f) = world.fleets.get_mut(*fleet) {
                         if let Some(ship) = f.capital_ships.get_mut(*ship_index) {
                             ship.hull_current = *hull_after;
+                            ship.subsystem_hits = *hits_after;
                         }
                     }
                 }

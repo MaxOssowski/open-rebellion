@@ -8,16 +8,21 @@
 //! `FUN_005010a0`). FastRepair (`FUN_0050c580`) holds at a system of the
 //! ship's side whose manager has a usable, unsuspended yard (`FUN_0050bb70`,
 //! `FUN_00528040(0)`, system `+0x88` bit `0x400`); a change of it rebuilds
-//! the timer from that day (`FUN_00557860` -> `FUN_00557c30`). Each fire
-//! (`FUN_00501c50`) repairs a tenth of the class's hull (`FUN_00500550`,
-//! `FUN_00501b70`).
+//! the timer from that day (`FUN_00557860` -> `FUN_00557c30`). A ship is
+//! Damaged with hull damage or any subsystem hit (`FUN_00501c00`). Each
+//! fire (`FUN_00501c50`) repairs a tenth of the class's hull
+//! (`FUN_00500550`, `FUN_00501b70`), then, on a roll of 0..99 under the
+//! class's `damage_control`, one subsystem hit chosen evenly among them
+//! ([`repair_hit`], `ghidra/notes/ship-subsystem-damage.md`).
 //!
 //! port:
 //! - a fleet in hyperspace is in no system's list, which stands for the
 //!   ship's en route bit;
 //! - a ship still unnumbered (id 0) waits for its id;
-//! - the port keeps no subsystem damage nibbles and no partial squadron
-//!   damage, so a fire repairs only the hull and squadrons have no timer;
+//! - the port keeps no partial squadron damage, so squadrons have no timer;
+//! - a fire's draws come from a `SplitMix64` stream seeded by the day and
+//!   the ship's id (the original draws from its game generator,
+//!   `FUN_005f5700`);
 //! - the delay spread is not set (hyp: 0).
 //!
 //! # Advance contract
@@ -51,6 +56,9 @@ pub enum RepairEvent {
         ship_index: usize,
         hull_before: i32,
         hull_after: i32,
+        /// The ship's `+0x64` hit counters after the fire.
+        #[serde(default)]
+        hits_after: u32,
     },
     /// Repair started for damaged ships in one fleet: their timers were
     /// armed. Never emitted for a healthy fleet.
@@ -188,8 +196,8 @@ impl RepairSystem {
                     continue;
                 };
                 let hull = i32::try_from(class.hull).unwrap_or(i32::MAX);
-                // Damaged.
-                if ship.hull_current >= hull {
+                // Damaged (FUN_00501c00): hull damage or a subsystem hit.
+                if ship.hull_current >= hull && ship.subsystem_hits == 0 {
                     continue;
                 }
                 under_repair.insert(ship.id);
@@ -213,13 +221,17 @@ impl RepairSystem {
                 }
                 timer.due += period(fast);
                 // FUN_00501c50 -> FUN_00501b70: damage less a tenth of the
-                // class hull.
+                // class hull (a whole hull stays whole).
                 let hull_after = (ship.hull_current + hull / 10).min(hull);
+                let mut draws = FireDraws::new(tick, ship.id);
+                let hits_after =
+                    repair_hit(ship.subsystem_hits, class.damage_control, |m| draws.draw(m));
                 events.push(RepairEvent::ShipRepaired {
                     fleet: fleet_key,
                     ship_index,
                     hull_before: ship.hull_current,
                     hull_after,
+                    hits_after,
                 });
             }
             if armed > 0 {
@@ -238,6 +250,61 @@ impl RepairSystem {
             .retain(|fleet| repairing_now.contains(fleet));
         state.active_fleets.extend(repairing_now);
         events
+    }
+}
+
+/// `FUN_00501c50`'s subsystem step on the `+0x64` counters `hits`. With `n`
+/// hits (`FUN_005006a0`), a roll of 0..99 (`FUN_0053e2e0`,
+/// `DAT_00661a88` = 100) under `damage_control` (class `+0xd8`,
+/// `FUN_00558680`) draws `r` in 0..`n`-1 (`FUN_0053e290(n - 1)`). The
+/// counters, in bit order, give `r` up while they do not exceed it; the
+/// first above it drops by one. `draw(m)` gives 0..`m`-1.
+pub fn repair_hit(hits: u32, damage_control: u32, mut draw: impl FnMut(u32) -> u32) -> u32 {
+    use crate::world::{ShipInstance, Subsystem};
+    let mut ship = ShipInstance::new(crate::ids::CapitalShipKey::default(), 0, false);
+    ship.subsystem_hits = hits;
+    let n: u32 = Subsystem::ALL
+        .iter()
+        .map(|&s| u32::from(ship.hits(s)))
+        .sum();
+    if n == 0 || draw(DAMAGE_CONTROL_ROLL) >= damage_control {
+        return hits;
+    }
+    let mut r = draw(n);
+    for subsystem in Subsystem::ALL {
+        let count = u32::from(ship.hits(subsystem));
+        if count == 0 || count <= r {
+            r -= count;
+            continue;
+        }
+        ship.set_hits(subsystem, ship.hits(subsystem) - 1);
+        break;
+    }
+    ship.subsystem_hits
+}
+
+/// `DAT_00661a88` (100): the damage-control roll's range (`FUN_0053e2e0`).
+const DAMAGE_CONTROL_ROLL: u32 = 100;
+
+/// port: one repair fire's draws, a `SplitMix64` stream seeded by the day
+/// and the ship's id, in place of the game generator (`FUN_005f5700`).
+struct FireDraws(u64);
+
+impl FireDraws {
+    /// port: the seed mixes the day with the ship's id (golden-ratio step).
+    fn new(tick: u64, ship_id: u64) -> Self {
+        Self(tick.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ ship_id)
+    }
+
+    /// port: `SplitMix64`'s step and mix, as `bombardment::BombardEnv::draw`;
+    /// a draw from 0 to `m - 1`.
+    fn draw(&mut self, m: u32) -> u32 {
+        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^= z >> 31;
+        u32::try_from(z % u64::from(m.max(1))).unwrap_or(0)
     }
 }
 
@@ -345,6 +412,91 @@ mod tests {
                 RepairEvent::RepairCheckPerformed { .. } => None,
             })
             .collect()
+    }
+
+    // port: a fire's draws are SplitMix64 (the reference outputs from seed
+    // 0 are 0xe220a8397b1dcdaf, 0x6e789e6aa1b965f4, 0x06c45d188009454f),
+    // seeded by the day times the golden-ratio step, xor the ship's id.
+    #[test]
+    fn a_fires_draws_follow_splitmix64() {
+        let mut draws = FireDraws::new(0, 0);
+        assert_eq!(
+            [draws.draw(1000), draws.draw(1000), draws.draw(1000)],
+            [535, 700, 679]
+        );
+        let mut draws = FireDraws::new(0, 0);
+        assert_eq!([draws.draw(7), draws.draw(7), draws.draw(7)], [2, 1, 2]);
+        assert_eq!(FireDraws::new(0, 0).draw(0), 0);
+        assert_eq!(FireDraws::new(2, 5).0, 2u64.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ 5);
+    }
+
+    // FUN_00501c50: with n hits, a roll of 0..99 under damage_control draws
+    // r in 0..n-1; the counters, in bit order, give r up while they do not
+    // exceed it, and the first above it drops by one.
+    #[test]
+    fn a_fire_mends_the_hit_its_draw_falls_on() {
+        use crate::world::Subsystem;
+        // Shield 1, weapon 2, speed 1: n = 4.
+        let mut ship = ShipInstance::new(crate::ids::CapitalShipKey::default(), 0, false);
+        ship.set_hits(Subsystem::Shield, 1);
+        ship.set_hits(Subsystem::Weapon, 2);
+        ship.set_hits(Subsystem::Speed, 1);
+        let hits = ship.subsystem_hits;
+        let mend = |roll: u32, r: u32| {
+            let mut draws = vec![roll, r].into_iter();
+            let mut bounds = Vec::new();
+            let after = repair_hit(hits, 30, |m| {
+                bounds.push(m);
+                draws.next().unwrap()
+            });
+            (after, bounds)
+        };
+        let (after, bounds) = mend(0, 0);
+        assert_eq!(bounds, [100, 4]);
+        assert_eq!(after, 0x1020);
+        assert_eq!(mend(29, 1).0, 0x1011);
+        assert_eq!(mend(29, 2).0, 0x1011);
+        assert_eq!(mend(29, 3).0, 0x0021);
+        // A roll at or over damage_control mends nothing.
+        let (after, bounds) = mend(30, 0);
+        assert_eq!((after, bounds), (hits, vec![100]));
+        // With no hit nothing is drawn.
+        let mut drawn = 0;
+        assert_eq!(
+            repair_hit(0, 100, |_| {
+                drawn += 1;
+                0
+            }),
+            0
+        );
+        assert_eq!(drawn, 0);
+    }
+
+    // FUN_00501c00: a ship whole of hull but with a subsystem hit is Damaged,
+    // goes under repair, and its fires skip the hull.
+    #[test]
+    fn a_ship_with_only_subsystem_hits_is_repaired() {
+        let mut world = GameWorld {
+            gnprtb: gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, true);
+        let fleet = fleet(&mut world, sys, 200);
+        world.capital_ship_classes[world.fleets[fleet].capital_ships[0].class].damage_control = 100;
+        world.fleets[fleet].capital_ships[0].set_hits(crate::world::Subsystem::Tractor, 1);
+        let mut state = RepairState::default();
+        let _ = RepairSystem::advance(&mut state, &world, &day(10));
+        assert!(state.is_repairing(fleet));
+        let fired = RepairSystem::advance(&mut state, &world, &day(12));
+        assert!(fired.iter().any(|event| matches!(
+            event,
+            RepairEvent::ShipRepaired {
+                hull_before: 200,
+                hull_after: 200,
+                hits_after: 0,
+                ..
+            }
+        )));
     }
 
     #[test]

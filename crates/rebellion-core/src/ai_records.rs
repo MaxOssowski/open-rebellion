@@ -699,13 +699,14 @@ fn ship_record(
 /// Whether a capital ship is damaged (object `+0x50` bit `0x200`,
 /// `GameObj_SetDamaged`): `FUN_00501c00` sets it while its hull damage
 /// (slot `+0x274`, `+0x60`) or a system damage nibble (`FUN_005006a0`,
-/// `+0x64`) is not 0. port: the port keeps hull damage alone.
+/// `+0x64`) is not 0.
 #[must_use]
 pub fn ship_damaged(classes: &ClassRecords, ship: &crate::world::ShipInstance) -> bool {
     ship.alive
-        && classes
-            .ship(ship.class)
-            .is_some_and(|c| ship.hull_current < c.values[4])
+        && (ship.subsystem_hits != 0
+            || classes
+                .ship(ship.class)
+                .is_some_and(|c| ship.hull_current < c.values[4]))
 }
 
 /// `FUN_00484630`'s bits for a person aboard, from its record's `+0x30`.
@@ -2571,6 +2572,25 @@ mod tests {
             4 | FLEET_OWN | FLEET_STANDING | 0x8000 | 0x2_0000 | 0x4_0000 | 0x8_0000 | 0x10_0000
         );
         assert_eq!(build(false).flags & FLEET_OWN, 0);
+    }
+
+    // FUN_00501c00: a ship is Damaged by hull damage or by any +0x64 hit
+    // counter (FUN_005006a0).
+    #[test]
+    fn a_ship_with_a_subsystem_hit_counts_as_damaged() {
+        let mut world = GameWorld::default();
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            hull: 500,
+            ..CapitalShipClass::default()
+        });
+        let classes = ClassRecords::build(&world);
+        let mut ship = crate::world::ShipInstance::new(class, 500, true);
+        assert!(!ship_damaged(&classes, &ship));
+        ship.set_hits(crate::world::Subsystem::Weapon, 1);
+        assert!(ship_damaged(&classes, &ship));
+        ship.subsystem_hits = 0;
+        ship.hull_current = 499;
+        assert!(ship_damaged(&classes, &ship));
     }
 
     #[test]

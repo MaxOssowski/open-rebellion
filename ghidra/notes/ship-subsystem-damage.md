@@ -101,4 +101,7 @@ under repair too, and its fires skip step 1.
   abstract battle and after a tactical one.
 - `movement::ship_speed` is `FUN_00500820`. Fleets and the AI's ship
   records use it.
-- Repair does not yet lower the counters (D3).
+- D3: a repair fire lowers one counter as above (`repair::repair_hit`).
+  Damaged includes the counters (`repair.rs`, `ai_records::ship_damaged`).
+  `port:` the fire's draws come from a `SplitMix64` stream seeded by the
+  day and the ship's id.

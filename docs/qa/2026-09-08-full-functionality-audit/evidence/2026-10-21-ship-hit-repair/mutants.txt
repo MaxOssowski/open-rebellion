@@ -1,0 +1,15 @@
+run 1:
+crates/rebellion-core/src/repair.rs:225:55: replace < with <= in RepairSystem::advance
+crates/rebellion-core/src/repair.rs:306:9: replace FireDraws::draw -> u32 with 0
+crates/rebellion-core/src/repair.rs:308:16: replace ^ with | in FireDraws::draw
+crates/rebellion-core/src/repair.rs:308:16: replace ^ with & in FireDraws::draw
+crates/rebellion-core/src/repair.rs:308:21: replace >> with << in FireDraws::draw
+crates/rebellion-core/src/repair.rs:309:16: replace ^ with | in FireDraws::draw
+crates/rebellion-core/src/repair.rs:309:16: replace ^ with & in FireDraws::draw
+crates/rebellion-core/src/repair.rs:309:21: replace >> with << in FireDraws::draw
+crates/rebellion-core/src/repair.rs:310:11: replace ^= with |= in FireDraws::draw
+crates/rebellion-core/src/repair.rs:310:11: replace ^= with &= in FireDraws::draw
+crates/rebellion-core/src/repair.rs:310:16: replace >> with << in FireDraws::draw
+crates/rebellion-core/src/repair.rs:311:25: replace % with / in FireDraws::draw
+crates/rebellion-core/src/repair.rs:311:25: replace % with + in FireDraws::draw
+final: 39 tested, 38 caught, 1 unviable, 0 missed

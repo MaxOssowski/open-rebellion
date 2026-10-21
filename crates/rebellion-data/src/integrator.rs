@@ -1910,11 +1910,13 @@ impl PerceptionIntegrator {
                     ship_index,
                     hull_before,
                     hull_after,
+                    hits_after,
                 } => {
-                    // Apply hull restoration to the ShipInstance.
+                    // Apply hull and subsystem repair to the ShipInstance.
                     if let Some(f) = world.fleets.get_mut(*fleet) {
                         if let Some(ship) = f.capital_ships.get_mut(*ship_index) {
                             ship.hull_current = *hull_after;
+                            ship.subsystem_hits = *hits_after;
                         }
                     }
                     let fleet_name = world
@@ -5686,6 +5688,30 @@ mod combat_application_tests {
         assert!(!world.fleets[defender].has_death_star);
         assert_eq!(world.fleets[defender].capital_ships.len(), 1);
         assert_eq!(world.fleets[defender].capital_ships[0].class, escort_class);
+    }
+
+    // FUN_00501c50: a repair fire's hull and subsystem counters reach the
+    // ship.
+    #[test]
+    fn a_repair_fire_writes_the_hull_and_the_hit_counters() {
+        let mut world = GameWorld::default();
+        let system = add_combat_system(&mut world);
+        let fleet = add_ship_fleet(&mut world, system, true, 100, 10);
+        world.fleets[fleet].capital_ships[0].hull_current = 50;
+        world.fleets[fleet].capital_ships[0].subsystem_hits = 0x11;
+        let mut integrator = PerceptionIntegrator::new(3, 0);
+        integrator.apply_repair_events(
+            &mut world,
+            &[RepairEvent::ShipRepaired {
+                fleet,
+                ship_index: 0,
+                hull_before: 50,
+                hull_after: 60,
+                hits_after: 0x10,
+            }],
+        );
+        let ship = &world.fleets[fleet].capital_ships[0];
+        assert_eq!((ship.hull_current, ship.subsystem_hits), (60, 0x10));
     }
 
     // FUN_0040cfc0: a surviving ship takes its hull and its +0x64 hit

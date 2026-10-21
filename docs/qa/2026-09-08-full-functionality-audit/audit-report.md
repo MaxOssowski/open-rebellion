@@ -2096,6 +2096,13 @@ cross-runtime proof remain open
     - `movement::ship_speed` follows `FUN_00500820`.
     - 20 campaigns change (battles 2080 -> 2146); the golden is regenerated
       for v103.
+  - 2026-10-21 (D3): repair mends subsystem hits
+    (`evidence/2026-10-21-ship-hit-repair/`).
+    - A ship with any hit counts as Damaged (`FUN_00501c00`).
+    - Each fire, on a roll under `damage_control`, lowers one hit chosen
+      evenly (`FUN_00501c50`).
+    - `port:` the draws come from SplitMix64.
+    - All 24 campaigns change (battles 2146 -> 2025).
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.
