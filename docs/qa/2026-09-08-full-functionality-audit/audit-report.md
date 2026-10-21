@@ -2090,6 +2090,19 @@ cross-runtime proof remain open
   change: battles 960 -> 901, rounds 1855 -> 1650, capital ships lost
   451 -> 401. The golden has no battle
   (`evidence/2026-10-21-combat-5120-removed/`).
+- 2026-10-21 (read, `ghidra/notes/battle-flow.md`): the original has no
+  separate strategic combat formula.
+  - `FUN_0040a050`'s states ask each side's player for the battle type
+    (`FUN_004362b0`).
+  - Tactical (state 7) and abstract (state 8) both build the battle
+    (`FUN_0040b0e0`) and run the tactical module (`FUN_00596820` ->
+    `FUN_00597530(10)`, `FUN_0059a530`).
+  - `FUN_0040c780` reads its result (`FUN_005969d0`), stores the winner
+    (`FUN_0050ceb0`) and applies the losses to fleets, ships and
+    squadrons.
+  - The acceptance's four slot handlers belong to the tactical module. The
+    port's auto-resolve stays `hyp:` until it runs the tactical simulation
+    without display.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

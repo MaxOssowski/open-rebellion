@@ -6,6 +6,12 @@ created: 2026-03-13
 updated: 2026-03-16
 ---
 
+> **Misread (2026-10-21).** The functions below (`FUN_005442f0`,
+> `FUN_00544030`, `FUN_00544130`, `FUN_00544da0`, `FUN_005445d0`) are
+> `MissionMgr` methods that test story flags at `+0x58`, not combat
+> phases. A battle is resolved by the tactical module in both tactical and
+> abstract mode: `battle-flow.md`.
+
 # Space Combat Auto-Resolve
 
 > **Correction (2026-10-15).** `FUN_005457f0` runs `FUN_00549910` only when

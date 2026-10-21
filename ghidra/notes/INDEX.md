@@ -35,7 +35,8 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 
 | File | Subsystem | Key Functions |
 |------|-----------|---------------|
-| [space-combat.md](space-combat.md) | Space combat auto-resolve — 7-phase pipeline | FUN_00549910, FUN_00544030, FUN_00544130, FUN_005443f0, FUN_005444e0, FUN_005445d0 |
+| [space-combat.md](space-combat.md) | Misread: its "7-phase pipeline" is MissionMgr story steps, not combat (see battle-flow.md) | FUN_00549910, FUN_00544030, FUN_00544130, FUN_005443f0, FUN_005444e0, FUN_005445d0 |
+| [battle-flow.md](battle-flow.md) | A battle from start to result: FUN_0040a050's states, the tactical or abstract choice, both run the tactical module, FUN_0040c780 applies its result | FUN_0040a050, FUN_004362b0, FUN_0040b0e0, FUN_0040c780, FUN_005969d0, FUN_0050ceb0 |
 | [tactical-impact-effect-path.md](tactical-impact-effect-path.md) | Tactical hit, damage, and destruction sprite dispatch | FUN_005a7500, FUN_005d39a0, FUN_005d3e90, FUN_005d41a0 |
 | [tactical-projectile-field-path.md](tactical-projectile-field-path.md) | Retained projectile geometry, interpolation, and tractor/gravity fields | FUN_005d3de0, FUN_005ee590, LAB_005eeb90, FUN_005d3ac0, FUN_005d3cc0 |
 | [tactical-subsystem-field-command-path.md](tactical-subsystem-field-command-path.md) | Selected-capital subsystem bands and exact tractor/gravity source identity | FUN_005e45f0, FUN_005e7540, FUN_005e77c0, FUN_005b23e0 through FUN_005b25d0 |
