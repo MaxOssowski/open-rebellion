@@ -2103,6 +2103,10 @@ cross-runtime proof remain open
       evenly (`FUN_00501c50`).
     - `port:` the draws come from SplitMix64.
     - All 24 campaigns change (battles 2146 -> 2025).
+  - 2026-10-21 (D4): the AI's ship record uses the recharge after hits
+    (`FUN_004738d0`, `FUN_00473910`, GNPRTB 2048; evidence
+    `2026-10-21-ai-recharge-hits/`). 14 campaigns change (battles
+    2025 -> 1855).
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.

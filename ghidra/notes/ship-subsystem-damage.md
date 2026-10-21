@@ -82,6 +82,18 @@ ship counts as damaged when it has hull damage (slot `+0x274`) or any hit
 counter (`FUN_005006a0` > 0). So a ship with only subsystem hits goes
 under repair too, and its fires skip step 1.
 
+## Recharge after hits
+
+Slot `+0x290` (`FUN_00500f60`) is the weapon hits x the class weapon
+recharge (slot `+0x264`, class `+0xdc`) / GNPRTB 2048 (`DAT_006bb388`, 4).
+Slot `+0x294` (`FUN_00500fa0`) is the same for the shield (`+0x268`, class
+`+0xe0`). The ship's recharge is the class's less that, so each hit takes a
+quarter. The AI's ship record (`FUN_00484630`) passes it to
+`FUN_004738d0` / `FUN_004738f0` / `FUN_00473910`, which scale the class
+figure by it over the class recharge (`+0x50`, `+0x54`). Ported in D4
+(`ai_records::ship_record`, `recharge_after_hits`). The status window shows
+the same rate (`status-window.md`).
+
 ## The port (before)
 
 - `ShipInstance` keeps only `hull_current`. A battle's subsystem hits are

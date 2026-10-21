@@ -1,0 +1,6 @@
+alliance_capitals_lost: 15 -> 14
+battles: 2025 -> 1855
+empire_capitals_lost: 5 -> 4
+stalemates: 0 -> 0
+winner_alliance: 643 -> 608
+winner_empire: 1382 -> 1247

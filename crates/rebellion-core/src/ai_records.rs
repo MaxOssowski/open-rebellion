@@ -602,9 +602,11 @@ type Cargo<'a> = (
 /// `FUN_00484630`'s record of a capital ship, with the fleet's fighters,
 /// regiments and people aboard it when `cargo` is set.
 ///
-/// port: the port keeps no damage to a ship's weapon and shield recharge
-/// (the slots `+0x264 - +0x290` and `+0x268 - +0x294`) or to a squadron
-/// (`+0x244 - +0x254`), so each counts at its class's full figure; its
+/// A ship's weapon and shield recharge are its class's less its hits
+/// (slots `+0x264 - +0x290`, `+0x268 - +0x294`; [`recharge_after_hits`]).
+///
+/// port: the port keeps no damage to a squadron (`+0x244 - +0x254`), so
+/// each counts at its class's full figure; its
 /// fighters and regiments ride the fleet, not one ship, and the first
 /// ship carries them; every unit aboard counts as active (object `+0x50`
 /// bit 2) and not as bit 5. A damaged ship ([`ship_damaged`]) takes
@@ -639,16 +641,32 @@ fn ship_record(
     if flags & 0x1000 == 0 {
         v[1] = class.values[2];
     }
-    // FUN_00473910 with the full shield recharge: class +0x3c. Its guard
-    // (+0x54 > 0) and FUN_004738d0's (+0x50 > 0) give 0 when the recharge
-    // is 0, as the class figures are then.
-    v[3] = class.values[3];
-    // FUN_004738d0 / FUN_004738f0 with the full weapon recharge.
-    v[14] = class.values[0];
-    v[19] = class.values[0];
+    // FUN_004738d0 / FUN_004738f0 / FUN_00473910: the class figure times
+    // the ship's recharge over the class's (+0x50, +0x54), 0 when the
+    // class's is 0.
+    let scaled = |figure: i32, rate: i32, full: i32| {
+        if full > 0 {
+            figure.wrapping_mul(rate) / full
+        } else {
+            0
+        }
+    };
+    let weapon = recharge_after_hits(
+        world,
+        class.values[8],
+        ship.hits(crate::world::Subsystem::Weapon),
+    );
+    let shield = recharge_after_hits(
+        world,
+        class.values[9],
+        ship.hits(crate::world::Subsystem::Shield),
+    );
+    v[3] = scaled(class.values[3], shield, class.values[9]);
+    v[14] = scaled(class.values[0], weapon, class.values[8]);
+    v[19] = v[14];
     if flags & 2 != 0 {
-        v[15] = class.values[1];
-        v[20] = class.values[1];
+        v[15] = scaled(class.values[1], weapon, class.values[8]);
+        v[20] = v[15];
     }
     v[7] = class.values[5];
     v[10] = class.values[6];
@@ -695,6 +713,20 @@ fn ship_record(
     }
     (flags, v)
 }
+
+/// A recharge `rate` after `hits` (slot `+0x264` less `FUN_00500f60`, or
+/// `+0x268` less `FUN_00500fa0`): `rate - hits x rate / GNPRTB 2048`
+/// (`FUN_0053e170`, `DAT_006bb388`, 4: a quarter per hit).
+fn recharge_after_hits(world: &GameWorld, rate: i32, hits: u8) -> i32 {
+    let per = world.gnprtb.value(GNPRTB_HIT_SHARE, world.difficulty_index);
+    let per = if per == 0 { SHIPPED_HIT_SHARE } else { per };
+    rate - i32::from(hits).wrapping_mul(rate) / per
+}
+
+/// GNPRTB 2048 (`DAT_006bb388`): the hits that take a whole recharge.
+const GNPRTB_HIT_SHARE: u16 = 2048;
+/// GNPRTB 2048 as shipped (4).
+const SHIPPED_HIT_SHARE: i32 = 4;
 
 /// Whether a capital ship is damaged (object `+0x50` bit `0x200`,
 /// `GameObj_SetDamaged`): `FUN_00501c00` sets it while its hull damage
@@ -2572,6 +2604,49 @@ mod tests {
             4 | FLEET_OWN | FLEET_STANDING | 0x8000 | 0x2_0000 | 0x4_0000 | 0x8_0000 | 0x10_0000
         );
         assert_eq!(build(false).flags & FLEET_OWN, 0);
+    }
+
+    // FUN_00484630 -> FUN_004738d0 / FUN_00473910: a ship's attack and shield
+    // figures scale by its recharge after hits over the class's; each hit
+    // takes a quarter (GNPRTB 2048 = 4, FUN_00500f60, FUN_00500fa0).
+    #[test]
+    fn hits_scale_a_ships_attack_and_shield_figures_in_the_ai_records() {
+        use crate::world::Subsystem;
+        let mut world = GameWorld::default();
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            hull: 500,
+            turbolaser_fore: 4,
+            weapon_recharge_rate: 40,
+            shield_recharge_rate: 8,
+            ..CapitalShipClass::default()
+        });
+        let classes = ClassRecords::build(&world);
+        let fleet = crate::world::Fleet {
+            location: crate::ids::SystemKey::default(),
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+        };
+        let record = |ship: &crate::world::ShipInstance| {
+            ship_record(&world, &classes, ship, &fleet, false, None).1
+        };
+        let mut ship = crate::world::ShipInstance::new(class, 500, true);
+        let whole = record(&ship);
+        let figures = classes.ship(class).unwrap().values;
+        assert_eq!(
+            (whole[14], whole[19], whole[3]),
+            (figures[0], figures[0], figures[3])
+        );
+        assert!(figures[0] > 0 && figures[3] > 0);
+        ship.set_hits(Subsystem::Weapon, 2);
+        ship.set_hits(Subsystem::Shield, 1);
+        let hit = record(&ship);
+        // 40 - 2 x 40 / 4 = 20 of 40; 8 - 8 / 4 = 6 of 8.
+        assert_eq!(hit[14], figures[0] * 20 / 40);
+        assert_eq!(hit[19], hit[14]);
+        assert_eq!(hit[3], figures[3] * 6 / 8);
     }
 
     // FUN_00501c00: a ship is Damaged by hull damage or by any +0x64 hit

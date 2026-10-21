@@ -1,0 +1,19 @@
+18 mutants tested in 2m: 18 caught
+crates/rebellion-core/src/ai_records.rs:623:5: replace ship_record -> (u32, ShipValues) with (0, Default::default())
+crates/rebellion-core/src/ai_records.rs:623:5: replace ship_record -> (u32, ShipValues) with (1, Default::default())
+crates/rebellion-core/src/ai_records.rs:648:17: replace > with == in ship_record
+crates/rebellion-core/src/ai_records.rs:648:17: replace > with < in ship_record
+crates/rebellion-core/src/ai_records.rs:648:17: replace > with >= in ship_record
+crates/rebellion-core/src/ai_records.rs:649:39: replace / with % in ship_record
+crates/rebellion-core/src/ai_records.rs:649:39: replace / with * in ship_record
+crates/rebellion-core/src/ai_records.rs:667:18: replace != with == in ship_record
+crates/rebellion-core/src/ai_records.rs:667:14: replace & with | in ship_record
+crates/rebellion-core/src/ai_records.rs:667:14: replace & with ^ in ship_record
+crates/rebellion-core/src/ai_records.rs:721:5: replace recharge_after_hits -> i32 with 0
+crates/rebellion-core/src/ai_records.rs:721:5: replace recharge_after_hits -> i32 with 1
+crates/rebellion-core/src/ai_records.rs:721:5: replace recharge_after_hits -> i32 with -1
+crates/rebellion-core/src/ai_records.rs:722:22: replace == with != in recharge_after_hits
+crates/rebellion-core/src/ai_records.rs:723:10: replace - with + in recharge_after_hits
+crates/rebellion-core/src/ai_records.rs:723:10: replace - with / in recharge_after_hits
+crates/rebellion-core/src/ai_records.rs:723:47: replace / with % in recharge_after_hits
+crates/rebellion-core/src/ai_records.rs:723:47: replace / with * in recharge_after_hits
