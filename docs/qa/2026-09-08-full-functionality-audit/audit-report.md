@@ -2078,6 +2078,17 @@ cross-runtime proof remain open
     `bombardment::destruction_hits` now follow the original (manual p. 96).
     Campaigns unchanged: the AI orders no Destroy System
     (`evidence/2026-10-20-death-star-destruction/`).
+  - 2026-10-21: the per-ship damage counters are read
+    (`ghidra/notes/ship-subsystem-damage.md`).
+    - A capital ship keeps six 4-bit hit counters at `+0x64`: shield,
+      weapon, tractor, speed, and primary and backup hyperdrive.
+    - A battle starts from them (`FUN_0040b8a0`) and writes them back
+      (`FUN_0040cfc0`).
+    - A hit primary hyperdrive makes the ship travel at its
+      `hyperdrive_if_damaged`; both hit give the default speed
+      (`FUN_00500820`).
+    - Each repair fire lowers one of the counters.
+    - The port keeps none of them.
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.
