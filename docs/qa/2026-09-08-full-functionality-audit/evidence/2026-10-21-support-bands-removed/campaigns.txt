@@ -1,0 +1,25 @@
+1 same apart from support_change 51 0
+2 same apart from support_change 44 0
+3 same apart from support_change 38 0
+4 same apart from support_change 44 0
+5 same apart from support_change 58 0
+6 same apart from support_change 67 0
+7 same apart from support_change 70 0
+8 same apart from support_change 40 0
+9 same apart from support_change 46 0
+10 same apart from support_change 58 0
+11 same apart from support_change 62 0
+12 same apart from support_change 54 0
+13 same apart from support_change 51 0
+14 same apart from support_change 52 0
+15 same apart from support_change 45 0
+16 same apart from support_change 46 0
+17 same apart from support_change 54 0
+18 same apart from support_change 57 0
+19 same apart from support_change 50 0
+20 same apart from support_change 49 0
+21 same apart from support_change 75 0
+22 same apart from support_change 47 0
+23 same apart from support_change 47 0
+24 same apart from support_change 65 0
+support_change records removed 1270

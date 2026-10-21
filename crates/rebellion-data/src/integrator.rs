@@ -33,7 +33,7 @@ use rebellion_core::game_events::{
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
     EVT_ADRIFT_ORDERED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RETURN_ORDERED, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED,
-    EVT_SUPPORT_CHANGE, EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
+    EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
     EVT_UPRISING_SUPPORT,
     EVT_UPRISING_INCIDENT, EVT_VICTORY, EVT_VICTORY_CHECK, SYS_AI, SYS_BLOCKADE,
@@ -617,19 +617,6 @@ impl PerceptionIntegrator {
                             "raw_material_overcap": true,
                             "allocated": allocated,
                             "capacity": capacity,
-                        }),
-                    );
-                }
-                // ── Knesset Shamash-Bet Dabora 2 notification events ────────
-                EconomyEvent::SupportChanged { system, from, to } => {
-                    // K1: EVT_SUPPORT_CHANGE (0x100).
-                    self.emit(
-                        SYS_ECONOMY,
-                        EVT_SUPPORT_CHANGE,
-                        serde_json::json!({
-                            "system": sys_name(world, *system),
-                            "from": format!("{:?}", from),
-                            "to": format!("{:?}", to),
                         }),
                     );
                 }

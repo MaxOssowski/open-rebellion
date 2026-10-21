@@ -128,50 +128,6 @@ pub struct SystemSummary {
     pub death_star_nearby: bool,
 }
 
-/// Discrete bands of the controlling faction's popular support.
-/// Used to detect `EVT_SUPPORT_CHANGE` (0x100) transitions without inventing
-/// new `GameWorld` state — the previous band is cached on `SystemEconomy`.
-///
-/// Matches the GNPRTB support thresholds already in use:
-///   Critical: support ≤ 20 (GNPRTB[7736])
-///   Low:      21–30          (GNPRTB[7734])
-///   Moderate: 31–40          (GNPRTB[7732])
-///   High:     41–60          (GNPRTB[7761] — garrison stable band)
-///   Secure:   > 60           (no smuggling, garrison = 0)
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u8)]
-pub enum SupportTier {
-    #[default]
-    Critical = 0,
-    Low = 1,
-    Moderate = 2,
-    High = 3,
-    Secure = 4,
-}
-
-impl SupportTier {
-    /// Compute the tier from integer support (0-100).
-    ///
-    /// hyp: the band edges are the stock values of the drift and garrison
-    /// thresholds listed on the type, hard-coded here; no recovered function
-    /// shows the original announcing a support change at these edges (audit
-    /// F-031).
-    #[must_use]
-    pub fn from_support_int(support_int: i32) -> Self {
-        if support_int <= 20 {
-            Self::Critical
-        } else if support_int <= 30 {
-            Self::Low
-        } else if support_int <= 40 {
-            Self::Moderate
-        } else if support_int <= 60 {
-            Self::High
-        } else {
-            Self::Secure
-        }
-    }
-}
-
 /// The inputs whose System hooks recompute the smuggling percent and the
 /// `ProductionModifier` (`ghidra/notes/economy-cadence.md`, "The hooks"): the
 /// support `+0x58` (slot `+0x1d0`, `FUN_005109f0`), `+0x88` bit 11 (slot
@@ -220,12 +176,6 @@ pub struct SystemEconomy {
     /// System `+0x88` bit 9 (`FUN_0050bb00`): held, populated, in revolt, and
     /// not short of troops.
     pub uprising_visible: bool,
-    /// Previous-tick support band for the controlling faction. Drives
-    /// `EVT_SUPPORT_CHANGE` (0x100) transition detection. Persists across
-    /// save/load because it lives in `EconomyState` (see #F2) — not on
-    /// `world::System`. No `#[serde(default)]`: v8 is the migration
-    /// boundary (see Dabora 1 cleanup — bincode is positional).
-    pub last_support_tier: SupportTier,
 }
 
 impl Default for SystemEconomy {
@@ -241,7 +191,6 @@ impl Default for SystemEconomy {
             raw_material_overcapped: false,
             summary: SystemSummary::default(),
             uprising_visible: false,
-            last_support_tier: SupportTier::default(),
         }
     }
 }
@@ -306,14 +255,6 @@ pub enum EconomyEvent {
         system: SystemKey,
         allocated: u32,
         capacity: u32,
-    },
-    // ── Knesset Shamash-Bet notification events (Dabora 2) ──────────────
-    /// K1: `EVT_SUPPORT_CHANGE` (0x100) — controlling faction's popular
-    /// support crossed a tier boundary (see `SupportTier`).
-    SupportChanged {
-        system: SystemKey,
-        from: SupportTier,
-        to: SupportTier,
     },
 }
 
@@ -540,31 +481,6 @@ impl EconomySystem {
             eco.uprising_visible = sys.control.faction().is_some()
                 && uprisings.is_uprising(sys_key)
                 && eco.summary.troop_surplus >= 0;
-
-            // K1: EVT_SUPPORT_CHANGE (0x100).
-            // Compare previous tier (cached in eco) against the freshly-
-            // computed current tier. Emit on any transition; update the
-            // cache unconditionally so the next tick sees the new band.
-            let current_support_int = match sys.control {
-                ControlKind::Controlled(crate::dat::Faction::Alliance) => {
-                    (sys.popularity_alliance * 100.0).round() as i32
-                }
-                ControlKind::Controlled(crate::dat::Faction::Empire) => {
-                    (sys.popularity_empire * 100.0).round() as i32
-                }
-                _ => -1, // Sentinel: uncontrolled/contested has no tier
-            };
-            if current_support_int >= 0 {
-                let new_tier = SupportTier::from_support_int(current_support_int);
-                if new_tier != eco.last_support_tier {
-                    events.push(EconomyEvent::SupportChanged {
-                        system: sys_key,
-                        from: eco.last_support_tier,
-                        to: new_tier,
-                    });
-                    eco.last_support_tier = new_tier;
-                }
-            }
 
             if (new_rate - old_rate).abs() > 0.01 {
                 events.push(EconomyEvent::CollectionRateChanged {
@@ -1758,7 +1674,6 @@ mod tests {
 
     #[test]
     fn economy_advance_no_ticks_no_events() {
-        // The same world emits a SupportChanged on its first tick.
         let (world, _sys) = make_singleton_world(
             0.10,
             0.90,
@@ -2699,17 +2614,29 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Knesset Shamash-Bet Dabora 2 #K7: parameterized notification
-    // idempotency tests for the state-transition events (K1
-    // SupportChanged) —
-    // each must fire exactly ONCE per transition, not once per tick. K2's
-    // support-based disaster was removed: the disaster is a galaxy timer
-    // event (FUN_00556b50) that UprisingSystem raises.
-    //
-    // Per SIMP-L1 the plan explicitly merges six would-be idempotency
-    // tests into this one parameterized fixture.
-    // -----------------------------------------------------------------------
+    // port: the CollectionRateChanged telemetry reports a change of the
+    // stored ProductionModifier (FUN_00509f40 notifies only on a change).
+    #[test]
+    fn the_collection_rate_is_reported_when_it_changes_and_not_again() {
+        let (world, sys) = make_singleton_world(
+            0.80,
+            0.20,
+            ControlKind::Controlled(crate::dat::Faction::Alliance),
+            true,
+        );
+        let mut state = EconomyState::default();
+        let rate_changes = |events: Vec<EconomyEvent>| {
+            events
+                .into_iter()
+                .filter(|event| matches!(event, EconomyEvent::CollectionRateChanged { .. }))
+                .count()
+        };
+        let first = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        assert_eq!(rate_changes(first), 1);
+        assert!(state.per_system[&sys].collection_rate > 1.0);
+        let second = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 2 }], 2);
+        assert_eq!(rate_changes(second), 0);
+    }
 
     /// Helper: build a minimally-seeded world with one system controlled
     /// by the given faction at the given support level.
@@ -2756,35 +2683,5 @@ mod tests {
             control,
         });
         (world, sys_key)
-    }
-
-    #[test]
-    fn k1_support_change_fires_only_on_tier_transition() {
-        // Start in the Low band (0.25). First eval: default tier is
-        // Critical → Low is a transition, emit once. Second eval (no
-        // state change): no emission.
-        let (world, _sys) = make_singleton_world(
-            0.25,
-            0.75,
-            ControlKind::Controlled(crate::dat::Faction::Alliance),
-            true,
-        );
-        let mut state = EconomyState::default();
-        let events1 = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
-        let count1 = events1
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::SupportChanged { .. }))
-            .count();
-        assert_eq!(
-            count1, 1,
-            "K1: first tick should emit exactly one SupportChanged"
-        );
-
-        let events2 = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 2 }], 2);
-        let count2 = events2
-            .iter()
-            .filter(|e| matches!(e, EconomyEvent::SupportChanged { .. }))
-            .count();
-        assert_eq!(count2, 0, "K1: unchanged-tier second tick must not re-fire");
     }
 }

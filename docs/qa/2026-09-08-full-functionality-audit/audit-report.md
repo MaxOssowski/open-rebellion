@@ -1955,6 +1955,16 @@ cross-runtime proof remain open
     FinalBattleReady and DarthPickup.
   The phase flags and the pipeline citations need the combat area's
   re-read; they are not tagged here.
+- 2026-10-21: the invented support bands are removed (save v101).
+  - `SupportTier` (edges 20/30/40/60), `SystemEconomy::last_support_tier`
+    and `SupportChanged` had no recovered source, and only the telemetry
+    read them.
+  - `0x100` is `GameObjControlKindNotif`, ported as System Joins in
+    `dfb840f2`.
+  - Golden initial `v1:eb6515d682ec8a5d` -> `v1:b77445f2a1a777c0`, final
+    `v1:eea438fc7e6c6fbc` -> `v1:4a994816eae0685d`.
+  - The 24 campaigns lose only their 1270 `support_change` records
+    (`evidence/2026-10-21-support-bands-removed/`).
 - Acceptance: each item is recovered and cited, or tagged `port:`/`hyp:` with a
   reason; `provenance-scan check` passes and the baseline shrinks to the
   port-owned remainder.
