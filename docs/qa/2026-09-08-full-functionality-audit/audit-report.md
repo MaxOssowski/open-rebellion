@@ -1917,7 +1917,7 @@ cross-runtime proof remain open
 ### F-031: Simulation rules carry numbers with no source in the original
 
 - Severity: P2
-- Status: open
+- Status: remediated (2026-10-21)
 - Evidence: `tools/provenance-scan` finds 135 uncited items carrying 289
   literals or roll draws (baseline `scripts/provenance-baseline.json`).
   - `missions.rs` `foil_prob` decides every covert mission with a quadratic
@@ -1983,6 +1983,15 @@ cross-runtime proof remain open
     `v1:eea438fc7e6c6fbc` -> `v1:4a994816eae0685d`.
   - The 24 campaigns lose only their 1270 `support_change` records
     (`evidence/2026-10-21-support-bands-removed/`).
+- 2026-10-21 (combat remainder): the 11 `combat.rs` items are tagged
+  `hyp:` with their reason. Comments only.
+  - The phase-flag register is read from `MissionMgr` story steps (above).
+  - The auto-resolve rules are the port's; the strategic combat is
+    unrecovered (F-033).
+  - The family table conflicts with the recovered iterators
+    (`coverage-map.md`, item 6).
+  `provenance-scan check` passes with an empty baseline, so F-031 is
+  remediated. The `hyp:` items stay open under F-033.
 - Acceptance: each item is recovered and cited, or tagged `port:`/`hyp:` with a
   reason; `provenance-scan check` passes and the baseline shrinks to the
   port-owned remainder.

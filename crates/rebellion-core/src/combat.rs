@@ -24,27 +24,30 @@ const GNPRTB_COMBAT_DIFFICULTY_MODIFIER: u16 = 0x1400;
 // Phase flags
 // ---------------------------------------------------------------------------
 
-/// Bitfield mirroring the C++ `combat_phase_flags` at object offset +0x58.
+/// The port's gate over the phases of its auto-resolve pipeline.
 ///
-/// Controls which phases of the 7-phase space combat pipeline are active.
-/// Confirmed from `ghidra/notes/space-combat.md` flag register table.
+/// hyp: `ghidra/notes/space-combat.md` read these bits as a combat
+/// register at `+0x58`, but the functions it cites (`FUN_005442f0`,
+/// `FUN_00544030`, `FUN_00544130`, `FUN_00544da0`, `FUN_005445d0`) are
+/// `MissionMgr` story steps testing the story flags there (audit F-031);
+/// the original's strategic combat is unrecovered (F-033).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CombatPhaseFlags(u32);
 
 impl CombatPhaseFlags {
     /// bit0 — space combat active (outer wrapper gate).
     pub const ACTIVE: u32 = 0x0001;
-    /// bit1 — weapon fire is in progress (attacker side).
+    /// bit1 — weapon fire is in progress (attacker side). hyp: see the type.
     pub const WEAPON_FIRE: u32 = 0x0002;
-    /// bit2 — inner gate mask for weapon fire vtable dispatch (0x04).
+    /// bit2 — inner gate mask for weapon fire vtable dispatch (0x04). hyp: see the type.
     pub const WEAPON_TYPE: u32 = 0x0004;
-    /// bit5 — shield absorb type code (0x20).
+    /// bit5 — shield absorb type code (0x20). hyp: see the type.
     pub const SHIELD_TYPE: u32 = 0x0020;
-    /// bit6 — all subsequent phases enabled (shields, hull, fighters).
+    /// bit6 — all subsequent phases enabled (shields, hull, fighters). hyp: see the type.
     pub const PHASES_ENABLED: u32 = 0x0040;
-    /// bit7 — hull damage type code (0x80).
+    /// bit7 — hull damage type code (0x80). hyp: see the type.
     pub const HULL_TYPE: u32 = 0x0080;
-    /// bit8 — fighter engagement type code (0x100).
+    /// bit8 — fighter engagement type code (0x100). hyp: see the type.
     pub const FIGHTER_TYPE: u32 = 0x0100;
 
     #[must_use]
@@ -304,7 +307,8 @@ impl CombatSystem {
     /// Build mutable hull snapshots for one fleet.
     ///
     /// Each `ShipInstance` maps 1:1 to a `ShipSnap` record.
-    /// Combat operates on individual hulls via `ShipSnap`.
+    /// Combat operates on individual hulls via `ShipSnap`. hyp: the port's
+    /// auto-resolve; the original's strategic combat is unrecovered (F-033).
     fn snapshot_fleet(world: &GameWorld, fleet: FleetKey) -> (Vec<ShipSnap>, Vec<u32>) {
         let f = &world.fleets[fleet];
         let ships = f
@@ -672,6 +676,8 @@ impl CombatSystem {
     /// Each squadron's damage is computed from the `FighterClass` weapon-type
     /// attack strengths (turbolaser, ion cannon, laser cannon) scaled by
     /// squadron count. Shield strength of the target absorbs partial damage.
+    /// hyp: the port's auto-resolve rule; the original's strategic combat is
+    /// unrecovered (F-033).
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
@@ -748,7 +754,8 @@ impl CombatSystem {
     ///
     /// DAT laser attack strength is an aggregate rating. Every 100 points
     /// removes one squadron, with the remainder resolved as a deterministic
-    /// fractional chance from the caller-provided roll stream.
+    /// fractional chance from the caller-provided roll stream. hyp: the
+    /// port's auto-resolve rule; the original's is unrecovered (F-033).
     fn capital_ships_attack_fighters(
         world: &GameWorld,
         fleet_key: FleetKey,
@@ -795,7 +802,8 @@ impl CombatSystem {
     ///
     /// Each side's combat power = `sum(squadron_count` * (`attack_strength` + maneuverability / 2)).
     /// The power ratio determines the loss rate for each side. Higher maneuverability
-    /// grants evasion advantage, reducing losses taken.
+    /// grants evasion advantage, reducing losses taken. hyp: the port's
+    /// auto-resolve rule; the original's is unrecovered (F-033).
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -1017,8 +1025,10 @@ impl CombatSystem {
 
 /// `DatId` family-byte classification for combat dispatch.
 ///
-/// Mirrors the C++ family-byte check (`entity_id >> 24`) used in
-/// `FUN_00560d50`, `FUN_005445d0`, and related combat functions.
+/// hyp: these ranges conflict with the recovered iterators, which give
+/// `0x30..0x3c` as characters and `0x14..0x1c` as capital ships
+/// (`coverage-map.md`, item 6); `FUN_005445d0` is a `MissionMgr` story
+/// step (F-031). Only its own test calls it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CombatEntityKind {
     /// family 0x30-0x33, 0x35-0x3b
@@ -1039,7 +1049,7 @@ pub enum CombatEntityKind {
 }
 
 impl CombatEntityKind {
-    /// Classify by `DatId` family byte (`id >> 24`).
+    /// Classify by `DatId` family byte (`id >> 24`). hyp: see the type.
     #[must_use]
     pub fn from_family_byte(family: u8) -> Self {
         match family {

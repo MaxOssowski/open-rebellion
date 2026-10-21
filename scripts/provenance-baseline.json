@@ -1,15 +1,3 @@
 {
-  "items": {
-    "crates/rebellion-core/src/combat.rs::CombatEntityKind::from_family_byte": 12,
-    "crates/rebellion-core/src/combat.rs::CombatPhaseFlags::FIGHTER_TYPE": 1,
-    "crates/rebellion-core/src/combat.rs::CombatPhaseFlags::HULL_TYPE": 1,
-    "crates/rebellion-core/src/combat.rs::CombatPhaseFlags::PHASES_ENABLED": 1,
-    "crates/rebellion-core/src/combat.rs::CombatPhaseFlags::SHIELD_TYPE": 1,
-    "crates/rebellion-core/src/combat.rs::CombatPhaseFlags::WEAPON_FIRE": 1,
-    "crates/rebellion-core/src/combat.rs::CombatPhaseFlags::WEAPON_TYPE": 1,
-    "crates/rebellion-core/src/combat.rs::CombatSystem::capital_ships_attack_fighters": 4,
-    "crates/rebellion-core/src/combat.rs::CombatSystem::fighter_dogfight": 5,
-    "crates/rebellion-core/src/combat.rs::CombatSystem::fighters_attack_ships": 1,
-    "crates/rebellion-core/src/combat.rs::CombatSystem::snapshot_fleet": 2
-  }
+  "items": {}
 }
