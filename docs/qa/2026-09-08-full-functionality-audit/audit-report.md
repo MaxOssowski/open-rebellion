@@ -2684,6 +2684,15 @@ cross-runtime proof remain open
     now carry an economy record.
   - Campaign events are identical; the snapshots gain unpopulated rows
     (`evidence/2026-10-21-unpopulated-smuggling/`).
+- 2026-10-21: the blockade messages take the original classes.
+  - Blockade (`FUN_004960f0`, `0x14e`) speaks only at the start, with a
+    fleet present. The holder reads `0x70a2` / `0x70a3`, naming the other
+    side (`FUN_004f3dd0(viewer, 3 - holder)`). The blockader reads
+    `0x70a0` / `0x70a1`, naming the fleet.
+  - The blockade's end posts nothing.
+  - Evacuation Losses (`FUN_00495e90`, `0x340`) takes `0x70a8`-`0x70aa`,
+    to the regiment's side.
+  - Evidence: `evidence/2026-10-21-blockade-messages/`.
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

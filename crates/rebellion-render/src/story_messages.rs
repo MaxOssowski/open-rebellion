@@ -1138,6 +1138,66 @@ pub fn control_change_texts(
     ))
 }
 
+/// Blockade (`FUN_004960f0`): notification `0x14e` with the blockade bit
+/// set; the end of a blockade posts nothing. It needs a held system and a
+/// fleet there (`FUN_004ffdd0`, the first). The holder's side reads TEXTSTRA
+/// `0x70a2` "{1:1} Under Blockade" and `0x70a3` "{1:4} ships have been
+/// detected at {2:1}.  The world is under enemy blockade.", naming the other
+/// side (`FUN_004f3dd0(viewer, 3 - holder)`); the other side reads `0x70a0`
+/// "Fleet Initiates Blockade of {1:1}" and `0x70a1` "{3:1} has initiated a
+/// blockade of {2:1}.", naming the fleet. Returns the title and body.
+///
+/// port: the class is also silent while the system's `+0x88` bit `0x4000`
+/// is set; the port keeps no such bit.
+#[must_use]
+pub fn blockade_texts(
+    system: &str,
+    holder: Option<rebellion_core::dat::Faction>,
+    fleet: &str,
+    viewer_is_alliance: bool,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::dat::Faction;
+    let holder_is_alliance = match holder? {
+        Faction::Alliance => true,
+        Faction::Empire => false,
+        Faction::Neutral => return None,
+    };
+    let enemy = side_parameter(!holder_is_alliance, texts);
+    let named = MessageParameter::Named { name: system };
+    let fleet = MessageParameter::Named { name: fleet };
+    let (title, body) = if holder_is_alliance == viewer_is_alliance {
+        (0x70a2, 0x70a3)
+    } else {
+        (0x70a0, 0x70a1)
+    };
+    let parameters = [enemy, named, fleet];
+    Some((
+        fill_message_text(texts.get(&title)?, &[named]),
+        fill_message_text(texts.get(&body)?, &parameters),
+    ))
+}
+
+/// Evacuation Losses (`FUN_00495e90`): event `0x340`
+/// (`TroopRegDestroyedRunningBlockade`), a regiment lost running a
+/// blockade. TEXTSTRA `0x70a8` "Evacuation Losses", `0x70a9` "The following
+/// units were lost running an enemy blockade of {2:1}.", and a line `0x70aa`
+/// for the regiment. Returns the title and body.
+#[must_use]
+pub fn evacuation_losses_texts(
+    regiment: &str,
+    system: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let parameters = [
+        MessageParameter::Named { name: regiment },
+        MessageParameter::Named { name: system },
+    ];
+    let mut body = fill_message_text(texts.get(&0x70a9)?, &parameters);
+    body.push_str(&fill_message_text(texts.get(&0x70aa)?, &parameters));
+    Some((fill_message_text(texts.get(&0x70a8)?, &parameters), body))
+}
+
 /// Informants Provide Information (`FUN_00491060`): notification `0x153`,
 /// TEXTSTRA `0x7150` / `0x7151`, the system as `{1:1}`. Returns the title
 /// and body.
@@ -2101,6 +2161,69 @@ mod tests {
             None
         );
         assert_eq!(say(Some(Faction::Neutral), None, true), None);
+    }
+
+    // FUN_004960f0 (0x14e) and FUN_00495e90 (0x340): TEXTSTRA 0x70a0..0x70a3
+    // and 0x70a8..0x70aa as shipped; the holder reads the other side's
+    // adjective (FUN_004f3dd0(viewer, 3 - holder) at 0x4961c9).
+    #[test]
+    fn a_blockade_reads_differently_for_the_holder_and_the_blockader() {
+        use rebellion_core::dat::Faction;
+        let texts: HashMap<u16, String> = [
+            (0x70a0, "Fleet Initiates Blockade of {1:1}"),
+            (0x70a1, "{3:1} has initiated a blockade of {2:1}."),
+            (0x70a2, "{1:1} Under Blockade"),
+            (
+                0x70a3,
+                "{1:4} ships have been detected at {2:1}.  The world is under enemy blockade.",
+            ),
+            (0x70a8, "Evacuation Losses"),
+            (
+                0x70a9,
+                "The following units were lost running an enemy blockade of {2:1}.\n",
+            ),
+            (0x70aa, "\n{1:1}"),
+            (0x4d70, "Alliance"),
+            (0x4d71, "Imperial"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            blockade_texts("Bespin", Some(Faction::Alliance), "Fleet 3", true, &texts),
+            Some((
+                "Bespin Under Blockade".into(),
+                "Imperial ships have been detected at Bespin.  The world is under enemy blockade."
+                    .into()
+            ))
+        );
+        assert_eq!(
+            blockade_texts("Bespin", Some(Faction::Alliance), "Fleet 3", false, &texts),
+            Some((
+                "Fleet Initiates Blockade of Bespin".into(),
+                "Fleet 3 has initiated a blockade of Bespin.".into()
+            ))
+        );
+        assert_eq!(
+            blockade_texts("Bespin", Some(Faction::Empire), "Fleet 3", false, &texts)
+                .map(|(_, body)| body),
+            Some(
+                "Alliance ships have been detected at Bespin.  The world is under enemy blockade."
+                    .into()
+            )
+        );
+        assert_eq!(
+            blockade_texts("Bespin", Some(Faction::Neutral), "Fleet 3", true, &texts),
+            None
+        );
+        assert_eq!(
+            evacuation_losses_texts("Alliance Army Regiment", "Bespin", &texts),
+            Some((
+                "Evacuation Losses".into(),
+                "The following units were lost running an enemy blockade of Bespin.\n\nAlliance Army Regiment"
+                    .into()
+            ))
+        );
     }
 
     // FUN_00491060 (0x153) and FUN_00498970 (0x304): TEXTSTRA 0x7150 /

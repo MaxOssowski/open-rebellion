@@ -2920,36 +2920,67 @@ async fn main() {
                             .systems
                             .get(*system)
                             .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 7, Blockade Message.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                *tick,
-                                format!("Blockade established at {name}"),
-                                MessageCategory::Combat,
-                                *system,
+                        // Notification 0x14e, Blockade (FUN_004960f0): the
+                        // holder and the blockader each read their own text;
+                        // it needs a fleet at the system (FUN_004ffdd0).
+                        let holder = world.systems.get(*system).and_then(|s| s.control.faction());
+                        let fleet = world
+                            .systems
+                            .get(*system)
+                            .and_then(|s| s.fleets.first())
+                            .and_then(|&fleet| world.fleet_name(fleet))
+                            .map(str::to_owned);
+                        let original = fleet.as_deref().and_then(|fleet| {
+                            rebellion_render::story_messages::blockade_texts(
+                                &name,
+                                holder,
+                                fleet,
+                                player_faction == MissionFaction::Alliance,
+                                &message_texts,
                             )
-                            .with_picture_if(pictures::blockade(
-                                pictures::system_side(&world, *system),
-                            )),
-                            MessageRail::Conflict,
-                            Some(RailAudience::Both),
-                        ));
+                        });
+                        let (title, text, audience) = match original {
+                            Some((title, body)) => (
+                                Some(title),
+                                body,
+                                Some(RailAudience::side(
+                                    player_faction == MissionFaction::Alliance,
+                                )),
+                            ),
+                            None if message_texts.is_empty() => (
+                                None,
+                                format!("Blockade established at {name}"),
+                                Some(RailAudience::Both),
+                            ),
+                            None => continue,
+                        };
+                        let mut message = GameMessage::at_system(
+                            *tick,
+                            text,
+                            MessageCategory::Combat,
+                            *system,
+                        )
+                        .with_picture_if(pictures::blockade(pictures::system_side(
+                            &world, *system,
+                        )));
+                        if let Some(title) = title {
+                            message = message.with_title(title);
+                        }
+                        msg_log.push(filed(message, MessageRail::Conflict, audience));
                     }
                     rebellion_core::blockade::BlockadeEvent::BlockadeEnded { system, tick } => {
                         let name = world
                             .systems
                             .get(*system)
                             .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 7, Blockade Message.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                *tick,
-                                format!("Blockade lifted at {name}"),
-                                MessageCategory::Combat,
-                                *system,
-                            ),
-                            MessageRail::Conflict,
-                            Some(RailAudience::Both),
+                        // Notification 0x14e with the bit cleared: the
+                        // Blockade class (FUN_004960f0) posts nothing. port:
+                        // the line stays in the log, off the Message Index.
+                        msg_log.push(GameMessage::at_system(
+                            *tick,
+                            format!("Blockade lifted at {name}"),
+                            MessageCategory::Combat,
+                            *system,
                         ));
                     }
                     rebellion_core::blockade::BlockadeEvent::SupportShifted {
@@ -2971,26 +3002,48 @@ async fn main() {
                         troop,
                         tick,
                     } => {
+                        // Event 0x340, Evacuation Losses (FUN_00495e90), to
+                        // the regiment's side; named before it goes.
+                        let regiment = world.troops.get(*troop).map(|unit| {
+                            let (name, _) = rebellion_render::manufacturing_window::product(
+                                &world,
+                                rebellion_core::manufacturing::BuildableKind::Troop(
+                                    unit.class_dat_id,
+                                ),
+                            );
+                            (name, unit.is_alliance)
+                        });
                         // The regiment was aboard a fleet leaving the system.
                         troop_transport_state.destroy_embarked(&mut world, *troop);
                         let name = world
                             .systems
                             .get(*system)
                             .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 7, Blockade Message.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                *tick,
-                                format!("Troops destroyed by blockade at {name}"),
-                                MessageCategory::Combat,
-                                *system,
+                        let original = regiment.as_ref().and_then(|(regiment, _)| {
+                            rebellion_render::story_messages::evacuation_losses_texts(
+                                regiment,
+                                &name,
+                                &message_texts,
                             )
-                            .with_picture_if(Some(
-                                pictures::evacuation_losses(cockpit_state.faction),
-                            )),
-                            MessageRail::Conflict,
-                            Some(RailAudience::Both),
-                        ));
+                        });
+                        let audience = regiment
+                            .as_ref()
+                            .map_or(RailAudience::Both, |&(_, alliance)| {
+                                RailAudience::side(alliance)
+                            });
+                        let (title, text) = original.map_or_else(
+                            || (None, format!("Troops destroyed by blockade at {name}")),
+                            |(title, body)| (Some(title), body),
+                        );
+                        let mut message =
+                            GameMessage::at_system(*tick, text, MessageCategory::Combat, *system)
+                                .with_picture_if(Some(pictures::evacuation_losses(
+                                    cockpit_state.faction,
+                                )));
+                        if let Some(title) = title {
+                            message = message.with_title(title);
+                        }
+                        msg_log.push(filed(message, MessageRail::Conflict, Some(audience)));
                     }
                 }
             }
