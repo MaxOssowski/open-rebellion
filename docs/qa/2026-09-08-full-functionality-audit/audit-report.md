@@ -1704,6 +1704,10 @@ cross-runtime proof remain open
   has no message of its own. The port's "Uprising incident at X" stays in
   the log, off the Message Index
   (`evidence/2026-10-21-uprising-incident-off-index/`).
+- 2026-10-21: a revolt ended by Subdue Uprising posts Uprising Ends
+  (`0x14b`, `FUN_00499460`, TEXTSTRA `0x7031` / `0x7032`) for both sides,
+  in place of the port's "Uprising subdued at X"
+  (`evidence/2026-10-21-subdue-uprising-ends/`).
 - Acceptance: both incidents trigger and apply their recovered effects with
   failing-without tests, and a browser pass shows a revolt, an incident, and
   a disaster.

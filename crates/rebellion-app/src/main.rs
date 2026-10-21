@@ -2583,20 +2583,38 @@ async fn main() {
                             name,
                             tick
                         );
-                        // Notification 3, Uprising Message.
-                        msg_log.push(filed(
-                            GameMessage::at_system(
-                                tick,
-                                format!("Uprising subdued at {name}"),
-                                MessageCategory::Diplomacy,
-                                system,
-                            )
-                            .with_picture_if(pictures::uprising_ends(
-                                pictures::system_side(&world, system),
-                            )),
-                            MessageRail::PopularSupport,
-                            system_audience(&world, system),
-                        ));
+                        // Notification 0x14b, Uprising Ends (FUN_00499460),
+                        // for both sides of the held system.
+                        let holder = world.systems.get(system).and_then(|s| s.control.faction());
+                        let (title, text, audience) =
+                            match rebellion_render::story_messages::uprising_texts(
+                                &name,
+                                holder,
+                                false,
+                                &message_texts,
+                            ) {
+                                Some((title, body)) => {
+                                    (Some(title), body, Some(RailAudience::Both))
+                                }
+                                None => (
+                                    None,
+                                    format!("Uprising subdued at {name}"),
+                                    system_audience(&world, system),
+                                ),
+                            };
+                        let mut message = GameMessage::at_system(
+                            tick,
+                            text,
+                            MessageCategory::Diplomacy,
+                            system,
+                        )
+                        .with_picture_if(pictures::uprising_ends(pictures::system_side(
+                            &world, system,
+                        )));
+                        if let Some(title) = title {
+                            message = message.with_title(title);
+                        }
+                        msg_log.push(filed(message, MessageRail::PopularSupport, audience));
                     }
                 }
 
