@@ -1,0 +1,10 @@
+first run (w5b):
+13 mutants tested in 2m: 3 missed, 8 caught, 2 unviable
+crates/rebellion-core/src/abstract_battle.rs:1439:17: replace && with || in withdraw_loser
+crates/rebellion-core/src/abstract_battle.rs:1438:25: replace > with >= in withdraw_loser
+crates/rebellion-core/src/abstract_battle.rs:1451:79: replace > with >= in withdraw_loser
+
+final (w5b2):
+4 mutants tested in 87s: 2 caught, 2 unviable
+crates/rebellion-core/src/abstract_battle.rs:1366:5: replace withdraw_loser -> Vec<Withdrawal> with vec![]
+crates/rebellion-data/src/simulation.rs:151:5: replace run_simulation_tick -> Vec<GameEventRecord> with vec![]

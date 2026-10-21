@@ -1,0 +1,38 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai, S = 1..24",
+ "baseline": "HEAD 16270543 (worktree build)",
+ "changed_seeds": [
+  2,
+  8,
+  14,
+  15,
+  16,
+  17,
+  20,
+  21,
+  22
+ ],
+ "totals": {
+  "battles": [
+   2092,
+   2080
+  ],
+  "alliance_wins": [
+   755,
+   782
+  ],
+  "empire_wins": [
+   1337,
+   1298
+  ],
+  "alliance_capitals_lost": [
+   25,
+   18
+  ],
+  "empire_capitals_lost": [
+   7,
+   9
+  ]
+ },
+ "cause": "the loser's planet squadrons now leave on Autorouting (FUN_00516ef0); the telemetry has no event for it, so the first visible differences are later AI choices"
+}

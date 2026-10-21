@@ -2250,18 +2250,21 @@ async fn main() {
 
                 // Apply ship damage: reduce counts proportional to destroyed hulls.
                 apply_space_combat_result(&space_result, &mut world);
+                rebellion_core::squadrons::recover(&mut world, &sorties);
                 // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift.
                 let winner = battle_winner(space_result.winner, attacker_is_alliance);
                 rebellion_core::loyalty::settle_battle(&mut world, battle_before, sys_key, winner);
-                // FUN_00516ef0: the loser's fleets leave on Autorouting.
+                // FUN_00516ef0: the loser's fleets and planet squadrons leave
+                // on Autorouting.
                 rebellion_core::abstract_battle::withdraw_loser(
                     &mut world,
                     &mut movement_state,
+                    &mut troop_transport_state.squadrons,
                     sys_key,
                     winner,
+                    current_tick,
                 );
                 troop_transport_state.destroy_untransportable_cargo(&mut world);
-                rebellion_core::squadrons::recover(&mut world, &sorties);
                 // Record combat cooldown to prevent infinite re-trigger on draws.
                 combat_cooldowns.insert(sys_key, current_tick);
 
@@ -6249,6 +6252,10 @@ async fn main() {
                                     retreat_allowed,
                                 );
                             apply_space_combat_result(&space_result, &mut world);
+                            rebellion_core::squadrons::recover(
+                                &mut world,
+                                &std::mem::take(&mut battle_sorties),
+                            );
                             let winner = battle_winner(space_result.winner, attacker_is_alliance);
                             rebellion_core::loyalty::settle_battle(
                                 &mut world,
@@ -6256,19 +6263,17 @@ async fn main() {
                                 session.system,
                                 winner,
                             );
-                            // FUN_00516ef0: the loser's fleets leave on
-                            // Autorouting.
+                            // FUN_00516ef0: the loser's fleets and planet
+                            // squadrons leave on Autorouting.
                             rebellion_core::abstract_battle::withdraw_loser(
                                 &mut world,
                                 &mut movement_state,
+                                &mut troop_transport_state.squadrons,
                                 session.system,
                                 winner,
+                                clock.tick,
                             );
                             troop_transport_state.destroy_untransportable_cargo(&mut world);
-                            rebellion_core::squadrons::recover(
-                                &mut world,
-                                &std::mem::take(&mut battle_sorties),
-                            );
 
                             let winner_str = match space_result.winner {
                                 CombatSide::Attacker if session.attacker_is_alliance => {
@@ -6365,8 +6370,10 @@ async fn main() {
                                 rebellion_core::abstract_battle::withdraw_loser(
                                     &mut world,
                                     &mut movement_state,
+                                    &mut troop_transport_state.squadrons,
                                     session.system,
                                     winner,
+                                    clock.tick,
                                 );
                                 let winner_str = match battle_return.winner {
                                     Some(rebellion_render::CombatWinner::Attacker) => {

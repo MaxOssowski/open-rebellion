@@ -2357,6 +2357,13 @@ cross-runtime proof remain open
   - Seed 3 changes: on day 1340 the trench run destroys the Death Star at
     Orto. The other 23 campaigns are unchanged.
   - 11 new tests; mutants 57 caught, 0 missed.
+- 2026-10-22 (W5b): the loser's planet squadrons leave on Autorouting
+  too (`FUN_00516ef0`, `evidence/2026-10-22-planet-squadrons-withdraw/`).
+  - The app's battles land scrambled squadrons back before the
+    withdrawal, as the simulation does.
+  - Nine campaigns change: battles 2092 -> 2080, Alliance wins 755 -> 782.
+  - `port:` the winner's squadrons (`FUN_00556710`) are not read.
+  - 2 new tests; mutants 2 caught, 0 missed.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

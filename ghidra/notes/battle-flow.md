@@ -188,9 +188,17 @@ the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
   in the headless simulation, the app's AI battles, Auto Resolve, and
   after a tactical battle.
 - `port:` a fleet with no destination, or with speed 0 or no hyperdrive,
-  stays; the original destroys a unit that cannot reach another system.
-  The loser's planet squadrons stay, and the winner's (`FUN_00556710`)
-  are not read.
+  stays. The original destroys a unit that cannot reach another system.
+- Since W5b the loser's planet squadrons leave the same way, through the
+  squadrons' move (`SquadronTransits::move_squadrons`).
+  - `port:` one with no destination, or whose destination planet another
+    side holds, stays. A squadron's speed is never 0 in the port.
+  - The winner's squadrons go to `FUN_00556710` when `FUN_00506e60` (game
+    `+0xbc`) allows. That is a generic check of an object in its
+    container (it also follows a destroyed fleet), not read further.
+- Every battle path lands the scrambled planet squadrons back
+  (`squadrons::recover`) before the withdrawal, as the headless
+  simulation does. The app's AI battles and Auto Resolve did it after.
 
 ## For the port
 

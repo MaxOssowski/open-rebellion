@@ -1346,13 +1346,22 @@ pub struct Withdrawal {
 /// search does for the place a character leaves. port: a fleet with no
 /// destination, or one that cannot move (speed 0 or no hyperdrive), stays;
 /// the original destroys a unit that cannot move to another system
-/// (`FUN_00555410`, slot `+0xac(5)`). port: the loser's planet squadrons
-/// stay, and the winner's (`FUN_00556710`) are not read.
+/// (`FUN_00555410`, slot `+0xac(5)`).
+///
+/// The loser's squadrons on the planet (`FUN_00503a50(system, 1, side)`)
+/// are set Autorouting too and move the same way, on `day`. port: a
+/// squadron with no destination, or whose destination planet another side
+/// holds (`squadrons`' route check), stays. A squadron's speed is never 0
+/// in the port (`movement::fighter_speed`).
+/// port: the winner's planet squadrons go to `FUN_00556710` when
+/// `FUN_00506e60` (a game flag, `+0xbc`) allows; that is not read.
 pub fn withdraw_loser(
     world: &mut GameWorld,
     movement: &mut crate::movement::MovementState,
+    squadrons: &mut crate::squadrons::SquadronTransits,
     system: SystemKey,
     winner: Option<crate::dat::Faction>,
+    day: u64,
 ) -> Vec<Withdrawal> {
     use crate::dat::Faction;
 
@@ -1422,6 +1431,24 @@ pub fn withdraw_loser(
                 transit_ticks,
             });
         }
+    }
+    // The squadrons' move refuses the winner's entries (another side) and
+    // emptied ones; it moves the loser's.
+    let planet: Vec<crate::world::FighterEntry> = world.systems[system].fighters.clone();
+    for entry in planet {
+        let Some(destination) = crate::missions::nearest_place(world, side, origin, Some(system))
+        else {
+            continue;
+        };
+        let _ = squadrons.move_squadrons(
+            world,
+            loser_is_alliance,
+            entry.class,
+            entry.count,
+            crate::squadrons::SquadronPlace::Planet(system),
+            crate::squadrons::SquadronPlace::Planet(destination),
+            day,
+        );
     }
     withdrawals
 }
@@ -2868,8 +2895,10 @@ mod tests {
         let sent = withdraw_loser(
             &mut world,
             &mut movement,
+            &mut Default::default(),
             battle,
             Some(crate::dat::Faction::Alliance),
+            0,
         );
         assert_eq!(sent.len(), 1);
         assert_eq!((sent[0].fleet, sent[0].destination), (empire, near));
@@ -2897,6 +2926,69 @@ mod tests {
         assert_eq!(fought.retreat_allowed, [true, false]);
     }
 
+    // FUN_00516ef0: the loser's squadrons on the planet (FUN_00503a50) are
+    // set Autorouting and leave for their side's nearest system; the
+    // winner's stay.
+    #[test]
+    fn the_losers_planet_squadrons_leave_too() {
+        let (mut world, [battle, near, _], _, _) = withdrawal_world();
+        let mut squadron = |is_alliance: bool| {
+            let class = world.fighter_classes.insert(crate::world::FighterClass {
+                is_alliance,
+                is_empire: !is_alliance,
+                ..crate::world::FighterClass::default()
+            });
+            crate::squadrons::add(&mut world.systems[battle].fighters, class, 2);
+            class
+        };
+        let tie = squadron(false);
+        let x_wing = squadron(true);
+        let mut movement = crate::movement::MovementState::new();
+        let mut squadrons = crate::squadrons::SquadronTransits::default();
+        withdraw_loser(
+            &mut world,
+            &mut movement,
+            &mut squadrons,
+            battle,
+            Some(crate::dat::Faction::Alliance),
+            5,
+        );
+        assert_eq!(crate::squadrons::on_planet(&world, battle, false), 0);
+        assert_eq!(crate::squadrons::on_planet(&world, battle, true), 2);
+        let (arrived, lost) = squadrons.advance(&mut world, u64::MAX);
+        assert!(lost.is_empty());
+        assert_eq!(arrived.len(), 1);
+        assert_eq!((arrived[0].class, arrived[0].count), (tie, 2));
+        assert_eq!(crate::squadrons::on_planet(&world, near, false), 2);
+        assert_ne!(tie, x_wing);
+    }
+
+    // port: a squadron cannot land on a planet another side holds, so with
+    // only such places left it stays.
+    #[test]
+    fn a_loser_squadron_with_only_enemy_planets_stays() {
+        let (mut world, [battle, near, far], _, _) = withdrawal_world();
+        for system in [near, far] {
+            world.systems[system].control =
+                crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        }
+        let tie = world.fighter_classes.insert(crate::world::FighterClass {
+            is_empire: true,
+            ..crate::world::FighterClass::default()
+        });
+        crate::squadrons::add(&mut world.systems[battle].fighters, tie, 1);
+        let mut squadrons = crate::squadrons::SquadronTransits::default();
+        withdraw_loser(
+            &mut world,
+            &mut crate::movement::MovementState::new(),
+            &mut squadrons,
+            battle,
+            Some(crate::dat::Faction::Alliance),
+            5,
+        );
+        assert_eq!(crate::squadrons::on_planet(&world, battle, false), 1);
+    }
+
     // FUN_00516ef0: with no winner and both sides present, the system's
     // last arrived side (+0x78 bits 6..7) holds it and the other leaves;
     // the Empire holds it when none is recorded.
@@ -2910,7 +3002,14 @@ mod tests {
             let (mut world, [battle, ..], alliance, empire) = withdrawal_world();
             world.systems[battle].last_arrival = arrival;
             let mut movement = crate::movement::MovementState::new();
-            let sent = withdraw_loser(&mut world, &mut movement, battle, None);
+            let sent = withdraw_loser(
+                &mut world,
+                &mut movement,
+                &mut Default::default(),
+                battle,
+                None,
+                0,
+            );
             let gone = if leaver { alliance } else { empire };
             assert_eq!(sent.iter().map(|w| w.fleet).collect::<Vec<_>>(), [gone]);
         }
@@ -2924,7 +3023,15 @@ mod tests {
             .fleets
             .retain(|&fleet| fleet != empire);
         let mut movement = crate::movement::MovementState::new();
-        assert!(withdraw_loser(&mut world, &mut movement, battle, None).is_empty());
+        assert!(withdraw_loser(
+            &mut world,
+            &mut movement,
+            &mut Default::default(),
+            battle,
+            None,
+            0
+        )
+        .is_empty());
         assert!(movement.is_empty());
         assert_eq!(world.systems[battle].fleets, [alliance]);
     }
