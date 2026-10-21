@@ -2110,7 +2110,8 @@ cross-runtime proof remain open
   - `FUN_0059a530` then calls `FUN_005ae9c0` at a step of 1.0. Each side
     runs its combat step (slot `+0x14`) and its beaten test (slot `+0x28`).
   - After 1200 (`DAT_0066c3e0`) with neither side's strength (`+0x3c`)
-    falling, the weaker side withdraws (`FUN_005af7a0`).
+    falling, the weaker side ends (`FUN_005af7a0`; see the next entry: it
+    is destroyed unless it can leave).
   - The port's tactical simulation lives in `rebellion-render`
     (`tactical_view.rs`, `BattleSession::step`). Running it for
     auto-resolve needs it moved to `rebellion-core`: an architecture change
@@ -2132,6 +2133,24 @@ cross-runtime proof remain open
     screenshots match, the 64th being the in-flight beam frame that differs
     on every run (`evidence/2026-10-21-tactical-sim-to-core/`).
   - Next: auto-resolve runs this simulation (step 1.0, 1200 stalemate).
+- 2026-10-21 (read and probe, `ghidra/notes/abstract-battle.md`): the
+  port's tactical simulation cannot yet resolve a battle on its own.
+  - Each side of an abstract battle is a commander object (vtables
+    `0x66c428` / `0x66c3f8`). Its step `FUN_005d14d0` gives the orders
+    (`FUN_005c9200`), runs the Death Star, the field damage and the
+    retreat, and updates every unit (`FUN_005b6320`).
+  - Strength is weapon firepower in the bearing arc, scaled by hull
+    (`FUN_005d0ce0`, `FUN_005b7a80`).
+  - At the 1200 stalemate, `FUN_005af7a0` destroys the weaker side (state
+    `0xb`, 100,000 damage) unless it can leave by hyperdrive (slot
+    `+0xc`). It is not a withdrawal.
+  - Probe: the port's `BattleSession` run headless on all 67 battles of
+    seeds 1-3 dealt no damage in 40,000 steps, because its units act
+    only on a player's order.
+  - Remaining, in order:
+    1. the side commander (`FUN_005d14d0`, `FUN_005c9200`);
+    2. the strength;
+    3. the abstract step and its result.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

@@ -1,0 +1,25 @@
+--- a/crates/rebellion-data/src/integrator.rs
++++ b/crates/rebellion-data/src/integrator.rs
+@@ -5261,6 +5261,22 @@
+     tick: u64,
+ ) -> SystemSpaceCombatResult {
+     let (initial_alliance, initial_empire) = orbiting_fleets_by_faction(world, system);
++    if std::env::var("OR_TAC_PROBE").is_ok() {
++        if let (Some(&a), Some(&e)) = (initial_alliance.first(), initial_empire.first()) {
++            let mut s = rebellion_core::tactical::BattleSession::new(world, system, a, e, true, tick, 1);
++            let hp = |s: &rebellion_core::tactical::BattleSession| -> (i64, i64) {
++                let mut r = (0i64, 0i64);
++                for x in &s.ships { if x.alive { if x.is_attacker { r.0 += x.hull_current as i64 } else { r.1 += x.hull_current as i64 } } }
++                for f in &s.fighters { if f.alive { if f.is_attacker { r.0 += f.squad_count as i64 } else { r.1 += f.squad_count as i64 } } }
++                r
++            };
++            let h0 = hp(&s);
++            let mut first = None; let mut n = 0u32; let mut last_change = 0u32; let mut prev = h0;
++            while n < 40000 { n += 1; let end = s.step(); let h = hp(&s); if h != prev { if first.is_none() { first = Some(n) }; last_change = n; prev = h; } if end { break; } }
++            eprintln!("PROBE tick={} ships={}v{} fighters={} first_dmg={:?} steps={} last_change={} winner={:?} hp0={:?} hp1={:?}",
++                tick, s.ships.iter().filter(|x| x.is_attacker).count(), s.ships.iter().filter(|x| !x.is_attacker).count(), s.fighters.len(), first, n, last_change, s.winner, h0, prev);
++        }
++    }
+     let alliance_before = summarize_space_force(world, &initial_alliance);
+     let empire_before = summarize_space_force(world, &initial_empire);
+     let mut rounds = 0;

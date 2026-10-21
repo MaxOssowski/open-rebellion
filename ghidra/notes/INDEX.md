@@ -36,6 +36,7 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | File | Subsystem | Key Functions |
 |------|-----------|---------------|
 | [space-combat.md](space-combat.md) | Misread: its "7-phase pipeline" is MissionMgr story steps, not combat (see battle-flow.md) | FUN_00549910, FUN_00544030, FUN_00544130, FUN_005443f0, FUN_005444e0, FUN_005445d0 |
+| [abstract-battle.md](abstract-battle.md) | The abstract battle: two side commanders (0x66c428/0x66c3f8), their step FUN_005d14d0, strength FUN_005d0ce0/FUN_005b7a80, the 1200 stalemate destroys the weaker side; the port has no side commander | FUN_005ae9c0, FUN_005af5f0, FUN_005ae460, FUN_005d14d0, FUN_005d0ce0, FUN_005b7a80, FUN_005af7a0, FUN_005af910 |
 | [battle-flow.md](battle-flow.md) | A battle from start to result: FUN_0040a050's states, the tactical or abstract choice, both run the tactical module, FUN_0040c780 applies its result | FUN_0040a050, FUN_004362b0, FUN_0040b0e0, FUN_0040c780, FUN_005969d0, FUN_0050ceb0 |
 | [tactical-impact-effect-path.md](tactical-impact-effect-path.md) | Tactical hit, damage, and destruction sprite dispatch | FUN_005a7500, FUN_005d39a0, FUN_005d3e90, FUN_005d41a0 |
 | [tactical-projectile-field-path.md](tactical-projectile-field-path.md) | Retained projectile geometry, interpolation, and tractor/gravity fields | FUN_005d3de0, FUN_005ee590, LAB_005eeb90, FUN_005d3ac0, FUN_005d3cc0 |

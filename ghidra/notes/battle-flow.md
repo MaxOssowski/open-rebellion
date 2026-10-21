@@ -84,9 +84,10 @@ The debug names are in `FUN_0040a700`'s table (`0x40a7b5`..), strings at
     fallen accumulates time (`+0x9b`, `+0x9c`); a fall resets it and
     stores the new low (`+0x99`, `+0x9a`);
   - with neither side beaten and both stalled for at least
-    `DAT_0066c3e0` = 1200, the weaker side withdraws. Each of its units
-    (lists `+0x58` and `+0x64`) goes through `FUN_005af7a0`; a side whose
-    slot `+0xc` refuses is marked `+0xb0` instead;
+    `DAT_0066c3e0` = 1200, the weaker side ends. If its slot `+0xc` says
+    it can leave, it is marked `+0xb0`. Otherwise each of its units (lists
+    `+0x58` and `+0x64`) is destroyed by `FUN_005af7a0`: state `0xb` and
+    100,000 damage, not a withdrawal (`abstract-battle.md`);
   - with a side beaten, it fills the 7 result words (`+0x10`..`+0x28`).
     Among them are a side's flag when its units' state `+0x170` is 2 and
     one when a unit's state is 9, by the unit's side `+0x168`.
