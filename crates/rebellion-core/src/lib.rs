@@ -15,6 +15,7 @@ pub mod ai_records;
 pub mod ai_strategy;
 pub mod blockade;
 pub mod assault;
+pub mod assault_report;
 pub mod autoscrap;
 pub mod bombardment;
 pub mod build_selection;
