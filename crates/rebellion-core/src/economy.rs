@@ -343,13 +343,33 @@ impl EconomySystem {
                 continue;
             };
 
-            // Only process populated, non-destroyed systems.
-            if !sys.is_populated || sys.is_destroyed {
+            if sys.is_destroyed {
                 continue;
             }
 
             // Count military presence at this system.
             let presence = count_military_presence(world, sys);
+
+            // An unpopulated system has no support side (FUN_0050b610 gives
+            // it 3), so its regiments alone hold it: when the last one
+            // leaves (FUN_00508660 reruns FUN_0050b610) it holds no side.
+            // port: the other fields stay with the populated systems.
+            if !sys.is_populated {
+                let resolved = resolve_system_control(
+                    sys,
+                    presence.alliance_troops > 0,
+                    presence.empire_troops > 0,
+                    gnprtb,
+                    difficulty,
+                );
+                if resolved != sys.control {
+                    events.push(EconomyEvent::ControlResolved {
+                        system: sys_key,
+                        new_control: resolved,
+                    });
+                }
+                continue;
+            }
 
             // 0a. Resource capacity enforcement (FUN_0050ad60 + FUN_0050ad80 + FUN_0050b0b0).
             // Sum facility/mine outputs and cap at system limits.
@@ -2612,6 +2632,64 @@ mod tests {
             summary_2v2.fleet_posture.is_contested,
             "2v2 fleets should be contested"
         );
+    }
+
+    #[test]
+    fn an_unpopulated_system_its_last_regiment_left_holds_no_side() {
+        // FUN_0050b610: an unpopulated system's support side is 3 (no
+        // side), so with no regiment its holder is none; FUN_00508660 reruns
+        // it when a regiment leaves.
+        let (world, sys) = make_singleton_world(
+            0.90,
+            0.10,
+            ControlKind::Controlled(crate::dat::Faction::Alliance),
+            false,
+        );
+        let mut state = EconomyState::default();
+        let events = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                EconomyEvent::ControlResolved {
+                    system,
+                    new_control: ControlKind::Uncontrolled,
+                } if *system == sys
+            )),
+            "{events:?}"
+        );
+        // The other fields stay with the populated systems.
+        assert!(!state.per_system.contains_key(&sys));
+
+        // One side's regiments alone hold it.
+        for alliance in [true, false] {
+            let (mut world, sys) =
+                make_singleton_world(0.5, 0.5, ControlKind::Uncontrolled, false);
+            let regiment = world.troops.insert(crate::world::TroopUnit {
+                class_dat_id: DatId(0x1400_0100),
+                is_alliance: alliance,
+                regiment_strength: 100,
+            });
+            world.systems[sys].ground_units.push(regiment);
+            let side = if alliance {
+                crate::dat::Faction::Alliance
+            } else {
+                crate::dat::Faction::Empire
+            };
+            let events = EconomySystem::advance(
+                &mut EconomyState::default(),
+                &world,
+                &[TickEvent { tick: 1 }],
+                2,
+            );
+            assert!(
+                events.iter().any(|event| matches!(
+                    event,
+                    EconomyEvent::ControlResolved { new_control, .. }
+                        if *new_control == ControlKind::Controlled(side)
+                )),
+                "{events:?}"
+            );
+        }
     }
 
     // port: the CollectionRateChanged telemetry reports a change of the

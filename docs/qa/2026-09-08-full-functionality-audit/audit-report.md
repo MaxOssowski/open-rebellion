@@ -2652,6 +2652,12 @@ cross-runtime proof remain open
   regiment at the system). The app's `ControlResolved` and occupation now
   hand the facilities over (`FUN_004f6f40`), as the headless integrator
   already did (`evidence/2026-10-21-system-joins-message/`).
+- 2026-10-21: an unpopulated system's holder follows its regiments.
+  `FUN_0050b610` gives it no support side, and `FUN_00508660` reruns it
+  when a regiment leaves, so with no regiment it holds no side. The
+  economy had skipped unpopulated systems and left them held; it now
+  resolves their holder daily. Campaigns and the golden are unchanged
+  (`evidence/2026-10-21-unpopulated-holder/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

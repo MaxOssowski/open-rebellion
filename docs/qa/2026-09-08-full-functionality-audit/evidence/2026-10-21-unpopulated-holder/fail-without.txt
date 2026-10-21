@@ -1,0 +1,4 @@
+thread 'economy::tests::an_unpopulated_system_its_last_regiment_left_holds_no_side' (3916676) panicked at crates/rebellion-core/src/economy.rs:2653:9:
+[]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+--
