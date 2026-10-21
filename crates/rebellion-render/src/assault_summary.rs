@@ -150,8 +150,7 @@ pub enum AssaultSummaryAction {
 
 impl AssaultSummaryState {
     /// Open a window for `report` on the Summary page (`FUN_0060d7e0(0x65)`)
-    /// with its first category: Trooper Regiments after an assault
-    /// (`+0x180`).
+    /// with its first category (`+0x180`).
     pub fn open(
         &mut self,
         world: &GameWorld,
@@ -160,6 +159,7 @@ impl AssaultSummaryState {
         message: Option<MessageId>,
     ) {
         let (title, body) = summary_texts(&report, world, texts);
+        let category = report.first_category();
         let system_name = world
             .systems
             .get(report.system)
@@ -173,7 +173,7 @@ impl AssaultSummaryState {
             system_name,
             message,
             page: SummaryPage::Summary,
-            category: ReportCategory::Troops,
+            category,
             scroll: 0,
         });
     }
@@ -240,7 +240,12 @@ pub fn summary_texts(
         .systems
         .get(report.system)
         .map_or("", |value| value.name.as_str());
-    let named = MessageParameter::Named { name: system };
+    // A system's text is its name for kinds 1, 2 and 4 (FUN_004f6030):
+    // 0x7098 names it as {1:4}.
+    let named = MessageParameter::Unit {
+        name: system,
+        class: "",
+    };
     let attacker = side_parameter(report.attacker == Faction::Alliance, texts);
     let parameters: Vec<MessageParameter<'_>> = match report.defender {
         Some(defender) => vec![
@@ -257,7 +262,7 @@ pub fn summary_texts(
             .unwrap_or_default()
     };
     (
-        text(rebellion_core::assault_report::TITLE, &[named]),
+        text(report.title(), &[named]),
         text(report.body(), &parameters),
     )
 }
@@ -853,6 +858,39 @@ mod tests {
         assert_eq!(
             body,
             "Alliance Troops have defended Hoth from an Imperial assault."
+        );
+    }
+
+    #[test]
+    fn a_bombardment_names_the_system_in_its_title() {
+        // FUN_00496770: 0x7098 "Orbital bombardment of {1:4}", a system's
+        // kind 4 being its name (FUN_004f6030); 0x7099 for a held system.
+        let (world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let report = AssaultReport::start_bombardment(
+            &world,
+            &TroopTransportState::new(),
+            Faction::Empire,
+            &[],
+            system,
+        )
+        .unwrap();
+        let mut texts = texts();
+        texts.insert(0x7098, "Orbital bombardment of {1:4}".into());
+        texts.insert(
+            0x7099,
+            "{1:4} ships have conducted an orbital strike on the {2:4} system of {3:1}".into(),
+        );
+        let (title, body) = summary_texts(&report, &world, &texts);
+        assert_eq!(title, "Orbital bombardment of Hoth");
+        assert_eq!(
+            body,
+            "Imperial ships have conducted an orbital strike on the Alliance system of Hoth"
+        );
+        let mut state = AssaultSummaryState::default();
+        state.open(&world, report, &texts, None);
+        assert_eq!(
+            state.report().unwrap().category,
+            ReportCategory::CapitalShips
         );
     }
 

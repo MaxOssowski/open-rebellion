@@ -1,0 +1,1876 @@
+{
+ "summary": {
+  "schema_version": 1,
+  "family": "fleet-window",
+  "scope": "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, a squadron's Move from the planet onto a fleet and its drag back onto its planet, and a battle the other side's planet squadrons start with the player's fleet, on both sides",
+  "status": "pass",
+  "browser_version": "155.0.8059.84",
+  "browser_executable": "/usr/bin/chromium",
+  "launch_arguments": [
+   "--mute-audio",
+   "--disable-background-networking",
+   "--disable-component-update",
+   "--disable-default-apps",
+   "--disable-extensions",
+   "--disable-sync",
+   "--no-first-run"
+  ],
+  "profile": "one-new-muted-process-per-faction-and-case",
+  "muted": true,
+  "viewport": {
+   "width": 640,
+   "height": 480,
+   "device_scale_factor": 1
+  },
+  "masks": {
+   "open": [
+    {
+     "x": 18,
+     "y": 2,
+     "width": 186,
+     "height": 16,
+     "why": "title text"
+    },
+    {
+     "x": 8,
+     "y": 33,
+     "width": 60,
+     "height": 13,
+     "why": "fleet label"
+    },
+    {
+     "x": 5,
+     "y": 34,
+     "width": 5,
+     "height": 3,
+     "why": "dotted tree line"
+    }
+   ],
+   "selected": [
+    {
+     "x": 100,
+     "y": 28,
+     "width": 130,
+     "height": 13,
+     "why": "selected fleet name"
+    },
+    {
+     "x": 101,
+     "y": 127,
+     "width": 133,
+     "height": 164,
+     "why": "right list contents"
+    }
+   ]
+  },
+  "source": {
+   "dll": "STRATEGY.DLL",
+   "resource_ids": [
+    10108,
+    10201,
+    10209,
+    10253,
+    10299,
+    10400,
+    10401,
+    10407,
+    10413,
+    10414,
+    10415,
+    10416,
+    10425,
+    10450,
+    10451,
+    10457,
+    10463,
+    10464,
+    10465,
+    10466,
+    10475,
+    10770
+   ],
+   "aggregate_sha256": "e7855bc7cb27bc1bdd0c5fe186f911dd9325c937abea3e4ffbbdd73ade8150c9"
+  },
+  "wasm_sha256": "201b473e67c5fcc32aa3dbcf785d1a845c0995ba84f9d47ca019c376ae5fc914",
+  "runtime_pack_sha256": "f627086246bbb4a3f10fd2bfefafe60a935ee0aa95565467db15b9d2aec672ea"
+ },
+ "cases": [
+  {
+   "status": "pass",
+   "faction": "alliance",
+   "case": "bombardment",
+   "fixture_code": 323,
+   "ready": {
+    "schema_version": 1,
+    "status": "ready",
+    "code": 323,
+    "scenario": 66,
+    "faction": "alliance",
+    "mode": "Popular Support",
+    "state_fingerprint": "fnv1a64:31cafea4e053ad2d",
+    "stable_frames": 2,
+    "primary_system_x": 385,
+    "primary_system_y": 138,
+    "probe_system_dat_id": 278,
+    "probe_system_name": "Sullust",
+    "probe_screen_x": 344.43262,
+    "probe_screen_y": 262.71542
+   },
+   "setup": {
+    "status": "fleet-load-setup",
+    "code": 323,
+    "primary_dat_id": 120,
+    "target_dat_id": 121,
+    "target_name": "F'tral",
+    "icon": [
+     347,
+     74.5
+    ],
+    "system_icon": [
+     318,
+     74.5
+    ],
+    "troop_item": [
+     102,
+     161
+    ],
+    "defenses_window": [
+     177.5,
+     197
+    ],
+    "primary_planet": [
+     332.5,
+     84.5
+    ],
+    "target_planet": [
+     473.5,
+     334.5
+    ],
+    "day_readout": [
+     144,
+     27
+    ],
+    "capacity": 1,
+    "fighter_room": 3
+   },
+   "checks": {
+    "before": {
+     "status": "fleet-load",
+     "code": 323,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    "menu": {
+     "status": "object-menu",
+     "code": 323,
+     "left": 347,
+     "top": 75,
+     "width": 185.53125,
+     "height": 142,
+     "rows": 7,
+     "mission_row": null,
+     "move_row": 0,
+     "confirmed_move_row": 1,
+     "create_fleet_row": null,
+     "rename_row": null,
+     "destination_row": null,
+     "status_window_row": 5,
+     "build_row": null,
+     "stop_row": null,
+     "bombardment_row": 2,
+     "assault_row": null,
+     "command_row": null,
+     "submenu": null,
+     "target_dat_id": 121,
+     "target_name": "F'tral",
+     "target_screen_x": 473.5,
+     "target_screen_y": 334.5
+    },
+    "waited": 131,
+    "sub": {
+     "left": 188.90625,
+     "top": 114,
+     "width": 161.09375,
+     "height": 82,
+     "rows": 4,
+     "general_row": 2,
+     "destroy_row": 3,
+     "destroy_enabled": false,
+     "command_rows": [
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    "after": {
+     "status": "fleet-load",
+     "code": 323,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Orbital bombardment at Akrit'tar: 2 shot(s), 0 target(s) destroyed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 2 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       63,
+       50
+      ],
+      "title": "Orbital bombardment of Akrit'tar",
+      "body": "Alliance ships have conducted an orbital strike on the Imperial system of Akrit'tar",
+      "page": "Summary",
+      "category": "CapitalShips",
+      "picture": 11162,
+      "columns": []
+     }
+    },
+    "closed": {
+     "status": "fleet-load",
+     "code": 323,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Orbital bombardment at Akrit'tar: 2 shot(s), 0 target(s) destroyed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 2 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   },
+   "observations": [
+    {
+     "status": "fleet-load",
+     "code": 323,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    {
+     "status": "fleet-load",
+     "code": 323,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Orbital bombardment at Akrit'tar: 2 shot(s), 0 target(s) destroyed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 2 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       63,
+       50
+      ],
+      "title": "Orbital bombardment of Akrit'tar",
+      "body": "Alliance ships have conducted an orbital strike on the Imperial system of Akrit'tar",
+      "page": "Summary",
+      "category": "CapitalShips",
+      "picture": 11162,
+      "columns": []
+     }
+    },
+    {
+     "status": "fleet-load",
+     "code": 323,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Orbital bombardment at Akrit'tar: 2 shot(s), 0 target(s) destroyed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 2 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   ],
+   "screenshots": [
+    {
+     "label": "ready",
+     "sha256": "76ff6d3ea357230641142e6ad2b89eb58b66ef41d7bbb25a8ca6eaa081a1ce7c"
+    },
+    {
+     "label": "final",
+     "sha256": "b74c3682cdfb935d0ccc7a699649a4134094fefc5036bfa39545170a78e593d6"
+    }
+   ],
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": [],
+   "console": [
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "info",
+     "text": "[assets] render_profile=original-parity"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x2fbc001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x2fbc001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x2fbc001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x2fbc001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+     "type": "info",
+     "text": "runtime_asset_pack loaded game_files=53 encyclopedia_assets=0 ui_bitmaps=2326 advisor_frames=3988 audio_files=313 tactical_meshes=87 tactical_textures=397 bytes=51695122"
+    },
+    {
+     "type": "info",
+     "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+    },
+    {
+     "type": "info",
+     "text": "[cutscene] opened path=assets/references/ref-videos/000.webm"
+    },
+    {
+     "type": "info",
+     "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+    },
+    {
+     "type": "info",
+     "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+    }
+   ],
+   "launch_attempts": [
+    {
+     "attempt": 1,
+     "status": "pass",
+     "duration_ms": 109.70584599999711
+    }
+   ],
+   "cleanup": "closed"
+  },
+  {
+   "status": "pass",
+   "faction": "alliance",
+   "case": "destroy-system",
+   "fixture_code": 330,
+   "ready": {
+    "schema_version": 1,
+    "status": "ready",
+    "code": 330,
+    "scenario": 73,
+    "faction": "alliance",
+    "mode": "Popular Support",
+    "state_fingerprint": "fnv1a64:a34d2006ea952ff1",
+    "stable_frames": 2,
+    "primary_system_x": 385,
+    "primary_system_y": 138,
+    "probe_system_dat_id": 278,
+    "probe_system_name": "Sullust",
+    "probe_screen_x": 344.43262,
+    "probe_screen_y": 262.71542
+   },
+   "setup": {
+    "status": "fleet-load-setup",
+    "code": 330,
+    "primary_dat_id": 120,
+    "target_dat_id": 121,
+    "target_name": "F'tral",
+    "icon": [
+     347,
+     74.5
+    ],
+    "system_icon": [
+     318,
+     74.5
+    ],
+    "troop_item": [
+     102,
+     161
+    ],
+    "defenses_window": [
+     177.5,
+     197
+    ],
+    "primary_planet": [
+     332.5,
+     84.5
+    ],
+    "target_planet": [
+     473.5,
+     334.5
+    ],
+    "day_readout": [
+     144,
+     27
+    ],
+    "capacity": 1,
+    "fighter_room": 3
+   },
+   "checks": {
+    "before": {
+     "status": "fleet-load",
+     "code": 330,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    "sub": {
+     "left": 188.90625,
+     "top": 114,
+     "width": 161.09375,
+     "height": 82,
+     "rows": 4,
+     "general_row": 2,
+     "destroy_row": 3,
+     "destroy_enabled": false,
+     "command_rows": [
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    "after": {
+     "status": "fleet-load",
+     "code": 330,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   },
+   "observations": [
+    {
+     "status": "fleet-load",
+     "code": 330,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   ],
+   "screenshots": [
+    {
+     "label": "ready",
+     "sha256": "76ff6d3ea357230641142e6ad2b89eb58b66ef41d7bbb25a8ca6eaa081a1ce7c"
+    },
+    {
+     "label": "final",
+     "sha256": "db639290581efc162e0cd9a4a92d8a64d61915158a09240df8ccb2b913963f4d"
+    }
+   ],
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": [],
+   "console": [
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "info",
+     "text": "[assets] render_profile=original-parity"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x5ec001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x5ec001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x5ec001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x5ec001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+     "type": "info",
+     "text": "runtime_asset_pack loaded game_files=53 encyclopedia_assets=0 ui_bitmaps=2326 advisor_frames=3988 audio_files=313 tactical_meshes=87 tactical_textures=397 bytes=51695122"
+    },
+    {
+     "type": "info",
+     "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+    },
+    {
+     "type": "info",
+     "text": "[cutscene] opened path=assets/references/ref-videos/000.webm"
+    },
+    {
+     "type": "info",
+     "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+    },
+    {
+     "type": "info",
+     "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+    },
+    {
+     "type": "info",
+     "text": "[main_menu] returned_from_campaign generation=0 audio_context=main_menu"
+    }
+   ],
+   "launch_attempts": [
+    {
+     "attempt": 1,
+     "status": "pass",
+     "duration_ms": 110.20668100001058
+    }
+   ],
+   "cleanup": "closed"
+  },
+  {
+   "status": "pass",
+   "faction": "empire",
+   "case": "bombardment",
+   "fixture_code": 579,
+   "ready": {
+    "schema_version": 1,
+    "status": "ready",
+    "code": 579,
+    "scenario": 66,
+    "faction": "empire",
+    "mode": "Popular Support",
+    "state_fingerprint": "fnv1a64:1dbb9cf4e0089b69",
+    "stable_frames": 2,
+    "primary_system_x": 385,
+    "primary_system_y": 138,
+    "probe_system_dat_id": 278,
+    "probe_system_name": "Sullust",
+    "probe_screen_x": 407.43262,
+    "probe_screen_y": 264.71542
+   },
+   "setup": {
+    "status": "fleet-load-setup",
+    "code": 579,
+    "primary_dat_id": 120,
+    "target_dat_id": 121,
+    "target_name": "F'tral",
+    "icon": [
+     412,
+     79.5
+    ],
+    "system_icon": [
+     383,
+     79.5
+    ],
+    "troop_item": [
+     167,
+     161
+    ],
+    "defenses_window": [
+     242.5,
+     197
+    ],
+    "primary_planet": [
+     397.5,
+     89.5
+    ],
+    "target_planet": [
+     538.5,
+     339.5
+    ],
+    "day_readout": [
+     539.5,
+     25
+    ],
+    "capacity": 2,
+    "fighter_room": 2
+   },
+   "checks": {
+    "before": {
+     "status": "fleet-load",
+     "code": 579,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    "menu": {
+     "status": "object-menu",
+     "code": 579,
+     "left": 412,
+     "top": 80,
+     "width": 185.53125,
+     "height": 142,
+     "rows": 7,
+     "mission_row": null,
+     "move_row": 0,
+     "confirmed_move_row": 1,
+     "create_fleet_row": null,
+     "rename_row": null,
+     "destination_row": null,
+     "status_window_row": 5,
+     "build_row": null,
+     "stop_row": null,
+     "bombardment_row": 2,
+     "assault_row": null,
+     "command_row": null,
+     "submenu": null,
+     "target_dat_id": 121,
+     "target_name": "F'tral",
+     "target_screen_x": 538.5,
+     "target_screen_y": 339.5
+    },
+    "waited": 110,
+    "sub": {
+     "left": 253.90625,
+     "top": 119,
+     "width": 161.09375,
+     "height": 82,
+     "rows": 4,
+     "general_row": 2,
+     "destroy_row": 3,
+     "destroy_enabled": false,
+     "command_rows": [
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    "after": {
+     "status": "fleet-load",
+     "code": 579,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Orbital bombardment at Akrit'tar: 4 shot(s), 0 target(s) destroyed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 4 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       125,
+       52
+      ],
+      "title": "Orbital bombardment of Akrit'tar",
+      "body": "Imperial ships have conducted an orbital strike on the Alliance system of Akrit'tar",
+      "page": "Summary",
+      "category": "CapitalShips",
+      "picture": 11162,
+      "columns": []
+     }
+    },
+    "closed": {
+     "status": "fleet-load",
+     "code": 579,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Orbital bombardment at Akrit'tar: 4 shot(s), 0 target(s) destroyed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 4 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   },
+   "observations": [
+    {
+     "status": "fleet-load",
+     "code": 579,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    {
+     "status": "fleet-load",
+     "code": 579,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Orbital bombardment at Akrit'tar: 4 shot(s), 0 target(s) destroyed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 4 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": {
+      "windows": 1,
+      "origin": [
+       125,
+       52
+      ],
+      "title": "Orbital bombardment of Akrit'tar",
+      "body": "Imperial ships have conducted an orbital strike on the Alliance system of Akrit'tar",
+      "page": "Summary",
+      "category": "CapitalShips",
+      "picture": 11162,
+      "columns": []
+     }
+    },
+    {
+     "status": "fleet-load",
+     "code": 579,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "Orbital bombardment at Akrit'tar: 4 shot(s), 0 target(s) destroyed",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 4 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   ],
+   "screenshots": [
+    {
+     "label": "ready",
+     "sha256": "324ea10a9bb015beba3066aabbc21007d2428f1cf475bbd90e2341b2b67c3387"
+    },
+    {
+     "label": "final",
+     "sha256": "104313582369504a28a7631c7eb14c14b5fcd7c64045e99ab905f4d2d2a5a2f0"
+    }
+   ],
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": [],
+   "console": [
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "info",
+     "text": "[assets] render_profile=original-parity"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x1c64001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x1c64001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x1c64001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0x1c64001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+     "type": "info",
+     "text": "runtime_asset_pack loaded game_files=53 encyclopedia_assets=0 ui_bitmaps=2326 advisor_frames=3988 audio_files=313 tactical_meshes=87 tactical_textures=397 bytes=51695122"
+    },
+    {
+     "type": "info",
+     "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+    },
+    {
+     "type": "info",
+     "text": "[cutscene] opened path=assets/references/ref-videos/000.webm"
+    },
+    {
+     "type": "info",
+     "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+    },
+    {
+     "type": "info",
+     "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+    }
+   ],
+   "launch_attempts": [
+    {
+     "attempt": 1,
+     "status": "pass",
+     "duration_ms": 111.54987599997548
+    }
+   ],
+   "cleanup": "closed"
+  },
+  {
+   "status": "pass",
+   "faction": "empire",
+   "case": "destroy-system",
+   "fixture_code": 586,
+   "ready": {
+    "schema_version": 1,
+    "status": "ready",
+    "code": 586,
+    "scenario": 73,
+    "faction": "empire",
+    "mode": "Popular Support",
+    "state_fingerprint": "fnv1a64:fb3d1f6c51c429c2",
+    "stable_frames": 2,
+    "primary_system_x": 385,
+    "primary_system_y": 138,
+    "probe_system_dat_id": 278,
+    "probe_system_name": "Sullust",
+    "probe_screen_x": 407.43262,
+    "probe_screen_y": 264.71542
+   },
+   "setup": {
+    "status": "fleet-load-setup",
+    "code": 586,
+    "primary_dat_id": 120,
+    "target_dat_id": 121,
+    "target_name": "F'tral",
+    "icon": [
+     412,
+     79.5
+    ],
+    "system_icon": [
+     383,
+     79.5
+    ],
+    "troop_item": [
+     167,
+     161
+    ],
+    "defenses_window": [
+     242.5,
+     197
+    ],
+    "primary_planet": [
+     397.5,
+     89.5
+    ],
+    "target_planet": [
+     538.5,
+     339.5
+    ],
+    "day_readout": [
+     539.5,
+     25
+    ],
+    "capacity": 18,
+    "fighter_room": 24
+   },
+   "checks": {
+    "before": {
+     "status": "fleet-load",
+     "code": 586,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    "sub": {
+     "left": 253.90625,
+     "top": 119,
+     "width": 161.09375,
+     "height": 82,
+     "rows": 4,
+     "general_row": 2,
+     "destroy_row": 3,
+     "destroy_enabled": true,
+     "command_rows": [
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    "after": {
+     "status": "fleet-load",
+     "code": 586,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": null,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "The Death Star has destroyed the Alliance system Akrit'tar.",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 0,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 0 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": true,
+     "fleet_present": true,
+     "adrift_characters": 2,
+     "last_destroy_message": "The Death Star has destroyed the Alliance system Akrit'tar.",
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   },
+   "observations": [
+    {
+     "status": "fleet-load",
+     "code": 586,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": null,
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 2,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    },
+    {
+     "status": "fleet-load",
+     "code": 586,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": null,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "The Death Star has destroyed the Alliance system Akrit'tar.",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 0,
+     "last_bombardment_message": "Orbital bombardment at Akrit'tar: 0 shot(s), 0 target(s) destroyed",
+     "last_assault_message": null,
+     "primary_destroyed": true,
+     "fleet_present": true,
+     "adrift_characters": 2,
+     "last_destroy_message": "The Death Star has destroyed the Alliance system Akrit'tar.",
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": null,
+     "assault_summary": null
+    }
+   ],
+   "screenshots": [
+    {
+     "label": "ready",
+     "sha256": "580a68f5e7fa96cab24ba26f24b75e7700d85a8c27157c829fb5f366594d8e29"
+    },
+    {
+     "label": "final",
+     "sha256": "7b6ce002f991afa99f78150d600544478e221d8d26c5b23d08cf3adf05b88c28"
+    }
+   ],
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": [],
+   "console": [
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "log",
+     "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+    },
+    {
+     "type": "info",
+     "text": "[assets] render_profile=original-parity"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0xd74001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0xd74001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0xd74001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+     "type": "warning",
+     "text": "[.WebGL-0xd74001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+     "type": "info",
+     "text": "runtime_asset_pack loaded game_files=53 encyclopedia_assets=0 ui_bitmaps=2326 advisor_frames=3988 audio_files=313 tactical_meshes=87 tactical_textures=397 bytes=51695122"
+    },
+    {
+     "type": "info",
+     "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+    },
+    {
+     "type": "info",
+     "text": "[cutscene] opened path=assets/references/ref-videos/000.webm"
+    },
+    {
+     "type": "info",
+     "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+    },
+    {
+     "type": "info",
+     "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+    }
+   ],
+   "launch_attempts": [
+    {
+     "attempt": 1,
+     "status": "pass",
+     "duration_ms": 115.68974000000162
+    }
+   ],
+   "cleanup": "closed"
+  }
+ ]
+}

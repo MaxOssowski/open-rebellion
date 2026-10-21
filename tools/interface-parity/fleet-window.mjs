@@ -630,12 +630,25 @@ const cases = [
       assert.ok(leftSide || rightSide, `the submenu overlaps its parent by three pixels: ${JSON.stringify({ menu, sub })}`);
       const rowHeight = (sub.height - 2) / sub.rows;
       await click(page, { x: sub.left + sub.width / 2, y: sub.top + 2 + rowHeight * (sub.general_row + 0.5) });
-      const after = await until(page, "General Bombardment is carried out",
-        (o) => o.last_bombardment_message?.startsWith("Orbital bombardment at "));
+      // The attacker's side sees the bombardment's summary at once (kind 7,
+      // FUN_00497530; FUN_00496770: +0x64 0, TEXTSTRA 0x7098, Capital
+      // Ships first).
+      const after = await until(page, "General Bombardment is carried out and its summary opens",
+        (o) => o.last_bombardment_message?.startsWith("Orbital bombardment at ")
+          && o.assault_summary?.page === "Summary");
       assert.ok(after.enemy_regiments <= 2);
+      const summary = after.assault_summary;
+      assert.match(summary.title, /^Orbital bombardment of /);
+      assert.equal(summary.category, "CapitalShips");
+      assert.ok([0x2b9a, 0x2b9b, 0x2b9c].includes(summary.picture), JSON.stringify(summary));
+      // A lost regiment is a system loss (+0x80): 0x2b9b.
+      if (after.enemy_regiments < 2) assert.equal(summary.picture, 0x2b9b);
       await frames(page, 3);
+      await shot(page, directory, "bombardment-summary");
+      await press(page, "Escape");
+      const closed = await until(page, "Escape closes the summary", (o) => o.assault_summary === null);
       await shot(page, directory, "bombardment-done");
-      return { before, menu, waited, sub, after };
+      return { before, menu, waited, sub, after, closed };
     },
   },
   {
@@ -679,6 +692,8 @@ const cases = [
       assert.ok(after.fleet_present, "the fleet stays (FUN_00524fb0)");
       assert.ok(after.adrift_characters >= 1, "the character standing there goes adrift");
       assert.equal(after.enemy_regiments, 0);
+      // A destroyed system makes no bombardment summary.
+      assert.equal(after.assault_summary, null);
       await frames(page, 3);
       await shot(page, directory, "destroy-done");
       return { before, sub, after };

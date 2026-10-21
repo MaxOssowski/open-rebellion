@@ -8132,8 +8132,9 @@ fn apply_panel_action(
             ) {
                 let mut bombard = BombardEnv::new(clock.tick, Some(victory_state.alliance_hq));
                 let outcome = bombard
-                    .bombard(
+                    .bombard_reported(
                         world,
+                        troop_transport_state,
                         Faction::of_alliance(is_alliance),
                         &fleets,
                         system,
@@ -8144,6 +8145,15 @@ fn apply_panel_action(
                     blockade_state.record_losses(*system, *losses);
                 }
                 log_bombardment(world, system, &outcome, clock.tick, msg_log);
+                present_assault_reports(
+                    std::mem::take(&mut bombard.reports),
+                    world,
+                    *player_faction,
+                    message_texts,
+                    assault_summaries,
+                    msg_log,
+                    clock.tick,
+                );
                 if outcome.system_destroyed {
                     destroy_planet(
                         world,
@@ -9019,7 +9029,8 @@ fn log_assault(
     ));
 }
 
-/// The Assault Summary reports (`ghidra/notes/assault-summary-window.md`):
+/// The Assault Summary reports of assaults and bombardments
+/// (`ghidra/notes/assault-summary-window.md`):
 /// the attacker's side sees the window at once (kind 7, `FUN_00497530`);
 /// the other side gets a battle report on the Conflict rail (kind 3,
 /// category `0x100`, `FUN_0048bc60`) that opens it.
@@ -9298,7 +9309,14 @@ fn apply_ai_actions(
                 };
                 if world.systems.contains_key(*system) {
                     let outcome = bombard
-                        .bombard(world, side.as_faction(), fleets, *system, *kind)
+                        .bombard_reported(
+                            world,
+                            troop_transport_state,
+                            side.as_faction(),
+                            fleets,
+                            *system,
+                            *kind,
+                        )
                         .clone();
                     log_bombardment(world, *system, &outcome, tick, log);
                 }

@@ -322,8 +322,9 @@ cross-runtime proof remain open
     `assault_summary.rs`): the attacker's side sees it at once, the other
     side gets a Conflict message that opens it. A browser gate opens it
     for both sides, shows each side's forces and closes it with Escape
-    (`evidence/2026-10-22-assault-summary/`). The bombardment summary is
-    not ported.
+    (`evidence/2026-10-22-assault-summary/`). The orbital bombardment's
+    summary followed the same day (`0x7098..0x709a`, pictures
+    `0x2b9a..0x2b9c`; `evidence/2026-10-22-bombardment-summary/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

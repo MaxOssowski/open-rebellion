@@ -1557,8 +1557,9 @@ pub enum MessageParameter<'a> {
     },
     /// Any other named object, such as a system: kind 1 its name.
     Named { name: &'a str },
-    /// A unit (`FUN_004f6030`): kind 1 its own name, which is its class's
-    /// when it has none (`FUN_004f62d0`), kind 3 its class's name.
+    /// A unit or a system (`FUN_004f6030`): kinds 1, 2 and 4 its own name,
+    /// which is its class's when it has none (`FUN_004f62d0`), kind 3 its
+    /// class's name.
     Unit { name: &'a str, class: &'a str },
     /// A side (`FUN_0052d920`): kind 1 its name, kind 2 its full name,
     /// kind 4 its adjective ([`side_parameter`]).
@@ -1578,7 +1579,7 @@ impl MessageParameter<'_> {
             (Self::Character { force_ranking, .. }, 7) => Some(force_ranking),
             (Self::Named { name }, 1)
             | (Self::Side { name, .. }, 1)
-            | (Self::Unit { name, .. }, 1) => Some(name),
+            | (Self::Unit { name, .. }, 1 | 2 | 4) => Some(name),
             (Self::Unit { class, .. }, 3) => Some(class),
             (Self::Side { full_name, .. }, 2) => Some(full_name),
             (Self::Side { adjective, .. }, 4) => Some(adjective),

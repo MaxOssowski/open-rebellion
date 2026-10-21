@@ -868,6 +868,51 @@ impl BombardEnv {
         &self.outcomes[self.outcomes.len() - 1].1
     }
 
+    /// [`Self::bombard`], keeping its Assault Summary report (`0x14f`,
+    /// [`crate::assault_report`]); a Death Star's destruction of the
+    /// system makes none.
+    pub fn bombard_reported(
+        &mut self,
+        world: &mut GameWorld,
+        transport: &crate::troop_transport::TroopTransportState,
+        side: Faction,
+        fleets: &[FleetKey],
+        system: SystemKey,
+        kind: u32,
+    ) -> &BombardmentOutcome {
+        let report = crate::assault_report::AssaultReport::start_bombardment(
+            world, transport, side, fleets, system,
+        );
+        // Each ship's hull before, to tell which ships the batteries destroy.
+        let hulls: Vec<((FleetKey, usize), i32)> = fleets
+            .iter()
+            .filter_map(|&fleet| world.fleets.get(fleet).map(|value| (fleet, value)))
+            .flat_map(|(fleet, value)| {
+                value
+                    .capital_ships
+                    .iter()
+                    .enumerate()
+                    .map(move |(index, ship)| ((fleet, index), ship.hull_current))
+            })
+            .collect();
+        let outcome = self.bombard(world, side, fleets, system, kind).clone();
+        if let Some(mut report) = report.filter(|_| !outcome.system_destroyed) {
+            let lost: Vec<(FleetKey, usize)> = outcome
+                .ship_losses
+                .iter()
+                .filter(|loss| {
+                    hulls.iter().any(|&(ship, hull)| {
+                        ship == (loss.fleet, loss.index) && hull - loss.hull_damage <= 0
+                    })
+                })
+                .map(|loss| (loss.fleet, loss.index))
+                .collect();
+            report.finish_bombardment(&outcome.destroyed, &lost);
+            self.reports.push(report);
+        }
+        &self.outcomes[self.outcomes.len() - 1].1
+    }
+
     /// The minor characters the Death Star's destruction of `system` killed
     /// this tick.
     #[must_use]
@@ -1723,6 +1768,85 @@ mod tests {
         let mut env = BombardEnv::new(42, None);
         let first: Vec<i32> = (0..5).map(|_| env.draw(1000)).collect();
         assert_eq!(first, [413, 291, 858, 764, 250]);
+    }
+
+    #[test]
+    fn a_reported_bombardment_keeps_its_summary() {
+        // FUN_00496770 (notification 2): a bombardment's report (+0x64 0)
+        // files the destroyed regiment under +0x80 and takes 0x2b9b;
+        // a battery that ends a ship files it under +0x88 (0x302).
+        let mut fx = fixture(1);
+        fx.world.capital_ship_classes[fx.ship_class].bombardment_modifier = 2;
+        let t = troop(&mut fx.world, fx.system, 0);
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let mut env = BombardEnv::new(3, None);
+        env.bombard_reported(
+            &mut fx.world,
+            &transport,
+            Faction::Empire,
+            &[fx.fleet],
+            fx.system,
+            GENERAL,
+        );
+        assert!(!fx.world.troops.contains_key(t));
+        let [report] = env.reports.as_slice() else {
+            panic!("one report, got {}", env.reports.len());
+        };
+        assert!(!report.assault);
+        assert_eq!((report.title(), report.picture()), (0x7098, 0x2b9b));
+        let troops = report
+            .system_forces
+            .columns(crate::assault_report::ReportCategory::Troops);
+        assert_eq!((troops[0].len(), troops[2].len()), (0, 1));
+        // The battery past the Alliance's general (as above) deals at most
+        // the hull left: it ends a ship of hull 10, not one of hull 100.
+        for (hull, ended) in [(10, true), (100, false)] {
+            let mut fx = fixture(1);
+            defense(&mut fx.world, fx.system, BATTERY, attack(10));
+            officer(&mut fx, true, None, command::CommandKind::General, 40);
+            fx.world.fleets[fx.fleet].capital_ships[0].hull_current = hull;
+            let mut env = BombardEnv::new(3, None);
+            let losses = env
+                .bombard_reported(
+                    &mut fx.world,
+                    &transport,
+                    Faction::Empire,
+                    &[fx.fleet],
+                    fx.system,
+                    TARGET_CIVILIAN,
+                )
+                .ship_losses
+                .clone();
+            assert_eq!(losses[0].hull_damage >= hull, ended, "{losses:?}");
+            let report = &env.reports[0];
+            let ships = report
+                .attackers
+                .columns(crate::assault_report::ReportCategory::CapitalShips);
+            let filed = (ships[0].len(), ships[2].len());
+            assert_eq!(filed, if ended { (0, 1) } else { (1, 0) }, "hull {hull}");
+            // The system lost nothing: 0x2b9c when the ship went, else 0x2b9a.
+            assert_eq!(report.picture(), if ended { 0x2b9c } else { 0x2b9a });
+        }
+        // A Death Star's destruction of the system makes no report.
+        let mut fx = fixture(1);
+        let ds = fx.world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(crate::world::DEATH_STAR_CLASS_ID),
+            hull: 1000,
+            ..CapitalShipClass::default()
+        });
+        fx.world.fleets[fx.fleet]
+            .capital_ships
+            .push(ShipInstance::new(ds, 1000, false));
+        let mut env = BombardEnv::new(3, None);
+        env.bombard_reported(
+            &mut fx.world,
+            &transport,
+            Faction::Empire,
+            &[fx.fleet],
+            fx.system,
+            DESTROY_SYSTEM,
+        );
+        assert!(env.reports.is_empty());
     }
 
     #[test]

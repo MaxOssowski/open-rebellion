@@ -68,9 +68,9 @@ pub struct ReportUnit {
     pub name: String,
     /// A major character (its picture's table, `pictures.rs`).
     pub major: bool,
-    /// The ground object an assault can destroy; `None` for ships,
+    /// The object an assault or a bombardment can destroy; `None` for
     /// squadrons and personnel.
-    target: Option<Target>,
+    target: Option<Loss>,
 }
 
 impl ReportUnit {
@@ -87,6 +87,13 @@ impl ReportUnit {
     }
 }
 
+/// What can be lost: a ground object, or a ship by its fleet and place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Loss {
+    Ground(Target),
+    Ship(FleetKey, usize),
+}
+
 /// One side's columns: Operational (Survivors), Captured, Destroyed
 /// (Killed).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -98,7 +105,7 @@ pub struct ReportForces {
 
 impl ReportForces {
     /// File the units `lost` names under Destroyed.
-    fn file_losses(&mut self, lost: impl Fn(Target) -> bool) {
+    fn file_losses(&mut self, lost: impl Fn(Loss) -> bool) {
         let (destroyed, operational) = std::mem::take(&mut self.operational)
             .into_iter()
             .partition(|unit| unit.target.is_some_and(&lost));
@@ -128,6 +135,8 @@ impl ReportForces {
 pub struct AssaultReport {
     /// `+0x5c`.
     pub system: SystemKey,
+    /// An assault (`+0x64` 1, `0x150`) or a bombardment (0, `0x14f`).
+    pub assault: bool,
     /// The attacking side (`+0x6c`).
     pub attacker: Faction,
     /// The system's side before the assault (`+0x68`); `None` neutral.
@@ -173,7 +182,8 @@ impl AssaultReport {
             for (index, ship) in fleet.capital_ships.iter().enumerate() {
                 if let Some(class) = world.capital_ship_classes.get(ship.class) {
                     let name = world.ship_name(key, index).unwrap_or(&class.name);
-                    push(&mut attackers, class.dat_id, name.to_owned(), None);
+                    let ship = Some(Loss::Ship(key, index));
+                    push_unit(&mut attackers, class.dat_id, name.to_owned(), ship);
                 }
             }
             for entry in &fleet.fighters {
@@ -241,6 +251,7 @@ impl AssaultReport {
 
         Some(Self {
             system,
+            assault: true,
             attacker: side,
             defender: GameWorld::facility_holder(sys.control)
                 .filter(|&side| side != Faction::Neutral),
@@ -263,16 +274,46 @@ impl AssaultReport {
     /// hyp: Operational lists the units that survive the assault.
     /// port: the assault captures no personnel, so Captured stays empty.
     pub fn finish(&mut self, world: &GameWorld, outcome: &AssaultOutcome) {
-        self.attackers.file_losses(|target| {
-            matches!(target, Target::Troop(troop) if outcome.lost_attackers.contains(&troop))
+        self.attackers.file_losses(|loss| {
+            matches!(loss, Loss::Ground(Target::Troop(troop)) if outcome.lost_attackers.contains(&troop))
         });
-        self.system_forces.file_losses(|target| match target {
-            Target::Troop(troop) => outcome.lost_defenders.contains(&troop),
-            _ => outcome.collateral.contains(&target),
+        self.system_forces.file_losses(|loss| match loss {
+            Loss::Ground(Target::Troop(troop)) => outcome.lost_defenders.contains(&troop),
+            Loss::Ground(target) => outcome.collateral.contains(&target),
+            Loss::Ship(..) => false,
         });
         self.taken = world.systems.get(self.system).is_some_and(|sys| {
             crate::economy::system_holder(world, sys) == ControlKind::Controlled(self.attacker)
         });
+    }
+
+    /// The forces before `side`'s `fleets` bombard `system`, as
+    /// [`Self::start`] takes them (`0x14f`: `+0x64` stays 0).
+    #[must_use]
+    pub fn start_bombardment(
+        world: &GameWorld,
+        transport: &TroopTransportState,
+        side: Faction,
+        fleets: &[FleetKey],
+        system: SystemKey,
+    ) -> Option<Self> {
+        Self::start(world, transport, side, fleets, system).map(|report| Self {
+            assault: false,
+            ..report
+        })
+    }
+
+    /// File a bombardment's losses (`0x302`, `FUN_00497380`): the
+    /// targets it destroyed on the system, and the bombarding ships the
+    /// batteries destroyed (`lost_ships`, by fleet and place, taken before
+    /// the ships leave their fleets).
+    pub fn finish_bombardment(&mut self, destroyed: &[Target], lost_ships: &[(FleetKey, usize)]) {
+        self.attackers.file_losses(
+            |loss| matches!(loss, Loss::Ship(fleet, index) if lost_ships.contains(&(fleet, index))),
+        );
+        self.system_forces.file_losses(
+            |loss| matches!(loss, Loss::Ground(target) if destroyed.contains(&target)),
+        );
     }
 
     /// `FUN_00497530`: kind 7 (the window opens at once) when the attacker
@@ -282,10 +323,43 @@ impl AssaultReport {
         self.attacker == viewer
     }
 
-    /// The picture `+0x2e`, by the attacker.
+    /// The picture `+0x2e` (`FUN_00496770`): an assault's by the attacker;
+    /// a bombardment's `0x2b9b` when the system lost units (`+0x80`), else
+    /// `0x2b9c` when the attacker did (`+0x88`), else `0x2b9a`.
     #[must_use]
     pub fn picture(&self) -> u32 {
-        PICTURES[usize::from(self.attacker != Faction::Alliance)]
+        if self.assault {
+            PICTURES[usize::from(self.attacker != Faction::Alliance)]
+        } else if !self.system_forces.destroyed.is_empty() {
+            0x2b9b
+        } else if !self.attackers.destroyed.is_empty() {
+            0x2b9c
+        } else {
+            0x2b9a
+        }
+    }
+
+    /// The title `+0x44` (`FUN_00496770`): `0x7090` "Assault on {1:1}" or
+    /// `0x7098` "Orbital bombardment of {1:4}", naming the system.
+    #[must_use]
+    pub fn title(&self) -> u16 {
+        if self.assault {
+            TITLE
+        } else {
+            0x7098
+        }
+    }
+
+    /// The first category shown (`+0x180`, `FUN_0044c630`): Trooper
+    /// Regiments (`0x9b`) after an assault, Capital Ships (`0x97`) after a
+    /// bombardment.
+    #[must_use]
+    pub fn first_category(&self) -> ReportCategory {
+        if self.assault {
+            ReportCategory::Troops
+        } else {
+            ReportCategory::CapitalShips
+        }
     }
 
     /// The body `+0x50` (`FUN_00496770`): `0x7091` taken or `0x7092`
@@ -294,6 +368,14 @@ impl AssaultReport {
     /// (when held) and the system.
     #[must_use]
     pub fn body(&self) -> u16 {
+        if !self.assault {
+            // 0x7099 for a held system, 0x709a for a neutral one.
+            return if self.defender.is_some() {
+                0x7099
+            } else {
+                0x709a
+            };
+        }
         match (self.defender.is_some(), self.taken) {
             (true, true) => 0x7091,
             (true, false) => 0x7092,
@@ -304,6 +386,10 @@ impl AssaultReport {
 }
 
 fn push(units: &mut Vec<ReportUnit>, dat_id: DatId, name: String, target: Option<Target>) {
+    push_unit(units, dat_id, name, target.map(Loss::Ground));
+}
+
+fn push_unit(units: &mut Vec<ReportUnit>, dat_id: DatId, name: String, target: Option<Loss>) {
     if let Some(category) = ReportCategory::of_family(dat_id.family()) {
         units.push(ReportUnit {
             category,
@@ -617,6 +703,70 @@ mod tests {
         assert_eq!(report.body(), 0x7093);
         report.taken = false;
         assert_eq!(report.body(), 0x7094);
+    }
+
+    #[test]
+    fn a_bombardment_reads_its_own_title_body_and_first_category() {
+        // FUN_00496770 (+0x64 0): 0x7098; 0x7099 for a held system, 0x709a
+        // for a neutral one; FUN_0044c630's +0x180 0x97 (Capital Ships).
+        let fx = fixture(ControlKind::Controlled(Faction::Alliance));
+        let held = AssaultReport::start_bombardment(
+            &fx.world,
+            &fx.transport,
+            Faction::Empire,
+            &[fx.fleet],
+            fx.system,
+        )
+        .unwrap();
+        assert!(!held.assault);
+        assert_eq!(held.title(), 0x7098);
+        assert_eq!(held.body(), 0x7099);
+        assert_eq!(held.first_category(), ReportCategory::CapitalShips);
+        let fx = fixture(ControlKind::Uncontrolled);
+        let neutral = AssaultReport::start_bombardment(
+            &fx.world,
+            &fx.transport,
+            Faction::Empire,
+            &[fx.fleet],
+            fx.system,
+        )
+        .unwrap();
+        assert_eq!(neutral.body(), 0x709a);
+        let assault = start(&fx);
+        assert_eq!(assault.title(), TITLE);
+        assert_eq!(assault.first_category(), ReportCategory::Troops);
+    }
+
+    #[test]
+    fn a_bombardment_files_the_destroyed_targets_and_ships() {
+        // FUN_00497380 (0x302): the system's under +0x80, the ships under
+        // +0x88; the picture follows (0x2b9b, 0x2b9c, 0x2b9a).
+        let fx = fixture(ControlKind::Controlled(Faction::Alliance));
+        let bombard = || {
+            AssaultReport::start_bombardment(
+                &fx.world,
+                &fx.transport,
+                Faction::Empire,
+                &[fx.fleet],
+                fx.system,
+            )
+            .unwrap()
+        };
+        let mut report = bombard();
+        report.finish_bombardment(&[], &[]);
+        assert_eq!(report.picture(), 0x2b9a);
+        let mut report = bombard();
+        report.finish_bombardment(&[], &[(fx.fleet, 0)]);
+        assert_eq!(report.picture(), 0x2b9c);
+        let ships = report.attackers.columns(ReportCategory::CapitalShips);
+        assert_eq!(names(&ships[2]), ["Star Destroyer"]);
+        let mut report = bombard();
+        report.finish_bombardment(&[Target::Defense(fx.battery)], &[(fx.fleet, 1)]);
+        assert_eq!(report.picture(), 0x2b9b);
+        let defense = report.system_forces.columns(ReportCategory::Defense);
+        assert_eq!(names(&defense[2]), ["Ion Cannon"]);
+        let ships = report.attackers.columns(ReportCategory::CapitalShips);
+        assert_eq!(ships[2].len(), 0);
     }
 
     #[test]

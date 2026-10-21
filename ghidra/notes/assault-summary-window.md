@@ -145,11 +145,19 @@ port:
   scrolls with the wheel and draws no scroll bar; the RCDATA `0x7013`
   line sits above the Display buttons.
 - The port's log line ("Planetary assault at ...") stays.
-- The bombardment report (`0x14f`, `0x7098..0x709a`, pictures
-  `0x2b9a..0x2b9c`) is not ported yet. A system's text for kinds 1, 2 and
-  4 is its name (`FUN_004f6030`), so `0x7098` reads "Orbital bombardment
-  of {system}". Its picture is `0x2b9b` when the system lost units
-  (`+0x80`), else `0x2b9c` when the attacker did (`+0x88`), else `0x2b9a`.
+
+## Ported (2026-10-22): the bombardment summary
+
+`AssaultReport::start_bombardment` and `finish_bombardment` make the
+report for `0x14f` (`+0x64` 0); `BombardEnv::bombard_reported` keeps it,
+except when a Death Star destroys the system. The title is `0x7098`
+"Orbital bombardment of {1:4}": a system's text for kinds 1, 2 and 4 is
+its name (`FUN_004f6030`, so `MessageParameter::Unit` answers 2 and 4
+too). The body is `0x7099` for a held system, `0x709a` for a neutral one.
+The picture is `0x2b9b` when the system lost units (`+0x80`), else
+`0x2b9c` when the attacker did (`+0x88`), else `0x2b9a`. The window opens
+on Capital Ships (`+0x180` `0x97`). A bombarding ship the batteries end
+is filed under the attacker's Destroyed.
 
 Open: the exact y of each rail button; how `+0x90`/`+0x98` are filled for
 system personnel; the row widget `FUN_0044edb0`; `+0x28`'s use.
