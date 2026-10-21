@@ -33,6 +33,7 @@ const FLEET_DESTROY_SYSTEM = 74;
 const PRODUCTION_DELIVERY = 75;
 const UPRISING_INCIDENT = 76;
 const BLOCKADE_ARRIVAL = 77;
+const SUPPORT_FLIP = 78;
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -731,6 +732,20 @@ const cases = [
       await frames(page, 3);
       await shot(page, directory, "blockade-initiated");
       return { before, blockade };
+    },
+  },
+  {
+    name: "joins",
+    code: SUPPORT_FLIP,
+    // The loading target's support is all the other side's and no regiment
+    // stands there, so FUN_0050b610 hands it over, and System Joins
+    // (FUN_00499760, TEXTSTRA 0x7039) tells the player.
+    async run(page, faction, setup, directory) {
+      const joined = await until(page, "the target joins the other side",
+        (o) => o.last_joins_title === "F'tral Joins Enemy", null, 90_000);
+      await frames(page, 3);
+      await shot(page, directory, "joins-enemy");
+      return { joined };
     },
   },
   {

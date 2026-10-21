@@ -2725,6 +2725,12 @@ cross-runtime proof remain open
   Initiates Blockade of F'tral" (`FUN_004960f0`, TEXTSTRA `0x70a0`). The
   Fleet window suite passes 56 cases
   (`evidence/2026-10-21-blockade-browser/`).
+- Browser (2026-10-21): the fixture scenario `SupportFlip` (code 78) and
+  `fleet-window.mjs` `joins` show, for both sides, the player's F'tral,
+  with no regiment and the other side's support, handed over on the first
+  day. System Joins reads "F'tral Joins Enemy" (`FUN_00499760`, TEXTSTRA
+  `0x7039`). The Fleet window suite passes 58 cases
+  (`evidence/2026-10-21-system-joins-browser/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

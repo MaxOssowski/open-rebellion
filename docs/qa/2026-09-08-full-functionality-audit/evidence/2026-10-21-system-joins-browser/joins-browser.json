@@ -1,0 +1,174 @@
+{
+ "schema_version": 1,
+ "family": "fleet-window",
+ "status": "pass",
+ "browser_version": "154.0.8037.97",
+ "browser_executable": "/usr/bin/chromium",
+ "viewport": {
+  "width": 640,
+  "height": 480,
+  "device_scale_factor": 1
+ },
+ "wasm_sha256": "2511c5b58ee0ab54928a14905a78a314156988f663a3d734d83fde8dab389e32",
+ "runtime_pack_sha256": "f627086246bbb4a3f10fd2bfefafe60a935ee0aa95565467db15b9d2aec672ea",
+ "results": [
+  {
+   "status": "pass",
+   "faction": "alliance",
+   "case": "joins",
+   "fixture_code": 334,
+   "checks": {
+    "joined": {
+     "status": "fleet-load",
+     "code": 334,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "The Empire has destroyed the Alliance Headquarters.",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 0,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": "F'tral Joins Enemy"
+    }
+   },
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": []
+  },
+  {
+   "status": "pass",
+   "faction": "empire",
+   "case": "joins",
+   "fixture_code": 590,
+   "checks": {
+    "joined": {
+     "status": "fleet-load",
+     "code": 590,
+     "window_open": false,
+     "origin": null,
+     "entries": 0,
+     "selected": null,
+     "tab": null,
+     "enabled": [
+      false,
+      false,
+      false,
+      false
+     ],
+     "items": [],
+     "counts": null,
+     "fleet_entry": null,
+     "fleets": [],
+     "troops_tab": null,
+     "first_item": null,
+     "aboard": false,
+     "cargo": 0,
+     "troop_system_dat_id": 120,
+     "fleet_system_dat_id": 120,
+     "in_transit": false,
+     "regiment_travelling": false,
+     "confirmation_open": false,
+     "last_message": "The Empire has destroyed the Alliance Headquarters.",
+     "last_regiment_message": null,
+     "planet_squadrons": 0,
+     "fleet_squadrons": 0,
+     "fighters_tab": null,
+     "enemy_planet_squadrons": 0,
+     "enemy_fleets": 0,
+     "enemy_regiments": 0,
+     "last_bombardment_message": null,
+     "last_assault_message": null,
+     "primary_destroyed": false,
+     "fleet_present": true,
+     "adrift_characters": 0,
+     "last_destroy_message": null,
+     "last_departure_message": null,
+     "last_arrival_message": null,
+     "target_ships": 0,
+     "last_idle_title": null,
+     "primary_in_revolt": false,
+     "last_incident_message": null,
+     "last_disaster_message": null,
+     "last_disaster_title": null,
+     "last_blockade_title": null,
+     "last_joins_title": "F'tral Joins Enemy"
+    }
+   },
+   "requests": [
+    {
+     "url": "/",
+     "status": 200
+    },
+    {
+     "url": "/gl.js",
+     "status": 200
+    },
+    {
+     "url": "/open-rebellion-test.wasm",
+     "status": 200
+    },
+    {
+     "url": "/data/runtime.orpk",
+     "status": 200
+    }
+   ],
+   "errors": []
+  }
+ ]
+}

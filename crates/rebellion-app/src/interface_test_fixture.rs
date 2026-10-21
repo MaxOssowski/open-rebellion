@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 77;
+const SCENARIO_COUNT: u8 = 78;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -207,6 +207,11 @@ pub enum Scenario {
     /// (`FUN_004960f0`, `0x14e`) tells the player "Fleet Initiates Blockade
     /// of" the target.
     BlockadeArrival = 76,
+    /// As `FleetLoad` with the loading target's support all the other
+    /// side's; it has no regiment, so the economy's first day hands it over
+    /// (`FUN_0050b610`) and System Joins (`FUN_00499760`, `0x100`) tells the
+    /// player it "Joins Enemy". The clock runs Fast.
+    SupportFlip = 77,
 }
 
 impl Scenario {
@@ -289,6 +294,7 @@ impl Scenario {
             74 => Self::ProductionDelivery,
             75 => Self::UprisingIncident,
             76 => Self::BlockadeArrival,
+            77 => Self::SupportFlip,
             _ => return None,
         })
     }
@@ -311,6 +317,7 @@ impl Scenario {
                 | Self::ProductionDelivery
                 | Self::UprisingIncident
                 | Self::BlockadeArrival
+                | Self::SupportFlip
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
@@ -644,6 +651,9 @@ pub fn apply(
     if request.scenario == Scenario::BlockadeArrival {
         place_blockade_arrival(request, world, movement, primary);
     }
+    if request.scenario == Scenario::SupportFlip {
+        place_support_flip(request, world, primary);
+    }
     if request.scenario == Scenario::Quadrants {
         place_quadrant_contents(request, world, movement, missions, sectors, primary);
     }
@@ -917,6 +927,7 @@ pub fn runs_the_clock(request: FixtureRequest) -> bool {
             | Scenario::ProductionDelivery
             | Scenario::UprisingIncident
             | Scenario::BlockadeArrival
+            | Scenario::SupportFlip
     )
 }
 
@@ -1403,6 +1414,18 @@ fn place_blockade_arrival(
     if let Some(fleet) = world.fleets.keys().next() {
         let _ = begin_fleet_transit(movement, world, fleet, target, 3);
     }
+}
+
+/// The `SupportFlip` scenario: the loading target's support goes all to the
+/// other side; with no regiment there, the economy hands it over.
+fn place_support_flip(request: FixtureRequest, world: &mut GameWorld, primary: SystemKey) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let Some(target) = loading_target(world, primary) else {
+        return;
+    };
+    let system = &mut world.systems[target];
+    system.popularity_alliance = if player_is_alliance { 0.0 } else { 1.0 };
+    system.popularity_empire = 1.0 - system.popularity_alliance;
 }
 
 /// The `UprisingIncident` scenario: the primary system revolts against the
@@ -3145,6 +3168,9 @@ struct FleetLoadObservation {
     last_disaster_title: Option<String>,
     /// The player's last Blockade title (`0x14e`, `FUN_004960f0`).
     last_blockade_title: Option<String>,
+    /// The player's System Joins title (`0x100`, `FUN_00499760`) for the
+    /// loading target.
+    last_joins_title: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3372,6 +3398,24 @@ fn fleet_load_observation(
             })
             .filter_map(|message| message.title.as_deref())
             .find(|title| title.contains("Blockade"))
+            .map(str::to_owned),
+        last_joins_title: messages
+            .iter()
+            .rev()
+            .filter(|message| {
+                message
+                    .audience
+                    .includes(request.faction == CockpitFaction::Alliance)
+            })
+            .filter_map(|message| message.title.as_deref())
+            .find(|title| {
+                loading_target(world, primary).is_some_and(|target| {
+                    let name = &world.systems[target].name;
+                    title
+                        .strip_prefix(name.as_str())
+                        .is_some_and(|rest| rest == " Joins Enemy" || rest == " Joins")
+                })
+            })
             .map(str::to_owned),
     })
 }
@@ -4551,6 +4595,75 @@ mod tests {
     // 0x38d, FUN_0050d030) and the disaster timer (event 0x38f,
     // FUN_00511930) fire when due; the disaster spares a system with
     // neither energy nor raw materials.
+    // port: the fixture's own layout. FUN_0050b610 gives a system with no
+    // regiment the side its support favours, and System Joins
+    // (FUN_00499760) reports the change.
+    #[test]
+    fn the_support_flip_scenario_gives_the_target_s_support_to_the_other_side() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let request = request(Scenario::SupportFlip, faction);
+            let mut applied = apply_to_loading_world_with(request, |_| {});
+            let primary = applied.world.systems.keys().next().unwrap();
+            let target = loading_target(&applied.world, primary).unwrap();
+            let target_name = applied.world.systems[target].name.clone();
+            let system = &applied.world.systems[target];
+            assert_eq!(system.popularity_alliance, if alliance { 0.0 } else { 1.0 });
+            assert_eq!(system.popularity_empire, if alliance { 1.0 } else { 0.0 });
+            assert!(system.ground_units.is_empty());
+            assert!(runs_the_clock(request));
+            let line = |title: &str, player: bool| {
+                GameMessage::new(
+                    1,
+                    "text".to_string(),
+                    rebellion_render::message_log::MessageCategory::Diplomacy,
+                )
+                .with_title(title.to_string())
+                .on_rail(
+                    rebellion_render::message_log::MessageRail::PopularSupport,
+                    rebellion_render::message_log::RailAudience::side(alliance == player),
+                )
+            };
+            let observed = fleet_load_observation(
+                request,
+                loading_regiment(&applied.world, primary).unwrap(),
+                &applied.world,
+                &FogState::new(Faction::of_alliance(alliance)),
+                &applied.movement,
+                &applied.transport,
+                &FleetWindowState::default(),
+                false,
+                &[
+                    line(&format!("{target_name} Joins Enemy"), true),
+                    line("Elsewhere Joins Enemy", true),
+                    line(&format!("{target_name} Joins"), false),
+                ],
+            )
+            .unwrap();
+            assert_eq!(
+                observed.last_joins_title,
+                Some(format!("{target_name} Joins Enemy"))
+            );
+            // A system joining the player's own side reads "Joins".
+            let observed = fleet_load_observation(
+                request,
+                loading_regiment(&applied.world, primary).unwrap(),
+                &applied.world,
+                &FogState::new(Faction::of_alliance(alliance)),
+                &applied.movement,
+                &applied.transport,
+                &FleetWindowState::default(),
+                false,
+                &[line(&format!("{target_name} Joins"), true)],
+            )
+            .unwrap();
+            assert_eq!(
+                observed.last_joins_title,
+                Some(format!("{target_name} Joins"))
+            );
+        }
+    }
+
     // port: the fixture's own layout. A fleet arriving at the other side's
     // system blockades it (blockade::system_is_blockaded); Blockade
     // (FUN_004960f0) then speaks to the player.
@@ -6187,7 +6300,8 @@ mod tests {
                 Scenario::FleetDestroySystem,
                 Scenario::ProductionDelivery,
                 Scenario::UprisingIncident,
-                Scenario::BlockadeArrival
+                Scenario::BlockadeArrival,
+                Scenario::SupportFlip
             ]
         );
     }
