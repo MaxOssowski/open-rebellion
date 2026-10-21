@@ -608,8 +608,8 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   v92), and the Fleet window's Personnel menu and drag. Open: the drag out
   of a Defenses or system window (`0x214`, unresolved for characters).
 - [x] Gate uncited simulation rules with `tools/provenance-scan`; its baseline
-  may only shrink (F-031; 130 items after F-032 transit, 11 on 2026-10-21,
-  all in `combat.rs`).
+  may only shrink (F-031; 130 items after F-032 transit, empty on
+  2026-10-21 with `combat.rs`'s items tagged `hyp:` for F-033).
 - [x] Port fleet transit time from `FUN_0055d8c0` (F-032 transit; bombardment
   and fog remain).
 - [ ] Replace the invented rules found by the invention review, one system at
