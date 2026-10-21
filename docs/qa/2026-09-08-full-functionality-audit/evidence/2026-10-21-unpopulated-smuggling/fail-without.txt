@@ -1,0 +1,4 @@
+thread 'economy::tests::an_unpopulated_held_system_smuggles_too' (4044156) panicked at crates/rebellion-core/src/economy.rs:1564:36:
+no entry found for key
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+--

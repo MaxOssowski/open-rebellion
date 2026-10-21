@@ -2668,6 +2668,14 @@ cross-runtime proof remain open
   economy had skipped unpopulated systems and left them held; it now
   resolves their holder daily. Campaigns and the golden are unchanged
   (`evidence/2026-10-21-unpopulated-holder/`).
+- 2026-10-21: `FUN_0050b230` asks only for a holder, so a system held by
+  regiments alone has a smuggling percent too. The economy now runs step 1
+  for unpopulated systems (`refresh_smuggling`).
+  - Golden initial `v1:b77445f2a1a777c0` -> `v1:e01dc3b9b044c28e`, final
+    `v1:4a994816eae0685d` -> `v1:7737eb96955b5cd7`: unpopulated systems
+    now carry an economy record.
+  - Campaign events are identical; the snapshots gain unpopulated rows
+    (`evidence/2026-10-21-unpopulated-smuggling/`).
 - Acceptance: Support follows the hook and timer chain with failing-without
   tests, and research is recovered or tagged.
 

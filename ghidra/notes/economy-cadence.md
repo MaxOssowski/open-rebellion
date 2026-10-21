@@ -52,9 +52,11 @@ value changes.
 - Step 1 stores the result in `SystemEconomy::smuggling_percent` (save
   v61) and emits `SmugglingPercentChanged` on a change. Nothing moves the
   support with it.
-- port: the economy's other fields still skip unpopulated systems, so a
-  system held only by regiments keeps 0. Its holder is resolved since
-  2026-10-21 (`evidence/2026-10-21-unpopulated-holder/`).
+- `FUN_0050b230` has no populated test. Since 2026-10-21 a system held
+  only by regiments gets its smuggling percent, and its holder is
+  resolved (`evidence/2026-10-21-unpopulated-holder/`,
+  `evidence/2026-10-21-unpopulated-smuggling/`). port: the economy's
+  other fields still skip unpopulated systems.
 - Bit 11 of `+0x88` is DeathStarNearby (see "Bit 11" below), ported
   2026-10-17 in place of the port's support guess.
 

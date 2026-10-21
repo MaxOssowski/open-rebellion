@@ -353,8 +353,22 @@ impl EconomySystem {
             // An unpopulated system has no support side (FUN_0050b610 gives
             // it 3), so its regiments alone hold it: when the last one
             // leaves (FUN_00508660 reruns FUN_0050b610) it holds no side.
-            // port: the other fields stay with the populated systems.
+            // port: the fields other than the holder and the smuggling
+            // percent stay with the populated systems.
             if !sys.is_populated {
+                // FUN_0050b230 asks only for a holder, populated or not.
+                let eco = state.per_system.entry(sys_key).or_default();
+                let nearby = death_star_nearby(world, sys);
+                refresh_smuggling(
+                    eco,
+                    world,
+                    sys_key,
+                    sys,
+                    nearby,
+                    gnprtb,
+                    difficulty,
+                    &mut events,
+                );
                 let resolved = resolve_system_control(
                     sys,
                     presence.alliance_troops > 0,
@@ -398,36 +412,20 @@ impl EconomySystem {
                 });
             }
 
-            // The hooks' inputs. port: a change made after the economy has
-            // run is seen on the next day's run.
+            // The hooks' inputs and the smuggling percent (step 1).
             let nearby = death_star_nearby(world, sys);
-            let inputs = HookInputs {
-                alliance_support: crate::uprising::support_points(
-                    sys,
-                    crate::dat::Faction::Alliance,
-                ),
-                death_star_nearby: nearby,
-                side: sys.control.faction(),
-            };
-            let last = eco.hook_inputs.replace(inputs);
+            let (last, inputs) = refresh_smuggling(
+                eco,
+                world,
+                sys_key,
+                sys,
+                nearby,
+                gnprtb,
+                difficulty,
+                &mut events,
+            );
             let support_changed =
                 last.is_none_or(|last| last.alliance_support != inputs.alliance_support);
-
-            // 1. The smuggling percent (FUN_0050b230), recomputed by the
-            // support, bit 11 and side hooks only. It does not move the
-            // support.
-            if last != Some(inputs) {
-                let percent = smuggling_percent(world, sys, nearby, gnprtb, difficulty);
-                if percent != eco.smuggling_percent {
-                    let previous = eco.smuggling_percent;
-                    eco.smuggling_percent = percent;
-                    events.push(EconomyEvent::SmugglingPercentChanged {
-                        system: sys_key,
-                        previous,
-                        percent,
-                    });
-                }
-            }
 
             // 2. ProductionModifier (FUN_0050b2c0), recomputed by the
             // support hook only.
@@ -805,6 +803,48 @@ pub fn resolve_system_control(
         None if sys.control == ControlKind::Controlled(Faction::Neutral) => sys.control,
         None => ControlKind::Uncontrolled,
     }
+}
+
+/// The hooks' inputs this run, and step 1: the smuggling percent
+/// (`FUN_0050b230`), recomputed by the support, bit 11 and side hooks only
+/// (`FUN_005109f0`, `FUN_00511740`, `FUN_00510820`). It does not move the
+/// support. Returns the inputs the last run saw, and this run's.
+///
+/// port: a change made after the economy has run is seen on the next
+/// day's run.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "One system's economy record, its world inputs and the event sink."
+)]
+fn refresh_smuggling(
+    eco: &mut SystemEconomy,
+    world: &GameWorld,
+    sys_key: SystemKey,
+    sys: &crate::world::System,
+    nearby: bool,
+    gnprtb: &GnprtbParams,
+    difficulty: u8,
+    events: &mut Vec<EconomyEvent>,
+) -> (Option<HookInputs>, HookInputs) {
+    let inputs = HookInputs {
+        alliance_support: crate::uprising::support_points(sys, crate::dat::Faction::Alliance),
+        death_star_nearby: nearby,
+        side: sys.control.faction(),
+    };
+    let last = eco.hook_inputs.replace(inputs);
+    if last != Some(inputs) {
+        let percent = smuggling_percent(world, sys, nearby, gnprtb, difficulty);
+        if percent != eco.smuggling_percent {
+            let previous = eco.smuggling_percent;
+            eco.smuggling_percent = percent;
+            events.push(EconomyEvent::SmugglingPercentChanged {
+                system: sys_key,
+                previous,
+                percent,
+            });
+        }
+    }
+    (last, inputs)
 }
 
 /// [`resolve_system_control`] with `sys`'s regiments counted as
@@ -1523,6 +1563,21 @@ mod tests {
                 .any(|event| matches!(event, EconomyEvent::SmugglingPercentChanged { .. })),
             "{first:?}"
         );
+    }
+
+    #[test]
+    fn an_unpopulated_held_system_smuggles_too() {
+        // FUN_0050b230 tests the holder (+0x24 bits 6..7), not +0x88 bit 0
+        // (populated), so a system held by regiments alone gets its percent.
+        let (mut world, sys) = smuggling_world(false);
+        world.systems[sys].is_populated = false;
+        let mut state = EconomyState::default();
+        let events = EconomySystem::advance(&mut state, &world, &[TickEvent { tick: 1 }], 2);
+        assert_eq!(state.per_system[&sys].smuggling_percent, 58);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            EconomyEvent::SmugglingPercentChanged { percent: 58, .. }
+        )));
     }
 
     #[test]
@@ -2491,13 +2546,16 @@ mod tests {
     // --- Task #43: Unpopulated system skipping ---
 
     #[test]
-    fn unpopulated_system_skipped_in_advance() {
+    fn an_unheld_unpopulated_system_reports_nothing() {
+        // FUN_0050b230 runs for any system (no populated test) and gives 0
+        // with no holder; FUN_0050b610 gives an unpopulated system with no
+        // regiment no holder. The port had skipped unpopulated systems.
         let gnprtb = stock_gnprtb();
         let mut world = GameWorld {
             gnprtb,
             ..Default::default()
         };
-        let _sys_key = world.systems.insert(crate::world::System {
+        let sys_key = world.systems.insert(crate::world::System {
             dat_id: DatId(0),
             name: "Unpopulated".into(),
             sector: SectorKey::default(),
@@ -2526,15 +2584,11 @@ mod tests {
         let tick = vec![TickEvent { tick: 1 }];
         let events = EconomySystem::advance(&mut state, &world, &tick, 2);
 
-        // Unpopulated system should produce zero events and no economy entry
         assert!(
             events.is_empty(),
-            "unpopulated system should produce no events: {events:?}"
+            "an unheld unpopulated system reports nothing: {events:?}"
         );
-        assert!(
-            state.per_system.is_empty(),
-            "no economy entry for unpopulated system"
-        );
+        assert_eq!(state.per_system[&sys_key].smuggling_percent, 0);
     }
 
     // --- Task #44: Uprising garrison doubling ---
@@ -2657,8 +2711,9 @@ mod tests {
             )),
             "{events:?}"
         );
-        // The other fields stay with the populated systems.
-        assert!(!state.per_system.contains_key(&sys));
+        // Only the smuggling percent's record is kept for it (FUN_0050b230
+        // asks for a holder, not a population).
+        assert_eq!(state.per_system[&sys].garrison_requirement, 0);
 
         // One side's regiments alone hold it.
         for alliance in [true, false] {
