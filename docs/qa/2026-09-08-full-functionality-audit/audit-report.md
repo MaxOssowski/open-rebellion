@@ -1608,7 +1608,8 @@ cross-runtime proof remain open
 ### F-025: Death Star combat checks key on the Empire major-character family
 
 - Severity: P2
-- Status: open
+- Status: remediated (2026-10-22: identity by the CAPSHPSD family `0x18`
+  record; the shield's role since save v96)
 - Evidence: `combat.rs` derives `is_death_star` and `CombatEntityKind::DeathStar`
   from DatId family `0x34`. MJCHARSD and TEXTSTRA show `0x34000280` is Emperor
   Palpatine and `0x35000281` Darth Vader; `FUN_00560d50` routes family `0x34`
@@ -1616,6 +1617,15 @@ cross-runtime proof remain open
   never runs on real data.
 - Acceptance: Death Star detection uses the recovered class identity and the
   shield's battle role follows recovered code.
+- 2026-10-22: remediated (`evidence/2026-10-22-death-star-identity/`).
+  - CAPSHPSD record `+0x10` is the object family: `0x14` for every record
+    but 136, the Death Star, `0x18`. The original finds Death Stars by it
+    (`FUN_005003d0`, families `0x18..0x1b`; `FUN_0040b0e0` ->
+    `FUN_0040bcd0`).
+  - `is_death_star` drops the family `0x34` clause (the Emperor's family);
+    record 136 stands for family `0x18`.
+  - The shield's role follows `FUN_005ba450` since save v96.
+  - Campaigns are unchanged.
 
 ### F-026: The disaster and uprising incidents have no effect
 

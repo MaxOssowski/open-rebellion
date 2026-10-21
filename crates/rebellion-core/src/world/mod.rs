@@ -424,12 +424,19 @@ pub struct CapitalShipClass {
 pub const DEATH_STAR_CLASS_ID: u32 = 136;
 
 impl CapitalShipClass {
-    /// True for the Death Star class. Seeded classes carry the CAPSHPSD
-    /// record id; original runtime ids carry family byte `0x34`, the family
-    /// `FUN_00560d50` routes to the superlaser path `FUN_005617b0`.
+    /// True for the Death Star class: the CAPSHPSD record whose object
+    /// family (record `+0x10`) is `0x18`, where every other record has
+    /// `0x14`. The original finds a fleet's Death Stars by that family
+    /// (`FUN_005003d0`, families `0x18..0x1b`; `FUN_0040b0e0` ->
+    /// `FUN_0040bcd0`). In the shipped CAPSHPSD only record 136 (`0x88`) has
+    /// it.
+    ///
+    /// port: the class keeps its record id, not the family, so the record
+    /// id stands for it. Family `0x34` is the Emperor's (MJCHARSD
+    /// `0x34000280`), not a Death Star (F-025).
     #[must_use]
     pub fn is_death_star(&self) -> bool {
-        self.dat_id == DatId::new(DEATH_STAR_CLASS_ID) || self.dat_id.family() == 0x34
+        self.dat_id == DatId::new(DEATH_STAR_CLASS_ID)
     }
 }
 
@@ -1004,7 +1011,8 @@ pub struct Fleet {
     pub characters: Vec<CharacterKey>,
     /// True if this fleet belongs to the Rebel Alliance; false = Empire.
     pub is_alliance: bool,
-    /// True if this fleet contains a Death Star (family `0x34`).
+    /// True if this fleet contains a Death Star (a CAPSHPSD family `0x18`
+    /// object, `FUN_005003d0`; [`CapitalShipClass::is_death_star`]).
     ///
     /// Enables the Death Star win-condition check in `VictorySystem`.
     /// Set by `rebellion-data` when loading fleet composition from CAPSHPSD.
@@ -2665,14 +2673,17 @@ mod tests {
     }
 
     #[test]
-    fn only_the_death_star_record_or_family_is_the_death_star() {
+    fn only_the_death_star_record_is_the_death_star() {
         let class = |raw| CapitalShipClass {
             dat_id: DatId::new(raw),
             ..Default::default()
         };
-        // CAPSHPSD record 136 is the Death Star; 131 is a Star Destroyer.
+        // CAPSHPSD record 136 is the Death Star (its family +0x10 is 0x18,
+        // FUN_005003d0); 131 is a Star Destroyer (0x14).
         assert!(class(DEATH_STAR_CLASS_ID).is_death_star());
-        assert!(class(0x3400_0001).is_death_star());
+        // F-025: family 0x34 is the Emperor (MJCHARSD 0x34000280).
+        assert!(!class(0x3400_0280).is_death_star());
+        assert!(!class(0x3400_0001).is_death_star());
         assert!(!class(131).is_death_star());
         assert!(!class(0x3000_0088).is_death_star());
     }

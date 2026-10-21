@@ -5637,7 +5637,7 @@ mod combat_application_tests {
         let system = add_combat_system(&mut world);
         let attacker = add_ship_fleet(&mut world, system, true, 100, 10);
         let death_star_class = world.capital_ship_classes.insert(CapitalShipClass {
-            dat_id: DatId::new(0x3400_0001),
+            dat_id: DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
             name: "Death Star".into(),
             is_empire: true,
             hull: 1_000,

@@ -1,0 +1,4 @@
+3 mutants tested in 45s: 3 caught
+crates/rebellion-core/src/world/mod.rs:439:9: replace CapitalShipClass::is_death_star -> bool with true
+crates/rebellion-core/src/world/mod.rs:439:9: replace CapitalShipClass::is_death_star -> bool with false
+crates/rebellion-core/src/world/mod.rs:439:21: replace == with != in CapitalShipClass::is_death_star

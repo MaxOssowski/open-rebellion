@@ -1087,7 +1087,7 @@ mod tests {
         let class = world
             .capital_ship_classes
             .insert(rebellion_core::world::CapitalShipClass {
-                dat_id: DatId::new(0x3400_0001),
+                dat_id: DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
                 name: "Death Star".into(),
                 ..Default::default()
             });

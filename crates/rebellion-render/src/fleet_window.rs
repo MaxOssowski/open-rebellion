@@ -2943,7 +2943,7 @@ pub(crate) mod tests {
         let fleet = add_fleet(&mut world, system, false, 0);
         let transport_class = world.fleets[fleet].capital_ships[0].class;
         let death_star = world.capital_ship_classes.insert(CapitalShipClass {
-            dat_id: DatId::new(0x3400_0001),
+            dat_id: DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
             name: "Death Star".into(),
             hull: 100,
             ..CapitalShipClass::default()

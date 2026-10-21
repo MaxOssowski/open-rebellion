@@ -173,3 +173,24 @@ window.
   (`go run ./tools/stage-ui-assets --tactical-3d-only --source ...`, then
   `--tactical-3d-convert`), or the Death Star resource 5010 is missing.
 
+
+## The Death Star's identity (read 2026-10-22, F-025)
+
+- Every CAPSHPSD record carries an object family at `+0x10`
+  (`tools/dat-dumper` `family_id`). It is `0x14` for every record except
+  record `0x88` (136, TEXTSTRA 10120 "Death Star"), which has `0x18`.
+- The original finds a fleet's Death Stars by that family:
+  - `FUN_005003d0` walks a fleet's objects of families `0x18..0x1b`;
+    `FUN_005001b0` is the capital ships' walk.
+  - `FUN_0040b0e0` hands each Death Star to `FUN_0040bcd0`, which builds
+    the battle's Death Star object.
+  - The bombardment's `0x223` needs one (`bombardment-order.md`), and the
+    smuggling count `FUN_00509140` counts them (`economy-cadence.md`).
+  - The capital ship classes are vtables `0x0065d650` (`0x14`) and
+    `0x0065d930` (`0x18`) (`build-delivery.md`).
+- Family `0x34` is the Emperor (MJCHARSD `0x34000280`; `FUN_00560d50`
+  routes it to the seat of power, `FUN_005617b0`). The port's
+  `CapitalShipClass::is_death_star` also accepted family `0x34`, which no
+  shipped class has. That clause is gone (F-025). The port keeps a class's
+  record id, not its family, so record 136 stands for family `0x18`.
+  Carrying the family itself would need a save change.

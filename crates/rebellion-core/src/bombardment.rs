@@ -1593,7 +1593,7 @@ mod tests {
         // 0x18..0x1b destroys the system; the other kinds bombard.
         let mut fx = fixture(1);
         let ds = fx.world.capital_ship_classes.insert(CapitalShipClass {
-            dat_id: DatId::new(0x3400_0001),
+            dat_id: DatId::new(crate::world::DEATH_STAR_CLASS_ID),
             hull: 1000,
             bombardment_modifier: 15,
             ..CapitalShipClass::default()
@@ -1633,7 +1633,7 @@ mod tests {
         // (a draw of 0..99 below 50); a hit ends destroyed (slot +0xac(10)).
         let mut fx = fixture(1);
         let ds = fx.world.capital_ship_classes.insert(CapitalShipClass {
-            dat_id: DatId::new(0x3400_0001),
+            dat_id: DatId::new(crate::world::DEATH_STAR_CLASS_ID),
             hull: 1000,
             ..CapitalShipClass::default()
         });
@@ -1737,7 +1737,7 @@ mod tests {
         assert!(!fx.world.troops.contains_key(t));
         assert_eq!(env.destroyed_systems(), []);
         let ds = fx.world.capital_ship_classes.insert(CapitalShipClass {
-            dat_id: DatId::new(0x3400_0001),
+            dat_id: DatId::new(crate::world::DEATH_STAR_CLASS_ID),
             hull: 1000,
             ..CapitalShipClass::default()
         });

@@ -25,7 +25,6 @@
 //! Ghidra RE: `entity-system.md §4.2` — `SideVictoryConditionsNotif`,
 //! `FinalBattle` (`FUN_0054ba00`), event IDs `0x12c`/`0x180`.
 //! `IsHeadquarters` flag → `System::is_headquarters`.
-//! Death Star: family `0x34`; fires when `alive_flag` bit0 == 0 (INVERTED).
 
 use serde::{Deserialize, Serialize};
 
