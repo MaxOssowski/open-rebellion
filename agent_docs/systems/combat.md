@@ -3,13 +3,13 @@ title: "Combat System"
 description: "Space combat, bombardment and Planetary Assault resolution via combat.rs, bombardment.rs and assault.rs"
 category: "agent-docs"
 created: 2026-03-14
-updated: 2026-10-16
+updated: 2026-10-21
 tags: [combat, space-combat, ground-combat, simulation]
 ---
 
 # Combat System
 
-`combat.rs` + `bombardment.rs` + `assault.rs` — space combat, Planetary
+`abstract_battle.rs` + `bombardment.rs` + `assault.rs` — space combat, Planetary
 Bombardment and Planetary Assault resolution. There is no other ground
 battle: regiments of two sides on one planet stand together.
 
@@ -21,11 +21,10 @@ Opposing fleets coexist at a system (checked each tick in `main.rs`). Per-system
 
 | Type | Purpose |
 |------|---------|
-| `CombatSystem` | Stateless resolver — `resolve_space()` |
+| `abstract_battle::resolve_space_battle` | Resolves a space battle without display: every fleet of both sides, the side commanders' targeting, per-second fire, the 1200 s stalemate (`ghidra/notes/abstract-battle.md`) |
 | `SpaceCombatResult` | `{ winner, attacker_fleet, defender_fleet, ship_damage, fighter_losses }` |
-| `ShipDamageEvent` | `{ fleet, ship_index, hull_after }` — hull=0 means destroyed |
+| `ShipDamageEvent` | `{ fleet, ship_index, hull_before, hull_after }`. `ship_index` counts live hulls; hull 0 means destroyed |
 | `FighterLossEvent` | `{ fleet, fighter_index, squads_before, squads_after }` |
-| `CombatPhaseFlags` | Custom bitfield (NOT `bitflags!`) — uses `.set()` not `.insert()` |
 | `CombatSide` | Attacker / Defender / Draw |
 | `bombardment` | `resolve(world, &BombardRequest, draw)`, `apply`, `BombardEnv` (a tick's draws and outcomes) |
 | `assault` | `resolve(world, &AssaultRequest, draw)`, `apply`, `order_enabled`, `BombardEnv::assault` |
@@ -33,26 +32,20 @@ Opposing fleets coexist at a system (checked each tick in `main.rs`). Per-system
 ## API
 
 ```rust
-let result = CombatSystem::resolve_space(&world, atk, def, sys, difficulty, &rolls, tick);
+let (result, outcome) =
+    abstract_battle::resolve_space_battle(&world, sys, &alliance, &empire, seed, tick);
 let outcome = bombardment::resolve(&world, &request, &mut draw);
 bombardment::apply(&mut world, &request, &outcome);
 let assault = env.assault(&mut world, &mut transport, side, &fleets, system);
 ```
 
-## Space Combat: 7-Phase Pipeline
+## Space combat
 
-From Ghidra RE of REBEXE.EXE:
-
-1. **Weapon fire** — turbolaser/ion/laser per arc, damage rolls
-2. **Shield absorption** — shield_strength absorbs damage
-3. **Hull damage** — remaining damage reduces hull_current
-4. **Fighter engagement** — squadron vs squadron, torpedo bombing
-5. **Result** — winner determined by surviving fleet strength
-
-Key gotchas from RE:
-- Phase gate: `ACTIVE && !PHASES_ENABLED` (inverted from initial expectation)
-- Alt-shield path: exact `== 0x71` family byte (not range `0x71..=0x72`)
-- Fighter losses must be computed from initial vs surviving counts
+The original resolves every battle in its tactical module, displayed or
+abstract (`ghidra/notes/battle-flow.md`). The port's battles without
+display run `abstract_battle.rs` (`ghidra/notes/abstract-battle.md`). The
+earlier "7-phase pipeline" was the mission manager's story steps (audit
+F-031). The round formula built on it was removed on 2026-10-21.
 
 ## Bombardment
 
@@ -89,7 +82,7 @@ alone take a planet (port: the occupation, `simulation.rs` step 3b and
 
 ## Source
 
-- `ghidra/notes/space-combat.md` — full 7-phase pipeline
+- `ghidra/notes/abstract-battle.md` — the abstract battle; `space-combat.md` is a misread (story steps)
 - `ghidra/notes/planetary-assault.md` — the assault order and its resolution
 - `ghidra/notes/ground-combat.md` — superseded (its family ranges are wrong)
 - `ghidra/notes/bombardment-order.md` — the bombardment orders and their resolution

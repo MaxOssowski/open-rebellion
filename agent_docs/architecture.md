@@ -51,7 +51,7 @@ crates/rebellion-core/src/
 ├── mission_detection.rs — The mission detection manager (FUN_00547f60): decoys, detection, betrayal, exposure
 ├── mission_planning.rs — The AI mission planners' team and decoy selectors
 ├── fog.rs            — FogState, visibility sets, dim rendering tiers (373 LOC, 9 tests)
-├── combat.rs         — Ground combat and the shared combat result types; its old space round formula no longer decides battles (see abstract_battle.rs)
+├── combat.rs         — The space battle result types the strategic layer applies (SpaceCombatResult, ShipDamageEvent, FighterLossEvent)
 ├── abstract_battle.rs — A battle resolved without display: the side commanders' targeting, per-second fire, the 1200 s stalemate; resolves every auto-resolved space battle (ghidra/notes/abstract-battle.md)
 ├── tactical.rs       — The tactical battle: BattleSession and its step, ships, fighters, Death Star, damage and voice cues (moved from rebellion-render; ghidra/notes/battle-flow.md)
 ├── tactical_resources.rs — Joins from DAT identities to the original tactical graphics (FUN_00597610)
@@ -194,7 +194,7 @@ run_simulation_tick():
   0. EconomySystem::advance       → integrator.apply_economy_events()
   1. ManufacturingSystem::advance  → integrator.apply_build_completions()
   2. MovementSystem::advance       → integrator.apply_arrivals()
-  3. CombatSystem::resolve_space   → integrator.apply_space_combat(); 3b. occupation (carried regiments stay aboard until ordered)
+  3. abstract_battle::resolve_space_battle → integrator.apply_space_combat(); 3b. occupation (carried regiments stay aboard until ordered)
   4. FogSystem::advance            → integrator.emit_fog_reveals()
   5. MissionSystem::advance        → integrator.apply_mission_result()
   5b. advance_escapes()            → integrator.apply_escape_effects()

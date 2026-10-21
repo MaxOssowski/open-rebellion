@@ -2203,6 +2203,26 @@ cross-runtime proof remain open
     - the Death Star's abstract actions;
     - removing the unused round formula;
     - ground combat.
+- 2026-10-21 (W2g): the unused round formula is removed. `combat.rs` now
+  holds only the result types the strategic layer applies.
+  - Removed: `CombatSystem::resolve_space` and its phases (weapon variance,
+    fighter dogfight, screening, recall), `CombatPhaseFlags`,
+    `CombatEntityKind` and `extract_difficulty`. All were `hyp:` and none
+    was called.
+  - Removed with them: 25 tests of that formula.
+  - 24 of 24 campaigns are unchanged, and so is the golden
+    (`replay_manifest` 2 passed).
+  - The release WASM is byte-identical
+    (`9cda77d995e1a6f21acaa78c85bc0f385b66b299eabebe87ca72f2cffc288f73`).
+  - Browser gates, on Arch Chromium 155.0.8059.84 (the system's update
+    the same day):
+    - replay equivalence and perf pass;
+    - Fleet window 58 of 58;
+    - status window pass;
+    - tactical Death Star scenarios 4 of 4.
+  - Workspace tests: 2524 passed; the 25 removed tests account for the
+    difference. provenance-scan: 0 uncited.
+  - The agent docs now point to `abstract_battle.rs`.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.
