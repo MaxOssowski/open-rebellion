@@ -1945,16 +1945,26 @@ async fn main() {
                 ));
             }
             for lost in &delivered.lost {
-                // Event 0x303, GameObjDestroyedOnArrivalNotif.
-                msg_log.push(GameMessage::at_system(
-                    lost.arrival_tick,
-                    format!(
-                        "Unit lost on arrival: {} no longer exists",
-                        system_name(&world, lost.destination)
-                    ),
-                    MessageCategory::Manufacturing,
-                    lost.origin,
-                ));
+                // Event 0x303, GameObjDestroyedOnArrivalNotif: Facility Lost
+                // (FUN_00497690) speaks for a facility only, to its side.
+                if let Some((title, text)) = rebellion_render::story_messages::facility_lost_texts(
+                    &world,
+                    lost.kind,
+                    &system_name(&world, lost.destination),
+                    &message_texts,
+                ) {
+                    msg_log.push(filed(
+                        GameMessage::at_system(
+                            lost.arrival_tick,
+                            text,
+                            MessageCategory::Manufacturing,
+                            lost.origin,
+                        )
+                        .with_title(title),
+                        MessageRail::Manufacturing,
+                        Some(RailAudience::side(lost.side == Faction::Alliance)),
+                    ));
+                }
             }
             // Notification 0x160, Facility Idle (FUN_0048be60): a manager's
             // remaining count reached 0. Only the holder's side hears it,

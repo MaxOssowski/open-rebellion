@@ -1873,6 +1873,11 @@ cross-runtime proof remain open
   The browser `delivery` case sees "Mon Calamari Cruiser Deployed at
   F'tral" and "Strike Cruiser Deployed at F'tral"
   (`evidence/2026-10-21-units-deployed/`).
+- Facility Lost (2026-10-21): a delivery lost on arrival (`0x303`) posts
+  Facility Lost (`FUN_00497690`, message type `0x10` in `FUN_00488de0`)
+  only for a facility (family `0x20`..`0x2f`): TEXTSTRA `0x70b0` /
+  `0x70b1`, to its side. Other units lost on arrival post nothing, as in
+  the original (`evidence/2026-10-21-facility-lost-message/`).
 - Acceptance: completed objects travel en route under recovered rules, the
   disaster and incident skip them, and a test fails without the phase.
 

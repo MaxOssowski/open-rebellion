@@ -910,6 +910,39 @@ pub fn research_exhausted_texts(
     ))
 }
 
+/// Facility Lost (`FUN_00497690`): event `0x303`
+/// (`GameObjDestroyedOnArrivalNotif`, message type `0x10` in
+/// `FUN_00488de0`) for an object lost on arrival. Only a facility (family
+/// `0x20`..`0x2f`) speaks: TEXTSTRA `0x70b0` "Facility Lost" and `0x70b1`
+/// "New {1:1} could not be deployed to {2:1}.  The facility has been
+/// scrapped.". Returns the title and body; `None` for any other unit.
+#[must_use]
+pub fn facility_lost_texts(
+    world: &rebellion_core::world::GameWorld,
+    kind: rebellion_core::manufacturing::BuildableKind,
+    destination: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::manufacturing::BuildableKind;
+    if !matches!(
+        kind,
+        BuildableKind::DefenseFacility(_)
+            | BuildableKind::ManufacturingFacility(_)
+            | BuildableKind::ProductionFacility(_)
+    ) {
+        return None;
+    }
+    let (name, _) = crate::manufacturing_window::product(world, kind);
+    let parameters = [
+        MessageParameter::Named { name: &name },
+        MessageParameter::Named { name: destination },
+    ];
+    Some((
+        fill_message_text(texts.get(&0x70b0)?, &parameters),
+        fill_message_text(texts.get(&0x70b1)?, &parameters),
+    ))
+}
+
 /// Units Deployed (`FUN_00497940`): notification `0x107` for a unit put
 /// in place, to the unit's side. The texts follow the unit's family:
 /// - a capital ship TEXTSTRA `0x7086` / `0x7087`, the Death Star `0x708e`
@@ -1485,6 +1518,57 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00497690 (event 0x303): TEXTSTRA 0x70b0 / 0x70b1 as shipped, for a
+    // facility only (family 0x20..0x2f).
+    #[test]
+    fn only_a_facility_lost_on_arrival_is_reported() {
+        use rebellion_core::ids::DatId;
+        use rebellion_core::manufacturing::{BuildableKind, FacilityBuild};
+        use rebellion_core::world::{CapitalShipClass, GameWorld};
+        let texts: HashMap<u16, String> = [
+            (0x70b0, "Facility Lost"),
+            (
+                0x70b1,
+                "New {1:1} could not be deployed to {2:1}.  The facility has been scrapped.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let mut world = GameWorld::default();
+        let mine = DatId::new(0x2c00_0001);
+        world.buildable_classes.insert(
+            mine,
+            rebellion_core::world::BuildableClass {
+                name: "Mine".into(),
+                ..rebellion_core::world::BuildableClass::default()
+            },
+        );
+        let ship = world.capital_ship_classes.insert(CapitalShipClass {
+            name: "Nebulon-B Frigate".into(),
+            ..CapitalShipClass::default()
+        });
+        assert_eq!(
+            facility_lost_texts(
+                &world,
+                BuildableKind::ProductionFacility(FacilityBuild {
+                    class: mine,
+                    is_alliance: true,
+                }),
+                "Ghorman",
+                &texts
+            ),
+            Some((
+                "Facility Lost".into(),
+                "New Mine could not be deployed to Ghorman.  The facility has been scrapped.".into()
+            ))
+        );
+        assert_eq!(
+            facility_lost_texts(&world, BuildableKind::CapitalShip(ship), "Ghorman", &texts),
+            None
+        );
+    }
 
     // FUN_00499aa0 (0x125..0x127) and FUN_0048abc0 (0x129..0x12b): TEXTSTRA
     // 0x7048 / 0x7049 and 0x7218..0x721b as shipped; the class is the first
