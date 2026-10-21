@@ -614,7 +614,8 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   and fog remain).
 - [ ] Replace the invented rules found by the invention review, one system at
   a time: transit and bombardment (F-032), strategic combat (F-033), missions
-  (F-034), manufacturing and repair (F-035), AI (F-036), economy and research
+  (F-034), manufacturing and repair (F-035, remediated 2026-10-21), AI
+  (F-036), economy and research
   (F-037, remediated 2026-10-17; native run 2026-10-18; setup pass,
   unpopulated systems and the invented support bands 2026-10-21), character timers
   and story events (F-038), and false notes (F-039).
