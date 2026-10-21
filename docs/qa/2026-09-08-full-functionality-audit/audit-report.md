@@ -2236,6 +2236,19 @@ cross-runtime proof remain open
     to the battle choice (`FUN_004362b0`). What the answers mean is open,
     so the port allows no retreat yet and campaigns do not change.
   - 6 new tests; mutants on the diff 37 caught, 2 equivalent.
+- 2026-10-21 (W2i read): the battle choice is read (`abstract-battle.md`,
+  "The battle choice").
+  - Battle Alert's Retreat (`0x67`, text 6474) answers "simulate" and sets
+    the player's retreat word to 10000.0 (`FUN_00450540`, `FUN_00487830`).
+    Simulate Results (`0x65`) answers "simulate" with no retreat, and Take
+    Command (`0x66`) asks for the tactical battle.
+  - The AI always answers "simulate". Its strategy module `0xd` sets the
+    retreat word: 0.9 by default. At its own system with active squadrons
+    the word is its fleets' attack over the enemy's, capped at 0.9, and 0
+    at its headquarters (`FUN_00485d50`, `FUN_004e77f0` and six copies).
+  - The port's Retreat opens the tactical battle with ships marked as
+    retreating. That differs from the original and is the next stage's
+    work. Read only; no code changes.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

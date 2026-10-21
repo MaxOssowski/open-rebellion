@@ -250,8 +250,99 @@ stalled weaker side that cannot leave is destroyed.
   - `+0x10` and `+0x14` start at 0 (`FUN_0040afa0`, `FUN_0042dbe0`).
     `FUN_0041cfc0` -> `FUN_004362b0` fills them from the two sides'
     answers to the battle choice (their controllers' slot `+0x3c`).
-  - Open: what each answer means. It needs the side controllers' slot
-    `+0x3c`.
+  - What each answer means: see "The battle choice" below.
+
+## The battle choice (read 2026-10-21)
+
+`FUN_0040a050` state 6 asks both sides through `FUN_0041cfc0` ->
+`FUN_004362b0`. The session object `DAT_006b14e4` (`FUN_00435bc0`) holds
+the two side controllers at `+0x10` and `+0x14`. In a game against the
+computer they are the player (vtable `0x65ad70`, `FUN_004861b0`) and the
+AI player (vtable `0x65abf0`, `FUN_004857a0`). A network game has a
+remote player instead (vtable `0x65aa70`, `FUN_00484e70`); its slot
+`+0x3c` (`FUN_00485180`) reads the answer from the message queue.
+
+- Each controller's slot `+0x3c` (`FUN_00488600`) returns its answer
+  `+0x38`, and copies its retreat word `+0x3c` into the state machine's
+  `+0x0c` / `+0x10` (`FUN_004fcd90`). States 7 and 8 copy those two words
+  into the battle (`FUN_0040b0e0`), and from there they reach each side
+  commander's `+0x80` (`FUN_005afb30`). `+0x80` is tested only for
+  non-zero (`FUN_005d0f50`, `FUN_005c7e80`).
+- Answer 0 means "not yet". Each answer is also sent to the other
+  controller (slot `+0x48`).
+- `FUN_004362b0` sets "decided" when both answers are non-zero. It sets
+  "simulate" only when both are 1. State 6 then goes to 8 (simulate:
+  the abstract battle) or 7 (the tactical battle).
+
+**The player** answers through the Battle Alert dialog (class
+`0x659d28`, built by `FUN_0044f860`). Its command handler
+(`FUN_00450540`) calls `FUN_0041ce60` -> `FUN_00436090` ->
+`FUN_00487830(a, b, …)`. With `a` = 0 that sets answer 2. With `a` = 1 it
+sets answer 1, and with `b` also 1 it sets `+0x3c` = 10000.0
+(`0x461c4000`). The dialog first clears `+0x3c` (`FUN_00486670`,
+`FUN_004865b0`). Another window class (`FUN_004710f0` on Escape, and
+`FUN_00470ea0`; window `+0x174`) gives answer 3 through `FUN_0041ce80` ->
+`FUN_00487890`. Answer 3 is "decided, not simulate". Which window that is
+remains open.
+
+| Button | Id | Text (TEXTSTRA) | Bitmaps | Answer | `+0x3c` |
+|---|---|---|---|---|---|
+| Simulate Results | `0x65` | 6438 `0x1926` | `0x29dc..` / `0x29e2..` | 1 | 0 |
+| Take Command | `0x66` | 6439 `0x1927` | `0x29df..` / `0x29e5..` | 2 | 0 |
+| Retreat | `0x67` | 6474 `0x194a` | `0x2adb..` / `0x2ade..` | 1 | 10000.0 |
+
+So Retreat runs a simulated (abstract) battle in which the player's side
+may leave. In it, that side leaves under the usual test (`FUN_005d19a0`).
+Retreat does not open the tactical battle.
+
+**The AI player** answers in its slot `+0x44` (`FUN_00485d50`). Its
+answer is always 1 (simulate). It clears `+0x3c`. Then, unless `+0x418`
+is set, it asks its strategy module `0xd` (`FUN_005f5500(0xd)` on the
+module map `+0x64`, `FUN_004bf300`). The current strategy object (`+0x60`,
+one of seven from `FUN_004bf7c0`) writes `+0x3c` through its slot
+`+0x10`. `+0x418` is zeroed by the constructor (`FUN_004856f0`) and
+otherwise only loaded from a save; no code sets it.
+
+The seven strategy slots are the same code with their own copies of the
+constant 0.9: `FUN_004e6110`, `FUN_004e6a60`, `FUN_004e77f0`,
+`FUN_004e87a0`, `FUN_004e94f0`, `FUN_004e9ec0`, `FUN_004eabb0`, with
+constants at `0x65c8e4` .. `0x65ca04`. Each slot works as follows:
+
+1. Start with 0.9 (`0x3f666666`).
+2. Look up the AI's system record for the battle's system
+   (`FUN_00403d30` on the controller's `+0x2c` map). Only when it is the
+   AI's own system (`+0x30` bit 1) with active squadrons on the planet
+   (`+0xac`, `v[25]`, above 0) does the rule go on. Otherwise the value
+   stays 0.9.
+3. At the AI's headquarters or system `0x109` (record `+0x28` bit
+   `0x80000000`) the value is 0, so no retreat.
+4. Otherwise take the game's system (`FUN_004f3220`, types `0x90..0x97`)
+   and each fleet at it (`FUN_004ffe70(system, 3)`). Sum the fleet
+   records' (`+0x78` map, `FUN_00419e40`) `+0x58` for own fleets (`+0x38`
+   bit 1) and for the others. `+0x58` is the record's `values[2]`, the
+   ships' attack (`ai_records::FleetRecord::add_ship`, `s[14]`).
+5. The value is own / others (own alone when the others sum to 0). If it
+   is above 0.9, it becomes 0.9.
+
+So the AI orders a retreat everywhere except at its own system that has
+active squadrons. There it retreats only when its fleets have some
+attack, and never at its headquarters. A value of 0 means "no retreat".
+The value's size does not matter, because the battle's leave threshold
+is the side commander's `+0x24` = 0.33.
+
+- Open: the player controller's slot `+0x44` (`FUN_004865b0`) passes the
+  dialog a flag from `FUN_004fcf50` / `FUN_0051dce0` (`FUN_00488d20`
+  stores it at the window's `+0x50`). It is not read here.
+- Open: the Retreat button's enabled state in the original dialog. The
+  port enables it when the player's ships have a working hyperdrive.
+
+### The port before this read
+
+- Its Battle Alert's Retreat (`TacticalAction::RetreatBeforeBattle`)
+  opens the tactical battle with the player's hyperdrive ships marked
+  retreating. That is not the original: Retreat is a simulated battle
+  with the player's `+0x80` set.
+- `abstract_battle` keeps `retreat_allowed` = false for both sides.
 
 ## The port (2026-10-21)
 
@@ -276,7 +367,8 @@ own (`resolve_space_battle`, all fleets at the system). Three pieces stay
     26 attacker and 41 defender wins (28 and 39 before).
 - A fighter group hit by `FUN_005b54d0`: shields first, then hull.
 - The retreat (W2h) is ported, but no side may leave yet
-  (`retreat_allowed` = false), because the source of `+0x80` is open. A
+  (`retreat_allowed` = false). The source of `+0x80` is now read ("The
+  battle choice") but not yet ported. A
   fighter group leaves with a jumping carrier (`hyp:`). The Death Star's
   abstract actions are not ported.
 
