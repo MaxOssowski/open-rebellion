@@ -59,20 +59,56 @@ The debug names are in `FUN_0040a700`'s table (`0x40a7b5`..), strings at
   capital ships (`FUN_00502db0`) and squadrons (`FUN_005039d0`), and
   applies the module's losses and damage to each.
 
+## Abstract mode in the tactical module (read 2026-10-21, second pass)
+
+- The mode flag travels as the battle object's `+0xc` (state 7 writes 0,
+  state 8 writes 1; `0x40a4ca`).
+- `FUN_0040b0e0` passes it as the last of the 17 arguments of
+  `FUN_00595d60` (`0x40b30f`).
+- That forwards it to the module's init, `FUN_00599c90` or
+  `FUN_0059a0b0` by the first argument. The init stores it as the module
+  object's `+0x668`.
+- The module's run step `FUN_0059a530`:
+  - with `+0x668 == 1` (abstract) it calls `FUN_005ae9c0` with a time
+    step of `DAT_0066badc` = 1.0. When that reports the end, it copies
+    the result (7 words at the abstract object's `+0x10`) into `+0x66c`;
+  - otherwise (tactical) it runs the displayed game: frame time ×
+    `DAT_0066bae0` (1000.0), `FUN_0059a6a0`, `FUN_005c1490` and
+    `FUN_005c1470`. When the game reports done (`+0x8c4`), it copies the
+    7 words at the game's `+0x9f0`.
+  - `FUN_0059a730` returns `+0x66c` to `FUN_005969d0`.
+- `FUN_005ae9c0`, one abstract step for the two sides (`+0x93`, `+0x94`):
+  - each side runs its combat step (slot `+0x14`) and is asked whether it
+    is beaten (slot `+0x28`);
+  - each side's strength is its `+0x3c`. A side whose strength has not
+    fallen accumulates time (`+0x9b`, `+0x9c`); a fall resets it and
+    stores the new low (`+0x99`, `+0x9a`);
+  - with neither side beaten and both stalled for at least
+    `DAT_0066c3e0` = 1200, the weaker side withdraws. Each of its units
+    (lists `+0x58` and `+0x64`) goes through `FUN_005af7a0`; a side whose
+    slot `+0xc` refuses is marked `+0xb0` instead;
+  - with a side beaten, it fills the 7 result words (`+0x10`..`+0x28`).
+    Among them are a side's flag when its units' state `+0x170` is 2 and
+    one when a unit's state is 9, by the unit's side `+0x168`.
+- So the abstract battle runs the tactical simulation's own combat step
+  without the display, with a stalemate rule. It is not a separate
+  formula.
+
 ## For the port
 
 - The port's strategic auto-resolve should be the tactical simulation run
-  without display. The port has a tactical engine (`rebellion-render`,
-  `tactical_*`), and the tracker item "Walka taktyczna 3D" asks for its
-  result on the same path.
+  without display, stepped at 1.0 with the 1200 stalemate rule. The port
+  has a tactical engine (`rebellion-render`, `tactical_*`), and the
+  tracker item "Walka taktyczna 3D" asks for its result on the same path.
 - The four "slot handlers" `+0x1c4`..`+0x1d4` the audit named are the
   tactical module's, not a strategy formula.
 
 ## Open
 
-- What the tactical module does differently in abstract mode
-  (`FUN_0040b0e0`, `FUN_0059a530`).
-- The seven result words beyond the survivors, and how `FUN_0040c780`'s
+- The sides' combat step (slot `+0x14` of the objects at `+0x93`,
+  `+0x94`) and strength (`+0x3c`): the tactical engine's own rules, to
+  check against the port's tactical code.
+- The meaning of each of the 7 result words, and how `FUN_0040c780`'s
   inner walk turns them into damage per ship.
 - What a computer player answers in state 6 (slot `+0x3c` of its player
   object).
