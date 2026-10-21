@@ -2263,6 +2263,20 @@ cross-runtime proof remain open
     the autoroute search's destination (`FUN_005545e0`).
   - The port counts escaped units as survivors and sends no loser away.
     Read only; no code changes.
+- 2026-10-22 (W2j): the winner rule and the loser's withdrawal are ported
+  (`evidence/2026-10-22-battle-loser-withdrawal/`).
+  - `AbstractBattle::finish` builds result words 0 to 3 and takes the
+    winner from them (`FUN_005ae9c0`, `FUN_0040c780`). `port:` with both
+    retreat words set there is no winner, because the last arrived side
+    is not kept.
+  - `withdraw_loser` sends the loser's fleets to the autoroute search's
+    destination (`FUN_00516ef0`, `FUN_00515480`, `FUN_005545e0`). It runs
+    in the headless simulation, the app's AI battles, Auto Resolve and
+    after a tactical battle.
+  - No side may retreat yet, so 24 of 24 campaigns are unchanged.
+  - Correction to the W5 read entry: the port's winner already counted
+    only active units.
+  - 4 new tests; mutants 32 caught, 0 missed.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

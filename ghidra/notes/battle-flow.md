@@ -161,15 +161,20 @@ the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
   - The move itself is `FUN_00556390`, as for a player's move.
 - Open: the branch with `local_10 != -1`, which calls slot `+0xac(2)`.
 
-**In the port** (2026-10-21):
+**In the port** (2026-10-21, W2j):
 
-- `abstract_battle::AbstractBattle::finish` takes the winner as the only
-  side with units left. An escaped unit counts as left, and a draw has no
-  tie-break.
-- The integrator sends no loser away. Its draw leaves both sides in the
-  system.
-- The port does not keep the last-arrived side (system `+0x78` bits
-  6..7).
+- `abstract_battle::AbstractBattle::finish` builds the four words and
+  takes the winner as above. With words 0 and 2 both set the battle has no
+  winner (`port:`): the port does not keep the last arrived side (system
+  `+0x78` bits 6..7). The Death Star's `+0x78` in word 2 is not modelled.
+- `abstract_battle::withdraw_loser` sends each loser fleet at the system
+  to `missions::nearest_place`, leaving out the battle's system. It runs
+  in the headless simulation, the app's AI battles, Auto Resolve, and
+  after a tactical battle.
+- `port:` a fleet with no destination, or with speed 0 or no hyperdrive,
+  stays; the original destroys a unit that cannot reach another system.
+  The loser's planet squadrons stay, and the winner's (`FUN_00556710`)
+  are not read.
 
 ## For the port
 

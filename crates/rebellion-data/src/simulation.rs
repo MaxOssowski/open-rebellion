@@ -279,6 +279,13 @@ pub fn run_simulation_tick(
             battle_winner,
         );
         integrator.record_loyalty_shifts(battle_shift.as_slice());
+        // FUN_00516ef0: the loser's fleets leave on Autorouting.
+        rebellion_core::abstract_battle::withdraw_loser(
+            world,
+            &mut states.movement,
+            sys_key,
+            battle_winner,
+        );
 
         integrator.emit_system_space_combat(world, &space_result);
         states.combat_cooldowns.insert(

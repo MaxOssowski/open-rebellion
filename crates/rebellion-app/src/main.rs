@@ -2240,11 +2240,14 @@ async fn main() {
                 // Apply ship damage: reduce counts proportional to destroyed hulls.
                 apply_space_combat_result(&space_result, &mut world);
                 // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift.
-                rebellion_core::loyalty::settle_battle(
+                let winner = battle_winner(space_result.winner, attacker_is_alliance);
+                rebellion_core::loyalty::settle_battle(&mut world, battle_before, sys_key, winner);
+                // FUN_00516ef0: the loser's fleets leave on Autorouting.
+                rebellion_core::abstract_battle::withdraw_loser(
                     &mut world,
-                    battle_before,
+                    &mut movement_state,
                     sys_key,
-                    battle_winner(space_result.winner, attacker_is_alliance),
+                    winner,
                 );
                 troop_transport_state.destroy_untransportable_cargo(&mut world);
                 rebellion_core::squadrons::recover(&mut world, &sorties);
@@ -6216,11 +6219,20 @@ async fn main() {
                                     session.start_tick,
                                 );
                             apply_space_combat_result(&space_result, &mut world);
+                            let winner = battle_winner(space_result.winner, attacker_is_alliance);
                             rebellion_core::loyalty::settle_battle(
                                 &mut world,
                                 battle_before,
                                 session.system,
-                                battle_winner(space_result.winner, attacker_is_alliance),
+                                winner,
+                            );
+                            // FUN_00516ef0: the loser's fleets leave on
+                            // Autorouting.
+                            rebellion_core::abstract_battle::withdraw_loser(
+                                &mut world,
+                                &mut movement_state,
+                                session.system,
+                                winner,
                             );
                             troop_transport_state.destroy_untransportable_cargo(&mut world);
                             rebellion_core::squadrons::recover(
@@ -6309,6 +6321,23 @@ async fn main() {
                                 &std::mem::take(&mut battle_sorties),
                             );
                             if !strategic_results_applied {
+                                // FUN_00516ef0 (state 9 follows the tactical
+                                // battle too): the loser's fleets leave.
+                                let winner = match battle_return.winner {
+                                    Some(rebellion_render::CombatWinner::Attacker) => {
+                                        Some(Faction::of_alliance(session.attacker_is_alliance))
+                                    }
+                                    Some(rebellion_render::CombatWinner::Defender) => {
+                                        Some(Faction::of_alliance(!session.attacker_is_alliance))
+                                    }
+                                    Some(rebellion_render::CombatWinner::Draw) | None => None,
+                                };
+                                rebellion_core::abstract_battle::withdraw_loser(
+                                    &mut world,
+                                    &mut movement_state,
+                                    session.system,
+                                    winner,
+                                );
                                 let winner_str = match battle_return.winner {
                                     Some(rebellion_render::CombatWinner::Attacker) => {
                                         "Attacker victory"

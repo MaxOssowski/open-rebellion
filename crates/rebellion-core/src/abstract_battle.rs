@@ -12,8 +12,10 @@
 //! destroyed (`FUN_005af7a0`). `ghidra/notes/abstract-battle.md`.
 //!
 //! Each step the commanders give idle task forces targets (`FUN_005c9200`,
-//! `FUN_005ec740`, `FUN_005ed170`). Not yet ported: the retreat decision
-//! (slots `+0x0c`, `+0x2c`) and the Death Star's abstract actions.
+//! `FUN_005ec740`, `FUN_005ed170`). The retreat (slots `+0x0c`, `+0x2c`) is
+//! ported but no side may leave yet (`retreat_allowed`). At the battle's end
+//! the loser's fleets leave on Autorouting ([`withdraw_loser`],
+//! `FUN_00516ef0`). Not yet ported: the Death Star's abstract actions.
 
 use std::collections::HashMap;
 
@@ -918,24 +920,73 @@ impl AbstractBattle {
         Some(self.finish())
     }
 
-    /// `FUN_0040c780`: the winner is the only side with survivors.
+    /// Whether a unit of the side escaped (state 9, `FUN_005af910`): a
+    /// capital ship that jumped, or a fighter group that left with it and
+    /// kept its craft.
+    fn side_escaped(&self, alliance: bool) -> bool {
+        let session = &self.session;
+        let ships = (0..session.ships.len()).map(AbstractUnit::Capital);
+        let fighters = (0..session.fighters.len()).map(AbstractUnit::Fighter);
+        ships.chain(fighters).any(|unit| {
+            unit_is_alliance(session, unit) == alliance
+                && match unit {
+                    AbstractUnit::Capital(index) => {
+                        let ship = &session.ships[index];
+                        ship.alive && ship.retreated
+                    }
+                    AbstractUnit::Fighter(index) => {
+                        let fighter = &session.fighters[index];
+                        !fighter.alive && fighter.squad_count > 0
+                    }
+                }
+        })
+    }
+
+    /// The seven result words (`FUN_005ae9c0`, `0x5aec52`) and the winner
+    /// `FUN_0040c780` takes from them (`battle-flow.md`, "The winner and
+    /// the loser's withdrawal"):
+    ///
+    /// - words 0 and 2: the Alliance's or the Empire's retreat ran
+    ///   (`+0x84` == 5) and one of its units escaped;
+    /// - word 1: the Empire has no active unit, word 0 is clear and no
+    ///   Death Star is operational (`FUN_005ba420`); word 3: the Alliance
+    ///   has no active unit and word 2 is clear; both set clears both;
+    /// - the winner is the Alliance on word 1 alone and the Empire on
+    ///   word 3 alone; failing that, the Alliance on word 0 alone and the
+    ///   Empire on word 2 alone.
+    ///
+    /// port: with words 0 and 2 both set the original asks the system's
+    /// last arrived side (`+0x78` bits 6..7, `FUN_0050a1b0`), which the
+    /// port does not keep; the battle has no winner. port: the Death
+    /// Star's `+0x78` in word 2 is not modelled.
     fn finish(&mut self) -> AbstractOutcome {
-        let alliance_left = !units_of(&self.session, true).is_empty();
-        let empire_left = !units_of(&self.session, false).is_empty();
-        let attacker_left = if self.session.attacker_is_alliance {
-            alliance_left
-        } else {
-            empire_left
+        let words_0_2 = [
+            self.retreat_done[0] && self.side_escaped(true),
+            self.retreat_done[1] && self.side_escaped(false),
+        ];
+        let mut word_1 = !words_0_2[0]
+            && units_of(&self.session, false).is_empty()
+            && !self.death_star_operational();
+        let mut word_3 = !words_0_2[1] && units_of(&self.session, true).is_empty();
+        if word_1 && word_3 {
+            word_1 = false;
+            word_3 = false;
+        }
+        let alliance_won = match (word_1, word_3) {
+            (true, false) => Some(true),
+            (false, true) => Some(false),
+            _ => match words_0_2 {
+                [true, false] => Some(true),
+                [false, true] => Some(false),
+                _ => None,
+            },
         };
-        let defender_left = if self.session.attacker_is_alliance {
-            empire_left
-        } else {
-            alliance_left
-        };
-        let winner = match (attacker_left, defender_left) {
-            (true, false) => CombatWinner::Attacker,
-            (false, true) => CombatWinner::Defender,
-            _ => CombatWinner::Draw,
+        let winner = match alliance_won {
+            Some(alliance) if alliance == self.session.attacker_is_alliance => {
+                CombatWinner::Attacker
+            }
+            Some(_) => CombatWinner::Defender,
+            None => CombatWinner::Draw,
         };
         self.session.winner = Some(winner);
         self.session.phase = BattlePhase::Results;
@@ -1064,6 +1115,92 @@ pub fn resolve_space_battle(
         },
         outcome,
     )
+}
+
+/// One fleet of a battle's loser sent away (`FUN_00516ef0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Withdrawal {
+    pub fleet: FleetKey,
+    pub destination: SystemKey,
+    pub transit_ticks: u32,
+}
+
+/// `FUN_00516ef0` (state 9, the battle's end): each fleet of the loser at
+/// the system is set Autorouting (`FUN_004f78e0(1)`), and the event `0x307`
+/// handler (`FUN_00515480`) moves it (`FUN_00556390`) to the autoroute
+/// search's destination (`FUN_005545e0`, [`crate::missions`]'s
+/// `nearest_place`). A battle with no winner sends nobody away.
+///
+/// port: the search leaves out the battle's system, as the port's escape
+/// search does for the place a character leaves. port: a fleet with no
+/// destination, or one that cannot move (speed 0 or no hyperdrive), stays;
+/// the original destroys a unit that cannot move to another system
+/// (`FUN_00555410`, slot `+0xac(5)`). port: the loser's planet squadrons
+/// stay, and the winner's (`FUN_00556710`) are not read.
+pub fn withdraw_loser(
+    world: &mut GameWorld,
+    movement: &mut crate::movement::MovementState,
+    system: SystemKey,
+    winner: Option<crate::dat::Faction>,
+) -> Vec<Withdrawal> {
+    use crate::dat::Faction;
+
+    let loser_is_alliance = match winner {
+        Some(Faction::Alliance) => false,
+        Some(Faction::Empire) => true,
+        Some(Faction::Neutral) | None => return Vec::new(),
+    };
+    let Some(origin) = world
+        .systems
+        .get(system)
+        .map(|sys| (i64::from(sys.x), i64::from(sys.y)))
+    else {
+        return Vec::new();
+    };
+    let side = if loser_is_alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    let fleets: Vec<FleetKey> = world.systems[system]
+        .fleets
+        .iter()
+        .copied()
+        .filter(|&fleet| {
+            world
+                .fleets
+                .get(fleet)
+                .is_some_and(|value| value.is_alliance == loser_is_alliance)
+                && !movement.is_in_transit(fleet)
+        })
+        .collect();
+    let mut withdrawals = Vec::new();
+    for fleet in fleets {
+        let Some(destination) = crate::missions::nearest_place(world, side, origin, Some(system))
+        else {
+            continue;
+        };
+        let Some(value) = world.fleets.get(fleet) else {
+            continue;
+        };
+        if crate::movement::fleet_speed(value, world).is_none_or(|speed| speed == 0) {
+            continue;
+        }
+        let Some(transit_ticks) =
+            crate::movement::fleet_transit_ticks(value, world, system, destination)
+        else {
+            continue;
+        };
+        if crate::movement::begin_fleet_transit(movement, world, fleet, destination, transit_ticks)
+        {
+            withdrawals.push(Withdrawal {
+                fleet,
+                destination,
+                transit_ticks,
+            });
+        }
+    }
+    withdrawals
 }
 
 /// Resolve a battle session without display.
@@ -2185,6 +2322,228 @@ mod tests {
         });
         assert!(battle.can_leave(false));
         assert!(!battle.can_leave(true));
+    }
+
+    /// One side's end state for [`the_result_words_name_the_winner`].
+    #[derive(Clone, Copy)]
+    struct End {
+        /// `+0x84` == 5: the side's retreat ran.
+        ran: bool,
+        /// Its first capital ship escaped (state 9); else it was destroyed.
+        jumped: bool,
+        /// Its fighter group escaped with its craft (else it was destroyed).
+        fighters_left: bool,
+        /// Its second capital ship is still active (state 2).
+        active: bool,
+    }
+
+    const GONE: End = End {
+        ran: false,
+        jumped: false,
+        fighters_left: false,
+        active: false,
+    };
+    const FIGHTING: End = End {
+        active: true,
+        ..GONE
+    };
+    const LEFT: End = End {
+        ran: true,
+        jumped: true,
+        ..GONE
+    };
+
+    fn finish_with(alliance: End, empire: End, death_star: bool) -> CombatWinner {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                jumper(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+            ],
+            vec![
+                fighter(true, TacticalWeaponArc::default()),
+                fighter(false, TacticalWeaponArc::default()),
+            ],
+        ));
+        for (side, end) in [(0, alliance), (1, empire)] {
+            let first = side * 2;
+            battle.retreat_done[side] = end.ran;
+            if end.jumped {
+                battle.session.ships[first].retreated = true;
+            } else {
+                battle.session.ships[first].alive = false;
+            }
+            battle.session.ships[first + 1].alive = end.active;
+            let fighter = &mut battle.session.fighters[side];
+            assert!(fighter.squad_count > 0);
+            fighter.alive = false;
+            if !end.fighters_left {
+                fighter.squad_count = 0;
+            }
+        }
+        if death_star {
+            battle.session.death_star = Some(crate::tactical::TacticalDeathStar {
+                resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+                is_attacker: false,
+                is_alliance: false,
+                source_position: TacticalWorldPosition::ORIGIN,
+                hull: 1.0,
+                laser_charge: 0.0,
+                shielded: false,
+                destroyed: false,
+                action_committed: false,
+            });
+        }
+        battle.finish().winner
+    }
+
+    // FUN_005ae9c0 (0x5aec52) and FUN_0040c780: the result words decide the
+    // winner (battle-flow.md, "The winner and the loser's withdrawal"). The
+    // Alliance is the attacker here.
+    #[test]
+    fn the_result_words_name_the_winner() {
+        use CombatWinner::{Attacker, Defender, Draw};
+        // Word 1 alone: the Empire has no active unit.
+        assert_eq!(finish_with(FIGHTING, GONE, false), Attacker);
+        // A side that left has no active unit: word 3, the Empire wins.
+        assert_eq!(finish_with(LEFT, FIGHTING, false), Defender);
+        // The Alliance left and the Empire was destroyed: word 0 blocks
+        // word 1, so word 3 alone gives the Empire the battle.
+        assert_eq!(finish_with(LEFT, GONE, false), Defender);
+        // Both destroyed: words 1 and 3 clear each other.
+        assert_eq!(finish_with(GONE, GONE, false), Draw);
+        // An operational Death Star keeps word 1 clear.
+        assert_eq!(finish_with(FIGHTING, GONE, true), Draw);
+        // The second pass: a side whose retreat ran with an escapee but a
+        // unit still active wins on its word alone.
+        let stayed = End {
+            active: true,
+            ..LEFT
+        };
+        assert_eq!(finish_with(stayed, FIGHTING, false), Attacker);
+        assert_eq!(finish_with(FIGHTING, stayed, false), Defender);
+        // port: both retreats ran; the original asks the last arrived side.
+        assert_eq!(finish_with(LEFT, LEFT, false), Draw);
+    }
+
+    // FUN_005ae9c0: words 0 and 2 need both the side's retreat (+0x84 == 5)
+    // and an escaped unit (state 9), by the unit's side +0x168. An escaped
+    // fighter group counts; an active ship or a destroyed group does not.
+    #[test]
+    fn a_retreat_word_needs_the_retreat_and_an_escapee() {
+        use CombatWinner::{Attacker, Defender, Draw};
+        let ran_no_escapee = End {
+            ran: true,
+            active: true,
+            ..GONE
+        };
+        assert_eq!(finish_with(ran_no_escapee, FIGHTING, false), Draw);
+        assert_eq!(finish_with(FIGHTING, ran_no_escapee, false), Draw);
+        let escaped_no_retreat = End {
+            jumped: true,
+            active: true,
+            ..GONE
+        };
+        assert_eq!(finish_with(escaped_no_retreat, FIGHTING, false), Draw);
+        assert_eq!(finish_with(FIGHTING, escaped_no_retreat, false), Draw);
+        let fighters_escaped = End {
+            ran: true,
+            fighters_left: true,
+            active: true,
+            ..GONE
+        };
+        assert_eq!(finish_with(fighters_escaped, FIGHTING, false), Attacker);
+        assert_eq!(finish_with(FIGHTING, fighters_escaped, false), Defender);
+    }
+
+    fn withdrawal_world() -> (GameWorld, [SystemKey; 3], FleetKey, FleetKey) {
+        use crate::dat::{ExplorationStatus, Faction};
+        use crate::world::{CapitalShipClass, ControlKind, Fleet, ShipInstance, System};
+        let mut world = GameWorld::default();
+        let mut place = |x: u16, control: ControlKind| {
+            world.systems.insert(System {
+                dat_id: DatId::new(0x9000_0000 | u32::from(x)),
+                name: format!("S{x}"),
+                sector: crate::ids::SectorKey::default(),
+                x,
+                y: 0,
+                exploration_status: ExplorationStatus::Explored,
+                popularity_alliance: 0.5,
+                popularity_empire: 0.5,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: Vec::new(),
+                is_headquarters: false,
+                is_destroyed: false,
+                control,
+            })
+        };
+        let battle = place(0, ControlKind::Uncontrolled);
+        let near = place(30, ControlKind::Controlled(Faction::Empire));
+        let far = place(90, ControlKind::Controlled(Faction::Empire));
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x3000_0003),
+            hull: 10,
+            ..CapitalShipClass::default()
+        });
+        let fleet = |world: &mut GameWorld, is_alliance: bool| {
+            let key = world.fleets.insert(Fleet {
+                location: battle,
+                capital_ships: vec![ShipInstance::new(class, 10, false)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+            });
+            world.systems[battle].fleets.push(key);
+            key
+        };
+        let alliance = fleet(&mut world, true);
+        let empire = fleet(&mut world, false);
+        (world, [battle, near, far], alliance, empire)
+    }
+
+    // FUN_00516ef0 sets the loser's fleets Autorouting; FUN_00515480 moves
+    // each to the autoroute search's destination (FUN_005545e0): the
+    // nearest system of its side. The winner stays.
+    #[test]
+    fn the_losers_fleets_leave_for_their_nearest_system() {
+        let (mut world, [battle, near, _], alliance, empire) = withdrawal_world();
+        let mut movement = crate::movement::MovementState::new();
+        let sent = withdraw_loser(
+            &mut world,
+            &mut movement,
+            battle,
+            Some(crate::dat::Faction::Alliance),
+        );
+        assert_eq!(sent.len(), 1);
+        assert_eq!((sent[0].fleet, sent[0].destination), (empire, near));
+        assert_eq!(
+            movement.get(empire).map(|order| order.destination),
+            Some(near)
+        );
+        assert!(!movement.is_in_transit(alliance));
+        assert_eq!(world.systems[battle].fleets, [alliance]);
+    }
+
+    // FUN_00516ef0: with no winner, nobody leaves (port: the original's
+    // last-arrived tie-break is not kept).
+    #[test]
+    fn a_battle_without_a_winner_sends_nobody_away() {
+        let (mut world, [battle, ..], alliance, empire) = withdrawal_world();
+        let mut movement = crate::movement::MovementState::new();
+        assert!(withdraw_loser(&mut world, &mut movement, battle, None).is_empty());
+        assert!(movement.is_empty());
+        assert_eq!(world.systems[battle].fleets, [alliance, empire]);
     }
 
     // hyp (FUN_005afe40): fighters leave only with a carrier that both has
