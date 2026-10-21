@@ -214,6 +214,45 @@ carries (`+0x434`, `+0x438`). `FUN_005af910` is the escape (state 9).
 `battle-flow.md` called the first one a withdrawal. That was wrong: a
 stalled weaker side that cannot leave is destroyed.
 
+## Retreat (read 2026-10-21, W2h)
+
+- Slot `+0x0c` (`FUN_005d0f50`) says whether a side can leave. All of
+  these must hold:
+  - its commander's `+0x80` is set and `+0x84` is not 5 (the retreat has
+    not run);
+  - no arrival is pending (`FUN_005c7e40`: the battle's `+0x58` units with
+    `+0x150`);
+  - a fighter or capital ship has a working hyperdrive (`FUN_005b1b70`:
+    `FUN_005b1bc0` = installed hyperdrives `+0x3ec` minus hits `+0x374`
+    is above 0, and engine power, slot `+0x90`, is not 0); for side 1, an
+    operational Death Star (`FUN_005ba420`, or its `+0x74`) also counts.
+- Slot `+0x2c` (`FUN_005d19a0`) decides whether the side leaves now. If it
+  can leave, it leaves when any of these holds:
+  - its `+0xb0` is set;
+  - its strength is 0;
+  - its strength is under `+0x24` = 0.33 (`0x3ea8f5c3`, set by
+    `FUN_005c7cb0`) of the enemy's (`FUN_005afa30`).
+- The retreat itself (`FUN_005d14d0`, step 5):
+  - fighters with a hyperdrive escape (`FUN_005af910`, state 9); those
+    without are destroyed unless `FUN_005afe40` finds them recovered into
+    their carrier;
+  - capital ships with a hyperdrive escape; the others are destroyed;
+  - `+0x84` becomes 5.
+- At the stalemate (`FUN_005ae9c0`), a weaker side that can leave gets
+  `+0xb0` = 1 instead of destruction. The Alliance's mark ends that step.
+- `+0x80` itself:
+  - `FUN_00599c90` / `FUN_0059a0b0` set it per side through
+    `FUN_005afb30`. Their stack arguments 7 and 8 are copies
+    (`FUN_004fcd90`) of `FUN_00595d60`'s arguments 10 and 11, which
+    `FUN_0040b0e0` takes from the battle object's `+0x10` and `+0x14`.
+    The commanders are elsewhere: `+0x18` to `+0x24`
+    (`FUN_00509460` / `FUN_00509530`).
+  - `+0x10` and `+0x14` start at 0 (`FUN_0040afa0`, `FUN_0042dbe0`).
+    `FUN_0041cfc0` -> `FUN_004362b0` fills them from the two sides'
+    answers to the battle choice (their controllers' slot `+0x3c`).
+  - Open: what each answer means. It needs the side controllers' slot
+    `+0x3c`.
+
 ## The port (2026-10-21)
 
 `rebellion-core::abstract_battle` steps a `BattleSession` this way:
@@ -236,8 +275,10 @@ own (`resolve_space_battle`, all fleets at the system). Three pieces stay
   - Over seeds 1-3, 55 of 67 battles end as with the earlier rule, with
     26 attacker and 41 defender wins (28 and 39 before).
 - A fighter group hit by `FUN_005b54d0`: shields first, then hull.
-- The retreat decision and the Death Star's abstract actions. These are
-  not ported.
+- The retreat (W2h) is ported, but no side may leave yet
+  (`retreat_allowed` = false), because the source of `+0x80` is open. A
+  fighter group leaves with a jumping carrier (`hyp:`). The Death Star's
+  abstract actions are not ported.
 
 The first probe over seeds 1–3 (67 battles) ended every battle with one
 side destroyed, in 1 to 1008 steps (median 43), and none by stalemate.

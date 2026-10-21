@@ -2223,6 +2223,19 @@ cross-runtime proof remain open
   - Workspace tests: 2524 passed; the 25 removed tests account for the
     difference. provenance-scan: 0 uncited.
   - The agent docs now point to `abstract_battle.rs`.
+- 2026-10-21 (W2h): the abstract battle's retreat is ported
+  (`abstract-battle.md`, "Retreat").
+  - A side that may leave (commander `+0x80`) and has a working hyperdrive
+    leaves when its strength falls under 0.33 of the enemy's, or to 0
+    (`FUN_005d0f50`, `FUN_005d19a0`).
+  - At the stalemate, a weaker side that can leave is marked rather than
+    destroyed.
+  - In the retreat (`FUN_005d14d0`), ships with a hyperdrive escape and
+    the others are destroyed.
+  - `+0x80` comes from the battle's `+0x10` / `+0x14`, the sides' answers
+    to the battle choice (`FUN_004362b0`). What the answers mean is open,
+    so the port allows no retreat yet and campaigns do not change.
+  - 6 new tests; mutants on the diff 37 caught, 2 equivalent.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

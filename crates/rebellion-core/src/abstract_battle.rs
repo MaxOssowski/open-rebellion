@@ -59,6 +59,9 @@ pub const ABSTRACT_SCORE_TRAVEL_WEIGHT: f32 = 0.001;
 pub const ABSTRACT_PRIORITY_STRENGTH_WEIGHT: f32 = 15.0;
 /// `DAT_0066daa0`: the weight of its shield and hull ratios.
 pub const ABSTRACT_PRIORITY_RATIO_WEIGHT: f32 = 0.01;
+/// `+0x24` of a side commander (`FUN_005c7cb0`, `0x3ea8f5c3`): the share of
+/// the enemy's strength under which a side that may leave does.
+pub const ABSTRACT_RETREAT_RATIO: f32 = f32::from_bits(0x3ea8_f5c3);
 /// port: a bound on the steps, far past any stalemate, so a battle that
 /// cannot end does not hang the campaign.
 pub const ABSTRACT_STEP_LIMIT: u32 = 100_000;
@@ -113,6 +116,14 @@ pub struct AbstractBattle {
     pub capital_carry: HashMap<usize, f32>,
     pub steps: u32,
     pub stalemate: bool,
+    /// `+0x80` of each side's commander: the side may leave the battle.
+    /// `FUN_00599c90` copies it from the battle object's `+0x10` and
+    /// `+0x14` (`FUN_005afb30`); the port does not yet set it.
+    pub retreat_allowed: [bool; 2],
+    /// `+0x84` = 5: the side's retreat has run.
+    pub retreat_done: [bool; 2],
+    /// `+0xb0`: the stalemate marked the side to leave.
+    pub retreat_marked: [bool; 2],
 }
 
 const fn side_index(alliance: bool) -> usize {
@@ -377,6 +388,21 @@ fn engine_speed(session: &BattleSession, unit: AbstractUnit) -> f32 {
     }
 }
 
+/// `FUN_005b1b70`: installed hyperdrives outnumber hyperdrive hits
+/// (`FUN_005b1bc0`) and the engines have power (slot `+0x90`). The port's
+/// fighter groups carry no hyperdrive.
+fn hyperdrive_works(session: &BattleSession, unit: AbstractUnit) -> bool {
+    match unit {
+        AbstractUnit::Capital(index) => {
+            let ship = &session.ships[index];
+            ship.subsystem_capacity.hyperdrive > ship.subsystem_damage.hyperdrive
+                && original_tactical_mobility(&session.ships, &session.field_effects, index)
+                    .is_some_and(|mobility| mobility.effective_engine_power != 0.0)
+        }
+        AbstractUnit::Fighter(_) => false,
+    }
+}
+
 impl AbstractBattle {
     /// `FUN_005ae460`: the battle starts with each side's strength as its
     /// low.
@@ -391,6 +417,9 @@ impl AbstractBattle {
             capital_carry: HashMap::new(),
             steps: 0,
             stalemate: false,
+            retreat_allowed: [false; 2],
+            retreat_done: [false; 2],
+            retreat_marked: [false; 2],
         };
         battle.lows = [battle.side_strength(true), battle.side_strength(false)];
         battle
@@ -700,6 +729,9 @@ impl AbstractBattle {
             let damage = self.group_rate(&members, target) * ABSTRACT_STEP_SECONDS;
             self.deal(target, damage);
         }
+        if self.should_retreat(alliance) {
+            self.retreat(alliance);
+        }
         // `FUN_005b6320`: shield and weapon recharge of every unit.
         for unit in units_of(&self.session, alliance) {
             match unit {
@@ -713,6 +745,80 @@ impl AbstractBattle {
         }
         let active = units_of(&self.session, alliance).len();
         active == 0 && (alliance || !self.death_star_operational())
+    }
+
+    /// Slot `+0x0c` (`FUN_005d0f50`): the side may leave, has not yet, and a
+    /// capital ship has a working hyperdrive; for the Empire, an operational
+    /// Death Star also lets it. No arrivals are pending (`FUN_005c7e40`).
+    pub fn can_leave(&self, alliance: bool) -> bool {
+        let side = side_index(alliance);
+        if !self.retreat_allowed[side] || self.retreat_done[side] {
+            return false;
+        }
+        let jumps = units_of(&self.session, alliance)
+            .into_iter()
+            .any(|unit| hyperdrive_works(&self.session, unit));
+        jumps || (!alliance && self.death_star_operational())
+    }
+
+    /// Slot `+0x2c` (`FUN_005d19a0`): a side that can leave does when the
+    /// stalemate marked it, when it has no strength left, or when its
+    /// strength falls under 0.33 (`+0x24`) of the enemy's.
+    pub fn should_retreat(&self, alliance: bool) -> bool {
+        if !self.can_leave(alliance) {
+            return false;
+        }
+        if self.retreat_marked[side_index(alliance)] {
+            return true;
+        }
+        let own = self.side_strength(alliance);
+        if own == 0.0 {
+            return true;
+        }
+        let enemy = self.side_strength(!alliance);
+        enemy > 0.0 && own / enemy < ABSTRACT_RETREAT_RATIO
+    }
+
+    /// `FUN_005d14d0` step 5: each capital ship with a working hyperdrive
+    /// escapes (`FUN_005af910`, state 9); the others are destroyed
+    /// (`FUN_005af7a0`). hyp: a fighter group escapes when its side has an
+    /// escaping carrier (`FUN_005afe40` recovers it), and is destroyed
+    /// otherwise.
+    fn retreat(&mut self, alliance: bool) {
+        let units = units_of(&self.session, alliance);
+        let carrier_escapes = units.iter().any(|&unit| match unit {
+            AbstractUnit::Capital(index) => {
+                self.session.ships[index].fighter_capacity > 0
+                    && hyperdrive_works(&self.session, unit)
+            }
+            AbstractUnit::Fighter(_) => false,
+        });
+        for unit in units {
+            let escapes = match unit {
+                AbstractUnit::Capital(_) => hyperdrive_works(&self.session, unit),
+                AbstractUnit::Fighter(_) => carrier_escapes,
+            };
+            match (unit, escapes) {
+                (AbstractUnit::Capital(index), true) => {
+                    self.session.ships[index].retreated = true;
+                }
+                (AbstractUnit::Fighter(index), true) => {
+                    self.session.fighters[index].alive = false;
+                }
+                (AbstractUnit::Capital(index), false) => {
+                    let ship = &mut self.session.ships[index];
+                    ship.hull_current = 0;
+                    ship.shield = 0;
+                    ship.alive = false;
+                }
+                (AbstractUnit::Fighter(index), false) => {
+                    let fighter = &mut self.session.fighters[index];
+                    fighter.hull_current = 0.0;
+                    fighter.refresh_craft_count();
+                }
+            }
+        }
+        self.retreat_done[side_index(alliance)] = true;
     }
 
     /// `FUN_005d0ce0` (slot `+0x14`): the side's strength. A capital ship
@@ -790,10 +896,20 @@ impl AbstractBattle {
                 };
                 let empire = strengths[1];
                 // The side with the lower strength ends; on a tie both do.
+                // A side that can leave (slot `+0x0c`) is marked `+0xb0`
+                // instead; the Alliance's mark ends the step.
                 if empire <= alliance {
-                    self.destroy_side(false);
+                    if self.can_leave(false) {
+                        self.retreat_marked[1] = true;
+                    } else {
+                        self.destroy_side(false);
+                    }
                 }
                 if alliance <= empire {
+                    if self.can_leave(true) {
+                        self.retreat_marked[0] = true;
+                        return None;
+                    }
                     self.destroy_side(true);
                 }
             }
@@ -906,7 +1022,8 @@ pub fn resolve_space_battle(
     let mut survivors: Vec<((FleetKey, usize), u32)> = Vec::new();
     for (fighter, &fleet_key) in session.fighters.iter().zip(&fighter_fleets) {
         let key = (fleet_key, fighter.fleet_fighter_index);
-        let alive = u32::from(fighter.alive && fighter.squad_count > 0);
+        // An escaped group keeps its craft.
+        let alive = u32::from(fighter.squad_count > 0);
         match survivors.iter_mut().find(|(entry, _)| *entry == key) {
             Some((_, count)) => *count += alive,
             None => survivors.push((key, alive)),
@@ -1947,5 +2064,147 @@ mod tests {
         );
         assert_eq!(abstract_seed(&[]), 0);
         assert_eq!(abstract_seed(&[2.0]), u32::MAX);
+    }
+
+    fn jumper(alliance: bool, fore: TacticalWeaponArc, recharge: f32) -> TacticalShip {
+        let mut ship = ship(alliance, fore, recharge);
+        ship.subsystem_capacity.hyperdrive = 1;
+        ship
+    }
+
+    // FUN_005d19a0 and FUN_005d14d0 step 5: a side that may leave and falls
+    // under 0.33 of the enemy's strength leaves; a ship with a working
+    // hyperdrive escapes (state 9), one without is destroyed (FUN_005af7a0).
+    #[test]
+    fn a_losing_side_that_may_leave_jumps_out() {
+        let mut slow = ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        slow.task_force = 1;
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                slow,
+                ship(false, TacticalWeaponArc::new(0, 0, 4), 30.0),
+            ],
+            Vec::new(),
+        ));
+        battle.retreat_allowed[0] = true;
+        assert!(battle.should_retreat(true));
+        let outcome = battle.step().expect("the Alliance left");
+        assert_eq!(outcome.winner, CombatWinner::Defender);
+        assert!(battle.session.ships[0].retreated && battle.session.ships[0].alive);
+        assert!(!battle.session.ships[1].alive);
+        assert!(battle.retreat_done[0]);
+        assert!(!battle.can_leave(true));
+    }
+
+    // FUN_005d0f50: without +0x80 a side cannot leave and fights on.
+    #[test]
+    fn a_side_not_allowed_to_leave_fights_on() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                ship(false, TacticalWeaponArc::new(0, 0, 4), 30.0),
+            ],
+            Vec::new(),
+        ));
+        assert!(!battle.can_leave(true));
+        assert_eq!(battle.step(), None);
+        assert!(!battle.session.ships[0].retreated);
+        battle.retreat_allowed[0] = true;
+        battle.session.ships[0].subsystem_capacity.hyperdrive = 0;
+        assert!(!battle.can_leave(true));
+    }
+
+    // FUN_005d19a0 with +0x24 = 0x3ea8f5c3 (0.33): a ratio under it leaves.
+    #[test]
+    fn the_retreat_line_is_a_third_of_the_enemy_strength() {
+        let line = |recharge: f32| {
+            let mut battle = AbstractBattle::new(session(
+                vec![
+                    jumper(true, TacticalWeaponArc::new(0, 0, 1), recharge),
+                    ship(false, TacticalWeaponArc::new(0, 0, 1), 10.0),
+                ],
+                Vec::new(),
+            ));
+            battle.retreat_allowed[0] = true;
+            battle.should_retreat(true)
+        };
+        assert!(line(3.2));
+        assert!(!line(3.4));
+        assert!((ABSTRACT_RETREAT_RATIO - 0.33).abs() < 1e-6);
+    }
+
+    // FUN_005ae9c0: at the stalemate a weaker side that can leave is marked
+    // (+0xb0) instead of destroyed, and leaves on the next step; its fighter
+    // group goes with the carrier. Ion fire only reaches the shields, so
+    // neither strength falls (0.27 against 0.53, above the 0.33 line).
+    #[test]
+    fn a_stalled_side_that_can_leave_withdraws_instead_of_dying() {
+        let mut carrier = jumper(true, TacticalWeaponArc::new(0, 1, 0), 1.0);
+        carrier.fighter_capacity = 1;
+        let mut battle = AbstractBattle::new(session(
+            vec![carrier, ship(false, TacticalWeaponArc::new(0, 1, 0), 2.0)],
+            vec![fighter(true, TacticalWeaponArc::default())],
+        ));
+        battle.retreat_allowed[0] = true;
+        assert!(!battle.should_retreat(true));
+        battle.stalls = [1199.0, 1199.0];
+        assert_eq!(battle.step(), None);
+        assert!(battle.retreat_marked[0]);
+        assert!(battle.session.ships[0].alive && !battle.session.ships[0].retreated);
+        let outcome = battle.step().expect("the Alliance left");
+        assert_eq!(outcome.winner, CombatWinner::Defender);
+        assert!(battle.session.ships[0].retreated && battle.session.ships[0].alive);
+        assert!(battle.session.fighters[0].squad_count > 0);
+        assert!(battle.session.ships[1].alive);
+    }
+
+    // FUN_005d0f50: an operational Death Star lets the Empire leave without a
+    // hyperdrive; it does nothing for the Alliance.
+    #[test]
+    fn the_death_star_lets_only_the_empire_leave() {
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                ship(true, TacticalWeaponArc::default(), 0.0),
+                ship(false, TacticalWeaponArc::default(), 0.0),
+            ],
+            Vec::new(),
+        ));
+        battle.retreat_allowed = [true, true];
+        assert!(!battle.can_leave(false));
+        battle.session.death_star = Some(crate::tactical::TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition::ORIGIN,
+            hull: 1.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        assert!(battle.can_leave(false));
+        assert!(!battle.can_leave(true));
+    }
+
+    // hyp (FUN_005afe40): fighters leave only with a carrier that both has
+    // room and jumps; otherwise they are destroyed.
+    #[test]
+    fn fighters_leave_only_with_a_jumping_carrier() {
+        let run = |capacity: u32, hyperdrive: u8| {
+            let mut own = ship(true, TacticalWeaponArc::default(), 0.0);
+            own.fighter_capacity = capacity;
+            own.subsystem_capacity.hyperdrive = hyperdrive;
+            let mut battle = AbstractBattle::new(session(
+                vec![own, ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0)],
+                vec![fighter(true, TacticalWeaponArc::default())],
+            ));
+            battle.retreat_allowed[0] = true;
+            battle.retreat(true);
+            battle.session.fighters[0].squad_count > 0
+        };
+        assert!(run(1, 1));
+        assert!(!run(0, 1));
+        assert!(!run(1, 0));
     }
 }
