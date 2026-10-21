@@ -1,3 +1,4 @@
+pub mod abstract_battle;
 pub mod agent_automation;
 pub mod ai;
 pub mod ai_module1;

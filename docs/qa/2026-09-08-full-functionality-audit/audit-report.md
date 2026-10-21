@@ -2151,6 +2151,24 @@ cross-runtime proof remain open
     1. the side commander (`FUN_005d14d0`, `FUN_005c9200`);
     2. the strength;
     3. the abstract step and its result.
+- 2026-10-21 (W2d, `crates/rebellion-core/src/abstract_battle.rs`): the
+  abstract battle engine is ported, not yet used by the campaign.
+  - Each step is one second (`DAT_0066badc`; rates per second through
+    `FUN_005a9de0` × 0.001).
+  - Each task force with a target deals its summed rate (`FUN_005cb650`,
+    `FUN_005b7780`, the arc from `FUN_005b4c60`) through `FUN_005b54d0`.
+  - Units recharge (`FUN_005b6320`), and a side with no active unit is
+    beaten (`FUN_005d14d0`).
+  - Strength leaves out out-damaged ships (`FUN_005d0ce0`,
+    `FUN_005b7a80`).
+  - 1200 seconds without a fall destroys the weaker side (`FUN_005ae9c0`,
+    `FUN_005af7a0`).
+  - `hyp:` targeting, until `FUN_005ec740` is ported (read into
+    `abstract-battle.md`).
+  - Probe over seeds 1-3: all 67 battles end, 28 attacker and 39 defender
+    wins, no stalemate, 1 to 1008 steps (median 43).
+  - 22 tests; mutants 189 caught, 5 missed, one closed by a test and four
+    equivalent (`evidence/2026-10-21-abstract-battle-engine/`).
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

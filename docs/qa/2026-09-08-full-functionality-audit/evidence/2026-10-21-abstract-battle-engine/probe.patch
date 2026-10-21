@@ -1,0 +1,18 @@
+--- a/crates/rebellion-data/src/integrator.rs
++++ b/crates/rebellion-data/src/integrator.rs
+@@ -5261,6 +5261,15 @@
+     tick: u64,
+ ) -> SystemSpaceCombatResult {
+     let (initial_alliance, initial_empire) = orbiting_fleets_by_faction(world, system);
++    if std::env::var("OR_TAC_PROBE").is_ok() {
++        if let (Some(&a), Some(&e)) = (initial_alliance.first(), initial_empire.first()) {
++            let s = rebellion_core::tactical::BattleSession::new(world, system, a, e, true, tick, 1);
++            let n = (s.ships.iter().filter(|x| x.is_attacker).count(), s.ships.iter().filter(|x| !x.is_attacker).count(), s.fighters.iter().filter(|x| x.is_attacker).count(), s.fighters.iter().filter(|x| !x.is_attacker).count());
++            let (s2, o) = rebellion_core::abstract_battle::resolve_abstract(s);
++            let left = (s2.ships.iter().filter(|x| x.is_attacker && x.alive).count(), s2.ships.iter().filter(|x| !x.is_attacker && x.alive).count(), s2.fighters.iter().filter(|x| x.is_attacker && x.alive).count(), s2.fighters.iter().filter(|x| !x.is_attacker && x.alive).count());
++            eprintln!("PROBE3 tick={} start={:?} left={:?} {:?}", tick, n, left, o);
++        }
++    }
+     let alliance_before = summarize_space_force(world, &initial_alliance);
+     let empire_before = summarize_space_force(world, &initial_empire);
+     let mut rounds = 0;

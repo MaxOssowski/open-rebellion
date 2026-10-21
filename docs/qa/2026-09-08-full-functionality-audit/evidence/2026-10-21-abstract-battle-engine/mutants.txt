@@ -1,0 +1,9 @@
+cargo mutants -f crates/rebellion-core/src/abstract_battle.rs -p rebellion-core -- --lib abstract_battle
+202 mutants tested: 189 caught, 7 unviable, 1 timeout, 5 missed.
+
+Missed, and why:
+- 189 hull_ratio `>` -> `>=`: a fighter group with zero maximum hull. 0/0 truncates to a count of 0, and the rate is 0 either way. Equivalent.
+- 273 arc_rate ion `*` -> `/`: closed afterwards by `ion_cannons_deal_their_full_strength_to_ships`, which fails with the mutation (checked by hand).
+- 471 side_step `* ABSTRACT_STEP_SECONDS` -> `/`: the step is 1.0. Equivalent.
+- 558 step: the Alliance's -1 with a Death Star -> +1. The Empire's strength is then at least 20,000,000, so the comparison does not change. Unreachable.
+- 606 run limit `<` -> `<=`: the 100,000-step port bound. No battle reaches it, because the 1200-second stall ends it first.
