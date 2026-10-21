@@ -2821,6 +2821,7 @@ async fn main() {
                     &mut blockade_state,
                     &mut msg_log,
                     current_tick,
+                    &message_texts,
                 );
             }
 
@@ -6634,6 +6635,7 @@ async fn main() {
                         &mut blockade_state,
                         &event_state,
                         &mut mod_runtime,
+                        &message_texts,
                         #[cfg(not(target_arch = "wasm32"))]
                         &mut audio_engine,
                         #[cfg(not(target_arch = "wasm32"))]
@@ -7412,6 +7414,7 @@ fn apply_panel_action(
     blockade_state: &mut BlockadeState,
     event_state: &EventState,
     mod_runtime: &mut rebellion_data::mods::ModRuntime,
+    message_texts: &std::collections::HashMap<u16, String>,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
     #[cfg(not(target_arch = "wasm32"))] _sounds_dir: &Path,
@@ -7860,6 +7863,7 @@ fn apply_panel_action(
                         blockade_state,
                         msg_log,
                         clock.tick,
+                        message_texts,
                     );
                 }
             } else {
@@ -8700,11 +8704,14 @@ fn destroy_planet(
     blockade_state: &mut BlockadeState,
     msg_log: &mut MessageLog,
     tick: u64,
+    message_texts: &std::collections::HashMap<u16, String>,
 ) {
     let name = world
         .systems
         .get(system)
         .map_or_else(|| "Unknown".to_string(), |s| s.name.clone());
+    // The side the system had before the blast (FUN_004950d0 +0x64).
+    let holder = world.systems.get(system).and_then(|s| s.control.faction());
     if let Some(sys) = world.systems.get_mut(system) {
         sys.is_destroyed = true;
     }
@@ -8740,16 +8747,19 @@ fn destroy_planet(
             }
         }
     }
-    // Notification 0x15, Planet Destroyed.
-    msg_log.push(filed(
-        GameMessage::new(
-            tick,
-            format!("{name} DESTROYED by Death Star superlaser!"),
-            MessageCategory::Combat,
-        ),
-        MessageRail::Mission,
-        Some(RailAudience::Both),
-    ));
+    // Notification 0x182, System Destroyed by the Death Star
+    // (FUN_004950d0), for both sides.
+    let (title, text) =
+        rebellion_render::story_messages::death_star_destroyed_texts(&name, holder, message_texts)
+            .map_or_else(
+                || (None, format!("{name} DESTROYED by Death Star superlaser!")),
+                |(title, body)| (Some(title), body),
+            );
+    let mut message = GameMessage::new(tick, text, MessageCategory::Combat);
+    if let Some(title) = title {
+        message = message.with_title(title);
+    }
+    msg_log.push(filed(message, MessageRail::Mission, Some(RailAudience::Both)));
 }
 
 #[expect(

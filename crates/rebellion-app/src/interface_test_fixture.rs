@@ -3254,7 +3254,8 @@ fn fleet_load_observation(
         last_destroy_message: messages
             .iter()
             .rev()
-            .find(|message| message.text.contains("DESTROYED by Death Star"))
+            // System Destroyed by the Death Star (0x182, FUN_004950d0).
+            .find(|message| message.text.starts_with("The Death Star has destroyed the "))
             .map(|message| message.text.clone()),
         // Only the player's: the AI's deliveries post to the other side's
         // index.

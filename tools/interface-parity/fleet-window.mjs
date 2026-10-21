@@ -672,6 +672,8 @@ const cases = [
       await click(page, { x: sub.left + sub.width / 2, y: sub.top + 2 + rowHeight * (sub.destroy_row + 0.5) });
       const after = await until(page, "the Death Star destroys the system",
         (o) => o.primary_destroyed && o.last_destroy_message !== null);
+      // FUN_004950d0: TEXTSTRA 0x70c9 names the side the system had.
+      assert.match(after.last_destroy_message, /^The Death Star has destroyed the (Alliance|Imperial) system /);
       assert.ok(after.fleet_present, "the fleet stays (FUN_00524fb0)");
       assert.ok(after.adrift_characters >= 1, "the character standing there goes adrift");
       assert.equal(after.enemy_regiments, 0);

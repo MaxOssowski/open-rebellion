@@ -814,6 +814,35 @@ pub fn resource_texts(
     ))
 }
 
+/// System Destroyed by the Death Star (`FUN_004950d0`): notification
+/// `0x182`, then `2`, for both sides. The title is TEXTSTRA `0x70c8` "{2:1}
+/// Destroyed!". The body is `0x70c9` "The Death Star has destroyed the
+/// {1:4} system {3:1}." for a system a side held (the side, the Death Star,
+/// the system), or `0x70ca` for a neutral one. Returns the title and body.
+#[must_use]
+pub fn death_star_destroyed_texts(
+    system: &str,
+    holder: Option<rebellion_core::dat::Faction>,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::dat::Faction;
+    let death_star = MessageParameter::Named { name: "Death Star" };
+    let named = MessageParameter::Named { name: system };
+    let title = fill_message_text(texts.get(&0x70c8)?, &[death_star, named]);
+    let body = match holder {
+        Some(Faction::Alliance) | Some(Faction::Empire) => fill_message_text(
+            texts.get(&0x70c9)?,
+            &[
+                side_parameter(holder == Some(Faction::Alliance), texts),
+                death_star,
+                named,
+            ],
+        ),
+        _ => fill_message_text(texts.get(&0x70ca)?, &[death_star, named]),
+    };
+    Some((title, body))
+}
+
 /// Units Deployed (`FUN_00497940`): notification `0x107` for a unit put
 /// in place, to the unit's side. The texts follow the unit's family:
 /// - a capital ship TEXTSTRA `0x7086` / `0x7087`, the Death Star `0x708e`
@@ -1389,6 +1418,44 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_004950d0 (notification 0x182): TEXTSTRA 0x70c8..0x70ca as shipped;
+    // the side is the system's before the blast, by kind 4 (FUN_0052d920).
+    #[test]
+    fn the_death_star_names_the_side_whose_system_it_destroyed() {
+        use rebellion_core::dat::Faction;
+        let texts: HashMap<u16, String> = [
+            (0x70c8, "{2:1} Destroyed!"),
+            (0x70c9, "The Death Star has destroyed the {1:4} system {3:1}."),
+            (0x70ca, "The Death Star has destroyed the neutral system {2:1}."),
+            (0x4d70, "Alliance"),
+            (0x4d71, "Imperial"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            death_star_destroyed_texts("Alderaan", Some(Faction::Alliance), &texts),
+            Some((
+                "Alderaan Destroyed!".into(),
+                "The Death Star has destroyed the Alliance system Alderaan.".into()
+            ))
+        );
+        assert_eq!(
+            death_star_destroyed_texts("Alderaan", Some(Faction::Empire), &texts)
+                .map(|(_, body)| body),
+            Some("The Death Star has destroyed the Imperial system Alderaan.".into())
+        );
+        assert_eq!(
+            death_star_destroyed_texts("Alderaan", Some(Faction::Neutral), &texts)
+                .map(|(_, body)| body),
+            Some("The Death Star has destroyed the neutral system Alderaan.".into())
+        );
+        assert_eq!(
+            death_star_destroyed_texts("Alderaan", None, &texts).map(|(_, body)| body),
+            Some("The Death Star has destroyed the neutral system Alderaan.".into())
+        );
+    }
 
     // FUN_00497940 (notification 0x107): TEXTSTRA 0x7086..0x708f and 0x707f
     // as shipped, by the unit's family; kind 3 is the class's name

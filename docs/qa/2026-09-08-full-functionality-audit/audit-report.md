@@ -808,6 +808,14 @@ cross-runtime proof remain open
   may itself be a wrong model: in the original the shield protects the
   Death Star rather than preventing it from firing. Found by the 2026-09-25
   test-pruning pass.
+- 2026-10-21: the Death Star's destruction message takes the original
+  texts (`0x182`, `FUN_004950d0`), for both sides:
+  - TEXTSTRA `0x70c8` "{2:1} Destroyed!";
+  - `0x70c9`, naming the side the system had (kind 4, `FUN_0052d920`),
+    or `0x70ca` for a neutral system.
+  The browser `destroy-system` case sees "The Death Star has destroyed
+  the Alliance system Akrit'tar."
+  (`evidence/2026-10-21-death-star-destroyed-message/`).
 - Acceptance: construction, completion, planet destruction, and the shield's
   real role follow recovered Ghidra evidence, with tests that fail without
   each rule and a browser pass of the fire command.
