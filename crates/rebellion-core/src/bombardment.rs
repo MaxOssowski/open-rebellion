@@ -373,7 +373,8 @@ fn shields(world: &GameWorld, ship: &crate::world::ShipInstance, damage: i32) ->
     if scale == 0 || hull == 0 {
         return full;
     }
-    let allocated = full.wrapping_mul(scale - i32::from(ship.shield_nibble())) / scale;
+    let shield_hits = i32::from(ship.hits(crate::world::Subsystem::Shield));
+    let allocated = full.wrapping_mul(scale - shield_hits) / scale;
     allocated.wrapping_mul(hull - damage) / hull
 }
 
@@ -1318,7 +1319,7 @@ mod tests {
         assert_eq!(out.ship_losses[0].hull_damage, 29);
         // A nibble of 2: 10 * (4 - 2) / 4 = 5, * 50 / 100 = 2, all taken by
         // the ion hits: the whole 30 on the hull.
-        fx.world.fleets[fx.fleet].capital_ships[0].set_shield_nibble(2);
+        fx.world.fleets[fx.fleet].capital_ships[0].set_hits(crate::world::Subsystem::Shield, 2);
         let out = resolve(
             &fx.world,
             &request(&fx, TARGET_CIVILIAN),

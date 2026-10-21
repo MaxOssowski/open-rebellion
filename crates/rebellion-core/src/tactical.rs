@@ -676,6 +676,32 @@ pub struct TacticalSubsystemDamage {
     pub hyperdrive: u8,
 }
 
+impl TacticalShip {
+    /// `FUN_0040cfc0`: the unit's hit counts as the ship's `+0x64` counters.
+    /// The hyperdrive's hits fill the primary (one, if the class has a
+    /// `hyperdrive`, `FUN_00500680`), then the backup (one, if it has a
+    /// `hyperdrive_if_damaged`, `FUN_00500690`).
+    #[must_use]
+    pub fn strategic_hits(&self, class: &crate::world::CapitalShipClass) -> u32 {
+        use crate::world::Subsystem;
+        let damage = self.subsystem_damage;
+        let primary = damage.hyperdrive.min(u8::from(class.hyperdrive > 0));
+        let backup = (damage.hyperdrive - primary).min(u8::from(class.hyperdrive_if_damaged > 0));
+        let mut ship = crate::world::ShipInstance::new(self.class_key, 0, false);
+        for (subsystem, hits) in [
+            (Subsystem::Shield, damage.shields),
+            (Subsystem::Weapon, damage.weapons),
+            (Subsystem::Tractor, damage.tractor),
+            (Subsystem::Speed, damage.engines),
+            (Subsystem::PrimaryHyperdrive, primary),
+            (Subsystem::BackupHyperdrive, backup),
+        ] {
+            ship.set_hits(subsystem, hits);
+        }
+        ship.subsystem_hits
+    }
+}
+
 impl TacticalSubsystemDamage {
     #[must_use]
     pub const fn hits(self) -> [u8; 5] {
@@ -3547,7 +3573,17 @@ impl BattleSession {
                 hyperdrive: u8::from(class.hyperdrive > 0)
                     + u8::from(class.hyperdrive_if_damaged > 0),
             };
-            let subsystem_damage = TacticalSubsystemDamage::default();
+            // FUN_0040b8a0 -> FUN_005b05c0: the unit starts from the ship's
+            // hit counters (+0x64), the hyperdrive's as primary + backup
+            // (ghidra/notes/ship-subsystem-damage.md).
+            let subsystem_damage = TacticalSubsystemDamage {
+                shields: ship.hits(crate::world::Subsystem::Shield),
+                weapons: ship.hits(crate::world::Subsystem::Weapon),
+                tractor: ship.hits(crate::world::Subsystem::Tractor),
+                engines: ship.hits(crate::world::Subsystem::Speed),
+                hyperdrive: ship.hits(crate::world::Subsystem::PrimaryHyperdrive)
+                    + ship.hits(crate::world::Subsystem::BackupHyperdrive),
+            };
             ships.push(TacticalShip {
                 class_key: ship.class,
                 identity: TacticalObjectIdentity {

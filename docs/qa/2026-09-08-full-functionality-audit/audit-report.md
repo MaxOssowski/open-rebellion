@@ -2089,6 +2089,13 @@ cross-runtime proof remain open
       (`FUN_00500820`).
     - Each repair fire lowers one of the counters.
     - The port keeps none of them.
+  - 2026-10-21 (D2, save v103): the counters are ported
+    (`evidence/2026-10-21-ship-hit-counters/`).
+    - `ShipInstance::subsystem_hits` keeps `+0x64`; a battle starts from it
+      and writes it back.
+    - `movement::ship_speed` follows `FUN_00500820`.
+    - 20 campaigns change (battles 2080 -> 2146); the golden is regenerated
+      for v103.
 - Acceptance: Transit follows FUN_0055d8c0 per object with a failing-without
   test; bombardment.rs is removed or rebuilt on a recovered function; fog.rs
   is tagged port:.

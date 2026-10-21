@@ -609,7 +609,7 @@ type Cargo<'a> = (
 /// ship carries them; every unit aboard counts as active (object `+0x50`
 /// bit 2) and not as bit 5. A damaged ship ([`ship_damaged`]) takes
 /// `0x1000` with a speed (slot `+0x34(1)`, `FUN_00500820`,
-/// [`crate::movement::capital_ship_speed`]), else `0x800000`.
+/// [`crate::movement::ship_speed`]), else `0x800000`.
 fn ship_record(
     world: &GameWorld,
     classes: &ClassRecords,
@@ -632,7 +632,7 @@ fn ship_record(
         let moves = world
             .capital_ship_classes
             .get(ship.class)
-            .is_some_and(|c| crate::movement::capital_ship_speed(world, c) > 0);
+            .is_some_and(|c| crate::movement::ship_speed(world, c, ship) > 0);
         flags |= if moves { 0x1000 } else { 0x80_0000 };
     }
     v[0] = class.values[4];

@@ -5335,6 +5335,8 @@ pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut G
                 }
                 if alive_idx == evt.ship_index {
                     ship.hull_current = evt.hull_after;
+                    // FUN_0040cfc0: the hit counters come back with the hull.
+                    ship.subsystem_hits = evt.hits_after;
                     if evt.hull_after <= 0 {
                         ship.alive = false;
                     }
@@ -5672,6 +5674,7 @@ mod combat_application_tests {
                 ship_index: 0,
                 hull_before: 1_000,
                 hull_after: 0,
+                hits_after: 0,
             }],
             fighter_losses: vec![],
             tick: 2,
@@ -5683,6 +5686,34 @@ mod combat_application_tests {
         assert!(!world.fleets[defender].has_death_star);
         assert_eq!(world.fleets[defender].capital_ships.len(), 1);
         assert_eq!(world.fleets[defender].capital_ships[0].class, escort_class);
+    }
+
+    // FUN_0040cfc0: a surviving ship takes its hull and its +0x64 hit
+    // counters back from the battle.
+    #[test]
+    fn a_battle_writes_back_a_ships_hit_counters() {
+        let mut world = GameWorld::default();
+        let system = add_combat_system(&mut world);
+        let fleet = add_ship_fleet(&mut world, system, true, 100, 10);
+        let result = SpaceCombatResult {
+            attacker_fleet: fleet,
+            defender_fleet: fleet,
+            system,
+            winner: CombatSide::Attacker,
+            ship_damage: vec![ShipDamageEvent {
+                fleet,
+                ship_index: 0,
+                hull_before: 100,
+                hull_after: 60,
+                hits_after: 0x0001_0203,
+            }],
+            fighter_losses: vec![],
+            tick: 2,
+        };
+        apply_space_combat_result_inner(&result, &mut world);
+        let ship = &world.fleets[fleet].capital_ships[0];
+        assert_eq!(ship.hull_current, 60);
+        assert_eq!(ship.subsystem_hits, 0x0001_0203);
     }
 
     // FUN_0040a050 state 8: the engagement is one abstract battle that runs

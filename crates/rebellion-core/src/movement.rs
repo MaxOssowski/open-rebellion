@@ -126,15 +126,39 @@ pub fn transit_ticks_between(world: &GameWorld, from: (u16, u16), to: (u16, u16)
     u32::try_from(ticks.max(1)).unwrap_or(u32::MAX)
 }
 
-/// Speed of one capital ship (`FUN_00500820`): the class `hyperdrive`, else
-/// `hyperdrive_if_damaged`, else the GNPRTB 1 default.
-///
-/// The original subtracts `hyperdrive` when a per-ship damage nibble (ship
-/// `+0x64` bits 16..19, `FUN_005011f0`) is set; the port does not model that
-/// nibble, so every ship reads as undamaged.
+/// Speed of an undamaged capital ship of `class` (`FUN_00500820` with no
+/// hits): the class `hyperdrive`, else `hyperdrive_if_damaged`, else the
+/// GNPRTB 1 default. A built product travels so ([`ship_speed`] for a ship).
 #[must_use]
 pub fn capital_ship_speed(world: &GameWorld, class: &CapitalShipClass) -> i64 {
     rated_speed(world, class.hyperdrive, class.hyperdrive_if_damaged)
+}
+
+/// Speed of one capital ship (`FUN_00500820`): the class `hyperdrive` less
+/// `FUN_005011f0` (primary hyperdrive hits x `hyperdrive`); if that is 0,
+/// `hyperdrive_if_damaged` less `FUN_00501230` (backup hits x the same);
+/// if still 0, the GNPRTB 1 default (`ghidra/notes/ship-subsystem-damage.md`).
+#[must_use]
+pub fn ship_speed(
+    world: &GameWorld,
+    class: &CapitalShipClass,
+    ship: &crate::world::ShipInstance,
+) -> i64 {
+    use crate::world::Subsystem;
+    let after = |rating: u32, hits: u8| {
+        let rating = i64::from(rating);
+        rating - i64::from(hits) * rating
+    };
+    match after(class.hyperdrive, ship.hits(Subsystem::PrimaryHyperdrive)) {
+        0 => match after(
+            class.hyperdrive_if_damaged,
+            ship.hits(Subsystem::BackupHyperdrive),
+        ) {
+            0 => default_speed(world),
+            speed => speed,
+        },
+        speed => speed,
+    }
 }
 
 /// Speed of one fighter squadron (`FUN_00502f80`): the same rule as a
@@ -172,8 +196,8 @@ pub fn fleet_speed(fleet: &Fleet, world: &GameWorld) -> Option<i64> {
         .capital_ships
         .iter()
         .filter(|ship| ship.alive)
-        .filter_map(|ship| world.capital_ship_classes.get(ship.class))
-        .map(|class| capital_ship_speed(world, class));
+        .filter_map(|ship| world.capital_ship_classes.get(ship.class).map(|class| (ship, class)))
+        .map(|(ship, class)| ship_speed(world, class, ship));
     let first = speeds.next()?;
     Some(speeds.fold(first, |slowest, speed| if slowest == 0 || speed == 0 { 0 } else { slowest.max(speed) }))
 }
@@ -1768,6 +1792,38 @@ mod tests {
         world.gnprtb = crate::world::GnprtbParams::new(vec![entry(5120, 10), entry(1, 50)]);
         // 50 / 10 = 5; 5 * 100 / 50 = 10.
         assert_eq!(transit_ticks_between(&world, (0, 0), (30, 40), 100), 10);
+    }
+
+    // FUN_00500820 with FUN_005011f0 / FUN_00501230: a hit primary
+    // hyperdrive (+0x64 bits 16..19) leaves the backup rating; a hit backup
+    // too leaves the GNPRTB 1 default; a fleet goes at its slowest ship.
+    #[test]
+    fn hyperdrive_hits_slow_a_ship_to_its_backup_then_the_default() {
+        use crate::world::Subsystem::{BackupHyperdrive, PrimaryHyperdrive};
+        let (mut world, origin, _) = make_transit_world(0, 0, 0, 0);
+        let class = CapitalShipClass {
+            hyperdrive: 80,
+            hyperdrive_if_damaged: 120,
+            ..test_ship_class(0)
+        };
+        let mut ship = ShipInstance::new(crate::ids::CapitalShipKey::default(), 10, true);
+        assert_eq!(ship_speed(&world, &class, &ship), 80);
+        ship.set_hits(PrimaryHyperdrive, 1);
+        assert_eq!(ship_speed(&world, &class, &ship), 120);
+        ship.set_hits(BackupHyperdrive, 1);
+        assert_eq!(ship_speed(&world, &class, &ship), 100);
+        let only_primary = CapitalShipClass {
+            hyperdrive_if_damaged: 0,
+            ..class.clone()
+        };
+        ship.set_hits(BackupHyperdrive, 0);
+        assert_eq!(ship_speed(&world, &only_primary, &ship), 100);
+
+        let key = world.capital_ship_classes.insert(class);
+        let fleet = add_test_fleet(&mut world, origin, key);
+        assert_eq!(fleet_speed(&world.fleets[fleet], &world), Some(80));
+        world.fleets[fleet].capital_ships[0].set_hits(PrimaryHyperdrive, 1);
+        assert_eq!(fleet_speed(&world.fleets[fleet], &world), Some(120));
     }
 
     // FUN_00500820: hyperdrive, else hyperdrive_if_damaged, else GNPRTB 1.

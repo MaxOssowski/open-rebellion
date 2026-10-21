@@ -196,6 +196,10 @@ pub(crate) fn apply_results(
                     ship.is_attacker == is_attacker && ship.fleet_ship_index == roster_index
                 }) {
                     ship_inst.hull_current = result.hull_current.clamp(0, result.hull_max);
+                    // FUN_0040cfc0: the hit counters come back with the hull.
+                    if let Some(class) = world.capital_ship_classes.get(ship_inst.class) {
+                        ship_inst.subsystem_hits = result.strategic_hits(class);
+                    }
                     ship_inst.alive = result.alive && ship_inst.hull_current > 0;
                     if !ship_inst.alive {
                         ship_inst.hull_current = 0;

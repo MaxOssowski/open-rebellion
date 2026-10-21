@@ -30,7 +30,7 @@ pub enum CombatSide {
     Draw,
 }
 
-/// A hull's new value after a battle.
+/// A hull's new value and hit counters after a battle (`FUN_0040cfc0`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShipDamageEvent {
     pub fleet: FleetKey,
@@ -38,6 +38,10 @@ pub struct ShipDamageEvent {
     pub ship_index: usize,
     pub hull_before: i32,
     pub hull_after: i32,
+    /// The ship's `+0x64` hit counters after the battle
+    /// ([`crate::world::ShipInstance::subsystem_hits`]).
+    #[serde(default)]
+    pub hits_after: u32,
 }
 
 /// A fighter entry's surviving squadrons after a battle.

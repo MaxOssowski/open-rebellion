@@ -1,0 +1,8 @@
+run 1 (wd2b):
+crates/rebellion-core/src/abstract_battle.rs:1273:55: replace == with != in resolve_space_battle
+crates/rebellion-core/src/ai_records.rs:635:74: replace > with >= in ship_record
+crates/rebellion-core/src/tactical.rs:3585:21: replace + with - in BattleSession::expand_fleet
+crates/rebellion-core/src/world/mod.rs:1136:53: replace | with ^ in ShipInstance::set_hits
+final (wd2c): 59 tested, 56 caught, 1 unviable, 2 missed (equivalent, see README)
+crates/rebellion-core/src/ai_records.rs:635:74: replace > with >= in ship_record
+crates/rebellion-core/src/world/mod.rs:1136:53: replace | with ^ in ShipInstance::set_hits

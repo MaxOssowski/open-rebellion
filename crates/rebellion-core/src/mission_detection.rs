@@ -1897,7 +1897,7 @@ mod tests {
             capital_ships: vec![ShipInstance {
                 class: crate::ids::CapitalShipKey::default(),
                 hull_current: 1,
-                shield_weapon_packed: 0,
+                subsystem_hits: 0,
                 alive: true,
                 name: None,
                 id: 0,
@@ -2435,7 +2435,7 @@ mod tests {
         world.fleets[fleet].capital_ships.push(ShipInstance {
             class: crate::ids::CapitalShipKey::default(),
             hull_current: 0,
-            shield_weapon_packed: 0,
+            subsystem_hits: 0,
             alive: false,
             name: None,
             id: 0,

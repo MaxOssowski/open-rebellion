@@ -55,11 +55,32 @@ Each has a setter that checks its range (`FUN_0053fc90`, message
 So a ship whose primary hyperdrive was hit in battle travels at its backup
 rating, and with both hit at the default speed.
 
-## Repair
+## Repair (`FUN_00501c50`, read 2026-10-21)
 
-Each repair fire (`ship-repair.md`, `FUN_00501c50`) lowers one damaged
-counter by one, chosen by a draw (`FUN_0053e290`), after mending a tenth of
-the hull.
+A repair fire (`ship-repair.md`) does this:
+
+1. If the ship has hull damage (`+0x60` > 0), it mends a tenth of the
+   class hull (`FUN_00501b70`). The rest needs that step to succeed; with no
+   damage it counts as a success.
+2. `n` is the sum of the six counters (`FUN_005006a0`). With `n` > 0 the
+   fire rolls 0..99 (`FUN_0053e2e0`: `FUN_0053e290(DAT_00661a88 - 1)`,
+   `DAT_00661a88` = 100). Under the class's `damage_control` it goes on
+   (`FUN_00558680` -> `FUN_0053e2f0`, with class `+0xd8` = CAPSHPSD
+   `damage_control` at DAT `0xb0` less slot `+0x28c`, which is 0 for a
+   capital ship, `FUN_006158b0`).
+3. It draws `r` in 0..`n`-1 (`FUN_0053e290(n - 1)`). It then walks the
+   counters in bit order (shield, weapon, tractor, speed, primary, backup).
+   A counter of 0, or one not above `r`, takes `r -= counter`. The first
+   counter above `r` drops by one through its setter. So each hit is
+   equally likely to be mended.
+
+`FUN_0053e290(k)` draws through `FUN_005f5700(k + 1)` when random draws are
+on (`DAT_006b9054`).
+
+**Damaged** (`FUN_00501c00`, `GameObj_SetDamaged` `+0x50` bit `0x200`): a
+ship counts as damaged when it has hull damage (slot `+0x274`) or any hit
+counter (`FUN_005006a0` > 0). So a ship with only subsystem hits goes
+under repair too, and its fires skip step 1.
 
 ## The port (before)
 
@@ -68,3 +89,16 @@ the hull.
   battle starts with no hits.
 - The AI's records leave out weapon and shield recharge damage
   (`ai_records::ship_record`, "port:").
+
+## The port (D2, 2026-10-21)
+
+- `ShipInstance::subsystem_hits` keeps `+0x64` (save v103). It replaces the
+  port's `shield_weapon_packed` byte, which held only the shield and weapon
+  counters, and which only the bombardment's shield read.
+- A battle starts from the counters (`BattleSession::new_for_fleets`). It
+  writes them back through `ShipDamageEvent::hits_after`
+  (`TacticalShip::strategic_hits`, with the hyperdrive split), both in the
+  abstract battle and after a tactical one.
+- `movement::ship_speed` is `FUN_00500820`. Fleets and the AI's ship
+  records use it.
+- Repair does not yet lower the counters (D3).

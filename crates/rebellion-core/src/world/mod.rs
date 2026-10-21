@@ -1073,7 +1073,7 @@ pub struct FighterEntry {
 ///
 /// Mirrors the C++ entity object fields confirmed by Ghidra:
 /// - `hull_current` → offset +0x60 (int)
-/// - `shield_weapon_packed` → offset +0x64 (bits 0-3 = shield, 4-7 = weapon)
+/// - `subsystem_hits` → offset +0x64 (six 4-bit hit counters, [`Subsystem`])
 /// - `alive` → offset +0xac bit0
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShipInstance {
@@ -1081,9 +1081,12 @@ pub struct ShipInstance {
     pub class: CapitalShipKey,
     /// Current hull. Starts at `CapitalShipClass::hull`, reduced by combat.
     pub hull_current: i32,
-    /// Packed nibbles: bits 0-3 = `shield_recharge_allocated`, bits 4-7 = `weapon_recharge_allocated`.
-    /// The C++ binary uses XOR-mask writes `(new ^ old) & 0xf ^ old` — functionally a nibble store.
-    pub shield_weapon_packed: u8,
+    /// `+0x64`: the six 4-bit subsystem hit counters
+    /// (`ghidra/notes/ship-subsystem-damage.md`); see [`Subsystem`] and
+    /// [`ShipInstance::hits`]. A battle starts from them (`FUN_0040b8a0`)
+    /// and writes them back (`FUN_0040cfc0`).
+    #[serde(default)]
+    pub subsystem_hits: u32,
     /// True while `hull_current` > 0 and the ship has not been destroyed.
     pub alive: bool,
     /// The name the player gave it (`+0x34`, order 0x203); `None` shows the
@@ -1103,10 +1106,7 @@ impl ShipInstance {
         ShipInstance {
             class,
             hull_current: hull,
-            // Zero is the legacy/uninitialized sentinel. Space-combat entry
-            // derives the source defaults from the class when this word has
-            // not yet been allocated.
-            shield_weapon_packed: 0,
+            subsystem_hits: 0,
             alive: true,
             name: None,
             id: 0,
@@ -1121,34 +1121,62 @@ impl ShipInstance {
             .collect()
     }
 
-    /// Shield recharge allocation nibble (bits 0-3 of `+0x64`, written by
-    /// `FUN_00501510`).
+    /// The hits counted against `subsystem` (`+0x64`, read by
+    /// `FUN_0040d6b0`..`FUN_0040d700`).
     #[must_use]
-    pub fn shield_nibble(&self) -> u8 {
-        self.shield_weapon_packed & 0x0f
+    pub fn hits(&self, subsystem: Subsystem) -> u8 {
+        ((self.subsystem_hits >> subsystem.shift()) & 0xf) as u8
     }
 
-    /// Weapon recharge allocation nibble (bits 4-7 of `+0x64`, written by
-    /// `FUN_005015a0`).
-    #[must_use]
-    pub fn weapon_nibble(&self) -> u8 {
-        (self.shield_weapon_packed >> 4) & 0x0f
+    /// Store the hits against `subsystem`, at most 15: the setters
+    /// `FUN_00501510`..`FUN_00501820` keep the low four bits.
+    pub fn set_hits(&mut self, subsystem: Subsystem, hits: u8) {
+        let shift = subsystem.shift();
+        self.subsystem_hits =
+            (self.subsystem_hits & !(0xf << shift)) | (u32::from(hits.min(0xf)) << shift);
     }
+}
 
-    /// Replace the shield allocation nibble while preserving weapon power.
-    ///
-    /// `FUN_00501510` accepts only the low four bits and performs the same
-    /// masked read-modify-write against source offset `+0x64`.
-    pub fn set_shield_nibble(&mut self, value: u8) {
-        self.shield_weapon_packed = (self.shield_weapon_packed & 0xf0) | value.min(0x0f);
-    }
+/// A capital ship's subsystem with a hit counter in `+0x64`
+/// (`ghidra/notes/ship-subsystem-damage.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Subsystem {
+    /// Bits 0..3, ShieldRechargeRateCHAllocated (`FUN_00501510`).
+    Shield,
+    /// Bits 4..7, WeaponRechargeRateCHAllocated (`FUN_005015a0`).
+    Weapon,
+    /// Bits 8..11, TractorBeamPowerCHAllocated (`FUN_00501640`).
+    Tractor,
+    /// Bits 12..15, SpeedCHAllocated (`FUN_005016e0`).
+    Speed,
+    /// Bits 16..19, PrimaryHyperdriveModifier (`FUN_00501780`).
+    PrimaryHyperdrive,
+    /// Bits 20..23, BackupHyperdriveModifier (`FUN_00501820`).
+    BackupHyperdrive,
+}
 
-    /// Replace the weapon allocation nibble while preserving shield power.
-    ///
-    /// `FUN_005015a0` stores the bounded value in bits 4 through 7 of source
-    /// offset `+0x64`.
-    pub fn set_weapon_nibble(&mut self, value: u8) {
-        self.shield_weapon_packed = (self.shield_weapon_packed & 0x0f) | (value.min(0x0f) << 4);
+impl Subsystem {
+    /// Every counter, in bit order.
+    pub const ALL: [Self; 6] = [
+        Self::Shield,
+        Self::Weapon,
+        Self::Tractor,
+        Self::Speed,
+        Self::PrimaryHyperdrive,
+        Self::BackupHyperdrive,
+    ];
+
+    /// The counter's bit offset in `+0x64`, as `FUN_0040d6b0`..`FUN_0040d700`
+    /// shift it (0, 4, 8, `0xc`, `0x10`, `0x14`).
+    const fn shift(self) -> u32 {
+        match self {
+            Self::Shield => 0,
+            Self::Weapon => 4,
+            Self::Tractor => 8,
+            Self::Speed => 12,
+            Self::PrimaryHyperdrive => 16,
+            Self::BackupHyperdrive => 20,
+        }
     }
 }
 
@@ -3098,21 +3126,26 @@ mod tests {
     }
 
     #[test]
-    fn ship_power_allocations_store_independent_bounded_nibbles() {
+    // FUN_00501510..FUN_00501820 each store four bits of +0x64, at bits
+    // 0, 4, 8, 12, 16 and 20 (FUN_0040d6b0..FUN_0040d700 read them).
+    fn ship_hit_counters_store_independent_bounded_nibbles() {
         let mut ship = ShipInstance::new(CapitalShipKey::default(), 100, true);
-        assert_eq!(ship.shield_nibble(), 0);
-        assert_eq!(ship.weapon_nibble(), 0);
+        assert!(Subsystem::ALL.iter().all(|&s| ship.hits(s) == 0));
 
-        ship.set_shield_nibble(4);
-        assert_eq!(ship.shield_nibble(), 4);
-        assert_eq!(ship.weapon_nibble(), 0);
+        ship.set_hits(Subsystem::Shield, 4);
+        assert_eq!(ship.hits(Subsystem::Shield), 4);
+        assert_eq!(ship.hits(Subsystem::Weapon), 0);
 
-        ship.set_weapon_nibble(9);
-        assert_eq!(ship.shield_nibble(), 4);
-        assert_eq!(ship.weapon_nibble(), 9);
+        ship.set_hits(Subsystem::Weapon, 9);
+        assert_eq!(ship.hits(Subsystem::Shield), 4);
+        assert_eq!(ship.hits(Subsystem::Weapon), 9);
 
-        ship.set_shield_nibble(u8::MAX);
-        ship.set_weapon_nibble(u8::MAX);
-        assert_eq!(ship.shield_weapon_packed, 0xff);
+        for (value, subsystem) in (1..).zip(Subsystem::ALL) {
+            ship.set_hits(subsystem, value);
+        }
+        assert_eq!(ship.subsystem_hits, 0x0065_4321);
+        ship.set_hits(Subsystem::Shield, u8::MAX);
+        ship.set_hits(Subsystem::BackupHyperdrive, u8::MAX);
+        assert_eq!(ship.subsystem_hits, 0x00f5_432f);
     }
 }

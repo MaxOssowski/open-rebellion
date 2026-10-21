@@ -1266,7 +1266,11 @@ pub fn resolve_space_battle(
         } else {
             0
         };
-        if after == before.hull_current {
+        let hits_after = world
+            .capital_ship_classes
+            .get(before.class)
+            .map_or(before.subsystem_hits, |class| ship.strategic_hits(class));
+        if !ship_changed(before, after, hits_after) {
             continue;
         }
         // `ship_index` counts the fleet's live hulls.
@@ -1279,6 +1283,7 @@ pub fn resolve_space_battle(
             ship_index,
             hull_before: before.hull_current,
             hull_after: after,
+            hits_after,
         });
     }
 
@@ -1537,6 +1542,12 @@ pub fn trench_commander_term(world: &GameWorld, system: SystemKey) -> f32 {
             (combat(key) as f32 / BATTLE_PERSON_COMBAT_DIVISOR + 1.0)
                 .clamp(TRENCH_RUN_COMMANDER_FLOOR, TRENCH_RUN_COMMANDER_CAP)
         })
+}
+
+/// Whether a battle changed `before`: its hull, or its hit counters
+/// (`FUN_0040cfc0` writes both). An unchanged ship has no event.
+fn ship_changed(before: &crate::world::ShipInstance, hull_after: i32, hits_after: u32) -> bool {
+    hull_after != before.hull_current || hits_after != before.subsystem_hits
 }
 
 /// Resolve a battle session without display.
@@ -2617,6 +2628,103 @@ mod tests {
         assert_eq!(hulls(&with), hulls(&without));
         assert_eq!(squads(&with), squads(&without));
         assert!(!hulls(&without).is_empty());
+    }
+
+    // FUN_0040b8a0 -> FUN_005b05c0: a battle unit starts from its ship's
+    // +0x64 hit counters, the hyperdrive's as primary + backup; FUN_0040cfc0
+    // writes them back with the hull.
+    #[test]
+    fn a_battle_carries_the_ships_hit_counters_both_ways() {
+        use crate::world::Subsystem;
+        let (mut world, system, alliance, ships, squadrons) = world_with_battle();
+        {
+            let ship = &mut world.fleets[alliance].capital_ships[0];
+            ship.set_hits(Subsystem::Shield, 2);
+            ship.set_hits(Subsystem::Weapon, 1);
+            ship.set_hits(Subsystem::Speed, 3);
+            ship.set_hits(Subsystem::PrimaryHyperdrive, 1);
+            ship.set_hits(Subsystem::BackupHyperdrive, 1);
+        }
+        let FleetBattle { session, .. } = BattleSession::new_for_fleets(
+            &world,
+            system,
+            &[alliance],
+            &[ships, squadrons],
+            true,
+            3,
+            7,
+        );
+        let unit = &session.ships[0];
+        assert_eq!(
+            (
+                unit.subsystem_damage.shields,
+                unit.subsystem_damage.weapons,
+                unit.subsystem_damage.tractor,
+                unit.subsystem_damage.engines,
+                unit.subsystem_damage.hyperdrive
+            ),
+            (2, 1, 0, 3, 2)
+        );
+        let (result, _) = resolve_space_battle(
+            &world,
+            system,
+            &[alliance],
+            &[ships, squadrons],
+            7,
+            3,
+            [false, false],
+        );
+        let event = result
+            .ship_damage
+            .iter()
+            .find(|event| event.fleet == alliance)
+            .expect("the Alliance ship took damage");
+        let mut after = world.fleets[alliance].capital_ships[0].clone();
+        after.subsystem_hits = event.hits_after;
+        assert!(after.hits(Subsystem::Shield) >= 2);
+        assert!(after.hits(Subsystem::Weapon) >= 1);
+        assert!(after.hits(Subsystem::Speed) >= 3);
+    }
+
+    // FUN_0040cfc0 writes a ship's hull and counters; a ship whose hull and
+    // counters are unchanged has no event.
+    #[test]
+    fn a_ship_changes_with_its_hull_or_its_hit_counters() {
+        let mut ship = crate::world::ShipInstance::new(CapitalShipKey::default(), 50, true);
+        ship.subsystem_hits = 0x10;
+        assert!(!ship_changed(&ship, 50, 0x10));
+        assert!(ship_changed(&ship, 40, 0x10));
+        assert!(ship_changed(&ship, 50, 0x11));
+        assert!(ship_changed(&ship, 40, 0x11));
+    }
+
+    // FUN_0040cfc0: the hyperdrive's hits fill the primary (if the class has
+    // a hyperdrive, FUN_00500680), then the backup (FUN_00500690), one each.
+    #[test]
+    fn hyperdrive_hits_go_to_the_primary_then_the_backup() {
+        use crate::world::{CapitalShipClass, ShipInstance, Subsystem};
+        let split = |hyperdrive, hyperdrive_if_damaged, hits| {
+            let class = CapitalShipClass {
+                hyperdrive,
+                hyperdrive_if_damaged,
+                ..CapitalShipClass::default()
+            };
+            let mut unit = ship(true, TacticalWeaponArc::default(), 0.0);
+            unit.subsystem_damage.hyperdrive = hits;
+            unit.subsystem_damage.tractor = 2;
+            let mut ship = ShipInstance::new(crate::ids::CapitalShipKey::default(), 1, true);
+            ship.subsystem_hits = unit.strategic_hits(&class);
+            assert_eq!(ship.hits(Subsystem::Tractor), 2);
+            (
+                ship.hits(Subsystem::PrimaryHyperdrive),
+                ship.hits(Subsystem::BackupHyperdrive),
+            )
+        };
+        assert_eq!(split(80, 120, 0), (0, 0));
+        assert_eq!(split(80, 120, 1), (1, 0));
+        assert_eq!(split(80, 120, 2), (1, 1));
+        assert_eq!(split(0, 120, 1), (0, 1));
+        assert_eq!(split(80, 0, 2), (1, 0));
     }
 
     // port: the seed comes from the first combat roll.

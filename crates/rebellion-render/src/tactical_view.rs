@@ -7625,6 +7625,7 @@ mod tests {
                 ship_index: 0,
                 hull_before: 100,
                 hull_after: 0,
+                hits_after: 0,
             }],
             fighter_losses: vec![rebellion_core::combat::FighterLossEvent {
                 fleet: attacker_fleet,
