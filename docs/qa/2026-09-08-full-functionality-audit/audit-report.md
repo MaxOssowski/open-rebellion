@@ -1583,13 +1583,27 @@ cross-runtime proof remain open
 ### F-024: The Emperor's 1.5x battle damage bonus has no source
 
 - Severity: P2
-- Status: open
+- Status: remediated (2026-10-22: the bonus went with the round formula,
+  and no recovered battle code reads the Emperor)
 - Evidence: `combat.rs` multiplies the Empire's pending weapon damage by 1.5
   when a character named Palpatine or Emperor is in the fleet, citing
   `FUN_00542050`. Ours is a two-line thunk; the community function maps to our
   `FUN_005438a0`, a named-character check (Leia, Luke, Han, the Emperor, Vader,
   Chewbacca). Neither shows a damage modifier.
 - Acceptance: the bonus is removed or traced to recovered code.
+- 2026-10-22: remediated.
+  - The bonus was in `CombatSystem::resolve_space`, which W2g
+    (`c94ef9d8`) removed with the round formula.
+  - No recovered battle code reads the Emperor (record `0x34000280`): the
+    abstract step (`FUN_005ae9c0`, `FUN_005d14d0`, `FUN_005b7780`), the
+    battle's build and result (`FUN_0040b0e0`, `FUN_0040c780`), and the
+    modules in `0x0059xxxx`..`0x005dxxxx`. The one hit, in
+    `FUN_00592f50`, is a vtable slot `+0x280`. The only character term is
+    the trench run's commander (`FUN_005afc00`).
+  - The test `the_emperor_aboard_changes_no_battle` resolves one battle
+    with and without the Emperor in the Imperial fleet and finds the same
+    losses. With an Emperor-dependent effect injected, it fails.
+  - No golden or campaign changes: the change is a test.
 
 ### F-025: Death Star combat checks key on the Empire major-character family
 

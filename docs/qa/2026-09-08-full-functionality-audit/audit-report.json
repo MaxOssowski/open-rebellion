@@ -1827,11 +1827,12 @@
     {
       "id": "F-024",
       "severity": "P2",
-      "status": "open",
+      "status": "remediated",
       "title": "The Emperor's 1.5x battle damage bonus has no source",
       "evidence": [
         "crates/rebellion-core/src/combat.rs multiplies the Empire's pending weapon damage by 1.5 when a character named Palpatine or Emperor is in the fleet, citing FUN_00542050",
-        "Our FUN_00542050 is a two-line thunk; the community function at that address maps to our FUN_005438a0, a named-character check for Leia, Luke, Han, the Emperor, Vader, and Chewbacca. Neither shows a damage modifier"
+        "Our FUN_00542050 is a two-line thunk; the community function at that address maps to our FUN_005438a0, a named-character check for Leia, Luke, Han, the Emperor, Vader, and Chewbacca. Neither shows a damage modifier",
+        "2026-10-22: remediated. The bonus was in CombatSystem::resolve_space, removed with the round formula in W2g (c94ef9d8). No recovered battle code reads the Emperor (0x34000280): FUN_005ae9c0, FUN_005d14d0, FUN_005b7780, FUN_0040b0e0, FUN_0040c780 and the 0x0059xxxx..0x005dxxxx modules (the one hit, FUN_00592f50, is vtable slot +0x280); the only character term is the trench run's commander (FUN_005afc00). Test the_emperor_aboard_changes_no_battle resolves one battle with and without the Emperor aboard and finds the same losses; it fails with an Emperor-dependent effect injected. No golden or campaign change."
       ],
       "acceptance": "The bonus is removed or traced to recovered code, with tests and any golden change named."
     },

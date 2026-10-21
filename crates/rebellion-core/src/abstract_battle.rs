@@ -2474,6 +2474,55 @@ mod tests {
         assert!(lost([false, true]) < 2);
     }
 
+    // F-024: no recovered battle code reads the Emperor (record 0x34000280).
+    // The abstract step (FUN_005ae9c0, FUN_005d14d0, FUN_005b7780) and the
+    // battle's build and result (FUN_0040b0e0, FUN_0040c780) have no
+    // character term but the trench run's commander, so the Emperor aboard
+    // an Imperial fleet changes nothing.
+    #[test]
+    fn the_emperor_aboard_changes_no_battle() {
+        let (world, system, alliance, ships, squadrons) = world_with_battle();
+        let fight = |world: &GameWorld| {
+            resolve_space_battle(
+                world,
+                system,
+                &[alliance],
+                &[ships, squadrons],
+                7,
+                3,
+                [false, false],
+            )
+        };
+        let (without, outcome_without) = fight(&world);
+        let mut with_emperor = world.clone();
+        let emperor = with_emperor.characters.insert(crate::world::Character {
+            dat_id: DatId::new(0x3400_0280),
+            name: "Emperor Palpatine".into(),
+            current_fleet: Some(ships),
+            ..crate::world::Character::default()
+        });
+        with_emperor.fleets[ships].characters.push(emperor);
+        let (with, outcome_with) = fight(&with_emperor);
+        assert_eq!(outcome_with, outcome_without);
+        let hulls = |result: &SpaceCombatResult| {
+            result
+                .ship_damage
+                .iter()
+                .map(|e| (e.fleet, e.ship_index, e.hull_before, e.hull_after))
+                .collect::<Vec<_>>()
+        };
+        let squads = |result: &SpaceCombatResult| {
+            result
+                .fighter_losses
+                .iter()
+                .map(|e| (e.fleet, e.fighter_index, e.squads_before, e.squads_after))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(hulls(&with), hulls(&without));
+        assert_eq!(squads(&with), squads(&without));
+        assert!(!hulls(&without).is_empty());
+    }
+
     // port: the seed comes from the first combat roll.
     #[test]
     fn the_seed_is_the_first_roll_scaled_to_32_bits() {
