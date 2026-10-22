@@ -54,9 +54,10 @@ pub enum PanelAction {
     SelectFaction(MissionFaction),
 
     // ── Characters ────────────────────────────────────────────────────────────
-    /// A confirmed Retire (`0x242`): the order validates again and the
-    /// character retires (`rebellion_core::character_retire::retire`).
-    RetireCharacter(CharacterKey),
+    /// A confirmed Retire (`0x242`) on a character or a special force: the
+    /// order validates again and the member retires
+    /// (`rebellion_core::character_retire`).
+    Retire(MissionMember),
 
     // ── Fleets ────────────────────────────────────────────────────────────────
     /// Focus the galaxy map on the system where a fleet is located.

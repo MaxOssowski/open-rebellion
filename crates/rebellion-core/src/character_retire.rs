@@ -7,8 +7,8 @@
 //! (`FUN_00534c00` -> slot `+0xac`). The Personnel Finder then lists it as
 //! "Retired" (`FUN_00465bb0`, TEXTSTRA `0x8799`).
 
-use crate::ids::CharacterKey;
-use crate::world::{Character, GameWorld};
+use crate::ids::{CharacterKey, SpecialForceKey};
+use crate::world::{Character, GameWorld, SpecialForceUnit};
 
 /// Why a Retire order is refused: the base check `FUN_004f9860`, then the
 /// codes under `0x30` of `FUN_00533ba0` and `FUN_004ed460`.
@@ -78,12 +78,54 @@ pub fn retire(
     is_alliance: bool,
     en_route: bool,
 ) -> Result<(), Refusal> {
-    let Some(c) = world.characters.get_mut(character) else {
+    let Some(c) = world.characters.get(character) else {
         return Err(Refusal::Destroyed);
     };
     order_allowed(c, is_alliance, en_route)?;
-    c.mark_killed();
-    c.is_retired = true;
+    // The destruction takes it off its fleet and out of its abode too.
+    crate::missions::kill_character(world, character);
+    world.characters[character].is_retired = true;
+    Ok(())
+}
+
+/// A special force's slot `+0x1c0` is the base `FUN_00533ba0`: the base
+/// check (`FUN_004f9860`: the side's, not en route), then one on a mission
+/// is refused. A unit that is not deployed is not in the world, and a
+/// destroyed one is gone.
+pub fn special_force_allowed(
+    unit: &SpecialForceUnit,
+    is_alliance: bool,
+    en_route: bool,
+) -> Result<(), Refusal> {
+    if unit.is_alliance != is_alliance {
+        return Err(Refusal::OtherSide);
+    }
+    if en_route {
+        return Err(Refusal::EnRoute);
+    }
+    if unit.on_mission {
+        return Err(Refusal::OnMission);
+    }
+    Ok(())
+}
+
+/// Event `0x230`'s fire on a special force: the check again, then it is
+/// destroyed with reason `0x14` (`FUN_00534c00`) and leaves the game, from
+/// its system or its abode.
+pub fn retire_special_force(
+    world: &mut GameWorld,
+    unit: SpecialForceKey,
+    is_alliance: bool,
+    en_route: bool,
+) -> Result<(), Refusal> {
+    let Some(value) = world.special_forces.get(unit) else {
+        return Err(Refusal::Destroyed);
+    };
+    special_force_allowed(value, is_alliance, en_route)?;
+    for (_, abode) in &mut world.abodes {
+        abode.special_forces.retain(|&key| key != unit);
+    }
+    crate::missions::destroy_special_force(world, unit);
     Ok(())
 }
 
@@ -139,7 +181,15 @@ mod tests {
         // Finder reads as "Retired".
         let mut world = GameWorld::default();
         let key = world.characters.insert(rebel());
-        world.characters[key].current_system = Some(crate::ids::SystemKey::default());
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: crate::ids::SystemKey::default(),
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: vec![key],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.characters[key].current_fleet = Some(fleet);
         assert_eq!(
             retire(&mut world, key, false, false),
             Err(Refusal::OtherSide)
@@ -148,10 +198,47 @@ mod tests {
         assert_eq!(retire(&mut world, key, true, false), Ok(()));
         let c = &world.characters[key];
         assert!(c.is_killed && c.is_retired);
-        assert_eq!(c.current_system, None);
+        assert_eq!(c.current_fleet, None);
+        // Off its fleet's roster too (FUN_00534c00 destroys it).
+        assert!(world.fleets[fleet].characters.is_empty());
         assert_eq!(
             retire(&mut world, key, true, false),
             Err(Refusal::Destroyed)
         );
+    }
+
+    #[test]
+    fn a_special_force_retires_unless_on_a_mission_and_leaves_the_game() {
+        // FUN_00533ba0: the base check, then one on a mission is refused;
+        // FUN_00534c00 destroys it.
+        let mut world = GameWorld::default();
+        let unit = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: true,
+        });
+        let abode = world.abodes.insert(crate::world::Abode {
+            dat_id: crate::ids::DatId::new(0x9800_0441),
+            name: "Dagobah".into(),
+            side: crate::dat::Faction::Neutral,
+            special_forces: vec![unit],
+        });
+        assert_eq!(
+            retire_special_force(&mut world, unit, true, false),
+            Err(Refusal::OnMission)
+        );
+        world.special_forces[unit].on_mission = false;
+        assert_eq!(
+            retire_special_force(&mut world, unit, false, false),
+            Err(Refusal::OtherSide)
+        );
+        assert_eq!(
+            retire_special_force(&mut world, unit, true, true),
+            Err(Refusal::EnRoute)
+        );
+        assert_eq!(retire_special_force(&mut world, unit, true, false), Ok(()));
+        assert!(world.special_forces.get(unit).is_none());
+        assert!(world.abodes[abode].special_forces.is_empty());
     }
 }

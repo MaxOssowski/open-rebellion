@@ -7,7 +7,7 @@
 //! Enter and Escape press them (`FUN_0044f640`).
 
 use egui_macroquad::egui;
-use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
+use rebellion_core::ids::{CharacterKey, FleetKey, SpecialForceKey, SystemKey};
 use rebellion_core::missions::MissionFaction;
 
 use crate::bmp_cache::BmpCache;
@@ -63,6 +63,8 @@ pub struct MoveConfirmation {
     pub fleets: Vec<FleetKey>,
     /// A character's Confirmed Move (`0x202` -> `0x241`): its team.
     pub characters: Vec<CharacterKey>,
+    /// A Retire's special forces (the unit order list, `FUN_00536bc0`).
+    pub special_forces: Vec<SpecialForceKey>,
     /// The first member is not a fleet and its container is a blockaded
     /// system (`FUN_0049a350`): the evacuation warning.
     pub blockaded: bool,
@@ -131,8 +133,11 @@ pub enum MoveConfirmationAction {
         destination: SystemKey,
         join: Option<FleetKey>,
     },
-    /// The checkmark on a Retire: the characters retire.
-    Retire { characters: Vec<CharacterKey> },
+    /// The checkmark on a Retire: the characters and special forces retire.
+    Retire {
+        characters: Vec<CharacterKey>,
+        special_forces: Vec<SpecialForceKey>,
+    },
     /// The X (control `0x15`) or Escape: the order is destroyed.
     Cancel,
 }
@@ -172,6 +177,7 @@ impl MoveConfirmationState {
         Some(if confirm && window.order == ConfirmedOrder::Retire {
             MoveConfirmationAction::Retire {
                 characters: window.characters,
+                special_forces: window.special_forces,
             }
         } else if confirm {
             MoveConfirmationAction::Confirm {
@@ -285,6 +291,7 @@ mod tests {
             faction,
             fleets: vec![FleetKey::default()],
             characters: Vec::new(),
+            special_forces: Vec::new(),
             blockaded: false,
             destination: SystemKey::default(),
             join: None,
@@ -321,7 +328,8 @@ mod tests {
         assert_eq!(
             action,
             Some(MoveConfirmationAction::Retire {
-                characters: vec![han]
+                characters: vec![han],
+                special_forces: Vec::new(),
             })
         );
     }

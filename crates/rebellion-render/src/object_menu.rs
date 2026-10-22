@@ -446,8 +446,9 @@ impl ObjectMenuRow {
 /// - Command, a submenu parent, is enabled (`FUN_00442590`); its rows are
 ///   [`object_submenu_rows`].
 /// - A character's Move and Confirmed Move are enabled when
-///   `gates.character_move` says so, and its Retire when `gates.retire`
-///   does. port: a special force's Move and Confirmed Move and the other
+///   `gates.character_move` says so; a character's or a special force's
+///   Retire when `gates.retire` does. port: a special force's Move and
+///   Confirmed Move and the other
 ///   fleet orders stay disabled until their windows and orders are ported.
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
@@ -525,7 +526,12 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 // FUN_00442590: a submenu parent (flags 8) is enabled.
                 ObjectMenuCommand::Bombardment | ObjectMenuCommand::Command => true,
                 ObjectMenuCommand::Assault => gates.assault,
-                ObjectMenuCommand::Retire => character && gates.retire,
+                ObjectMenuCommand::Retire => {
+                    matches!(
+                        selection,
+                        Some(MenuObject::Character(_) | MenuObject::SpecialForce(_))
+                    ) && gates.retire
+                }
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 // FUN_0051d990: a single selection that is not a system.
                 ObjectMenuCommand::Status => {
@@ -620,7 +626,8 @@ pub struct OrderGates {
     /// `rebellion_core::character_command::order_allowed`).
     pub command: [bool; 4],
     /// Retire (`0x242`) on a character (`FUN_004ed460`,
-    /// `rebellion_core::character_retire::order_allowed`).
+    /// `rebellion_core::character_retire::order_allowed`) or a special
+    /// force (`FUN_00533ba0`, `special_force_allowed`).
     pub retire: bool,
 }
 
@@ -1037,8 +1044,10 @@ mod tests {
 
     #[test]
     fn a_characters_retire_row_follows_its_rule() {
-        // 0x242 (TEXTSTRA 12336, sort 2002): enabled by FUN_004ed460
-        // through event 0x230, for a character only.
+        // 0x242 (TEXTSTRA 12336, sort 2002): enabled through event 0x230,
+        // for a character (FUN_004ed460) or a special force (FUN_00533ba0;
+        // both classes list the unit orders of FUN_00536bc0); not for a
+        // regiment, whose list has no 0x242.
         let gates = OrderGates {
             retire: true,
             ..OrderGates::default()
@@ -1049,7 +1058,11 @@ mod tests {
             ["Command", "Encyclopedia", "Status", "Retire"]
         );
         let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
-        assert!(!enabled(&object_menu_rows(unit, gates)).contains(&"Retire"));
+        assert!(enabled(&object_menu_rows(unit, gates)).contains(&"Retire"));
+        let troop = Some(MenuObject::Troop(TroopKey::default()));
+        assert!(!object_menu_rows(troop, gates)
+            .iter()
+            .any(|row| row.item.label == "Retire"));
     }
 
     #[test]

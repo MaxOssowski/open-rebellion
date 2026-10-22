@@ -47,6 +47,16 @@ The window is the move confirmation's (`FUN_0044f060`, `move-order.md`).
 Its checkmark resubmits with force 1 (`FUN_0041ce20`), which validates
 again and fires.
 
+## A special force
+
+The special-force class (vtable `0x0065e160`, slot `+0x3c` `FUN_00503b50`)
+lists the same unit orders as a character (`FUN_00503fa0` ->
+`FUN_00536ca0` -> `FUN_00536bc0`: `0x201`, `0x202`, `0x242`, `0x240`,
+`0x204`, `0x241`), without Command. It inherits the Role slots:
+- `+0x1c0`, `FUN_00533ba0`: the base check, then code 1 for a unit on a
+  mission;
+- `+0x200`/`+0x204`: the same destruction with reason `0x14`.
+
 ## The AI
 
 `FUN_004d0610` would give special forces a Retire, but no code sets the
@@ -54,11 +64,15 @@ record flag it needs (`ai-production-modules.md`).
 
 ## Ported (2026-10-22)
 
-- `rebellion_core::character_retire::{order_allowed, retire}`.
+- `rebellion_core::character_retire::{order_allowed, retire}`. The
+  retirement takes the character off its fleet's roster and out of its
+  abode (`missions::kill_character`), as a destruction does.
+- `special_force_allowed` and `retire_special_force`: the unit leaves its
+  system or abode and the world.
 - `Character::is_retired`, save v104.
 - The object menu's Retire row (`OrderGates::retire`).
 - The confirmation (`move_confirmation::ConfirmedOrder::Retire`).
 - The Finder's "Retired".
 
-port: a special force's Retire is not ported. Neither is the meaning of
-`+0x30`, nor any message the destruction raises.
+port: the meaning of `+0x30` and any message the destruction raises are
+not ported. A special force's confirmation line is its class name.
