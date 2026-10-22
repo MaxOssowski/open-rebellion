@@ -3254,9 +3254,11 @@ async function probeTacticalBattleAlertEntry(
     ]),
   }, {
     type: "battle-alert-scene",
+    // FUN_0044f860 paints the title at (0, 16) and the summary at
+    // (36, 216), 328 wide, with its shadow, into the scene.
     ...verifyStrategyBitmap(viewport, stable.bytes, resources.scene, 77, 67, [
       { x: 0, y: 0, width: 400, height: 48 },
-      { x: 20, y: 145, width: 360, height: 100 },
+      { x: 20, y: 200, width: 360, height: 80 },
       { x: 0, y: 280, width: 400, height: 30 },
     ]),
   }, {

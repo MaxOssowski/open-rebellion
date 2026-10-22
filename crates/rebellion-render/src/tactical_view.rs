@@ -6106,54 +6106,56 @@ fn draw_battle_alert_text(
         system_side,
         last_arrival,
     );
-    draw_result_text_centered(
-        canvas,
-        &title,
-        BATTLE_ALERT_WINDOW_X + 212.0,
-        BATTLE_ALERT_WINDOW_Y + 40.0,
-        18.0,
-        text_color,
-    );
-    let lines = match state.battle_alert_tab {
-        BattleAlertTab::Summary => {
-            // FUN_0044f860: the summary over a black shadow one pixel down
-            // and right.
-            draw_result_wrapped_lines(
-                canvas,
-                std::slice::from_ref(&summary),
-                BATTLE_ALERT_WINDOW_X + 39.0,
-                BATTLE_ALERT_WINDOW_Y + 226.0,
-                340.0,
-                14.0,
-                BLACK,
-            );
-            vec![summary]
-        }
-        tab => {
-            // FUN_00450660: the other tabs show the scene with the title
-            // only (surface 0x33) and the list.
-            let Some(content) = BattleAlertList::of(tab) else {
-                return;
-            };
-            let rows = battle_alert_rows(world, troop_transport, session.system, content);
-            draw_page_ops_at(
-                cache,
-                canvas,
-                battle_alert_list(&rows),
-                (BATTLE_ALERT_WINDOW_X, BATTLE_ALERT_WINDOW_Y),
-            );
-            return;
-        }
+    let origin = (BATTLE_ALERT_WINDOW_X, BATTLE_ALERT_WINDOW_Y);
+    let Some(list) = BattleAlertList::of(state.battle_alert_tab) else {
+        draw_page_ops_at(
+            cache,
+            canvas,
+            battle_alert_scene_text(&title, Some(&summary), text_color),
+            origin,
+        );
+        return;
     };
-    draw_result_wrapped_lines(
+    // FUN_00450660: the list tabs show the scene with the title only
+    // (surface 0x33).
+    draw_page_ops_at(
+        cache,
         canvas,
-        &lines,
-        BATTLE_ALERT_WINDOW_X + 38.0,
-        BATTLE_ALERT_WINDOW_Y + 225.0,
-        340.0,
-        14.0,
-        text_color,
+        battle_alert_scene_text(&title, None, text_color),
+        origin,
     );
+    let rows = battle_alert_rows(world, troop_transport, session.system, list);
+    draw_page_ops_at(cache, canvas, battle_alert_list(&rows), origin);
+}
+
+/// The text `FUN_0044f860` paints into the alert's scene, which sits at
+/// (12, 13): the title at (0, 16), 400 wide, centred, font `0xb`; the
+/// summary at (36, 216), 328 wide, word-wrapped, font 6, over a black
+/// shadow at (37, 217). Both take the viewer's colour. In window
+/// coordinates the title's top is 29 and the summary's (48, 229).
+/// port: font 6 keeps the port's earlier 14-point size here.
+fn battle_alert_scene_text(title: &str, summary: Option<&str>, color: Color) -> Vec<PageOp> {
+    let mut ops = vec![PageOp::Text {
+        text: title.to_owned(),
+        x: 212.0,
+        baseline: 29.0 + 16.0,
+        size: 18.0,
+        color,
+        centered: true,
+    }];
+    if let Some(summary) = summary {
+        for (x, top, color) in [(49.0, 230.0, BLACK), (48.0, 229.0, color)] {
+            ops.push(PageOp::Wrapped {
+                lines: vec![summary.to_owned()],
+                x,
+                baseline: top + 12.0,
+                width: 328.0,
+                size: 14.0,
+                color,
+            });
+        }
+    }
+    ops
 }
 
 /// What a Battle Alert list tab holds (`FUN_00450770`).
@@ -9160,6 +9162,50 @@ mod tests {
         assert_eq!(
             rows[2].picture,
             [(DllSource::Strategy, 11_513), (DllSource::Gokres, 17_473)]
+        );
+    }
+
+    #[test]
+    fn the_battle_alert_scene_text_sits_where_the_original_paints_it() {
+        // FUN_0044f860: the scene at (12, 13); the title at (0, 16), 400
+        // wide, centred; the summary at (36, 216), 328 wide, over a black
+        // shadow at (37, 217). guide-055 shows the summary's left edge
+        // under the title's "B" side, about 48 from the window.
+        let green = Color::from_rgba(0, 255, 0, 255);
+        let ops = battle_alert_scene_text("Battle at Deyer", Some("The Imperial fleet"), green);
+        assert_eq!(
+            ops,
+            [
+                PageOp::Text {
+                    text: "Battle at Deyer".into(),
+                    x: 212.0,
+                    baseline: 45.0,
+                    size: 18.0,
+                    color: green,
+                    centered: true,
+                },
+                PageOp::Wrapped {
+                    lines: vec!["The Imperial fleet".into()],
+                    x: 49.0,
+                    baseline: 242.0,
+                    width: 328.0,
+                    size: 14.0,
+                    color: BLACK,
+                },
+                PageOp::Wrapped {
+                    lines: vec!["The Imperial fleet".into()],
+                    x: 48.0,
+                    baseline: 241.0,
+                    width: 328.0,
+                    size: 14.0,
+                    color: green,
+                },
+            ]
+        );
+        // The list tabs keep the title only.
+        assert_eq!(
+            battle_alert_scene_text("Battle at Deyer", None, green).len(),
+            1
         );
     }
 

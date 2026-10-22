@@ -33,8 +33,11 @@ Alliance system the Empire entered: `0x7023`.
 Ported in `tactical_view.rs` (`battle_alert_lines`): the title and the
 summary come from TEXTSTRA with the world's system side and
 `System::last_arrival`. The summary has its shadow. Before this, the port
-always wrote that the enemy's fleet had entered. The window's positions
-and font sizes are the port's earlier ones.
+always wrote that the enemy's fleet had entered. Since the same day the
+title and the summary sit where the paint puts them
+(`battle_alert_scene_text`): the title's top at window y 29, the summary
+at window (48, 229), 328 wide. The port had them at about (38, 211),
+340 wide. port: the font sizes stay the port's earlier ones.
 
 ## The list tabs (read 2026-10-22)
 
