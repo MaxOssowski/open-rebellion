@@ -32,10 +32,18 @@ and Display pages. Its forces pages differ in these ways.
   when every column is empty, else "No Survivors" (`0x1940`). The middle
   reads "None" and the last "No Casualties" (`0x1941`).
 
+## The summary page
+
+`FUN_0046f360` paints the title at (12, 18), 400 wide, centred, font
+`0xb`. It paints the outcome's first line at (12, 225), 400 wide, centred,
+font `0xb`, and the rest at (24, 255), 352 wide, word-wrapped, font 6,
+over a black shadow at (25, 256). All take the viewer's colour (`0xff`,
+or `0xff00` for side 2). guide-059 shows it.
+
 ## Ported (2026-10-22)
 
-`tactical_view.rs` (`battle_force_page`, drawn by
-`draw_battle_result_force_details`) follows the above. The port's own
+`tactical_view.rs` (`battle_force_page`, `battle_summary_page`, drawn by
+`draw_page_ops`) follows the above. The port's own
 "Damaged" column is gone: a damaged unit is operational.
 
 port:

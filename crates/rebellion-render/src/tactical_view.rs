@@ -5386,36 +5386,70 @@ fn draw_battle_result_summary(
     session: &BattleSession,
     text_color: Color,
 ) {
+    let ops = battle_summary_page(
+        &session.system_name,
+        winner_is_alliance(session),
+        &battle_result_summary_lines(session),
+        text_color,
+    );
+    draw_page_ops(cache, canvas, ops);
+}
+
+/// The Battle Summary's summary page (`FUN_0046f360`): the scene; the title
+/// at (12, 18), 400 wide, centred, font `0xb`; the outcome's first line at
+/// (12, 225), 400 wide, centred, font `0xb`; the rest at (24, 255), 352
+/// wide, word-wrapped, font 6, over a black shadow at (25, 256). The text
+/// takes the viewer's colour (red for side 1, green for side 2). The
+/// capture guide-059 shows the same layout.
+fn battle_summary_page(
+    system_name: &str,
+    winner_alliance: Option<bool>,
+    lines: &[String],
+    text_color: Color,
+) -> Vec<PageOp> {
     use resources::strategy as art;
-    let scene = match winner_is_alliance(session) {
+    let scene = match winner_alliance {
         Some(true) => art::EVENT_BATTLE_ALLIANCE_VICTORY,
         Some(false) => art::EVENT_BATTLE_EMPIRE_VICTORY,
         None => art::EVENT_BATTLE_MUTUAL_DESTRUCTION,
     };
-    draw_strategy_bitmap(
-        cache,
-        scene,
-        canvas,
-        BATTLE_RESULTS_WINDOW_X + BATTLE_RESULTS_SCENE_X,
-        BATTLE_RESULTS_WINDOW_Y + BATTLE_RESULTS_SCENE_Y,
-    );
-    draw_result_text_centered(
-        canvas,
-        &format!("Battle at {}", session.system_name),
-        BATTLE_RESULTS_WINDOW_X + 212.0,
-        BATTLE_RESULTS_WINDOW_Y + 34.0,
-        18.0,
-        text_color,
-    );
-    draw_result_wrapped_lines(
-        canvas,
-        &battle_result_summary_lines(session),
-        BATTLE_RESULTS_WINDOW_X + 25.0,
-        BATTLE_RESULTS_WINDOW_Y + 230.0,
-        350.0,
-        14.0,
-        text_color,
-    );
+    let mut ops = vec![
+        PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: scene,
+            x: BATTLE_RESULTS_SCENE_X,
+            y: BATTLE_RESULTS_SCENE_Y,
+        },
+        PageOp::Text {
+            text: format!("Battle at {system_name}"),
+            x: 212.0,
+            baseline: 18.0 + 16.0,
+            size: 18.0,
+            color: text_color,
+            centered: true,
+        },
+    ];
+    if let Some((headline, rest)) = lines.split_first() {
+        ops.push(PageOp::Text {
+            text: headline.clone(),
+            x: 212.0,
+            baseline: 225.0 + 16.0,
+            size: 18.0,
+            color: text_color,
+            centered: true,
+        });
+        for (x, top, color) in [(25.0, 256.0, BLACK), (24.0, 255.0, text_color)] {
+            ops.push(PageOp::Wrapped {
+                lines: rest.to_vec(),
+                x,
+                baseline: top + 12.0,
+                width: 352.0,
+                size: 12.0,
+                color,
+            });
+        }
+    }
+    ops
 }
 
 /// The Battle Summary's forces page (`FUN_0046f360` builds it,
@@ -5452,6 +5486,11 @@ fn draw_battle_result_force_details(
         text_color,
         |source, id| cache.original_resource_size(source, id),
     );
+    draw_page_ops(cache, canvas, ops);
+}
+
+/// Draw a results page's steps in the Battle Results window.
+fn draw_page_ops(cache: &mut BmpCache, canvas: TacticalCanvas, ops: Vec<PageOp>) {
     for op in ops {
         match op {
             PageOp::Bitmap { source, id, x, y } => draw_original_bitmap(
@@ -5478,6 +5517,22 @@ fn draw_battle_result_force_details(
                     draw_result_text(canvas, &text, x, y, size, color);
                 }
             }
+            PageOp::Wrapped {
+                lines,
+                x,
+                baseline,
+                width,
+                size,
+                color,
+            } => draw_result_wrapped_lines(
+                canvas,
+                &lines,
+                BATTLE_RESULTS_WINDOW_X + x,
+                BATTLE_RESULTS_WINDOW_Y + baseline,
+                width,
+                size,
+                color,
+            ),
         }
     }
 }
@@ -5499,6 +5554,15 @@ enum PageOp {
         size: f32,
         color: Color,
         centered: bool,
+    },
+    /// Lines word-wrapped at `width` from `x`, the first at `baseline`.
+    Wrapped {
+        lines: Vec<String>,
+        x: f32,
+        baseline: f32,
+        width: f32,
+        size: f32,
+        color: Color,
     },
 }
 
@@ -7967,7 +8031,7 @@ mod tests {
                 PageOp::Text { text, x, baseline, size, centered, .. } => {
                     Some((text.clone(), *x, *baseline, *size, *centered))
                 }
-                PageOp::Bitmap { .. } => None,
+                PageOp::Bitmap { .. } | PageOp::Wrapped { .. } => None,
             })
             .collect();
         let find = |name: &str| texts.iter().find(|entry| entry.0 == name).cloned().unwrap();
@@ -7988,7 +8052,7 @@ mod tests {
             .iter()
             .filter_map(|op| match op {
                 PageOp::Bitmap { id, x, y, .. } => Some((*id, *x, *y)),
-                PageOp::Text { .. } => None,
+                PageOp::Text { .. } | PageOp::Wrapped { .. } => None,
             })
             .collect();
         // The two-column art, the pressed Trooper Regiments button.
@@ -8054,6 +8118,69 @@ mod tests {
             ]
         );
         assert!(ops.iter().any(|op| matches!(op, PageOp::Text { text, color, .. } if text == "Alliance Forces" && *color == Color::from_rgba(255, 0, 0, 255))));
+    }
+
+    #[test]
+    fn the_summary_page_heads_the_outcome_over_its_shadowed_lines() {
+        // FUN_0046f360 (guide-059): the title at (12, 18) and the first
+        // line at (12, 225), 400 wide, centred; the rest at (24, 255), 352
+        // wide, over a black shadow at (25, 256).
+        let lines = vec![
+            "The Imperial fleet is victorious.".to_owned(),
+            "Hoth is now under blockade by Imperial forces.".to_owned(),
+            "The Alliance fleet has been completely destroyed.".to_owned(),
+        ];
+        let green = Color::from_rgba(0, 255, 0, 255);
+        let ops = battle_summary_page("Hoth", Some(false), &lines, green);
+        assert_eq!(
+            ops[0],
+            PageOp::Bitmap {
+                source: DllSource::Strategy,
+                id: resources::strategy::EVENT_BATTLE_EMPIRE_VICTORY,
+                x: 12.0,
+                y: 13.0
+            }
+        );
+        assert_eq!(
+            ops[2],
+            PageOp::Text {
+                text: lines[0].clone(),
+                x: 212.0,
+                baseline: 241.0,
+                size: 18.0,
+                color: green,
+                centered: true
+            }
+        );
+        assert_eq!(
+            ops[3],
+            PageOp::Wrapped {
+                lines: lines[1..].to_vec(),
+                x: 25.0,
+                baseline: 268.0,
+                width: 352.0,
+                size: 12.0,
+                color: BLACK
+            }
+        );
+        assert_eq!(
+            ops[4],
+            PageOp::Wrapped {
+                lines: lines[1..].to_vec(),
+                x: 24.0,
+                baseline: 267.0,
+                width: 352.0,
+                size: 12.0,
+                color: green
+            }
+        );
+        assert!(matches!(&ops[1], PageOp::Text { text, baseline, .. } if text == "Battle at Hoth" && *baseline == 34.0));
+        // No outcome, no lines; a draw shows the mutual destruction scene.
+        let ops = battle_summary_page("Hoth", None, &[], green);
+        assert_eq!(ops.len(), 2);
+        assert!(matches!(ops[0], PageOp::Bitmap { id, .. } if id == resources::strategy::EVENT_BATTLE_MUTUAL_DESTRUCTION));
+        let ops = battle_summary_page("Hoth", Some(true), &[], green);
+        assert!(matches!(ops[0], PageOp::Bitmap { id, .. } if id == resources::strategy::EVENT_BATTLE_ALLIANCE_VICTORY));
     }
 
     #[test]
