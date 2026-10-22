@@ -2176,12 +2176,13 @@ async fn main() {
                     &troop_transport_state,
                     sys_key,
                 );
-                // FUN_0040a050 state 8: an abstract battle (FUN_005ae9c0).
+                // FUN_0040a050 state 8: an abstract battle (FUN_005ae9c0) of
+                // every fleet of both sides (FUN_0040c780).
                 let (space_result, _) = rebellion_core::abstract_battle::resolve_space_battle(
                     &world,
                     sys_key,
-                    &[atk_fleet],
-                    &[def_fleet],
+                    &rebellion_core::abstract_battle::side_fleets(&world, sys_key, atk_fleet),
+                    &rebellion_core::abstract_battle::side_fleets(&world, sys_key, def_fleet),
                     rebellion_core::abstract_battle::abstract_seed(&combat_rolls),
                     current_tick,
                     retreat_allowed,
@@ -6357,12 +6358,21 @@ async fn main() {
                             let player_is_alliance =
                                 session.player_is_attacker == session.attacker_is_alliance;
                             retreat_allowed[usize::from(!player_is_alliance)] = player_retreats;
+                            // Every fleet of both sides fights (FUN_0040c780).
                             let (space_result, _) =
                                 rebellion_core::abstract_battle::resolve_space_battle(
                                     &world,
                                     session.system,
-                                    &[session.attacker_fleet],
-                                    &[session.defender_fleet],
+                                    &rebellion_core::abstract_battle::side_fleets(
+                                        &world,
+                                        session.system,
+                                        session.attacker_fleet,
+                                    ),
+                                    &rebellion_core::abstract_battle::side_fleets(
+                                        &world,
+                                        session.system,
+                                        session.defender_fleet,
+                                    ),
                                     rebellion_core::abstract_battle::abstract_seed(&combat_rolls),
                                     session.start_tick,
                                     retreat_allowed,
@@ -10007,9 +10017,9 @@ mod tactical_ground_tests {
             player_is_attacker: true,
             phase: rebellion_render::BattlePhase::Results,
             ships: vec![
-                test_tactical_ship(ship_class, true, 1, 43, true),
-                test_tactical_ship(ship_class, true, 2, 0, false),
-                test_tactical_ship(ship_class, false, 0, 91, true),
+                test_tactical_ship(ship_class, attacker, true, 1, 43, true),
+                test_tactical_ship(ship_class, attacker, true, 2, 0, false),
+                test_tactical_ship(ship_class, defender, false, 0, 91, true),
             ],
             fighters: vec![
                 rebellion_render::tactical_view::TacticalFighter {
@@ -10026,6 +10036,7 @@ mod tactical_ground_tests {
                         z: 0.0,
                     },
                     sublight_engine_power: 0.0,
+                    fleet: attacker,
                     fleet_fighter_index: 0,
                     fleet_squadron_index: 0,
                     name: "Fighter".into(),
@@ -10067,6 +10078,7 @@ mod tactical_ground_tests {
                         z: 0.0,
                     },
                     sublight_engine_power: 0.0,
+                    fleet: attacker,
                     fleet_fighter_index: 1,
                     fleet_squadron_index: 0,
                     name: "Fighter".into(),
@@ -10160,6 +10172,7 @@ mod tactical_ground_tests {
 
     fn test_tactical_ship(
         class_key: CapitalShipKey,
+        fleet: rebellion_core::ids::FleetKey,
         is_attacker: bool,
         fleet_ship_index: usize,
         hull_current: i32,
@@ -10231,6 +10244,7 @@ mod tactical_ground_tests {
             order: rebellion_render::tactical_view::TacticalOrder::None,
             tactic: rebellion_render::tactical_view::TacticalTactic::StandOff,
             task_force: u8::try_from(fleet_ship_index.min(7)).unwrap_or(7),
+            fleet,
             fleet_ship_index,
             sprite_id: None,
             weapon_arcs: [rebellion_render::tactical_view::TacticalWeaponArc::default(); 4],

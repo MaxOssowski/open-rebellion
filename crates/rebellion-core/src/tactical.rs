@@ -514,6 +514,9 @@ pub struct TacticalShip {
     pub tactic: TacticalTactic,
     /// Zero-based task-force assignment shown in the eight source HUD slots.
     pub task_force: u8,
+    /// The strategic fleet the hull came from: a battle takes every fleet
+    /// of both sides at the system (`FUN_0040c780`).
+    pub fleet: FleetKey,
     /// Index into the fleet's `capital_ships` for damage application.
     pub fleet_ship_index: usize,
     /// Sprite resource ID in TACTICAL.DLL (if known).
@@ -995,6 +998,8 @@ pub struct TacticalFighter {
     pub source_position: TacticalWorldPosition,
     /// Normalized maximum sublight power stored at source offset `+0x3f8`.
     pub sublight_engine_power: f32,
+    /// The strategic fleet the squadron came from.
+    pub fleet: FleetKey,
     /// Index into the originating fleet's aggregate fighter roster. Classes
     /// may repeat in separate slots.
     pub fleet_fighter_index: usize,
@@ -3642,6 +3647,7 @@ impl BattleSession {
                 // Source initialization of the first task force is known;
                 // automatic distribution across later slots is not yet.
                 task_force: 0,
+                fleet: fleet_key,
                 fleet_ship_index: ship_idx,
                 // IDs 2001 through 2130 are not a linear class sprite table.
                 // Keep the legacy selected-panel slot empty until its exact
@@ -3705,6 +3711,7 @@ impl BattleSession {
                     source_position: TacticalWorldPosition::ORIGIN,
                     sublight_engine_power: class.sub_light_engine as f32
                         * ORIGINAL_FIGHTER_SUBLIGHT_ENGINE_SCALE,
+                    fleet: fleet_key,
                     fleet_fighter_index: fighter_idx,
                     fleet_squadron_index: squadron_index,
                     name: class.name.clone(),

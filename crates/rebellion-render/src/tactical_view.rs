@@ -456,15 +456,17 @@ impl TacticalState {
         tick: u64,
         rng_seed: u32,
     ) {
-        let session = BattleSession::new(
+        // Every fleet of both sides at the system fights (FUN_0040c780).
+        let session = BattleSession::new_for_fleets(
             world,
             system,
-            attacker,
-            defender,
+            &rebellion_core::abstract_battle::side_fleets(world, system, attacker),
+            &rebellion_core::abstract_battle::side_fleets(world, system, defender),
             player_is_attacker,
             tick,
             rng_seed,
-        );
+        )
+        .session;
         let player_is_empire = player_is_attacker != session.attacker_is_alliance;
         self.asset_renderer
             .set_palette_selector(session.system_picture_id);
@@ -8564,6 +8566,7 @@ mod tests {
             order: TacticalOrder::None,
             tactic: TacticalTactic::StandOff,
             task_force: u8::try_from(roster.min(7)).unwrap_or(7),
+            fleet: FleetKey::default(),
             fleet_ship_index: roster,
             sprite_id: None,
             weapon_arcs: [TacticalWeaponArc::default(); 4],
@@ -8593,6 +8596,7 @@ mod tests {
             tactical_resource: fighter_tactical_resource(DatId::new(dat_id)),
             source_position: TacticalWorldPosition::ORIGIN,
             sublight_engine_power: 10.0,
+            fleet: FleetKey::default(),
             fleet_fighter_index: 0,
             fleet_squadron_index: 0,
             name: format!("fighter-{dat_id}"),

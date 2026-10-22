@@ -1612,6 +1612,28 @@ fn ship_changed(before: &crate::world::ShipInstance, hull_after: i32, hits_after
     hull_after != before.hull_current || hits_after != before.subsystem_hits
 }
 
+/// The fleets of `lead`'s side at `system`, `lead` first: a battle takes
+/// every fleet of both sides there (`FUN_0040c780` applies its result to
+/// each, `FUN_004ffe70`), as the headless campaign's
+/// `resolve_system_space_combat` does.
+#[must_use]
+pub fn side_fleets(world: &GameWorld, system: SystemKey, lead: FleetKey) -> Vec<FleetKey> {
+    let Some(side) = world.fleets.get(lead).map(|fleet| fleet.is_alliance) else {
+        return Vec::new();
+    };
+    let mut fleets = vec![lead];
+    if let Some(value) = world.systems.get(system) {
+        fleets.extend(value.fleets.iter().copied().filter(|&key| {
+            key != lead
+                && world
+                    .fleets
+                    .get(key)
+                    .is_some_and(|fleet| fleet.is_alliance == side)
+        }));
+    }
+    fleets
+}
+
 /// Resolve a battle session without display.
 #[must_use]
 pub fn resolve_abstract(session: BattleSession) -> (BattleSession, AbstractOutcome) {
@@ -1683,6 +1705,7 @@ mod tests {
             order: TacticalOrder::None,
             tactic: TacticalTactic::StandOff,
             task_force: 0,
+            fleet: FleetKey::default(),
             fleet_ship_index: 0,
             sprite_id: None,
             weapon_arcs: [
@@ -1717,6 +1740,7 @@ mod tests {
             tactical_resource: None,
             source_position: TacticalWorldPosition::ORIGIN,
             sublight_engine_power: 10.0,
+            fleet: FleetKey::default(),
             fleet_fighter_index: 0,
             fleet_squadron_index: 0,
             name: "fighter".into(),
@@ -3649,6 +3673,17 @@ mod tests {
             trench_commander_term(&world, battle),
             TRENCH_RUN_COMMANDER_CAP
         );
+    }
+
+    #[test]
+    fn a_sides_fleets_at_the_system_follow_its_lead_fleet() {
+        // FUN_0040c780 (FUN_004ffe70): every fleet of the side fights.
+        let (mut world, [battle, ..], alliance, empire) = withdrawal_world();
+        let second = world.fleets.insert(world.fleets[alliance].clone());
+        world.systems[battle].fleets.insert(0, second);
+        assert_eq!(side_fleets(&world, battle, alliance), [alliance, second]);
+        assert_eq!(side_fleets(&world, battle, empire), [empire]);
+        assert!(side_fleets(&world, battle, FleetKey::default()).is_empty());
     }
 
     #[test]

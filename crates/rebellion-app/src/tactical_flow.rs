@@ -177,10 +177,24 @@ pub(crate) fn apply_results(
         .fleets
         .get(session.attacker_fleet)
         .map(|fleet| fleet.is_alliance);
-    for (fleet_key, is_attacker) in [
-        (session.attacker_fleet, true),
-        (session.defender_fleet, false),
-    ] {
+    // Every fleet that fought: the two that named the battle, then each
+    // other fleet of either side whose units took part (FUN_0040c780).
+    let mut fought = vec![session.attacker_fleet, session.defender_fleet];
+    for fleet in session
+        .ships
+        .iter()
+        .map(|ship| ship.fleet)
+        .chain(session.fighters.iter().map(|fighter| fighter.fleet))
+    {
+        if !fought.contains(&fleet) {
+            fought.push(fleet);
+        }
+    }
+    for fleet_key in fought {
+        let is_attacker = world
+            .fleets
+            .get(fleet_key)
+            .is_some_and(|fleet| fleet.is_alliance == session.attacker_is_alliance);
         if let Some(fleet) = world.fleets.get_mut(fleet_key) {
             if fleet.has_death_star {
                 fleet.has_death_star = session.death_star.is_some_and(|death_star| {
@@ -192,9 +206,11 @@ pub(crate) fn apply_results(
                 if !ship_inst.alive {
                     continue;
                 }
-                if let Some(result) = session.ships.iter().find(|ship| {
-                    ship.is_attacker == is_attacker && ship.fleet_ship_index == roster_index
-                }) {
+                if let Some(result) = session
+                    .ships
+                    .iter()
+                    .find(|ship| ship.fleet == fleet_key && ship.fleet_ship_index == roster_index)
+                {
                     ship_inst.hull_current = result.hull_current.clamp(0, result.hull_max);
                     // FUN_0040cfc0: the hit counters come back with the hull.
                     if let Some(class) = world.capital_ship_classes.get(ship_inst.class) {
@@ -212,7 +228,7 @@ pub(crate) fn apply_results(
             for fighter in session
                 .fighters
                 .iter()
-                .filter(|fighter| fighter.is_attacker == is_attacker)
+                .filter(|fighter| fighter.fleet == fleet_key)
             {
                 if fighter.squad_count > 0 {
                     if let Some(count) = survivors.get_mut(fighter.fleet_fighter_index) {
@@ -629,6 +645,60 @@ mod tests {
             assert_eq!(session.phase, rebellion_render::BattlePhase::Combat);
             assert!(session.paused, "the original Tactical Display opens paused");
         }
+    }
+
+    #[test]
+    fn every_fleet_at_the_system_fights_and_takes_its_own_result() {
+        // FUN_0040c780 applies a battle's result to every fleet at the
+        // system (FUN_004ffe70), so each fleet of both sides fights; the
+        // headless campaign's resolve_system_space_combat does the same.
+        let (mut world, system, attacker, defender) = opposing_empty_fleets();
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0001),
+            name: "Corvette".into(),
+            hull: 100,
+            ..Default::default()
+        });
+        for fleet in [attacker, defender] {
+            let is_alliance = world.fleets[fleet].is_alliance;
+            world.fleets[fleet]
+                .capital_ships
+                .push(ShipInstance::new(class, 100, is_alliance));
+        }
+        let reserve = world.fleets.insert(world.fleets[attacker].clone());
+        world.systems[system].fleets.push(reserve);
+        let mut tactical = TacticalState::default();
+        begin_player_battle(
+            &world,
+            BattleEntry {
+                system,
+                attacker,
+                defender,
+                player_is_attacker: true,
+                tick: 17,
+                rng_seed: 0x1111_0005,
+            },
+            &mut tactical,
+            &mut HashMap::new(),
+            &mut MessageLog::default(),
+            &mut GameMode::Galaxy,
+        )
+        .unwrap();
+        let mut session = tactical.session.clone().unwrap();
+        let fleets: Vec<FleetKey> = session.ships.iter().map(|ship| ship.fleet).collect();
+        assert_eq!(fleets, [attacker, reserve, defender]);
+
+        // The reserve's ship is lost; the lead fleet's is hit.
+        session.ships[1].alive = false;
+        session.ships[1].hull_current = 0;
+        session.ships[0].hull_current = 40;
+        session.winner = Some(CombatWinner::Attacker);
+        apply_results(&session, &mut world, &mut TroopTransportState::default());
+
+        assert!(!world.fleets.contains_key(reserve));
+        assert!(!world.systems[system].fleets.contains(&reserve));
+        assert_eq!(world.fleets[attacker].capital_ships[0].hull_current, 40);
+        assert_eq!(world.fleets[defender].capital_ships[0].hull_current, 100);
     }
 
     #[test]

@@ -499,7 +499,13 @@ its own success rating. Since W2i the abstract battle has both
 - the 1200-second stall that destroys the weaker side, or both on a tie.
 
 Since W2f it resolves every strategic space battle the port resolves on its
-own (`resolve_space_battle`, all fleets at the system). Three pieces stay
+own (`resolve_space_battle`, all fleets at the system). Until 2026-10-23
+the app's battles (AI against AI, the player's Simulate Results and
+Retreat, and Take Command's tactical battle) passed only the two fleets
+that named the battle; they now pass every fleet of both sides
+(`abstract_battle::side_fleets`, `FUN_0040c780` / `FUN_004ffe70`), and
+the tactical battle writes each unit's result back to its own fleet
+(`TacticalShip::fleet`, `TacticalFighter::fleet`). Three pieces stay
 `hyp:`:
 
 - Targeting: ported in W2e, following the "Targets" section above.
