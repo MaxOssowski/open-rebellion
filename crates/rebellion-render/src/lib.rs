@@ -581,9 +581,131 @@ fn gid_marker_for_system(
     }
 
     let player_is_alliance = faction == CockpitFaction::Alliance;
+    if matches!(mode, GidMode::IdlePersonnel | GidMode::ActivePersonnel) {
+        let count = gid_personnel(
+            world,
+            system_key,
+            player_is_alliance,
+            mode == GidMode::ActivePersonnel,
+            gid.movement,
+        );
+        // FUN_00426e70(.., 1, 1, 1, 1, 1): one person is the largest mark.
+        return gid_marker_for_side(
+            count.colour(system.control.faction()),
+            usize::from(count.total() > 0) * 3,
+        );
+    }
     let value = gid_metric(world, system_key, system, player_is_alliance, mode, gid);
     let size = gid_metric_size(mode, value);
     gid_marker_resource_for_size(system.control, true, size)
+}
+
+/// The people the Idle and Active Personnel displays count at a system
+/// (`FUN_0042b330` cases `0x43` / `0x44`): the player's characters and
+/// special forces on the planet (`FUN_004f2640`, `FUN_005040c0`), and
+/// every character aboard the fleets the system holds (`FUN_004ffe70`,
+/// `FUN_00502db0`, `FUN_004f25c0`), the player's and the enemy's apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct GidPersonnel {
+    player: u32,
+    enemy: u32,
+    player_is_alliance: bool,
+}
+
+impl GidPersonnel {
+    fn total(self) -> u32 {
+        self.player + self.enemy
+    }
+
+    /// The mark's colour: the player's side while it counts anyone, else
+    /// the enemy's while it does, else the system's holder.
+    fn colour(
+        self,
+        holder: Option<rebellion_core::dat::Faction>,
+    ) -> Option<rebellion_core::dat::Faction> {
+        use rebellion_core::dat::Faction;
+        let side = |alliance: bool| {
+            Some(if alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            })
+        };
+        if self.player > 0 {
+            side(self.player_is_alliance)
+        } else if self.enemy > 0 {
+            side(!self.player_is_alliance)
+        } else {
+            holder
+        }
+    }
+}
+
+/// See [`GidPersonnel`]. A person is busy (Active) when it is not usable
+/// (`+0x50` bit 0), on a mission (`+0x78` bit 7), captive (`+0xac` bit 0),
+/// injured (`+0x94`) or holding a command (`+0x96`); a special force is
+/// busy when not usable or on a mission. port: a killed character is not
+/// usable; the port's fleets carry no special forces; the fleets a system
+/// holds are those in orbit and those en route to it
+/// ([`rebellion_core::movement::listed_fleets`]).
+fn gid_personnel(
+    world: &GameWorld,
+    system: SystemKey,
+    player_is_alliance: bool,
+    active: bool,
+    movement: &MovementState,
+) -> GidPersonnel {
+    let character_busy = |character: &rebellion_core::world::Character| {
+        character.is_killed
+            || character.on_mission
+            || character.is_captive
+            || character.injury != 0
+            || character.command != rebellion_core::character_command::CommandKind::None
+    };
+    // FUN_004edc80: the character's side.
+    let alliance_of = |character: &rebellion_core::world::Character| character.is_alliance;
+    let mut count = GidPersonnel {
+        player_is_alliance,
+        ..GidPersonnel::default()
+    };
+    for character in world.characters.values() {
+        if character.current_system == Some(system)
+            && character.current_fleet.is_none()
+            && (character.is_alliance || character.is_empire)
+            && alliance_of(character) == player_is_alliance
+            && character_busy(character) == active
+        {
+            count.player += 1;
+        }
+    }
+    if let Some(place) = world.systems.get(system) {
+        count.player += place
+            .special_forces
+            .iter()
+            .filter_map(|&key| world.special_forces.get(key))
+            .filter(|force| force.is_alliance == player_is_alliance && force.on_mission == active)
+            .count() as u32;
+    }
+    for fleet in rebellion_core::movement::listed_fleets(movement, world, system) {
+        let Some(value) = world.fleets.get(fleet) else {
+            continue;
+        };
+        for character in value
+            .characters
+            .iter()
+            .filter_map(|&key| world.characters.get(key))
+        {
+            if character_busy(character) != active {
+                continue;
+            }
+            if alliance_of(character) == player_is_alliance {
+                count.player += 1;
+            } else {
+                count.enemy += 1;
+            }
+        }
+    }
+    count
 }
 
 #[expect(
@@ -637,39 +759,14 @@ fn gid_metric(
                         .is_some_and(|fleet| same_faction(fleet.is_alliance))
             })
             .count() as u32,
-        GidMode::IdlePersonnel | GidMode::ActivePersonnel => world
-            .characters
-            .iter()
-            .filter(|(character_key, character)| {
-                let belongs = if player_is_alliance {
-                    character.is_alliance
-                } else {
-                    character.is_empire
-                };
-                let at_system = character.current_system == Some(system_key)
-                    || character.current_fleet.is_some_and(|fleet_key| {
-                        world.fleets.get(fleet_key).is_some_and(|fleet| {
-                            fleet.location == system_key && !gid.movement.is_in_transit(fleet_key)
-                        })
-                    });
-                let active = character.on_mission
-                    || gid.missions.missions().iter().any(|mission| {
-                        mission.members().any(|member| {
-                            member
-                                == rebellion_core::missions::MissionMember::Character(
-                                    *character_key,
-                                )
-                        })
-                    });
-                belongs
-                    && at_system
-                    && if mode == GidMode::ActivePersonnel {
-                        active
-                    } else {
-                        !active
-                    }
-            })
-            .count() as u32,
+        GidMode::IdlePersonnel | GidMode::ActivePersonnel => gid_personnel(
+            world,
+            system_key,
+            player_is_alliance,
+            mode == GidMode::ActivePersonnel,
+            gid.movement,
+        )
+        .total(),
         GidMode::AvailableEnergy => {
             let used = gid
                 .economy
@@ -796,26 +893,39 @@ fn gid_metric(
     }
 }
 
+/// The mark's size for a display's value (`FUN_0042b330` hands
+/// `FUN_00426e70(value, side, largest, large_max, large_min, medium_max,
+/// medium_min)` these thresholds per display).
 fn gid_metric_size(mode: GidMode, value: u32) -> usize {
     match mode {
-        GidMode::Uprisings | GidMode::DeathStarShields => usize::from(value > 0) * 3,
-        GidMode::IdleFleets | GidMode::FleetsEnRoute => match value {
+        // 0x12, 0x73: (1, 1, 1, 1, 1). 0x65..0x67: the value is 15 when
+        // the player's system has an idle area of that kind, else 0, so
+        // any idle yard is the largest mark.
+        GidMode::Uprisings
+        | GidMode::DeathStarShields
+        | GidMode::IdleShipyards
+        | GidMode::IdleTrainingFacilities
+        | GidMode::IdleConstructionYards
+        | GidMode::IdlePersonnel
+        | GidMode::ActivePersonnel => usize::from(value > 0) * 3,
+        // 0x21, 0x22, 0x52: (3, 2, 2, 1, 1).
+        GidMode::IdleFleets | GidMode::FleetsEnRoute | GidMode::AvailableRawMaterial => match value
+        {
             0 => 0,
             1 => 1,
             2 => 2,
             _ => 3,
         },
-        GidMode::Shipyards
-        | GidMode::IdleShipyards
-        | GidMode::TrainingFacilities
-        | GidMode::IdleTrainingFacilities
-        | GidMode::ConstructionYards
-        | GidMode::IdleConstructionYards => match value {
-            0 => 0,
-            1 => 1,
-            2..=4 => 2,
-            _ => 3,
-        },
+        // 0x62..0x64: (5, 4, 2, 1, 1).
+        GidMode::Shipyards | GidMode::TrainingFacilities | GidMode::ConstructionYards => {
+            match value {
+                0 => 0,
+                1 => 1,
+                2..=4 => 2,
+                _ => 3,
+            }
+        }
+        // The rest: (6, 5, 3, 2, 1).
         _ => match value {
             0 => 0,
             1..=2 => 1,
@@ -826,13 +936,19 @@ fn gid_metric_size(mode: GidMode, value: u32) -> usize {
 }
 
 fn gid_marker_resource_for_size(control: ControlKind, explored: bool, size: usize) -> u32 {
+    if !explored {
+        return bmp_cache::resources::strategy::GID_UNEXPLORED;
+    }
+    gid_marker_for_side(control.faction(), size)
+}
+
+/// The mark of `size` (0 smallest .. 3 largest) in a side's colour
+/// (`FUN_00426e70`'s tables `+0x294`, `+0x2a4`, `+0x2b4`).
+fn gid_marker_for_side(side: Option<rebellion_core::dat::Faction>, size: usize) -> u32 {
     use bmp_cache::resources::strategy;
 
-    if !explored {
-        return strategy::GID_UNEXPLORED;
-    }
     let size = size.min(3);
-    match control.faction() {
+    match side {
         Some(rebellion_core::dat::Faction::Alliance) => [
             strategy::GID_ALLIANCE_SMALLEST,
             strategy::GID_ALLIANCE_MEDIUM,
@@ -1721,15 +1837,261 @@ mod interaction_tests {
 
     #[test]
     fn gid_mode_marker_bands_cover_zero_threshold_and_high_values() {
-        // No recovered source: GID metric count-to-size bands, kept as a regression pin.
+        // FUN_0042b330 -> FUN_00426e70(value, side, largest, large_max,
+        // large_min, medium_max, medium_min) per display.
         assert_eq!(gid_metric_size(GidMode::Uprisings, 0), 0);
         assert_eq!(gid_metric_size(GidMode::Uprisings, 1), 3);
+        assert_eq!(gid_metric_size(GidMode::IdleFleets, 1), 1);
         assert_eq!(gid_metric_size(GidMode::IdleFleets, 2), 2);
         assert_eq!(gid_metric_size(GidMode::IdleFleets, 3), 3);
+        assert_eq!(gid_metric_size(GidMode::Shipyards, 0), 0);
+        assert_eq!(gid_metric_size(GidMode::Shipyards, 1), 1);
         assert_eq!(gid_metric_size(GidMode::Shipyards, 4), 2);
         assert_eq!(gid_metric_size(GidMode::Shipyards, 5), 3);
+        assert_eq!(gid_metric_size(GidMode::AvailableEnergy, 2), 1);
         assert_eq!(gid_metric_size(GidMode::AvailableEnergy, 5), 2);
         assert_eq!(gid_metric_size(GidMode::AvailableEnergy, 6), 3);
+        // 0x52: (3, 2, 2, 1, 1).
+        assert_eq!(gid_metric_size(GidMode::AvailableRawMaterial, 0), 0);
+        assert_eq!(gid_metric_size(GidMode::AvailableRawMaterial, 1), 1);
+        assert_eq!(gid_metric_size(GidMode::AvailableRawMaterial, 2), 2);
+        assert_eq!(gid_metric_size(GidMode::AvailableRawMaterial, 3), 3);
+        // 0x65..0x67: 15 for an idle area, else 0; 0x43 / 0x44: (1, ..).
+        for mode in [
+            GidMode::IdleShipyards,
+            GidMode::IdleTrainingFacilities,
+            GidMode::IdleConstructionYards,
+            GidMode::IdlePersonnel,
+            GidMode::ActivePersonnel,
+        ] {
+            assert_eq!(gid_metric_size(mode, 0), 0);
+            assert_eq!(gid_metric_size(mode, 1), 3);
+        }
+    }
+
+    #[test]
+    fn the_personnel_displays_count_the_planet_and_every_fleet_aboard() {
+        // FUN_0042b330 0x43 / 0x44: the player's people on the planet, and
+        // every character aboard the system's fleets; busy is on a
+        // mission, captive, injured (+0x94) or commanding (+0x96).
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::{Character, Fleet};
+        let mut world = GameWorld::default();
+        let key = world.systems.insert(System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Naboo".into(),
+            sector: Default::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.2,
+            popularity_empire: 0.8,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(Faction::Empire),
+        });
+        let movement = rebellion_core::movement::MovementState::new();
+        let count = |world: &GameWorld, active| gid_personnel(world, key, true, active, &movement);
+        // Nobody: the holder's colour.
+        let none = count(&world, false);
+        assert_eq!(none.total(), 0);
+        assert_eq!(none.colour(Some(Faction::Empire)), Some(Faction::Empire));
+        assert_eq!(
+            none.colour(Some(Faction::Alliance)),
+            Some(Faction::Alliance)
+        );
+        // An Imperial officer aboard an Imperial fleet: the enemy's count.
+        let vader = world.characters.insert(Character {
+            name: "Vader".into(),
+            is_empire: true,
+            ..Default::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: key,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![vader],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        world.systems[key].fleets.push(fleet);
+        world.characters[vader].current_fleet = Some(fleet);
+        let enemy = count(&world, false);
+        assert_eq!((enemy.player, enemy.enemy), (0, 1));
+        assert_eq!(enemy.colour(Some(Faction::Empire)), Some(Faction::Empire));
+        // The player's spy on the planet takes the colour.
+        let spy = world.characters.insert(Character {
+            name: "Bria".into(),
+            is_alliance: true,
+            current_system: Some(key),
+            ..Default::default()
+        });
+        let both = count(&world, false);
+        assert_eq!((both.player, both.enemy), (1, 1));
+        assert_eq!(both.colour(Some(Faction::Empire)), Some(Faction::Alliance));
+        // Injured or commanding is busy: Active, not Idle.
+        world.characters[spy].injury = 5;
+        assert_eq!(count(&world, false).player, 0);
+        assert_eq!(count(&world, true).player, 1);
+        world.characters[spy].injury = 0;
+        world.characters[vader].command = rebellion_core::character_command::CommandKind::Admiral;
+        assert_eq!(count(&world, true).enemy, 1);
+        assert_eq!(count(&world, false).enemy, 0);
+        // An Imperial officer on the planet is not counted for the Alliance.
+        world.characters.insert(Character {
+            name: "Tarkin".into(),
+            is_empire: true,
+            current_system: Some(key),
+            ..Default::default()
+        });
+        assert_eq!(count(&world, false).total(), 1);
+        // One person is the largest mark, in the counted side's colour.
+        assert_eq!(
+            gid_marker_for_side(both.colour(None), usize::from(both.total() > 0) * 3),
+            bmp_cache::resources::strategy::GID_ALLIANCE_LARGEST
+        );
+        // Only the enemy counted: its colour over the holder's.
+        assert_eq!(
+            GidPersonnel {
+                player: 0,
+                enemy: 2,
+                player_is_alliance: true
+            }
+            .colour(Some(Faction::Alliance)),
+            Some(Faction::Empire)
+        );
+        // Captive or killed is busy too.
+        world.characters[spy].is_captive = true;
+        assert_eq!(count(&world, false).player, 0);
+        assert_eq!(count(&world, true).player, 1);
+        world.characters[spy].is_captive = false;
+        world.characters[spy].is_killed = true;
+        assert_eq!(count(&world, true).player, 1);
+        world.characters[spy].is_killed = false;
+        // The player's own officer aboard its fleet counts for the player.
+        let mon = world.characters.insert(Character {
+            name: "Mon".into(),
+            is_alliance: true,
+            ..Default::default()
+        });
+        let rebels = world.fleets.insert(Fleet {
+            location: key,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![mon],
+            is_alliance: true,
+            has_death_star: false,
+        });
+        world.systems[key].fleets.push(rebels);
+        world.characters[mon].current_fleet = Some(rebels);
+        assert_eq!(count(&world, false).player, 2);
+        // The player's special forces on the planet: idle, or on a mission.
+        let force = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0001),
+                is_alliance: true,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        let theirs = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0005),
+                is_alliance: false,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        world.systems[key].special_forces = vec![force, theirs];
+        assert_eq!(count(&world, false).player, 3);
+        world.special_forces[force].on_mission = true;
+        assert_eq!(count(&world, false).player, 2);
+        assert_eq!(count(&world, true).player, 1);
+
+        // The display draws through the same count, the largest mark or
+        // the smallest, and gid_metric reads it too.
+        let manufacturing = rebellion_core::manufacturing::ManufacturingState::new();
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let gid = GidOverlayContext {
+            movement: &movement,
+            manufacturing: &manufacturing,
+            economy: &economy,
+            missions: &missions,
+            uprisings: &uprisings,
+        };
+        let mark = |world: &GameWorld, mode| {
+            gid_marker_for_system(
+                world,
+                key,
+                &world.systems[key],
+                CockpitFaction::Alliance,
+                mode,
+                &gid,
+            )
+        };
+        assert_eq!(
+            mark(&world, GidMode::IdlePersonnel),
+            bmp_cache::resources::strategy::GID_ALLIANCE_LARGEST
+        );
+        assert_eq!(
+            gid_metric(
+                &world,
+                key,
+                &world.systems[key],
+                true,
+                GidMode::ActivePersonnel,
+                &gid
+            ),
+            2
+        );
+        assert_eq!(
+            gid_metric(
+                &world,
+                key,
+                &world.systems[key],
+                true,
+                GidMode::IdlePersonnel,
+                &gid
+            ),
+            2
+        );
+        // A third idle person makes the counts differ.
+        world.characters[vader].command = rebellion_core::character_command::CommandKind::None;
+        assert_eq!(
+            gid_metric(
+                &world,
+                key,
+                &world.systems[key],
+                true,
+                GidMode::IdlePersonnel,
+                &gid
+            ),
+            3
+        );
+        world.characters[vader].command = rebellion_core::character_command::CommandKind::Admiral;
+        // Nobody idle: the holder's smallest mark.
+        world.characters[mon].on_mission = true;
+        world.characters[spy].on_mission = true;
+        world.special_forces[theirs].on_mission = true;
+        world.characters[vader].command = rebellion_core::character_command::CommandKind::Admiral;
+        assert_eq!(
+            mark(&world, GidMode::IdlePersonnel),
+            bmp_cache::resources::strategy::GID_EMPIRE_SMALLEST
+        );
     }
 
     #[test]
