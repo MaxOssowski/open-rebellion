@@ -337,7 +337,9 @@ cross-runtime proof remain open
     `2026-10-22-battle-report-texts/`, `2026-10-22-battle-display-page/`).
     The Battle Alert's title and summary come from TEXTSTRA `0x7020..0x7025`
     by the system's side and its last arrival
-    (`evidence/2026-10-22-battle-alert-texts/`).
+    (`evidence/2026-10-22-battle-alert-texts/`). Its other tabs list each
+    side's fleets, ships and units aboard, and the System Assets
+    (`evidence/2026-10-22-battle-alert-lists/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

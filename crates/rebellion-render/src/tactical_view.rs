@@ -5780,17 +5780,26 @@ fn draw_battle_result_force_details(
 
 /// Draw a results page's steps in the Battle Results window.
 fn draw_page_ops(cache: &mut BmpCache, canvas: TacticalCanvas, ops: Vec<PageOp>) {
+    draw_page_ops_at(
+        cache,
+        canvas,
+        ops,
+        (BATTLE_RESULTS_WINDOW_X, BATTLE_RESULTS_WINDOW_Y),
+    );
+}
+
+/// Draw a page's steps in a window whose top left is `origin`.
+fn draw_page_ops_at(
+    cache: &mut BmpCache,
+    canvas: TacticalCanvas,
+    ops: Vec<PageOp>,
+    (origin_x, origin_y): (f32, f32),
+) {
     for op in ops {
         match op {
-            PageOp::Bitmap { source, id, x, y } => draw_original_bitmap(
-                cache,
-                source,
-                id,
-                canvas,
-                BATTLE_RESULTS_WINDOW_X + x,
-                BATTLE_RESULTS_WINDOW_Y + y,
-                None,
-            ),
+            PageOp::Bitmap { source, id, x, y } => {
+                draw_original_bitmap(cache, source, id, canvas, origin_x + x, origin_y + y, None)
+            }
             PageOp::Text {
                 text,
                 x,
@@ -5799,7 +5808,7 @@ fn draw_page_ops(cache: &mut BmpCache, canvas: TacticalCanvas, ops: Vec<PageOp>)
                 color,
                 centered,
             } => {
-                let (x, y) = (BATTLE_RESULTS_WINDOW_X + x, BATTLE_RESULTS_WINDOW_Y + baseline);
+                let (x, y) = (origin_x + x, origin_y + baseline);
                 if centered {
                     draw_result_text_centered(canvas, &text, x, y, size, color);
                 } else {
@@ -5816,8 +5825,8 @@ fn draw_page_ops(cache: &mut BmpCache, canvas: TacticalCanvas, ops: Vec<PageOp>)
             } => draw_result_wrapped_lines(
                 canvas,
                 &lines,
-                BATTLE_RESULTS_WINDOW_X + x,
-                BATTLE_RESULTS_WINDOW_Y + baseline,
+                origin_x + x,
+                origin_y + baseline,
                 width,
                 size,
                 color,
@@ -6081,7 +6090,9 @@ fn battle_alert_retreat_enabled(session: &BattleSession) -> bool {
 
 fn draw_battle_alert_text(
     state: &TacticalState,
+    cache: &mut BmpCache,
     world: &GameWorld,
+    troop_transport: &TroopTransportState,
     canvas: TacticalCanvas,
     text_color: Color,
 ) {
@@ -6118,42 +6129,21 @@ fn draw_battle_alert_text(
             );
             vec![summary]
         }
-        BattleAlertTab::AllianceForces => vec![
-            "Alliance forces".to_owned(),
-            format!(
-                "Capital ships: {}   Fighter groups: {}",
-                session
-                    .ships
-                    .iter()
-                    .filter(|ship| ship.identity.is_alliance && ship.alive)
-                    .count(),
-                session
-                    .fighters
-                    .iter()
-                    .filter(|fighter| fighter.identity.is_alliance && fighter.alive)
-                    .count()
-            ),
-        ],
-        BattleAlertTab::ImperialForces => vec![
-            "Imperial forces".to_owned(),
-            format!(
-                "Capital ships: {}   Fighter groups: {}",
-                session
-                    .ships
-                    .iter()
-                    .filter(|ship| !ship.identity.is_alliance && ship.alive)
-                    .count(),
-                session
-                    .fighters
-                    .iter()
-                    .filter(|fighter| !fighter.identity.is_alliance && fighter.alive)
-                    .count()
-            ),
-        ],
-        BattleAlertTab::System => vec![
-            format!("System summary: {}", session.system_name),
-            "Opposing fleets are present. A space battle is imminent.".to_owned(),
-        ],
+        tab => {
+            // FUN_00450660: the other tabs show the scene with the title
+            // only (surface 0x33) and the list.
+            let Some(content) = BattleAlertList::of(tab) else {
+                return;
+            };
+            let rows = battle_alert_rows(world, troop_transport, session.system, content);
+            draw_page_ops_at(
+                cache,
+                canvas,
+                battle_alert_list(&rows),
+                (BATTLE_ALERT_WINDOW_X, BATTLE_ALERT_WINDOW_Y),
+            );
+            return;
+        }
     };
     draw_result_wrapped_lines(
         canvas,
@@ -6164,6 +6154,316 @@ fn draw_battle_alert_text(
         14.0,
         text_color,
     );
+}
+
+/// What a Battle Alert list tab holds (`FUN_00450770`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BattleAlertList {
+    /// `0x1923` / `0x1924`: one side's forces at the system.
+    Forces { alliance: bool },
+    /// `0x1925`: what is on the planet.
+    SystemAssets,
+}
+
+impl BattleAlertList {
+    /// The list a tab fills (`FUN_00450660`: tabs 2, 3 and 4 call
+    /// `FUN_00450770` with 1, 2 and 0); the summary tab has none.
+    const fn of(tab: BattleAlertTab) -> Option<Self> {
+        match tab {
+            BattleAlertTab::Summary => None,
+            BattleAlertTab::AllianceForces => Some(Self::Forces { alliance: true }),
+            BattleAlertTab::ImperialForces => Some(Self::Forces { alliance: false }),
+            BattleAlertTab::System => Some(Self::SystemAssets),
+        }
+    }
+}
+
+/// A list row's font: `0xb` for the tab's heading, 5 for a fleet, a
+/// capital ship or the system, 4 for the units under them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlertFont {
+    Heading,
+    Bold,
+    Plain,
+}
+
+/// One row of a Battle Alert list (`FUN_00450e10`): a text row is centred;
+/// a picture row draws the object's mini (its layers bottom to top) at the
+/// row's left, 20 further for a unit aboard (`param_4`), and the text at
+/// 70, or 90.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AlertRow {
+    text: String,
+    font: AlertFont,
+    picture: Vec<(DllSource, u32)>,
+    indent: bool,
+}
+
+/// The rows `FUN_00450770` fills. A forces tab: the heading; each of the
+/// side's fleets at the system (`FUN_004ffef0`), its name, then each
+/// capital ship and the units aboard (`FUN_005039d0` squadrons,
+/// `FUN_00504c40` regiments, `FUN_00536da0` personnel), indented; then,
+/// when the side has squadrons on the planet (`FUN_00503a50`), the
+/// system's name and those squadrons. System Assets: the heading, then the
+/// facilities (`FUN_00539d70`), the regiments (`FUN_00504c40`) and the
+/// personnel (`FUN_00536da0`) on the planet, of either side.
+///
+/// port: a fleet keeps its squadrons, regiments and personnel, not each
+/// ship, so they follow the fleet's ships. Facilities go by kind
+/// (defenses, manufacturing, production) in the system's order.
+fn battle_alert_rows(
+    world: &GameWorld,
+    troop_transport: &TroopTransportState,
+    system: SystemKey,
+    list: BattleAlertList,
+) -> Vec<AlertRow> {
+    use crate::fleet_window::{mini_marks, MiniObject};
+    use crate::system_window::{
+        defense_facility_mini, manufacturing_facility_mini, production_facility_mini,
+        special_force_mini, troop_mini,
+    };
+    let text = |text: String, font| AlertRow {
+        text,
+        font,
+        picture: Vec::new(),
+        indent: false,
+    };
+    // FUN_0042c3b0(.., 0, 1): the mini over its backdrop and marks.
+    let row = |text: String, font, object, mini: Option<u32>, damaged, indent| AlertRow {
+        text,
+        font,
+        picture: mini
+            .map(|mini| {
+                let mut layers = mini_marks(object, mini, false, damaged);
+                layers.push((DllSource::Gokres, mini));
+                layers
+            })
+            .unwrap_or_default(),
+        indent,
+    };
+    let Some(place) = world.systems.get(system) else {
+        return Vec::new();
+    };
+    let squadron = |entry: &rebellion_core::world::FighterEntry, indent| {
+        let class = world.fighter_classes.get(entry.class)?;
+        Some((0..entry.count).map(move |_| {
+            row(
+                class.name.clone(),
+                AlertFont::Plain,
+                MiniObject::Craft,
+                crate::panels::fleets::fighter_mini_id(class.dat_id),
+                false,
+                indent,
+            )
+        }))
+    };
+    let regiment = |key: rebellion_core::ids::TroopKey, indent| {
+        let troop = world.troops.get(key)?;
+        let (mini, label) = troop_mini(troop.class_dat_id)?;
+        Some(row(
+            label.to_owned(),
+            AlertFont::Plain,
+            MiniObject::Regiment(troop.class_dat_id),
+            Some(mini),
+            false,
+            indent,
+        ))
+    };
+    let character = |character: &rebellion_core::world::Character, indent| {
+        row(
+            character.name.clone(),
+            AlertFont::Plain,
+            MiniObject::Character,
+            crate::system_window::character_mini_resource_id(character.dat_id, character.is_major),
+            // FUN_004f7800: an injured character is damaged.
+            character.injury > 0,
+            indent,
+        )
+    };
+    let mut rows = Vec::new();
+    match list {
+        BattleAlertList::Forces { alliance } => {
+            rows.push(text(
+                if alliance {
+                    "Alliance Forces"
+                } else {
+                    "Imperial Forces"
+                }
+                .to_owned(),
+                AlertFont::Heading,
+            ));
+            for &key in &place.fleets {
+                let Some(fleet) = world
+                    .fleets
+                    .get(key)
+                    .filter(|fleet| fleet.is_alliance == alliance)
+                else {
+                    continue;
+                };
+                rows.push(text(
+                    world.fleet_name(key).unwrap_or_default().to_owned(),
+                    AlertFont::Bold,
+                ));
+                for (index, ship) in fleet.capital_ships.iter().enumerate() {
+                    let Some(class) = world.capital_ship_classes.get(ship.class) else {
+                        continue;
+                    };
+                    rows.push(row(
+                        world
+                            .ship_name(key, index)
+                            .unwrap_or(&class.name)
+                            .to_owned(),
+                        AlertFont::Bold,
+                        MiniObject::Craft,
+                        crate::panels::fleets::capital_ship_mini_id(class.dat_id),
+                        crate::status_rows::damaged(ship, class),
+                        false,
+                    ));
+                }
+                rows.extend(
+                    fleet
+                        .fighters
+                        .iter()
+                        .filter_map(|entry| squadron(entry, true))
+                        .flatten(),
+                );
+                rows.extend(
+                    troop_transport
+                        .cargo(key)
+                        .iter()
+                        .filter_map(|&troop| regiment(troop, true)),
+                );
+                rows.extend(
+                    fleet
+                        .characters
+                        .iter()
+                        .filter_map(|&key| world.characters.get(key))
+                        .map(|value| character(value, true)),
+                );
+            }
+            let planet: Vec<AlertRow> = place
+                .fighters
+                .iter()
+                .filter(|entry| {
+                    rebellion_core::squadrons::is_alliance(world, entry.class) == Some(alliance)
+                })
+                .filter_map(|entry| squadron(entry, false))
+                .flatten()
+                .collect();
+            if !planet.is_empty() {
+                rows.push(text(place.name.clone(), AlertFont::Bold));
+                rows.extend(planet);
+            }
+        }
+        BattleAlertList::SystemAssets => {
+            rows.push(text("System Assets".to_owned(), AlertFont::Heading));
+            let facility = |mini: Option<(u32, &'static str)>, object| {
+                mini.map(|(mini, label)| {
+                    row(
+                        label.to_owned(),
+                        AlertFont::Plain,
+                        object,
+                        Some(mini),
+                        false,
+                        false,
+                    )
+                })
+            };
+            rows.extend(place.defense_facilities.iter().filter_map(|&key| {
+                let class = world.defense_facilities.get(key)?.class_dat_id;
+                facility(defense_facility_mini(class), MiniObject::Craft)
+            }));
+            rows.extend(place.manufacturing_facilities.iter().filter_map(|&key| {
+                let class = world.manufacturing_facilities.get(key)?.class_dat_id;
+                facility(manufacturing_facility_mini(class), MiniObject::Craft)
+            }));
+            rows.extend(place.production_facilities.iter().filter_map(|&key| {
+                let class = world.production_facilities.get(key)?.class_dat_id;
+                facility(production_facility_mini(class), MiniObject::Craft)
+            }));
+            rows.extend(
+                place
+                    .ground_units
+                    .iter()
+                    .filter_map(|&troop| regiment(troop, false)),
+            );
+            rows.extend(place.special_forces.iter().filter_map(|&key| {
+                let force = world.special_forces.get(key)?;
+                let (mini, label) = special_force_mini(force.class_dat_id)?;
+                Some(row(
+                    label.to_owned(),
+                    AlertFont::Plain,
+                    MiniObject::SpecialForce(force.class_dat_id),
+                    Some(mini),
+                    false,
+                    false,
+                ))
+            }));
+            rows.extend(
+                world
+                    .characters
+                    .values()
+                    .filter(|value| {
+                        value.current_system == Some(system) && value.current_fleet.is_none()
+                    })
+                    .map(|value| character(value, false)),
+            );
+        }
+    }
+    rows
+}
+
+/// The Battle Alert's list (`FUN_0044f860`, `FUN_00607ea0`): at (83, 40),
+/// 256 by 234, rows 40 high, white text. port: no scroll bar; the rows
+/// whose middle fits show.
+fn battle_alert_list(rows: &[AlertRow]) -> Vec<PageOp> {
+    const LEFT: f32 = 83.0;
+    const TOP: f32 = 40.0;
+    const WIDTH: f32 = 256.0;
+    const HEIGHT: f32 = 234.0;
+    const ROW: f32 = 40.0;
+    let mut ops = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let top = TOP + ROW * index as f32;
+        if top + ROW / 2.0 > TOP + HEIGHT {
+            break;
+        }
+        let size = if row.font == AlertFont::Heading {
+            18.0
+        } else {
+            14.0
+        };
+        let baseline = top + ROW / 2.0 + size / 2.0 - 2.0;
+        if row.picture.is_empty() {
+            ops.push(PageOp::Text {
+                text: row.text.clone(),
+                x: LEFT + WIDTH / 2.0,
+                baseline,
+                size,
+                color: WHITE,
+                centered: true,
+            });
+            continue;
+        }
+        let shift = if row.indent { 20.0 } else { 0.0 };
+        for &(source, id) in &row.picture {
+            ops.push(PageOp::Bitmap {
+                source,
+                id,
+                x: LEFT + shift,
+                y: top,
+            });
+        }
+        ops.push(PageOp::Text {
+            text: row.text.clone(),
+            x: LEFT + 70.0 + shift,
+            baseline,
+            size,
+            color: WHITE,
+            centered: false,
+        });
+    }
+    ops
 }
 
 /// The system's side (`+0x24` bits 6..7) and its last arrived side
@@ -6252,6 +6552,7 @@ fn draw_original_battle_alert(
     state: &mut TacticalState,
     cache: &mut BmpCache,
     world: &GameWorld,
+    troop_transport: &TroopTransportState,
 ) -> TacticalAction {
     let canvas = TacticalCanvas::new(screen_width(), screen_height());
     let session = state.session.as_ref().expect("active Battle Alert session");
@@ -6292,7 +6593,7 @@ fn draw_original_battle_alert(
         BATTLE_ALERT_WINDOW_X + 12.0,
         BATTLE_ALERT_WINDOW_Y + 13.0,
     );
-    draw_battle_alert_text(state, world, canvas, text_color);
+    draw_battle_alert_text(state, cache, world, troop_transport, canvas, text_color);
     draw_strategy_bitmap(
         cache,
         skin.rail,
@@ -6597,7 +6898,7 @@ pub fn draw_tactical_view(
     }
 
     if state.battle_alert_open {
-        return draw_original_battle_alert(state, bmp_cache, world);
+        return draw_original_battle_alert(state, bmp_cache, world, troop_transport);
     }
 
     let mut action = TacticalAction::None;
@@ -8656,39 +8957,345 @@ mod tests {
         }
     }
 
+    fn test_system(
+        world: &mut GameWorld,
+        control: rebellion_core::world::ControlKind,
+        last_arrival: Option<rebellion_core::dat::Faction>,
+    ) -> SystemKey {
+        world.systems.insert(rebellion_core::world::System {
+            last_arrival,
+            dat_id: DatId::new(0x9000_0001),
+            name: "Deyer".into(),
+            sector: Default::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            fighters: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control,
+        })
+    }
+
+    #[test]
+    fn the_battle_alert_lists_a_side_s_fleets_then_its_planet_squadrons() {
+        // FUN_00450770: the heading (0x1923), each fleet's name, its ships
+        // (FUN_00450e10 font 5 with the mini) and the units aboard (font 4,
+        // indented); then the system's name and the side's squadrons on the
+        // planet (FUN_00503a50). guide-057 shows "Alliance Forces",
+        // "Deyer", "A-wing".
+        use rebellion_core::world::{
+            CapitalShipClass, Character, ControlKind, FighterClass, FighterEntry, Fleet,
+            ShipInstance,
+        };
+        let mut world = GameWorld::default();
+        let system = test_system(&mut world, ControlKind::Uncontrolled, None);
+        let corvette = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0040),
+            name: "Corellian Corvette".into(),
+            is_alliance: true,
+            ..CapitalShipClass::default()
+        });
+        let awing = world.fighter_classes.insert(FighterClass {
+            dat_id: DatId::new(0x1c00_0001),
+            name: "A-wing".into(),
+            is_alliance: true,
+            ..FighterClass::default()
+        });
+        let tie = world.fighter_classes.insert(FighterClass {
+            dat_id: DatId::new(0x1c00_0005),
+            name: "TIE Fighter".into(),
+            is_alliance: false,
+            ..FighterClass::default()
+        });
+        let leia = world.characters.insert(Character {
+            name: "Leia".into(),
+            ..Default::default()
+        });
+        let fleet = |is_alliance, capital_ships, fighters, characters| Fleet {
+            location: system,
+            capital_ships,
+            fighters,
+            characters,
+            is_alliance,
+            has_death_star: false,
+        };
+        let rebels = world.fleets.insert(fleet(
+            true,
+            vec![ShipInstance::new(corvette, 0, false)],
+            vec![FighterEntry {
+                class: awing,
+                count: 1,
+            }],
+            vec![leia],
+        ));
+        let empire = world.fleets.insert(fleet(false, vec![], vec![], vec![]));
+        world.systems[system].fleets = vec![empire, rebels];
+        world.systems[system].fighters = vec![
+            FighterEntry {
+                class: awing,
+                count: 2,
+            },
+            FighterEntry {
+                class: tie,
+                count: 1,
+            },
+        ];
+        let rows = battle_alert_rows(
+            &world,
+            &TroopTransportState::default(),
+            system,
+            BattleAlertList::Forces { alliance: true },
+        );
+        let summary: Vec<(&str, AlertFont, bool, bool)> = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.text.as_str(),
+                    row.font,
+                    !row.picture.is_empty(),
+                    row.indent,
+                )
+            })
+            .collect();
+        let name = world.fleet_name(rebels).unwrap_or_default().to_owned();
+        assert_eq!(
+            summary,
+            [
+                ("Alliance Forces", AlertFont::Heading, false, false),
+                (name.as_str(), AlertFont::Bold, false, false),
+                ("Corellian Corvette", AlertFont::Bold, true, false),
+                ("A-wing", AlertFont::Plain, true, true),
+                ("Leia", AlertFont::Plain, false, true),
+                ("Deyer", AlertFont::Bold, false, false),
+                ("A-wing", AlertFont::Plain, true, false),
+                ("A-wing", AlertFont::Plain, true, false),
+            ]
+        );
+        // The ship's mini is keyed over nothing; the squadron's too.
+        assert_eq!(
+            rows[2].picture,
+            [(
+                DllSource::Gokres,
+                crate::panels::fleets::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap()
+            )]
+        );
+        // The Empire's tab: its empty fleet's name, its TIE on the planet.
+        let rows = battle_alert_rows(
+            &world,
+            &TroopTransportState::default(),
+            system,
+            BattleAlertList::Forces { alliance: false },
+        );
+        let texts: Vec<&str> = rows.iter().map(|row| row.text.as_str()).collect();
+        let name = world.fleet_name(empire).unwrap_or_default().to_owned();
+        assert_eq!(
+            texts,
+            ["Imperial Forces", name.as_str(), "Deyer", "TIE Fighter"]
+        );
+    }
+
+    #[test]
+    fn the_battle_alert_lists_the_system_assets() {
+        // FUN_00450770(0): the heading 0x1925, the facilities
+        // (FUN_00539d70), the regiments (FUN_00504c40) and the personnel
+        // (FUN_00536da0) on the planet, font 4, not indented. guide-056
+        // lists "LNR Series II" and "GenCore Level II".
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::{Character, ControlKind, DefenseFacilityInstance, TroopUnit};
+        let mut world = GameWorld::default();
+        let system = test_system(&mut world, ControlKind::Controlled(Faction::Alliance), None);
+        let lnr = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2200_0005),
+            side: Faction::Alliance,
+        });
+        let army = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0002),
+            is_alliance: true,
+            regiment_strength: 1,
+        });
+        world.systems[system].defense_facilities = vec![lnr];
+        world.systems[system].ground_units = vec![army];
+        world.characters.insert(Character {
+            name: "Mon Mothma".into(),
+            current_system: Some(system),
+            ..Default::default()
+        });
+        world.characters.insert(Character {
+            name: "Elsewhere".into(),
+            ..Default::default()
+        });
+        let rows = battle_alert_rows(
+            &world,
+            &TroopTransportState::default(),
+            system,
+            BattleAlertList::SystemAssets,
+        );
+        let texts: Vec<(&str, AlertFont, bool)> = rows
+            .iter()
+            .map(|row| (row.text.as_str(), row.font, row.indent))
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                ("System Assets", AlertFont::Heading, false),
+                ("LNR Series II", AlertFont::Plain, false),
+                ("Alliance Army Regiment", AlertFont::Plain, false),
+                ("Mon Mothma", AlertFont::Plain, false),
+            ]
+        );
+        // A regiment's mini sits on its backdrop, STRATEGY 11513.
+        assert_eq!(
+            rows[2].picture,
+            [(DllSource::Strategy, 11_513), (DllSource::Gokres, 17_473)]
+        );
+    }
+
+    #[test]
+    fn each_battle_alert_tab_fills_its_own_list() {
+        // FUN_00450660: tab 1 hides the list; 2, 3, 4 fill 1, 2, 0.
+        assert_eq!(BattleAlertList::of(BattleAlertTab::Summary), None);
+        assert_eq!(
+            BattleAlertList::of(BattleAlertTab::AllianceForces),
+            Some(BattleAlertList::Forces { alliance: true })
+        );
+        assert_eq!(
+            BattleAlertList::of(BattleAlertTab::ImperialForces),
+            Some(BattleAlertList::Forces { alliance: false })
+        );
+        assert_eq!(
+            BattleAlertList::of(BattleAlertTab::System),
+            Some(BattleAlertList::SystemAssets)
+        );
+    }
+
+    #[test]
+    fn an_injured_character_in_the_battle_alert_wears_the_damage_mark() {
+        // FUN_004f7800: injury != 0 is damaged; FUN_0042c3b0 puts STRATEGY
+        // 11502 over the backdrop 11500 for personnel.
+        use rebellion_core::world::{Character, ControlKind};
+        let mut world = GameWorld::default();
+        let system = test_system(&mut world, ControlKind::Uncontrolled, None);
+        let mut person = |injury| {
+            world.characters.insert(Character {
+                name: "Luke".into(),
+                dat_id: DatId::new(0x3000_0240),
+                is_major: true,
+                current_system: Some(system),
+                injury,
+                ..Default::default()
+            })
+        };
+        person(0);
+        person(5);
+        let rows = battle_alert_rows(
+            &world,
+            &TroopTransportState::default(),
+            system,
+            BattleAlertList::SystemAssets,
+        );
+        let mini =
+            rebellion_core::pictures::character_mini_resource_id(DatId::new(0x3000_0240), true)
+                .unwrap();
+        assert_eq!(
+            rows[1].picture,
+            [(DllSource::Strategy, 11_500), (DllSource::Gokres, mini)]
+        );
+        assert_eq!(
+            rows[2].picture,
+            [
+                (DllSource::Strategy, 11_500),
+                (DllSource::Strategy, 11_502),
+                (DllSource::Gokres, mini)
+            ]
+        );
+    }
+
+    #[test]
+    fn the_battle_alert_list_rows_are_forty_high_from_83_40() {
+        // FUN_0044f860: FUN_00607ea0(.., 0x53, 0x28, 0x100, 0xea) with
+        // rows 0x28 high; FUN_00450e10: text at 0x46 past a picture, 0x5a
+        // when indented by 0x14.
+        let text = |text: &str, font| AlertRow {
+            text: text.into(),
+            font,
+            picture: Vec::new(),
+            indent: false,
+        };
+        let picture = |indent| AlertRow {
+            text: "A-wing".into(),
+            font: AlertFont::Plain,
+            picture: vec![(DllSource::Gokres, 7)],
+            indent,
+        };
+        let mut rows = vec![
+            text("Alliance Forces", AlertFont::Heading),
+            picture(false),
+            picture(true),
+        ];
+        rows.extend((0..5).map(|_| text("more", AlertFont::Bold)));
+        let ops = battle_alert_list(&rows);
+        assert_eq!(
+            ops[0],
+            PageOp::Text {
+                text: "Alliance Forces".into(),
+                x: 211.0,
+                baseline: 67.0,
+                size: 18.0,
+                color: WHITE,
+                centered: true,
+            }
+        );
+        assert_eq!(
+            ops[1],
+            PageOp::Bitmap {
+                source: DllSource::Gokres,
+                id: 7,
+                x: 83.0,
+                y: 80.0
+            }
+        );
+        assert!(
+            matches!(&ops[2], PageOp::Text { x, baseline, centered: false, .. } if *x == 153.0 && *baseline == 105.0)
+        );
+        assert_eq!(
+            ops[3],
+            PageOp::Bitmap {
+                source: DllSource::Gokres,
+                id: 7,
+                x: 103.0,
+                y: 120.0
+            }
+        );
+        assert!(matches!(&ops[4], PageOp::Text { x, .. } if *x == 173.0));
+        // 234 high: the sixth row (top 240, middle 260) is the last whose
+        // middle fits; the seventh is cut.
+        let texts = ops
+            .iter()
+            .filter(|op| matches!(op, PageOp::Text { .. }))
+            .count();
+        assert_eq!(texts, 6);
+    }
+
     #[test]
     fn the_battle_alert_reads_the_system_side_and_last_arrival() {
         // FUN_0049c0d0: +0x24 bits 6..7 and +0x78 bits 6..7.
         use rebellion_core::dat::Faction;
-        use rebellion_core::world::{ControlKind, System};
+        use rebellion_core::world::ControlKind;
         let mut world = GameWorld::default();
-        let mut system = |control, last_arrival| {
-            world.systems.insert(System {
-                last_arrival,
-                dat_id: DatId::new(0x9000_0001),
-                name: "Deyer".into(),
-                sector: Default::default(),
-                x: 0,
-                y: 0,
-                exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
-                popularity_alliance: 0.5,
-                popularity_empire: 0.5,
-                is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                fighters: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                is_headquarters: false,
-                is_destroyed: false,
-                control,
-            })
-        };
+        let mut system = |control, last_arrival| test_system(&mut world, control, last_arrival);
         let rebel = system(
             ControlKind::Controlled(Faction::Alliance),
             Some(Faction::Empire),
