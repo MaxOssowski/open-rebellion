@@ -274,9 +274,12 @@ pub fn galaxy_camera(
 pub struct GalaxyMapState {
     pub selected_system: Option<SystemKey>,
     pub hovered_system: Option<SystemKey>,
-    /// System activated by a primary press in the current frame.
+    /// System activated by a primary release in the current frame.
     /// Consumers clear this by drawing the next map frame.
     pub activated_system: Option<SystemKey>,
+    /// Whether the held primary button was pressed on the map, which then
+    /// takes its release (the capture of the window that took the press).
+    pub press_on_map: bool,
     /// True while an original-interface window or modal overlay owns the pointer.
     pub pointer_blocked: bool,
     /// True while a Mission order waits for its target (galaxy view mode 2).
@@ -310,6 +313,7 @@ impl Default for GalaxyMapState {
             selected_system: None,
             hovered_system: None,
             activated_system: None,
+            press_on_map: false,
             pointer_blocked: false,
             targeting: false,
             show_sector_labels: true,
@@ -470,9 +474,16 @@ pub fn draw_galaxy_map(
     }
 
     // ── Click to select ───────────────────────────────────────────────────────
-    if is_mouse_button_pressed(MouseButton::Left) && in_viewport && map_press_selects(state) {
-        state.selected_system = state.hovered_system;
-        state.activated_system = state.hovered_system;
+    let available = map_press_selects(state, in_viewport);
+    if let Some(system) = map_release_activates(
+        &mut state.press_on_map,
+        is_mouse_button_pressed(MouseButton::Left),
+        is_mouse_button_released(MouseButton::Left),
+        available,
+        state.hovered_system,
+    ) {
+        state.selected_system = Some(system);
+        state.activated_system = Some(system);
     }
 
     cam
@@ -1101,11 +1112,34 @@ fn gid_marker_resource(control: ControlKind, explored: bool, popularity: f32) ->
     gid_marker_resource_for_size(control, explored, size)
 }
 
-/// Whether a left press on the map selects the system under it. In targeting
-/// mode the galaxy view holds the capture, and `FUN_00422ce0` has no
-/// `WM_LBUTTONDOWN` case, so the press does nothing; the release targets.
-fn map_press_selects(state: &GalaxyMapState) -> bool {
-    !state.targeting
+/// Whether a left click on the map may select the system under it: the
+/// pointer is on the map, not over a window, and no Mission order is
+/// targeting. In targeting mode the galaxy view holds the capture, and
+/// `FUN_00422ce0` has no `WM_LBUTTONDOWN` case, so the press does nothing;
+/// the release targets.
+fn map_press_selects(state: &GalaxyMapState, in_viewport: bool) -> bool {
+    in_viewport && !state.targeting
+}
+
+/// The system a left click opens. `FUN_00422ce0` has no `WM_LBUTTONDOWN`
+/// case in the galaxy view; its `WM_LBUTTONUP` opens the item under the
+/// pointer (`+0x25c`, `FUN_00429ce0`). A press elsewhere keeps its release:
+/// the release counts only after a press on the map, and only over it.
+fn map_release_activates(
+    press_on_map: &mut bool,
+    pressed: bool,
+    released: bool,
+    available: bool,
+    hovered: Option<SystemKey>,
+) -> Option<SystemKey> {
+    if pressed {
+        *press_on_map = available;
+    }
+    if !released {
+        return None;
+    }
+    let captured = std::mem::take(press_on_map);
+    (captured && available).then_some(hovered).flatten()
 }
 
 // ---------------------------------------------------------------------------
@@ -1935,13 +1969,63 @@ mod interaction_tests {
     }
 
     #[test]
+    fn a_system_opens_on_the_release_of_a_press_on_the_map() {
+        // FUN_00422ce0: no WM_LBUTTONDOWN case; WM_LBUTTONUP opens the
+        // hovered item.
+        let hovered = Some(SystemKey::default());
+        let mut held = false;
+        // The press alone opens nothing; its release over the map does.
+        assert_eq!(
+            map_release_activates(&mut held, true, false, true, hovered),
+            None
+        );
+        assert!(held);
+        assert_eq!(
+            map_release_activates(&mut held, false, false, true, hovered),
+            None
+        );
+        assert_eq!(
+            map_release_activates(&mut held, false, true, true, hovered),
+            hovered
+        );
+        assert!(!held);
+        // A click within one frame.
+        assert_eq!(
+            map_release_activates(&mut held, true, true, true, hovered),
+            hovered
+        );
+        // A press in a window keeps its release, even over the map.
+        assert_eq!(
+            map_release_activates(&mut held, true, false, false, hovered),
+            None
+        );
+        assert_eq!(
+            map_release_activates(&mut held, false, true, true, hovered),
+            None
+        );
+        // A release over a window opens nothing, nor one over empty space.
+        map_release_activates(&mut held, true, false, true, hovered);
+        assert_eq!(
+            map_release_activates(&mut held, false, true, false, hovered),
+            None
+        );
+        map_release_activates(&mut held, true, false, true, None);
+        assert_eq!(
+            map_release_activates(&mut held, false, true, true, None),
+            None
+        );
+    }
+
+    #[test]
     fn a_press_during_targeting_selects_no_system() {
         // FUN_00422ce0 mode 2: the captured press has no WM_LBUTTONDOWN case.
         let mut state = GalaxyMapState::default();
-        assert!(map_press_selects(&state));
+        assert!(map_press_selects(&state, true));
+        // Off the map, or over a window, nothing is selected either.
+        assert!(!map_press_selects(&state, false));
 
         state.targeting = true;
-        assert!(!map_press_selects(&state));
+        assert!(!map_press_selects(&state, true));
     }
 
     #[test]
