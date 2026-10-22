@@ -1,0 +1,250 @@
+{
+ "run_dir": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/status-window-2026-10-22T01-51-35-338Z-516735",
+ "status": "pass",
+ "cases": [
+  {
+   "faction": "alliance",
+   "case": "character",
+   "rect": {
+    "x": 108,
+    "y": 79,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 396,
+     "list": 5455,
+     "name": 304,
+     "picture": 3973
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close",
+    "escape": "close",
+    "encyclopedia": "encyclopedia"
+   }
+  },
+  {
+   "faction": "alliance",
+   "case": "regiment",
+   "rect": {
+    "x": 108,
+    "y": 79,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 587,
+     "list": 2559,
+     "name": 552,
+     "picture": 5951
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close"
+   }
+  },
+  {
+   "faction": "alliance",
+   "case": "fleet",
+   "rect": {
+    "x": 108,
+    "y": 79,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 301,
+     "list": 4869,
+     "name": 151,
+     "picture": 1655
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close"
+   }
+  },
+  {
+   "faction": "alliance",
+   "case": "capital-ship",
+   "rect": {
+    "x": 108,
+    "y": 79,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 465,
+     "list": 7380,
+     "name": 477,
+     "picture": 2726
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close"
+   }
+  },
+  {
+   "faction": "alliance",
+   "case": "production-manager",
+   "rect": {
+    "x": 108,
+    "y": 79,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 415,
+     "list": 521,
+     "name": 195,
+     "picture": 6010
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close"
+   }
+  },
+  {
+   "faction": "empire",
+   "case": "character",
+   "rect": {
+    "x": 171,
+    "y": 82,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 396,
+     "list": 5448,
+     "name": 304,
+     "picture": 3973
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close",
+    "escape": "close",
+    "encyclopedia": "encyclopedia"
+   }
+  },
+  {
+   "faction": "empire",
+   "case": "regiment",
+   "rect": {
+    "x": 171,
+    "y": 82,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 587,
+     "list": 2560,
+     "name": 583,
+     "picture": 5461
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close"
+   }
+  },
+  {
+   "faction": "empire",
+   "case": "fleet",
+   "rect": {
+    "x": 171,
+    "y": 82,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 301,
+     "list": 4870,
+     "name": 151,
+     "picture": 1776
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close"
+   }
+  },
+  {
+   "faction": "empire",
+   "case": "capital-ship",
+   "rect": {
+    "x": 171,
+    "y": 82,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 465,
+     "list": 7341,
+     "name": 410,
+     "picture": 2128
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close"
+   }
+  },
+  {
+   "faction": "empire",
+   "case": "production-manager",
+   "rect": {
+    "x": 171,
+    "y": 82,
+    "width": 379,
+    "height": 272
+   },
+   "comparison": {
+    "pixels_checked": 38398,
+    "different_pixels": 0,
+    "changed_in_masks": {
+     "title": 415,
+     "list": 521,
+     "name": 195,
+     "picture": 6010
+    },
+    "picture_blue_pixels": 0
+   },
+   "closes": {
+    "close": "close"
+   }
+  }
+ ]
+}

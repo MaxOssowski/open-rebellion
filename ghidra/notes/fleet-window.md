@@ -241,7 +241,12 @@ bitmaps; nothing animates them.
 
 In the picture panel (`FUN_004a5c00`), a fleet's 10426 (and 10427 on
 `+0x200`) is blitted first, then the picture 10425 keyed over it at the
-same centered left edge, so the glow shows behind the ships. One selected
+same centered left edge, so the glow shows behind the ships. The fleet's
+entry (`FUN_004a37c0`) does the same at (5, 5): 10423 en route, 10424
+damaged, then its frame. A fleet's `+0x200` is `FUN_004feab0`'s: set
+while any of its capital ships is damaged (`FUN_00501c00`). Ported
+2026-10-22 (`fleet_entry_layers`, `fleet_picture_layers`,
+`fleet_damaged`); the Status window's fleet picture takes 10427 too. One selected
 ship's portrait, with its mark already drawn in, is blitted keyed at the
 panel's (0, 0); the craft portraits are GOKRES `0x640..0x78f` (122 by 50)
 and their marks `0x1640..0x178f`.

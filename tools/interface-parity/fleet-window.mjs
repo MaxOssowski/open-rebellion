@@ -204,10 +204,15 @@ function composeExpected(source, faction, state) {
     blit(expected, resource(source, 10407 + faction.art), 97, 29);
     blit(expected, resource(source, 10401 + faction.art), 4, 29, { keyed: true });
   }
+  // A damaged fleet's marks go under its frame and picture (FUN_004a37c0,
+  // FUN_004a5c00; FUN_004feab0: any damaged ship): 10424 and 10427.
+  if (state.damaged) blit(expected, resource(source, 10424 + faction.art), 9, 34, { keyed: true });
   blit(expected, resource(source, 10400 + faction.art), 9, 34, { keyed: true });
   if (state.selected) {
     const picture = resource(source, 10425 + faction.art);
-    blit(expected, picture, 100 + Math.floor((125 - picture.width) / 2), 42, { keyed: true });
+    const left = 100 + Math.floor((125 - picture.width) / 2);
+    if (state.damaged) blit(expected, resource(source, 10427 + faction.art), left, 42, { keyed: true });
+    blit(expected, picture, left, 42, { keyed: true });
     const base = 10409 + faction.art;
     [1, 33, 65, 97].forEach((x, k) => {
       const id = !state.enabled[k] ? base + 3 + k : k === state.tab ? base + 7 + k : base + k;
@@ -495,14 +500,16 @@ const cases = [
     async run(page, faction, setup, directory, source) {
       const opened = await openFleetWindow(page, setup);
       const origin = { x: opened.origin[0], y: opened.origin[1] };
+      // The fixture's ship stands at 100 of its class's 2400 hull, so the
+      // fleet is damaged (FUN_004feab0).
       const openCheck = compare(await stableWindow(page, origin, directory, "open"),
-        composeExpected(source, faction, { selected: false }), masks.open, "open", directory);
+        composeExpected(source, faction, { selected: false, damaged: true }), masks.open, "open", directory);
       const selected = await selectFleet(page, opened);
       assert.equal(selected.tab, "CapitalShips");
       assert.deepEqual(selected.enabled, [true, false, false, false]);
       assert.equal(selected.items.length, 1, "the fleet's one capital ship is listed");
       const selectedCheck = compare(await stableWindow(page, origin, directory, "selected"),
-        composeExpected(source, faction, { selected: true, enabled: selected.enabled, tab: 0 }),
+        composeExpected(source, faction, { selected: true, damaged: true, enabled: selected.enabled, tab: 0 }),
         [...masks.open, ...masks.selected], "selected", directory);
       // 0x280d minimizes the window to the rail (FUN_004a76e0); the rail
       // entry restores it where it was.

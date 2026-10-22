@@ -52,6 +52,50 @@ const FLEET_PICTURE: u32 = 10425;
 /// (`FUN_004a37c0`) and 10426 over its picture (`FUN_004a5c00`).
 const EN_ROUTE_ENTRY: u32 = 10423;
 const EN_ROUTE_PICTURE: u32 = 10426;
+/// A damaged fleet's (`+0x50` bit `0x200`) marks: 10424 under its entry
+/// (`FUN_004a37c0`) and 10427 under its picture (`FUN_004a5c00`).
+const DAMAGED_ENTRY: u32 = 10424;
+const DAMAGED_PICTURE: u32 = 10427;
+
+/// Whether a fleet is damaged: `FUN_004feab0` sets its bit `0x200` while
+/// any of its capital ships has it (`FUN_00501c00`).
+pub(crate) fn fleet_damaged(world: &GameWorld, fleet: FleetKey) -> bool {
+    world.fleets.get(fleet).is_some_and(|value| {
+        value.capital_ships.iter().filter(|ship| ship.alive).any(|ship| {
+            world
+                .capital_ship_classes
+                .get(ship.class)
+                .is_some_and(|class| crate::status_rows::damaged(ship, class))
+        })
+    })
+}
+
+/// A fleet entry's layers bottom to top (`FUN_004a37c0`): the en route
+/// mark, the damage mark, then the entry's frame keyed over them.
+fn fleet_entry_layers(side: u8, en_route: bool, damaged: bool) -> Vec<u32> {
+    [
+        (en_route, EN_ROUTE_ENTRY),
+        (damaged, DAMAGED_ENTRY),
+        (true, FLEET_FRAME),
+    ]
+    .into_iter()
+    .filter(|&(shown, _)| shown)
+    .map(|(_, id)| side_art(id, side))
+    .collect()
+}
+
+/// A fleet picture's layers bottom to top (`FUN_004a5c00`).
+fn fleet_picture_layers(side: u8, en_route: bool, damaged: bool) -> Vec<u32> {
+    [
+        (en_route, EN_ROUTE_PICTURE),
+        (damaged, DAMAGED_PICTURE),
+        (true, FLEET_PICTURE),
+    ]
+    .into_iter()
+    .filter(|&(shown, _)| shown)
+    .map(|(_, id)| side_art(id, side))
+    .collect()
+}
 const NO_HYPERDRIVE: u32 = 10430;
 /// STRATEGY 11501 (`0x2ced`): the en route mark of a character's mini.
 const EN_ROUTE_PERSONNEL: u32 = 11501;
@@ -1723,24 +1767,17 @@ fn draw_fleet_window(
                                 0.0,
                             );
                         }
-                        paint_native(
-                            &list_painter,
-                            ctx,
-                            cache,
-                            DllSource::Strategy,
-                            side_art(FLEET_FRAME, side),
-                            item,
-                            scale,
-                            5.0,
-                            5.0,
-                        );
-                        if movement.is_in_transit(fleet) {
+                        for id in fleet_entry_layers(
+                            side,
+                            movement.is_in_transit(fleet),
+                            fleet_damaged(world, fleet),
+                        ) {
                             paint_native(
                                 &list_painter,
                                 ctx,
                                 cache,
                                 DllSource::Strategy,
-                                side_art(EN_ROUTE_ENTRY, side),
+                                id,
                                 item,
                                 scale,
                                 5.0,
@@ -1883,15 +1920,13 @@ fn draw_fleet_window(
                     let width = cache
                         .original_resource_size(DllSource::Strategy, picture)
                         .map_or(PICTURE_PANEL.2, |size| size[0] as f32);
-                    if movement.is_in_transit(fleet) {
-                        paint(
-                            cache,
-                            side_art(EN_ROUTE_PICTURE, side),
-                            picture_x(width),
-                            PICTURE_PANEL.1,
-                        );
+                    for id in fleet_picture_layers(
+                        side,
+                        movement.is_in_transit(fleet),
+                        fleet_damaged(world, fleet),
+                    ) {
+                        paint(cache, id, picture_x(width), PICTURE_PANEL.1);
                     }
-                    paint(cache, picture, picture_x(width), PICTURE_PANEL.1);
                     if let Some(label) = fleet_label(world, fleet) {
                         painter.text(
                             logical_rect(local, scale, 164.0, 29.0, 0.0, 0.0).min,
@@ -4186,6 +4221,38 @@ pub(crate) mod tests {
         world.characters[character].is_captive = true;
         assert!(item(&world).captive);
         assert_eq!(captive_mark(19_008), (DllSource::Gokres, 0x7a40));
+    }
+
+    #[test]
+    fn a_fleet_with_a_damaged_ship_takes_its_damage_marks_under_its_art() {
+        // FUN_004feab0: a fleet is damaged while a ship is; FUN_004a37c0
+        // and FUN_004a5c00 draw 10424 / 10427 (+ 50 for the Empire) into
+        // the entry's and the picture's bitmaps before the art itself.
+        assert_eq!(fleet_entry_layers(1, false, false), [FLEET_FRAME]);
+        assert_eq!(
+            fleet_entry_layers(1, true, true),
+            [EN_ROUTE_ENTRY, DAMAGED_ENTRY, FLEET_FRAME]
+        );
+        assert_eq!(
+            fleet_entry_layers(2, false, true),
+            [DAMAGED_ENTRY + 50, FLEET_FRAME + 50]
+        );
+        assert_eq!(
+            fleet_picture_layers(1, true, true),
+            [EN_ROUTE_PICTURE, DAMAGED_PICTURE, FLEET_PICTURE]
+        );
+        assert_eq!(fleet_picture_layers(2, false, false), [FLEET_PICTURE + 50]);
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[class].hull = 100;
+        world.fleets[fleet].capital_ships[0].hull_current = 100;
+        assert!(!fleet_damaged(&world, fleet));
+        world.fleets[fleet].capital_ships[0].hull_current = 90;
+        assert!(fleet_damaged(&world, fleet));
+        // A lost ship does not count.
+        world.fleets[fleet].capital_ships[0].alive = false;
+        assert!(!fleet_damaged(&world, fleet));
     }
 
     #[test]

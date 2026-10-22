@@ -965,13 +965,15 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
             let fleet = world.fleets.get(key)?;
             // FUN_0042c3b0: STRATEGY 0x28b9 for side 1, 0x28eb otherwise.
             let picture = if fleet.is_alliance { 10_425 } else { 10_475 };
-            // 10426 / 10476 en route (+0x50 bit 0x10). port: the 10427 /
-            // 10477 mark on bit 0x200 is not drawn; what sets it on a fleet
-            // is untraced.
+            // 10426 / 10476 en route (+0x50 bit 0x10); 10427 / 10477
+            // damaged (bit 0x200, which FUN_004feab0 sets while a ship of
+            // the fleet is damaged).
             let en_route = fleet_arrival(sources, key).is_some();
-            let marks = en_route
-                .then_some((DllSource::Strategy, picture + 1))
+            let damaged = crate::fleet_window::fleet_damaged(world, key);
+            let marks = [(en_route, picture + 1), (damaged, picture + 2)]
                 .into_iter()
+                .filter(|&(shown, _)| shown)
+                .map(|(_, id)| (DllSource::Strategy, id))
                 .collect();
             StatusView {
                 marks,
@@ -1357,8 +1359,12 @@ mod tests {
             status_view(states.sources(world), object).unwrap().marks
         };
         let ship = |index| StatusObject::Ship { fleet, index };
-        // At rest: the damaged second ship (hull 60 of 100) has its mark.
-        assert_eq!(marks(&states, &world, StatusObject::Fleet(fleet)), []);
+        // At rest: the damaged second ship (hull 60 of 100) has its mark,
+        // and so has its fleet (FUN_004feab0: any damaged ship).
+        assert_eq!(
+            marks(&states, &world, StatusObject::Fleet(fleet)),
+            [(DllSource::Strategy, 10_427)]
+        );
         assert_eq!(marks(&states, &world, ship(0)), []);
         let class = world.capital_ship_classes[world.fleets[fleet].capital_ships[1].class].dat_id;
         let portrait = capital_ship_mini_id(class).unwrap() - 0x4000;
@@ -1369,7 +1375,7 @@ mod tests {
         assert!(states.movement.order(fleet, here, there, 5));
         assert_eq!(
             marks(&states, &world, StatusObject::Fleet(fleet)),
-            [(DllSource::Strategy, 10_426)]
+            [(DllSource::Strategy, 10_426), (DllSource::Strategy, 10_427)]
         );
         assert_eq!(
             marks(&states, &world, ship(1)),
