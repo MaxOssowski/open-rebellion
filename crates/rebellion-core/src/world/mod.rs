@@ -699,6 +699,11 @@ pub struct Character {
     /// `#[serde(default)]` under bincode.
     pub is_killed: bool,
 
+    /// Destroyed by a Retire order (`0x242`), whose reason `0x14` the
+    /// Personnel Finder reads as "Retired" (`FUN_00534c00`, `FUN_00465bb0`);
+    /// `is_killed` is set too. Save v104.
+    pub is_retired: bool,
+
     /// The side has recruited this character (`+0x50` bit 1). Recruitment
     /// picks among the side's characters without it (`FUN_0055ef30`,
     /// `FUN_0055fc80`) and sets it (`FUN_0055fe70` via `FUN_004f7480`).
@@ -959,6 +964,7 @@ impl Default for Character {
             current_fleet: None,
             heritage_known: false,
             is_killed: false,
+            is_retired: false,
             recruited: false,
             injury: 0,
             force_potential: false,
@@ -2946,6 +2952,7 @@ mod tests {
             "can_be_general": true,
             "heritage_known": false,
             "is_killed": false,
+            "is_retired": false,
             "recruited": false,
             "injury": 0,
             "force_potential": false,

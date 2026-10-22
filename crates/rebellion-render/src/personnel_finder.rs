@@ -341,7 +341,7 @@ pub fn character_target(character: &rebellion_core::world::Character) -> Charact
 /// then:
 /// - for a destroyed character (`+0x50` bit 3), "Killed" (`0x8798`), or
 ///   "Retired" (`0x8799`) when its destruction reason (`+0x40`) is
-///   `0x14..0x16`; the port retires no one;
+///   `0x14..0x16`, as a Retire order's (`FUN_00534c00`) is;
 /// - in an abode (container family `0x98..0x9f`), the abode's name alone;
 /// - otherwise its container's name ("Location Unknown", `0x1895`, with
 ///   none), the state word, then the command word, each in " ( " and " ) "
@@ -350,7 +350,12 @@ pub fn character_target(character: &rebellion_core::world::Character) -> Charact
 /// port: a character aboard names its fleet, not its ship.
 fn character_text(world: &GameWorld, character: &rebellion_core::world::Character) -> String {
     if character.is_killed {
-        return format!("{} - Killed", character.name);
+        let word = if character.is_retired {
+            "Retired"
+        } else {
+            "Killed"
+        };
+        return format!("{} - {word}", character.name);
     }
     if let Some(abode) = character
         .current_abode
@@ -1100,6 +1105,7 @@ mod tests {
             current_fleet: None,
             heritage_known: false,
             is_killed: false,
+            is_retired: false,
             recruited: true,
             injury: 0,
             force_potential: false,
@@ -1249,6 +1255,22 @@ mod tests {
         let fog = FogState::new(Faction::Alliance);
         let listed = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
         assert_eq!(listed[0].display_name(), "Luke Skywalker - Killed");
+    }
+
+    #[test]
+    fn a_retired_character_is_listed_as_retired() {
+        // FUN_00465bb0: destruction reason 0x14..0x16 reads 0x8799
+        // "Retired"; a Retire order destroys with 0x14 (FUN_00534c00).
+        let mut world = GameWorld::default();
+        let mut han = default_character();
+        han.name = "Han Solo".into();
+        han.is_killed = true;
+        han.is_retired = true;
+        world.characters.insert(han);
+
+        let fog = FogState::new(Faction::Alliance);
+        let listed = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
+        assert_eq!(listed[0].display_name(), "Han Solo - Retired");
     }
 
     #[test]

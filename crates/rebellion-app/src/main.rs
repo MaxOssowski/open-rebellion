@@ -94,7 +94,8 @@ use rebellion_render::mission_dialog::{
     draw_mission_dialog, MissionDialogAction, MissionDialogState,
 };
 use rebellion_render::move_confirmation::{
-    draw_move_confirmation, MoveConfirmation, MoveConfirmationAction, MoveConfirmationState,
+    draw_move_confirmation, ConfirmedOrder, MoveConfirmation, MoveConfirmationAction,
+    MoveConfirmationState,
 };
 use rebellion_render::object_menu::{
     draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState, OrderGates,
@@ -5456,6 +5457,48 @@ async fn main() {
                                 rect.height()
                             );
                         }
+                        // FUN_00487740: the Retire order validates
+                        // (FUN_004ed460), then FUN_00487cc0 asks
+                        // (FUN_0049a350, case 0x242); a refusal goes to
+                        // FUN_00487c90.
+                        Some((ObjectMenuCommand::Retire, Some(MenuObject::Character(character)))) => {
+                            let en_route = mission_state.is_en_route(
+                                rebellion_core::missions::MissionMember::Character(character),
+                            );
+                            let allowed = world.characters.get(character).map(|c| {
+                                rebellion_core::character_retire::order_allowed(
+                                    c,
+                                    player_faction == MissionFaction::Alliance,
+                                    en_route,
+                                )
+                                .map(|()| c.name.clone())
+                            });
+                            macroquad::logging::info!(
+                                "[interface] command=0x242 character={:?} result={:?}",
+                                world.characters.get(character).map(|c| c.name.as_str()),
+                                allowed.as_ref().map(|result| result.is_ok()),
+                            );
+                            match allowed {
+                                Some(Ok(name)) => move_confirmation_state.open(MoveConfirmation {
+                                    order: ConfirmedOrder::Retire,
+                                    faction: player_faction,
+                                    fleets: Vec::new(),
+                                    characters: vec![character],
+                                    blockaded: false,
+                                    destination: SystemKey::default(),
+                                    join: None,
+                                    lines: vec![(name, 0)],
+                                }),
+                                Some(Err(_)) => {
+                                    msg_log.push(GameMessage::new(
+                                        clock.tick,
+                                        "Retire refused".to_string(),
+                                        MessageCategory::Event,
+                                    ));
+                                }
+                                None => {}
+                            }
+                        }
                         // FUN_00487c50 builds the order with the selection
                         // as its team; FUN_00429320 starts targeting.
                         Some((ObjectMenuCommand::Mission, Some(object))) => {
@@ -5959,17 +6002,23 @@ async fn main() {
 
                     // FUN_0044f5e0: the checkmark resubmits with force 1,
                     // which validates again and departs without asking.
+                    let answer = draw_move_confirmation(
+                        ctx,
+                        &mut move_confirmation_state,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    );
+                    if let Some(MoveConfirmationAction::Retire { characters }) = &answer {
+                        panel_actions
+                            .extend(characters.iter().copied().map(PanelAction::RetireCharacter));
+                    }
                     if let Some(MoveConfirmationAction::Confirm {
                         fleets,
                         characters,
                         destination,
                         join,
-                    }) = draw_move_confirmation(
-                        ctx,
-                        &mut move_confirmation_state,
-                        cockpit_layout,
-                        &mut bmp_cache,
-                    ) {
+                    }) = answer
+                    {
                         // FUN_0041ce20(order, 1): a character's 0x202 is
                         // the Move mission order 0x241 again.
                         panel_actions.extend(characters.into_iter().map(|character| {
@@ -7371,6 +7420,7 @@ fn issue_fleet_move(
         })
         .collect();
     move_confirmation_state.open(MoveConfirmation {
+        order: ConfirmedOrder::Move,
         faction: context.faction,
         fleets: fleets.to_vec(),
         characters: Vec::new(),
@@ -7423,6 +7473,7 @@ fn confirm_character_move(
         blockaded
     );
     move_confirmation_state.open(MoveConfirmation {
+        order: ConfirmedOrder::Move,
         faction,
         fleets: Vec::new(),
         characters: vec![character],
@@ -7621,6 +7672,19 @@ fn order_gates(
         }),
         // FUN_004ed750 for each of 0x260..0x263.
         command: command_rows(world, mission_state, selection, is_alliance),
+        // FUN_004ed460 (the Retire order's +0x18 through event 0x230).
+        retire: match selection {
+            Some(MenuObject::Character(character)) => {
+                world.characters.get(character).is_some_and(|c| {
+                    let en_route = mission_state.is_en_route(
+                        rebellion_core::missions::MissionMember::Character(character),
+                    );
+                    rebellion_core::character_retire::order_allowed(c, is_alliance, en_route)
+                        .is_ok()
+                })
+            }
+            _ => false,
+        },
     }
 }
 
@@ -8318,6 +8382,31 @@ fn apply_panel_action(
                 msg_log.push(GameMessage::new(
                     clock.tick,
                     "Command refused".to_string(),
+                    MessageCategory::Event,
+                ));
+            }
+        }
+        // FUN_0041ce20(order, 1): the confirmed Retire validates again
+        // (FUN_004ed460) and fires event 0x230 (FUN_00540f40 ->
+        // FUN_00534c00), or FUN_00487c90 reports the refusal.
+        PanelAction::RetireCharacter(character) => {
+            let en_route = mission_state
+                .is_en_route(rebellion_core::missions::MissionMember::Character(character));
+            let result = rebellion_core::character_retire::retire(
+                world,
+                character,
+                *player_faction == MissionFaction::Alliance,
+                en_route,
+            );
+            macroquad::logging::info!(
+                "[interface] command=0x242 destination=retire character={:?} result={:?}",
+                world.characters.get(character).map(|c| c.name.as_str()),
+                result,
+            );
+            if result.is_err() {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    "Retire refused".to_string(),
                     MessageCategory::Event,
                 ));
             }

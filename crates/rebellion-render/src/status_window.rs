@@ -530,6 +530,7 @@ mod tests {
             current_fleet: None,
             heritage_known: false,
             is_killed: false,
+            is_retired: false,
             recruited: true,
             injury: 0,
             // Luke is known and potential (MJCHARSD 578), so his Force base

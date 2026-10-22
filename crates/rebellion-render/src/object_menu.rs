@@ -446,9 +446,9 @@ impl ObjectMenuRow {
 /// - Command, a submenu parent, is enabled (`FUN_00442590`); its rows are
 ///   [`object_submenu_rows`].
 /// - A character's Move and Confirmed Move are enabled when
-///   `gates.character_move` says so. port: a special force's Move and
-///   Confirmed Move, Retire and the other fleet orders stay disabled until
-///   their windows and orders are ported.
+///   `gates.character_move` says so, and its Retire when `gates.retire`
+///   does. port: a special force's Move and Confirmed Move and the other
+///   fleet orders stay disabled until their windows and orders are ported.
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
     // A fleet icon's Move rows act on the system's fleets of the player's
@@ -525,6 +525,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 // FUN_00442590: a submenu parent (flags 8) is enabled.
                 ObjectMenuCommand::Bombardment | ObjectMenuCommand::Command => true,
                 ObjectMenuCommand::Assault => gates.assault,
+                ObjectMenuCommand::Retire => character && gates.retire,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 // FUN_0051d990: a single selection that is not a system.
                 ObjectMenuCommand::Status => {
@@ -618,6 +619,9 @@ pub struct OrderGates {
     /// The Command orders `0x260..0x263` on a character (`FUN_004ed750`,
     /// `rebellion_core::character_command::order_allowed`).
     pub command: [bool; 4],
+    /// Retire (`0x242`) on a character (`FUN_004ed460`,
+    /// `rebellion_core::character_retire::order_allowed`).
+    pub retire: bool,
 }
 
 /// An open object pop-up menu.
@@ -796,6 +800,7 @@ mod tests {
         bombard: [false; 4],
         assault: false,
         command: [false; 4],
+        retire: false,
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -987,6 +992,7 @@ mod tests {
             bombard: [false; 4],
             assault: false,
             command: [false; 4],
+            retire: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -1027,6 +1033,23 @@ mod tests {
         );
         let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
         assert!(!enabled(&object_menu_rows(unit, gates)).contains(&"Move"));
+    }
+
+    #[test]
+    fn a_characters_retire_row_follows_its_rule() {
+        // 0x242 (TEXTSTRA 12336, sort 2002): enabled by FUN_004ed460
+        // through event 0x230, for a character only.
+        let gates = OrderGates {
+            retire: true,
+            ..OrderGates::default()
+        };
+        let character = Some(MenuObject::Character(CharacterKey::default()));
+        assert_eq!(
+            enabled(&object_menu_rows(character, gates)),
+            ["Command", "Encyclopedia", "Status", "Retire"]
+        );
+        let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
+        assert!(!enabled(&object_menu_rows(unit, gates)).contains(&"Retire"));
     }
 
     #[test]
@@ -1194,6 +1217,7 @@ mod tests {
             bombard: [false; 4],
             assault: false,
             command: [false; 4],
+            retire: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),

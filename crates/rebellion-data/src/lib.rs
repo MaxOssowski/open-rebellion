@@ -946,6 +946,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         current_fleet: None,
         heritage_known: false,
         is_killed: false,
+        is_retired: false,
         recruited: false,
         injury: 0,
         // FUN_004f11f0: ForceAware is the class is_known_jedi; ForcePotential

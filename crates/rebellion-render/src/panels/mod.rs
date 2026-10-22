@@ -53,6 +53,11 @@ pub enum PanelAction {
     /// Player has chosen a starting faction.  Gates all other panels.
     SelectFaction(MissionFaction),
 
+    // ── Characters ────────────────────────────────────────────────────────────
+    /// A confirmed Retire (`0x242`): the order validates again and the
+    /// character retires (`rebellion_core::character_retire::retire`).
+    RetireCharacter(CharacterKey),
+
     // ── Fleets ────────────────────────────────────────────────────────────────
     /// Focus the galaxy map on the system where a fleet is located.
     FocusFleetSystem(SystemKey),

@@ -20,6 +20,7 @@ pub mod autoscrap;
 pub mod bombardment;
 pub mod build_selection;
 pub mod character_command;
+pub mod character_retire;
 pub mod combat;
 pub mod commands;
 pub mod dagobah;

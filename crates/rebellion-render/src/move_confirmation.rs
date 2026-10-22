@@ -34,12 +34,30 @@ const PICTURE_AT: (f32, f32) = (12.0, 30.0);
 
 /// TEXTSTRA `RT_RCDATA` 0x7057.
 const TRANSIT_TIME: &str = "Transit time in days";
+/// TEXTSTRA `RT_RCDATA` 0x7051, the Retire order's template (`FUN_0049a350`).
+const RETIRE: &str = "Are you sure you want to retire the following characters?";
+/// The Retire order's picture `+0x2e`: `0x40a` for side 1, `0x40b`
+/// otherwise (`FUN_0049a350`).
+const RETIRE_PICTURE: [u32; 2] = [1034, 1035];
 /// TEXTSTRA `RT_RCDATA` 0x7056 (`ghidra/notes/move-order.md`).
 const EVACUATION: &str = "Units evacuating from worlds under blockade risk being destroyed by blockading vessels.  Are you sure you want to proceed with the evacuation?\nTransit time in days";
 
-/// A fleet move waiting for the player's answer.
+/// The order a confirmation asks about (`FUN_0049a350` switches on the
+/// order's kind).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConfirmedOrder {
+    /// A Move or Confirmed Move (`0x201`, `0x202`).
+    #[default]
+    Move,
+    /// A Retire (`0x242`): the characters leave the game.
+    Retire,
+}
+
+/// An order waiting for the player's answer: a fleet move, a character's
+/// Confirmed Move, or a Retire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MoveConfirmation {
+    pub order: ConfirmedOrder,
     pub faction: MissionFaction,
     /// The order's team: one fleet, or a fleet icon's fleets.
     pub fleets: Vec<FleetKey>,
@@ -64,8 +82,17 @@ impl MoveConfirmation {
     /// `FUN_0049a350` takes the blockade warning 0x7056 and pictures
     /// 1030/1031 only when the first member is not a fleet and its container
     /// is a blockaded system, so a fleet's move always shows 0x7057.
+    /// A Retire's template is 0x7051, then 0x7054 ("\n{1:1}") with each
+    /// character's name.
     #[must_use]
     pub fn text(&self) -> String {
+        if self.order == ConfirmedOrder::Retire {
+            let mut text = RETIRE.to_string();
+            for (name, _) in &self.lines {
+                text.push_str(&format!("\n{name}"));
+            }
+            return text;
+        }
         let mut text = if self.blockaded {
             EVACUATION
         } else {
@@ -82,6 +109,9 @@ impl MoveConfirmation {
     /// blockade warning 1031 and 1030.
     #[must_use]
     pub fn picture(&self) -> u32 {
+        if self.order == ConfirmedOrder::Retire {
+            return RETIRE_PICTURE[side(self.faction)];
+        }
         if self.blockaded {
             BLOCKADE_PICTURE[side(self.faction)]
         } else {
@@ -101,6 +131,8 @@ pub enum MoveConfirmationAction {
         destination: SystemKey,
         join: Option<FleetKey>,
     },
+    /// The checkmark on a Retire: the characters retire.
+    Retire { characters: Vec<CharacterKey> },
     /// The X (control `0x15`) or Escape: the order is destroyed.
     Cancel,
 }
@@ -137,7 +169,11 @@ impl MoveConfirmationState {
     /// Either control closes the window (`+0x30`) after acting.
     fn answer(&mut self, confirm: bool) -> Option<MoveConfirmationAction> {
         let window = self.window.take()?;
-        Some(if confirm {
+        Some(if confirm && window.order == ConfirmedOrder::Retire {
+            MoveConfirmationAction::Retire {
+                characters: window.characters,
+            }
+        } else if confirm {
             MoveConfirmationAction::Confirm {
                 fleets: window.fleets,
                 characters: window.characters,
@@ -245,6 +281,7 @@ mod tests {
 
     fn confirmation(faction: MissionFaction) -> MoveConfirmation {
         MoveConfirmation {
+            order: ConfirmedOrder::Move,
             faction,
             fleets: vec![FleetKey::default()],
             characters: Vec::new(),
@@ -253,6 +290,40 @@ mod tests {
             join: None,
             lines: vec![("Red Fleet".into(), 12)],
         }
+    }
+
+    #[test]
+    fn a_retire_asks_with_its_own_text_and_picture_and_retires_on_the_checkmark() {
+        // FUN_0049a350 case 0x242: template 0x7051, then 0x7054 ("\n{1:1}")
+        // with each character's name; picture 0x40a (side 1) / 0x40b.
+        let han = CharacterKey::default();
+        let window = MoveConfirmation {
+            order: ConfirmedOrder::Retire,
+            fleets: Vec::new(),
+            characters: vec![han],
+            lines: vec![("Han Solo".into(), 0), ("Chewbacca".into(), 0)],
+            ..confirmation(MissionFaction::Alliance)
+        };
+        assert_eq!(
+            window.text(),
+            "Are you sure you want to retire the following characters?\nHan Solo\nChewbacca"
+        );
+        assert_eq!(window.picture(), 1034);
+        let empire = MoveConfirmation {
+            faction: MissionFaction::Empire,
+            ..window.clone()
+        };
+        assert_eq!(empire.picture(), 1035);
+
+        let mut state = MoveConfirmationState::default();
+        state.open(window);
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+        assert_eq!(
+            action,
+            Some(MoveConfirmationAction::Retire {
+                characters: vec![han]
+            })
+        );
     }
 
     #[test]
