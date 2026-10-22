@@ -180,6 +180,21 @@ impl DefensesItem {
     }
 }
 
+/// The marks `FUN_0042c3b0(.., 0, 1)` draws under a row's mini: a
+/// character's damage mark while it is injured (`FUN_004f7800` sets
+/// `+0x50` bit `0x200` to injury != 0). port: nothing in the window is en
+/// route (it leaves out personnel on a visible mission).
+fn row_marks(world: &GameWorld, row: &DefensesRow) -> Vec<(DllSource, u32)> {
+    let injured = matches!(row.item, DefensesItem::Character(key)
+        if world.characters.get(key).is_some_and(|character| character.injury > 0));
+    crate::fleet_window::mini_marks(
+        crate::fleet_window::MiniObject::Character,
+        row.mini,
+        false,
+        injured,
+    )
+}
+
 /// One list row: the object, its GOKRES mini and its name (`FUN_004a9ab0`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DefensesRow {
@@ -1074,17 +1089,14 @@ fn draw_defenses_window(
             for (index, row) in rows.iter().take(COLUMNS * VISIBLE_ROWS).enumerate() {
                 let cell = cell_rect(local, scale, index);
                 let selected = window.selected == Some(row.item);
-                paint_native(
-                    &list_painter,
-                    ctx,
-                    cache,
-                    DllSource::Gokres,
-                    row.mini,
-                    cell,
-                    scale,
-                    0.0,
-                    0.0,
-                );
+                // FUN_0042c3b0: an injured character's damage mark under
+                // its mini (`+0x50` bit `0x200`, FUN_004f7800).
+                for (source, id) in row_marks(world, row)
+                    .into_iter()
+                    .chain(std::iter::once((DllSource::Gokres, row.mini)))
+                {
+                    paint_native(&list_painter, ctx, cache, source, id, cell, scale, 0.0, 0.0);
+                }
                 if selected {
                     paint_native(
                         &list_painter,
@@ -1790,6 +1802,32 @@ mod tests {
             .iter()
             .find(|value| value.text == text)
             .unwrap_or_else(|| panic!("no {text:?} in {:?}", run.texts))
+    }
+
+    #[test]
+    fn an_injured_characters_damage_mark_goes_under_its_mini() {
+        // FUN_004f7800 sets +0x50 bit 0x200 while injured; FUN_0042c3b0
+        // then draws STRATEGY 11502 into the mini's bitmap under the mini.
+        let (mut world, system, missions) = stocked();
+        let idle = world
+            .characters
+            .iter()
+            .find(|(_, value)| value.name == "Idle")
+            .map(|(key, _)| key)
+            .unwrap();
+        let mut state = opened(&world, system);
+        let quiet = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        assert!(!quiet.painted.iter().any(|(id, _)| *id == 11_502));
+        world.characters[idle].injury = 3;
+        let hurt = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        let cell = at(7.0, 81.0);
+        let mark = hurt.painted.iter().position(|entry| *entry == (11_502, cell));
+        let mini = hurt.painted.iter().position(|entry| *entry == (18_176 + 832, cell));
+        assert!(mark.is_some() && mark < mini, "{:?}", hurt.painted);
+        assert_eq!(
+            hurt.painted.iter().filter(|(id, _)| *id == 11_502).count(),
+            1
+        );
     }
 
     #[test]

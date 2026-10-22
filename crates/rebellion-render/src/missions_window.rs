@@ -21,7 +21,7 @@ use rebellion_core::world::GameWorld;
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::defenses_window::title_resource;
-use crate::fleet_window::{en_route_mark, faction_side, paint_native, MiniObject};
+use crate::fleet_window::{en_route_mark, faction_side, mini_marks, paint_native, MiniObject};
 use crate::mission_dialog::{kind_icon, kind_name};
 use crate::panels::fleets::capital_ship_mini_id;
 use crate::quadrant_icons::{mission_keys, missions_side, visible_members};
@@ -140,9 +140,22 @@ struct MemberRow {
     member: MissionMember,
     mini: Option<u32>,
     label: String,
-    /// En route to the mission's target (`+0x50` bit 4): the mark drawn over
-    /// its mini (`en_route_mark`).
-    en_route: Option<(DllSource, u32)>,
+    /// The marks drawn under its mini (`mini_marks`): en route to the
+    /// mission's target (`+0x50` bit 4), damaged while a character is
+    /// injured (bit `0x200`, `FUN_004f7800`).
+    marks: Vec<(DllSource, u32)>,
+}
+
+/// A character member while injured (`FUN_004f7800` sets `+0x50` bit
+/// `0x200` to injury != 0). port: a special force keeps no injury.
+fn member_injured(world: &GameWorld, member: MissionMember) -> bool {
+    match member {
+        MissionMember::Character(key) => world
+            .characters
+            .get(key)
+            .is_some_and(|character| character.injury > 0),
+        MissionMember::SpecialForce(_) => false,
+    }
 }
 
 /// What the selected mission's details name (`+0x1c8`, `FUN_004a10a0`).
@@ -595,9 +608,12 @@ fn member_rows(
                 member,
                 mini,
                 label,
-                en_route: mini
-                    .filter(|_| en_route)
-                    .and_then(|mini| Some(en_route_mark(mini_object(world, member)?, mini))),
+                marks: mini
+                    .zip(mini_object(world, member))
+                    .map(|(mini, object)| {
+                        mini_marks(object, mini, en_route, member_injured(world, member))
+                    })
+                    .unwrap_or_default(),
             })
         })
         .collect()
@@ -1231,8 +1247,9 @@ fn draw_missions_window(
                         // FUN_0042c3b0: the mark under the mini, which is
                         // blitted keyed over it (`fleet-window.md`).
                         for (source, id) in member
-                            .en_route
-                            .into_iter()
+                            .marks
+                            .iter()
+                            .copied()
                             .chain(std::iter::once((DllSource::Gokres, mini)))
                         {
                             paint_native(
@@ -1821,9 +1838,27 @@ mod tests {
             [(None, "Leia"), (Some(18_176 + 832), "Mon")]
         );
         assert!(
-            rows.iter().all(|row| row.en_route.is_none()),
+            rows.iter().all(|row| row.marks.is_empty()),
             "a member at the system is not en route"
         );
+        // FUN_004f7800: an injured character is damaged, so FUN_0042c3b0
+        // draws STRATEGY 11502 under its mini.
+        let mon = match rows[1].member {
+            MissionMember::Character(key) => key,
+            MissionMember::SpecialForce(_) => unreachable!(),
+        };
+        world.characters[mon].injury = 5;
+        let rows = member_rows(
+            &world,
+            &unseen(),
+            &missions,
+            Faction::Alliance,
+            system,
+            missions.missions()[0].id,
+            MissionsTab::Agents,
+        );
+        assert_eq!(rows[1].marks, [(DllSource::Strategy, 11_502)]);
+        assert!(rows[0].marks.is_empty());
     }
 
     #[test]

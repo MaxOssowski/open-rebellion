@@ -1254,7 +1254,8 @@ fn right_items(
                 kind: MiniObject::Character,
                 label: character.name.clone(),
                 no_hyperdrive: false,
-                damaged: false,
+                // FUN_004f7800: an injured character is damaged.
+                damaged: character.injury > 0,
                 object: Some(ItemObject::Character(key)),
             })
             .collect(),
@@ -4120,6 +4121,32 @@ pub(crate) mod tests {
         let mark = order(&selected, portrait + 0x2000, panel);
         assert!(mark.is_some(), "{selected:?}");
         assert!(mark < order(&selected, portrait, panel));
+    }
+
+    #[test]
+    fn an_injured_character_aboard_is_a_damaged_item() {
+        // FUN_004f7800: injury != 0 sets the damaged bit, which
+        // FUN_0042c3b0 marks with STRATEGY 11502 under the mini.
+        let (mut world, transport, _, fleet, _) = fleet_with_regiment();
+        let character = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(832),
+            name: "Han".into(),
+            is_alliance: true,
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(character);
+        let selected = Some(FleetWindowEntry::Fleet(fleet));
+        let item = |world: &GameWorld| {
+            right_items(world, &transport, selected, FleetWindowTab::Personnel)[0].clone()
+        };
+        assert!(!item(&world).damaged);
+        world.characters[character].injury = 1;
+        let hurt = item(&world);
+        assert!(hurt.damaged);
+        assert_eq!(
+            mini_marks(hurt.kind, hurt.mini.unwrap(), false, hurt.damaged),
+            [(DllSource::Strategy, 11_502)]
+        );
     }
 
     #[test]

@@ -1810,11 +1810,12 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 11127..=11128
                 | 11533..=11541
                 | 11560..=11569
-                // The Status window picture's regiment backdrop and en route
-                // marks (`FUN_0042c3b0`): drawn into the picture's bitmap,
-                // which the window blits keyed (`FUN_00443130`).
-                | 11514
-                | 11516
+                // The marks `FUN_0042c3b0` draws into an object's bitmap
+                // (personnel en route and damaged, the regiment's backdrop
+                // and en route marks, a special force's), which its windows
+                // blit keyed.
+                | 11501..=11502
+                | 11514..=11516
                 | 11520
         ),
         // The unit and facility pictures (`0x001..0x584`, all 122 by 50 on
@@ -2334,11 +2335,14 @@ mod tests {
 
     #[test]
     fn the_status_pictures_marks_are_keyed() {
-        // FUN_0042c3b0 draws them into the picture's bitmap, which the
-        // Status window blits keyed: STRATEGY 11514, 11516, 11520 and the
-        // craft portraits' damage marks GOKRES 0x2640..0x278f.
+        // FUN_0042c3b0 draws them into the object's bitmap, which its
+        // windows blit keyed: STRATEGY 11501, 11502, 11514..11516, 11520
+        // and the craft damage marks GOKRES 0x2640..0x278f, 0x6640..0x678f.
         for (source, resource_id) in [
+            (DllSource::Strategy, 11_501),
+            (DllSource::Strategy, 11_502),
             (DllSource::Strategy, 11_514),
+            (DllSource::Strategy, 11_515),
             (DllSource::Strategy, 11_516),
             (DllSource::Strategy, 11_520),
             (DllSource::Gokres, 0x2640),
@@ -2349,7 +2353,7 @@ mod tests {
             assert!(uses_blue_screen_transparency(source, resource_id), "{resource_id}");
         }
         for (source, resource_id) in [
-            (DllSource::Strategy, 11_515),
+            (DllSource::Strategy, 11_503),
             (DllSource::Gokres, 0x263f),
             (DllSource::Gokres, 0x2790),
             (DllSource::Gokres, 0x663f),

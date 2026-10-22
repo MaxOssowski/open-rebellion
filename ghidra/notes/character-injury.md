@@ -39,7 +39,11 @@ The hook (slot `+0x32c`, `FUN_004f1720`):
 - sets `Damaged` (`+0x50` bit `0x200`, `FUN_004f7800`) to injury != 0.
 
 The Status window shows "Injured" for a non-zero `+0x94`
-(`status-window.md`), and its Combat Rating is `+0x86`.
+(`status-window.md`), and its Combat Rating is `+0x86`. The Damaged bit
+makes `FUN_0042c3b0` draw STRATEGY 11502 under the character's mini (not
+its portrait); the port draws it in the Fleet window's Personnel tab, the
+Defenses window's personnel page and the Missions window's members
+(2026-10-22, `fleet-window.md`).
 
 ## Healing
 
