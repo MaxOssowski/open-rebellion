@@ -72,11 +72,21 @@ to `(iVar6, iVar7)` (Alliance `0x20` by `0x1f`, Empire `0x2a` by `0x29`):
 
 | Button | Value | Bitmaps | Label |
 |---|---|---|---|
-| SpecForces (tab 3) | 3 | Alliance 10542/10543, Empire 10544/10545 | `0x1899` "SpecForces" |
-| Characters (tab 2) | 2 | Alliance 10546/10547, Empire 10548/10549 | `0x1898` "Characters" |
+| Characters | 3 | Alliance 10542/10543, Empire 10544/10545 (a face) | `0x1899` "Characters" |
+| SpecForces | 2 | Alliance 10546/10547, Empire 10548/10549 (two soldiers) | `0x1898` "SpecForces" |
 
-The Characters button is at y-offset `0x36` within the group. Both buttons
-have `FUN_00603150(button, 2, pressed_art)` for pressed-state art.
+Correction (2026-10-22): an earlier reading swapped the two labels.
+TEXTSTRA `0x1899` is "Characters" and `0x1898` "SpecForces". Value 3 is at
+the group's top, value 2 at y-offset `0x36`. Both buttons have
+`FUN_00603150(button, 2, pressed_art)` for pressed-state art. The window
+opens on the player's side tab and view 3, Characters
+(`FUN_0060d7e0(side, 1)`, `FUN_0060d7e0(3, 1)`).
+
+The panels: `FUN_004637a0` lays 10538, 10539, 10536 and 10537 on the
+window's panels 2, 3, 4 and 5 (`0x463b78..0x463bdf`). `FUN_00464e10` shows
+panel 2 or 3 (Alliance or Empire) for view 2, SpecForces, and 4 or 5 for
+view 3, Characters; 10538 carries the four SpecForces column icons. Its
+label y is `0x77` for view 2, else `0x73`.
 
 Every side shares:
 
@@ -104,7 +114,7 @@ There are 4 icon-header bitmaps (10536-10539): two per side. The
 for the list, giving each tab view (Characters vs SpecForces) its own set of
 column header icons.
 
-## Characters view (view tab 2)
+## Characters view (view 3)
 
 Built in `FUN_004637a0` after the tab group. Before opening, the code walks
 all characters via `FUN_004f3d50(side, {0x30, 0x3c}, 0)`:
@@ -125,7 +135,7 @@ all characters via `FUN_004f3d50(side, {0x30, 0x3c}, 0)`:
 
 The list is rebuilt via `FUN_00464e10` when the view tab changes.
 
-### List population (`FUN_00464e10`, view tab 2)
+### List population (`FUN_00464e10`, view 3: Characters)
 
 The current background is switched (`FUN_006075e0` with layer index 2 or 3).
 
@@ -141,7 +151,7 @@ For each system (`FUN_004f31b0(side)`):
 
 Each row renders a 350 by 20 bitmap strip via `FUN_00465540`.
 
-### List population (`FUN_00464e10`, view tab 3: SpecForces)
+### List population (`FUN_00464e10`, view 2: SpecForces)
 
 The same two-level walk (direct at system, then in fleets) but using
 `FUN_005040c0` (special forces `0x3c..0x3f`) instead of `FUN_00504cc0`
@@ -160,12 +170,12 @@ as a formatted string. The logic:
 2. Build the location name string from `FUN_004f62d0(character->+0x1c)`
    (the character's container record name).
 3. Check the character's state:
-   - `+0x14` bit 3 set (`0x08`): the character is dead or captured. The
-     state word depends on `+0x10 & 0xff`:
-     - If `0x14..0x16` (family byte of a regiment): append a state string
-       but the decompile shows both branches doing `FUN_005f3010` with
-       an empty string argument. hyp: the state is "Killed" or similar,
-       but the exact string is in the alternate branch.
+   - `+0x50` bit 3 set (destroyed; the decompile's `piVar3 + 0x14` is an
+     `int *` offset): the row is the name, " - " and `0x8799` "Retired"
+     when the destruction reason `+0x40 & 0xff` is `0x14..0x16`, else
+     `0x8798` "Killed" (`0x465c3e..0x465ca5`).
+   - In an abode (container family `0x98..0x9f`): the abode's name alone,
+     with no state word or command word.
    - `+0xac` bit 0 clear and the character's DatId resolves to a location in
      family `0x50..0x7f`: append `0x8745` "On Mission".
    - `+0xac` bit 0 set: append `0x8746` "Captured".
@@ -282,13 +292,27 @@ separate Personnel window; kind 11 is the Missions window
   names in SpecForces view (hyp).
 - port: dead characters are listed; this differs from the Troop Finder which
   only lists active regiments.
+- Since 2026-10-22 the port follows the corrected view mapping (panels,
+  buttons, label y, the opening view). The row text adds Injured, the
+  command word and the abode rule; the port retires no one.
+
+## Who is listed (read 2026-10-22)
+
+`FUN_004637a0` builds the character list once from
+`FUN_004f3d50(view side, {0x30, 0x3c}, 0)` and `FUN_004f6010`. These are
+`FUN_0053ef50`/`FUN_0053f030`/`FUN_0053f090`, which walk every object of
+the range and take each one's view for the player's side
+(`FUN_005844e0`, `fleet-finder.md`). Each row keeps the character's side
+(`FUN_004edc80`, `+0x54`). `FUN_00464e10` shows a row when the character
+is created (`+0x50` bit 1) and its side is the side tab's. So both sides'
+characters list, each under its own tab, wherever they are.
+
+port: the port lists recruited characters of the tab's side. It has no
+per-side views of an object, so it shows an enemy character's true place
+where the original shows what the player's side holds of it.
 
 ## Open
 
-- The exact mapping between `FUN_00465bb0`'s `+0x14` bits and character
-  states (the dead/captured branch at `+0x14 & 0x08`).
-- Whether the Characters view lists characters from all systems or just the
-  player's.
 - The `+0x6c` field on each row item and its purpose.
 - The exact view tab that `FUN_00464e10` reads from `+0x148`'s `+0x94`
   pressed-button state.

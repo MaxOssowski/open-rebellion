@@ -32,13 +32,14 @@ const RAIL: [u32; 2] = [10586, 10590];
 const RAIL_AT: (f32, f32) = (412.0, 0.0);
 const PANEL_AT: (f32, f32) = (12.0, 13.0);
 
-/// Panel bitmaps indexed by `[view][side]` (FUN_004637a0 / FUN_00464e10).
-///
-/// Characters + Alliance = 10538, Characters + Imperial = 10539,
-/// SpecForces + Alliance = 10536, SpecForces + Imperial = 10537.
+/// Panel bitmaps indexed by `[view][side]`. `FUN_004637a0` lays 10538,
+/// 10539, 10536 and 10537 on the window's panels 2, 3, 4 and 5
+/// (`0x463b78..0x463bdf`); `FUN_00464e10` shows panel 2 or 3 (Alliance or
+/// Empire) for view 2, SpecForces, and 4 or 5 for view 3, Characters. 10538
+/// carries the four SpecForces column icons.
 const PANELS: [[u32; 2]; 2] = [
-    [10538, 10539], // Characters view: Alliance, Imperial
-    [10536, 10537], // SpecForces view: Alliance, Imperial
+    [10536, 10537], // Characters view: Alliance, Imperial
+    [10538, 10539], // SpecForces view: Alliance, Imperial
 ];
 
 /// The side tab (FUN_004637a0's control 100, TEXTSTRA 0x1893/0x1894).
@@ -74,11 +75,13 @@ impl PersonnelTab {
     }
 }
 
-/// The view tab (FUN_004637a0's control 0x6e, values 2 and 3).
+/// The view tab (FUN_004637a0's control 0x6e): value 3 is Characters
+/// (TEXTSTRA `0x1899`), value 2 SpecForces (`0x1898`); `FUN_00464e10` lists
+/// characters for 3 and special forces for 2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PersonnelView {
-    Characters,
     #[default]
+    Characters,
     SpecForces,
 }
 
@@ -92,12 +95,21 @@ impl PersonnelView {
         }
     }
 
-    /// The tab label y: Characters → 119, SpecForces → 115
-    /// (FUN_00464e10 lines 294–300).
+    /// The view button's offset in its group (`FUN_004637a0`): Characters at
+    /// the top, SpecForces `0x36` lower.
+    const fn button_offset(self) -> f32 {
+        match self {
+            Self::Characters => 0.0,
+            Self::SpecForces => 54.0,
+        }
+    }
+
+    /// The tab label y (`FUN_00464e10`): `0x77` (119) for view 2,
+    /// SpecForces, else `0x73` (115).
     const fn label_y(self) -> f32 {
         match self {
-            Self::Characters => 119.0,
-            Self::SpecForces => 115.0,
+            Self::Characters => 115.0,
+            Self::SpecForces => 119.0,
         }
     }
 }
@@ -146,13 +158,14 @@ const CONTROLS: [SideControls; 2] = [
     },
 ];
 
-/// View tab art: `[side][view]` (FUN_004637a0).
-/// SpecForces: Alliance 10542/10543, Empire 10544/10545.
-/// Characters: Alliance 10546/10547, Empire 10548/10549.
+/// View tab art: `[side][view]` (FUN_004637a0). Characters (value 3, at the
+/// group's top): Alliance 10542/10543, Empire 10544/10545, a face.
+/// SpecForces (value 2, `0x36` lower): Alliance 10546/10547, Empire
+/// 10548/10549, two soldiers.
 const VIEW_TAB_ART: [[(u32, u32); 2]; 2] = [
-    // Alliance: [SpecForces, Characters]
+    // Alliance: [Characters, SpecForces]
     [(10542, 10543), (10546, 10547)],
-    // Empire: [SpecForces, Characters]
+    // Empire: [Characters, SpecForces]
     [(10544, 10545), (10548, 10549)],
 ];
 
@@ -267,19 +280,36 @@ fn count_sf(world: &GameWorld, keys: &[SpecialForceKey], tab: PersonnelTab) -> [
     counts
 }
 
-/// A character's state word (`FUN_00465bb0`): Captured (`0x8746`) when held,
-/// else On Mission (`0x8745`), else Injured (`0x8747`), else Enroute
-/// (`0x8744`); the first that applies. port: the port keeps no injury, and a
-/// character off the map and in no fleet is the one travelling.
+/// A character's state word (`FUN_00465bb0`): Captured (`0x8746`) when held
+/// (`+0xac` bit 0), else On Mission (`0x8745`), else Injured (`0x8747`,
+/// `+0x94`), else Enroute (`0x8744`); the first that applies. port: a
+/// character off the map, in no fleet and in no abode is the one travelling.
 fn character_state(character: &rebellion_core::world::Character) -> Option<&'static str> {
     if character.is_captive {
         Some("Captured")
     } else if character.on_mission {
         Some("On Mission")
-    } else if character.current_system.is_none() && character.current_fleet.is_none() {
+    } else if character.injury != 0 {
+        Some("Injured")
+    } else if character.current_system.is_none()
+        && character.current_fleet.is_none()
+        && character.current_abode.is_none()
+    {
         Some("Enroute")
     } else {
         None
+    }
+}
+
+/// A character's command word (`FUN_00465bb0`, `+0x96`): 1 Commander
+/// (`0x8802`), 2 Admiral (`0x8801`), 3 General (`0x8800`).
+fn command_word(command: rebellion_core::character_command::CommandKind) -> Option<&'static str> {
+    use rebellion_core::character_command::CommandKind;
+    match command {
+        CommandKind::None => None,
+        CommandKind::Commander => Some("Commander"),
+        CommandKind::Admiral => Some("Admiral"),
+        CommandKind::General => Some("General"),
     }
 }
 
@@ -307,16 +337,26 @@ pub fn character_target(character: &rebellion_core::world::Character) -> Charact
     }
 }
 
-/// A Characters row's text (`FUN_00465bb0`): the name, " - " (`0x1897`),
-/// then "Killed" for a destroyed character, else its container's name
-/// ("Location Unknown", `0x1895`, with none) and the state word in " ( " and
-/// " ) " (`DAT_006a8790`, `DAT_006a878c`). hyp: "Killed" is TEXTSTRA
-/// `0x8798`; the destroyed branch's string id is not resolved. port: the
-/// command rank (`+0x96`: 1 Commander, 2 Admiral, 3 General) is not kept,
-/// and a character aboard names its fleet, not its ship.
+/// A Characters row's text (`FUN_00465bb0`): the name and " - " (`0x1897`),
+/// then:
+/// - for a destroyed character (`+0x50` bit 3), "Killed" (`0x8798`), or
+///   "Retired" (`0x8799`) when its destruction reason (`+0x40`) is
+///   `0x14..0x16`; the port retires no one;
+/// - in an abode (container family `0x98..0x9f`), the abode's name alone;
+/// - otherwise its container's name ("Location Unknown", `0x1895`, with
+///   none), the state word, then the command word, each in " ( " and " ) "
+///   (`DAT_006a8790`, `DAT_006a878c`).
+///
+/// port: a character aboard names its fleet, not its ship.
 fn character_text(world: &GameWorld, character: &rebellion_core::world::Character) -> String {
     if character.is_killed {
         return format!("{} - Killed", character.name);
+    }
+    if let Some(abode) = character
+        .current_abode
+        .and_then(|abode| world.abodes.get(abode))
+    {
+        return format!("{} - {}", character.name, abode.name);
     }
     let location = character
         .current_fleet
@@ -328,13 +368,17 @@ fn character_text(world: &GameWorld, character: &rebellion_core::world::Characte
                 .map(|system| system.name.clone())
         })
         .unwrap_or_else(|| "Location Unknown".to_owned());
-    match character_state(character) {
-        Some(state) => format!("{} - {location} ( {state} ) ", character.name),
-        None => format!("{} - {location}", character.name),
+    let mut text = format!("{} - {location}", character.name);
+    for word in [character_state(character), command_word(character.command)]
+        .into_iter()
+        .flatten()
+    {
+        text.push_str(&format!(" ( {word} ) "));
     }
+    text
 }
 
-/// Build the Characters view rows for `tab` (FUN_00464e10 view==2,
+/// Build the Characters view rows for `tab` (FUN_00464e10 view 3,
 /// FUN_00465bb0).
 #[must_use]
 pub fn character_rows(
@@ -370,7 +414,7 @@ pub fn character_rows(
     rows
 }
 
-/// Build the SpecForces view rows for `tab` (FUN_00464e10 view==3,
+/// Build the SpecForces view rows for `tab` (FUN_00464e10 view 2,
 /// FUN_00465540).
 #[must_use]
 pub fn specforces_rows(
@@ -514,8 +558,9 @@ fn sf_cell_colours(tab: PersonnelTab) -> (egui::Color32, egui::Color32) {
 }
 
 impl PersonnelFinderState {
-    /// Open the Finder on the player's side tab, SpecForces view
-    /// (FUN_004637a0). An open Finder stays as it is.
+    /// Open the Finder on the player's side tab and the Characters view
+    /// (`FUN_004637a0`: `FUN_0060d7e0(side, 1)`, `FUN_0060d7e0(3, 1)`). An
+    /// open Finder stays as it is.
     pub fn open(&mut self, faction: CockpitFaction) -> bool {
         if self.window.is_some() {
             return false;
@@ -527,7 +572,7 @@ impl PersonnelFinderState {
         self.window = Some(OpenFinder {
             faction,
             tab,
-            view: PersonnelView::SpecForces,
+            view: PersonnelView::Characters,
             name: String::new(),
             chosen: None,
             first_row: 0,
@@ -686,10 +731,7 @@ pub fn draw_personnel_finder(
 
             // View tabs (FUN_004637a0 group 0x6e).
             for candidate in PersonnelView::ALL {
-                let y_offset = match candidate {
-                    PersonnelView::SpecForces => 0.0,
-                    PersonnelView::Characters => 54.0,
-                };
+                let y_offset = candidate.button_offset();
                 let view_rect = (
                     controls.view_origin.0,
                     controls.view_origin.1 + y_offset,
@@ -1257,6 +1299,55 @@ mod tests {
     }
 
     #[test]
+    fn a_row_adds_injury_and_command_and_an_abode_names_only_the_place() {
+        // FUN_00465bb0: Injured (0x8747, +0x94) after Captured and On
+        // Mission; the command word (+0x96: 1 Commander 0x8802, 2 Admiral
+        // 0x8801, 3 General 0x8800) after the state; an abode (family
+        // 0x98) gives its name and nothing more.
+        use rebellion_core::character_command::CommandKind;
+        let mut world = GameWorld::default();
+        let yavin = add_system(&mut world, "Yavin");
+        let jail = world.abodes.insert(rebellion_core::world::Abode {
+            dat_id: rebellion_core::ids::DatId::new(0x9800_0480),
+            name: "Empire Jail".into(),
+            side: Faction::Empire,
+            special_forces: Vec::new(),
+        });
+        let mut ackbar = default_character();
+        ackbar.name = "Ackbar".into();
+        ackbar.current_system = Some(yavin);
+        ackbar.injury = 3;
+        ackbar.command = CommandKind::Admiral;
+        world.characters.insert(ackbar);
+        let mut dodonna = default_character();
+        dodonna.name = "Dodonna".into();
+        dodonna.current_system = Some(yavin);
+        dodonna.command = CommandKind::General;
+        world.characters.insert(dodonna);
+        let mut leia = default_character();
+        leia.name = "Leia".into();
+        leia.current_abode = Some(jail);
+        leia.is_captive = true;
+        leia.command = CommandKind::Commander;
+        world.characters.insert(leia);
+
+        let fog = FogState::new(Faction::Alliance);
+        let listed = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
+        let names: Vec<&str> = listed
+            .iter()
+            .map(PersonnelFinderRow::display_name)
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "Ackbar - Yavin ( Injured )  ( Admiral ) ",
+                "Dodonna - Yavin ( General ) ",
+                "Leia - Empire Jail"
+            ]
+        );
+    }
+
+    #[test]
     fn rows_are_sorted_by_name_ignoring_case() {
         // FUN_005f59f0: rows inserted in name order.
         let mut world = GameWorld::default();
@@ -1406,24 +1497,25 @@ mod tests {
         state.open(CockpitFaction::Alliance);
         state.window.as_mut().unwrap().chosen = Some(0);
 
-        state.set_view(PersonnelView::Characters);
+        state.set_view(PersonnelView::SpecForces);
         assert_eq!(state.window.as_ref().unwrap().chosen, None);
     }
 
     #[test]
-    fn the_finder_opens_with_specforces_view_and_players_side_tab() {
-        // FUN_004637a0: FUN_0060d7e0(+0x148, 3, 1) = SpecForces view,
-        // FUN_0060d7e0(+0x144, side, 1) = player's side.
+    fn the_finder_opens_with_the_characters_view_and_players_side_tab() {
+        // FUN_004637a0: FUN_0060d7e0(+0x148, 3, 1), view 3, the Characters
+        // button (TEXTSTRA 0x1899); FUN_0060d7e0(+0x144, side, 1), the
+        // player's side.
         let mut state = PersonnelFinderState::default();
         state.open(CockpitFaction::Alliance);
         let window = state.window.as_ref().unwrap();
-        assert_eq!(window.view, PersonnelView::SpecForces);
+        assert_eq!(window.view, PersonnelView::Characters);
         assert_eq!(window.tab, PersonnelTab::Alliance);
 
         let mut state = PersonnelFinderState::default();
         state.open(CockpitFaction::Empire);
         let window = state.window.as_ref().unwrap();
-        assert_eq!(window.view, PersonnelView::SpecForces);
+        assert_eq!(window.view, PersonnelView::Characters);
         assert_eq!(window.tab, PersonnelTab::Imperial);
     }
 
@@ -1488,9 +1580,25 @@ mod tests {
     }
 
     #[test]
+    fn each_view_has_its_own_panel_and_button() {
+        // FUN_004637a0 / FUN_00464e10: view 3, Characters, shows 10536 or
+        // 10537 and its face button 10542 sits at the top; view 2,
+        // SpecForces, shows 10538 or 10539 (the column icons) and its
+        // soldiers button 10546 sits 0x36 lower.
+        let characters = PersonnelView::Characters.index();
+        let specforces = PersonnelView::SpecForces.index();
+        assert_eq!(PANELS[characters], [10536, 10537]);
+        assert_eq!(PANELS[specforces], [10538, 10539]);
+        assert_eq!(VIEW_TAB_ART[0][characters], (10542, 10543));
+        assert_eq!(VIEW_TAB_ART[1][specforces], (10548, 10549));
+        assert!(PersonnelView::Characters.button_offset().abs() < f32::EPSILON);
+        assert!((PersonnelView::SpecForces.button_offset() - 54.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn the_tab_label_y_differs_by_view() {
-        // FUN_00464e10: Characters → y=0x77=119, SpecForces → y=0x73=115.
-        assert!((PersonnelView::Characters.label_y() - 119.0).abs() < f32::EPSILON);
-        assert!((PersonnelView::SpecForces.label_y() - 115.0).abs() < f32::EPSILON);
+        // FUN_00464e10: view 2, SpecForces, y = 0x77 = 119; else 0x73 = 115.
+        assert!((PersonnelView::SpecForces.label_y() - 119.0).abs() < f32::EPSILON);
+        assert!((PersonnelView::Characters.label_y() - 115.0).abs() < f32::EPSILON);
     }
 }
