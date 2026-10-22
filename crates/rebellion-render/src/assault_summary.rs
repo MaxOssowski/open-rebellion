@@ -514,7 +514,7 @@ fn empty_label(column: usize, columns: usize) -> &'static str {
 
 /// The wheel's scroll: down a row while rows remain below, up a row while
 /// any are above. port: the list's scroll bar is not drawn.
-fn scrolled(scroll: usize, wheel: f32, rows: usize, visible: usize) -> Option<usize> {
+pub(crate) fn scrolled(scroll: usize, wheel: f32, rows: usize, visible: usize) -> Option<usize> {
     if wheel < 0.0 && scroll + visible < rows {
         Some(scroll + 1)
     } else if wheel > 0.0 && scroll > 0 {

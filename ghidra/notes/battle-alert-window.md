@@ -70,5 +70,7 @@ text starts at 70 (`+0x30` = `0x46`). An indented row draws the picture
 Ported in `tactical_view.rs` (`battle_alert_rows`, `battle_alert_list`).
 port: a fleet keeps its squadrons, regiments and personnel, not each
 ship, so they follow all the fleet's ships. Facilities go by kind
-(defenses, manufacturing, production). There is no scroll bar: the rows
-whose middle fits are drawn.
+(defenses, manufacturing, production). There is no scroll bar: six rows
+(those whose middle fits) are drawn. Since 2026-10-22 the wheel over the
+list scrolls it a row at a time, as in the port's other lists
+(`assault_summary::scrolled`). A new tab starts at the top.
