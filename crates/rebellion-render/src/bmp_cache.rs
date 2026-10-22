@@ -1814,8 +1814,8 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // (personnel en route and damaged, the regiment's backdrop
                 // and en route marks, a special force's), which its windows
                 // blit keyed.
-                | 11501..=11502
-                | 11514..=11516
+                | 11500..=11502
+                | 11513..=11516
                 | 11520
         ),
         // The unit and facility pictures (`0x001..0x584`, all 122 by 50 on
@@ -2342,8 +2342,10 @@ mod tests {
         // windows blit keyed: STRATEGY 11501, 11502, 11514..11516, 11520
         // and the craft damage marks GOKRES 0x2640..0x278f, 0x6640..0x678f.
         for (source, resource_id) in [
+            (DllSource::Strategy, 11_500),
             (DllSource::Strategy, 11_501),
             (DllSource::Strategy, 11_502),
+            (DllSource::Strategy, 11_513),
             (DllSource::Strategy, 11_514),
             (DllSource::Strategy, 11_515),
             (DllSource::Strategy, 11_516),
@@ -2358,7 +2360,9 @@ mod tests {
             assert!(uses_blue_screen_transparency(source, resource_id), "{resource_id}");
         }
         for (source, resource_id) in [
+            (DllSource::Strategy, 11_499),
             (DllSource::Strategy, 11_503),
+            (DllSource::Strategy, 11_512),
             (DllSource::Gokres, 0x263f),
             (DllSource::Gokres, 0x2790),
             (DllSource::Gokres, 0x663f),

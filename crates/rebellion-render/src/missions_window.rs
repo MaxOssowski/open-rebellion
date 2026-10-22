@@ -1838,9 +1838,13 @@ mod tests {
             [(None, "Leia"), (Some(18_176 + 832), "Mon")]
         );
         assert!(
-            rows.iter().all(|row| row.marks.is_empty()),
+            rows.iter()
+                .all(|row| !row.marks.contains(&(DllSource::Strategy, 11_501))),
             "a member at the system is not en route"
         );
+        // A character's mini stands on STRATEGY 11500 (FUN_0042c3b0).
+        assert_eq!(rows[1].marks, [(DllSource::Strategy, 11_500)]);
+        assert!(rows[0].marks.is_empty(), "no mini, no backdrop");
         // FUN_004f7800: an injured character is damaged, so FUN_0042c3b0
         // draws STRATEGY 11502 under its mini.
         let mon = match rows[1].member {
@@ -1857,7 +1861,10 @@ mod tests {
             missions.missions()[0].id,
             MissionsTab::Agents,
         );
-        assert_eq!(rows[1].marks, [(DllSource::Strategy, 11_502)]);
+        assert_eq!(
+            rows[1].marks,
+            [(DllSource::Strategy, 11_500), (DllSource::Strategy, 11_502)]
+        );
         assert!(rows[0].marks.is_empty());
     }
 

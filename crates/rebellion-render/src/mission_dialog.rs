@@ -408,8 +408,7 @@ pub fn kind_icon(kind: MissionKind, faction: MissionFaction) -> u32 {
 }
 
 /// A member's list image and name: the GOKRES mini `FUN_0042c3b0(.., 0, 1)`
-/// draws first. port: its status overlays (STRATEGY 11500..11502, 11570,
-/// 11572, GOKRES `+0x7000`) are not drawn.
+/// draws over its layers (`member_layers`).
 fn member_item(world: &GameWorld, member: MissionMember) -> Option<(Option<u32>, String)> {
     match member {
         MissionMember::Character(key) => {
@@ -425,6 +424,33 @@ fn member_item(world: &GameWorld, member: MissionMember) -> Option<(Option<u32>,
             Some((Some(resource), name.to_string()))
         }
     }
+}
+
+/// What `FUN_0042c3b0(.., 0, 1)` draws under a member's mini: the
+/// personnel backdrop STRATEGY 11500, and 11502 while a character is
+/// injured (`FUN_004f7800`). port: the en route, unbuilt and captive marks
+/// are not drawn here.
+fn member_layers(world: &GameWorld, member: MissionMember, mini: u32) -> Vec<(DllSource, u32)> {
+    use crate::fleet_window::{mini_marks, MiniObject};
+    let (object, injured) = match member {
+        MissionMember::Character(key) => (
+            MiniObject::Character,
+            world
+                .characters
+                .get(key)
+                .is_some_and(|character| character.injury > 0),
+        ),
+        MissionMember::SpecialForce(key) => (
+            world
+                .special_forces
+                .get(key)
+                .map_or(MiniObject::Character, |force| {
+                    MiniObject::SpecialForce(force.class_dat_id)
+                }),
+            false,
+        ),
+    };
+    mini_marks(object, mini, false, injured)
 }
 
 /// Where a bitmap of `size` pixels lands when centered in `bounds` at
@@ -945,6 +971,9 @@ fn draw_list(
             continue;
         };
         let image = mini.and_then(|id| {
+            for (source, layer) in member_layers(world, member, id) {
+                paint_centered(&list_painter, ui.ctx(), cache, source, layer, item, scale);
+            }
             paint_centered(
                 &list_painter,
                 ui.ctx(),
@@ -1595,6 +1624,22 @@ mod tests {
         assert_eq!(
             member_item(&world, MissionMember::SpecialForce(spies)),
             Some((Some(17_731), "Bothan Spies".to_string()))
+        );
+        // FUN_0042c3b0 lays the personnel backdrop 11500 under each mini,
+        // and 11502 under an injured character's (FUN_004f7800).
+        let backdrop = (DllSource::Strategy, 11_500);
+        assert_eq!(
+            member_layers(&world, MissionMember::Character(luke), 18_496),
+            [backdrop]
+        );
+        assert_eq!(
+            member_layers(&world, MissionMember::SpecialForce(spies), 17_731),
+            [backdrop]
+        );
+        world.characters[luke].injury = 2;
+        assert_eq!(
+            member_layers(&world, MissionMember::Character(luke), 18_496),
+            [backdrop, (DllSource::Strategy, 11_502)]
         );
     }
 

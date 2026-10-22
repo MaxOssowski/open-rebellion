@@ -180,19 +180,27 @@ impl DefensesItem {
     }
 }
 
-/// The marks `FUN_0042c3b0(.., 0, 1)` draws under a row's mini: a
-/// character's damage mark while it is injured (`FUN_004f7800` sets
-/// `+0x50` bit `0x200` to injury != 0). port: nothing in the window is en
+/// What `FUN_0042c3b0(.., 0, 1)` draws under a row's mini: a personnel's
+/// or regiment's backdrop, and a character's damage mark while it is
+/// injured (`FUN_004f7800` sets `+0x50` bit `0x200` to injury != 0). port: nothing in the window is en
 /// route (it leaves out personnel on a visible mission).
 fn row_marks(world: &GameWorld, row: &DefensesRow) -> Vec<(DllSource, u32)> {
+    use crate::fleet_window::MiniObject;
     let injured = matches!(row.item, DefensesItem::Character(key)
         if world.characters.get(key).is_some_and(|character| character.injury > 0));
-    crate::fleet_window::mini_marks(
-        crate::fleet_window::MiniObject::Character,
-        row.mini,
-        false,
-        injured,
-    )
+    let object = match row.item {
+        DefensesItem::Character(_) => MiniObject::Character,
+        DefensesItem::SpecialForce(key) => world
+            .special_forces
+            .get(key)
+            .map_or(MiniObject::Character, |force| MiniObject::SpecialForce(force.class_dat_id)),
+        DefensesItem::Troop(key) => world
+            .troops
+            .get(key)
+            .map_or(MiniObject::Craft, |troop| MiniObject::Regiment(troop.class_dat_id)),
+        DefensesItem::Squadron { .. } | DefensesItem::Defense(_) => MiniObject::Craft,
+    };
+    crate::fleet_window::mini_marks(object, row.mini, false, injured)
 }
 
 /// One list row: the object, its GOKRES mini and its name (`FUN_004a9ab0`).

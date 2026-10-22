@@ -113,16 +113,34 @@ pub(crate) const fn captive_mark(mini: u32) -> (DllSource, u32) {
 /// STRATEGY 11502 (`0x2cee`): the damage mark of a character's mini.
 const DAMAGED_PERSONNEL: u32 = 11_502;
 
-/// `FUN_0042c3b0`'s marks for a mini, bottom to top under the object: en
-/// route (`+0x50` bit `0x10`), then damaged (bit `0x200`). The object is
-/// blitted keyed over them last, so they show through its matte.
+/// The backdrop `FUN_0042c3b0(.., 0, ..)` blits into a mini's bitmap
+/// first, whatever its last argument: STRATEGY 11500 (`0x2cec`) for
+/// personnel (`0x30..0x3f`), 11513 (`0x2cf9`) for a regiment.
+pub(crate) const fn mini_backdrop(object: MiniObject) -> Option<(DllSource, u32)> {
+    match object {
+        MiniObject::Character | MiniObject::SpecialForce(_) => {
+            Some((DllSource::Strategy, PERSONNEL_BACKDROP))
+        }
+        MiniObject::Regiment(_) => Some((DllSource::Strategy, REGIMENT_BACKDROP)),
+        MiniObject::Craft => None,
+    }
+}
+
+/// STRATEGY 11500 (`0x2cec`) and 11513 (`0x2cf9`): the minis' backdrops.
+const PERSONNEL_BACKDROP: u32 = 11_500;
+const REGIMENT_BACKDROP: u32 = 11_513;
+
+/// What `FUN_0042c3b0`'s draws under a mini, bottom to top: its backdrop,
+/// then the marks, en route (`+0x50` bit `0x10`) and damaged (bit
+/// `0x200`). The object is blitted keyed over them last, so they show
+/// through its matte.
 pub(crate) fn mini_marks(
     object: MiniObject,
     mini: u32,
     en_route: bool,
     damaged: bool,
 ) -> Vec<(DllSource, u32)> {
-    let mut marks = Vec::new();
+    let mut marks: Vec<_> = mini_backdrop(object).into_iter().collect();
     if en_route {
         marks.push(en_route_mark(object, mini));
     }
@@ -4161,7 +4179,7 @@ pub(crate) mod tests {
         assert!(hurt.damaged);
         assert_eq!(
             mini_marks(hurt.kind, hurt.mini.unwrap(), false, hurt.damaged),
-            [(DllSource::Strategy, 11_502)]
+            [(DllSource::Strategy, 11_500), (DllSource::Strategy, 11_502)]
         );
         // A captive (+0xac bit 0) is marked over its mini, GOKRES + 0x3000.
         assert!(!hurt.captive);
@@ -4172,16 +4190,26 @@ pub(crate) mod tests {
 
     #[test]
     fn the_marks_of_a_mini_stack_en_route_then_damaged() {
-        // FUN_0042c3b0: en route first, then damaged; personnel take
-        // STRATEGY 11502 for damage.
+        // FUN_0042c3b0: the backdrop, en route, then damaged; personnel
+        // take STRATEGY 11502 for damage.
         assert_eq!(mini_marks(MiniObject::Craft, 17_473, false, false), []);
         assert_eq!(
             mini_marks(MiniObject::Craft, 17_473, true, true),
             [(DllSource::Gokres, 21_569), (DllSource::Gokres, 25_665)]
         );
+        // Personnel stand on 11500 and regiments on 11513 (0x42c6b3,
+        // 0x42c748), whatever the marks.
         assert_eq!(
             mini_marks(MiniObject::Character, 17_473, false, true),
-            [(DllSource::Strategy, 11_502)]
+            [(DllSource::Strategy, 11_500), (DllSource::Strategy, 11_502)]
+        );
+        assert_eq!(
+            mini_marks(MiniObject::Regiment(DatId::new(0x1000_0001)), 17_473, true, false),
+            [(DllSource::Strategy, 11_513), (DllSource::Strategy, 11_515)]
+        );
+        assert_eq!(
+            mini_backdrop(MiniObject::SpecialForce(DatId::new(0x3c00_0001))),
+            Some((DllSource::Strategy, 11_500))
         );
         assert_eq!(
             damage_mark(MiniObject::SpecialForce(DatId::new(0x3c00_0001)), 1),

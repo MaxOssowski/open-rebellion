@@ -220,6 +220,14 @@ STRATEGY 11502 for a character's or special force's mini
 | Special forces `0x3c..0x3f`, but classes `0x3c000003`, `0x3c000005` | 11501 | 11520 (`0x2d00`) |
 | Fleets `0x08..0x0f` | 10423 (side 2: 10473) | 10426 (10476) |
 
+Before any mark, and whatever its last argument, `FUN_0042c3b0` blits a
+backdrop into a mini's bitmap (unkeyed, `FUN_005fcc30` at `0x42c6b3` and
+`0x42c748`): STRATEGY 11500 (`0x2cec`) for personnel (`0x30..0x3f`) and
+11513 (`0x2cf9`) for a regiment, both 61 by 25; a regiment's portrait
+takes 11514 (`0x2cfa`). So personnel and regiment minis stand on these
+starfields in every list that draws them through it (Fleet, Defenses,
+Missions, Create Mission; ported 2026-10-22).
+
 The excepted regiment and special force classes keep the GOKRES default,
 and GOKRES has exactly those four marks (21569, 21634, 21826, 21888). The
 craft marks are engine glows on the blue key; the STRATEGY marks and the
