@@ -139,6 +139,37 @@ Message `0x28` / `0x49` is a short form: action `0xb`, one clip
 
 The reference captures 0119-0149 show rows 2 to 5 in that order.
 
+## The briefing's displays in `FUN_0042b330` (read 2026-10-23)
+
+`+0x9c` is the viewing side, the holder is the system's `+0x24` bits
+6..7, and the support side is `+0x84` bits 2..3 (`system-control.md`:
+support of at least GNPRTB 7760 for one side, else 3). The enemy is 2
+for viewer 1, 1 for viewer 2, 3 for viewer 3. `FUN_00426e70(value,
+side, t1..t5)` picks the mark as for the other displays.
+
+| Display | Value | Side | Thresholds |
+|---|---|---|---|
+| `0x13` | `0x52` when holder = viewer and support side = viewer, else 0 | holder | `0x51, 0x50, 0x3c, 0x3b, 0x32` |
+| `0x14` | `0x52` when holder = viewer and support side != viewer | holder | same |
+| `0x15` | `0x52` when holder = enemy and support side = enemy | holder | same |
+| `0x16` | `0x52` when holder = enemy and support side != enemy | holder | same |
+| `0x17` | `0x52` for an unexplored system (`+0x88` bit 1 clear), else 0 | 3 (no side) | same |
+| `0x20` | as Idle Fleets `0x21` (the same case) | | |
+| `0x91` | the holder's regiments (`FUN_005044f0`, families `0x10..0x13`) + armed defenses (`FUN_00526e90`, `0x22..0x27`) + squadrons (`FUN_00503550`) | holder | 6, 5, 3, 2, 1 |
+| `0x92` | 7 for the system `FUN_005f5500` finds from the view's id (hyp: the one the action selected), else the unexplored mark (flag `0x80`) | 2 (Empire) | 6, 5, 3, 2, 1 |
+| `0x93` | the same | 1 (Alliance) | 6, 5, 3, 2, 1 |
+
+The gate at the top is inverted for `0x17`: an explored system gets
+flag `0x80` (the unexplored mark, STRATEGY 10158), an unexplored one
+goes through the switch. `0x20`, `0x92` and `0x93` count a destroyed
+system as the fleet displays do.
+
+So with the Alliance viewing, the briefing shows its own loyal systems
+(`0x13`), the Empire's loyal ones (`0x15`), its own systems under
+military control (`0x14`), the unexplored ones (`0x17`). hyp: the
+reference captures, whose captions read "Systems Loyal to the Empire"
+then "Systems Under Military Control", are of the Empire's briefing.
+
 ## Open
 
 - Which code puts message `0x29` / `0x4a` (or `0x28` / `0x49`) on the
@@ -146,8 +177,10 @@ The reference captures 0119-0149 show rows 2 to 5 in that order.
 - Action code `0xa`, kind 3, and the functions behind codes `0xb`, `0xc`
   and `0xd` (`FUN_0041dbe0`, `FUN_0041d9d0`, `FUN_0042d760`,
   `FUN_0041da80`).
-- The marks of displays `0x13..0x17`, `0x20` and `0x91..0x93`
-  (`gid-markers.md`: `FUN_004522f0` has no legend layout for them).
+- Where the captions ("Systems Loyal to the Empire", TEXTSTRA
+  `0x1620`, `0x1621`, `0x1629`) are drawn; `FUN_004522f0` has no legend
+  layout for these displays.
+- How `0x92` / `0x93` find their system (`FUN_004025b0(local_f0)`).
 - The frame-script ops other than 4 and `0x11`, the short records, and
   the clip definitions' last two words (hyp: frame count and first
   frame).
