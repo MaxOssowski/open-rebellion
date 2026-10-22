@@ -1,6 +1,6 @@
 ---
 title: "The opening briefing: what starts it, ALBRIEF/EMBRIEF, and how a clip reaches the galaxy view"
-description: "Read 2026-10-23 for P34. The advisor panel loads the briefing DLL at the start of a game; the DLLs hold clip definitions (voice WAV + frame range) and frame scripts; the clip's map action goes through FUN_00436620 -> FUN_00439eb0 -> FUN_004c0fc0. Who queues the briefing clips is still open."
+description: "Read 2026-10-23 for P34. The advisor panel loads the briefing DLL at the start of a game. The advisor messages come from GDATA C3POACT.SPT / IMP22ACT.SPT; the briefing is message 0x29 / 0x4a, an action (FUN_004c0fc0 code) then a voice clip, in turn. Who schedules it is still open."
 ---
 
 # The opening briefing
@@ -75,15 +75,79 @@ the clip is queued.
   `0x13..0x17`, `0x20`, `0x91..0x93`, Coruscant, Yavin, the Emperor and
   Vader).
 
+## The advisor's messages: C3POACT.SPT and IMP22ACT.SPT (read 2026-10-23)
+
+- `FUN_004c2c70` (Alliance) and `FUN_004c0ba0` (Empire) open
+  `GDATA\C3POACT.SPT` and `GDATA\IMP22ACT.SPT` (REBEXE RCDATA strings
+  `0x618` "GDATA\\", `0x61b`, `0x61c`; `FUN_005f49e0`) and read them with
+  `FUN_0049c6f0`: a count, then each message (`FUN_004c5230`, vtable
+  `0x0065c5b0`, read by `FUN_004c52d0`). The save carries them too
+  (`FUN_00439550`).
+- File layout, little-endian: `u32` count; per message `u32` id
+  (`+0x18`), `u32` (`+0x1c`, 1 in every message), `u32` entry count
+  (`+0x20`), `u32` (`+0x24`, 0 in every message); per entry `u16` record,
+  `u32` flags, `u32` a, `u32` b (14 bytes). C3POACT holds 87 messages
+  (3510 bytes), IMP22ACT 85 (3422 bytes); both parse to their exact
+  length.
+- `FUN_004c0a60` (the advisor's update) walks the panel's schedule
+  (`+0x164` count, `+0x168` the day each message is due, `+0x16c` the
+  next free day). A due message (`FUN_005f5500(id)`) plays each entry
+  whose flag bit 0 is clear (or when the advice flags `DAT_006b28b0`
+  have `0x1000` without `0x4000`) through `FUN_0041d660(record, a, b,
+  flags >> 1 & 1)` -> `FUN_0042b1d0`.
+- `FUN_0042b1d0(record, a, b, briefing)` reads the RCDATA record from DLL
+  slot 9, or slot `0xd` (the briefing DLL) when `briefing`; a or b of 0
+  take the record's words 2 and 3. It calls the `0xdead` player's slot
+  `0x38` with the record's word 0 (the op), `slot << 16 | word 1`, a and
+  b. (`FUN_0042b290` does the same for `0xbeef` from slot 9.)
+- Records: op 4 plays a clip definition (`[4, def]`, the 10-byte record
+  with its WAVE and frames); op `0x11` is the idle clip `[0x11, 0x18f]`
+  (ALSPRITE / EMSPRITE `0x2710` / `0x2af8`), which the messages use to
+  carry an action: its a and b are the kind and code that
+  `FUN_00439eb0` stores when it ends.
+
+### The briefing
+
+The briefing is message `0x29` in C3POACT and `0x4a` in IMP22ACT: an
+action, then a voice clip from the briefing DLL (flag 2), in turn.
+Each action is kind 2, so `FUN_004c0fc0(code)`:
+
+| # | Action (code) | Alliance clip (ALBRIEF) | Empire clip (EMBRIEF) |
+|---|---|---|---|
+| 1 | `0xc`: `FUN_0041d9d0` | `0x27ab` -> def `0x103b`, WAVE 1155 | `0x2b8b` -> `0x1033`, 1147 |
+| 2 | 1: display `0x11` (Popular Support) | `0x27ec` -> `0x107c`, 1220 | `0x2bd4` -> `0x107c`, 1220 |
+| 3 | `0xe`: display `0x13` ("Systems Loyal to the Empire") | `0x27ed`, 1221 | `0x2bd5`, 1221 |
+| 4 | `0xf`: display `0x15` ("Systems Under Military Control") | `0x27ee`, 1222 | `0x2bd6`, 1222 |
+| 5 | `0x10`: display `0x14` ("Unexplored Systems") | `0x27ef`, 1223 | `0x2bd7`, 1223 |
+| 6 | `0x11`: display `0x17` | `0x27f0`, 1224 | `0x2bd8`, 1224 |
+| 7 | `0x12`: Coruscant, display `0x92`, caption `0x1624` | `0x27ad`, 1157 | `0x2b8d`, 1149 |
+| 8 | 3: Yavin, display `0x93`, caption `0x1622` | `0x27ae`, 1158 | `0x2b8e`, 1150 |
+| 9 | 4: display `0x17` | `0x27af`, 1159 | `0x2b8f`, 1151 |
+| 10 | 5: display `0x20` | `0x27b0`, 1160 | `0x2b90`, 1152 |
+| 11 | 6: display `0x91` | `0x27b1`, 1161 | `0x2b91`, 1153 |
+| 12 | 7: the Emperor's system, `0x92`, caption `0x1627` | `0x27f1`, 1225 | `0x2bd9`, 1225 |
+| 13 | `0x13`: Vader's system, `0x92`, caption `0x1628` | `0x27f2`, 1226 | `0x2bda`, 1226 |
+| 14 | `0x14`: Yavin, `0x93`, caption `0x1622` | `0x27b3`, 1163 | `0x2b93`, 1155 |
+| 15 | 9: Display Off `0x80` | `0x27b4`, 1164 | `0x2b94`, 1156 |
+| 16 | `0xa`: not in `FUN_004c0fc0`'s table | `0x27b8`, 1168 | `0x2b98`, 1160 |
+| 17 | `0xb`: display `0x11`, then `FUN_0041dbe0` | | |
+| 18 | `0xd`: `FUN_0042d760`; with advice on, the Message Index; `FUN_0041da80` | | |
+
+Message `0x28` / `0x49` is a short form: action `0xb`, one clip
+(`0x27b5` -> `0x1045`; `0x2b95`), action `0xd`. Messages `0x56`, `0x57`
+(Alliance) and `0x54`, `0x55` (Empire) end with action kind 3, code 1.
+
+The reference captures 0119-0149 show rows 2 to 5 in that order.
+
 ## Open
 
-- Who calls the panel's `FUN_00442070` with the briefing clips
-  (`0xd << 16 | 0x103b..`) and which `kind`/`code` each gets. The clip
-  ids are not constants in the code (no `0x103b` or `0xd103b` immediate),
-  and no table in `.rdata`/`.data` holds them as 16- or 32-bit values;
-  they are likely computed (WAVE id + 3000).
-- The frame-script ops and the short records' meaning.
-- What the panel's `+0xc0` value 8 drives.
-- The reference captures 0119-0149 show the briefing's displays in
-  order: Popular Support, "Systems Loyal to the Empire", "Systems Under
-  Military Control", "Unexplored Systems".
+- Which code puts message `0x29` / `0x4a` (or `0x28` / `0x49`) on the
+  schedule at a new game, and what the panel's `+0xc0` value 8 drives.
+- Action code `0xa`, kind 3, and the functions behind codes `0xb`, `0xc`
+  and `0xd` (`FUN_0041dbe0`, `FUN_0041d9d0`, `FUN_0042d760`,
+  `FUN_0041da80`).
+- The marks of displays `0x13..0x17`, `0x20` and `0x91..0x93`
+  (`gid-markers.md`: `FUN_004522f0` has no legend layout for them).
+- The frame-script ops other than 4 and `0x11`, the short records, and
+  the clip definitions' last two words (hyp: frame count and first
+  frame).
