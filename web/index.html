@@ -8,6 +8,9 @@
     <style>
         html, body { margin: 0; padding: 0; overflow: hidden; background: #050510; }
         canvas { display: block; width: 100vw; height: 100vh; }
+        /* The game takes focus on start; the browser's focus ring would
+           draw a frame the original's window does not have. */
+        canvas:focus { outline: none; }
         #main-menu-semantics button {
             position: absolute;
             width: 1px;

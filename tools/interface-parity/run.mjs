@@ -659,10 +659,10 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     // A click on a system closes a visible legend first (FUN_00422ce0,
     // WM_LBUTTONUP with a hovered item posts 0x405). Drag the legend to the
     // top left so it leaves the probe system free.
-    // Grab 5, 5 inside the frame and drop the window at 10, 10, keeping
-    // the pointer on the page so the release arrives.
+    // Grab 5, 5 inside the frame and drop the window in the top-left
+    // corner, keeping the pointer on the page so the release arrives.
     const corner = point(190 + 5, 140 + 5);
-    const target = point(15, 15);
+    const target = point(5, 5);
     await page.mouse.move(corner.x, corner.y);
     await page.mouse.down();
     await page.evaluate(() => new Promise((resolve) => {
@@ -672,8 +672,9 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     await page.mouse.up();
     const cornered = await stableInteractionFrame(page, folder, "legend-cornered");
     if (exact) {
-      assert.deepEqual(pixelAt(cornered, 10, 10), [192, 192, 192], "the legend did not reach 10, 10");
-      assert.deepEqual(pixelAt(cornered, 11, 11), [255, 255, 255], "the moved legend lost its inner line");
+      // The page draws no frame of its own over the canvas's edge.
+      assert.deepEqual(pixelAt(cornered, 0, 0), [192, 192, 192], "the legend did not reach the corner");
+      assert.deepEqual(pixelAt(cornered, 1, 1), [255, 255, 255], "the moved legend lost its inner line");
     }
     const system = point(ready.probe_screen_x, ready.probe_screen_y);
     await page.mouse.move(system.x, system.y);
@@ -682,7 +683,7 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       () => page.mouse.click(system.x, system.y));
     const clickedAway = await stableInteractionFrame(page, folder, "legend-closed-by-map-click");
     if (exact) {
-      assert.notDeepEqual(pixelAt(clickedAway, 11, 11), [255, 255, 255],
+      assert.notDeepEqual(pixelAt(clickedAway, 1, 1), [255, 255, 255],
         "the map click left the legend open");
     }
     probes.push({ type: "legend-window", open_sha256: sha256(open), closed_sha256: sha256(closed),

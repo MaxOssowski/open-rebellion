@@ -44,3 +44,7 @@ original does it on the release.
 Found on the way, not fixed: a legend dropped at the very top-left
 corner (0, 0) loses its outer grey line at 640 x 480. Its pixels there
 are (16, 16, 16).
+
+Correction (same day): the legend was drawn in full. The (16, 16, 16)
+edge was the browser's focus ring around the canvas, on every frame;
+see `../2026-10-22-canvas-focus-ring/`.
